@@ -9,3 +9,4 @@ captures
 .cxx
 local.properties
 kls_database.db
+jniLibs

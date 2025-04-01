@@ -20,4 +20,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "miniapp"
-include(":app")
+include(":lingxia")
