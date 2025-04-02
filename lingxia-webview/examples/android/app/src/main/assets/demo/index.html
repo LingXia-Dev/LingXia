@@ -54,7 +54,7 @@
     <script>
         function openMiniApp() {
             console.log('Button clicked');
-            if (window.miniapp && typeof window.miniapp.postMessage === 'function') {
+            if (window.lingxia && typeof window.lingxia.postMessage === 'function') {
                 console.log('Sending postMessage');
                 try {
                     const message = {
@@ -65,7 +65,7 @@
                         }
                     };
                     console.log('Message to send:', JSON.stringify(message));
-                    window.miniapp.postMessage(JSON.stringify(message));
+                    window.lingxia.postMessage(JSON.stringify(message));
                 } catch (e) {
                     console.error('Error sending postMessage:', e);
                     console.error('Error stack:', e.stack);
@@ -73,13 +73,13 @@
                 }
             } else {
                 console.error('MiniApp bridge not available or postMessage not a function');
-                if (window.miniapp) {
-                    console.log('window.miniapp exists:', window.miniapp);
-                    console.log('postMessage type:', typeof window.miniapp.postMessage);
+                if (window.lingxia) {
+                    console.log('window.lingxia exists:', window.lingxia);
+                    console.log('postMessage type:', typeof window.lingxia.postMessage);
                 }
                 alert('MiniApp bridge not available');
             }
         }
     </script>
 </body>
-</html> 
+</html>

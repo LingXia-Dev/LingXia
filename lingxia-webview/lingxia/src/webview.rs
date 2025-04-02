@@ -14,14 +14,14 @@ static WEBVIEWS: OnceLock<Mutex<HashMap<String, Vec<WebView>>>> = OnceLock::new(
 
 const DOCUMENT_START_SCRIPT: &str = r#"
     (function() {
-        if (!window.miniapp) {
-            window.miniapp = {
+        if (!window.lingxia) {
+            window.lingxia = {
                 postMessage: function(message) {
                     MiniApp.postMessage(message);
                 }
             };
             console.log('MiniApp bridge initialized');
-            window.miniapp.postMessage('{"type":"BRIDGE_READY"}');
+            window.lingxia.postMessage('{"type":"BRIDGE_READY"}');
             return true;
         }
         console.log('MiniApp bridge already exists');

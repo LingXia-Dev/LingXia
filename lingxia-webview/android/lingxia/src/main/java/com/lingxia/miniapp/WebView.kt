@@ -23,7 +23,7 @@ import org.json.JSONObject
 import java.io.ByteArrayInputStream
 
 private const val TAG = "LingXia.WebView"
-private const val BRIDGE_NAME = "miniapp"
+private const val BRIDGE_NAME = "lingxia"
 
 data class WebResourceResponseData(
     val mimeType: String,
