@@ -363,4 +363,5 @@ class WebView @JvmOverloads constructor(
     private external fun nativeOnPageFinished(appId: String, path: String): Int
     private external fun nativeShouldOverrideUrlLoading(appId: String, url: String): Int
     private external fun nativeDestroyAllWebViews(): Int
+    external fun nativeOnMiniAppHidden(appId: String, path: String): Int
 }

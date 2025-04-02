@@ -206,3 +206,30 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeGetExistingWebView
         }
     }
 }
+
+#[no_mangle]
+pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnMiniAppHidden(
+    mut env: JNIEnv,
+    _class: JClass,
+    app_id: JString,
+    path: JString,
+) -> jint {
+    let app_id: String = match env.get_string(&app_id) {
+        Ok(s) => s.into(),
+        Err(e) => {
+            error!("Failed to get app_id string: {:?}", e);
+            return -1;
+        }
+    };
+
+    let path: String = match env.get_string(&path) {
+        Ok(s) => s.into(),
+        Err(e) => {
+            error!("Failed to get path string: {:?}", e);
+            return -1;
+        }
+    };
+
+    info!("Mini app hidden: app_id={}, path={}", app_id, path);
+    0
+}

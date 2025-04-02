@@ -264,6 +264,7 @@ class MiniAppActivity : Activity() {
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
             setOnClickListener {
+                handleMiniAppHidden()
                 finish()
             }
         }
@@ -313,8 +314,19 @@ class MiniAppActivity : Activity() {
         webView?.pause()
     }
 
+    private fun handleMiniAppHidden() {
+        webView?.let { view ->
+            intent.getStringExtra(EXTRA_APP_ID)?.let { appId ->
+                intent.getStringExtra(EXTRA_PATH)?.let { path ->
+                    view.nativeOnMiniAppHidden(appId, path)
+                }
+            }
+        }
+    }
+
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
+        handleMiniAppHidden()
         webView?.pause()
         finish()
     }
