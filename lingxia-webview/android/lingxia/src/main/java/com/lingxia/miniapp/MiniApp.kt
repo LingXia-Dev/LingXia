@@ -97,7 +97,7 @@ class MiniApp private constructor(private val context: Context) {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
-            registerWebViewToNative(appId, path)
+            handleWebViewCreated(appId, path)
         }
         return webView
     }

@@ -258,10 +258,10 @@ class WebView @JvmOverloads constructor(
         }, "MiniApp")
     }
 
-    fun registerWebViewToNative(appId: String, path: String) {
+    fun handleWebViewCreated(appId: String, path: String) {
         this.appId = appId
         this.currentPath = path
-        nativeOnWebViewRegistered(appId, path, this)
+        nativeOnWebViewCreated(appId, path, this)
         Log.d(TAG, "WebView registered to native layer: appId=$appId, path=$path")
     }
 
@@ -357,7 +357,7 @@ class WebView @JvmOverloads constructor(
     }
 
     // Native instance methods
-    private external fun nativeOnWebViewRegistered(appId: String, path: String, webview: WebView): Int
+    private external fun nativeOnWebViewCreated(appId: String, path: String, webview: WebView): Int
     private external fun nativeHandlePostMessage(appId: String, path: String, message: String): Int
     private external fun nativeOnPageStarted(appId: String, path: String): Int
     private external fun nativeOnPageFinished(appId: String, path: String): Int

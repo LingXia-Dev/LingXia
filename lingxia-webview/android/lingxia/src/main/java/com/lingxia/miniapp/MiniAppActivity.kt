@@ -98,7 +98,7 @@ class MiniAppActivity : Activity() {
                 }
             } ?: com.lingxia.miniapp.WebView(this).apply {
                 Log.d(TAG, "Creating new WebView for appId: $appId")
-                registerWebViewToNative(appId, path)
+                handleWebViewCreated(appId, path)
                 setupWebView(this, null)
             }
 
@@ -286,7 +286,7 @@ class MiniAppActivity : Activity() {
             // Set new path
             intent.getStringExtra(EXTRA_APP_ID)?.let { appId ->
                 if (!path.isNullOrEmpty()) {
-                    view.registerWebViewToNative(appId, path)
+                    view.handleWebViewCreated(appId, path)
                 }
             }
 

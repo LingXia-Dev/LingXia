@@ -29,7 +29,7 @@ pub extern "system" fn JNI_OnLoad(vm: jni::JavaVM, _: *mut std::os::raw::c_void)
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnWebViewRegistered(
+pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnWebViewCreated(
     mut env: JNIEnv,
     _class: JClass,
     app_id: JString,
