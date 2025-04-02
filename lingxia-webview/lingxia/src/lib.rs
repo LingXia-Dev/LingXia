@@ -10,7 +10,6 @@ use jni::JNIEnv;
 use log::{error, info};
 use serde_json;
 use std::fs;
-use std::io::Read;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -313,33 +312,6 @@ pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeOnMiniAppInited(
         }
         Err(e) => {
             error!("Failed to read demo file: {:?}", e);
-        }
-    }
-
-    // Test reading an asset
-    unsafe {
-        let asset = ndk_sys::AAssetManager_open(
-            asset_manager,
-            b"readme.txt\0".as_ptr() as *const u8,
-            ndk_sys::AASSET_MODE_BUFFER as i32,
-        );
-
-        if !asset.is_null() {
-            let length = ndk_sys::AAsset_getLength64(asset) as usize;
-            let mut buffer = vec![0u8; length];
-            let bytes_read = ndk_sys::AAsset_read(asset, buffer.as_mut_ptr() as *mut _, length);
-
-            if bytes_read > 0 {
-                if let Ok(content) = String::from_utf8(buffer) {
-                    info!("Read from assets/readme.txt using NDK: {}", content);
-                }
-            } else {
-                error!("Failed to read asset content");
-            }
-
-            ndk_sys::AAsset_close(asset);
-        } else {
-            error!("Failed to open asset file");
         }
     }
 

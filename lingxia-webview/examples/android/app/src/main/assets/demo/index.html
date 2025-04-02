@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MiniApp Test</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        html {
+            height: 100%;
+            width: 100%;
+        }
+        body {
+            height: 100%;
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #ffffff;
+            font-family: Arial, sans-serif;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+        }
+        .button {
+            padding: 16px 32px;
+            font-size: 18px;
+            background-color: #ff0000;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            width: 80%;
+            max-width: 300px;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        .button:active {
+            background-color: #cc0000;
+            transform: scale(0.98);
+        }
+    </style>
+</head>
+<body>
+    <button class="button" onclick="openMiniApp()">Open MiniApp</button>
+    <script>
+        function openMiniApp() {
+            console.log('Button clicked');
+            if (window.miniapp && typeof window.miniapp.postMessage === 'function') {
+                console.log('Sending postMessage');
+                try {
+                    const message = {
+                        type: 'OPEN_MINIAPP',
+                        data: {
+                            appId: 'baidu',
+                            path: ''
+                        }
+                    };
+                    console.log('Message to send:', JSON.stringify(message));
+                    window.miniapp.postMessage(JSON.stringify(message));
+                } catch (e) {
+                    console.error('Error sending postMessage:', e);
+                    console.error('Error stack:', e.stack);
+                    alert('Error: ' + e.message);
+                }
+            } else {
+                console.error('MiniApp bridge not available or postMessage not a function');
+                if (window.miniapp) {
+                    console.log('window.miniapp exists:', window.miniapp);
+                    console.log('postMessage type:', typeof window.miniapp.postMessage);
+                }
+                alert('MiniApp bridge not available');
+            }
+        }
+    </script>
+</body>
+</html> 
