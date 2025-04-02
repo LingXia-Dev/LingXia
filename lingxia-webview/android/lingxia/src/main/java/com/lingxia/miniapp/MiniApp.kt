@@ -24,7 +24,20 @@ class MiniApp private constructor(private val context: Context) {
             if (instance == null) {
                 instance = MiniApp(context.applicationContext)
             }
+            val appContext = context.applicationContext
+            nativeOnMiniAppInited(
+                appContext.filesDir.absolutePath,
+                appContext.cacheDir.absolutePath,
+                appContext.assets
+            )
         }
+
+        @JvmStatic
+        private external fun nativeOnMiniAppInited(
+            dataDir: String,
+            cacheDir: String,
+            assetManager: android.content.res.AssetManager
+        ): Int
 
         @JvmStatic
         fun getInstance(): MiniApp {

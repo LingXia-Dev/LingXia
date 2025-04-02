@@ -1,14 +1,16 @@
 #![allow(non_snake_case)]
 
 use std::sync::OnceLock;
-
-mod webview;
-
-use android_logger::Config;
+use std::fs;
+use std::io::Read;
+use std::path::PathBuf;
 use jni::objects::{JClass, JObject, JString};
 use jni::sys::jint;
 use jni::JNIEnv;
 use log::{error, info};
+use android_logger::Config;
+
+mod webview;
 use webview::WebViewManager;
 
 pub static JAVA_VM: OnceLock<jni::JavaVM> = OnceLock::new();
@@ -231,5 +233,86 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnMiniAppHidden(
     };
 
     info!("Mini app hidden: app_id={}, path={}", app_id, path);
+    0
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeOnMiniAppInited(
+    mut env: JNIEnv,
+    _class: JClass,
+    data_dir: JString,
+    cache_dir: JString,
+    asset_manager: JObject,
+) -> jint {
+    // Get data and cache directories
+    let data_dir: String = match env.get_string(&data_dir) {
+        Ok(s) => s.into(),
+        Err(e) => {
+            error!("Failed to get data dir string: {:?}", e);
+            return -1;
+        }
+    };
+
+    let cache_dir: String = match env.get_string(&cache_dir) {
+        Ok(s) => s.into(),
+        Err(e) => {
+            error!("Failed to get cache dir string: {:?}", e);
+            return -1;
+        }
+    };
+
+    info!("MiniApp initialized with:");
+    info!("  Data dir: {}", data_dir);
+    info!("  Cache dir: {}", cache_dir);
+
+    // Demo: Create and write to a file in data directory
+    let demo_file_path = PathBuf::from(&data_dir).join("demo.txt");
+    if let Err(e) = fs::write(&demo_file_path, "Hello from Rust native layer!") {
+        error!("Failed to write demo file: {:?}", e);
+    } else {
+        info!("Successfully wrote to demo file: {:?}", demo_file_path);
+    }
+
+    // Demo: Read the file back
+    match fs::read_to_string(&demo_file_path) {
+        Ok(contents) => {
+            info!("Read from demo file: {}", contents);
+        }
+        Err(e) => {
+            error!("Failed to read demo file: {:?}", e);
+        }
+    }
+
+    // Demo: Read asset using NDK AAssetManager
+    let asset_manager = unsafe {
+        ndk_sys::AAssetManager_fromJava(env.get_raw() as *mut _, asset_manager.as_raw() as *mut _)
+    };
+
+    unsafe {
+        let asset = ndk_sys::AAssetManager_open(
+            asset_manager,
+            b"readme.txt\0".as_ptr() as *const u8,
+            ndk_sys::AASSET_MODE_BUFFER as i32,
+        );
+        
+        if !asset.is_null() {
+            let length = ndk_sys::AAsset_getLength64(asset) as usize;
+            let mut buffer = vec![0u8; length];
+            let bytes_read = ndk_sys::AAsset_read(asset, buffer.as_mut_ptr() as *mut _, length);
+            
+            if bytes_read > 0 {
+                if let Ok(content) = String::from_utf8(buffer) {
+                    info!("Read from assets/readme.txt using NDK: {}", content);
+                }
+            } else {
+                error!("Failed to read asset content");
+            }
+            
+            ndk_sys::AAsset_close(asset);
+        } else {
+            error!("Failed to open asset file");
+        }
+    }
+
     0
 }
