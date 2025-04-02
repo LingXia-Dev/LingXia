@@ -86,7 +86,7 @@ impl WebView {
             } else {
                 &self.path
             };
-            format!("http://192.168.37.77/{}/{}", self.app_id, path_str)
+            format!("lingxia://demo/{}", path_str)
         } else if self.app_id == "baidu" {
             "https://www.baidu.com".to_string()
         } else {

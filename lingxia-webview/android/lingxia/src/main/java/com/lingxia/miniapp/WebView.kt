@@ -17,10 +17,51 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.WebResourceResponse
 import android.widget.FrameLayout
+import org.json.JSONObject
+import java.io.ByteArrayInputStream
 
 private const val TAG = "LingXia.WebView"
-private const val BRIDGE_NAME = "lingxia"
+private const val BRIDGE_NAME = "miniapp"
+
+data class WebResourceResponseData(
+    val mimeType: String,
+    val encoding: String,
+    val statusCode: Int,
+    val reasonPhrase: String,
+    val responseHeaders: Map<String, String>,
+    val data: ByteArray?
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (javaClass != other?.javaClass) return false
+
+        other as WebResourceResponseData
+
+        if (mimeType != other.mimeType) return false
+        if (encoding != other.encoding) return false
+        if (statusCode != other.statusCode) return false
+        if (reasonPhrase != other.reasonPhrase) return false
+        if (responseHeaders != other.responseHeaders) return false
+        if (data != null) {
+            if (other.data == null) return false
+            if (!data.contentEquals(other.data)) return false
+        } else if (other.data != null) return false
+
+        return true
+    }
+
+    override fun hashCode(): Int {
+        var result = mimeType.hashCode()
+        result = 31 * result + encoding.hashCode()
+        result = 31 * result + statusCode
+        result = 31 * result + reasonPhrase.hashCode()
+        result = 31 * result + responseHeaders.hashCode()
+        result = 31 * result + (data?.contentHashCode() ?: 0)
+        return result
+    }
+}
 
 class MiniWebViewContainer @JvmOverloads constructor(
     context: Context,
@@ -214,6 +255,11 @@ class WebView @JvmOverloads constructor(
                 Log.d(TAG, "${message.message()} -- From line ${message.lineNumber()} of ${message.sourceId()}")
                 return true
             }
+
+            override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                super.onProgressChanged(view, newProgress)
+                Log.d(TAG, "Loading progress: $newProgress%")
+            }
         }
 
         // Set WebViewClient
@@ -243,7 +289,51 @@ class WebView @JvmOverloads constructor(
 
             override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
                 super.onReceivedError(view, request, error)
-                Log.e(TAG, "Error loading page: ${error?.description}")
+                Log.e(TAG, "Error loading page: ${error?.description}, code: ${error?.errorCode}, failing URL: ${request?.url}")
+            }
+
+            override fun shouldInterceptRequest(
+                view: WebView?,
+                request: WebResourceRequest
+            ): WebResourceResponse? {
+                val url = request.url.toString()
+                val method = request.method
+                val headers = request.requestHeaders
+
+                // Log.d(TAG, "Intercepting request: $method $url")
+                // Log.d(TAG, "Request headers: $headers")
+
+                // Convert headers to JSON string
+                val headersJson = JSONObject().apply {
+                    headers.forEach { (key, value) ->
+                        put(key, value)
+                    }
+                }.toString()
+
+                // Call native to handle request
+                val response = nativeHandleRequest(
+                    appId ?: return null,
+                    url,
+                    method,
+                    headersJson
+                )
+
+                if (response == null) {
+                    Log.d(TAG, "No response from native layer, letting WebView handle the request")
+                    return null
+                }
+
+                // Log.d(TAG, "Got response from native layer: ${response.statusCode} ${response.reasonPhrase}")
+                // Log.d(TAG, "Response headers: ${response.responseHeaders}")
+
+                return WebResourceResponse(
+                    response.mimeType,
+                    response.encoding,
+                    response.statusCode,
+                    response.reasonPhrase,
+                    response.responseHeaders,
+                    response.data?.let { ByteArrayInputStream(it) }
+                )
             }
         }
     }
@@ -255,7 +345,7 @@ class WebView @JvmOverloads constructor(
                 Log.d(TAG, "Message from WebView: $message")
                 nativeHandlePostMessage(appId ?: return, currentPath ?: return, message)
             }
-        }, "MiniApp")
+        }, BRIDGE_NAME)
     }
 
     fun handleWebViewCreated(appId: String, path: String) {
@@ -364,4 +454,10 @@ class WebView @JvmOverloads constructor(
     private external fun nativeShouldOverrideUrlLoading(appId: String, url: String): Int
     private external fun nativeDestroyAllWebViews(): Int
     external fun nativeOnMiniAppHidden(appId: String, path: String): Int
+    private external fun nativeHandleRequest(
+        appId: String,
+        url: String,
+        method: String,
+        headers: String
+    ): WebResourceResponseData?
 }
