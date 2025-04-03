@@ -212,8 +212,7 @@ class WebView @JvmOverloads constructor(
     data class WebViewConfig(
         val enableDevTools: Boolean = true,
         val enableJavaScript: Boolean = true,
-        val enableDomStorage: Boolean = true,
-        val allowMixedContent: Boolean = true
+        val enableDomStorage: Boolean = true
     )
 
     init {
@@ -232,11 +231,7 @@ class WebView @JvmOverloads constructor(
         settings.apply {
             javaScriptEnabled = config.enableJavaScript
             domStorageEnabled = config.enableDomStorage
-            mixedContentMode = if (config.allowMixedContent) {
-                WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-            } else {
-                WebSettings.MIXED_CONTENT_NEVER_ALLOW
-            }
+
             useWideViewPort = true
             loadWithOverviewMode = true
             setSupportZoom(true)
