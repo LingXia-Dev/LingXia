@@ -163,7 +163,7 @@ class MiniAppActivity : Activity() {
         override fun draw(canvas: Canvas) {
             val centerX = bounds.width() / 2f
             val centerY = bounds.height() / 2f
-            val radius = bounds.width() / 4.2f  // Adjust circle size
+            val radius = bounds.width() / 2f  // Adjust circle size
 
             // Draw circle with thicker stroke
             paint.style = Paint.Style.STROKE
