@@ -37,11 +37,11 @@ pub struct WebView {
 
 impl WebView {
     fn create(
-        env: &mut JNIEnv,
         app_id: String,
         path: String,
         java_webview: JObject,
     ) -> Result<WebView, Box<dyn Error>> {
+        let env = get_env()?;
         let webview = WebView {
             app_id: app_id.clone(),
             path: path.clone(),
@@ -50,7 +50,8 @@ impl WebView {
         Ok(webview)
     }
 
-    fn evaluate_javascript(&self, env: &mut JNIEnv, script: &str) -> Result<(), Box<dyn Error>> {
+    fn evaluate_javascript(&self, script: &str) -> Result<(), Box<dyn Error>> {
+        let mut env = get_env()?;
         let script_string = env.new_string(script)?;
         env.call_method(
             self.java_webview.as_obj(),
@@ -64,7 +65,8 @@ impl WebView {
         Ok(())
     }
 
-    fn setup(&self, env: &mut JNIEnv) -> Result<(), Box<dyn Error>> {
+    fn setup(&self) -> Result<(), Box<dyn Error>> {
+        let mut env = get_env()?;
         // 设置基本参数
         let _ua_string = env.new_string("MiniApp/1.0")?;
         /*        env.call_method(
@@ -100,8 +102,7 @@ impl WebView {
     }
 
     pub fn set_devtools(&self, enabled: bool) -> Result<(), Box<dyn Error>> {
-        let vm = JAVA_VM.get().ok_or("JavaVM not initialized")?;
-        let mut env = vm.attach_current_thread()?;
+        let mut env = get_env()?;
         let webview_class = env.find_class("android/webkit/WebView")?;
         env.call_static_method(
             webview_class,
@@ -113,8 +114,7 @@ impl WebView {
     }
 
     pub fn load_url(&self, url: String) -> Result<(), Box<dyn Error>> {
-        let vm = JAVA_VM.get().ok_or("JavaVM not initialized")?;
-        let mut env = vm.attach_current_thread()?;
+        let mut env = get_env()?;
         let url_string = env.new_string(&url)?;
         env.call_method(
             self.java_webview.as_obj(),
@@ -126,14 +126,13 @@ impl WebView {
     }
 
     pub fn clear_browsing_data(&self) -> Result<(), Box<dyn Error>> {
-        let vm = JAVA_VM.get().ok_or("JavaVM not initialized")?;
-        let mut env = vm.attach_current_thread()?;
+        let mut env = get_env()?;
         env.call_method(self.java_webview.as_obj(), "clearBrowsingData", "()V", &[])?;
         Ok(())
     }
 
-    fn inject_bridge_script(&self, env: &mut JNIEnv) -> Result<(), Box<dyn Error>> {
-        self.evaluate_javascript(env, DOCUMENT_START_SCRIPT)
+    fn inject_bridge_script(&self) -> Result<(), Box<dyn Error>> {
+        self.evaluate_javascript(DOCUMENT_START_SCRIPT)
     }
 }
 
@@ -161,7 +160,6 @@ impl WebViewManager {
     }
 
     pub fn on_webview_registered(
-        env: &mut JNIEnv,
         app_id: String,
         path: String,
         java_webview: JObject,
@@ -180,13 +178,14 @@ impl WebViewManager {
                 "Updating existing WebView for appId: {}, path: {}",
                 app_id, path
             );
+            let mut env = get_env()?;
             webview.java_webview = env.new_global_ref(java_webview)?;
-            webview.setup(env)?;
+            webview.setup()?;
         } else {
             // Create new WebView
             info!("Creating new WebView for appId: {}, path: {}", app_id, path);
-            let webview = WebView::create(env, app_id.clone(), path, java_webview)?;
-            webview.setup(env)?;
+            let webview = WebView::create(app_id.clone(), path, java_webview)?;
+            webview.setup()?;
 
             webviews
                 .entry(app_id)
@@ -206,26 +205,18 @@ impl WebViewManager {
         Ok(())
     }
 
-    pub fn on_page_started(
-        env: &mut JNIEnv,
-        app_id: String,
-        path: String,
-    ) -> Result<(), Box<dyn Error>> {
+    pub fn on_page_started(app_id: String, path: String) -> Result<(), Box<dyn Error>> {
         info!("Page started loading for appId: {}, path: {}", app_id, path);
         if let Some(webviews) = WEBVIEWS.get() {
             let webviews = webviews.lock().unwrap();
             if let Some(webview) = WebViewManager::find_webview(&webviews, &app_id, &path) {
-                webview.inject_bridge_script(env)?;
+                webview.inject_bridge_script()?;
             }
         }
         Ok(())
     }
 
-    pub fn on_page_finished(
-        env: &mut JNIEnv,
-        app_id: String,
-        path: String,
-    ) -> Result<(), Box<dyn Error>> {
+    pub fn on_page_finished(app_id: String, path: String) -> Result<(), Box<dyn Error>> {
         info!(
             "Page finished loading for appId: {}, path: {}",
             app_id, path
@@ -233,14 +224,13 @@ impl WebViewManager {
         if let Some(webviews) = WEBVIEWS.get() {
             let webviews = webviews.lock().unwrap();
             if let Some(webview) = WebViewManager::find_webview(&webviews, &app_id, &path) {
-                webview.inject_bridge_script(env)?;
+                webview.inject_bridge_script()?;
             }
         }
         Ok(())
     }
 
     pub fn should_override_url_loading(
-        _env: &mut JNIEnv,
         app_id: String,
         url: String,
     ) -> Result<bool, Box<dyn Error>> {
@@ -253,7 +243,6 @@ impl WebViewManager {
     }
 
     pub fn handle_post_message(
-        env: &mut JNIEnv,
         app_id: String,
         path: String,
         message_str: String,
@@ -267,14 +256,6 @@ impl WebViewManager {
         let message_type = message.get("type").and_then(Value::as_str);
 
         match message_type {
-            Some("BRIDGE_READY") => {
-                info!("Bridge is ready");
-                Ok(())
-            }
-            Some("TEST") => {
-                info!("Test message received");
-                Ok(())
-            }
             Some("OPEN_MINIAPP") => {
                 info!("Handling OPEN_MINIAPP message");
                 if let Some(data) = message.get("data") {
@@ -292,15 +273,16 @@ impl WebViewManager {
         }
     }
 
-    pub fn get_existing_webview<'a>(
-        env: &mut JNIEnv<'a>,
+    pub fn get_existing_webview(
         app_id: &str,
         path: &str,
-    ) -> Result<Option<JObject<'a>>, Box<dyn Error>> {
+    ) -> Result<Option<JObject<'static>>, Box<dyn Error>> {
+        let mut env = get_env()?;
         if let Some(webviews) = WEBVIEWS.get() {
             let webviews = webviews.lock().unwrap();
             if let Some(webview) = Self::find_webview(&webviews, app_id, path) {
-                Ok(Some(env.new_local_ref(webview.java_webview.as_obj())?))
+                let local_ref = env.new_local_ref(webview.java_webview.as_obj())?;
+                unsafe { Ok(Some(JObject::from_raw(local_ref.into_raw()))) }
             } else {
                 Ok(None)
             }
@@ -312,9 +294,7 @@ impl WebViewManager {
     /// Opens a mini app in a new activity
     pub fn open_mini_app(app_id: &str, path: &str) -> Result<(), Box<dyn Error>> {
         info!("Opening mini app with appId: {}, path: {}", app_id, path);
-
-        let vm = JAVA_VM.get().ok_or("JavaVM not initialized")?;
-        let mut env = vm.attach_current_thread()?;
+        let mut env = get_env()?;
 
         let miniapp_class = env.find_class(CLASS_MINIAPP)?;
         let app_id_jstring = env.new_string(app_id)?.into();
@@ -332,4 +312,9 @@ impl WebViewManager {
 
         Ok(())
     }
+}
+
+// Helper function to get JNIEnv for current thread
+fn get_env() -> Result<JNIEnv<'static>, Box<dyn Error>> {
+    crate::get_env()
 }

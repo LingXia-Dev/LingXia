@@ -6,7 +6,7 @@ use http::header::{HeaderMap, HeaderName, HeaderValue};
 use http::{Method, Request, Response, StatusCode};
 use jni::objects::{JClass, JObject, JString};
 use jni::sys::jint;
-use jni::JNIEnv;
+use jni::{JNIEnv, JavaVM};
 use log::{error, info};
 use serde_json;
 use std::fs;
@@ -26,10 +26,15 @@ unsafe impl Sync for AssetManager {}
 
 pub static ASSET_MANAGER: OnceLock<Arc<Mutex<AssetManager>>> = OnceLock::new();
 
-pub static JAVA_VM: OnceLock<jni::JavaVM> = OnceLock::new();
+pub static JAVA_VM: OnceLock<Arc<JavaVM>> = OnceLock::new();
+
+// Store the main thread's JNIEnv
+thread_local! {
+    static MAIN_THREAD_ID: OnceLock<std::thread::ThreadId> = OnceLock::new();
+}
 
 #[no_mangle]
-pub extern "system" fn JNI_OnLoad(vm: jni::JavaVM, _: *mut std::os::raw::c_void) -> jint {
+pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> jint {
     android_logger::init_once(
         Config::default()
             .with_max_level(log::LevelFilter::Debug)
@@ -37,10 +42,41 @@ pub extern "system" fn JNI_OnLoad(vm: jni::JavaVM, _: *mut std::os::raw::c_void)
     );
 
     // Store JavaVM globally
-    let _ = JAVA_VM.set(vm);
+    let _ = JAVA_VM.set(Arc::new(vm));
+
+    // Store the main thread ID
+    MAIN_THREAD_ID.with(|id| {
+        let _ = id.set(std::thread::current().id());
+    });
 
     info!("Rust library loaded successfully");
     jni::sys::JNI_VERSION_1_6
+}
+
+// Helper function to get JNIEnv for current thread
+fn get_env() -> Result<JNIEnv<'static>, Box<dyn std::error::Error>> {
+    let vm = JAVA_VM.get()
+        .ok_or("JavaVM not initialized")?
+        .clone();
+
+    // Check if we're on the main thread
+    let is_main_thread = MAIN_THREAD_ID.with(|id| {
+        id.get()
+            .map(|main_id| main_id == &std::thread::current().id())
+            .unwrap_or(false)
+    });
+
+    if is_main_thread {
+        // If we're on the main thread, get the env
+        unsafe {
+            Ok(JNIEnv::from_raw(vm.get_env()?.get_raw())?)
+        }
+    } else {
+        // If we're not on the main thread, attach to get a new env
+        unsafe {
+            Ok(JNIEnv::from_raw(vm.attach_current_thread()?.get_raw())?)
+        }
+    }
 }
 
 #[no_mangle]
@@ -67,7 +103,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnWebViewCreated(
         }
     };
 
-    match WebViewManager::on_webview_registered(&mut env, app_id, path, java_webview) {
+    match WebViewManager::on_webview_registered(app_id, path, java_webview) {
         Ok(_) => 0,
         Err(e) => {
             error!("Failed to create WebView: {:?}", e);
@@ -111,7 +147,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeHandlePostMessage(
         .expect("Couldn't get message string")
         .into();
 
-    match WebViewManager::handle_post_message(&mut env, app_id, path, message) {
+    match WebViewManager::handle_post_message(app_id, path, message) {
         Ok(_) => 0,
         Err(e) => {
             log::error!("Failed to handle post message: {:?}", e);
@@ -130,7 +166,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnPageStarted(
     let app_id: String = env.get_string(&app_id).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
 
-    match WebViewManager::on_page_started(&mut env, app_id, path) {
+    match WebViewManager::on_page_started(app_id, path) {
         Ok(_) => 0,
         Err(e) => {
             error!("Error in on_page_started: {}", e);
@@ -149,7 +185,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnPageFinished(
     let app_id: String = env.get_string(&app_id).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
 
-    match WebViewManager::on_page_finished(&mut env, app_id, path) {
+    match WebViewManager::on_page_finished(app_id, path) {
         Ok(_) => 0,
         Err(e) => {
             error!("Error in on_page_finished: {}", e);
@@ -225,7 +261,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeGetExistingWebView
         }
     };
 
-    match WebViewManager::get_existing_webview(&mut env, &app_id, &path) {
+    match WebViewManager::get_existing_webview(&app_id, &path) {
         Ok(Some(webview)) => webview,
         Ok(None) => JObject::null(),
         Err(e) => {
