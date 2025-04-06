@@ -1,0 +1,11 @@
+[package]
+name = "lingxia_appm"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "lingxia_appm"
+crate-type = ["staticlib"]
+
+[dependencies]
+http = "1.3.1"
