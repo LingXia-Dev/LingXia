@@ -97,7 +97,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnWebViewCreated(
         }
     };
 
-    match WebViewManager::on_webview_registered(app_id, path, java_webview) {
+    match WebViewManager::on_webview_created(app_id, path, java_webview) {
         Ok(_) => 0,
         Err(e) => {
             error!("Failed to create WebView: {:?}", e);
@@ -197,7 +197,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnPageShow(
 ) {
     let app_id: String = env.get_string(&app_id).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
-    info!("Creating new WebView for appId: {}, path: {}", app_id, path);
+    info!("WebView Show Event for appId: {}, path: {}", app_id, path);
 }
 
 #[no_mangle]
@@ -275,33 +275,6 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeGetExistingWebView
             JObject::null()
         }
     }
-}
-
-#[no_mangle]
-pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnMiniAppHidden(
-    mut env: JNIEnv,
-    _class: JClass,
-    app_id: JString,
-    path: JString,
-) -> jint {
-    let app_id: String = match env.get_string(&app_id) {
-        Ok(s) => s.into(),
-        Err(e) => {
-            error!("Failed to get app_id string: {:?}", e);
-            return -1;
-        }
-    };
-
-    let path: String = match env.get_string(&path) {
-        Ok(s) => s.into(),
-        Err(e) => {
-            error!("Failed to get path string: {:?}", e);
-            return -1;
-        }
-    };
-
-    info!("Mini app hidden: app_id={}, path={}", app_id, path);
-    0
 }
 
 #[no_mangle]
@@ -681,4 +654,35 @@ fn create_java_response<'a>(env: &mut JNIEnv<'a>, response: Response<Vec<u8>>) -
             JObject::null()
         }
     }
+}
+
+// Function for MiniAppActivity class to handle the mini app hidden event
+#[no_mangle]
+pub extern "system" fn Java_com_lingxia_miniapp_MiniAppActivity_nativeOnMiniAppHidden(
+    mut env: JNIEnv,
+    _class: JClass,
+    app_id: JString,
+    path: JString,
+) -> jint {
+    let app_id: String = match env.get_string(&app_id) {
+        Ok(s) => s.into(),
+        Err(e) => {
+            error!("Failed to get app_id string: {:?}", e);
+            return -1;
+        }
+    };
+
+    let path: String = match env.get_string(&path) {
+        Ok(s) => s.into(),
+        Err(e) => {
+            error!("Failed to get path string: {:?}", e);
+            return -1;
+        }
+    };
+
+    info!(
+        "Mini app hidden from MiniAppActivity: app_id={}, path={}",
+        app_id, path
+    );
+    0
 }

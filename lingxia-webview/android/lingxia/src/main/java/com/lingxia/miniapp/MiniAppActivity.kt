@@ -24,6 +24,10 @@ class MiniAppActivity : Activity() {
         const val EXTRA_PATH = "path"
 
         private var lastWebView: WeakReference<com.lingxia.miniapp.WebView>? = null
+
+        // Native method for handling mini app hidden event
+        @JvmStatic
+        external fun nativeOnMiniAppHidden(appId: String, path: String): Int
     }
 
     private var webView: com.lingxia.miniapp.WebView? = null
@@ -79,7 +83,8 @@ class MiniAppActivity : Activity() {
             addCapsuleButton()
 
             // Try to get existing WebView, create new one if not available
-            webView = com.lingxia.miniapp.WebView.nativeGetExistingWebView(appId, path)?.also { existingWebView ->
+            val existingWebView = com.lingxia.miniapp.WebView.nativeGetExistingWebView(appId, path)
+            if (existingWebView != null) {
                 Log.d(TAG, "Reusing existing WebView for appId: $appId")
                 // Remove from previous parent view
                 (existingWebView.parent as? ViewGroup)?.removeView(existingWebView)
@@ -89,17 +94,20 @@ class MiniAppActivity : Activity() {
                     pendingWebViewSetup = true
                     webViewContainer.postDelayed({
                         if (!isDestroyed) {
-                            setupWebView(existingWebView, path)
+                            setupWebView(existingWebView, path, false)
                             pendingWebViewSetup = false
                         }
                     }, 100)
                 } else {
-                    setupWebView(existingWebView, path)
+                    setupWebView(existingWebView, path, false)
                 }
-            } ?: com.lingxia.miniapp.WebView(this).apply {
+                webView = existingWebView
+            } else {
                 Log.d(TAG, "Creating new WebView for appId: $appId")
-                handleWebViewCreated(appId, path)
-                setupWebView(this, null)
+                webView = com.lingxia.miniapp.WebView(this).apply {
+                    handleWebViewCreated(appId, path)
+                    setupWebView(this, null, true)
+                }
             }
 
             // Update last used WebView
@@ -278,14 +286,15 @@ class MiniAppActivity : Activity() {
         rootContainer.addView(capsule)
     }
 
-    private fun setupWebView(view: com.lingxia.miniapp.WebView, path: String?) {
+    private fun setupWebView(view: com.lingxia.miniapp.WebView, path: String?, isNew: Boolean) {
         if (!isDestroyed) {
             // Reset WebView state
             view.visibility = View.VISIBLE
 
-            // Set new path
-            intent.getStringExtra(EXTRA_APP_ID)?.let { appId ->
-                if (!path.isNullOrEmpty()) {
+            // Only configure when it's a new WebView or the path has changed
+            if (isNew && path != null && path.isNotEmpty()) {
+                intent.getStringExtra(EXTRA_APP_ID)?.let { appId ->
+                    Log.d(TAG, "Setting path for WebView to: $path")
                     view.handleWebViewCreated(appId, path)
                 }
             }
@@ -315,11 +324,9 @@ class MiniAppActivity : Activity() {
     }
 
     private fun handleMiniAppHidden() {
-        webView?.let { view ->
-            intent.getStringExtra(EXTRA_APP_ID)?.let { appId ->
-                intent.getStringExtra(EXTRA_PATH)?.let { path ->
-                    view.nativeOnMiniAppHidden(appId, path)
-                }
+        intent.getStringExtra(EXTRA_APP_ID)?.let { appId ->
+            intent.getStringExtra(EXTRA_PATH)?.let { path ->
+                nativeOnMiniAppHidden(appId, path)
             }
         }
     }

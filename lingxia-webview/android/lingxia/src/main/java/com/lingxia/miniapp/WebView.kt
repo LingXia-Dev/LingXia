@@ -344,6 +344,11 @@ class WebView @JvmOverloads constructor(
     }
 
     fun handleWebViewCreated(appId: String, path: String) {
+        // If appId and path are the same as current values, no need to re-register
+        if (appId == this.appId && path == this.currentPath) {
+            return
+        }
+
         this.appId = appId
         this.currentPath = path
         nativeOnWebViewCreated(appId, path, this)
@@ -450,7 +455,6 @@ class WebView @JvmOverloads constructor(
     private external fun nativeOnPageFinished(appId: String, path: String): Int
     private external fun nativeOnPageShow(appId: String, path: String)
     private external fun nativeShouldOverrideUrlLoading(appId: String, url: String): Int
-    external fun nativeOnMiniAppHidden(appId: String, path: String): Int
     private external fun nativeHandleRequest(
         appId: String,
         url: String,

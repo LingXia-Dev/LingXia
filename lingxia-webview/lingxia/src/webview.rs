@@ -155,23 +155,26 @@ impl WebViewManager {
             .and_then(|views| views.iter_mut().find(|view| view.path == path))
     }
 
-    pub fn on_webview_registered(
+    pub fn on_webview_created(
         app_id: String,
         path: String,
         java_webview: JObject,
     ) -> Result<(), Box<dyn Error>> {
+        info!("Creating new WebView for appId: {}, path: {}", app_id, path);
+
         let webviews = WEBVIEWS.get_or_init(|| Mutex::new(HashMap::new()));
         let mut webviews = webviews.lock().unwrap();
 
-        // Create new WebView
-        info!("Creating new WebView for appId: {}, path: {}", app_id, path);
-        let webview = WebView::new(app_id.clone(), path, java_webview)?;
+        let webview = WebView::new(app_id.clone(), path.clone(), java_webview)?;
         webview.setup()?;
 
-        webviews
-            .entry(app_id)
-            .or_insert_with(Vec::new)
-            .push(webview);
+        if let Some(app_webviews) = webviews.get_mut(&app_id) {
+            info!("Adding WebView to existing app entry for appId: {}", app_id);
+            app_webviews.push(webview);
+        } else {
+            info!("Creating new app entry for appId: {}", app_id);
+            webviews.insert(app_id, vec![webview]);
+        }
 
         Ok(())
     }
