@@ -36,11 +36,7 @@ pub struct WebView {
 }
 
 impl WebView {
-    fn create(
-        app_id: String,
-        path: String,
-        java_webview: JObject,
-    ) -> Result<WebView, Box<dyn Error>> {
+    fn new(app_id: String, path: String, java_webview: JObject) -> Result<WebView, Box<dyn Error>> {
         let env = get_env()?;
         let webview = WebView {
             app_id: app_id.clone(),
@@ -164,34 +160,18 @@ impl WebViewManager {
         path: String,
         java_webview: JObject,
     ) -> Result<(), Box<dyn Error>> {
-        info!(
-            "Creating or reusing WebView instance for appId: {}, path: {}",
-            app_id, path
-        );
-
         let webviews = WEBVIEWS.get_or_init(|| Mutex::new(HashMap::new()));
         let mut webviews = webviews.lock().unwrap();
 
-        if let Some(webview) = Self::find_webview_mut(&mut webviews, &app_id, &path) {
-            // Update existing WebView
-            info!(
-                "Updating existing WebView for appId: {}, path: {}",
-                app_id, path
-            );
-            let mut env = get_env()?;
-            webview.java_webview = env.new_global_ref(java_webview)?;
-            webview.setup()?;
-        } else {
-            // Create new WebView
-            info!("Creating new WebView for appId: {}, path: {}", app_id, path);
-            let webview = WebView::create(app_id.clone(), path, java_webview)?;
-            webview.setup()?;
+        // Create new WebView
+        info!("Creating new WebView for appId: {}, path: {}", app_id, path);
+        let webview = WebView::new(app_id.clone(), path, java_webview)?;
+        webview.setup()?;
 
-            webviews
-                .entry(app_id)
-                .or_insert_with(Vec::new)
-                .push(webview);
-        }
+        webviews
+            .entry(app_id)
+            .or_insert_with(Vec::new)
+            .push(webview);
 
         Ok(())
     }
