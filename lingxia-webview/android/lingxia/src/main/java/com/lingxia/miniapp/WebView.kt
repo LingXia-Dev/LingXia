@@ -408,7 +408,9 @@ class WebView @JvmOverloads constructor(
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         Log.d(TAG, "WebView attached to window")
+
         resume()
+        nativeOnPageShow(appId ?: return, currentPath ?: return)
     }
 
     override fun onDetachedFromWindow() {
@@ -446,6 +448,7 @@ class WebView @JvmOverloads constructor(
     private external fun nativeHandlePostMessage(appId: String, path: String, message: String): Int
     private external fun nativeOnPageStarted(appId: String, path: String): Int
     private external fun nativeOnPageFinished(appId: String, path: String): Int
+    private external fun nativeOnPageShow(appId: String, path: String)
     private external fun nativeShouldOverrideUrlLoading(appId: String, url: String): Int
     external fun nativeOnMiniAppHidden(appId: String, path: String): Int
     private external fun nativeHandleRequest(

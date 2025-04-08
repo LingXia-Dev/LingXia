@@ -55,9 +55,7 @@ pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> j
 
 // Helper function to get JNIEnv for current thread
 fn get_env() -> Result<JNIEnv<'static>, Box<dyn std::error::Error>> {
-    let vm = JAVA_VM.get()
-        .ok_or("JavaVM not initialized")?
-        .clone();
+    let vm = JAVA_VM.get().ok_or("JavaVM not initialized")?.clone();
 
     // Check if we're on the main thread
     let is_main_thread = MAIN_THREAD_ID.with(|id| {
@@ -68,14 +66,10 @@ fn get_env() -> Result<JNIEnv<'static>, Box<dyn std::error::Error>> {
 
     if is_main_thread {
         // If we're on the main thread, get the env
-        unsafe {
-            Ok(JNIEnv::from_raw(vm.get_env()?.get_raw())?)
-        }
+        unsafe { Ok(JNIEnv::from_raw(vm.get_env()?.get_raw())?) }
     } else {
         // If we're not on the main thread, attach to get a new env
-        unsafe {
-            Ok(JNIEnv::from_raw(vm.attach_current_thread()?.get_raw())?)
-        }
+        unsafe { Ok(JNIEnv::from_raw(vm.attach_current_thread()?.get_raw())?) }
     }
 }
 
@@ -192,6 +186,18 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnPageFinished(
             -1
         }
     }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnPageShow(
+    mut env: JNIEnv,
+    _class: JClass,
+    app_id: JString,
+    path: JString,
+) {
+    let app_id: String = env.get_string(&app_id).unwrap().into();
+    let path: String = env.get_string(&path).unwrap().into();
+    info!("Creating new WebView for appId: {}, path: {}", app_id, path);
 }
 
 #[no_mangle]
