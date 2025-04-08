@@ -201,6 +201,7 @@ class WebView @JvmOverloads constructor(
     private var savedScrollY: Int = 0
     private var savedScale: Float = 1.0f
     private var savedUrl: String? = null
+    private var showEventSent = false  // Track if we've sent a show event in this session
 
     companion object {
         private const val TAG = "WebView"
@@ -269,9 +270,26 @@ class WebView @JvmOverloads constructor(
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
                 Log.d(TAG, "Page finished loading: $url")
+
+                // Record that the page has finished loading
                 pageLoaded = true
+
+                // Update isFirstLoad flag after the first load completes
+                if (isFirstLoad) {
+                    isFirstLoad = false
+                }
+
                 resetViewport()  // Reset viewport after page load
                 nativeOnPageFinished(appId ?: return, currentPath ?: return)
+
+                // If page is loaded and attached to window, and we haven't sent PageShow yet
+                if (isAttachedToWindow && url != null && !showEventSent) {
+                    Log.d(TAG, "Page loaded and attached to window, triggering PageShow")
+                    nativeOnPageShow(appId ?: return, currentPath ?: return)
+                    showEventSent = true
+                } else if (showEventSent) {
+                    Log.d(TAG, "Skipping PageShow in onPageFinished - already sent in this session")
+                }
             }
 
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
@@ -383,29 +401,55 @@ class WebView @JvmOverloads constructor(
             savedScrollY = scrollY
             savedScale = scaleX
             savedUrl = url
+            showEventSent = false  // Reset the flag when paused
             onPause()
         }
     }
 
     fun resume() {
-        Log.d(TAG, "Resuming WebView operations")
+        val callStackTrace = Exception("Resume call stack trace").stackTraceToString()
+        Log.d(TAG, "Resuming WebView operations, appId=$appId, path=$currentPath, isFirstLoad=$isFirstLoad, pageLoaded=$pageLoaded, showEventSent=$showEventSent")
+        Log.d(TAG, "Resume called from: $callStackTrace")
+
         onResume()
-        if (!isFirstLoad && pageLoaded) {
-            post {
-                visibility = View.VISIBLE
-                scrollTo(savedScrollX, savedScrollY)
-                setInitialScale((savedScale * 100).toInt())
-                if (url != savedUrl && savedUrl != null) {
-                    Log.d(TAG, "Restoring URL: $savedUrl")
-                    loadUrl(savedUrl!!)
-                } else {
-                    invalidate()
+
+        // Set to visible
+        visibility = View.VISIBLE
+
+        // Only trigger PageShow if we haven't already in this session
+        // Only consider triggering PageShow when window is visible and appId/path are valid
+        if (isAttachedToWindow && appId != null && currentPath != null && !showEventSent) {
+            if (!isFirstLoad && pageLoaded) {
+                // Page already loaded, restore scroll position and scale
+                post {
+                    scrollTo(savedScrollX, savedScrollY)
+                    setInitialScale((savedScale * 100).toInt())
+
+                    // Only reload URL if needed
+                    // PageShow will be triggered in onPageFinished
+                    if (url != savedUrl && savedUrl != null) {
+                        Log.d(TAG, "Restoring URL: $savedUrl (current URL: $url)")
+                        loadUrl(savedUrl!!)
+                    } else {
+                        // If we're resuming an already loaded page, trigger PageShow
+                        // Avoid duplicate triggers with onPageFinished
+                        Log.d(TAG, "Page already loaded, triggering PageShow on resume")
+                        nativeOnPageShow(appId!!, currentPath!!)
+                        showEventSent = true  // Mark that we've sent the event
+                        invalidate()
+                    }
                 }
+            } else if (isFirstLoad) {
+                // First load, PageShow will be triggered in onPageFinished
+                Log.d(TAG, "First load of WebView, visibility set to VISIBLE")
+                // Note: isFirstLoad will be set to false in onPageFinished
             }
-        } else if (isFirstLoad) {
-            isFirstLoad = false
-            visibility = View.VISIBLE
+        } else if (showEventSent) {
+            Log.d(TAG, "Skipping PageShow event - already sent in this session")
+        } else {
+            Log.d(TAG, "WebView not ready for PageShow: attached=$isAttachedToWindow, appId=$appId, path=$currentPath")
         }
+
         requestLayout()
         invalidate()
     }
@@ -414,8 +458,10 @@ class WebView @JvmOverloads constructor(
         super.onAttachedToWindow()
         Log.d(TAG, "WebView attached to window")
 
-        resume()
-        nativeOnPageShow(appId ?: return, currentPath ?: return)
+        // Do not call resume() here as it will be handled by:
+        // 1. MiniAppActivity.setupWebView
+        // 2. MiniAppActivity.onResume
+        // 3. onWindowVisibilityChanged when visibility becomes VISIBLE
     }
 
     override fun onDetachedFromWindow() {
@@ -427,11 +473,10 @@ class WebView @JvmOverloads constructor(
     override fun onWindowVisibilityChanged(visibility: Int) {
         super.onWindowVisibilityChanged(visibility)
         Log.d(TAG, "Window visibility changed: $visibility")
-        if (visibility == View.VISIBLE) {
-            post {
-                resume()
-            }
-        } else {
+
+        // Only handle visibility changes to GONE/INVISIBLE
+        // VISIBLE state is managed by MiniAppActivity's lifecycle methods
+        if (visibility != View.VISIBLE) {
             pause()
         }
     }

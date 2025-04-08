@@ -304,17 +304,23 @@ class MiniAppActivity : Activity() {
                 webViewContainer.addView(view)
             }
 
-            // Resume WebView
+            // In setupWebView, always resume the WebView to restore its state
+            Log.d(TAG, "Resuming WebView in setupWebView")
             view.resume()
         }
     }
 
     override fun onResume() {
         super.onResume()
+        // Only resume WebView when not in pendingWebViewSetup state
+        // This avoids duplicate resume calls with setupWebView
         if (!pendingWebViewSetup) {
+            Log.d(TAG, "Resuming WebView in onResume")
             webView?.visibility = View.VISIBLE
             webViewContainer.visibility = View.VISIBLE
             webView?.resume()
+        } else {
+            Log.d(TAG, "Skipping WebView resume in onResume because pendingWebViewSetup is true")
         }
     }
 
