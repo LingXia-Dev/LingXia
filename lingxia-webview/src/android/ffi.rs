@@ -1,6 +1,5 @@
 use super::asset::{ASSET_MANAGER, AssetManager};
 use super::webview::WebView;
-use super::webview::WebViewManager;
 use android_logger::Config;
 use http;
 use http::header::{HeaderMap, HeaderName, HeaderValue};
@@ -144,25 +143,15 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeHandlePostMessage(
     path: JString,
     message: JString,
 ) -> jint {
-    let app_id: String = env
-        .get_string(&app_id)
-        .expect("Couldn't get app_id string")
-        .into();
-    let path: String = env
-        .get_string(&path)
-        .expect("Couldn't get path string")
-        .into();
-    let message: String = env
-        .get_string(&message)
-        .expect("Couldn't get message string")
-        .into();
+    let app_id: String = env.get_string(&app_id).unwrap().into();
+    let path: String = env.get_string(&path).unwrap().into();
+    let message: String = env.get_string(&message).unwrap().into();
 
-    match WebViewManager::handle_post_message(app_id, path, message) {
-        Ok(_) => 0,
-        Err(e) => {
-            log::error!("Failed to handle post message: {:?}", e);
-            -1
-        }
+    if let Ok(miniapp) = miniapp::get().lock() {
+        miniapp.handle_post_message(app_id, path, message);
+        0
+    } else {
+        -1
     }
 }
 

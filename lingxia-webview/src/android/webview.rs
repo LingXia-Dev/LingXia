@@ -1,8 +1,7 @@
 use crate::android::get_env;
 use jni::objects::{GlobalRef, JObject, JValue};
-use log::{error, info};
+use log::info;
 use miniapp::PageController;
-use serde_json::Value;
 use std::any::Any;
 use std::error::Error;
 
@@ -143,37 +142,6 @@ impl PageController for WebView {
 pub struct WebViewManager;
 
 impl WebViewManager {
-    pub fn handle_post_message(
-        appid: String,
-        _path: String,
-        message_str: String,
-    ) -> Result<(), Box<dyn Error>> {
-        info!(
-            "Handling message for WebView with appId {}: {}",
-            appid, message_str
-        );
-
-        let message: Value = serde_json::from_str(&message_str)?;
-        let message_type = message.get("type").and_then(Value::as_str);
-
-        match message_type {
-            Some("OPEN_MINIAPP") => {
-                info!("Handling OPEN_MINIAPP message");
-                if let Some(data) = message.get("data") {
-                    if let Some(app_id) = data.get("appId").and_then(Value::as_str) {
-                        let path = data.get("path").and_then(Value::as_str).unwrap_or("");
-                        WebViewManager::open_mini_app(app_id, path)?;
-                    }
-                }
-                Ok(())
-            }
-            _ => {
-                error!("Unknown message type: {:?}", message_type);
-                Ok(())
-            }
-        }
-    }
-
     /// Opens a mini app in a new activity
     pub fn open_mini_app(app_id: &str, path: &str) -> Result<(), Box<dyn Error>> {
         info!("Opening mini app with appId: {}, path: {}", app_id, path);

@@ -1,4 +1,5 @@
 use http::{Response, StatusCode};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -157,8 +158,31 @@ impl MiniApp {
     }
 
     /// Handles a postMessage from the page's JavaScript context
-    pub fn handle_post_message(&self, _appid: String, _path: String, _msg: String) {
-        // ... implementation ...
+    pub fn handle_post_message(&self, _appid: String, _path: String, msg: String) {
+        let message: Value = match serde_json::from_str(&msg) {
+            Ok(v) => v,
+            Err(e) => {
+                println!("Failed to parse message: {:?}", e);
+                return;
+            }
+        };
+
+        let message_type = message.get("type").and_then(Value::as_str);
+
+        match message_type {
+            Some("OPEN_MINIAPP") => {
+                println!("Handling OPEN_MINIAPP message");
+                if let Some(data) = message.get("data") {
+                    if let Some(app_id) = data.get("appId").and_then(Value::as_str) {
+                        let path = data.get("path").and_then(Value::as_str).unwrap_or("");
+                        println!("Would open mini app: app_id={}, path={}", app_id, path);
+                    }
+                }
+            }
+            _ => {
+                println!("Unknown message type: {:?}", message_type);
+            }
+        }
     }
 
     /// Handles an HTTP request from the page
