@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::Instant;
@@ -80,7 +81,7 @@ impl Drop for PageManager {
 }
 
 /// Trait for controlling page operations from Rust
-pub trait PageController: Send + Sync {
+pub trait PageController: Send + Sync + Any {
     /// Loads the specified URL in the page
     /// Returns true if the URL was successfully loaded
     fn load_url(&self, url: String) -> bool;
@@ -94,4 +95,7 @@ pub trait PageController: Send + Sync {
 
     /// Clears the page's cache and history
     fn clear_browsing_data(&self);
+
+    /// Get the Any trait object for downcasting
+    fn as_any(&self) -> &dyn Any;
 }

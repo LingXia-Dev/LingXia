@@ -106,9 +106,10 @@ impl MiniApp {
     pub fn find_page_controller(&self, appid: &str, path: &str) -> Option<Arc<dyn PageController>> {
         if let Some(page_manager) = self.apps.get(appid) {
             let page_manager = page_manager.lock().unwrap();
-            return page_manager.find_page_controller(path);
+            page_manager.find_page_controller(path)
+        } else {
+            None
         }
-        None
     }
 
     /// Determines whether to override URL loading in the page.
