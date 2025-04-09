@@ -257,27 +257,35 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeGetExistingWebView
     app_id: JString<'a>,
     path: JString<'a>,
 ) -> JObject<'a> {
-    let app_id: String = match env.get_string(&app_id) {
-        Ok(s) => s.into(),
-        Err(e) => {
-            error!("Failed to get app_id string: {:?}", e);
-            return JObject::null();
-        }
-    };
+    let app_id: String = env.get_string(&app_id).unwrap().into();
+    let path: String = env.get_string(&path).unwrap().into();
 
-    let path: String = match env.get_string(&path) {
-        Ok(s) => s.into(),
-        Err(e) => {
-            error!("Failed to get path string: {:?}", e);
-            return JObject::null();
+    // Get the miniapp instance and find the page controller
+    match miniapp::get().lock() {
+        Ok(miniapp) => {
+            if let Some(controller) = miniapp.find_page_controller(&app_id, &path) {
+                // Since we're in Android crate, we know this must be a WebView
+                let controller_ref = controller.as_ref();
+                if let Some(webview) = controller_ref.as_any().downcast_ref::<WebView>() {
+                    // Create a new local reference to the Java WebView object
+                    match env.new_local_ref(webview.get_java_webview()) {
+                        Ok(local_ref) => unsafe { JObject::from_raw(local_ref.into_raw()) },
+                        Err(e) => {
+                            error!("Failed to create local reference to WebView: {:?}", e);
+                            JObject::null()
+                        }
+                    }
+                } else {
+                    error!("PageController is not a WebView");
+                    JObject::null()
+                }
+            } else {
+                // No page controller found
+                JObject::null()
+            }
         }
-    };
-
-    match WebViewManager::get_existing_webview(&app_id, &path) {
-        Ok(Some(webview)) => webview,
-        Ok(None) => JObject::null(),
         Err(e) => {
-            error!("Failed to get existing WebView: {:?}", e);
+            error!("Failed to get miniapp instance: {:?}", e);
             JObject::null()
         }
     }

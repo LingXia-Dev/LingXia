@@ -3,6 +3,7 @@ use jni::objects::{GlobalRef, JObject, JValue};
 use log::{error, info};
 use miniapp::PageController;
 use serde_json::Value;
+use std::any::Any;
 use std::collections::HashMap;
 use std::error::Error;
 use std::sync::Mutex;
@@ -46,7 +47,7 @@ impl Drop for WebView {
 }
 
 impl WebView {
-    pub fn from_java(java_webview: JObject) -> Self {
+    pub(crate) fn from_java(java_webview: JObject) -> Self {
         let env = get_env().unwrap();
         let java_webview = env.new_global_ref(java_webview).unwrap();
         WebView {
@@ -54,6 +55,10 @@ impl WebView {
             path: String::new(),
             java_webview,
         }
+    }
+
+    pub(crate) fn get_java_webview(&self) -> &GlobalRef {
+        &self.java_webview
     }
 
     fn evaluate_javascript(&self, script: &str) -> Result<(), Box<dyn Error>> {
@@ -213,6 +218,10 @@ impl PageController for WebView {
             error!("Failed to clear browsing data: {:?}", e);
         }
     }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 }
 
 pub struct WebViewManager;
@@ -287,24 +296,6 @@ impl WebViewManager {
                 error!("Unknown message type: {:?}", message_type);
                 Ok(())
             }
-        }
-    }
-
-    pub fn get_existing_webview(
-        app_id: &str,
-        path: &str,
-    ) -> Result<Option<JObject<'static>>, Box<dyn Error>> {
-        let mut env = get_env()?;
-        if let Some(webviews) = WEBVIEWS.get() {
-            let webviews = webviews.lock().unwrap();
-            if let Some(webview) = Self::find_webview(&webviews, app_id, path) {
-                let local_ref = env.new_local_ref(webview.java_webview.as_obj())?;
-                unsafe { Ok(Some(JObject::from_raw(local_ref.into_raw()))) }
-            } else {
-                Ok(None)
-            }
-        } else {
-            Ok(None)
         }
     }
 
