@@ -1,11 +1,12 @@
+use crate::android::get_env;
 use jni::objects::{GlobalRef, JObject, JValue};
 use log::{error, info};
+use miniapp::PageController;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::error::Error;
 use std::sync::Mutex;
 use std::sync::OnceLock;
-use crate::android::get_env;
 
 const CLASS_MINIAPP: &str = "com/lingxia/miniapp/MiniApp";
 
@@ -45,14 +46,14 @@ impl Drop for WebView {
 }
 
 impl WebView {
-    fn new(app_id: String, path: String, java_webview: JObject) -> Result<WebView, Box<dyn Error>> {
-        let env = get_env()?;
-        let webview = WebView {
-            app_id: app_id.clone(),
-            path: path.clone(),
-            java_webview: env.new_global_ref(java_webview)?,
-        };
-        Ok(webview)
+    pub fn from_java(java_webview: JObject) -> Self {
+        let env = get_env().unwrap();
+        let java_webview = env.new_global_ref(java_webview).unwrap();
+        WebView {
+            app_id: String::new(),
+            path: String::new(),
+            java_webview,
+        }
     }
 
     fn evaluate_javascript(&self, script: &str) -> Result<(), Box<dyn Error>> {
@@ -165,6 +166,55 @@ impl WebView {
     }
 }
 
+impl PageController for WebView {
+    fn load_url(&self, url: String) -> bool {
+        match self.load_url(url) {
+            Ok(_) => true,
+            Err(e) => {
+                error!("Failed to load URL: {:?}", e);
+                false
+            }
+        }
+    }
+
+    fn setup_ua(&self, ua: &str) {
+        let mut env = match get_env() {
+            Ok(env) => env,
+            Err(e) => {
+                error!("Failed to get JNI env: {:?}", e);
+                return;
+            }
+        };
+
+        if let Ok(ua_string) = env.new_string(ua) {
+            let _ = env
+                .call_method(
+                    self.java_webview.as_obj(),
+                    "setUserAgent",
+                    "(Ljava/lang/String;)V",
+                    &[JValue::Object(&ua_string)],
+                )
+                .map_err(|e| error!("Failed to set user agent: {:?}", e));
+        }
+    }
+
+    fn evaluate_javascript(&self, js: String) -> Option<String> {
+        match self.evaluate_javascript(&js) {
+            Ok(_) => Some(String::new()),
+            Err(e) => {
+                error!("Failed to evaluate JavaScript: {:?}", e);
+                None
+            }
+        }
+    }
+
+    fn clear_browsing_data(&self) {
+        if let Err(e) = self.clear_browsing_data() {
+            error!("Failed to clear browsing data: {:?}", e);
+        }
+    }
+}
+
 pub struct WebViewManager;
 
 impl WebViewManager {
@@ -186,30 +236,6 @@ impl WebViewManager {
         webviews
             .get_mut(app_id)
             .and_then(|views| views.iter_mut().find(|view| view.path == path))
-    }
-
-    pub fn on_webview_created(
-        app_id: String,
-        path: String,
-        java_webview: JObject,
-    ) -> Result<(), Box<dyn Error>> {
-        info!("Creating new WebView for appId: {}, path: {}", app_id, path);
-
-        let webviews = WEBVIEWS.get_or_init(|| Mutex::new(HashMap::new()));
-        let mut webviews = webviews.lock().unwrap();
-
-        let webview = WebView::new(app_id.clone(), path.clone(), java_webview)?;
-        webview.setup()?;
-
-        if let Some(app_webviews) = webviews.get_mut(&app_id) {
-            info!("Adding WebView to existing app entry for appId: {}", app_id);
-            app_webviews.push(webview);
-        } else {
-            info!("Creating new app entry for appId: {}", app_id);
-            webviews.insert(app_id, vec![webview]);
-        }
-
-        Ok(())
     }
 
     pub fn destroy_all_webviews() -> Result<(), Box<dyn Error>> {

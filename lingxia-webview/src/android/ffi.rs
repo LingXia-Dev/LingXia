@@ -1,6 +1,7 @@
 #![allow(non_snake_case)]
 
 use super::asset::{ASSET_MANAGER, AssetManager};
+use super::webview::WebView;
 use super::webview::WebViewManager;
 use android_logger::Config;
 use http;
@@ -101,29 +102,16 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnWebViewCreated(
     path: JString,
     java_webview: JObject,
 ) -> jint {
-    let app_id: String = match env.get_string(&app_id) {
-        Ok(s) => s.into(),
-        Err(e) => {
-            error!("Failed to get app_id string: {:?}", e);
-            return -1;
-        }
-    };
+    let app_id: String = env.get_string(&app_id).unwrap().into();
+    let path: String = env.get_string(&path).unwrap().into();
 
-    let path: String = match env.get_string(&path) {
-        Ok(s) => s.into(),
-        Err(e) => {
-            error!("Failed to get path string: {:?}", e);
-            return -1;
-        }
-    };
+    // Create WebView
+    let webview = WebView::from_java(java_webview);
 
-    match WebViewManager::on_webview_created(app_id, path, java_webview) {
-        Ok(_) => 0,
-        Err(e) => {
-            error!("Failed to create WebView: {:?}", e);
-            -1
-        }
-    }
+    // Notify miniapp about page creation with the WebView controller
+    let mut miniapp = miniapp::get().lock().unwrap();
+    miniapp.on_page_created(app_id, path, Arc::new(webview));
+    0
 }
 
 #[unsafe(no_mangle)]
