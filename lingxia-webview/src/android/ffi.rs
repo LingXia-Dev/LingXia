@@ -109,8 +109,9 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnWebViewCreated(
     let webview = WebView::from_java(java_webview);
 
     // Notify miniapp about page creation with the WebView controller
-    let mut miniapp = miniapp::get().lock().unwrap();
-    miniapp.on_page_created(app_id, path, Arc::new(webview));
+    if let Ok(mut miniapp) = miniapp::get().lock() {
+        miniapp.on_page_created(app_id, path, Arc::new(webview));
+    }
     0
 }
 
@@ -168,13 +169,10 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnPageStarted(
     let app_id: String = env.get_string(&app_id).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
 
-    match WebViewManager::on_page_started(app_id, path) {
-        Ok(_) => 0,
-        Err(e) => {
-            error!("Error in on_page_started: {}", e);
-            -1
-        }
+    if let Ok(miniapp) = miniapp::get().lock() {
+        miniapp.on_page_started(app_id, path);
     }
+    0
 }
 
 #[unsafe(no_mangle)]
@@ -187,13 +185,10 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnPageFinished(
     let app_id: String = env.get_string(&app_id).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
 
-    match WebViewManager::on_page_finished(app_id, path) {
-        Ok(_) => 0,
-        Err(e) => {
-            error!("Error in on_page_finished: {}", e);
-            -1
-        }
+    if let Ok(miniapp) = miniapp::get().lock() {
+        miniapp.on_page_finished(app_id, path);
     }
+    0
 }
 
 #[unsafe(no_mangle)]
@@ -205,7 +200,10 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnPageShow(
 ) {
     let app_id: String = env.get_string(&app_id).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
-    info!("WebView Show Event for appId: {}, path: {}", app_id, path);
+
+    if let Ok(miniapp) = miniapp::get().lock() {
+        miniapp.on_page_show(app_id, path);
+    }
 }
 
 #[unsafe(no_mangle)]

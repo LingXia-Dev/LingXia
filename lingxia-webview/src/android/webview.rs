@@ -247,31 +247,6 @@ impl WebViewManager {
         Ok(())
     }
 
-    pub fn on_page_started(app_id: String, path: String) -> Result<(), Box<dyn Error>> {
-        info!("Page started loading for appId: {}, path: {}", app_id, path);
-        if let Some(webviews) = WEBVIEWS.get() {
-            let webviews = webviews.lock().unwrap();
-            if let Some(webview) = WebViewManager::find_webview(&webviews, &app_id, &path) {
-                webview.inject_bridge_script()?;
-            }
-        }
-        Ok(())
-    }
-
-    pub fn on_page_finished(app_id: String, path: String) -> Result<(), Box<dyn Error>> {
-        info!(
-            "Page finished loading for appId: {}, path: {}",
-            app_id, path
-        );
-        if let Some(webviews) = WEBVIEWS.get() {
-            let webviews = webviews.lock().unwrap();
-            if let Some(webview) = WebViewManager::find_webview(&webviews, &app_id, &path) {
-                webview.inject_bridge_script()?;
-            }
-        }
-        Ok(())
-    }
-
     pub fn should_override_url_loading(
         app_id: String,
         url: String,
