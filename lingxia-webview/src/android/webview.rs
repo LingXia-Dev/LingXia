@@ -9,30 +9,39 @@ use std::error::Error;
 const CLASS_MINIAPP: &str = "com/lingxia/miniapp/MiniApp";
 
 pub struct WebView {
+    #[cfg(debug_assertions)]
     app_id: String,
+    #[cfg(debug_assertions)]
     path: String,
     java_webview: GlobalRef,
 }
 
 impl Drop for WebView {
     fn drop(&mut self) {
+        #[cfg(debug_assertions)]
         info!(
             "Dropping WebView for appId: {}, path: {}",
             self.app_id, self.path
         );
+
         let _ = self.destroy_webview();
     }
 }
 
 impl WebView {
-    pub(crate) fn from_java(java_webview: JObject) -> Self {
+    pub(crate) fn from_java(java_webview: JObject, _app_id: String, _path: String) -> Self {
         let env = get_env().unwrap();
         let java_webview = env.new_global_ref(java_webview).unwrap();
-        WebView {
-            app_id: String::new(),
-            path: String::new(),
+
+        #[cfg(debug_assertions)]
+        return WebView {
+            app_id: _app_id,
+            path: _path,
             java_webview,
-        }
+        };
+
+        #[cfg(not(debug_assertions))]
+        return WebView { java_webview };
     }
 
     pub(crate) fn get_java_webview(&self) -> &GlobalRef {

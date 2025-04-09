@@ -1,5 +1,3 @@
-#![allow(non_snake_case)]
-
 use super::asset::{ASSET_MANAGER, AssetManager};
 use super::webview::WebView;
 use super::webview::WebViewManager;
@@ -63,7 +61,10 @@ pub(crate) fn get_env() -> Result<JNIEnv<'static>, Box<dyn std::error::Error>> {
         unsafe { vm.get_env().and_then(|e| JNIEnv::from_raw(e.get_raw())) }
     } else {
         // If we're not on the main thread, attach to get a new env
-        unsafe { vm.attach_current_thread().and_then(|e| JNIEnv::from_raw(e.get_raw())) }
+        unsafe {
+            vm.attach_current_thread()
+                .and_then(|e| JNIEnv::from_raw(e.get_raw()))
+        }
     };
 
     env_result.map_err(|e| {
@@ -117,7 +118,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnWebViewCreated(
     let path: String = env.get_string(&path).unwrap().into();
 
     // Create WebView
-    let webview = WebView::from_java(java_webview);
+    let webview = WebView::from_java(java_webview, app_id.clone(), path.clone());
 
     // Notify miniapp about page creation with the WebView controller
     if let Ok(mut miniapp) = miniapp::get().lock() {
