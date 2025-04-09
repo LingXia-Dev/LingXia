@@ -84,7 +84,12 @@ impl MiniApp {
     }
 
     /// Called when a new page is created for the given appid and path
-    pub fn on_page_created(&mut self, appid: String, path: String) {
+    pub fn on_page_created(
+        &mut self,
+        appid: String,
+        path: String,
+        page_controller: Arc<dyn PageController>,
+    ) {
         let page_manager = self
             .apps
             .entry(appid.clone())
@@ -94,6 +99,7 @@ impl MiniApp {
         // update: on_page_show, on page show: page finsihed, reload(from java)
         let mut page_manager = page_manager.lock().unwrap();
         page_manager.mark_active(&path);
+        page_manager.push_page_controller(path, page_controller);
     }
 
     /// Finds a PageController by appid and path
