@@ -7,6 +7,22 @@ set -e
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$SCRIPT_DIR/../.."
 
+# Package name of the app
+APP_PACKAGE="com.lingxia.example.miniapp"
+MAIN_ACTIVITY="$APP_PACKAGE.MainActivity"
+
+# Function to cleanup and exit
+cleanup() {
+    echo "Cleaning up..."
+    # Kill logcat process if it exists
+    if [ ! -z "$LOGCAT_PID" ]; then
+        kill $LOGCAT_PID 2>/dev/null || true
+    fi
+}
+
+# Set trap for cleanup
+trap cleanup EXIT
+
 echo "Building Rust library..."
 cd "$PROJECT_ROOT"
 env \
@@ -29,3 +45,14 @@ cd "$SCRIPT_DIR"
 ./gradlew clean
 ./gradlew assembleDebug
 adb install -r ./app/build/outputs/apk/debug/app-debug.apk
+
+echo "Starting logcat capture..."
+# Clear existing logs
+adb logcat -c
+
+echo "Launching app..."
+adb shell am start -n "$APP_PACKAGE/$MAIN_ACTIVITY"
+
+# Show logs directly in terminal
+echo "Showing logs (Ctrl+C to stop)..."
+exec adb logcat -v time RustNative:I WebView:D *:S
