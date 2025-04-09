@@ -1,5 +1,7 @@
 #![allow(non_snake_case)]
 
+use super::asset::{ASSET_MANAGER, AssetManager};
+use super::webview::WebViewManager;
 use android_logger::Config;
 use http;
 use http::header::{HeaderMap, HeaderName, HeaderValue};
@@ -9,11 +11,7 @@ use jni::sys::jint;
 use jni::{JNIEnv, JavaVM};
 use log::{error, info};
 use serde_json;
-use std::fs;
-use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
-use super::webview::WebViewManager;
-use super::asset::{ASSET_MANAGER, AssetManager};
 
 pub static JAVA_VM: OnceLock<Arc<JavaVM>> = OnceLock::new();
 
@@ -60,6 +58,39 @@ pub(crate) fn get_env() -> Result<JNIEnv<'static>, Box<dyn std::error::Error>> {
         // If we're not on the main thread, attach to get a new env
         unsafe { Ok(JNIEnv::from_raw(vm.attach_current_thread()?.get_raw())?) }
     }
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeOnMiniAppInited(
+    mut env: JNIEnv,
+    _class: JClass,
+    asset_manager: JObject,
+    cache_dir: JString,
+    data_dir: JString,
+) -> jint {
+    // Get the native AAssetManager pointer from the passed Java object
+    let asset_manager_ptr = match AssetManager::from_java(
+        env.get_native_interface() as *mut jni::sys::JNIEnv,
+        asset_manager.as_raw(),
+    ) {
+        Ok(manager) => manager,
+        Err(e) => {
+            error!("Failed to create AssetManager: {}", e);
+            return -1;
+        }
+    };
+
+    // These paths always exist in Android
+    let cache_dir = env.get_string(&cache_dir).unwrap().into();
+    let data_dir = env.get_string(&data_dir).unwrap().into();
+
+    // Initialize the global ASSET_MANAGER
+    let _ = ASSET_MANAGER.set(Arc::new(Mutex::new(asset_manager_ptr.clone())));
+
+    // Initialize MiniApp
+    miniapp::init(Box::new(asset_manager_ptr), cache_dir, data_dir);
+
+    0
 }
 
 #[unsafe(no_mangle)]
@@ -264,62 +295,6 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeGetExistingWebView
             JObject::null()
         }
     }
-}
-
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeOnMiniAppInited(
-    mut env: JNIEnv,
-    _class: JClass,
-    data_dir: JString,
-    cache_dir: JString,
-    asset_manager: JObject,
-) -> jint {
-    // Get data and cache directories
-    let data_dir: String = match env.get_string(&data_dir) {
-        Ok(s) => s.into(),
-        Err(e) => {
-            error!("Failed to get data dir string: {:?}", e);
-            return -1;
-        }
-    };
-
-    let cache_dir: String = match env.get_string(&cache_dir) {
-        Ok(s) => s.into(),
-        Err(e) => {
-            error!("Failed to get cache dir string: {:?}", e);
-            return -1;
-        }
-    };
-
-    info!("MiniApp initialized with:");
-    info!("  Data dir: {}", data_dir);
-    info!("  Cache dir: {}", cache_dir);
-
-    // Store AAssetManager globally
-    let asset_manager = unsafe {
-        ndk_sys::AAssetManager_fromJava(env.get_raw() as *mut _, asset_manager.as_raw() as *mut _)
-    };
-    let _ = ASSET_MANAGER.set(Arc::new(Mutex::new(AssetManager(asset_manager))));
-
-    // Demo: Create and write to a file in data directory
-    let demo_file_path = PathBuf::from(&data_dir).join("demo.txt");
-    if let Err(e) = fs::write(&demo_file_path, "Hello from Rust native layer!") {
-        error!("Failed to write demo file: {:?}", e);
-    } else {
-        info!("Successfully wrote to demo file: {:?}", demo_file_path);
-    }
-
-    // Demo: Read the file back
-    match fs::read_to_string(&demo_file_path) {
-        Ok(contents) => {
-            info!("Read from demo file: {}", contents);
-        }
-        Err(e) => {
-            error!("Failed to read demo file: {:?}", e);
-        }
-    }
-
-    0
 }
 
 #[unsafe(no_mangle)]
@@ -634,8 +609,13 @@ fn create_java_response<'a>(env: &mut JNIEnv<'a>, response: Response<Vec<u8>>) -
         ],
     ) {
         Ok(obj) => {
-            info!("Successfully created Java response object: status={}, mime={}, encoding={}, bodySize={}",
-                status, mime_type, encoding, body.len());
+            info!(
+                "Successfully created Java response object: status={}, mime={}, encoding={}, bodySize={}",
+                status,
+                mime_type,
+                encoding,
+                body.len()
+            );
             obj
         }
         Err(e) => {

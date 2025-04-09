@@ -152,7 +152,7 @@ impl MiniApp {
 }
 
 pub trait AssetReader: Send + Sync {
-    fn read_asset(&self, path: &str) -> Vec<u8>;
+    fn read_asset(&self, path: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>>;
 }
 
 impl MiniApp {

@@ -1,8 +1,10 @@
-use std::sync::{Arc, Mutex, OnceLock};
+use jni::sys::{JNIEnv, jobject};
+use miniapp::AssetReader;
 use ndk_sys;
+use std::sync::{Arc, Mutex, OnceLock};
 
 // Asset manager wrapper
-#[derive(Debug)]
+#[derive(Clone)]
 pub(crate) struct AssetManager(pub *mut ndk_sys::AAssetManager);
 
 // Implement Send and Sync for AssetManager
@@ -12,60 +14,43 @@ unsafe impl Sync for AssetManager {}
 // Global asset manager instance
 pub static ASSET_MANAGER: OnceLock<Arc<Mutex<AssetManager>>> = OnceLock::new();
 
-impl AssetManager {
-    pub fn from_java(ptr: *mut ndk_sys::AAssetManager) -> Self {
-        AssetManager(ptr)
-    }
-
-    pub fn open(&self, path: &str) -> Option<AssetFile> {
+impl AssetReader for AssetManager {
+    fn read_asset(&self, path: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         unsafe {
             let asset = ndk_sys::AAssetManager_open(
                 self.0,
-                format!("{}\0", path).as_bytes().as_ptr() as *const _,
+                path.as_ptr() as *const _,
                 ndk_sys::AASSET_MODE_BUFFER as i32,
             );
-            if !asset.is_null() {
-                Some(AssetFile(asset))
-            } else {
-                None
+
+            if asset.is_null() {
+                return Err("Failed to open asset".into());
             }
-        }
-    }
-}
 
-pub struct AssetFile(*mut ndk_sys::AAsset);
-
-impl AssetFile {
-    pub fn read_all(&self) -> Option<Vec<u8>> {
-        unsafe {
-            let length = ndk_sys::AAsset_getLength64(self.0) as usize;
+            let length = ndk_sys::AAsset_getLength64(asset) as usize;
             let mut buffer = vec![0u8; length];
-            let bytes_read = ndk_sys::AAsset_read(self.0, buffer.as_mut_ptr() as *mut _, length);
-            if bytes_read > 0 {
-                Some(buffer)
-            } else {
-                None
-            }
-        }
-    }
+            let read = ndk_sys::AAsset_read(asset, buffer.as_mut_ptr() as *mut _, length) as i32;
 
-    pub fn get_mime_type(&self, path: &str) -> &'static str {
-        if path.ends_with(".html") {
-            "text/html"
-        } else if path.ends_with(".js") {
-            "application/javascript"
-        } else if path.ends_with(".css") {
-            "text/css"
-        } else {
-            "application/octet-stream"
+            ndk_sys::AAsset_close(asset);
+
+            if read == length as i32 {
+                Ok(buffer)
+            } else {
+                Err("Failed to read asset completely".into())
+            }
         }
     }
 }
 
-impl Drop for AssetFile {
-    fn drop(&mut self) {
+impl AssetManager {
+    pub fn from_java(env: *mut JNIEnv, asset_manager: jobject) -> Result<Self, &'static str> {
         unsafe {
-            ndk_sys::AAsset_close(self.0);
+            let ptr = ndk_sys::AAssetManager_fromJava(env, asset_manager);
+            if ptr.is_null() {
+                Err("Failed to get AAssetManager from Java object")
+            } else {
+                Ok(AssetManager(ptr))
+            }
         }
     }
-} 
+}
