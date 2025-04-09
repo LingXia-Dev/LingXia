@@ -17,9 +17,11 @@ pub static ASSET_MANAGER: OnceLock<Arc<Mutex<AssetManager>>> = OnceLock::new();
 impl AssetReader for AssetManager {
     fn read_asset(&self, path: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         unsafe {
+            // Convert path to CString to ensure proper null-termination
+            let c_path = std::ffi::CString::new(path)?;
             let asset = ndk_sys::AAssetManager_open(
                 self.0,
-                path.as_ptr() as *const _,
+                c_path.as_ptr(),
                 ndk_sys::AASSET_MODE_BUFFER as i32,
             );
 
