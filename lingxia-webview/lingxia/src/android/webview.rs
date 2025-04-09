@@ -1,12 +1,11 @@
-use crate::JAVA_VM;
 use jni::objects::{GlobalRef, JObject, JValue};
-use jni::JNIEnv;
 use log::{error, info};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::error::Error;
 use std::sync::Mutex;
 use std::sync::OnceLock;
+use crate::android::get_env;
 
 const CLASS_MINIAPP: &str = "com/lingxia/miniapp/MiniApp";
 
@@ -329,9 +328,4 @@ impl WebViewManager {
 
         Ok(())
     }
-}
-
-// Helper function to get JNIEnv for current thread
-fn get_env() -> Result<JNIEnv<'static>, Box<dyn Error>> {
-    crate::get_env()
 }
