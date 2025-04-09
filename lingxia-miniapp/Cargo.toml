@@ -1,10 +1,10 @@
 [package]
-name = "lingxia_appm"
+name = "lingxia_miniapp"
 version = "0.1.0"
 edition = "2024"
 
 [lib]
-name = "lingxia_appm"
+name = "lingxia_miniapp"
 crate-type = ["staticlib"]
 
 [dependencies]
