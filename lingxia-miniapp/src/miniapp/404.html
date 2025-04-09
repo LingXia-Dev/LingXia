@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>404</title>
+  <style>
+    body{font-family:-apple-system,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#f8f9fa;color:#343a40}
+    .c{text-align:center;padding:20px;max-width:90%}
+    .e{font-size:72px;font-weight:bold;color:#e53e3e;margin:0}
+    .t{font-size:24px;margin:10px 0}
+    .u{font-family:monospace;background:rgba(0,0,0,.05);padding:8px;border-radius:4px;word-break:break-all;max-width:100%;margin:15px 0 5px;font-size:14px;display:inline-block}
+    svg{width:80px;height:80px;margin-bottom:10px}
+    @media(prefers-color-scheme:dark){body{background:#212529;color:#f8f9fa}.u{background:rgba(255,255,255,.1)}}
+  </style>
+</head>
+<body>
+  <div class="c">
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M14 2H6C5.46957 2 4.96086 2.21071 4.58579 2.58579C4.21071 2.96086 4 3.46957 4 4V20C4 20.5304 4.21071 21.0391 4.58579 21.4142C4.96086 21.7893 5.46957 22 6 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V8L14 2Z" stroke="#e53e3e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M14 2V8H20" stroke="#e53e3e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M9 15L15 9" stroke="#e53e3e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M9 9L15 15" stroke="#e53e3e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <h1 class="e">404</h1>
+    <h2 class="t">Page Not Found</h2>
+    <div class="u" id="u"></div>
+  </div>
+  <script>
+    window.onload=function(){
+      var u=window.location.href.replace(/^.*?\/\//,'');
+      document.getElementById('u').textContent=u;
+    }
+  </script>
+</body>
+</html>

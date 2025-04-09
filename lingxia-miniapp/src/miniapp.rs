@@ -1,3 +1,4 @@
+use http::{Response, StatusCode};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -5,6 +6,8 @@ use std::sync::OnceLock;
 use std::time::Instant;
 
 use crate::page::{self, PageController};
+
+mod scheme;
 
 // Global instance of MiniApp
 static MINI_APP: OnceLock<Mutex<MiniApp>> = OnceLock::new();
@@ -84,22 +87,26 @@ impl MiniApp {
     }
 
     /// Called when a new page is created for the given appid and path
-    pub fn on_page_created(
-        &mut self,
-        appid: String,
-        path: String,
-        page_controller: Arc<dyn PageController>,
-    ) {
+    pub fn on_page_created(&mut self, appid: String, path: String, pc: Arc<dyn PageController>) {
         let page_manager = self
             .apps
             .entry(appid.clone())
             .or_insert_with(|| Arc::new(Mutex::new(page::PageManager::new(None))));
 
+        let url = if appid == "home" {
+            let path_str = if path.is_empty() { "index.html" } else { &path };
+            format!("lingxia://home/{}", path_str)
+        } else {
+            "https://www.bing.com".to_string()
+        };
+
+        pc.load_url(url);
+
         // Initialize or update the page for the given path
         // update: on_page_show, on page show: page finsihed, reload(from java)
         let mut page_manager = page_manager.lock().unwrap();
         page_manager.mark_active(&path);
-        page_manager.push_page_controller(path, page_controller);
+        page_manager.push_page_controller(path, pc);
     }
 
     /// Finds a PageController by appid and path
@@ -136,10 +143,25 @@ impl MiniApp {
     pub fn handle_request(
         &self,
         _appid: String,
-        _req: http::Request<Vec<u8>>,
+        req: http::Request<Vec<u8>>,
     ) -> Option<http::Response<Vec<u8>>> {
-        // ... implementation ...
-        None
+        let uri = req.uri();
+        let scheme = uri.scheme_str().unwrap_or("");
+
+        // Don't intercept http/https requests
+        if scheme == "http" || scheme == "https" {
+            return None;
+        }
+
+        // Handle different schemes
+        Some(match scheme {
+            "lingxia" => scheme::lingxia_handler(self.asset_reader.as_ref(), req),
+            _ => Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .header("Content-Type", "text/plain")
+                .body(format!("Unknown scheme: {}", scheme).into_bytes())
+                .unwrap(),
+        })
     }
 
     /// Called when the page starts loading
