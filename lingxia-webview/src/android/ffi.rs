@@ -43,7 +43,13 @@ pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> j
 
 // Helper function to get JNIEnv for current thread
 pub(crate) fn get_env() -> Result<JNIEnv<'static>, Box<dyn std::error::Error>> {
-    let vm = JAVA_VM.get().ok_or("JavaVM not initialized")?.clone();
+    let vm = match JAVA_VM.get() {
+        Some(vm) => vm.clone(),
+        None => {
+            error!("JavaVM not initialized");
+            return Err("JavaVM not initialized".into());
+        }
+    };
 
     // Check if we're on the main thread
     let is_main_thread = MAIN_THREAD_ID.with(|id| {
@@ -52,13 +58,18 @@ pub(crate) fn get_env() -> Result<JNIEnv<'static>, Box<dyn std::error::Error>> {
             .unwrap_or(false)
     });
 
-    if is_main_thread {
+    let env_result = if is_main_thread {
         // If we're on the main thread, get the env
-        unsafe { Ok(JNIEnv::from_raw(vm.get_env()?.get_raw())?) }
+        unsafe { vm.get_env().and_then(|e| JNIEnv::from_raw(e.get_raw())) }
     } else {
         // If we're not on the main thread, attach to get a new env
-        unsafe { Ok(JNIEnv::from_raw(vm.attach_current_thread()?.get_raw())?) }
-    }
+        unsafe { vm.attach_current_thread().and_then(|e| JNIEnv::from_raw(e.get_raw())) }
+    };
+
+    env_result.map_err(|e| {
+        error!("JNI error: {:?}", e);
+        e.into()
+    })
 }
 
 #[unsafe(no_mangle)]

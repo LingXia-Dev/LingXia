@@ -4,10 +4,7 @@ use log::{error, info};
 use miniapp::PageController;
 use serde_json::Value;
 use std::any::Any;
-use std::collections::HashMap;
 use std::error::Error;
-use std::sync::Mutex;
-use std::sync::OnceLock;
 
 const CLASS_MINIAPP: &str = "com/lingxia/miniapp/MiniApp";
 
@@ -42,21 +39,6 @@ impl WebView {
         &self.java_webview
     }
 
-    fn evaluate_javascript(&self, script: &str) -> Result<(), Box<dyn Error>> {
-        let mut env = get_env()?;
-        let script_string = env.new_string(script)?;
-        env.call_method(
-            self.java_webview.as_obj(),
-            "evaluateJavascript",
-            "(Ljava/lang/String;Landroid/webkit/ValueCallback;)V",
-            &[
-                JValue::Object(&script_string),
-                JValue::Object(&JObject::null()),
-            ],
-        )?;
-        Ok(())
-    }
-
     pub fn set_devtools(&self, enabled: bool) -> Result<(), Box<dyn Error>> {
         let mut env = get_env()?;
         let webview_class = env.find_class("android/webkit/WebView")?;
@@ -69,24 +51,6 @@ impl WebView {
         Ok(())
     }
 
-    pub fn load_url(&self, url: String) -> Result<(), Box<dyn Error>> {
-        let mut env = get_env()?;
-        let url_string = env.new_string(&url)?;
-        env.call_method(
-            self.java_webview.as_obj(),
-            "loadUrl",
-            "(Ljava/lang/String;)V",
-            &[JValue::Object(&url_string)],
-        )?;
-        Ok(())
-    }
-
-    pub fn clear_browsing_data(&self) -> Result<(), Box<dyn Error>> {
-        let mut env = get_env()?;
-        env.call_method(self.java_webview.as_obj(), "clearBrowsingData", "()V", &[])?;
-        Ok(())
-    }
-
     fn destroy_webview(&self) {
         if let Ok(mut env) = get_env() {
             let _ = env.call_method(self.java_webview.as_obj(), "destroy", "()V", &[]);
@@ -96,50 +60,66 @@ impl WebView {
 
 impl PageController for WebView {
     fn load_url(&self, url: String) -> bool {
-        match self.load_url(url) {
-            Ok(_) => true,
-            Err(e) => {
-                error!("Failed to load URL: {:?}", e);
-                false
-            }
+        let mut env = match get_env() {
+            Ok(env) => env,
+            Err(_) => return false,
+        };
+
+        match env.new_string(&url) {
+            Ok(url_string) => env
+                .call_method(
+                    self.java_webview.as_obj(),
+                    "loadUrl",
+                    "(Ljava/lang/String;)V",
+                    &[JValue::Object(&url_string)],
+                )
+                .is_ok(),
+            Err(_) => false,
         }
     }
 
     fn setup_ua(&self, ua: &str) {
-        let mut env = match get_env() {
-            Ok(env) => env,
-            Err(e) => {
-                error!("Failed to get JNI env: {:?}", e);
-                return;
-            }
-        };
+        let Ok(mut env) = get_env() else { return };
 
         if let Ok(ua_string) = env.new_string(ua) {
-            let _ = env
-                .call_method(
-                    self.java_webview.as_obj(),
-                    "setUserAgent",
-                    "(Ljava/lang/String;)V",
-                    &[JValue::Object(&ua_string)],
-                )
-                .map_err(|e| error!("Failed to set user agent: {:?}", e));
+            let _ = env.call_method(
+                self.java_webview.as_obj(),
+                "setUserAgent",
+                "(Ljava/lang/String;)V",
+                &[JValue::Object(&ua_string)],
+            );
         }
     }
 
     fn evaluate_javascript(&self, js: String) -> Option<String> {
-        match self.evaluate_javascript(&js) {
-            Ok(_) => Some(String::new()),
-            Err(e) => {
-                error!("Failed to evaluate JavaScript: {:?}", e);
-                None
+        let mut env = match get_env() {
+            Ok(env) => env,
+            Err(_) => return None,
+        };
+
+        match env.new_string(&js) {
+            Ok(script_string) => {
+                match env.call_method(
+                    self.java_webview.as_obj(),
+                    "evaluateJavascript",
+                    "(Ljava/lang/String;Landroid/webkit/ValueCallback;)V",
+                    &[
+                        JValue::Object(&script_string),
+                        JValue::Object(&JObject::null()),
+                    ],
+                ) {
+                    Ok(_) => Some(String::new()),
+                    Err(_) => None,
+                }
             }
+            Err(_) => None,
         }
     }
 
     fn clear_browsing_data(&self) {
-        if let Err(e) = self.clear_browsing_data() {
-            error!("Failed to clear browsing data: {:?}", e);
-        }
+        let Ok(mut env) = get_env() else { return };
+
+        let _ = env.call_method(self.java_webview.as_obj(), "clearBrowsingData", "()V", &[]);
     }
 
     fn as_any(&self) -> &dyn Any {
