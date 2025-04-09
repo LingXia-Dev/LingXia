@@ -1,11 +1,7 @@
 [package]
-name = "lingxia_miniapp"
+name = "lingxia-miniapp"
 version = "0.1.0"
 edition = "2024"
-
-[lib]
-name = "lingxia_miniapp"
-crate-type = ["staticlib"]
 
 [dependencies]
 http = "1.3.1"
