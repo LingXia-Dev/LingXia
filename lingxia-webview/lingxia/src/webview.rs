@@ -35,6 +35,16 @@ pub struct WebView {
     java_webview: GlobalRef,
 }
 
+impl Drop for WebView {
+    fn drop(&mut self) {
+        info!(
+            "Dropping WebView for appId: {}, path: {}",
+            self.app_id, self.path
+        );
+        let _ = self.destroy_webview();
+    }
+}
+
 impl WebView {
     fn new(app_id: String, path: String, java_webview: JObject) -> Result<WebView, Box<dyn Error>> {
         let env = get_env()?;
@@ -86,7 +96,7 @@ impl WebView {
             };
             format!("lingxia://demo/{}", path_str)
         } else if self.app_id == "baidu" {
-            "https://www.baidu.com".to_string()
+            "https://www.bing.com".to_string()
         } else {
             "about:blank".to_string()
         };
@@ -129,6 +139,30 @@ impl WebView {
 
     fn inject_bridge_script(&self) -> Result<(), Box<dyn Error>> {
         self.evaluate_javascript(DOCUMENT_START_SCRIPT)
+    }
+
+    /// Destroy this WebView instance and remove it from the global WebViews map
+    fn destroy_webview(&self) -> Result<(), Box<dyn Error>> {
+        // First destroy the Java WebView
+        if let Ok(mut env) = get_env() {
+            let _ = env.call_method(self.java_webview.as_obj(), "destroy", "()V", &[]);
+        }
+
+        // Then remove from global map
+        if let Some(webviews) = WEBVIEWS.get() {
+            let mut webviews = webviews.lock().unwrap();
+            if let Some(app_webviews) = webviews.get_mut(&self.app_id) {
+                if let Some(index) = app_webviews.iter().position(|w| w.path == self.path) {
+                    app_webviews.remove(index);
+
+                    // If this was the last WebView for this app_id, remove the app entry
+                    if app_webviews.is_empty() {
+                        webviews.remove(&self.app_id);
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 }
 

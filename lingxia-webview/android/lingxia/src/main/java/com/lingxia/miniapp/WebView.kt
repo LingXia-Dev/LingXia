@@ -493,6 +493,60 @@ class WebView @JvmOverloads constructor(
         super.loadUrl(url)
     }
 
+    /**
+     * Destroy this WebView instance and release all resources.
+     * This method is called from the Rust layer when the WebView instance is being dropped.
+     */
+    override fun destroy() {
+        Log.d(TAG, "Destroying WebView for appId=$appId, path=$currentPath")
+
+        try {
+            // First, make the view invisible to prevent any visual artifacts
+            visibility = View.GONE
+
+            // Stop all active operations
+            stopLoading()
+
+            // Clear all clients to prevent callbacks during destruction
+            webViewClient = WebViewClient()
+            webChromeClient = WebChromeClient()
+
+            // Remove JavaScript interfaces
+            removeJavascriptInterface(BRIDGE_NAME)
+
+            // Clear all data
+            try {
+                clearHistory()
+                clearCache(true)
+                clearFormData()
+            } catch (e: Exception) {
+                Log.w(TAG, "Error clearing WebView data: ${e.message}")
+                // Continue with destruction even if clearing data fails
+            }
+
+            // Remove from parent view if attached
+            try {
+                (parent as? ViewGroup)?.removeView(this)
+            } catch (e: Exception) {
+                Log.w(TAG, "Error removing WebView from parent: ${e.message}")
+                // Continue with destruction even if removal fails
+            }
+
+            // Finally destroy the WebView
+            try {
+                super.destroy()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error destroying WebView: ${e.message}")
+                throw e  // Rethrow as this is critical
+            }
+
+            Log.d(TAG, "WebView destroyed successfully")
+        } catch (e: Exception) {
+            Log.e(TAG, "Critical error during WebView destruction", e)
+            throw e  // Rethrow to inform Rust layer of failure
+        }
+    }
+
     // Native instance methods
     private external fun nativeOnWebViewCreated(appId: String, path: String, webview: WebView): Int
     private external fun nativeHandlePostMessage(appId: String, path: String, message: String): Int
