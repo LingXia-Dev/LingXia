@@ -256,18 +256,6 @@ impl WebViewManager {
         Ok(())
     }
 
-    pub fn should_override_url_loading(
-        app_id: String,
-        url: String,
-    ) -> Result<bool, Box<dyn Error>> {
-        info!(
-            "Should override URL loading for appId: {}, URL: {}",
-            app_id, url
-        );
-        // 这里可以根据需要处理 URL 重定向
-        Ok(false)
-    }
-
     pub fn handle_post_message(
         app_id: String,
         path: String,

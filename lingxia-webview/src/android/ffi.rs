@@ -208,46 +208,27 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnPageShow(
 
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeShouldOverrideUrlLoading(
-    mut _env: JNIEnv,
+    mut env: JNIEnv,
     _class: JClass,
-    _app_id: JString,
+    app_id: JString,
+    path: JString,
     url: JString,
 ) -> jint {
-    let url_str: String = match _env.get_string(&url) {
-        Ok(s) => s.into(),
-        Err(e) => {
-            error!("Failed to get url string: {:?}", e);
-            return 0;
-        }
-    };
+    let app_id: String = env.get_string(&app_id).unwrap().into();
+    let path: String = env.get_string(&path).unwrap().into();
+    let url: String = env.get_string(&url).unwrap().into();
 
-    // Extract scheme from URL
-    let scheme = if let Some(scheme_end) = url_str.find("://") {
-        &url_str[..scheme_end]
-    } else {
-        ""
-    };
-
-    info!("Checking URL override: {} (scheme: {})", url_str, scheme);
-
-    // Define allowed and intercepted schemes
-    let allowed_schemes = vec!["http", "https", "file"];
-    let intercepted_schemes = vec!["miniapp", "lingxia"];
-
-    if intercepted_schemes.contains(&scheme) {
-        // Handle custom scheme
-        info!("Intercepting custom scheme: {}", scheme);
-        return 1;
-    }
-
-    if !allowed_schemes.contains(&scheme) {
-        // Block disallowed schemes
-        error!("Blocking disallowed scheme: {}", scheme);
-        return 1;
-    }
-
-    // Allow standard http/https/file requests to proceed
-    0
+    // Get the miniapp instance and check if we should override the URL
+    miniapp::get()
+        .lock()
+        .map(|miniapp| {
+            if miniapp.should_override_url_loading(app_id, path, url) {
+                1
+            } else {
+                0
+            }
+        })
+        .unwrap_or(0)
 }
 
 #[unsafe(no_mangle)]
