@@ -6,7 +6,7 @@ use super::webview::WebViewManager;
 use android_logger::Config;
 use http;
 use http::header::{HeaderMap, HeaderName, HeaderValue};
-use http::{Method, Request, Response, StatusCode};
+use http::{Method, Request, Response};
 use jni::objects::{JClass, JObject, JString};
 use jni::sys::jint;
 use jni::{JNIEnv, JavaVM};
@@ -432,25 +432,16 @@ pub extern "system" fn Java_com_lingxia_miniapp_MiniAppActivity_nativeOnMiniAppH
     app_id: JString,
     path: JString,
 ) -> jint {
-    let app_id: String = match env.get_string(&app_id) {
-        Ok(s) => s.into(),
-        Err(e) => {
-            error!("Failed to get app_id string: {:?}", e);
-            return -1;
-        }
-    };
+    let app_id: String = env.get_string(&app_id).unwrap().into();
+    let path: String = env.get_string(&path).unwrap().into();
 
-    let path: String = match env.get_string(&path) {
-        Ok(s) => s.into(),
-        Err(e) => {
-            error!("Failed to get path string: {:?}", e);
-            return -1;
-        }
-    };
+    if let Ok(mut miniapp) = miniapp::get().lock() {
+        info!(
+            "Mini app hidden from MiniAppActivity: app_id={}, path={}",
+            app_id, path
+        );
 
-    info!(
-        "Mini app hidden from MiniAppActivity: app_id={}, path={}",
-        app_id, path
-    );
+        miniapp.on_miniapp_hidden(app_id);
+    };
     0
 }
