@@ -11,25 +11,6 @@ use std::sync::OnceLock;
 
 const CLASS_MINIAPP: &str = "com/lingxia/miniapp/MiniApp";
 
-static WEBVIEWS: OnceLock<Mutex<HashMap<String, Vec<WebView>>>> = OnceLock::new();
-
-const DOCUMENT_START_SCRIPT: &str = r#"
-    (function() {
-        if (!window.lingxia) {
-            window.lingxia = {
-                postMessage: function(message) {
-                    MiniApp.postMessage(message);
-                }
-            };
-            console.log('MiniApp bridge initialized');
-            window.lingxia.postMessage('{"type":"BRIDGE_READY"}');
-            return true;
-        }
-        console.log('MiniApp bridge already exists');
-        return false;
-    })();
-"#;
-
 pub struct WebView {
     app_id: String,
     path: String,
@@ -76,42 +57,6 @@ impl WebView {
         Ok(())
     }
 
-    fn setup(&self) -> Result<(), Box<dyn Error>> {
-        let mut env = get_env()?;
-        // 设置基本参数
-        let _ua_string = env.new_string("MiniApp/1.0")?;
-        /*        env.call_method(
-            self.java_webview.as_obj(),
-            "setUserAgent",
-            "(Ljava/lang/String;)V",
-            &[JValue::Object(&ua_string)]
-        )?;
-        */
-
-        // 在build模式下启用开发者工具
-        #[cfg(debug_assertions)]
-        self.set_devtools(true)?;
-
-        //DEBUG ONLY: 根据 app_id 和 path 确定要加载的 URL
-        let url = if self.app_id == "demo" {
-            let path_str = if self.path.is_empty() {
-                "index.html"
-            } else {
-                &self.path
-            };
-            format!("lingxia://demo/{}", path_str)
-        } else if self.app_id == "baidu" {
-            "https://www.bing.com".to_string()
-        } else {
-            "about:blank".to_string()
-        };
-
-        info!("Loading URL: {}", url);
-        self.load_url(url)?;
-
-        Ok(())
-    }
-
     pub fn set_devtools(&self, enabled: bool) -> Result<(), Box<dyn Error>> {
         let mut env = get_env()?;
         let webview_class = env.find_class("android/webkit/WebView")?;
@@ -142,32 +87,10 @@ impl WebView {
         Ok(())
     }
 
-    fn inject_bridge_script(&self) -> Result<(), Box<dyn Error>> {
-        self.evaluate_javascript(DOCUMENT_START_SCRIPT)
-    }
-
-    /// Destroy this WebView instance and remove it from the global WebViews map
-    fn destroy_webview(&self) -> Result<(), Box<dyn Error>> {
-        // First destroy the Java WebView
+    fn destroy_webview(&self) {
         if let Ok(mut env) = get_env() {
             let _ = env.call_method(self.java_webview.as_obj(), "destroy", "()V", &[]);
         }
-
-        // Then remove from global map
-        if let Some(webviews) = WEBVIEWS.get() {
-            let mut webviews = webviews.lock().unwrap();
-            if let Some(app_webviews) = webviews.get_mut(&self.app_id) {
-                if let Some(index) = app_webviews.iter().position(|w| w.path == self.path) {
-                    app_webviews.remove(index);
-
-                    // If this was the last WebView for this app_id, remove the app entry
-                    if app_webviews.is_empty() {
-                        webviews.remove(&self.app_id);
-                    }
-                }
-            }
-        }
-        Ok(())
     }
 }
 
@@ -227,43 +150,14 @@ impl PageController for WebView {
 pub struct WebViewManager;
 
 impl WebViewManager {
-    fn find_webview<'a>(
-        webviews: &'a HashMap<String, Vec<WebView>>,
-        app_id: &str,
-        path: &str,
-    ) -> Option<&'a WebView> {
-        webviews
-            .get(app_id)
-            .and_then(|views| views.iter().find(|view| view.path == path))
-    }
-
-    fn find_webview_mut<'a>(
-        webviews: &'a mut HashMap<String, Vec<WebView>>,
-        app_id: &str,
-        path: &str,
-    ) -> Option<&'a mut WebView> {
-        webviews
-            .get_mut(app_id)
-            .and_then(|views| views.iter_mut().find(|view| view.path == path))
-    }
-
-    pub fn destroy_all_webviews() -> Result<(), Box<dyn Error>> {
-        info!("Destroying all WebViews");
-        if let Some(webviews) = WEBVIEWS.get() {
-            let mut webviews = webviews.lock().unwrap();
-            webviews.clear();
-        }
-        Ok(())
-    }
-
     pub fn handle_post_message(
-        app_id: String,
-        path: String,
+        appid: String,
+        _path: String,
         message_str: String,
     ) -> Result<(), Box<dyn Error>> {
         info!(
             "Handling message for WebView with appId {}: {}",
-            app_id, message_str
+            appid, message_str
         );
 
         let message: Value = serde_json::from_str(&message_str)?;
