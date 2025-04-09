@@ -65,9 +65,9 @@ pub(crate) fn get_env() -> Result<JNIEnv<'static>, Box<dyn std::error::Error>> {
 pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeOnMiniAppInited(
     mut env: JNIEnv,
     _class: JClass,
-    asset_manager: JObject,
-    cache_dir: JString,
     data_dir: JString,
+    cache_dir: JString,
+    asset_manager: JObject,
 ) -> jint {
     // Get the native AAssetManager pointer from the passed Java object
     let asset_manager_ptr = match AssetManager::from_java(
