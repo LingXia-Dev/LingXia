@@ -22,7 +22,7 @@ thread_local! {
     static MAIN_THREAD_ID: OnceLock<std::thread::ThreadId> = OnceLock::new();
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> jint {
     android_logger::init_once(
         Config::default()
@@ -62,7 +62,7 @@ pub(crate) fn get_env() -> Result<JNIEnv<'static>, Box<dyn std::error::Error>> {
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnWebViewCreated(
     mut env: JNIEnv,
     _class: JClass,
@@ -95,7 +95,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnWebViewCreated(
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnMiniAppDestroy(
     _env: JNIEnv,
     _class: JClass,
@@ -109,7 +109,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnMiniAppDestroy(
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeHandlePostMessage(
     mut env: JNIEnv,
     _class: JClass,
@@ -139,7 +139,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeHandlePostMessage(
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnPageStarted(
     mut env: JNIEnv,
     _class: JClass,
@@ -158,7 +158,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnPageStarted(
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnPageFinished(
     mut env: JNIEnv,
     _class: JClass,
@@ -177,7 +177,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnPageFinished(
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnPageShow(
     mut env: JNIEnv,
     _class: JClass,
@@ -189,7 +189,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnPageShow(
     info!("WebView Show Event for appId: {}, path: {}", app_id, path);
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeShouldOverrideUrlLoading(
     mut _env: JNIEnv,
     _class: JClass,
@@ -233,7 +233,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeShouldOverrideUrlL
     0
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeGetExistingWebView<'a>(
     mut env: JNIEnv<'a>,
     _class: JClass<'a>,
@@ -266,7 +266,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeGetExistingWebView
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeOnMiniAppInited(
     mut env: JNIEnv,
     _class: JClass,
@@ -322,7 +322,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeOnMiniAppInited(
     0
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeHandleRequest<'a>(
     mut env: JNIEnv<'a>,
     _class: JClass<'a>,
@@ -646,7 +646,7 @@ fn create_java_response<'a>(env: &mut JNIEnv<'a>, response: Response<Vec<u8>>) -
 }
 
 // Function for MiniAppActivity class to handle the mini app hidden event
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_miniapp_MiniAppActivity_nativeOnMiniAppHidden(
     mut env: JNIEnv,
     _class: JClass,
