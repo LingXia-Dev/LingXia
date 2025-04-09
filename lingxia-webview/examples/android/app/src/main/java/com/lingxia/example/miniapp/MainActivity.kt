@@ -25,7 +25,7 @@ class MainActivity : AppCompatActivity() {
         )
 
         // Create WebView
-        webView = MiniApp.attachMiniApp("demo", "index.html")
+        webView = MiniApp.attachMiniApp("home", "index.html")
         webView.layoutParams = ViewGroup.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT
