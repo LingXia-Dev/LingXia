@@ -106,6 +106,9 @@ impl MiniApp {
 
         pc.load_url(url);
 
+        #[cfg(debug_assertions)]
+        pc.set_devtools(true);
+
         // Initialize or update the page for the given path
         // update: on_page_show, on page show: page finsihed, reload(from java)
         let mut page_manager = page_manager.lock().unwrap();

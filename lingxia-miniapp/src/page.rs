@@ -96,6 +96,10 @@ pub trait PageController: Send + Sync + Any {
     /// Clears the page's cache and history
     fn clear_browsing_data(&self);
 
+    /// Enable or disable WebView debugging
+    /// Returns true if the operation was successful
+    fn set_devtools(&self, enabled: bool) -> bool;
+
     /// Get the Any trait object for downcasting
     fn as_any(&self) -> &dyn Any;
 }

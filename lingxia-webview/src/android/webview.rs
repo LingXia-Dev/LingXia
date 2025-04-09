@@ -39,18 +39,6 @@ impl WebView {
         &self.java_webview
     }
 
-    pub fn set_devtools(&self, enabled: bool) -> Result<(), Box<dyn Error>> {
-        let mut env = get_env()?;
-        let webview_class = env.find_class("android/webkit/WebView")?;
-        env.call_static_method(
-            webview_class,
-            "setWebContentsDebuggingEnabled",
-            "(Z)V",
-            &[JValue::Bool(enabled as u8)],
-        )?;
-        Ok(())
-    }
-
     fn destroy_webview(&self) {
         if let Ok(mut env) = get_env() {
             let _ = env.call_method(self.java_webview.as_obj(), "destroy", "()V", &[]);
@@ -120,6 +108,22 @@ impl PageController for WebView {
         let Ok(mut env) = get_env() else { return };
 
         let _ = env.call_method(self.java_webview.as_obj(), "clearBrowsingData", "()V", &[]);
+    }
+
+    fn set_devtools(&self, enabled: bool) -> bool {
+        let Ok(mut env) = get_env() else { return false };
+
+        match env.find_class("android/webkit/WebView") {
+            Ok(webview_class) => env
+                .call_static_method(
+                    webview_class,
+                    "setWebContentsDebuggingEnabled",
+                    "(Z)V",
+                    &[JValue::Bool(enabled as u8)],
+                )
+                .is_ok(),
+            Err(_) => false,
+        }
     }
 
     fn as_any(&self) -> &dyn Any {
