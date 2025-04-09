@@ -120,13 +120,8 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnMiniAppDestroy(
     _env: JNIEnv,
     _class: JClass,
 ) -> jint {
-    match WebViewManager::destroy_all_webviews() {
-        Ok(_) => 0,
-        Err(e) => {
-            log::error!("Failed to destroy WebViews: {:?}", e);
-            -1
-        }
-    }
+    miniapp::exit();
+    0
 }
 
 #[unsafe(no_mangle)]

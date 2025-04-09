@@ -32,6 +32,10 @@ pub fn init(asset_reader: Box<dyn AssetReader + Send + Sync>, cache_dir: String,
     });
 }
 
+/// called when MiniApp system destroied by App
+/// currently, it's planceholder
+pub fn exit() {}
+
 /// Returns a reference to the initialized MiniApp.
 /// Panics if MiniApp has not been initialized.
 pub fn get() -> &'static Mutex<MiniApp> {
