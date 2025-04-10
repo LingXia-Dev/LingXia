@@ -1,3 +1,4 @@
+mod log;
 mod miniapp;
 mod page;
 

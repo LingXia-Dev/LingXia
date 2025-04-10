@@ -1,10 +1,10 @@
-use crate::AssetReader;
+use crate::MiniAppRuntime;
 use http::{Request, Response, StatusCode};
 
 const NOT_FOUND_HTML: &str = include_str!("404.html");
 
 pub fn lingxia_handler(
-    asset_reader: &(dyn AssetReader + Send + Sync),
+    platform: &(dyn MiniAppRuntime + Send + Sync),
     req: Request<Vec<u8>>,
 ) -> Response<Vec<u8>> {
     let uri = req.uri();
@@ -19,8 +19,8 @@ pub fn lingxia_handler(
         format!("home/{}", path)
     };
 
-    // Get the stored asset manager and read the file
-    match asset_reader.read_asset(&asset_path) {
+    // Read the asset using the platform implementation
+    match platform.read_asset(&asset_path) {
         Ok(data) => {
             // Determine MIME type based on file extension
             let mime_type = if asset_path.ends_with(".html") {
@@ -47,4 +47,3 @@ pub fn lingxia_handler(
             .unwrap(),
     }
 }
-

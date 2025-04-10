@@ -7,25 +7,46 @@ use std::sync::OnceLock;
 use std::time::Instant;
 
 use crate::page::{self, PageController};
+use crate::{error, info};
 
 mod scheme;
 
 // Global instance of MiniApp
 static MINI_APP: OnceLock<Mutex<MiniApp>> = OnceLock::new();
 
-/// Initializes the MiniApp with the given AssetReader, cache directory, and data directory.
-/// If MiniApp is already initialized, this function does nothing.
-///
-/// # Arguments
-/// * `asset_reader` - The asset reader implementation
-/// * `cache_dir` - Path to the cache directory of App
-/// * `data_dir` - Path to the data directory of App
-pub fn init(asset_reader: Box<dyn AssetReader + Send + Sync>, cache_dir: String, data_dir: String) {
+/// Platform-specific capabilities for MiniApp
+pub trait MiniAppRuntime: Send + Sync {
+    /// Read asset file from platform-specific location
+    fn read_asset(&self, path: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>>;
+
+    /// Open mini app in platform-specific way
+    fn open_miniapp(&self, app_id: &str, path: &str) -> Result<(), Box<dyn std::error::Error>>;
+
+    /// Log message to platform-specific logging system
+    fn log(&self, level: LogLevel, message: &str);
+
+    /// Get platform-specific data directory
+    fn get_data_dir(&self) -> Option<String>;
+
+    /// Get platform-specific cache directory
+    fn get_cache_dir(&self) -> Option<String>;
+}
+
+/// Log levels that match Android/iOS common levels
+#[derive(Debug, Clone, Copy)]
+pub enum LogLevel {
+    Verbose,
+    Debug,
+    Info,
+    Warn,
+    Error,
+}
+
+/// Initializes the MiniApp with the given platform implementation
+pub fn init(platform: Box<dyn MiniAppRuntime>) {
     MINI_APP.get_or_init(|| {
         Mutex::new(MiniApp {
-            asset_reader,
-            cache_dir,
-            data_dir,
+            platform,
             apps: HashMap::new(),
             last_active_times: HashMap::new(),
             max_apps: 5,
@@ -44,9 +65,7 @@ pub fn get() -> &'static Mutex<MiniApp> {
 }
 
 pub struct MiniApp {
-    asset_reader: Box<dyn AssetReader + Send + Sync>,
-    cache_dir: String,
-    data_dir: String,
+    platform: Box<dyn MiniAppRuntime>,
     apps: HashMap<String, Arc<Mutex<page::PageManager>>>, // appid -> PageManager
     last_active_times: HashMap<String, Instant>,          // appid -> last active time
     max_apps: usize,                                      // Maximum number of apps allowed
@@ -158,11 +177,16 @@ impl MiniApp {
     }
 
     /// Handles a postMessage from the page's JavaScript context
-    pub fn handle_post_message(&self, _appid: String, _path: String, msg: String) {
+    pub fn handle_post_message(&self, appid: String, _path: String, msg: String) {
+        info!(
+            appid,
+            "Handling message for WebView with appId {}: {}", appid, msg
+        );
+
         let message: Value = match serde_json::from_str(&msg) {
             Ok(v) => v,
             Err(e) => {
-                println!("Failed to parse message: {:?}", e);
+                error!(appid, "Failed to parse message: {}", e);
                 return;
             }
         };
@@ -171,16 +195,22 @@ impl MiniApp {
 
         match message_type {
             Some("OPEN_MINIAPP") => {
-                println!("Handling OPEN_MINIAPP message");
+                info!(appid, "Handling OPEN_MINIAPP message");
                 if let Some(data) = message.get("data") {
                     if let Some(app_id) = data.get("appId").and_then(Value::as_str) {
                         let path = data.get("path").and_then(Value::as_str).unwrap_or("");
-                        println!("Would open mini app: app_id={}, path={}", app_id, path);
+                        if let Err(e) = self.platform.open_miniapp(app_id, path) {
+                            error!(appid, "Failed to open miniapp: {}", e);
+                        }
                     }
                 }
             }
             _ => {
-                println!("Unknown message type: {:?}", message_type);
+                error!(
+                    appid,
+                    "Unknown message type: {}",
+                    message_type.unwrap_or("None")
+                );
             }
         }
     }
@@ -201,7 +231,7 @@ impl MiniApp {
 
         // Handle different schemes
         Some(match scheme {
-            "lingxia" => scheme::lingxia_handler(self.asset_reader.as_ref(), req),
+            "lingxia" => scheme::lingxia_handler(self.platform.as_ref(), req),
             _ => Response::builder()
                 .status(StatusCode::BAD_REQUEST)
                 .header("Content-Type", "text/plain")
@@ -224,10 +254,6 @@ impl MiniApp {
     pub fn on_page_show(&self, _appid: String, _path: String) {
         // ... implementation ...
     }
-}
-
-pub trait AssetReader: Send + Sync {
-    fn read_asset(&self, path: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>>;
 }
 
 impl MiniApp {
