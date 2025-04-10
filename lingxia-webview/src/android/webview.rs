@@ -1,11 +1,9 @@
 use crate::android::get_env;
 use jni::objects::{GlobalRef, JObject, JValue};
+#[cfg(debug_assertions)]
 use log::info;
 use miniapp::PageController;
 use std::any::Any;
-use std::error::Error;
-
-const CLASS_MINIAPP: &str = "com/lingxia/miniapp/MiniApp";
 
 pub struct WebView {
     #[cfg(debug_assertions)]
@@ -136,31 +134,5 @@ impl PageController for WebView {
 
     fn as_any(&self) -> &dyn Any {
         self
-    }
-}
-
-pub struct WebViewManager;
-
-impl WebViewManager {
-    /// Opens a mini app in a new activity
-    pub fn open_mini_app(app_id: &str, path: &str) -> Result<(), Box<dyn Error>> {
-        info!("Opening mini app with appId: {}, path: {}", app_id, path);
-        let mut env = get_env()?;
-
-        let miniapp_class = env.find_class(CLASS_MINIAPP)?;
-        let app_id_jstring = env.new_string(app_id)?.into();
-        let path_jstring = env.new_string(path)?.into();
-
-        env.call_static_method(
-            miniapp_class,
-            "openMiniAppInNewActivity",
-            "(Ljava/lang/String;Ljava/lang/String;)V",
-            &[
-                JValue::Object(&app_id_jstring),
-                JValue::Object(&path_jstring),
-            ],
-        )?;
-
-        Ok(())
     }
 }

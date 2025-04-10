@@ -1,4 +1,4 @@
-use super::asset::{ASSET_MANAGER, AssetManager};
+use super::platform::Platform;
 use super::webview::WebView;
 use android_logger::Config;
 use http;
@@ -9,9 +9,12 @@ use jni::sys::jint;
 use jni::{JNIEnv, JavaVM};
 use log::{error, info};
 use serde_json;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, OnceLock};
 
 pub static JAVA_VM: OnceLock<Arc<JavaVM>> = OnceLock::new();
+
+/// Java class name for MiniApp
+pub(crate) const CLASS_MINIAPP: &str = "com/lingxia/miniapp/MiniApp";
 
 // Store the main thread's JNIEnv
 thread_local! {
@@ -81,26 +84,24 @@ pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeOnMiniAppInited(
     asset_manager: JObject,
 ) -> jint {
     // Get the native AAssetManager pointer from the passed Java object
-    let asset_manager_ptr = match AssetManager::from_java(
+    let data_dir = env.get_string(&data_dir).unwrap().into();
+    let cache_dir = env.get_string(&cache_dir).unwrap().into();
+
+    let platform = match Platform::from_java(
         env.get_native_interface() as *mut jni::sys::JNIEnv,
         asset_manager.as_raw(),
+        data_dir,
+        cache_dir,
     ) {
-        Ok(manager) => manager,
+        Ok(platform) => platform,
         Err(e) => {
-            error!("Failed to create AssetManager: {}", e);
+            error!("Failed to create Platform: {}", e);
             return -1;
         }
     };
 
-    // These paths always exist in Android
-    let cache_dir = env.get_string(&cache_dir).unwrap().into();
-    let data_dir = env.get_string(&data_dir).unwrap().into();
-
-    // Initialize the global ASSET_MANAGER
-    let _ = ASSET_MANAGER.set(Arc::new(Mutex::new(asset_manager_ptr.clone())));
-
     // Initialize MiniApp
-    miniapp::init(Box::new(asset_manager_ptr), cache_dir, data_dir);
+    miniapp::init(Box::new(platform));
 
     0
 }
