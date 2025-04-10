@@ -7,7 +7,6 @@ use std::sync::OnceLock;
 use std::time::Instant;
 
 use crate::page::{self, PageController};
-use crate::{error, info};
 
 mod scheme;
 
@@ -65,7 +64,7 @@ pub fn get() -> &'static Mutex<MiniApp> {
 }
 
 pub struct MiniApp {
-    platform: Box<dyn MiniAppRuntime>,
+    pub(crate) platform: Box<dyn MiniAppRuntime>,
     apps: HashMap<String, Arc<Mutex<page::PageManager>>>, // appid -> PageManager
     last_active_times: HashMap<String, Instant>,          // appid -> last active time
     max_apps: usize,                                      // Maximum number of apps allowed
@@ -178,15 +177,12 @@ impl MiniApp {
 
     /// Handles a postMessage from the page's JavaScript context
     pub fn handle_post_message(&self, appid: String, _path: String, msg: String) {
-        info!(
-            appid,
-            "Handling message for WebView with appId {}: {}", appid, msg
-        );
+        self.info(&appid, format!("Handling message for WebView: {}", msg));
 
         let message: Value = match serde_json::from_str(&msg) {
             Ok(v) => v,
             Err(e) => {
-                error!(appid, "Failed to parse message: {}", e);
+                self.error(&appid, format!("Failed to parse message: {}", e));
                 return;
             }
         };
@@ -195,21 +191,20 @@ impl MiniApp {
 
         match message_type {
             Some("OPEN_MINIAPP") => {
-                info!(appid, "Handling OPEN_MINIAPP message");
+                self.info(&appid, "Handling OPEN_MINIAPP message");
                 if let Some(data) = message.get("data") {
                     if let Some(app_id) = data.get("appId").and_then(Value::as_str) {
                         let path = data.get("path").and_then(Value::as_str).unwrap_or("");
                         if let Err(e) = self.platform.open_miniapp(app_id, path) {
-                            error!(appid, "Failed to open miniapp: {}", e);
+                            self.error(&appid, format!("Failed to open miniapp: {}", e));
                         }
                     }
                 }
             }
             _ => {
-                error!(
-                    appid,
-                    "Unknown message type: {}",
-                    message_type.unwrap_or("None")
+                self.error(
+                    &appid,
+                    format!("Unknown message type: {}", message_type.unwrap_or("None")),
                 );
             }
         }
@@ -251,8 +246,8 @@ impl MiniApp {
     }
 
     /// Called when the page showed in the view
-    pub fn on_page_show(&self, _appid: String, _path: String) {
-        // ... implementation ...
+    pub fn on_page_show(&self, appid: String, path: String) {
+        self.info(&appid, format!("Page show: {}", path));
     }
 }
 
