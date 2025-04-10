@@ -45,7 +45,7 @@ pub enum LogLevel {
 pub fn init(platform: Box<dyn MiniAppRuntime>) {
     MINI_APP.get_or_init(|| {
         Mutex::new(MiniApp {
-            platform,
+            runtime: platform,
             apps: HashMap::new(),
             last_active_times: HashMap::new(),
             max_apps: 5,
@@ -64,7 +64,7 @@ pub fn get() -> &'static Mutex<MiniApp> {
 }
 
 pub struct MiniApp {
-    pub(crate) platform: Box<dyn MiniAppRuntime>,
+    pub(crate) runtime: Box<dyn MiniAppRuntime>,
     apps: HashMap<String, Arc<Mutex<page::PageManager>>>, // appid -> PageManager
     last_active_times: HashMap<String, Instant>,          // appid -> last active time
     max_apps: usize,                                      // Maximum number of apps allowed
@@ -195,7 +195,7 @@ impl MiniApp {
                 if let Some(data) = message.get("data") {
                     if let Some(app_id) = data.get("appId").and_then(Value::as_str) {
                         let path = data.get("path").and_then(Value::as_str).unwrap_or("");
-                        if let Err(e) = self.platform.open_miniapp(app_id, path) {
+                        if let Err(e) = self.runtime.open_miniapp(app_id, path) {
                             self.error(&appid, format!("Failed to open miniapp: {}", e));
                         }
                     }
@@ -226,7 +226,7 @@ impl MiniApp {
 
         // Handle different schemes
         Some(match scheme {
-            "lingxia" => scheme::lingxia_handler(self.platform.as_ref(), req),
+            "lingxia" => scheme::lingxia_handler(self.runtime.as_ref(), req),
             _ => Response::builder()
                 .status(StatusCode::BAD_REQUEST)
                 .header("Content-Type", "text/plain")

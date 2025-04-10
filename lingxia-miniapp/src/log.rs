@@ -2,7 +2,7 @@ use crate::miniapp::{LogLevel, MiniApp};
 
 impl MiniApp {
     fn log(&self, level: LogLevel, appid: impl AsRef<str>, message: &str) {
-        self.platform
+        self.runtime
             .log(level, &format!("[{}] {}", appid.as_ref(), message))
     }
 
@@ -26,4 +26,3 @@ impl MiniApp {
         self.log(LogLevel::Error, appid, &message.to_string())
     }
 }
-
