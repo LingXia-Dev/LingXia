@@ -90,8 +90,8 @@ pub trait PageController: Send + Sync + Any {
     fn setup_ua(&self, ua: &str);
 
     /// Evaluates JavaScript in the page context
-    /// Returns the result of the evaluation as a string
-    fn evaluate_javascript(&self, js: String) -> Option<String>;
+    /// Returns Ok(()) if successful, Err with the error if failed
+    fn evaluate_javascript(&self, js: &str) -> Result<(), Box<dyn std::error::Error>>;
 
     /// Clears the page's cache and history
     fn clear_browsing_data(&self);

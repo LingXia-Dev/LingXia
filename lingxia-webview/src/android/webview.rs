@@ -85,29 +85,21 @@ impl PageController for WebView {
         }
     }
 
-    fn evaluate_javascript(&self, js: String) -> Option<String> {
-        let mut env = match get_env() {
-            Ok(env) => env,
-            Err(_) => return None,
-        };
+    fn evaluate_javascript(&self, js: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let mut env = get_env()?;
 
-        match env.new_string(&js) {
-            Ok(script_string) => {
-                match env.call_method(
-                    self.java_webview.as_obj(),
-                    "evaluateJavascript",
-                    "(Ljava/lang/String;Landroid/webkit/ValueCallback;)V",
-                    &[
-                        JValue::Object(&script_string),
-                        JValue::Object(&JObject::null()),
-                    ],
-                ) {
-                    Ok(_) => Some(String::new()),
-                    Err(_) => None,
-                }
-            }
-            Err(_) => None,
-        }
+        let script_string = env.new_string(js)?;
+        env.call_method(
+            self.java_webview.as_obj(),
+            "evaluateJavascript",
+            "(Ljava/lang/String;Landroid/webkit/ValueCallback;)V",
+            &[
+                JValue::Object(&script_string),
+                JValue::Object(&JObject::null()),
+            ],
+        )?;
+
+        Ok(())
     }
 
     fn clear_browsing_data(&self) {
