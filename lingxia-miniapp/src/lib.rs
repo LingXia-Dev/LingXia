@@ -1,4 +1,4 @@
-mod log;
+pub mod log;
 mod miniapp;
 mod page;
 

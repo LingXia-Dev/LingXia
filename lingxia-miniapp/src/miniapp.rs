@@ -7,6 +7,7 @@ use std::sync::OnceLock;
 use std::time::Instant;
 
 use crate::page::{self, PageController};
+use crate::log::{Logging, LogLevel};
 
 mod scheme;
 
@@ -29,16 +30,6 @@ pub trait MiniAppRuntime: Send + Sync {
 
     /// Get platform-specific cache directory
     fn get_cache_dir(&self) -> Option<String>;
-}
-
-/// Log levels that match Android/iOS common levels
-#[derive(Debug, Clone, Copy)]
-pub enum LogLevel {
-    Verbose,
-    Debug,
-    Info,
-    Warn,
-    Error,
 }
 
 /// Initializes the MiniApp with the given platform implementation
