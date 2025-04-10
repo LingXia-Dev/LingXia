@@ -209,18 +209,16 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeShouldOverrideUrlL
     mut env: JNIEnv,
     _class: JClass,
     app_id: JString,
-    path: JString,
     url: JString,
 ) -> jint {
     let app_id: String = env.get_string(&app_id).unwrap().into();
-    let path: String = env.get_string(&path).unwrap().into();
     let url: String = env.get_string(&url).unwrap().into();
 
     // Get the miniapp instance and check if we should override the URL
     miniapp::get()
         .lock()
         .map(|miniapp| {
-            if miniapp.should_override_url_loading(app_id, path, url) {
+            if miniapp.should_override_url_loading(app_id, url) {
                 1
             } else {
                 0

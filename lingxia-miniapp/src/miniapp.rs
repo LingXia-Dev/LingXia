@@ -140,29 +140,24 @@ impl MiniApp {
     ///
     /// # Arguments
     /// * `appid` - The identifier of the mini application
-    /// * `path` - The current path of mini app
     /// * `url` - The URL being requested
     ///
     /// # Returns
     /// * `true` - To intercept and handle the URL loading
     /// * `false` - To allow the page to continue loading the URL
-    pub fn should_override_url_loading(&self, _appid: String, _path: String, url: String) -> bool {
+    pub fn should_override_url_loading(&self, _appid: String, url: String) -> bool {
         // Extract scheme from URL
         let scheme = if let Some(scheme_end) = url.find("://") {
             &url[..scheme_end]
         } else {
-            ""
+            return false; // Invalid URL, don't override
         };
 
         // Handle lingxia scheme or block non-https schemes
-        if scheme == "lingxia" {
-            // println!("Intercepting lingxia scheme");
-            true
-        } else if scheme != "https" {
-            // println!("Blocking disallowed scheme: {}", scheme);
-            true
-        } else {
-            false
+        match scheme {
+            "lingxia" => true, // Always intercept lingxia scheme
+            "https" => false,  // Allow http/https URLs
+            _ => true,         // Block all other schemes
         }
     }
 
