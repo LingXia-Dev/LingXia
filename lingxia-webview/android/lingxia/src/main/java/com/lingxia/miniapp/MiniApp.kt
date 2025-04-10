@@ -87,19 +87,21 @@ class MiniApp private constructor(private val context: Context) {
         }
 
         @JvmStatic
-        fun openMiniAppInNewActivity(appId: String, path: String) {
+        fun openMiniAppInNewActivity(appId: String, path: String, tabBarConfig: String? = null) {
             val instance = getInstance()
-            instance.openInNewActivity(appId, path)
+            instance.openInNewActivity(appId, path, tabBarConfig)
         }
     }
 
-    private fun openInNewActivity(appId: String, path: String) {
-        Log.d(TAG, "Opening MiniApp in new activity: $appId, path: $path")
+    private fun openInNewActivity(appId: String, path: String, tabBarConfig: String? = null) {
         val intent = Intent(context, MiniAppActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             putExtra(MiniAppActivity.EXTRA_APP_ID, appId)
             putExtra(MiniAppActivity.EXTRA_PATH, path)
+            tabBarConfig?.let {
+                putExtra(MiniAppActivity.EXTRA_TAB_BAR_CONFIG, it)
+            }
         }
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         context.startActivity(intent)
     }
 
