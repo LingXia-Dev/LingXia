@@ -248,7 +248,16 @@ class WebView @JvmOverloads constructor(
         // Set WebChromeClient
         webChromeClient = object : WebChromeClient() {
             override fun onConsoleMessage(message: ConsoleMessage): Boolean {
-                Log.d(TAG, "${message.message()} -- From line ${message.lineNumber()} of ${message.sourceId()}")
+                val level = when (message.messageLevel()) {
+                    ConsoleMessage.MessageLevel.TIP -> 2      // VERBOSE
+                    ConsoleMessage.MessageLevel.DEBUG -> 3    // DEBUG
+                    ConsoleMessage.MessageLevel.LOG -> 4      // INFO
+                    ConsoleMessage.MessageLevel.WARNING -> 5  // WARN
+                    ConsoleMessage.MessageLevel.ERROR -> 6    // ERROR
+                    else -> 4  // Default to INFO
+                }
+
+                nativeOnConsoleMessage(appId ?: return true, level, message.message())
                 return true
             }
 
@@ -560,4 +569,5 @@ class WebView @JvmOverloads constructor(
         method: String,
         headers: String
     ): WebResourceResponseData?
+    private external fun nativeOnConsoleMessage(appId: String, level: Int, message: String):Int
 }

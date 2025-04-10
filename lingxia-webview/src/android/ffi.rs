@@ -8,6 +8,7 @@ use jni::objects::{JClass, JObject, JString};
 use jni::sys::jint;
 use jni::{JNIEnv, JavaVM};
 use log::{error, info};
+use miniapp::log::{LogLevel, LogTag, Logging};
 use serde_json;
 use std::sync::{Arc, OnceLock};
 
@@ -441,4 +442,30 @@ pub extern "system" fn Java_com_lingxia_miniapp_MiniAppActivity_nativeOnMiniAppH
         miniapp.on_miniapp_hidden(app_id);
     };
     0
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnConsoleMessage(
+    mut env: JNIEnv,
+    _class: JClass,
+    app_id: JString,
+    level: jint,
+    message: JString,
+) -> jint {
+    let app_id: String = env.get_string(&app_id).unwrap().into();
+    let message: String = env.get_string(&message).unwrap().into();
+
+    if let Ok(miniapp) = miniapp::get().lock() {
+        match level {
+            2 => miniapp.log(LogLevel::Verbose, &app_id, LogTag::WebViewConsole, message), // VERBOSE
+            3 => miniapp.log(LogLevel::Debug, &app_id, LogTag::WebViewConsole, message),   // DEBUG
+            4 => miniapp.log(LogLevel::Info, &app_id, LogTag::WebViewConsole, message),    // INFO
+            5 => miniapp.log(LogLevel::Warn, &app_id, LogTag::WebViewConsole, message),    // WARN
+            6 => miniapp.log(LogLevel::Error, &app_id, LogTag::WebViewConsole, message),   // ERROR
+            _ => miniapp.log(LogLevel::Info, &app_id, LogTag::WebViewConsole, message), // Default to INFO
+        }
+        1
+    } else {
+        0
+    }
 }

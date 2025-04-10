@@ -1,9 +1,8 @@
-use crate::android::CLASS_MINIAPP;
-use crate::android::get_env;
+use crate::android::{CLASS_MINIAPP, get_env};
 use jni::objects::JValue;
 use jni::sys::{JNIEnv, jobject};
 use log::info;
-use miniapp::LogLevel;
+use miniapp::log::LogLevel;
 use miniapp::MiniAppRuntime;
 use ndk_sys;
 
