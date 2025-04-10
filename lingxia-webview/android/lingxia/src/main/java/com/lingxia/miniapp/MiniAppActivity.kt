@@ -22,6 +22,8 @@ class MiniAppActivity : Activity() {
         private const val TAG = "LingXia.WebView"
         const val EXTRA_APP_ID = "appId"
         const val EXTRA_PATH = "path"
+        const val EXTRA_TAB_BAR_CONFIG = "tabBarConfig"
+        private const val DEFAULT_TAB_BAR_SIZE_DP = 56
 
         private var lastWebView: WeakReference<com.lingxia.miniapp.WebView>? = null
 
@@ -33,6 +35,7 @@ class MiniAppActivity : Activity() {
     private var webView: com.lingxia.miniapp.WebView? = null
     private lateinit var rootContainer: FrameLayout
     private lateinit var webViewContainer: FrameLayout
+    private var tabBar: TabBar? = null
     private var isDestroyed = false
     private var pendingWebViewSetup = false
 
@@ -61,63 +64,123 @@ class MiniAppActivity : Activity() {
 
             Log.d(TAG, "Creating WebView for appId: $appId, path: $path")
 
-            // Create root container
-            rootContainer = FrameLayout(this).apply {
-                layoutParams = ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT
-                )
-            }
-            setContentView(rootContainer)
+            // Create and setup layout containers
+            setupContainers()
 
-            // Create WebView container
-            webViewContainer = FrameLayout(this).apply {
-                layoutParams = FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT
-                )
-            }
-            rootContainer.addView(webViewContainer)
+            // Setup TabBar if config exists
+            setupTabBar(intent.getStringExtra(EXTRA_TAB_BAR_CONFIG))
 
             // Add capsule button
             addCapsuleButton()
 
-            // Try to get existing WebView, create new one if not available
-            val existingWebView = com.lingxia.miniapp.WebView.nativeGetExistingWebView(appId, path)
-            if (existingWebView != null) {
-                Log.d(TAG, "Reusing existing WebView for appId: $appId")
-                // Remove from previous parent view
-                (existingWebView.parent as? ViewGroup)?.removeView(existingWebView)
+            // Setup WebView
+            setupWebViewContent(appId, path)
 
-                // If this is the last used WebView, wait a moment before setting up
-                if (lastWebView?.get() == existingWebView) {
-                    pendingWebViewSetup = true
-                    webViewContainer.postDelayed({
-                        if (!isDestroyed) {
-                            setupWebView(existingWebView, path, false)
-                            pendingWebViewSetup = false
-                        }
-                    }, 100)
-                } else {
-                    setupWebView(existingWebView, path, false)
-                }
-                webView = existingWebView
-            } else {
-                Log.d(TAG, "Creating new WebView for appId: $appId")
-                webView = com.lingxia.miniapp.WebView(this).apply {
-                    handleWebViewCreated(appId, path)
-                    setupWebView(this, null, true)
-                }
-            }
-
-            // Update last used WebView
-            webView?.let { view ->
-                lastWebView = WeakReference(view)
-            }
         } catch (e: Exception) {
             Log.e(TAG, "Error in onCreate: ${e.message}")
-            e.printStackTrace()
             finish()
+        }
+    }
+
+    private fun setupContainers() {
+        // Create root container
+        rootContainer = FrameLayout(this).apply {
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        }
+        setContentView(rootContainer)
+
+        // Create WebView container
+        webViewContainer = FrameLayout(this).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        }
+        rootContainer.addView(webViewContainer)
+    }
+
+    private fun setupTabBar(configJson: String?) {
+        if (configJson.isNullOrEmpty()) {
+            return
+        }
+
+        try {
+            val config = TabBarConfig.fromJson(configJson)
+            if (config == null) {
+                Log.d(TAG, "Invalid or insufficient TabBar config")
+                return
+            }
+
+            // Create and add TabBar
+            tabBar = TabBar(this).apply {
+                layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    (DEFAULT_TAB_BAR_SIZE_DP * resources.displayMetrics.density).toInt()
+                ).apply {
+                    gravity = when (config.position) {
+                        TabBarConfig.Position.TOP -> Gravity.TOP
+                        TabBarConfig.Position.BOTTOM -> Gravity.BOTTOM
+                    }
+                }
+                setConfig(config)
+            }
+            rootContainer.addView(tabBar)
+
+            // Update WebView container margins based on TabBar position
+            (webViewContainer.layoutParams as FrameLayout.LayoutParams).apply {
+                when (config.position) {
+                    TabBarConfig.Position.TOP -> {
+                        topMargin = (DEFAULT_TAB_BAR_SIZE_DP * resources.displayMetrics.density).toInt()
+                        bottomMargin = 0
+                    }
+                    TabBarConfig.Position.BOTTOM -> {
+                        topMargin = 0
+                        bottomMargin = (DEFAULT_TAB_BAR_SIZE_DP * resources.displayMetrics.density).toInt()
+                    }
+
+                }
+            }
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to setup TabBar: ${e.message}")
+        }
+    }
+
+    private fun setupWebViewContent(appId: String, path: String) {
+        // Try to get existing WebView, create new one if not available
+        val existingWebView = com.lingxia.miniapp.WebView.nativeGetExistingWebView(appId, path)
+        if (existingWebView != null) {
+            Log.d(TAG, "Reusing existing WebView for appId: $appId")
+            // Remove from previous parent view
+            (existingWebView.parent as? ViewGroup)?.removeView(existingWebView)
+
+            // If this is the last used WebView, wait a moment before setting up
+            if (lastWebView?.get() == existingWebView) {
+                pendingWebViewSetup = true
+                webViewContainer.postDelayed({
+                    if (!isDestroyed) {
+                        setupWebView(existingWebView, path, false)
+                        pendingWebViewSetup = false
+                    }
+                }, 100)
+            } else {
+                setupWebView(existingWebView, path, false)
+            }
+            webView = existingWebView
+        } else {
+            Log.d(TAG, "Creating new WebView for appId: $appId")
+            webView = com.lingxia.miniapp.WebView(this).apply {
+                handleWebViewCreated(appId, path)
+                setupWebView(this, null, true)
+            }
+        }
+
+        // Update last used WebView
+        webView?.let { view ->
+            lastWebView = WeakReference(view)
         }
     }
 
