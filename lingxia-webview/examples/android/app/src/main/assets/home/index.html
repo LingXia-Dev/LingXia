@@ -65,7 +65,7 @@
                         }
                     };
                     console.log('Message to send:', JSON.stringify(message));
-                    window.lingxia.postMessage(JSON.stringify(message));
+                    window.lingxia.postMessage(message);
                 } catch (e) {
                     console.error('Error sending postMessage:', e);
                     console.error('Error stack:', e.stack);

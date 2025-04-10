@@ -31,6 +31,13 @@ pub trait MiniAppRuntime: Send + Sync {
 
     /// Get platform-specific cache directory
     fn get_cache_dir(&self) -> Option<String>;
+
+    /// Post message to page of MiniApp
+    fn post_message(
+        &self,
+        controller: &dyn PageController,
+        message: &str,
+    ) -> Result<(), Box<dyn std::error::Error>>;
 }
 
 /// Initializes the MiniApp with the given platform implementation
@@ -121,7 +128,6 @@ impl MiniApp {
         pc.set_devtools(true);
 
         // Initialize or update the page for the given path
-        // update: on_page_show, on page show: page finsihed, reload(from java)
         let mut page_manager = page_manager.lock().unwrap();
         page_manager.mark_active(&path);
         page_manager.push_page_controller(path, pc);
@@ -175,9 +181,13 @@ impl MiniApp {
         };
 
         let message_type = message.get("type").and_then(Value::as_str);
+        if message_type.is_none() {
+            self.error(&appid, "Message type is missing");
+            return;
+        }
 
-        match message_type {
-            Some("OPEN_MINIAPP") => {
+        match message_type.unwrap() {
+            "OPEN_MINIAPP" => {
                 self.info(&appid, "Handling OPEN_MINIAPP message");
                 if let Some(data) = message.get("data") {
                     if let Some(app_id) = data.get("appId").and_then(Value::as_str) {
@@ -188,11 +198,8 @@ impl MiniApp {
                     }
                 }
             }
-            _ => {
-                self.error(
-                    &appid,
-                    format!("Unknown message type: {}", message_type.unwrap_or("None")),
-                );
+            unknown_type => {
+                self.error(&appid, format!("Unknown message type: {}", unknown_type));
             }
         }
     }

@@ -1,9 +1,11 @@
+use super::webview::WebView;
 use crate::android::{CLASS_MINIAPP, get_env};
 use jni::objects::JValue;
 use jni::sys::{JNIEnv, jobject};
 use log::info;
-use miniapp::log::LogLevel;
 use miniapp::MiniAppRuntime;
+use miniapp::PageController;
+use miniapp::log::LogLevel;
 use ndk_sys;
 
 // Platform implementation for Android
@@ -106,5 +108,24 @@ impl MiniAppRuntime for Platform {
 
     fn get_cache_dir(&self) -> Option<String> {
         Some(self.cache_dir.clone())
+    }
+
+    fn post_message(
+        &self,
+        controller: &dyn PageController,
+        message: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(webview) = controller.as_any().downcast_ref::<WebView>() {
+            let mut env = get_env()?;
+            env.call_method(
+                webview.get_java_webview().as_obj(),
+                "postMessageToWebView",
+                "(Ljava/lang/String;)V",
+                &[JValue::Object(&env.new_string(message)?.into())],
+            )?;
+            Ok(())
+        } else {
+            Err("Controller is not a WebView".into())
+        }
     }
 }

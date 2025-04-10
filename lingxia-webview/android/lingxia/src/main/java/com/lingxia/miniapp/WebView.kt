@@ -2,6 +2,7 @@ package com.lingxia.miniapp
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.util.AttributeSet
@@ -10,7 +11,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.webkit.ConsoleMessage
-import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -18,12 +18,13 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.webkit.WebResourceResponse
+import android.webkit.WebMessage
+import android.webkit.WebMessagePort
 import android.widget.FrameLayout
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
 
 private const val TAG = "LingXia.WebView"
-private const val BRIDGE_NAME = "lingxia"
 
 data class WebResourceResponseData(
     val mimeType: String,
@@ -202,6 +203,7 @@ class WebView @JvmOverloads constructor(
     private var savedScale: Float = 1.0f
     private var savedUrl: String? = null
     private var showEventSent = false  // Track if we've sent a show event in this session
+    private var messageChannel: WebMessagePort? = null
 
     companion object {
         private const val TAG = "WebView"
@@ -224,7 +226,7 @@ class WebView @JvmOverloads constructor(
         applyWebViewSettings()
         setDevToolsEnabled(config.enableDevTools)
         setupWebViewClients()
-        setupJavaScriptBridge()
+        setupMessageChannel()
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -289,6 +291,7 @@ class WebView @JvmOverloads constructor(
                 }
 
                 resetViewport()  // Reset viewport after page load
+                setupMessageChannel()  // Setup message channel after page load
                 nativeOnPageFinished(appId ?: return, currentPath ?: return)
 
                 // If page is loaded and attached to window, and we haven't sent PageShow yet
@@ -360,14 +363,30 @@ class WebView @JvmOverloads constructor(
         }
     }
 
-    private fun setupJavaScriptBridge() {
-        addJavascriptInterface(object {
-            @JavascriptInterface
-            fun postMessage(message: String) {
-                Log.d(TAG, "Message from WebView: $message")
-                nativeHandlePostMessage(appId ?: return, currentPath ?: return, message)
+    private fun setupMessageChannel() {
+        // Clean up existing channel if any
+        messageChannel?.close()
+
+        // Create new message channel
+        val ports = createWebMessageChannel()
+        messageChannel = ports[0]
+
+        // Set up native side message handler
+        messageChannel?.setWebMessageCallback(object : WebMessagePort.WebMessageCallback() {
+            override fun onMessage(port: WebMessagePort, message: WebMessage) {
+                nativeHandlePostMessage(appId ?: return, currentPath ?: return, message.data)
             }
-        }, BRIDGE_NAME)
+        })
+
+        // Transfer port2 to WebView after page is loaded
+        post {
+            val origin = url?.let { Uri.parse(it) } ?: Uri.EMPTY
+            postWebMessage(WebMessage(null, arrayOf(ports[1])), origin)
+        }
+    }
+
+    fun postMessageToWebView(message: String) {
+        messageChannel?.postMessage(WebMessage(message))
     }
 
     fun handleWebViewCreated(appId: String, path: String) {
@@ -466,15 +485,13 @@ class WebView @JvmOverloads constructor(
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         Log.d(TAG, "WebView attached to window")
-
-        // Do not call resume() here as it will be handled by:
-        // 1. MiniAppActivity.setupWebView
-        // 2. MiniAppActivity.onResume
-        // 3. onWindowVisibilityChanged when visibility becomes VISIBLE
+        setupMessageChannel()
     }
 
     override fun onDetachedFromWindow() {
         Log.d(TAG, "WebView detached from window")
+        messageChannel?.close()
+        messageChannel = null
         pause()
         super.onDetachedFromWindow()
     }
@@ -520,8 +537,9 @@ class WebView @JvmOverloads constructor(
             webViewClient = WebViewClient()
             webChromeClient = WebChromeClient()
 
-            // Remove JavaScript interfaces
-            removeJavascriptInterface(BRIDGE_NAME)
+            // Clean up message channel
+            messageChannel?.close()
+            messageChannel = null
 
             // Clear all data
             try {
