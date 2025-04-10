@@ -6,9 +6,10 @@ use std::sync::Mutex;
 use std::sync::OnceLock;
 use std::time::Instant;
 
+use crate::log::{LogLevel, Logging};
 use crate::page::{self, PageController};
-use crate::log::{Logging, LogLevel};
 
+mod ipc;
 mod scheme;
 
 // Global instance of MiniApp
@@ -222,8 +223,14 @@ impl MiniApp {
     }
 
     /// Called when the page starts loading
-    pub fn on_page_started(&self, _appid: String, _path: String) {
-        // ... implementation ...
+    pub fn on_page_started(&self, appid: String, path: String) {
+        // Find the corresponding controller
+        if let Some(controller) = self.find_page_controller(&appid, &path) {
+            // Get IPC script content and inject it
+            if let Err(e) = controller.evaluate_javascript(ipc::get_ipc_script()) {
+                self.error(&appid, e.to_string());
+            }
+        }
     }
 
     /// Called when the page finishes loading
