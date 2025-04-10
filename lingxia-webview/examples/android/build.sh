@@ -54,5 +54,17 @@ echo "Launching app..."
 adb shell am start -n "$APP_PACKAGE/$MAIN_ACTIVITY"
 
 # Show logs directly in terminal
-echo "Showing logs (Ctrl+C to stop)..."
-exec adb logcat -v time RustNative:I WebView:D *:S
+echo "Showing logs (will auto-stop after 1 minute)..."
+adb logcat -v time RustNative:I WebView:D *:S &
+LOGCAT_PID=$!
+
+# Wait for 1 minute then kill logcat and exit
+(
+    sleep 60
+    echo "Stopping logcat after 1 minute timeout..."
+    kill $LOGCAT_PID 2>/dev/null
+    exit 0
+) &
+
+# Wait for either the logcat process or the timeout
+wait $LOGCAT_PID
