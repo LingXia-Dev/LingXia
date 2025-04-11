@@ -21,7 +21,40 @@ pub trait MiniAppRuntime: Send + Sync {
     fn read_asset(&self, path: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>>;
 
     /// Open mini app in platform-specific way
-    fn open_miniapp(&self, app_id: &str, path: &str) -> Result<(), Box<dyn std::error::Error>>;
+    ///
+    /// # Arguments
+    /// * `app_id` - The identifier of the mini application to open
+    /// * `path` - The initial path to navigate to within the mini app
+    /// * `tab_bar_config` - Optional JSON string for TabBar configuration. If not provided or invalid, TabBar will not be shown.
+    ///   The configuration should follow this format:
+    ///   ```json
+    ///   {
+    ///     "position": "bottom" | "top",      // TabBar position, defaults to "bottom" if not specified
+    ///     "backgroundColor": "#FFFFFF",      // Background color in hex, defaults to white
+    ///     "selectedColor": "#1677FF",       // Selected item color in hex, defaults to tech blue
+    ///     "color": "#666666",              // Unselected item color in hex, defaults to gray
+    ///     "borderStyle": "#F0F0F0",        // Border color in hex, defaults to light gray
+    ///     "list": [                        // List of tab items, must contain 2-5 items
+    ///       {
+    ///         "pagePath": "pages/home/index",  // Page path to navigate to
+    ///         "text": "Home",                  // Tab text
+    ///         "iconPath": "icons/home.png",    // Icon path (relative to mini app root)
+    ///         "selectedIconPath": "icons/home_selected.png",  // Selected state icon path
+    ///         "selected": true                 // Whether this tab is selected by default
+    ///       }
+    ///     ]
+    ///   }
+    ///   ```
+    ///   Note: TabBar will not be shown if:
+    ///   1. tab_bar_config is not provided
+    ///   2. The configuration is invalid
+    ///   3. The number of items in the list is less than 2 or more than 5
+    fn open_miniapp(
+        &self,
+        app_id: &str,
+        path: &str,
+        tab_bar_config: Option<&str>,
+    ) -> Result<(), Box<dyn std::error::Error>>;
 
     /// Log message to platform-specific logging system
     fn log(&self, level: LogLevel, message: &str);
@@ -192,7 +225,10 @@ impl MiniApp {
                 if let Some(data) = message.get("data") {
                     if let Some(app_id) = data.get("appId").and_then(Value::as_str) {
                         let path = data.get("path").and_then(Value::as_str).unwrap_or("");
-                        if let Err(e) = self.runtime.open_miniapp(app_id, path) {
+                        if let Err(e) =
+                            self.runtime
+                                .open_miniapp(app_id, path, Some(DEFAULT_TAB_BAR_CONFIG))
+                        {
                             self.error(&appid, format!("Failed to open miniapp: {}", e));
                         }
                     }
@@ -267,3 +303,31 @@ impl MiniApp {
         }
     }
 }
+
+// Default TabBar configuration used for testing and development
+const DEFAULT_TAB_BAR_CONFIG: &str = r##"{
+    "backgroundColor": "#ffffff",
+    "selectedColor": "#1677ff",
+    "borderStyle": "#f0f0f0",
+    "list": [
+        {
+            "text": "首页",
+            "pagePath": "pages/home/index.html",
+            "iconPath": "assets/home.png",
+            "selectedIconPath": "assets/home_selected.png",
+            "selected": true
+        },
+        {
+            "text": "消息",
+            "pagePath": "pages/message/index.html",
+            "iconPath": "assets/message.png",
+            "selectedIconPath": "assets/message_selected.png"
+        },
+        {
+            "text": "我的",
+            "pagePath": "pages/profile/index.html",
+            "iconPath": "assets/profile.png",
+            "selectedIconPath": "assets/profile_selected.png"
+        }
+    ]
+}"##;
