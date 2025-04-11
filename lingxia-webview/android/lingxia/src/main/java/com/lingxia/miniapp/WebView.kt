@@ -344,7 +344,6 @@ class WebView @JvmOverloads constructor(
                 )
 
                 if (response == null) {
-                    Log.d(TAG, "No response from native layer, letting WebView handle the request")
                     return null
                 }
 
