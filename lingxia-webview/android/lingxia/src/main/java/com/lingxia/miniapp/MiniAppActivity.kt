@@ -126,12 +126,26 @@ class MiniAppActivity : Activity() {
                     }
                 }
                 setConfig(config)
+                
+                // Set visibility change listener
+                setOnVisibilityChangedListener { isVisible ->
+                    updateWebViewContainerMargins(config.position, isVisible)
+                }
             }
             rootContainer.addView(tabBar)
 
-            // Update WebView container margins based on TabBar position
-            (webViewContainer.layoutParams as FrameLayout.LayoutParams).apply {
-                when (config.position) {
+            // Initial margin update
+            updateWebViewContainerMargins(config.position, config.visible)
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to setup TabBar: ${e.message}")
+        }
+    }
+
+    private fun updateWebViewContainerMargins(position: TabBarConfig.Position, isTabBarVisible: Boolean) {
+        (webViewContainer.layoutParams as FrameLayout.LayoutParams).apply {
+            if (isTabBarVisible) {
+                when (position) {
                     TabBarConfig.Position.TOP -> {
                         topMargin = (DEFAULT_TAB_BAR_SIZE_DP * resources.displayMetrics.density).toInt()
                         bottomMargin = 0
@@ -140,12 +154,12 @@ class MiniAppActivity : Activity() {
                         topMargin = 0
                         bottomMargin = (DEFAULT_TAB_BAR_SIZE_DP * resources.displayMetrics.density).toInt()
                     }
-
                 }
+            } else {
+                topMargin = 0
+                bottomMargin = 0
             }
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to setup TabBar: ${e.message}")
+            webViewContainer.layoutParams = this
         }
     }
 

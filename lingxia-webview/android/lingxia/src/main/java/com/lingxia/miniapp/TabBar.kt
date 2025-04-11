@@ -12,7 +12,10 @@ import android.widget.TextView
 import java.io.File
 import android.util.Log
 import android.widget.FrameLayout
+import android.view.ContextThemeWrapper
 import org.json.JSONObject
+import com.google.android.material.badge.BadgeDrawable
+import com.google.android.material.badge.BadgeUtils
 
 data class TabBarConfig(
     val backgroundColor: Int? = null,            // Background color, default white
@@ -91,6 +94,19 @@ data class TabBarItem(
     val visible: Boolean = true          // Whether this tab is visible
 )
 
+// Unique view IDs for dot notification
+private const val RED_DOT_ID = 1001
+
+// Map to store active BadgeDrawables associated with their anchor views (iconContainers)
+private val badgeDrawables = mutableMapOf<View, BadgeDrawable>()
+
+/**
+ * TabBar component for mini apps, supporting:
+ * - Customizable tab items with icons and text
+ * - Top/bottom positioning
+ * - Notification badges (red dot and text)
+ * - Dynamic styling and content updates
+ */
 class TabBar(context: Context) : LinearLayout(context) {
     companion object {
         private const val TAG = "LingXia.TabBar"
@@ -99,15 +115,16 @@ class TabBar(context: Context) : LinearLayout(context) {
     private var config = TabBarConfig()
     private var items = listOf<TabBarItem>()
     private var tabViews = mutableListOf<LinearLayout>()
-    private var onTabSelectedListener: ((Int, String) -> Unit)? = null
     private var itemsContainer: LinearLayout? = null
     private var selectedPosition = -1
+    private var tabSelectedListener: ((Int, String) -> Unit)? = null
+    private var onVisibilityChangedListener: ((Boolean) -> Unit)? = null
 
     init {
         orientation = VERTICAL
         setBackgroundColor(config.backgroundColor ?: TabBarConfig.DEFAULT_BACKGROUND_COLOR)
         elevation = 8f * resources.displayMetrics.density
-        visibility = View.GONE  // 默认隐藏，直到设置有效的配置
+        visibility = View.GONE  // Hidden by default until valid config is set
 
         itemsContainer = LinearLayout(context).apply {
             orientation = HORIZONTAL
@@ -173,31 +190,63 @@ class TabBar(context: Context) : LinearLayout(context) {
         }
     }
 
-    fun setVisible(visible: Boolean) {
-        visibility = if (visible) View.VISIBLE else View.GONE
-        // Update WebView container margin when visibility changes
-        (parent as? FrameLayout)?.let { parentFrame ->
-            (parentFrame.getChildAt(0) as? FrameLayout)?.let { webViewContainer ->
-                webViewContainer.layoutParams = (webViewContainer.layoutParams as? FrameLayout.LayoutParams)?.apply {
-                    if (config.position == TabBarConfig.Position.TOP) {
-                        topMargin = if (visible) (56 * resources.displayMetrics.density).toInt() else 0
-                    } else {
-                        bottomMargin = if (visible) (56 * resources.displayMetrics.density).toInt() else 0
-                    }
-                }
+    /**
+     * Show the tabBar
+     * @param animation Whether to use animation
+     */
+    fun showTabBar(animation: Boolean = false) {
+        setVisible(true, animation)
+    }
+
+    /**
+     * Hide the tabBar
+     * @param animation Whether to use animation
+     */
+    fun hideTabBar(animation: Boolean = false) {
+        setVisible(false, animation)
+    }
+
+    /**
+     * Show or hide the TabBar
+     * @param visible Whether to show the TabBar
+     * @param animation Whether to use animation
+     */
+    fun setVisible(visible: Boolean, animation: Boolean = false) {
+        if (animation) {
+            if (visible) {
+                alpha = 0f
+                visibility = View.VISIBLE
+                animate().alpha(1f).setDuration(200).start()
+            } else {
+                animate().alpha(0f).setDuration(200).withEndAction {
+                    visibility = View.GONE
+                }.start()
             }
+        } else {
+            visibility = if (visible) View.VISIBLE else View.GONE
         }
     }
 
     fun setSelectedIndex(index: Int) {
         if (index in items.indices) {
             updateSelection(index)
-            onTabSelectedListener?.invoke(index, items[index].pagePath)
+            tabSelectedListener?.invoke(index, items[index].pagePath)
         }
     }
 
     fun setOnTabSelectedListener(listener: (Int, String) -> Unit) {
-        onTabSelectedListener = listener
+        tabSelectedListener = listener
+    }
+
+    fun setOnVisibilityChangedListener(listener: (Boolean) -> Unit) {
+        onVisibilityChangedListener = listener
+    }
+
+    override fun onVisibilityChanged(changedView: View, visibility: Int) {
+        super.onVisibilityChanged(changedView, visibility)
+        if (changedView == this) {
+            onVisibilityChangedListener?.invoke(visibility == View.VISIBLE)
+        }
     }
 
     private fun createTabItem(item: TabBarItem, width: Int): LinearLayout {
@@ -206,10 +255,24 @@ class TabBar(context: Context) : LinearLayout(context) {
             gravity = Gravity.CENTER
             layoutParams = LayoutParams(width, ViewGroup.LayoutParams.MATCH_PARENT)
 
+            // Create a FrameLayout to wrap the icon and allow for badge overlay
+            val iconContainer = FrameLayout(context).apply {
+                layoutParams = LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    gravity = Gravity.CENTER_HORIZONTAL
+                    topMargin = (4 * resources.displayMetrics.density).toInt()
+                    clipChildren = false
+                    clipToPadding = false
+                }
+            }
+
+            // Add icon to the container
             val iconSize = (28 * resources.displayMetrics.density).toInt()
             val icon = ImageView(context).apply {
-                layoutParams = LayoutParams(iconSize, iconSize).apply {
-                    topMargin = (4 * resources.displayMetrics.density).toInt()
+                layoutParams = FrameLayout.LayoutParams(iconSize, iconSize).apply {
+                    gravity = Gravity.CENTER
                 }
 
                 val iconDrawable = getIconDrawable(item, item.selected)
@@ -221,8 +284,10 @@ class TabBar(context: Context) : LinearLayout(context) {
                 }
                 scaleType = ImageView.ScaleType.FIT_CENTER
             }
-            addView(icon)
+            iconContainer.addView(icon)
+            addView(iconContainer)
 
+            // Add text label
             addView(TextView(context).apply {
                 text = item.text
                 setTextColor(if (item.selected)
@@ -242,12 +307,7 @@ class TabBar(context: Context) : LinearLayout(context) {
             setOnClickListener {
                 val clickedIndex = tabViews.indexOf(this)
                 if (clickedIndex >= 0) {
-                    if (clickedIndex == 1) {
-                        setVisible(false)
-                        return@setOnClickListener
-                    }
-                    updateSelection(clickedIndex)
-                    onTabSelectedListener?.invoke(clickedIndex, item.pagePath)
+                    onTabItemClick(clickedIndex)
                 }
             }
         }
@@ -325,14 +385,184 @@ class TabBar(context: Context) : LinearLayout(context) {
     private fun onTabItemClick(position: Int) {
         if (position == selectedPosition) return
 
-        // Hide TabBar when second item is clicked
-        if (position == 1) {
-            visibility = View.GONE
+        selectedPosition = position
+        updateSelection(position)
+
+        tabSelectedListener?.invoke(position, items[position].pagePath)
+    }
+
+    /**
+     * Show a red dot notification badge on a specific tab item
+     * @param index The index of the tab item (counting from left)
+     */
+    fun showTabBarRedDot(index: Int) {
+        if (index < 0 || index >= tabViews.size) {
+            Log.d(TAG, "Invalid index for red dot: $index, tabViews size: ${tabViews.size}")
             return
         }
 
-        selectedPosition = position
+        val tabView = tabViews[index]
+        val iconContainer = tabView.getChildAt(0) as? FrameLayout ?: return
+
+        // Remove existing red dot if any
+        iconContainer.findViewById<View>(RED_DOT_ID)?.let {
+            (it.parent as? ViewGroup)?.removeView(it)
+        }
+
+        val dotSize = (8 * resources.displayMetrics.density).toInt()
+        val redDot = View(context).apply {
+            id = RED_DOT_ID
+            layoutParams = FrameLayout.LayoutParams(dotSize, dotSize).apply {
+                gravity = Gravity.TOP or Gravity.END
+            }
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.RED)
+                setSize(dotSize, dotSize)
+            }
+            visibility = View.VISIBLE
+            setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+        }
+
+        iconContainer.addView(redDot)
+    }
+
+    /**
+     * Hide the red dot notification badge on a specific tab item
+     * @param index The index of the tab item (counting from left)
+     */
+    fun hideTabBarRedDot(index: Int) {
+        if (index < 0 || index >= tabViews.size) return
+        tabViews[index].findViewById<View>(RED_DOT_ID)?.visibility = View.GONE
+    }
+
+    /**
+     * Add a text badge to a specific tab item
+     * @param index The index of the tab item (counting from left)
+     * @param text The text to display, must not be empty
+     */
+    fun setTabBarBadge(index: Int, text: String) {
+        if (index < 0 || index >= tabViews.size || text.isEmpty()) {
+            Log.d(TAG, "Invalid index or empty text for badge: $index, text: '$text', tabViews size: ${tabViews.size}")
+            return
+        }
+
+        val tabView = tabViews[index]
+        // The anchor for the badge is the FrameLayout containing the icon
+        val iconContainer = tabView.getChildAt(0) as? FrameLayout ?: return
+
+        // Post the badge creation and attachment to the view's message queue
+        // This ensures it runs after the layout pass
+        iconContainer.post {
+            // Wrap the original context with a Material Components theme
+            val materialContext = ContextThemeWrapper(context, com.google.android.material.R.style.Theme_MaterialComponents_DayNight) // Or Theme_MaterialComponents_Light etc.
+
+            // Create and configure the BadgeDrawable inside the post block using the themed context
+            val badgeDrawable = BadgeDrawable.create(materialContext).apply {
+                backgroundColor = Color.RED
+                badgeTextColor = Color.WHITE
+                // Add a positive vertical offset to shift the badge down
+                verticalOffset = (6 * resources.displayMetrics.density).toInt()
+                // horizontalOffset = (1 * resources.displayMetrics.density).toInt() // Adjust horizontal if needed too
+                badgeGravity = BadgeDrawable.TOP_END // Position at top-end of the anchor
+
+                // Set text or number based on content
+                val number = text.toIntOrNull()
+                if (number != null) {
+                    this.number = number
+                } else {
+                    this.text = text // Use the 'text' property setter for non-numeric strings
+                }
+                isVisible = true
+            }
+
+            // Store the drawable for later removal (also inside post)
+            badgeDrawables[iconContainer] = badgeDrawable
+
+            // Attach the badge to the icon container (inside post)
+            BadgeUtils.attachBadgeDrawable(badgeDrawable, iconContainer)
+        }
+    }
+
+    /**
+     * Remove the text badge (BadgeDrawable) from a specific tab item
+     * @param index The index of the tab item (counting from left)
+     */
+    fun removeTabBarBadge(index: Int) {
+        if (index < 0 || index >= tabViews.size) return
+        val tabView = tabViews[index]
+        val iconContainer = tabView.getChildAt(0) as? FrameLayout ?: return
+
+        // Also post the removal to handle potential race conditions
+        iconContainer.post {
+            // Retrieve the stored BadgeDrawable for this container
+            badgeDrawables.remove(iconContainer)?.let { badgeToRemove ->
+                // Detach the specific BadgeDrawable from the icon container
+                BadgeUtils.detachBadgeDrawable(badgeToRemove, iconContainer)
+            }
+        }
+    }
+
+    /**
+     * Dynamically set the overall style of the TabBar
+     * @param color Default text color for tabs
+     * @param selectedColor Text color for selected tab
+     * @param backgroundColor Background color of the TabBar
+     * @param borderStyle Color of the TabBar's top border, only supports black/white
+     */
+    fun setTabBarStyle(
+        color: String? = null,
+        selectedColor: String? = null,
+        backgroundColor: String? = null,
+        borderStyle: String? = null
+    ) {
+        var updatedConfig = config
+        color?.let { updatedConfig = updatedConfig.copy(color = Color.parseColor(it)) }
+        selectedColor?.let { updatedConfig = updatedConfig.copy(selectedColor = Color.parseColor(it)) }
+        backgroundColor?.let {
+            val bgColor = Color.parseColor(it)
+            updatedConfig = updatedConfig.copy(backgroundColor = bgColor)
+            setBackgroundColor(bgColor)
+        }
+        borderStyle?.let {
+            val borderColor = when(it.lowercase()) {
+                "black" -> Color.BLACK
+                "white" -> Color.WHITE
+                else -> TabBarConfig.DEFAULT_BORDER_COLOR
+            }
+            updatedConfig = updatedConfig.copy(borderStyle = borderColor)
+        }
+
+        config = updatedConfig
         updateTabStates()
-        onTabSelectedListener?.invoke(position, items[position].pagePath)
+    }
+
+    /**
+     * Dynamically set the content of a specific tab item
+     * @param index The index of the tab item (counting from left)
+     * @param text Text label for the tab
+     * @param iconPath Path to the icon image
+     * @param selectedIconPath Path to the selected state icon image
+     */
+    fun setTabBarItem(
+        index: Int,
+        text: String? = null,
+        iconPath: String? = null,
+        selectedIconPath: String? = null
+    ) {
+        if (index < 0 || index >= items.size) return
+
+        val item = items[index]
+        val newItem = item.copy(
+            text = text ?: item.text,
+            iconPath = iconPath ?: item.iconPath,
+            selectedIconPath = selectedIconPath ?: item.selectedIconPath
+        )
+
+        items = items.toMutableList().apply {
+            set(index, newItem)
+        }
+
+        updateTabStates()
     }
 }
