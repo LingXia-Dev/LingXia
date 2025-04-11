@@ -496,8 +496,7 @@ class MiniAppActivity : Activity() {
         Log.d(TAG, "Perform WebView switch completed for path: $targetPath")
     }
 
-    // Public function for programmatic switching (e.g., from Rust via wx.switchTab)
-    // Renamed from switchToTab
+    // Public function for programmatic switching (e.g., from native side)
     fun switchTab(targetPath: String) {
 
         val targetIndex = tabBar?.findTabIndexByPath(targetPath) ?: -1

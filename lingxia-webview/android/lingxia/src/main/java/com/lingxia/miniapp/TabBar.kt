@@ -334,19 +334,24 @@ class TabBar(context: Context) : LinearLayout(context) {
     }
 
     private fun updateTabState(tabView: LinearLayout, item: TabBarItem, selected: Boolean) {
-        (tabView.getChildAt(0) as? ImageView)?.apply {
-            val iconDrawable = getIconDrawable(item, selected)
-            setImageDrawable(iconDrawable)
-            // Apply color filter only for default icon
-            if (iconDrawable is GradientDrawable) {
-                setColorFilter(if (selected)
-                    config.selectedColor ?: TabBarConfig.DEFAULT_SELECTED_COLOR
-                    else config.color ?: TabBarConfig.DEFAULT_UNSELECTED_COLOR)
-            } else {
-                colorFilter = null
+        // Update Icon inside the FrameLayout container
+        (tabView.getChildAt(0) as? FrameLayout)?.let { iconContainer ->
+            (iconContainer.getChildAt(0) as? ImageView)?.apply {
+                val iconDrawable = getIconDrawable(item, selected)
+                setImageDrawable(iconDrawable)
+                // Apply color filter only for default icon (GradientDrawable)
+                if (iconDrawable is GradientDrawable) {
+                    setColorFilter(if (selected)
+                        config.selectedColor ?: TabBarConfig.DEFAULT_SELECTED_COLOR
+                        else config.color ?: TabBarConfig.DEFAULT_UNSELECTED_COLOR)
+                } else {
+                    // Clear any previous filter if using a custom icon
+                    clearColorFilter()
+                }
             }
         }
 
+        // Update Text Color (This part was likely correct)
         (tabView.getChildAt(1) as? TextView)?.setTextColor(
             if (selected)
                 config.selectedColor ?: TabBarConfig.DEFAULT_SELECTED_COLOR
