@@ -110,9 +110,10 @@ private val badgeDrawables = mutableMapOf<View, BadgeDrawable>()
 class TabBar(context: Context) : LinearLayout(context) {
     companion object {
         private const val TAG = "LingXia.TabBar"
+        private const val DEFAULT_TAB_BAR_SIZE_DP = 56
     }
 
-    private var config = TabBarConfig()
+    internal var config = TabBarConfig()
     private var items = listOf<TabBarItem>()
     private var tabViews = mutableListOf<LinearLayout>()
     private var itemsContainer: LinearLayout? = null
@@ -130,7 +131,7 @@ class TabBar(context: Context) : LinearLayout(context) {
             orientation = HORIZONTAL
             layoutParams = LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
+                (DEFAULT_TAB_BAR_SIZE_DP * resources.displayMetrics.density).toInt() // Give container a default height
             )
             gravity = Gravity.CENTER
             setBackgroundColor(config.backgroundColor ?: TabBarConfig.DEFAULT_BACKGROUND_COLOR)
@@ -179,13 +180,16 @@ class TabBar(context: Context) : LinearLayout(context) {
             if (items.isNotEmpty()) {
                 val itemWidth = resources.displayMetrics.widthPixels / items.size
 
-                items.forEachIndexed { _, item ->
-                    createTabItem(item, itemWidth).also { view ->
+                // Find selected item index (default to 0 if none specified)
+                val initialSelectedIdx = items.indexOfFirst { it.selected }.takeIf { it >= 0 } ?: 0
+                selectedPosition = initialSelectedIdx
+
+                items.forEachIndexed { index, item ->
+                    createTabItem(item, index == selectedPosition, itemWidth).also { view ->
                         tabViews.add(view)
                         container.addView(view)
                     }
                 }
-                updateTabStates()
             }
         }
     }
@@ -228,9 +232,21 @@ class TabBar(context: Context) : LinearLayout(context) {
     }
 
     fun setSelectedIndex(index: Int, notifyListener: Boolean = true) {
-        if (index in items.indices && index != selectedPosition) {
+        if (index < 0 || index >= items.size || index >= tabViews.size) {
+            return
+        }
+
+        if (index != selectedPosition) {
+            val previousIndex = selectedPosition
             selectedPosition = index
-            updateSelection(index)
+
+            // Update UI state
+            if (previousIndex >= 0 && previousIndex < tabViews.size) {
+                updateTabState(tabViews[previousIndex], items[previousIndex], false)
+            }
+            updateTabState(tabViews[index], items[index], true)
+
+            // Optionally notify listener
             if (notifyListener) {
                 tabSelectedListener?.invoke(index, items[index].pagePath)
             }
@@ -252,7 +268,7 @@ class TabBar(context: Context) : LinearLayout(context) {
         }
     }
 
-    private fun createTabItem(item: TabBarItem, width: Int): LinearLayout {
+    private fun createTabItem(item: TabBarItem, isSelected: Boolean, width: Int): LinearLayout {
         return LinearLayout(context).apply {
             orientation = VERTICAL
             gravity = Gravity.CENTER
@@ -265,7 +281,7 @@ class TabBar(context: Context) : LinearLayout(context) {
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 ).apply {
                     gravity = Gravity.CENTER_HORIZONTAL
-                    topMargin = (4 * resources.displayMetrics.density).toInt()
+                    topMargin = (2 * resources.displayMetrics.density).toInt()
                     clipChildren = false
                     clipToPadding = false
                 }
@@ -278,10 +294,10 @@ class TabBar(context: Context) : LinearLayout(context) {
                     gravity = Gravity.CENTER
                 }
 
-                val iconDrawable = getIconDrawable(item, item.selected)
+                val iconDrawable = getIconDrawable(item, isSelected)
                 setImageDrawable(iconDrawable)
                 if (iconDrawable is GradientDrawable) {
-                    setColorFilter(if (item.selected)
+                    setColorFilter(if (isSelected)
                         config.selectedColor ?: TabBarConfig.DEFAULT_SELECTED_COLOR
                         else config.color ?: TabBarConfig.DEFAULT_UNSELECTED_COLOR)
                 }
@@ -293,7 +309,7 @@ class TabBar(context: Context) : LinearLayout(context) {
             // Add text label
             addView(TextView(context).apply {
                 text = item.text
-                setTextColor(if (item.selected)
+                setTextColor(if (isSelected)
                     config.selectedColor ?: TabBarConfig.DEFAULT_SELECTED_COLOR
                     else config.color ?: TabBarConfig.DEFAULT_UNSELECTED_COLOR)
                 textSize = 13f
@@ -303,15 +319,28 @@ class TabBar(context: Context) : LinearLayout(context) {
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 ).apply {
                     topMargin = (2 * resources.displayMetrics.density).toInt()
-                    bottomMargin = (6 * resources.displayMetrics.density).toInt()
+                    bottomMargin = (8 * resources.displayMetrics.density).toInt()
                 }
             })
 
             // Set click listener for the whole item
             setOnClickListener {
                 val clickedIndex = tabViews.indexOf(this)
-                if (clickedIndex >= 0) {
-                    onTabItemClick(clickedIndex)
+                if (clickedIndex >= 0 && clickedIndex != selectedPosition) {
+                    // Prevent flashing by updating UI before notifying listener
+                    val previousSelected = selectedPosition
+                    selectedPosition = clickedIndex
+
+                    // First update visual state for immediate feedback
+                    if (previousSelected >= 0 && previousSelected < tabViews.size) {
+                        // Update previous selected tab to unselected state
+                        updateTabState(tabViews[previousSelected], items[previousSelected], false)
+                    }
+                    // Update new tab to selected state
+                    updateTabState(this, items[clickedIndex], true)
+
+                    // Then notify listener after visual update
+                    tabSelectedListener?.invoke(clickedIndex, items[clickedIndex].pagePath)
                 }
             }
         }
@@ -389,15 +418,6 @@ class TabBar(context: Context) : LinearLayout(context) {
             val size = (28 * resources.displayMetrics.density).toInt()
             setSize(size, size)
         }
-    }
-
-    private fun onTabItemClick(position: Int) {
-        if (position == selectedPosition) return
-
-        selectedPosition = position
-        updateSelection(position)
-
-        tabSelectedListener?.invoke(position, items[position].pagePath)
     }
 
     /**
