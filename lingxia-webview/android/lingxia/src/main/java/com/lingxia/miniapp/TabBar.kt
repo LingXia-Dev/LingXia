@@ -227,10 +227,13 @@ class TabBar(context: Context) : LinearLayout(context) {
         }
     }
 
-    fun setSelectedIndex(index: Int) {
-        if (index in items.indices) {
+    fun setSelectedIndex(index: Int, notifyListener: Boolean = true) {
+        if (index in items.indices && index != selectedPosition) {
+            selectedPosition = index
             updateSelection(index)
-            tabSelectedListener?.invoke(index, items[index].pagePath)
+            if (notifyListener) {
+                tabSelectedListener?.invoke(index, items[index].pagePath)
+            }
         }
     }
 
@@ -304,6 +307,7 @@ class TabBar(context: Context) : LinearLayout(context) {
                 }
             })
 
+            // Set click listener for the whole item
             setOnClickListener {
                 val clickedIndex = tabViews.indexOf(this)
                 if (clickedIndex >= 0) {
@@ -564,5 +568,15 @@ class TabBar(context: Context) : LinearLayout(context) {
         }
 
         updateTabStates()
+    }
+
+    // Gets the index of the currently selected tab item
+    fun getSelectedIndex(): Int {
+        return selectedPosition
+    }
+
+    // Finds the index of a tab item by its pagePath
+    fun findTabIndexByPath(path: String): Int {
+        return items.indexOfFirst { it.pagePath == path }
     }
 }

@@ -32,12 +32,14 @@ class MiniAppActivity : Activity() {
         external fun nativeOnMiniAppHidden(appId: String, path: String): Int
     }
 
-    private var webView: com.lingxia.miniapp.WebView? = null
     private lateinit var rootContainer: FrameLayout
     private lateinit var webViewContainer: FrameLayout
     private var tabBar: TabBar? = null
     private var isDestroyed = false
     private var pendingWebViewSetup = false
+
+    // Tracks the currently visible WebView instance
+    private var currentWebView: com.lingxia.miniapp.WebView? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -126,17 +128,33 @@ class MiniAppActivity : Activity() {
                     }
                 }
                 setConfig(config)
-                
+
                 // Set visibility change listener
                 setOnVisibilityChangedListener { isVisible ->
                     updateWebViewContainerMargins(config.position, isVisible)
                 }
+
+                // Set tab selection listener
+                setOnTabSelectedListener { index, path ->
+                    // When user clicks a tab, directly perform the switch logic
+                    performWebViewSwitch(path)
+                }
             }
+            // Add TabBar to the container AFTER the apply block completes
             rootContainer.addView(tabBar)
 
             // Initial margin update
             updateWebViewContainerMargins(config.position, config.visible)
 
+            // Demo: Show TabBar API usage after a short delay to ensure TabBar is fully initialized
+            rootContainer.postDelayed({
+                tabBar?.let { bar ->
+                    if (bar.visibility == View.VISIBLE) {
+                        bar.showTabBarRedDot(0)
+                        bar.setTabBarBadge(2, "98")
+                    }
+                }
+            }, 500)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to setup TabBar: ${e.message}")
         }
@@ -163,39 +181,76 @@ class MiniAppActivity : Activity() {
         }
     }
 
-    private fun setupWebViewContent(appId: String, path: String) {
-        // Try to get existing WebView, create new one if not available
-        val existingWebView = com.lingxia.miniapp.WebView.nativeGetExistingWebView(appId, path)
-        if (existingWebView != null) {
-            Log.d(TAG, "Reusing existing WebView for appId: $appId")
-            // Remove from previous parent view
-            (existingWebView.parent as? ViewGroup)?.removeView(existingWebView)
+    // Helper function to find existing or create new WebView instance for a given path/page
+    private fun findOrCreateWebViewForPage(appId: String, path: String): com.lingxia.miniapp.WebView? {
+        var webView = com.lingxia.miniapp.WebView.nativeGetExistingWebView(appId, path)
 
-            // If this is the last used WebView, wait a moment before setting up
-            if (lastWebView?.get() == existingWebView) {
-                pendingWebViewSetup = true
-                webViewContainer.postDelayed({
-                    if (!isDestroyed) {
-                        setupWebView(existingWebView, path, false)
-                        pendingWebViewSetup = false
-                    }
-                }, 100)
-            } else {
-                setupWebView(existingWebView, path, false)
+        if (webView == null) {
+            if (appId.isEmpty()) {
+                 Log.e(TAG, "findOrCreateWebViewForPage failed: Cannot create WebView, appId is missing.")
+                 return null
             }
-            webView = existingWebView
-        } else {
-            Log.d(TAG, "Creating new WebView for appId: $appId")
             webView = com.lingxia.miniapp.WebView(this).apply {
-                handleWebViewCreated(appId, path)
-                setupWebView(this, null, true)
+                 handleWebViewCreated(appId, path)
             }
+        } else {
+             Log.d(TAG, "Reusing existing WebView instance for page: $path")
+             (webView.parent as? ViewGroup)?.removeView(webView)
+        }
+        return webView
+    }
+
+    // Helper function to attach a WebView to the container and resume it
+    private fun attachAndResumeWebView(view: com.lingxia.miniapp.WebView?) {
+        if (view == null) {
+            Log.e(TAG, "attachAndResumeWebView called with null view!")
+            return
+        }
+        if (!isDestroyed) {
+            Log.d(TAG, "Attaching and resuming WebView for path: ${view.currentPath}") // Assuming WebView has currentPath property
+            // Ensure view is visible (might have been set to GONE previously)
+            view.visibility = View.VISIBLE
+
+            // Add to webview container if not already added
+            if (view.parent != webViewContainer) {
+                // We already removed from old parent in findOrCreateWebViewForPage if reused
+                webViewContainer.addView(view)
+            } else {
+                // If already in the container (e.g., initial load), ensure it's visible and resumed
+                Log.w(TAG, "WebView for ${view.currentPath} already in container, ensuring resume.")
+            }
+
+            // Resume the WebView's activities
+            view.resume()
+        }
+    }
+
+    private fun setupWebViewContent(appId: String, path: String) {
+        val initialWebView = findOrCreateWebViewForPage(appId, path)
+        if (initialWebView == null) {
+            Log.e(TAG, "Failed to find or create initial WebView for $path")
+            finish(); return
         }
 
-        // Update last used WebView
-        webView?.let { view ->
-            lastWebView = WeakReference(view)
+        // Handle the special delay logic if reusing the immediately previous WebView
+        if (lastWebView?.get() == initialWebView) {
+            pendingWebViewSetup = true
+            webViewContainer.postDelayed({
+                if (!isDestroyed) {
+                    attachAndResumeWebView(initialWebView)
+                    pendingWebViewSetup = false
+                }
+            }, 100)
+        } else {
+            // Attach and resume immediately for initial load or reuse of non-last view
+            attachAndResumeWebView(initialWebView)
         }
+
+        // Set the current WebView
+        this.currentWebView = initialWebView
+
+        // Update last used WebView reference
+        lastWebView = WeakReference(initialWebView)
     }
 
     private class MoreDotsDrawable : Drawable() {
@@ -363,39 +418,13 @@ class MiniAppActivity : Activity() {
         rootContainer.addView(capsule)
     }
 
-    private fun setupWebView(view: com.lingxia.miniapp.WebView, path: String?, isNew: Boolean) {
-        if (!isDestroyed) {
-            // Reset WebView state
-            view.visibility = View.VISIBLE
-
-            // Only configure when it's a new WebView or the path has changed
-            if (isNew && path != null && path.isNotEmpty()) {
-                intent.getStringExtra(EXTRA_APP_ID)?.let { appId ->
-                    Log.d(TAG, "Setting path for WebView to: $path")
-                    view.handleWebViewCreated(appId, path)
-                }
-            }
-
-            // Add to webview container
-            if (view.parent != webViewContainer) {
-                webViewContainer.addView(view)
-            }
-
-            // In setupWebView, always resume the WebView to restore its state
-            Log.d(TAG, "Resuming WebView in setupWebView")
-            view.resume()
-        }
-    }
-
     override fun onResume() {
         super.onResume()
-        // Only resume WebView when not in pendingWebViewSetup state
-        // This avoids duplicate resume calls with setupWebView
         if (!pendingWebViewSetup) {
-            Log.d(TAG, "Resuming WebView in onResume")
-            webView?.visibility = View.VISIBLE
+            Log.d(TAG, "Resuming current WebView in onResume")
+            currentWebView?.visibility = View.VISIBLE // Ensure visibility
             webViewContainer.visibility = View.VISIBLE
-            webView?.resume()
+            currentWebView?.resume()
         } else {
             Log.d(TAG, "Skipping WebView resume in onResume because pendingWebViewSetup is true")
         }
@@ -403,7 +432,8 @@ class MiniAppActivity : Activity() {
 
     override fun onPause() {
         super.onPause()
-        webView?.pause()
+        Log.d(TAG, "Pausing current WebView in onPause")
+        currentWebView?.pause()
     }
 
     private fun handleMiniAppHidden() {
@@ -417,18 +447,75 @@ class MiniAppActivity : Activity() {
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         handleMiniAppHidden()
-        webView?.pause()
+        currentWebView?.pause()
         finish()
     }
 
     override fun onDestroy() {
         isDestroyed = true
-        webView?.let { view ->
+        currentWebView?.let { view ->
+            Log.d(TAG, "Cleaning up current WebView in onDestroy")
             view.pause()
             webViewContainer.removeView(view)
             view.visibility = View.GONE
         }
-        webView = null
+        currentWebView = null
         super.onDestroy()
+    }
+
+    // Core logic to switch WebView views
+    private fun performWebViewSwitch(targetPath: String) {
+        // Keep essential start log
+        Log.d(TAG, "Performing WebView switch for path: $targetPath")
+
+        val appId = intent.getStringExtra(EXTRA_APP_ID)
+        if (appId.isNullOrEmpty()) {
+             Log.e(TAG, "performWebViewSwitch failed: Cannot get/create WebView, appId is missing.")
+             return
+        }
+
+        val targetWebView = findOrCreateWebViewForPage(appId, targetPath)
+        if (targetWebView == null) {
+            Log.e(TAG, "performWebViewSwitch failed: findOrCreateWebViewForPage returned null for $targetPath")
+            return
+        }
+
+        val previousWebView = currentWebView
+
+        // Update the current WebView state *before* manipulating views
+        currentWebView = targetWebView
+
+        // Switch views in the container
+        if (previousWebView != targetWebView && previousWebView != null) {
+            previousWebView.pause()
+            webViewContainer.removeView(previousWebView)
+        }
+
+        // Use helper function to attach and resume the target WebView
+        attachAndResumeWebView(targetWebView)
+        Log.d(TAG, "Perform WebView switch completed for path: $targetPath")
+    }
+
+    // Public function for programmatic switching (e.g., from Rust via wx.switchTab)
+    // Renamed from switchToTab
+    fun switchTab(targetPath: String) {
+
+        val targetIndex = tabBar?.findTabIndexByPath(targetPath) ?: -1
+        if (targetIndex == -1) {
+            Log.e(TAG, "switchToTab failed: Path '$targetPath' not found in TabBar items.")
+            return
+        }
+
+        val currentSelectedIndex = tabBar?.getSelectedIndex() ?: -1
+        if (isDestroyed || targetIndex == currentSelectedIndex) {
+            Log.w(TAG, "switchTab ignored: destroyed=$isDestroyed or targetIndex == currentSelectedIndex ($targetIndex == $currentSelectedIndex)")
+            return
+        }
+
+        // Update TabBar UI first (without triggering listener)
+        tabBar?.setSelectedIndex(targetIndex, notifyListener = false)
+
+        // Perform the actual view switching logic
+        performWebViewSwitch(targetPath)
     }
 }

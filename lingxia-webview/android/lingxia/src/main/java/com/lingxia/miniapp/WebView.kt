@@ -195,7 +195,7 @@ class WebView @JvmOverloads constructor(
     private val config: WebViewConfig = WebViewConfig()
 ) : WebView(context) {
     private var appId: String? = null
-    private var currentPath: String? = null
+    internal var currentPath: String? = null
     private var isFirstLoad = true
     private var pageLoaded = false
     private var savedScrollX: Int = 0
