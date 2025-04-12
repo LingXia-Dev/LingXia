@@ -511,3 +511,18 @@ pub extern "C" fn Java_com_lingxia_miniapp_MiniAppActivity_nativeOnBackPressed(
     }
 }
 
+// Function to notify the Rust layer that a mini app has been opened
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeOnMiniAppOpened(
+    mut env: JNIEnv,
+    _class: JClass,
+    app_id: JString,
+) -> jint {
+    let app_id: String = env.get_string(&app_id).unwrap().into();
+
+    if let Ok(mut miniapp) = miniapp::get().lock() {
+        miniapp.on_miniapp_opened(app_id);
+    };
+    0
+}
+

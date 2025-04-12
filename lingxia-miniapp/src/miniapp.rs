@@ -154,7 +154,7 @@ impl MiniApp {
         serde_json::to_string(&config).ok()
     }
 
-    pub fn on_miniapp_loaded(&mut self, appid: String) {
+    pub fn on_miniapp_opened(&mut self, appid: String) {
         // If the app is already loaded, just update its active time
         if self.apps.contains_key(&appid) {
             self.last_active_times.insert(appid, Instant::now());
