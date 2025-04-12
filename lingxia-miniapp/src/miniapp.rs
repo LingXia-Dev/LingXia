@@ -59,10 +59,6 @@ pub fn init(platform: Box<dyn MiniAppRuntime>) {
     });
 }
 
-/// called when MiniApp system destroied by App
-/// currently, it's planceholder
-pub fn exit() {}
-
 /// Returns a reference to the initialized MiniApp.
 /// Panics if MiniApp has not been initialized.
 pub fn get() -> &'static Mutex<MiniApp> {

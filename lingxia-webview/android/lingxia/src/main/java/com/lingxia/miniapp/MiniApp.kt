@@ -56,12 +56,6 @@ class MiniApp private constructor(private val context: Context) {
             return instance ?: throw IllegalStateException("MiniApp not initialized")
         }
 
-        @JvmStatic
-        fun destroy() {
-            getInstance().nativeOnMiniAppDestroy()
-            instance = null
-        }
-
         /**
          * Opens a mini app in a new activity
          *
@@ -121,8 +115,6 @@ class MiniApp private constructor(private val context: Context) {
             Log.e(TAG, "Failed to start MiniAppActivity: ${e.message}")
         }
     }
-
-    private external fun nativeOnMiniAppDestroy()
 
     fun getContext(): Context = context
 }

@@ -129,15 +129,6 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnWebViewCreated(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnMiniAppDestroy(
-    _env: JNIEnv,
-    _class: JClass,
-) -> jint {
-    miniapp::exit();
-    0
-}
-
-#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeHandlePostMessage(
     mut env: JNIEnv,
     _class: JClass,
@@ -538,3 +529,4 @@ pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeGetTabBarConfig(
 
     JObject::null().into_raw()
 }
+
