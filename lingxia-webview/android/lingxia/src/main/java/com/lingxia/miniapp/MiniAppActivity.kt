@@ -1,6 +1,5 @@
 package com.lingxia.miniapp
 
-import android.app.Activity
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
@@ -20,8 +19,12 @@ import java.lang.ref.WeakReference
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import android.content.Intent
+import android.content.BroadcastReceiver
+import androidx.activity.OnBackPressedCallback
+import androidx.appcompat.app.AppCompatActivity
 
-class MiniAppActivity : Activity() {
+class MiniAppActivity : AppCompatActivity() {
     companion object {
         private const val TAG = "LingXia.WebView"
         const val EXTRA_APP_ID = "appId"
@@ -32,9 +35,13 @@ class MiniAppActivity : Activity() {
 
         private var lastWebView: WeakReference<com.lingxia.miniapp.WebView>? = null
 
-        // Native method for handling mini app hidden event
+        // Native method for handling mini app closed event
         @JvmStatic
-        external fun nativeOnMiniAppHidden(appId: String, path: String): Int
+        external fun nativeOnMiniAppClosed(appId: String): Int
+
+        // Native method for handling back press event
+        @JvmStatic
+        private external fun nativeOnBackPressed(appId: String): Int
 
         // Helper function to get status bar height
         fun getStatusBarHeight(context: Context): Int {
@@ -62,8 +69,40 @@ class MiniAppActivity : Activity() {
     // Tracks the currently visible WebView instance
     private var currentWebView: com.lingxia.miniapp.WebView? = null
 
+    // Broadcast receiver for receiving mini app close requests
+    private val closeAppReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == "com.lingxia.CLOSE_MINIAPP_ACTION") {
+                val targetAppId = intent.getStringExtra("appId")
+                if (::appId.isInitialized && targetAppId == appId) {
+                    Log.d(TAG, "Received close request for appId: $appId")
+                    finish()
+                }
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Register broadcast receiver for close requests
+        registerReceiver(closeAppReceiver, android.content.IntentFilter("com.lingxia.CLOSE_MINIAPP_ACTION"))
+
+        // Handle back button presses with the modern approach
+        onBackPressedDispatcher.addCallback(object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                // Notify the Rust side to handle back press and determine behavior based on return value
+                val result = nativeOnBackPressed(appId)
+
+                // If Rust side has handled the back press, no further action needed
+                if (result > 0) {
+                    return
+                }
+
+                // If Rust side didn't handle it, finish the activity
+                finish()
+            }
+        })
 
         // Enable Edge-to-Edge using WindowCompat
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -79,6 +118,7 @@ class MiniAppActivity : Activity() {
             finish()
             return // Exit onCreate if appId is missing
         }
+
         val initialPath = intent.getStringExtra(EXTRA_PATH) ?: ""
         val tabBarJson = intent.getStringExtra(EXTRA_TAB_BAR_CONFIG)
         val tabBarConfig = TabBarConfig.fromJson(tabBarJson)
@@ -292,7 +332,7 @@ class MiniAppActivity : Activity() {
             return
         }
         if (!isDestroyed) {
-            Log.d(TAG, "Attaching and resuming WebView for path: ${view.currentPath}") // Assuming WebView has currentPath property
+            Log.d(TAG, "Attaching and resuming WebView for path: ${view.currentPath}")
             // Ensure view is visible (might have been set to GONE previously)
             view.visibility = View.VISIBLE
 
@@ -302,7 +342,7 @@ class MiniAppActivity : Activity() {
                 webViewContainer.addView(view)
             } else {
                 // If already in the container (e.g., initial load), ensure it's visible and resumed
-                Log.w(TAG, "WebView for ${view.currentPath} already in container, ensuring resume.")
+                Log.d(TAG, "WebView for ${view.currentPath} already in container, ensuring resume.")
             }
 
             // Resume the WebView's activities
@@ -502,7 +542,7 @@ class MiniAppActivity : Activity() {
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
             setOnClickListener {
-                handleMiniAppHidden()
+                // Directly close the current activity
                 finish()
             }
         }
@@ -537,23 +577,24 @@ class MiniAppActivity : Activity() {
         currentWebView?.pause()
     }
 
-    private fun handleMiniAppHidden() {
-        intent.getStringExtra(EXTRA_APP_ID)?.let { appId ->
-            intent.getStringExtra(EXTRA_PATH)?.let { path ->
-                nativeOnMiniAppHidden(appId, path)
-            }
-        }
-    }
-
-    @Deprecated("Deprecated in Java")
-    override fun onBackPressed() {
-        handleMiniAppHidden()
-        currentWebView?.pause()
-        finish()
+    /**
+     * Notifies the native layer that a mini app is being closed
+     * Used only for state synchronization, doesn't affect closure decision
+     */
+    private fun notifyMiniAppClosed() {
+        nativeOnMiniAppClosed(appId)
     }
 
     override fun onDestroy() {
         isDestroyed = true
+
+        // Unregister broadcast receiver
+        try {
+            unregisterReceiver(closeAppReceiver)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to unregister receiver: ${e.message}")
+        }
+
         currentWebView?.let { view ->
             Log.d(TAG, "Cleaning up current WebView in onDestroy")
             view.pause()
@@ -676,5 +717,17 @@ class MiniAppActivity : Activity() {
 
         // Perform the actual view switching logic
         performWebViewSwitch(targetPath)
+    }
+
+    override fun finish() {
+        // Notify Rust before ending the activity
+        Log.d(TAG, "Activity finishing, notifying Rust: appId=$appId")
+        notifyMiniAppClosed()
+
+        // Ensure WebView is paused
+        currentWebView?.pause()
+
+        // Call the original finish method
+        super.finish()
     }
 }

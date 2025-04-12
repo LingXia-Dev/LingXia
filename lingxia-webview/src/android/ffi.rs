@@ -420,24 +420,17 @@ fn create_java_response<'a>(env: &mut JNIEnv<'a>, response: Response<Vec<u8>>) -
     }
 }
 
-// Function for MiniAppActivity class to handle the mini app hidden event
+// Function for MiniAppActivity class to handle the mini app close event
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_miniapp_MiniAppActivity_nativeOnMiniAppHidden(
+pub extern "system" fn Java_com_lingxia_miniapp_MiniAppActivity_nativeOnMiniAppClosed(
     mut env: JNIEnv,
     _class: JClass,
     app_id: JString,
-    path: JString,
 ) -> jint {
     let app_id: String = env.get_string(&app_id).unwrap().into();
-    let path: String = env.get_string(&path).unwrap().into();
 
     if let Ok(mut miniapp) = miniapp::get().lock() {
-        info!(
-            "Mini app hidden from MiniAppActivity: app_id={}, path={}",
-            app_id, path
-        );
-
-        miniapp.on_miniapp_hidden(app_id);
+        miniapp.on_miniapp_closed(app_id);
     };
     0
 }

@@ -91,7 +91,7 @@ impl MiniAppRuntime for Platform {
 
         env.call_static_method(
             miniapp_class,
-            "openMiniAppInNewActivity",
+            "openMiniApp",
             "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
             &[
                 JValue::Object(&app_id_jstring),
@@ -139,5 +139,22 @@ impl MiniAppRuntime for Platform {
         } else {
             Err("Controller is not a WebView".into())
         }
+    }
+
+    fn close_miniapp(&self, app_id: &str) -> Result<(), Box<dyn std::error::Error>> {
+        info!("Closing mini app with appId: {}", app_id);
+        let mut env = get_env()?;
+
+        let miniapp_class = env.find_class(CLASS_MINIAPP)?;
+        let app_id_jstring = env.new_string(app_id)?;
+
+        env.call_static_method(
+            miniapp_class,
+            "closeMiniApp",
+            "(Ljava/lang/String;)V",
+            &[JValue::Object(&app_id_jstring)],
+        )?;
+
+        Ok(())
     }
 }

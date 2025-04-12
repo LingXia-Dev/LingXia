@@ -56,6 +56,9 @@ pub trait MiniAppRuntime: Send + Sync {
         tab_bar_config: Option<&str>,
     ) -> Result<(), Box<dyn std::error::Error>>;
 
+    /// Close mini app in platform-specific way
+    fn close_miniapp(&self, app_id: &str) -> Result<(), Box<dyn std::error::Error>>;
+
     /// Log message to platform-specific logging system
     fn log(&self, level: LogLevel, message: &str);
 
@@ -174,7 +177,11 @@ impl MiniApp {
         self.last_active_times.insert(appid, Instant::now());
     }
 
-    pub fn on_miniapp_hidden(&mut self, appid: String) {
+    /**
+     * Called when a mini app is closed.
+     * This primarily updates the last active time for the app to help with memory management.
+     */
+    pub fn on_miniapp_closed(&mut self, appid: String) {
         // Only update the time if the app exists
         if self.apps.contains_key(&appid) {
             self.last_active_times.insert(appid, Instant::now());

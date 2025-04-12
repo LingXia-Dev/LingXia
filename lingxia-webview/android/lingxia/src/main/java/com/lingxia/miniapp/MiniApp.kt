@@ -40,6 +40,9 @@ class MiniApp private constructor(private val context: Context) {
         ): Int
 
         @JvmStatic
+        private external fun nativeOnMiniAppOpened(appId: String): Int
+
+        @JvmStatic
         fun getInstance(): MiniApp {
             return instance ?: throw IllegalStateException("MiniApp not initialized")
         }
@@ -86,10 +89,47 @@ class MiniApp private constructor(private val context: Context) {
             return instance.createMiniAppWebView(appId, path)
         }
 
+        /**
+         * Opens a mini app in a new activity
+         *
+         * This method creates a new MiniAppActivity to host the specified mini app.
+         * It notifies the native layer about the mini app being opened for state tracking.
+         *
+         * @param appId The unique identifier of the mini app to open
+         * @param path The initial path to navigate to within the mini app
+         * @param tabBarConfig Optional JSON configuration for the TabBar (if null, no TabBar will be shown)
+         */
         @JvmStatic
-        fun openMiniAppInNewActivity(appId: String, path: String, tabBarConfig: String? = null) {
+        fun openMiniApp(appId: String, path: String, tabBarConfig: String? = null) {
             val instance = getInstance()
             instance.openInNewActivity(appId, path, tabBarConfig)
+        }
+
+        /**
+         * Notifies the system to close a mini app with the specified appId
+         *
+         * This method is typically called by the native layer when a mini app needs to be closed
+         *
+         * @param appId The ID of the mini app to close
+         */
+        @JvmStatic
+        fun closeMiniApp(appId: String) {
+            Log.d(TAG, "Closing MiniApp with appId: $appId")
+
+            // Iterate through all activities, find and close the MiniAppActivity with matching appId
+            // On actual devices, one mini app corresponds to one activity, so this implementation is sufficient
+            // Future expansion can be made here if multiple activities are supported
+            val activityManager = instance?.context?.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
+            activityManager?.appTasks?.forEach { task ->
+                task.taskInfo?.topActivity?.let { componentName ->
+                    if (componentName.className == MiniAppActivity::class.java.name) {
+                        // Send broadcast to notify activity to close
+                        val intent = Intent("com.lingxia.CLOSE_MINIAPP_ACTION")
+                        intent.putExtra("appId", appId)
+                        instance?.context?.sendBroadcast(intent)
+                    }
+                }
+            }
         }
     }
 
@@ -100,9 +140,16 @@ class MiniApp private constructor(private val context: Context) {
             tabBarConfig?.let {
                 putExtra(MiniAppActivity.EXTRA_TAB_BAR_CONFIG, it)
             }
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        context.startActivity(intent)
+
+        try {
+            context.startActivity(intent)
+            // Notify native in background thread to avoid UI blocking
+            Thread { nativeOnMiniAppOpened(appId) }.start()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start MiniAppActivity: ${e.message}")
+        }
     }
 
     private fun createMiniAppWebView(appId: String, path: String): com.lingxia.miniapp.WebView {
