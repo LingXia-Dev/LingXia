@@ -189,11 +189,37 @@ impl MiniApp {
 
     /// Called when a new page is created for the given appid and path
     pub fn on_page_created(&mut self, appid: String, path: String, pc: Arc<dyn PageController>) {
+        // A page is a tab page if it's in the tab bar configuration(demo code)
+        let is_tab_page = if let Ok(tab_config) =
+            serde_json::from_str::<serde_json::Value>(DEFAULT_TAB_BAR_CONFIG)
+        {
+            tab_config
+                .get("list")
+                .and_then(|v| v.as_array())
+                .map(|list| {
+                    list.iter().any(|item| {
+                        item.get("pagePath")
+                            .and_then(|v| v.as_str())
+                            .map(|p| p == path)
+                            .unwrap_or(false)
+                    })
+                })
+                .unwrap_or(false)
+        } else {
+            false
+        };
+
+        self.info(
+            &appid,
+            format!("insert page {}, is_tab_page: {}", path, is_tab_page),
+        );
+
         let page_manager = self
             .apps
             .entry(appid.clone())
             .or_insert_with(|| Arc::new(Mutex::new(page::PageManager::new(None))));
 
+        // demo code
         let url = if appid == "home" {
             let path_str = if path.is_empty() { "index.html" } else { &path };
             format!("lingxia://home/{}", path_str)
@@ -206,9 +232,9 @@ impl MiniApp {
         #[cfg(debug_assertions)]
         pc.set_devtools(true);
 
-        // Initialize or update the page for the given path
+        // Initialize the page
         let mut page_manager = page_manager.lock().unwrap();
-        page_manager.push_page_controller(path, pc);
+        page_manager.push_page_controller(path, is_tab_page, pc);
     }
 
     /// Finds a PageController by appid and path
