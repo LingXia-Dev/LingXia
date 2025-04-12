@@ -29,7 +29,6 @@ class MiniAppActivity : AppCompatActivity() {
         private const val TAG = "LingXia.WebView"
         const val EXTRA_APP_ID = "appId"
         const val EXTRA_PATH = "path"
-        const val EXTRA_TAB_BAR_CONFIG = "tabBarConfig"
         internal const val DEFAULT_NAV_BAR_HEIGHT_DP = 44
         internal const val DEFAULT_TAB_BAR_SIZE_DP = 56
 
@@ -120,7 +119,9 @@ class MiniAppActivity : AppCompatActivity() {
         }
 
         val initialPath = intent.getStringExtra(EXTRA_PATH) ?: ""
-        val tabBarJson = intent.getStringExtra(EXTRA_TAB_BAR_CONFIG)
+
+        // Get TabBar config from native layer
+        val tabBarJson = MiniApp.nativeGetTabBarConfig(appId)
         val tabBarConfig = TabBarConfig.fromJson(tabBarJson)
 
         // Setup root container FIRST

@@ -70,11 +70,14 @@ impl MiniAppRuntime for Platform {
         }
     }
 
+    /// Open a mini app in a new activity
+    /// 
+    /// This implementation starts a new MiniAppActivity with the provided appId and path.
+    /// The app configuration is fetched from the native side via nativeGetAppConfig.
     fn open_miniapp(
         &self,
         app_id: &str,
         path: &str,
-        tab_bar_config: Option<&str>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         info!("Opening mini app with appId: {}, path: {}", app_id, path);
         let mut env = get_env()?;
@@ -83,20 +86,13 @@ impl MiniAppRuntime for Platform {
         let app_id_jstring = env.new_string(app_id)?;
         let path_jstring = env.new_string(path)?;
 
-        // Convert tab_bar_config to JString if present
-        let tab_bar_config_jstring = match tab_bar_config {
-            Some(config) => env.new_string(config)?,
-            None => unsafe { jni::objects::JString::from_raw(std::ptr::null_mut()) },
-        };
-
         env.call_static_method(
             miniapp_class,
             "openMiniApp",
-            "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
+            "(Ljava/lang/String;Ljava/lang/String;)V",
             &[
                 JValue::Object(&app_id_jstring),
                 JValue::Object(&path_jstring),
-                JValue::Object(&tab_bar_config_jstring),
             ],
         )?;
 

@@ -20,60 +20,31 @@ pub trait MiniAppRuntime: Send + Sync {
     /// Read asset file from platform-specific location
     fn read_asset(&self, path: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>>;
 
-    /// Open mini app in platform-specific way
-    ///
-    /// # Arguments
-    /// * `app_id` - The identifier of the mini application to open
-    /// * `path` - The initial path to navigate to within the mini app
-    /// * `tab_bar_config` - Optional JSON string for TabBar configuration. If not provided or invalid, TabBar will not be shown.
-    ///   The configuration should follow this format:
-    ///   ```json
-    ///   {
-    ///     "position": "bottom" | "top",      // TabBar position, defaults to "bottom" if not specified
-    ///     "backgroundColor": "#FFFFFF",      // Background color in hex, defaults to white
-    ///     "selectedColor": "#1677FF",       // Selected item color in hex, defaults to tech blue
-    ///     "color": "#666666",              // Unselected item color in hex, defaults to gray
-    ///     "borderStyle": "#F0F0F0",        // Border color in hex, defaults to light gray
-    ///     "list": [                        // List of tab items, must contain 2-5 items
-    ///       {
-    ///         "pagePath": "pages/home/index",  // Page path to navigate to
-    ///         "text": "Home",                  // Tab text
-    ///         "iconPath": "icons/home.png",    // Icon path (relative to mini app root)
-    ///         "selectedIconPath": "icons/home_selected.png",  // Selected state icon path
-    ///         "selected": true                 // Whether this tab is selected by default
-    ///       }
-    ///     ]
-    ///   }
-    ///   ```
-    ///   Note: TabBar will not be shown if:
-    ///   1. tab_bar_config is not provided
-    ///   2. The configuration is invalid
-    ///   3. The number of items in the list is less than 2 or more than 5
-    fn open_miniapp(
-        &self,
-        app_id: &str,
-        path: &str,
-        tab_bar_config: Option<&str>,
-    ) -> Result<(), Box<dyn std::error::Error>>;
+    /// Get data directory for the app
+    fn get_data_dir(&self) -> Option<String>;
 
-    /// Close mini app in platform-specific way
-    fn close_miniapp(&self, app_id: &str) -> Result<(), Box<dyn std::error::Error>>;
+    /// Get cache directory for the app
+    fn get_cache_dir(&self) -> Option<String>;
 
     /// Log message to platform-specific logging system
     fn log(&self, level: LogLevel, message: &str);
 
-    /// Get platform-specific data directory
-    fn get_data_dir(&self) -> Option<String>;
-
-    /// Get platform-specific cache directory
-    fn get_cache_dir(&self) -> Option<String>;
-
-    /// Post message to page of MiniApp
+    /// Post message to Page/WebView
     fn post_message(
         &self,
         controller: &dyn PageController,
         message: &str,
     ) -> Result<(), Box<dyn std::error::Error>>;
+
+    /// Open a mini app in platform-specific way
+    ///
+    /// # Arguments
+    /// * `app_id` - The ID of the mini app to open
+    /// * `path` - The initial path to navigate to within the mini app
+    fn open_miniapp(&self, app_id: &str, path: &str) -> Result<(), Box<dyn std::error::Error>>;
+
+    /// Close mini app in platform-specific way
+    fn close_miniapp(&self, app_id: &str) -> Result<(), Box<dyn std::error::Error>>;
 }
 
 /// Initializes the MiniApp with the given platform implementation
@@ -303,10 +274,9 @@ impl MiniApp {
                 if let Some(data) = message.get("data") {
                     if let Some(app_id) = data.get("appId").and_then(Value::as_str) {
                         let path = data.get("path").and_then(Value::as_str).unwrap_or("");
-                        if let Err(e) =
-                            self.runtime
-                                .open_miniapp(app_id, path, Some(DEFAULT_TAB_BAR_CONFIG))
-                        {
+
+                        // Use the new API signature that doesn't require tabBarConfig
+                        if let Err(e) = self.runtime.open_miniapp(app_id, path) {
                             self.error(&appid, format!("Failed to open miniapp: {}", e));
                         }
                     }
@@ -382,6 +352,16 @@ impl MiniApp {
         } else {
             true
         }
+    }
+
+    /// Get tab bar configuration for an app
+    pub fn get_tab_bar_config(&self, app_id: &str) -> Option<String> {
+        // Log the config request
+        self.info(app_id, &format!("Getting TabBar config for: {}", app_id));
+
+        // For now, we're just returning the default configuration
+        // In the future, this could be customized per app and stored/retrieved from storage
+        Some(DEFAULT_TAB_BAR_CONFIG.to_string())
     }
 }
 

@@ -519,3 +519,22 @@ pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeOnMiniAppOpened(
     0
 }
 
+// New function to get app configuration
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeGetTabBarConfig(
+    mut env: JNIEnv,
+    _class: JClass,
+    app_id: JString,
+) -> jni::sys::jobject {
+    let app_id: String = env.get_string(&app_id).unwrap().into();
+
+    if let Ok(miniapp) = miniapp::get().lock() {
+        if let Some(config) = miniapp.get_tab_bar_config(&app_id) {
+            if let Ok(result) = env.new_string(config) {
+                return result.into_raw();
+            }
+        }
+    }
+
+    JObject::null().into_raw()
+}

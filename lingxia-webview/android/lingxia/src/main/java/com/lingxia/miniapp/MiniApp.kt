@@ -42,6 +42,15 @@ class MiniApp private constructor(private val context: Context) {
         @JvmStatic
         private external fun nativeOnMiniAppOpened(appId: String): Int
 
+        /**
+         * Get the TabBar configuration for a mini app from the native layer
+         *
+         * @param appId The ID of the mini app to get TabBar configuration for
+         * @return The TabBar configuration as a JSON string, or null if not available
+         */
+        @JvmStatic
+        external fun nativeGetTabBarConfig(appId: String): String?
+
         @JvmStatic
         fun getInstance(): MiniApp {
             return instance ?: throw IllegalStateException("MiniApp not initialized")
@@ -94,15 +103,15 @@ class MiniApp private constructor(private val context: Context) {
          *
          * This method creates a new MiniAppActivity to host the specified mini app.
          * It notifies the native layer about the mini app being opened for state tracking.
+         * The app configuration (including TabBar) will be fetched from the native layer.
          *
          * @param appId The unique identifier of the mini app to open
          * @param path The initial path to navigate to within the mini app
-         * @param tabBarConfig Optional JSON configuration for the TabBar (if null, no TabBar will be shown)
          */
         @JvmStatic
-        fun openMiniApp(appId: String, path: String, tabBarConfig: String? = null) {
+        fun openMiniApp(appId: String, path: String) {
             val instance = getInstance()
-            instance.openInNewActivity(appId, path, tabBarConfig)
+            instance.openInNewActivity(appId, path)
         }
 
         /**
@@ -133,13 +142,10 @@ class MiniApp private constructor(private val context: Context) {
         }
     }
 
-    private fun openInNewActivity(appId: String, path: String, tabBarConfig: String? = null) {
+    private fun openInNewActivity(appId: String, path: String) {
         val intent = Intent(context, MiniAppActivity::class.java).apply {
             putExtra(MiniAppActivity.EXTRA_APP_ID, appId)
             putExtra(MiniAppActivity.EXTRA_PATH, path)
-            tabBarConfig?.let {
-                putExtra(MiniAppActivity.EXTRA_TAB_BAR_CONFIG, it)
-            }
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
 
