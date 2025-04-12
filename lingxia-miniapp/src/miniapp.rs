@@ -108,6 +108,52 @@ impl MiniApp {
         self.apps.get(appid)
     }
 
+    /// Get page configuration for the given app and path
+    pub fn get_page_config(&self, app_id: &str, path: &str) -> Option<String> {
+        self.info(app_id, format!("Getting page config for {}", path));
+
+        // For home page (first tab), hide navigation bar
+        if path.contains("home") {
+            let config = serde_json::json!({
+                "hidden": true,
+                "navigationStyle": "default"
+            });
+            return Some(serde_json::to_string(&config).ok()?);
+        }
+
+        // For message page, show navigation bar with title
+        if path.contains("message") {
+            let config = serde_json::json!({
+                "hidden": false,
+                "navigationBarBackgroundColor": "#ffffff",
+                "navigationBarTextStyle": "black",
+                "navigationBarTitleText": "消息",
+                "navigationStyle": "default"
+            });
+            return serde_json::to_string(&config).ok();
+        }
+
+        // For profile page, show navigation bar with title
+        if path.contains("profile") {
+            let config = serde_json::json!({
+                "hidden": false,
+                "navigationBarBackgroundColor": "#ffffff",
+                "navigationBarTextStyle": "black",
+                "navigationBarTitleText": "我的",
+                "navigationStyle": "default"
+            });
+            return serde_json::to_string(&config).ok();
+        }
+
+        // Default configuration for unknown pages
+        let config = serde_json::json!({
+            "hidden": true,
+            "navigationStyle": "default"
+        });
+
+        serde_json::to_string(&config).ok()
+    }
+
     pub fn on_miniapp_loaded(&mut self, appid: String) {
         // If the app is already loaded, just update its active time
         if self.apps.contains_key(&appid) {
