@@ -467,3 +467,28 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnConsoleMessage(
         0
     }
 }
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeGetPageConfig<'a>(
+    mut env: JNIEnv<'a>,
+    _class: JClass<'a>,
+    app_id: JString<'a>,
+    path: JString<'a>,
+) -> JObject<'a> {
+    let app_id: String = env.get_string(&app_id).unwrap().into();
+    let path: String = env.get_string(&path).unwrap().into();
+
+    // Get the miniapp instance and get page config
+    match miniapp::get().lock() {
+        Ok(miniapp) => {
+            if let Some(json) = miniapp.get_page_config(&app_id, &path) {
+                // Create Java string from JSON
+                if let Ok(java_string) = env.new_string(&json) {
+                    return java_string.into();
+                }
+            }
+            JObject::null()
+        }
+        Err(_) => JObject::null(),
+    }
+}

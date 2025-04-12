@@ -518,6 +518,12 @@ class WebView @JvmOverloads constructor(
         super.loadUrl(url)
     }
 
+    fun getPageConfig(): NavigationBarConfig? {
+        return nativeGetPageConfig(appId ?: "", currentPath ?: "")?.let {
+            NavigationBarConfig.fromJson(it)
+        }
+    }
+
     /**
      * Destroy this WebView instance and release all resources.
      * This method is called from the Rust layer when the WebView instance is being dropped.
@@ -587,4 +593,5 @@ class WebView @JvmOverloads constructor(
         headers: String
     ): WebResourceResponseData?
     private external fun nativeOnConsoleMessage(appId: String, level: Int, message: String):Int
+    private external fun nativeGetPageConfig(appId: String, path: String): String?  // Returns JSON string of page config
 }
