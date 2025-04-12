@@ -362,6 +362,20 @@ impl MiniApp {
             page_manager.mark_active(&path);
         }
     }
+
+    /// Handle back press event
+    /// Returns true if the event was handled, false otherwise
+    pub fn on_back_pressed(&self, app_id: &str) -> bool {
+        self.info(app_id, "Back pressed, closing mini app");
+
+        // TODO: page stack
+        if let Err(e) = self.runtime.close_miniapp(app_id) {
+            self.error(app_id, format!("Failed to close mini app: {}", e));
+            false
+        } else {
+            true
+        }
+    }
 }
 
 impl MiniApp {

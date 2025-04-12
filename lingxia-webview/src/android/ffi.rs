@@ -492,3 +492,22 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeGetPageConfig<'a>(
         Err(_) => JObject::null(),
     }
 }
+
+#[unsafe(no_mangle)]
+pub extern "C" fn Java_com_lingxia_miniapp_MiniAppActivity_nativeOnBackPressed(
+    mut env: JNIEnv,
+    _class: JClass,
+    app_id: JString,
+) -> jint {
+    let app_id: String = env.get_string(&app_id).unwrap().into();
+    if let Ok(miniapp) = miniapp::get().lock() {
+        if miniapp.on_back_pressed(&app_id) {
+            1
+        } else {
+            0
+        }
+    } else {
+        0
+    }
+}
+
