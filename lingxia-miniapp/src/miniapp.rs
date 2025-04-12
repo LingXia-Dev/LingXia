@@ -118,7 +118,7 @@ impl MiniApp {
                 "hidden": true,
                 "navigationStyle": "default"
             });
-            return Some(serde_json::to_string(&config).ok()?);
+            return serde_json::to_string(&config).ok();
         }
 
         // For message page, show navigation bar with title
@@ -208,7 +208,6 @@ impl MiniApp {
 
         // Initialize or update the page for the given path
         let mut page_manager = page_manager.lock().unwrap();
-        page_manager.mark_active(&path);
         page_manager.push_page_controller(path, pc);
     }
 
@@ -330,6 +329,12 @@ impl MiniApp {
     /// Called when the page showed in the view
     pub fn on_page_show(&self, appid: String, path: String) {
         self.info(&appid, format!("Page show: {}", path));
+
+        // Mark the page as active when it's shown
+        if let Some(page_manager) = self.apps.get(&appid) {
+            let mut page_manager = page_manager.lock().unwrap();
+            page_manager.mark_active(&path);
+        }
     }
 }
 
