@@ -3,12 +3,7 @@ package com.lingxia.miniapp
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
-import android.graphics.Color
 import android.util.Log
-import android.view.ViewGroup
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
 
 class MiniApp private constructor(private val context: Context) {
     companion object {
@@ -60,42 +55,6 @@ class MiniApp private constructor(private val context: Context) {
         fun destroy() {
             getInstance().nativeOnMiniAppDestroy()
             instance = null
-        }
-
-        @JvmStatic
-        fun configureTransparentSystemBars(
-            activity: Activity,
-            lightStatusBars: Boolean = true,
-            lightNavigationBars: Boolean = false,
-            showStatusBars: Boolean = true,
-            showNavigationBars: Boolean = false
-        ) {
-            // Configure system windows
-            WindowCompat.setDecorFitsSystemWindows(activity.window, false)
-            activity.window.statusBarColor = Color.TRANSPARENT
-            activity.window.navigationBarColor = Color.TRANSPARENT
-
-            // Configure WindowInsetsControllerCompat
-            WindowInsetsControllerCompat(activity.window, activity.window.decorView).apply {
-                isAppearanceLightStatusBars = lightStatusBars
-                isAppearanceLightNavigationBars = lightNavigationBars
-                if (showStatusBars) {
-                    show(WindowInsetsCompat.Type.statusBars())
-                } else {
-                    hide(WindowInsetsCompat.Type.statusBars())
-                }
-                if (showNavigationBars) {
-                    show(WindowInsetsCompat.Type.navigationBars())
-                } else {
-                    hide(WindowInsetsCompat.Type.navigationBars())
-                }
-            }
-        }
-
-        @JvmStatic
-        fun attachMiniApp(appId: String, path: String): com.lingxia.miniapp.WebView {
-            val instance = getInstance()
-            return instance.createMiniAppWebView(appId, path)
         }
 
         /**
@@ -156,18 +115,6 @@ class MiniApp private constructor(private val context: Context) {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start MiniAppActivity: ${e.message}")
         }
-    }
-
-    private fun createMiniAppWebView(appId: String, path: String): com.lingxia.miniapp.WebView {
-        Log.d(TAG, "Creating WebView for appId: $appId, path: $path")
-        val webView = com.lingxia.miniapp.WebView(context).apply {
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-            handleWebViewCreated(appId, path)
-        }
-        return webView
     }
 
     private external fun nativeOnMiniAppDestroy()
