@@ -1,6 +1,7 @@
 package com.lingxia.miniapp
 
 import android.app.Activity
+import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -16,6 +17,9 @@ import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
 import java.lang.ref.WeakReference
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 
 class MiniAppActivity : Activity() {
     companion object {
@@ -23,18 +27,35 @@ class MiniAppActivity : Activity() {
         const val EXTRA_APP_ID = "appId"
         const val EXTRA_PATH = "path"
         const val EXTRA_TAB_BAR_CONFIG = "tabBarConfig"
-        private const val DEFAULT_TAB_BAR_SIZE_DP = 56
+        internal const val DEFAULT_NAV_BAR_HEIGHT_DP = 44
+        internal const val DEFAULT_TAB_BAR_SIZE_DP = 56
 
         private var lastWebView: WeakReference<com.lingxia.miniapp.WebView>? = null
 
         // Native method for handling mini app hidden event
         @JvmStatic
         external fun nativeOnMiniAppHidden(appId: String, path: String): Int
+
+        // Helper function to get status bar height
+        fun getStatusBarHeight(context: Context): Int {
+            var result = 0
+            val resourceId = context.resources.getIdentifier("status_bar_height", "dimen", "android")
+            if (resourceId > 0) {
+                result = context.resources.getDimensionPixelSize(resourceId)
+            }
+            // Fallback if resource not found (less likely but safe)
+            if (result == 0) {
+                result = (24 * context.resources.displayMetrics.density).toInt()
+            }
+            return result
+        }
     }
 
+    private lateinit var appId: String
     private lateinit var rootContainer: FrameLayout
     private lateinit var webViewContainer: FrameLayout
     private var tabBar: TabBar? = null
+    private var navigationBar: NavigationBar? = null
     private var isDestroyed = false
     private var pendingWebViewSetup = false
 
@@ -44,43 +65,63 @@ class MiniAppActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        try {
-            // Configure transparent status bar and navigation bar
-            MiniApp.configureTransparentSystemBars(
-                activity = this,
-                lightStatusBars = true,
-                lightNavigationBars = false,
-                showStatusBars = true,
-                showNavigationBars = false
-            )
+        // Enable Edge-to-Edge using WindowCompat
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        // Explicitly set system bar colors to transparent
+        window.statusBarColor = Color.TRANSPARENT
+        window.navigationBarColor = Color.TRANSPARENT // Optional, for consistency
+        // Set status bar icon colors
+        setStatusBarAppearance(/* isLight= */ true)
 
-            // Get required parameters, finish if missing
-            val appId = intent.getStringExtra(EXTRA_APP_ID)
-            val path = intent.getStringExtra(EXTRA_PATH) ?: ""
-
-            if (appId.isNullOrEmpty()) {
-                Log.e(TAG, "Missing required parameter: appId")
-                finish()
-                return
-            }
-
-            Log.d(TAG, "Creating WebView for appId: $appId, path: $path")
-
-            // Create and setup layout containers
-            setupContainers()
-
-            // Setup TabBar if config exists
-            setupTabBar(intent.getStringExtra(EXTRA_TAB_BAR_CONFIG))
-
-            // Add capsule button
-            addCapsuleButton()
-
-            // Setup WebView
-            setupWebViewContent(appId, path)
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Error in onCreate: ${e.message}")
+        // Initialize appId from intent (check for null)
+        appId = intent.getStringExtra(EXTRA_APP_ID) ?: run {
+            Log.e(TAG, "Missing required parameter: appId")
             finish()
+            return // Exit onCreate if appId is missing
+        }
+        val initialPath = intent.getStringExtra(EXTRA_PATH) ?: ""
+        val tabBarJson = intent.getStringExtra(EXTRA_TAB_BAR_CONFIG)
+        val tabBarConfig = TabBarConfig.fromJson(tabBarJson)
+
+        // Setup root container FIRST
+        rootContainer = FrameLayout(this).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        }
+        setContentView(rootContainer)
+
+        // Apply window insets as padding to the root container
+        ViewCompat.setOnApplyWindowInsetsListener(rootContainer) { view, insets ->
+            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.setPadding(systemBars.left, 0, systemBars.right, systemBars.bottom)
+            insets // Return original insets
+        }
+
+        // Setup WebView container
+        setupWebViewContainer()
+
+        // Setup TabBar
+        setupTabBar(tabBarConfig)
+
+        // Add capsule button on top (always present)
+        addCapsuleButton()
+
+        // Perform initial layout margin update (AFTER all UI setup)
+        updateLayoutMargins()
+
+        // Load initial WebView content
+        setupWebViewContent(appId, initialPath)
+
+        Log.d(TAG, "MiniAppActivity onCreate completed for appId: $appId, path: $initialPath")
+    }
+
+    // Helper to set status bar icon color (optional)
+    private fun setStatusBarAppearance(isLight: Boolean) {
+        // Use the newer approach to control appearance
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = isLight
         }
     }
 
@@ -104,20 +145,21 @@ class MiniAppActivity : Activity() {
         rootContainer.addView(webViewContainer)
     }
 
-    private fun setupTabBar(configJson: String?) {
-        if (configJson.isNullOrEmpty()) {
+    private fun setupTabBar(config: TabBarConfig?) {
+        if (config == null) {
+            Log.d(TAG, "Invalid or insufficient TabBar config, TabBar not shown.")
             return
         }
 
-        try {
-            val config = TabBarConfig.fromJson(configJson)
-            if (config == null) {
-                Log.d(TAG, "Invalid or insufficient TabBar config")
-                return
-            }
-
+        if (tabBar == null) {
             // Create and add TabBar
             tabBar = TabBar(this).apply {
+                setConfig(config)
+                setOnTabSelectedListener { index, path ->
+                    Log.d(TAG, "Tab clicked: index=$index, path=$path")
+                    performWebViewSwitch(path)
+                }
+                // Apply layout params
                 layoutParams = FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     (DEFAULT_TAB_BAR_SIZE_DP * resources.displayMetrics.density).toInt()
@@ -127,77 +169,120 @@ class MiniAppActivity : Activity() {
                         TabBarConfig.Position.BOTTOM -> Gravity.BOTTOM
                     }
                 }
-                setConfig(config)
-
-                // Set visibility change listener
-                setOnVisibilityChangedListener { isVisible ->
-                    updateWebViewContainerMargins(config.position, isVisible)
-                }
-
-                // Set tab selection listener
-                setOnTabSelectedListener { index, path ->
-                    // When user clicks a tab, directly perform the switch logic
-                    performWebViewSwitch(path)
-                }
             }
             // Add TabBar to the container AFTER the apply block completes
             rootContainer.addView(tabBar)
-
-            // Initial margin update
-            updateWebViewContainerMargins(config.position, config.visible)
-
-            // Demo: Show TabBar API usage after a short delay to ensure TabBar is fully initialized
-            rootContainer.postDelayed({
-                tabBar?.let { bar ->
-                    if (bar.visibility == View.VISIBLE) {
-                        bar.showTabBarRedDot(0)
-                        bar.setTabBarBadge(2, "98")
-                    }
-                }
-            }, 500)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to setup TabBar: ${e.message}")
+            Log.d(TAG, "TabBar added with ${config.list.size} items.")
+        } else {
+            // If TabBar already exists (e.g., during re-creation), just update its config
+            tabBar?.setConfig(config)
+            Log.d(TAG, "TabBar config updated.")
         }
+
+        // Initial margin update needed after TabBar is added/configured
+        updateLayoutMargins()
+
+        // Demo: Show TabBar API usage after a short delay
+        // rootContainer.postDelayed({
+            // Demo API calls - keep or remove as needed
+            // tabBar?.showTabBarRedDot(1)
+            // tabBar?.setTabBarBadge(2, "99+")
+        // }, 500)
     }
 
-    private fun updateWebViewContainerMargins(position: TabBarConfig.Position, isTabBarVisible: Boolean) {
+    private fun updateLayoutMargins() {
+        val isTabBarVisible = tabBar?.visibility == View.VISIBLE
+        val isNavBarVisible = navigationBar?.visibility == View.VISIBLE
+        val tabBarHeight = tabBar?.layoutParams?.height ?: 0
+        val navBarHeight = navigationBar?.layoutParams?.height ?: 0
+
+        // Adjust WebView container margins ONLY based on Nav/Tab bars
         (webViewContainer.layoutParams as FrameLayout.LayoutParams).apply {
-            if (isTabBarVisible) {
-                when (position) {
-                    TabBarConfig.Position.TOP -> {
-                        topMargin = (DEFAULT_TAB_BAR_SIZE_DP * resources.displayMetrics.density).toInt()
-                        bottomMargin = 0
-                    }
-                    TabBarConfig.Position.BOTTOM -> {
-                        topMargin = 0
-                        bottomMargin = (DEFAULT_TAB_BAR_SIZE_DP * resources.displayMetrics.density).toInt()
-                    }
-                }
+            // Allow webview to extend all the way to the top
+            // This means it will be drawn under the status bar
+            topMargin = 0
+
+            // NavBar now includes status bar height and is positioned at the top
+            val navBarOffset = if (isNavBarVisible) {
+                navBarHeight
             } else {
-                topMargin = 0
-                bottomMargin = 0
+                0
             }
+
+            // If we have a visible TabBar at the top, add its height
+            val tabBarOffset = if (isTabBarVisible && tabBar?.config?.position == TabBarConfig.Position.TOP) {
+                tabBarHeight
+            } else {
+                0
+            }
+
+            // Apply the appropriate translation to move content below visible UI elements
+            currentWebView?.translationY = (navBarOffset + tabBarOffset).toFloat()
+
+            // Bottom margin is TabBar height if visible and at bottom, otherwise 0
+            bottomMargin = if (isTabBarVisible && tabBar?.config?.position == TabBarConfig.Position.BOTTOM) {
+                tabBarHeight
+            } else {
+                0
+            }
+
             webViewContainer.layoutParams = this
+            webViewContainer.requestLayout()
+            Log.d(TAG, "Updated webViewContainer margins and translations: navBarOffset=$navBarOffset, tabBarOffset=$tabBarOffset, bottom=$bottomMargin")
         }
     }
 
     // Helper function to find existing or create new WebView instance for a given path/page
-    private fun findOrCreateWebViewForPage(appId: String, path: String): com.lingxia.miniapp.WebView? {
+    private fun findOrCreateWebViewForPage(appId: String, path: String): Pair<com.lingxia.miniapp.WebView?, NavigationBarConfig?> {
         var webView = com.lingxia.miniapp.WebView.nativeGetExistingWebView(appId, path)
 
         if (webView == null) {
             if (appId.isEmpty()) {
-                 Log.e(TAG, "findOrCreateWebViewForPage failed: Cannot create WebView, appId is missing.")
-                 return null
+                Log.e(TAG, "findOrCreateWebViewForPage failed: Cannot create WebView, appId is missing.")
+                return Pair(null, null)
             }
             webView = com.lingxia.miniapp.WebView(this).apply {
-                 handleWebViewCreated(appId, path)
+                handleWebViewCreated(appId, path)
             }
         } else {
-             Log.d(TAG, "Reusing existing WebView instance for page: $path")
-             (webView.parent as? ViewGroup)?.removeView(webView)
+            Log.d(TAG, "Reusing existing WebView instance for page: $path")
+            (webView.parent as? ViewGroup)?.removeView(webView)
         }
-        return webView
+
+        // Get and apply page config
+        val pageConfig = webView?.getPageConfig()
+        pageConfig?.let { config ->
+            // Create navigation bar if it doesn't exist and page needs it
+            if (navigationBar == null && !config.hidden) {
+                val navBarHeight = DEFAULT_NAV_BAR_HEIGHT_DP * resources.displayMetrics.density
+                val statusBarHeight = getStatusBarHeight(this)
+
+                navigationBar = NavigationBar(this).apply {
+                    layoutParams = FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        navBarHeight.toInt() + statusBarHeight
+                    ).apply {
+                        gravity = Gravity.TOP
+                        topMargin = 0
+                    }
+                    setPadding(paddingLeft, statusBarHeight, paddingRight, paddingBottom)
+                }
+                rootContainer.addView(navigationBar)
+            }
+
+            // Configure navigation bar based on page config
+            navigationBar?.let { navBar ->
+                config.navigationBarTitleText?.let { navBar.setTitle(it) }
+                val textColor = if (config.navigationBarTextStyle == "white") Color.WHITE else Color.BLACK
+                config.navigationBarBackgroundColor?.let { bgColor ->
+                    navBar.setColor(bgColor, textColor)
+                }
+                navBar.visibility = if (config.hidden) View.GONE else View.VISIBLE
+                updateLayoutMargins()
+            }
+        }
+
+        return Pair(webView, pageConfig)
     }
 
     // Helper function to attach a WebView to the container and resume it
@@ -227,30 +312,43 @@ class MiniAppActivity : Activity() {
 
     private fun setupWebViewContent(appId: String, path: String) {
         val initialWebView = findOrCreateWebViewForPage(appId, path)
-        if (initialWebView == null) {
+        if (initialWebView.first == null) {
             Log.e(TAG, "Failed to find or create initial WebView for $path")
             finish(); return
         }
 
         // Handle the special delay logic if reusing the immediately previous WebView
-        if (lastWebView?.get() == initialWebView) {
+        if (lastWebView?.get() == initialWebView.first) {
             pendingWebViewSetup = true
             webViewContainer.postDelayed({
                 if (!isDestroyed) {
-                    attachAndResumeWebView(initialWebView)
+                    attachAndResumeWebView(initialWebView.first)
                     pendingWebViewSetup = false
                 }
             }, 100)
         } else {
             // Attach and resume immediately for initial load or reuse of non-last view
-            attachAndResumeWebView(initialWebView)
+            attachAndResumeWebView(initialWebView.first)
         }
 
         // Set the current WebView
-        this.currentWebView = initialWebView
+        this.currentWebView = initialWebView.first
 
         // Update last used WebView reference
-        lastWebView = WeakReference(initialWebView)
+        lastWebView = WeakReference(initialWebView.first)
+    }
+
+    // Function to setup the FrameLayout that holds the WebViews
+    private fun setupWebViewContainer() {
+        webViewContainer = FrameLayout(this).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            // Margins will be set by updateLayoutMargins
+        }
+        rootContainer.addView(webViewContainer)
+        Log.d(TAG, "WebView container added.")
     }
 
     private class MoreDotsDrawable : Drawable() {
@@ -329,10 +427,14 @@ class MiniAppActivity : Activity() {
     }
 
     private fun addCapsuleButton() {
+        val statusBarHeight = getStatusBarHeight(this)
+
         // Create capsule container
         val capsule = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
+            tag = "capsule_button" // Add tag to find it later
+            elevation = 1000f // Ensure it stays on top of other views
 
             // Set capsule background
             background = GradientDrawable().apply {
@@ -342,21 +444,17 @@ class MiniAppActivity : Activity() {
                 setStroke((0.5f * resources.displayMetrics.density).toInt(), Color.parseColor("#DDDDDD"))
             }
 
-            // Set capsule layout parameters
-            layoutParams = FrameLayout.LayoutParams(
+            // Capsule layout parameters - Position fixed relative to status bar
+            val capsuleLayoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 (36 * resources.displayMetrics.density).toInt()
             ).apply {
                 gravity = Gravity.TOP or Gravity.END
-                // Consider status bar height
-                val statusBarHeight = resources.getIdentifier("status_bar_height", "dimen", "android")
-                    .takeIf { it > 0 }
-                    ?.let { resources.getDimensionPixelSize(it) }
-                    ?: (24 * resources.displayMetrics.density).toInt()
-
+                // Position with fixed offset relative to status bar
                 topMargin = statusBarHeight + (8 * resources.displayMetrics.density).toInt()
                 rightMargin = (12 * resources.displayMetrics.density).toInt()
             }
+            layoutParams = capsuleLayoutParams
 
             setPadding(
                 (2 * resources.displayMetrics.density).toInt(),
@@ -414,8 +512,11 @@ class MiniAppActivity : Activity() {
         capsule.addView(divider)
         capsule.addView(btnClose)
 
-        // Add capsule to root container to ensure it's always on top
-        rootContainer.addView(capsule)
+        // Add capsule to root container at the end to ensure it's on top
+        rootContainer.post {
+            rootContainer.removeView(rootContainer.findViewWithTag("capsule_button"))
+            rootContainer.addView(capsule)
+        }
     }
 
     override fun onResume() {
@@ -474,31 +575,90 @@ class MiniAppActivity : Activity() {
              return
         }
 
-        val targetWebView = findOrCreateWebViewForPage(appId, targetPath)
+        // Bail early if trying to switch to the current path
+        if (currentWebView?.currentPath == targetPath) {
+            Log.d(TAG, "Already on path $targetPath, ignoring switch")
+            return
+        }
+
+        // Capture reference to previous WebView before changing anything
+        val previousWebView = currentWebView
+
+        // First prep the UI changes before touching WebViews
+        val targetIndex = tabBar?.findTabIndexByPath(targetPath) ?: -1
+
+        // Find or create target WebView (do this before UI updates to allow pre-positioning)
+        val (targetWebView, pageConfig) = findOrCreateWebViewForPage(appId, targetPath)
         if (targetWebView == null) {
             Log.e(TAG, "performWebViewSwitch failed: findOrCreateWebViewForPage returned null for $targetPath")
             return
         }
 
-        val previousWebView = currentWebView
+        // Get page-specific navigation bar config
+        val shouldShowNavBar = pageConfig?.hidden != true
 
-        // Update the current WebView state *before* manipulating views
-        currentWebView = targetWebView
+        // Cache current and target nav bar visibility states
+        val navBarWasVisible = navigationBar?.visibility == View.VISIBLE
+        val navBarShouldBeVisible = shouldShowNavBar
 
-        // Switch views in the container
-        if (previousWebView != targetWebView && previousWebView != null) {
-            previousWebView.pause()
-            webViewContainer.removeView(previousWebView)
+        // Pre-position the target WebView correctly while still INVISIBLE
+        if (targetWebView.parent != webViewContainer) {
+            targetWebView.visibility = View.INVISIBLE
+            webViewContainer.addView(targetWebView)
+            targetWebView.translationY = if (shouldShowNavBar) {
+                (navigationBar?.height ?: 0).toFloat()
+            } else {
+                0f
+            }
         }
 
-        // Use helper function to attach and resume the target WebView
-        attachAndResumeWebView(targetWebView)
-        Log.d(TAG, "Perform WebView switch completed for path: $targetPath")
+        // Set current WebView to target for tracking
+        currentWebView = targetWebView
+
+        // CRITICAL: Update navigation bar BEFORE making target WebView visible
+        navigationBar?.let { navBar ->
+            if (navBarShouldBeVisible != navBarWasVisible) {
+                if (shouldShowNavBar) {
+                    pageConfig?.let { config ->
+                        config.navigationBarTitleText?.let { navBar.setTitle(it) }
+                        config.navigationBarBackgroundColor?.let { bgColor ->
+                            val textColor = if (config.navigationBarTextStyle == "white") Color.WHITE else Color.BLACK
+                            navBar.setColor(bgColor, textColor)
+                        }
+                    }
+                }
+                // In tab switching scenario, back button should always be hidden
+                navBar.setBackButtonVisible(false)
+                navBar.visibility = if (navBarShouldBeVisible) View.VISIBLE else View.GONE
+                updateLayoutMargins()
+            }
+        }
+
+        // Use a post with zero delay to ensure UI thread completes current layout pass
+        webViewContainer.post {
+            // Make target WebView visible AFTER navigation bar and layout updated
+            targetWebView.visibility = View.VISIBLE
+
+            // Resume the target WebView
+            targetWebView.resume()
+
+            // Create a secondary post to remove previous view AFTER new view is visible
+            // This creates a slight overlap that prevents flashing
+            webViewContainer.postDelayed({
+                if (previousWebView != null && previousWebView != targetWebView) {
+                    previousWebView.pause()
+                    previousWebView.visibility = View.INVISIBLE // Hide before removing
+                    webViewContainer.removeView(previousWebView)
+                }
+            }, 50) // Small delay helps with transition
+        }
+
+        // Update TabBar UI first (without triggering listener)
+        tabBar?.setSelectedIndex(targetIndex, notifyListener = false)
     }
 
     // Public function for programmatic switching (e.g., from native side)
     fun switchTab(targetPath: String) {
-
         val targetIndex = tabBar?.findTabIndexByPath(targetPath) ?: -1
         if (targetIndex == -1) {
             Log.e(TAG, "switchToTab failed: Path '$targetPath' not found in TabBar items.")
