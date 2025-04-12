@@ -316,6 +316,13 @@ class MiniAppActivity : AppCompatActivity() {
                         topMargin = 0
                     }
                     setPadding(paddingLeft, statusBarHeight, paddingRight, paddingBottom)
+                    
+                    // Connect back button to system back press
+                    setOnBackButtonClickListener {
+                        // Trigger the system back press behavior
+                        onBackPressedDispatcher.onBackPressed()
+                    }
+                    
                 }
                 rootContainer.addView(navigationBar)
             }

@@ -164,10 +164,6 @@ class NavigationBar @JvmOverloads constructor(
             setImageDrawable(BackButtonDrawable())
             contentDescription = "Back"
             visibility = View.GONE // Hidden by default
-            setOnClickListener {
-                // Just print log for back button click
-                Log.d(TAG, "Back button clicked")
-            }
         }
         addView(backButton)
 
@@ -258,5 +254,17 @@ class NavigationBar @JvmOverloads constructor(
      */
     fun setBackButtonVisible(visible: Boolean) {
         backButton.visibility = if (visible) View.VISIBLE else View.GONE
+    }
+
+    /**
+     * Sets a listener for back button clicks
+     *
+     * @param listener The callback to invoke when the back button is clicked
+     */
+    fun setOnBackButtonClickListener(listener: () -> Unit) {
+        backButton.setOnClickListener {
+            Log.d(TAG, "Back button clicked")
+            listener.invoke()
+        }
     }
 }
