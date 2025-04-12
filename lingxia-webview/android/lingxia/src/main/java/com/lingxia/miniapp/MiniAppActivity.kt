@@ -468,6 +468,11 @@ class MiniAppActivity : AppCompatActivity() {
     }
 
     private fun addCapsuleButton() {
+        // Don't show capsule button for the main/home app
+        if (appId == MiniApp.HOME_APP_ID) {
+            return
+        }
+
         val statusBarHeight = getStatusBarHeight(this)
 
         // Create capsule container

@@ -10,6 +10,11 @@ class MiniApp private constructor(private val context: Context) {
         private const val TAG = "LingXia.WebView"
         private var instance: MiniApp? = null
 
+        /**
+         * The ID of the home/main app
+         */
+        const val HOME_APP_ID = "home"
+
         init {
             System.loadLibrary("lingxia")
         }
