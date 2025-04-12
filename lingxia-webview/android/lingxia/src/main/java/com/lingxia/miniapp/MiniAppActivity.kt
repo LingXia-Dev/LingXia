@@ -55,6 +55,28 @@ class MiniAppActivity : AppCompatActivity() {
             }
             return result
         }
+
+        /**
+         * Configures the system bars (status bar and navigation bar) to be transparent
+         * and edge-to-edge. This method enables immersive view experience.
+         *
+         * @param activity The activity whose system bars should be configured
+         * @param lightStatusBarIcons Whether the status bar icons should be light (true) or dark (false)
+         */
+        @JvmStatic
+        fun configureTransparentSystemBars(activity: AppCompatActivity, lightStatusBarIcons: Boolean = true) {
+            // Enable Edge-to-Edge using WindowCompat
+            WindowCompat.setDecorFitsSystemWindows(activity.window, false)
+
+            // Explicitly set system bar colors to transparent
+            activity.window.statusBarColor = Color.TRANSPARENT
+            activity.window.navigationBarColor = Color.TRANSPARENT
+
+            // Set status bar icon colors based on preference
+            WindowCompat.getInsetsController(activity.window, activity.window.decorView).apply {
+                isAppearanceLightStatusBars = lightStatusBarIcons
+            }
+        }
     }
 
     private lateinit var appId: String
@@ -103,13 +125,8 @@ class MiniAppActivity : AppCompatActivity() {
             }
         })
 
-        // Enable Edge-to-Edge using WindowCompat
-        WindowCompat.setDecorFitsSystemWindows(window, false)
-        // Explicitly set system bar colors to transparent
-        window.statusBarColor = Color.TRANSPARENT
-        window.navigationBarColor = Color.TRANSPARENT // Optional, for consistency
-        // Set status bar icon colors
-        setStatusBarAppearance(/* isLight= */ true)
+        // Configure transparent system bars
+        configureTransparentSystemBars(this)
 
         // Initialize appId from intent (check for null)
         appId = intent.getStringExtra(EXTRA_APP_ID) ?: run {
@@ -156,14 +173,6 @@ class MiniAppActivity : AppCompatActivity() {
         setupWebViewContent(appId, initialPath)
 
         Log.d(TAG, "MiniAppActivity onCreate completed for appId: $appId, path: $initialPath")
-    }
-
-    // Helper to set status bar icon color (optional)
-    private fun setStatusBarAppearance(isLight: Boolean) {
-        // Use the newer approach to control appearance
-        WindowCompat.getInsetsController(window, window.decorView).apply {
-            isAppearanceLightStatusBars = isLight
-        }
     }
 
     private fun setupContainers() {
