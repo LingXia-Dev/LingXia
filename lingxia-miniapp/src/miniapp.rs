@@ -257,32 +257,88 @@ impl MiniApp {
     pub fn handle_post_message(&self, appid: String, _path: String, msg: String) {
         self.info(&appid, format!("Handling message for WebView: {}", msg));
 
-        let message: Value = match serde_json::from_str(&msg) {
+        // First, parse the incoming string.
+        let message_value: Value = match serde_json::from_str(&msg) {
             Ok(v) => v,
             Err(e) => {
-                self.error(&appid, format!("Failed to parse message: {}", e));
+                self.error(
+                    &appid,
+                    format!("Failed to parse message string: {}. Raw: '{}'", e, msg),
+                );
                 return;
             }
         };
 
-        let message_type = message.get("type").and_then(Value::as_str);
+        // Check if the parsed value is itself a string (potential double stringification)
+        // If so, parse the inner string.
+        let message_obj = if let Some(inner_str) = message_value.as_str() {
+            self.info(&appid, "Message parsed as string, attempting inner parse.");
+            match serde_json::from_str(inner_str) {
+                Ok(v) => v,
+                Err(e) => {
+                    self.error(
+                        &appid,
+                        format!(
+                            "Failed to parse nested JSON string: {}. Inner: '{}'",
+                            e, inner_str
+                        ),
+                    );
+                    return;
+                }
+            }
+        } else {
+            // If not a string, assume it's the correct JSON structure.
+            message_value
+        };
+
+        // Ensure we ended up with a JSON object.
+        if !message_obj.is_object() {
+            self.error(
+                &appid,
+                format!("Parsed message is not a JSON object: {:?}", message_obj),
+            );
+            return;
+        }
+
+        // Now, safely extract the type from the object.
+        let message_type = message_obj.get("type").and_then(Value::as_str);
         if message_type.is_none() {
-            self.error(&appid, "Message type is missing");
+            self.error(
+                &appid,
+                format!(
+                    "Message type field is missing or not a string in object: {:?}",
+                    message_obj
+                ),
+            );
             return;
         }
 
         match message_type.unwrap() {
             "OPEN_MINIAPP" => {
                 self.info(&appid, "Handling OPEN_MINIAPP message");
-                if let Some(data) = message.get("data") {
+                if let Some(data) = message_obj.get("data") {
+                    // Use message_obj
                     if let Some(app_id) = data.get("appId").and_then(Value::as_str) {
                         let path = data.get("path").and_then(Value::as_str).unwrap_or("");
-
-                        // Use the new API signature that doesn't require tabBarConfig
                         if let Err(e) = self.runtime.open_miniapp(app_id, path) {
                             self.error(&appid, format!("Failed to open miniapp: {}", e));
                         }
                     }
+                }
+            }
+            "NAVIGATE_TO" => {
+                self.info(&appid, "Handling NAVIGATE_TO message");
+                if let Some(data) = message_obj.get("data") {
+                    // Use message_obj
+                    if let Some(path) = data.get("path").and_then(Value::as_str) {
+                        if let Err(e) = self.runtime.switch_page(&appid, path) {
+                            self.error(&appid, format!("Failed to switch page to {}: {}", path, e));
+                        }
+                    } else {
+                        self.error(&appid, "NAVIGATE_TO message missing path data");
+                    }
+                } else {
+                    self.error(&appid, "NAVIGATE_TO message missing data field");
                 }
             }
             unknown_type => {
