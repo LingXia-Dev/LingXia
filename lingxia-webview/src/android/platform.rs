@@ -153,4 +153,21 @@ impl MiniAppRuntime for Platform {
 
         Ok(())
     }
+
+    fn switch_page(&self, app_id: &str, path: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let mut env = get_env()?;
+
+        let miniapp_class = env.find_class(CLASS_MINIAPP)?;
+        let app_id_jstring = env.new_string(app_id)?;
+        let path_jstring = env.new_string(path)?;
+        
+        env.call_static_method(
+            miniapp_class,
+            "switchPage",
+            "(Ljava/lang/String;Ljava/lang/String;)V",
+            &[JValue::Object(&app_id_jstring), JValue::Object(&path_jstring)],
+        )?;
+        
+        Ok(())
+    }
 }

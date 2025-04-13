@@ -36,6 +36,13 @@ pub trait MiniAppRuntime: Send + Sync {
         message: &str,
     ) -> Result<(), Box<dyn std::error::Error>>;
 
+    /// Switch to another page within the same mini app
+    ///
+    /// # Arguments
+    /// * `app_id` - The ID of the mini app whose page needs switching
+    /// * `path` - The target path to navigate to within the mini app
+    fn switch_page(&self, app_id: &str, path: &str) -> Result<(), Box<dyn std::error::Error>>;
+
     /// Open a mini app in platform-specific way
     ///
     /// # Arguments
