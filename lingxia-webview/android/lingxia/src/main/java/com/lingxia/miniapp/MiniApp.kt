@@ -5,6 +5,10 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 
+// Import the top-level action string constants
+import com.lingxia.miniapp.ACTION_SWITCH_PAGE
+import com.lingxia.miniapp.ACTION_CLOSE_MINIAPP
+
 class MiniApp private constructor(private val context: Context) {
     companion object {
         private const val TAG = "LingXia.WebView"
@@ -91,12 +95,36 @@ class MiniApp private constructor(private val context: Context) {
                 task.taskInfo?.topActivity?.let { componentName ->
                     if (componentName.className == MiniAppActivity::class.java.name) {
                         // Send broadcast to notify activity to close
-                        val intent = Intent("com.lingxia.CLOSE_MINIAPP_ACTION")
+                        val intent = Intent(ACTION_CLOSE_MINIAPP)
                         intent.putExtra("appId", appId)
+                        intent.setPackage(instance?.context?.packageName)
                         instance?.context?.sendBroadcast(intent)
                     }
                 }
             }
+        }
+
+        /**
+         * Switches the current page within a running MiniAppActivity
+         *
+         * This method sends a broadcast intent to the specific MiniAppActivity instance
+         * identified by appId, instructing it to navigate to the targetPath.
+         * Unlike switching tabs, this navigation typically implies showing the back button.
+         *
+         * @param appId The unique identifier of the mini app whose page needs switching
+         * @param path The target path to navigate to within the mini app
+         */
+        @JvmStatic
+        fun switchPage(appId: String, path: String) {
+            Log.d(TAG, "Requesting page switch for appId: $appId to path: $path")
+            val instance = getInstance()
+            val intent = Intent(ACTION_SWITCH_PAGE).apply {
+                // Ensure the intent is targeted only to our app's components
+                `package` = instance.context.packageName
+                putExtra("appId", appId)
+                putExtra("path", path)
+            }
+            instance.context.sendBroadcast(intent)
         }
     }
 

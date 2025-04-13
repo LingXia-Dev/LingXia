@@ -24,6 +24,11 @@ import android.content.BroadcastReceiver
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 
+// Define a constant for the switch page action
+const val ACTION_SWITCH_PAGE = "com.lingxia.SWITCH_PAGE_ACTION"
+// Define a constant for the close mini app action
+const val ACTION_CLOSE_MINIAPP = "com.lingxia.CLOSE_MINIAPP_ACTION"
+
 class MiniAppActivity : AppCompatActivity() {
     companion object {
         private const val TAG = "LingXia.WebView"
@@ -93,7 +98,7 @@ class MiniAppActivity : AppCompatActivity() {
     // Broadcast receiver for receiving mini app close requests
     private val closeAppReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == "com.lingxia.CLOSE_MINIAPP_ACTION") {
+            if (intent?.action == ACTION_CLOSE_MINIAPP) {
                 val targetAppId = intent.getStringExtra("appId")
                 if (::appId.isInitialized && targetAppId == appId) {
                     Log.d(TAG, "Received close request for appId: $appId")
@@ -103,11 +108,29 @@ class MiniAppActivity : AppCompatActivity() {
         }
     }
 
+    // Broadcast receiver for switching pages
+    private val switchPageReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == ACTION_SWITCH_PAGE) {
+                val targetAppId = intent.getStringExtra("appId")
+                val targetPath = intent.getStringExtra("path")
+
+                if (::appId.isInitialized && targetAppId == appId && targetPath != null) {
+                    Log.d(TAG, "Received switch page request for appId: $appId, path: $targetPath")
+                    switchPage(targetPath)
+                }
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         // Register broadcast receiver for close requests
-        registerReceiver(closeAppReceiver, android.content.IntentFilter("com.lingxia.CLOSE_MINIAPP_ACTION"))
+        registerReceiver(closeAppReceiver, android.content.IntentFilter(ACTION_CLOSE_MINIAPP))
+
+        // Register broadcast receiver for switch page requests
+        registerReceiver(switchPageReceiver, android.content.IntentFilter(ACTION_SWITCH_PAGE))
 
         // Handle back button presses with the modern approach
         onBackPressedDispatcher.addCallback(object : OnBackPressedCallback(true) {
@@ -207,7 +230,7 @@ class MiniAppActivity : AppCompatActivity() {
                 setConfig(config)
                 setOnTabSelectedListener { index, path ->
                     Log.d(TAG, "Tab clicked: index=$index, path=$path")
-                    performWebViewSwitch(path, showBackButton = false)
+                    switchToTab(path)
                 }
                 // Apply layout params
                 layoutParams = FrameLayout.LayoutParams(
@@ -296,48 +319,10 @@ class MiniAppActivity : AppCompatActivity() {
             }
         } else {
             Log.d(TAG, "Reusing existing WebView instance for page: $path")
-            (webView.parent as? ViewGroup)?.removeView(webView)
         }
 
-        // Get and apply page config
+        // Get page config - Nav bar configuration is now handled by the caller
         val pageConfig = webView?.getPageConfig()
-        pageConfig?.let { config ->
-            // Create navigation bar if it doesn't exist and page needs it
-            if (navigationBar == null && !config.hidden) {
-                val navBarHeight = DEFAULT_NAV_BAR_HEIGHT_DP * resources.displayMetrics.density
-                val statusBarHeight = getStatusBarHeight(this)
-
-                navigationBar = NavigationBar(this).apply {
-                    layoutParams = FrameLayout.LayoutParams(
-                        FrameLayout.LayoutParams.MATCH_PARENT,
-                        navBarHeight.toInt() + statusBarHeight
-                    ).apply {
-                        gravity = Gravity.TOP
-                        topMargin = 0
-                    }
-                    setPadding(paddingLeft, statusBarHeight, paddingRight, paddingBottom)
-                    
-                    // Connect back button to system back press
-                    setOnBackButtonClickListener {
-                        // Trigger the system back press behavior
-                        onBackPressedDispatcher.onBackPressed()
-                    }
-                    
-                }
-                rootContainer.addView(navigationBar)
-            }
-
-            // Configure navigation bar based on page config
-            navigationBar?.let { navBar ->
-                config.navigationBarTitleText?.let { navBar.setTitle(it) }
-                val textColor = if (config.navigationBarTextStyle == "white") Color.WHITE else Color.BLACK
-                config.navigationBarBackgroundColor?.let { bgColor ->
-                    navBar.setColor(bgColor, textColor)
-                }
-                navBar.visibility = if (config.hidden) View.GONE else View.VISIBLE
-                updateLayoutMargins()
-            }
-        }
 
         return Pair(webView, pageConfig)
     }
@@ -613,6 +598,7 @@ class MiniAppActivity : AppCompatActivity() {
         // Unregister broadcast receiver
         try {
             unregisterReceiver(closeAppReceiver)
+            unregisterReceiver(switchPageReceiver) // Unregister the new receiver
         } catch (e: Exception) {
             Log.w(TAG, "Failed to unregister receiver: ${e.message}")
         }
@@ -627,20 +613,19 @@ class MiniAppActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
-    // Core logic to switch WebView views
-    private fun performWebViewSwitch(targetPath: String, showBackButton: Boolean) {
+    // Handles switching ROOT pages associated with Tabs
+    private fun switchToTab(targetPath: String) {
         // Keep essential start log
-        Log.d(TAG, "Performing WebView switch for path: $targetPath, showBackButton: $showBackButton")
+        Log.d(TAG, "Switching TAB to path: $targetPath")
 
         val appId = intent.getStringExtra(EXTRA_APP_ID)
         if (appId.isNullOrEmpty()) {
-             Log.e(TAG, "performWebViewSwitch failed: Cannot get/create WebView, appId is missing.")
-             return
+            Log.e(TAG, "switchToTab failed: Cannot get/create WebView, appId is missing.")
+            return
         }
 
         // Bail early if trying to switch to the current path
         if (currentWebView?.currentPath == targetPath) {
-            Log.d(TAG, "Already on path $targetPath, ignoring switch")
             return
         }
 
@@ -649,11 +634,15 @@ class MiniAppActivity : AppCompatActivity() {
 
         // First prep the UI changes before touching WebViews
         val targetIndex = tabBar?.findTabIndexByPath(targetPath) ?: -1
+        if (targetIndex == -1) {
+            Log.e(TAG, "switchToTab failed: Path '$targetPath' not found in TabBar items.")
+            return
+        }
 
-        // Find or create target WebView (do this before UI updates to allow pre-positioning)
+        // Find or create target WebView
         val (targetWebView, pageConfig) = findOrCreateWebViewForPage(appId, targetPath)
         if (targetWebView == null) {
-            Log.e(TAG, "performWebViewSwitch failed: findOrCreateWebViewForPage returned null for $targetPath")
+            Log.e(TAG, "switchToTab failed: findOrCreateWebViewForPage returned null for $targetPath")
             return
         }
 
@@ -664,81 +653,195 @@ class MiniAppActivity : AppCompatActivity() {
         val navBarWasVisible = navigationBar?.visibility == View.VISIBLE
         val navBarShouldBeVisible = shouldShowNavBar
 
-        // Pre-position the target WebView correctly while still INVISIBLE
-        if (targetWebView.parent != webViewContainer) {
-            targetWebView.visibility = View.INVISIBLE
-            webViewContainer.addView(targetWebView)
-            targetWebView.translationY = if (shouldShowNavBar) {
-                (navigationBar?.height ?: 0).toFloat()
-            } else {
-                0f
-            }
-        }
+        // Update last used WebView reference *before* potentially pausing previous one
+        lastWebView = WeakReference(targetWebView)
 
-        // Set current WebView to target for tracking
+        // Set current WebView to target for tracking *early*
         currentWebView = targetWebView
 
-        // CRITICAL: Update navigation bar BEFORE making target WebView visible
-        navigationBar?.let { navBar ->
-            if (navBarShouldBeVisible != navBarWasVisible) {
-                if (shouldShowNavBar) {
-                    pageConfig?.let { config ->
-                        config.navigationBarTitleText?.let { navBar.setTitle(it) }
-                        config.navigationBarBackgroundColor?.let { bgColor ->
-                            val textColor = if (config.navigationBarTextStyle == "white") Color.WHITE else Color.BLACK
-                            navBar.setColor(bgColor, textColor)
-                        }
-                    }
-                }
-                // In tab switching scenario, back button should always be hidden
-                navBar.setBackButtonVisible(false)
-                navBar.visibility = if (navBarShouldBeVisible) View.VISIBLE else View.GONE
-                updateLayoutMargins()
-            }
+        // Update TabBar UI first (without triggering listener)
+        tabBar?.setSelectedIndex(targetIndex, notifyListener = false)
+
+        // Configure navigation bar for the TARGET tab page using the helper
+        updateNavigationBar(pageConfig, showBackButton = false)
+
+        // Pre-position the target WebView correctly while still INVISIBLE
+        // Add target view first if it's not already there
+        if (targetWebView.parent != webViewContainer) {
+            targetWebView.visibility = View.INVISIBLE // Keep invisible until layout pass
+            targetWebView.let { webViewContainer.addView(it) }
+            Log.d(TAG, "Added new WebView for $targetPath to container.")
+        } else {
+            targetWebView.bringToFront() // Ensure it's on top if reused
         }
 
-        // Use a post with zero delay to ensure UI thread completes current layout pass
+        // Post ensures layout calculations are done *before* we make it visible
         webViewContainer.post {
-            // Make target WebView visible AFTER navigation bar and layout updated
-            targetWebView.visibility = View.VISIBLE
+            if (isDestroyed) return@post
 
-            // Resume the target WebView
+            // Apply translation based on current nav/tab bar state
+            targetWebView.translationY = calculateWebViewTranslationY()
+
+            // Make target visible and resume it
+            targetWebView.visibility = View.VISIBLE
             targetWebView.resume()
 
-            // Create a secondary post to remove previous view AFTER new view is visible
-            // This creates a slight overlap that prevents flashing
-            webViewContainer.postDelayed({
-                if (previousWebView != null && previousWebView != targetWebView) {
-                    previousWebView.pause()
-                    previousWebView.visibility = View.INVISIBLE // Hide before removing
-                    webViewContainer.removeView(previousWebView)
-                }
-            }, 50) // Small delay helps with transition
+            // Pause and remove the previous view *after* the new one is resumed and visible
+            // Use a small delay to prevent visual flicker
+            if (previousWebView != null && previousWebView != targetWebView) {
+                webViewContainer.postDelayed({
+                    if (isDestroyed) return@postDelayed
+                    if (previousWebView.parent == webViewContainer) {
+                         Log.d(TAG, "Pausing and removing previous tab WebView: ${previousWebView.currentPath}")
+                         previousWebView.pause()
+                         // Consider setting to GONE instead of INVISIBLE before remove
+                         previousWebView.visibility = View.GONE
+                         webViewContainer.removeView(previousWebView)
+                    }
+                }, 50) // Small delay to help smooth transition
+            }
         }
-
-        // Update TabBar UI first (without triggering listener)
-        tabBar?.setSelectedIndex(targetIndex, notifyListener = false)
     }
 
-    // Public function for programmatic switching (e.g., from native side)
-    fun switchTab(targetPath: String) {
-        val targetIndex = tabBar?.findTabIndexByPath(targetPath) ?: -1
-        if (targetIndex == -1) {
-            Log.e(TAG, "switchToTab failed: Path '$targetPath' not found in TabBar items.")
+    // Public function for programmatic page switching
+    fun switchPage(targetPath: String) {
+       // Call the navigation function
+        navigateToPage(targetPath)
+    }
+
+    // Handles navigating to a new page WITHIN the current tab's stack (or switching back)
+    private fun navigateToPage(targetPath: String) {
+        Log.d(TAG, "Navigating (push/pop) to page: $targetPath")
+
+        val appId = intent.getStringExtra(EXTRA_APP_ID)
+        if (appId.isNullOrEmpty()) {
+            Log.e(TAG, "navigateToPage failed: Cannot get/create WebView, appId is missing.")
             return
         }
 
-        val currentSelectedIndex = tabBar?.getSelectedIndex() ?: -1
-        if (isDestroyed || targetIndex == currentSelectedIndex) {
-            Log.w(TAG, "switchTab ignored: destroyed=$isDestroyed or targetIndex == currentSelectedIndex ($targetIndex == $currentSelectedIndex)")
-            return
+        val findResult = findOrCreateWebViewForPage(appId, targetPath)
+        val targetWebView = findResult.first
+        val pageConfig = findResult.second
+
+        val shouldShowNavBar = pageConfig?.hidden != true
+        val viewToNavigateFrom = currentWebView
+        // Check if target is already in container (add safe call here)
+        val isNavigatingBack = targetWebView?.parent == webViewContainer
+
+        // Update WebView references
+        currentWebView = targetWebView // Update current view reference EARLY
+        lastWebView = WeakReference(targetWebView)
+
+        // Configure Navigation Bar for Target Page using the helper
+        val isTargetTabRoot = tabBar?.findTabIndexByPath(targetPath) != -1 // Approximation
+        updateNavigationBar(pageConfig, showBackButton = !isTargetTabRoot)
+
+        // Add target view if it's not already in the container (should only happen on forward nav)
+        if (targetWebView?.parent != webViewContainer) {
+            targetWebView?.visibility = View.INVISIBLE // Keep invisible until layout pass
+            targetWebView?.let { webViewContainer.addView(it) }
+            Log.d(TAG, "Added new WebView for $targetPath to container.")
+        } else {
+            // If already in container (navigating back), just ensure it's on top
+            targetWebView?.bringToFront()
+            Log.d(TAG, "Bringing existing WebView for $targetPath to front.")
         }
 
-        // Update TabBar UI first (without triggering listener)
-        tabBar?.setSelectedIndex(targetIndex, notifyListener = false)
+        // Use post to ensure layout calculations are done before making visible/animating
+        webViewContainer.post {
+            if (isDestroyed) return@post
 
-        // Perform the actual view switching logic, explicitly hiding the back button
-        performWebViewSwitch(targetPath, showBackButton = false)
+            // Apply translation based on current nav/tab bar state (add safe call)
+            targetWebView?.translationY = calculateWebViewTranslationY()
+
+            // Make target visible and resume it (add safe calls)
+            targetWebView?.visibility = View.VISIBLE
+            targetWebView?.resume()
+            Log.d(TAG, "Resumed target WebView: $targetPath")
+
+            // Handle the View We Navigated From
+            if (viewToNavigateFrom != null && viewToNavigateFrom != targetWebView) {
+                // Add safe calls for viewToNavigateFrom
+                viewToNavigateFrom?.pause() // Always pause the old view
+                if (isNavigatingBack) {
+                    // If navigating back, REMOVE the view we are leaving
+                    Log.d(TAG, "Navigated back: Removing popped WebView: ${viewToNavigateFrom?.currentPath}")
+                    webViewContainer.removeView(viewToNavigateFrom)
+                } else {
+                    // If navigating forward, just HIDE the view we are leaving
+                    Log.d(TAG, "Navigated forward: Hiding previous WebView: ${viewToNavigateFrom?.currentPath}")
+                    viewToNavigateFrom?.visibility = View.GONE
+                }
+            }
+        }
+    }
+
+    // Helper function to configure the NavigationBar based on page config and context
+    private fun updateNavigationBar(config: NavigationBarConfig?, showBackButton: Boolean) {
+        val shouldShowNavBar = config?.hidden != true
+
+        if (shouldShowNavBar) {
+            // Create navigation bar if it doesn't exist
+            if (navigationBar == null) {
+                val navBarHeight = DEFAULT_NAV_BAR_HEIGHT_DP * resources.displayMetrics.density
+                val statusBarHeight = getStatusBarHeight(this)
+                navigationBar = NavigationBar(this).apply {
+                    layoutParams = FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        navBarHeight.toInt() + statusBarHeight
+                    ).apply {
+                        gravity = Gravity.TOP
+                        topMargin = 0
+                    }
+                    setPadding(paddingLeft, statusBarHeight, paddingRight, paddingBottom)
+                    setOnBackButtonClickListener { onBackPressedDispatcher.onBackPressed() }
+                }
+                // Add to root container, ensuring it's below the capsule button if present
+                val capsule = rootContainer.findViewWithTag<View>("capsule_button")
+                val index = if (capsule != null) rootContainer.indexOfChild(capsule) else rootContainer.childCount
+                rootContainer.addView(navigationBar, index.coerceAtLeast(0))
+                Log.d(TAG, "NavigationBar created and added.")
+            }
+
+            // Configure existing navigation bar
+            navigationBar?.let { navBar ->
+                 config?.let { pageConfig ->
+                    pageConfig.navigationBarTitleText?.let { navBar.setTitle(it) }
+                    pageConfig.navigationBarBackgroundColor?.let { bgColor ->
+                        val textColor = if (pageConfig.navigationBarTextStyle == "white") Color.WHITE else Color.BLACK
+                        navBar.setColor(bgColor, textColor)
+                    }
+                }
+                navBar.setBackButtonVisible(showBackButton)
+                if (navBar.visibility != View.VISIBLE) {
+                    navBar.visibility = View.VISIBLE
+                    updateLayoutMargins() // Update layout only if visibility changed
+                }
+            }
+        } else {
+            // Hide Nav Bar if needed
+            navigationBar?.let { navBar ->
+                if (navBar.visibility != View.GONE) {
+                    navBar.visibility = View.GONE
+                    updateLayoutMargins() // Update layout only if visibility changed
+                }
+            }
+        }
+    }
+
+    // Helper to calculate the Y translation based on visible bars
+    private fun calculateWebViewTranslationY(): Float {
+        val navBarOffset = if (navigationBar?.visibility == View.VISIBLE) {
+            navigationBar?.height ?: 0
+        } else {
+            0
+        }
+        val tabBarOffset = if (tabBar?.visibility == View.VISIBLE && tabBar?.config?.position == TabBarConfig.Position.TOP) {
+            tabBar?.height ?: 0
+        } else {
+            0
+        }
+        return (navBarOffset + tabBarOffset).toFloat()
     }
 
     override fun finish() {
