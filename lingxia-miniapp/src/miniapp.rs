@@ -404,19 +404,42 @@ impl MiniApp {
     pub fn on_back_pressed(&self, app_id: &str) -> bool {
         self.info(app_id, "Back pressed, closing mini app");
 
-        // TODO: page stack
-        if let Err(e) = self.runtime.close_miniapp(app_id) {
-            self.error(app_id, format!("Failed to close mini app: {}", e));
-            false
+        if let Some(page_manager_arc) = self.apps.get(app_id) {
+            let mut page_manager = page_manager_arc.lock().unwrap();
+            match page_manager.pop_from_current_stack() {
+                Some(previous_path) => {
+                    self.info(
+                        app_id,
+                        format!("Popped page, requesting switch back to: {}", previous_path),
+                    );
+                    // Tell the platform to switch the view *without* changing the tab state
+                    if let Err(e) = self.runtime.switch_page(app_id, &previous_path) {
+                        self.error(
+                            app_id,
+                            format!(
+                                "Failed to request page switch back to {}: {}",
+                                previous_path, e
+                            ),
+                        );
+                        // Still considered handled as state was popped
+                    }
+                    true // Back press was handled by popping a page state
+                }
+                None => {
+                    self.error(app_id, "No page to pop from current stack");
+                    false
+                }
+            }
         } else {
-            true
+            self.error(app_id, "No page manager found for the given app id");
+            false
         }
     }
 
     /// Get tab bar configuration for an app
     pub fn get_tab_bar_config(&self, app_id: &str) -> Option<String> {
         // Log the config request
-        self.info(app_id, &format!("Getting TabBar config for: {}", app_id));
+        self.info(app_id, format!("Getting TabBar config for: {}", app_id));
 
         // For now, we're just returning the default configuration
         // In the future, this could be customized per app and stored/retrieved from storage

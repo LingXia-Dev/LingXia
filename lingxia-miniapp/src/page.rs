@@ -16,7 +16,10 @@ impl PageStack {
     }
 
     fn push_page(&mut self, path: String) {
-        self.pages.push_back(path);
+        // Avoid pushing duplicates if already the last page
+        if self.pages.back() != Some(&path) {
+            self.pages.push_back(path);
+        }
     }
 
     fn pop_page(&mut self) -> Option<String> {
@@ -29,14 +32,6 @@ impl PageStack {
 
     fn current_page(&self) -> Option<&str> {
         self.pages.back().map(|s| s.as_str())
-    }
-
-    fn previous_page(&self) -> Option<&str> {
-        if self.pages.len() > 1 {
-            self.pages.get(self.pages.len() - 2).map(|s| s.as_str())
-        } else {
-            None
-        }
     }
 }
 
@@ -74,9 +69,13 @@ impl PageManager {
         }
 
         if is_tab_page {
-            // Create new stack for tab page
-            self.stacks
-                .insert(path.clone(), PageStack::new(path.clone()));
+            // Create new stack for tab page or get existing
+            let stack = self
+                .stacks
+                .entry(path.clone())
+                .or_insert_with(|| PageStack::new(path.clone()));
+            // Ensure the path is in the stack (might be creating or just switching to)
+            stack.push_page(path.clone());
             self.current_tab = Some(path.clone());
         } else if let Some(current_tab) = &self.current_tab {
             // Add to current tab's stack
@@ -85,48 +84,57 @@ impl PageManager {
             }
         }
 
+        // Insert or update controller - ensures controller is present even if page existed in stack
         self.controllers.insert(path, (controller, Instant::now()));
     }
 
-    /// Updates the last active time for a page
+    /// Updates the last active time for a page and sets current tab if it's a tab page
     pub(crate) fn mark_active(&mut self, path: &str) {
         if let Some((_, time)) = self.controllers.get_mut(path) {
             *time = Instant::now();
-
             // If this is a tab page, update current_tab
             if self.stacks.contains_key(path) {
                 self.current_tab = Some(path.to_string());
             }
+            // Note: We don't update the specific page stack here, only the current *tab*
         }
     }
 
-    /// Gets the previous page in the current stack
-    pub(crate) fn get_previous_page(&self, current_path: &str) -> Option<String> {
-        // Find which stack contains this page
-        for stack in self.stacks.values() {
-            if stack.current_page() == Some(current_path) {
-                return stack.previous_page().map(String::from);
-            }
-        }
-        None
-    }
+    /// Pops the current page from the current tab's stack if possible.
+    /// Returns the path of the page to navigate back *to* if successful.
+    /// Also destroys the controller of the popped page.
+    /// Returns None if the current page cannot be popped (e.g., it's the tab root).
+    pub fn pop_from_current_stack(&mut self) -> Option<String> {
+        let current_tab_path = match &self.current_tab {
+            Some(tab) => tab,
+            None => return None, // No current tab to pop from
+        };
 
-    /// Pops the current page from its stack
-    pub(crate) fn pop_page_controller(&mut self, path: &str) -> Option<Arc<dyn PageController>> {
-        // Never pop a tab page
-        if self.stacks.contains_key(path) {
-            return None;
-        }
+        // Use ? for cleaner handling if stack doesn't exist for current_tab_path
+        let stack = self.stacks.get_mut(current_tab_path)?;
 
-        // Remove from stack first
-        if let Some(current_tab) = &self.current_tab {
-            if let Some(stack) = self.stacks.get_mut(current_tab) {
-                stack.pop_page();
-            }
+        let page_to_pop = match stack.current_page() {
+            Some(p) => p.to_string(),
+            None => return None, // Stack is empty? Error state.
+        };
+
+        // Check if the page to pop is the tab root itself
+        if page_to_pop == *current_tab_path {
+            return None; // Cannot pop the root page of the stack via back press
         }
 
-        // Then remove the controller
-        self.controllers.remove(path).map(|(c, _)| c)
+        // Attempt to pop from the stack structure
+        if stack.pop_page().is_some() {
+            // Successfully popped from the stack structure.
+            // Now, remove the controller for the popped page.
+            self.controllers.remove(&page_to_pop); // Controller is dropped here
+
+            // Return the path of the *new* current page in the stack
+            stack.current_page().map(String::from)
+        } else {
+            // pop_page failed (e.g., already at root, though we checked)
+            None
+        }
     }
 
     /// Destroys the least active page that isn't a tab page
@@ -144,7 +152,16 @@ impl PageManager {
 
         // Remove it if found
         if let Some(path) = oldest_path {
-            self.pop_page_controller(&path);
+            // We need to remove from the stack it belongs to as well
+            if let Some(current_tab) = &self.current_tab {
+                if let Some(stack) = self.stacks.get_mut(current_tab) {
+                    // Only retain pages that are NOT the one we want to remove
+                    stack.pages.retain(|p| p != &path);
+                }
+            }
+            // TODO: If not found in current tab's stack, should we search others?
+
+            self.controllers.remove(&path);
         }
     }
 }
