@@ -32,7 +32,8 @@ pub trait MiniAppRuntime: Send + Sync {
     /// Post message to Page/WebView
     fn post_message(
         &self,
-        controller: &dyn PageController,
+        app_id: &str,
+        path: &str,
         message: &str,
     ) -> Result<(), Box<dyn std::error::Error>>;
 

@@ -384,6 +384,14 @@ class WebView @JvmOverloads constructor(
         }
     }
 
+    /**
+     * Posts a message to the WebView's JavaScript context using the WebMessagePort channel.
+     * The message will be received by the JavaScript side through the message channel established during WebView initialization.
+     * The message should be a valid JSON string that can be parsed by the JavaScript side.
+     *
+     * @param message The message to be sent to the JavaScript context
+     * @see com.lingxia.miniapp.WebView.setupMessageChannel
+     */
     fun postMessageToWebView(message: String) {
         messageChannel?.postMessage(WebMessage(message))
     }

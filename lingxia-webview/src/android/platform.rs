@@ -4,7 +4,6 @@ use jni::objects::JValue;
 use jni::sys::{JNIEnv, jobject};
 use log::info;
 use miniapp::MiniAppRuntime;
-use miniapp::PageController;
 use miniapp::log::LogLevel;
 use ndk_sys;
 
@@ -71,14 +70,10 @@ impl MiniAppRuntime for Platform {
     }
 
     /// Open a mini app in a new activity
-    /// 
+    ///
     /// This implementation starts a new MiniAppActivity with the provided appId and path.
     /// The app configuration is fetched from the native side via nativeGetAppConfig.
-    fn open_miniapp(
-        &self,
-        app_id: &str,
-        path: &str,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn open_miniapp(&self, app_id: &str, path: &str) -> Result<(), Box<dyn std::error::Error>> {
         info!("Opening mini app with appId: {}, path: {}", app_id, path);
         let mut env = get_env()?;
 
@@ -120,20 +115,29 @@ impl MiniAppRuntime for Platform {
 
     fn post_message(
         &self,
-        controller: &dyn PageController,
+        appid: &str,
+        path: &str,
         message: &str,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        if let Some(webview) = controller.as_any().downcast_ref::<WebView>() {
-            let mut env = get_env()?;
-            env.call_method(
-                webview.get_java_webview().as_obj(),
-                "postMessageToWebView",
-                "(Ljava/lang/String;)V",
-                &[JValue::Object(&env.new_string(message)?.into())],
-            )?;
-            Ok(())
+        // Get the PageManager instance
+        let miniapp = miniapp::get().lock().unwrap();
+
+        // Find the PageController for the specified appid and path
+        if let Some(controller) = miniapp.find_page_controller(appid, path) {
+            if let Some(webview) = controller.as_any().downcast_ref::<WebView>() {
+                let mut env = get_env()?;
+                env.call_method(
+                    webview.get_java_webview().as_obj(),
+                    "postMessageToWebView",
+                    "(Ljava/lang/String;)V",
+                    &[JValue::Object(&env.new_string(message)?.into())],
+                )?;
+                Ok(())
+            } else {
+                Err("Controller is not a WebView".into())
+            }
         } else {
-            Err("Controller is not a WebView".into())
+            Err(format!("No WebView found for appid={}, path={}", appid, path).into())
         }
     }
 
@@ -160,14 +164,17 @@ impl MiniAppRuntime for Platform {
         let miniapp_class = env.find_class(CLASS_MINIAPP)?;
         let app_id_jstring = env.new_string(app_id)?;
         let path_jstring = env.new_string(path)?;
-        
+
         env.call_static_method(
             miniapp_class,
             "switchPage",
             "(Ljava/lang/String;Ljava/lang/String;)V",
-            &[JValue::Object(&app_id_jstring), JValue::Object(&path_jstring)],
+            &[
+                JValue::Object(&app_id_jstring),
+                JValue::Object(&path_jstring),
+            ],
         )?;
-        
+
         Ok(())
     }
 }
