@@ -207,7 +207,7 @@ class MiniAppActivity : AppCompatActivity() {
                 setConfig(config)
                 setOnTabSelectedListener { index, path ->
                     Log.d(TAG, "Tab clicked: index=$index, path=$path")
-                    performWebViewSwitch(path)
+                    performWebViewSwitch(path, showBackButton = false)
                 }
                 // Apply layout params
                 layoutParams = FrameLayout.LayoutParams(
@@ -628,9 +628,9 @@ class MiniAppActivity : AppCompatActivity() {
     }
 
     // Core logic to switch WebView views
-    private fun performWebViewSwitch(targetPath: String) {
+    private fun performWebViewSwitch(targetPath: String, showBackButton: Boolean) {
         // Keep essential start log
-        Log.d(TAG, "Performing WebView switch for path: $targetPath")
+        Log.d(TAG, "Performing WebView switch for path: $targetPath, showBackButton: $showBackButton")
 
         val appId = intent.getStringExtra(EXTRA_APP_ID)
         if (appId.isNullOrEmpty()) {
@@ -737,8 +737,8 @@ class MiniAppActivity : AppCompatActivity() {
         // Update TabBar UI first (without triggering listener)
         tabBar?.setSelectedIndex(targetIndex, notifyListener = false)
 
-        // Perform the actual view switching logic
-        performWebViewSwitch(targetPath)
+        // Perform the actual view switching logic, explicitly hiding the back button
+        performWebViewSwitch(targetPath, showBackButton = false)
     }
 
     override fun finish() {
