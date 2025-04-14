@@ -17,6 +17,7 @@ import android.widget.TextView
 import androidx.annotation.AttrRes
 import androidx.annotation.StyleRes
 import org.json.JSONObject
+import android.view.animation.AccelerateDecelerateInterpolator
 
 /**
  * Configuration data class for the NavigationBar
@@ -261,10 +262,68 @@ class NavigationBar @JvmOverloads constructor(
      *
      * @param listener The callback to invoke when the back button is clicked
      */
-    fun setOnBackButtonClickListener(listener: () -> Unit) {
-        backButton.setOnClickListener {
-            Log.d(TAG, "Back button clicked")
-            listener.invoke()
+    fun setOnBackButtonClickListener(listener: OnClickListener) {
+        backButton.setOnClickListener(listener)
+    }
+
+    /**
+     * Hides the navigation bar.
+     */
+    fun hide() {
+        visibility = View.GONE
+    }
+
+    /**
+     * Updates the state of the NavigationBar and optionally animates the transition.
+     *
+     * @param title The title text to display.
+     * @param bgColor The background color.
+     * @param textColor The text color (for title and button icons).
+     * @param showBackButton Whether the back button should be initially visible.
+     * @param isBackNavigation Direction hint for animation.
+     * @param disableAnimation If true, update instantly; otherwise, animate.
+     * @param onBackClickListener Listener for the back button.
+     * @param onAnimationEnd Optional Runnable to execute after animation finishes.
+     */
+    fun updateStateAndAnimate(
+        title: String,
+        bgColor: Int,
+        textColor: Int,
+        showBackButton: Boolean,
+        isBackNavigation: Boolean,
+        disableAnimation: Boolean,
+        onBackClickListener: OnClickListener,
+        onAnimationEnd: Runnable? = null
+    ) {
+        visibility = View.VISIBLE
+
+        // Set state
+        setTitle(title)
+        setColor(bgColor, textColor)
+        setBackButtonVisible(showBackButton)
+        setOnBackButtonClickListener(onBackClickListener)
+
+        // Handle animation
+        if (!disableAnimation) {
+            val animStartX = if (isBackNavigation) -width.toFloat() else width.toFloat()
+            val duration = 250L
+
+            translationX = animStartX
+
+            animate()
+                .translationX(0f)
+                .setDuration(duration)
+                .setInterpolator(AccelerateDecelerateInterpolator())
+                .withEndAction { // Use the provided end action
+                    translationX = 0f // Ensure final position
+                    onAnimationEnd?.run() // Execute the callback
+                }
+                .start()
+        } else {
+            translationX = 0f
+            // If no animation, run the end action immediately if it exists,
+            // as it might contain layout updates needed right away.
+            onAnimationEnd?.run()
         }
     }
 }

@@ -188,6 +188,14 @@ class MiniWebViewContainer @JvmOverloads constructor(
             setWebViewVisible()
         }
     }
+
+    /**
+     * Returns the WebView contained within this container.
+     * @return The WebView instance, or null if none is set
+     */
+    fun getWebView(): com.lingxia.miniapp.WebView? {
+        return webView
+    }
 }
 
 class WebView @JvmOverloads constructor(
