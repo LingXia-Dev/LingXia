@@ -1,4 +1,3 @@
-use super::webview::WebView;
 use crate::android::{CLASS_MINIAPP, get_env};
 use jni::objects::JValue;
 use jni::sys::{JNIEnv, jobject};
@@ -111,34 +110,6 @@ impl MiniAppRuntime for Platform {
 
     fn get_cache_dir(&self) -> Option<String> {
         Some(self.cache_dir.clone())
-    }
-
-    fn post_message(
-        &self,
-        appid: &str,
-        path: &str,
-        message: &str,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        // Get the PageManager instance
-        let miniapp = miniapp::get().lock().unwrap();
-
-        // Find the PageController for the specified appid and path
-        if let Some(controller) = miniapp.find_page_controller(appid, path) {
-            if let Some(webview) = controller.as_any().downcast_ref::<WebView>() {
-                let mut env = get_env()?;
-                env.call_method(
-                    webview.get_java_webview().as_obj(),
-                    "postMessageToWebView",
-                    "(Ljava/lang/String;)V",
-                    &[JValue::Object(&env.new_string(message)?.into())],
-                )?;
-                Ok(())
-            } else {
-                Err("Controller is not a WebView".into())
-            }
-        } else {
-            Err(format!("No WebView found for appid={}, path={}", appid, path).into())
-        }
     }
 
     fn close_miniapp(&self, app_id: &str) -> Result<(), Box<dyn std::error::Error>> {

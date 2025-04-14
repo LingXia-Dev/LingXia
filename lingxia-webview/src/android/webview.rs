@@ -124,6 +124,17 @@ impl PageController for WebView {
         }
     }
 
+    fn post_message(&self, message: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let mut env = get_env()?;
+        env.call_method(
+            self.java_webview.as_obj(),
+            "postMessageToWebView",
+            "(Ljava/lang/String;)V",
+            &[JValue::Object(&env.new_string(message)?.into())],
+        )?;
+        Ok(())
+    }
+
     fn as_any(&self) -> &dyn Any {
         self
     }

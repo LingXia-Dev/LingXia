@@ -192,6 +192,10 @@ pub trait PageController: Send + Sync + Any {
     /// Returns true if the operation was successful
     fn set_devtools(&self, enabled: bool) -> bool;
 
+    /// Post a message to the page
+    /// Returns Ok(()) if successful, Err with the error if failed
+    fn post_message(&self, message: &str) -> Result<(), Box<dyn std::error::Error>>;
+
     /// Get the Any trait object for downcasting
     fn as_any(&self) -> &dyn Any;
 }

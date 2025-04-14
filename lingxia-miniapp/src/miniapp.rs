@@ -29,14 +29,6 @@ pub trait MiniAppRuntime: Send + Sync {
     /// Log message to platform-specific logging system
     fn log(&self, level: LogLevel, message: &str);
 
-    /// Post message to Page/WebView
-    fn post_message(
-        &self,
-        app_id: &str,
-        path: &str,
-        message: &str,
-    ) -> Result<(), Box<dyn std::error::Error>>;
-
     /// Switch to another page within the same mini app
     ///
     /// # Arguments
