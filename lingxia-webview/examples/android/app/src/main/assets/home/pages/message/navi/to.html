@@ -23,11 +23,75 @@
         p {
             color: #555;
         }
+        #messageDisplay {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #fff;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            min-width: 300px;
+            min-height: 100px;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .debug-info {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #666;
+        }
     </style>
+    <script>
+        // Function to handle a message
+        function handleMessage(data) {
+            console.log("[Page] Received message:", data);
+            try {
+                const messageDisplay = document.getElementById('messageDisplay');
+                const debugInfo = document.getElementById('debugInfo');
+                const timestamp = new Date().toISOString();
+                const messageText = `Message Content:\n${JSON.stringify(data, null, 2)}`;
+                messageDisplay.textContent = messageText;
+                const debugText = `Last Updated: ${timestamp}\nMessage Type: ${data?.type || 'N/A'}`;
+                debugInfo.textContent = debugText;
+            } catch (e) {
+                console.error("[Page] Error in message handler:", e);
+            }
+        }
+
+        // Function to register the handler
+        function registerLingxiaHandler() {
+            console.log("[Page] Attempting to register LingXia handler.");
+            if (window.lingxia && window.lingxia.onNativeMessage) {
+                 window.lingxia.onNativeMessage(handleMessage);
+                 document.getElementById('debugInfo').textContent = `Handler registered at ${new Date().toISOString()}`;
+                 console.log("[Page] LingXia handler registered successfully.");
+                 return true; // Indicate success
+            } else {
+                 console.error("[Page] LingXia interface not ready for handler registration.");
+                 document.getElementById('debugInfo').textContent = 'Error: LingXia registration failed.';
+                 return false; // Indicate failure
+            }
+        }
+
+        // Listen for the custom event from ipc.js
+        window.addEventListener('lingxiaready', registerLingxiaHandler);
+
+        // Fallback/Immediate Check: If ipc.js already finished before this listener was added, register now.
+        console.log("[Page] Setting up listener and performing immediate check for LingXia interface.");
+        if (window.lingxia) {
+            console.log("[Page] LingXia interface already exists during listener setup. Attempting registration.");
+            registerLingxiaHandler(); // Attempt registration immediately
+        } else {
+             console.log("[Page] LingXia interface not yet available. Waiting for 'lingxiaready' event.");
+        }
+
+    </script>
 </head>
 <body>
     <h1>Navigated Page</h1>
     <p>This page was loaded using the NAVIGATE_TO function.</p>
     <p>The back button in the navigation bar should be visible.</p>
+    <div id="messageDisplay">Waiting for messages...</div>
+    <div id="debugInfo" class="debug-info">Initializing...</div>
 </body>
-</html> 
+</html>
+

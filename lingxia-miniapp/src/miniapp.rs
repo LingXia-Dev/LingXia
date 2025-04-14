@@ -247,7 +247,7 @@ impl MiniApp {
     }
 
     /// Handles a postMessage from the page's JavaScript context
-    pub fn handle_post_message(&self, appid: String, _path: String, msg: String) {
+    pub fn handle_post_message(&self, appid: String, path: String, msg: String) {
         self.info(&appid, format!("Handling message for WebView: {}", msg));
 
         // First, parse the incoming string.
@@ -307,6 +307,58 @@ impl MiniApp {
         }
 
         match message_type.unwrap() {
+            "ipcReady" => {
+                self.info(
+                    &appid,
+                    format!(
+                        "WebView ({}/{}) signaled IPC ready. Sending PAGE_BACK structure.",
+                        appid, path
+                    ),
+                );
+
+                // Directly try to find the PageController and send the PAGE_BACK message structure
+                // This code block is moved from on_page_show and REPLACES the previous PAGE_LOAD sending block
+                if let Some(controller) = self.find_page_controller(&appid, &path) {
+                    // Construct the PAGE_BACK message structure
+                    let timestamp = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default() // Use default on error for simplicity in demo
+                        .as_secs();
+                    let message = serde_json::json!({
+                        "type": "PAGE_BACK",
+                        "data": {
+                            "timestamp": timestamp,
+                            "message": "Navigated back successfully (Sent on ipcReady)" // Adjust message for clarity
+                        }
+                    });
+
+                    match serde_json::to_string(&message) {
+                        Ok(message_string) => {
+                            self.info(
+                                &appid,
+                                format!(
+                                    "Sending PAGE_BACK structure message to {}/{}: {}",
+                                    appid, path, message_string
+                                ),
+                            );
+                            if let Err(e) = controller.post_message(&message_string) {
+                                self.error(&appid, format!("Failed to post PAGE_BACK structure message to controller for {}/{}: {}", appid, path, e));
+                            }
+                        }
+                        Err(e) => {
+                            self.error(
+                                &appid,
+                                format!(
+                                    "Failed to serialize PAGE_BACK structure message for {}/{}: {}",
+                                    appid, path, e
+                                ),
+                            );
+                        }
+                    }
+                } else {
+                    self.error(&appid, format!("Received ipcReady for {}/{} but could not find corresponding PageController to send PAGE_BACK structure.", appid, path));
+                }
+            }
             "OPEN_MINIAPP" => {
                 self.info(&appid, "Handling OPEN_MINIAPP message");
                 if let Some(data) = message_obj.get("data") {
