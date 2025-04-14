@@ -213,7 +213,6 @@ class WebView @JvmOverloads constructor(
     }
 
     data class WebViewConfig(
-        val enableDevTools: Boolean = true,
         val enableJavaScript: Boolean = true,
         val enableDomStorage: Boolean = true
     )
@@ -224,7 +223,7 @@ class WebView @JvmOverloads constructor(
 
     private fun initializeWebView() {
         applyWebViewSettings()
-        setDevToolsEnabled(config.enableDevTools)
+        WebView.setWebContentsDebuggingEnabled(false)
         setupWebViewClients()
     }
 
@@ -412,10 +411,6 @@ class WebView @JvmOverloads constructor(
         clearHistory()
         clearCache(true)
         clearFormData()
-    }
-
-    fun setDevToolsEnabled(enabled: Boolean) {
-        WebView.setWebContentsDebuggingEnabled(enabled)
     }
 
     fun resetViewport() {
