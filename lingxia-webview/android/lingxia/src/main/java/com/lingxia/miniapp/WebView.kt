@@ -226,7 +226,6 @@ class WebView @JvmOverloads constructor(
         applyWebViewSettings()
         setDevToolsEnabled(config.enableDevTools)
         setupWebViewClients()
-        setupMessageChannel()
     }
 
     @SuppressLint("SetJavaScriptEnabled")
