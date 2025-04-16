@@ -1,0 +1,12 @@
+[package]
+name = "lingxia-rong"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+rong = { path = "../../starfire" }
+rong_modules = { path = "../../starfire/rong_modules" }
+
+
+[dev-dependencies]
+rong_test = { path = "../../starfire/utils/rong_test"}
