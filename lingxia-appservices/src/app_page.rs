@@ -99,6 +99,8 @@ fn page(ctx: JSContext, obj: JSObject) -> JSResult<JSObject> {
     Ok(page)
 }
 
+const PAGE_JS: &str = include_str!("../scripts/Page.js");
+
 pub fn init(ctx: &JSContext) -> JSResult<()> {
     // Register the MiniApp class
     ctx.register_class::<AppPage>()?;
@@ -110,6 +112,9 @@ pub fn init(ctx: &JSContext) -> JSResult<()> {
     // Register the global Page function
     let page_func = JSFunc::new(ctx, page)?.name("_Page")?;
     ctx.global().set("_Page", page_func)?;
+
+    let page = Source::from_bytes(PAGE_JS);
+    ctx.eval::<()>(page)?;
 
     Ok(())
 }
@@ -157,12 +162,17 @@ mod tests {
             ))?;
 
             // Access the MiniApp instance and trigger the onLoad function using our test helper
-            let mini_app = page_obj.borrow::<AppPage>()?;
-            trigger(&mini_app, page_obj.clone(), "onLoad")?;
+            {
+                let mini_app = page_obj.borrow::<AppPage>()?;
+                trigger(&mini_app, page_obj.clone(), "onLoad")?;
+            }
 
             // Check if the function was triggered
             let triggered = ctx.eval::<bool>(Source::from_bytes("triggered"))?;
             assert!(triggered, "onLoad function should have been triggered");
+
+            // Wait a short time to for callback execution
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
             // Check if the callback was called
             let callback_called = ctx.eval::<bool>(Source::from_bytes("callbackCalled"))?;

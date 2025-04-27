@@ -10,3 +10,4 @@ rong_modules = { path = "../../starfire/rong_modules" }
 
 [dev-dependencies]
 rong_test = { path = "../../starfire/utils/rong_test"}
+tokio = { version = "1", features = ["rt", "macros", "time"] }
