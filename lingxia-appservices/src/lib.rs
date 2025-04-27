@@ -1,1 +1,1 @@
-mod jsclass;
+mod app_page;

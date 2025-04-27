@@ -12,13 +12,13 @@ enum InstanceType {
 }
 
 #[js_export]
-pub struct MiniApp {
+pub struct AppPage {
     functions: HashMap<String, JSFunc>,
     kind: InstanceType,
 }
 
 #[js_class]
-impl MiniApp {
+impl AppPage {
     #[js_method(constructor)]
     fn _new() {}
 
@@ -44,7 +44,7 @@ impl MiniApp {
     }
 }
 
-fn extract_functions(obj: &JSObject, mini_app: &mut MiniApp) -> JSResult<()> {
+fn extract_functions(obj: &JSObject, mini_app: &mut AppPage) -> JSResult<()> {
     // Use entries_as to directly get typed key-value pairs
     if let Ok(entries) = obj.entries_as::<String, JSFunc>() {
         for (key, func) in entries {
@@ -56,10 +56,10 @@ fn extract_functions(obj: &JSObject, mini_app: &mut MiniApp) -> JSResult<()> {
 
 fn app(ctx: JSContext, obj: JSObject) -> JSResult<JSObject> {
     // Get the MiniApp class
-    let mini_app_class = Class::get::<MiniApp>(&ctx)?;
+    let mini_app_class = Class::get::<AppPage>(&ctx)?;
 
     // Create a new MiniApp instance
-    let mut mini_app = MiniApp {
+    let mut mini_app = AppPage {
         functions: HashMap::new(),
         kind: InstanceType::App,
     };
@@ -75,9 +75,9 @@ fn app(ctx: JSContext, obj: JSObject) -> JSResult<JSObject> {
 
 fn page(ctx: JSContext, obj: JSObject) -> JSResult<JSObject> {
     // Get the MiniApp class
-    let mini_app_class = Class::get::<MiniApp>(&ctx)?;
+    let mini_app_class = Class::get::<AppPage>(&ctx)?;
 
-    let mut mini_app = MiniApp {
+    let mut mini_app = AppPage {
         functions: HashMap::new(),
         kind: InstanceType::Page,
     };
@@ -93,7 +93,7 @@ fn page(ctx: JSContext, obj: JSObject) -> JSResult<JSObject> {
 
 pub fn init(ctx: &JSContext) -> JSResult<()> {
     // Register the MiniApp class
-    ctx.register_class::<MiniApp>()?;
+    ctx.register_class::<AppPage>()?;
 
     // Register the global App function
     let app_func = JSFunc::new(ctx, app)?.name("App")?;
@@ -112,7 +112,7 @@ mod tests {
     use rong_test::*;
 
     // Helper function to trigger a function by name (moved from MiniApp)
-    fn trigger(mini_app: &MiniApp, this: JSObject, name: &str) -> JSResult<()> {
+    fn trigger(mini_app: &AppPage, this: JSObject, name: &str) -> JSResult<()> {
         if let Some(func) = mini_app.functions.get(name) {
             let _ = func.call::<_, ()>(Some(this), ());
             Ok(())
@@ -149,7 +149,7 @@ mod tests {
             ))?;
 
             // Access the MiniApp instance and trigger the onLoad function using our test helper
-            let mini_app = page_obj.borrow::<MiniApp>()?;
+            let mini_app = page_obj.borrow::<AppPage>()?;
             trigger(&mini_app, page_obj.clone(), "onLoad")?;
 
             // Check if the function was triggered
