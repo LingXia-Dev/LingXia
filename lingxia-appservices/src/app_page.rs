@@ -53,10 +53,12 @@ impl AppPage {
 }
 
 fn extract_functions(obj: &JSObject, mini_app: &mut AppPage) -> JSResult<()> {
-    // Use entries_as to directly get typed key-value pairs
-    if let Ok(entries) = obj.entries_as::<String, JSFunc>() {
-        for (key, func) in entries {
-            mini_app.functions.insert(key, func);
+    for key_value in obj.keys()? {
+        // obj.keys() returns JSValue, not String
+        if let Ok(key_string) = key_value.try_into::<String>() {
+            if let Ok(func) = obj.get::<_, JSFunc>(key_string.as_str()) {
+                mini_app.functions.insert(key_string, func);
+            }
         }
     }
     Ok(())
@@ -156,6 +158,7 @@ mod tests {
                                 console.log("setData callback called");
                             });
                         },
+                        data: { "a": 1},
                     });
                     page
                 "#,

@@ -58,7 +58,7 @@
         if (Object.keys(patchToSend).length > 0) {
           try {
             const jsonData = JSON.stringify(patchToSend);
-            console.log("[Lingxia] Flushing setData with PATCH:", jsonData);
+            // console.log("[Lingxia] Flushing setData with PATCH:", jsonData);
 
             const finalCallback = function () {
               callbacksToRun.forEach((cb) => {
