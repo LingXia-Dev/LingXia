@@ -1,8 +1,6 @@
 use crate::MiniAppRuntime;
 use http::{Request, Response, StatusCode};
 
-const NOT_FOUND_HTML: &str = include_str!("404.html");
-
 pub fn lingxia_handler(
     platform: &(dyn MiniAppRuntime + Send + Sync),
     req: Request<Vec<u8>>,
@@ -43,7 +41,11 @@ pub fn lingxia_handler(
         Err(_) => Response::builder()
             .status(StatusCode::NOT_FOUND)
             .header("Content-Type", "text/html")
-            .body(NOT_FOUND_HTML.as_bytes().to_vec())
+            .body(
+                platform
+                    .read_asset("404.html")
+                    .unwrap_or("Not Found".into()),
+            )
             .unwrap(),
     }
 }
