@@ -1,6 +1,6 @@
 use rong::{
-    Class, JSContext, JSFunc, JSObject, JSResult, RongJSError, function::Optional, js_class,
-    js_export, js_method,
+    Class, JSContext, JSFunc, JSObject, JSResult, JSValue, RongJSError, Source, function::Optional,
+    js_class, js_export, js_method,
 };
 use std::collections::HashMap;
 
@@ -38,6 +38,16 @@ impl AppPage {
             Err(RongJSError::TypeError(
                 "setData can only be called on Page".to_string(),
             ))
+        }
+    }
+
+    #[js_method(gc_mark)]
+    pub fn gc_mark_with<F>(&self, mut mark_fn: F)
+    where
+        F: FnMut(&JSValue),
+    {
+        for (_, func) in self.functions.iter() {
+            mark_fn(func.as_jsvalue())
         }
     }
 }
