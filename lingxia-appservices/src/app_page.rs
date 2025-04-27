@@ -22,13 +22,11 @@ impl AppPage {
     #[js_method(constructor)]
     fn _new() {}
 
-    #[js_method(rename = "setData")]
-    pub fn set_data(&self, data: JSObject, callback: Optional<JSFunc>) -> JSResult<()> {
+    #[js_method(rename = "_setData")]
+    pub fn set_data(&self, data: String, callback: Optional<JSFunc>) -> JSResult<()> {
         // Only Page type can use setData
         if let InstanceType::Page = self.kind {
-            let json_string = data.json_stringify()?;
-
-            println!("setData JSON: {}", json_string);
+            println!("setData JSON: {}", data);
 
             // Call the callback if provided
             if let Some(cb) = callback.0 {
@@ -100,8 +98,8 @@ pub fn init(ctx: &JSContext) -> JSResult<()> {
     ctx.global().set("App", app_func)?;
 
     // Register the global Page function
-    let page_func = JSFunc::new(ctx, page)?.name("Page")?;
-    ctx.global().set("Page", page_func)?;
+    let page_func = JSFunc::new(ctx, page)?.name("_Page")?;
+    ctx.global().set("_Page", page_func)?;
 
     Ok(())
 }
