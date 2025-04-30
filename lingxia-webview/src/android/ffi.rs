@@ -136,6 +136,15 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnWebViewCreated(
     // Create WebView
     let webview = WebView::from_java(java_webview, app_id.clone(), path.clone());
 
+    // Add WebView to Controller
+    if let Some(controller) = Controller::get() {
+        if controller.put_webview(app_id.clone(), path.clone(), webview.clone()) {
+            info!("WebView added to Controller for {}/{}", app_id, path);
+        } else {
+            error!("Failed to add WebView to Controller");
+        }
+    }
+
     // Notify miniapp about page creation with the WebView controller
     if let Ok(mut miniapp) = miniapp::get().lock() {
         miniapp.on_page_created(app_id, path, Arc::new(webview));
@@ -243,34 +252,24 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeGetExistingWebView
     let app_id: String = env.get_string(&app_id).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
 
-    // Get the miniapp instance and find the page controller
-    match miniapp::get().lock() {
-        Ok(miniapp) => {
-            if let Some(controller) = miniapp.find_page_controller(&app_id, &path) {
-                // Since we're in Android crate, we know this must be a WebView
-                let controller_ref = controller.as_ref();
-                if let Some(webview) = controller_ref.as_any().downcast_ref::<WebView>() {
-                    // Create a new local reference to the Java WebView object
-                    match env.new_local_ref(webview.get_java_webview()) {
-                        Ok(local_ref) => unsafe { JObject::from_raw(local_ref.into_raw()) },
-                        Err(e) => {
-                            error!("Failed to create local reference to WebView: {:?}", e);
-                            JObject::null()
-                        }
-                    }
-                } else {
-                    error!("PageController is not a WebView");
+    // Get the controller and try to find the WebView
+    if let Some(controller) = Controller::get() {
+        if let Some(webview_rc) = controller.get_webview(&app_id, &path) {
+            // Create a new local reference to the Java WebView object
+            match env.new_local_ref(webview_rc.get_java_webview()) {
+                Ok(local_ref) => unsafe { JObject::from_raw(local_ref.into_raw()) },
+                Err(e) => {
+                    error!("Failed to create local reference to WebView: {:?}", e);
                     JObject::null()
                 }
-            } else {
-                // No page controller found
-                JObject::null()
             }
-        }
-        Err(e) => {
-            error!("Failed to get miniapp instance: {:?}", e);
+        } else {
+            // No WebView found for this app_id/path
             JObject::null()
         }
+    } else {
+        error!("Controller not initialized");
+        JObject::null()
     }
 }
 

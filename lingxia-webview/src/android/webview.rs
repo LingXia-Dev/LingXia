@@ -5,6 +5,7 @@ use log::info;
 use miniapp::PageController;
 use std::any::Any;
 
+#[derive(Clone)]
 pub struct WebView {
     #[cfg(debug_assertions)]
     app_id: String,
