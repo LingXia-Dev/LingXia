@@ -1,4 +1,3 @@
-use log::{error, warn};
 use miniapp::PageController;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -8,9 +7,9 @@ use tokio::sync::{mpsc, oneshot};
 
 use crate::WebView;
 
-pub trait WebViewController {
-    /// Load a URL in the WebView and wait for the operation to complete
-    async fn load_url(&self, appid: String, path: String, url: String) -> bool;
+trait WebViewController {
+    /// Load a URL in the WebView
+    async fn load_url(&self, appid: String, url: String) -> bool;
 }
 
 static CONTROLLER: OnceLock<Controller> = OnceLock::new();
@@ -19,7 +18,6 @@ static CONTROLLER: OnceLock<Controller> = OnceLock::new();
 pub enum ControllerCmd {
     LoadUrl {
         appid: String,
-        path: String,
         url: String,
         responder: oneshot::Sender<bool>,
     },
@@ -39,7 +37,7 @@ impl Drop for Controller {
 }
 
 impl WebViewController for Controller {
-    async fn load_url(&self, appid: String, path: String, url: String) -> bool {
+    async fn load_url(&self, appid: String, url: String) -> bool {
         // Create a oneshot channel for the result
         let (tx, rx) = oneshot::channel();
 
@@ -48,13 +46,12 @@ impl WebViewController for Controller {
             .sender
             .send(ControllerCmd::LoadUrl {
                 appid,
-                path,
                 url,
                 responder: tx,
             })
             .await
         {
-            error!("Failed to send LoadUrl command: {}", e);
+            //error!("Failed to send LoadUrl command: {}", e);
             return false;
         }
 
@@ -62,7 +59,7 @@ impl WebViewController for Controller {
         match rx.await {
             Ok(result) => result,
             Err(_) => {
-                error!("UI thread dropped without sending result");
+                //error!("UI thread dropped without sending result");
                 false
             }
         }
@@ -117,19 +114,18 @@ impl Controller {
         match request {
             ControllerCmd::LoadUrl {
                 appid,
-                path,
                 url,
                 responder,
             } => {
                 let success = if let Ok(webviews) = controller.webviews.lock() {
-                    if let Some(webview) = webviews.get(&(appid.clone(), path.clone())) {
+                    if let Some(webview) = webviews.get(&(appid.clone(), url.clone())) {
                         webview.load_url(url)
                     } else {
-                        warn!("WebView instance not found for {}/{}", appid, path);
+                        //warn!("WebView instance not found for {}/{}", appid, path);
                         false
                     }
                 } else {
-                    error!("Failed to lock webviews mutex");
+                    //error!("Failed to lock webviews mutex");
                     false
                 };
 
@@ -161,7 +157,7 @@ impl Controller {
             webviews.insert((appid, path), Arc::new(webview));
             true
         } else {
-            error!("Failed to lock webviews mutex");
+            //error!("Failed to lock webviews mutex");
             false
         }
     }
@@ -175,7 +171,7 @@ impl Controller {
         let controller = Controller::new(sender);
 
         if CONTROLLER.set(controller).is_err() {
-            error!("Failed to set global CONTROLLER");
+            //error!("Failed to set global CONTROLLER");
             return false;
         }
 
