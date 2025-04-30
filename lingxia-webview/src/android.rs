@@ -4,3 +4,5 @@ mod webview;
 
 // Only re-export what's needed for FFI
 pub use ffi::*;
+
+pub use webview::*;

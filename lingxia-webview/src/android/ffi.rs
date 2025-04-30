@@ -1,5 +1,6 @@
 use super::platform::Platform;
 use super::webview::WebView;
+use crate::controller::Controller;
 use android_logger::Config;
 use http;
 use http::header::{HeaderMap, HeaderName, HeaderValue};
@@ -30,13 +31,27 @@ pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> j
             .with_tag("RustNative"),
     );
 
-    // Store JavaVM globally
-    let _ = JAVA_VM.set(Arc::new(vm));
+    // Store JavaVM globally and keep a copy for UI thread initialization
+    let jvm = Arc::new(vm);
+    let jvm_clone = jvm.clone();
+    let _ = JAVA_VM.set(jvm);
 
     // Store the main thread ID
     MAIN_THREAD_ID.with(|id| {
         let _ = id.set(std::thread::current().id());
     });
+
+    // Initialize and start the controller
+    if !Controller::run(move || -> bool {
+        let _ = jvm_clone.attach_current_thread().map_err(|e| {
+            error!("Failed to attach UI thread to JVM: {:?}", e);
+            return false;
+        });
+
+        true
+    }) {
+        error!("Failed to start controller");
+    }
 
     info!("Rust library loaded successfully");
     jni::sys::JNI_VERSION_1_6
@@ -529,4 +544,3 @@ pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeGetTabBarConfig(
 
     JObject::null().into_raw()
 }
-
