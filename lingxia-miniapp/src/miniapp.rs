@@ -1,13 +1,15 @@
 use http::{Response, StatusCode};
 use serde_json::Value;
 use std::collections::HashMap;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock, RwLock};
 use std::time::Instant;
 
+use crate::error::MiniAppError;
 use crate::log::{LogLevel, Logging};
-use crate::page::{self, PageController};
+use crate::page::{self, PageController, Pages, WebViewController};
 
 mod ipc;
 mod scheme;
@@ -48,7 +50,7 @@ pub trait MiniAppRuntime: Send + Sync {
 }
 
 /// Initializes the MiniApp with the given platform implementation
-pub fn init(platform: Box<dyn MiniAppRuntime>) {
+pub fn init_to_delete(platform: Box<dyn MiniAppRuntime>) {
     MINI_APP.get_or_init(|| {
         Mutex::new(MiniApp {
             runtime: platform,
@@ -73,11 +75,6 @@ pub struct MiniApp {
 }
 
 impl MiniApp {
-    /// Returns a reference to the PageManager for the given appid
-    pub fn get_page_manager(&self, appid: &str) -> Option<&Arc<Mutex<page::PageManager>>> {
-        self.apps.get(appid)
-    }
-
     /// Get page configuration for the given app and path
     pub fn get_page_config(&self, app_id: &str, path: &str) -> Option<String> {
         self.info(app_id, format!("Getting page config for {}", path));
@@ -536,3 +533,242 @@ const DEFAULT_TAB_BAR_CONFIG: &str = r##"{
         }
     ]
 }"##;
+
+/// Manages a collection of mini applications
+pub struct MiniApps {
+    // Collection of mini apps, keyed by app ID
+    miniapps: HashMap<String, Arc<RwLock<MiniAppUnit>>>,
+    // Reference to the app controller
+    controller: Arc<Box<dyn AppController>>,
+    // Maximum number of apps allowed in memory
+    max_apps: usize,
+}
+
+impl MiniApps {
+    fn new(controller: Arc<Box<dyn AppController>>) -> Self {
+        Self {
+            miniapps: HashMap::new(),
+            controller,
+            max_apps: 5,
+        }
+    }
+
+    pub fn on_low_memory() {
+        // TODO: Destroy the least active app
+    }
+}
+
+/// Represents a single mini application
+/// TODO: rename to MiniApp after refactoring
+pub struct MiniAppUnit {
+    app_id: String,
+
+    // Collection of pages in this app
+    pages: Pages,
+
+    // Time when this app was last active
+    last_active_time: Instant,
+
+    // Reference to the app controller
+    controller: Arc<Box<dyn AppController>>,
+
+    // Directory for miniapp-specific data
+    data_dir: PathBuf,
+    // Directory for miniapp-specific cache
+    cache_dir: PathBuf,
+}
+
+impl MiniAppUnit {
+    fn new(app_id: String, controller: Arc<Box<dyn AppController>>) -> Self {
+        // TODO: build dir based on vendor and customer id
+        let data_dir = controller.app_data_dir();
+        let cache_dir = controller.app_cache_dir();
+
+        Self {
+            pages: Pages::new(),
+            last_active_time: Instant::now(),
+            app_id,
+            controller,
+            data_dir,
+            cache_dir,
+        }
+    }
+
+    // Reads binary data from the specified relative path
+    fn read_bytes(&self, relative_path: &str) -> Result<Vec<u8>, MiniAppError> {
+        let file_path = self.data_dir.join(relative_path);
+
+        // Try to read from the filesystem
+        fs::read(file_path)
+            .map_err(|e| MiniAppError::ResourceNotFound(format!("{}:{}", relative_path, e)))
+    }
+
+    /// Reads text content from the specified relative path
+    fn read_text(&self, relative_path: &str) -> Result<String, MiniAppError> {
+        self.read_bytes(relative_path)
+            .map(|content| String::from_utf8_lossy(&content).to_string())
+    }
+
+    /// Reads and parses JSON content from the specified relative path
+    fn read_json(&self, relative_path: &str) -> Result<serde_json::Value, MiniAppError> {
+        self.read_text(relative_path).and_then(|content| {
+            serde_json::from_str(&content)
+                .map_err(|_| MiniAppError::InvalidJsonFile(relative_path.to_string()))
+        })
+    }
+}
+
+/// Interface for controlling app lifecycle and navigation
+pub trait AppController: Send + Sync + 'static {
+    /// Read asset file from platform-specific location
+    fn read_asset(&self, path: &str) -> Result<Vec<u8>, MiniAppError>;
+
+    /// Get data directory path
+    fn app_data_dir(&self) -> PathBuf;
+
+    /// Get cache directory path
+    fn app_cache_dir(&self) -> PathBuf;
+
+    /// Log message to platform-specific logging system
+    fn log(&self, level: LogLevel, app_id: &str, message: &str);
+
+    /// Switch to another page within the same mini app
+    fn switch_page(&self, app_id: &str, path: &str) -> Result<(), MiniAppError>;
+
+    /// Open a mini app in platform-specific way
+    fn open_miniapp(&self, app_id: &str, path: &str) -> Result<(), MiniAppError>;
+}
+
+pub trait AppUiDelegate {
+    /// Get tabbar configuration for mini app
+    fn get_tab_bar_config(&self) -> Result<String, MiniAppError>;
+
+    /// Get page configuration for a specific page
+    fn get_page_config(&self, path: &str) -> Result<String, MiniAppError>;
+
+    /// Called when mini app is opened
+    fn on_miniapp_opened(&self);
+
+    /// Called when mini app is closed
+    fn on_miniapp_closed(&self);
+
+    /// Called when a page is created
+    fn on_page_created(&self, path: String, webview: Arc<dyn WebViewController>);
+
+    /// Called when the page starts loading
+    fn on_page_started(&self, path: String);
+
+    /// Called when the page finishes loading
+    fn on_page_finished(&self, path: String);
+
+    /// Called when the page showed in the view
+    fn on_page_show(&self, path: String);
+
+    /// Handle back button press
+    fn on_back_pressed(&self) -> bool;
+
+    /// Determines whether to override URL loading in the page.
+    ///
+    /// # Arguments
+    /// * `url` - The URL being requested
+    ///
+    /// # Returns
+    /// * `true` - To intercept and handle the URL loading
+    /// * `false` - To allow the page to continue loading the URL
+    fn should_override_url_loading(&self, url: String) -> bool;
+
+    /// Handles a postMessage from the page's JavaScript context
+    fn handle_post_message(&self, path: String, msg: String);
+
+    /// Handles an HTTP request from the page
+    fn handle_request(&self, req: http::Request<Vec<u8>>) -> Option<http::Response<Vec<u8>>>;
+}
+
+impl AppUiDelegate for MiniAppUnit {
+    fn get_tab_bar_config(&self) -> Result<String, MiniAppError> {
+        todo!()
+    }
+
+    fn get_page_config(&self, path: &str) -> Result<String, MiniAppError> {
+        todo!()
+    }
+
+    fn on_miniapp_opened(&self) {
+        todo!()
+    }
+
+    fn on_miniapp_closed(&self) {
+        todo!()
+    }
+
+    fn on_page_created(&self, path: String, webview: Arc<dyn WebViewController>) {
+        todo!()
+    }
+
+    fn on_page_started(&self, path: String) {
+        todo!()
+    }
+
+    fn on_page_finished(&self, path: String) {
+        todo!()
+    }
+
+    fn on_page_show(&self, path: String) {
+        todo!()
+    }
+
+    fn on_back_pressed(&self) -> bool {
+        todo!()
+    }
+
+    fn should_override_url_loading(&self, url: String) -> bool {
+        todo!()
+    }
+
+    fn handle_post_message(&self, path: String, msg: String) {
+        todo!()
+    }
+
+    fn handle_request(&self, req: http::Request<Vec<u8>>) -> Option<http::Response<Vec<u8>>> {
+        todo!()
+    }
+}
+
+// Global instance of MiniApps
+static MINIAPPS: OnceLock<RwLock<MiniApps>> = OnceLock::new();
+
+/// Initialize the MiniApps singleton
+pub fn init(controller: Arc<Box<dyn AppController>>) {
+    let _ = MINIAPPS.set(RwLock::new(MiniApps::new(controller)));
+}
+
+/// Get or initialize a specific MiniApp instance by app_id
+///
+/// This function provides a get-or-create semantic for MiniApp instances.
+/// If the MiniApp with the given app_id exists, it returns a reference to it.
+/// If it doesn't exist, it creates a new one with default settings and returns a reference.
+///
+/// # Arguments
+/// * `app_id` - The ID of the mini app to get or create
+///
+/// # Returns
+/// A thread-safe reference to the MiniAppUnit
+pub fn get_or_init_miniapp(app_id: String) -> Arc<RwLock<MiniAppUnit>> {
+    let mut miniapps = MINIAPPS
+        .get()
+        .expect("MiniApps not initialized")
+        .write()
+        .unwrap();
+
+    let controller = miniapps.controller.clone();
+
+    // Use entry API to atomically get or insert
+    miniapps
+        .miniapps
+        .entry(app_id.clone())
+        .or_insert_with(|| {
+            let unit = MiniAppUnit::new(app_id, controller);
+            Arc::new(RwLock::new(unit))
+        })
+        .clone()
+}

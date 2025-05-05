@@ -1,3 +1,4 @@
+use crate::error::MiniAppError;
 use std::any::Any;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
@@ -198,4 +199,50 @@ pub trait PageController: Send + Sync + Any {
 
     /// Get the Any trait object for downcasting
     fn as_any(&self) -> &dyn Any;
+}
+
+/// Interface for controlling WebView
+pub trait WebViewController: Send + Sync + 'static {
+    /// Load a URL in the WebView
+    fn load_url(&self, url: &str) -> Result<bool, MiniAppError>;
+
+    /// Evaluate JavaScript in the WebView
+    fn evaluate_javascript(&self, js: &str) -> Result<String, MiniAppError>;
+
+    /// Post a message to the JavaScript context
+    fn post_message(&self, message: &str) -> Result<(), MiniAppError>;
+
+    /// Enable or disable developer tools
+    fn set_devtools(&self, enabled: bool) -> Result<bool, MiniAppError>;
+
+    /// Clear browsing data from the WebView
+    fn clear_browsing_data(&self) -> Result<(), MiniAppError>;
+
+    /// Set the user agent string for the WebView
+    fn set_user_agent(&self, ua: &str) -> Result<(), MiniAppError>;
+}
+
+/// Manages a collection of pages for a single app
+pub struct Pages {
+    /// Map of path to Page
+    pages: HashMap<String, Page>,
+    /// Path of the currently active tab
+    current_tab: Option<String>,
+}
+
+impl Pages {
+    pub(crate) fn new() -> Self {
+        Self {
+            pages: HashMap::new(),
+            current_tab: None,
+        }
+    }
+}
+
+/// Represents a single page in a mini app
+pub struct Page {
+    /// Web view controller for this page
+    webview: Box<dyn WebViewController>,
+    /// Time when this page was last active
+    last_active_time: Instant,
 }

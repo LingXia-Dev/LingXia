@@ -1,0 +1,14 @@
+use thiserror::Error;
+
+#[derive(Debug, Clone, Error)]
+pub enum MiniAppError {
+    /// Error when performing web operations
+    #[error("WebView error: {0}")]
+    WebView(String),
+
+    #[error("{0} not found")]
+    ResourceNotFound(String),
+
+    #[error("{0} is not valid JSON file")]
+    InvalidJsonFile(String),
+}
