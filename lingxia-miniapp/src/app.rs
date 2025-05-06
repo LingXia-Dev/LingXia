@@ -18,12 +18,6 @@ pub trait AppController: Send + Sync + 'static {
     /// Log message to platform-specific logging system
     fn log(&self, level: LogLevel, app_id: &str, message: &str);
 
-    /// Switch to another page within the same mini app
-    fn switch_page(&self, app_id: &str, path: &str) -> Result<(), MiniAppError>;
-
-    /// Open a mini app in platform-specific way
-    fn open_miniapp(&self, app_id: &str, path: &str) -> Result<(), MiniAppError>;
-
     /// Send a command to the controller and wait for the response
     /// This method creates a channel for the response, sends the command, and waits for the result
     fn send_cmd(&self, cmd: ControllerCmd) -> Result<(), MiniAppError>;
@@ -32,6 +26,7 @@ pub trait AppController: Send + Sync + 'static {
 #[derive(Debug)]
 pub enum ControllerCmd {
     WebView(WebViewCmd),
+    MiniApp(MiniAppCmd),
     Shutdown,
 }
 
@@ -68,6 +63,20 @@ pub enum WebViewCmd {
     SetUserAgent {
         appid: String,
         ua: String,
+        responder: mpsc::Sender<Result<(), MiniAppError>>,
+    },
+}
+
+#[derive(Debug)]
+pub enum MiniAppCmd {
+    SwitchPage {
+        appid: String,
+        path: String,
+        responder: mpsc::Sender<Result<(), MiniAppError>>,
+    },
+    OpenMiniApp {
+        appid: String,
+        path: String,
         responder: mpsc::Sender<Result<(), MiniAppError>>,
     },
 }
