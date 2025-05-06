@@ -2,11 +2,12 @@ use http::{Response, StatusCode};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::{Mutex, OnceLock, RwLock};
 use std::time::Instant;
 
+use crate::app::AppController;
 use crate::error::MiniAppError;
 use crate::log::{LogLevel, Logging};
 use crate::page::{self, PageController, Pages, WebViewController};
@@ -50,7 +51,7 @@ pub trait MiniAppRuntime: Send + Sync {
 }
 
 /// Initializes the MiniApp with the given platform implementation
-pub fn init_to_delete(platform: Box<dyn MiniAppRuntime>) {
+pub fn init(platform: Box<dyn MiniAppRuntime>) {
     MINI_APP.get_or_init(|| {
         Mutex::new(MiniApp {
             runtime: platform,
@@ -561,7 +562,7 @@ impl MiniApps {
 /// Represents a single mini application
 /// TODO: rename to MiniApp after refactoring
 pub struct MiniAppUnit {
-    app_id: String,
+    appid: String,
 
     // Collection of pages in this app
     pages: Pages,
@@ -579,7 +580,7 @@ pub struct MiniAppUnit {
 }
 
 impl MiniAppUnit {
-    fn new(app_id: String, controller: Arc<Box<dyn AppController>>) -> Self {
+    fn new(appid: String, controller: Arc<Box<dyn AppController>>) -> Self {
         // TODO: build dir based on vendor and customer id
         let data_dir = controller.app_data_dir();
         let cache_dir = controller.app_cache_dir();
@@ -587,7 +588,7 @@ impl MiniAppUnit {
         Self {
             pages: Pages::new(),
             last_active_time: Instant::now(),
-            app_id,
+            appid,
             controller,
             data_dir,
             cache_dir,
@@ -616,27 +617,6 @@ impl MiniAppUnit {
                 .map_err(|_| MiniAppError::InvalidJsonFile(relative_path.to_string()))
         })
     }
-}
-
-/// Interface for controlling app lifecycle and navigation
-pub trait AppController: Send + Sync + 'static {
-    /// Read asset file from platform-specific location
-    fn read_asset(&self, path: &str) -> Result<Vec<u8>, MiniAppError>;
-
-    /// Get data directory path
-    fn app_data_dir(&self) -> PathBuf;
-
-    /// Get cache directory path
-    fn app_cache_dir(&self) -> PathBuf;
-
-    /// Log message to platform-specific logging system
-    fn log(&self, level: LogLevel, app_id: &str, message: &str);
-
-    /// Switch to another page within the same mini app
-    fn switch_page(&self, app_id: &str, path: &str) -> Result<(), MiniAppError>;
-
-    /// Open a mini app in platform-specific way
-    fn open_miniapp(&self, app_id: &str, path: &str) -> Result<(), MiniAppError>;
 }
 
 pub trait AppUiDelegate {
@@ -738,22 +718,22 @@ impl AppUiDelegate for MiniAppUnit {
 static MINIAPPS: OnceLock<RwLock<MiniApps>> = OnceLock::new();
 
 /// Initialize the MiniApps singleton
-pub fn init(controller: Arc<Box<dyn AppController>>) {
+pub fn init2(controller: Arc<Box<dyn AppController>>) {
     let _ = MINIAPPS.set(RwLock::new(MiniApps::new(controller)));
 }
 
-/// Get or initialize a specific MiniApp instance by app_id
+/// Get or initialize a specific MiniApp instance by appid
 ///
 /// This function provides a get-or-create semantic for MiniApp instances.
-/// If the MiniApp with the given app_id exists, it returns a reference to it.
+/// If the MiniApp with the given appid exists, it returns a reference to it.
 /// If it doesn't exist, it creates a new one with default settings and returns a reference.
 ///
 /// # Arguments
-/// * `app_id` - The ID of the mini app to get or create
+/// * `appid` - The ID of the mini app to get or create
 ///
 /// # Returns
 /// A thread-safe reference to the MiniAppUnit
-pub fn get_or_init_miniapp(app_id: String) -> Arc<RwLock<MiniAppUnit>> {
+pub fn get_or_init_miniapp(appid: String) -> Arc<RwLock<MiniAppUnit>> {
     let mut miniapps = MINIAPPS
         .get()
         .expect("MiniApps not initialized")
@@ -765,9 +745,9 @@ pub fn get_or_init_miniapp(app_id: String) -> Arc<RwLock<MiniAppUnit>> {
     // Use entry API to atomically get or insert
     miniapps
         .miniapps
-        .entry(app_id.clone())
+        .entry(appid.clone())
         .or_insert_with(|| {
-            let unit = MiniAppUnit::new(app_id, controller);
+            let unit = MiniAppUnit::new(appid, controller);
             Arc::new(RwLock::new(unit))
         })
         .clone()
