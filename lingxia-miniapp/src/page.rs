@@ -245,18 +245,14 @@ pub(crate) struct Page {
     path: String,
 
     // Reference to the app controller
-    controller: Arc<Box<dyn AppController>>,
+    controller: Arc<dyn AppController>,
 
     // Time when this page was last active
     last_active_time: Instant,
 }
 
 impl Page {
-    pub(crate) fn new(
-        controller: Arc<Box<dyn AppController>>,
-        appid: String,
-        path: String,
-    ) -> Self {
+    pub(crate) fn new(controller: Arc<dyn AppController>, appid: String, path: String) -> Self {
         Self {
             controller,
             appid,

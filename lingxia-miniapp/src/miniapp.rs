@@ -10,7 +10,7 @@ use std::time::Instant;
 use crate::app::AppController;
 use crate::error::MiniAppError;
 use crate::log::{LogLevel, Logging};
-use crate::page::{self, PageController, Pages, WebViewController};
+use crate::page::{self, PageController, Pages};
 
 mod ipc;
 mod scheme;
@@ -51,7 +51,7 @@ pub trait MiniAppRuntime: Send + Sync {
 }
 
 /// Initializes the MiniApp with the given platform implementation
-pub fn init(platform: Box<dyn MiniAppRuntime>) {
+pub fn init2(platform: Box<dyn MiniAppRuntime>) {
     MINI_APP.get_or_init(|| {
         Mutex::new(MiniApp {
             runtime: platform,
@@ -540,16 +540,16 @@ pub struct MiniApps {
     // Collection of mini apps, keyed by app ID
     miniapps: HashMap<String, Arc<RwLock<MiniAppUnit>>>,
     // Reference to the app controller
-    controller: Arc<Box<dyn AppController>>,
+    controller: Arc<dyn AppController>,
     // Maximum number of apps allowed in memory
     max_apps: usize,
 }
 
 impl MiniApps {
-    fn new(controller: Arc<Box<dyn AppController>>) -> Self {
+    fn new<T: AppController + 'static>(controller: T) -> Self {
         Self {
             miniapps: HashMap::new(),
-            controller,
+            controller: Arc::new(controller),
             max_apps: 5,
         }
     }
@@ -571,7 +571,7 @@ pub struct MiniAppUnit {
     last_active_time: Instant,
 
     // Reference to the app controller
-    controller: Arc<Box<dyn AppController>>,
+    controller: Arc<dyn AppController>,
 
     // Directory for miniapp-specific data
     data_dir: PathBuf,
@@ -580,7 +580,7 @@ pub struct MiniAppUnit {
 }
 
 impl MiniAppUnit {
-    fn new(appid: String, controller: Arc<Box<dyn AppController>>) -> Self {
+    fn new(appid: String, controller: Arc<dyn AppController>) -> Self {
         // TODO: build dir based on vendor and customer id
         let data_dir = controller.app_data_dir();
         let cache_dir = controller.app_cache_dir();
@@ -718,7 +718,7 @@ impl AppUiDelegate for MiniAppUnit {
 static MINIAPPS: OnceLock<RwLock<MiniApps>> = OnceLock::new();
 
 /// Initialize the MiniApps singleton
-pub fn init2(controller: Arc<Box<dyn AppController>>) {
+pub fn init<T: AppController + 'static>(controller: T) {
     let _ = MINIAPPS.set(RwLock::new(MiniApps::new(controller)));
 }
 
