@@ -1,30 +1,17 @@
-use miniapp::PageController;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Mutex, OnceLock, mpsc};
 use std::thread;
-use tokio::sync::{mpsc, oneshot};
+
+use miniapp::{AppController, ControllerCmd, MiniAppError, log::LogLevel};
 
 use crate::WebView;
-
-trait WebViewController {
-    /// Load a URL in the WebView
-    async fn load_url(&self, appid: String, url: String) -> bool;
-}
+pub mod webview;
+use webview::handle_webview_cmd;
 
 static CONTROLLER: OnceLock<Controller> = OnceLock::new();
 
-#[derive(Debug)]
-pub enum ControllerCmd {
-    LoadUrl {
-        appid: String,
-        url: String,
-        responder: oneshot::Sender<bool>,
-    },
-    Shutdown,
-}
-
-pub struct Controller {
+pub(crate) struct Controller {
     pub(crate) webviews: Mutex<HashMap<(String, String), Arc<WebView>>>,
     sender: mpsc::Sender<ControllerCmd>,
 }
@@ -32,37 +19,40 @@ pub struct Controller {
 impl Drop for Controller {
     fn drop(&mut self) {
         // Try to send shutdown command, ignore errors since we're dropping anyway
-        let _ = self.sender.try_send(ControllerCmd::Shutdown);
+        let _ = self.sender.send(ControllerCmd::Shutdown);
     }
 }
 
-impl WebViewController for Controller {
-    async fn load_url(&self, appid: String, url: String) -> bool {
-        // Create a oneshot channel for the result
-        let (tx, rx) = oneshot::channel();
+impl AppController for Controller {
+    fn read_asset(&self, path: &str) -> Result<Vec<u8>, MiniAppError> {
+        todo!()
+    }
 
-        // Send request to UI thread
-        if let Err(e) = self
-            .sender
-            .send(ControllerCmd::LoadUrl {
-                appid,
-                url,
-                responder: tx,
-            })
-            .await
-        {
-            //error!("Failed to send LoadUrl command: {}", e);
-            return false;
-        }
+    fn app_data_dir(&self) -> std::path::PathBuf {
+        todo!()
+    }
 
-        // Wait for the result
-        match rx.await {
-            Ok(result) => result,
-            Err(_) => {
-                //error!("UI thread dropped without sending result");
-                false
-            }
-        }
+    fn app_cache_dir(&self) -> std::path::PathBuf {
+        todo!()
+    }
+
+    fn log(&self, level: LogLevel, app_id: &str, message: &str) {
+        todo!()
+    }
+
+    fn send_cmd(&self, cmd: ControllerCmd) -> Result<(), MiniAppError> {
+        // Create a channel for receiving the response
+        let (_tx, rx) = mpsc::channel();
+
+        // Send the command with the response channel
+        self.sender
+            .send(cmd)
+            .map_err(|e| MiniAppError::WebView(format!("Failed to send command: {}", e)))?;
+
+        // Wait for the response
+        rx.recv().map_err(|_| {
+            MiniAppError::WebView("UI thread dropped without sending result".to_string())
+        })
     }
 }
 
@@ -79,32 +69,18 @@ impl Controller {
         F: FnOnce() -> bool + Send + 'static,
     {
         thread::spawn(move || {
-            // Create a current thread runtime using Builder
-            let runtime = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .expect("Failed to create tokio runtime");
-
-            let _guard = runtime.enter();
-
             if !f() {
                 return;
             }
 
-            async fn process_commands(
-                controller: &Controller,
-                mut receiver: mpsc::Receiver<ControllerCmd>,
-            ) {
-                while let Some(cmd) = receiver.recv().await {
-                    if !Controller::handle_request(controller, cmd) {
-                        break;
-                    }
-                }
-            }
-
             let controller = CONTROLLER.get().unwrap();
 
-            runtime.block_on(process_commands(controller, receiver));
+            // Process commands loop
+            while let Ok(cmd) = receiver.recv() {
+                if !Controller::handle_request(controller, cmd) {
+                    break;
+                }
+            }
         });
     }
 
@@ -112,26 +88,8 @@ impl Controller {
     /// Returns true to continue processing, false to stop
     fn handle_request(controller: &Controller, request: ControllerCmd) -> bool {
         match request {
-            ControllerCmd::LoadUrl {
-                appid,
-                url,
-                responder,
-            } => {
-                let success = if let Ok(webviews) = controller.webviews.lock() {
-                    if let Some(webview) = webviews.get(&(appid.clone(), url.clone())) {
-                        webview.load_url(url)
-                    } else {
-                        //warn!("WebView instance not found for {}/{}", appid, path);
-                        false
-                    }
-                } else {
-                    //error!("Failed to lock webviews mutex");
-                    false
-                };
-
-                let _ = responder.send(success);
-                true // Continue processing requests
-            }
+            ControllerCmd::WebView(cmd) => handle_webview_cmd(&controller.webviews, cmd),
+            ControllerCmd::MiniApp(cmd) => todo!(),
             ControllerCmd::Shutdown => {
                 false // Stop processing loop
             }
@@ -157,7 +115,6 @@ impl Controller {
             webviews.insert((appid, path), Arc::new(webview));
             true
         } else {
-            //error!("Failed to lock webviews mutex");
             false
         }
     }
@@ -167,11 +124,10 @@ impl Controller {
     where
         F: FnOnce() -> bool + Send + 'static,
     {
-        let (sender, receiver) = mpsc::channel::<ControllerCmd>(10);
+        let (sender, receiver) = mpsc::channel::<ControllerCmd>();
         let controller = Controller::new(sender);
 
         if CONTROLLER.set(controller).is_err() {
-            //error!("Failed to set global CONTROLLER");
             return false;
         }
 
