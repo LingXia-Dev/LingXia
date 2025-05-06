@@ -11,7 +11,7 @@ use crate::{App, MiniAppPlatform, WebView};
 mod app;
 mod webview;
 
-static CONTROLLER: OnceLock<Controller> = OnceLock::new();
+static CONTROLLER: OnceLock<Arc<Controller>> = OnceLock::new();
 
 pub(crate) struct Controller {
     app: App,
@@ -68,12 +68,15 @@ impl Controller {
         }
     }
 
-    fn spawn_ui_thread<F>(f: F, receiver: mpsc::Receiver<ControllerCmd>)
-    where
-        F: FnOnce() -> bool + Send + 'static,
+    fn spawn_ui_thread<F>(
+        f: F,
+        controller: Arc<Controller>,
+        receiver: mpsc::Receiver<ControllerCmd>,
+    ) where
+        F: FnOnce(Arc<Controller>) -> bool + Send + 'static,
     {
         thread::spawn(move || {
-            if !f() {
+            if !f(controller) {
                 return;
             }
 
@@ -153,21 +156,21 @@ impl Controller {
     /// Start the dedicated UI thread for business
     pub(crate) fn run<F>(f: F, app: App) -> bool
     where
-        F: FnOnce() -> bool + Send + 'static,
+        F: FnOnce(Arc<Controller>) -> bool + Send + 'static,
     {
         let (sender, receiver) = mpsc::channel::<ControllerCmd>();
-        let controller = Controller::new(sender, app);
+        let controller = Arc::new(Controller::new(sender, app));
 
-        if CONTROLLER.set(controller).is_err() {
+        if CONTROLLER.set(controller.clone()).is_err() {
             return false;
         }
 
-        Controller::spawn_ui_thread(f, receiver);
+        Controller::spawn_ui_thread(f, controller, receiver);
         true
     }
 
     /// Get the singleton controller instance
     pub(crate) fn get() -> Option<&'static Controller> {
-        CONTROLLER.get()
+        CONTROLLER.get().map(|v| &**v)
     }
 }

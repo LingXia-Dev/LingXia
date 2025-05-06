@@ -1,4 +1,4 @@
-use super::platform::Platform;
+use super::app::App;
 use super::webview::WebView;
 use crate::controller::Controller;
 use android_logger::Config;
@@ -11,9 +11,9 @@ use jni::{JNIEnv, JavaVM};
 use log::{error, info};
 use miniapp::log::{LogLevel, LogTag, Logging};
 use serde_json;
-use std::sync::{Arc, OnceLock};
+use std::sync::OnceLock;
 
-pub static JAVA_VM: OnceLock<Arc<JavaVM>> = OnceLock::new();
+pub static JAVA_VM: OnceLock<JavaVM> = OnceLock::new();
 
 /// Java class name for MiniApp
 pub(crate) const CLASS_MINIAPP: &str = "com/lingxia/miniapp/MiniApp";
@@ -26,22 +26,8 @@ pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> j
             .with_tag("RustNative"),
     );
 
-    // Store JavaVM globally and keep a copy for UI thread initialization
-    let jvm = Arc::new(vm);
-    let jvm_clone = jvm.clone();
-    let _ = JAVA_VM.set(jvm);
-
-    // Initialize and start the controller
-    if !Controller::run(move || -> bool {
-        let _ = jvm_clone.attach_current_thread().map_err(|e| {
-            error!("Failed to attach UI thread to JVM: {:?}", e);
-            return false;
-        });
-
-        true
-    }) {
-        error!("Failed to start controller");
-    }
+    // Store JavaVM globally
+    let _ = JAVA_VM.set(vm);
 
     info!("Rust library loaded successfully");
     jni::sys::JNI_VERSION_1_6
@@ -51,7 +37,7 @@ pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> j
 // IMPORTANT: This should only be called from the UI thread that was attached to the JVM by Controller::run
 pub(crate) fn get_env() -> Option<JNIEnv<'static>> {
     let vm = match JAVA_VM.get() {
-        Some(vm) => vm.clone(),
+        Some(vm) => vm,
         None => {
             error!("JavaVM not initialized");
             return None;
@@ -81,21 +67,42 @@ pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeOnMiniAppInited(
     let data_dir = env.get_string(&data_dir).unwrap().into();
     let cache_dir = env.get_string(&cache_dir).unwrap().into();
 
-    let platform = match Platform::from_java(
+    let app = match App::from_java(
         env.get_native_interface() as *mut jni::sys::JNIEnv,
         asset_manager.as_raw(),
         data_dir,
         cache_dir,
     ) {
-        Ok(platform) => platform,
+        Ok(app) => app,
         Err(e) => {
-            error!("Failed to create Platform: {}", e);
+            error!("Failed to create App: {}", e);
             return -1;
         }
     };
 
-    // Initialize MiniApp
-    miniapp::init(Box::new(platform));
+    // Initialize and start the controller
+    if !Controller::run(
+        |controller| -> bool {
+            // Make sure the UI thread is attached to the JVM
+            let jvm_clone = JAVA_VM.get().unwrap();
+            let attach_result = jvm_clone.attach_current_thread().map_err(|e| {
+                error!("Failed to attach UI thread to JVM: {:?}", e);
+                return false;
+            });
+
+            if attach_result.is_err() {
+                return false;
+            }
+
+            miniapp::init(controller);
+
+            info!("UI thread inited successfully");
+            true
+        },
+        app,
+    ) {
+        error!("Failed to start controller");
+    }
 
     0
 }
@@ -124,8 +131,8 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnWebViewCreated(
     }
 
     // Notify miniapp about page creation with the WebView controller
-    if let Ok(mut miniapp) = miniapp::get().lock() {
-        miniapp.on_page_created(app_id, path, Arc::new(webview));
+    if let Ok(_miniapp) = miniapp::get().lock() {
+        // miniapp.on_page_created(app_id, path, Arc::new(webview));
     }
     0
 }
