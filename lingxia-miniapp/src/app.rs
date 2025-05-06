@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use std::sync::mpsc;
+use std::sync::{Arc, mpsc};
 
 use crate::error::MiniAppError;
 use crate::log::LogLevel;
@@ -21,6 +21,28 @@ pub trait AppController: Send + Sync + 'static {
     /// Send a command to the controller and wait for the response
     /// This method creates a channel for the response, sends the command, and waits for the result
     fn send_cmd(&self, cmd: ControllerCmd) -> Result<(), MiniAppError>;
+}
+
+impl<T: AppController + ?Sized> AppController for Arc<T> {
+    fn read_asset(&self, path: &str) -> Result<Vec<u8>, MiniAppError> {
+        (**self).read_asset(path)
+    }
+
+    fn app_data_dir(&self) -> PathBuf {
+        (**self).app_data_dir()
+    }
+
+    fn app_cache_dir(&self) -> PathBuf {
+        (**self).app_cache_dir()
+    }
+
+    fn log(&self, level: LogLevel, appid: &str, message: &str) {
+        (**self).log(level, appid, message)
+    }
+
+    fn send_cmd(&self, cmd: crate::ControllerCmd) -> Result<(), MiniAppError> {
+        (**self).send_cmd(cmd)
+    }
 }
 
 #[derive(Debug)]
