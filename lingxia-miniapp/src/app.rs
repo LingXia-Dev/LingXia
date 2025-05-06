@@ -45,6 +45,68 @@ impl<T: AppController + ?Sized> AppController for Arc<T> {
     }
 }
 
+/// Send a command to switch to a different page within the same mini app
+///
+/// # Arguments
+/// * `controller` - The controller to send the command to
+/// * `appid` - The ID of the mini app to switch pages in
+/// * `path` - The path of the page to switch to
+///
+/// # Returns
+/// * `Ok(())` - If the command was sent successfully
+/// * `Err(MiniAppError)` - If the command failed to send or execute
+pub(crate) fn switch_page<T: AppController>(
+    controller: &T,
+    appid: &str,
+    path: &str,
+) -> Result<(), MiniAppError> {
+    let (responder, receiver) = mpsc::channel();
+
+    let cmd = MiniAppCmd::SwitchPage {
+        appid: appid.to_string(),
+        path: path.to_string(),
+        responder,
+    };
+
+    controller.send_cmd(ControllerCmd::MiniApp(cmd))?;
+
+    // Wait for the response
+    receiver.recv().map_err(|_| {
+        MiniAppError::WebView("UI thread dropped without sending result".to_string())
+    })?
+}
+
+/// Send a command to open a mini app
+///
+/// # Arguments
+/// * `controller` - The controller to send the command to
+/// * `appid` - The ID of the mini app to open
+/// * `path` - The initial path to navigate to within the mini app
+///
+/// # Returns
+/// * `Ok(())` - If the command was sent successfully
+/// * `Err(MiniAppError)` - If the command failed to send or execute
+pub(crate) fn open_miniapp<T: AppController>(
+    controller: &T,
+    appid: &str,
+    path: &str,
+) -> Result<(), MiniAppError> {
+    let (responder, receiver) = mpsc::channel();
+
+    let cmd = MiniAppCmd::OpenMiniApp {
+        appid: appid.to_string(),
+        path: path.to_string(),
+        responder,
+    };
+
+    controller.send_cmd(ControllerCmd::MiniApp(cmd))?;
+
+    // Wait for the response
+    receiver.recv().map_err(|_| {
+        MiniAppError::WebView("UI thread dropped without sending result".to_string())
+    })?
+}
+
 #[derive(Debug)]
 pub enum ControllerCmd {
     WebView(WebViewCmd),
