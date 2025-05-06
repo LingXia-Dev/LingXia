@@ -1,7 +1,7 @@
-use crate::error::MiniAppError;
+use crate::{AppController, ControllerCmd, MiniAppError, WebViewCmd};
 use std::any::Any;
 use std::collections::{HashMap, VecDeque};
-use std::sync::Arc;
+use std::sync::{Arc, mpsc};
 use std::time::Instant;
 
 /// A page stack represents a group of pages starting with a tab page
@@ -202,18 +202,18 @@ pub trait PageController: Send + Sync + Any {
 }
 
 /// Interface for controlling WebView
-pub trait WebViewController: Send + Sync + 'static {
+pub trait WebViewController {
     /// Load a URL in the WebView
-    fn load_url(&self, url: &str) -> Result<bool, MiniAppError>;
+    fn load_url(&self, url: &str) -> Result<(), MiniAppError>;
 
     /// Evaluate JavaScript in the WebView
-    fn evaluate_javascript(&self, js: &str) -> Result<String, MiniAppError>;
+    fn evaluate_javascript(&self, js: &str) -> Result<(), MiniAppError>;
 
     /// Post a message to the JavaScript context
     fn post_message(&self, message: &str) -> Result<(), MiniAppError>;
 
     /// Enable or disable developer tools
-    fn set_devtools(&self, enabled: bool) -> Result<bool, MiniAppError>;
+    fn set_devtools(&self, enabled: bool) -> Result<(), MiniAppError>;
 
     /// Clear browsing data from the WebView
     fn clear_browsing_data(&self) -> Result<(), MiniAppError>;
@@ -240,9 +240,105 @@ impl Pages {
 }
 
 /// Represents a single page in a mini app
-pub struct Page {
-    /// Web view controller for this page
-    webview: Box<dyn WebViewController>,
-    /// Time when this page was last active
+pub(crate) struct Page {
+    appid: String,
+    path: String,
+
+    // Reference to the app controller
+    controller: Arc<Box<dyn AppController>>,
+
+    // Time when this page was last active
     last_active_time: Instant,
+}
+
+impl Page {
+    pub(crate) fn new(
+        controller: Arc<Box<dyn AppController>>,
+        appid: String,
+        path: String,
+    ) -> Self {
+        Self {
+            controller,
+            appid,
+            path,
+            last_active_time: Instant::now(),
+        }
+    }
+}
+
+impl WebViewController for Page {
+    fn load_url(&self, url: &str) -> Result<(), MiniAppError> {
+        let (responder, _) = mpsc::channel();
+
+        let cmd = WebViewCmd::LoadUrl {
+            appid: self.appid.clone(),
+            path: self.path.clone(),
+            url: url.to_string(),
+            responder,
+        };
+
+        self.controller.send_cmd(ControllerCmd::WebView(cmd))
+    }
+
+    fn evaluate_javascript(&self, js: &str) -> Result<(), MiniAppError> {
+        let (responder, _) = mpsc::channel();
+
+        let cmd = WebViewCmd::EvaluateJavascript {
+            appid: self.appid.clone(),
+            path: self.path.clone(),
+            script: js.to_string(),
+            responder,
+        };
+
+        self.controller.send_cmd(ControllerCmd::WebView(cmd))
+    }
+
+    fn post_message(&self, message: &str) -> Result<(), MiniAppError> {
+        let (responder, _) = mpsc::channel();
+
+        let cmd = WebViewCmd::PostMessage {
+            appid: self.appid.clone(),
+            path: self.path.clone(),
+            message: message.to_string(),
+            responder,
+        };
+
+        self.controller.send_cmd(ControllerCmd::WebView(cmd))
+    }
+
+    fn set_devtools(&self, enabled: bool) -> Result<(), MiniAppError> {
+        let (responder, _) = mpsc::channel();
+
+        let cmd = WebViewCmd::SetDevtools {
+            appid: self.appid.clone(),
+            enabled,
+            responder,
+        };
+
+        self.controller.send_cmd(ControllerCmd::WebView(cmd))
+    }
+
+    fn clear_browsing_data(&self) -> Result<(), MiniAppError> {
+        let (responder, _) = mpsc::channel();
+
+        let cmd = WebViewCmd::ClearBrowsingData {
+            appid: self.appid.clone(),
+            path: self.path.clone(),
+            responder,
+        };
+
+        self.controller.send_cmd(ControllerCmd::WebView(cmd))
+    }
+
+    fn set_user_agent(&self, ua: &str) -> Result<(), MiniAppError> {
+        let (responder, _) = mpsc::channel();
+
+        let cmd = WebViewCmd::SetUserAgent {
+            appid: self.appid.clone(),
+            ua: ua.to_string(),
+            responder,
+        };
+
+        self.controller.send_cmd(ControllerCmd::WebView(cmd))
+    }
 }

@@ -633,7 +633,7 @@ pub trait AppUiDelegate {
     fn on_miniapp_closed(&self);
 
     /// Called when a page is created
-    fn on_page_created(&self, path: String, webview: Arc<dyn WebViewController>);
+    fn on_page_created(&self, path: String);
 
     /// Called when the page starts loading
     fn on_page_started(&self, path: String);
@@ -681,7 +681,7 @@ impl AppUiDelegate for MiniAppUnit {
         todo!()
     }
 
-    fn on_page_created(&self, path: String, webview: Arc<dyn WebViewController>) {
+    fn on_page_created(&self, path: String) {
         todo!()
     }
 
