@@ -46,22 +46,14 @@ impl WebView {
     }
 
     fn destroy_webview(&self) {
-        if let Ok(mut env) = get_env() {
-            let _ = env.call_method(self.java_webview.as_obj(), "destroy", "()V", &[]);
-        }
+        let mut env = get_env().unwrap();
+        let _ = env.call_method(self.java_webview.as_obj(), "destroy", "()V", &[]);
     }
 }
 
 impl WebViewController for WebView {
     fn load_url(&self, url: &str) -> Result<(), MiniAppError> {
-        let mut env = match get_env() {
-            Ok(env) => env,
-            Err(_) => {
-                return Err(MiniAppError::WebView(
-                    "Failed to get JNI environment".to_string(),
-                ));
-            }
-        };
+        let mut env = get_env().unwrap();
 
         match env.new_string(url) {
             Ok(url_string) => {
@@ -85,14 +77,7 @@ impl WebViewController for WebView {
     }
 
     fn evaluate_javascript(&self, js: &str) -> Result<(), MiniAppError> {
-        let mut env = match get_env() {
-            Ok(env) => env,
-            Err(_) => {
-                return Err(MiniAppError::WebView(
-                    "Failed to get JNI environment".to_string(),
-                ));
-            }
-        };
+        let mut env = get_env().unwrap();
 
         let script_string = match env.new_string(js) {
             Ok(s) => s,
@@ -123,15 +108,7 @@ impl WebViewController for WebView {
     }
 
     fn clear_browsing_data(&self) -> Result<(), MiniAppError> {
-        let mut env = match get_env() {
-            Ok(env) => env,
-            Err(_) => {
-                return Err(MiniAppError::WebView(
-                    "Failed to get JNI environment".to_string(),
-                ));
-            }
-        };
-
+        let mut env = get_env().unwrap();
         let result = env.call_method(self.java_webview.as_obj(), "clearBrowsingData", "()V", &[]);
 
         if result.is_ok() {
@@ -144,14 +121,7 @@ impl WebViewController for WebView {
     }
 
     fn set_devtools(&self, enabled: bool) -> Result<(), MiniAppError> {
-        let mut env = match get_env() {
-            Ok(env) => env,
-            Err(_) => {
-                return Err(MiniAppError::WebView(
-                    "Failed to get JNI environment".to_string(),
-                ));
-            }
-        };
+        let mut env = get_env().unwrap();
 
         match env.find_class("android/webkit/WebView") {
             Ok(webview_class) => {
@@ -175,14 +145,7 @@ impl WebViewController for WebView {
     }
 
     fn post_message(&self, message: &str) -> Result<(), MiniAppError> {
-        let mut env = match get_env() {
-            Ok(env) => env,
-            Err(_) => {
-                return Err(MiniAppError::WebView(
-                    "Failed to get JNI environment".to_string(),
-                ));
-            }
-        };
+        let mut env = get_env().unwrap();
 
         let msg_string = match env.new_string(message) {
             Ok(s) => s,
@@ -208,14 +171,7 @@ impl WebViewController for WebView {
     }
 
     fn set_user_agent(&self, ua: &str) -> Result<(), MiniAppError> {
-        let mut env = match get_env() {
-            Ok(env) => env,
-            Err(_) => {
-                return Err(MiniAppError::WebView(
-                    "Failed to get JNI environment".to_string(),
-                ));
-            }
-        };
+        let mut env = get_env().unwrap();
 
         let ua_string = match env.new_string(ua) {
             Ok(s) => s,

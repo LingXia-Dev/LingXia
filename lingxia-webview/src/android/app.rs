@@ -103,7 +103,8 @@ impl MiniAppPlatform for App {
         info!("Opening mini app with appId: {}, path: {}", app_id, path);
 
         match || -> Result<(), Box<dyn std::error::Error>> {
-            let mut env = get_env()?;
+            let mut env = get_env().unwrap();
+
             let miniapp_class = env.find_class(CLASS_MINIAPP)?;
             let app_id_jstring = env.new_string(app_id)?;
             let path_jstring = env.new_string(path)?;
@@ -129,7 +130,8 @@ impl MiniAppPlatform for App {
 
     fn switch_page(&self, app_id: &str, path: &str) -> Result<(), MiniAppError> {
         match || -> Result<(), Box<dyn std::error::Error>> {
-            let mut env = get_env()?;
+            let mut env = get_env().unwrap();
+
             let miniapp_class = env.find_class(CLASS_MINIAPP)?;
             let app_id_jstring = env.new_string(app_id)?;
             let path_jstring = env.new_string(path)?;

@@ -18,11 +18,6 @@ pub static JAVA_VM: OnceLock<Arc<JavaVM>> = OnceLock::new();
 /// Java class name for MiniApp
 pub(crate) const CLASS_MINIAPP: &str = "com/lingxia/miniapp/MiniApp";
 
-// Store the main thread's JNIEnv
-thread_local! {
-    static MAIN_THREAD_ID: OnceLock<std::thread::ThreadId> = OnceLock::new();
-}
-
 #[unsafe(no_mangle)]
 pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> jint {
     android_logger::init_once(
@@ -35,11 +30,6 @@ pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> j
     let jvm = Arc::new(vm);
     let jvm_clone = jvm.clone();
     let _ = JAVA_VM.set(jvm);
-
-    // Store the main thread ID
-    MAIN_THREAD_ID.with(|id| {
-        let _ = id.set(std::thread::current().id());
-    });
 
     // Initialize and start the controller
     if !Controller::run(move || -> bool {
@@ -58,37 +48,25 @@ pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> j
 }
 
 // Helper function to get JNIEnv for current thread
-pub(crate) fn get_env() -> Result<JNIEnv<'static>, Box<dyn std::error::Error>> {
+// IMPORTANT: This should only be called from the UI thread that was attached to the JVM by Controller::run
+pub(crate) fn get_env() -> Option<JNIEnv<'static>> {
     let vm = match JAVA_VM.get() {
         Some(vm) => vm.clone(),
         None => {
             error!("JavaVM not initialized");
-            return Err("JavaVM not initialized".into());
+            return None;
         }
     };
 
-    // Check if we're on the main thread
-    let is_main_thread = MAIN_THREAD_ID.with(|id| {
-        id.get()
-            .map(|main_id| main_id == &std::thread::current().id())
-            .unwrap_or(false)
-    });
-
-    let env_result = if is_main_thread {
-        // If we're on the main thread, get the env
-        unsafe { vm.get_env().and_then(|e| JNIEnv::from_raw(e.get_raw())) }
-    } else {
-        // If we're not on the main thread, attach to get a new env
-        unsafe {
-            vm.attach_current_thread()
-                .and_then(|e| JNIEnv::from_raw(e.get_raw()))
+    // Only get the environment if the thread is already attached
+    // This ensures get_env() is only used by the UI thread that was attached in Controller::run
+    match vm.get_env() {
+        Ok(env) => unsafe { JNIEnv::from_raw(env.get_raw()).ok() },
+        Err(_) => {
+            error!("current thread requires JVM");
+            None
         }
-    };
-
-    env_result.map_err(|e| {
-        error!("JNI error: {:?}", e);
-        e.into()
-    })
+    }
 }
 
 #[unsafe(no_mangle)]
