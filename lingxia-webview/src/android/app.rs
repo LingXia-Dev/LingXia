@@ -87,9 +87,9 @@ impl MiniAppPlatform for App {
         PathBuf::from(&self.cache_dir)
     }
 
-    fn log(&self, level: LogLevel, app_id: &str, message: &str) {
+    fn log(&self, appid: &str, level: LogLevel, message: &str) {
         // Use Android's logging system
-        let log_msg = format!("[{}] {}", app_id, message);
+        let log_msg = format!("[{}] {}", appid, message);
         match level {
             LogLevel::Verbose => log::trace!("{}", log_msg),
             LogLevel::Debug => log::debug!("{}", log_msg),
@@ -99,14 +99,14 @@ impl MiniAppPlatform for App {
         }
     }
 
-    fn open_miniapp(&self, app_id: &str, path: &str) -> Result<(), MiniAppError> {
-        info!("Opening mini app with appId: {}, path: {}", app_id, path);
+    fn open_miniapp(&self, appid: &str, path: &str) -> Result<(), MiniAppError> {
+        info!("Opening mini app with appId: {}, path: {}", appid, path);
 
         match || -> Result<(), Box<dyn std::error::Error>> {
             let mut env = get_env().unwrap();
 
             let miniapp_class = env.find_class(CLASS_MINIAPP)?;
-            let app_id_jstring = env.new_string(app_id)?;
+            let appid_jstring = env.new_string(appid)?;
             let path_jstring = env.new_string(path)?;
 
             env.call_static_method(
@@ -114,7 +114,7 @@ impl MiniAppPlatform for App {
                 "openMiniApp",
                 "(Ljava/lang/String;Ljava/lang/String;)V",
                 &[
-                    JValue::Object(&app_id_jstring),
+                    JValue::Object(&appid_jstring),
                     JValue::Object(&path_jstring),
                 ],
             )?;
@@ -128,12 +128,12 @@ impl MiniAppPlatform for App {
         }
     }
 
-    fn switch_page(&self, app_id: &str, path: &str) -> Result<(), MiniAppError> {
+    fn switch_page(&self, appid: &str, path: &str) -> Result<(), MiniAppError> {
         match || -> Result<(), Box<dyn std::error::Error>> {
             let mut env = get_env().unwrap();
 
             let miniapp_class = env.find_class(CLASS_MINIAPP)?;
-            let app_id_jstring = env.new_string(app_id)?;
+            let appid_jstring = env.new_string(appid)?;
             let path_jstring = env.new_string(path)?;
 
             env.call_static_method(
@@ -141,7 +141,7 @@ impl MiniAppPlatform for App {
                 "switchPage",
                 "(Ljava/lang/String;Ljava/lang/String;)V",
                 &[
-                    JValue::Object(&app_id_jstring),
+                    JValue::Object(&appid_jstring),
                     JValue::Object(&path_jstring),
                 ],
             )?;

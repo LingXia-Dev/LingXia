@@ -662,6 +662,9 @@ pub trait AppUiDelegate {
 
     /// Handles an HTTP request from the page
     fn handle_request(&self, req: http::Request<Vec<u8>>) -> Option<http::Response<Vec<u8>>>;
+
+    /// Receive log from WebView
+    fn log(&self, path: &str, level: LogLevel, message: &str);
 }
 
 impl AppUiDelegate for MiniAppUnit {
@@ -710,6 +713,10 @@ impl AppUiDelegate for MiniAppUnit {
     }
 
     fn handle_request(&self, req: http::Request<Vec<u8>>) -> Option<http::Response<Vec<u8>>> {
+        todo!()
+    }
+
+    fn log(&self, path: &str, level: LogLevel, message: &str) {
         todo!()
     }
 }

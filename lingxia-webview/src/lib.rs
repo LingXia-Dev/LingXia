@@ -32,7 +32,7 @@ pub trait MiniAppPlatform {
     fn app_cache_dir(&self) -> PathBuf;
 
     /// Log message to platform-specific logging system
-    fn log(&self, level: LogLevel, app_id: &str, message: &str);
+    fn log(&self, app_id: &str, level: LogLevel, message: &str);
 
     /// Open a mini app in the platform-specific UI
     fn open_miniapp(&self, app_id: &str, path: &str) -> Result<(), MiniAppError>;

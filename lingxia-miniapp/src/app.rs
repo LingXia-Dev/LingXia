@@ -16,7 +16,7 @@ pub trait AppController: Send + Sync + 'static {
     fn app_cache_dir(&self) -> PathBuf;
 
     /// Log message to platform-specific logging system
-    fn log(&self, level: LogLevel, app_id: &str, message: &str);
+    fn log(&self, appid: &str, level: LogLevel, message: &str);
 
     /// Send a command to the controller and wait for the response
     /// This method creates a channel for the response, sends the command, and waits for the result
@@ -36,8 +36,8 @@ impl<T: AppController + ?Sized> AppController for Arc<T> {
         (**self).app_cache_dir()
     }
 
-    fn log(&self, level: LogLevel, appid: &str, message: &str) {
-        (**self).log(level, appid, message)
+    fn log(&self, appid: &str, level: LogLevel, message: &str) {
+        (**self).log(appid, level, message)
     }
 
     fn send_cmd(&self, cmd: crate::ControllerCmd) -> Result<(), MiniAppError> {
