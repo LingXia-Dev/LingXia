@@ -1,18 +1,21 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::{Mutex, OnceLock, mpsc};
 use std::thread;
 
 use miniapp::{AppController, ControllerCmd, MiniAppError, log::LogLevel};
 
-use crate::WebView;
-pub mod webview;
-use webview::handle_webview_cmd;
+use crate::{App, MiniAppPlatform, WebView};
+
+mod app;
+mod webview;
 
 static CONTROLLER: OnceLock<Controller> = OnceLock::new();
 
 pub(crate) struct Controller {
-    pub(crate) webviews: Mutex<HashMap<(String, String), Arc<WebView>>>,
+    app: App,
+    webviews: Mutex<HashMap<(String, String), Arc<WebView>>>,
     sender: mpsc::Sender<ControllerCmd>,
 }
 
@@ -25,19 +28,19 @@ impl Drop for Controller {
 
 impl AppController for Controller {
     fn read_asset(&self, path: &str) -> Result<Vec<u8>, MiniAppError> {
-        todo!()
+        self.app.read_asset(path)
     }
 
-    fn app_data_dir(&self) -> std::path::PathBuf {
-        todo!()
+    fn app_data_dir(&self) -> PathBuf {
+        self.app.app_data_dir()
     }
 
-    fn app_cache_dir(&self) -> std::path::PathBuf {
-        todo!()
+    fn app_cache_dir(&self) -> PathBuf {
+        self.app.app_cache_dir()
     }
 
-    fn log(&self, level: LogLevel, app_id: &str, message: &str) {
-        todo!()
+    fn log(&self, level: LogLevel, appid: &str, message: &str) {
+        self.app.log(level, appid, message)
     }
 
     fn send_cmd(&self, cmd: ControllerCmd) -> Result<(), MiniAppError> {
@@ -57,10 +60,11 @@ impl AppController for Controller {
 }
 
 impl Controller {
-    fn new(sender: mpsc::Sender<ControllerCmd>) -> Self {
+    fn new(sender: mpsc::Sender<ControllerCmd>, app: App) -> Self {
         Self {
             webviews: Mutex::new(HashMap::new()),
             sender,
+            app,
         }
     }
 
@@ -88,8 +92,8 @@ impl Controller {
     /// Returns true to continue processing, false to stop
     fn handle_request(controller: &Controller, request: ControllerCmd) -> bool {
         match request {
-            ControllerCmd::WebView(cmd) => handle_webview_cmd(&controller.webviews, cmd),
-            ControllerCmd::MiniApp(cmd) => todo!(),
+            ControllerCmd::WebView(cmd) => webview::handle_webview_cmd(&controller.webviews, cmd),
+            ControllerCmd::MiniApp(cmd) => app::handle_miniapp_cmd(&controller.app, cmd),
             ControllerCmd::Shutdown => {
                 false // Stop processing loop
             }
@@ -120,12 +124,12 @@ impl Controller {
     }
 
     /// Start the dedicated UI thread for business
-    pub(crate) fn run<F>(f: F) -> bool
+    pub(crate) fn run<F>(f: F, app: App) -> bool
     where
         F: FnOnce() -> bool + Send + 'static,
     {
         let (sender, receiver) = mpsc::channel::<ControllerCmd>();
-        let controller = Controller::new(sender);
+        let controller = Controller::new(sender, app);
 
         if CONTROLLER.set(controller).is_err() {
             return false;

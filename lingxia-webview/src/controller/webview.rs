@@ -118,13 +118,12 @@ pub(crate) fn handle_webview_cmd(
                 .lock()
                 .map_err(|_| MiniAppError::WebView("Failed to lock webviews".to_string()))
                 .and_then(|webviews| {
-                    let found = false;
                     let mut result = Err(MiniAppError::WebView(
                         "No WebView found for appid".to_string(),
                     ));
 
                     // Find all webviews for this app and set UA
-                    for ((id, _), webview) in webviews.iter().filter(|((id, _), _)| id == &appid) {
+                    for (_, webview) in webviews.iter().filter(|((id, _), _)| id == &appid) {
                         result = webview.set_user_agent(&ua);
                         if result.is_ok() {
                             return Ok(());
