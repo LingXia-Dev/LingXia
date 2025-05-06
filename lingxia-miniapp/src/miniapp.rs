@@ -16,7 +16,7 @@ mod ipc;
 mod scheme;
 
 // Global instance of MiniApp
-static MINI_APP: OnceLock<Mutex<MiniApp>> = OnceLock::new();
+static MINI_APP: OnceLock<Mutex<MiniAppOld>> = OnceLock::new();
 
 /// Platform-specific capabilities for MiniApp
 pub trait MiniAppRuntime: Send + Sync {
@@ -50,35 +50,17 @@ pub trait MiniAppRuntime: Send + Sync {
     fn close_miniapp(&self, app_id: &str) -> Result<(), Box<dyn std::error::Error>>;
 }
 
-/// Initializes the MiniApp with the given platform implementation
-pub fn init2(platform: Box<dyn MiniAppRuntime>) {
-    MINI_APP.get_or_init(|| {
-        Mutex::new(MiniApp {
-            runtime: platform,
-            apps: HashMap::new(),
-            last_active_times: HashMap::new(),
-            max_apps: 5,
-        })
-    });
-}
-
-/// Returns a reference to the initialized MiniApp.
-/// Panics if MiniApp has not been initialized.
-pub fn get() -> &'static Mutex<MiniApp> {
-    MINI_APP.get().expect("MiniApp has not been initialized")
-}
-
-pub struct MiniApp {
+pub struct MiniAppOld {
     pub(crate) runtime: Box<dyn MiniAppRuntime>,
     apps: HashMap<String, Arc<Mutex<page::PageManager>>>, // appid -> PageManager
     last_active_times: HashMap<String, Instant>,          // appid -> last active time
     max_apps: usize,                                      // Maximum number of apps allowed
 }
 
-impl MiniApp {
+impl MiniAppOld {
     /// Get page configuration for the given app and path
     pub fn get_page_config(&self, app_id: &str, path: &str) -> Option<String> {
-        self.info(app_id, format!("Getting page config for {}", path));
+        // self.info(app_id, format!("Getting page config for {}", path));
 
         // For home page (first tab), hide navigation bar
         if path.contains("home") {
@@ -181,10 +163,10 @@ impl MiniApp {
             false
         };
 
-        self.info(
-            &appid,
-            format!("insert page {}, is_tab_page: {}", path, is_tab_page),
-        );
+        // self.info(
+        //     &appid,
+        //     format!("insert page {}, is_tab_page: {}", path, is_tab_page),
+        // );
 
         let page_manager = self
             .apps
@@ -246,16 +228,16 @@ impl MiniApp {
 
     /// Handles a postMessage from the page's JavaScript context
     pub fn handle_post_message(&self, appid: String, path: String, msg: String) {
-        self.info(&appid, format!("Handling message for WebView: {}", msg));
+        // self.info(&appid, format!("Handling message for WebView: {}", msg));
 
         // First, parse the incoming string.
         let message_value: Value = match serde_json::from_str(&msg) {
             Ok(v) => v,
             Err(e) => {
-                self.error(
-                    &appid,
-                    format!("Failed to parse message string: {}. Raw: '{}'", e, msg),
-                );
+                // self.error(
+                //     &appid,
+                //     format!("Failed to parse message string: {}. Raw: '{}'", e, msg),
+                // );
                 return;
             }
         };
@@ -263,17 +245,17 @@ impl MiniApp {
         // Check if the parsed value is itself a string (potential double stringification)
         // If so, parse the inner string.
         let message_obj = if let Some(inner_str) = message_value.as_str() {
-            self.info(&appid, "Message parsed as string, attempting inner parse.");
+            // self.info(&appid, "Message parsed as string, attempting inner parse.");
             match serde_json::from_str(inner_str) {
                 Ok(v) => v,
                 Err(e) => {
-                    self.error(
-                        &appid,
-                        format!(
-                            "Failed to parse nested JSON string: {}. Inner: '{}'",
-                            e, inner_str
-                        ),
-                    );
+                    // self.error(
+                    //     &appid,
+                    //     format!(
+                    //         "Failed to parse nested JSON string: {}. Inner: '{}'",
+                    //         e, inner_str
+                    //     ),
+                    // );
                     return;
                 }
             }
@@ -284,35 +266,35 @@ impl MiniApp {
 
         // Ensure we ended up with a JSON object.
         if !message_obj.is_object() {
-            self.error(
-                &appid,
-                format!("Parsed message is not a JSON object: {:?}", message_obj),
-            );
+            // self.error(
+            //     &appid,
+            //     format!("Parsed message is not a JSON object: {:?}", message_obj),
+            // );
             return;
         }
 
         // Now, safely extract the type from the object.
         let message_type = message_obj.get("type").and_then(Value::as_str);
         if message_type.is_none() {
-            self.error(
-                &appid,
-                format!(
-                    "Message type field is missing or not a string in object: {:?}",
-                    message_obj
-                ),
-            );
+            // self.error(
+            //     &appid,
+            //     format!(
+            //         "Message type field is missing or not a string in object: {:?}",
+            //         message_obj
+            //     ),
+            // );
             return;
         }
 
         match message_type.unwrap() {
             "ipcReady" => {
-                self.info(
-                    &appid,
-                    format!(
-                        "WebView ({}/{}) signaled IPC ready. Sending PAGE_BACK structure.",
-                        appid, path
-                    ),
-                );
+                // self.info(
+                //     &appid,
+                //     format!(
+                //         "WebView ({}/{}) signaled IPC ready. Sending PAGE_BACK structure.",
+                //         appid, path
+                //     ),
+                // );
 
                 // Directly try to find the PageController and send the PAGE_BACK message structure
                 // This code block is moved from on_page_show and REPLACES the previous PAGE_LOAD sending block
@@ -332,60 +314,60 @@ impl MiniApp {
 
                     match serde_json::to_string(&message) {
                         Ok(message_string) => {
-                            self.info(
-                                &appid,
-                                format!(
-                                    "Sending PAGE_BACK structure message to {}/{}: {}",
-                                    appid, path, message_string
-                                ),
-                            );
+                            // self.info(
+                            //     &appid,
+                            //     format!(
+                            //         "Sending PAGE_BACK structure message to {}/{}: {}",
+                            //         appid, path, message_string
+                            //     ),
+                            // );
                             if let Err(e) = controller.post_message(&message_string) {
-                                self.error(&appid, format!("Failed to post PAGE_BACK structure message to controller for {}/{}: {}", appid, path, e));
+                                // self.error(&appid, format!("Failed to post PAGE_BACK structure message to controller for {}/{}: {}", appid, path, e));
                             }
                         }
                         Err(e) => {
-                            self.error(
-                                &appid,
-                                format!(
-                                    "Failed to serialize PAGE_BACK structure message for {}/{}: {}",
-                                    appid, path, e
-                                ),
-                            );
+                            // self.error(
+                            //     &appid,
+                            //     format!(
+                            //         "Failed to serialize PAGE_BACK structure message for {}/{}: {}",
+                            //         appid, path, e
+                            //     ),
+                            // );
                         }
                     }
                 } else {
-                    self.error(&appid, format!("Received ipcReady for {}/{} but could not find corresponding PageController to send PAGE_BACK structure.", appid, path));
+                    // self.error(&appid, format!("Received ipcReady for {}/{} but could not find corresponding PageController to send PAGE_BACK structure.", appid, path));
                 }
             }
             "OPEN_MINIAPP" => {
-                self.info(&appid, "Handling OPEN_MINIAPP message");
+                // self.info(&appid, "Handling OPEN_MINIAPP message");
                 if let Some(data) = message_obj.get("data") {
                     // Use message_obj
                     if let Some(app_id) = data.get("appId").and_then(Value::as_str) {
                         let path = data.get("path").and_then(Value::as_str).unwrap_or("");
                         if let Err(e) = self.runtime.open_miniapp(app_id, path) {
-                            self.error(&appid, format!("Failed to open miniapp: {}", e));
+                            // self.error(&appid, format!("Failed to open miniapp: {}", e));
                         }
                     }
                 }
             }
             "NAVIGATE_TO" => {
-                self.info(&appid, "Handling NAVIGATE_TO message");
+                // self.info(&appid, "Handling NAVIGATE_TO message");
                 if let Some(data) = message_obj.get("data") {
                     // Use message_obj
                     if let Some(path) = data.get("path").and_then(Value::as_str) {
                         if let Err(e) = self.runtime.switch_page(&appid, path) {
-                            self.error(&appid, format!("Failed to switch page to {}: {}", path, e));
+                            // self.error(&appid, format!("Failed to switch page to {}: {}", path, e));
                         }
                     } else {
-                        self.error(&appid, "NAVIGATE_TO message missing path data");
+                        // self.error(&appid, "NAVIGATE_TO message missing path data");
                     }
                 } else {
-                    self.error(&appid, "NAVIGATE_TO message missing data field");
+                    // self.error(&appid, "NAVIGATE_TO message missing data field");
                 }
             }
             unknown_type => {
-                self.error(&appid, format!("Unknown message type: {}", unknown_type));
+                // self.error(&appid, format!("Unknown message type: {}", unknown_type));
             }
         }
     }
@@ -421,7 +403,7 @@ impl MiniApp {
         if let Some(controller) = self.find_page_controller(&appid, &path) {
             // Get IPC script content and inject it
             if let Err(e) = controller.evaluate_javascript(ipc::get_ipc_script()) {
-                self.error(&appid, e.to_string());
+                // self.error(&appid, e.to_string());
             }
         }
     }
@@ -433,7 +415,7 @@ impl MiniApp {
 
     /// Called when the page showed in the view
     pub fn on_page_show(&self, appid: String, path: String) {
-        self.info(&appid, format!("Page show: {}", path));
+        // self.info(&appid, format!("Page show: {}", path));
 
         // Mark the page as active when it's shown
         if let Some(page_manager) = self.apps.get(&appid) {
@@ -445,36 +427,36 @@ impl MiniApp {
     /// Handle back press event
     /// Returns true if the event was handled, false otherwise
     pub fn on_back_pressed(&self, app_id: &str) -> bool {
-        self.info(app_id, "Back pressed, closing mini app");
+        // self.info(app_id, "Back pressed, closing mini app");
 
         if let Some(page_manager_arc) = self.apps.get(app_id) {
             let mut page_manager = page_manager_arc.lock().unwrap();
             match page_manager.pop_from_current_stack() {
                 Some(previous_path) => {
-                    self.info(
-                        app_id,
-                        format!("Popped page, requesting switch back to: {}", previous_path),
-                    );
+                    // self.info(
+                    //     app_id,
+                    //     format!("Popped page, requesting switch back to: {}", previous_path),
+                    // );
                     // Tell the platform to switch the view *without* changing the tab state
                     if let Err(e) = self.runtime.switch_page(app_id, &previous_path) {
-                        self.error(
-                            app_id,
-                            format!(
-                                "Failed to request page switch back to {}: {}",
-                                previous_path, e
-                            ),
-                        );
+                        // self.error(
+                        //     app_id,
+                        //     format!(
+                        //         "Failed to request page switch back to {}: {}",
+                        //         previous_path, e
+                        //     ),
+                        // );
                         // Still considered handled as state was popped
                     }
                     true // Back press was handled by popping a page state
                 }
                 None => {
-                    self.error(app_id, "No page to pop from current stack");
+                    // self.error(app_id, "No page to pop from current stack");
                     false
                 }
             }
         } else {
-            self.error(app_id, "No page manager found for the given app id");
+            // self.error(app_id, "No page manager found for the given app id");
             false
         }
     }
@@ -482,7 +464,7 @@ impl MiniApp {
     /// Get tab bar configuration for an app
     pub fn get_tab_bar_config(&self, app_id: &str) -> Option<String> {
         // Log the config request
-        self.info(app_id, format!("Getting TabBar config for: {}", app_id));
+        // self.info(app_id, format!("Getting TabBar config for: {}", app_id));
 
         // For now, we're just returning the default configuration
         // In the future, this could be customized per app and stored/retrieved from storage
@@ -490,7 +472,7 @@ impl MiniApp {
     }
 }
 
-impl MiniApp {
+impl MiniAppOld {
     /// Destroys the least active app
     fn destroy_least_active_miniapp(&mut self) {
         let least_active_appid = self
@@ -538,7 +520,7 @@ const DEFAULT_TAB_BAR_CONFIG: &str = r##"{
 /// Manages a collection of mini applications
 pub struct MiniApps {
     // Collection of mini apps, keyed by app ID
-    miniapps: HashMap<String, Arc<RwLock<MiniAppUnit>>>,
+    miniapps: HashMap<String, Arc<RwLock<MiniApp>>>,
     // Reference to the app controller
     controller: Arc<dyn AppController>,
     // Maximum number of apps allowed in memory
@@ -561,8 +543,8 @@ impl MiniApps {
 
 /// Represents a single mini application
 /// TODO: rename to MiniApp after refactoring
-pub struct MiniAppUnit {
-    appid: String,
+pub struct MiniApp {
+    pub(crate) appid: String,
 
     // Collection of pages in this app
     pages: Pages,
@@ -571,7 +553,7 @@ pub struct MiniAppUnit {
     last_active_time: Instant,
 
     // Reference to the app controller
-    controller: Arc<dyn AppController>,
+    pub(crate) controller: Arc<dyn AppController>,
 
     // Directory for miniapp-specific data
     data_dir: PathBuf,
@@ -579,7 +561,7 @@ pub struct MiniAppUnit {
     cache_dir: PathBuf,
 }
 
-impl MiniAppUnit {
+impl MiniApp {
     fn new(appid: String, controller: Arc<dyn AppController>) -> Self {
         // TODO: build dir based on vendor and customer id
         let data_dir = controller.app_data_dir();
@@ -667,7 +649,7 @@ pub trait AppUiDelegate {
     fn log(&self, path: &str, level: LogLevel, message: &str);
 }
 
-impl AppUiDelegate for MiniAppUnit {
+impl AppUiDelegate for MiniApp {
     fn get_tab_bar_config(&self) -> Result<String, MiniAppError> {
         todo!()
     }
@@ -740,7 +722,7 @@ pub fn init<T: AppController + 'static>(controller: T) {
 ///
 /// # Returns
 /// A thread-safe reference to the MiniAppUnit
-pub fn get_or_init_miniapp(appid: String) -> Arc<RwLock<MiniAppUnit>> {
+pub fn get_or_init_miniapp(appid: String) -> Arc<RwLock<MiniApp>> {
     let mut miniapps = MINIAPPS
         .get()
         .expect("MiniApps not initialized")
@@ -754,7 +736,7 @@ pub fn get_or_init_miniapp(appid: String) -> Arc<RwLock<MiniAppUnit>> {
         .miniapps
         .entry(appid.clone())
         .or_insert_with(|| {
-            let unit = MiniAppUnit::new(appid, controller);
+            let unit = MiniApp::new(appid, controller);
             Arc::new(RwLock::new(unit))
         })
         .clone()

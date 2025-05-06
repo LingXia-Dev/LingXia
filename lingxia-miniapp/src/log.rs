@@ -28,46 +28,36 @@ impl LogTag {
 }
 
 pub trait Logging {
-    fn log(
-        &self,
-        level: LogLevel,
-        appid: impl AsRef<str>,
-        tag: LogTag,
-        message: impl std::fmt::Display,
-    );
+    fn log(&self, path: &str, level: LogLevel, tag: LogTag, message: impl std::fmt::Display);
 
-    fn verbose(&self, appid: impl AsRef<str>, message: impl std::fmt::Display) {
-        self.log(LogLevel::Verbose, appid, LogTag::Native, message)
+    fn verbose(&self, path: &str, message: impl std::fmt::Display) {
+        self.log(path, LogLevel::Verbose, LogTag::Native, message)
     }
 
-    fn debug(&self, appid: impl AsRef<str>, message: impl std::fmt::Display) {
-        self.log(LogLevel::Debug, appid, LogTag::Native, message)
+    fn debug(&self, path: &str, message: impl std::fmt::Display) {
+        self.log(path, LogLevel::Debug, LogTag::Native, message)
     }
 
-    fn info(&self, appid: impl AsRef<str>, message: impl std::fmt::Display) {
-        self.log(LogLevel::Info, appid, LogTag::Native, message)
+    fn info(&self, path: &str, message: impl std::fmt::Display) {
+        self.log(path, LogLevel::Info, LogTag::Native, message)
     }
 
-    fn warn(&self, appid: impl AsRef<str>, message: impl std::fmt::Display) {
-        self.log(LogLevel::Warn, appid, LogTag::Native, message)
+    fn warn(&self, path: &str, message: impl std::fmt::Display) {
+        self.log(path, LogLevel::Warn, LogTag::Native, message)
     }
 
-    fn error(&self, appid: impl AsRef<str>, message: impl std::fmt::Display) {
-        self.log(LogLevel::Error, appid, LogTag::Native, message)
+    fn error(&self, path: &str, message: impl std::fmt::Display) {
+        self.log(path, LogLevel::Error, LogTag::Native, message)
     }
 }
 
 impl Logging for MiniApp {
-    fn log(
-        &self,
-        level: LogLevel,
-        appid: impl AsRef<str>,
-        tag: LogTag,
-        message: impl std::fmt::Display,
-    ) {
-        self.runtime.log(
+    // TODO: send log to network server
+    fn log(&self, _path: &str, level: LogLevel, tag: LogTag, message: impl std::fmt::Display) {
+        self.controller.log(
+            &self.appid,
             level,
-            &format!("[{}][{}] {}", appid.as_ref(), tag.as_str(), message),
+            &format!("[{}] {}", tag.as_str(), message),
         )
     }
 }
