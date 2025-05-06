@@ -81,6 +81,7 @@ impl Controller {
 
             // Process commands loop
             while let Ok(cmd) = receiver.recv() {
+                // Process command and check if we should continue
                 if !Controller::handle_request(controller, cmd) {
                     break;
                 }
@@ -89,15 +90,41 @@ impl Controller {
     }
 
     /// Process a single request
-    /// Returns true to continue processing, false to stop
+    /// Returns true if we should continue processing commands, false if we should stop
     fn handle_request(controller: &Controller, request: ControllerCmd) -> bool {
         match request {
-            ControllerCmd::WebView(cmd) => webview::handle_webview_cmd(&controller.webviews, cmd),
-            ControllerCmd::MiniApp(cmd) => app::handle_miniapp_cmd(&controller.app, cmd),
             ControllerCmd::Shutdown => {
-                false // Stop processing loop
+                controller.log(
+                    LogLevel::Info,
+                    "controller",
+                    "Shutdown command received, stopping command loop",
+                );
+                return false; // Stop processing commands
+            }
+            ControllerCmd::WebView(cmd) => {
+                if let Err(err) = webview::handle_webview_cmd(&controller.webviews, cmd) {
+                    // Log error but continue processing
+                    controller.log(
+                        LogLevel::Error,
+                        "controller",
+                        &format!("Error processing WebView command: {}", err),
+                    );
+                }
+            }
+            ControllerCmd::MiniApp(cmd) => {
+                if let Err(err) = app::handle_miniapp_cmd(&controller.app, cmd) {
+                    // Log error but continue processing
+                    controller.log(
+                        LogLevel::Error,
+                        "controller",
+                        &format!("Error processing MiniApp command: {}", err),
+                    );
+                }
             }
         }
+
+        // Continue processing commands
+        true
     }
 
     /// Get a WebView instance directly from the HashMap

@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 pub(crate) fn handle_webview_cmd(
     webviews: &Mutex<HashMap<(String, String), Arc<WebView>>>,
     cmd: WebViewCmd,
-) -> bool {
+) -> Result<(), MiniAppError> {
     match cmd {
         WebViewCmd::LoadUrl {
             appid,
@@ -25,8 +25,14 @@ pub(crate) fn handle_webview_cmd(
                         .and_then(|webview| webview.load_url(&url))
                 });
 
-            let _ = responder.send(result);
-            true // Continue processing requests
+            // Send result back to caller, but also propagate any error for logging
+            let send_result = responder.send(result.clone());
+            if send_result.is_err() {
+                return Err(MiniAppError::WebView("Failed to send response".to_string()));
+            }
+
+            // Propagate any error that occurred during processing
+            result
         }
         WebViewCmd::EvaluateJavascript {
             appid,
@@ -47,10 +53,15 @@ pub(crate) fn handle_webview_cmd(
                 });
 
             // Convert Result<String, MiniAppError> to Result<(), MiniAppError>
-            let adapted_result = result.map(|_| ());
+            let adapted_result = result.clone().map(|_| ());
 
-            let _ = responder.send(adapted_result);
-            true
+            let send_result = responder.send(adapted_result);
+            if send_result.is_err() {
+                return Err(MiniAppError::WebView("Failed to send response".to_string()));
+            }
+
+            // Propagate any error that occurred during processing
+            result.map(|_| ())
         }
         WebViewCmd::PostMessage {
             appid,
@@ -68,8 +79,13 @@ pub(crate) fn handle_webview_cmd(
                         .and_then(|webview| webview.post_message(&message))
                 });
 
-            let _ = responder.send(result);
-            true
+            let send_result = responder.send(result.clone());
+            if send_result.is_err() {
+                return Err(MiniAppError::WebView("Failed to send response".to_string()));
+            }
+
+            // Propagate any error that occurred during processing
+            result
         }
         WebViewCmd::SetDevtools {
             appid,
@@ -88,8 +104,13 @@ pub(crate) fn handle_webview_cmd(
                         .and_then(|webview| webview.set_devtools(enabled))
                 });
 
-            let _ = responder.send(result);
-            true
+            let send_result = responder.send(result.clone());
+            if send_result.is_err() {
+                return Err(MiniAppError::WebView("Failed to send response".to_string()));
+            }
+
+            // Propagate any error that occurred during processing
+            result
         }
         WebViewCmd::ClearBrowsingData {
             appid,
@@ -106,8 +127,13 @@ pub(crate) fn handle_webview_cmd(
                         .and_then(|webview| webview.clear_browsing_data())
                 });
 
-            let _ = responder.send(result);
-            true
+            let send_result = responder.send(result.clone());
+            if send_result.is_err() {
+                return Err(MiniAppError::WebView("Failed to send response".to_string()));
+            }
+
+            // Propagate any error that occurred during processing
+            result
         }
         WebViewCmd::SetUserAgent {
             appid,
@@ -133,8 +159,13 @@ pub(crate) fn handle_webview_cmd(
                     result
                 });
 
-            let _ = responder.send(result);
-            true
+            let send_result = responder.send(result.clone());
+            if send_result.is_err() {
+                return Err(MiniAppError::WebView("Failed to send response".to_string()));
+            }
+
+            // Propagate any error that occurred during processing
+            result
         }
     }
 }
