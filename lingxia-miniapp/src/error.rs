@@ -11,4 +11,12 @@ pub enum MiniAppError {
 
     #[error("{0} is not valid JSON file")]
     InvalidJsonFile(String),
+
+    /// Error for invalid parameters
+    #[error("Invalid parameter: {0}")]
+    InvalidParameter(String),
+
+    /// Error for unsupported operations
+    #[error("Unsupported operation: {0}")]
+    UnsupportedOperation(String),
 }

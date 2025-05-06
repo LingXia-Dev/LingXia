@@ -1,5 +1,4 @@
 use crate::{AppController, ControllerCmd, MiniAppError, WebViewCmd};
-use std::any::Any;
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, mpsc};
 use std::time::Instant;
@@ -36,171 +35,6 @@ impl PageStack {
     }
 }
 
-pub struct PageManager {
-    controllers: HashMap<String, (Arc<dyn PageController>, Instant)>,
-    stacks: HashMap<String, PageStack>, // tab_path -> PageStack
-    current_tab: Option<String>,        // Current active tab path
-    max_pages: usize,
-}
-
-impl PageManager {
-    pub(crate) fn new(max_pages: Option<usize>) -> Self {
-        Self {
-            controllers: HashMap::new(),
-            stacks: HashMap::new(),
-            current_tab: None,
-            max_pages: max_pages.unwrap_or(10),
-        }
-    }
-
-    /// Finds a PageController by path
-    pub(crate) fn find_page_controller(&self, path: &str) -> Option<Arc<dyn PageController>> {
-        self.controllers.get(path).map(|(c, _)| c.clone())
-    }
-
-    /// Pushes a new page controller
-    pub(crate) fn push_page_controller(
-        &mut self,
-        path: String,
-        is_tab_page: bool,
-        controller: Arc<dyn PageController>,
-    ) {
-        if self.controllers.len() >= self.max_pages {
-            self.destroy_least_active();
-        }
-
-        if is_tab_page {
-            // Create new stack for tab page or get existing
-            let stack = self
-                .stacks
-                .entry(path.clone())
-                .or_insert_with(|| PageStack::new(path.clone()));
-            // Ensure the path is in the stack (might be creating or just switching to)
-            stack.push_page(path.clone());
-            self.current_tab = Some(path.clone());
-        } else if let Some(current_tab) = &self.current_tab {
-            // Add to current tab's stack
-            if let Some(stack) = self.stacks.get_mut(current_tab) {
-                stack.push_page(path.clone());
-            }
-        }
-
-        // Insert or update controller - ensures controller is present even if page existed in stack
-        self.controllers.insert(path, (controller, Instant::now()));
-    }
-
-    /// Updates the last active time for a page and sets current tab if it's a tab page
-    pub(crate) fn mark_active(&mut self, path: &str) {
-        if let Some((_, time)) = self.controllers.get_mut(path) {
-            *time = Instant::now();
-            // If this is a tab page, update current_tab
-            if self.stacks.contains_key(path) {
-                self.current_tab = Some(path.to_string());
-            }
-            // Note: We don't update the specific page stack here, only the current *tab*
-        }
-    }
-
-    /// Pops the current page from the current tab's stack if possible.
-    /// Returns the path of the page to navigate back *to* if successful.
-    /// Also destroys the controller of the popped page.
-    /// Returns None if the current page cannot be popped (e.g., it's the tab root).
-    pub fn pop_from_current_stack(&mut self) -> Option<String> {
-        let current_tab_path = match &self.current_tab {
-            Some(tab) => tab,
-            None => return None, // No current tab to pop from
-        };
-
-        // Use ? for cleaner handling if stack doesn't exist for current_tab_path
-        let stack = self.stacks.get_mut(current_tab_path)?;
-
-        let page_to_pop = match stack.current_page() {
-            Some(p) => p.to_string(),
-            None => return None, // Stack is empty? Error state.
-        };
-
-        // Check if the page to pop is the tab root itself
-        if page_to_pop == *current_tab_path {
-            return None; // Cannot pop the root page of the stack via back press
-        }
-
-        // Attempt to pop from the stack structure
-        if stack.pop_page().is_some() {
-            // Successfully popped from the stack structure.
-            // Now, remove the controller for the popped page.
-            self.controllers.remove(&page_to_pop); // Controller is dropped here
-
-            // Return the path of the *new* current page in the stack
-            stack.current_page().map(String::from)
-        } else {
-            // pop_page failed (e.g., already at root, though we checked)
-            None
-        }
-    }
-
-    /// Destroys the least active page that isn't a tab page
-    fn destroy_least_active(&mut self) {
-        let mut oldest_time = Instant::now();
-        let mut oldest_path = None;
-
-        // Find the oldest non-tab page
-        for (path, (_, time)) in &self.controllers {
-            if !self.stacks.contains_key(path) && *time < oldest_time {
-                oldest_time = *time;
-                oldest_path = Some(path.clone());
-            }
-        }
-
-        // Remove it if found
-        if let Some(path) = oldest_path {
-            // We need to remove from the stack it belongs to as well
-            if let Some(current_tab) = &self.current_tab {
-                if let Some(stack) = self.stacks.get_mut(current_tab) {
-                    // Only retain pages that are NOT the one we want to remove
-                    stack.pages.retain(|p| p != &path);
-                }
-            }
-            // TODO: If not found in current tab's stack, should we search others?
-
-            self.controllers.remove(&path);
-        }
-    }
-}
-
-impl Drop for PageManager {
-    fn drop(&mut self) {
-        self.controllers.clear();
-    }
-}
-
-/// Trait for controlling page operations from Rust
-pub trait PageController: Send + Sync + Any {
-    /// Loads the specified URL in the page
-    /// Returns true if the URL was successfully loaded
-    fn load_url(&self, url: String) -> bool;
-
-    // configure UserAgent for the page
-    fn setup_ua(&self, ua: &str);
-
-    /// Evaluates JavaScript in the page context
-    /// Returns Ok(()) if successful, Err with the error if failed
-    fn evaluate_javascript(&self, js: &str) -> Result<(), Box<dyn std::error::Error>>;
-
-    /// Clears the page's cache and history
-    fn clear_browsing_data(&self);
-
-    /// Enable or disable WebView debugging
-    /// Returns true if the operation was successful
-    fn set_devtools(&self, enabled: bool) -> bool;
-
-    /// Post a message to the page
-    /// Returns Ok(()) if successful, Err with the error if failed
-    fn post_message(&self, message: &str) -> Result<(), Box<dyn std::error::Error>>;
-
-    /// Get the Any trait object for downcasting
-    fn as_any(&self) -> &dyn Any;
-}
-
 /// Interface for controlling WebView
 pub trait WebViewController {
     /// Load a URL in the WebView
@@ -222,19 +56,233 @@ pub trait WebViewController {
     fn set_user_agent(&self, ua: &str) -> Result<(), MiniAppError>;
 }
 
-/// Manages a collection of pages for a single app
+/// Manages a collection of pages for a single miniapp
 pub struct Pages {
     /// Map of path to Page
     pages: HashMap<String, Page>,
+    /// Tab path to PageStack mapping
+    stacks: HashMap<String, PageStack>,
     /// Path of the currently active tab
     current_tab: Option<String>,
+    /// Maximum number of pages to keep in memory
+    max_pages: usize,
+    /// Whether the app has a tabbar, if not, only one pagestack is used
+    has_tabbar: bool,
 }
 
 impl Pages {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(max_pages: Option<usize>, has_tabbar: bool) -> Self {
         Self {
             pages: HashMap::new(),
+            stacks: HashMap::new(),
             current_tab: None,
+            max_pages: max_pages.unwrap_or(5),
+            has_tabbar,
+        }
+    }
+
+    /// Finds a page by path
+    pub(crate) fn find_page(&self, path: &str) -> Option<&Page> {
+        self.pages.get(path)
+    }
+
+    /// Gets or creates the root page stack
+    /// In case of no tabbar, uses a fixed "root" as the key for the root page stack
+    fn get_or_create_root_stack(&mut self, path: String) -> &mut PageStack {
+        if !self.has_tabbar {
+            // For apps without tabbar, use a fixed "root" key for the single pagestack
+            let key = "root".to_string();
+            let stack = self
+                .stacks
+                .entry(key.clone())
+                .or_insert_with(|| PageStack::new(path.clone()));
+            if self.current_tab.is_none() {
+                self.current_tab = Some(key);
+            }
+            stack
+        } else {
+            // For apps with tabbar, use the path as the key for the page stack
+            self.stacks
+                .entry(path.clone())
+                .or_insert_with(|| PageStack::new(path.clone()))
+        }
+    }
+
+    /// Pushes a new page
+    pub(crate) fn push_page(
+        &mut self,
+        appid: String,
+        path: String,
+        is_tab_page: bool,
+        controller: Arc<dyn AppController>,
+    ) {
+        if self.pages.len() >= self.max_pages {
+            self.destroy_least_active();
+        }
+
+        if self.has_tabbar {
+            // For apps with tabbar
+            if is_tab_page {
+                // Create new tabbar page stack or get existing one
+                let stack = self
+                    .stacks
+                    .entry(path.clone())
+                    .or_insert_with(|| PageStack::new(path.clone()));
+                // Ensure path is in the stack (might be creating or switching)
+                stack.push_page(path.clone());
+                self.current_tab = Some(path.clone());
+            } else if let Some(current_tab) = &self.current_tab {
+                // Add to current tab's stack
+                if let Some(stack) = self.stacks.get_mut(current_tab) {
+                    stack.push_page(path.clone());
+                }
+            }
+        } else {
+            // For apps without tabbar, all pages are in a single stack
+            let root_key = "root".to_string();
+
+            // Ensure root stack is created
+            if !self.stacks.contains_key(&root_key) {
+                self.stacks
+                    .insert(root_key.clone(), PageStack::new(path.clone()));
+                self.current_tab = Some(root_key.clone());
+            }
+
+            // Add page to the root stack
+            if let Some(stack) = self.stacks.get_mut(&root_key) {
+                stack.push_page(path.clone());
+            }
+        }
+
+        // Create and insert new page
+        let page = Page::new(controller, appid, path.clone());
+        self.pages.insert(path, page);
+    }
+
+    /// Updates the last active time for a page
+    pub(crate) fn mark_active(&mut self, path: &str) {
+        if let Some(page) = self.pages.get_mut(path) {
+            page.last_active_time = Instant::now();
+        }
+    }
+
+    /// Sets the current active tab
+    /// This method should be called when the user switches tabs
+    pub(crate) fn set_current_tab(&mut self, tab_path: &str) -> Result<(), MiniAppError> {
+        // Ensure this is a valid tab path
+        if self.has_tabbar {
+            if !self.stacks.contains_key(tab_path) {
+                return Err(MiniAppError::InvalidParameter(format!(
+                    "Tab '{}'",
+                    tab_path
+                )));
+            }
+            self.current_tab = Some(tab_path.to_string());
+            Ok(())
+        } else {
+            // For non-tabbar applications
+            Err(MiniAppError::UnsupportedOperation(
+                "Setting tab in non-tabbar app".to_string(),
+            ))
+        }
+    }
+
+    /// Pops the current page from the current tab's stack if possible.
+    /// Returns the path of the page to navigate back *to* if successful.
+    /// Also destroys the page that was popped.
+    /// Returns None if the current page cannot be popped (e.g., it's the tab root).
+    pub fn pop_from_current_stack(&mut self) -> Option<String> {
+        let current_tab_path = match &self.current_tab {
+            Some(tab) => tab,
+            None => return None, // No current tab to pop from
+        };
+
+        // Get the current page before mutably borrowing the stack
+        let current_page = {
+            let stack = self.stacks.get(current_tab_path)?;
+            match stack.current_page() {
+                Some(p) => p.to_string(),
+                None => return None, // Stack is empty? Error state.
+            }
+        };
+
+        // Check if the current page is a tab page
+        if self.has_tabbar && self.stacks.contains_key(&current_page) {
+            return None; // Cannot pop a tab root page
+        }
+
+        // Now get a mutable reference to the stack
+        let stack = self.stacks.get_mut(current_tab_path)?;
+
+        // For apps without tabbar, cannot pop if stack has only one page
+        if !self.has_tabbar && stack.pages.len() <= 1 {
+            return None;
+        }
+
+        // Attempt to pop from the stack structure
+        if stack.pop_page().is_some() {
+            // Successfully popped from the stack structure.
+            // Now, remove the page for the popped path.
+            self.pages.remove(&current_page); // Page is dropped here
+
+            // Return the path of the *new* current page in the stack
+            stack.current_page().map(String::from)
+        } else {
+            // pop_page failed (e.g., already at root, though we checked)
+            None
+        }
+    }
+
+    /// Destroys the least recently used page to maintain memory limits
+    fn destroy_least_active(&mut self) {
+        if self.has_tabbar {
+            // For apps with tabbar
+            // First try to remove the most recently pushed page from non-current tabs
+            if let Some(current_tab) = &self.current_tab {
+                // Check all non-current tabs
+                for (tab_path, stack) in self.stacks.iter_mut() {
+                    if tab_path == current_tab {
+                        continue; // Skip current tab
+                    }
+
+                    // If this tab has more than one page (besides the root page)
+                    // remove the most recently pushed page (top of stack)
+                    if stack.pages.len() > 1 {
+                        if let Some(last_page) = stack.pop_page() {
+                            self.pages.remove(&last_page);
+                            return;
+                        }
+                    }
+                }
+            }
+
+            // If no pages can be removed from non-current tabs, try the current tab
+            // but preserve the root page and at least one direct child page
+            if let Some(current_tab) = &self.current_tab {
+                if let Some(stack) = self.stacks.get_mut(current_tab) {
+                    if stack.pages.len() > 2 {
+                        // Keep root page and at least one child page
+                        // Remove the most recently pushed page (top of stack)
+                        if let Some(last_page) = stack.pop_page() {
+                            self.pages.remove(&last_page);
+                            return;
+                        }
+                    }
+                }
+            }
+        } else {
+            // For apps without tabbar - only one page stack
+            let root_key = "root".to_string();
+            if let Some(stack) = self.stacks.get_mut(&root_key) {
+                // Ensure we keep at least one page
+                if stack.pages.len() > 1 {
+                    // Remove the most recently pushed page (top of stack)
+                    if let Some(last_page) = stack.pop_page() {
+                        self.pages.remove(&last_page);
+                        return;
+                    }
+                }
+            }
         }
     }
 }

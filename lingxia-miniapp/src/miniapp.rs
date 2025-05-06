@@ -10,7 +10,7 @@ use std::time::Instant;
 use crate::app::AppController;
 use crate::error::MiniAppError;
 use crate::log::{LogLevel, Logging};
-use crate::page::{self, PageController, Pages};
+use crate::page::{self, Pages};
 
 mod ipc;
 mod scheme;
@@ -52,9 +52,9 @@ pub trait MiniAppRuntime: Send + Sync {
 
 pub struct MiniAppOld {
     pub(crate) runtime: Box<dyn MiniAppRuntime>,
-    apps: HashMap<String, Arc<Mutex<page::PageManager>>>, // appid -> PageManager
-    last_active_times: HashMap<String, Instant>,          // appid -> last active time
-    max_apps: usize,                                      // Maximum number of apps allowed
+    apps: HashMap<String, Arc<Mutex<page::Pages>>>, // appid -> PageManager
+    last_active_times: HashMap<String, Instant>,    // appid -> last active time
+    max_apps: usize,                                // Maximum number of apps allowed
 }
 
 impl MiniAppOld {
@@ -106,22 +106,22 @@ impl MiniAppOld {
 
     pub fn on_miniapp_opened(&mut self, appid: String) {
         // If the app is already loaded, just update its active time
-        if self.apps.contains_key(&appid) {
-            self.last_active_times.insert(appid, Instant::now());
-            return;
-        }
-
-        // If we've reached the maximum number of apps, destroy the least active one
-        if self.apps.len() >= self.max_apps {
-            self.destroy_least_active_miniapp();
-        }
-
-        // Create a new PageManager for this app
-        self.apps.insert(
-            appid.clone(),
-            Arc::new(Mutex::new(page::PageManager::new(None))),
-        );
-        self.last_active_times.insert(appid, Instant::now());
+        // if self.apps.contains_key(&appid) {
+        //     self.last_active_times.insert(appid, Instant::now());
+        //     return;
+        // }
+        //
+        // // If we've reached the maximum number of apps, destroy the least active one
+        // if self.apps.len() >= self.max_apps {
+        //     self.destroy_least_active_miniapp();
+        // }
+        //
+        // // Create a new PageManager for this app
+        // self.apps.insert(
+        //     appid.clone(),
+        //     Arc::new(Mutex::new(page::PageManager::new(None))),
+        // );
+        // self.last_active_times.insert(appid, Instant::now());
     }
 
     /**
@@ -142,7 +142,7 @@ impl MiniAppOld {
     }
 
     /// Called when a new page is created for the given appid and path
-    pub fn on_page_created(&mut self, appid: String, path: String, pc: Arc<dyn PageController>) {
+    pub fn on_page_created(&mut self, appid: String, path: String) {
         // A page is a tab page if it's in the tab bar configuration(demo code)
         let is_tab_page = if let Ok(tab_config) =
             serde_json::from_str::<serde_json::Value>(DEFAULT_TAB_BAR_CONFIG)
@@ -168,10 +168,10 @@ impl MiniAppOld {
         //     format!("insert page {}, is_tab_page: {}", path, is_tab_page),
         // );
 
-        let page_manager = self
-            .apps
-            .entry(appid.clone())
-            .or_insert_with(|| Arc::new(Mutex::new(page::PageManager::new(None))));
+        // let page_manager = self
+        //     .apps
+        //     .entry(appid.clone())
+        //     .or_insert_with(|| Arc::new(Mutex::new(page::PageManager::new(None))));
 
         // demo code
         let url = if appid == "home" {
@@ -181,24 +181,14 @@ impl MiniAppOld {
             "https://www.bing.com".to_string()
         };
 
-        pc.load_url(url);
+        // pc.load_url(url);
 
-        #[cfg(debug_assertions)]
-        pc.set_devtools(true);
+        // #[cfg(debug_assertions)]
+        // pc.set_devtools(true);
 
         // Initialize the page
-        let mut page_manager = page_manager.lock().unwrap();
-        page_manager.push_page_controller(path, is_tab_page, pc);
-    }
-
-    /// Finds a PageController by appid and path
-    pub fn find_page_controller(&self, appid: &str, path: &str) -> Option<Arc<dyn PageController>> {
-        if let Some(page_manager) = self.apps.get(appid) {
-            let page_manager = page_manager.lock().unwrap();
-            page_manager.find_page_controller(path)
-        } else {
-            None
-        }
+        // let mut page_manager = page_manager.lock().unwrap();
+        // page_manager.push_page_controller(path, is_tab_page, pc);
     }
 
     /// Determines whether to override URL loading in the page.
@@ -223,152 +213,6 @@ impl MiniAppOld {
             "lingxia" => true, // Always intercept lingxia scheme
             "https" => false,  // Allow http/https URLs
             _ => true,         // Block all other schemes
-        }
-    }
-
-    /// Handles a postMessage from the page's JavaScript context
-    pub fn handle_post_message(&self, appid: String, path: String, msg: String) {
-        // self.info(&appid, format!("Handling message for WebView: {}", msg));
-
-        // First, parse the incoming string.
-        let message_value: Value = match serde_json::from_str(&msg) {
-            Ok(v) => v,
-            Err(e) => {
-                // self.error(
-                //     &appid,
-                //     format!("Failed to parse message string: {}. Raw: '{}'", e, msg),
-                // );
-                return;
-            }
-        };
-
-        // Check if the parsed value is itself a string (potential double stringification)
-        // If so, parse the inner string.
-        let message_obj = if let Some(inner_str) = message_value.as_str() {
-            // self.info(&appid, "Message parsed as string, attempting inner parse.");
-            match serde_json::from_str(inner_str) {
-                Ok(v) => v,
-                Err(e) => {
-                    // self.error(
-                    //     &appid,
-                    //     format!(
-                    //         "Failed to parse nested JSON string: {}. Inner: '{}'",
-                    //         e, inner_str
-                    //     ),
-                    // );
-                    return;
-                }
-            }
-        } else {
-            // If not a string, assume it's the correct JSON structure.
-            message_value
-        };
-
-        // Ensure we ended up with a JSON object.
-        if !message_obj.is_object() {
-            // self.error(
-            //     &appid,
-            //     format!("Parsed message is not a JSON object: {:?}", message_obj),
-            // );
-            return;
-        }
-
-        // Now, safely extract the type from the object.
-        let message_type = message_obj.get("type").and_then(Value::as_str);
-        if message_type.is_none() {
-            // self.error(
-            //     &appid,
-            //     format!(
-            //         "Message type field is missing or not a string in object: {:?}",
-            //         message_obj
-            //     ),
-            // );
-            return;
-        }
-
-        match message_type.unwrap() {
-            "ipcReady" => {
-                // self.info(
-                //     &appid,
-                //     format!(
-                //         "WebView ({}/{}) signaled IPC ready. Sending PAGE_BACK structure.",
-                //         appid, path
-                //     ),
-                // );
-
-                // Directly try to find the PageController and send the PAGE_BACK message structure
-                // This code block is moved from on_page_show and REPLACES the previous PAGE_LOAD sending block
-                if let Some(controller) = self.find_page_controller(&appid, &path) {
-                    // Construct the PAGE_BACK message structure
-                    let timestamp = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default() // Use default on error for simplicity in demo
-                        .as_secs();
-                    let message = serde_json::json!({
-                        "type": "PAGE_BACK",
-                        "data": {
-                            "timestamp": timestamp,
-                            "message": "Navigated back successfully (Sent on ipcReady)" // Adjust message for clarity
-                        }
-                    });
-
-                    match serde_json::to_string(&message) {
-                        Ok(message_string) => {
-                            // self.info(
-                            //     &appid,
-                            //     format!(
-                            //         "Sending PAGE_BACK structure message to {}/{}: {}",
-                            //         appid, path, message_string
-                            //     ),
-                            // );
-                            if let Err(e) = controller.post_message(&message_string) {
-                                // self.error(&appid, format!("Failed to post PAGE_BACK structure message to controller for {}/{}: {}", appid, path, e));
-                            }
-                        }
-                        Err(e) => {
-                            // self.error(
-                            //     &appid,
-                            //     format!(
-                            //         "Failed to serialize PAGE_BACK structure message for {}/{}: {}",
-                            //         appid, path, e
-                            //     ),
-                            // );
-                        }
-                    }
-                } else {
-                    // self.error(&appid, format!("Received ipcReady for {}/{} but could not find corresponding PageController to send PAGE_BACK structure.", appid, path));
-                }
-            }
-            "OPEN_MINIAPP" => {
-                // self.info(&appid, "Handling OPEN_MINIAPP message");
-                if let Some(data) = message_obj.get("data") {
-                    // Use message_obj
-                    if let Some(app_id) = data.get("appId").and_then(Value::as_str) {
-                        let path = data.get("path").and_then(Value::as_str).unwrap_or("");
-                        if let Err(e) = self.runtime.open_miniapp(app_id, path) {
-                            // self.error(&appid, format!("Failed to open miniapp: {}", e));
-                        }
-                    }
-                }
-            }
-            "NAVIGATE_TO" => {
-                // self.info(&appid, "Handling NAVIGATE_TO message");
-                if let Some(data) = message_obj.get("data") {
-                    // Use message_obj
-                    if let Some(path) = data.get("path").and_then(Value::as_str) {
-                        if let Err(e) = self.runtime.switch_page(&appid, path) {
-                            // self.error(&appid, format!("Failed to switch page to {}: {}", path, e));
-                        }
-                    } else {
-                        // self.error(&appid, "NAVIGATE_TO message missing path data");
-                    }
-                } else {
-                    // self.error(&appid, "NAVIGATE_TO message missing data field");
-                }
-            }
-            unknown_type => {
-                // self.error(&appid, format!("Unknown message type: {}", unknown_type));
-            }
         }
     }
 
@@ -400,12 +244,12 @@ impl MiniAppOld {
     /// Called when the page starts loading
     pub fn on_page_started(&self, appid: String, path: String) {
         // Find the corresponding controller
-        if let Some(controller) = self.find_page_controller(&appid, &path) {
-            // Get IPC script content and inject it
-            if let Err(e) = controller.evaluate_javascript(ipc::get_ipc_script()) {
-                // self.error(&appid, e.to_string());
-            }
-        }
+        // if let Some(controller) = self.find_page_controller(&appid, &path) {
+        //     // Get IPC script content and inject it
+        //     if let Err(e) = controller.evaluate_javascript(ipc::get_ipc_script()) {
+        //         // self.error(&appid, e.to_string());
+        //     }
+        // }
     }
 
     /// Called when the page finishes loading
@@ -431,30 +275,29 @@ impl MiniAppOld {
 
         if let Some(page_manager_arc) = self.apps.get(app_id) {
             let mut page_manager = page_manager_arc.lock().unwrap();
-            match page_manager.pop_from_current_stack() {
-                Some(previous_path) => {
-                    // self.info(
-                    //     app_id,
-                    //     format!("Popped page, requesting switch back to: {}", previous_path),
-                    // );
-                    // Tell the platform to switch the view *without* changing the tab state
-                    if let Err(e) = self.runtime.switch_page(app_id, &previous_path) {
-                        // self.error(
-                        //     app_id,
-                        //     format!(
-                        //         "Failed to request page switch back to {}: {}",
-                        //         previous_path, e
-                        //     ),
-                        // );
-                        // Still considered handled as state was popped
-                    }
-                    true // Back press was handled by popping a page state
-                }
-                None => {
-                    // self.error(app_id, "No page to pop from current stack");
-                    false
-                }
-            }
+            // match page_manager.pop_from_current_stack() {
+            // Some(previous_path) => {
+            // self.info(
+            //     app_id,
+            //     format!("Popped page, requesting switch back to: {}", previous_path),
+            // );
+            // Tell the platform to switch the view *without* changing the tab state
+            // if let Err(e) = self.runtime.switch_page(app_id, &previous_path) {
+            // self.error(
+            //     app_id,
+            //     format!(
+            //         "Failed to request page switch back to {}: {}",
+            //         previous_path, e
+            //     ),
+            // );
+            // Still considered handled as state was popped
+            // }
+            true // Back press was handled by popping a page state
+        // }
+        // None => {
+        // self.error(app_id, "No page to pop from current stack");
+        // false
+        // }
         } else {
             // self.error(app_id, "No page manager found for the given app id");
             false
@@ -567,8 +410,9 @@ impl MiniApp {
         let data_dir = controller.app_data_dir();
         let cache_dir = controller.app_cache_dir();
 
+        // TODO: read app.json
         Self {
-            pages: Pages::new(),
+            pages: Pages::new(None, false),
             last_active_time: Instant::now(),
             appid,
             controller,
