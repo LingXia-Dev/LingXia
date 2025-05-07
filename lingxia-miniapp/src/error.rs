@@ -19,4 +19,8 @@ pub enum MiniAppError {
     /// Error for unsupported operations
     #[error("Unsupported operation: {0}")]
     UnsupportedOperation(String),
+    
+    /// Error for I/O operations (file access, network, etc.)
+    #[error("I/O error: {0}")]
+    IoError(String),
 }
