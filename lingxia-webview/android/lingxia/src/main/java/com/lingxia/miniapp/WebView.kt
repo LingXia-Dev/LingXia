@@ -265,7 +265,7 @@ class WebView @JvmOverloads constructor(
                     else -> 4  // Default to INFO
                 }
 
-                nativeOnConsoleMessage(appId ?: return true, level, message.message())
+                nativeOnConsoleMessage(appId ?: return true, currentPath ?: return true, level, message.message())
                 return true
             }
 
@@ -602,6 +602,6 @@ class WebView @JvmOverloads constructor(
         method: String,
         headers: String
     ): WebResourceResponseData?
-    private external fun nativeOnConsoleMessage(appId: String, level: Int, message: String):Int
+    private external fun nativeOnConsoleMessage(appId: String, path:String, level: Int, message: String):Int
     private external fun nativeGetPageConfig(appId: String, path: String): String?  // Returns JSON string of page config
 }

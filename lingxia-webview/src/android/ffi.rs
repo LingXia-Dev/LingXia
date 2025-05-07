@@ -431,10 +431,12 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnConsoleMessage(
     mut env: JNIEnv,
     _class: JClass,
     appid: JString,
+    path: JString,
     level: jint,
     message: JString,
 ) -> jint {
     let appid: String = env.get_string(&appid).unwrap().into();
+    let path: String = env.get_string(&path).unwrap().into();
     let message: String = env.get_string(&message).unwrap().into();
 
     if let Ok(miniapp) = miniapp::get_or_init_miniapp(appid.clone()).read() {
@@ -447,7 +449,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnConsoleMessage(
             _ => LogLevel::Info,    // Default to INFO
         };
 
-        miniapp.log("TODO", log_level, &message);
+        miniapp.log(&path, log_level, &message);
         1
     } else {
         0
