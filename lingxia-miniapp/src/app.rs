@@ -13,14 +13,14 @@ pub struct AssetFileEntry<'a> {
 
 /// Interface for controlling app lifecycle and navigation
 pub trait AppController: Send + Sync + 'static {
-    /// Read asset file from platform-specific location
+    /// Read asset file from platform-specific location as a streaming reader
     ///
     /// # Arguments
     /// * `path` - Path to the asset file to read
     ///
     /// # Returns
-    /// * `Result<Vec<u8>, MiniAppError>` - The file content as bytes, or an error
-    fn read_asset(&self, path: &str) -> Result<Vec<u8>, MiniAppError>;
+    /// * `Result<Box<dyn Read + '_>, MiniAppError>` - A reader for streaming the asset content, or an error
+    fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, MiniAppError>;
 
     /// Iterate over files in an asset directory.
     ///
@@ -70,7 +70,7 @@ pub trait AppController: Send + Sync + 'static {
 }
 
 impl<T: AppController + ?Sized> AppController for Arc<T> {
-    fn read_asset(&self, path: &str) -> Result<Vec<u8>, MiniAppError> {
+    fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, MiniAppError> {
         (**self).read_asset(path)
     }
 

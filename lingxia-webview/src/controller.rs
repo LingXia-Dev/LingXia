@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::io::Read;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::{Mutex, OnceLock, mpsc};
@@ -27,7 +28,7 @@ impl Drop for Controller {
 }
 
 impl AppController for Controller {
-    fn read_asset(&self, path: &str) -> Result<Vec<u8>, MiniAppError> {
+    fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, MiniAppError> {
         self.app.read_asset(path)
     }
 

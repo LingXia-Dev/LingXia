@@ -22,7 +22,7 @@ unsafe impl Send for App {}
 unsafe impl Sync for App {}
 
 /// Reader for a single asset file
-pub struct AssetReader {
+struct AssetReader {
     asset: *mut ndk_sys::AAsset,
 }
 
@@ -48,7 +48,7 @@ impl Drop for AssetReader {
 }
 
 /// Iterator over files in an asset directory
-pub struct AssetDirIterator<'a> {
+struct AssetDirIterator<'a> {
     asset_manager: *mut ndk_sys::AAssetManager,
     dir: *mut ndk_sys::AAssetDir,
     dir_path: String,
@@ -125,7 +125,7 @@ impl App {
         }
     }
 
-    pub fn asset_dir_iter<'a>(
+    fn asset_dir_iter<'a>(
         &'a self,
         asset_dir: &str,
     ) -> Box<dyn Iterator<Item = Result<crate::AssetFileEntry<'a>, MiniAppError>> + 'a> {
@@ -158,7 +158,7 @@ impl App {
 }
 
 impl MiniAppPlatform for App {
-    fn read_asset(&self, path: &str) -> Result<Vec<u8>, MiniAppError> {
+    fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, MiniAppError> {
         unsafe {
             // Convert path to CString to ensure proper null-termination
             let c_path = std::ffi::CString::new(path)
@@ -167,7 +167,7 @@ impl MiniAppPlatform for App {
             let asset = ndk_sys::AAssetManager_open(
                 self.asset_manager,
                 c_path.as_ptr(),
-                ndk_sys::AASSET_MODE_BUFFER as i32,
+                ndk_sys::AASSET_MODE_STREAMING as i32,
             );
 
             if asset.is_null() {
@@ -177,20 +177,8 @@ impl MiniAppPlatform for App {
                 )));
             }
 
-            let length = ndk_sys::AAsset_getLength64(asset) as usize;
-            let mut buffer = vec![0u8; length];
-            let read = ndk_sys::AAsset_read(asset, buffer.as_mut_ptr() as *mut _, length) as i32;
-
-            ndk_sys::AAsset_close(asset);
-
-            if read == length as i32 {
-                Ok(buffer)
-            } else {
-                Err(MiniAppError::IoError(format!(
-                    "Failed to read asset completely: {}",
-                    path
-                )))
-            }
+            // Return a reader instead of reading the entire asset into memory
+            Ok(Box::new(AssetReader { asset }))
         }
     }
 
