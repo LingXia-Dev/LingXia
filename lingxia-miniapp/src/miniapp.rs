@@ -1,8 +1,8 @@
 use http::{Response, StatusCode};
 use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 use std::fs;
+use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::{Mutex, OnceLock, RwLock};
@@ -29,40 +29,7 @@ const HOME_DIR: &str = "home";
 const DEFAULT_USER_ID: &str = "default";
 const DEFAULT_VERSION: &str = "0.0.1";
 
-/// Platform-specific capabilities for MiniApp
-pub trait MiniAppRuntime: Send + Sync {
-    /// Read asset file from platform-specific location
-    fn read_asset(&self, path: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>>;
-
-    /// Get data directory for the app
-    fn get_data_dir(&self) -> Option<String>;
-
-    /// Get cache directory for the app
-    fn get_cache_dir(&self) -> Option<String>;
-
-    /// Log message to platform-specific logging system
-    fn log(&self, level: LogLevel, message: &str);
-
-    /// Switch to another page within the same mini app
-    ///
-    /// # Arguments
-    /// * `app_id` - The ID of the mini app whose page needs switching
-    /// * `path` - The target path to navigate to within the mini app
-    fn switch_page(&self, app_id: &str, path: &str) -> Result<(), Box<dyn std::error::Error>>;
-
-    /// Open a mini app in platform-specific way
-    ///
-    /// # Arguments
-    /// * `app_id` - The ID of the mini app to open
-    /// * `path` - The initial path to navigate to within the mini app
-    fn open_miniapp(&self, app_id: &str, path: &str) -> Result<(), Box<dyn std::error::Error>>;
-
-    /// Close mini app in platform-specific way
-    fn close_miniapp(&self, app_id: &str) -> Result<(), Box<dyn std::error::Error>>;
-}
-
 pub struct MiniAppOld {
-    pub(crate) runtime: Box<dyn MiniAppRuntime>,
     apps: HashMap<String, Arc<Mutex<page::Pages>>>, // appid -> PageManager
     last_active_times: HashMap<String, Instant>,    // appid -> last active time
     max_apps: usize,                                // Maximum number of apps allowed
@@ -173,31 +140,6 @@ impl MiniAppOld {
             "https" => false,  // Allow http/https URLs
             _ => true,         // Block all other schemes
         }
-    }
-
-    /// Handles an HTTP request from the page
-    pub fn handle_request(
-        &self,
-        _appid: String,
-        req: http::Request<Vec<u8>>,
-    ) -> Option<http::Response<Vec<u8>>> {
-        let uri = req.uri();
-        let scheme = uri.scheme_str().unwrap_or("");
-
-        // Don't intercept http/https requests
-        if scheme == "http" || scheme == "https" {
-            return None;
-        }
-
-        // Handle different schemes
-        Some(match scheme {
-            "lingxia" => scheme::lingxia_handler(self.runtime.as_ref(), req),
-            _ => Response::builder()
-                .status(StatusCode::BAD_REQUEST)
-                .header("Content-Type", "text/plain")
-                .body(format!("Unknown scheme: {}", scheme).into_bytes())
-                .unwrap(),
-        })
     }
 
     /// Called when the page starts loading
@@ -489,7 +431,7 @@ fn generate_app_hash(app_id: &str, user_id: &str) -> String {
     combined.hash(&mut hasher);
     let result = hasher.finish();
 
-    // Convert to hex string 
+    // Convert to hex string
     format!("{:x}", result)
 }
 
@@ -720,7 +662,27 @@ impl AppUiDelegate for MiniApp {
     }
 
     fn handle_request(&self, req: http::Request<Vec<u8>>) -> Option<http::Response<Vec<u8>>> {
-        todo!()
+        let uri = req.uri();
+        let scheme = uri.scheme_str().unwrap_or("");
+
+        // Don't intercept https requests
+        if scheme == "https" {
+            return None;
+        }
+
+        // Handle lingxia:// scheme for accessing app assets
+        if scheme == "lingxia" {
+            return Some(self.lingxia_handler(req));
+        }
+
+        // Handle other schemes with a bad request response
+        Some(
+            Response::builder()
+                .status(StatusCode::BAD_REQUEST)
+                .header("Content-Type", "text/plain")
+                .body(format!("Unsupported scheme: {}", scheme).into_bytes())
+                .unwrap(),
+        )
     }
 
     fn log(&self, path: &str, level: LogLevel, message: &str) {
