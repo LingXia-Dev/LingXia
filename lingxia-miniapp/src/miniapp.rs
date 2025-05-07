@@ -10,7 +10,7 @@ use std::time::Instant;
 
 use crate::app::{AppConfig, AppController};
 use crate::error::MiniAppError;
-use crate::log::LogLevel;
+use crate::log::{LogLevel, LogTag, Logging};
 use crate::miniapp::config::{MiniAppConfig, PageConfig};
 use crate::miniapp::security::NetworkSecurity;
 use crate::page::{self, Pages};
@@ -658,15 +658,15 @@ impl AppUiDelegate for MiniApp {
     fn handle_request(&self, req: http::Request<Vec<u8>>) -> Option<http::Response<Vec<u8>>> {
         let uri = req.uri();
         let scheme = uri.scheme_str().unwrap_or("");
-        
+
         // Use pattern matching for different URI schemes
         match scheme {
             // HTTPS requests - check domain whitelist and static resource types
             "https" => self.https_handler(req),
-            
+
             // Lingxia scheme for internal app assets
             "lingxia" => self.lingxia_handler(req),
-            
+
             // Reject all other schemes with 400 Bad Request
             _ => Some(
                 Response::builder()
@@ -679,7 +679,7 @@ impl AppUiDelegate for MiniApp {
     }
 
     fn log(&self, path: &str, level: LogLevel, message: &str) {
-        todo!()
+        self.write_log(path, level, LogTag::WebViewConsole, message);
     }
 }
 
