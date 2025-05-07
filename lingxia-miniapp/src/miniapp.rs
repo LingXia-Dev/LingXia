@@ -119,31 +119,6 @@ impl MiniAppOld {
         // page_manager.push_page_controller(path, is_tab_page, pc);
     }
 
-    /// Determines whether to override URL loading in the page.
-    ///
-    /// # Arguments
-    /// * `appid` - The identifier of the mini application
-    /// * `url` - The URL being requested
-    ///
-    /// # Returns
-    /// * `true` - To intercept and handle the URL loading
-    /// * `false` - To allow the page to continue loading the URL
-    pub fn should_override_url_loading(&self, _appid: String, url: String) -> bool {
-        // Extract scheme from URL
-        let scheme = if let Some(scheme_end) = url.find("://") {
-            &url[..scheme_end]
-        } else {
-            return false; // Invalid URL, don't override
-        };
-
-        // Handle lingxia scheme or block non-https schemes
-        match scheme {
-            "lingxia" => true, // Always intercept lingxia scheme
-            "https" => false,  // Allow http/https URLs
-            _ => true,         // Block all other schemes
-        }
-    }
-
     /// Called when the page starts loading
     pub fn on_page_started(&self, appid: String, path: String) {
         // Find the corresponding controller
@@ -659,8 +634,21 @@ impl AppUiDelegate for MiniApp {
         todo!()
     }
 
+    // Determines whether to override URL loading in the page.
     fn should_override_url_loading(&self, url: String) -> bool {
-        todo!()
+        // Extract scheme from URL
+        let scheme = if let Some(scheme_end) = url.find("://") {
+            &url[..scheme_end]
+        } else {
+            return false; // Invalid URL, don't override
+        };
+
+        // Handle lingxia scheme or block non-https schemes
+        match scheme {
+            "lingxia" => true, // Always intercept lingxia scheme
+            "https" => false,  // Allow https URLs (they'll be checked in handle_request)
+            _ => true,         // Block all other schemes
+        }
     }
 
     fn handle_post_message(&self, path: String, msg: String) {
