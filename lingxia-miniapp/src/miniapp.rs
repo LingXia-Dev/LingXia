@@ -12,11 +12,13 @@ use crate::app::{AppConfig, AppController};
 use crate::error::MiniAppError;
 use crate::log::LogLevel;
 use crate::miniapp::config::{MiniAppConfig, PageConfig};
+use crate::miniapp::security::NetworkSecurity;
 use crate::page::{self, Pages};
 
 mod config;
 mod ipc;
 mod scheme;
+mod security;
 mod tabbar;
 
 /// Constants for miniapp storage layout
@@ -231,7 +233,6 @@ impl MiniApps {
 }
 
 /// Represents a single mini application
-/// TODO: rename to MiniApp after refactoring
 pub struct MiniApp {
     pub(crate) appid: String,
 
@@ -258,6 +259,9 @@ pub struct MiniApp {
 
     // Current version of the mini app
     version: String,
+
+    // Network security configuration
+    network_security: NetworkSecurity,
 }
 
 impl MiniApp {
@@ -273,6 +277,7 @@ impl MiniApp {
             cache_dir: PathBuf::new(),
             home_miniapp: false,
             version: String::new(),
+            network_security: NetworkSecurity::new(),
         };
 
         app.setup();
@@ -291,6 +296,7 @@ impl MiniApp {
             cache_dir: PathBuf::new(),
             home_miniapp: true,
             version: String::new(),
+            network_security: NetworkSecurity::new(),
         };
 
         app.setup();
@@ -664,25 +670,24 @@ impl AppUiDelegate for MiniApp {
     fn handle_request(&self, req: http::Request<Vec<u8>>) -> Option<http::Response<Vec<u8>>> {
         let uri = req.uri();
         let scheme = uri.scheme_str().unwrap_or("");
-
-        // Don't intercept https requests
-        if scheme == "https" {
-            return None;
+        
+        // Use pattern matching for different URI schemes
+        match scheme {
+            // HTTPS requests - check domain whitelist and static resource types
+            "https" => self.https_handler(req),
+            
+            // Lingxia scheme for internal app assets
+            "lingxia" => self.lingxia_handler(req),
+            
+            // Reject all other schemes with 400 Bad Request
+            _ => Some(
+                Response::builder()
+                    .status(StatusCode::BAD_REQUEST)
+                    .header("Content-Type", "text/plain")
+                    .body(format!("Unsupported scheme: {}", scheme).into_bytes())
+                    .unwrap(),
+            ),
         }
-
-        // Handle lingxia:// scheme for accessing app assets
-        if scheme == "lingxia" {
-            return Some(self.lingxia_handler(req));
-        }
-
-        // Handle other schemes with a bad request response
-        Some(
-            Response::builder()
-                .status(StatusCode::BAD_REQUEST)
-                .header("Content-Type", "text/plain")
-                .body(format!("Unsupported scheme: {}", scheme).into_bytes())
-                .unwrap(),
-        )
     }
 
     fn log(&self, path: &str, level: LogLevel, message: &str) {
