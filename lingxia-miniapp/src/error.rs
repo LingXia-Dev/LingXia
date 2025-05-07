@@ -1,4 +1,5 @@
 use thiserror::Error;
+use std::io;
 
 #[derive(Debug, Clone, Error)]
 pub enum MiniAppError {
@@ -23,4 +24,10 @@ pub enum MiniAppError {
     /// Error for I/O operations (file access, network, etc.)
     #[error("I/O error: {0}")]
     IoError(String),
+}
+
+impl From<io::Error> for MiniAppError {
+    fn from(error: io::Error) -> Self {
+        MiniAppError::IoError(error.to_string())
+    }
 }

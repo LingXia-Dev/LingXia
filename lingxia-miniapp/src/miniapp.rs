@@ -1,5 +1,7 @@
 use http::{Response, StatusCode};
 use std::collections::HashMap;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -16,6 +18,16 @@ mod config;
 mod ipc;
 mod scheme;
 mod tabbar;
+
+/// Constants for miniapp storage layout
+const LINGXIA_DIR: &str = "lingxia";
+const MINIAPPS_DIR: &str = "miniapps";
+const VERSIONS_DIR: &str = "versions";
+const STORAGE_DIR: &str = "storage";
+const USERID_FILE: &str = "userid.txt";
+const HOME_DIR: &str = "home";
+const DEFAULT_USER_ID: &str = "default";
+const DEFAULT_VERSION: &str = "0.0.1";
 
 /// Platform-specific capabilities for MiniApp
 pub trait MiniAppRuntime: Send + Sync {
@@ -290,54 +302,162 @@ pub struct MiniApp {
     // Reference to the app controller
     pub(crate) controller: Arc<dyn AppController>,
 
-    // Directory for miniapp-specific data
-    data_dir: PathBuf,
+    // Directory for miniapp files (HTML, JS, CSS, etc.)
+    app_dir: PathBuf,
+
+    // Directory for miniapp-specific storage (database, etc.)
+    storage_dir: PathBuf,
+
     // Directory for miniapp-specific cache
     cache_dir: PathBuf,
 
     // whether it's home mini app
     home_miniapp: bool,
+
+    // Current version of the mini app
+    version: String,
 }
 
 impl MiniApp {
+    /// Create a new regular mini-app (not home app)
     fn new(appid: String, controller: Arc<dyn AppController>) -> Self {
-        // TODO: build dir based on vendor and customer id
-        let data_dir = controller.app_data_dir();
-        let cache_dir = controller.app_cache_dir();
-
-        // Default initialization - not the home app
-        Self {
+        let mut app = Self {
+            appid,
             pages: Pages::new(None, false),
             last_active_time: Instant::now(),
-            appid,
             controller,
-            data_dir,
-            cache_dir,
+            app_dir: PathBuf::new(),
+            storage_dir: PathBuf::new(),
+            cache_dir: PathBuf::new(),
             home_miniapp: false,
-        }
+            version: String::new(),
+        };
+
+        app.setup();
+        app
     }
 
     /// Create a new MiniApp instance marked as the home mini app
     fn new_as_home(appid: String, controller: Arc<dyn AppController>) -> Self {
-        // Build directories based on app ID
-        let data_dir = controller.app_data_dir();
-        let cache_dir = controller.app_cache_dir();
-
-        // Initialize as the home app
-        Self {
+        let mut app = Self {
+            appid,
             pages: Pages::new(None, false),
             last_active_time: Instant::now(),
-            appid,
             controller,
-            data_dir,
-            cache_dir,
+            app_dir: PathBuf::new(),
+            storage_dir: PathBuf::new(),
+            cache_dir: PathBuf::new(),
             home_miniapp: true,
+            version: String::new(),
+        };
+
+        app.setup();
+        app
+    }
+
+    /// Set up the MiniApp by calculating paths and retrieving version information
+    fn setup(&mut self) {
+        // Get the app's version
+        self.version = self.get_version();
+
+        // Calculate and create app directory
+        let base_dir = self
+            .controller
+            .app_data_dir()
+            .join(LINGXIA_DIR)
+            .join(MINIAPPS_DIR);
+        self.app_dir = if self.home_miniapp {
+            base_dir.join(HOME_DIR)
+        } else {
+            // For non-home apps, use a hash based on app_id and user_id
+            let user_id = get_user_id(self.controller.as_ref());
+            let hash = generate_app_hash(&self.appid, &user_id);
+            base_dir.join(hash)
+        };
+        if !self.app_dir.exists() {
+            let _ = std::fs::create_dir_all(&self.app_dir);
         }
+
+        // Calculate and create storage directory
+        let storage_base_dir = self
+            .controller
+            .app_data_dir()
+            .join(LINGXIA_DIR)
+            .join(STORAGE_DIR);
+        self.storage_dir = if self.home_miniapp {
+            storage_base_dir.join(HOME_DIR)
+        } else {
+            // Use the same hash as in app path
+            let user_id = get_user_id(self.controller.as_ref());
+            let hash = generate_app_hash(&self.appid, &user_id);
+            storage_base_dir.join(hash)
+        };
+        if !self.storage_dir.exists() {
+            let _ = std::fs::create_dir_all(&self.storage_dir);
+        }
+
+        // Calculate and create cache directory
+        let cache_base_dir = self
+            .controller
+            .app_cache_dir()
+            .join(LINGXIA_DIR)
+            .join(MINIAPPS_DIR);
+        self.cache_dir = if self.home_miniapp {
+            cache_base_dir.join(HOME_DIR)
+        } else {
+            // Use the same hash as in app path
+            let user_id = get_user_id(self.controller.as_ref());
+            let hash = generate_app_hash(&self.appid, &user_id);
+            cache_base_dir.join(hash)
+        };
+        if !self.cache_dir.exists() {
+            let _ = std::fs::create_dir_all(&self.cache_dir);
+        }
+    }
+
+    /// Get the version of this app from storage
+    fn get_version(&self) -> String {
+        let version_path = self
+            .controller
+            .app_data_dir()
+            .join(LINGXIA_DIR)
+            .join(VERSIONS_DIR)
+            .join(format!("{}.txt", self.appid));
+
+        if version_path.exists() {
+            if let Ok(content) = fs::read_to_string(&version_path) {
+                let trimmed = content.trim();
+                if !trimmed.is_empty() {
+                    return trimmed.to_string();
+                }
+            }
+        }
+
+        // Return default version
+        DEFAULT_VERSION.to_string()
+    }
+
+    /// Update the version of this app
+    fn update_version(&self, new_version: &str) -> Result<(), MiniAppError> {
+        let version_dir = self
+            .controller
+            .app_data_dir()
+            .join(LINGXIA_DIR)
+            .join(VERSIONS_DIR);
+
+        if !version_dir.exists() {
+            fs::create_dir_all(&version_dir)?;
+        }
+
+        let version_path = version_dir.join(format!("{}.txt", self.appid));
+        fs::write(version_path, new_version)?;
+
+        Ok(())
     }
 
     // Reads binary data from the specified relative path
     fn read_bytes(&self, relative_path: &str) -> Result<Vec<u8>, MiniAppError> {
-        let file_path = self.data_dir.join(relative_path);
+        let file_path = self.app_dir.join(relative_path);
 
         // Try to read from the filesystem
         fs::read(file_path)
@@ -357,6 +477,87 @@ impl MiniApp {
                 .map_err(|_| MiniAppError::InvalidJsonFile(relative_path.to_string()))
         })
     }
+}
+
+/// Generates a hash string based on app ID and user ID
+fn generate_app_hash(app_id: &str, user_id: &str) -> String {
+    // Combine app_id and user_id
+    let combined = format!("{}_{}", app_id, user_id);
+
+    // Calculate hash using standard library's DefaultHasher
+    let mut hasher = DefaultHasher::new();
+    combined.hash(&mut hasher);
+    let result = hasher.finish();
+
+    // Convert to hex string 
+    format!("{:x}", result)
+}
+
+/// Gets the current user ID from storage or returns the default
+fn get_user_id<T: AppController + ?Sized>(controller: &T) -> String {
+    let userid_path = controller
+        .app_data_dir()
+        .join(LINGXIA_DIR)
+        .join(USERID_FILE);
+
+    if userid_path.exists() {
+        if let Ok(content) = fs::read_to_string(&userid_path) {
+            let trimmed = content.trim();
+            if !trimmed.is_empty() {
+                return trimmed.to_string();
+            }
+        }
+    }
+
+    // Return default user ID
+    DEFAULT_USER_ID.to_string()
+}
+
+/// Sets the current user ID in storage
+fn set_user_id<T: AppController + ?Sized>(
+    controller: &T,
+    user_id: &str,
+) -> Result<(), MiniAppError> {
+    let lingxia_dir = controller.app_data_dir().join(LINGXIA_DIR);
+    if !lingxia_dir.exists() {
+        fs::create_dir_all(&lingxia_dir)?;
+    }
+
+    let userid_path = lingxia_dir.join(USERID_FILE);
+    fs::write(userid_path, user_id)?;
+
+    Ok(())
+}
+
+/// Prepares the base directory structure for mini apps
+fn prepare_directory_structure<T: AppController + ?Sized>(
+    controller: &T,
+) -> Result<(), MiniAppError> {
+    let data_dir = controller.app_data_dir();
+    let cache_dir = controller.app_cache_dir();
+
+    // Create required directories
+    let dirs = [
+        data_dir.join(LINGXIA_DIR).join(MINIAPPS_DIR),
+        data_dir.join(LINGXIA_DIR).join(VERSIONS_DIR),
+        data_dir.join(LINGXIA_DIR).join(STORAGE_DIR),
+        cache_dir.join(LINGXIA_DIR).join(MINIAPPS_DIR),
+    ];
+
+    for dir in &dirs {
+        fs::create_dir_all(dir)?;
+    }
+
+    // Ensure user ID file exists with default value if needed
+    let userid_path = data_dir.join(LINGXIA_DIR).join(USERID_FILE);
+    if !userid_path.exists() {
+        if let Some(parent) = userid_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(userid_path, DEFAULT_USER_ID)?;
+    }
+
+    Ok(())
 }
 
 pub trait AppUiDelegate {
@@ -420,7 +621,7 @@ impl AppUiDelegate for MiniApp {
             if tab_bar.is_valid() {
                 // Convert relative paths to absolute paths
                 tab_bar
-                    .to_json_with_absolute_paths(&self.data_dir)
+                    .to_json_with_absolute_paths(&self.app_dir)
                     .map_err(|e| {
                         MiniAppError::InvalidJsonFile(format!("Failed to serialize TabBar: {}", e))
                     })
@@ -534,35 +735,29 @@ static MINIAPPS: OnceLock<RwLock<MiniApps>> = OnceLock::new();
 pub fn init<T: AppController + 'static>(controller: T) {
     let controller_arc = Arc::new(controller);
 
+    // Prepare the directory structure
+    if let Err(e) = prepare_directory_structure(controller_arc.as_ref()) {
+        controller_arc.log(
+            "system",
+            LogLevel::Error,
+            &format!("Failed to prepare directory structure: {}", e),
+        );
+        return;
+    }
+
     match AppConfig::load(controller_arc.as_ref()) {
         Ok(config) => {
             let home_mini_app_id = &config.home_mini_app_id;
-            let home_mini_app_version = &config.home_mini_app_version;
 
-            // Create app data directory with version subdirectory
-            let data_dir = controller_arc.app_data_dir();
-            let home_app_dir = data_dir.join(home_mini_app_id).join(home_mini_app_version);
+            // Create temporary home MiniApp to check paths and versions
+            let home_miniapp =
+                MiniApp::new_as_home(home_mini_app_id.clone(), controller_arc.clone());
 
-            // Create directory if it doesn't exist
-            if !home_app_dir.exists() {
-                match std::fs::create_dir_all(&home_app_dir) {
-                    Ok(_) => {
-                        //  Copy home mini app files from assets
-                        if let Err(e) = copy_home_miniapp_files(
-                            controller_arc.as_ref(),
-                            home_mini_app_id,
-                            home_mini_app_version,
-                            &home_app_dir,
-                        ) {
-                            controller_arc.log(
-                                "system",
-                                LogLevel::Error,
-                                &format!("Failed to copy home mini app files: {}", e),
-                            );
-                            return;
-                        }
-                    }
-                    Err(e) => {
+            // Check if we need to install or update the home mini app
+            if !home_miniapp.app_dir.exists() {
+                // Create app directory if it doesn't exist
+                if !home_miniapp.app_dir.exists() {
+                    if let Err(e) = std::fs::create_dir_all(&home_miniapp.app_dir) {
                         controller_arc.log(
                             "system",
                             LogLevel::Error,
@@ -571,6 +766,38 @@ pub fn init<T: AppController + 'static>(controller: T) {
                         return;
                     }
                 }
+
+                // Copy home mini app files from assets
+                if let Err(e) = copy_home_miniapp_files(
+                    controller_arc.as_ref(),
+                    home_mini_app_id,
+                    &home_miniapp.app_dir,
+                ) {
+                    controller_arc.log(
+                        "system",
+                        LogLevel::Error,
+                        &format!("Failed to copy home mini app files: {}", e),
+                    );
+                    return;
+                }
+
+                let home_mini_app_version = &config.home_mini_app_version;
+
+                // Update version AFTER successful file copy
+                if let Err(e) = home_miniapp.update_version(home_mini_app_version) {
+                    controller_arc.log(
+                        "system",
+                        LogLevel::Error,
+                        &format!("Failed to update home mini app version: {}", e),
+                    );
+                    return;
+                }
+
+                controller_arc.log(
+                    "system",
+                    LogLevel::Info,
+                    &format!("Updated home mini app to version {}", home_mini_app_version),
+                );
             }
 
             // Initialize MiniApps
@@ -621,23 +848,21 @@ pub fn init<T: AppController + 'static>(controller: T) {
     }
 }
 
+/// Copy files from assets to destination directory
 fn copy_home_miniapp_files(
     controller: &dyn AppController,
-    app_id: &str,
-    app_version: &str,
+    appid: &str,
     destination: &Path,
 ) -> Result<(), MiniAppError> {
-    let asset_base_path = format!("miniapps/{}/{}", app_id, app_version);
-
     // Create an iterator over all files in the asset directory
-    let entries = controller.asset_dir_iter(&asset_base_path);
+    let entries = controller.asset_dir_iter(&appid);
 
     // Process each entry (file) in the asset directory
     for entry_result in entries {
         let entry = entry_result?;
         let rel_path = entry
             .path
-            .strip_prefix(&format!("{}/", asset_base_path))
+            .strip_prefix(&format!("{}/", appid))
             .unwrap_or(&entry.path);
 
         let dest_file_path = destination.join(rel_path);
