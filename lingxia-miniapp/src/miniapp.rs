@@ -9,7 +9,7 @@ use std::time::Instant;
 use crate::app::AppController;
 use crate::error::MiniAppError;
 use crate::log::{LogLevel, Logging};
-use crate::miniapp::config::{AppConfig, PageConfig};
+use crate::miniapp::config::{MiniAppConfig, PageConfig};
 use crate::page::{self, Pages};
 
 mod config;
@@ -389,7 +389,7 @@ impl AppUiDelegate for MiniApp {
     fn get_tab_bar_config(&self) -> Result<String, MiniAppError> {
         // Read app.json and parse it using AppConfig
         let app_config_value = self.read_json("app.json")?;
-        let app_config = AppConfig::from_value(app_config_value)
+        let app_config = MiniAppConfig::from_value(app_config_value)
             .map_err(|e| MiniAppError::InvalidJsonFile(format!("app.json: {}", e)))?;
 
         // Handle TabBar configuration

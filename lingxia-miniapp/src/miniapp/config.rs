@@ -5,7 +5,7 @@ use serde_json::Value;
 /// App config from app.json
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[allow(non_snake_case)]
-pub(crate) struct AppConfig {
+pub(crate) struct MiniAppConfig {
     /// List of page paths (relative to app root)
     pub pages: Vec<String>,
 
@@ -13,7 +13,7 @@ pub(crate) struct AppConfig {
     pub tabBar: Option<TabBar>,
 }
 
-impl AppConfig {
+impl MiniAppConfig {
     /// Create AppConfig from serde_json::Value
     pub fn from_value(value: Value) -> Result<Self, serde_json::Error> {
         serde_json::from_value(value)
