@@ -17,7 +17,6 @@ use security::NetworkSecurity;
 
 mod config;
 mod install;
-mod ipc;
 mod scheme;
 mod security;
 mod tabbar;
