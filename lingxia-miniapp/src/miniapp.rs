@@ -1,5 +1,4 @@
 use http::{Response, StatusCode};
-use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
@@ -10,13 +9,13 @@ use std::time::Instant;
 use crate::app::AppController;
 use crate::error::MiniAppError;
 use crate::log::{LogLevel, Logging};
+use crate::miniapp::config::{AppConfig, PageConfig};
 use crate::page::{self, Pages};
 
+mod config;
 mod ipc;
 mod scheme;
-
-// Global instance of MiniApp
-static MINI_APP: OnceLock<Mutex<MiniAppOld>> = OnceLock::new();
+mod tabbar;
 
 /// Platform-specific capabilities for MiniApp
 pub trait MiniAppRuntime: Send + Sync {
@@ -58,52 +57,6 @@ pub struct MiniAppOld {
 }
 
 impl MiniAppOld {
-    /// Get page configuration for the given app and path
-    pub fn get_page_config(&self, app_id: &str, path: &str) -> Option<String> {
-        // self.info(app_id, format!("Getting page config for {}", path));
-
-        // For home page (first tab), hide navigation bar
-        if path.contains("home") {
-            let config = serde_json::json!({
-                "hidden": true,
-                "navigationStyle": "default"
-            });
-            return serde_json::to_string(&config).ok();
-        }
-
-        // For message page, show navigation bar with title
-        if path.contains("message") {
-            let config = serde_json::json!({
-                "hidden": false,
-                "navigationBarBackgroundColor": "#ffffff",
-                "navigationBarTextStyle": "black",
-                "navigationBarTitleText": "消息",
-                "navigationStyle": "default"
-            });
-            return serde_json::to_string(&config).ok();
-        }
-
-        // For profile page, show navigation bar with title
-        if path.contains("profile") {
-            let config = serde_json::json!({
-                "hidden": false,
-                "navigationBarBackgroundColor": "#ffffff",
-                "navigationBarTextStyle": "black",
-                "navigationBarTitleText": "我的",
-                "navigationStyle": "default"
-            });
-            return serde_json::to_string(&config).ok();
-        }
-
-        // Default configuration for unknown pages
-        let config = serde_json::json!({
-            "hidden": true,
-            "navigationStyle": "default"
-        });
-
-        serde_json::to_string(&config).ok()
-    }
-
     pub fn on_miniapp_opened(&mut self, appid: String) {
         // If the app is already loaded, just update its active time
         // if self.apps.contains_key(&appid) {
@@ -135,33 +88,27 @@ impl MiniAppOld {
         }
     }
 
-    /// Handles low memory event (global, no appid needed)
-    pub fn on_low_memory(&mut self) {
-        // Destroy the least active app
-        self.destroy_least_active_miniapp();
-    }
-
     /// Called when a new page is created for the given appid and path
     pub fn on_page_created(&mut self, appid: String, path: String) {
         // A page is a tab page if it's in the tab bar configuration(demo code)
-        let is_tab_page = if let Ok(tab_config) =
-            serde_json::from_str::<serde_json::Value>(DEFAULT_TAB_BAR_CONFIG)
-        {
-            tab_config
-                .get("list")
-                .and_then(|v| v.as_array())
-                .map(|list| {
-                    list.iter().any(|item| {
-                        item.get("pagePath")
-                            .and_then(|v| v.as_str())
-                            .map(|p| p == path)
-                            .unwrap_or(false)
-                    })
-                })
-                .unwrap_or(false)
-        } else {
-            false
-        };
+        // let is_tab_page = if let Ok(tab_config) =
+        //     serde_json::from_str::<serde_json::Value>(DEFAULT_TAB_BAR_CONFIG)
+        // {
+        //     tab_config
+        //         .get("list")
+        //         .and_then(|v| v.as_array())
+        //         .map(|list| {
+        //             list.iter().any(|item| {
+        //                 item.get("pagePath")
+        //                     .and_then(|v| v.as_str())
+        //                     .map(|p| p == path)
+        //                     .unwrap_or(false)
+        //             })
+        //         })
+        //         .unwrap_or(false)
+        // } else {
+        //     false
+        // };
 
         // self.info(
         //     &appid,
@@ -303,62 +250,7 @@ impl MiniAppOld {
             false
         }
     }
-
-    /// Get tab bar configuration for an app
-    pub fn get_tab_bar_config(&self, app_id: &str) -> Option<String> {
-        // Log the config request
-        // self.info(app_id, format!("Getting TabBar config for: {}", app_id));
-
-        // For now, we're just returning the default configuration
-        // In the future, this could be customized per app and stored/retrieved from storage
-        Some(DEFAULT_TAB_BAR_CONFIG.to_string())
-    }
 }
-
-impl MiniAppOld {
-    /// Destroys the least active app
-    fn destroy_least_active_miniapp(&mut self) {
-        let least_active_appid = self
-            .last_active_times
-            .iter()
-            .min_by_key(|(_, time)| *time)
-            .map(|(appid, _)| appid.clone());
-
-        if let Some(appid) = least_active_appid {
-            // Remove from both maps - PageManager's Drop trait will handle cleanup
-            self.apps.remove(&appid);
-            self.last_active_times.remove(&appid);
-        }
-    }
-}
-
-// Default TabBar configuration used for testing and development
-const DEFAULT_TAB_BAR_CONFIG: &str = r##"{
-    "backgroundColor": "#ffffff",
-    "selectedColor": "#1677ff",
-    "borderStyle": "#f0f0f0",
-    "list": [
-        {
-            "text": "首页",
-            "pagePath": "pages/home/index.html",
-            "iconPath": "assets/home.png",
-            "selectedIconPath": "assets/home_selected.png",
-            "selected": true
-        },
-        {
-            "text": "消息",
-            "pagePath": "pages/message/index.html",
-            "iconPath": "assets/message.png",
-            "selectedIconPath": "assets/message_selected.png"
-        },
-        {
-            "text": "我的",
-            "pagePath": "pages/profile/index.html",
-            "iconPath": "assets/profile.png",
-            "selectedIconPath": "assets/profile_selected.png"
-        }
-    ]
-}"##;
 
 /// Manages a collection of mini applications
 pub struct MiniApps {
@@ -495,11 +387,77 @@ pub trait AppUiDelegate {
 
 impl AppUiDelegate for MiniApp {
     fn get_tab_bar_config(&self) -> Result<String, MiniAppError> {
-        todo!()
+        // Read app.json and parse it using AppConfig
+        let app_config_value = self.read_json("app.json")?;
+        let app_config = AppConfig::from_value(app_config_value)
+            .map_err(|e| MiniAppError::InvalidJsonFile(format!("app.json: {}", e)))?;
+
+        // Handle TabBar configuration
+        if let Some(tab_bar) = &app_config.tabBar {
+            // Only return tabbar JSON if it's valid (has between 2-5 items)
+            if tab_bar.is_valid() {
+                // Convert relative paths to absolute paths
+                tab_bar
+                    .to_json_with_absolute_paths(&self.data_dir)
+                    .map_err(|e| {
+                        MiniAppError::InvalidJsonFile(format!("Failed to serialize TabBar: {}", e))
+                    })
+            } else {
+                // Not enough items or too many items, return empty JSON object
+                Ok("{}".to_string())
+            }
+        } else {
+            // TabBar is optional, return a valid empty tabbar JSON
+            Ok("{}".to_string())
+        }
     }
 
     fn get_page_config(&self, path: &str) -> Result<String, MiniAppError> {
-        todo!()
+        // Handle different possible path formats:
+        // 1. "pages/home/index.html" -> "pages/home/index.json"
+        // 2. "pages/home/index" -> "pages/home/index.json"
+        // 3. "pages/home" -> "pages/home.json"
+        let page_config_path = if path.contains('.') {
+            // Has extension: replace it with .json
+            let pos = path.rfind('.').unwrap();
+            format!("{}.json", &path[0..pos])
+        } else {
+            // No extension: append .json
+            format!("{}.json", path)
+        };
+
+        // Try to read page-specific configuration first from the direct path
+        let result = self.read_json(&page_config_path);
+
+        // If that fails, try the legacy format: "pages/{path}/page.json"
+        let result = if result.is_err() && !path.starts_with("pages/") {
+            self.read_json(&format!("pages/{}/page.json", path))
+        } else {
+            result
+        };
+
+        // Process the configuration or use default
+        match result {
+            Ok(page_config_value) => {
+                let page_config = PageConfig::from_value(page_config_value).map_err(|e| {
+                    MiniAppError::InvalidJsonFile(format!("{}:{}", page_config_path, e))
+                })?;
+
+                serde_json::to_string(&page_config).map_err(|e| {
+                    MiniAppError::InvalidJsonFile(format!("Failed to serialize PageConfig: {}", e))
+                })
+            }
+            Err(_) => {
+                // Fallback to default page config
+                let default_config = PageConfig::default();
+                serde_json::to_string(&default_config).map_err(|e| {
+                    MiniAppError::InvalidJsonFile(format!(
+                        "Failed to serialize default PageConfig: {}",
+                        e
+                    ))
+                })
+            }
+        }
     }
 
     fn on_miniapp_opened(&self) {
