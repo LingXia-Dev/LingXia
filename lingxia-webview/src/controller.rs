@@ -31,6 +31,20 @@ impl AppController for Controller {
         self.app.read_asset(path)
     }
 
+    fn asset_dir_iter<'a>(
+        &'a self,
+        asset_dir: &str,
+    ) -> Box<dyn Iterator<Item = Result<miniapp::AssetFileEntry<'a>, MiniAppError>> + 'a> {
+        // Convert from our AssetFileEntry to miniapp's AssetFileEntry
+        let iter = self.app.asset_dir_iter(asset_dir);
+        Box::new(iter.map(|result| {
+            result.map(|entry| miniapp::AssetFileEntry {
+                path: entry.path,
+                reader: entry.reader,
+            })
+        }))
+    }
+
     fn app_data_dir(&self) -> PathBuf {
         self.app.app_data_dir()
     }
