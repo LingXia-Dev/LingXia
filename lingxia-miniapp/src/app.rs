@@ -4,11 +4,108 @@ use std::sync::{Arc, mpsc};
 
 use crate::error::MiniAppError;
 use crate::log::LogLevel;
+use serde::{Deserialize, Serialize};
 
 /// Asset file entry for iterator-based asset access
 pub struct AssetFileEntry<'a> {
     pub path: String,
     pub reader: Box<dyn Read + 'a>,
+}
+
+/// Configuration loaded from app.json
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AppConfig {
+    #[serde(rename = "productName")]
+    pub product_name: String,
+    pub version: String,
+    pub identifier: String, // Unique identifier for this application, used by the server to identify different clients
+
+    // API server address (optional)
+    #[serde(rename = "apiServer", default)]
+    pub api_server: Option<String>,
+
+    // Application-level authentication fields
+    #[serde(rename = "apiKey", default)]
+    pub api_key: Option<String>, // Key for simple API authentication
+
+    // Home/default mini application settings (mandatory)
+    #[serde(rename = "homeMiniAppID")]
+    pub home_mini_app_id: String, // ID of the default/home mini application to load
+
+    #[serde(rename = "homeMiniAppVersion")]
+    pub home_mini_app_version: String, // Version of the home mini application
+}
+
+impl AppConfig {
+    /// Read, parse and validate app.json from the assets directory.
+    pub(crate) fn load<T: AppController + ?Sized>(controller: &T) -> Result<Self, MiniAppError> {
+        // Read app.json as a string
+        let mut reader = controller.read_asset("app.json")?;
+        let mut content = String::new();
+        reader
+            .read_to_string(&mut content)
+            .map_err(|e| MiniAppError::IoError(format!("Failed to read app.json: {}", e)))?;
+
+        // Parse the JSON into AppConfig
+        let config = serde_json::from_str(&content).map_err(|e| {
+            MiniAppError::InvalidJsonFile(format!("Failed to parse app.json: {}", e))
+        })?;
+
+        // Validate the config immediately
+        Self::validate_config(&config)?;
+
+        Ok(config)
+    }
+
+    /// Validate the AppConfig to ensure all mandatory fields are present and valid
+    fn validate_config(config: &Self) -> Result<(), MiniAppError> {
+        // Check all mandatory fields are not empty
+        if config.product_name.is_empty() {
+            return Err(MiniAppError::InvalidParameter(
+                "productName is mandatory and cannot be empty".to_string(),
+            ));
+        }
+
+        if config.version.is_empty() {
+            return Err(MiniAppError::InvalidParameter(
+                "version is mandatory and cannot be empty".to_string(),
+            ));
+        }
+
+        // Basic semver format check (major.minor.patch)
+        if !config.version.chars().any(|c| c == '.')
+            || !config
+                .version
+                .chars()
+                .all(|c| c.is_ascii_digit() || c == '.')
+        {
+            return Err(MiniAppError::InvalidParameter(
+                "version must be in format x.y.z with numeric values".to_string(),
+            ));
+        }
+
+        if config.identifier.is_empty() {
+            return Err(MiniAppError::InvalidParameter(
+                "identifier is mandatory and cannot be empty".to_string(),
+            ));
+        }
+
+        // Check homeMiniAppID
+        if config.home_mini_app_id.is_empty() {
+            return Err(MiniAppError::InvalidParameter(
+                "homeMiniAppID is mandatory and cannot be empty".to_string(),
+            ));
+        }
+
+        // Check homeMiniAppVersion
+        if config.home_mini_app_version.is_empty() {
+            return Err(MiniAppError::InvalidParameter(
+                "homeMiniAppVersion is mandatory and cannot be empty".to_string(),
+            ));
+        }
+
+        Ok(())
+    }
 }
 
 /// Interface for controlling app lifecycle and navigation
