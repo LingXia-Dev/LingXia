@@ -16,7 +16,8 @@ impl MiniApp {
         let response = match file_result {
             Ok(data) => {
                 // Determine MIME type based on file extension
-                let mime_type = if path.ends_with(".html") {
+                let is_html = path.ends_with(".html");
+                let mime_type = if is_html {
                     "text/html"
                 } else if path.ends_with(".js") {
                     "application/javascript"
@@ -34,11 +35,18 @@ impl MiniApp {
                     "application/octet-stream"
                 };
 
+                // If this is an HTML file, inject the WebView bridge script
+                let response_data = if is_html {
+                    inject_bridge_script(&data, self)
+                } else {
+                    data
+                };
+
                 Response::builder()
                     .status(StatusCode::OK)
                     .header("Content-Type", mime_type)
-                    .header("Content-Length", data.len().to_string())
-                    .body(data)
+                    .header("Content-Length", response_data.len().to_string())
+                    .body(response_data)
                     .unwrap_or_else(|_| {
                         Response::builder()
                             .status(StatusCode::INTERNAL_SERVER_ERROR)
@@ -147,4 +155,58 @@ impl MiniApp {
                 .unwrap(),
         )
     }
+}
+
+/// Injects WebView bridge script into HTML content
+fn inject_bridge_script(html_data: &[u8], app: &MiniApp) -> Vec<u8> {
+    // First, load the bridge script from assets
+    let bridge_script = match app.controller.read_asset("webview-bridge.js") {
+        Ok(mut reader) => {
+            let mut script_data = Vec::new();
+            if reader.read_to_end(&mut script_data).is_ok() {
+                String::from_utf8_lossy(&script_data).to_string()
+            } else {
+                // If we couldn't read the script, return the original HTML
+                return html_data.to_vec();
+            }
+        }
+        Err(_) => {
+            // If the script doesn't exist in assets, return the original HTML
+            return html_data.to_vec();
+        }
+    };
+
+    // Convert HTML content to string
+    if let Ok(html_str) = String::from_utf8(html_data.to_vec()) {
+        // Check if the HTML already contains the bridge script
+        if html_str.contains("LingXiaBridge") {
+            return html_data.to_vec();
+        }
+
+        // Create script tag with the bridge script
+        let script_tag = format!("<script>\n{}\n</script>", bridge_script);
+
+        // Try to insert before </head> tag (preferred location for early initialization)
+        if let Some(head_pos) = html_str.to_lowercase().find("</head>") {
+            let (before, after) = html_str.split_at(head_pos);
+            return format!("{}{}{}", before, script_tag, after).into_bytes();
+        }
+        // If no </head> tag, try to insert at the beginning of <body> tag
+        // This ensures the bridge is initialized before page content
+        else if let Some(body_pos) = html_str.to_lowercase().find("<body") {
+            if let Some(body_end) = html_str[body_pos..].find('>') {
+                let insert_pos = body_pos + body_end + 1;
+                let (before, after) = html_str.split_at(insert_pos);
+                return format!("{}{}{}", before, script_tag, after).into_bytes();
+            }
+        }
+        // If neither tag is found, insert at the beginning of the HTML
+        // This is a fallback option for malformed HTML
+        else {
+            return format!("{}{}", script_tag, html_str).into_bytes();
+        }
+    }
+
+    // If string conversion fails, return the original data
+    html_data.to_vec()
 }
