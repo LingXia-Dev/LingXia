@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::fs;
 use std::hash::{Hash, Hasher};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::{Mutex, OnceLock, RwLock};
 use std::time::Instant;
@@ -11,11 +11,12 @@ use std::time::Instant;
 use crate::app::{AppConfig, AppController};
 use crate::error::MiniAppError;
 use crate::log::{LogLevel, LogTag, Logging};
-use crate::miniapp::config::{MiniAppConfig, PageConfig};
-use crate::miniapp::security::NetworkSecurity;
 use crate::page::{self, Pages};
+use config::{MiniAppConfig, PageConfig};
+use security::NetworkSecurity;
 
 mod config;
+mod install;
 mod ipc;
 mod scheme;
 mod security;
@@ -723,7 +724,7 @@ pub fn init<T: AppController + 'static>(controller: T) {
                 }
 
                 // Copy home mini app files from assets
-                if let Err(e) = copy_home_miniapp_files(
+                if let Err(e) = install::install_home_miniapp(
                     controller_arc.as_ref(),
                     home_mini_app_id,
                     &home_miniapp.app_dir,
@@ -801,55 +802,6 @@ pub fn init<T: AppController + 'static>(controller: T) {
             controller_arc.log("system", LogLevel::Error, &error_message);
         }
     }
-}
-
-/// Copy files from assets to destination directory
-fn copy_home_miniapp_files(
-    controller: &dyn AppController,
-    appid: &str,
-    destination: &Path,
-) -> Result<(), MiniAppError> {
-    // Create an iterator over all files in the asset directory
-    let entries = controller.asset_dir_iter(&appid);
-
-    // Process each entry (file) in the asset directory
-    for entry_result in entries {
-        let entry = entry_result?;
-        let rel_path = entry
-            .path
-            .strip_prefix(&format!("{}/", appid))
-            .unwrap_or(&entry.path);
-
-        let dest_file_path = destination.join(rel_path);
-
-        // Create parent directories if they don't exist
-        if let Some(parent) = dest_file_path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| {
-                MiniAppError::IoError(format!(
-                    "Failed to create directory {}: {}",
-                    parent.display(),
-                    e
-                ))
-            })?;
-        }
-
-        // Copy the file content
-        let mut reader = entry.reader;
-        let mut buffer = Vec::new();
-        reader.read_to_end(&mut buffer).map_err(|e| {
-            MiniAppError::IoError(format!("Failed to read asset file {}: {}", entry.path, e))
-        })?;
-
-        std::fs::write(&dest_file_path, buffer).map_err(|e| {
-            MiniAppError::IoError(format!(
-                "Failed to write file {}: {}",
-                dest_file_path.display(),
-                e
-            ))
-        })?;
-    }
-
-    Ok(())
 }
 
 /// Get or initialize a specific MiniApp instance by appid
