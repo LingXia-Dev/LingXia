@@ -12,7 +12,7 @@ use log::{error, info};
 use miniapp::AppUiDelegate;
 use miniapp::log::LogLevel;
 use serde_json;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 pub static JAVA_VM: OnceLock<JavaVM> = OnceLock::new();
 
@@ -121,7 +121,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnWebViewCreated(
 
     // Add WebView to Controller
     if let Some(controller) = Controller::get() {
-        if controller.put_webview(appid.clone(), path.clone(), webview.clone()) {
+        if controller.put_webview(appid.clone(), path.clone(), Arc::new(webview)) {
             info!("WebView added to Controller for {}/{}", appid, path);
         } else {
             error!("Failed to add WebView to Controller");

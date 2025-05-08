@@ -170,9 +170,9 @@ impl Controller {
 
     /// Put a WebView instance into the HashMap
     /// This is meant to be used only internally by the FFI layer
-    pub(crate) fn put_webview(&self, appid: String, path: String, webview: WebView) -> bool {
+    pub(crate) fn put_webview(&self, appid: String, path: String, webview: Arc<WebView>) -> bool {
         if let Ok(mut webviews) = self.webviews.lock() {
-            webviews.insert((appid, path), Arc::new(webview));
+            webviews.insert((appid, path), webview);
             true
         } else {
             false

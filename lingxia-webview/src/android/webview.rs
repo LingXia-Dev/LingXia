@@ -9,6 +9,7 @@ pub struct WebView {
 
 impl Drop for WebView {
     fn drop(&mut self) {
+        log::info!("destroying webview by Drop");
         let _ = self.destroy_webview();
     }
 }

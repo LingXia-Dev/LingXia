@@ -446,7 +446,7 @@ class WebView @JvmOverloads constructor(
     fun resume() {
         val callStackTrace = Exception("Resume call stack trace").stackTraceToString()
         Log.d(TAG, "Resuming WebView operations, appId=$appId, path=$currentPath, isFirstLoad=$isFirstLoad, pageLoaded=$pageLoaded, showEventSent=$showEventSent")
-        Log.d(TAG, "Resume called from: $callStackTrace")
+        // Log.d(TAG, "Resume called from: $callStackTrace")
 
         onResume()
 
