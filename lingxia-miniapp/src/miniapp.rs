@@ -497,18 +497,19 @@ impl AppUiDelegate for MiniApp {
     }
 
     fn on_page_created(&mut self, path: String) {
-        let url = format!("lingxia://{}", path);
+        let url = format!("lingxia://{}/{}", self.appid, path);
 
         let page =
             self.pages
                 .create_page(self.appid.clone(), path.clone(), self.controller.clone());
 
         if let Err(e) = page.load_url(&url) {
-            self.error(&path, &format!("Failed to load URL {}: {}", url, e));
+            self.error(&path, format!("Failed to load URL {}: {}", url, e));
         }
 
         #[cfg(debug_assertions)]
         let _ = page.set_devtools(true);
+        self.info("AppUiDelegate", format!("Page {} created", path));
     }
 
     fn on_page_started(&self, _path: String) {
