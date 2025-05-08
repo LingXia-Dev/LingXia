@@ -333,8 +333,8 @@ impl MiniApp {
             self.config = MiniAppConfig::from_value(app_json)
                 .map_err(|e| MiniAppError::InvalidJsonFile(format!("app.json: {}", e)))?;
 
-            // Configure Pages based on app config
-            self.pages.set_has_tabbar(self.config.has_tab_bar());
+            // Set tab bar items in the Pages manager
+            self.pages.set_tabbar_items(self.config.get_tab_pages());
         }
 
         Ok(())
