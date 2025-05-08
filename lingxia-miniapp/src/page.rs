@@ -71,14 +71,24 @@ pub struct Pages {
 }
 
 impl Pages {
-    pub(crate) fn new(max_pages: Option<usize>, has_tabbar: bool) -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             pages: HashMap::new(),
             stacks: HashMap::new(),
             current_tab: None,
-            max_pages: max_pages.unwrap_or(5),
-            has_tabbar,
+            max_pages: 5,
+            has_tabbar: false,
         }
+    }
+
+    /// Set whether this app has a tab bar
+    pub(crate) fn set_has_tabbar(&mut self, has_tabbar: bool) {
+        self.has_tabbar = has_tabbar;
+    }
+
+    /// Set the maximum number of pages
+    pub(crate) fn set_max_pages(&mut self, max_pages: usize) {
+        self.max_pages = max_pages;
     }
 
     /// Finds a page by path

@@ -245,7 +245,7 @@ impl MiniApp {
     fn new(appid: String, controller: Arc<dyn AppController>) -> Self {
         let mut app = Self {
             appid,
-            pages: Pages::new(None, false),
+            pages: Pages::new(),
             last_active_time: Instant::now(),
             controller,
             app_dir: PathBuf::new(),
@@ -268,7 +268,7 @@ impl MiniApp {
     fn new_as_home(appid: String, controller: Arc<dyn AppController>) -> Self {
         let mut app = Self {
             appid,
-            pages: Pages::new(None, false),
+            pages: Pages::new(),
             last_active_time: Instant::now(),
             controller,
             app_dir: PathBuf::new(),
@@ -348,6 +348,9 @@ impl MiniApp {
         if let Ok(app_json) = self.read_json("app.json") {
             self.config = MiniAppConfig::from_value(app_json)
                 .map_err(|e| MiniAppError::InvalidJsonFile(format!("app.json: {}", e)))?;
+
+            // Configure Pages based on app config
+            self.pages.set_has_tabbar(self.config.has_tab_bar());
         }
 
         Ok(())
