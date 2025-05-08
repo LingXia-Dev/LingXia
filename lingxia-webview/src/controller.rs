@@ -3,7 +3,7 @@ use std::io::Read;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::{Mutex, OnceLock, mpsc};
-use std::thread;
+use std::thread::{self, ThreadId};
 
 use miniapp::{AppController, ControllerCmd, MiniAppError, log::LogLevel};
 
@@ -18,6 +18,7 @@ pub(crate) struct Controller {
     app: App,
     webviews: Mutex<HashMap<(String, String), Arc<WebView>>>,
     sender: mpsc::Sender<ControllerCmd>,
+    ui_thread_id: ThreadId,
 }
 
 impl Drop for Controller {
@@ -59,31 +60,41 @@ impl AppController for Controller {
     }
 
     fn send_cmd(&self, cmd: ControllerCmd) -> Result<(), MiniAppError> {
-        // Create a channel for receiving the response
-        let (_tx, rx) = mpsc::channel();
+        // Check if we're on the UI thread
+        let current_thread_id = thread::current().id();
+        let is_ui_thread = self.ui_thread_id == current_thread_id;
 
-        // Send the command with the response channel
-        self.sender
-            .send(cmd)
-            .map_err(|e| MiniAppError::WebView(format!("Failed to send command: {}", e)))?;
+        // If we're on the UI thread, process directly
+        if is_ui_thread {
+            // log::info!("On UI thread, directly handling command");
 
-        // Wait for the response
-        rx.recv().map_err(|_| {
-            MiniAppError::WebView("UI thread dropped without sending result".to_string())
-        })
+            Self::handle_request(self, cmd);
+            return Ok(());
+        } else {
+            let (_tx, rx) = mpsc::channel();
+
+            self.sender
+                .send(cmd)
+                .map_err(|e| MiniAppError::WebView(format!("Failed to send command: {}", e)))?;
+
+            rx.recv().map_err(|_| {
+                MiniAppError::WebView("UI thread dropped without sending result".to_string())
+            })
+        }
     }
 }
 
 impl Controller {
-    fn new(sender: mpsc::Sender<ControllerCmd>, app: App) -> Self {
+    fn new(sender: mpsc::Sender<ControllerCmd>, app: App, id: ThreadId) -> Self {
         Self {
             webviews: Mutex::new(HashMap::new()),
             sender,
             app,
+            ui_thread_id: id,
         }
     }
 
-    fn spawn_ui_thread<F>(
+    fn spawn_command_thread<F>(
         f: F,
         controller: Arc<Controller>,
         receiver: mpsc::Receiver<ControllerCmd>,
@@ -168,19 +179,20 @@ impl Controller {
         }
     }
 
-    /// Start the dedicated UI thread for business
+    /// Start the dedicated command thread for UI business
     pub(crate) fn run<F>(f: F, app: App) -> bool
     where
         F: FnOnce(Arc<Controller>) -> bool + Send + 'static,
     {
         let (sender, receiver) = mpsc::channel::<ControllerCmd>();
-        let controller = Arc::new(Controller::new(sender, app));
+        let id = thread::current().id();
+        let controller = Arc::new(Controller::new(sender, app, id));
 
         if CONTROLLER.set(controller.clone()).is_err() {
             return false;
         }
 
-        Controller::spawn_ui_thread(f, controller, receiver);
+        Controller::spawn_command_thread(f, controller, receiver);
         true
     }
 
