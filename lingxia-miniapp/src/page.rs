@@ -343,3 +343,15 @@ impl WebViewController for Page {
         self.controller.send_cmd(ControllerCmd::WebView(cmd))
     }
 }
+
+impl Drop for Page {
+    fn drop(&mut self) {
+        // Just send drop webview command without waiting for response
+        let _ = self.controller.send_cmd(ControllerCmd::WebView(
+            WebViewCmd::DropWebView {
+                appid: self.appid.clone(),
+                path: self.path.clone(),
+            },
+        ));
+    }
+}

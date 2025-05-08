@@ -299,6 +299,10 @@ pub enum WebViewCmd {
         ua: String,
         responder: mpsc::Sender<Result<(), MiniAppError>>,
     },
+    DropWebView {
+        appid: String,
+        path: String,
+    },
 }
 
 #[derive(Debug)]
