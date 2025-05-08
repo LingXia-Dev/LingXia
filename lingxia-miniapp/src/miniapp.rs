@@ -5,13 +5,13 @@ use std::fs;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::{Mutex, OnceLock, RwLock};
+use std::sync::{OnceLock, RwLock};
 use std::time::Instant;
 
-use crate::app::{AppConfig, AppController};
+use crate::app::{AppConfig, AppController, switch_page};
 use crate::error::MiniAppError;
 use crate::log::{LogLevel, LogTag, Logging};
-use crate::page::{self, Pages, WebViewController};
+use crate::page::{Pages, WebViewController};
 use config::{MiniAppConfig, PageConfig};
 use security::NetworkSecurity;
 
@@ -29,48 +29,6 @@ const STORAGE_DIR: &str = "storage";
 const USERID_FILE: &str = "userid.txt";
 const DEFAULT_USER_ID: &str = "default";
 const DEFAULT_VERSION: &str = "0.0.1";
-
-pub struct MiniAppOld {
-    apps: HashMap<String, Arc<Mutex<page::Pages>>>, // appid -> PageManager
-}
-
-impl MiniAppOld {
-    /// Handle back press event
-    /// Returns true if the event was handled, false otherwise
-    pub fn on_back_pressed(&self, app_id: &str) -> bool {
-        // self.info(app_id, "Back pressed, closing mini app");
-
-        if let Some(page_manager_arc) = self.apps.get(app_id) {
-            let mut page_manager = page_manager_arc.lock().unwrap();
-            // match page_manager.pop_from_current_stack() {
-            // Some(previous_path) => {
-            // self.info(
-            //     app_id,
-            //     format!("Popped page, requesting switch back to: {}", previous_path),
-            // );
-            // Tell the platform to switch the view *without* changing the tab state
-            // if let Err(e) = self.runtime.switch_page(app_id, &previous_path) {
-            // self.error(
-            //     app_id,
-            //     format!(
-            //         "Failed to request page switch back to {}: {}",
-            //         previous_path, e
-            //     ),
-            // );
-            // Still considered handled as state was popped
-            // }
-            true // Back press was handled by popping a page state
-        // }
-        // None => {
-        // self.error(app_id, "No page to pop from current stack");
-        // false
-        // }
-        } else {
-            // self.error(app_id, "No page manager found for the given app id");
-            false
-        }
-    }
-}
 
 /// Manages a collection of mini applications
 pub struct MiniApps {
@@ -427,7 +385,8 @@ pub trait AppUiDelegate {
     fn on_page_show(&mut self, path: String);
 
     /// Handle back button press
-    fn on_back_pressed(&self) -> bool;
+    /// Return true to indicate the back press had been handled
+    fn on_back_pressed(&mut self) -> bool;
 
     /// Determines whether to override URL loading in the page.
     ///
@@ -564,8 +523,30 @@ impl AppUiDelegate for MiniApp {
         self.pages.navigate_to_page(path);
     }
 
-    fn on_back_pressed(&self) -> bool {
-        todo!()
+    fn on_back_pressed(&mut self) -> bool {
+        self.info("AppUiDelegate", "Backbutton pressed");
+
+        // Try to pop the current page from the stack
+        if let Some(previous_page) = self.pages.pop_from_current_stack() {
+            self.info(
+                "AppUiDelegate",
+                &format!("Popped page, switching back to: {}", previous_page),
+            );
+
+            // Request to switch to the previous page
+            if let Err(e) = switch_page(&self.controller, &self.appid, &previous_page) {
+                self.error(
+                    "AppUiDelegate",
+                    &format!("Failed to switch to page {}: {}", previous_page, e),
+                );
+            }
+
+            // Return true to indicate we handled the back press
+            true
+        } else {
+            // No page to pop, return false to allow default back behavior
+            false
+        }
     }
 
     // Determines whether to override URL loading in the page.

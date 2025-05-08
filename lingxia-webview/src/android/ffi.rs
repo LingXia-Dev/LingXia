@@ -488,7 +488,7 @@ pub extern "C" fn Java_com_lingxia_miniapp_MiniAppActivity_nativeOnBackPressed(
     appid: JString,
 ) -> jint {
     let appid: String = env.get_string(&appid).unwrap().into();
-    if let Ok(miniapp) = miniapp::get_or_init_miniapp(appid).read() {
+    if let Ok(mut miniapp) = miniapp::get_or_init_miniapp(appid).write() {
         if miniapp.on_back_pressed() { 1 } else { 0 }
     } else {
         0
