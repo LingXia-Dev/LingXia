@@ -420,7 +420,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_MiniAppActivity_nativeOnMiniAppC
 ) -> jint {
     let appid: String = env.get_string(&appid).unwrap().into();
 
-    if let Ok(miniapp) = miniapp::get_or_init_miniapp(appid.clone()).write() {
+    if let Ok(mut miniapp) = miniapp::get_or_init_miniapp(appid.clone()).write() {
         miniapp.on_miniapp_closed();
     };
     0

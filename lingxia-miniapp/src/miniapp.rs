@@ -32,42 +32,9 @@ const DEFAULT_VERSION: &str = "0.0.1";
 
 pub struct MiniAppOld {
     apps: HashMap<String, Arc<Mutex<page::Pages>>>, // appid -> PageManager
-    last_active_times: HashMap<String, Instant>,    // appid -> last active time
-    max_apps: usize,                                // Maximum number of apps allowed
 }
 
 impl MiniAppOld {
-    pub fn on_miniapp_opened(&mut self, appid: String) {
-        // If the app is already loaded, just update its active time
-        // if self.apps.contains_key(&appid) {
-        //     self.last_active_times.insert(appid, Instant::now());
-        //     return;
-        // }
-        //
-        // // If we've reached the maximum number of apps, destroy the least active one
-        // if self.apps.len() >= self.max_apps {
-        //     self.destroy_least_active_miniapp();
-        // }
-        //
-        // // Create a new PageManager for this app
-        // self.apps.insert(
-        //     appid.clone(),
-        //     Arc::new(Mutex::new(page::PageManager::new(None))),
-        // );
-        // self.last_active_times.insert(appid, Instant::now());
-    }
-
-    /**
-     * Called when a mini app is closed.
-     * This primarily updates the last active time for the app to help with memory management.
-     */
-    pub fn on_miniapp_closed(&mut self, appid: String) {
-        // Only update the time if the app exists
-        if self.apps.contains_key(&appid) {
-            self.last_active_times.insert(appid, Instant::now());
-        }
-    }
-
     /// Handle back press event
     /// Returns true if the event was handled, false otherwise
     pub fn on_back_pressed(&self, app_id: &str) -> bool {
@@ -124,8 +91,36 @@ impl MiniApps {
         }
     }
 
-    pub fn on_low_memory() {
-        // TODO: Destroy the least active app
+    /// Destroys the least recently active mini app to free up memory
+    fn destroy_least_active_miniapp(&mut self) {
+        if self.miniapps.is_empty() {
+            return;
+        }
+
+        // Find the least active app that isn't the home app
+        let least_active = self
+            .miniapps
+            .iter()
+            .filter_map(|(appid, app_arc)| {
+                let app = app_arc.read().unwrap();
+                // Skip home app from destruction
+                if app.home_miniapp {
+                    None
+                } else {
+                    Some((appid.clone(), app.last_active_time))
+                }
+            })
+            .min_by(|(_, time1), (_, time2)| time1.cmp(time2));
+
+        // If we found a non-home app, remove it
+        if let Some((appid, _)) = least_active {
+            self.controller.log(
+                "system",
+                LogLevel::Info,
+                &format!("Destroying least active mini app: {}", appid),
+            );
+            self.miniapps.remove(&appid);
+        }
     }
 }
 
@@ -417,7 +412,7 @@ pub trait AppUiDelegate {
     fn on_miniapp_opened(&self);
 
     /// Called when mini app is closed
-    fn on_miniapp_closed(&self);
+    fn on_miniapp_closed(&mut self);
 
     /// Called when a page is created
     fn on_page_created(&mut self, path: String);
@@ -530,11 +525,16 @@ impl AppUiDelegate for MiniApp {
     }
 
     fn on_miniapp_opened(&self) {
-        todo!()
+        // Log the app opening event
+        self.info("AppUiDelegate", format!("Mini app {} opened", self.appid));
     }
 
-    fn on_miniapp_closed(&self) {
-        todo!()
+    fn on_miniapp_closed(&mut self) {
+        // Update last active time
+        self.last_active_time = Instant::now();
+
+        // Log the app closing event
+        self.info("AppUiDelegate", format!("Mini app {} closed", self.appid));
     }
 
     fn on_page_created(&mut self, path: String) {
@@ -586,7 +586,7 @@ impl AppUiDelegate for MiniApp {
     }
 
     fn handle_post_message(&self, path: String, msg: String) {
-        todo!()
+        self.info(&path, &msg);
     }
 
     fn handle_request(&self, req: http::Request<Vec<u8>>) -> Option<http::Response<Vec<u8>>> {
@@ -728,15 +728,24 @@ pub fn get_or_init_miniapp(appid: String) -> Arc<RwLock<MiniApp>> {
         .write()
         .unwrap();
 
+    // If the miniapp already exists, return it directly
+    if let Some(app_arc) = miniapps.miniapps.get(&appid) {
+        return app_arc.clone();
+    }
+
+    // Check if we've reached the maximum number of apps
+    if miniapps.miniapps.len() >= miniapps.max_apps {
+        // Destroy the least active app to make room
+        miniapps.destroy_least_active_miniapp();
+    }
+
     let controller = miniapps.controller.clone();
 
-    // Use entry API to atomically get or insert
-    miniapps
-        .miniapps
-        .entry(appid.clone())
-        .or_insert_with(|| {
-            let unit = MiniApp::new(appid, controller);
-            Arc::new(RwLock::new(unit))
-        })
-        .clone()
+    // Create new MiniApp
+    let unit = MiniApp::new(appid.clone(), controller);
+    let app_arc = Arc::new(RwLock::new(unit));
+
+    // Insert into collection and return
+    miniapps.miniapps.insert(appid, app_arc.clone());
+    app_arc
 }
