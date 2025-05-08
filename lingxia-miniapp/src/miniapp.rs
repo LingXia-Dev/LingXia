@@ -234,6 +234,8 @@ pub struct MiniApp {
     // Current version of the mini app
     version: String,
 
+    config: MiniAppConfig,
+
     // Network security configuration
     network_security: NetworkSecurity,
 }
@@ -252,9 +254,13 @@ impl MiniApp {
             home_miniapp: false,
             version: String::new(),
             network_security: NetworkSecurity::new(),
+            config: MiniAppConfig::default(),
         };
 
-        app.setup();
+        if let Err(e) = app.setup() {
+            app.error("system", format!("Failed to setup app: {}", e));
+        }
+
         app
     }
 
@@ -271,14 +277,18 @@ impl MiniApp {
             home_miniapp: true,
             version: String::new(),
             network_security: NetworkSecurity::new(),
+            config: MiniAppConfig::default(),
         };
 
-        app.setup();
+        if let Err(e) = app.setup() {
+            app.error("system", format!("Failed to setup home app: {}", e));
+        }
+
         app
     }
 
-    /// Set up the MiniApp by calculating paths and retrieving version information
-    fn setup(&mut self) {
+    // Setup will initialize paths and load config
+    fn setup(&mut self) -> Result<(), MiniAppError> {
         // Get the app's version
         self.version = self.get_version();
 
@@ -298,9 +308,12 @@ impl MiniApp {
             .app_data_dir()
             .join(LINGXIA_DIR)
             .join(MINIAPPS_DIR);
+
         self.app_dir = base_dir.join(&dir_name);
         if !self.app_dir.exists() {
-            let _ = std::fs::create_dir_all(&self.app_dir);
+            std::fs::create_dir_all(&self.app_dir).map_err(|e| {
+                MiniAppError::IoError(format!("Failed to create app directory: {}", e))
+            })?;
         }
 
         // Set up storage directory
@@ -309,9 +322,12 @@ impl MiniApp {
             .app_data_dir()
             .join(LINGXIA_DIR)
             .join(STORAGE_DIR);
+
         self.storage_dir = storage_base_dir.join(&dir_name);
         if !self.storage_dir.exists() {
-            let _ = std::fs::create_dir_all(&self.storage_dir);
+            std::fs::create_dir_all(&self.storage_dir).map_err(|e| {
+                MiniAppError::IoError(format!("Failed to create storage directory: {}", e))
+            })?;
         }
 
         // Set up cache directory
@@ -320,10 +336,21 @@ impl MiniApp {
             .app_cache_dir()
             .join(LINGXIA_DIR)
             .join(MINIAPPS_DIR);
+
         self.cache_dir = cache_base_dir.join(&dir_name);
         if !self.cache_dir.exists() {
-            let _ = std::fs::create_dir_all(&self.cache_dir);
+            std::fs::create_dir_all(&self.cache_dir).map_err(|e| {
+                MiniAppError::IoError(format!("Failed to create cache directory: {}", e))
+            })?;
         }
+
+        // Load app configuration if it exists
+        if let Ok(app_json) = self.read_json("app.json") {
+            self.config = MiniAppConfig::from_value(app_json)
+                .map_err(|e| MiniAppError::InvalidJsonFile(format!("app.json: {}", e)))?;
+        }
+
+        Ok(())
     }
 
     /// Get the version of this app from storage
