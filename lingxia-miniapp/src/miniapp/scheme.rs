@@ -1,5 +1,6 @@
 use http::{Request, Response, StatusCode};
 
+use crate::log::Logging;
 use crate::miniapp::MiniApp;
 
 impl MiniApp {
@@ -54,7 +55,9 @@ impl MiniApp {
                             .unwrap()
                     })
             }
-            Err(_) => {
+            Err(e) => {
+                self.error("", &format!("Fallback to reading 404.html due to {}", e));
+
                 // Return a 404 Not Found response
                 Response::builder()
                     .status(StatusCode::NOT_FOUND)
