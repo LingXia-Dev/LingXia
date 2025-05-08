@@ -11,7 +11,7 @@ use std::time::Instant;
 use crate::app::{AppConfig, AppController};
 use crate::error::MiniAppError;
 use crate::log::{LogLevel, LogTag, Logging};
-use crate::page::{self, Pages};
+use crate::page::{self, Pages, WebViewController};
 use config::{MiniAppConfig, PageConfig};
 use security::NetworkSecurity;
 
@@ -65,67 +65,6 @@ impl MiniAppOld {
         // Only update the time if the app exists
         if self.apps.contains_key(&appid) {
             self.last_active_times.insert(appid, Instant::now());
-        }
-    }
-
-    /// Called when a new page is created for the given appid and path
-    pub fn on_page_created(&mut self, appid: String, path: String) {
-        // A page is a tab page if it's in the tab bar configuration(demo code)
-        // let is_tab_page = if let Ok(tab_config) =
-        //     serde_json::from_str::<serde_json::Value>(DEFAULT_TAB_BAR_CONFIG)
-        // {
-        //     tab_config
-        //         .get("list")
-        //         .and_then(|v| v.as_array())
-        //         .map(|list| {
-        //             list.iter().any(|item| {
-        //                 item.get("pagePath")
-        //                     .and_then(|v| v.as_str())
-        //                     .map(|p| p == path)
-        //                     .unwrap_or(false)
-        //             })
-        //         })
-        //         .unwrap_or(false)
-        // } else {
-        //     false
-        // };
-
-        // self.info(
-        //     &appid,
-        //     format!("insert page {}, is_tab_page: {}", path, is_tab_page),
-        // );
-
-        // let page_manager = self
-        //     .apps
-        //     .entry(appid.clone())
-        //     .or_insert_with(|| Arc::new(Mutex::new(page::PageManager::new(None))));
-
-        // demo code
-        let url = if appid == "home" {
-            let path_str = if path.is_empty() { "index.html" } else { &path };
-            format!("lingxia://home/{}", path_str)
-        } else {
-            "https://www.bing.com".to_string()
-        };
-
-        // pc.load_url(url);
-
-        // #[cfg(debug_assertions)]
-        // pc.set_devtools(true);
-
-        // Initialize the page
-        // let mut page_manager = page_manager.lock().unwrap();
-        // page_manager.push_page_controller(path, is_tab_page, pc);
-    }
-
-    /// Called when the page showed in the view
-    pub fn on_page_show(&self, appid: String, path: String) {
-        // self.info(&appid, format!("Page show: {}", path));
-
-        // Mark the page as active when it's shown
-        if let Some(page_manager) = self.apps.get(&appid) {
-            let mut page_manager = page_manager.lock().unwrap();
-            page_manager.mark_active(&path);
         }
     }
 
@@ -481,7 +420,7 @@ pub trait AppUiDelegate {
     fn on_miniapp_closed(&self);
 
     /// Called when a page is created
-    fn on_page_created(&self, path: String);
+    fn on_page_created(&mut self, path: String);
 
     /// Called when the page starts loading
     fn on_page_started(&self, path: String);
@@ -490,7 +429,7 @@ pub trait AppUiDelegate {
     fn on_page_finished(&self, path: String);
 
     /// Called when the page showed in the view
-    fn on_page_show(&self, path: String);
+    fn on_page_show(&mut self, path: String);
 
     /// Handle back button press
     fn on_back_pressed(&self) -> bool;
@@ -598,8 +537,19 @@ impl AppUiDelegate for MiniApp {
         todo!()
     }
 
-    fn on_page_created(&self, path: String) {
-        todo!()
+    fn on_page_created(&mut self, path: String) {
+        let url = format!("lingxia://{}", path);
+
+        let page =
+            self.pages
+                .create_page(self.appid.clone(), path.clone(), self.controller.clone());
+
+        if let Err(e) = page.load_url(&url) {
+            self.error(&path, &format!("Failed to load URL {}: {}", url, e));
+        }
+
+        #[cfg(debug_assertions)]
+        let _ = page.set_devtools(true);
     }
 
     fn on_page_started(&self, _path: String) {
@@ -610,8 +560,8 @@ impl AppUiDelegate for MiniApp {
         // TODO
     }
 
-    fn on_page_show(&self, path: String) {
-        todo!()
+    fn on_page_show(&mut self, path: String) {
+        self.pages.navigate_to_page(path);
     }
 
     fn on_back_pressed(&self) -> bool {

@@ -132,7 +132,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnWebViewCreated(
     }
 
     // Notify miniapp about page creation with the WebView controller
-    if let Ok(miniapp) = miniapp::get_or_init_miniapp(appid).read() {
+    if let Ok(mut miniapp) = miniapp::get_or_init_miniapp(appid).write() {
         miniapp.on_page_created(path);
     }
     0
@@ -200,7 +200,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnPageShow(
     let appid: String = env.get_string(&appid).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
 
-    if let Ok(miniapp) = miniapp::get_or_init_miniapp(appid).read() {
+    if let Ok(mut miniapp) = miniapp::get_or_init_miniapp(appid).write() {
         miniapp.on_page_show(path);
     }
 }
