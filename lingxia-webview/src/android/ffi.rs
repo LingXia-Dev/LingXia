@@ -84,14 +84,11 @@ pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeOnMiniAppInited(
     // Initialize and start the controller
     if !Controller::run(
         |controller| -> bool {
-            // Make sure the UI thread is attached to the JVM
-            let jvm_clone = JAVA_VM.get().unwrap();
-            let attach_result = jvm_clone.attach_current_thread().map_err(|e| {
-                error!("Failed to attach UI thread to JVM: {:?}", e);
-                return false;
-            });
+            let jvm = JAVA_VM.get().unwrap();
 
-            if attach_result.is_err() {
+            // Use attach_current_thread_as_daemon to ensure the attached state persists
+            if let Err(e) = jvm.attach_current_thread_as_daemon() {
+                error!("Failed to attach UI thread to JVM: {:?}", e);
                 return false;
             }
 

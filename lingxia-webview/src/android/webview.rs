@@ -1,7 +1,5 @@
 use crate::android::get_env;
 use jni::objects::{GlobalRef, JObject, JValue};
-#[cfg(debug_assertions)]
-use log::info;
 use miniapp::{MiniAppError, WebViewController};
 
 #[derive(Clone)]
