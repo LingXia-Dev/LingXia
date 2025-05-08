@@ -269,7 +269,7 @@ impl Page {
 
 impl WebViewController for Page {
     fn load_url(&self, url: &str) -> Result<(), MiniAppError> {
-        let (responder, _) = mpsc::channel();
+        let (responder, receiver) = mpsc::channel();
 
         let cmd = WebViewCmd::LoadUrl {
             appid: self.appid.clone(),
@@ -278,11 +278,16 @@ impl WebViewController for Page {
             responder,
         };
 
-        self.controller.send_cmd(ControllerCmd::WebView(cmd))
+        self.controller.send_cmd(ControllerCmd::WebView(cmd))?;
+
+        // Wait for the response
+        receiver.recv().map_err(|_| {
+            MiniAppError::WebView("WebView command 'LoadUrl' failed: channel closed".to_string())
+        })?
     }
 
     fn evaluate_javascript(&self, js: &str) -> Result<(), MiniAppError> {
-        let (responder, _) = mpsc::channel();
+        let (responder, receiver) = mpsc::channel();
 
         let cmd = WebViewCmd::EvaluateJavascript {
             appid: self.appid.clone(),
@@ -291,11 +296,18 @@ impl WebViewController for Page {
             responder,
         };
 
-        self.controller.send_cmd(ControllerCmd::WebView(cmd))
+        self.controller.send_cmd(ControllerCmd::WebView(cmd))?;
+
+        // Wait for the response
+        receiver.recv().map_err(|_| {
+            MiniAppError::WebView(
+                "WebView command 'EvaluateJavascript' failed: channel closed".to_string(),
+            )
+        })?
     }
 
     fn post_message(&self, message: &str) -> Result<(), MiniAppError> {
-        let (responder, _) = mpsc::channel();
+        let (responder, receiver) = mpsc::channel();
 
         let cmd = WebViewCmd::PostMessage {
             appid: self.appid.clone(),
@@ -304,11 +316,18 @@ impl WebViewController for Page {
             responder,
         };
 
-        self.controller.send_cmd(ControllerCmd::WebView(cmd))
+        self.controller.send_cmd(ControllerCmd::WebView(cmd))?;
+
+        // Wait for the response
+        receiver.recv().map_err(|_| {
+            MiniAppError::WebView(
+                "WebView command 'PostMessage' failed: channel closed".to_string(),
+            )
+        })?
     }
 
     fn set_devtools(&self, enabled: bool) -> Result<(), MiniAppError> {
-        let (responder, _) = mpsc::channel();
+        let (responder, receiver) = mpsc::channel();
 
         let cmd = WebViewCmd::SetDevtools {
             appid: self.appid.clone(),
@@ -316,11 +335,18 @@ impl WebViewController for Page {
             responder,
         };
 
-        self.controller.send_cmd(ControllerCmd::WebView(cmd))
+        self.controller.send_cmd(ControllerCmd::WebView(cmd))?;
+
+        // Wait for the response
+        receiver.recv().map_err(|_| {
+            MiniAppError::WebView(
+                "WebView command 'SetDevtools' failed: channel closed".to_string(),
+            )
+        })?
     }
 
     fn clear_browsing_data(&self) -> Result<(), MiniAppError> {
-        let (responder, _) = mpsc::channel();
+        let (responder, receiver) = mpsc::channel();
 
         let cmd = WebViewCmd::ClearBrowsingData {
             appid: self.appid.clone(),
@@ -328,11 +354,18 @@ impl WebViewController for Page {
             responder,
         };
 
-        self.controller.send_cmd(ControllerCmd::WebView(cmd))
+        self.controller.send_cmd(ControllerCmd::WebView(cmd))?;
+
+        // Wait for the response
+        receiver.recv().map_err(|_| {
+            MiniAppError::WebView(
+                "WebView command 'ClearBrowsingData' failed: channel closed".to_string(),
+            )
+        })?
     }
 
     fn set_user_agent(&self, ua: &str) -> Result<(), MiniAppError> {
-        let (responder, _) = mpsc::channel();
+        let (responder, receiver) = mpsc::channel();
 
         let cmd = WebViewCmd::SetUserAgent {
             appid: self.appid.clone(),
@@ -340,18 +373,25 @@ impl WebViewController for Page {
             responder,
         };
 
-        self.controller.send_cmd(ControllerCmd::WebView(cmd))
+        self.controller.send_cmd(ControllerCmd::WebView(cmd))?;
+
+        // Wait for the response
+        receiver.recv().map_err(|_| {
+            MiniAppError::WebView(
+                "WebView command 'SetUserAgent' failed: channel closed".to_string(),
+            )
+        })?
     }
 }
 
 impl Drop for Page {
     fn drop(&mut self) {
         // Just send drop webview command without waiting for response
-        let _ = self.controller.send_cmd(ControllerCmd::WebView(
-            WebViewCmd::DropWebView {
+        let _ = self
+            .controller
+            .send_cmd(ControllerCmd::WebView(WebViewCmd::DropWebView {
                 appid: self.appid.clone(),
                 path: self.path.clone(),
-            },
-        ));
+            }));
     }
 }
