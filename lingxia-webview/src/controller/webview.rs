@@ -167,5 +167,18 @@ pub(crate) fn handle_webview_cmd(
             // Propagate any error that occurred during processing
             result
         }
+
+        WebViewCmd::DropWebView { appid, path } => {
+            if let Ok(mut webviews_map) = webviews.lock() {
+                #[cfg(debug_assertions)]
+                log::info!("WebView dropped for appId: {}, path: {}", appid, path);
+
+                // Remove entry and let it drop automatically
+                webviews_map.remove(&(appid, path));
+                Ok(())
+            } else {
+                Err(MiniAppError::WebView("Failed to lock webviews".to_string()))
+            }
+        }
     }
 }

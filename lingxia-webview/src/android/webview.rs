@@ -6,21 +6,11 @@ use miniapp::{MiniAppError, WebViewController};
 
 #[derive(Clone)]
 pub struct WebView {
-    #[cfg(debug_assertions)]
-    appid: String,
-    #[cfg(debug_assertions)]
-    path: String,
     java_webview: GlobalRef,
 }
 
 impl Drop for WebView {
     fn drop(&mut self) {
-        #[cfg(debug_assertions)]
-        info!(
-            "Dropping WebView for appId: {}, path: {}",
-            self.appid, self.path
-        );
-
         let _ = self.destroy_webview();
     }
 }
@@ -30,14 +20,6 @@ impl WebView {
         let env = get_env().unwrap();
         let java_webview = env.new_global_ref(java_webview).unwrap();
 
-        #[cfg(debug_assertions)]
-        return WebView {
-            appid: _appid,
-            path: _path,
-            java_webview,
-        };
-
-        #[cfg(not(debug_assertions))]
         return WebView { java_webview };
     }
 
