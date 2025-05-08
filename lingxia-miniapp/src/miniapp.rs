@@ -118,22 +118,6 @@ impl MiniAppOld {
         // page_manager.push_page_controller(path, is_tab_page, pc);
     }
 
-    /// Called when the page starts loading
-    pub fn on_page_started(&self, appid: String, path: String) {
-        // Find the corresponding controller
-        // if let Some(controller) = self.find_page_controller(&appid, &path) {
-        //     // Get IPC script content and inject it
-        //     if let Err(e) = controller.evaluate_javascript(ipc::get_ipc_script()) {
-        //         // self.error(&appid, e.to_string());
-        //     }
-        // }
-    }
-
-    /// Called when the page finishes loading
-    pub fn on_page_finished(&self, _appid: String, _path: String) {
-        // ... implementation ...
-    }
-
     /// Called when the page showed in the view
     pub fn on_page_show(&self, appid: String, path: String) {
         // self.info(&appid, format!("Page show: {}", path));
@@ -618,12 +602,12 @@ impl AppUiDelegate for MiniApp {
         todo!()
     }
 
-    fn on_page_started(&self, path: String) {
-        todo!()
+    fn on_page_started(&self, _path: String) {
+        // TODO
     }
 
-    fn on_page_finished(&self, path: String) {
-        todo!()
+    fn on_page_finished(&self, _path: String) {
+        // TODO
     }
 
     fn on_page_show(&self, path: String) {
