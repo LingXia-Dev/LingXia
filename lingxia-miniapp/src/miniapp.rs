@@ -27,7 +27,6 @@ const MINIAPPS_DIR: &str = "miniapps";
 const VERSIONS_DIR: &str = "versions";
 const STORAGE_DIR: &str = "storage";
 const USERID_FILE: &str = "userid.txt";
-const HOME_DIR: &str = "home";
 const DEFAULT_USER_ID: &str = "default";
 const DEFAULT_VERSION: &str = "0.0.1";
 
@@ -283,56 +282,45 @@ impl MiniApp {
         // Get the app's version
         self.version = self.get_version();
 
-        // Calculate and create app directory
+        // Calculate the directory name based on appid, user and whether this is a home app
+        let dir_name = if self.home_miniapp {
+            // Home mini app uses appid directly as directory name
+            self.appid.clone()
+        } else {
+            // Regular mini app uses a hash based on app_id and user_id
+            let user_id = get_user_id(self.controller.as_ref());
+            generate_app_hash(&self.appid, &user_id)
+        };
+
+        // Set up app directory
         let base_dir = self
             .controller
             .app_data_dir()
             .join(LINGXIA_DIR)
             .join(MINIAPPS_DIR);
-        self.app_dir = if self.home_miniapp {
-            base_dir.join(HOME_DIR)
-        } else {
-            // For non-home apps, use a hash based on app_id and user_id
-            let user_id = get_user_id(self.controller.as_ref());
-            let hash = generate_app_hash(&self.appid, &user_id);
-            base_dir.join(hash)
-        };
+        self.app_dir = base_dir.join(&dir_name);
         if !self.app_dir.exists() {
             let _ = std::fs::create_dir_all(&self.app_dir);
         }
 
-        // Calculate and create storage directory
+        // Set up storage directory
         let storage_base_dir = self
             .controller
             .app_data_dir()
             .join(LINGXIA_DIR)
             .join(STORAGE_DIR);
-        self.storage_dir = if self.home_miniapp {
-            storage_base_dir.join(HOME_DIR)
-        } else {
-            // Use the same hash as in app path
-            let user_id = get_user_id(self.controller.as_ref());
-            let hash = generate_app_hash(&self.appid, &user_id);
-            storage_base_dir.join(hash)
-        };
+        self.storage_dir = storage_base_dir.join(&dir_name);
         if !self.storage_dir.exists() {
             let _ = std::fs::create_dir_all(&self.storage_dir);
         }
 
-        // Calculate and create cache directory
+        // Set up cache directory
         let cache_base_dir = self
             .controller
             .app_cache_dir()
             .join(LINGXIA_DIR)
             .join(MINIAPPS_DIR);
-        self.cache_dir = if self.home_miniapp {
-            cache_base_dir.join(HOME_DIR)
-        } else {
-            // Use the same hash as in app path
-            let user_id = get_user_id(self.controller.as_ref());
-            let hash = generate_app_hash(&self.appid, &user_id);
-            cache_base_dir.join(hash)
-        };
+        self.cache_dir = cache_base_dir.join(&dir_name);
         if !self.cache_dir.exists() {
             let _ = std::fs::create_dir_all(&self.cache_dir);
         }
@@ -358,24 +346,6 @@ impl MiniApp {
 
         // Return default version
         DEFAULT_VERSION.to_string()
-    }
-
-    /// Update the version of this app
-    fn update_version(&self, new_version: &str) -> Result<(), MiniAppError> {
-        let version_dir = self
-            .controller
-            .app_data_dir()
-            .join(LINGXIA_DIR)
-            .join(VERSIONS_DIR);
-
-        if !version_dir.exists() {
-            fs::create_dir_all(&version_dir)?;
-        }
-
-        let version_path = version_dir.join(format!("{}.txt", self.appid));
-        fs::write(version_path, new_version)?;
-
-        Ok(())
     }
 
     // Reads binary data from the specified relative path
@@ -704,70 +674,39 @@ pub fn init<T: AppController + 'static>(controller: T) {
         Ok(config) => {
             let home_mini_app_id = &config.home_mini_app_id;
 
-            // Create temporary home MiniApp to check paths and versions
-            let home_miniapp =
-                MiniApp::new_as_home(home_mini_app_id.clone(), controller_arc.clone());
+            // Check if the home mini app is installed
+            if !install::is_installed(controller_arc.as_ref(), home_mini_app_id) {
+                let home_mini_app_version = &config.home_mini_app_version;
 
-            // Check if we need to install or update the home mini app
-            if !home_miniapp.app_dir.exists() {
-                // Create app directory if it doesn't exist
-                if !home_miniapp.app_dir.exists() {
-                    if let Err(e) = std::fs::create_dir_all(&home_miniapp.app_dir) {
-                        controller_arc.log(
-                            "system",
-                            LogLevel::Error,
-                            &format!("Failed to create home mini app directory: {}", e),
-                        );
-                        return;
-                    }
-                }
-
-                // Copy home mini app files from assets
+                // Copy home mini app files from assets and update version
                 if let Err(e) = install::install_home_miniapp(
                     controller_arc.as_ref(),
                     home_mini_app_id,
-                    &home_miniapp.app_dir,
+                    home_mini_app_version,
                 ) {
                     controller_arc.log(
                         "system",
                         LogLevel::Error,
-                        &format!("Failed to copy home mini app files: {}", e),
+                        &format!("Failed to install home mini app: {}", e),
                     );
                     return;
                 }
-
-                let home_mini_app_version = &config.home_mini_app_version;
-
-                // Update version AFTER successful file copy
-                if let Err(e) = home_miniapp.update_version(home_mini_app_version) {
-                    controller_arc.log(
-                        "system",
-                        LogLevel::Error,
-                        &format!("Failed to update home mini app version: {}", e),
-                    );
-                    return;
-                }
-
-                controller_arc.log(
-                    "system",
-                    LogLevel::Info,
-                    &format!("Updated home mini app to version {}", home_mini_app_version),
-                );
             }
 
-            // Initialize MiniApps
+            // Now create the MiniApp instance and call setup
+            let home_miniapp =
+                MiniApp::new_as_home(home_mini_app_id.clone(), controller_arc.clone());
+
+            // Initialize MiniApps collection
             let mut miniapps = MiniApps::new(controller_arc.clone());
 
-            // Create and add the home mini app
-            let home_miniapp = Arc::new(RwLock::new(MiniApp::new_as_home(
-                home_mini_app_id.clone(),
-                miniapps.controller.clone(),
-            )));
+            // Wrap the home miniapp in Arc<RwLock<>> and add it to the collection
+            let home_miniapp_arc = Arc::new(RwLock::new(home_miniapp));
 
             // Add home mini app to the collection
             miniapps
                 .miniapps
-                .insert(home_mini_app_id.clone(), home_miniapp);
+                .insert(home_mini_app_id.clone(), home_miniapp_arc);
 
             if MINIAPPS.set(RwLock::new(miniapps)).is_err() {
                 controller_arc.log(
@@ -783,6 +722,7 @@ pub fn init<T: AppController + 'static>(controller: T) {
                 );
             }
         }
+
         Err(e) => {
             // Provide more detailed error messages for different error types
             let error_message = match e {
