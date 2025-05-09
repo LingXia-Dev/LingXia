@@ -67,14 +67,9 @@ pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeOnMiniAppInited(
     let data_dir = env.get_string(&data_dir).unwrap().into();
     let cache_dir = env.get_string(&cache_dir).unwrap().into();
 
-    let app = match App::from_java(
-        &mut env,
-        asset_manager.as_raw(),
-        data_dir,
-        cache_dir,
-    ) {
+    let app = match App::from_java(&mut env, asset_manager.as_raw(), data_dir, cache_dir) {
         Ok(app) => app,
-        Err(e) => {
+        Err(_) => {
             return JObject::null().into_raw();
         }
     };
@@ -126,7 +121,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeOnMiniAppInited(
             let combined_details = format!("{}:{}", home_app_id, initial_route);
             match env.new_string(&combined_details) {
                 Ok(java_string) => java_string.into_raw(),
-                Err(e) => JObject::null().into_raw(),
+                Err(_) => JObject::null().into_raw(),
             }
         }
         None => {
