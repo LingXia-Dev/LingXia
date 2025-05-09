@@ -12,7 +12,7 @@ use log::{error, info};
 use miniapp::AppUiDelegate;
 use miniapp::log::LogLevel;
 use serde_json;
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, OnceLock, mpsc};
 
 pub static JAVA_VM: OnceLock<JavaVM> = OnceLock::new();
 
@@ -63,8 +63,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeOnMiniAppInited(
     data_dir: JString,
     cache_dir: JString,
     asset_manager: JObject,
-) -> jint {
-    // Get the native AAssetManager pointer from the passed Java object
+) -> jni::sys::jstring {
     let data_dir = env.get_string(&data_dir).unwrap().into();
     let cache_dir = env.get_string(&cache_dir).unwrap().into();
 
@@ -76,33 +75,65 @@ pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeOnMiniAppInited(
     ) {
         Ok(app) => app,
         Err(e) => {
-            error!("Failed to create App: {}", e);
-            return -1;
+            return JObject::null().into_raw();
         }
     };
 
-    // Initialize and start the controller
+    // Create a channel to receive the result from the closure
+    let (tx, rx) = mpsc::channel::<Option<(String, String)>>();
+
     if !Controller::run(
-        |controller| -> bool {
+        move |controller| -> bool {
             let jvm = JAVA_VM.get().unwrap();
 
             // Use attach_current_thread_as_daemon to ensure the attached state persists
             if let Err(e) = jvm.attach_current_thread_as_daemon() {
                 error!("Failed to attach UI thread to JVM: {:?}", e);
+                let _ = tx.send(None);
                 return false;
             }
 
-            miniapp::init(controller);
+            let result_option = miniapp::init(controller);
 
-            info!("UI thread inited successfully");
+            // Send the result back to the main thread
+            if tx.send(result_option).is_err() {
+                error!("Failed to send init result: Receiver dropped?");
+            }
+
             true
         },
         app,
     ) {
-        error!("Failed to start controller");
+        error!("Controller::run reported failure (returned false).");
+        let _ = rx.recv(); // Consume potential message to avoid blocking later if logic changes
+        return JObject::null().into_raw();
     }
 
-    0
+    let final_init_details = match rx.recv() {
+        Ok(details_option) => details_option,
+        Err(e) => {
+            error!(
+                "Failed to receive result from channel (sender dropped?): {}",
+                e
+            );
+            None
+        }
+    };
+
+    // Format and return the result
+    match final_init_details {
+        Some((home_app_id, initial_route)) => {
+            let combined_details = format!("{}:{}", home_app_id, initial_route);
+            match env.new_string(&combined_details) {
+                Ok(java_string) => java_string.into_raw(),
+                Err(e) => JObject::null().into_raw(),
+            }
+        }
+        None => {
+            error!("Failed to obtain MiniApp home app details during initialization.");
+            JObject::null().into_raw()
+        }
+    }
 }
 
 #[unsafe(no_mangle)]

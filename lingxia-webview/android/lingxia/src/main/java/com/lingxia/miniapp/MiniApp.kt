@@ -14,10 +14,9 @@ class MiniApp private constructor(private val context: Context) {
         private const val TAG = "LingXia.WebView"
         private var instance: MiniApp? = null
 
-        /**
-         * The ID of the home/main app
-         */
-        const val HOME_APP_ID = "home"
+        // Properties to store home app details from native
+        var HomeMiniAppId: String? = null
+        var HomeMiniAppInitialRoute: String? = null
 
         init {
             System.loadLibrary("lingxia")
@@ -29,11 +28,26 @@ class MiniApp private constructor(private val context: Context) {
                 instance = MiniApp(context.applicationContext)
             }
             val appContext = context.applicationContext
-            nativeOnMiniAppInited(
+            val initResultString = nativeOnMiniAppInited(
                 appContext.filesDir.absolutePath,
                 appContext.cacheDir.absolutePath,
                 appContext.assets
             )
+
+            if (initResultString != null) {
+                // Use a robust way to split, ensuring the delimiter is not misinterpreted if path contains it.
+                // For a simple case like "appId:path/to/page", limit = 2 is good.
+                val parts = initResultString.split(":", limit = 2)
+                if (parts.size == 2) {
+                    HomeMiniAppId = parts[0]
+                    HomeMiniAppInitialRoute = parts[1]
+                    Log.i(TAG, "Native init success. Home App ID: $HomeMiniAppId, Initial Route: $HomeMiniAppInitialRoute")
+                } else {
+                    Log.e(TAG, "Failed to parse home MiniAapp details from native (expected 2 parts): '$initResultString'")
+                }
+            } else {
+                Log.e(TAG, "Failed to get home MiniApp details from native init.")
+            }
         }
 
         @JvmStatic
@@ -41,7 +55,7 @@ class MiniApp private constructor(private val context: Context) {
             dataDir: String,
             cacheDir: String,
             assetManager: android.content.res.AssetManager
-        ): Int
+        ): String?
 
         @JvmStatic
         private external fun nativeOnMiniAppOpened(appId: String): Int

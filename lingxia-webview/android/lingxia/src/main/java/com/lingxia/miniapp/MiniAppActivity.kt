@@ -92,6 +92,7 @@ class MiniAppActivity : AppCompatActivity() {
     private var navigationBar: NavigationBar? = null
     private var isDestroyed = false
     private var pendingWebViewSetup = false
+    private var isDisplayingHomeMiniApp: Boolean = false
 
     // Tracks the currently visible WebView instance
     private var currentWebView: com.lingxia.miniapp.WebView? = null
@@ -182,6 +183,8 @@ class MiniAppActivity : AppCompatActivity() {
             finish()
             return
         }
+        // Initialize the new flag
+        isDisplayingHomeMiniApp = (this.appId == MiniApp.HomeMiniAppId)
 
         val initialPath = intent.getStringExtra(EXTRA_PATH) ?: ""
 
@@ -480,7 +483,8 @@ class MiniAppActivity : AppCompatActivity() {
 
     private fun addCapsuleButton() {
         // Don't show capsule button for the main/home app
-        if (appId == MiniApp.HOME_APP_ID) {
+        if (isDisplayingHomeMiniApp) {
+            Log.d(TAG, "Not adding capsule button because it is the home app.")
             return
         }
 
