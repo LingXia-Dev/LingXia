@@ -2,14 +2,23 @@ use super::{LINGXIA_DIR, MINIAPPS_DIR, VERSIONS_DIR};
 use crate::{AppController, MiniAppError};
 
 // Check if a mini app is installed
-pub(crate) fn is_installed<T: AppController + ?Sized>(controller: &T, app_id: &str) -> bool {
-    let version_path = controller
-        .app_data_dir()
-        .join(LINGXIA_DIR)
-        .join(VERSIONS_DIR)
-        .join(format!("{}.txt", app_id));
+pub(crate) fn is_installed<T: AppController + ?Sized>(_controller: &T, _app_id: &str) -> bool {
+    // In debug builds, always return false to force reinstall
+    #[cfg(debug_assertions)]
+    {
+        return false;
+    }
 
-    version_path.exists()
+    #[cfg(not(debug_assertions))]
+    {
+        let version_path = _controller
+            .app_data_dir()
+            .join(LINGXIA_DIR)
+            .join(VERSIONS_DIR)
+            .join(format!("{}.txt", _app_id));
+
+        version_path.exists()
+    }
 }
 
 // Copy files from assets to destination directory and update version
