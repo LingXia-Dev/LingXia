@@ -276,6 +276,53 @@ impl MiniApp {
                 .map_err(|_| MiniAppError::InvalidJsonFile(relative_path.to_string()))
         })
     }
+
+    /// Uninstalls the mini app by removing its version record and directories
+    ///
+    /// # Returns
+    /// * `Ok(())` - If the mini app was uninstalled successfully
+    /// * `Err(MiniAppError)` - If there was an error during uninstallation
+    pub fn uninstall(&self) -> Result<(), MiniAppError> {
+        // Don't allow uninstalling the home app
+        if self.home_miniapp {
+            return Err(MiniAppError::UnsupportedOperation(
+                "Cannot uninstall the home mini app".to_string(),
+            ));
+        }
+
+        //  Remove the version record file
+        let version_path = self
+            .controller
+            .app_data_dir()
+            .join(LINGXIA_DIR)
+            .join(VERSIONS_DIR)
+            .join(format!("{}.txt", self.appid));
+
+        if version_path.exists() {
+            fs::remove_file(&version_path)?
+        }
+
+        //  Remove the app directory
+        if self.app_dir.exists() {
+            fs::remove_dir_all(&self.app_dir)?;
+        }
+
+        // Remove the storage directory
+        if self.storage_dir.exists() {
+            fs::remove_dir_all(&self.storage_dir)?;
+        }
+
+        //  Remove the cache directory
+        if self.cache_dir.exists() {
+            fs::remove_dir_all(&self.cache_dir)?;
+        }
+
+        self.info(
+            "system",
+            format!("Mini app {} uninstalled successfully", self.appid),
+        );
+        Ok(())
+    }
 }
 
 /// Generates a hash string based on app ID and user ID
@@ -738,4 +785,55 @@ pub fn get_or_init_miniapp(appid: String) -> Arc<RwLock<MiniApp>> {
     // Insert into collection and return
     miniapps.miniapps.insert(appid, app_arc.clone());
     app_arc
+}
+
+/// Uninstall a mini app by removing its files and version record
+///
+/// This function uninstalls a specified mini app, removing all its files and data.
+/// It protects the home mini app from being uninstalled.
+///
+/// # Arguments
+/// * `appid` - The ID of the mini app to uninstall
+///
+/// # Returns
+/// * `Ok(())` - If the mini app was uninstalled successfully
+/// * `Err(MiniAppError)` - If there was an error during uninstallation
+///
+/// # Panics
+/// Panics if `MiniApps` is not initialized
+pub fn uninstall_miniapp(appid: &str) -> Result<(), MiniAppError> {
+    let miniapps = MINIAPPS
+        .get()
+        .expect("MiniApps not initialized")
+        .read()
+        .unwrap();
+
+    // Get controller to log operation
+    let controller = miniapps.controller.clone();
+    controller.log(
+        "system",
+        LogLevel::Info,
+        &format!("Uninstalling mini app: {}", appid),
+    );
+
+    // Get or create the miniapp instance
+    let app_arc = get_or_init_miniapp(appid.to_string());
+
+    // Call the uninstall method on the MiniApp instance
+    let result = app_arc.write().unwrap().uninstall();
+
+    // If successful, remove the app from the collection
+    if result.is_ok() {
+        // Drop read lock and acquire write lock to modify collection
+        drop(miniapps);
+        let mut miniapps_write = MINIAPPS
+            .get()
+            .expect("MiniApps not initialized")
+            .write()
+            .unwrap();
+
+        miniapps_write.miniapps.remove(appid);
+    }
+
+    result
 }
