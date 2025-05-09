@@ -677,11 +677,21 @@ class MiniAppActivity : AppCompatActivity() {
         // Add target view first if it's not already there
         if (targetWebView.parent != webViewContainer) {
             targetWebView.visibility = View.INVISIBLE // Keep invisible until layout pass
-            targetWebView.let { webViewContainer.addView(it) }
-            Log.d(TAG, "Added new WebView for $targetPath to container. Container now has ${webViewContainer.childCount} children") // Updated log
+
+            if (targetWebView.parent != null) {
+                (targetWebView.parent as? ViewGroup)?.removeView(targetWebView)
+            }
+
+            try {
+                webViewContainer.addView(targetWebView)
+                Log.d(TAG, "Added new WebView for $targetPath to container. Container now has ${webViewContainer.childCount} children")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to add WebView to container: ${e.message}")
+                return
+            }
         } else {
             targetWebView.bringToFront() // Ensure it's on top if reused
-            Log.d(TAG, "WebView already in container, bringing to front") // Added log
+            Log.d(TAG, "WebView already in container, bringing to front")
         }
 
         // Post ensures layout calculations are done *before* we make it visible
@@ -777,9 +787,9 @@ class MiniAppActivity : AppCompatActivity() {
             // Update navigation bar configuration (pass disableAnimation=false)
             updateNavigationBar(pageConfig, isBackNavigation, disableAnimation = false)
 
-            // Remove the new WebView from its parent if it already has one
-            val parent = newWebView.parent as? ViewGroup
-            parent?.removeView(newWebView)
+            if (newWebView.parent != null) {
+                (newWebView.parent as? ViewGroup)?.removeView(newWebView)
+            }
 
             // IMPORTANT: Make sure the new WebView is fully prepared before animation
             newWebView.visibility = View.VISIBLE // Should be visible INSIDE its container
@@ -792,17 +802,25 @@ class MiniAppActivity : AppCompatActivity() {
                     FrameLayout.LayoutParams.MATCH_PARENT
                 )
                 tag = "current_webview_container" // Tag the container
-                addView(newWebView)
-                // Initial translation will be set AFTER adding to parent and updating layout
+
+                try {
+                    addView(newWebView)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error adding WebView to new container: ${e.message}")
+                    return@apply
+                }
             }
 
             // Get reference to old container BEFORE adding new one
             val oldContainer = webViewContainer.findViewWithTag<ViewGroup>("current_webview_container")
             oldContainer?.tag = "previous_webview_container" // Re-tag old container
 
-            // Add the new container to the WebView container
-            webViewContainer.addView(newContainer)
-            Log.d(TAG, "Added new container tagged as current: $targetPath")
+            try {
+                webViewContainer.addView(newContainer)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error adding new container to webViewContainer: ${e.message}")
+                return
+            }
 
             // Update layout margins NOW to position the new container vertically
             updateLayoutMargins()
