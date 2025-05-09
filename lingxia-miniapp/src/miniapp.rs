@@ -603,7 +603,8 @@ impl AppUiDelegate for MiniApp {
 static MINIAPPS: OnceLock<RwLock<MiniApps>> = OnceLock::new();
 
 /// Initialize the MiniApps singleton
-pub fn init<T: AppController + 'static>(controller: T) {
+/// Returns an Option of (home_app_id, initial_route) on success.
+pub fn init<T: AppController + 'static>(controller: T) -> Option<(String, String)> {
     let controller_arc = Arc::new(controller);
 
     // Prepare the directory structure
@@ -613,21 +614,21 @@ pub fn init<T: AppController + 'static>(controller: T) {
             LogLevel::Error,
             &format!("Failed to prepare directory structure: {}", e),
         );
-        return;
+        return None;
     }
 
     match AppConfig::load(controller_arc.as_ref()) {
         Ok(config) => {
-            let home_mini_app_id = &config.home_mini_app_id;
+            let home_mini_app_id = config.home_mini_app_id.clone();
 
             // Check if the home mini app is installed
-            if !install::is_installed(controller_arc.as_ref(), home_mini_app_id) {
+            if !install::is_installed(controller_arc.as_ref(), &home_mini_app_id) {
                 let home_mini_app_version = &config.home_mini_app_version;
 
                 // Copy home mini app files from assets and update version
                 if let Err(e) = install::install_home_miniapp(
                     controller_arc.as_ref(),
-                    home_mini_app_id,
+                    &home_mini_app_id,
                     home_mini_app_version,
                 ) {
                     controller_arc.log(
@@ -635,13 +636,17 @@ pub fn init<T: AppController + 'static>(controller: T) {
                         LogLevel::Error,
                         &format!("Failed to install home mini app: {}", e),
                     );
-                    return;
+                    return None;
                 }
             }
 
             // Now create the MiniApp instance and call setup
+            // new_as_home itself calls setup(), which loads its app.json.
             let home_miniapp =
                 MiniApp::new_as_home(home_mini_app_id.clone(), controller_arc.clone());
+
+            // Get the initial route from the now-configured home_miniapp
+            let initial_route = home_miniapp.config.get_initial_route();
 
             // Initialize MiniApps collection
             let mut miniapps = MiniApps::new(controller_arc.clone());
@@ -660,12 +665,14 @@ pub fn init<T: AppController + 'static>(controller: T) {
                     LogLevel::Error,
                     "MiniApps singleton had been initialized by another instance",
                 );
+                None
             } else {
                 controller_arc.log(
                     "system",
                     LogLevel::Info,
                     "MiniApps initialized successfully",
                 );
+                Some((home_mini_app_id, initial_route))
             }
         }
 
@@ -685,6 +692,7 @@ pub fn init<T: AppController + 'static>(controller: T) {
             };
 
             controller_arc.log("system", LogLevel::Error, &error_message);
+            None
         }
     }
 }

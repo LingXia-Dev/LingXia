@@ -20,8 +20,11 @@ impl MiniAppConfig {
     }
 
     /// Get the initial route (first page in the pages array)
-    pub fn get_initial_route(&self) -> Option<String> {
-        self.pages.first().cloned()
+    pub fn get_initial_route(&self) -> String {
+        self.pages
+            .first()
+            .cloned()
+            .unwrap_or("PagesEmpty".to_string())
     }
 
     /// Check if a path is a tab page
