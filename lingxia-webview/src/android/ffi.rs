@@ -68,7 +68,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeOnMiniAppInited(
     let cache_dir = env.get_string(&cache_dir).unwrap().into();
 
     let app = match App::from_java(
-        env.get_native_interface() as *mut jni::sys::JNIEnv,
+        &mut env,
         asset_manager.as_raw(),
         data_dir,
         cache_dir,
