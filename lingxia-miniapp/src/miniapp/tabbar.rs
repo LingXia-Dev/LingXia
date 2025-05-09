@@ -127,9 +127,11 @@ pub struct TabItem {
     pub text: String,
 
     /// Path to the icon when not selected
+    #[serde(default)]
     pub iconPath: Option<String>,
 
     /// Path to the icon when selected
+    #[serde(default)]
     pub selectedIconPath: Option<String>,
 
     /// Whether this tab is selected by default
@@ -153,26 +155,6 @@ impl TabBar {
     pub fn is_valid(&self) -> bool {
         let count = self.list.len();
         count >= Self::MIN_ITEMS && count <= Self::MAX_ITEMS
-    }
-
-    /// Check if a path is a tab page
-    pub fn is_tab_page(&self, path: &str) -> bool {
-        self.list.iter().any(|item| item.pagePath == path)
-    }
-
-    /// Get all tab page paths
-    pub fn get_tab_pages(&self) -> Vec<String> {
-        self.list.iter().map(|item| item.pagePath.clone()).collect()
-    }
-
-    /// Get a tab item by path
-    pub fn get_tab_by_path(&self, path: &str) -> Option<&TabItem> {
-        self.list.iter().find(|item| item.pagePath == path)
-    }
-
-    /// Parse a tabbar configuration from JSON string
-    pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
-        serde_json::from_str(json)
     }
 
     /// Convert all icon paths in the tabbar to absolute paths
@@ -206,20 +188,5 @@ impl TabBar {
         }
 
         result
-    }
-
-    /// Convert to a JSON string with absolute paths
-    ///
-    /// # Arguments
-    /// * `base_path` - Base path for resolving relative paths
-    ///
-    /// # Returns
-    /// JSON string representation with absolute paths
-    pub fn to_json_with_absolute_paths(
-        &self,
-        base_path: &Path,
-    ) -> Result<String, serde_json::Error> {
-        let tab_bar_with_abs_paths = self.with_absolute_paths(base_path);
-        serde_json::to_string(&tab_bar_with_abs_paths)
     }
 }

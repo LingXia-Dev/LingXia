@@ -463,21 +463,11 @@ impl AppUiDelegate for MiniApp {
             .map_err(|e| MiniAppError::InvalidJsonFile(format!("app.json: {}", e)))?;
 
         // Handle TabBar configuration
-        if let Some(tab_bar) = &app_config.tabBar {
-            // Only return tabbar JSON if it's valid (has between 2-5 items)
-            if tab_bar.is_valid() {
-                // Convert relative paths to absolute paths
-                tab_bar
-                    .to_json_with_absolute_paths(&self.app_dir)
-                    .map_err(|e| {
-                        MiniAppError::InvalidJsonFile(format!("Failed to serialize TabBar: {}", e))
-                    })
-            } else {
-                // Not enough items or too many items, return empty JSON object
-                Ok("{}".to_string())
-            }
+        if let Some(tab_bar_json) = app_config.get_tabbar_json_with_base_path(&self.app_dir) {
+            // self.info("TabBar", &tab_bar_json);
+            Ok(tab_bar_json)
         } else {
-            // TabBar is optional, return a valid empty tabbar JSON
+            // TabBar is optional or invalid, return a valid empty tabbar JSON
             Ok("{}".to_string())
         }
     }

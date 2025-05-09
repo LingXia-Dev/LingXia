@@ -28,6 +28,7 @@ impl MiniAppConfig {
     }
 
     /// Check if a path is a tab page
+    #[allow(dead_code)]
     pub fn is_tab_page(&self, path: &str) -> bool {
         self.tabBar
             .as_ref()
@@ -47,6 +48,7 @@ impl MiniAppConfig {
     }
 
     /// Check if the app has a tab bar
+    #[allow(dead_code)]
     pub fn has_tab_bar(&self) -> bool {
         // Use TabBar's is_valid method to check requirements
         self.tabBar
@@ -54,14 +56,23 @@ impl MiniAppConfig {
             .is_some_and(|tab_bar| tab_bar.is_valid())
     }
 
-    /// Get the tabBar configuration as JSON string
-    /// This is optimized for passing to Java without re-parsing
-    pub fn get_tabbar_json(&self) -> Option<String> {
+    /// Get the tabBar configuration as JSON string with absolute paths
+    ///
+    /// # Arguments
+    /// * `base_path` - Base path for resolving relative paths
+    ///
+    /// # Returns
+    /// TabBar JSON string with icon paths converted to absolute paths
+    pub fn get_tabbar_json_with_base_path(&self, base_path: &std::path::Path) -> Option<String> {
         // Only return tabbar JSON if it's valid (has enough items)
         self.tabBar
             .as_ref()
             .filter(|tab_bar| tab_bar.is_valid())
-            .and_then(|tab_bar| serde_json::to_string(tab_bar).ok())
+            .and_then(|tab_bar| {
+                // Convert paths to absolute
+                let tab_bar_with_abs_paths = tab_bar.with_absolute_paths(base_path);
+                serde_json::to_string(&tab_bar_with_abs_paths).ok()
+            })
     }
 }
 
