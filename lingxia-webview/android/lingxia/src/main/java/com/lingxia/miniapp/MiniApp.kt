@@ -91,6 +91,21 @@ class MiniApp private constructor(private val context: Context) {
         }
 
         /**
+         * Opens the home MiniApp
+         * Its appId and initial path are provided by the native layer during initialization.
+         *
+         * If these details are not available, an error will be logged, and no app will be opened.
+         */
+        @JvmStatic
+        fun openHomeMiniApp() {
+            if (HomeMiniAppId != null && HomeMiniAppInitialRoute != null) {
+                openMiniApp(HomeMiniAppId!!, HomeMiniAppInitialRoute!!)
+            } else {
+                Log.e(TAG, "Native home app details not available. Cannot open home mini app.")
+            }
+        }
+
+        /**
          * Notifies the system to close a mini app with the specified appId
          *
          * This method is typically called by the native layer when a mini app needs to be closed

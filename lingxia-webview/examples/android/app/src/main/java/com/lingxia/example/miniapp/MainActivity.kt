@@ -8,8 +8,6 @@ import com.lingxia.miniapp.MiniAppActivity
 
 class MainActivity : AppCompatActivity() {
     private val TAG = "MainActivity"
-    private val appId = MiniApp.HOME_APP_ID
-    private val initialPath = "index.html"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -20,10 +18,10 @@ class MainActivity : AppCompatActivity() {
         // Configure transparent status bar using shared method
         MiniAppActivity.configureTransparentSystemBars(this)
 
-        // Open MiniApp in a new activity
-        MiniApp.openMiniApp(appId, initialPath)
+        // Open Home MiniApp using the new method
+        MiniApp.openHomeMiniApp()
 
-        Log.d(TAG, "MainActivity launched MiniApp: $appId")
+        Log.d(TAG, "MainActivity initiated opening of home MiniApp")
 
         // Finish this activity since we're opening the home app in a new activity
         // The home MiniAppActivity will now function as our main activity
