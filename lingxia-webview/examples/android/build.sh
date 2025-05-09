@@ -6,10 +6,14 @@ set -e
 # Get the absolute path of the script directory
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$SCRIPT_DIR/../.."
+LINGXIA_ROOT="$PROJECT_ROOT/../" # LingXia project root directory
 
 # Package name of the app
 APP_PACKAGE="com.lingxia.example.miniapp"
 MAIN_ACTIVITY="$APP_PACKAGE.MainActivity"
+
+# Define the assets directory
+ASSETS_DIR="$SCRIPT_DIR/app/src/main/assets"
 
 # Function to cleanup and exit
 cleanup() {
@@ -34,6 +38,20 @@ echo "Copying Rust library to jniLibs..."
 JNILIBS_DIR="$PROJECT_ROOT/android/lingxia/src/main/jniLibs/arm64-v8a"
 mkdir -p "$JNILIBS_DIR"
 cp "$PROJECT_ROOT/target/aarch64-linux-android/release/liblingxia.so" "$JNILIBS_DIR/"
+
+# Create assets directory if it doesn't exist
+mkdir -p "$ASSETS_DIR"
+
+# Clean assets directory before copying new files
+echo "Cleaning assets directory..."
+rm -rf "$ASSETS_DIR"/*
+
+echo "Copying lingxia-view files to assets..."
+cp "$LINGXIA_ROOT/lingxia-view/404.html" "$ASSETS_DIR/"
+cp "$LINGXIA_ROOT/lingxia-view/webview-bridge.js" "$ASSETS_DIR/"
+
+echo "Copying demo files to assets..."
+cp -R "$LINGXIA_ROOT/examples/demo/"* "$ASSETS_DIR/"
 
 echo "Building Android library..."
 cd "$PROJECT_ROOT/android"
