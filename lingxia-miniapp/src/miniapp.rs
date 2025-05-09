@@ -566,6 +566,13 @@ impl AppUiDelegate for MiniApp {
 
         // Try to pop the current page from the stack
         if let Some(previous_page) = self.pages.pop_from_current_stack() {
+            // it's at top tab page
+            if self.config.is_initial_route(&previous_page)
+                || self.config.is_tab_page(&previous_page)
+            {
+                return false;
+            }
+
             self.info(
                 "AppUiDelegate",
                 &format!("Popped page, switching back to: {}", previous_page),

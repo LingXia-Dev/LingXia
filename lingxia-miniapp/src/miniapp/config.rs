@@ -28,11 +28,17 @@ impl MiniAppConfig {
     }
 
     /// Check if a path is a tab page
-    #[allow(dead_code)]
     pub fn is_tab_page(&self, path: &str) -> bool {
         self.tabBar
             .as_ref()
             .is_some_and(|tab_bar| tab_bar.list.iter().any(|item| item.pagePath == path))
+    }
+
+    /// Check if a path is the initial route (first page in the pages array)
+    pub fn is_initial_route(&self, path: &str) -> bool {
+        self.pages
+            .first()
+            .is_some_and(|initial_route| initial_route == path)
     }
 
     /// Get all tab page paths
