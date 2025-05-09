@@ -11,7 +11,7 @@ import com.lingxia.miniapp.ACTION_CLOSE_MINIAPP
 
 class MiniApp private constructor(private val context: Context) {
     companion object {
-        private const val TAG = "LingXia.WebView"
+        private const val TAG = "LingXia.MiniApp"
         private var instance: MiniApp? = null
 
         // Properties to store home app details from native
@@ -24,6 +24,11 @@ class MiniApp private constructor(private val context: Context) {
 
         @JvmStatic
         fun initialize(context: Context) {
+            if (instance != null && HomeMiniAppId != null && HomeMiniAppInitialRoute != null) {
+                Log.d(TAG, "MiniApp already successfully initialized, skipping")
+                return
+            }
+
             if (instance == null) {
                 instance = MiniApp(context.applicationContext)
             }
