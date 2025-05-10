@@ -688,8 +688,8 @@ pub fn init<T: AppController + 'static>(controller: T) -> Option<(String, String
             let home_mini_app_id = config.home_mini_app_id.clone();
             let home_mini_app_version = &config.home_mini_app_version;
 
-            // Check if the home mini app is installed with an up-to-date version
-            if !install::is_installed(
+            // Check if the home mini app needs to be installed or updated
+            if install::should_update(
                 controller_arc.as_ref(),
                 &home_mini_app_id,
                 home_mini_app_version,

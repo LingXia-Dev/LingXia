@@ -3,11 +3,11 @@ use super::{LINGXIA_DIR, MINIAPPS_DIR, VERSIONS_DIR};
 use crate::{AppController, MiniAppError};
 use std::fs;
 
-/// Check if a mini app is installed and if the installed version is up to date
+/// Check if a mini app needs to be updated based on version comparison
 ///
 /// This function checks if:
-/// 1. The mini app is installed
-/// 2. The installed version is equal to or newer than the required version
+/// 1. The mini app doesn't exist
+/// 2. The installed version is older than the required version
 ///
 /// # Arguments
 /// * `controller` - App controller reference
@@ -15,9 +15,9 @@ use std::fs;
 /// * `required_version` - Version required (formatted as major.minor.patch)
 ///
 /// # Returns
-/// * `true` - If the app is installed and the version is equal or newer
-/// * `false` - If the app is not installed or the version is older
-pub(crate) fn is_installed<T: AppController + ?Sized>(
+/// * `true` - If the app needs to be installed or updated
+/// * `false` - If the app is already installed with an equal or newer version
+pub(crate) fn should_update<T: AppController + ?Sized>(
     controller: &T,
     app_id: &str,
     required_version: &str,
@@ -30,7 +30,7 @@ pub(crate) fn is_installed<T: AppController + ?Sized>(
 
     // First check if version file exists at all
     if !version_path.exists() {
-        return false;
+        return true; // App doesn't exist, needs installation
     }
 
     // Read the installed version
@@ -42,13 +42,13 @@ pub(crate) fn is_installed<T: AppController + ?Sized>(
             Version::parse(installed_version_str),
             Version::parse(required_version),
         ) {
-            // Compare versions
-            return installed_version >= required_version;
+            // Compare versions - return true if installed is older than required
+            return installed_version < required_version;
         }
     }
 
-    // Failed to read or parse version, treat as not installed
-    false
+    // Failed to read or parse version, treat as needing update
+    true
 }
 
 // Copy files from assets to destination directory and update version
