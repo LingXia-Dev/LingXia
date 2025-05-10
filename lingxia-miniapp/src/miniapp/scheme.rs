@@ -56,7 +56,7 @@ impl MiniApp {
                     })
             }
             Err(e) => {
-                self.error("", &format!("Fallback to reading 404.html due to {}", e));
+                self.error("", format!("Fallback to reading 404.html due to {}", e));
 
                 // Return a 404 Not Found response
                 Response::builder()

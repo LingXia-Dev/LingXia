@@ -154,7 +154,7 @@ impl TabBar {
     /// and doesn't exceed the maximum number of allowed items
     pub fn is_valid(&self) -> bool {
         let count = self.list.len();
-        count >= Self::MIN_ITEMS && count <= Self::MAX_ITEMS
+        (Self::MIN_ITEMS..=Self::MAX_ITEMS).contains(&count)
     }
 
     /// Convert all icon paths in the tabbar to absolute paths

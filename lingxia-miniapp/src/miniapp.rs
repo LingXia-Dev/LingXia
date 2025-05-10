@@ -597,14 +597,14 @@ impl AppUiDelegate for MiniApp {
 
             self.info(
                 "AppUiDelegate",
-                &format!("Popped page, switching back to: {}", previous_page),
+                format!("Popped page, switching back to: {}", previous_page),
             );
 
             // Request to switch to the previous page
             if let Err(e) = switch_page(&self.controller, &self.appid, &previous_page) {
                 self.error(
                     "AppUiDelegate",
-                    &format!("Failed to switch to page {}: {}", previous_page, e),
+                    format!("Failed to switch to page {}: {}", previous_page, e),
                 );
             }
 
