@@ -1,24 +1,54 @@
+use super::version::Version;
 use super::{LINGXIA_DIR, MINIAPPS_DIR, VERSIONS_DIR};
 use crate::{AppController, MiniAppError};
+use std::fs;
 
-// Check if a mini app is installed
-pub(crate) fn is_installed<T: AppController + ?Sized>(_controller: &T, _app_id: &str) -> bool {
-    // In debug builds, always return false to force reinstall
-    #[cfg(debug_assertions)]
-    {
+/// Check if a mini app is installed and if the installed version is up to date
+///
+/// This function checks if:
+/// 1. The mini app is installed
+/// 2. The installed version is equal to or newer than the required version
+///
+/// # Arguments
+/// * `controller` - App controller reference
+/// * `app_id` - ID of the mini app to check
+/// * `required_version` - Version required (formatted as major.minor.patch)
+///
+/// # Returns
+/// * `true` - If the app is installed and the version is equal or newer
+/// * `false` - If the app is not installed or the version is older
+pub(crate) fn is_installed<T: AppController + ?Sized>(
+    controller: &T,
+    app_id: &str,
+    required_version: &str,
+) -> bool {
+    let version_path = controller
+        .app_data_dir()
+        .join(LINGXIA_DIR)
+        .join(VERSIONS_DIR)
+        .join(format!("{}.txt", app_id));
+
+    // First check if version file exists at all
+    if !version_path.exists() {
         return false;
     }
 
-    #[cfg(not(debug_assertions))]
-    {
-        let version_path = _controller
-            .app_data_dir()
-            .join(LINGXIA_DIR)
-            .join(VERSIONS_DIR)
-            .join(format!("{}.txt", _app_id));
+    // Read the installed version
+    if let Ok(installed_version_str) = fs::read_to_string(&version_path) {
+        let installed_version_str = installed_version_str.trim();
 
-        version_path.exists()
+        // Parse both versions
+        if let (Ok(installed_version), Ok(required_version)) = (
+            Version::parse(installed_version_str),
+            Version::parse(required_version),
+        ) {
+            // Compare versions
+            return installed_version >= required_version;
+        }
     }
+
+    // Failed to read or parse version, treat as not installed
+    false
 }
 
 // Copy files from assets to destination directory and update version

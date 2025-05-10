@@ -20,6 +20,7 @@ mod install;
 mod scheme;
 mod security;
 mod tabbar;
+mod version;
 
 /// Constants for miniapp storage layout
 const LINGXIA_DIR: &str = "lingxia";
@@ -685,11 +686,14 @@ pub fn init<T: AppController + 'static>(controller: T) -> Option<(String, String
     match AppConfig::load(controller_arc.as_ref()) {
         Ok(config) => {
             let home_mini_app_id = config.home_mini_app_id.clone();
+            let home_mini_app_version = &config.home_mini_app_version;
 
-            // Check if the home mini app is installed
-            if !install::is_installed(controller_arc.as_ref(), &home_mini_app_id) {
-                let home_mini_app_version = &config.home_mini_app_version;
-
+            // Check if the home mini app is installed with an up-to-date version
+            if !install::is_installed(
+                controller_arc.as_ref(),
+                &home_mini_app_id,
+                home_mini_app_version,
+            ) {
                 // Copy home mini app files from assets and update version
                 if let Err(e) = install::install_home_miniapp(
                     controller_arc.as_ref(),
