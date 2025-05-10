@@ -11,13 +11,12 @@ import com.lingxia.miniapp.ACTION_CLOSE_MINIAPP
 
 class MiniApp private constructor(private val context: Context) {
     companion object {
-        private const val TAG = "LingXia.WebView"
+        private const val TAG = "LingXia.MiniApp"
         private var instance: MiniApp? = null
 
-        /**
-         * The ID of the home/main app
-         */
-        const val HOME_APP_ID = "home"
+        // Properties to store home app details from native
+        var HomeMiniAppId: String? = null
+        var HomeMiniAppInitialRoute: String? = null
 
         init {
             System.loadLibrary("lingxia")
@@ -25,15 +24,35 @@ class MiniApp private constructor(private val context: Context) {
 
         @JvmStatic
         fun initialize(context: Context) {
+            if (instance != null && HomeMiniAppId != null && HomeMiniAppInitialRoute != null) {
+                Log.d(TAG, "MiniApp already successfully initialized, skipping")
+                return
+            }
+
             if (instance == null) {
                 instance = MiniApp(context.applicationContext)
             }
             val appContext = context.applicationContext
-            nativeOnMiniAppInited(
+            val initResultString = nativeOnMiniAppInited(
                 appContext.filesDir.absolutePath,
                 appContext.cacheDir.absolutePath,
                 appContext.assets
             )
+
+            if (initResultString != null) {
+                // Use a robust way to split, ensuring the delimiter is not misinterpreted if path contains it.
+                // For a simple case like "appId:path/to/page", limit = 2 is good.
+                val parts = initResultString.split(":", limit = 2)
+                if (parts.size == 2) {
+                    HomeMiniAppId = parts[0]
+                    HomeMiniAppInitialRoute = parts[1]
+                    Log.i(TAG, "Native init success. Home App ID: $HomeMiniAppId, Initial Route: $HomeMiniAppInitialRoute")
+                } else {
+                    Log.e(TAG, "Failed to parse home MiniAapp details from native (expected 2 parts): '$initResultString'")
+                }
+            } else {
+                Log.e(TAG, "Failed to get home MiniApp details from native init.")
+            }
         }
 
         @JvmStatic
@@ -41,7 +60,7 @@ class MiniApp private constructor(private val context: Context) {
             dataDir: String,
             cacheDir: String,
             assetManager: android.content.res.AssetManager
-        ): Int
+        ): String?
 
         @JvmStatic
         private external fun nativeOnMiniAppOpened(appId: String): Int
@@ -74,6 +93,21 @@ class MiniApp private constructor(private val context: Context) {
         fun openMiniApp(appId: String, path: String) {
             val instance = getInstance()
             instance.openInNewActivity(appId, path)
+        }
+
+        /**
+         * Opens the home MiniApp
+         * Its appId and initial path are provided by the native layer during initialization.
+         *
+         * If these details are not available, an error will be logged, and no app will be opened.
+         */
+        @JvmStatic
+        fun openHomeMiniApp() {
+            if (HomeMiniAppId != null && HomeMiniAppInitialRoute != null) {
+                openMiniApp(HomeMiniAppId!!, HomeMiniAppInitialRoute!!)
+            } else {
+                Log.e(TAG, "Native home app details not available. Cannot open home mini app.")
+            }
         }
 
         /**

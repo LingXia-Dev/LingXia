@@ -1,236 +1,601 @@
 use http::{Response, StatusCode};
-use serde_json::Value;
 use std::collections::HashMap;
+use std::collections::hash_map::DefaultHasher;
+use std::fs;
+use std::hash::{Hash, Hasher};
+use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::OnceLock;
+use std::sync::{OnceLock, RwLock};
 use std::time::Instant;
 
-use crate::log::{LogLevel, Logging};
-use crate::page::{self, PageController};
+use crate::app::{AppConfig, AppController, switch_page};
+use crate::error::MiniAppError;
+use crate::log::{LogLevel, LogTag, Logging};
+use crate::page::{Pages, WebViewController};
+use config::{MiniAppConfig, PageConfig};
+use security::NetworkSecurity;
 
-mod ipc;
+mod config;
+mod install;
 mod scheme;
+mod security;
+mod tabbar;
 
-// Global instance of MiniApp
-static MINI_APP: OnceLock<Mutex<MiniApp>> = OnceLock::new();
+/// Constants for miniapp storage layout
+const LINGXIA_DIR: &str = "lingxia";
+const MINIAPPS_DIR: &str = "miniapps";
+const VERSIONS_DIR: &str = "versions";
+const STORAGE_DIR: &str = "storage";
+const USERID_FILE: &str = "userid.txt";
+const DEFAULT_USER_ID: &str = "default";
+const DEFAULT_VERSION: &str = "0.0.1";
 
-/// Platform-specific capabilities for MiniApp
-pub trait MiniAppRuntime: Send + Sync {
-    /// Read asset file from platform-specific location
-    fn read_asset(&self, path: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>>;
-
-    /// Get data directory for the app
-    fn get_data_dir(&self) -> Option<String>;
-
-    /// Get cache directory for the app
-    fn get_cache_dir(&self) -> Option<String>;
-
-    /// Log message to platform-specific logging system
-    fn log(&self, level: LogLevel, message: &str);
-
-    /// Switch to another page within the same mini app
-    ///
-    /// # Arguments
-    /// * `app_id` - The ID of the mini app whose page needs switching
-    /// * `path` - The target path to navigate to within the mini app
-    fn switch_page(&self, app_id: &str, path: &str) -> Result<(), Box<dyn std::error::Error>>;
-
-    /// Open a mini app in platform-specific way
-    ///
-    /// # Arguments
-    /// * `app_id` - The ID of the mini app to open
-    /// * `path` - The initial path to navigate to within the mini app
-    fn open_miniapp(&self, app_id: &str, path: &str) -> Result<(), Box<dyn std::error::Error>>;
-
-    /// Close mini app in platform-specific way
-    fn close_miniapp(&self, app_id: &str) -> Result<(), Box<dyn std::error::Error>>;
+/// Manages a collection of mini applications
+pub struct MiniApps {
+    // Collection of mini apps, keyed by app ID
+    miniapps: HashMap<String, Arc<RwLock<MiniApp>>>,
+    // Reference to the app controller
+    controller: Arc<dyn AppController>,
+    // Maximum number of apps allowed in memory
+    max_apps: usize,
 }
 
-/// Initializes the MiniApp with the given platform implementation
-pub fn init(platform: Box<dyn MiniAppRuntime>) {
-    MINI_APP.get_or_init(|| {
-        Mutex::new(MiniApp {
-            runtime: platform,
-            apps: HashMap::new(),
-            last_active_times: HashMap::new(),
+impl MiniApps {
+    fn new<T: AppController + 'static>(controller: T) -> Self {
+        Self {
+            miniapps: HashMap::new(),
+            controller: Arc::new(controller),
             max_apps: 5,
-        })
-    });
-}
-
-/// Returns a reference to the initialized MiniApp.
-/// Panics if MiniApp has not been initialized.
-pub fn get() -> &'static Mutex<MiniApp> {
-    MINI_APP.get().expect("MiniApp has not been initialized")
-}
-
-pub struct MiniApp {
-    pub(crate) runtime: Box<dyn MiniAppRuntime>,
-    apps: HashMap<String, Arc<Mutex<page::PageManager>>>, // appid -> PageManager
-    last_active_times: HashMap<String, Instant>,          // appid -> last active time
-    max_apps: usize,                                      // Maximum number of apps allowed
-}
-
-impl MiniApp {
-    /// Returns a reference to the PageManager for the given appid
-    pub fn get_page_manager(&self, appid: &str) -> Option<&Arc<Mutex<page::PageManager>>> {
-        self.apps.get(appid)
+        }
     }
 
-    /// Get page configuration for the given app and path
-    pub fn get_page_config(&self, app_id: &str, path: &str) -> Option<String> {
-        self.info(app_id, format!("Getting page config for {}", path));
-
-        // For home page (first tab), hide navigation bar
-        if path.contains("home") {
-            let config = serde_json::json!({
-                "hidden": true,
-                "navigationStyle": "default"
-            });
-            return serde_json::to_string(&config).ok();
-        }
-
-        // For message page, show navigation bar with title
-        if path.contains("message") {
-            let config = serde_json::json!({
-                "hidden": false,
-                "navigationBarBackgroundColor": "#ffffff",
-                "navigationBarTextStyle": "black",
-                "navigationBarTitleText": "消息",
-                "navigationStyle": "default"
-            });
-            return serde_json::to_string(&config).ok();
-        }
-
-        // For profile page, show navigation bar with title
-        if path.contains("profile") {
-            let config = serde_json::json!({
-                "hidden": false,
-                "navigationBarBackgroundColor": "#ffffff",
-                "navigationBarTextStyle": "black",
-                "navigationBarTitleText": "我的",
-                "navigationStyle": "default"
-            });
-            return serde_json::to_string(&config).ok();
-        }
-
-        // Default configuration for unknown pages
-        let config = serde_json::json!({
-            "hidden": true,
-            "navigationStyle": "default"
-        });
-
-        serde_json::to_string(&config).ok()
-    }
-
-    pub fn on_miniapp_opened(&mut self, appid: String) {
-        // If the app is already loaded, just update its active time
-        if self.apps.contains_key(&appid) {
-            self.last_active_times.insert(appid, Instant::now());
+    /// Destroys the least recently active mini app to free up memory
+    fn destroy_least_active_miniapp(&mut self) {
+        if self.miniapps.is_empty() {
             return;
         }
 
-        // If we've reached the maximum number of apps, destroy the least active one
-        if self.apps.len() >= self.max_apps {
-            self.destroy_least_active_miniapp();
+        // Find the least active app that isn't the home app
+        let least_active = self
+            .miniapps
+            .iter()
+            .filter_map(|(appid, app_arc)| {
+                let app = app_arc.read().unwrap();
+                // Skip home app from destruction
+                if app.home_miniapp {
+                    None
+                } else {
+                    Some((appid.clone(), app.last_active_time))
+                }
+            })
+            .min_by(|(_, time1), (_, time2)| time1.cmp(time2));
+
+        // If we found a non-home app, remove it
+        if let Some((appid, _)) = least_active {
+            self.controller.log(
+                "system",
+                LogLevel::Info,
+                &format!("Destroying least active mini app: {}", appid),
+            );
+            self.miniapps.remove(&appid);
         }
-
-        // Create a new PageManager for this app
-        self.apps.insert(
-            appid.clone(),
-            Arc::new(Mutex::new(page::PageManager::new(None))),
-        );
-        self.last_active_times.insert(appid, Instant::now());
     }
+}
 
-    /**
-     * Called when a mini app is closed.
-     * This primarily updates the last active time for the app to help with memory management.
-     */
-    pub fn on_miniapp_closed(&mut self, appid: String) {
-        // Only update the time if the app exists
-        if self.apps.contains_key(&appid) {
-            self.last_active_times.insert(appid, Instant::now());
-        }
-    }
+/// Represents a single mini application
+pub struct MiniApp {
+    pub(crate) appid: String,
 
-    /// Handles low memory event (global, no appid needed)
-    pub fn on_low_memory(&mut self) {
-        // Destroy the least active app
-        self.destroy_least_active_miniapp();
-    }
+    // Collection of pages in this app
+    pages: Pages,
 
-    /// Called when a new page is created for the given appid and path
-    pub fn on_page_created(&mut self, appid: String, path: String, pc: Arc<dyn PageController>) {
-        // A page is a tab page if it's in the tab bar configuration(demo code)
-        let is_tab_page = if let Ok(tab_config) =
-            serde_json::from_str::<serde_json::Value>(DEFAULT_TAB_BAR_CONFIG)
-        {
-            tab_config
-                .get("list")
-                .and_then(|v| v.as_array())
-                .map(|list| {
-                    list.iter().any(|item| {
-                        item.get("pagePath")
-                            .and_then(|v| v.as_str())
-                            .map(|p| p == path)
-                            .unwrap_or(false)
-                    })
-                })
-                .unwrap_or(false)
-        } else {
-            false
+    // Time when this app was last active
+    last_active_time: Instant,
+
+    // Reference to the app controller
+    pub(crate) controller: Arc<dyn AppController>,
+
+    // Directory for miniapp files (HTML, JS, CSS, etc.)
+    app_dir: PathBuf,
+
+    // Directory for miniapp-specific storage (database, etc.)
+    storage_dir: PathBuf,
+
+    // Directory for miniapp-specific cache
+    cache_dir: PathBuf,
+
+    // whether it's home mini app
+    home_miniapp: bool,
+
+    // Current version of the mini app
+    version: String,
+
+    config: MiniAppConfig,
+
+    // Network security configuration
+    network_security: NetworkSecurity,
+}
+
+impl MiniApp {
+    /// Create a new regular mini-app (not home app)
+    fn new(appid: String, controller: Arc<dyn AppController>) -> Self {
+        let mut app = Self {
+            appid,
+            pages: Pages::new(),
+            last_active_time: Instant::now(),
+            controller,
+            app_dir: PathBuf::new(),
+            storage_dir: PathBuf::new(),
+            cache_dir: PathBuf::new(),
+            home_miniapp: false,
+            version: String::new(),
+            network_security: NetworkSecurity::new(),
+            config: MiniAppConfig::default(),
         };
+
+        if let Err(e) = app.setup() {
+            app.error("system", format!("Failed to setup app: {}", e));
+        }
+
+        app
+    }
+
+    /// Create a new MiniApp instance marked as the home mini app
+    fn new_as_home(appid: String, controller: Arc<dyn AppController>) -> Self {
+        let mut app = Self {
+            appid,
+            pages: Pages::new(),
+            last_active_time: Instant::now(),
+            controller,
+            app_dir: PathBuf::new(),
+            storage_dir: PathBuf::new(),
+            cache_dir: PathBuf::new(),
+            home_miniapp: true,
+            version: String::new(),
+            network_security: NetworkSecurity::new(),
+            config: MiniAppConfig::default(),
+        };
+
+        if let Err(e) = app.setup() {
+            app.error("system", format!("Failed to setup home app: {}", e));
+        }
+
+        app
+    }
+
+    // Setup will initialize paths and load config
+    fn setup(&mut self) -> Result<(), MiniAppError> {
+        // Get the app's version
+        self.version = self.get_version();
+
+        // Calculate the directory name based on appid, user and whether this is a home app
+        let dir_name = if self.home_miniapp {
+            // Home mini app uses appid directly as directory name
+            self.appid.clone()
+        } else {
+            // Regular mini app uses a hash based on app_id and user_id
+            let user_id = get_user_id(self.controller.as_ref());
+            generate_app_hash(&self.appid, &user_id)
+        };
+
+        // Set up app directory
+        let base_dir = self
+            .controller
+            .app_data_dir()
+            .join(LINGXIA_DIR)
+            .join(MINIAPPS_DIR);
+
+        self.app_dir = base_dir.join(&dir_name);
+        if !self.app_dir.exists() {
+            std::fs::create_dir_all(&self.app_dir).map_err(|e| {
+                MiniAppError::IoError(format!("Failed to create app directory: {}", e))
+            })?;
+        }
+
+        // Set up storage directory
+        let storage_base_dir = self
+            .controller
+            .app_data_dir()
+            .join(LINGXIA_DIR)
+            .join(STORAGE_DIR);
+
+        self.storage_dir = storage_base_dir.join(&dir_name);
+        if !self.storage_dir.exists() {
+            std::fs::create_dir_all(&self.storage_dir).map_err(|e| {
+                MiniAppError::IoError(format!("Failed to create storage directory: {}", e))
+            })?;
+        }
+
+        // Set up cache directory
+        let cache_base_dir = self
+            .controller
+            .app_cache_dir()
+            .join(LINGXIA_DIR)
+            .join(MINIAPPS_DIR);
+
+        self.cache_dir = cache_base_dir.join(&dir_name);
+        if !self.cache_dir.exists() {
+            std::fs::create_dir_all(&self.cache_dir).map_err(|e| {
+                MiniAppError::IoError(format!("Failed to create cache directory: {}", e))
+            })?;
+        }
+
+        // Load app configuration if it exists
+        if let Ok(app_json) = self.read_json("app.json") {
+            self.config = MiniAppConfig::from_value(app_json)
+                .map_err(|e| MiniAppError::InvalidJsonFile(format!("app.json: {}", e)))?;
+
+            // Set tab bar items in the Pages manager
+            self.pages.set_tabbar_items(self.config.get_tab_pages());
+        }
+
+        Ok(())
+    }
+
+    /// Get the version of this app from storage
+    fn get_version(&self) -> String {
+        let version_path = self
+            .controller
+            .app_data_dir()
+            .join(LINGXIA_DIR)
+            .join(VERSIONS_DIR)
+            .join(format!("{}.txt", self.appid));
+
+        if version_path.exists() {
+            if let Ok(content) = fs::read_to_string(&version_path) {
+                let trimmed = content.trim();
+                if !trimmed.is_empty() {
+                    return trimmed.to_string();
+                }
+            }
+        }
+
+        // Return default version
+        DEFAULT_VERSION.to_string()
+    }
+
+    // Reads binary data from the specified relative path
+    fn read_bytes(&self, relative_path: &str) -> Result<Vec<u8>, MiniAppError> {
+        let file_path = self.app_dir.join(relative_path);
+
+        // Try to read from the filesystem
+        fs::read(file_path)
+            .map_err(|e| MiniAppError::ResourceNotFound(format!("{}:{}", relative_path, e)))
+    }
+
+    /// Reads text content from the specified relative path
+    fn read_text(&self, relative_path: &str) -> Result<String, MiniAppError> {
+        self.read_bytes(relative_path)
+            .map(|content| String::from_utf8_lossy(&content).to_string())
+    }
+
+    /// Reads and parses JSON content from the specified relative path
+    fn read_json(&self, relative_path: &str) -> Result<serde_json::Value, MiniAppError> {
+        self.read_text(relative_path).and_then(|content| {
+            serde_json::from_str(&content)
+                .map_err(|_| MiniAppError::InvalidJsonFile(relative_path.to_string()))
+        })
+    }
+
+    /// Uninstalls the mini app by removing its version record and directories
+    ///
+    /// # Returns
+    /// * `Ok(())` - If the mini app was uninstalled successfully
+    /// * `Err(MiniAppError)` - If there was an error during uninstallation
+    pub fn uninstall(&self) -> Result<(), MiniAppError> {
+        // Don't allow uninstalling the home app
+        if self.home_miniapp {
+            return Err(MiniAppError::UnsupportedOperation(
+                "Cannot uninstall the home mini app".to_string(),
+            ));
+        }
+
+        //  Remove the version record file
+        let version_path = self
+            .controller
+            .app_data_dir()
+            .join(LINGXIA_DIR)
+            .join(VERSIONS_DIR)
+            .join(format!("{}.txt", self.appid));
+
+        if version_path.exists() {
+            fs::remove_file(&version_path)?
+        }
+
+        //  Remove the app directory
+        if self.app_dir.exists() {
+            fs::remove_dir_all(&self.app_dir)?;
+        }
+
+        // Remove the storage directory
+        if self.storage_dir.exists() {
+            fs::remove_dir_all(&self.storage_dir)?;
+        }
+
+        //  Remove the cache directory
+        if self.cache_dir.exists() {
+            fs::remove_dir_all(&self.cache_dir)?;
+        }
 
         self.info(
-            &appid,
-            format!("insert page {}, is_tab_page: {}", path, is_tab_page),
+            "system",
+            format!("Mini app {} uninstalled successfully", self.appid),
         );
-
-        let page_manager = self
-            .apps
-            .entry(appid.clone())
-            .or_insert_with(|| Arc::new(Mutex::new(page::PageManager::new(None))));
-
-        // demo code
-        let url = if appid == "home" {
-            let path_str = if path.is_empty() { "index.html" } else { &path };
-            format!("lingxia://home/{}", path_str)
-        } else {
-            "https://www.bing.com".to_string()
-        };
-
-        pc.load_url(url);
-
-        #[cfg(debug_assertions)]
-        pc.set_devtools(true);
-
-        // Initialize the page
-        let mut page_manager = page_manager.lock().unwrap();
-        page_manager.push_page_controller(path, is_tab_page, pc);
+        Ok(())
     }
+}
 
-    /// Finds a PageController by appid and path
-    pub fn find_page_controller(&self, appid: &str, path: &str) -> Option<Arc<dyn PageController>> {
-        if let Some(page_manager) = self.apps.get(appid) {
-            let page_manager = page_manager.lock().unwrap();
-            page_manager.find_page_controller(path)
-        } else {
-            None
+/// Generates a hash string based on app ID and user ID
+fn generate_app_hash(app_id: &str, user_id: &str) -> String {
+    // Combine app_id and user_id
+    let combined = format!("{}_{}", app_id, user_id);
+
+    // Calculate hash using standard library's DefaultHasher
+    let mut hasher = DefaultHasher::new();
+    combined.hash(&mut hasher);
+    let result = hasher.finish();
+
+    // Convert to hex string
+    format!("{:x}", result)
+}
+
+/// Gets the current user ID from storage or returns the default
+fn get_user_id<T: AppController + ?Sized>(controller: &T) -> String {
+    let userid_path = controller
+        .app_data_dir()
+        .join(LINGXIA_DIR)
+        .join(USERID_FILE);
+
+    if userid_path.exists() {
+        if let Ok(content) = fs::read_to_string(&userid_path) {
+            let trimmed = content.trim();
+            if !trimmed.is_empty() {
+                return trimmed.to_string();
+            }
         }
     }
+
+    // Return default user ID
+    DEFAULT_USER_ID.to_string()
+}
+
+/// Sets the current user ID in storage
+fn set_user_id<T: AppController + ?Sized>(
+    controller: &T,
+    user_id: &str,
+) -> Result<(), MiniAppError> {
+    let lingxia_dir = controller.app_data_dir().join(LINGXIA_DIR);
+    if !lingxia_dir.exists() {
+        fs::create_dir_all(&lingxia_dir)?;
+    }
+
+    let userid_path = lingxia_dir.join(USERID_FILE);
+    fs::write(userid_path, user_id)?;
+
+    Ok(())
+}
+
+/// Prepares the base directory structure for mini apps
+fn prepare_directory_structure<T: AppController + ?Sized>(
+    controller: &T,
+) -> Result<(), MiniAppError> {
+    let data_dir = controller.app_data_dir();
+    let cache_dir = controller.app_cache_dir();
+
+    // Create required directories
+    let dirs = [
+        data_dir.join(LINGXIA_DIR).join(MINIAPPS_DIR),
+        data_dir.join(LINGXIA_DIR).join(VERSIONS_DIR),
+        data_dir.join(LINGXIA_DIR).join(STORAGE_DIR),
+        cache_dir.join(LINGXIA_DIR).join(MINIAPPS_DIR),
+    ];
+
+    for dir in &dirs {
+        fs::create_dir_all(dir)?;
+    }
+
+    // Ensure user ID file exists with default value if needed
+    let userid_path = data_dir.join(LINGXIA_DIR).join(USERID_FILE);
+    if !userid_path.exists() {
+        if let Some(parent) = userid_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(userid_path, DEFAULT_USER_ID)?;
+    }
+
+    Ok(())
+}
+
+pub trait AppUiDelegate {
+    /// Get tabbar configuration for mini app
+    fn get_tab_bar_config(&self) -> Result<String, MiniAppError>;
+
+    /// Get page configuration for a specific page
+    fn get_page_config(&self, path: &str) -> Result<String, MiniAppError>;
+
+    /// Called when mini app is opened
+    fn on_miniapp_opened(&self);
+
+    /// Called when mini app is closed
+    fn on_miniapp_closed(&mut self);
+
+    /// Called when a page is created
+    fn on_page_created(&mut self, path: String);
+
+    /// Called when the page starts loading
+    fn on_page_started(&self, path: String);
+
+    /// Called when the page finishes loading
+    fn on_page_finished(&self, path: String);
+
+    /// Called when the page showed in the view
+    fn on_page_show(&mut self, path: String);
+
+    /// Handle back button press
+    /// Return true to indicate the back press had been handled
+    fn on_back_pressed(&mut self) -> bool;
 
     /// Determines whether to override URL loading in the page.
     ///
     /// # Arguments
-    /// * `appid` - The identifier of the mini application
     /// * `url` - The URL being requested
     ///
     /// # Returns
     /// * `true` - To intercept and handle the URL loading
     /// * `false` - To allow the page to continue loading the URL
-    pub fn should_override_url_loading(&self, _appid: String, url: String) -> bool {
+    fn should_override_url_loading(&self, url: String) -> bool;
+
+    /// Handles a postMessage from the page's JavaScript context
+    fn handle_post_message(&self, path: String, msg: String);
+
+    /// Handles an HTTP request from the page
+    fn handle_request(&self, req: http::Request<Vec<u8>>) -> Option<http::Response<Vec<u8>>>;
+
+    /// Receive log from WebView
+    fn log(&self, path: &str, level: LogLevel, message: &str);
+}
+
+impl AppUiDelegate for MiniApp {
+    fn get_tab_bar_config(&self) -> Result<String, MiniAppError> {
+        // Read app.json and parse it using AppConfig
+        let app_config_value = self.read_json("app.json")?;
+        let app_config = MiniAppConfig::from_value(app_config_value)
+            .map_err(|e| MiniAppError::InvalidJsonFile(format!("app.json: {}", e)))?;
+
+        // Handle TabBar configuration
+        if let Some(tab_bar_json) = app_config.get_tabbar_json_with_base_path(&self.app_dir) {
+            // self.info("TabBar", &tab_bar_json);
+            Ok(tab_bar_json)
+        } else {
+            // TabBar is optional or invalid, return a valid empty tabbar JSON
+            Ok("{}".to_string())
+        }
+    }
+
+    fn get_page_config(&self, path: &str) -> Result<String, MiniAppError> {
+        // Handle different possible path formats:
+        // 1. "pages/home/index.html" -> "pages/home/index.json"
+        // 2. "pages/home/index" -> "pages/home/index.json"
+        // 3. "pages/home" -> "pages/home.json"
+        let page_config_path = if path.contains('.') {
+            // Has extension: replace it with .json
+            let pos = path.rfind('.').unwrap();
+            format!("{}.json", &path[0..pos])
+        } else {
+            // No extension: append .json
+            format!("{}.json", path)
+        };
+
+        // Try to read page-specific configuration first from the direct path
+        let result = self.read_json(&page_config_path);
+
+        // If that fails, try the legacy format: "pages/{path}/page.json"
+        let result = if result.is_err() && !path.starts_with("pages/") {
+            self.read_json(&format!("pages/{}/page.json", path))
+        } else {
+            result
+        };
+
+        // Process the configuration or use default
+        match result {
+            Ok(page_config_value) => {
+                let page_config = PageConfig::from_value(page_config_value).map_err(|e| {
+                    MiniAppError::InvalidJsonFile(format!("{}:{}", page_config_path, e))
+                })?;
+
+                serde_json::to_string(&page_config).map_err(|e| {
+                    MiniAppError::InvalidJsonFile(format!("Failed to serialize PageConfig: {}", e))
+                })
+            }
+            Err(_) => {
+                // Fallback to default page config
+                let default_config = PageConfig::default();
+                serde_json::to_string(&default_config).map_err(|e| {
+                    MiniAppError::InvalidJsonFile(format!(
+                        "Failed to serialize default PageConfig: {}",
+                        e
+                    ))
+                })
+            }
+        }
+    }
+
+    fn on_miniapp_opened(&self) {
+        // Log the app opening event
+        self.info("AppUiDelegate", format!("Mini app {} opened", self.appid));
+    }
+
+    fn on_miniapp_closed(&mut self) {
+        // Update last active time
+        self.last_active_time = Instant::now();
+
+        // Log the app closing event
+        self.info("AppUiDelegate", format!("Mini app {} closed", self.appid));
+    }
+
+    fn on_page_created(&mut self, path: String) {
+        let url = format!("lingxia://{}/{}", self.appid, path);
+
+        let page =
+            self.pages
+                .create_page(self.appid.clone(), path.clone(), self.controller.clone());
+
+        if let Err(e) = page.load_url(&url) {
+            self.error(&path, format!("Failed to load URL {}: {}", url, e));
+        }
+
+        #[cfg(debug_assertions)]
+        let _ = page.set_devtools(true);
+        self.info("AppUiDelegate", format!("Page {} created", path));
+    }
+
+    fn on_page_started(&self, _path: String) {
+        // TODO
+    }
+
+    fn on_page_finished(&self, _path: String) {
+        // TODO
+    }
+
+    fn on_page_show(&mut self, path: String) {
+        self.pages.navigate_to_page(path);
+    }
+
+    fn on_back_pressed(&mut self) -> bool {
+        self.info("AppUiDelegate", "Backbutton pressed");
+
+        // Try to pop the current page from the stack
+        if let Some(previous_page) = self.pages.pop_from_current_stack() {
+            // it's at top tab page
+            if self.config.is_initial_route(&previous_page)
+                || self.config.is_tab_page(&previous_page)
+            {
+                return false;
+            }
+
+            self.info(
+                "AppUiDelegate",
+                &format!("Popped page, switching back to: {}", previous_page),
+            );
+
+            // Request to switch to the previous page
+            if let Err(e) = switch_page(&self.controller, &self.appid, &previous_page) {
+                self.error(
+                    "AppUiDelegate",
+                    &format!("Failed to switch to page {}: {}", previous_page, e),
+                );
+            }
+
+            // Return true to indicate we handled the back press
+            true
+        } else {
+            // No page to pop, return false to allow default back behavior
+            false
+        }
+    }
+
+    // Determines whether to override URL loading in the page.
+    fn should_override_url_loading(&self, url: String) -> bool {
         // Extract scheme from URL
         let scheme = if let Some(scheme_end) = url.find("://") {
             &url[..scheme_end]
@@ -241,298 +606,231 @@ impl MiniApp {
         // Handle lingxia scheme or block non-https schemes
         match scheme {
             "lingxia" => true, // Always intercept lingxia scheme
-            "https" => false,  // Allow http/https URLs
+            "https" => false,  // Allow https URLs (they'll be checked in handle_request)
             _ => true,         // Block all other schemes
         }
     }
 
-    /// Handles a postMessage from the page's JavaScript context
-    pub fn handle_post_message(&self, appid: String, path: String, msg: String) {
-        self.info(&appid, format!("Handling message for WebView: {}", msg));
-
-        // First, parse the incoming string.
-        let message_value: Value = match serde_json::from_str(&msg) {
-            Ok(v) => v,
-            Err(e) => {
-                self.error(
-                    &appid,
-                    format!("Failed to parse message string: {}. Raw: '{}'", e, msg),
-                );
-                return;
-            }
-        };
-
-        // Check if the parsed value is itself a string (potential double stringification)
-        // If so, parse the inner string.
-        let message_obj = if let Some(inner_str) = message_value.as_str() {
-            self.info(&appid, "Message parsed as string, attempting inner parse.");
-            match serde_json::from_str(inner_str) {
-                Ok(v) => v,
-                Err(e) => {
-                    self.error(
-                        &appid,
-                        format!(
-                            "Failed to parse nested JSON string: {}. Inner: '{}'",
-                            e, inner_str
-                        ),
-                    );
-                    return;
-                }
-            }
-        } else {
-            // If not a string, assume it's the correct JSON structure.
-            message_value
-        };
-
-        // Ensure we ended up with a JSON object.
-        if !message_obj.is_object() {
-            self.error(
-                &appid,
-                format!("Parsed message is not a JSON object: {:?}", message_obj),
-            );
-            return;
-        }
-
-        // Now, safely extract the type from the object.
-        let message_type = message_obj.get("type").and_then(Value::as_str);
-        if message_type.is_none() {
-            self.error(
-                &appid,
-                format!(
-                    "Message type field is missing or not a string in object: {:?}",
-                    message_obj
-                ),
-            );
-            return;
-        }
-
-        match message_type.unwrap() {
-            "ipcReady" => {
-                self.info(
-                    &appid,
-                    format!(
-                        "WebView ({}/{}) signaled IPC ready. Sending PAGE_BACK structure.",
-                        appid, path
-                    ),
-                );
-
-                // Directly try to find the PageController and send the PAGE_BACK message structure
-                // This code block is moved from on_page_show and REPLACES the previous PAGE_LOAD sending block
-                if let Some(controller) = self.find_page_controller(&appid, &path) {
-                    // Construct the PAGE_BACK message structure
-                    let timestamp = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default() // Use default on error for simplicity in demo
-                        .as_secs();
-                    let message = serde_json::json!({
-                        "type": "PAGE_BACK",
-                        "data": {
-                            "timestamp": timestamp,
-                            "message": "Navigated back successfully (Sent on ipcReady)" // Adjust message for clarity
-                        }
-                    });
-
-                    match serde_json::to_string(&message) {
-                        Ok(message_string) => {
-                            self.info(
-                                &appid,
-                                format!(
-                                    "Sending PAGE_BACK structure message to {}/{}: {}",
-                                    appid, path, message_string
-                                ),
-                            );
-                            if let Err(e) = controller.post_message(&message_string) {
-                                self.error(&appid, format!("Failed to post PAGE_BACK structure message to controller for {}/{}: {}", appid, path, e));
-                            }
-                        }
-                        Err(e) => {
-                            self.error(
-                                &appid,
-                                format!(
-                                    "Failed to serialize PAGE_BACK structure message for {}/{}: {}",
-                                    appid, path, e
-                                ),
-                            );
-                        }
-                    }
-                } else {
-                    self.error(&appid, format!("Received ipcReady for {}/{} but could not find corresponding PageController to send PAGE_BACK structure.", appid, path));
-                }
-            }
-            "OPEN_MINIAPP" => {
-                self.info(&appid, "Handling OPEN_MINIAPP message");
-                if let Some(data) = message_obj.get("data") {
-                    // Use message_obj
-                    if let Some(app_id) = data.get("appId").and_then(Value::as_str) {
-                        let path = data.get("path").and_then(Value::as_str).unwrap_or("");
-                        if let Err(e) = self.runtime.open_miniapp(app_id, path) {
-                            self.error(&appid, format!("Failed to open miniapp: {}", e));
-                        }
-                    }
-                }
-            }
-            "NAVIGATE_TO" => {
-                self.info(&appid, "Handling NAVIGATE_TO message");
-                if let Some(data) = message_obj.get("data") {
-                    // Use message_obj
-                    if let Some(path) = data.get("path").and_then(Value::as_str) {
-                        if let Err(e) = self.runtime.switch_page(&appid, path) {
-                            self.error(&appid, format!("Failed to switch page to {}: {}", path, e));
-                        }
-                    } else {
-                        self.error(&appid, "NAVIGATE_TO message missing path data");
-                    }
-                } else {
-                    self.error(&appid, "NAVIGATE_TO message missing data field");
-                }
-            }
-            unknown_type => {
-                self.error(&appid, format!("Unknown message type: {}", unknown_type));
-            }
-        }
+    fn handle_post_message(&self, path: String, msg: String) {
+        self.info(&path, &msg);
     }
 
-    /// Handles an HTTP request from the page
-    pub fn handle_request(
-        &self,
-        _appid: String,
-        req: http::Request<Vec<u8>>,
-    ) -> Option<http::Response<Vec<u8>>> {
+    fn handle_request(&self, req: http::Request<Vec<u8>>) -> Option<http::Response<Vec<u8>>> {
         let uri = req.uri();
         let scheme = uri.scheme_str().unwrap_or("");
 
-        // Don't intercept http/https requests
-        if scheme == "http" || scheme == "https" {
-            return None;
-        }
+        // Use pattern matching for different URI schemes
+        match scheme {
+            // HTTPS requests - check domain whitelist and static resource types
+            "https" => self.https_handler(req),
 
-        // Handle different schemes
-        Some(match scheme {
-            "lingxia" => scheme::lingxia_handler(self.runtime.as_ref(), req),
-            _ => Response::builder()
-                .status(StatusCode::BAD_REQUEST)
-                .header("Content-Type", "text/plain")
-                .body(format!("Unknown scheme: {}", scheme).into_bytes())
-                .unwrap(),
-        })
-    }
+            // Lingxia scheme for internal app assets
+            "lingxia" => self.lingxia_handler(req),
 
-    /// Called when the page starts loading
-    pub fn on_page_started(&self, appid: String, path: String) {
-        // Find the corresponding controller
-        if let Some(controller) = self.find_page_controller(&appid, &path) {
-            // Get IPC script content and inject it
-            if let Err(e) = controller.evaluate_javascript(ipc::get_ipc_script()) {
-                self.error(&appid, e.to_string());
-            }
+            // Reject all other schemes with 400 Bad Request
+            _ => Some(
+                Response::builder()
+                    .status(StatusCode::BAD_REQUEST)
+                    .header("Content-Type", "text/plain")
+                    .body(format!("Unsupported scheme: {}", scheme).into_bytes())
+                    .unwrap(),
+            ),
         }
     }
 
-    /// Called when the page finishes loading
-    pub fn on_page_finished(&self, _appid: String, _path: String) {
-        // ... implementation ...
+    fn log(&self, path: &str, level: LogLevel, message: &str) {
+        self.write_log(path, level, LogTag::WebViewConsole, message);
+    }
+}
+
+// Global instance of MiniApps
+static MINIAPPS: OnceLock<RwLock<MiniApps>> = OnceLock::new();
+
+/// Initialize the MiniApps singleton
+/// Returns an Option of (home_app_id, initial_route) on success.
+pub fn init<T: AppController + 'static>(controller: T) -> Option<(String, String)> {
+    let controller_arc = Arc::new(controller);
+
+    // Prepare the directory structure
+    if let Err(e) = prepare_directory_structure(controller_arc.as_ref()) {
+        controller_arc.log(
+            "system",
+            LogLevel::Error,
+            &format!("Failed to prepare directory structure: {}", e),
+        );
+        return None;
     }
 
-    /// Called when the page showed in the view
-    pub fn on_page_show(&self, appid: String, path: String) {
-        self.info(&appid, format!("Page show: {}", path));
+    match AppConfig::load(controller_arc.as_ref()) {
+        Ok(config) => {
+            let home_mini_app_id = config.home_mini_app_id.clone();
 
-        // Mark the page as active when it's shown
-        if let Some(page_manager) = self.apps.get(&appid) {
-            let mut page_manager = page_manager.lock().unwrap();
-            page_manager.mark_active(&path);
-        }
-    }
+            // Check if the home mini app is installed
+            if !install::is_installed(controller_arc.as_ref(), &home_mini_app_id) {
+                let home_mini_app_version = &config.home_mini_app_version;
 
-    /// Handle back press event
-    /// Returns true if the event was handled, false otherwise
-    pub fn on_back_pressed(&self, app_id: &str) -> bool {
-        self.info(app_id, "Back pressed, closing mini app");
-
-        if let Some(page_manager_arc) = self.apps.get(app_id) {
-            let mut page_manager = page_manager_arc.lock().unwrap();
-            match page_manager.pop_from_current_stack() {
-                Some(previous_path) => {
-                    self.info(
-                        app_id,
-                        format!("Popped page, requesting switch back to: {}", previous_path),
+                // Copy home mini app files from assets and update version
+                if let Err(e) = install::install_home_miniapp(
+                    controller_arc.as_ref(),
+                    &home_mini_app_id,
+                    home_mini_app_version,
+                ) {
+                    controller_arc.log(
+                        "system",
+                        LogLevel::Error,
+                        &format!("Failed to install home mini app: {}", e),
                     );
-                    // Tell the platform to switch the view *without* changing the tab state
-                    if let Err(e) = self.runtime.switch_page(app_id, &previous_path) {
-                        self.error(
-                            app_id,
-                            format!(
-                                "Failed to request page switch back to {}: {}",
-                                previous_path, e
-                            ),
-                        );
-                        // Still considered handled as state was popped
-                    }
-                    true // Back press was handled by popping a page state
-                }
-                None => {
-                    self.error(app_id, "No page to pop from current stack");
-                    false
+                    return None;
                 }
             }
-        } else {
-            self.error(app_id, "No page manager found for the given app id");
-            false
+
+            // Now create the MiniApp instance and call setup
+            // new_as_home itself calls setup(), which loads its app.json.
+            let home_miniapp =
+                MiniApp::new_as_home(home_mini_app_id.clone(), controller_arc.clone());
+
+            // Get the initial route from the now-configured home_miniapp
+            let initial_route = home_miniapp.config.get_initial_route();
+
+            // Initialize MiniApps collection
+            let mut miniapps = MiniApps::new(controller_arc.clone());
+
+            // Wrap the home miniapp in Arc<RwLock<>> and add it to the collection
+            let home_miniapp_arc = Arc::new(RwLock::new(home_miniapp));
+
+            // Add home mini app to the collection
+            miniapps
+                .miniapps
+                .insert(home_mini_app_id.clone(), home_miniapp_arc);
+
+            if MINIAPPS.set(RwLock::new(miniapps)).is_err() {
+                controller_arc.log(
+                    "system",
+                    LogLevel::Error,
+                    "MiniApps singleton had been initialized by another instance",
+                );
+                None
+            } else {
+                controller_arc.log(
+                    "system",
+                    LogLevel::Info,
+                    "MiniApps initialized successfully",
+                );
+                Some((home_mini_app_id, initial_route))
+            }
         }
-    }
 
-    /// Get tab bar configuration for an app
-    pub fn get_tab_bar_config(&self, app_id: &str) -> Option<String> {
-        // Log the config request
-        self.info(app_id, format!("Getting TabBar config for: {}", app_id));
+        Err(e) => {
+            // Provide more detailed error messages for different error types
+            let error_message = match e {
+                MiniAppError::InvalidParameter(msg) => {
+                    format!("Configuration validation failed: {}", msg)
+                }
+                MiniAppError::InvalidJsonFile(msg) => {
+                    format!("Invalid app.json file: {}", msg)
+                }
+                MiniAppError::IoError(msg) => {
+                    format!("I/O error while reading configuration: {}", msg)
+                }
+                _ => format!("Failed to load app configuration: {}", e),
+            };
 
-        // For now, we're just returning the default configuration
-        // In the future, this could be customized per app and stored/retrieved from storage
-        Some(DEFAULT_TAB_BAR_CONFIG.to_string())
+            controller_arc.log("system", LogLevel::Error, &error_message);
+            None
+        }
     }
 }
 
-impl MiniApp {
-    /// Destroys the least active app
-    fn destroy_least_active_miniapp(&mut self) {
-        let least_active_appid = self
-            .last_active_times
-            .iter()
-            .min_by_key(|(_, time)| *time)
-            .map(|(appid, _)| appid.clone());
+/// Get or initialize a specific MiniApp instance by appid
+///
+/// This function provides a get-or-create semantic for MiniApp instances.
+/// If the MiniApp with the given appid exists, it returns a reference to it.
+/// If it doesn't exist, it creates a new one with default settings and returns a reference.
+///
+/// # Arguments
+/// * `appid` - The ID of the mini app to get or create
+///
+/// # Returns
+/// A thread-safe reference to the MiniAppUnit
+///
+/// # Panics
+/// Panics if `MiniApps` is not initialized
+pub fn get_or_init_miniapp(appid: String) -> Arc<RwLock<MiniApp>> {
+    let mut miniapps = MINIAPPS
+        .get()
+        .expect("MiniApps not initialized")
+        .write()
+        .unwrap();
 
-        if let Some(appid) = least_active_appid {
-            // Remove from both maps - PageManager's Drop trait will handle cleanup
-            self.apps.remove(&appid);
-            self.last_active_times.remove(&appid);
-        }
+    // If the miniapp already exists, return it directly
+    if let Some(app_arc) = miniapps.miniapps.get(&appid) {
+        return app_arc.clone();
     }
+
+    // Check if we've reached the maximum number of apps
+    if miniapps.miniapps.len() >= miniapps.max_apps {
+        // Destroy the least active app to make room
+        miniapps.destroy_least_active_miniapp();
+    }
+
+    let controller = miniapps.controller.clone();
+
+    // Create new MiniApp
+    let unit = MiniApp::new(appid.clone(), controller);
+    let app_arc = Arc::new(RwLock::new(unit));
+
+    // Insert into collection and return
+    miniapps.miniapps.insert(appid, app_arc.clone());
+    app_arc
 }
 
-// Default TabBar configuration used for testing and development
-const DEFAULT_TAB_BAR_CONFIG: &str = r##"{
-    "backgroundColor": "#ffffff",
-    "selectedColor": "#1677ff",
-    "borderStyle": "#f0f0f0",
-    "list": [
-        {
-            "text": "首页",
-            "pagePath": "pages/home/index.html",
-            "iconPath": "assets/home.png",
-            "selectedIconPath": "assets/home_selected.png",
-            "selected": true
-        },
-        {
-            "text": "消息",
-            "pagePath": "pages/message/index.html",
-            "iconPath": "assets/message.png",
-            "selectedIconPath": "assets/message_selected.png"
-        },
-        {
-            "text": "我的",
-            "pagePath": "pages/profile/index.html",
-            "iconPath": "assets/profile.png",
-            "selectedIconPath": "assets/profile_selected.png"
-        }
-    ]
-}"##;
+/// Uninstall a mini app by removing its files and version record
+///
+/// This function uninstalls a specified mini app, removing all its files and data.
+/// It protects the home mini app from being uninstalled.
+///
+/// # Arguments
+/// * `appid` - The ID of the mini app to uninstall
+///
+/// # Returns
+/// * `Ok(())` - If the mini app was uninstalled successfully
+/// * `Err(MiniAppError)` - If there was an error during uninstallation
+///
+/// # Panics
+/// Panics if `MiniApps` is not initialized
+pub fn uninstall_miniapp(appid: &str) -> Result<(), MiniAppError> {
+    let miniapps = MINIAPPS
+        .get()
+        .expect("MiniApps not initialized")
+        .read()
+        .unwrap();
+
+    // Get controller to log operation
+    let controller = miniapps.controller.clone();
+    controller.log(
+        "system",
+        LogLevel::Info,
+        &format!("Uninstalling mini app: {}", appid),
+    );
+
+    // Get or create the miniapp instance
+    let app_arc = get_or_init_miniapp(appid.to_string());
+
+    // Call the uninstall method on the MiniApp instance
+    let result = app_arc.write().unwrap().uninstall();
+
+    // If successful, remove the app from the collection
+    if result.is_ok() {
+        // Drop read lock and acquire write lock to modify collection
+        drop(miniapps);
+        let mut miniapps_write = MINIAPPS
+            .get()
+            .expect("MiniApps not initialized")
+            .write()
+            .unwrap();
+
+        miniapps_write.miniapps.remove(appid);
+    }
+
+    result
+}

@@ -1,5 +1,6 @@
-use super::platform::Platform;
+use super::app::App;
 use super::webview::WebView;
+use crate::controller::Controller;
 use android_logger::Config;
 use http;
 use http::header::{HeaderMap, HeaderName, HeaderValue};
@@ -8,72 +9,51 @@ use jni::objects::{JClass, JObject, JString};
 use jni::sys::jint;
 use jni::{JNIEnv, JavaVM};
 use log::{error, info};
-use miniapp::log::{LogLevel, LogTag, Logging};
+use miniapp::AppUiDelegate;
+use miniapp::log::LogLevel;
 use serde_json;
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, OnceLock, mpsc};
 
-pub static JAVA_VM: OnceLock<Arc<JavaVM>> = OnceLock::new();
+pub static JAVA_VM: OnceLock<JavaVM> = OnceLock::new();
 
 /// Java class name for MiniApp
 pub(crate) const CLASS_MINIAPP: &str = "com/lingxia/miniapp/MiniApp";
-
-// Store the main thread's JNIEnv
-thread_local! {
-    static MAIN_THREAD_ID: OnceLock<std::thread::ThreadId> = OnceLock::new();
-}
 
 #[unsafe(no_mangle)]
 pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> jint {
     android_logger::init_once(
         Config::default()
             .with_max_level(log::LevelFilter::Debug)
-            .with_tag("RustNative"),
+            .with_tag("Rust"),
     );
 
     // Store JavaVM globally
-    let _ = JAVA_VM.set(Arc::new(vm));
-
-    // Store the main thread ID
-    MAIN_THREAD_ID.with(|id| {
-        let _ = id.set(std::thread::current().id());
-    });
+    let _ = JAVA_VM.set(vm);
 
     info!("Rust library loaded successfully");
     jni::sys::JNI_VERSION_1_6
 }
 
 // Helper function to get JNIEnv for current thread
-pub(crate) fn get_env() -> Result<JNIEnv<'static>, Box<dyn std::error::Error>> {
+// IMPORTANT: This should only be called from the UI thread that was attached to the JVM by Controller::run
+pub(crate) fn get_env() -> Option<JNIEnv<'static>> {
     let vm = match JAVA_VM.get() {
-        Some(vm) => vm.clone(),
+        Some(vm) => vm,
         None => {
             error!("JavaVM not initialized");
-            return Err("JavaVM not initialized".into());
+            return None;
         }
     };
 
-    // Check if we're on the main thread
-    let is_main_thread = MAIN_THREAD_ID.with(|id| {
-        id.get()
-            .map(|main_id| main_id == &std::thread::current().id())
-            .unwrap_or(false)
-    });
-
-    let env_result = if is_main_thread {
-        // If we're on the main thread, get the env
-        unsafe { vm.get_env().and_then(|e| JNIEnv::from_raw(e.get_raw())) }
-    } else {
-        // If we're not on the main thread, attach to get a new env
-        unsafe {
-            vm.attach_current_thread()
-                .and_then(|e| JNIEnv::from_raw(e.get_raw()))
+    // Only get the environment if the thread is already attached
+    // This ensures get_env() is only used by the UI thread that was attached in Controller::run
+    match vm.get_env() {
+        Ok(env) => unsafe { JNIEnv::from_raw(env.get_raw()).ok() },
+        Err(_) => {
+            error!("current thread requires JVM");
+            None
         }
-    };
-
-    env_result.map_err(|e| {
-        error!("JNI error: {:?}", e);
-        e.into()
-    })
+    }
 }
 
 #[unsafe(no_mangle)]
@@ -83,47 +63,100 @@ pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeOnMiniAppInited(
     data_dir: JString,
     cache_dir: JString,
     asset_manager: JObject,
-) -> jint {
-    // Get the native AAssetManager pointer from the passed Java object
+) -> jni::sys::jstring {
     let data_dir = env.get_string(&data_dir).unwrap().into();
     let cache_dir = env.get_string(&cache_dir).unwrap().into();
 
-    let platform = match Platform::from_java(
-        env.get_native_interface() as *mut jni::sys::JNIEnv,
-        asset_manager.as_raw(),
-        data_dir,
-        cache_dir,
-    ) {
-        Ok(platform) => platform,
-        Err(e) => {
-            error!("Failed to create Platform: {}", e);
-            return -1;
+    let app = match App::from_java(&mut env, asset_manager.as_raw(), data_dir, cache_dir) {
+        Ok(app) => app,
+        Err(_) => {
+            return JObject::null().into_raw();
         }
     };
 
-    // Initialize MiniApp
-    miniapp::init(Box::new(platform));
+    // Create a channel to receive the result from the closure
+    let (tx, rx) = mpsc::channel::<Option<(String, String)>>();
 
-    0
+    if !Controller::run(
+        move |controller| -> bool {
+            let jvm = JAVA_VM.get().unwrap();
+
+            // Use attach_current_thread_as_daemon to ensure the attached state persists
+            if let Err(e) = jvm.attach_current_thread_as_daemon() {
+                error!("Failed to attach UI thread to JVM: {:?}", e);
+                let _ = tx.send(None);
+                return false;
+            }
+
+            let result_option = miniapp::init(controller);
+
+            // Send the result back to the main thread
+            if tx.send(result_option).is_err() {
+                error!("Failed to send init result: Receiver dropped?");
+            }
+
+            true
+        },
+        app,
+    ) {
+        error!("Controller::run reported failure (returned false).");
+        let _ = rx.recv(); // Consume potential message to avoid blocking later if logic changes
+        return JObject::null().into_raw();
+    }
+
+    let final_init_details = match rx.recv() {
+        Ok(details_option) => details_option,
+        Err(e) => {
+            error!(
+                "Failed to receive result from channel (sender dropped?): {}",
+                e
+            );
+            None
+        }
+    };
+
+    // Format and return the result
+    match final_init_details {
+        Some((home_app_id, initial_route)) => {
+            let combined_details = format!("{}:{}", home_app_id, initial_route);
+            match env.new_string(&combined_details) {
+                Ok(java_string) => java_string.into_raw(),
+                Err(_) => JObject::null().into_raw(),
+            }
+        }
+        None => {
+            error!("Failed to obtain MiniApp home app details during initialization.");
+            JObject::null().into_raw()
+        }
+    }
 }
 
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnWebViewCreated(
     mut env: JNIEnv,
     _class: JClass,
-    app_id: JString,
+    appid: JString,
     path: JString,
     java_webview: JObject,
 ) -> jint {
-    let app_id: String = env.get_string(&app_id).unwrap().into();
+    let appid: String = env.get_string(&appid).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
 
     // Create WebView
-    let webview = WebView::from_java(java_webview, app_id.clone(), path.clone());
+    let webview = WebView::from_java(java_webview, appid.clone(), path.clone());
+
+    // Add WebView to Controller
+    if let Some(controller) = Controller::get() {
+        if controller.put_webview(appid.clone(), path.clone(), Arc::new(webview)) {
+            info!("WebView added to Controller for {}/{}", appid, path);
+        } else {
+            error!("Failed to add WebView to Controller");
+        }
+    }
 
     // Notify miniapp about page creation with the WebView controller
-    if let Ok(mut miniapp) = miniapp::get().lock() {
-        miniapp.on_page_created(app_id, path, Arc::new(webview));
+    if let Ok(mut miniapp) = miniapp::get_or_init_miniapp(appid).write() {
+        miniapp.on_page_created(path);
     }
     0
 }
@@ -132,16 +165,16 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnWebViewCreated(
 pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeHandlePostMessage(
     mut env: JNIEnv,
     _class: JClass,
-    app_id: JString,
+    appid: JString,
     path: JString,
     message: JString,
 ) -> jint {
-    let app_id: String = env.get_string(&app_id).unwrap().into();
+    let appid: String = env.get_string(&appid).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
     let message: String = env.get_string(&message).unwrap().into();
 
-    if let Ok(miniapp) = miniapp::get().lock() {
-        miniapp.handle_post_message(app_id, path, message);
+    if let Ok(miniapp) = miniapp::get_or_init_miniapp(appid.clone()).read() {
+        miniapp.handle_post_message(path, message);
         0
     } else {
         -1
@@ -152,14 +185,14 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeHandlePostMessage(
 pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnPageStarted(
     mut env: JNIEnv,
     _class: JClass,
-    app_id: JString,
+    appid: JString,
     path: JString,
 ) -> jint {
-    let app_id: String = env.get_string(&app_id).unwrap().into();
+    let appid: String = env.get_string(&appid).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
 
-    if let Ok(miniapp) = miniapp::get().lock() {
-        miniapp.on_page_started(app_id, path);
+    if let Ok(miniapp) = miniapp::get_or_init_miniapp(appid).read() {
+        miniapp.on_page_started(path);
     }
     0
 }
@@ -168,14 +201,14 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnPageStarted(
 pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnPageFinished(
     mut env: JNIEnv,
     _class: JClass,
-    app_id: JString,
+    appid: JString,
     path: JString,
 ) -> jint {
-    let app_id: String = env.get_string(&app_id).unwrap().into();
+    let appid: String = env.get_string(&appid).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
 
-    if let Ok(miniapp) = miniapp::get().lock() {
-        miniapp.on_page_finished(app_id, path);
+    if let Ok(miniapp) = miniapp::get_or_init_miniapp(appid).read() {
+        miniapp.on_page_finished(path);
     }
     0
 }
@@ -184,14 +217,14 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnPageFinished(
 pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnPageShow(
     mut env: JNIEnv,
     _class: JClass,
-    app_id: JString,
+    appid: JString,
     path: JString,
 ) {
-    let app_id: String = env.get_string(&app_id).unwrap().into();
+    let appid: String = env.get_string(&appid).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
 
-    if let Ok(miniapp) = miniapp::get().lock() {
-        miniapp.on_page_show(app_id, path);
+    if let Ok(mut miniapp) = miniapp::get_or_init_miniapp(appid).write() {
+        miniapp.on_page_show(path);
     }
 }
 
@@ -199,17 +232,17 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnPageShow(
 pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeShouldOverrideUrlLoading(
     mut env: JNIEnv,
     _class: JClass,
-    app_id: JString,
+    appid: JString,
     url: JString,
 ) -> jint {
-    let app_id: String = env.get_string(&app_id).unwrap().into();
+    let appid: String = env.get_string(&appid).unwrap().into();
     let url: String = env.get_string(&url).unwrap().into();
 
     // Get the miniapp instance and check if we should override the URL
-    miniapp::get()
-        .lock()
+    miniapp::get_or_init_miniapp(appid.clone())
+        .read()
         .map(|miniapp| {
-            if miniapp.should_override_url_loading(app_id, url) {
+            if miniapp.should_override_url_loading(url) {
                 1
             } else {
                 0
@@ -222,40 +255,30 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeShouldOverrideUrlL
 pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeGetExistingWebView<'a>(
     mut env: JNIEnv<'a>,
     _class: JClass<'a>,
-    app_id: JString<'a>,
+    appid: JString<'a>,
     path: JString<'a>,
 ) -> JObject<'a> {
-    let app_id: String = env.get_string(&app_id).unwrap().into();
+    let appid: String = env.get_string(&appid).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
 
-    // Get the miniapp instance and find the page controller
-    match miniapp::get().lock() {
-        Ok(miniapp) => {
-            if let Some(controller) = miniapp.find_page_controller(&app_id, &path) {
-                // Since we're in Android crate, we know this must be a WebView
-                let controller_ref = controller.as_ref();
-                if let Some(webview) = controller_ref.as_any().downcast_ref::<WebView>() {
-                    // Create a new local reference to the Java WebView object
-                    match env.new_local_ref(webview.get_java_webview()) {
-                        Ok(local_ref) => unsafe { JObject::from_raw(local_ref.into_raw()) },
-                        Err(e) => {
-                            error!("Failed to create local reference to WebView: {:?}", e);
-                            JObject::null()
-                        }
-                    }
-                } else {
-                    error!("PageController is not a WebView");
+    // Get the controller and try to find the WebView
+    if let Some(controller) = Controller::get() {
+        if let Some(webview_rc) = controller.get_webview(&appid, &path) {
+            // Create a new local reference to the Java WebView object
+            match env.new_local_ref(webview_rc.get_java_webview()) {
+                Ok(local_ref) => unsafe { JObject::from_raw(local_ref.into_raw()) },
+                Err(e) => {
+                    error!("Failed to create local reference to WebView: {:?}", e);
                     JObject::null()
                 }
-            } else {
-                // No page controller found
-                JObject::null()
             }
-        }
-        Err(e) => {
-            error!("Failed to get miniapp instance: {:?}", e);
+        } else {
+            // No WebView found for this appid/path
             JObject::null()
         }
+    } else {
+        error!("Controller not initialized");
+        JObject::null()
     }
 }
 
@@ -263,13 +286,13 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeGetExistingWebView
 pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeHandleRequest<'a>(
     mut env: JNIEnv<'a>,
     _class: JClass<'a>,
-    app_id: JString<'a>,
+    appid: JString<'a>,
     url: JString<'a>,
     method: JString<'a>,
     headers: JString<'a>,
 ) -> JObject<'a> {
     // Convert Java strings to Rust strings
-    let app_id: String = env.get_string(&app_id).unwrap().into();
+    let appid: String = env.get_string(&appid).unwrap().into();
     let url_str: String = env.get_string(&url).unwrap().into();
     let method_str: String = env.get_string(&method).unwrap().into();
     let headers_str: String = env.get_string(&headers).unwrap().into();
@@ -311,9 +334,9 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeHandleRequest<'a>(
     };
 
     // Handle request and convert response
-    match miniapp::get().lock() {
+    match miniapp::get_or_init_miniapp(appid.clone()).read() {
         Ok(miniapp) => {
-            if let Some(response) = miniapp.handle_request(app_id, request) {
+            if let Some(response) = miniapp.handle_request(request) {
                 create_java_response(&mut env, response)
             } else {
                 JObject::null()
@@ -416,12 +439,12 @@ fn create_java_response<'a>(env: &mut JNIEnv<'a>, response: Response<Vec<u8>>) -
 pub extern "system" fn Java_com_lingxia_miniapp_MiniAppActivity_nativeOnMiniAppClosed(
     mut env: JNIEnv,
     _class: JClass,
-    app_id: JString,
+    appid: JString,
 ) -> jint {
-    let app_id: String = env.get_string(&app_id).unwrap().into();
+    let appid: String = env.get_string(&appid).unwrap().into();
 
-    if let Ok(mut miniapp) = miniapp::get().lock() {
-        miniapp.on_miniapp_closed(app_id);
+    if let Ok(mut miniapp) = miniapp::get_or_init_miniapp(appid.clone()).write() {
+        miniapp.on_miniapp_closed();
     };
     0
 }
@@ -430,22 +453,26 @@ pub extern "system" fn Java_com_lingxia_miniapp_MiniAppActivity_nativeOnMiniAppC
 pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnConsoleMessage(
     mut env: JNIEnv,
     _class: JClass,
-    app_id: JString,
+    appid: JString,
+    path: JString,
     level: jint,
     message: JString,
 ) -> jint {
-    let app_id: String = env.get_string(&app_id).unwrap().into();
+    let appid: String = env.get_string(&appid).unwrap().into();
+    let path: String = env.get_string(&path).unwrap().into();
     let message: String = env.get_string(&message).unwrap().into();
 
-    if let Ok(miniapp) = miniapp::get().lock() {
-        match level {
-            2 => miniapp.log(LogLevel::Verbose, &app_id, LogTag::WebViewConsole, message), // VERBOSE
-            3 => miniapp.log(LogLevel::Debug, &app_id, LogTag::WebViewConsole, message),   // DEBUG
-            4 => miniapp.log(LogLevel::Info, &app_id, LogTag::WebViewConsole, message),    // INFO
-            5 => miniapp.log(LogLevel::Warn, &app_id, LogTag::WebViewConsole, message),    // WARN
-            6 => miniapp.log(LogLevel::Error, &app_id, LogTag::WebViewConsole, message),   // ERROR
-            _ => miniapp.log(LogLevel::Info, &app_id, LogTag::WebViewConsole, message), // Default to INFO
-        }
+    if let Ok(miniapp) = miniapp::get_or_init_miniapp(appid.clone()).read() {
+        let log_level = match level {
+            2 => LogLevel::Verbose, // VERBOSE
+            3 => LogLevel::Debug,   // DEBUG
+            4 => LogLevel::Info,    // INFO
+            5 => LogLevel::Warn,    // WARN
+            6 => LogLevel::Error,   // ERROR
+            _ => LogLevel::Info,    // Default to INFO
+        };
+
+        miniapp.log(&path, log_level, &message);
         1
     } else {
         0
@@ -456,16 +483,16 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnConsoleMessage(
 pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeGetPageConfig<'a>(
     mut env: JNIEnv<'a>,
     _class: JClass<'a>,
-    app_id: JString<'a>,
+    appid: JString<'a>,
     path: JString<'a>,
 ) -> JObject<'a> {
-    let app_id: String = env.get_string(&app_id).unwrap().into();
+    let appid: String = env.get_string(&appid).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
 
     // Get the miniapp instance and get page config
-    match miniapp::get().lock() {
+    match miniapp::get_or_init_miniapp(appid).read() {
         Ok(miniapp) => {
-            if let Some(json) = miniapp.get_page_config(&app_id, &path) {
+            if let Ok(json) = miniapp.get_page_config(&path) {
                 // Create Java string from JSON
                 if let Ok(java_string) = env.new_string(&json) {
                     return java_string.into();
@@ -481,15 +508,11 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeGetPageConfig<'a>(
 pub extern "C" fn Java_com_lingxia_miniapp_MiniAppActivity_nativeOnBackPressed(
     mut env: JNIEnv,
     _class: JClass,
-    app_id: JString,
+    appid: JString,
 ) -> jint {
-    let app_id: String = env.get_string(&app_id).unwrap().into();
-    if let Ok(miniapp) = miniapp::get().lock() {
-        if miniapp.on_back_pressed(&app_id) {
-            1
-        } else {
-            0
-        }
+    let appid: String = env.get_string(&appid).unwrap().into();
+    if let Ok(mut miniapp) = miniapp::get_or_init_miniapp(appid).write() {
+        if miniapp.on_back_pressed() { 1 } else { 0 }
     } else {
         0
     }
@@ -500,12 +523,12 @@ pub extern "C" fn Java_com_lingxia_miniapp_MiniAppActivity_nativeOnBackPressed(
 pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeOnMiniAppOpened(
     mut env: JNIEnv,
     _class: JClass,
-    app_id: JString,
+    appid: JString,
 ) -> jint {
-    let app_id: String = env.get_string(&app_id).unwrap().into();
+    let appid: String = env.get_string(&appid).unwrap().into();
 
-    if let Ok(mut miniapp) = miniapp::get().lock() {
-        miniapp.on_miniapp_opened(app_id);
+    if let Ok(miniapp) = miniapp::get_or_init_miniapp(appid.clone()).write() {
+        miniapp.on_miniapp_opened();
     };
     0
 }
@@ -515,13 +538,13 @@ pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeOnMiniAppOpened(
 pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeGetTabBarConfig(
     mut env: JNIEnv,
     _class: JClass,
-    app_id: JString,
+    appid: JString,
 ) -> jni::sys::jobject {
-    let app_id: String = env.get_string(&app_id).unwrap().into();
+    let appid: String = env.get_string(&appid).unwrap().into();
 
-    if let Ok(miniapp) = miniapp::get().lock() {
-        if let Some(config) = miniapp.get_tab_bar_config(&app_id) {
-            if let Ok(result) = env.new_string(config) {
+    if let Ok(miniapp) = miniapp::get_or_init_miniapp(appid).read() {
+        if let Ok(config) = miniapp.get_tab_bar_config() {
+            if let Ok(result) = env.new_string(&config) {
                 return result.into_raw();
             }
         }
@@ -529,4 +552,3 @@ pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeGetTabBarConfig(
 
     JObject::null().into_raw()
 }
-

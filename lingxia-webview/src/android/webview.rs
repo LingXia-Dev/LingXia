@@ -1,43 +1,24 @@
 use crate::android::get_env;
 use jni::objects::{GlobalRef, JObject, JValue};
-#[cfg(debug_assertions)]
-use log::info;
-use miniapp::PageController;
-use std::any::Any;
+use miniapp::{MiniAppError, WebViewController};
 
+#[derive(Clone)]
 pub struct WebView {
-    #[cfg(debug_assertions)]
-    app_id: String,
-    #[cfg(debug_assertions)]
-    path: String,
     java_webview: GlobalRef,
 }
 
 impl Drop for WebView {
     fn drop(&mut self) {
-        #[cfg(debug_assertions)]
-        info!(
-            "Dropping WebView for appId: {}, path: {}",
-            self.app_id, self.path
-        );
-
+        log::info!("destroying webview by Drop");
         let _ = self.destroy_webview();
     }
 }
 
 impl WebView {
-    pub(crate) fn from_java(java_webview: JObject, _app_id: String, _path: String) -> Self {
+    pub(crate) fn from_java(java_webview: JObject, _appid: String, _path: String) -> Self {
         let env = get_env().unwrap();
         let java_webview = env.new_global_ref(java_webview).unwrap();
 
-        #[cfg(debug_assertions)]
-        return WebView {
-            app_id: _app_id,
-            path: _path,
-            java_webview,
-        };
-
-        #[cfg(not(debug_assertions))]
         return WebView { java_webview };
     }
 
@@ -46,50 +27,49 @@ impl WebView {
     }
 
     fn destroy_webview(&self) {
-        if let Ok(mut env) = get_env() {
-            let _ = env.call_method(self.java_webview.as_obj(), "destroy", "()V", &[]);
-        }
+        let mut env = get_env().unwrap();
+        let _ = env.call_method(self.java_webview.as_obj(), "destroy", "()V", &[]);
     }
 }
 
-impl PageController for WebView {
-    fn load_url(&self, url: String) -> bool {
-        let mut env = match get_env() {
-            Ok(env) => env,
-            Err(_) => return false,
-        };
+impl WebViewController for WebView {
+    fn load_url(&self, url: &str) -> Result<(), MiniAppError> {
+        let mut env = get_env().unwrap();
 
-        match env.new_string(&url) {
-            Ok(url_string) => env
-                .call_method(
+        match env.new_string(url) {
+            Ok(url_string) => {
+                let result = env.call_method(
                     self.java_webview.as_obj(),
                     "loadUrl",
                     "(Ljava/lang/String;)V",
                     &[JValue::Object(&url_string)],
-                )
-                .is_ok(),
-            Err(_) => false,
+                );
+
+                if result.is_ok() {
+                    Ok(())
+                } else {
+                    Err(MiniAppError::WebView("Failed to load URL".to_string()))
+                }
+            }
+            Err(_) => Err(MiniAppError::WebView(
+                "Failed to create Java string".to_string(),
+            )),
         }
     }
 
-    fn setup_ua(&self, ua: &str) {
-        let Ok(mut env) = get_env() else { return };
+    fn evaluate_javascript(&self, js: &str) -> Result<(), MiniAppError> {
+        let mut env = get_env().unwrap();
 
-        if let Ok(ua_string) = env.new_string(ua) {
-            let _ = env.call_method(
-                self.java_webview.as_obj(),
-                "setUserAgent",
-                "(Ljava/lang/String;)V",
-                &[JValue::Object(&ua_string)],
-            );
-        }
-    }
+        let script_string = match env.new_string(js) {
+            Ok(s) => s,
+            Err(_) => {
+                return Err(MiniAppError::WebView(
+                    "Failed to create Java string".to_string(),
+                ));
+            }
+        };
 
-    fn evaluate_javascript(&self, js: &str) -> Result<(), Box<dyn std::error::Error>> {
-        let mut env = get_env()?;
-
-        let script_string = env.new_string(js)?;
-        env.call_method(
+        let result = env.call_method(
             self.java_webview.as_obj(),
             "evaluateJavascript",
             "(Ljava/lang/String;Landroid/webkit/ValueCallback;)V",
@@ -97,45 +77,105 @@ impl PageController for WebView {
                 JValue::Object(&script_string),
                 JValue::Object(&JObject::null()),
             ],
-        )?;
+        );
 
-        Ok(())
+        if result.is_ok() {
+            Ok(())
+        } else {
+            Err(MiniAppError::WebView(
+                "JavaScript evaluation failed".to_string(),
+            ))
+        }
     }
 
-    fn clear_browsing_data(&self) {
-        let Ok(mut env) = get_env() else { return };
+    fn clear_browsing_data(&self) -> Result<(), MiniAppError> {
+        let mut env = get_env().unwrap();
+        let result = env.call_method(self.java_webview.as_obj(), "clearBrowsingData", "()V", &[]);
 
-        let _ = env.call_method(self.java_webview.as_obj(), "clearBrowsingData", "()V", &[]);
+        if result.is_ok() {
+            Ok(())
+        } else {
+            Err(MiniAppError::WebView(
+                "Failed to clear browsing data".to_string(),
+            ))
+        }
     }
 
-    fn set_devtools(&self, enabled: bool) -> bool {
-        let Ok(mut env) = get_env() else { return false };
+    fn set_devtools(&self, enabled: bool) -> Result<(), MiniAppError> {
+        let mut env = get_env().unwrap();
 
         match env.find_class("android/webkit/WebView") {
-            Ok(webview_class) => env
-                .call_static_method(
+            Ok(webview_class) => {
+                let result = env.call_static_method(
                     webview_class,
                     "setWebContentsDebuggingEnabled",
                     "(Z)V",
                     &[JValue::Bool(enabled as u8)],
-                )
-                .is_ok(),
-            Err(_) => false,
+                );
+
+                if result.is_ok() {
+                    Ok(())
+                } else {
+                    Err(MiniAppError::WebView("Failed to set devtools".to_string()))
+                }
+            }
+            Err(_) => Err(MiniAppError::WebView(
+                "Failed to find WebView class".to_string(),
+            )),
         }
     }
 
-    fn post_message(&self, message: &str) -> Result<(), Box<dyn std::error::Error>> {
-        let mut env = get_env()?;
-        env.call_method(
+    fn post_message(&self, message: &str) -> Result<(), MiniAppError> {
+        let mut env = get_env().unwrap();
+
+        let msg_string = match env.new_string(message) {
+            Ok(s) => s,
+            Err(_) => {
+                return Err(MiniAppError::WebView(
+                    "Failed to create Java string".to_string(),
+                ));
+            }
+        };
+
+        let result = env.call_method(
             self.java_webview.as_obj(),
             "postMessageToWebView",
             "(Ljava/lang/String;)V",
-            &[JValue::Object(&env.new_string(message)?.into())],
-        )?;
-        Ok(())
+            &[JValue::Object(&msg_string)],
+        );
+
+        if result.is_ok() {
+            Ok(())
+        } else {
+            Err(MiniAppError::WebView("Failed to post message".to_string()))
+        }
     }
 
-    fn as_any(&self) -> &dyn Any {
-        self
+    fn set_user_agent(&self, ua: &str) -> Result<(), MiniAppError> {
+        let mut env = get_env().unwrap();
+
+        let ua_string = match env.new_string(ua) {
+            Ok(s) => s,
+            Err(_) => {
+                return Err(MiniAppError::WebView(
+                    "Failed to create Java string".to_string(),
+                ));
+            }
+        };
+
+        let result = env.call_method(
+            self.java_webview.as_obj(),
+            "setUserAgent",
+            "(Ljava/lang/String;)V",
+            &[JValue::Object(&ua_string)],
+        );
+
+        if result.is_ok() {
+            Ok(())
+        } else {
+            Err(MiniAppError::WebView(
+                "Failed to set user agent".to_string(),
+            ))
+        }
     }
 }

@@ -265,7 +265,7 @@ class WebView @JvmOverloads constructor(
                     else -> 4  // Default to INFO
                 }
 
-                nativeOnConsoleMessage(appId ?: return true, level, message.message())
+                nativeOnConsoleMessage(appId ?: return true, currentPath ?: return true, level, message.message())
                 return true
             }
 
@@ -446,7 +446,7 @@ class WebView @JvmOverloads constructor(
     fun resume() {
         val callStackTrace = Exception("Resume call stack trace").stackTraceToString()
         Log.d(TAG, "Resuming WebView operations, appId=$appId, path=$currentPath, isFirstLoad=$isFirstLoad, pageLoaded=$pageLoaded, showEventSent=$showEventSent")
-        Log.d(TAG, "Resume called from: $callStackTrace")
+        // Log.d(TAG, "Resume called from: $callStackTrace")
 
         onResume()
 
@@ -602,6 +602,6 @@ class WebView @JvmOverloads constructor(
         method: String,
         headers: String
     ): WebResourceResponseData?
-    private external fun nativeOnConsoleMessage(appId: String, level: Int, message: String):Int
+    private external fun nativeOnConsoleMessage(appId: String, path:String, level: Int, message: String):Int
     private external fun nativeGetPageConfig(appId: String, path: String): String?  // Returns JSON string of page config
 }
