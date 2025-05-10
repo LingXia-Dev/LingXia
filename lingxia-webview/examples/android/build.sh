@@ -73,7 +73,7 @@ adb shell am start -n "$APP_PACKAGE/$MAIN_ACTIVITY"
 
 # Show logs directly in terminal
 echo "Showing logs (will auto-stop after 1 minute)..."
-adb logcat -v time RustNative:I WebView:D *:S &
+adb logcat -v time Rust:I WebView:D *:S &
 LOGCAT_PID=$!
 
 # Wait for 1 minute then kill logcat and exit
