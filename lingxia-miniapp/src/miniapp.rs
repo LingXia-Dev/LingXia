@@ -458,13 +458,8 @@ pub trait AppUiDelegate {
 
 impl AppUiDelegate for MiniApp {
     fn get_tab_bar_config(&self) -> Result<String, MiniAppError> {
-        // Read app.json and parse it using AppConfig
-        let app_config_value = self.read_json("app.json")?;
-        let app_config = MiniAppConfig::from_value(app_config_value)
-            .map_err(|e| MiniAppError::InvalidJsonFile(format!("app.json: {}", e)))?;
-
         // Handle TabBar configuration
-        if let Some(tab_bar_json) = app_config.get_tabbar_json_with_base_path(&self.app_dir) {
+        if let Some(tab_bar_json) = self.config.get_tabbar_json_with_base_path(&self.app_dir) {
             // self.info("TabBar", &tab_bar_json);
             Ok(tab_bar_json)
         } else {
@@ -552,9 +547,7 @@ impl AppUiDelegate for MiniApp {
 
         // Enable devtools if debug mode is enabled in config
         let devtools_result = if debug_enabled {
-            let x = page.set_devtools(true);
-            self.info("AppUiDelegate", "set devtools");
-            x
+            page.set_devtools(true)
         } else {
             Ok(())
         };
