@@ -11,6 +11,10 @@ pub(crate) struct MiniAppConfig {
 
     /// Tab bar configuration
     pub tabBar: Option<TabBar>,
+
+    /// Debug mode - when true, developer tools will be enabled for all pages
+    #[serde(default)]
+    pub debug: bool,
 }
 
 impl MiniAppConfig {
@@ -25,6 +29,11 @@ impl MiniAppConfig {
             .first()
             .cloned()
             .unwrap_or("PagesEmpty".to_string())
+    }
+
+    /// Check if debug mode is enabled
+    pub fn is_debug_enabled(&self) -> bool {
+        self.debug
     }
 
     /// Check if a path is a tab page

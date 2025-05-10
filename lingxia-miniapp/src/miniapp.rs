@@ -534,18 +534,39 @@ impl AppUiDelegate for MiniApp {
     }
 
     fn on_page_created(&mut self, path: String) {
-        let url = format!("lingxia://{}/{}", self.appid, path);
+        let url = format!("lingxia://{}/{}", self.appid, path.clone());
+        let appid_clone = self.appid.clone();
+        let controller_clone = self.controller.clone();
 
-        let page =
-            self.pages
-                .create_page(self.appid.clone(), path.clone(), self.controller.clone());
+        // Create the page first
+        let page = self
+            .pages
+            .create_page(appid_clone, path.clone(), controller_clone);
 
-        if let Err(e) = page.load_url(&url) {
+        // Store the result of loading the URL
+        let url_load_result = page.load_url(&url);
+
+        // Check if debug mode is enabled in the app config
+        let debug_enabled = self.config.is_debug_enabled();
+
+        // Enable devtools if debug mode is enabled in config
+        let devtools_result = if debug_enabled {
+            let x = page.set_devtools(true);
+            self.info("AppUiDelegate", "set devtools");
+            x
+        } else {
+            Ok(())
+        };
+
+        // Now we can use self again as the mutable borrow has ended
+        if let Err(e) = url_load_result {
             self.error(&path, format!("Failed to load URL {}: {}", url, e));
         }
 
-        #[cfg(debug_assertions)]
-        let _ = page.set_devtools(true);
+        if let Err(e) = devtools_result {
+            self.error(&path, format!("Failed to enable devtools: {}", e));
+        }
+
         self.info("AppUiDelegate", format!("Page {} created", path));
     }
 
