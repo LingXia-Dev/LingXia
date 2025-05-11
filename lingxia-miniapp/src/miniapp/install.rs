@@ -1,54 +1,51 @@
 use super::version::Version;
 use super::{LINGXIA_DIR, MINIAPPS_DIR, VERSIONS_DIR};
-use crate::{AppController, MiniAppError};
-use std::fs;
+use crate::{AppController, MiniApp, MiniAppError};
 
-/// Check if a mini app needs to be updated based on version comparison
-///
-/// This function checks if:
-/// 1. The mini app doesn't exist
-/// 2. The installed version is older than the required version
+/// Check if a mini app is installed
 ///
 /// # Arguments
 /// * `controller` - App controller reference
-/// * `app_id` - ID of the mini app to check
-/// * `required_version` - Version required (formatted as major.minor.patch)
+/// * `appid` - ID of the mini app to check
 ///
 /// # Returns
-/// * `true` - If the app needs to be installed or updated
-/// * `false` - If the app is already installed with an equal or newer version
-pub(crate) fn should_update<T: AppController + ?Sized>(
-    controller: &T,
-    app_id: &str,
-    required_version: &str,
-) -> bool {
+/// * `true` - If the app is installed (version file exists)
+/// * `false` - If the app is not installed
+pub(crate) fn is_installed<T: AppController + ?Sized>(controller: &T, appid: &str) -> bool {
     let version_path = controller
         .app_data_dir()
         .join(LINGXIA_DIR)
         .join(VERSIONS_DIR)
-        .join(format!("{}.txt", app_id));
+        .join(format!("{}.txt", appid));
 
-    // First check if version file exists at all
-    if !version_path.exists() {
-        return true; // App doesn't exist, needs installation
-    }
+    // Check if version file exists
+    version_path.exists()
+}
 
-    // Read the installed version
-    if let Ok(installed_version_str) = fs::read_to_string(&version_path) {
-        let installed_version_str = installed_version_str.trim();
+impl MiniApp {
+    /// Check if this mini app needs to be updated to the specified version
+    ///
+    /// # Arguments
+    /// * `required_version` - Version required (formatted as major.minor.patch)
+    ///
+    /// # Returns
+    /// * `true` - If the app needs to be updated
+    /// * `false` - If the app already has an equal or newer version
+    pub(crate) fn should_update(&self, required_version: &str) -> bool {
+        let installed_version = self.get_version();
 
         // Parse both versions
         if let (Ok(installed_version), Ok(required_version)) = (
-            Version::parse(installed_version_str),
+            Version::parse(&installed_version),
             Version::parse(required_version),
         ) {
             // Compare versions - return true if installed is older than required
             return installed_version < required_version;
         }
-    }
 
-    // Failed to read or parse version, treat as needing update
-    true
+        // Failed to read or parse version, treat as needing update
+        true
+    }
 }
 
 // Copy files from assets to destination directory and update version
@@ -64,6 +61,11 @@ pub(crate) fn install_home_miniapp(
         .join(LINGXIA_DIR)
         .join(MINIAPPS_DIR);
     let destination = base_dir.join(appid);
+
+    // Delete the existing app directory if it exists to ensure no old files remain
+    if destination.exists() {
+        let _ = std::fs::remove_dir_all(&destination);
+    }
 
     // Create the app-specific destination directory
     std::fs::create_dir_all(&destination).map_err(|e| {
@@ -135,7 +137,7 @@ fn update_version(
 
     let version_path = version_dir.join(format!("{}.txt", appid));
 
-    // fs::write runcate then write
+    // fs::write truncate then write
     std::fs::write(version_path, new_version)?;
 
     Ok(())

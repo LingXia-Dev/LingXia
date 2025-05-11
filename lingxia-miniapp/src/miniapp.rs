@@ -676,25 +676,20 @@ pub fn init<T: AppController + 'static>(controller: T) -> Option<(String, String
 
     match AppConfig::load(controller_arc.as_ref()) {
         Ok(config) => {
-            let home_mini_app_id = config.home_mini_app_id.clone();
-            let home_mini_app_version = &config.home_mini_app_version;
+            let home_miniapp_id = config.home_mini_app_id.clone();
+            let home_miniapp_version = &config.home_mini_app_version;
 
-            // Check if the home mini app needs to be installed or updated
-            if install::should_update(
-                controller_arc.as_ref(),
-                &home_mini_app_id,
-                home_mini_app_version,
-            ) {
-                // Copy home mini app files from assets and update version
+            if !install::is_installed(controller_arc.as_ref(), &home_miniapp_id) {
                 if let Err(e) = install::install_home_miniapp(
                     controller_arc.as_ref(),
-                    &home_mini_app_id,
-                    home_mini_app_version,
+                    &home_miniapp_id,
+                    home_miniapp_version,
                 ) {
                     controller_arc.log(
                         LogLevel::Error,
-                        &format!("Failed to install home mini app: {}", e),
+                        &format!("Failed to install home MiniApp: {}", e),
                     );
+
                     return None;
                 }
             }
@@ -702,7 +697,25 @@ pub fn init<T: AppController + 'static>(controller: T) -> Option<(String, String
             // Now create the MiniApp instance and call setup
             // new_as_home itself calls setup(), which loads its app.json.
             let home_miniapp =
-                MiniApp::new_as_home(home_mini_app_id.clone(), controller_arc.clone());
+                MiniApp::new_as_home(home_miniapp_id.clone(), controller_arc.clone());
+
+            // Check if home mini app needs updating after loading its configuration
+            if home_miniapp.config.is_debug_enabled()
+                || home_miniapp.should_update(home_miniapp_version)
+            {
+                if let Err(e) = install::install_home_miniapp(
+                    controller_arc.as_ref(),
+                    &home_miniapp_id,
+                    home_miniapp_version,
+                ) {
+                    controller_arc.log(
+                        LogLevel::Error,
+                        &format!("Failed to install home MiniApp: {}", e),
+                    );
+
+                    return None;
+                }
+            }
 
             // Get the initial route from the now-configured home_miniapp
             let initial_route = home_miniapp.config.get_initial_route();
@@ -716,7 +729,7 @@ pub fn init<T: AppController + 'static>(controller: T) -> Option<(String, String
             // Add home mini app to the collection
             miniapps
                 .miniapps
-                .insert(home_mini_app_id.clone(), home_miniapp_arc);
+                .insert(home_miniapp_id.clone(), home_miniapp_arc);
 
             if MINIAPPS.set(RwLock::new(miniapps)).is_err() {
                 controller_arc.log(
@@ -726,7 +739,7 @@ pub fn init<T: AppController + 'static>(controller: T) -> Option<(String, String
                 None
             } else {
                 controller_arc.log(LogLevel::Info, "MiniApps initialized successfully");
-                Some((home_mini_app_id, initial_route))
+                Some((home_miniapp_id, initial_route))
             }
         }
 
