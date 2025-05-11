@@ -5,7 +5,7 @@ use crate::miniapp::MiniApp;
 
 impl MiniApp {
     /// Handler for lingxia:// scheme requests to access app assets
-    pub(crate) fn lingxia_handler(&self, req: Request<Vec<u8>>) -> Option<Response<Vec<u8>>> {
+    pub(crate) fn lingxia_handler(&mut self, req: Request<Vec<u8>>) -> Option<Response<Vec<u8>>> {
         let uri = req.uri();
 
         // Get the path part after lingxia://
@@ -38,7 +38,28 @@ impl MiniApp {
 
                 // If this is an HTML file, inject the WebView bridge script
                 let response_data = if is_html {
-                    inject_bridge_script(&data, self)
+                    let is_injected = if let Some(page) = self.pages.get_page(path) {
+                        page.is_script_injected()
+                    } else {
+                        false
+                    };
+
+                    if is_injected {
+                        self.info(
+                            path,
+                            format!("Page already injected, skipping injection for {}", path),
+                        );
+                        data
+                    } else {
+                        self.info(path, format!("Injecting bridge script to {}", path));
+                        let injected_data = inject_bridge_script(&data, self);
+
+                        if let Some(page) = self.pages.get_page_mut(path) {
+                            page.mark_script_injected();
+                        }
+
+                        injected_data
+                    }
                 } else {
                     data
                 };
@@ -169,47 +190,53 @@ fn inject_bridge_script(html_data: &[u8], app: &MiniApp) -> Vec<u8> {
             if reader.read_to_end(&mut script_data).is_ok() {
                 String::from_utf8_lossy(&script_data).to_string()
             } else {
-                // If we couldn't read the script, return the original HTML
+                app.error("inject_bridge", "Failed to read bridge script content");
                 return html_data.to_vec();
             }
         }
-        Err(_) => {
-            // If the script doesn't exist in assets, return the original HTML
+        Err(e) => {
+            app.error(
+                "inject_bridge",
+                format!("Failed to open bridge script: {}", e),
+            );
             return html_data.to_vec();
         }
     };
 
     // Convert HTML content to string
     if let Ok(html_str) = String::from_utf8(html_data.to_vec()) {
-        // Check if the HTML already contains the bridge script
-        if html_str.contains("LingXiaBridge") {
-            return html_data.to_vec();
-        }
-
         // Create script tag with the bridge script
         let script_tag = format!("<script>\n{}\n</script>", bridge_script);
 
         // Try to insert before </head> tag (preferred location for early initialization)
         if let Some(head_pos) = html_str.to_lowercase().find("</head>") {
             let (before, after) = html_str.split_at(head_pos);
+            app.info("inject_bridge", "Injected script before </head>");
             return format!("{}{}{}", before, script_tag, after).into_bytes();
         }
         // If no </head> tag, try to insert at the beginning of <body> tag
-        // This ensures the bridge is initialized before page content
         else if let Some(body_pos) = html_str.to_lowercase().find("<body") {
             if let Some(body_end) = html_str[body_pos..].find('>') {
                 let insert_pos = body_pos + body_end + 1;
                 let (before, after) = html_str.split_at(insert_pos);
+                app.info("inject_bridge", "Injected script after <body>");
                 return format!("{}{}{}", before, script_tag, after).into_bytes();
             }
         }
         // If neither tag is found, insert at the beginning of the HTML
-        // This is a fallback option for malformed HTML
         else {
+            app.info(
+                "inject_bridge",
+                "Injected script at beginning of HTML (fallback)",
+            );
             return format!("{}{}", script_tag, html_str).into_bytes();
         }
     }
 
-    // If string conversion fails, return the original data
+    // If all injection attempts failed, return the original data
+    app.error(
+        "inject_bridge",
+        "All injection attempts failed, returning original HTML",
+    );
     html_data.to_vec()
 }

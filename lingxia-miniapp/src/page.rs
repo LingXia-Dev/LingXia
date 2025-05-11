@@ -85,6 +85,16 @@ impl Pages {
         }
     }
 
+    /// Get a reference to a page by path
+    pub fn get_page(&self, path: &str) -> Option<&Page> {
+        self.pages.get(path)
+    }
+
+    /// Get a mutable reference to a page by path
+    pub fn get_page_mut(&mut self, path: &str) -> Option<&mut Page> {
+        self.pages.get_mut(path)
+    }
+
     /// Set tab bar items with ordered paths and initialize stacks
     ///
     /// # Arguments
@@ -254,6 +264,9 @@ pub(crate) struct Page {
 
     // Time when this page was last active
     last_active_time: Instant,
+
+    // Tracks whether bridge script has been injected
+    script_injected: bool,
 }
 
 impl Page {
@@ -263,7 +276,17 @@ impl Page {
             appid,
             path,
             last_active_time: Instant::now(),
+            script_injected: false,
         }
+    }
+
+    // Add setter and getter for script injection status
+    pub(crate) fn mark_script_injected(&mut self) {
+        self.script_injected = true;
+    }
+
+    pub(crate) fn is_script_injected(&self) -> bool {
+        self.script_injected
     }
 }
 
