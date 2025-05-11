@@ -1,4 +1,4 @@
-use crate::{App, MiniAppPlatform};
+use crate::{App, PlatformHost};
 use miniapp::{MiniAppCmd, MiniAppError};
 
 /// MiniApp message handler responsible for processing MiniApp commands from the UI thread

@@ -5,9 +5,11 @@ use std::sync::Arc;
 use std::sync::{Mutex, OnceLock, mpsc};
 use std::thread::{self, ThreadId};
 
-use miniapp::{AppController, ControllerCmd, MiniAppError, log::LogLevel};
+use miniapp::{
+    AppController, AppRuntime, AssetFileEntry, ControllerCmd, MiniAppError, log::LogLevel,
+};
 
-use crate::{App, MiniAppPlatform, WebView};
+use crate::{App, WebView};
 
 mod app;
 mod webview;
@@ -28,7 +30,7 @@ impl Drop for Controller {
     }
 }
 
-impl AppController for Controller {
+impl AppRuntime for Controller {
     fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, MiniAppError> {
         self.app.read_asset(path)
     }
@@ -36,11 +38,11 @@ impl AppController for Controller {
     fn asset_dir_iter<'a>(
         &'a self,
         asset_dir: &str,
-    ) -> Box<dyn Iterator<Item = Result<miniapp::AssetFileEntry<'a>, MiniAppError>> + 'a> {
+    ) -> Box<dyn Iterator<Item = Result<AssetFileEntry<'a>, MiniAppError>> + 'a> {
         // Convert from our AssetFileEntry to miniapp's AssetFileEntry
         let iter = self.app.asset_dir_iter(asset_dir);
         Box::new(iter.map(|result| {
-            result.map(|entry| miniapp::AssetFileEntry {
+            result.map(|entry| AssetFileEntry {
                 path: entry.path,
                 reader: entry.reader,
             })
@@ -58,7 +60,9 @@ impl AppController for Controller {
     fn log(&self, level: LogLevel, message: &str) {
         self.app.log(level, message)
     }
+}
 
+impl AppController for Controller {
     fn send_cmd(&self, cmd: ControllerCmd) -> Result<(), MiniAppError> {
         // Check if we're on the UI thread
         let current_thread_id = thread::current().id();

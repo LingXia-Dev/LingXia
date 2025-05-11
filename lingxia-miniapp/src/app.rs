@@ -38,7 +38,7 @@ pub struct AppConfig {
 
 impl AppConfig {
     /// Read, parse and validate app.json from the assets directory.
-    pub(crate) fn load<T: AppController + ?Sized>(controller: &T) -> Result<Self, MiniAppError> {
+    pub(crate) fn load<T: AppRuntime + ?Sized>(controller: &T) -> Result<Self, MiniAppError> {
         // Read app.json as a string
         let mut reader = controller.read_asset("app.json")?;
         let mut content = String::new();
@@ -108,8 +108,11 @@ impl AppConfig {
     }
 }
 
-/// Interface for controlling app lifecycle and navigation
-pub trait AppController: Send + Sync + 'static {
+/// Base platform runtime capabilities
+///
+/// This trait defines the core capabilities required for the mini app platform,
+/// including resource access, directory management, and logging.
+pub trait AppRuntime: Send + Sync + 'static {
     /// Read asset file from platform-specific location as a streaming reader
     ///
     /// # Arguments
@@ -152,7 +155,10 @@ pub trait AppController: Send + Sync + 'static {
     /// * `level` - Log severity level
     /// * `message` - Log message content
     fn log(&self, level: LogLevel, message: &str);
+}
 
+/// Interface for controlling app lifecycle and navigation
+pub trait AppController: AppRuntime {
     /// Send a command to the controller and wait for the response
     ///
     /// This method creates a channel for the response, sends the command, and waits for the result
@@ -166,6 +172,12 @@ pub trait AppController: Send + Sync + 'static {
 }
 
 impl<T: AppController + ?Sized> AppController for Arc<T> {
+    fn send_cmd(&self, cmd: crate::ControllerCmd) -> Result<(), MiniAppError> {
+        (**self).send_cmd(cmd)
+    }
+}
+
+impl<T: AppRuntime + ?Sized> AppRuntime for Arc<T> {
     fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, MiniAppError> {
         (**self).read_asset(path)
     }
@@ -187,10 +199,6 @@ impl<T: AppController + ?Sized> AppController for Arc<T> {
 
     fn log(&self, level: LogLevel, message: &str) {
         (**self).log(level, message)
-    }
-
-    fn send_cmd(&self, cmd: crate::ControllerCmd) -> Result<(), MiniAppError> {
-        (**self).send_cmd(cmd)
     }
 }
 

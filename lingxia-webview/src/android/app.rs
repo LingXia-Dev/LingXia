@@ -1,10 +1,10 @@
-use crate::MiniAppPlatform;
+use crate::PlatformHost;
 use crate::android::{CLASS_MINIAPP, get_env};
 use jni::objects::{GlobalRef, JValue};
 use jni::sys::jobject;
 use log::info;
-use miniapp::MiniAppError;
 use miniapp::log::LogLevel;
+use miniapp::{AppRuntime, AssetFileEntry, MiniAppError};
 use ndk_sys;
 use std::ffi::CString;
 use std::io::{Read, Result as IoResult};
@@ -135,7 +135,7 @@ impl<'a> RecursiveAssetIterator<'a> {
 }
 
 impl<'a> Iterator for RecursiveAssetIterator<'a> {
-    type Item = Result<crate::AssetFileEntry<'a>, MiniAppError>;
+    type Item = Result<AssetFileEntry<'a>, MiniAppError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
@@ -162,7 +162,7 @@ impl<'a> Iterator for RecursiveAssetIterator<'a> {
                         ))));
                     }
                     let reader = AssetReader { asset: asset_ptr };
-                    return Some(Ok(crate::AssetFileEntry {
+                    return Some(Ok(AssetFileEntry {
                         path: file_path_to_yield,
                         reader: Box::new(reader),
                     }));
@@ -248,7 +248,7 @@ impl App {
     }
 }
 
-impl MiniAppPlatform for App {
+impl AppRuntime for App {
     fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, MiniAppError> {
         unsafe {
             // Convert path to CString to ensure proper null-termination
@@ -276,7 +276,7 @@ impl MiniAppPlatform for App {
     fn asset_dir_iter<'a>(
         &'a self,
         asset_dir: &str,
-    ) -> Box<dyn Iterator<Item = Result<crate::AssetFileEntry<'a>, MiniAppError>> + 'a> {
+    ) -> Box<dyn Iterator<Item = Result<AssetFileEntry<'a>, MiniAppError>> + 'a> {
         Box::new(RecursiveAssetIterator::new(self, asset_dir))
     }
 
@@ -297,7 +297,9 @@ impl MiniAppPlatform for App {
             LogLevel::Error => log::error!("{}", message),
         }
     }
+}
 
+impl PlatformHost for App {
     fn open_miniapp(&self, appid: &str, path: &str) -> Result<(), MiniAppError> {
         info!("Opening mini app with appId: {}, path: {}", appid, path);
 

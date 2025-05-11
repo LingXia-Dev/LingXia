@@ -1,7 +1,5 @@
-use miniapp::MiniAppError;
-use miniapp::log::LogLevel;
+use miniapp::{AppRuntime, MiniAppError};
 use std::io::Read;
-use std::path::PathBuf;
 
 #[cfg(target_os = "android")]
 mod android;
@@ -23,55 +21,12 @@ pub struct AssetFileEntry<'a> {
     pub reader: Box<dyn Read + 'a>,
 }
 
-/// Platform-specific operations for mini apps
+/// Platform host operations for mini apps
 ///
-/// This trait defines operations that must be implemented by platform-specific
-/// code (iOS, Android etc) to support mini-app functionality. It includes resource
-/// access, directory management, and app lifecycle operations.
-pub trait MiniAppPlatform {
-    /// Read asset file from platform-specific location as a streaming reader
-    ///
-    /// # Arguments
-    /// * `path` - Path to the asset file to read
-    ///
-    /// # Returns
-    /// * `Result<Box<dyn Read + '_>, MiniAppError>` - A reader for streaming the asset content, or an error
-    fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, MiniAppError>;
-
-    /// Iterate over files in an asset directory.
-    ///
-    /// Returns an iterator of AssetFileEntry, each containing the file path and a reader implementing `Read`.
-    ///
-    /// # Arguments
-    /// * `asset_dir` - Directory path in assets to iterate
-    ///
-    /// # Returns
-    /// * `Box<dyn Iterator<Item = Result<AssetFileEntry, MiniAppError>>>` - Iterator over files in the directory
-    ///   (If directory cannot be opened, the iterator's first element will be an error)
-    fn asset_dir_iter<'a>(
-        &'a self,
-        asset_dir: &str,
-    ) -> Box<dyn Iterator<Item = Result<AssetFileEntry<'a>, MiniAppError>> + 'a>;
-
-    /// Get data directory path for app resources
-    ///
-    /// # Returns
-    /// * `PathBuf` - Path to the application's data directory
-    fn app_data_dir(&self) -> PathBuf;
-
-    /// Get cache directory path for app temporary files
-    ///
-    /// # Returns
-    /// * `PathBuf` - Path to the application's cache directory
-    fn app_cache_dir(&self) -> PathBuf;
-
-    /// Log message to platform-specific logging system
-    ///
-    /// # Arguments
-    /// * `level` - Log severity level
-    /// * `message` - Log message content
-    fn log(&self, level: LogLevel, message: &str);
-
+/// This trait defines the platform-specific capabilities that must be implemented by
+/// the host platform (Android, iOS, etc) to support mini-app functionality. It extends
+/// the core AppRuntime with UI and lifecycle operations.
+trait PlatformHost: AppRuntime {
     /// Open a mini app in the platform-specific UI
     ///
     /// # Arguments
