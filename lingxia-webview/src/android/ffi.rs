@@ -334,8 +334,8 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeHandleRequest<'a>(
     };
 
     // Handle request and convert response
-    match miniapp::get_or_init_miniapp(appid.clone()).read() {
-        Ok(miniapp) => {
+    match miniapp::get_or_init_miniapp(appid.clone()).write() {
+        Ok(mut miniapp) => {
             if let Some(response) = miniapp.handle_request(request) {
                 create_java_response(&mut env, response)
             } else {

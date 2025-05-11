@@ -450,7 +450,7 @@ pub trait AppUiDelegate {
     fn handle_post_message(&self, path: String, msg: String);
 
     /// Handles an HTTP request from the page
-    fn handle_request(&self, req: http::Request<Vec<u8>>) -> Option<http::Response<Vec<u8>>>;
+    fn handle_request(&mut self, req: http::Request<Vec<u8>>) -> Option<http::Response<Vec<u8>>>;
 
     /// Receive log from WebView
     fn log(&self, path: &str, level: LogLevel, message: &str);
@@ -630,7 +630,7 @@ impl AppUiDelegate for MiniApp {
         self.info(&path, &msg);
     }
 
-    fn handle_request(&self, req: http::Request<Vec<u8>>) -> Option<http::Response<Vec<u8>>> {
+    fn handle_request(&mut self, req: http::Request<Vec<u8>>) -> Option<http::Response<Vec<u8>>> {
         let uri = req.uri();
         let scheme = uri.scheme_str().unwrap_or("");
 
