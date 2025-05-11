@@ -36,15 +36,16 @@ impl MiniApp {
                     "application/octet-stream"
                 };
 
-                // If this is an HTML file, inject the WebView bridge script
+                // If this is an HTML file, inject script and CSS
                 let response_data = if is_html {
-                    let is_injected = if let Some(page) = self.pages.get_page(path) {
+                    let is_script_injected = if let Some(page) = self.pages.get_page(path) {
                         page.is_script_injected()
                     } else {
                         false
                     };
 
-                    if is_injected {
+                    // Inject both bridge script and CSS only if not already injected
+                    let html_data = if is_script_injected {
                         self.info(
                             path,
                             format!("Page already injected, skipping injection for {}", path),
@@ -52,14 +53,31 @@ impl MiniApp {
                         data
                     } else {
                         self.info(path, format!("Injecting bridge script to {}", path));
-                        let injected_data = inject_bridge_script(&data, self);
+                        let mut injected_data = inject_bridge_script(&data, self);
+
+                        // Also inject CSS when injecting script (both happen only on first load)
+                        if let Some(css_path) = path.strip_suffix(".html") {
+                            let css_full_path = format!("{}.css", css_path);
+                            if let Ok(css_data) = self.read_bytes(&css_full_path) {
+                                self.info(
+                                    path,
+                                    format!(
+                                        "Found and injecting matching CSS file: {}",
+                                        css_full_path
+                                    ),
+                                );
+                                injected_data = inject_css(&injected_data, &css_data, self, path);
+                            }
+                        }
 
                         if let Some(page) = self.pages.get_page_mut(path) {
                             page.mark_script_injected();
                         }
 
                         injected_data
-                    }
+                    };
+
+                    html_data
                 } else {
                     data
                 };
@@ -237,6 +255,53 @@ fn inject_bridge_script(html_data: &[u8], app: &MiniApp) -> Vec<u8> {
     app.error(
         "inject_bridge",
         "All injection attempts failed, returning original HTML",
+    );
+    html_data.to_vec()
+}
+
+/// Injects CSS into HTML content
+fn inject_css(html_data: &[u8], css_data: &[u8], app: &MiniApp, path: &str) -> Vec<u8> {
+    // Convert CSS content to string
+    let css_content = String::from_utf8_lossy(css_data).to_string();
+    let style_tag = format!("<style>\n{}\n</style>", css_content);
+
+    // Convert HTML content to string
+    if let Ok(html_str) = String::from_utf8(html_data.to_vec()) {
+        // Try to insert before </head> tag (preferred location for styles)
+        if let Some(head_pos) = html_str.to_lowercase().find("</head>") {
+            let (before, after) = html_str.split_at(head_pos);
+            app.info(
+                "inject_css",
+                format!("Injected CSS before </head> in {}", path),
+            );
+            return format!("{}{}{}", before, style_tag, after).into_bytes();
+        }
+        // If no </head> tag, try to insert at the beginning of <body> tag
+        else if let Some(body_pos) = html_str.to_lowercase().find("<body") {
+            if let Some(body_end) = html_str[body_pos..].find('>') {
+                let insert_pos = body_pos + body_end + 1;
+                let (before, after) = html_str.split_at(insert_pos);
+                app.info(
+                    "inject_css",
+                    format!("Injected CSS after <body> in {}", path),
+                );
+                return format!("{}{}{}", before, style_tag, after).into_bytes();
+            }
+        }
+        // If neither tag is found, insert at the beginning of the HTML
+        else {
+            app.info(
+                "inject_css",
+                format!("Injected CSS at beginning of HTML in {} (fallback)", path),
+            );
+            return format!("{}{}", style_tag, html_str).into_bytes();
+        }
+    }
+
+    // If all injection attempts failed, return the original data
+    app.error(
+        "inject_css",
+        format!("CSS injection failed for {}, returning original HTML", path),
     );
     html_data.to_vec()
 }
