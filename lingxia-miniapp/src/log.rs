@@ -65,11 +65,8 @@ impl Logging for MiniApp {
         message: impl std::fmt::Display,
     ) {
         // Log to local platform (essential logs)
-        self.controller.log(
-            &self.appid,
-            level,
-            &format!("[{}] {}", tag.as_str(), message),
-        );
+        self.controller
+            .log(level, &format!("[{}] {}", tag.as_str(), message));
 
         // TODO: Log to network server for remote diagnostics
     }

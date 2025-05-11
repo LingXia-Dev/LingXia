@@ -149,10 +149,9 @@ pub trait AppController: Send + Sync + 'static {
     /// Log message to platform-specific logging system
     ///
     /// # Arguments
-    /// * `appid` - Identifier of the mini application
     /// * `level` - Log severity level
     /// * `message` - Log message content
-    fn log(&self, appid: &str, level: LogLevel, message: &str);
+    fn log(&self, level: LogLevel, message: &str);
 
     /// Send a command to the controller and wait for the response
     ///
@@ -186,8 +185,8 @@ impl<T: AppController + ?Sized> AppController for Arc<T> {
         (**self).app_cache_dir()
     }
 
-    fn log(&self, appid: &str, level: LogLevel, message: &str) {
-        (**self).log(appid, level, message)
+    fn log(&self, level: LogLevel, message: &str) {
+        (**self).log(level, message)
     }
 
     fn send_cmd(&self, cmd: crate::ControllerCmd) -> Result<(), MiniAppError> {

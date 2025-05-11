@@ -74,7 +74,6 @@ impl MiniApps {
         // If we found a non-home app, remove it
         if let Some((appid, _)) = least_active {
             self.controller.log(
-                "system",
                 LogLevel::Info,
                 &format!("Destroying least active mini app: {}", appid),
             );
@@ -669,7 +668,6 @@ pub fn init<T: AppController + 'static>(controller: T) -> Option<(String, String
     // Prepare the directory structure
     if let Err(e) = prepare_directory_structure(controller_arc.as_ref()) {
         controller_arc.log(
-            "system",
             LogLevel::Error,
             &format!("Failed to prepare directory structure: {}", e),
         );
@@ -694,7 +692,6 @@ pub fn init<T: AppController + 'static>(controller: T) -> Option<(String, String
                     home_mini_app_version,
                 ) {
                     controller_arc.log(
-                        "system",
                         LogLevel::Error,
                         &format!("Failed to install home mini app: {}", e),
                     );
@@ -723,17 +720,12 @@ pub fn init<T: AppController + 'static>(controller: T) -> Option<(String, String
 
             if MINIAPPS.set(RwLock::new(miniapps)).is_err() {
                 controller_arc.log(
-                    "system",
                     LogLevel::Error,
                     "MiniApps singleton had been initialized by another instance",
                 );
                 None
             } else {
-                controller_arc.log(
-                    "system",
-                    LogLevel::Info,
-                    "MiniApps initialized successfully",
-                );
+                controller_arc.log(LogLevel::Info, "MiniApps initialized successfully");
                 Some((home_mini_app_id, initial_route))
             }
         }
@@ -753,7 +745,7 @@ pub fn init<T: AppController + 'static>(controller: T) -> Option<(String, String
                 _ => format!("Failed to load app configuration: {}", e),
             };
 
-            controller_arc.log("system", LogLevel::Error, &error_message);
+            controller_arc.log(LogLevel::Error, &error_message);
             None
         }
     }
@@ -825,11 +817,7 @@ pub fn uninstall_miniapp(appid: &str) -> Result<(), MiniAppError> {
 
     // Get controller to log operation
     let controller = miniapps.controller.clone();
-    controller.log(
-        "system",
-        LogLevel::Info,
-        &format!("Uninstalling mini app: {}", appid),
-    );
+    controller.log(LogLevel::Info, &format!("Uninstalling mini app: {}", appid));
 
     // Get or create the miniapp instance
     let app_arc = get_or_init_miniapp(appid.to_string());

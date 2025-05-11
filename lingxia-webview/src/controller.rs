@@ -55,8 +55,8 @@ impl AppController for Controller {
         self.app.app_cache_dir()
     }
 
-    fn log(&self, appid: &str, level: LogLevel, message: &str) {
-        self.app.log(appid, level, message)
+    fn log(&self, level: LogLevel, message: &str) {
+        self.app.log(level, message)
     }
 
     fn send_cmd(&self, cmd: ControllerCmd) -> Result<(), MiniAppError> {
@@ -124,7 +124,6 @@ impl Controller {
         match request {
             ControllerCmd::Shutdown => {
                 controller.log(
-                    "controller",
                     LogLevel::Info,
                     "Shutdown command received, stopping command loop",
                 );
@@ -134,7 +133,6 @@ impl Controller {
                 if let Err(err) = webview::handle_webview_cmd(&controller.webviews, cmd) {
                     // Log error but continue processing
                     controller.log(
-                        "controller",
                         LogLevel::Error,
                         &format!("Error processing WebView command: {}", err),
                     );
@@ -144,7 +142,6 @@ impl Controller {
                 if let Err(err) = app::handle_miniapp_cmd(&controller.app, cmd) {
                     // Log error but continue processing
                     controller.log(
-                        "controller",
                         LogLevel::Error,
                         &format!("Error processing MiniApp command: {}", err),
                     );

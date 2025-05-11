@@ -288,14 +288,13 @@ impl MiniAppPlatform for App {
         PathBuf::from(&self.cache_dir)
     }
 
-    fn log(&self, appid: &str, level: LogLevel, message: &str) {
-        let log_msg = format!("[{}] {}", appid, message);
+    fn log(&self, level: LogLevel, message: &str) {
         match level {
-            LogLevel::Verbose => log::trace!("{}", log_msg),
-            LogLevel::Debug => log::debug!("{}", log_msg),
-            LogLevel::Info => log::info!("{}", log_msg),
-            LogLevel::Warn => log::warn!("{}", log_msg),
-            LogLevel::Error => log::error!("{}", log_msg),
+            LogLevel::Verbose => log::trace!("{}", message),
+            LogLevel::Debug => log::debug!("{}", message),
+            LogLevel::Info => log::info!("{}", message),
+            LogLevel::Warn => log::warn!("{}", message),
+            LogLevel::Error => log::error!("{}", message),
         }
     }
 

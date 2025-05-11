@@ -30,7 +30,7 @@ pub struct AssetFileEntry<'a> {
 /// access, directory management, and app lifecycle operations.
 pub trait MiniAppPlatform {
     /// Read asset file from platform-specific location as a streaming reader
-    /// 
+    ///
     /// # Arguments
     /// * `path` - Path to the asset file to read
     ///
@@ -68,10 +68,9 @@ pub trait MiniAppPlatform {
     /// Log message to platform-specific logging system
     ///
     /// # Arguments
-    /// * `appid` - Identifier of the mini application
     /// * `level` - Log severity level
     /// * `message` - Log message content
-    fn log(&self, appid: &str, level: LogLevel, message: &str);
+    fn log(&self, level: LogLevel, message: &str);
 
     /// Open a mini app in the platform-specific UI
     ///
