@@ -215,6 +215,7 @@ class WebView @JvmOverloads constructor(
 
     companion object {
         private const val TAG = "WebView"
+        private const val ANDROID_PORT_INIT_MESSAGE_DATA = "LingXia-port-init"
 
         @JvmStatic
         external fun nativeGetExistingWebView(appId: String, path: String): com.lingxia.miniapp.WebView?
@@ -381,12 +382,16 @@ class WebView @JvmOverloads constructor(
             override fun onMessage(port: WebMessagePort, message: WebMessage) {
                 nativeHandlePostMessage(appId ?: return, currentPath ?: return, message.data)
             }
-        })
+        }, Handler(Looper.getMainLooper()))
 
-        // Transfer port2 to WebView after page is loaded
+        // Transfer port2 to WebView
         post {
-            val origin = url?.let { Uri.parse(it) } ?: Uri.EMPTY
-            postWebMessage(WebMessage(null, arrayOf(ports[1])), origin)
+            if (isAttachedToWindow && windowToken != null) {
+                val origin = url?.let { Uri.parse(it) } ?: Uri.EMPTY
+                postWebMessage(WebMessage(ANDROID_PORT_INIT_MESSAGE_DATA, arrayOf(ports[1])), origin)
+            } else {
+                Log.w(TAG, "WebView not fully attached (isAttachedToWindow: $isAttachedToWindow, windowToken: $windowToken), skipping postWebMessage for '$ANDROID_PORT_INIT_MESSAGE_DATA'.")
+            }
         }
     }
 

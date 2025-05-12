@@ -46,10 +46,16 @@
 
   // Helper to set value by path, needed for applyPatch
   function _setValueByPath(obj, path, value) {
-    if (typeof path !== 'string' || path === '') { warn('Invalid path:', path); return false; }
-    if (typeof obj !== 'object' || obj === null) { warn('Invalid target object'); return false; }
+    if (typeof path !== "string" || path === "") {
+      warn("Invalid path:", path);
+      return false;
+    }
+    if (typeof obj !== "object" || obj === null) {
+      warn("Invalid target object");
+      return false;
+    }
 
-    const parts = path.replace(/\[(\d+)\]/g, '.$1').split('.');
+    const parts = path.replace(/\[(\d+)\]/g, ".$1").split(".");
     let current = obj;
 
     for (let i = 0; i < parts.length - 1; i++) {
@@ -59,7 +65,7 @@
 
       if (current[key] === undefined || current[key] === null) {
         current[key] = isNextKeyArrayIndex ? [] : {};
-      } else if (typeof current[key] !== 'object') {
+      } else if (typeof current[key] !== "object") {
         warn(`Overwriting non-object path segment "${key}"`);
         current[key] = isNextKeyArrayIndex ? [] : {};
       } else if (isNextKeyArrayIndex && !Array.isArray(current[key])) {
@@ -67,7 +73,7 @@
         current[key] = [];
       }
       current = current[key];
-      if (typeof current !== 'object' || current === null) {
+      if (typeof current !== "object" || current === null) {
         error(`Cannot set path further at segment "${key}".`);
         return false;
       }
@@ -80,15 +86,21 @@
 
   // Helper to delete value by path, needed for applyPatch
   function _deleteValueByPath(obj, path) {
-    if (typeof path !== 'string' || path === '') { warn('Invalid delete path:', path); return false; }
-    if (typeof obj !== 'object' || obj === null) { warn('Invalid target object'); return false; }
+    if (typeof path !== "string" || path === "") {
+      warn("Invalid delete path:", path);
+      return false;
+    }
+    if (typeof obj !== "object" || obj === null) {
+      warn("Invalid target object");
+      return false;
+    }
 
-    const parts = path.replace(/\[(\d+)\]/g, '.$1').split('.');
+    const parts = path.replace(/\[(\d+)\]/g, ".$1").split(".");
     let current = obj;
 
     for (let i = 0; i < parts.length - 1; i++) {
       const key = parts[i];
-      if (typeof current[key] !== 'object' || current[key] === null) {
+      if (typeof current[key] !== "object" || current[key] === null) {
         warn(`Path segment "${key}" not found or not object for deletion.`);
         return false; // Cannot traverse further
       }
@@ -102,7 +114,7 @@
         current.splice(index, 1); // Use splice for array element deletion
         return true;
       }
-    } else if (typeof current === 'object') {
+    } else if (typeof current === "object") {
       delete current[finalKey]; // Use delete for object properties
       return true;
     }
@@ -115,11 +127,11 @@
    * @param {object} patch - The patch object { 'path.string': value, ... }.
    */
   function _applyPatch(target, patch) {
-    if (typeof target !== 'object' || target === null) {
+    if (typeof target !== "object" || target === null) {
       error("ApplyPatch: Invalid target object.");
       return;
     }
-    if (typeof patch !== 'object' || patch === null) {
+    if (typeof patch !== "object" || patch === null) {
       error("ApplyPatch: Invalid patch object.");
       return;
     }
@@ -152,17 +164,17 @@
   }
 
   function _sendMessageToNative(message) {
-    log("Sending:", message);
     try {
       if (isIOS) {
         window.webkit.messageHandlers[NATIVE_HANDLER_NAME].postMessage(message);
       } else if (isAndroid && androidMessagePort) {
-        androidMessagePort.postMessage(message);
+        const messageString = JSON.stringify(message);
+        androidMessagePort.postMessage(messageString);
       } else {
-        warn("Bridge not configured for sending.", {
+        warn("Bridge not configured for sending or Android port not ready.", {
           isIOS,
           isAndroid,
-          androidMessagePort,
+          hasAndroidPort: !!androidMessagePort,
         });
       }
     } catch (e) {
@@ -349,28 +361,38 @@
 
     // Internal method called by platform-specific setup
     _connectAndroidPort: function (port) {
-      if (!isAndroid || androidMessagePort) return;
-      log("Connecting Android MessagePort...");
+      if (!isAndroid) return;
+
+      // Always use the new port. If there was an old one, it's implicitly replaced.
+      // The native side is responsible for managing the lifecycle of its end of the previous port.
       androidMessagePort = port;
+
       androidMessagePort.onmessage = (event) => {
         let messageData = event.data;
         if (typeof messageData === "string") {
-          // Handle potential stringified JSON
           try {
             messageData = JSON.parse(messageData);
           } catch (e) {
             error("Invalid JSON from Android Port:", e, event.data);
             return;
           }
+        } else {
+          warn(
+            "Received non-string data from Android Port. Attempting to process as is:",
+            messageData,
+          );
         }
         _handleIncomingMessage(messageData);
       };
 
       try {
+        // Send LingXiaPortReady event over the NEWLY connected port
         this.event("LingXiaPortReady");
-        log("Android MessagePort connected and LingXiaPortReady event sent.");
+        log(
+          "Android MessagePort (re)connected and LingXiaPortReady event sent.",
+        );
       } catch (e) {
-        error("Failed to send LingXiaPortReady event via Android Port:", e);
+        error("Failed to send LingXiaPortReady event via new Android Port:", e);
       }
     },
 
@@ -406,7 +428,7 @@
           event.ports &&
           event.ports.length > 0
         ) {
-          log("Android port init received.");
+          log("Android port init received from native.");
           LingXiaBridge._connectAndroidPort(event.ports[0]);
         }
       },
@@ -418,4 +440,3 @@
   window.LingXiaBridge = LingXiaBridge;
   log("Lingxia WebView Bridge initialized.");
 })();
-
