@@ -56,6 +56,13 @@ impl MiniApp {
                         let mut injected_data = inject_bridge_script(&data, self);
 
                         // Also inject CSS when injecting script (both happen only on first load)
+                        // First try to inject global app.css
+                        if let Ok(app_css_data) = self.read_bytes("app.css") {
+                            self.info(path, "Injecting global app.css".to_string());
+                            injected_data = inject_css(&injected_data, &app_css_data, self, path);
+                        }
+
+                        // Then inject page-specific CSS if it exists
                         if let Some(css_path) = path.strip_suffix(".html") {
                             let css_full_path = format!("{}.css", css_path);
                             if let Ok(css_data) = self.read_bytes(&css_full_path) {
