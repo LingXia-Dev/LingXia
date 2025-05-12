@@ -151,9 +151,7 @@ impl MiniApp {
                     // Video
                     "mp4" | "webm" | "ogv" |
                     // Fonts
-                    "ttf" | "woff" | "woff2" | "eot" |
-                    // Other allowed static resources
-                    "css" | "js"
+                    "ttf" | "woff" | "woff2" | "eot"
                 ),
                 None => false, // No extension, likely not a static resource
             };
