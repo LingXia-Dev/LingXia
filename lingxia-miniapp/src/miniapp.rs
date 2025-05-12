@@ -43,10 +43,14 @@ pub struct MiniApps {
 
 impl MiniApps {
     fn new<T: AppController + 'static>(controller: T) -> Self {
+        let max_apps = 5;
+        let controller = Arc::new(controller);
+        crate::appservice::init(controller.clone(), max_apps);
+
         Self {
             miniapps: HashMap::new(),
-            controller: Arc::new(controller),
-            max_apps: 5,
+            controller,
+            max_apps,
         }
     }
 

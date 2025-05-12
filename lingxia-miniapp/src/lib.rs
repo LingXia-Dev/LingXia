@@ -1,4 +1,5 @@
 mod app;
+mod appservice;
 mod error;
 pub mod log;
 mod miniapp;
