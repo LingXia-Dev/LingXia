@@ -5,10 +5,11 @@ use std::fs;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::{OnceLock, RwLock};
+use std::sync::{Mutex, OnceLock, RwLock};
 use std::time::Instant;
 
 use crate::app::{AppConfig, AppController, switch_page};
+use crate::appservice::{self, MiniAppServiceManager};
 use crate::error::MiniAppError;
 use crate::log::{LogLevel, LogTag, Logging};
 use crate::page::{Pages, WebViewController};
@@ -39,18 +40,23 @@ pub struct MiniApps {
     controller: Arc<dyn AppController>,
     // Maximum number of apps allowed in memory
     max_apps: usize,
+    // Reference to the app service manager
+    svc_manager: Arc<Mutex<MiniAppServiceManager>>,
 }
 
 impl MiniApps {
-    fn new<T: AppController + 'static>(controller: T) -> Self {
-        let max_apps = 5;
+    fn new<T: AppController + 'static>(
+        controller: T,
+        svc_manager: Arc<Mutex<MiniAppServiceManager>>,
+        max_apps: usize,
+    ) -> Self {
         let controller = Arc::new(controller);
-        crate::appservice::init(controller.clone(), max_apps);
 
         Self {
             miniapps: HashMap::new(),
             controller,
             max_apps,
+            svc_manager,
         }
     }
 
@@ -81,6 +87,17 @@ impl MiniApps {
                 LogLevel::Info,
                 &format!("Destroying least active mini app: {}", appid),
             );
+
+            // Clean up app service before removing the app
+            if let Ok(mut manager) = self.svc_manager.lock() {
+                if let Err(e) = manager.terminate_app_svc(&appid) {
+                    self.controller.log(
+                        LogLevel::Error,
+                        &format!("Failed to terminate app service for {}: {}", appid, e),
+                    );
+                }
+            }
+
             self.miniapps.remove(&appid);
         }
     }
@@ -118,11 +135,18 @@ pub struct MiniApp {
 
     // Network security configuration
     network_security: NetworkSecurity,
+
+    // Reference to the app service manager
+    svc_manager: Arc<Mutex<MiniAppServiceManager>>,
 }
 
 impl MiniApp {
     /// Create a new regular mini-app (not home app)
-    fn new(appid: String, controller: Arc<dyn AppController>) -> Self {
+    fn new(
+        appid: String,
+        controller: Arc<dyn AppController>,
+        svc_manager: Arc<Mutex<MiniAppServiceManager>>,
+    ) -> Self {
         let mut app = Self {
             appid,
             pages: Pages::new(),
@@ -135,17 +159,29 @@ impl MiniApp {
             version: String::new(),
             network_security: NetworkSecurity::new(),
             config: MiniAppConfig::default(),
+            svc_manager,
         };
 
         if let Err(e) = app.setup() {
             app.error("system", format!("Failed to setup app: {}", e));
         }
 
+        // Create app service
+        if let Ok(mut manager) = app.svc_manager.lock() {
+            if let Err(e) = manager.create_app_svc(&app.appid, app.app_dir.to_str().unwrap_or("")) {
+                app.error("system", format!("Failed to create app service: {}", e));
+            }
+        }
+
         app
     }
 
     /// Create a new MiniApp instance marked as the home mini app
-    fn new_as_home(appid: String, controller: Arc<dyn AppController>) -> Self {
+    fn new_as_home(
+        appid: String,
+        controller: Arc<dyn AppController>,
+        svc_manager: Arc<Mutex<MiniAppServiceManager>>,
+    ) -> Self {
         let mut app = Self {
             appid,
             pages: Pages::new(),
@@ -158,10 +194,18 @@ impl MiniApp {
             version: String::new(),
             network_security: NetworkSecurity::new(),
             config: MiniAppConfig::default(),
+            svc_manager,
         };
 
         if let Err(e) = app.setup() {
             app.error("system", format!("Failed to setup home app: {}", e));
+        }
+
+        // Initialize app service for home app
+        if let Ok(mut manager) = app.svc_manager.lock() {
+            if let Err(e) = manager.create_app_svc(&app.appid, app.app_dir.to_str().unwrap_or("")) {
+                app.error("system", format!("Failed to create app service: {}", e));
+            }
         }
 
         app
@@ -682,6 +726,7 @@ pub fn init<T: AppController + 'static>(controller: T) -> Option<(String, String
         Ok(config) => {
             let home_miniapp_id = config.home_mini_app_id.clone();
             let home_miniapp_version = &config.home_mini_app_version;
+            let max_apps = 5;
 
             if !install::is_installed(controller_arc.as_ref(), &home_miniapp_id) {
                 if let Err(e) = install::install_home_miniapp(
@@ -698,10 +743,15 @@ pub fn init<T: AppController + 'static>(controller: T) -> Option<(String, String
                 }
             }
 
+            let svc_manager = appservice::init(controller_arc.clone(), max_apps);
+
             // Now create the MiniApp instance and call setup
             // new_as_home itself calls setup(), which loads its app.json.
-            let home_miniapp =
-                MiniApp::new_as_home(home_miniapp_id.clone(), controller_arc.clone());
+            let home_miniapp = MiniApp::new_as_home(
+                home_miniapp_id.clone(),
+                controller_arc.clone(),
+                svc_manager.clone(),
+            );
 
             // Check if home mini app needs updating after loading its configuration
             if home_miniapp.config.is_debug_enabled()
@@ -725,7 +775,7 @@ pub fn init<T: AppController + 'static>(controller: T) -> Option<(String, String
             let initial_route = home_miniapp.config.get_initial_route();
 
             // Initialize MiniApps collection
-            let mut miniapps = MiniApps::new(controller_arc.clone());
+            let mut miniapps = MiniApps::new(controller_arc.clone(), svc_manager, max_apps);
 
             // Wrap the home miniapp in Arc<RwLock<>> and add it to the collection
             let home_miniapp_arc = Arc::new(RwLock::new(home_miniapp));
@@ -802,8 +852,8 @@ pub fn get_or_init_miniapp(appid: String) -> Arc<RwLock<MiniApp>> {
 
     let controller = miniapps.controller.clone();
 
-    // Create new MiniApp
-    let unit = MiniApp::new(appid.clone(), controller);
+    // Create new MiniApp with app_service_manager
+    let unit = MiniApp::new(appid.clone(), controller, miniapps.svc_manager.clone());
     let app_arc = Arc::new(RwLock::new(unit));
 
     // Insert into collection and return
