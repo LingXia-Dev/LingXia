@@ -1,6 +1,8 @@
+use crate::appservice::MiniAppServiceManager;
+use crate::log::LogLevel;
 use crate::{AppController, ControllerCmd, MiniAppError, WebViewCmd};
 use std::collections::{HashMap, VecDeque};
-use std::sync::{Arc, mpsc};
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::Instant;
 
 /// A page stack represents a group of pages starting with a tab page
@@ -132,14 +134,41 @@ impl Pages {
         appid: String,
         path: String,
         controller: Arc<dyn AppController>,
+        svc_manager: Arc<Mutex<MiniAppServiceManager>>,
     ) -> &Page {
         if self.pages.len() >= self.max_pages {
             self.destroy_least_active();
         }
 
         // Create and insert new page
-        let page = Page::new(controller, appid, path.clone());
+        let page = Page::new(
+            controller.clone(),
+            appid.clone(),
+            path.clone(),
+            svc_manager.clone(),
+        );
         self.pages.insert(path.clone(), page);
+
+        // Request to create page service
+        if let Ok(guard) = svc_manager.lock() {
+            if let Err(e) = guard.create_page_svc(&appid, &path) {
+                controller.log(
+                    LogLevel::Error,
+                    &format!(
+                        "Failed to request page service creation for {}/{}: {}",
+                        appid, path, e
+                    ),
+                );
+            }
+        } else {
+            controller.log(
+                LogLevel::Error,
+                &format!(
+                    "Mutex poisoned when trying to create page service for {}/{}",
+                    appid, path,
+                ),
+            );
+        }
 
         // Return reference to the newly created page
         self.pages.get(&path).unwrap()
@@ -261,6 +290,8 @@ pub(crate) struct Page {
 
     // Reference to the app controller
     controller: Arc<dyn AppController>,
+    // Reference to the service manager
+    svc_manager: Arc<Mutex<MiniAppServiceManager>>,
 
     // Time when this page was last active
     last_active_time: Instant,
@@ -270,11 +301,17 @@ pub(crate) struct Page {
 }
 
 impl Page {
-    pub(crate) fn new(controller: Arc<dyn AppController>, appid: String, path: String) -> Self {
+    pub(crate) fn new(
+        controller: Arc<dyn AppController>,
+        appid: String,
+        path: String,
+        svc_manager: Arc<Mutex<MiniAppServiceManager>>,
+    ) -> Self {
         Self {
             controller,
             appid,
             path,
+            svc_manager,
             last_active_time: Instant::now(),
             script_injected: false,
         }
@@ -409,6 +446,10 @@ impl WebViewController for Page {
 
 impl Drop for Page {
     fn drop(&mut self) {
+        // Request to terminate page service
+        if let Ok(guard) = self.svc_manager.lock() {
+            let _ = guard.terminate_page_svc(&self.appid, &self.path);
+        }
         // Just send drop webview command without waiting for response
         let _ = self
             .controller

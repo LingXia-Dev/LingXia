@@ -582,9 +582,12 @@ impl AppUiDelegate for MiniApp {
         let controller_clone = self.controller.clone();
 
         // Create the page first
-        let page = self
-            .pages
-            .create_page(appid_clone, path.clone(), controller_clone);
+        let page = self.pages.create_page(
+            appid_clone,
+            path.clone(),
+            controller_clone,
+            self.svc_manager.clone(),
+        );
 
         // Store the result of loading the URL
         let url_load_result = page.load_url(&url);

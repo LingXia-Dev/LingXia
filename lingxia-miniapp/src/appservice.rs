@@ -237,21 +237,31 @@ async fn miniapp_service_handler(
             }
             ServiceMessage::CreatePage { appid, path } => {
                 if let Some(app_ctx) = miniapp_ctx.get(&appid) {
-                    // TODO: Create page in ctx
+                    let page_js_path = app_ctx.app_path.join(&path).with_extension("js");
+                    let ctx = &app_ctx.ctx;
+
+                    if page_js_path.exists() {
+                        if let Ok(js) = Source::from_path(ctx, &page_js_path).await {
+                            let ret: i32 = ctx.eval(js).unwrap();
+                            log(LogLevel::Info, &format!("JS result {}", ret));
+                        }
+                    } else {
+                        log(
+                            LogLevel::Info,
+                            &format!(
+                                "[Worker {}] MiniApp '{}' has no JS file: '{}'",
+                                worker_id,
+                                appid,
+                                page_js_path.display()
+                            ),
+                        );
+                    }
 
                     log(
                         LogLevel::Info,
                         &format!(
-                            "[Worker {}] Created page '{}' for MiniApp '{}'",
+                            "[Worker {}] Created page svc '{}' for MiniApp '{}'",
                             worker_id, path, appid
-                        ),
-                    );
-                } else {
-                    log(
-                        LogLevel::Warn,
-                        &format!(
-                            "[Worker {}] Cannot create page: MiniApp '{}' not found",
-                            worker_id, appid
                         ),
                     );
                 }
