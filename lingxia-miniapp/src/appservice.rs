@@ -22,6 +22,11 @@ enum ServiceMessage {
     TerminatePage { appid: String, path: String },
 }
 
+struct MiniAppCtx {
+    ctx: JSContext,
+    app_path: PathBuf, // base Path of MiniApp
+}
+
 #[derive(Debug)]
 struct LogMessage {
     level: LogLevel,
@@ -59,7 +64,7 @@ impl MiniAppServiceManager {
     }
 
     /// Create a new mini app service
-    pub fn create_app_svc(&mut self, appid: &str, app_path: &str) -> Result<(), MiniAppError> {
+    pub fn create_app_svc(&mut self, appid: &str, app_path: PathBuf) -> Result<(), MiniAppError> {
         // Check if app already exists
         if self.worker_assignments.contains_key(appid) {
             return Ok(());
@@ -81,7 +86,7 @@ impl MiniAppServiceManager {
         // Send message
         self.sender.send(ServiceMessage::CreateMiniApp {
             appid: appid.to_string(),
-            app_path: PathBuf::from(app_path),
+            app_path,
         })?;
 
         Ok(())
@@ -158,7 +163,7 @@ async fn miniapp_service_handler(
     manager: Arc<Mutex<MiniAppServiceManager>>,
     runtime: JSRuntime,
     cmd_str: String,
-    local_contexts: &mut HashMap<String, JSContext>,
+    miniapp_ctx: &mut HashMap<String, MiniAppCtx>,
     log_sender: Sender<LogMessage>,
 ) {
     // Helper function for logging without locking
@@ -174,7 +179,12 @@ async fn miniapp_service_handler(
             ServiceMessage::CreateMiniApp { appid, app_path } => {
                 let ctx = runtime.context();
 
-                local_contexts.insert(appid.clone(), ctx.clone());
+                // Create and store MiniAppCtx containing both JSContext and app_path
+                let mini_app_ctx = MiniAppCtx {
+                    ctx: ctx.clone(),
+                    app_path: app_path.clone(),
+                };
+                miniapp_ctx.insert(appid.clone(), mini_app_ctx);
 
                 let js = app_path.join("app.js");
                 if js.exists() {
@@ -182,6 +192,16 @@ async fn miniapp_service_handler(
                         let ret: i32 = ctx.eval(js).unwrap();
                         log(LogLevel::Info, &format!("JS result {}", ret));
                     }
+                } else {
+                    log(
+                        LogLevel::Info,
+                        &format!(
+                            "[Worker {}] MiniApp '{}' has no JS file: '{}'",
+                            worker_id,
+                            appid,
+                            js.display()
+                        ),
+                    );
                 }
 
                 // Only lock once to update app info
@@ -199,7 +219,7 @@ async fn miniapp_service_handler(
                 );
             }
             ServiceMessage::TerminateMiniApp { appid } => {
-                if local_contexts.remove(&appid).is_some() {
+                if miniapp_ctx.remove(&appid).is_some() {
                     // Only lock once to update app info
                     {
                         let mut manager_guard = manager.lock().unwrap();
@@ -216,7 +236,7 @@ async fn miniapp_service_handler(
                 }
             }
             ServiceMessage::CreatePage { appid, path } => {
-                if let Some(_ctx) = local_contexts.get(&appid) {
+                if let Some(app_ctx) = miniapp_ctx.get(&appid) {
                     // TODO: Create page in ctx
 
                     log(
@@ -237,7 +257,7 @@ async fn miniapp_service_handler(
                 }
             }
             ServiceMessage::TerminatePage { appid, path } => {
-                if let Some(_ctx) = local_contexts.get(&appid) {
+                if let Some(app_ctx) = miniapp_ctx.get(&appid) {
                     // TODO: Remove page from ctx
 
                     log(
@@ -343,8 +363,8 @@ pub(crate) fn init<T: AppController + 'static>(
 
                 if worker
                     .spawn_future(async move |runtime, mut receiver| {
-                        // Contexts are stored in worker thread,since it's not Sendable
-                        let mut local_contexts = HashMap::<String, JSContext>::new();
+                        // Contexts are stored in worker thread, since it's not Sendable
+                        let mut miniapp_ctxs = HashMap::<String, MiniAppCtx>::new();
 
                         while let Some(WorkerMessage::String(cmd_str)) = receiver.recv().await {
                             miniapp_service_handler(
@@ -352,15 +372,15 @@ pub(crate) fn init<T: AppController + 'static>(
                                 manager_c.clone(),
                                 runtime.clone(),
                                 cmd_str,
-                                &mut local_contexts,
+                                &mut miniapp_ctxs,
                                 worker_log_sender.clone(),
                             )
                             .await;
                         }
 
                         // Clean up contexts when worker is shutting down
-                        if !local_contexts.is_empty() {
-                            local_contexts.clear();
+                        if !miniapp_ctxs.is_empty() {
+                            miniapp_ctxs.clear();
                         }
 
                         Ok(())

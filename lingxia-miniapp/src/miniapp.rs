@@ -168,7 +168,7 @@ impl MiniApp {
 
         // Create app service
         if let Ok(mut manager) = app.svc_manager.lock() {
-            if let Err(e) = manager.create_app_svc(&app.appid, app.app_dir.to_str().unwrap_or("")) {
+            if let Err(e) = manager.create_app_svc(&app.appid, app.app_dir.clone()) {
                 app.error("system", format!("Failed to create app service: {}", e));
             }
         }
@@ -203,7 +203,7 @@ impl MiniApp {
 
         // Initialize app service for home app
         if let Ok(mut manager) = app.svc_manager.lock() {
-            if let Err(e) = manager.create_app_svc(&app.appid, app.app_dir.to_str().unwrap_or("")) {
+            if let Err(e) = manager.create_app_svc(&app.appid, app.app_dir.clone()) {
                 app.error("system", format!("Failed to create app service: {}", e));
             }
         }
