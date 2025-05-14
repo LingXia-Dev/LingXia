@@ -90,7 +90,7 @@ impl MiniApps {
 
             // Clean up app service before removing the app
             if let Ok(mut manager) = self.svc_manager.lock() {
-                if let Err(e) = manager.terminate_app_svc(&appid) {
+                if let Err(e) = manager.terminate_app_svc(appid.clone()) {
                     self.controller.log(
                         LogLevel::Error,
                         &format!("Failed to terminate app service for {}: {}", appid, e),
@@ -555,7 +555,7 @@ impl AppUiDelegate for MiniApp {
 
         // Initialize app service for home app
         if let Ok(mut manager) = self.svc_manager.lock() {
-            if let Err(e) = manager.create_app_svc(&self.appid, self.app_dir.clone()) {
+            if let Err(e) = manager.create_app_svc(self.appid.clone(), self.app_dir.clone()) {
                 self.error(
                     "AppUiDelegate",
                     format!("Failed to create app service: {}", e),

@@ -92,9 +92,9 @@ impl MiniAppServiceManager {
     }
 
     /// Create a new mini app service
-    pub fn create_app_svc(&mut self, appid: &str, app_path: PathBuf) -> Result<(), MiniAppError> {
+    pub fn create_app_svc(&mut self, appid: String, app_path: PathBuf) -> Result<(), MiniAppError> {
         // Check if app already exists
-        if self.worker_assignments.contains_key(appid) {
+        if self.worker_assignments.contains_key(&appid) {
             return Ok(());
         }
 
@@ -109,48 +109,41 @@ impl MiniAppServiceManager {
         let worker_id = self.free_workers.pop().unwrap();
 
         // Update assignment
-        self.worker_assignments.insert(appid.to_string(), worker_id);
+        self.worker_assignments.insert(appid.clone(), worker_id);
 
         // Send message
-        self.sender.send(ServiceMessage::CreateMiniApp {
-            appid: appid.to_string(),
-            app_path,
-        })?;
+        self.sender
+            .send(ServiceMessage::CreateMiniApp { appid, app_path })?;
 
         Ok(())
     }
 
     /// Create a new page service in an existing mini app
-    pub fn create_page_svc(&self, appid: &str, path: &str) -> Result<(), MiniAppError> {
-        self.sender.send(ServiceMessage::CreatePage {
-            appid: appid.to_string(),
-            path: path.to_string(),
-        })?;
+    pub fn create_page_svc(&self, appid: String, path: String) -> Result<(), MiniAppError> {
+        self.sender
+            .send(ServiceMessage::CreatePage { appid, path })?;
 
         Ok(())
     }
 
     /// Terminate a page service in a mini app
-    pub fn terminate_page_svc(&self, appid: &str, path: &str) -> Result<(), MiniAppError> {
-        self.sender.send(ServiceMessage::TerminatePage {
-            appid: appid.to_string(),
-            path: path.to_string(),
-        })?;
+    pub fn terminate_page_svc(&self, appid: String, path: String) -> Result<(), MiniAppError> {
+        self.sender
+            .send(ServiceMessage::TerminatePage { appid, path })?;
 
         Ok(())
     }
 
     /// Terminate a mini app service
-    pub fn terminate_app_svc(&mut self, appid: &str) -> Result<(), MiniAppError> {
+    pub fn terminate_app_svc(&mut self, appid: String) -> Result<(), MiniAppError> {
         // If we have this app, get its worker ID
-        if let Some(worker_id) = self.worker_assignments.remove(appid) {
+        if let Some(worker_id) = self.worker_assignments.remove(&appid) {
             // Return worker to free pool
             self.free_workers.push(worker_id);
         }
 
-        self.sender.send(ServiceMessage::TerminateMiniApp {
-            appid: appid.to_string(),
-        })?;
+        self.sender
+            .send(ServiceMessage::TerminateMiniApp { appid })?;
 
         Ok(())
     }

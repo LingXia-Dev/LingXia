@@ -151,7 +151,7 @@ impl Pages {
 
         // Request to create page service
         if let Ok(guard) = svc_manager.lock() {
-            if let Err(e) = guard.create_page_svc(&appid, &path) {
+            if let Err(e) = guard.create_page_svc(appid.clone(), path.clone()) {
                 controller.log(
                     LogLevel::Error,
                     &format!(
@@ -448,7 +448,7 @@ impl Drop for Page {
     fn drop(&mut self) {
         // Request to terminate page service
         if let Ok(guard) = self.svc_manager.lock() {
-            let _ = guard.terminate_page_svc(&self.appid, &self.path);
+            let _ = guard.terminate_page_svc(self.appid.clone(), self.path.clone());
         }
         // Just send drop webview command without waiting for response
         let _ = self
