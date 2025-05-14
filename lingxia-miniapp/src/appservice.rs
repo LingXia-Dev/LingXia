@@ -194,6 +194,15 @@ async fn miniapp_service_handler(
                 // register Page, App and getApp function
                 let _ = app::init(&ctx);
                 let _ = page::init(&ctx);
+                let _ = rong_modules::init(&ctx);
+
+                log(
+                    LogLevel::Info,
+                    &format!(
+                        "[Worker {}] Created JS context for MiniApp '{}'",
+                        worker_id, appid
+                    ),
+                );
 
                 let js = app_path.join("app.js");
                 if js.exists() {
@@ -228,14 +237,6 @@ async fn miniapp_service_handler(
                     let mut manager_guard = manager.lock().unwrap();
                     manager_guard.add_miniapp(&appid, worker_id);
                 }
-
-                log(
-                    LogLevel::Info,
-                    &format!(
-                        "[Worker {}] Created JS context for MiniApp '{}'",
-                        worker_id, appid
-                    ),
-                );
             }
             ServiceMessage::TerminateMiniApp { appid } => {
                 if miniapp_ctx.remove(&appid).is_some() {
