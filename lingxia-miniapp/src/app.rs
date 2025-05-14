@@ -34,9 +34,21 @@ pub struct AppConfig {
 
     #[serde(rename = "homeMiniAppVersion")]
     pub home_mini_app_version: String, // Version of the home mini application
+
+    // Maximum number of mini applications allowed to run concurrently
+    #[serde(
+        rename = "maxAllowedMiniApps",
+        default = "AppConfig::default_max_allowed_miniapps"
+    )]
+    pub max_allowed_miniapps: usize,
 }
 
 impl AppConfig {
+    /// Default value for max_allowed_miniapps
+    fn default_max_allowed_miniapps() -> usize {
+        3
+    }
+
     /// Read, parse and validate app.json from the assets directory.
     pub(crate) fn load<T: AppRuntime + ?Sized>(controller: &T) -> Result<Self, MiniAppError> {
         // Read app.json as a string
@@ -101,6 +113,13 @@ impl AppConfig {
         if config.home_mini_app_version.is_empty() {
             return Err(MiniAppError::InvalidParameter(
                 "homeMiniAppVersion is mandatory and cannot be empty".to_string(),
+            ));
+        }
+
+        // Validate maxAllowedMiniApps range
+        if config.max_allowed_miniapps < 1 || config.max_allowed_miniapps > 5 {
+            return Err(MiniAppError::InvalidParameter(
+                "maxAllowedMiniApps must be between 1 and 5".to_string(),
             ));
         }
 

@@ -725,7 +725,8 @@ pub fn init<T: AppController + 'static>(controller: T) -> Option<(String, String
         Ok(config) => {
             let home_miniapp_id = config.home_mini_app_id.clone();
             let home_miniapp_version = &config.home_mini_app_version;
-            let max_apps = 5;
+            let max_apps = config.max_allowed_miniapps;
+            controller_arc.log(LogLevel::Error, &format!("Max MiniApp: {}", max_apps));
 
             if !install::is_installed(controller_arc.as_ref(), &home_miniapp_id) {
                 if let Err(e) = install::install_home_miniapp(
