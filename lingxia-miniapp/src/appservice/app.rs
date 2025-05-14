@@ -2,52 +2,83 @@ use rong::{Class, JSContext, JSFunc, JSObject, JSResult, JSValue, js_class, js_e
 use std::collections::HashMap;
 
 #[js_export]
-pub struct AppSvc {
+pub(crate) struct MiniAppSvc {
     functions: HashMap<String, JSFunc>,
+    this: JSObject,
 }
 
 #[js_class]
-impl AppSvc {
+impl MiniAppSvc {
     #[js_method(constructor)]
     fn _new() {}
 
     #[js_method(gc_mark)]
-    pub fn gc_mark_with<F>(&self, mut mark_fn: F)
+    fn gc_mark_with<F>(&self, mut mark_fn: F)
     where
         F: FnMut(&JSValue),
     {
         for (_, func) in self.functions.iter() {
             mark_fn(func.as_jsvalue())
         }
+        mark_fn(self.this.as_jsvalue())
     }
 }
 
-fn extract_functions(obj: &JSObject, mini_app: &mut AppSvc) -> JSResult<()> {
-    for key_value in obj.keys()? {
-        // obj.keys() returns JSValue, not String
-        if let Ok(key_string) = key_value.try_into::<String>() {
-            if let Ok(func) = obj.get::<_, JSFunc>(key_string.as_str()) {
-                mini_app.functions.insert(key_string, func);
+impl MiniAppSvc {
+    fn assign_funcs(&mut self, obj: &JSObject) -> JSResult<()> {
+        for key_value in obj.keys()? {
+            // obj.keys() returns JSValue, not String
+            if let Ok(key_string) = key_value.try_into::<String>() {
+                if let Ok(func) = obj.get::<_, JSFunc>(key_string.as_str()) {
+                    self.functions.insert(key_string, func);
+                }
             }
         }
+        Ok(())
     }
-    Ok(())
+
+    pub(crate) fn call(&self, func_name: &str) {
+        if let Some(func) = self.functions.get(func_name) {
+            let _ = func.call::<_, u32>(Some(self.this.clone()), ());
+        }
+    }
 }
 
-pub(crate) fn app_func(ctx: JSContext, obj: JSObject) -> JSResult<JSObject> {
+fn app_func(ctx: JSContext, obj: JSObject) -> JSResult<JSObject> {
     // Get the MiniApp class
-    let mini_app_class = Class::get::<AppSvc>(&ctx)?;
+    let miniapp_class = Class::get::<MiniAppSvc>(&ctx)?;
 
     // Create a new MiniApp instance
-    let mut mini_app = AppSvc {
+    let mut app_svc = MiniAppSvc {
         functions: HashMap::new(),
+        this: obj.clone(),
     };
 
     // Extract all functions from the object
-    extract_functions(&obj, &mut mini_app)?;
+    app_svc.assign_funcs(&obj)?;
 
     // Create a new JSObject using the instance method
-    let app = mini_app_class.instance(mini_app);
+    let app = miniapp_class.instance(app_svc);
 
+    // save object for getApp
+    ctx.global().set("_lingxia_app_obj", obj.clone())?;
     Ok(app)
+}
+
+fn get_app_func(ctx: JSContext) -> JSResult<JSObject> {
+    // save object for getApp
+    ctx.global().get::<_, JSObject>("_lingxia_app_obj")
+}
+
+// Register the global App & getApp function
+pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
+    ctx.register_class::<MiniAppSvc>()?;
+
+    let app_func = JSFunc::new(ctx, app_func)?.name("App")?;
+    ctx.global().set("App", app_func)?;
+
+    let get_app_func = JSFunc::new(ctx, get_app_func)?.name("getApp")?;
+    ctx.global().set("getApp", get_app_func)?;
+
+    Ok(())
 }

@@ -9,6 +9,9 @@ use std::path::PathBuf;
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, mpsc};
 
+mod app;
+use app::MiniAppSvc;
+
 /// Message type for MiniApp service system
 #[derive(Debug, Clone, Serialize, Deserialize)]
 enum ServiceMessage {
@@ -25,6 +28,7 @@ enum ServiceMessage {
 struct MiniAppCtx {
     ctx: JSContext,
     app_path: PathBuf, // base Path of MiniApp
+    svc: Option<MiniAppSvc>,
 }
 
 #[derive(Debug)]
@@ -180,17 +184,21 @@ async fn miniapp_service_handler(
                 let ctx = runtime.context();
 
                 // Create and store MiniAppCtx containing both JSContext and app_path
-                let mini_app_ctx = MiniAppCtx {
+                let mut local_ctx = MiniAppCtx {
                     ctx: ctx.clone(),
                     app_path: app_path.clone(),
+                    svc: None,
                 };
-                miniapp_ctx.insert(appid.clone(), mini_app_ctx);
+
+                // register App and getApp function
+                let _ = app::init(&ctx);
 
                 let js = app_path.join("app.js");
                 if js.exists() {
                     if let Ok(js) = Source::from_path(&ctx, js).await {
-                        let ret: i32 = ctx.eval(js).unwrap();
-                        log(LogLevel::Info, &format!("JS result {}", ret));
+                        if let Ok(svc) = ctx.eval::<MiniAppSvc>(js) {
+                            local_ctx.svc = Some(svc);
+                        }
                     }
                 } else {
                     log(
@@ -203,6 +211,8 @@ async fn miniapp_service_handler(
                         ),
                     );
                 }
+
+                miniapp_ctx.insert(appid.clone(), local_ctx);
 
                 // Only lock once to update app info
                 {
