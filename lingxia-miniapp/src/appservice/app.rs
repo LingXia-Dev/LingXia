@@ -18,9 +18,9 @@ impl MiniAppSvc {
         F: FnMut(&JSValue),
     {
         for (_, func) in self.functions.iter() {
-            mark_fn(func.as_jsvalue())
+            mark_fn(func.as_jsvalue());
         }
-        mark_fn(self.this.as_jsvalue())
+        mark_fn(self.this.as_jsvalue());
     }
 }
 

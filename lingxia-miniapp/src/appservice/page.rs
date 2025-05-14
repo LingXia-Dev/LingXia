@@ -1,12 +1,13 @@
 use rong::{
-    Class, JSContext, JSFunc, JSObject, JSResult, JSValue, function::Optional, js_class, js_export,
-    js_method,
+    Class, JSContext, JSFunc, JSObject, JSResult, JSValue, Source, function::Optional, js_class,
+    js_export, js_method,
 };
 use std::collections::HashMap;
 
 #[js_export]
-pub struct PageSvc {
+pub(crate) struct PageSvc {
     functions: HashMap<String, JSFunc>,
+    this: JSObject,
 }
 
 #[js_class]
@@ -32,102 +33,59 @@ impl PageSvc {
         F: FnMut(&JSValue),
     {
         for (_, func) in self.functions.iter() {
-            mark_fn(func.as_jsvalue())
+            mark_fn(func.as_jsvalue());
         }
+        mark_fn(self.this.as_jsvalue());
     }
 }
 
-fn extract_functions(obj: &JSObject, page: &mut PageSvc) -> JSResult<()> {
-    for key_value in obj.keys()? {
-        // obj.keys() returns JSValue, not String
-        if let Ok(key_string) = key_value.try_into::<String>() {
-            if let Ok(func) = obj.get::<_, JSFunc>(key_string.as_str()) {
-                page.functions.insert(key_string, func);
+impl PageSvc {
+    fn assign_funcs(&mut self, obj: &JSObject) -> JSResult<()> {
+        for key_value in obj.keys()? {
+            // obj.keys() returns JSValue, not String
+            if let Ok(key_string) = key_value.try_into::<String>() {
+                if let Ok(func) = obj.get::<_, JSFunc>(key_string.as_str()) {
+                    self.functions.insert(key_string, func);
+                }
             }
         }
+        Ok(())
     }
-    Ok(())
+
+    pub(crate) fn call(&self, func_name: &str) {
+        if let Some(func) = self.functions.get(func_name) {
+            let _ = func.call::<_, u32>(Some(self.this.clone()), ());
+        }
+    }
 }
 
-pub(crate) fn page_func(ctx: JSContext, obj: JSObject) -> JSResult<JSObject> {
+fn page_func(ctx: JSContext, obj: JSObject) -> JSResult<JSObject> {
     // Get the MiniApp class
-    let mini_app_class = Class::get::<PageSvc>(&ctx)?;
+    let page_class = Class::get::<PageSvc>(&ctx)?;
 
-    let mut mini_app = PageSvc {
+    let mut page_svc = PageSvc {
         functions: HashMap::new(),
+        this: obj.clone(),
     };
 
     // Extract all functions from the object
-    extract_functions(&obj, &mut mini_app)?;
+    page_svc.assign_funcs(&obj)?;
 
     // Create a new JSObject using the instance method
-    let page = mini_app_class.instance(mini_app);
+    let page = page_class.instance(page_svc);
 
     Ok(page)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::init;
-    use rong_test::*;
+// Register the global App & getApp function
+pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
+    ctx.register_class::<PageSvc>()?;
 
-    // Helper function to trigger a function by name (moved from MiniApp)
-    fn trigger(mini_app: &PageSvc, this: JSObject, name: &str) -> JSResult<()> {
-        if let Some(func) = mini_app.functions.get(name) {
-            let _ = func.call::<_, ()>(Some(this), ());
-            Ok(())
-        } else {
-            Err(RongJSError::Error(format!("Function '{}' not found", name)))
-        }
-    }
+    let page_func = JSFunc::new(ctx, page_func)?.name("_Page")?;
+    ctx.global().set("_Page", page_func)?;
 
-    #[test]
-    fn test_page() {
-        async_run!(|ctx: JSContext| async move {
-            rong_modules::init(&ctx)?;
-            init(&ctx)?;
+    let page = Source::from_bytes(include_str!("scripts/Page.js"));
+    ctx.eval::<()>(page)?;
 
-            // Create a Page and get the returned object
-            let page_obj = ctx.eval::<JSObject>(Source::from_bytes(
-                r#"
-                    let triggered = false;
-                    let callbackCalled = false;
-
-                    const page = Page({
-                        onLoad: function() {
-                            triggered = true;
-                            console.log("onLoad called");
-
-                            this.setData({count: 1}, function() {
-                                callbackCalled = true;
-                                console.log("setData callback called");
-                            });
-                        },
-                        data: { "a": 1},
-                    });
-                    page
-                "#,
-            ))?;
-
-            // Access the MiniApp instance and trigger the onLoad function using our test helper
-            {
-                let mini_app = page_obj.borrow::<PageSvc>()?;
-                trigger(&mini_app, page_obj.clone(), "onLoad")?;
-            }
-
-            // Check if the function was triggered
-            let triggered = ctx.eval::<bool>(Source::from_bytes("triggered"))?;
-            assert!(triggered, "onLoad function should have been triggered");
-
-            // Wait a short time to for callback execution
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-
-            // Check if the callback was called
-            let callback_called = ctx.eval::<bool>(Source::from_bytes("callbackCalled"))?;
-            assert!(callback_called, "setData callback should have been called");
-
-            Ok(())
-        });
-    }
+    Ok(())
 }

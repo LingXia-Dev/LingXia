@@ -10,7 +10,9 @@ use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, mpsc};
 
 mod app;
+mod page;
 use app::MiniAppSvc;
+use page::PageSvc;
 
 /// Message type for MiniApp service system
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -29,6 +31,7 @@ struct MiniAppCtx {
     ctx: JSContext,
     app_path: PathBuf, // base Path of MiniApp
     svc: Option<MiniAppSvc>,
+    page_svc: HashMap<String, PageSvc>,
 }
 
 #[derive(Debug)]
@@ -188,10 +191,12 @@ async fn miniapp_service_handler(
                     ctx: ctx.clone(),
                     app_path: app_path.clone(),
                     svc: None,
+                    page_svc: HashMap::new(),
                 };
 
-                // register App and getApp function
+                // register Page, App and getApp function
                 let _ = app::init(&ctx);
+                let _ = page::init(&ctx);
 
                 let js = app_path.join("app.js");
                 if js.exists() {
@@ -246,14 +251,34 @@ async fn miniapp_service_handler(
                 }
             }
             ServiceMessage::CreatePage { appid, path } => {
-                if let Some(app_ctx) = miniapp_ctx.get(&appid) {
+                if let Some(app_ctx) = miniapp_ctx.get_mut(&appid) {
                     let page_js_path = app_ctx.app_path.join(&path).with_extension("js");
                     let ctx = &app_ctx.ctx;
 
                     if page_js_path.exists() {
                         if let Ok(js) = Source::from_path(ctx, &page_js_path).await {
-                            let ret: i32 = ctx.eval(js).unwrap();
-                            log(LogLevel::Info, &format!("JS result {}", ret));
+                            match ctx.eval::<PageSvc>(js) {
+                                Ok(page_svc) => {
+                                    // Add the page service to the map
+                                    app_ctx.page_svc.insert(path.clone(), page_svc);
+                                    log(
+                                        LogLevel::Info,
+                                        &format!(
+                                            "[Worker {}] Successfully loaded page JS for {}/{}",
+                                            worker_id, appid, path
+                                        ),
+                                    );
+                                }
+                                Err(e) => {
+                                    log(
+                                        LogLevel::Error,
+                                        &format!(
+                                            "[Worker {}] Failed to eval page JS: {}",
+                                            worker_id, e
+                                        ),
+                                    );
+                                }
+                            }
                         }
                     } else {
                         log(
@@ -266,27 +291,20 @@ async fn miniapp_service_handler(
                             ),
                         );
                     }
-
-                    log(
-                        LogLevel::Info,
-                        &format!(
-                            "[Worker {}] Created page svc '{}' for MiniApp '{}'",
-                            worker_id, path, appid
-                        ),
-                    );
                 }
             }
             ServiceMessage::TerminatePage { appid, path } => {
-                if let Some(app_ctx) = miniapp_ctx.get(&appid) {
-                    // TODO: Remove page from ctx
-
-                    log(
-                        LogLevel::Info,
-                        &format!(
-                            "[Worker {}] Removed page '{}' from MiniApp '{}'",
-                            worker_id, path, appid
-                        ),
-                    );
+                if let Some(app_ctx) = miniapp_ctx.get_mut(&appid) {
+                    // Remove page from page_svc map
+                    if app_ctx.page_svc.remove(&path).is_some() {
+                        log(
+                            LogLevel::Info,
+                            &format!(
+                                "[Worker {}] Removed page '{}' from MiniApp '{}'",
+                                worker_id, path, appid
+                            ),
+                        );
+                    }
                 }
             }
         }
