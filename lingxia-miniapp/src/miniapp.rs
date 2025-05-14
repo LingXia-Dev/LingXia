@@ -166,13 +166,6 @@ impl MiniApp {
             app.error("system", format!("Failed to setup app: {}", e));
         }
 
-        // Create app service
-        if let Ok(mut manager) = app.svc_manager.lock() {
-            if let Err(e) = manager.create_app_svc(&app.appid, app.app_dir.clone()) {
-                app.error("system", format!("Failed to create app service: {}", e));
-            }
-        }
-
         app
     }
 
@@ -199,13 +192,6 @@ impl MiniApp {
 
         if let Err(e) = app.setup() {
             app.error("system", format!("Failed to setup home app: {}", e));
-        }
-
-        // Initialize app service for home app
-        if let Ok(mut manager) = app.svc_manager.lock() {
-            if let Err(e) = manager.create_app_svc(&app.appid, app.app_dir.clone()) {
-                app.error("system", format!("Failed to create app service: {}", e));
-            }
         }
 
         app
@@ -566,6 +552,16 @@ impl AppUiDelegate for MiniApp {
     fn on_miniapp_opened(&self) {
         // Log the app opening event
         self.info("AppUiDelegate", format!("Mini app {} opened", self.appid));
+
+        // Initialize app service for home app
+        if let Ok(mut manager) = self.svc_manager.lock() {
+            if let Err(e) = manager.create_app_svc(&self.appid, self.app_dir.clone()) {
+                self.error(
+                    "AppUiDelegate",
+                    format!("Failed to create app service: {}", e),
+                );
+            }
+        }
     }
 
     fn on_miniapp_closed(&mut self) {
