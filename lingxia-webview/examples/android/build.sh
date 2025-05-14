@@ -30,9 +30,11 @@ trap cleanup EXIT
 echo "Building Rust library..."
 cd "$PROJECT_ROOT"
 env \
+CMAKE_CONFIGURE_ARGS="-DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake -DCMAKE_SYSTEM_PROCESSOR=aarch64"  \
 AR_aarch64_linux_android="$ANDROID_NDK/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-ar" \
 CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$ANDROID_NDK/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android33-clang" \
-CMAKE_TOOLCHAIN_FILE="$ANDROID_NDK/build/cmake/android.toolchain.cmake" \
+CC_aarch64_linux_android="$ANDROID_NDK/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android33-clang" \
+CXX_aarch64_linux_android="$ANDROID_NDK/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android33-clang++" \
 cargo build --target aarch64-linux-android --release
 
 echo "Copying Rust library to jniLibs..."
