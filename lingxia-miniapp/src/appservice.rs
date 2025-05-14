@@ -45,7 +45,6 @@ pub(crate) struct MiniAppServiceManager {
     sender: Sender<ServiceMessage>,
     worker_assignments: HashMap<String, usize>, // appid -> worker_id
     free_workers: Vec<usize>,                   // available worker ids
-    controller: Arc<dyn AppController>,
     log_sender: Sender<LogMessage>,
 }
 
@@ -53,14 +52,12 @@ impl MiniAppServiceManager {
     fn new(
         sender: Sender<ServiceMessage>,
         worker_count: usize,
-        controller: Arc<dyn AppController>,
         log_sender: Sender<LogMessage>,
     ) -> Self {
         Self {
             sender,
             worker_assignments: HashMap::new(),
             free_workers: Vec::with_capacity(worker_count),
-            controller,
             log_sender,
         }
     }
@@ -203,6 +200,13 @@ async fn miniapp_service_handler(
                     if let Ok(js) = Source::from_path(&ctx, js).await {
                         if let Ok(svc) = ctx.eval::<MiniAppSvc>(js) {
                             local_ctx.svc = Some(svc);
+                            log(
+                                LogLevel::Info,
+                                &format!(
+                                    "[Worker {}] Successfully loaded app JS for {}",
+                                    worker_id, appid
+                                ),
+                            );
                         }
                     }
                 } else {
@@ -335,7 +339,6 @@ pub(crate) fn init<T: AppController + 'static>(
     let manager = Arc::new(Mutex::new(MiniAppServiceManager::new(
         service_sender.clone(),
         num,
-        controller.clone(),
         log_sender.clone(),
     )));
 
