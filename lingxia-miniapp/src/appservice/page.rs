@@ -52,9 +52,13 @@ impl PageSvc {
         Ok(())
     }
 
-    pub(crate) fn call(&self, func_name: &str) {
+    pub(crate) fn call(&self, ctx: &JSContext, func_name: &str, args: Option<String>) {
         if let Some(func) = self.functions.get(func_name) {
-            let _ = func.call::<_, u32>(Some(self.this.clone()), ());
+            let args = args.and_then(|json| JSObject::from_json_string(ctx, &json).ok());
+            let _ = match args {
+                Some(obj) => func.call::<_, u32>(Some(self.this.clone()), (obj,)),
+                None => func.call::<_, u32>(Some(self.this.clone()), ()),
+            };
         }
     }
 }

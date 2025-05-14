@@ -360,14 +360,10 @@ async fn miniapp_service_handler(
                     }
                 }
             }
-            ServiceMessage::CallAppSvc {
-                appid,
-                name,
-                args: _,
-            } => {
+            ServiceMessage::CallAppSvc { appid, name, args } => {
                 if let Some(app_ctx) = miniapp_ctx.get_mut(&appid) {
                     if let Some(svc) = &app_ctx.svc {
-                        svc.call(&name);
+                        svc.call(&app_ctx.ctx, &name, args);
                     } else {
                         log(
                             LogLevel::Error,
@@ -380,11 +376,11 @@ async fn miniapp_service_handler(
                 appid,
                 path,
                 name,
-                args: _,
+                args,
             } => {
                 if let Some(app_ctx) = miniapp_ctx.get_mut(&appid) {
                     if let Some(page_svc) = app_ctx.page_svc.get_mut(&path) {
-                        page_svc.call(&name);
+                        page_svc.call(&app_ctx.ctx, &name, args);
                     } else {
                         log(
                             LogLevel::Error,
