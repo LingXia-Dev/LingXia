@@ -7,11 +7,8 @@
 (function () {
   try {
     globalThis.Page = function (pageConfig) {
-      console.log("Page function called with:", pageConfig);
-
       if (typeof pageConfig !== "object" || pageConfig === null) {
-        console.error("[Lingxia] Page configuration must be an object.");
-        return null;
+        return new Error("Page configuration must be an object.");
       }
       const initialData =
         typeof pageConfig.data === "object" && pageConfig.data !== null
