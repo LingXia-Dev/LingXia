@@ -18,13 +18,37 @@ use page::PageSvc;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 enum ServiceMessage {
     // Create a new miniapp service
-    CreateMiniApp { appid: String, app_path: PathBuf },
+    CreateMiniApp {
+        appid: String,
+        app_path: PathBuf,
+    },
     // Delete an miniapp service
-    TerminateMiniApp { appid: String },
+    TerminateMiniApp {
+        appid: String,
+    },
     // Create a new page service
-    CreatePage { appid: String, path: String },
+    CreatePage {
+        appid: String,
+        path: String,
+    },
     // Delete a page service
-    TerminatePage { appid: String, path: String },
+    TerminatePage {
+        appid: String,
+        path: String,
+    },
+    // Call function of App service
+    CallAppSvc {
+        appid: String,
+        name: String,
+        args: Option<String>, // JSON string of arguments
+    },
+    // Call function of Page service
+    CallPageSvc {
+        appid: String,
+        path: String,
+        name: String,
+        args: Option<String>, // JSON string of arguments
+    },
 }
 
 struct MiniAppCtx {
@@ -157,6 +181,37 @@ impl MiniAppServiceManager {
     // Get a log sender that can be passed to worker threads
     fn get_log_sender(&self) -> Sender<LogMessage> {
         self.log_sender.clone()
+    }
+
+    /// Call a function on an App service
+    pub fn app_svc(
+        &self,
+        appid: String,
+        name: String,
+        args: Option<String>,
+    ) -> Result<(), MiniAppError> {
+        self.sender
+            .send(ServiceMessage::CallAppSvc { appid, name, args })?;
+
+        Ok(())
+    }
+
+    /// Call a function on a Page service
+    pub fn page_svc(
+        &self,
+        appid: String,
+        path: String,
+        name: String,
+        args: Option<String>,
+    ) -> Result<(), MiniAppError> {
+        self.sender.send(ServiceMessage::CallPageSvc {
+            appid,
+            path,
+            name,
+            args,
+        })?;
+
+        Ok(())
     }
 }
 
@@ -308,6 +363,39 @@ async fn miniapp_service_handler(
                                 "[Worker {}] Removed page '{}' from MiniApp '{}'",
                                 worker_id, path, appid
                             ),
+                        );
+                    }
+                }
+            }
+            ServiceMessage::CallAppSvc {
+                appid,
+                name,
+                args: _,
+            } => {
+                if let Some(app_ctx) = miniapp_ctx.get_mut(&appid) {
+                    if let Some(svc) = &app_ctx.svc {
+                        svc.call(&name);
+                    } else {
+                        log(
+                            LogLevel::Error,
+                            &format!("[Worker {}] App service '{}' not loaded", worker_id, appid),
+                        );
+                    }
+                }
+            }
+            ServiceMessage::CallPageSvc {
+                appid,
+                path,
+                name,
+                args: _,
+            } => {
+                if let Some(app_ctx) = miniapp_ctx.get_mut(&appid) {
+                    if let Some(page_svc) = app_ctx.page_svc.get_mut(&path) {
+                        page_svc.call(&name);
+                    } else {
+                        log(
+                            LogLevel::Error,
+                            &format!("[Worker {}] Page service '{}' not loaded", worker_id, path),
                         );
                     }
                 }
@@ -470,6 +558,29 @@ pub(crate) fn init<T: AppController + 'static>(
                             }
                             ServiceMessage::CreatePage { appid, .. }
                             | ServiceMessage::TerminatePage { appid, .. } => {
+                                // Find worker for appid and send message
+                                if let Some(worker_id) =
+                                    manager_clone.lock().unwrap().get_worker_id(appid)
+                                {
+                                    if let Some(worker) = workers_map.get(&worker_id) {
+                                        if let Ok(cmd_str) = serde_json::to_string(&message) {
+                                            let _ =
+                                                worker.post_message(WorkerMessage::String(cmd_str));
+                                        }
+                                    }
+                                }
+                            }
+                            ServiceMessage::CallAppSvc {
+                                appid,
+                                name: _,
+                                args: _,
+                            }
+                            | ServiceMessage::CallPageSvc {
+                                appid,
+                                path: _,
+                                name: _,
+                                args: _,
+                            } => {
                                 // Find worker for appid and send message
                                 if let Some(worker_id) =
                                     manager_clone.lock().unwrap().get_worker_id(appid)
