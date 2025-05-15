@@ -215,7 +215,7 @@ async fn miniapp_service_handler(
     manager: Arc<Mutex<MiniAppServiceManager>>,
     runtime: JSRuntime,
     cmd_str: String,
-    miniapp_ctx: &mut HashMap<String, MiniAppCtx>,
+    current_miniapp: &mut Option<MiniAppCtx>,
     log_sender: Sender<LogMessage>,
 ) {
     // Helper function for logging without locking
@@ -231,8 +231,7 @@ async fn miniapp_service_handler(
             ServiceMessage::CreateMiniApp { appid, app_path } => {
                 let ctx = runtime.context();
 
-                // Create and store MiniAppCtx containing both JSContext and app_path
-                let mut local_ctx = MiniAppCtx {
+                let mut miniapp = MiniAppCtx {
                     ctx: ctx.clone(),
                     app_path: app_path.clone(),
                     svc: None,
@@ -256,7 +255,7 @@ async fn miniapp_service_handler(
                 if js.exists() {
                     if let Ok(js) = Source::from_path(&ctx, js).await {
                         if let Ok(svc) = ctx.eval::<MiniAppSvc>(js) {
-                            local_ctx.svc = Some(svc);
+                            miniapp.svc = Some(svc);
                             log(
                                 LogLevel::Info,
                                 &format!(
@@ -278,7 +277,7 @@ async fn miniapp_service_handler(
                     );
                 }
 
-                miniapp_ctx.insert(appid.clone(), local_ctx);
+                *current_miniapp = Some(miniapp);
 
                 // Only lock once to update app info
                 {
@@ -287,7 +286,9 @@ async fn miniapp_service_handler(
                 }
             }
             ServiceMessage::TerminateMiniApp { appid } => {
-                if miniapp_ctx.remove(&appid).is_some() {
+                if current_miniapp.is_some() {
+                    *current_miniapp = None;
+
                     // Only lock once to update app info
                     {
                         let mut manager_guard = manager.lock().unwrap();
@@ -304,7 +305,7 @@ async fn miniapp_service_handler(
                 }
             }
             ServiceMessage::CreatePage { appid, path } => {
-                if let Some(app_ctx) = miniapp_ctx.get_mut(&appid) {
+                if let Some(app_ctx) = current_miniapp.as_mut() {
                     let page_js_path = app_ctx.app_path.join(&path).with_extension("js");
                     let ctx = &app_ctx.ctx;
 
@@ -347,7 +348,7 @@ async fn miniapp_service_handler(
                 }
             }
             ServiceMessage::TerminatePage { appid, path } => {
-                if let Some(app_ctx) = miniapp_ctx.get_mut(&appid) {
+                if let Some(app_ctx) = current_miniapp.as_mut() {
                     // Remove page from page_svc map
                     if app_ctx.page_svc.remove(&path).is_some() {
                         log(
@@ -361,7 +362,7 @@ async fn miniapp_service_handler(
                 }
             }
             ServiceMessage::CallAppSvc { appid, name, args } => {
-                if let Some(app_ctx) = miniapp_ctx.get_mut(&appid) {
+                if let Some(app_ctx) = current_miniapp.as_mut() {
                     if let Some(svc) = &app_ctx.svc {
                         svc.call(&app_ctx.ctx, &name, args);
                     } else {
@@ -373,12 +374,12 @@ async fn miniapp_service_handler(
                 }
             }
             ServiceMessage::CallPageSvc {
-                appid,
+                appid: _,
                 path,
                 name,
                 args,
             } => {
-                if let Some(app_ctx) = miniapp_ctx.get_mut(&appid) {
+                if let Some(app_ctx) = current_miniapp.as_mut() {
                     if let Some(page_svc) = app_ctx.page_svc.get_mut(&path) {
                         page_svc.call(&app_ctx.ctx, &name, args);
                     } else {
@@ -482,8 +483,10 @@ pub(crate) fn init<T: AppController + 'static>(
 
                 if worker
                     .spawn_future(async move |runtime, mut receiver| {
-                        // Contexts are stored in worker thread, since it's not Sendable
-                        let mut miniapp_ctxs = HashMap::<String, MiniAppCtx>::new();
+                        // JSContext it's not Sendable, so we don't hold appid-> MiniAppCtx map in
+                        // MiniAppServiceManager
+                        // a worker either has a current miniapp context or it doesn't
+                        let mut current_miniapp: Option<MiniAppCtx> = None;
 
                         while let Some(WorkerMessage::String(cmd_str)) = receiver.recv().await {
                             miniapp_service_handler(
@@ -491,16 +494,14 @@ pub(crate) fn init<T: AppController + 'static>(
                                 manager_c.clone(),
                                 runtime.clone(),
                                 cmd_str,
-                                &mut miniapp_ctxs,
+                                &mut current_miniapp,
                                 worker_log_sender.clone(),
                             )
                             .await;
                         }
 
-                        // Clean up contexts when worker is shutting down
-                        if !miniapp_ctxs.is_empty() {
-                            miniapp_ctxs.clear();
-                        }
+                        // Clean up context when worker is shutting down
+                        current_miniapp.take();
 
                         Ok(())
                     })
