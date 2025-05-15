@@ -260,16 +260,8 @@ class MiniAppActivity : AppCompatActivity() {
                     Log.d(TAG, "Tab clicked: index=$index, path=$path")
                     switchToTab(path)
                 }
-                // Apply layout params
-                layoutParams = FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    (DEFAULT_TAB_BAR_SIZE_DP * resources.displayMetrics.density).toInt()
-                ).apply {
-                    gravity = when (config.position) {
-                        TabBarConfig.Position.TOP -> Gravity.TOP
-                        TabBarConfig.Position.BOTTOM -> Gravity.BOTTOM
-                    }
-                }
+                // Apply layout params using the helper function
+                applyTabBarLayoutParams(this, config)
             }
             // Add TabBar to the container AFTER the apply block completes
             rootContainer.addView(tabBar)
@@ -277,34 +269,94 @@ class MiniAppActivity : AppCompatActivity() {
         } else {
             // If TabBar already exists (e.g., during re-creation), just update its config
             tabBar?.setConfig(config)
+            // Update layout params if necessary
+            tabBar?.let { tb -> applyTabBarLayoutParams(tb, config) } // Use helper here
             Log.d(TAG, "TabBar config updated.")
         }
 
         // Initial margin update needed after TabBar is added/configured
         updateLayoutMargins()
+    }
 
-        // Demo: Show TabBar API usage after a short delay
-        // rootContainer.postDelayed({
-            // Demo API calls - keep or remove as needed
-            // tabBar?.showTabBarRedDot(1)
-            // tabBar?.setTabBarBadge(2, "99+")
-        // }, 500)
+    private fun applyTabBarLayoutParams(tabBar: TabBar, config: TabBarConfig) {
+        val isVertical = config.position == TabBarConfig.Position.LEFT || config.position == TabBarConfig.Position.RIGHT
+        val density = resources.displayMetrics.density
+        val defaultTabBarSizePx = (DEFAULT_TAB_BAR_SIZE_DP * density).toInt()
+        val verticalWidthPx = (DEFAULT_TAB_BAR_SIZE_DP * 1.0f * density).toInt() // Vertical TabBar width
+
+        (tabBar.layoutParams as? FrameLayout.LayoutParams)?.apply {
+            if (isVertical) {
+                width = verticalWidthPx
+                height = ViewGroup.LayoutParams.MATCH_PARENT
+                gravity = when (config.position) {
+                    TabBarConfig.Position.LEFT -> Gravity.START
+                    TabBarConfig.Position.RIGHT -> Gravity.END
+                    else -> Gravity.START // Should not happen
+                }
+            } else {
+                width = ViewGroup.LayoutParams.MATCH_PARENT
+                height = defaultTabBarSizePx
+                gravity = when (config.position) {
+                    TabBarConfig.Position.TOP -> Gravity.TOP
+                    TabBarConfig.Position.BOTTOM -> Gravity.BOTTOM
+                    else -> Gravity.BOTTOM // Should not happen
+                }
+            }
+            // Re-assign layoutParams to ensure changes are applied, especially when modifying existing params.
+            tabBar.layoutParams = this
+        } ?: run {
+            // Fallback for initial creation or if layoutParams are not FrameLayout.LayoutParams.
+            val newLayoutParams = FrameLayout.LayoutParams(0,0)
+            if (isVertical) {
+                newLayoutParams.width = verticalWidthPx
+                newLayoutParams.height = ViewGroup.LayoutParams.MATCH_PARENT
+                newLayoutParams.gravity = when (config.position) {
+                    TabBarConfig.Position.LEFT -> Gravity.START
+                    TabBarConfig.Position.RIGHT -> Gravity.END
+                    else -> Gravity.START // Should not happen
+                }
+            } else {
+                newLayoutParams.width = ViewGroup.LayoutParams.MATCH_PARENT
+                newLayoutParams.height = defaultTabBarSizePx
+                newLayoutParams.gravity = when (config.position) {
+                    TabBarConfig.Position.TOP -> Gravity.TOP
+                    TabBarConfig.Position.BOTTOM -> Gravity.BOTTOM
+                    else -> Gravity.BOTTOM // Should not happen
+                }
+            }
+            tabBar.layoutParams = newLayoutParams
+        }
     }
 
     private fun updateLayoutMargins() {
         val isTabBarVisible = tabBar?.visibility == View.VISIBLE
         val tabBarHeight = tabBar?.layoutParams?.height ?: 0
+        val tabBarWidth = tabBar?.layoutParams?.width ?: 0
 
-        // Adjust WebView container margins
+        // Adjust WebView container margins based on TabBar position
         (webViewContainer.layoutParams as FrameLayout.LayoutParams).apply {
             topMargin = 0
+            bottomMargin = 0
+            leftMargin = 0
+            rightMargin = 0
 
-            // Bottom margin is TabBar height if visible and at bottom, otherwise 0
-            bottomMargin = if (isTabBarVisible && tabBar?.config?.position == TabBarConfig.Position.BOTTOM) {
-                tabBarHeight
-            } else {
-                0
+            // Set margins based on TabBar position
+            when (tabBar?.config?.position) {
+                TabBarConfig.Position.BOTTOM -> {
+                    if (isTabBarVisible) bottomMargin = tabBarHeight
+                }
+                TabBarConfig.Position.TOP -> {
+                    if (isTabBarVisible) topMargin = tabBarHeight
+                }
+                TabBarConfig.Position.LEFT -> {
+                    if (isTabBarVisible) leftMargin = tabBarWidth
+                }
+                TabBarConfig.Position.RIGHT -> {
+                    if (isTabBarVisible) rightMargin = tabBarWidth
+                }
+                null -> { /* No TabBar config, do nothing */ }
             }
+
             webViewContainer.layoutParams = this
             // Request layout for the container itself
             webViewContainer.requestLayout()

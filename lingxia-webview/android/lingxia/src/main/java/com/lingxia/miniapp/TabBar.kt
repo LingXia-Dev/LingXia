@@ -28,7 +28,7 @@ data class TabBarConfig(
     val visible: Boolean = true                  // TabBar visibility, default true
 ) {
     enum class Position {
-        TOP, BOTTOM
+        TOP, BOTTOM, LEFT, RIGHT
     }
 
     companion object {
@@ -65,7 +65,12 @@ data class TabBarConfig(
                     selectedColor = if (jsonObject.has("selectedColor")) parseColor(jsonObject.optString("selectedColor"), null) else null,
                     color = if (jsonObject.has("color")) parseColor(jsonObject.optString("color"), null) else null,
                     borderStyle = if (jsonObject.has("borderStyle")) parseColor(jsonObject.optString("borderStyle"), null) else null,
-                    position = if (jsonObject.optString("position", "bottom") == "top") Position.TOP else Position.BOTTOM,
+                    position = when (jsonObject.optString("position", "bottom").lowercase()) {
+                        "top" -> Position.TOP
+                        "left" -> Position.LEFT
+                        "right" -> Position.RIGHT
+                        else -> Position.BOTTOM
+                    },
                     list = list
                 )
             } catch (e: Exception) {
@@ -111,6 +116,30 @@ class TabBar(context: Context) : LinearLayout(context) {
     companion object {
         private const val TAG = "LingXia.TabBar"
         private const val DEFAULT_TAB_BAR_SIZE_DP = 56
+        private const val VERTICAL_TAB_BAR_WIDTH_MULTIPLIER = 1.0f
+        // Constants for vertical TabBar item styling
+        private const val VERTICAL_ITEM_MAX_HEIGHT_DP = 70
+        private const val VERTICAL_ITEM_MIN_HEIGHT_DP = 48
+        private const val VERTICAL_ITEM_PADDING_HORIZONTAL_DP = 6
+        private const val VERTICAL_ITEM_PADDING_VERTICAL_DP = 8
+        private const val VERTICAL_ITEM_ICON_SIZE_DP = 24
+        private const val HORIZONTAL_ITEM_ICON_SIZE_DP = 28
+        private const val VERTICAL_ITEM_TEXT_SIZE_SP = 12f
+        private const val HORIZONTAL_ITEM_TEXT_SIZE_SP = 13f
+        private const val ITEM_ICON_TOP_MARGIN_DP = 2
+        private const val ITEM_TEXT_TOP_MARGIN_DP = 2
+        private const val ITEM_TEXT_BOTTOM_MARGIN_DP = 2
+        private const val ITEM_BORDER_THICKNESS_DP = 1f
+
+        // Padding for individual TabBarItems when TabBar is horizontal
+        private const val HORIZONTAL_ITEM_PADDING_SIDES_DP = 4
+        private const val HORIZONTAL_ITEM_PADDING_VERTICAL_DP = 3
+
+        private val VERTICAL_BORDER_COLOR = Color.parseColor("#E0E0E0")
+        private val VERTICAL_TABBAR_BACKGROUND_COLOR = Color.parseColor("#F8F8F8")
+        private val VERTICAL_SELECTED_ITEM_BACKGROUND_COLOR = Color.parseColor("#E6F0FF")
+        private const val SELECTED_ITEM_CORNER_RADIUS_DP = 12f // Unified corner radius for updateTabState
+        private const val INITIAL_SELECTED_ITEM_CORNER_RADIUS_DP = 8f // For createTabItem
     }
 
     internal var config = TabBarConfig()
@@ -122,38 +151,105 @@ class TabBar(context: Context) : LinearLayout(context) {
     private var onVisibilityChangedListener: ((Boolean) -> Unit)? = null
 
     init {
-        orientation = VERTICAL
+        orientation = when (config.position) {
+            TabBarConfig.Position.LEFT, TabBarConfig.Position.RIGHT -> HORIZONTAL
+            else -> VERTICAL
+        }
         setBackgroundColor(config.backgroundColor ?: TabBarConfig.DEFAULT_BACKGROUND_COLOR)
         elevation = 8f * resources.displayMetrics.density
         visibility = View.GONE  // Hidden by default until valid config is set
 
-        itemsContainer = LinearLayout(context).apply {
-            orientation = HORIZONTAL
-            layoutParams = LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                (DEFAULT_TAB_BAR_SIZE_DP * resources.displayMetrics.density).toInt() // Give container a default height
-            )
-            gravity = Gravity.CENTER
-            setBackgroundColor(config.backgroundColor ?: TabBarConfig.DEFAULT_BACKGROUND_COLOR)
+        itemsContainer = LinearLayout(context)
+        // Configure itemsContainer with the initial default config
+        updateItemsContainerLayout(this.config)
+
+        // Perform initial layout of TabBar's direct children (border, itemsContainer)
+        // This will use the default config for the first pass.
+        updateLayoutForPosition()
+    }
+
+    private fun updateItemsContainerLayout(currentConfig: TabBarConfig) {
+        itemsContainer?.apply {
+            orientation = when (currentConfig.position) {
+                TabBarConfig.Position.LEFT, TabBarConfig.Position.RIGHT -> VERTICAL
+                else -> HORIZONTAL
+            }
+
+            val isVerticalTabBar = currentConfig.position == TabBarConfig.Position.LEFT || currentConfig.position == TabBarConfig.Position.RIGHT
+
+            if (isVerticalTabBar) {
+                // For vertical TabBar, itemsContainer has fixed width and wraps content height
+                layoutParams = LayoutParams(
+                    (DEFAULT_TAB_BAR_SIZE_DP * VERTICAL_TAB_BAR_WIDTH_MULTIPLIER * resources.displayMetrics.density).toInt(),
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            } else {
+                // For horizontal TabBar, itemsContainer matches parent width and has fixed height
+                layoutParams = LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    (DEFAULT_TAB_BAR_SIZE_DP * resources.displayMetrics.density).toInt()
+                )
+            }
+
+            // Gravity for aligning children (tab items) within itemsContainer
+            gravity = if (orientation == VERTICAL) { // itemsContainer is vertical (TabBar is LEFT/RIGHT)
+                Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            } else { // itemsContainer is horizontal (TabBar is TOP/BOTTOM)
+                Gravity.CENTER
+            }
+            // Set background for itemsContainer itself
+            setBackgroundColor(currentConfig.backgroundColor ?: TabBarConfig.DEFAULT_BACKGROUND_COLOR)
         }
-        addView(itemsContainer)
     }
 
     private fun updateLayoutForPosition() {
         removeAllViews()
 
-        if (config.position == TabBarConfig.Position.BOTTOM) {
-            addView(View(context).apply {
-                setBackgroundColor(config.borderStyle ?: TabBarConfig.DEFAULT_BORDER_COLOR)
-                layoutParams = LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    (1f * resources.displayMetrics.density).toInt()
-                )
-            })
-        }
-
-        itemsContainer?.let { container ->
-            addView(container)
+        when (config.position) {
+            TabBarConfig.Position.TOP -> {
+                addView(itemsContainer)
+                addView(View(context).apply {
+                    setBackgroundColor(config.borderStyle ?: TabBarConfig.DEFAULT_BORDER_COLOR)
+                    layoutParams = LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        (ITEM_BORDER_THICKNESS_DP * resources.displayMetrics.density).toInt()
+                    )
+                })
+            }
+            TabBarConfig.Position.BOTTOM -> {
+                addView(View(context).apply {
+                    setBackgroundColor(config.borderStyle ?: TabBarConfig.DEFAULT_BORDER_COLOR)
+                    layoutParams = LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        (ITEM_BORDER_THICKNESS_DP * resources.displayMetrics.density).toInt()
+                    )
+                })
+                addView(itemsContainer)
+            }
+            TabBarConfig.Position.LEFT -> {
+                orientation = HORIZONTAL
+                addView(itemsContainer)
+                // Add darker border for better visual separation
+                addView(View(context).apply {
+                    setBackgroundColor(VERTICAL_BORDER_COLOR)
+                    layoutParams = LayoutParams(
+                        (ITEM_BORDER_THICKNESS_DP * resources.displayMetrics.density).toInt(),
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                })
+            }
+            TabBarConfig.Position.RIGHT -> {
+                orientation = HORIZONTAL
+                // Add darker border for better visual separation
+                addView(View(context).apply {
+                    setBackgroundColor(VERTICAL_BORDER_COLOR)
+                    layoutParams = LayoutParams(
+                        (ITEM_BORDER_THICKNESS_DP * resources.displayMetrics.density).toInt(),
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                })
+                addView(itemsContainer)
+            }
         }
     }
 
@@ -164,8 +260,18 @@ class TabBar(context: Context) : LinearLayout(context) {
         }
 
         config = newConfig
-        setBackgroundColor(config.backgroundColor ?: TabBarConfig.DEFAULT_BACKGROUND_COLOR)
-        updateLayoutForPosition()
+
+        // Set appropriate background color for TabBar itself based on newConfig
+        if (config.position == TabBarConfig.Position.LEFT || config.position == TabBarConfig.Position.RIGHT) {
+            setBackgroundColor(config.backgroundColor ?: VERTICAL_TABBAR_BACKGROUND_COLOR)
+        } else {
+            setBackgroundColor(config.backgroundColor ?: TabBarConfig.DEFAULT_BACKGROUND_COLOR)
+        }
+
+        // Reconfigure itemsContainer based on the new config BEFORE adding it to TabBar layout
+        updateItemsContainerLayout(this.config)
+
+        updateLayoutForPosition() // This will arrange TabBar's children, including the updated itemsContainer
         setItems(config.list)
         visibility = if (config.visible) View.VISIBLE else View.GONE
     }
@@ -178,14 +284,26 @@ class TabBar(context: Context) : LinearLayout(context) {
             tabViews.clear()
 
             if (items.isNotEmpty()) {
-                val itemWidth = resources.displayMetrics.widthPixels / items.size
+                val isVertical = config.position == TabBarConfig.Position.LEFT || config.position == TabBarConfig.Position.RIGHT
+
+                // Get the size of the space for each item
+                val itemSize = if (isVertical) {
+                    // For vertical layout, use more compact spacing
+                    (resources.displayMetrics.heightPixels / Math.max(items.size, 4)).coerceAtMost(
+                        (VERTICAL_ITEM_MAX_HEIGHT_DP * resources.displayMetrics.density).toInt()
+                    ).coerceAtLeast(
+                        (VERTICAL_ITEM_MIN_HEIGHT_DP * resources.displayMetrics.density).toInt()
+                    )
+                } else {
+                    resources.displayMetrics.widthPixels / items.size
+                }
 
                 // Find selected item index (default to 0 if none specified)
                 val initialSelectedIdx = items.indexOfFirst { it.selected }.takeIf { it >= 0 } ?: 0
                 selectedPosition = initialSelectedIdx
 
                 items.forEachIndexed { index, item ->
-                    createTabItem(item, index == selectedPosition, itemWidth).also { view ->
+                    createTabItem(item, index == selectedPosition, itemSize).also { view ->
                         tabViews.add(view)
                         container.addView(view)
                     }
@@ -269,10 +387,43 @@ class TabBar(context: Context) : LinearLayout(context) {
     }
 
     private fun createTabItem(item: TabBarItem, isSelected: Boolean, width: Int): LinearLayout {
+        val isVertical = config.position == TabBarConfig.Position.LEFT || config.position == TabBarConfig.Position.RIGHT
+
         return LinearLayout(context).apply {
+            // Always use VERTICAL orientation (icon on top, text below) regardless of TabBar position
             orientation = VERTICAL
             gravity = Gravity.CENTER
-            layoutParams = LayoutParams(width, ViewGroup.LayoutParams.MATCH_PARENT)
+
+            // Add padding based on position
+            if (isVertical) {
+                setPadding(
+                    (VERTICAL_ITEM_PADDING_HORIZONTAL_DP * resources.displayMetrics.density).toInt(),
+                    (VERTICAL_ITEM_PADDING_VERTICAL_DP * resources.displayMetrics.density).toInt(),
+                    (VERTICAL_ITEM_PADDING_HORIZONTAL_DP * resources.displayMetrics.density).toInt(),
+                    (VERTICAL_ITEM_PADDING_VERTICAL_DP * resources.displayMetrics.density).toInt()
+                )
+            } else {
+                setPadding(
+                    (HORIZONTAL_ITEM_PADDING_SIDES_DP * resources.displayMetrics.density).toInt(),
+                    (HORIZONTAL_ITEM_PADDING_VERTICAL_DP * resources.displayMetrics.density).toInt(),
+                    (HORIZONTAL_ITEM_PADDING_SIDES_DP * resources.displayMetrics.density).toInt(),
+                    (HORIZONTAL_ITEM_PADDING_VERTICAL_DP * resources.displayMetrics.density).toInt()
+                )
+            }
+
+            layoutParams = if (isVertical) {
+                LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, width)
+            } else {
+                LayoutParams(width, ViewGroup.LayoutParams.MATCH_PARENT)
+            }
+
+            // Change background for selected state in vertical layout
+            if (isVertical && isSelected) {
+                background = GradientDrawable().apply {
+                    cornerRadius = INITIAL_SELECTED_ITEM_CORNER_RADIUS_DP * resources.displayMetrics.density
+                    setColor(VERTICAL_SELECTED_ITEM_BACKGROUND_COLOR)
+                }
+            }
 
             // Create a FrameLayout to wrap the icon and allow for badge overlay
             val iconContainer = FrameLayout(context).apply {
@@ -280,15 +431,21 @@ class TabBar(context: Context) : LinearLayout(context) {
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 ).apply {
+                    // Center horizontally and put at top for all positions
                     gravity = Gravity.CENTER_HORIZONTAL
-                    topMargin = (2 * resources.displayMetrics.density).toInt()
+                    topMargin = (ITEM_ICON_TOP_MARGIN_DP * resources.displayMetrics.density).toInt()
                     clipChildren = false
                     clipToPadding = false
                 }
             }
 
             // Add icon to the container
-            val iconSize = (28 * resources.displayMetrics.density).toInt()
+            val iconSize = if (isVertical) {
+                (VERTICAL_ITEM_ICON_SIZE_DP * resources.displayMetrics.density).toInt()  // Smaller icon for vertical layout
+            } else {
+                (HORIZONTAL_ITEM_ICON_SIZE_DP * resources.displayMetrics.density).toInt()
+            }
+
             val icon = ImageView(context).apply {
                 layoutParams = FrameLayout.LayoutParams(iconSize, iconSize).apply {
                     gravity = Gravity.CENTER
@@ -307,21 +464,30 @@ class TabBar(context: Context) : LinearLayout(context) {
             addView(iconContainer)
 
             // Add text label
-            addView(TextView(context).apply {
+            val textView = TextView(context).apply {
                 text = item.text
                 setTextColor(if (isSelected)
                     config.selectedColor ?: TabBarConfig.DEFAULT_SELECTED_COLOR
                     else config.color ?: TabBarConfig.DEFAULT_UNSELECTED_COLOR)
-                textSize = 13f
-                gravity = Gravity.CENTER
+
+                // Different text sizes based on position
+                textSize = if (isVertical) VERTICAL_ITEM_TEXT_SIZE_SP else HORIZONTAL_ITEM_TEXT_SIZE_SP
+
+                // Always place text below icon with consistent layout
                 layoutParams = LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 ).apply {
-                    topMargin = (2 * resources.displayMetrics.density).toInt()
-                    bottomMargin = (8 * resources.displayMetrics.density).toInt()
+                    topMargin = (ITEM_TEXT_TOP_MARGIN_DP * resources.displayMetrics.density).toInt()
+                    bottomMargin = (ITEM_TEXT_BOTTOM_MARGIN_DP * resources.displayMetrics.density).toInt()
                 }
-            })
+
+                gravity = Gravity.CENTER
+                isSingleLine = true
+                // Add ellipsis if text is too long
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            }
+            addView(textView)
 
             // Set click listener for the whole item
             setOnClickListener {
@@ -363,6 +529,20 @@ class TabBar(context: Context) : LinearLayout(context) {
     }
 
     private fun updateTabState(tabView: LinearLayout, item: TabBarItem, selected: Boolean) {
+        val isVertical = config.position == TabBarConfig.Position.LEFT || config.position == TabBarConfig.Position.RIGHT
+
+        // Update background for vertical layout
+        if (isVertical) {
+            if (selected) {
+                tabView.background = GradientDrawable().apply {
+                    cornerRadius = SELECTED_ITEM_CORNER_RADIUS_DP * resources.displayMetrics.density
+                    setColor(VERTICAL_SELECTED_ITEM_BACKGROUND_COLOR)
+                }
+            } else {
+                tabView.background = null
+            }
+        }
+
         // Update Icon inside the FrameLayout container
         (tabView.getChildAt(0) as? FrameLayout)?.let { iconContainer ->
             (iconContainer.getChildAt(0) as? ImageView)?.apply {
@@ -380,7 +560,7 @@ class TabBar(context: Context) : LinearLayout(context) {
             }
         }
 
-        // Update Text Color (This part was likely correct)
+        // Update Text Color - The text view index is 1 regardless of orientation
         (tabView.getChildAt(1) as? TextView)?.setTextColor(
             if (selected)
                 config.selectedColor ?: TabBarConfig.DEFAULT_SELECTED_COLOR
