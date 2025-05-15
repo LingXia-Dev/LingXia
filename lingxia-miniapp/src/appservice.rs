@@ -3,7 +3,7 @@ use crate::error::MiniAppError;
 use crate::log::LogLevel;
 use crate::page::Page;
 
-use rong::{JSContext, JSRuntime, Rong, RongJS, Source, Worker, WorkerMessage};
+use rong::{JSContext, JSObject, JSRuntime, Rong, RongJS, Source, Worker, WorkerMessage};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::mpsc::Sender;
@@ -319,10 +319,11 @@ async fn miniapp_service_handler(
 
                 if page_js_path.exists() {
                     if let Ok(js) = Source::from_path(ctx, &page_js_path).await {
-                        match ctx.eval::<PageSvc>(js) {
-                            Ok(page_svc) => {
-                                // Add the page service to the map
-                                app_ctx.page_svc.insert(path.clone(), page_svc);
+                        if let Ok(obj) = ctx.eval::<JSObject>(js) {
+                            if let Ok(mut svc) = obj.borrow_mut::<PageSvc>() {
+                                svc.bind(page);
+
+                                app_ctx.page_svc.insert(path.clone(), svc.clone());
                                 log(
                                     LogLevel::Info,
                                     &format!(
@@ -330,16 +331,23 @@ async fn miniapp_service_handler(
                                         worker_id, appid, path
                                     ),
                                 );
-                            }
-                            Err(e) => {
+                            } else {
                                 log(
                                     LogLevel::Error,
                                     &format!(
-                                        "[Worker {}] Failed to eval page JS: {}",
-                                        worker_id, e
+                                        "[Worker {}] Failed to borrow PageSvc for {}/{}",
+                                        worker_id, appid, path
                                     ),
                                 );
                             }
+                        } else {
+                            log(
+                                LogLevel::Error,
+                                &format!(
+                                    "[Worker {}] Failed to eval page JS for {}/{}",
+                                    worker_id, appid, path
+                                ),
+                            );
                         }
                     }
                 } else {

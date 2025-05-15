@@ -1,3 +1,4 @@
+use crate::page::Page;
 use rong::{
     Class, JSContext, JSFunc, JSObject, JSResult, JSValue, Source, function::Optional, js_class,
     js_export, js_method,
@@ -8,6 +9,7 @@ use std::collections::HashMap;
 pub(crate) struct PageSvc {
     functions: HashMap<String, JSFunc>,
     this: JSObject,
+    page: Option<Page>,
 }
 
 #[js_class]
@@ -61,6 +63,10 @@ impl PageSvc {
             };
         }
     }
+
+    pub(crate) fn bind(&mut self, page: Page) {
+        self.page = Some(page);
+    }
 }
 
 fn page_func(ctx: JSContext, obj: JSObject) -> JSResult<JSObject> {
@@ -70,6 +76,7 @@ fn page_func(ctx: JSContext, obj: JSObject) -> JSResult<JSObject> {
     let mut page_svc = PageSvc {
         functions: HashMap::new(),
         this: obj.clone(),
+        page: None,
     };
 
     // Extract all functions from the object
