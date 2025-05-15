@@ -148,7 +148,7 @@ impl Pages {
 
         // Request to create page service
         if let Ok(guard) = svc_manager.lock() {
-            if let Err(e) = guard.create_page_svc(appid.clone(), path.clone()) {
+            if let Err(e) = guard.create_page_svc(page.clone()) {
                 controller.log(
                     LogLevel::Error,
                     &format!(

@@ -1,9 +1,9 @@
 use crate::AppController;
 use crate::error::MiniAppError;
 use crate::log::LogLevel;
+use crate::page::Page;
 
 use rong::{JSContext, JSRuntime, Rong, RongJS, Source, Worker, WorkerMessage};
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::mpsc::Sender;
@@ -15,7 +15,7 @@ use app::MiniAppSvc;
 use page::PageSvc;
 
 /// Message type for MiniApp service system
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone)]
 enum ServiceMessage {
     // Create a new miniapp service
     CreateMiniApp {
@@ -29,7 +29,7 @@ enum ServiceMessage {
     // Create a new page service
     CreatePage {
         appid: String,
-        path: String,
+        page: Page,
     },
     // Delete a page service
     TerminatePage {
@@ -49,6 +49,11 @@ enum ServiceMessage {
         name: String,
         args: Option<String>, // JSON string of arguments
     },
+}
+
+#[derive(Clone)]
+struct WorkerService {
+    svc: ServiceMessage,
 }
 
 struct MiniAppCtx {
@@ -119,10 +124,11 @@ impl MiniAppServiceManager {
     }
 
     /// Create a new page service in an existing mini app
-    pub fn create_page_svc(&self, appid: String, path: String) -> Result<(), MiniAppError> {
-        self.sender
-            .send(ServiceMessage::CreatePage { appid, path })?;
-
+    pub fn create_page_svc(&self, page: Page) -> Result<(), MiniAppError> {
+        self.sender.send(ServiceMessage::CreatePage {
+            appid: page.appid(),
+            page,
+        })?;
         Ok(())
     }
 
@@ -214,7 +220,7 @@ async fn miniapp_service_handler(
     worker_id: usize,
     manager: Arc<Mutex<MiniAppServiceManager>>,
     runtime: JSRuntime,
-    cmd_str: String,
+    message: ServiceMessage,
     current_miniapp: &mut Option<MiniAppCtx>,
     log_sender: Sender<LogMessage>,
 ) {
@@ -226,43 +232,114 @@ async fn miniapp_service_handler(
         });
     };
 
-    if let Ok(message) = serde_json::from_str::<ServiceMessage>(&cmd_str) {
-        match message {
-            ServiceMessage::CreateMiniApp { appid, app_path } => {
-                let ctx = runtime.context();
+    match message {
+        ServiceMessage::CreateMiniApp { appid, app_path } => {
+            let ctx = runtime.context();
 
-                let mut miniapp = MiniAppCtx {
-                    ctx: ctx.clone(),
-                    app_path: app_path.clone(),
-                    svc: None,
-                    page_svc: HashMap::new(),
-                };
+            let mut miniapp = MiniAppCtx {
+                ctx: ctx.clone(),
+                app_path: app_path.clone(),
+                svc: None,
+                page_svc: HashMap::new(),
+            };
 
-                // register Page, App and getApp function
-                let _ = app::init(&ctx);
-                let _ = page::init(&ctx);
-                let _ = rong_modules::init(&ctx);
+            // register Page, App and getApp function
+            let _ = app::init(&ctx);
+            let _ = page::init(&ctx);
+            let _ = rong_modules::init(&ctx);
+
+            log(
+                LogLevel::Info,
+                &format!(
+                    "[Worker {}] Created JS context for MiniApp '{}'",
+                    worker_id, appid
+                ),
+            );
+
+            let js = app_path.join("app.js");
+            if js.exists() {
+                if let Ok(js) = Source::from_path(&ctx, js).await {
+                    if let Ok(svc) = ctx.eval::<MiniAppSvc>(js) {
+                        miniapp.svc = Some(svc);
+                        log(
+                            LogLevel::Info,
+                            &format!(
+                                "[Worker {}] Successfully loaded app JS for {}",
+                                worker_id, appid
+                            ),
+                        );
+                    }
+                }
+            } else {
+                log(
+                    LogLevel::Info,
+                    &format!(
+                        "[Worker {}] MiniApp '{}' has no JS file: '{}'",
+                        worker_id,
+                        appid,
+                        js.display()
+                    ),
+                );
+            }
+
+            *current_miniapp = Some(miniapp);
+
+            // Only lock once to update app info
+            {
+                let mut manager_guard = manager.lock().unwrap();
+                manager_guard.add_miniapp(&appid, worker_id);
+            }
+        }
+        ServiceMessage::TerminateMiniApp { appid } => {
+            if current_miniapp.is_some() {
+                *current_miniapp = None;
+
+                // Only lock once to update app info
+                {
+                    let mut manager_guard = manager.lock().unwrap();
+                    manager_guard.remove_miniapp(&appid);
+                }
 
                 log(
                     LogLevel::Info,
                     &format!(
-                        "[Worker {}] Created JS context for MiniApp '{}'",
+                        "[Worker {}] Removed MiniApp context for '{}'",
                         worker_id, appid
                     ),
                 );
+            }
+        }
+        ServiceMessage::CreatePage { appid: _, page } => {
+            if let Some(app_ctx) = current_miniapp.as_mut() {
+                // Extract app ID and path from page
+                let (appid, path) = (page.appid(), page.path());
 
-                let js = app_path.join("app.js");
-                if js.exists() {
-                    if let Ok(js) = Source::from_path(&ctx, js).await {
-                        if let Ok(svc) = ctx.eval::<MiniAppSvc>(js) {
-                            miniapp.svc = Some(svc);
-                            log(
-                                LogLevel::Info,
-                                &format!(
-                                    "[Worker {}] Successfully loaded app JS for {}",
-                                    worker_id, appid
-                                ),
-                            );
+                let page_js_path = app_ctx.app_path.join(&path).with_extension("js");
+                let ctx = &app_ctx.ctx;
+
+                if page_js_path.exists() {
+                    if let Ok(js) = Source::from_path(ctx, &page_js_path).await {
+                        match ctx.eval::<PageSvc>(js) {
+                            Ok(page_svc) => {
+                                // Add the page service to the map
+                                app_ctx.page_svc.insert(path.clone(), page_svc);
+                                log(
+                                    LogLevel::Info,
+                                    &format!(
+                                        "[Worker {}] Successfully loaded page JS for {}/{}",
+                                        worker_id, appid, path
+                                    ),
+                                );
+                            }
+                            Err(e) => {
+                                log(
+                                    LogLevel::Error,
+                                    &format!(
+                                        "[Worker {}] Failed to eval page JS: {}",
+                                        worker_id, e
+                                    ),
+                                );
+                            }
                         }
                     }
                 } else {
@@ -272,130 +349,55 @@ async fn miniapp_service_handler(
                             "[Worker {}] MiniApp '{}' has no JS file: '{}'",
                             worker_id,
                             appid,
-                            js.display()
+                            page_js_path.display()
                         ),
                     );
-                }
-
-                *current_miniapp = Some(miniapp);
-
-                // Only lock once to update app info
-                {
-                    let mut manager_guard = manager.lock().unwrap();
-                    manager_guard.add_miniapp(&appid, worker_id);
-                }
-            }
-            ServiceMessage::TerminateMiniApp { appid } => {
-                if current_miniapp.is_some() {
-                    *current_miniapp = None;
-
-                    // Only lock once to update app info
-                    {
-                        let mut manager_guard = manager.lock().unwrap();
-                        manager_guard.remove_miniapp(&appid);
-                    }
-
-                    log(
-                        LogLevel::Info,
-                        &format!(
-                            "[Worker {}] Removed MiniApp context for '{}'",
-                            worker_id, appid
-                        ),
-                    );
-                }
-            }
-            ServiceMessage::CreatePage { appid, path } => {
-                if let Some(app_ctx) = current_miniapp.as_mut() {
-                    let page_js_path = app_ctx.app_path.join(&path).with_extension("js");
-                    let ctx = &app_ctx.ctx;
-
-                    if page_js_path.exists() {
-                        if let Ok(js) = Source::from_path(ctx, &page_js_path).await {
-                            match ctx.eval::<PageSvc>(js) {
-                                Ok(page_svc) => {
-                                    // Add the page service to the map
-                                    app_ctx.page_svc.insert(path.clone(), page_svc);
-                                    log(
-                                        LogLevel::Info,
-                                        &format!(
-                                            "[Worker {}] Successfully loaded page JS for {}/{}",
-                                            worker_id, appid, path
-                                        ),
-                                    );
-                                }
-                                Err(e) => {
-                                    log(
-                                        LogLevel::Error,
-                                        &format!(
-                                            "[Worker {}] Failed to eval page JS: {}",
-                                            worker_id, e
-                                        ),
-                                    );
-                                }
-                            }
-                        }
-                    } else {
-                        log(
-                            LogLevel::Info,
-                            &format!(
-                                "[Worker {}] MiniApp '{}' has no JS file: '{}'",
-                                worker_id,
-                                appid,
-                                page_js_path.display()
-                            ),
-                        );
-                    }
-                }
-            }
-            ServiceMessage::TerminatePage { appid, path } => {
-                if let Some(app_ctx) = current_miniapp.as_mut() {
-                    // Remove page from page_svc map
-                    if app_ctx.page_svc.remove(&path).is_some() {
-                        log(
-                            LogLevel::Info,
-                            &format!(
-                                "[Worker {}] Removed page '{}' from MiniApp '{}'",
-                                worker_id, path, appid
-                            ),
-                        );
-                    }
-                }
-            }
-            ServiceMessage::CallAppSvc { appid, name, args } => {
-                if let Some(app_ctx) = current_miniapp.as_mut() {
-                    if let Some(svc) = &app_ctx.svc {
-                        svc.call(&app_ctx.ctx, &name, args);
-                    } else {
-                        log(
-                            LogLevel::Error,
-                            &format!("[Worker {}] App service '{}' not loaded", worker_id, appid),
-                        );
-                    }
-                }
-            }
-            ServiceMessage::CallPageSvc {
-                appid: _,
-                path,
-                name,
-                args,
-            } => {
-                if let Some(app_ctx) = current_miniapp.as_mut() {
-                    if let Some(page_svc) = app_ctx.page_svc.get_mut(&path) {
-                        page_svc.call(&app_ctx.ctx, &name, args);
-                    } else {
-                        log(
-                            LogLevel::Error,
-                            &format!("[Worker {}] Page service '{}' not loaded", worker_id, path),
-                        );
-                    }
                 }
             }
         }
-    } else {
-        log(
-            LogLevel::Warn,
-            &format!("[Worker {}] Invalid message format: {}", worker_id, cmd_str),
-        );
+        ServiceMessage::TerminatePage { appid, path } => {
+            if let Some(app_ctx) = current_miniapp.as_mut() {
+                // Remove page from page_svc map
+                if app_ctx.page_svc.remove(&path).is_some() {
+                    log(
+                        LogLevel::Info,
+                        &format!(
+                            "[Worker {}] Removed page '{}' from MiniApp '{}'",
+                            worker_id, path, appid
+                        ),
+                    );
+                }
+            }
+        }
+        ServiceMessage::CallAppSvc { appid, name, args } => {
+            if let Some(app_ctx) = current_miniapp.as_mut() {
+                if let Some(svc) = &app_ctx.svc {
+                    svc.call(&app_ctx.ctx, &name, args);
+                } else {
+                    log(
+                        LogLevel::Error,
+                        &format!("[Worker {}] App service '{}' not loaded", worker_id, appid),
+                    );
+                }
+            }
+        }
+        ServiceMessage::CallPageSvc {
+            appid: _,
+            path,
+            name,
+            args,
+        } => {
+            if let Some(app_ctx) = current_miniapp.as_mut() {
+                if let Some(page_svc) = app_ctx.page_svc.get_mut(&path) {
+                    page_svc.call(&app_ctx.ctx, &name, args);
+                } else {
+                    log(
+                        LogLevel::Error,
+                        &format!("[Worker {}] Page service '{}' not loaded", worker_id, path),
+                    );
+                }
+            }
+        }
     }
 }
 
@@ -488,16 +490,18 @@ pub(crate) fn init<T: AppController + 'static>(
                         // a worker either has a current miniapp context or it doesn't
                         let mut current_miniapp: Option<MiniAppCtx> = None;
 
-                        while let Some(WorkerMessage::String(cmd_str)) = receiver.recv().await {
-                            miniapp_service_handler(
-                                worker_id,
-                                manager_c.clone(),
-                                runtime.clone(),
-                                cmd_str,
-                                &mut current_miniapp,
-                                worker_log_sender.clone(),
-                            )
-                            .await;
+                        while let Some(WorkerMessage::Custom(cmd)) = receiver.recv().await {
+                            if let Ok(service) = cmd.downcast::<WorkerService>() {
+                                miniapp_service_handler(
+                                    worker_id,
+                                    manager_c.clone(),
+                                    runtime.clone(),
+                                    service.svc,
+                                    &mut current_miniapp,
+                                    worker_log_sender.clone(),
+                                )
+                                .await;
+                            }
                         }
 
                         // Clean up context when worker is shutting down
@@ -519,67 +523,22 @@ pub(crate) fn init<T: AppController + 'static>(
                 match recv.lock().unwrap().recv() {
                     Ok(message) => {
                         match &message {
-                            ServiceMessage::CreateMiniApp { appid, .. } => {
-                                // Get worker ID from manager record
-                                if let Some(worker_id) =
-                                    manager_clone.lock().unwrap().get_worker_id(appid)
-                                {
-                                    // Send message to worker
-                                    if let Some(worker) = workers_map.get(&worker_id) {
-                                        if let Ok(cmd_str) = serde_json::to_string(&message) {
-                                            let _ =
-                                                worker.post_message(WorkerMessage::String(cmd_str));
-                                        }
-                                    }
-                                }
-                            }
-                            ServiceMessage::TerminateMiniApp { appid } => {
-                                // Get worker ID and send message
-                                if let Some(worker_id) =
-                                    manager_clone.lock().unwrap().get_worker_id(appid)
-                                {
-                                    if let Some(worker) = workers_map.get(&worker_id) {
-                                        if let Ok(cmd_str) = serde_json::to_string(&message) {
-                                            let _ =
-                                                worker.post_message(WorkerMessage::String(cmd_str));
-                                        }
-                                    }
-                                }
-                            }
-                            ServiceMessage::CreatePage { appid, .. }
-                            | ServiceMessage::TerminatePage { appid, .. } => {
+                            ServiceMessage::CreateMiniApp { appid, .. }
+                            | ServiceMessage::TerminateMiniApp { appid, .. }
+                            | ServiceMessage::CallAppSvc { appid, .. }
+                            | ServiceMessage::CallPageSvc { appid, .. }
+                            | ServiceMessage::TerminatePage { appid, .. }
+                            | ServiceMessage::CreatePage { appid, .. } => {
                                 // Find worker for appid and send message
                                 if let Some(worker_id) =
                                     manager_clone.lock().unwrap().get_worker_id(appid)
                                 {
                                     if let Some(worker) = workers_map.get(&worker_id) {
-                                        if let Ok(cmd_str) = serde_json::to_string(&message) {
-                                            let _ =
-                                                worker.post_message(WorkerMessage::String(cmd_str));
-                                        }
-                                    }
-                                }
-                            }
-                            ServiceMessage::CallAppSvc {
-                                appid,
-                                name: _,
-                                args: _,
-                            }
-                            | ServiceMessage::CallPageSvc {
-                                appid,
-                                path: _,
-                                name: _,
-                                args: _,
-                            } => {
-                                // Find worker for appid and send message
-                                if let Some(worker_id) =
-                                    manager_clone.lock().unwrap().get_worker_id(appid)
-                                {
-                                    if let Some(worker) = workers_map.get(&worker_id) {
-                                        if let Ok(cmd_str) = serde_json::to_string(&message) {
-                                            let _ =
-                                                worker.post_message(WorkerMessage::String(cmd_str));
-                                        }
+                                        let _ = worker.post_message(WorkerMessage::Custom(
+                                            Box::new(WorkerService {
+                                                svc: message.clone(),
+                                            }),
+                                        ));
                                     }
                                 }
                             }
