@@ -77,7 +77,7 @@ impl MiniApp {
                             }
                         }
 
-                        if let Some(page) = self.pages.get_page_mut(path) {
+                        if let Some(page) = self.pages.get_page(path) {
                             page.mark_script_injected();
                         }
 

@@ -92,11 +92,6 @@ impl Pages {
         self.pages.get(path)
     }
 
-    /// Get a mutable reference to a page by path
-    pub fn get_page_mut(&mut self, path: &str) -> Option<&mut Page> {
-        self.pages.get_mut(path)
-    }
-
     /// Set tab bar items with ordered paths and initialize stacks
     ///
     /// # Arguments
@@ -147,7 +142,9 @@ impl Pages {
             path.clone(),
             svc_manager.clone(),
         );
-        self.pages.insert(path.clone(), page);
+
+        // Insert the page into the hashmap
+        self.pages.insert(path.clone(), page.clone());
 
         // Request to create page service
         if let Ok(guard) = svc_manager.lock() {
@@ -193,8 +190,8 @@ impl Pages {
         }
 
         // Update the last active time for this page
-        if let Some(page) = self.pages.get_mut(&path) {
-            page.last_active_time = Instant::now();
+        if let Some(page) = self.pages.get(&path) {
+            page.mark_active();
         }
     }
 
@@ -227,8 +224,10 @@ impl Pages {
         // Attempt to pop from the stack structure
         if let Some(popped_page) = self.stacks[self.current_index].pop_page() {
             // Successfully popped from the stack structure.
-            // Now, remove the page for the popped path.
-            self.pages.remove(&popped_page);
+            // Now remove the page and terminate its services
+            if let Some(page) = self.pages.remove(&popped_page) {
+                let _ = page.terminate_page_service();
+            }
 
             // Return the path of the *new* current page in the stack
             self.stacks[self.current_index]
@@ -254,7 +253,9 @@ impl Pages {
                     // If this stack has more than one page (besides the root page)
                     // remove the most recently pushed page (top of stack)
                     if let Some(last_page) = stack.pop_page() {
-                        self.pages.remove(&last_page);
+                        if let Some(page) = self.pages.remove(&last_page) {
+                            let _ = page.terminate_page_service();
+                        }
                         return;
                     }
                 }
@@ -267,7 +268,9 @@ impl Pages {
                 // Keep root page and at least one child page
                 // Remove the most recently pushed page (top of stack)
                 if let Some(last_page) = current_stack.pop_page() {
-                    self.pages.remove(&last_page);
+                    if let Some(page) = self.pages.remove(&last_page) {
+                        let _ = page.terminate_page_service();
+                    }
                 }
             }
         } else {
@@ -276,15 +279,18 @@ impl Pages {
             if self.stacks[0].pages.len() > 1 {
                 // Remove the most recently pushed page (top of stack)
                 if let Some(last_page) = self.stacks[0].pop_page() {
-                    self.pages.remove(&last_page);
+                    if let Some(page) = self.pages.remove(&last_page) {
+                        let _ = page.terminate_page_service();
+                    }
                 }
             }
         }
     }
 }
 
-/// Represents a single page in a mini app
-pub(crate) struct Page {
+/// Inner state of a page that can be shared across threads
+#[derive(Clone)]
+pub(crate) struct PageInner {
     appid: String,
     path: String,
 
@@ -294,10 +300,17 @@ pub(crate) struct Page {
     svc_manager: Arc<Mutex<MiniAppServiceManager>>,
 
     // Time when this page was last active
-    last_active_time: Instant,
+    last_active_time: Arc<Mutex<Instant>>,
 
     // Tracks whether bridge script has been injected
-    script_injected: bool,
+    script_injected: Arc<Mutex<bool>>,
+}
+
+/// Represents a single page in a mini app
+#[derive(Clone)]
+pub(crate) struct Page {
+    // Use Arc to share the inner state across threads
+    inner: Arc<PageInner>,
 }
 
 impl Page {
@@ -307,23 +320,62 @@ impl Page {
         path: String,
         svc_manager: Arc<Mutex<MiniAppServiceManager>>,
     ) -> Self {
-        Self {
+        let inner = Arc::new(PageInner {
             controller,
             appid,
             path,
             svc_manager,
-            last_active_time: Instant::now(),
-            script_injected: false,
+            last_active_time: Arc::new(Mutex::new(Instant::now())),
+            script_injected: Arc::new(Mutex::new(false)),
+        });
+
+        Self { inner }
+    }
+
+    pub(crate) fn mark_script_injected(&self) {
+        if let Ok(mut injected) = self.inner.script_injected.lock() {
+            *injected = true;
         }
     }
 
-    // Add setter and getter for script injection status
-    pub(crate) fn mark_script_injected(&mut self) {
-        self.script_injected = true;
+    pub(crate) fn is_script_injected(&self) -> bool {
+        self.inner
+            .script_injected
+            .lock()
+            .map(|guard| *guard)
+            .unwrap_or(false)
     }
 
-    pub(crate) fn is_script_injected(&self) -> bool {
-        self.script_injected
+    /// Returns the appid of this page
+    pub fn path(&self) -> String {
+        self.inner.path.clone()
+    }
+
+    /// Returns the appid of this page
+    pub fn appid(&self) -> String {
+        self.inner.appid.clone()
+    }
+
+    /// Update the last active time to now
+    fn mark_active(&self) {
+        if let Ok(mut time) = self.inner.last_active_time.lock() {
+            *time = Instant::now();
+        }
+    }
+
+    fn terminate_page_service(&self) -> Result<(), MiniAppError> {
+        if let Ok(guard) = self.inner.svc_manager.lock() {
+            guard.terminate_page_svc(self.inner.appid.clone(), self.inner.path.clone())?;
+        }
+
+        self.inner
+            .controller
+            .send_cmd(ControllerCmd::WebView(WebViewCmd::DropWebView {
+                appid: self.inner.appid.clone(),
+                path: self.inner.path.clone(),
+            }))?;
+
+        Ok(())
     }
 }
 
@@ -332,13 +384,15 @@ impl WebViewController for Page {
         let (responder, receiver) = mpsc::channel();
 
         let cmd = WebViewCmd::LoadUrl {
-            appid: self.appid.clone(),
-            path: self.path.clone(),
+            appid: self.inner.appid.clone(),
+            path: self.inner.path.clone(),
             url: url.to_string(),
             responder,
         };
 
-        self.controller.send_cmd(ControllerCmd::WebView(cmd))?;
+        self.inner
+            .controller
+            .send_cmd(ControllerCmd::WebView(cmd))?;
 
         // Wait for the response
         receiver.recv().map_err(|_| {
@@ -350,13 +404,15 @@ impl WebViewController for Page {
         let (responder, receiver) = mpsc::channel();
 
         let cmd = WebViewCmd::EvaluateJavascript {
-            appid: self.appid.clone(),
-            path: self.path.clone(),
+            appid: self.inner.appid.clone(),
+            path: self.inner.path.clone(),
             script: js.to_string(),
             responder,
         };
 
-        self.controller.send_cmd(ControllerCmd::WebView(cmd))?;
+        self.inner
+            .controller
+            .send_cmd(ControllerCmd::WebView(cmd))?;
 
         // Wait for the response
         receiver.recv().map_err(|_| {
@@ -370,13 +426,15 @@ impl WebViewController for Page {
         let (responder, receiver) = mpsc::channel();
 
         let cmd = WebViewCmd::PostMessage {
-            appid: self.appid.clone(),
-            path: self.path.clone(),
+            appid: self.inner.appid.clone(),
+            path: self.inner.path.clone(),
             message: message.to_string(),
             responder,
         };
 
-        self.controller.send_cmd(ControllerCmd::WebView(cmd))?;
+        self.inner
+            .controller
+            .send_cmd(ControllerCmd::WebView(cmd))?;
 
         // Wait for the response
         receiver.recv().map_err(|_| {
@@ -390,12 +448,14 @@ impl WebViewController for Page {
         let (responder, receiver) = mpsc::channel();
 
         let cmd = WebViewCmd::SetDevtools {
-            appid: self.appid.clone(),
+            appid: self.inner.appid.clone(),
             enabled,
             responder,
         };
 
-        self.controller.send_cmd(ControllerCmd::WebView(cmd))?;
+        self.inner
+            .controller
+            .send_cmd(ControllerCmd::WebView(cmd))?;
 
         // Wait for the response
         receiver.recv().map_err(|_| {
@@ -409,12 +469,14 @@ impl WebViewController for Page {
         let (responder, receiver) = mpsc::channel();
 
         let cmd = WebViewCmd::ClearBrowsingData {
-            appid: self.appid.clone(),
-            path: self.path.clone(),
+            appid: self.inner.appid.clone(),
+            path: self.inner.path.clone(),
             responder,
         };
 
-        self.controller.send_cmd(ControllerCmd::WebView(cmd))?;
+        self.inner
+            .controller
+            .send_cmd(ControllerCmd::WebView(cmd))?;
 
         // Wait for the response
         receiver.recv().map_err(|_| {
@@ -428,12 +490,14 @@ impl WebViewController for Page {
         let (responder, receiver) = mpsc::channel();
 
         let cmd = WebViewCmd::SetUserAgent {
-            appid: self.appid.clone(),
+            appid: self.inner.appid.clone(),
             ua: ua.to_string(),
             responder,
         };
 
-        self.controller.send_cmd(ControllerCmd::WebView(cmd))?;
+        self.inner
+            .controller
+            .send_cmd(ControllerCmd::WebView(cmd))?;
 
         // Wait for the response
         receiver.recv().map_err(|_| {
@@ -441,21 +505,5 @@ impl WebViewController for Page {
                 "WebView command 'SetUserAgent' failed: channel closed".to_string(),
             )
         })?
-    }
-}
-
-impl Drop for Page {
-    fn drop(&mut self) {
-        // Request to terminate page service
-        if let Ok(guard) = self.svc_manager.lock() {
-            let _ = guard.terminate_page_svc(self.appid.clone(), self.path.clone());
-        }
-        // Just send drop webview command without waiting for response
-        let _ = self
-            .controller
-            .send_cmd(ControllerCmd::WebView(WebViewCmd::DropWebView {
-                appid: self.appid.clone(),
-                path: self.path.clone(),
-            }));
     }
 }
