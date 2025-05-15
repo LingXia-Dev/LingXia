@@ -94,6 +94,7 @@ fn default_visible() -> bool {
     true
 }
 
+/// TODO: detect device type, only allow bottom and top for mobile device
 /// Position of the tab bar
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
@@ -106,6 +107,14 @@ pub enum TabBarPosition {
     /// Tab bar at the top
     #[serde(rename = "top")]
     Top,
+
+    /// Tab bar at the left
+    #[serde(rename = "left")]
+    Left,
+
+    /// Tab bar at the right
+    #[serde(rename = "right")]
+    Right,
 }
 
 /// Tab item in the tab bar
