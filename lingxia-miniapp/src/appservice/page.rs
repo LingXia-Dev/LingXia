@@ -5,6 +5,7 @@ use rong::{
 };
 use std::collections::HashMap;
 
+// Page is Send able, but JSFunc is not, we can not let Page hold PageSvc.
 #[js_export]
 pub(crate) struct PageSvc {
     functions: HashMap<String, JSFunc>,
@@ -65,6 +66,8 @@ impl PageSvc {
     }
 
     pub(crate) fn bind(&mut self, page: Page) {
+        let func_names: Vec<String> = self.functions.keys().cloned().collect();
+        page.register_svc(func_names);
         self.page = Some(page);
     }
 }
