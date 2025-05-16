@@ -65,13 +65,14 @@ impl PageSvc {
             match args {
                 Some(obj) => {
                     func.call_async::<_, ()>(Some(self.this.clone()), (obj,))
-                        .await?
+                        .await?;
                 }
                 None => {
                     func.call_async::<_, ()>(Some(self.this.clone()), ())
-                        .await?
+                        .await?;
                 }
             };
+            return Ok(());
         }
         Err(RongJSError::Error(format!("No service: {}", func_name)))
     }

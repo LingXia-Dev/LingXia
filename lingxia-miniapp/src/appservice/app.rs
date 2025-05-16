@@ -58,6 +58,7 @@ impl MiniAppSvc {
                         .await?
                 }
             };
+            return Ok(());
         }
         Err(RongJSError::Error(format!("No service: {}", func_name)))
     }
