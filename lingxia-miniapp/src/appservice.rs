@@ -10,6 +10,7 @@ use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, mpsc};
 
 mod app;
+pub mod bridge;
 mod page;
 use app::MiniAppSvc;
 use page::PageSvc;

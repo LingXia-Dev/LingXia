@@ -36,6 +36,10 @@ pub enum MiniAppError {
     /// Error when resource is exhausted
     #[error("Resource exhausted: {0}")]
     ResourceExhausted(String),
+
+    /// Error when bridge error
+    #[error("Bridge error: {0}")]
+    Bridge(String),
 }
 
 impl From<io::Error> for MiniAppError {
@@ -47,5 +51,11 @@ impl From<io::Error> for MiniAppError {
 impl<T> From<std::sync::mpsc::SendError<T>> for MiniAppError {
     fn from(error: std::sync::mpsc::SendError<T>) -> Self {
         MiniAppError::ChannelError(error.to_string())
+    }
+}
+
+impl From<serde_json::Error> for MiniAppError {
+    fn from(error: serde_json::Error) -> Self {
+        MiniAppError::Bridge(format!("JSON Processing Error: {}", error.to_string()))
     }
 }
