@@ -92,6 +92,9 @@ fn page_func(ctx: JSContext, obj: JSObject) -> JSResult<JSObject> {
     // Create a new JSObject using the instance method
     let page = page_class.instance(page_svc);
 
+    // assign this object
+    page.borrow_mut::<PageSvc>().unwrap().this = page.clone();
+
     Ok(page)
 }
 
