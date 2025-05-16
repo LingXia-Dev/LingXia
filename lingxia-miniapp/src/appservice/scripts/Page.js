@@ -2,222 +2,141 @@
 // - Path syntax support.
 // - Debouncing.
 // - Diff/Patch generation for optimized data transfer.
-// Assumes global _Page (native) exists.
 
 (function () {
-  try {
-    globalThis.Page = function (pageConfig) {
-      if (typeof pageConfig !== "object" || pageConfig === null) {
-        return new Error("Page configuration must be an object.");
+  globalThis.Page = function (pageConfig) {
+    if (!pageConfig || typeof pageConfig !== "object") {
+      throw new Error("setData: Invalid page configuration");
+    }
+
+    const pageSvc = new PageSvc(pageConfig);
+
+    // Initialize data
+    pageSvc.data = JSON.parse(JSON.stringify(pageConfig.data || {}));
+    pageSvc._lastData = JSON.parse(JSON.stringify(pageSvc.data));
+
+    // Setup state management
+    let updateTimer = null;
+    let pendingData = null;
+    let pendingCallbacks = [];
+    const DEBOUNCE_WAIT = 50;
+
+    // Enhanced setData with optimizations
+    pageSvc.setData = async function (updates, callback) {
+      if (!updates || typeof updates !== "object") {
+        throw new Error("setData: Invalid updates");
       }
-      const initialData =
-        typeof pageConfig.data === "object" && pageConfig.data !== null
-          ? pageConfig.data
-          : {};
-      const pageInstance = _Page(pageConfig);
 
-      pageInstance.data = JSON.parse(JSON.stringify(initialData));
-      pageInstance._isUpdateScheduled = false;
-      pageInstance._debounceTimer = null;
-      pageInstance._pendingCallbacks = [];
-      pageInstance._batchStartState = null;
+      // Queue updates and callback
+      pendingData = pendingData ? { ...pendingData, ...updates } : updates;
+      if (callback) pendingCallbacks.push(callback);
 
-      const flushSetData = function () {
-        pageInstance._debounceTimer = null;
-        if (!pageInstance._isUpdateScheduled) return;
+      // Debounce updates
+      clearTimeout(updateTimer);
+      updateTimer = setTimeout(async () => {
+        try {
+          // Capture and reset pending state
+          const currentUpdates = pendingData;
+          const callbacks = pendingCallbacks;
+          pendingData = null;
+          pendingCallbacks = [];
 
-        const startState = pageInstance._batchStartState;
-        const endState = pageInstance.data;
-        pageInstance._batchStartState = null;
-        pageInstance._isUpdateScheduled = false;
-
-        const callbacksToRun = pageInstance._pendingCallbacks;
-        pageInstance._pendingCallbacks = [];
-
-        if (startState === null) {
-          console.warn(
-            "[Lingxia] No diff state available, sending full update",
-          );
-          const pathUpdates = {}; // Reconstruct roughly from endState if needed, or send empty
-          // Or potentially send the full endState as a fallback? For now, send nothing.
-          callbacksToRun.forEach((cb) => {
-            cb();
-          });
-          return;
-        }
-
-        const patchToSend = diff(startState, endState);
-
-        if (Object.keys(patchToSend).length > 0) {
-          try {
-            const jsonData = JSON.stringify(patchToSend);
-
-            pageInstance
-              ._setData(jsonData)
-              .then(() => {
-                callbacksToRun.forEach((cb) => {
-                  cb();
-                });
-              })
-              .catch((err) => {
-                console.error("[Lingxia] Native _setData call failed:", err);
-                callbacksToRun.forEach((cb) => {
-                  cb();
-                });
-              });
-          } catch (e) {
-            console.error(
-              "[Lingxia] Failed to stringify PATCH for _setData:",
-              e,
-              patchToSend,
-            );
-            callbacksToRun.forEach((cb) => {
-              cb();
-            });
+          // Apply updates to local data
+          for (const [path, value] of Object.entries(currentUpdates)) {
+            setValueByPath(this.data, path, value);
           }
-        } else {
-          console.log(
-            "[Lingxia] No effective changes detected by diff, running callbacks.",
-          );
-          callbacksToRun.forEach((cb) => {
-            cb();
-          });
-        }
-      };
 
-      pageInstance.setData = function (partialUpdate, callback) {
-        if (typeof partialUpdate !== "object" || partialUpdate === null) {
-          console.warn("[Lingxia] setData expects an object argument.");
-          if (typeof callback === "function") {
-            try {
-              callback();
-            } catch (e) {
-              console.error("[Lingxia] Error in setData callback:", e);
-            }
+          // Generate and send patch
+          const patch = diff(this._lastData, this.data);
+          if (Object.keys(patch).length > 0) {
+            await this._setData(JSON.stringify(patch));
+            this._lastData = JSON.parse(JSON.stringify(this.data));
           }
-          return;
-        }
 
-        if (!pageInstance._isUpdateScheduled) {
-          try {
-            pageInstance._batchStartState = JSON.parse(
-              JSON.stringify(pageInstance.data),
-            );
-          } catch (e) {
-            console.error(
-              "[Lingxia] Failed to deep copy start state for diffing:",
-              e,
-            );
-            pageInstance._batchStartState = null; // Mark as failed
-          }
+          // Execute callbacks
+          callbacks.forEach((cb) => cb());
+        } catch (err) {
+          pendingCallbacks.forEach((cb) => cb(err));
+          throw err;
         }
-
-        // Apply updates synchronously to local data using paths
-        for (const path in partialUpdate) {
-          if (Object.prototype.hasOwnProperty.call(partialUpdate, path)) {
-            const value = partialUpdate[path];
-            try {
-              setValueByPath(pageInstance.data, path, value);
-            } catch (e) {
-              console.error(`[Lingxia] Error applying path "${path}":`, e);
-            }
-          }
-        }
-
-        if (typeof callback === "function") {
-          pageInstance._pendingCallbacks.push(callback);
-        }
-
-        if (!pageInstance._isUpdateScheduled) {
-          pageInstance._isUpdateScheduled = true;
-          pageInstance._debounceTimer = setTimeout(flushSetData, 0);
-        }
-      };
-
-      return pageInstance;
+      }, DEBOUNCE_WAIT);
     };
-  } catch (e) {
-    console.error("Error in Page.js IIFE:", e);
-  }
+
+    // Bind page methods
+    Object.entries(pageConfig)
+      .filter(([_, value]) => typeof value === "function")
+      .forEach(([key, fn]) => (pageSvc[key] = fn.bind(pageSvc)));
+
+    return pageSvc;
+  };
 })();
 
-// Sets a value on an object based on a path string (e.g., 'a.b[0].c').
-// Creates nested objects/arrays if needed. Basic dot/bracket handling.
+// Sets a value in an object using a path string (e.g., 'a.b[0].c')
 function setValueByPath(obj, path, value) {
-  if (typeof path !== "string" || path === "") {
-    console.warn("[Lingxia] Invalid path:", path);
-    return;
-  }
-  if (typeof obj !== "object" || obj === null) {
-    console.warn("[Lingxia] Invalid target object");
-    return;
-  }
+  if (!path) throw new Error("setData: Invalid path");
+
   const parts = path.replace(/\[(\d+)\]/g, ".$1").split(".");
   let current = obj;
+
   for (let i = 0; i < parts.length - 1; i++) {
     const key = parts[i];
     const nextKey = parts[i + 1];
     const isNextKeyArrayIndex = /^\d+$/.test(nextKey);
+
     if (current[key] === undefined || current[key] === null) {
       current[key] = isNextKeyArrayIndex ? [] : {};
     } else if (typeof current[key] !== "object") {
-      console.warn(`[Lingxia] Overwriting path segment "${key}"`);
-      current[key] = isNextKeyArrayIndex ? [] : {};
+      throw new Error(
+        `setData: Cannot set path "${key}", parent is not an object`,
+      );
     } else if (isNextKeyArrayIndex && !Array.isArray(current[key])) {
-      console.warn(`[Lingxia] Overwriting non-array segment "${key}"`);
-      current[key] = [];
+      throw new Error(
+        `setData: Cannot set array index on non-array at "${key}"`,
+      );
     }
+
     current = current[key];
-    if (typeof current !== "object" || current === null) {
-      console.error(`[Lingxia] Invalid path segment "${key}"`);
-      return;
+    if (!current || typeof current !== "object") {
+      throw new Error(`setData: Invalid path segment "${key}"`);
     }
   }
+
   const finalKey = parts[parts.length - 1];
   if (value === undefined) {
     if (Array.isArray(current)) {
       const index = parseInt(finalKey, 10);
-      if (!isNaN(index) && index >= 0 && index < current.length) {
-        // While we could splice, deleting might leave 'empty' slots if that's desired.
-        // However, consistent 'delete' behavior is simpler. Let's use delete.
-        // If sparse arrays become problematic, we might revisit splice.
+      if (index >= 0 && index < current.length) {
         delete current[finalKey];
       } else {
-        console.warn(
-          `[Lingxia] Invalid array index "${finalKey}" for deletion.`,
+        throw new Error(
+          `setData: Invalid array index "${finalKey}" for deletion`,
         );
       }
-    } else if (typeof current === "object" && current !== null) {
+    } else if (current && typeof current === "object") {
       delete current[finalKey];
     } else {
-      console.warn(
-        `[Lingxia] Cannot delete property "${finalKey}" from non-object/array:`,
-        current,
-      );
+      throw new Error(`setData: Cannot delete property "${finalKey}"`);
     }
   } else {
     current[finalKey] = value;
   }
 }
 
-/**
- * Recursively diffs two objects/values and generates a patch object.
- * Patch format: { 'path.string': newValue, 'deleted.path': undefined }
- * Basic array diffing: sends the whole new array if changed.
- */
+// Generates minimal diff between old and new values
 function diff(oldValue, newValue, currentPath = "", patch = {}) {
-  if (oldValue === newValue) {
-    return patch; // No change
-  }
+  if (oldValue === newValue) return patch;
+
   if (
-    typeof oldValue !== typeof newValue ||
+    !newValue ||
     typeof newValue !== "object" ||
-    newValue === null ||
+    !oldValue ||
+    typeof oldValue !== "object" ||
     Array.isArray(newValue) !== Array.isArray(oldValue)
   ) {
     patch[currentPath] = newValue;
     return patch;
   }
+
   if (Array.isArray(newValue)) {
     if (
       oldValue.length !== newValue.length ||
@@ -227,23 +146,25 @@ function diff(oldValue, newValue, currentPath = "", patch = {}) {
     }
     return patch;
   }
-  if (typeof newValue === "object") {
-    const oldKeys = new Set(Object.keys(oldValue));
-    const newKeys = new Set(Object.keys(newValue));
-    for (const key of newKeys) {
-      const newPath = currentPath ? `${currentPath}.${key}` : key;
-      if (!oldKeys.has(key)) {
-        patch[newPath] = newValue[key]; // Added key
-      } else {
-        diff(oldValue[key], newValue[key], newPath, patch); // Recurse for existing key
-      }
-    }
-    for (const key of oldKeys) {
-      if (!newKeys.has(key)) {
-        const deletedPath = currentPath ? `${currentPath}.${key}` : key;
-        patch[deletedPath] = undefined; // Mark deleted key
-      }
+
+  const oldKeys = new Set(Object.keys(oldValue));
+  const newKeys = new Set(Object.keys(newValue));
+
+  for (const key of newKeys) {
+    const newPath = currentPath ? `${currentPath}.${key}` : key;
+    if (!oldKeys.has(key)) {
+      patch[newPath] = newValue[key];
+    } else {
+      diff(oldValue[key], newValue[key], newPath, patch);
     }
   }
+
+  for (const key of oldKeys) {
+    if (!newKeys.has(key)) {
+      const deletedPath = currentPath ? `${currentPath}.${key}` : key;
+      patch[deletedPath] = undefined;
+    }
+  }
+
   return patch;
 }

@@ -17,7 +17,25 @@ pub(crate) struct PageSvc {
 #[js_class]
 impl PageSvc {
     #[js_method(constructor)]
-    fn _new() {}
+    fn _new(ctx: JSContext, obj: JSObject) -> JSResult<JSObject> {
+        // Get the PageSvc class
+        let page_class = Class::get::<PageSvc>(&ctx)?;
+
+        let mut page_svc = PageSvc {
+            functions: HashMap::new(),
+            this: obj.clone(),
+            bridge: Bridge::new(),
+        };
+
+        // Extract all functions from the object
+        page_svc.assign_funcs(&obj)?;
+
+        let page = page_class.instance(page_svc);
+
+        // bind the object to member of 'this'
+        page.borrow_mut::<PageSvc>().unwrap().this = page.clone();
+        Ok(page)
+    }
 
     #[js_method(rename = "_setData")]
     async fn set_data(&self, data: String, callback: Optional<JSFunc>) -> JSResult<()> {
@@ -84,34 +102,9 @@ impl PageSvc {
     }
 }
 
-fn page_func(ctx: JSContext, obj: JSObject) -> JSResult<JSObject> {
-    // Get the MiniApp class
-    let page_class = Class::get::<PageSvc>(&ctx)?;
-
-    let mut page_svc = PageSvc {
-        functions: HashMap::new(),
-        this: obj.clone(),
-        bridge: Bridge::new(),
-    };
-
-    // Extract all functions from the object
-    page_svc.assign_funcs(&obj)?;
-
-    // Create a new JSObject using the instance method
-    let page = page_class.instance(page_svc);
-
-    // assign this object
-    page.borrow_mut::<PageSvc>().unwrap().this = page.clone();
-
-    Ok(page)
-}
-
 // Register the global App & getApp function
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     ctx.register_class::<PageSvc>()?;
-
-    let page_func = JSFunc::new(ctx, page_func)?.name("_Page")?;
-    ctx.global().set("_Page", page_func)?;
 
     let page = Source::from_bytes(include_str!("scripts/Page.js"));
     ctx.eval::<()>(page)?;
