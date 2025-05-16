@@ -689,8 +689,8 @@ impl AppUiDelegate for MiniApp {
                     );
                     return;
                 } else if "call" == incoming.type_ {
+                    // send ack to veiw, then continue to process
                     let _ = incoming.reply_to_call(page, true, None);
-                    return;
                 }
             }
         }

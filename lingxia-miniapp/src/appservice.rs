@@ -402,22 +402,29 @@ async fn miniapp_service_handler(
         } => {
             if let Some(app_ctx) = current_miniapp.as_mut() {
                 if let Some(page_svc) = app_ctx.page_svc.get_mut(&path) {
-                    let _ = page_svc
+                    if let Err(e) = page_svc
                         .bridge
                         .process_incoming_message(incoming, async |_type, name, payload| {
                             if let Err(e) = page_svc.call(&app_ctx.ctx, name, payload).await {
                                 log(
                                     LogLevel::Error,
                                     &format!(
-                                        "[Worker {}] Exce Page service '{}' failed, Error: {}",
-                                        worker_id, path, e
+                                        "[Worker {}] Exce Page {} service '{}' failed, Error: {}",
+                                        worker_id, path, name, e
                                     ),
                                 );
                             }
-                            Ok(())
                         })
-                        .await;
-                    {}
+                        .await
+                    {
+                        log(
+                            LogLevel::Error,
+                            &format!(
+                                "[Worker {}] Handle incoming message error: {}",
+                                worker_id, e
+                            ),
+                        );
+                    }
                 } else {
                     log(
                         LogLevel::Error,

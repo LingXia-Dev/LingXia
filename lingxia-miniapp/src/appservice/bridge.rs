@@ -257,7 +257,7 @@ impl Bridge {
         dispatch: F,
     ) -> Result<(), MiniAppError>
     where
-        F: AsyncFnOnce(&str, &str, Option<&str>) -> Result<(), MiniAppError>,
+        F: AsyncFnOnce(&str, &str, Option<&str>),
     {
         match message.type_.as_str() {
             "reply" => {
@@ -306,7 +306,7 @@ impl Bridge {
             "call" | "event" => {
                 let name = message.name.as_deref().unwrap();
                 let payload_s = message.payload_as_opt_string()?;
-                dispatch(message.type_.as_str(), name, payload_s.as_deref()).await?;
+                dispatch(message.type_.as_str(), name, payload_s.as_deref()).await;
             }
             _ => {
                 return Err(MiniAppError::Bridge(format!(
