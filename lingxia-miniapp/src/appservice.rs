@@ -47,8 +47,7 @@ enum ServiceMessage {
     CallPageSvc {
         appid: String,
         path: String,
-        name: String,
-        args: Option<String>, // JSON string of arguments
+        incoming: bridge::IncomingMessage,
     },
 }
 
@@ -201,14 +200,12 @@ impl MiniAppServiceManager {
         &self,
         appid: String,
         path: String,
-        name: String,
-        args: Option<String>,
+        incoming: bridge::IncomingMessage,
     ) -> Result<(), MiniAppError> {
         self.sender.send(ServiceMessage::CallPageSvc {
             appid,
             path,
-            name,
-            args,
+            incoming,
         })?;
 
         Ok(())
@@ -393,12 +390,16 @@ async fn miniapp_service_handler(
         ServiceMessage::CallPageSvc {
             appid: _,
             path,
-            name,
-            args,
+            incoming,
         } => {
             if let Some(app_ctx) = current_miniapp.as_mut() {
                 if let Some(page_svc) = app_ctx.page_svc.get_mut(&path) {
-                    page_svc.call(&app_ctx.ctx, &name, args);
+                    let _ = page_svc.bridge.process_incoming_message(
+                        incoming,
+                        |_type, name, payload| {
+                            page_svc.call(&app_ctx.ctx, name, payload);
+                        },
+                    );
                 } else {
                     log(
                         LogLevel::Error,

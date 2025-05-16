@@ -479,7 +479,7 @@ pub trait AppUiDelegate {
     /// * `false` - To allow the page to continue loading the URL
     fn should_override_url_loading(&self, url: String) -> bool;
 
-    /// Handles a postMessage from the page's JavaScript context
+    /// Handles a postMessage from the page View(WebView)
     fn handle_post_message(&self, path: String, msg: String);
 
     /// Handles an HTTP request from the page
@@ -673,7 +673,29 @@ impl AppUiDelegate for MiniApp {
     }
 
     fn handle_post_message(&self, path: String, msg: String) {
-        self.info(&path, &msg);
+        let incoming = appservice::bridge::IncomingMessage::from_json_str(&msg).unwrap();
+        if let Some(ref name) = incoming.name {
+            // ignore it currently
+            if name == "LingXiaPortReady" {
+                return;
+            }
+
+            if let Some(page) = self.pages.get_page(&path) {
+                if !page.has_svc(name.to_string()) {
+                    let _ = incoming.reply_service_not_found(page);
+                    return;
+                }
+            }
+        }
+
+        if let Ok(manager) = self.svc_manager.lock() {
+            if let Err(e) = manager.page_svc(self.appid.clone(), path, incoming) {
+                self.error(
+                    "AppUiDelegate",
+                    format!("Failed to create app service: {}", e),
+                );
+            }
+        }
     }
 
     fn handle_request(&mut self, req: http::Request<Vec<u8>>) -> Option<http::Response<Vec<u8>>> {
