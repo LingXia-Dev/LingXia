@@ -93,28 +93,35 @@ impl IncomingMessage {
         self.msg_id.as_deref()
     }
 
-    pub fn reply_service_not_found(&self, page: &Page) -> Result<(), MiniAppError> {
-        let original_msg_id = self.msg_id.as_deref().ok_or_else(|| {
-            MiniAppError::Bridge("msg_id is missing on IncomingMessage.".to_string())
-        })?;
-
-        let error_payload = ErrorPayload {
-            message: "Service not found".to_string(),
-        };
-        let reply_message = json!({
-            "msgId": original_msg_id,
-            "type": "reply",
-            "payload": {
+    pub fn reply_to_call(
+        &self,
+        page: &Page,
+        success: bool,
+        error_message: Option<&str>,
+    ) -> Result<(), MiniAppError> {
+        let reply_payload = if success {
+            json!({
+                "success": true
+            })
+        } else {
+            json!({
                 "success": false,
-                "error": error_payload
-            }
+                "error": {
+                    "message": error_message.unwrap_or("Unknown error")
+                }
+            })
+        };
+
+        let reply_message = json!({
+            "msgId": self.msg_id,
+            "type": "reply",
+            "payload": reply_payload
         });
+
         let serialized_reply = serde_json::to_string(&reply_message)?;
 
-        page.post_message(&serialized_reply).map_err(|e| {
-            MiniAppError::Bridge(format!("Failed to post service_not_found reply: {}", e))
-        })?;
-        Ok(())
+        page.post_message(&serialized_reply)
+            .map_err(|e| MiniAppError::Bridge(format!("Failed to post reply: {}", e)))
     }
 }
 
