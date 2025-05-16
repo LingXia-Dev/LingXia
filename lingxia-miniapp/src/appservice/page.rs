@@ -20,7 +20,7 @@ impl PageSvc {
     fn _new() {}
 
     #[js_method(rename = "_setData")]
-    pub async fn set_data(&self, data: String, callback: Optional<JSFunc>) -> JSResult<()> {
+    async fn set_data(&self, data: String, callback: Optional<JSFunc>) -> JSResult<()> {
         self.bridge
             .set_data(&data)
             .await
@@ -59,14 +59,21 @@ impl PageSvc {
         Ok(())
     }
 
-    pub(crate) fn call(&self, ctx: &JSContext, func_name: &str, args: Option<&str>) {
+    pub async fn call(&self, ctx: &JSContext, func_name: &str, args: Option<&str>) -> JSResult<()> {
         if let Some(func) = self.functions.get(func_name) {
             let args = args.and_then(|json| JSObject::from_json_string(ctx, json).ok());
-            let _ = match args {
-                Some(obj) => func.call::<_, u32>(Some(self.this.clone()), (obj,)),
-                None => func.call::<_, u32>(Some(self.this.clone()), ()),
+            match args {
+                Some(obj) => {
+                    func.call_async::<_, ()>(Some(self.this.clone()), (obj,))
+                        .await?
+                }
+                None => {
+                    func.call_async::<_, ()>(Some(self.this.clone()), ())
+                        .await?
+                }
             };
         }
+        Err(RongJSError::Error(format!("No service: {}", func_name)))
     }
 
     pub(crate) fn bind(&mut self, page: Page) {

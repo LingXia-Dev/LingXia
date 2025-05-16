@@ -378,7 +378,15 @@ async fn miniapp_service_handler(
         ServiceMessage::CallAppSvc { appid, name, args } => {
             if let Some(app_ctx) = current_miniapp.as_mut() {
                 if let Some(svc) = &app_ctx.svc {
-                    svc.call(&app_ctx.ctx, &name, args);
+                    if let Err(e) = svc.call(&app_ctx.ctx, &name, args).await {
+                        log(
+                            LogLevel::Error,
+                            &format!(
+                                "[Worker {}] App service '{}' failed, Error: {}",
+                                worker_id, appid, e
+                            ),
+                        );
+                    }
                 } else {
                     log(
                         LogLevel::Error,
@@ -394,12 +402,22 @@ async fn miniapp_service_handler(
         } => {
             if let Some(app_ctx) = current_miniapp.as_mut() {
                 if let Some(page_svc) = app_ctx.page_svc.get_mut(&path) {
-                    let _ = page_svc.bridge.process_incoming_message(
-                        incoming,
-                        |_type, name, payload| {
-                            page_svc.call(&app_ctx.ctx, name, payload);
-                        },
-                    );
+                    let _ = page_svc
+                        .bridge
+                        .process_incoming_message(incoming, async |_type, name, payload| {
+                            if let Err(e) = page_svc.call(&app_ctx.ctx, name, payload).await {
+                                log(
+                                    LogLevel::Error,
+                                    &format!(
+                                        "[Worker {}] Exce Page service '{}' failed, Error: {}",
+                                        worker_id, path, e
+                                    ),
+                                );
+                            }
+                            Ok(())
+                        })
+                        .await;
+                    {}
                 } else {
                     log(
                         LogLevel::Error,

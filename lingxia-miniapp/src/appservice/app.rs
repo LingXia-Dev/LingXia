@@ -1,4 +1,7 @@
-use rong::{Class, JSContext, JSFunc, JSObject, JSResult, JSValue, js_class, js_export, js_method};
+use rong::{
+    Class, JSContext, JSFunc, JSObject, JSResult, JSValue, RongJSError, js_class, js_export,
+    js_method,
+};
 use std::collections::HashMap;
 
 #[js_export]
@@ -37,14 +40,26 @@ impl MiniAppSvc {
         Ok(())
     }
 
-    pub(crate) fn call(&self, ctx: &JSContext, func_name: &str, args: Option<String>) {
+    pub async fn call(
+        &self,
+        ctx: &JSContext,
+        func_name: &str,
+        args: Option<String>,
+    ) -> JSResult<()> {
         if let Some(func) = self.functions.get(func_name) {
-            let args = args.and_then(|json| JSObject::from_json_string(ctx, &json).ok());
-            let _ = match args {
-                Some(obj) => func.call::<_, u32>(Some(self.this.clone()), (obj,)),
-                None => func.call::<_, u32>(Some(self.this.clone()), ()),
+            let args = args.and_then(|json| JSObject::from_json_string(ctx, json.as_ref()).ok());
+            match args {
+                Some(obj) => {
+                    func.call_async::<_, ()>(Some(self.this.clone()), (obj,))
+                        .await?
+                }
+                None => {
+                    func.call_async::<_, ()>(Some(self.this.clone()), ())
+                        .await?
+                }
             };
         }
+        Err(RongJSError::Error(format!("No service: {}", func_name)))
     }
 }
 

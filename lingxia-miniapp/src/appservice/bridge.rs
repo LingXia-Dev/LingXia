@@ -84,7 +84,7 @@ impl IncomingMessage {
     fn payload_as_opt_string(&self) -> Result<Option<String>, MiniAppError> {
         self.payload
             .as_ref()
-            .map(|v| serde_json::to_string(v))
+            .map(serde_json::to_string)
             .transpose()
             .map_err(|e| MiniAppError::Bridge(format!("Payload serialization failed: {}", e)))
     }
@@ -244,13 +244,13 @@ impl Bridge {
     /// # Returns
     /// * `Ok(())` if the message was processed successfully
     /// * `Err(MiniAppError)` if there was an error processing the message
-    pub fn process_incoming_message<F>(
+    pub async fn process_incoming_message<F>(
         &self,
         message: IncomingMessage,
         dispatch: F,
     ) -> Result<(), MiniAppError>
     where
-        F: FnOnce(&str, &str, Option<&str>),
+        F: AsyncFnOnce(&str, &str, Option<&str>) -> Result<(), MiniAppError>,
     {
         match message.type_.as_str() {
             "reply" => {
@@ -299,7 +299,7 @@ impl Bridge {
             "call" | "event" => {
                 let name = message.name.as_deref().unwrap();
                 let payload_s = message.payload_as_opt_string()?;
-                dispatch(message.type_.as_str(), name, payload_s.as_deref());
+                dispatch(message.type_.as_str(), name, payload_s.as_deref()).await?;
             }
             _ => {
                 return Err(MiniAppError::Bridge(format!(
