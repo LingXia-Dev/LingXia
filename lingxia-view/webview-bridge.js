@@ -183,7 +183,10 @@
   }
 
   function _handleIncomingMessage(message) {
-    log("Received:", message);
+    log(
+      "Received:",
+      typeof message === "object" ? JSON.stringify(message) : message,
+    );
     if (!message || typeof message !== "object" || !message.type) {
       warn("Received invalid message format:", message);
       return;
