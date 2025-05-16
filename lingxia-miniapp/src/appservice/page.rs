@@ -1,7 +1,8 @@
+use super::bridge::Bridge;
 use crate::page::Page;
 use rong::{
-    Class, JSContext, JSFunc, JSObject, JSResult, JSValue, Source, function::Optional, js_class,
-    js_export, js_method,
+    Class, JSContext, JSFunc, JSObject, JSResult, JSValue, RongJSError, Source, function::Optional,
+    js_class, js_export, js_method,
 };
 use std::collections::HashMap;
 
@@ -10,7 +11,7 @@ use std::collections::HashMap;
 pub(crate) struct PageSvc {
     functions: HashMap<String, JSFunc>,
     this: JSObject,
-    page: Option<Page>,
+    pub bridge: Bridge,
 }
 
 #[js_class]
@@ -19,8 +20,11 @@ impl PageSvc {
     fn _new() {}
 
     #[js_method(rename = "_setData")]
-    pub fn set_data(&self, data: String, callback: Optional<JSFunc>) -> JSResult<()> {
-        println!("setData JSON: {}", data);
+    pub async fn set_data(&self, data: String, callback: Optional<JSFunc>) -> JSResult<()> {
+        self.bridge
+            .set_data(&data)
+            .await
+            .map_err(|e| RongJSError::Error(e.to_string()))?;
 
         // Call the callback if provided
         if let Some(cb) = callback.0 {
@@ -55,9 +59,9 @@ impl PageSvc {
         Ok(())
     }
 
-    pub(crate) fn call(&self, ctx: &JSContext, func_name: &str, args: Option<String>) {
+    pub(crate) fn call(&self, ctx: &JSContext, func_name: &str, args: Option<&str>) {
         if let Some(func) = self.functions.get(func_name) {
-            let args = args.and_then(|json| JSObject::from_json_string(ctx, &json).ok());
+            let args = args.and_then(|json| JSObject::from_json_string(ctx, json).ok());
             let _ = match args {
                 Some(obj) => func.call::<_, u32>(Some(self.this.clone()), (obj,)),
                 None => func.call::<_, u32>(Some(self.this.clone()), ()),
@@ -68,7 +72,7 @@ impl PageSvc {
     pub(crate) fn bind(&mut self, page: Page) {
         let func_names: Vec<String> = self.functions.keys().cloned().collect();
         page.register_svc(func_names);
-        self.page = Some(page);
+        self.bridge.set_page(page);
     }
 }
 
@@ -79,7 +83,7 @@ fn page_func(ctx: JSContext, obj: JSObject) -> JSResult<JSObject> {
     let mut page_svc = PageSvc {
         functions: HashMap::new(),
         this: obj.clone(),
-        page: None,
+        bridge: Bridge::new(),
     };
 
     // Extract all functions from the object

@@ -36,16 +36,12 @@
 
         if (startState === null) {
           console.warn(
-            "[Lingxia] Batch start state was null, cannot diff. Sending current top-level affected keys instead.",
+            "[Lingxia] No diff state available, sending full update",
           );
           const pathUpdates = {}; // Reconstruct roughly from endState if needed, or send empty
           // Or potentially send the full endState as a fallback? For now, send nothing.
           callbacksToRun.forEach((cb) => {
-            try {
-              cb();
-            } catch (e) {
-              console.error("[Lingxia] Error in setData callback:", e);
-            }
+            cb();
           });
           return;
         }
@@ -55,18 +51,20 @@
         if (Object.keys(patchToSend).length > 0) {
           try {
             const jsonData = JSON.stringify(patchToSend);
-            // console.log("[Lingxia] Flushing setData with PATCH:", jsonData);
 
-            const finalCallback = function () {
-              callbacksToRun.forEach((cb) => {
-                try {
+            pageInstance
+              ._setData(jsonData)
+              .then(() => {
+                callbacksToRun.forEach((cb) => {
                   cb();
-                } catch (e) {
-                  console.error("[Lingxia] Error in setData callback:", e);
-                }
+                });
+              })
+              .catch((err) => {
+                console.error("[Lingxia] Native _setData call failed:", err);
+                callbacksToRun.forEach((cb) => {
+                  cb();
+                });
               });
-            };
-            pageInstance._setData(jsonData, finalCallback);
           } catch (e) {
             console.error(
               "[Lingxia] Failed to stringify PATCH for _setData:",
@@ -74,9 +72,7 @@
               patchToSend,
             );
             callbacksToRun.forEach((cb) => {
-              try {
-                cb();
-              } catch (e) {}
+              cb();
             });
           }
         } else {
@@ -84,11 +80,7 @@
             "[Lingxia] No effective changes detected by diff, running callbacks.",
           );
           callbacksToRun.forEach((cb) => {
-            try {
-              cb();
-            } catch (e) {
-              console.error("[Lingxia] Error in setData callback:", e);
-            }
+            cb();
           });
         }
       };
