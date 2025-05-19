@@ -75,15 +75,10 @@ impl AppController for Controller {
             Self::handle_request(self, cmd);
             return Ok(());
         } else {
-            let (_tx, rx) = mpsc::channel();
-
             self.sender
                 .send(cmd)
                 .map_err(|e| MiniAppError::WebView(format!("Failed to send command: {}", e)))?;
-
-            rx.recv().map_err(|_| {
-                MiniAppError::WebView("UI thread dropped without sending result".to_string())
-            })
+            Ok(())
         }
     }
 }
