@@ -47,7 +47,7 @@ enum ServiceMessage {
     CallPageSvc {
         appid: String,
         path: String,
-        incoming: bridge::IncomingMessage,
+        incoming: Arc<bridge::IncomingMessage>,
     },
 }
 
@@ -200,7 +200,7 @@ impl MiniAppServiceManager {
         &self,
         appid: String,
         path: String,
-        incoming: bridge::IncomingMessage,
+        incoming: Arc<bridge::IncomingMessage>,
     ) -> Result<(), MiniAppError> {
         self.sender.send(ServiceMessage::CallPageSvc {
             appid,

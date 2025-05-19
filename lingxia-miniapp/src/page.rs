@@ -341,9 +341,9 @@ impl Page {
         }
     }
 
-    pub fn has_svc(&self, name: String) -> bool {
+    pub fn has_svc(&self, name: &str) -> bool {
         if let Ok(services) = self.inner.services.lock() {
-            return services.contains(&name);
+            return services.iter().any(|s| s == name);
         }
         false
     }

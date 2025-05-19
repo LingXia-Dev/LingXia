@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{
-    Mutex,
+    Arc, Mutex,
     atomic::{AtomicUsize, Ordering},
 };
 
@@ -255,7 +255,7 @@ impl Bridge {
     /// * `Err(MiniAppError)` if there was an error processing the message
     pub async fn process_incoming_message<F>(
         &self,
-        message: IncomingMessage,
+        message: Arc<IncomingMessage>,
         dispatch: F,
     ) -> Result<(), MiniAppError>
     where
@@ -270,7 +270,8 @@ impl Bridge {
                 };
 
                 if let Some(tx) = sender {
-                    let reply_payload_value = message.payload.unwrap_or(Value::Null);
+                    let reply_payload_value =
+                        message.payload.as_ref().map_or(Value::Null, |v| v.clone());
                     let payload_struct_result: Result<ReplyPayload, serde_json::Error> =
                         serde_json::from_value(reply_payload_value);
 

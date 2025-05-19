@@ -681,7 +681,7 @@ impl AppUiDelegate for MiniApp {
             }
 
             if let Some(page) = self.pages.get_page(&path) {
-                if !page.has_svc(name.to_string()) {
+                if !page.has_svc(name) {
                     let _ = incoming.reply_to_call(
                         page,
                         false,
@@ -689,14 +689,14 @@ impl AppUiDelegate for MiniApp {
                     );
                     return;
                 } else if "call" == incoming.type_ {
-                    // send ack to veiw, then continue to process
+                    // send ack to view, then continue to process
                     let _ = incoming.reply_to_call(page, true, None);
                 }
             }
         }
 
         if let Ok(manager) = self.svc_manager.lock() {
-            if let Err(e) = manager.page_svc(self.appid.clone(), path, incoming) {
+            if let Err(e) = manager.page_svc(self.appid.clone(), path, Arc::new(incoming)) {
                 self.error(
                     "AppUiDelegate",
                     format!("Failed to create app service: {}", e),
