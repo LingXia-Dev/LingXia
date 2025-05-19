@@ -3,8 +3,9 @@ use crate::page::{Page, WebViewController};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::HashMap;
+use std::rc::Rc;
 use std::sync::{
-    Arc, Mutex,
+    Mutex,
     atomic::{AtomicUsize, Ordering},
 };
 
@@ -21,8 +22,9 @@ use tokio::time::timeout;
 pub(crate) struct Bridge {
     page: Option<Page>,
 
-    msg_counter: Arc<AtomicUsize>,
-    pending_calls: Arc<Mutex<PendingCallsMap>>,
+    // Use Rc because the Bridge type only lives within a single JavaScript runtime thread.
+    msg_counter: Rc<AtomicUsize>,
+    pending_calls: Rc<Mutex<PendingCallsMap>>,
 }
 
 /// Type alias for the pending calls map to simplify the complex type.
@@ -136,8 +138,8 @@ impl Bridge {
     pub fn new() -> Self {
         Self {
             page: None,
-            msg_counter: Arc::new(AtomicUsize::new(0)),
-            pending_calls: Arc::new(Mutex::new(HashMap::new())),
+            msg_counter: Rc::new(AtomicUsize::new(0)),
+            pending_calls: Rc::new(Mutex::new(HashMap::new())),
         }
     }
 
