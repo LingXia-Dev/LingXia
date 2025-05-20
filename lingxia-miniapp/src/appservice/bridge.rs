@@ -57,6 +57,8 @@ pub struct IncomingMessage {
     pub type_: String,
     pub name: Option<String>,
     payload: Option<Value>,
+    #[serde(rename = "callbackId")]
+    pub callback_id: Option<String>,
 }
 
 impl IncomingMessage {
@@ -75,6 +77,13 @@ impl IncomingMessage {
                         "Message type '{}' missing 'name' field",
                         message.type_
                     )));
+                }
+            }
+            "callback" => {
+                if message.callback_id.is_none() {
+                    return Err(MiniAppError::Bridge(
+                        "Callback missing callbackId".to_string(),
+                    ));
                 }
             }
             unknown_type => {
@@ -205,15 +214,16 @@ impl Bridge {
     ///
     /// This function parses an incoming JSON message and dispatches it appropriately.
     /// For `reply` messages, it resolves the corresponding pending call.
-    /// For `call` and `event` messages, it delegates to the provided `dispatch` function.
+    /// For `call`, `event`, and `callback` messages, it delegates to the provided `dispatch` function.
     ///
     /// # Arguments
     /// * `message` - The incoming message
-    /// * `dispatch` - A closure that handles `call` and `event` messages.
+    /// * `dispatch` - A closure that handles `call`, `event`, and `callback` messages.
     ///   It receives three arguments:
-    ///   * `msg_type`: The message type ("call" or "event")
-    ///   * `name`: The handler name or event name
+    ///   * `msg_type`: The message type ("call", "event", or "callback")
+    ///   * `name`: The handler name, event name, or empty string for callback
     ///   * `payload`: Optional JSON payload as a string, or None if no payload is present
+    ///   * `callback_id`: Optional callback ID for callback messages
     ///
     /// # Returns
     /// * `Ok(())` if the message was processed successfully
@@ -221,10 +231,10 @@ impl Bridge {
     pub async fn process_incoming_message<F>(
         &self,
         message: Arc<IncomingMessage>,
-        dispatch_event_or_call: F,
+        dispatch: F,
     ) -> Result<(), MiniAppError>
     where
-        F: AsyncFnOnce(String, String, Option<String>),
+        F: AsyncFnOnce(String, String, Option<String>, Option<String>),
     {
         match message.type_.as_str() {
             "reply" => {
@@ -287,17 +297,23 @@ impl Bridge {
                     let _ = self.reply_to_call(msg_id, true, None);
 
                     let payload_s = message.payload_as_opt_string()?;
-                    dispatch_event_or_call(message.type_.clone(), name.clone(), payload_s).await;
+                    dispatch(message.type_.clone(), name.clone(), payload_s, None).await;
                 }
             }
             "event" => {
-                let name = message
-                    .name
-                    .as_ref()
-                    .ok_or_else(|| MiniAppError::Bridge("Event message missing name".to_string()))?
-                    .clone();
+                let name = message.name.as_ref().unwrap().clone();
                 let payload_s = message.payload_as_opt_string()?;
-                dispatch_event_or_call(message.type_.clone(), name, payload_s).await;
+                dispatch(message.type_.clone(), name, payload_s, None).await;
+            }
+            "callback" => {
+                let callback_id = message.callback_id.as_ref().unwrap().clone();
+                dispatch(
+                    message.type_.clone(),
+                    Default::default(),
+                    None,
+                    Some(callback_id),
+                )
+                .await;
             }
             _ => {
                 return Err(MiniAppError::Bridge(format!(

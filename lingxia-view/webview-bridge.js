@@ -136,7 +136,6 @@
       return;
     }
 
-    log("Applying patch:", patch);
     let changesApplied = false;
     for (const path in patch) {
       if (Object.prototype.hasOwnProperty.call(patch, path)) {
@@ -184,7 +183,7 @@
 
   function _handleIncomingMessage(message) {
     log(
-      "Received:",
+      "Message Received:",
       typeof message === "object" ? JSON.stringify(message) : message,
     );
     if (!message || typeof message !== "object" || !message.type) {
@@ -251,23 +250,29 @@
 
     try {
       if (name === "setData") {
-        // Apply the received patch (payload) to the current pageData
-        if (_applyPatch(pageData, payload)) {
-          log("pageData updated via patch.");
-          // Notify subscribers if changes were applied
-          setTimeout(() => {
-            const dataCopy = deepCopy(pageData);
-            dataSubscribers.forEach((listener) => {
-              try {
-                listener(dataCopy);
-              } catch (e) {
-                error("Data subscriber error:", e);
-              }
-            });
-          }, 0);
+        let dataToApply;
+        let callbackId = null;
+
+        if (payload && typeof payload.data !== "undefined") {
+          dataToApply = payload.data;
+          callbackId = payload.callbackId;
         } else {
-          log("setData received patch, but no changes were applied.");
+          dataToApply = payload;
         }
+
+        _applyPatch(pageData, dataToApply);
+
+        setTimeout(() => {
+          const dataCopy = deepCopy(pageData);
+          dataSubscribers.forEach((listener) => {
+            try {
+              listener(dataCopy, callbackId);
+            } catch (e) {
+              error("Data subscriber error:", e);
+            }
+          });
+        }, 0);
+
         _sendReply(msgId, true);
       } else {
         warn(`Unhandled call '${name}':`, callMessage);
@@ -412,6 +417,24 @@
       } catch (e) {
         error("Invalid JSON from iOS:", e, messageString);
       }
+    },
+
+    /**
+     * Called by data subscribers (e.g., UI frameworks) after they have processed
+     * a data update associated with a callbackId and wish to trigger the callback in the Logic Layer.
+     * @param {string} callbackId - The ID originally provided with the setData call.
+     */
+    resolveCallback: function (callbackId) {
+      if (typeof callbackId !== "string" || !callbackId) {
+        error("resolveCallback: callbackId must be a non-empty string.");
+        return;
+      }
+
+      _sendMessageToNative({
+        msgId: null,
+        type: "callback",
+        callbackId: callbackId,
+      });
     },
   };
 
