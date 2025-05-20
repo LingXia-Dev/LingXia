@@ -3,7 +3,7 @@
 (function () {
   const NATIVE_HANDLER_NAME = "LingXia"; // iOS: window.webkit.messageHandlers name
   const GLOBAL_RECEIVER_NAME = "__LingXiaRecvMessage"; // iOS: Global function called by Native
-  const CALL_TIMEOUT_MS = 15000;
+  const CALL_TIMEOUT_MS = 5000;
   const LOG_PREFIX = "[LingxiaBridge]";
   const ANDROID_PORT_INIT_CMD = "LingXia-port-init"; // Android: Native command to send MessagePort
 
@@ -394,13 +394,11 @@
       };
 
       try {
-        // Send LingXiaPortReady event over the NEWLY connected port
-        this.event("LingXiaPortReady");
-        log(
-          "Android MessagePort (re)connected and LingXiaPortReady event sent.",
-        );
+        // Send LXPortRdy event over the NEWLY connected port
+        this.event("LXPortRdy");
+        log("Android MessagePort (re)connected and LXPortRdy event sent.");
       } catch (e) {
-        error("Failed to send LingXiaPortReady event via new Android Port:", e);
+        error("Failed to send LXPortRdy event via new Android Port:", e);
       }
     },
 
@@ -441,7 +439,16 @@
   // Platform Initialization
   if (isIOS) {
     window[GLOBAL_RECEIVER_NAME] = LingXiaBridge._receiveIOsMessage;
-    log(`iOS receiver '${GLOBAL_RECEIVER_NAME}' registered.`);
+
+    try {
+      // Use setTimeout to ensure sending after initialization completes
+      setTimeout(() => {
+        LingXiaBridge.event("LXPortRdy");
+        log("iOS LXPortRdy event sent.");
+      }, 0);
+    } catch (e) {
+      error("Failed to send LXPortRdy event for iOS:", e);
+    }
   }
 
   if (isAndroid) {

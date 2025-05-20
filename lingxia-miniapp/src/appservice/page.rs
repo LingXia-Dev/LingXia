@@ -22,6 +22,8 @@ pub(crate) struct PageSvc {
     // service function for callback type in bridge
     callback: HashMap<String, JSFunc>,
     callbackid: Rc<AtomicUsize>,
+
+    init_data: Option<JSObject>,
 }
 
 impl BridgeTransport for PageSvc {
@@ -41,6 +43,8 @@ impl PageSvc {
         // Get the PageSvc class
         let page_class = Class::get::<PageSvc>(&ctx)?;
 
+        let init_data = obj.get::<_, JSObject>("data").ok();
+
         let mut page_svc = PageSvc {
             functions: HashMap::new(),
             this: obj.clone(),
@@ -48,6 +52,7 @@ impl PageSvc {
             bridge: None,
             callback: HashMap::new(),
             callbackid: Rc::new(AtomicUsize::new(0)),
+            init_data,
         };
 
         // Extract all functions from the object
@@ -133,6 +138,18 @@ impl PageSvc {
             "No callback handler for {}",
             callbackid
         )))
+    }
+
+    // post init data to view
+    pub async fn post_init_data(&mut self) -> JSResult<()> {
+        // only post one time
+        if let Some(data) = self.init_data.take() {
+            self.as_bridge()
+                .set_data(&data.json_stringify()?)
+                .await
+                .map_err(|e| RongJSError::Error(e.to_string()))?;
+        }
+        Ok(())
     }
 
     // attach Page to PageSvc and init its bridge

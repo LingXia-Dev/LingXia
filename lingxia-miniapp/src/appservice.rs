@@ -416,16 +416,17 @@ async fn miniapp_service_handler(
                     if let Err(e) = page_svc_ref
                         .as_bridge()
                         .process_incoming_message(incoming, async move |name, payload, callbackid| {
-                            // ignore this event currently
-                            if name == "LingXiaPortReady" {
-                                return;
-                            }
-
                             let name_owned = name.clone();
                             let payload_owned = payload.clone();
 
                             // All captures for the spawned task are now owned or 'static.
                             let task = async move {
+
+                                if name == "LXPortRdy" {
+                                    let _=page_svc_clone.post_init_data().await;
+                                    return;
+                                }
+
                                 if let Some(callbackid)=callbackid{
                                     if let Err(e)=page_svc_clone.callback(&callbackid){
                                         let _ = log_sender_for_task.send(LogMessage {
