@@ -378,15 +378,22 @@ async fn miniapp_service_handler(
         ServiceMessage::CallAppSvc { appid, name, args } => {
             if let Some(app_ctx) = current_miniapp.as_mut() {
                 if let Some(svc) = &app_ctx.svc {
-                    if let Err(e) = svc.call(&app_ctx.ctx, &name, args).await {
-                        log(
-                            LogLevel::Error,
-                            &format!(
-                                "[Worker {}] App service '{}' failed, Error: {}",
-                                worker_id, appid, e
-                            ),
-                        );
-                    }
+                    let svc_clone = svc.clone();
+                    let ctx_clone_for_task = app_ctx.ctx.clone();
+                    let log_sender_for_task = log_sender.clone();
+
+                    let task = async move {
+                        if let Err(e) = svc_clone.call(&ctx_clone_for_task, &name, args).await {
+                            let _ = log_sender_for_task.send(LogMessage {
+                                level: LogLevel::Error,
+                                message: format!(
+                                    "[Worker {}] App service '{}' call '{}' failed, Error: {}",
+                                    worker_id, appid, name, e
+                                ),
+                            });
+                        }
+                    };
+                    tokio::task::spawn_local(task);
                 } else {
                     log(
                         LogLevel::Error,
@@ -401,19 +408,34 @@ async fn miniapp_service_handler(
             incoming,
         } => {
             if let Some(app_ctx) = current_miniapp.as_mut() {
-                if let Some(page_svc) = app_ctx.page_svc.get_mut(&path) {
-                    if let Err(e) = page_svc
+                if let Some(page_svc_ref) = app_ctx.page_svc.get_mut(&path) {
+                    let page_svc_clone = page_svc_ref.clone();
+                    let ctx_clone_for_task = app_ctx.ctx.clone();
+                    let log_sender_for_task = log_sender.clone();
+
+                    if let Err(e) = page_svc_ref
                         .bridge
-                        .process_incoming_message(incoming, async |_type, name, payload| {
-                            if let Err(e) = page_svc.call(&app_ctx.ctx, name, payload).await {
-                                log(
-                                    LogLevel::Error,
-                                    &format!(
-                                        "[Worker {}] Exce Page {} service '{}' failed, Error: {}",
-                                        worker_id, path, name, e
-                                    ),
-                                );
-                            }
+                        .process_incoming_message(incoming, async move |_type, name, payload| {
+                            let name_owned = name.clone();
+                            let payload_owned = payload.clone();
+
+                            // All captures for the spawned task are now owned or 'static.
+                            let task = async move {
+                                if let Err(e) = page_svc_clone.call(
+                                    &ctx_clone_for_task,
+                                    &name_owned,
+                                    payload_owned.as_deref()
+                                ).await {
+                                    let _ = log_sender_for_task.send(LogMessage {
+                                        level: LogLevel::Error,
+                                        message: format!(
+                                            "[Worker {}] Exec Page {} service '{}' failed, Error: {}",
+                                            worker_id, path, name_owned, e
+                                        ),
+                                    });
+                                }
+                            };
+                            tokio::task::spawn_local(task);
                         })
                         .await
                     {
