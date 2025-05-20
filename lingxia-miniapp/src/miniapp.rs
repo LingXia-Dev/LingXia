@@ -674,26 +674,6 @@ impl AppUiDelegate for MiniApp {
 
     fn handle_post_message(&self, path: String, msg: String) {
         let incoming = appservice::bridge::IncomingMessage::from_json_str(&msg).unwrap();
-        if let Some(ref name) = incoming.name {
-            // ignore this event currently, maybe we will delete this event in the future
-            if name == "LingXiaPortReady" {
-                return;
-            }
-
-            if let Some(page) = self.pages.get_page(&path) {
-                if !page.has_svc(name) {
-                    let _ = incoming.reply_to_call(
-                        page,
-                        false,
-                        Some(&format!("'{}' handler not found", name)),
-                    );
-                    return;
-                } else if "call" == incoming.type_ {
-                    // send ack to view, then continue to process
-                    let _ = incoming.reply_to_call(page, true, None);
-                }
-            }
-        }
 
         if let Ok(manager) = self.svc_manager.lock() {
             if let Err(e) = manager.page_svc(self.appid.clone(), path, Arc::new(incoming)) {

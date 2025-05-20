@@ -1,5 +1,4 @@
 use crate::error::MiniAppError;
-use crate::page::{Page, WebViewController};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -13,6 +12,12 @@ use std::time::Duration;
 use tokio::sync::oneshot;
 use tokio::time::timeout;
 
+/// Defines transport and service discovery for the Bridge.
+pub(crate) trait BridgeTransport {
+    fn post_message_to_view(&self, message_json: &str) -> Result<(), MiniAppError>;
+    fn has_service(&self, service_name: &str) -> bool;
+}
+
 /// Bridge for communicating between Logic Layer and View Layer
 ///
 /// This bridge handles the communication protocol between Logic and View layers
@@ -20,9 +25,7 @@ use tokio::time::timeout;
 /// JSON messages, manages call/reply sequences, and routes events.
 #[derive(Clone)]
 pub(crate) struct Bridge {
-    page: Option<Page>,
-
-    // Use Rc because the Bridge type only lives within a single JavaScript runtime thread.
+    transport: Rc<dyn BridgeTransport>,
     msg_counter: Rc<AtomicUsize>,
     pending_calls: Rc<Mutex<PendingCallsMap>>,
 }
@@ -37,6 +40,7 @@ const DEFAULT_TIMEOUT_MS: u64 = 5000;
 #[derive(Serialize, Deserialize, Debug)]
 struct ReplyPayload {
     success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<ErrorPayload>,
 }
 
@@ -91,39 +95,8 @@ impl IncomingMessage {
             .map_err(|e| MiniAppError::Bridge(format!("Payload serialization failed: {}", e)))
     }
 
-    pub fn msg_id_str(&self) -> Option<&str> {
+    fn msg_id(&self) -> Option<&str> {
         self.msg_id.as_deref()
-    }
-
-    pub fn reply_to_call(
-        &self,
-        page: &Page,
-        success: bool,
-        error_message: Option<&str>,
-    ) -> Result<(), MiniAppError> {
-        let reply_payload = if success {
-            json!({
-                "success": true
-            })
-        } else {
-            json!({
-                "success": false,
-                "error": {
-                    "message": error_message.unwrap_or("Unknown error")
-                }
-            })
-        };
-
-        let reply_message = json!({
-            "msgId": self.msg_id,
-            "type": "reply",
-            "payload": reply_payload
-        });
-
-        let serialized_reply = serde_json::to_string(&reply_message)?;
-
-        page.post_message(&serialized_reply)
-            .map_err(|e| MiniAppError::Bridge(format!("Failed to post reply: {}", e)))
     }
 }
 
@@ -135,17 +108,12 @@ impl std::fmt::Display for ErrorPayload {
 impl std::error::Error for ErrorPayload {}
 
 impl Bridge {
-    pub fn new() -> Self {
+    pub fn new(transport: Rc<dyn BridgeTransport>) -> Self {
         Self {
-            page: None,
+            transport,
             msg_counter: Rc::new(AtomicUsize::new(0)),
             pending_calls: Rc::new(Mutex::new(HashMap::new())),
         }
-    }
-
-    /// Sets the page for the bridge
-    pub fn set_page(&mut self, page: Page) {
-        self.page = Some(page);
     }
 
     fn generate_msg_id(&self) -> String {
@@ -173,7 +141,7 @@ impl Bridge {
         });
 
         let serialized = serde_json::to_string(&event_message)?;
-        self.page.as_ref().unwrap().post_message(&serialized)?;
+        self.transport.post_message_to_view(&serialized)?;
         Ok(())
     }
 
@@ -198,30 +166,27 @@ impl Bridge {
             pending.insert(msg_id.clone(), tx);
         }
 
-        if let Err(e) = self.page.as_ref().unwrap().post_message(&serialized) {
-            let mut pending = self.pending_calls.lock().unwrap();
-            pending.remove(&msg_id);
-            return Err(MiniAppError::Bridge(format!(
-                "Posting call '{}' failed: {}",
-                name, e
-            )));
-        }
+        self.transport
+            .post_message_to_view(&serialized)
+            .map_err(|e| {
+                let mut pending_on_err = self.pending_calls.lock().unwrap();
+                pending_on_err.remove(&msg_id);
+                e
+            })?;
 
         match timeout(Duration::from_millis(DEFAULT_TIMEOUT_MS), rx).await {
             Ok(Ok(bridge_result)) => bridge_result,
-            Ok(Err(_recv_error)) => {
-                let mut pending = self.pending_calls.lock().unwrap();
-                pending.remove(&msg_id);
+            Ok(Err(_)) => {
+                self.pending_calls.lock().unwrap().remove(&msg_id);
                 Err(MiniAppError::Bridge(format!(
-                    "Channel closed for call '{}' (id: {})",
+                    "Reply channel closed for call '{}' (id: {}) before reply",
                     name, msg_id
                 )))
             }
-            Err(_elapsed) => {
-                let mut pending = self.pending_calls.lock().unwrap();
-                pending.remove(&msg_id);
+            Err(_) => {
+                self.pending_calls.lock().unwrap().remove(&msg_id);
                 Err(MiniAppError::Bridge(format!(
-                    "Call '{}' (id: {}) timed out",
+                    "Call '{}' (id: {}) to view timed out",
                     name, msg_id
                 )))
             }
@@ -256,14 +221,14 @@ impl Bridge {
     pub async fn process_incoming_message<F>(
         &self,
         message: Arc<IncomingMessage>,
-        dispatch: F,
+        dispatch_event_or_call: F,
     ) -> Result<(), MiniAppError>
     where
         F: AsyncFnOnce(String, String, Option<String>),
     {
         match message.type_.as_str() {
             "reply" => {
-                let msg_id = message.msg_id_str().unwrap();
+                let msg_id = message.msg_id().unwrap();
                 let sender = {
                     let mut pending = self.pending_calls.lock().unwrap();
                     pending.remove(msg_id)
@@ -306,10 +271,33 @@ impl Bridge {
                     }
                 }
             }
-            "call" | "event" => {
-                let name = message.name.clone().unwrap();
+            "call" => {
+                let name = message.name.as_ref().unwrap().clone();
+                let msg_id = message.msg_id.clone();
+
+                let service_exists = self.transport.has_service(&name);
+
+                if !service_exists {
+                    let _ = self.reply_to_call(
+                        msg_id,
+                        false,
+                        Some(&format!("service {} not found", name)),
+                    );
+                } else {
+                    let _ = self.reply_to_call(msg_id, true, None);
+
+                    let payload_s = message.payload_as_opt_string()?;
+                    dispatch_event_or_call(message.type_.clone(), name.clone(), payload_s).await;
+                }
+            }
+            "event" => {
+                let name = message
+                    .name
+                    .as_ref()
+                    .ok_or_else(|| MiniAppError::Bridge("Event message missing name".to_string()))?
+                    .clone();
                 let payload_s = message.payload_as_opt_string()?;
-                dispatch(message.type_.clone(), name, payload_s).await;
+                dispatch_event_or_call(message.type_.clone(), name, payload_s).await;
             }
             _ => {
                 return Err(MiniAppError::Bridge(format!(
@@ -319,5 +307,43 @@ impl Bridge {
             }
         }
         Ok(())
+    }
+
+    // Replies to a call from the View Layer.
+    //
+    // # Arguments
+    // * `msg_id` - The message ID of the call to reply to.
+    // * `success` - Whether the call was successful.
+    // * `error_message` - Optional error message if the call failed.
+    fn reply_to_call(
+        &self,
+        msg_id: Option<String>,
+        success: bool,
+        error_message: Option<&str>,
+    ) -> Result<(), MiniAppError> {
+        let reply_payload = if success {
+            json!({
+                "success": true
+            })
+        } else {
+            json!({
+                "success": false,
+                "error": {
+                    "message": error_message.unwrap_or("Unknown error")
+                }
+            })
+        };
+
+        let reply_message = json!({
+            "msgId": msg_id,
+            "type": "reply",
+            "payload": reply_payload
+        });
+
+        let serialized_reply = serde_json::to_string(&reply_message)?;
+
+        self.transport
+            .post_message_to_view(&serialized_reply)
+            .map_err(|e| MiniAppError::Bridge(format!("Failed to post reply: {}", e)))
     }
 }

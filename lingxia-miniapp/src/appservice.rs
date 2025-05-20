@@ -319,7 +319,7 @@ async fn miniapp_service_handler(
                     if let Ok(js) = Source::from_path(ctx, &page_js_path).await {
                         if let Ok(obj) = ctx.eval::<JSObject>(js) {
                             if let Ok(mut svc) = obj.borrow_mut::<PageSvc>() {
-                                svc.bind(page);
+                                svc.attach_page(page);
 
                                 app_ctx.page_svc.insert(path.clone(), svc.clone());
                                 log(
@@ -414,8 +414,13 @@ async fn miniapp_service_handler(
                     let log_sender_for_task = log_sender.clone();
 
                     if let Err(e) = page_svc_ref
-                        .bridge
+                        .as_bridge()
                         .process_incoming_message(incoming, async move |_type, name, payload| {
+                            // ignore this event currently
+                            if name == "LingXiaPortReady" {
+                                return;
+                            }
+
                             let name_owned = name.clone();
                             let payload_owned = payload.clone();
 

@@ -335,19 +335,6 @@ impl Page {
         Self { inner }
     }
 
-    pub fn register_svc(&self, names: Vec<String>) {
-        if let Ok(mut services) = self.inner.services.lock() {
-            services.extend(names);
-        }
-    }
-
-    pub fn has_svc(&self, name: &str) -> bool {
-        if let Ok(services) = self.inner.services.lock() {
-            return services.iter().any(|s| s == name);
-        }
-        false
-    }
-
     pub(crate) fn mark_script_injected(&self) {
         if let Ok(mut injected) = self.inner.script_injected.lock() {
             *injected = true;

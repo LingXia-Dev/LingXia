@@ -1,17 +1,32 @@
-use super::bridge::Bridge;
-use crate::page::Page;
+use super::bridge::{Bridge, BridgeTransport};
+use crate::error::MiniAppError;
+use crate::page::{Page, WebViewController};
 use rong::{
     Class, JSContext, JSFunc, JSObject, JSResult, JSValue, RongJSError, Source, function::Optional,
     js_class, js_export, js_method,
 };
 use std::collections::HashMap;
+use std::rc::Rc;
 
 // Page is Send able, but JSFunc is not, we can not let Page hold PageSvc.
 #[js_export]
 pub(crate) struct PageSvc {
     functions: HashMap<String, JSFunc>,
     this: JSObject,
-    pub bridge: Bridge,
+
+    // use Option for late initialization
+    page: Option<Page>,
+    bridge: Option<Bridge>,
+}
+
+impl BridgeTransport for PageSvc {
+    fn post_message_to_view(&self, message_json: &str) -> Result<(), MiniAppError> {
+        self.page.as_ref().unwrap().post_message(message_json)
+    }
+
+    fn has_service(&self, service_name: &str) -> bool {
+        self.functions.contains_key(service_name)
+    }
 }
 
 #[js_class]
@@ -24,7 +39,8 @@ impl PageSvc {
         let mut page_svc = PageSvc {
             functions: HashMap::new(),
             this: obj.clone(),
-            bridge: Bridge::new(),
+            page: None,
+            bridge: None,
         };
 
         // Extract all functions from the object
@@ -39,7 +55,7 @@ impl PageSvc {
 
     #[js_method(rename = "_setData")]
     async fn set_data(&self, data: String, callback: Optional<JSFunc>) -> JSResult<()> {
-        self.bridge
+        self.as_bridge()
             .set_data(&data)
             .await
             .map_err(|e| RongJSError::Error(e.to_string()))?;
@@ -95,19 +111,23 @@ impl PageSvc {
         Err(RongJSError::Error(format!("No service: {}", func_name)))
     }
 
-    pub(crate) fn bind(&mut self, page: Page) {
-        let func_names: Vec<String> = self.functions.keys().cloned().collect();
-        page.register_svc(func_names);
-        self.bridge.set_page(page);
+    // attach Page to PageSvc and init its bridge
+    pub fn attach_page(&mut self, page: Page) {
+        self.page = Some(page);
+        let bridge = Bridge::new(Rc::new(self.clone()));
+        self.bridge = Some(bridge);
+    }
+
+    pub fn as_bridge(&self) -> &Bridge {
+        self.bridge.as_ref().unwrap()
     }
 }
 
-// Register the global App & getApp function
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     ctx.register_class::<PageSvc>()?;
 
-    let page = Source::from_bytes(include_str!("scripts/Page.js"));
-    ctx.eval::<()>(page)?;
+    let page_js = Source::from_bytes(include_str!("scripts/Page.js"));
+    ctx.eval::<()>(page_js)?;
 
     Ok(())
 }
