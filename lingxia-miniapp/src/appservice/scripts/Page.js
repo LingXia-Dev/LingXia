@@ -62,11 +62,6 @@
       }, DEBOUNCE_WAIT);
     };
 
-    // Bind page methods
-    Object.entries(pageConfig)
-      .filter(([_, value]) => typeof value === "function")
-      .forEach(([key, fn]) => (pageSvc[key] = fn.bind(pageSvc)));
-
     return pageSvc;
   };
 })();
