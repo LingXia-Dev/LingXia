@@ -409,7 +409,7 @@ async fn miniapp_service_handler(
         } => {
             if let Some(app_ctx) = current_miniapp.as_mut() {
                 if let Some(page_svc_ref) = app_ctx.page_svc.get_mut(&path) {
-                    let page_svc_clone = page_svc_ref.clone();
+                    let mut page_svc_clone = page_svc_ref.clone();
                     let ctx_clone_for_task = app_ctx.ctx.clone();
                     let log_sender_for_task = log_sender.clone();
 
@@ -426,6 +426,19 @@ async fn miniapp_service_handler(
 
                             // All captures for the spawned task are now owned or 'static.
                             let task = async move {
+                                if let Some(callbackid)=callbackid{
+                                    if let Err(e)=page_svc_clone.callback(&callbackid){
+                                        let _ = log_sender_for_task.send(LogMessage {
+                                            level: LogLevel::Error,
+                                            message: format!(
+                                                "[Worker {}] No callback handler: {}, Error: {}",
+                                                worker_id, callbackid,  e
+                                            ),
+                                        });
+                                    }
+                                    return;
+                                }
+
                                 if let Err(e) = page_svc_clone.call(
                                     &ctx_clone_for_task,
                                     &name_owned,

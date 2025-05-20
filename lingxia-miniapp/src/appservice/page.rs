@@ -7,6 +7,7 @@ use rong::{
 };
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 // Page is Send able, but JSFunc is not, we can not let Page hold PageSvc.
 #[js_export]
@@ -17,6 +18,10 @@ pub(crate) struct PageSvc {
     // use Option for late initialization
     page: Option<Page>,
     bridge: Option<Bridge>,
+
+    // service function for callback type in bridge
+    callback: HashMap<String, JSFunc>,
+    callbackid: Rc<AtomicUsize>,
 }
 
 impl BridgeTransport for PageSvc {
@@ -41,6 +46,8 @@ impl PageSvc {
             this: obj.clone(),
             page: None,
             bridge: None,
+            callback: HashMap::new(),
+            callbackid: Rc::new(AtomicUsize::new(0)),
         };
 
         // Extract all functions from the object
@@ -54,7 +61,7 @@ impl PageSvc {
     }
 
     #[js_method(rename = "_setData")]
-    async fn set_data(&self, data: String, callback: Optional<JSFunc>) -> JSResult<()> {
+    async fn set_data(&mut self, data: String, callback: Optional<JSFunc>) -> JSResult<()> {
         self.as_bridge()
             .set_data(&data)
             .await
@@ -62,7 +69,9 @@ impl PageSvc {
 
         // Call the callback if provided
         if let Some(cb) = callback.0 {
-            let _ = cb.call::<_, ()>(None, ());
+            let counter = self.callbackid.fetch_add(1, Ordering::SeqCst);
+            let callbackid = format!("setData-{}", counter);
+            self.callback.insert(callbackid, cb);
         }
 
         Ok(())
@@ -77,6 +86,10 @@ impl PageSvc {
             mark_fn(func.as_jsvalue());
         }
         mark_fn(self.this.as_jsvalue());
+
+        for (_, func) in self.callback.iter() {
+            mark_fn(func.as_jsvalue());
+        }
     }
 }
 
@@ -111,6 +124,17 @@ impl PageSvc {
         Err(RongJSError::Error(format!("No service: {}", func_name)))
     }
 
+    pub fn callback(&mut self, callbackid: &str) -> JSResult<()> {
+        if let Some(callback) = self.callback.remove(callbackid) {
+            callback.call::<_, ()>(None, ())?
+        }
+
+        Err(RongJSError::Error(format!(
+            "No callback handler for {}",
+            callbackid
+        )))
+    }
+
     // attach Page to PageSvc and init its bridge
     pub fn attach_page(&mut self, page: Page) {
         self.page = Some(page);
@@ -128,6 +152,25 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 
     let page_js = Source::from_bytes(include_str!("scripts/Page.js"));
     ctx.eval::<()>(page_js)?;
+
+    use log;
+    ctx.global().set(
+        "print",
+        JSFunc::new(ctx, |msg: String| log::info!("{}", msg)),
+    )?;
+
+    ctx.eval::<()>(Source::from_bytes(
+        r#"
+                    const console={
+                        log: function(...args){
+                            print(args.join(' '))
+                        },
+                        error: function(...args){
+                            print(args.join(' '))
+                        }
+                    }
+                "#,
+    ))?;
 
     Ok(())
 }
