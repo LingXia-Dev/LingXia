@@ -415,7 +415,7 @@ async fn miniapp_service_handler(
 
                     if let Err(e) = page_svc_ref
                         .as_bridge()
-                        .process_incoming_message(incoming, async move |_type, name, payload, callbackid| {
+                        .process_incoming_message(incoming, async move |name, payload, callbackid| {
                             // ignore this event currently
                             if name == "LingXiaPortReady" {
                                 return;

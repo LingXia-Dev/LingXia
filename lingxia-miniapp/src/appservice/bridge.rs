@@ -220,7 +220,6 @@ impl Bridge {
     /// * `message` - The incoming message
     /// * `dispatch` - A closure that handles `call`, `event`, and `callback` messages.
     ///   It receives three arguments:
-    ///   * `msg_type`: The message type ("call", "event", or "callback")
     ///   * `name`: The handler name, event name, or empty string for callback
     ///   * `payload`: Optional JSON payload as a string, or None if no payload is present
     ///   * `callback_id`: Optional callback ID for callback messages
@@ -234,7 +233,7 @@ impl Bridge {
         dispatch: F,
     ) -> Result<(), MiniAppError>
     where
-        F: AsyncFnOnce(String, String, Option<String>, Option<String>),
+        F: AsyncFnOnce(String, Option<String>, Option<String>),
     {
         match message.type_.as_str() {
             "reply" => {
@@ -297,23 +296,17 @@ impl Bridge {
                     let _ = self.reply_to_call(msg_id, true, None);
 
                     let payload_s = message.payload_as_opt_string()?;
-                    dispatch(message.type_.clone(), name.clone(), payload_s, None).await;
+                    dispatch(name.clone(), payload_s, None).await;
                 }
             }
             "event" => {
                 let name = message.name.as_ref().unwrap().clone();
                 let payload_s = message.payload_as_opt_string()?;
-                dispatch(message.type_.clone(), name, payload_s, None).await;
+                dispatch(name, payload_s, None).await;
             }
             "callback" => {
                 let callback_id = message.callback_id.as_ref().unwrap().clone();
-                dispatch(
-                    message.type_.clone(),
-                    Default::default(),
-                    None,
-                    Some(callback_id),
-                )
-                .await;
+                dispatch(Default::default(), None, Some(callback_id)).await;
             }
             _ => {
                 return Err(MiniAppError::Bridge(format!(
