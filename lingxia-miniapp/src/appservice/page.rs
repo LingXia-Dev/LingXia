@@ -74,18 +74,22 @@ impl PageSvc {
 
     #[js_method(rename = "_setData")]
     async fn set_data(&mut self, data: String, callback: Optional<JSFunc>) -> JSResult<()> {
-        self.as_bridge()
-            .set_data(&data)
-            .await
-            .map_err(|e| RongJSError::Error(e.to_string()))?;
-
-        // Call the callback if provided
-        if let Some(cb) = callback.0 {
+        // If we have a callback, register it and get a callback ID
+        let callback_id = if let Some(cb) = callback.0 {
             let mut state = self.state.lock().await;
             let counter = state.callbackid.fetch_add(1, Ordering::SeqCst);
             let callbackid = format!("setData-{}", counter);
-            state.callback.insert(callbackid, cb);
-        }
+            state.callback.insert(callbackid.clone(), cb);
+            Some(callbackid)
+        } else {
+            None
+        };
+
+        // Use the set_data method with optional callback_id
+        self.as_bridge()
+            .set_data(&data, callback_id)
+            .await
+            .map_err(|e| RongJSError::Error(e.to_string()))?;
 
         Ok(())
     }
@@ -168,7 +172,7 @@ impl PageSvc {
         if let Some(data) = state.init_data.take() {
             drop(state);
             self.as_bridge()
-                .set_data(&data.json_stringify()?)
+                .set_data(&data.json_stringify()?, None)
                 .await
                 .map_err(|e| RongJSError::Error(e.to_string()))?;
         }

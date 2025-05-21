@@ -46,17 +46,32 @@
             setValueByPath(this.data, path, value);
           }
 
-          // Generate and send patch
+          // Generate patch
           const patch = diff(this._lastData, this.data);
           if (Object.keys(patch).length > 0) {
-            await this._setData(JSON.stringify(patch));
-            this._lastData = JSON.parse(JSON.stringify(this.data));
-          }
+            // If we have callbacks, pass them to _setData
+            if (callbacks.length > 0) {
+              // Create a combined callback if there are multiple
+              const combinedCallback =
+                callbacks.length === 1
+                  ? callbacks[0]
+                  : function () {
+                      // Execute all callbacks and don't care about errors
+                      callbacks.forEach((cb) => cb());
+                    };
 
-          // Execute callbacks
-          callbacks.forEach((cb) => cb());
+              await this._setData(JSON.stringify(patch), combinedCallback);
+            } else {
+              await this._setData(JSON.stringify(patch));
+            }
+
+            this._lastData = JSON.parse(JSON.stringify(this.data));
+          } else if (callbacks.length > 0) {
+            // If no patch to send but we have callbacks, execute them immediately
+            callbacks.forEach((cb) => cb());
+          }
         } catch (err) {
-          pendingCallbacks.forEach((cb) => cb(err));
+          console.error("Error in setData:", err);
           throw err;
         }
       }, DEBOUNCE_WAIT);

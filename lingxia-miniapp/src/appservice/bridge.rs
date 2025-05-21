@@ -202,9 +202,29 @@ impl Bridge {
         }
     }
 
-    /// Update data in the View Layer with timeout.
-    pub async fn set_data(&self, data_patch_json: &str) -> Result<(), MiniAppError> {
-        let data_patch_value = serde_json::from_str::<Value>(data_patch_json)?;
+    /// Send data, optionally with a callback ID.
+    /// If a callback ID is provided, the View Layer can use it to notify when it has processed the data.
+    ///
+    /// # Arguments
+    /// * `data_patch_json` - JSON string containing the data patch to send to the View Layer
+    /// * `callback_id` - Optional callback ID that will be included in the payload
+    pub async fn set_data(
+        &self,
+        data_patch_json: &str,
+        callback_id: Option<String>,
+    ) -> Result<(), MiniAppError> {
+        let mut data_patch_value = serde_json::from_str::<Value>(data_patch_json)?;
+
+        // If we have a callback ID, we need to structure the payload according to the bridge spec
+        if let Some(cb_id) = callback_id {
+            // Create a new payload with the data and callbackId
+            data_patch_value = json!({
+                "data": data_patch_value,
+                "callbackId": cb_id
+            });
+        }
+
+        // Send the call with the prepared payload
         self.call("setData", Some(data_patch_value))
             .await
             .map(|_| ())
