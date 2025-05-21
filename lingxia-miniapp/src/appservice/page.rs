@@ -8,6 +8,7 @@ use rong::{
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use tokio::sync::Mutex;
 
 // Page is Send able, but JSFunc is not, we can not let Page hold PageSvc.
 #[js_export]
@@ -19,10 +20,14 @@ pub(crate) struct PageSvc {
     page: Option<Page>,
     bridge: Option<Bridge>,
 
+    // state of PageSvc
+    state: Rc<Mutex<PageSvcState>>,
+}
+
+struct PageSvcState {
     // service function for callback type in bridge
     callback: HashMap<String, JSFunc>,
-    callbackid: Rc<AtomicUsize>,
-
+    callbackid: AtomicUsize,
     init_data: Option<JSObject>,
 }
 
@@ -50,9 +55,11 @@ impl PageSvc {
             this: obj.clone(),
             page: None,
             bridge: None,
-            callback: HashMap::new(),
-            callbackid: Rc::new(AtomicUsize::new(0)),
-            init_data,
+            state: Rc::new(Mutex::new(PageSvcState {
+                callback: HashMap::new(),
+                callbackid: AtomicUsize::new(0),
+                init_data,
+            })),
         };
 
         // Extract all functions from the object
@@ -74,9 +81,10 @@ impl PageSvc {
 
         // Call the callback if provided
         if let Some(cb) = callback.0 {
-            let counter = self.callbackid.fetch_add(1, Ordering::SeqCst);
+            let mut state = self.state.lock().await;
+            let counter = state.callbackid.fetch_add(1, Ordering::SeqCst);
             let callbackid = format!("setData-{}", counter);
-            self.callback.insert(callbackid, cb);
+            state.callback.insert(callbackid, cb);
         }
 
         Ok(())
@@ -92,8 +100,10 @@ impl PageSvc {
         }
         mark_fn(self.this.as_jsvalue());
 
-        for (_, func) in self.callback.iter() {
-            mark_fn(func.as_jsvalue());
+        if let Ok(state) = self.state.try_lock() {
+            for (_, func) in state.callback.iter() {
+                mark_fn(func.as_jsvalue());
+            }
         }
     }
 }
@@ -136,9 +146,12 @@ impl PageSvc {
     }
 
     // handler for bridge type: callback
-    pub fn callback(&mut self, callbackid: &str) -> JSResult<()> {
-        if let Some(callback) = self.callback.remove(callbackid) {
-            callback.call::<_, ()>(None, ())?
+    pub async fn callback(&mut self, callbackid: &str) -> JSResult<()> {
+        let mut state = self.state.lock().await;
+        if let Some(callback) = state.callback.remove(callbackid) {
+            // Release the lock before calling the callback to avoid potential deadlocks
+            drop(state);
+            return callback.call::<_, ()>(None, ());
         }
 
         Err(RongJSError::Error(format!(
@@ -149,8 +162,11 @@ impl PageSvc {
 
     // post init data to view
     pub async fn post_init_data(&mut self) -> JSResult<()> {
+        let mut state = self.state.lock().await;
+
         // only post one time
-        if let Some(data) = self.init_data.take() {
+        if let Some(data) = state.init_data.take() {
+            drop(state);
             self.as_bridge()
                 .set_data(&data.json_stringify()?)
                 .await

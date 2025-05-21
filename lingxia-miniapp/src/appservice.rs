@@ -428,7 +428,7 @@ async fn miniapp_service_handler(
                                 }
 
                                 if let Some(callbackid)=callbackid{
-                                    if let Err(e)=page_svc_clone.callback(&callbackid){
+                                    if let Err(e)=page_svc_clone.callback(&callbackid).await{
                                         let _ = log_sender_for_task.send(LogMessage {
                                             level: LogLevel::Error,
                                             message: format!(
