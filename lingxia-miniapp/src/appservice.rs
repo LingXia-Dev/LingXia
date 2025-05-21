@@ -440,7 +440,7 @@ async fn miniapp_service_handler(
                                     return;
                                 }
 
-                                if let Err(e) = page_svc_clone.call(
+                                if let Err(e) = page_svc_clone.call_or_event(
                                     &ctx_clone_for_task,
                                     &name_owned,
                                     payload_owned.as_deref()

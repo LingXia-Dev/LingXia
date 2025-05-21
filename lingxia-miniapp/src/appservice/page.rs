@@ -111,7 +111,13 @@ impl PageSvc {
         Ok(())
     }
 
-    pub async fn call(&self, ctx: &JSContext, func_name: &str, args: Option<&str>) -> JSResult<()> {
+    // handler for bridge type: call or event
+    pub async fn call_or_event(
+        &self,
+        ctx: &JSContext,
+        func_name: &str,
+        args: Option<&str>,
+    ) -> JSResult<()> {
         if let Some(func) = self.functions.get(func_name) {
             let args = args.and_then(|json| JSObject::from_json_string(ctx, json).ok());
             match args {
@@ -129,6 +135,7 @@ impl PageSvc {
         Err(RongJSError::Error(format!("No service: {}", func_name)))
     }
 
+    // handler for bridge type: callback
     pub fn callback(&mut self, callbackid: &str) -> JSResult<()> {
         if let Some(callback) = self.callback.remove(callbackid) {
             callback.call::<_, ()>(None, ())?
