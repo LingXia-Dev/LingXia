@@ -616,16 +616,35 @@ impl AppUiDelegate for MiniApp {
         self.info("AppUiDelegate", format!("Page {} created", path));
     }
 
-    fn on_page_started(&self, _path: String) {
-        // TODO
+    fn on_page_started(&self, path: String) {
+        if let Ok(manager) = self.svc_manager.lock() {
+            let _ = manager.invoke_page_function(
+                self.appid.clone(),
+                path.clone(),
+                "onLoad".to_string(),
+                None,
+            );
+        }
     }
 
-    fn on_page_finished(&self, _path: String) {
-        // TODO
+    fn on_page_finished(&self, path: String) {
+        if let Ok(manager) = self.svc_manager.lock() {
+            let _ = manager.invoke_page_function(
+                self.appid.clone(),
+                path.clone(),
+                "onReady".to_string(),
+                None,
+            );
+        }
     }
 
     fn on_page_show(&mut self, path: String) {
-        self.pages.navigate_to_page(path);
+        self.pages.navigate_to_page(path.clone());
+
+        if let Ok(manager) = self.svc_manager.lock() {
+            let _ =
+                manager.invoke_page_function(self.appid.clone(), path, "onShow".to_string(), None);
+        }
     }
 
     fn on_back_pressed(&mut self) -> bool {
@@ -682,7 +701,9 @@ impl AppUiDelegate for MiniApp {
         let incoming = appservice::bridge::IncomingMessage::from_json_str(&msg).unwrap();
 
         if let Ok(manager) = self.svc_manager.lock() {
-            if let Err(e) = manager.handle_view_message(self.appid.clone(), path, Arc::new(incoming)) {
+            if let Err(e) =
+                manager.handle_view_message(self.appid.clone(), path, Arc::new(incoming))
+            {
                 self.error(
                     "AppUiDelegate",
                     format!("Failed to create app service: {}", e),
