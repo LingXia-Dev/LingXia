@@ -558,7 +558,13 @@ impl AppUiDelegate for MiniApp {
             if let Err(e) = manager.create_app_svc(self.appid.clone(), self.app_dir.clone()) {
                 self.error(
                     "AppUiDelegate",
-                    format!("Failed to create app service: {}", e),
+                    format!("Failed to triger app service: {}", e),
+                );
+            }
+            if let Err(e) = manager.app_svc(self.appid.clone(), "onLaunch".to_string(), None) {
+                self.error(
+                    "AppUiDelegate",
+                    format!("Failed to triger onLaunch service: {}", e),
                 );
             }
         }
