@@ -5,6 +5,7 @@
         <activity
             android:name=".MiniAppActivity"
             android:exported="false"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
             android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
     </application>
 </manifest>

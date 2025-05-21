@@ -142,6 +142,9 @@ class MiniAppActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // Force navigationBar to null for recreations due to screen rotation
+        navigationBar = null
+
         // Register broadcast receiver for close requests
         registerReceiver(closeAppReceiver, android.content.IntentFilter(ACTION_CLOSE_MINIAPP))
 
@@ -979,10 +982,22 @@ class MiniAppActivity : AppCompatActivity() {
                 newNavBar.setExternalStatusBarHeight(statusBarHeight)
 
                 newNavBar.setOnBackButtonClickListener { handleBackButtonClick() }
+
+                // Ensure any old navigationBar instance is removed from its parent before reassigning
+                if (navigationBar != null && navigationBar?.parent != null) {
+                    (navigationBar?.parent as? ViewGroup)?.removeView(navigationBar)
+                }
+
                 navigationBar = newNavBar
-                rootContainer.addView(navigationBar, 0)
-                rootContainer.post {
-                    Log.d(TAG, "MiniAppActivity: After layout pass, navigationBar.height = ${navigationBar?.height}, navigationBar.measuredHeight = ${navigationBar?.measuredHeight}")
+
+                // Check if rootContainer is initialized before adding the view
+                if (::rootContainer.isInitialized) {
+                    rootContainer.addView(navigationBar, 0)
+                    rootContainer.post {
+                        Log.d(TAG, "MiniAppActivity: After layout pass, navigationBar.height = ${navigationBar?.height}, navigationBar.measuredHeight = ${navigationBar?.measuredHeight}")
+                    }
+                } else {
+                    Log.e(TAG, "Unable to add NavigationBar: rootContainer not initialized")
                 }
             }
 
@@ -1064,5 +1079,18 @@ class MiniAppActivity : AppCompatActivity() {
 
         // Call the original finish method
         super.finish()
+    }
+
+    // Handle configuration changes to prevent Activity recreation
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        Log.d(TAG, "Configuration changed, updating layout")
+
+        // Update layout to adapt to screen orientation changes
+        updateLayoutMargins()
+
+        // Reconfigure navigation bar if needed
+        val pageConfig = currentWebView?.getPageConfig()
+        updateNavigationBar(pageConfig, false, true)
     }
 }
