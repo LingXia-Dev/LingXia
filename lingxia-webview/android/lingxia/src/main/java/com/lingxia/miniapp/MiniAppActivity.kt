@@ -35,7 +35,7 @@ class MiniAppActivity : AppCompatActivity() {
         private const val TAG = "LingXia.WebView"
         const val EXTRA_APP_ID = "appId"
         const val EXTRA_PATH = "path"
-        internal const val DEFAULT_NAV_BAR_HEIGHT_DP = 44
+        internal const val DEFAULT_NAV_BAR_HEIGHT_DP =12
         internal const val DEFAULT_TAB_BAR_SIZE_DP = 56
 
         private var lastWebView: WeakReference<com.lingxia.miniapp.WebView>? = null
@@ -955,19 +955,35 @@ class MiniAppActivity : AppCompatActivity() {
             if (navigationBar == null) {
                 Log.d(TAG, "Creating new NavigationBar")
                 val statusBarHeight = getStatusBarHeight(this)
-                navigationBar = NavigationBar(this).apply {
-                    layoutParams = FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        (DEFAULT_NAV_BAR_HEIGHT_DP * resources.displayMetrics.density).toInt() + statusBarHeight
-                    ).apply {
-                        gravity = Gravity.TOP
-                        topMargin = 0
-                    }
-                    setPadding(paddingLeft, statusBarHeight, paddingRight, paddingBottom)
-                    // Initial click listener set here, can be updated later
-                    setOnBackButtonClickListener { handleBackButtonClick() }
+                Log.d(TAG, "MiniAppActivity: statusBarHeight = $statusBarHeight")
+                val newNavBar = NavigationBar(this)
+
+                // 1. Get the content height explicitly from NavigationBar's calculation.
+                val navBarContentHeightPx = newNavBar.getCalculatedContentHeightPx()
+                Log.d(TAG, "MiniAppActivity: navBarContentHeightPx from getCalculatedContentHeightPx() = $navBarContentHeightPx")
+
+                val finalNavBarLayoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    navBarContentHeightPx + statusBarHeight // Total height includes status bar
+                ).apply {
+                    gravity = Gravity.TOP
                 }
+                newNavBar.layoutParams = finalNavBarLayoutParams
+                Log.d(TAG, "MiniAppActivity: finalNavBarLayoutParams.height = ${finalNavBarLayoutParams.height}")
+
+                // IMPORTANT: Set NavigationBar's own top padding to 0.
+                // Status bar offset for children will be handled by newNavBar.setExternalStatusBarHeight()
+                newNavBar.setPadding(newNavBar.paddingLeft, 0, newNavBar.paddingRight, newNavBar.paddingBottom)
+
+                // Inform NavigationBar about the status bar height for its internal child layout
+                newNavBar.setExternalStatusBarHeight(statusBarHeight)
+
+                newNavBar.setOnBackButtonClickListener { handleBackButtonClick() }
+                navigationBar = newNavBar
                 rootContainer.addView(navigationBar, 0)
+                rootContainer.post {
+                    Log.d(TAG, "MiniAppActivity: After layout pass, navigationBar.height = ${navigationBar?.height}, navigationBar.measuredHeight = ${navigationBar?.measuredHeight}")
+                }
             }
 
             val titleText = config?.navigationBarTitleText ?: ""

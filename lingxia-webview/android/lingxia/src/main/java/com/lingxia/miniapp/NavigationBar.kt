@@ -18,6 +18,8 @@ import androidx.annotation.AttrRes
 import androidx.annotation.StyleRes
 import org.json.JSONObject
 import android.view.animation.AccelerateDecelerateInterpolator
+import kotlin.math.max
+import kotlin.math.min
 
 /**
  * Configuration data class for the NavigationBar
@@ -87,19 +89,28 @@ class NavigationBar @JvmOverloads constructor(
 ) : FrameLayout(context, attrs, defStyleAttr, defStyleRes) {
 
     companion object {
-        private const val TAG = "LiangXia.NavigationBar"
+        private const val TAG = "LingXia.NavigationBar"
         // Default colors - internal access
         internal val DEFAULT_BACKGROUND_COLOR = Color.WHITE
         internal val DEFAULT_FRONT_COLOR = Color.BLACK // Default text/icon color
+
+        // Define a specific height for tablets
+        private const val DEFAULT_TABLET_HEIGHT_DP = 12
     }
 
     private val titleTextView: TextView
     private val loadingIndicator: ProgressBar
-    private val backButton: ImageView // Changed to ImageView for better custom drawable
+    private val backButton: ImageView
+    private val homeButton: ImageView? = null
+    private var currentConfig: NavigationBarConfig = NavigationBarConfig()
+    private var knownStatusBarHeight: Int = 0
 
     // Store current colors
     private var currentBackgroundColor = DEFAULT_BACKGROUND_COLOR
     private var currentFrontColor = DEFAULT_FRONT_COLOR
+
+    // Callbacks
+    private var onBackClickListener: (() -> Unit)? = null
 
     /**
      * Custom back button drawable that draws a chevron "<" shape
@@ -108,7 +119,7 @@ class NavigationBar @JvmOverloads constructor(
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = currentFrontColor
             style = Paint.Style.STROKE
-            strokeWidth = 1.8f * resources.displayMetrics.density  // Reduced stroke width
+            strokeWidth = 1.8f * resources.displayMetrics.density
             strokeCap = Paint.Cap.ROUND
             strokeJoin = Paint.Join.ROUND
         }
@@ -116,15 +127,11 @@ class NavigationBar @JvmOverloads constructor(
         override fun draw(canvas: Canvas) {
             val width = bounds.width()
             val height = bounds.height()
-
-            // Calculate points for the chevron shape
             val centerY = height / 2f
-
-            // Make chevron smaller and more compact
             val startX = width * 0.55f
             val endX = width * 0.35f
 
-            // Draw the chevron lines with smaller angles
+            // Draw the chevron lines
             canvas.drawLine(startX, centerY - height * 0.15f, endX, centerY, paint)
             canvas.drawLine(endX, centerY, startX, centerY + height * 0.15f, paint)
         }
@@ -148,56 +155,97 @@ class NavigationBar @JvmOverloads constructor(
 
     init {
         val density = resources.displayMetrics.density
-        // Use the constant from MiniAppActivity's companion object
-        val defaultHeightPx = (MiniAppActivity.DEFAULT_NAV_BAR_HEIGHT_DP * density).toInt()
 
-        // Set layout params for the FrameLayout itself
-        layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, defaultHeightPx)
+        // Determine if it's a tablet (smallest width >= 600dp)
+        val smallestScreenWidthDp = context.resources.configuration.smallestScreenWidthDp
+        val isTablet = smallestScreenWidthDp >= 600
+
+        val navBarHeightDp = if (isTablet) DEFAULT_TABLET_HEIGHT_DP else MiniAppActivity.DEFAULT_NAV_BAR_HEIGHT_DP
+
+        Log.d(TAG, "smallestScreenWidthDp: $smallestScreenWidthDp, isTablet: $isTablet, navBarHeightDp: $navBarHeightDp")
+        val heightPx = (navBarHeightDp * density).toInt()
+
         setBackgroundColor(currentBackgroundColor)
 
-        // Back Button setup (left side)
-        val buttonSize = (44 * density).toInt()
+        // Back Button setup
         backButton = ImageView(context).apply {
-            layoutParams = LayoutParams(buttonSize, buttonSize).apply {
-                gravity = Gravity.CENTER_VERTICAL or Gravity.START
+            layoutParams = LayoutParams(heightPx, heightPx).apply {
+                gravity = Gravity.START or Gravity.TOP
                 marginStart = (4 * density).toInt()
             }
             setImageDrawable(BackButtonDrawable())
             contentDescription = "Back"
-            visibility = View.GONE // Hidden by default
+            visibility = View.GONE
         }
         addView(backButton)
+
+        // Calculate dynamic font size for title
+        val targetTitleSp = if (isTablet) 12f else 17f
+
+        Log.d(TAG, "Device isTablet: $isTablet, navBarHeightDp: $navBarHeightDp, Setting title font size to: $targetTitleSp sp")
 
         // Title TextView setup
         titleTextView = TextView(context).apply {
             layoutParams = LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
-                gravity = Gravity.CENTER // Center the title
+                gravity = Gravity.CENTER
             }
+            gravity = Gravity.CENTER
             textAlignment = View.TEXT_ALIGNMENT_CENTER
             setTextColor(currentFrontColor)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f) // Default title size
-            typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL) // Medium weight font
+            includeFontPadding = false
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, targetTitleSp)
+            typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
             visibility = View.VISIBLE
         }
         addView(titleTextView)
 
         // Loading Indicator setup
-        val progressBarSize = (24 * density).toInt() // Size for the progress bar
+        val progressBarSize = (24 * density).toInt()
         loadingIndicator = ProgressBar(context, null, android.R.attr.progressBarStyleSmall).apply {
             layoutParams = LayoutParams(progressBarSize, progressBarSize).apply {
-                gravity = Gravity.CENTER_VERTICAL or Gravity.START // Position left of title usually
-                marginStart = (16 * density).toInt() // Add some margin
-                // We might adjust this later relative to back button etc.
+                gravity = Gravity.CENTER_VERTICAL or Gravity.START
+                marginStart = (16 * density).toInt()
             }
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                indeterminateDrawable?.colorFilter = android.graphics.BlendModeColorFilter(currentFrontColor, android.graphics.BlendMode.SRC_IN)
-            } else {
-                @Suppress("DEPRECATION")
-                indeterminateDrawable?.setColorFilter(currentFrontColor, android.graphics.PorterDuff.Mode.SRC_IN)
-            }
-            visibility = View.GONE // Initially hidden
+            updateProgressColor(currentFrontColor)
+            visibility = View.GONE
         }
         addView(loadingIndicator)
+    }
+
+    // Helper method to update progress indicator color
+    private fun ProgressBar.updateProgressColor(color: Int) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            indeterminateDrawable?.colorFilter = android.graphics.BlendModeColorFilter(color, android.graphics.BlendMode.SRC_IN)
+        } else {
+            @Suppress("DEPRECATION")
+            indeterminateDrawable?.setColorFilter(color, android.graphics.PorterDuff.Mode.SRC_IN)
+        }
+    }
+
+    // Keep these layout debugging overrides only in debug builds
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+        Log.d(TAG, "onMeasure: widthSpec=${MeasureSpec.toString(widthMeasureSpec)}, heightSpec=${MeasureSpec.toString(heightMeasureSpec)}")
+        Log.d(TAG, "onMeasure: measuredWidth=$measuredWidth, measuredHeight=$measuredHeight")
+    }
+
+    override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+        super.onLayout(changed, left, top, right, bottom)
+        Log.d(TAG, "onLayout: changed=$changed, left=$left, top=$top, right=$right, bottom=$bottom")
+        Log.d(TAG, "onLayout: width=$width, height=$height, measuredWidth=$measuredWidth, measuredHeight=$measuredHeight")
+        if (titleTextView.visibility == View.VISIBLE) {
+            Log.d(TAG, "onLayout: titleTextView.top=${titleTextView.top}, titleTextView.bottom=${titleTextView.bottom}, titleTextView.height=${titleTextView.height}, titleTextView.measuredHeight=${titleTextView.measuredHeight}")
+        }
+    }
+
+    /**
+     * Returns the calculated content height in pixels based on device type (phone/tablet).
+     */
+    fun getCalculatedContentHeightPx(): Int {
+        val density = resources.displayMetrics.density
+        val isTablet = context.resources.configuration.smallestScreenWidthDp >= 600
+        val navBarHeightDp = if (isTablet) DEFAULT_TABLET_HEIGHT_DP else MiniAppActivity.DEFAULT_NAV_BAR_HEIGHT_DP
+        return (navBarHeightDp * density).toInt()
     }
 
     /**
@@ -236,13 +284,8 @@ class NavigationBar @JvmOverloads constructor(
         setBackgroundColor(currentBackgroundColor)
         titleTextView.setTextColor(currentFrontColor)
 
-        // Updated color filter for loading indicator
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-            loadingIndicator.indeterminateDrawable?.colorFilter = android.graphics.BlendModeColorFilter(currentFrontColor, android.graphics.BlendMode.SRC_IN)
-        } else {
-            @Suppress("DEPRECATION")
-            loadingIndicator.indeterminateDrawable?.setColorFilter(currentFrontColor, android.graphics.PorterDuff.Mode.SRC_IN)
-        }
+        // Update loading indicator color
+        loadingIndicator.updateProgressColor(currentFrontColor)
 
         // Update back button color
         (backButton.drawable as? BackButtonDrawable)?.updateColor(currentFrontColor)
@@ -324,6 +367,24 @@ class NavigationBar @JvmOverloads constructor(
             // If no animation, run the end action immediately if it exists,
             // as it might contain layout updates needed right away.
             onAnimationEnd?.run()
+        }
+    }
+
+    // Method to receive status bar height
+    fun setExternalStatusBarHeight(sbh: Int) {
+        if (knownStatusBarHeight != sbh) {
+            Log.d(TAG, "ExternalStatusBarHeight set to: $sbh")
+            knownStatusBarHeight = sbh
+
+            // Update layout params of children that depend on status bar height
+            listOf(backButton, loadingIndicator).forEach { view ->
+                (view.layoutParams as? FrameLayout.LayoutParams)?.let {
+                    it.topMargin = knownStatusBarHeight
+                    view.layoutParams = it
+                }
+            }
+
+            requestLayout() // Request re-layout
         }
     }
 }
