@@ -9,7 +9,10 @@ impl MiniApp {
         let uri = req.uri();
 
         // Get the path part after lingxia://
-        let path = uri.path().trim_start_matches('/');
+        let uri_str = uri.to_string();
+        let path = uri_str
+            .trim_start_matches("lingxia://")
+            .trim_start_matches('/');
 
         // Try to read the asset from app directory
         let file_result = self.read_bytes(path);

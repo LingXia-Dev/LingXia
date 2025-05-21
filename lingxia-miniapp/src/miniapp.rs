@@ -573,7 +573,7 @@ impl AppUiDelegate for MiniApp {
     }
 
     fn on_page_created(&mut self, path: String) {
-        let url = format!("lingxia://{}/{}", self.appid, path.clone());
+        let url = format!("lingxia://{}", path.clone());
         let appid_clone = self.appid.clone();
         let controller_clone = self.controller.clone();
 
