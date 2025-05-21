@@ -43,11 +43,25 @@ enum ServiceMessage {
         name: String,
         args: Option<String>, // JSON string of arguments
     },
-    // Call function of Page service
+    // Call function of Page service with different sources
     CallPageSvc {
         appid: String,
         path: String,
+        source: PageSvcSource,
+    },
+}
+
+/// Enum representing different sources of Page service calls
+#[derive(Clone)]
+pub enum PageSvcSource {
+    /// Call from view layer via bridge
+    View {
         incoming: Arc<bridge::IncomingMessage>,
+    },
+    /// Call from native layer with explicit function name and args
+    Native {
+        name: String,
+        args: Option<String>, // JSON string of arguments
     },
 }
 
@@ -195,8 +209,8 @@ impl MiniAppServiceManager {
         Ok(())
     }
 
-    /// Call a function on a Page service
-    pub fn page_svc(
+    /// Call a function on a Page service from the view layer
+    pub fn handle_view_message(
         &self,
         appid: String,
         path: String,
@@ -205,7 +219,24 @@ impl MiniAppServiceManager {
         self.sender.send(ServiceMessage::CallPageSvc {
             appid,
             path,
-            incoming,
+            source: PageSvcSource::View { incoming },
+        })?;
+
+        Ok(())
+    }
+
+    /// Call a function on a Page service from native code
+    pub fn page_svc_from_native(
+        &self,
+        appid: String,
+        path: String,
+        name: String,
+        args: Option<String>,
+    ) -> Result<(), MiniAppError> {
+        self.sender.send(ServiceMessage::CallPageSvc {
+            appid,
+            path,
+            source: PageSvcSource::Native { name, args },
         })?;
 
         Ok(())
@@ -405,72 +436,110 @@ async fn miniapp_service_handler(
         ServiceMessage::CallPageSvc {
             appid: _,
             path,
-            incoming,
+            source,
         } => {
             if let Some(app_ctx) = current_miniapp.as_mut() {
-                if let Some(page_svc_ref) = app_ctx.page_svc.get_mut(&path) {
-                    let mut page_svc_clone = page_svc_ref.clone();
-                    let ctx_clone_for_task = app_ctx.ctx.clone();
-                    let log_sender_for_task = log_sender.clone();
+                match source {
+                    PageSvcSource::View { incoming } => {
+                        if let Some(page_svc_ref) = app_ctx.page_svc.get_mut(&path) {
+                            let mut page_svc_clone = page_svc_ref.clone();
+                            let ctx_clone_for_task = app_ctx.ctx.clone();
+                            let log_sender_for_task = log_sender.clone();
 
-                    if let Err(e) = page_svc_ref
-                        .as_bridge()
-                        .process_incoming_message(incoming, async move |name, payload, callbackid| {
-                            let name_owned = name.clone();
-                            let payload_owned = payload.clone();
+                            if let Err(e) = page_svc_ref
+                                .as_bridge()
+                                .process_incoming_message(incoming, async move |name, payload, callbackid| {
+                                    let name_owned = name.clone();
+                                    let payload_owned = payload.clone();
 
-                            // All captures for the spawned task are now owned or 'static.
+                                    // All captures for the spawned task are now owned or 'static.
+                                    let task = async move {
+
+                                        if name == "LXPortRdy" {
+                                            let _=page_svc_clone.post_init_data().await;
+                                            return;
+                                        }
+
+                                        if let Some(callbackid)=callbackid{
+                                            if let Err(e)=page_svc_clone.callback(&callbackid).await{
+                                                let _ = log_sender_for_task.send(LogMessage {
+                                                    level: LogLevel::Error,
+                                                    message: format!(
+                                                        "[Worker {}] No callback handler: {}, Error: {}",
+                                                        worker_id, callbackid,  e
+                                                    ),
+                                                });
+                                            }
+                                            return;
+                                        }
+
+                                        if let Err(e) = page_svc_clone.call_or_event(
+                                            &ctx_clone_for_task,
+                                            &name_owned,
+                                            payload_owned.as_deref()
+                                        ).await {
+                                            let _ = log_sender_for_task.send(LogMessage {
+                                                level: LogLevel::Error,
+                                                message: format!(
+                                                    "[Worker {}] Exec Page {} service '{}' failed, Error: {}",
+                                                    worker_id, path, name_owned, e
+                                                ),
+                                            });
+                                        }
+                                    };
+                                    tokio::task::spawn_local(task);
+                                })
+                                .await
+                            {
+                                log(
+                                    LogLevel::Error,
+                                    &format!(
+                                        "[Worker {}] Handle incoming message error: {}",
+                                        worker_id, e
+                                    ),
+                                );
+                            }
+                        } else {
+                            log(
+                                LogLevel::Error,
+                                &format!(
+                                    "[Worker {}] Page service '{}' not loaded",
+                                    worker_id, path
+                                ),
+                            );
+                        }
+                    }
+                    PageSvcSource::Native { name, args } => {
+                        if let Some(page_svc) = app_ctx.page_svc.get_mut(&path) {
+                            let page_svc_clone = page_svc.clone();
+                            let ctx_clone_for_task = app_ctx.ctx.clone();
+                            let log_sender_for_task = log_sender.clone();
+
                             let task = async move {
-
-                                if name == "LXPortRdy" {
-                                    let _=page_svc_clone.post_init_data().await;
-                                    return;
-                                }
-
-                                if let Some(callbackid)=callbackid{
-                                    if let Err(e)=page_svc_clone.callback(&callbackid).await{
-                                        let _ = log_sender_for_task.send(LogMessage {
-                                            level: LogLevel::Error,
-                                            message: format!(
-                                                "[Worker {}] No callback handler: {}, Error: {}",
-                                                worker_id, callbackid,  e
-                                            ),
-                                        });
-                                    }
-                                    return;
-                                }
-
-                                if let Err(e) = page_svc_clone.call_or_event(
-                                    &ctx_clone_for_task,
-                                    &name_owned,
-                                    payload_owned.as_deref()
-                                ).await {
+                                if let Err(e) = page_svc_clone
+                                    .call_or_event(&ctx_clone_for_task, &name, args.as_deref())
+                                    .await
+                                {
                                     let _ = log_sender_for_task.send(LogMessage {
                                         level: LogLevel::Error,
                                         message: format!(
-                                            "[Worker {}] Exec Page {} service '{}' failed, Error: {}",
-                                            worker_id, path, name_owned, e
+                                            "[Worker {}] Page service '{}' call '{}' failed, Error: {}",
+                                            worker_id, path, name, e
                                         ),
                                     });
                                 }
                             };
                             tokio::task::spawn_local(task);
-                        })
-                        .await
-                    {
-                        log(
-                            LogLevel::Error,
-                            &format!(
-                                "[Worker {}] Handle incoming message error: {}",
-                                worker_id, e
-                            ),
-                        );
+                        } else {
+                            log(
+                                LogLevel::Error,
+                                &format!(
+                                    "[Worker {}] Page service '{}' not loaded",
+                                    worker_id, path
+                                ),
+                            );
+                        }
                     }
-                } else {
-                    log(
-                        LogLevel::Error,
-                        &format!("[Worker {}] Page service '{}' not loaded", worker_id, path),
-                    );
                 }
             }
         }

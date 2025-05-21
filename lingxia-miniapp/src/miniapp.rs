@@ -682,7 +682,7 @@ impl AppUiDelegate for MiniApp {
         let incoming = appservice::bridge::IncomingMessage::from_json_str(&msg).unwrap();
 
         if let Ok(manager) = self.svc_manager.lock() {
-            if let Err(e) = manager.page_svc(self.appid.clone(), path, Arc::new(incoming)) {
+            if let Err(e) = manager.handle_view_message(self.appid.clone(), path, Arc::new(incoming)) {
                 self.error(
                     "AppUiDelegate",
                     format!("Failed to create app service: {}", e),
