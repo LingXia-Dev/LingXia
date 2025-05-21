@@ -212,6 +212,7 @@ class WebView @JvmOverloads constructor(
     private var savedUrl: String? = null
     private var showEventSent = false  // Track if we've sent a show event in this session
     private var messageChannel: WebMessagePort? = null
+    private var channelInitialized = false  // Track if the channel has been initialized
 
     companion object {
         private const val TAG = "WebView"
@@ -370,6 +371,12 @@ class WebView @JvmOverloads constructor(
     }
 
     private fun setupMessageChannel() {
+        // If the channel was already initialized, skip
+        if (channelInitialized && messageChannel != null) {
+            Log.d(TAG, "Message channel already initialized, skipping setup")
+            return
+        }
+
         // Clean up existing channel if any
         messageChannel?.close()
 
@@ -389,6 +396,8 @@ class WebView @JvmOverloads constructor(
             if (isAttachedToWindow && windowToken != null) {
                 val origin = url?.let { Uri.parse(it) } ?: Uri.EMPTY
                 postWebMessage(WebMessage(ANDROID_PORT_INIT_MESSAGE_DATA, arrayOf(ports[1])), origin)
+                channelInitialized = true
+                Log.d(TAG, "WebMessage channel initialized and port transferred to WebView")
             } else {
                 Log.w(TAG, "WebView not fully attached (isAttachedToWindow: $isAttachedToWindow, windowToken: $windowToken), skipping postWebMessage for '$ANDROID_PORT_INIT_MESSAGE_DATA'.")
             }
@@ -506,6 +515,7 @@ class WebView @JvmOverloads constructor(
         Log.d(TAG, "WebView detached from window")
         messageChannel?.close()
         messageChannel = null
+        channelInitialized = false  // Reset the flag when detached
         pause()
         super.onDetachedFromWindow()
     }
