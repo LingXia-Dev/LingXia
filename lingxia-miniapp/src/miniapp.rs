@@ -579,7 +579,7 @@ impl AppUiDelegate for MiniApp {
     }
 
     fn on_page_created(&mut self, path: String) {
-        let url = format!("lingxia://{}", path.clone());
+        let url = format!("lx://{}", path.clone());
         let appid_clone = self.appid.clone();
         let controller_clone = self.controller.clone();
 
@@ -672,9 +672,9 @@ impl AppUiDelegate for MiniApp {
 
         // Handle lingxia scheme or block non-https schemes
         match scheme {
-            "lingxia" => true, // Always intercept lingxia scheme
-            "https" => false,  // Allow https URLs (they'll be checked in handle_request)
-            _ => true,         // Block all other schemes
+            "lx" => true,     // Always intercept lingxia scheme
+            "https" => false, // Allow https URLs (they'll be checked in handle_request)
+            _ => true,        // Block all other schemes
         }
     }
 
@@ -701,7 +701,7 @@ impl AppUiDelegate for MiniApp {
             "https" => self.https_handler(req),
 
             // Lingxia scheme for internal app assets
-            "lingxia" => self.lingxia_handler(req),
+            "lx" => self.lingxia_handler(req),
 
             // Reject all other schemes with 400 Bad Request
             _ => Some(

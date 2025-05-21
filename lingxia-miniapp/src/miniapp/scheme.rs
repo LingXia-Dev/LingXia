@@ -4,15 +4,13 @@ use crate::log::Logging;
 use crate::miniapp::MiniApp;
 
 impl MiniApp {
-    /// Handler for lingxia:// scheme requests to access app assets
+    /// Handler for lx:// scheme requests to access app assets
     pub(crate) fn lingxia_handler(&mut self, req: Request<Vec<u8>>) -> Option<Response<Vec<u8>>> {
         let uri = req.uri();
 
-        // Get the path part after lingxia://
+        // Get the path part after lx://
         let uri_str = uri.to_string();
-        let path = uri_str
-            .trim_start_matches("lingxia://")
-            .trim_start_matches('/');
+        let path = uri_str.trim_start_matches("lx://").trim_start_matches('/');
 
         // Try to read the asset from app directory
         let file_result = self.read_bytes(path);
