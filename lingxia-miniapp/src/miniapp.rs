@@ -163,7 +163,7 @@ impl MiniApp {
         };
 
         if let Err(e) = app.setup() {
-            app.error("system", format!("Failed to setup app: {}", e));
+            app.error("system", e.to_string());
         }
 
         app
@@ -191,7 +191,7 @@ impl MiniApp {
         };
 
         if let Err(e) = app.setup() {
-            app.error("system", format!("Failed to setup home app: {}", e));
+            app.error("system", e.to_string());
         }
 
         app
@@ -255,15 +255,12 @@ impl MiniApp {
         }
 
         // Load app configuration if it exists
-        if let Ok(app_json) = self.read_json("app.json") {
+        self.read_json("app.json").map(|app_json| {
             self.config = MiniAppConfig::from_value(app_json)
                 .map_err(|e| MiniAppError::InvalidJsonFile(format!("app.json: {}", e)))?;
-
-            // Set tab bar items in the Pages manager
             self.pages.set_tabbar_items(self.config.get_tab_pages());
-        }
-
-        Ok(())
+            Ok(())
+        })?
     }
 
     /// Get the version of this app from storage
