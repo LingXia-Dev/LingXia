@@ -186,6 +186,9 @@ impl TabBar {
                 // Convert relative path to absolute
                 let abs_path = base_path.join(icon_path);
                 item.iconPath = Some(abs_path.to_string_lossy().to_string());
+            } else {
+                // If iconPath is None, set it to empty string
+                item.iconPath = Some("".to_string());
             }
 
             // Process selectedIconPath if it exists
@@ -193,6 +196,9 @@ impl TabBar {
                 // Convert relative path to absolute
                 let abs_path = base_path.join(selected_icon_path);
                 item.selectedIconPath = Some(abs_path.to_string_lossy().to_string());
+            } else {
+                // If selectedIconPath is None, copy the iconPath
+                item.selectedIconPath = item.iconPath.clone();
             }
         }
 
