@@ -304,8 +304,6 @@ pub(crate) struct PageInner {
 
     // Tracks whether bridge script has been injected
     script_injected: Arc<Mutex<bool>>,
-
-    services: Arc<Mutex<Vec<String>>>,
 }
 
 /// Represents a single page in a mini app
@@ -329,7 +327,6 @@ impl Page {
             svc_manager,
             last_active_time: Arc::new(Mutex::new(Instant::now())),
             script_injected: Arc::new(Mutex::new(false)),
-            services: Arc::new(Mutex::new(Vec::new())),
         });
 
         Self { inner }
