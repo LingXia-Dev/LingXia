@@ -138,16 +138,18 @@ pub struct MiniApp {
 
     // Reference to the app service manager
     svc_manager: Arc<Mutex<MiniAppServiceManager>>,
+
+    // debug mode
+    debug: bool,
 }
 
 impl MiniApp {
-    /// Create a new regular mini-app (not home app)
-    fn new(
+    fn _new(
         appid: String,
         controller: Arc<dyn AppController>,
         svc_manager: Arc<Mutex<MiniAppServiceManager>>,
     ) -> Self {
-        let mut app = Self {
+        Self {
             appid,
             pages: Pages::new(),
             last_active_time: Instant::now(),
@@ -160,8 +162,17 @@ impl MiniApp {
             network_security: NetworkSecurity::new(),
             config: MiniAppConfig::default(),
             svc_manager,
-        };
+            debug: false,
+        }
+    }
 
+    /// Create a new regular mini-app (not home app)
+    fn new(
+        appid: String,
+        controller: Arc<dyn AppController>,
+        svc_manager: Arc<Mutex<MiniAppServiceManager>>,
+    ) -> Self {
+        let mut app = Self::_new(appid, controller, svc_manager);
         if let Err(e) = app.setup() {
             app.error("system", e.to_string());
         }
@@ -175,20 +186,10 @@ impl MiniApp {
         controller: Arc<dyn AppController>,
         svc_manager: Arc<Mutex<MiniAppServiceManager>>,
     ) -> Self {
-        let mut app = Self {
-            appid,
-            pages: Pages::new(),
-            last_active_time: Instant::now(),
-            controller,
-            app_dir: PathBuf::new(),
-            storage_dir: PathBuf::new(),
-            cache_dir: PathBuf::new(),
-            home_miniapp: true,
-            version: String::new(),
-            network_security: NetworkSecurity::new(),
-            config: MiniAppConfig::default(),
-            svc_manager,
-        };
+        let mut app = Self::_new(appid, controller, svc_manager);
+
+        // it's home miniapp
+        app.home_miniapp = true;
 
         if let Err(e) = app.setup() {
             app.error("system", e.to_string());
@@ -255,12 +256,16 @@ impl MiniApp {
         }
 
         // Load app configuration if it exists
-        self.read_json("app.json").map(|app_json| {
-            self.config = MiniAppConfig::from_value(app_json)
-                .map_err(|e| MiniAppError::InvalidJsonFile(format!("app.json: {}", e)))?;
-            self.pages.set_tabbar_items(self.config.get_tab_pages());
-            Ok(())
-        })?
+        self.read_json("app.json")
+            .map(|app_json| {
+                self.config = MiniAppConfig::from_value(app_json)
+                    .map_err(|e| MiniAppError::InvalidJsonFile(format!("app.json: {}", e)))?;
+                self.pages.set_tabbar_items(self.config.get_tab_pages());
+                Ok(())
+            })
+            .inspect_err(|_| {
+                self.debug = true;
+            })?
     }
 
     /// Get the version of this app from storage
@@ -306,6 +311,10 @@ impl MiniApp {
             serde_json::from_str(&content)
                 .map_err(|_| MiniAppError::InvalidJsonFile(relative_path.to_string()))
         })
+    }
+
+    pub fn is_debug_enabled(&self) -> bool {
+        self.debug || self.config.is_debug_enabled()
     }
 
     /// Uninstalls the mini app by removing its version record and directories
@@ -579,6 +588,7 @@ impl AppUiDelegate for MiniApp {
         let url = format!("lx://{}", path.clone());
         let appid_clone = self.appid.clone();
         let controller_clone = self.controller.clone();
+        let debug = self.is_debug_enabled();
 
         // Create the page first
         let page = self.pages.create_page(
@@ -591,11 +601,8 @@ impl AppUiDelegate for MiniApp {
         // Store the result of loading the URL
         let url_load_result = page.load_url(&url);
 
-        // Check if debug mode is enabled in the app config
-        let debug_enabled = self.config.is_debug_enabled();
-
         // Enable devtools if debug mode is enabled in config
-        let devtools_result = if debug_enabled {
+        let devtools_result = if debug {
             page.set_devtools(true)
         } else {
             Ok(())
@@ -786,9 +793,7 @@ pub fn init<T: AppController + 'static>(controller: T) -> Option<(String, String
             );
 
             // Check if home mini app needs updating after loading its configuration
-            if home_miniapp.config.is_debug_enabled()
-                || home_miniapp.should_update(home_miniapp_version)
-            {
+            if home_miniapp.is_debug_enabled() || home_miniapp.should_update(home_miniapp_version) {
                 if let Err(e) = install::install_home_miniapp(
                     controller_arc.as_ref(),
                     &home_miniapp_id,

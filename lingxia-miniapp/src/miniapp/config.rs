@@ -14,7 +14,7 @@ pub(crate) struct MiniAppConfig {
 
     /// Debug mode - when true, developer tools will be enabled for all pages
     #[serde(default)]
-    pub debug: bool,
+    debug: bool,
 }
 
 impl MiniAppConfig {
