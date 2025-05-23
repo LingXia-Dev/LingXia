@@ -310,7 +310,7 @@ async fn handle_view_source(
                         dispatch_msg.message_type(),
                         DispatchMessageType::Call { .. }
                     ) {
-                        let _ = dispatch_msg.reply_success();
+                        let _ = dispatch_msg.reply_success(None);
                     }
 
                     // Extract values before moving into task

@@ -42,6 +42,8 @@ struct ReplyPayload {
     success: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<ErrorPayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    result: Option<Value>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -84,10 +86,22 @@ impl DispatchMessage {
 
     /// Reply with success to a Call message
     /// Only works for Call messages, ignored for Event and Callback
-    pub fn reply_success(&self) -> Result<(), MiniAppError> {
+    ///
+    /// # Arguments
+    /// * `result` - Optional JSON string to include in the reply. Use Some(json_string) for fast operations
+    ///  that need to return data immediately, or None for operations that don't return data.
+    pub fn reply_success(&self, result: Option<&str>) -> Result<(), MiniAppError> {
         match &self.message_type {
             DispatchMessageType::Call { msg_id, .. } => {
-                self.bridge.reply_success_internal(Some(msg_id.clone()))
+                if let Some(result_json) = result {
+                    let result_value = serde_json::from_str::<Value>(result_json).map_err(|e| {
+                        MiniAppError::Bridge(format!("Failed to parse result JSON: {}", e))
+                    })?;
+                    self.bridge
+                        .reply_with_result_internal(Some(msg_id.clone()), result_value)
+                } else {
+                    self.bridge.reply_success_internal(Some(msg_id.clone()))
+                }
             }
             _ => Ok(()), // Events and callbacks don't need replies
         }
@@ -305,6 +319,25 @@ impl Bridge {
         }
     }
 
+    /// Call a method on the View Layer and expect a result value.
+    /// This is a convenience method that's identical to call() but provides clearer semantics
+    /// for operations that are expected to return data.
+    ///
+    /// # Arguments
+    /// * `name` - The method name to call
+    /// * `payload` - Optional parameters for the method
+    ///
+    /// # Returns
+    /// * `Ok(Value)` - The result data from the View Layer
+    /// * `Err(MiniAppError)` - If the call failed or timed out
+    pub async fn call_with_result(
+        &self,
+        name: &str,
+        payload: Option<Value>,
+    ) -> Result<Value, MiniAppError> {
+        self.call(name, payload).await
+    }
+
     /// Send data, optionally with a callback ID.
     /// If a callback ID is provided, the View Layer can use it to notify when it has processed the data.
     ///
@@ -371,7 +404,7 @@ impl Bridge {
                 match payload_struct_result {
                     Ok(payload_struct) => {
                         let result = if payload_struct.success {
-                            Ok(Value::Null)
+                            Ok(payload_struct.result.unwrap_or(Value::Null))
                         } else {
                             Err(MiniAppError::Bridge(
                                 payload_struct
@@ -423,21 +456,7 @@ impl Bridge {
 
     // Internal method for sending success replies
     fn reply_success_internal(&self, msg_id: Option<String>) -> Result<(), MiniAppError> {
-        let reply_payload = json!({
-            "success": true
-        });
-
-        let reply_message = json!({
-            "msgId": msg_id,
-            "type": "reply",
-            "payload": reply_payload
-        });
-
-        let serialized_reply = serde_json::to_string(&reply_message)?;
-
-        self.transport
-            .post_message_to_view(&serialized_reply)
-            .map_err(|e| MiniAppError::Bridge(format!("Failed to post reply: {}", e)))
+        self.reply_internal(msg_id, true, None, None)
     }
 
     // Internal method for sending failure replies
@@ -446,12 +465,42 @@ impl Bridge {
         msg_id: Option<String>,
         error_message: &str,
     ) -> Result<(), MiniAppError> {
-        let reply_payload = json!({
-            "success": false,
-            "error": {
-                "message": error_message
-            }
+        let error_payload = ErrorPayload {
+            message: error_message.to_string(),
+        };
+        self.reply_internal(msg_id, false, None, Some(error_payload))
+    }
+
+    // Internal method for sending result replies
+    fn reply_with_result_internal(
+        &self,
+        msg_id: Option<String>,
+        result: Value,
+    ) -> Result<(), MiniAppError> {
+        self.reply_internal(msg_id, true, Some(result), None)
+    }
+
+    // Common internal method for all reply types
+    fn reply_internal(
+        &self,
+        msg_id: Option<String>,
+        success: bool,
+        result: Option<Value>,
+        error: Option<ErrorPayload>,
+    ) -> Result<(), MiniAppError> {
+        let mut reply_payload = json!({
+            "success": success
         });
+
+        if let Some(result_value) = result {
+            reply_payload["result"] = result_value;
+        }
+
+        if let Some(error_payload) = error {
+            reply_payload["error"] = json!({
+                "message": error_payload.message
+            });
+        }
 
         let reply_message = json!({
             "msgId": msg_id,

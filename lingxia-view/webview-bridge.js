@@ -194,7 +194,11 @@
 
     try {
       if (replyMessage.payload?.success === true) {
-        callInfo.resolve();
+        if (replyMessage.payload.hasOwnProperty('result')) {
+          callInfo.resolve(replyMessage.payload.result);
+        } else {
+          callInfo.resolve();
+        }
       } else if (replyMessage.payload?.success === false) {
         callInfo.reject(
           replyMessage.payload.error || { message: "Unknown error" },
