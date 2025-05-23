@@ -18,63 +18,67 @@
     // Setup state management
     let updateTimer = null;
     let pendingData = null;
-    let pendingCallbacks = [];
-    const DEBOUNCE_WAIT = 50;
+    let pendingResolvers = [];
+    const DEBOUNCE_WAIT = 16; // 16ms ≈ 60fps, better for UI updates
 
-    // Enhanced setData with optimizations
+    // Enhanced setData with debouncing and diff optimization
     pageSvc.setData = async function (updates, callback) {
       if (!updates || typeof updates !== "object") {
         throw new Error("setData: Invalid updates");
       }
 
-      // Queue updates and callback
-      pendingData = pendingData ? { ...pendingData, ...updates } : updates;
-      if (callback) pendingCallbacks.push(callback);
+      return new Promise((resolve, reject) => {
+        pendingData = pendingData ? { ...pendingData, ...updates } : updates;
+        pendingResolvers.push({ resolve, reject, callback });
 
-      // Debounce updates
-      clearTimeout(updateTimer);
-      updateTimer = setTimeout(async () => {
-        try {
-          // Capture and reset pending state
-          const currentUpdates = pendingData;
-          const callbacks = pendingCallbacks;
-          pendingData = null;
-          pendingCallbacks = [];
+        const self = this;
 
-          // Apply updates to local data
-          for (const [path, value] of Object.entries(currentUpdates)) {
-            setValueByPath(this.data, path, value);
-          }
+        clearTimeout(updateTimer);
+        updateTimer = setTimeout(async () => {
+          try {
+            const currentUpdates = pendingData;
+            const resolvers = pendingResolvers;
 
-          // Generate patch
-          const patch = diff(this._lastData, this.data);
-          if (Object.keys(patch).length > 0) {
-            // If we have callbacks, pass them to _setData
-            if (callbacks.length > 0) {
-              // Create a combined callback if there are multiple
-              const combinedCallback =
-                callbacks.length === 1
-                  ? callbacks[0]
-                  : function () {
-                      // Execute all callbacks and don't care about errors
-                      callbacks.forEach((cb) => cb());
-                    };
+            // Reset state
+            pendingData = null;
+            pendingResolvers = [];
 
-              await this._setData(JSON.stringify(patch), combinedCallback);
-            } else {
-              await this._setData(JSON.stringify(patch));
+            // Apply updates to local data
+            for (const [path, value] of Object.entries(currentUpdates)) {
+              setValueByPath(self.data, path, value);
             }
 
-            this._lastData = JSON.parse(JSON.stringify(this.data));
-          } else if (callbacks.length > 0) {
-            // If no patch to send but we have callbacks, execute them immediately
-            callbacks.forEach((cb) => cb());
+            // Generate and send patch if needed
+            const patch = diff(self._lastData, self.data);
+            if (Object.keys(patch).length > 0) {
+              const callbacks = resolvers
+                .filter((r) => r.callback)
+                .map((r) => r.callback);
+
+              if (callbacks.length > 0) {
+                const combinedCallback =
+                  callbacks.length === 1
+                    ? callbacks[0]
+                    : () => callbacks.forEach((cb) => cb());
+                await self._setData(JSON.stringify(patch), combinedCallback);
+              } else {
+                await self._setData(JSON.stringify(patch));
+              }
+
+              self._lastData = JSON.parse(JSON.stringify(self.data));
+            } else {
+              // Execute callbacks even if no patch
+              resolvers.forEach((r) => r.callback && r.callback());
+            }
+
+            // Resolve all pending promises
+            resolvers.forEach(({ resolve }) => resolve());
+          } catch (err) {
+            console.error("Error in setData:", err);
+            resolvers.forEach(({ reject }) => reject(err));
           }
-        } catch (err) {
-          console.error("Error in setData:", err);
-          throw err;
-        }
-      }, DEBOUNCE_WAIT);
+        }, DEBOUNCE_WAIT);
+      });
     };
 
     return pageSvc;
