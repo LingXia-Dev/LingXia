@@ -10,9 +10,12 @@ use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, mpsc};
 
 mod app;
-pub mod bridge;
-mod page;
 use app::MiniAppSvc;
+
+pub mod bridge;
+use bridge::DispatchMessageType;
+
+mod page;
 use page::PageSvc;
 
 /// Message type for MiniApp service system
@@ -292,44 +295,62 @@ async fn handle_view_source(
 
     page_svc_ref
         .as_bridge()
-        .process_incoming_message(incoming, async move |name, payload, callbackid| {
-            let name_owned = name.clone();
-            let payload_owned = payload.clone();
-
-            if name == "LXPortRdy" {
-                let _ = page_svc_clone.handle_lxport_ready().await;
-                return;
-            }
-
-            // All captures for the spawned task are now owned or 'static.
-            let task = async move {
-                if let Some(callbackid) = callbackid {
-                    if let Err(e) = page_svc_clone.callback(&callbackid).await {
-                        let _ = log_sender_for_task.send(LogMessage {
-                            level: LogLevel::Error,
-                            message: format!(
-                                "[Worker {}] No callback handler: {}, Error: {}",
-                                worker_id, callbackid, e
-                            ),
-                        });
+        .process_incoming_message(incoming, async move |dispatch_msg| {
+            match dispatch_msg.message_type() {
+                DispatchMessageType::Call { name, payload, .. }
+                | DispatchMessageType::Event { name, payload } => {
+                    // handle LXPortRdy event without spawn_local task
+                    if name == "LXPortRdy" {
+                        let _ = page_svc_clone.handle_lxport_ready().await;
+                        return;
                     }
-                    return;
-                }
 
-                if let Err(e) = page_svc_clone
-                    .call_or_event(&ctx, &name_owned, payload_owned.as_deref())
-                    .await
-                {
-                    let _ = log_sender_for_task.send(LogMessage {
-                        level: LogLevel::Error,
-                        message: format!(
-                            "[Worker {}] Exec Page {} service '{}' failed, Error: {}",
-                            worker_id, path_clone, name_owned, e
-                        ),
-                    });
+                    // For Call messages, reply success first
+                    if matches!(
+                        dispatch_msg.message_type(),
+                        DispatchMessageType::Call { .. }
+                    ) {
+                        let _ = dispatch_msg.reply_success();
+                    }
+
+                    // Extract values before moving into task
+                    let name_owned = name.clone();
+                    let payload_owned = payload.clone();
+
+                    let task = async move {
+                        if let Err(e) = page_svc_clone
+                            .call_or_event(&ctx, &name_owned, payload_owned.as_deref())
+                            .await
+                        {
+                            let _ = log_sender_for_task.send(LogMessage {
+                                level: LogLevel::Error,
+                                message: format!(
+                                    "[Worker {}] Exec Page {} service/event '{}' failed, Error: {}",
+                                    worker_id, path_clone, name_owned, e
+                                ),
+                            });
+                        }
+                    };
+                    tokio::task::spawn_local(task);
                 }
-            };
-            tokio::task::spawn_local(task);
+                DispatchMessageType::Callback { callback_id } => {
+                    // Extract value before moving into task
+                    let callback_id_owned = callback_id.clone();
+
+                    let task = async move {
+                        if let Err(e) = page_svc_clone.callback(&callback_id_owned).await {
+                            let _ = log_sender_for_task.send(LogMessage {
+                                level: LogLevel::Error,
+                                message: format!(
+                                    "[Worker {}] No callback handler: {}, Error: {}",
+                                    worker_id, callback_id_owned, e
+                                ),
+                            });
+                        }
+                    };
+                    tokio::task::spawn_local(task);
+                }
+            }
         })
         .await
 }

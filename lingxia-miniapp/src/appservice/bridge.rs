@@ -49,6 +49,67 @@ pub struct ErrorPayload {
     pub message: String,
 }
 
+/// Represents different types of incoming messages for dispatch
+#[derive(Clone)]
+pub(crate) struct DispatchMessage {
+    bridge: Bridge,
+    message_type: DispatchMessageType,
+}
+
+#[derive(Clone)]
+pub enum DispatchMessageType {
+    /// A function call from the view layer
+    Call {
+        name: String,
+        payload: Option<String>,
+        msg_id: String,
+    },
+    /// An event notification from the view layer
+    Event {
+        name: String,
+        payload: Option<String>,
+    },
+    /// A callback completion notification
+    Callback { callback_id: String },
+}
+
+impl DispatchMessage {
+    /// Create a new DispatchMessage
+    pub(crate) fn new(bridge: Bridge, message_type: DispatchMessageType) -> Self {
+        Self {
+            bridge,
+            message_type,
+        }
+    }
+
+    /// Reply with success to a Call message
+    /// Only works for Call messages, ignored for Event and Callback
+    pub fn reply_success(&self) -> Result<(), MiniAppError> {
+        match &self.message_type {
+            DispatchMessageType::Call { msg_id, .. } => {
+                self.bridge.reply_success_internal(Some(msg_id.clone()))
+            }
+            _ => Ok(()), // Events and callbacks don't need replies
+        }
+    }
+
+    /// Reply with failure to a Call message
+    /// Only works for Call messages, ignored for Event and Callback
+    pub fn reply_failure(&self, error_message: &str) -> Result<(), MiniAppError> {
+        match &self.message_type {
+            DispatchMessageType::Call { msg_id, .. } => self
+                .bridge
+                .reply_failure_internal(Some(msg_id.clone()), error_message),
+            _ => Ok(()), // Events and callbacks don't need replies
+        }
+    }
+
+    /// Get the message type
+    pub fn message_type(&self) -> &DispatchMessageType {
+        &self.message_type
+    }
+}
+
 #[derive(Deserialize, Debug, Clone)]
 pub struct IncomingMessage {
     #[serde(rename = "msgId")]
@@ -106,6 +167,48 @@ impl IncomingMessage {
 
     fn msg_id(&self) -> Option<&str> {
         self.msg_id.as_deref()
+    }
+
+    /// Convert to a dispatch message for cleaner handling
+    fn to_dispatch_message(&self, bridge: Bridge) -> Result<Option<DispatchMessage>, MiniAppError> {
+        match self.type_.as_str() {
+            "call" => {
+                let name = self.name.as_ref().unwrap().clone();
+                let msg_id = self.msg_id.as_ref().unwrap().clone();
+                let payload = self.payload_as_opt_string()?;
+                Ok(Some(DispatchMessage::new(
+                    bridge,
+                    DispatchMessageType::Call {
+                        name,
+                        payload,
+                        msg_id,
+                    },
+                )))
+            }
+            "event" => {
+                let name = self.name.as_ref().unwrap().clone();
+                let payload = self.payload_as_opt_string()?;
+                Ok(Some(DispatchMessage::new(
+                    bridge,
+                    DispatchMessageType::Event { name, payload },
+                )))
+            }
+            "callback" => {
+                let callback_id = self.callback_id.as_ref().unwrap().clone();
+                Ok(Some(DispatchMessage::new(
+                    bridge,
+                    DispatchMessageType::Callback { callback_id },
+                )))
+            }
+            "reply" => {
+                // Reply messages are handled internally, not dispatched
+                Ok(None)
+            }
+            _ => Err(MiniAppError::Bridge(format!(
+                "Unknown message type: {}",
+                self.type_
+            ))),
+        }
     }
 }
 
@@ -238,11 +341,7 @@ impl Bridge {
     ///
     /// # Arguments
     /// * `message` - The incoming message
-    /// * `dispatch` - A closure that handles `call`, `event`, and `callback` messages.
-    ///   It receives three arguments:
-    ///   * `name`: The handler name, event name, or empty string for callback
-    ///   * `payload`: Optional JSON payload as a string, or None if no payload is present
-    ///   * `callback_id`: Optional callback ID for callback messages
+    /// * `dispatch` - A closure that handles different types of messages
     ///
     /// # Returns
     /// * `Ok(())` if the message was processed successfully
@@ -253,115 +352,106 @@ impl Bridge {
         dispatch: F,
     ) -> Result<(), MiniAppError>
     where
-        F: AsyncFnOnce(String, Option<String>, Option<String>),
+        F: AsyncFnOnce(DispatchMessage),
     {
-        match message.type_.as_str() {
-            "reply" => {
-                let msg_id = message.msg_id().unwrap();
-                let sender = {
-                    let mut pending = self.pending_calls.lock().unwrap();
-                    pending.remove(msg_id)
-                };
+        // Handle reply messages internally
+        if message.type_ == "reply" {
+            let msg_id = message.msg_id().unwrap();
+            let sender = {
+                let mut pending = self.pending_calls.lock().unwrap();
+                pending.remove(msg_id)
+            };
 
-                if let Some(tx) = sender {
-                    let reply_payload_value =
-                        message.payload.as_ref().map_or(Value::Null, |v| v.clone());
-                    let payload_struct_result: Result<ReplyPayload, serde_json::Error> =
-                        serde_json::from_value(reply_payload_value);
+            if let Some(tx) = sender {
+                let reply_payload_value =
+                    message.payload.as_ref().map_or(Value::Null, |v| v.clone());
+                let payload_struct_result: Result<ReplyPayload, serde_json::Error> =
+                    serde_json::from_value(reply_payload_value);
 
-                    match payload_struct_result {
-                        Ok(payload_struct) => {
-                            let result = if payload_struct.success {
-                                Ok(Value::Null)
-                            } else {
-                                Err(MiniAppError::Bridge(
-                                    payload_struct
-                                        .error
-                                        .unwrap_or_else(|| ErrorPayload {
-                                            message: "Unknown view error".to_string(),
-                                        })
-                                        .to_string(),
-                                ))
-                            };
-                            let _ = tx.send(result).map_err(|_e| {
-                                MiniAppError::Bridge(
-                                    "Failed to send reply to waiting task".to_string(),
-                                )
-                            });
-                        }
-                        Err(e) => {
-                            let _ = tx.send(Err(MiniAppError::from(e))).map_err(|_send_error| {
-                                MiniAppError::Bridge(
-                                    "Failed to send reply deserialization error to waiting task"
-                                        .to_string(),
-                                )
-                            });
-                        }
+                match payload_struct_result {
+                    Ok(payload_struct) => {
+                        let result = if payload_struct.success {
+                            Ok(Value::Null)
+                        } else {
+                            Err(MiniAppError::Bridge(
+                                payload_struct
+                                    .error
+                                    .unwrap_or_else(|| ErrorPayload {
+                                        message: "Unknown view error".to_string(),
+                                    })
+                                    .to_string(),
+                            ))
+                        };
+                        let _ = tx.send(result).map_err(|_e| {
+                            MiniAppError::Bridge("Failed to send reply to waiting task".to_string())
+                        });
+                    }
+                    Err(e) => {
+                        let _ = tx.send(Err(MiniAppError::from(e))).map_err(|_send_error| {
+                            MiniAppError::Bridge(
+                                "Failed to send reply deserialization error to waiting task"
+                                    .to_string(),
+                            )
+                        });
                     }
                 }
             }
-            "call" => {
-                let name = message.name.as_ref().unwrap().clone();
-                let msg_id = message.msg_id.clone();
+            return Ok(());
+        }
 
-                let service_exists = self.transport.has_service(&name);
-
-                if !service_exists {
-                    let _ = self.reply_to_call(
-                        msg_id,
-                        false,
-                        Some(&format!("service {} not found", name)),
-                    );
-                } else {
-                    let _ = self.reply_to_call(msg_id, true, None);
-
-                    let payload_s = message.payload_as_opt_string()?;
-                    dispatch(name.clone(), payload_s, None).await;
+        // Convert to dispatch message and handle
+        if let Some(dispatch_msg) = message.to_dispatch_message(self.clone())? {
+            // For Call messages, check if service exists before dispatching
+            match &dispatch_msg.message_type {
+                DispatchMessageType::Call { name, .. } => {
+                    if !self.transport.has_service(name) {
+                        let _ = dispatch_msg.reply_failure(&format!("service {} not found", name));
+                        return Ok(());
+                    }
+                    // Service exists, let user handle the reply
+                    dispatch(dispatch_msg).await;
+                }
+                DispatchMessageType::Event { .. } | DispatchMessageType::Callback { .. } => {
+                    // Events and callbacks don't need service checking
+                    dispatch(dispatch_msg).await;
                 }
             }
-            "event" => {
-                let name = message.name.as_ref().unwrap().clone();
-                let payload_s = message.payload_as_opt_string()?;
-                dispatch(name, payload_s, None).await;
-            }
-            "callback" => {
-                let callback_id = message.callback_id.as_ref().unwrap().clone();
-                dispatch(Default::default(), None, Some(callback_id)).await;
-            }
-            _ => {
-                return Err(MiniAppError::Bridge(format!(
-                    "Unexpected message type '{}' in process_incoming_message",
-                    message.type_
-                )));
-            }
         }
+
         Ok(())
     }
 
-    // Replies to a call from the View Layer.
-    //
-    // # Arguments
-    // * `msg_id` - The message ID of the call to reply to.
-    // * `success` - Whether the call was successful.
-    // * `error_message` - Optional error message if the call failed.
-    fn reply_to_call(
+    // Internal method for sending success replies
+    fn reply_success_internal(&self, msg_id: Option<String>) -> Result<(), MiniAppError> {
+        let reply_payload = json!({
+            "success": true
+        });
+
+        let reply_message = json!({
+            "msgId": msg_id,
+            "type": "reply",
+            "payload": reply_payload
+        });
+
+        let serialized_reply = serde_json::to_string(&reply_message)?;
+
+        self.transport
+            .post_message_to_view(&serialized_reply)
+            .map_err(|e| MiniAppError::Bridge(format!("Failed to post reply: {}", e)))
+    }
+
+    // Internal method for sending failure replies
+    fn reply_failure_internal(
         &self,
         msg_id: Option<String>,
-        success: bool,
-        error_message: Option<&str>,
+        error_message: &str,
     ) -> Result<(), MiniAppError> {
-        let reply_payload = if success {
-            json!({
-                "success": true
-            })
-        } else {
-            json!({
-                "success": false,
-                "error": {
-                    "message": error_message.unwrap_or("Unknown error")
-                }
-            })
-        };
+        let reply_payload = json!({
+            "success": false,
+            "error": {
+                "message": error_message
+            }
+        });
 
         let reply_message = json!({
             "msgId": msg_id,
