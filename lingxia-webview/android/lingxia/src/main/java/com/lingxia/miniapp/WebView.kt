@@ -370,14 +370,10 @@ class WebView @JvmOverloads constructor(
     }
 
     private fun setupMessageChannel() {
-        // If the channel was already initialized, skip
-        if (channelInitialized && messageChannel != null) {
-            Log.d(TAG, "Message channel already initialized, skipping setup")
-            return
-        }
-
         // Clean up existing channel if any
         messageChannel?.close()
+        messageChannel = null
+        channelInitialized = false
 
         // Create new message channel
         val ports = createWebMessageChannel()
@@ -401,10 +397,16 @@ class WebView @JvmOverloads constructor(
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to post WebMessage: ${e.message}", e)
                     channelInitialized = false
+                    // Clean up on failure
+                    messageChannel?.close()
+                    messageChannel = null
                 }
             } else {
                 Log.w(TAG, "WebView not fully attached (isAttachedToWindow: $isAttachedToWindow, windowToken: $windowToken), skipping postWebMessage for '$ANDROID_PORT_INIT_MESSAGE_DATA'.")
                 channelInitialized = false
+                // Clean up on failure
+                messageChannel?.close()
+                messageChannel = null
             }
         }
     }
@@ -472,6 +474,17 @@ class WebView @JvmOverloads constructor(
         // Set to visible
         visibility = View.VISIBLE
 
+        // Ensure message channel is working when resuming
+        if (isAttachedToWindow) {
+            // If channel was lost during pause/resume cycle, re-establish it
+            if (!channelInitialized || messageChannel == null) {
+                Log.d(TAG, "Message channel lost during pause/resume, re-establishing")
+                post {
+                    setupMessageChannel()
+                }
+            }
+        }
+
         // Only trigger PageShow if we haven't already in this session
         // Only consider triggering PageShow when window is visible and appId/path are valid
         if (isAttachedToWindow && appId != null && currentPath != null && !showEventSent) {
@@ -513,6 +526,14 @@ class WebView @JvmOverloads constructor(
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         Log.d(TAG, "WebView attached to window")
+
+        // If no working channel, set it up
+        if (!channelInitialized || messageChannel == null) {
+            Log.d(TAG, "WebView attached but no message channel, setting up")
+            post {
+                setupMessageChannel()
+            }
+        }
     }
 
     override fun onDetachedFromWindow() {
