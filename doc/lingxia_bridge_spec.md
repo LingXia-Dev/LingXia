@@ -99,7 +99,7 @@ A recommended format is:
 
 The `payload` of a `reply` message **must** conform to one of the following structures to indicate the outcome of the attempt to invoke the handler specified in the original `call`:
 
-**Success:**
+**Success (without result data):**
 
 ```json
 {
@@ -107,7 +107,17 @@ The `payload` of a `reply` message **must** conform to one of the following stru
 }
 ```
 *Indicates the corresponding `call` was received, the specified handler was found, successfully invoked, and its initial synchronous execution phase completed without raising an immediate error. It implies the operation has been accepted for processing.*
-*Note: Successful replies intentionally do not carry data. Data transfer from Logic to View should primarily occur via subsequent `setData` calls or other mechanisms.*
+*Note: This format is used for operations that don't need to return data immediately.*
+
+**Success (with result data):**
+
+```json
+{
+  "success": true,
+  "result": "<any>" // OPTIONAL: The actual result data from the handler
+}
+```
+*Indicates successful execution and includes the computed result. The `result` field can contain any JSON-serializable value (object, array, string, number, boolean, null). This format is used for fast operations that need to return data immediately.*
 
 **Failure:**
 
@@ -121,7 +131,7 @@ The `payload` of a `reply` message **must** conform to one of the following stru
 ```
 *Indicates the corresponding `call` could not be successfully processed upon receipt. This could be due to reasons such as: the specified handler `name` was not found, the handler rejected the request due to invalid parameters during initial synchronous validation, or an error occurred during the handler's immediate synchronous execution.*
 
-*Note on Timing: The `reply` message is typically sent by the receiving layer's **bridge framework** immediately after attempting to invoke the business handler, reflecting the status of that invocation attempt. It should not be delayed by potentially long-running asynchronous operations within the handler itself. Business handlers generally should not be responsible for sending this `reply`.*
+*Note on Timing: The `reply` message is typically sent by the receiving layer's **bridge framework** immediately after attempting to invoke the business handler, reflecting the status of that invocation attempt. For handlers that return immediate results (fast operations), the `result` field should contain the computed value. For long-running operations, the traditional `success: true` format should be used, with results delivered via subsequent `setData` calls.*
 
 ## 7. Communication Flow Examples
 
@@ -225,7 +235,53 @@ The `payload` of a `reply` message **must** conform to one of the following stru
     ```
     *Logic Layer receives this callback notification. If it has a pending operation associated with this `callbackId`, it can now proceed with it (e.g., invoke a stored JavaScript callback function). The `callbackId` must match one that was previously sent from Logic to View in a call message.*
 
-### 7.3. View -> Logic (Simple Event Notification)
+### 7.3. View -> Logic (Call with Result - Fast Operations)
+
+*Scenario: View Layer needs to retrieve data synchronously from Logic Layer for fast operations.*
+
+1.  **View Sends `call`:**
+    ```json
+    {
+      "msgId": "view-1678886400789-5",
+      "type": "call",
+      "name": "fastDataRetrieval",
+      "payload": { "key": "someKey" }
+    }
+    ```
+
+2.  **Logic Bridge Processes:** Receives the call, finds the handler, invokes it with the payload, and the handler returns the data immediately (fast execution).
+
+3.  **Logic Bridge Responds `reply` (Success with Result):**
+    ```json
+    {
+      "msgId": "view-1678886400789-5",
+      "type": "reply",
+      "payload": {
+        "success": true,
+        "result": {
+          "data": "some value",
+          "timestamp": 1678886400789
+        }
+      }
+    }
+    ```
+
+4.  **Logic Bridge Responds `reply` (Failure):**
+    *(Alternative to step 3 if the operation fails)*
+    ```json
+    {
+      "msgId": "view-1678886400789-5",
+      "type": "reply",
+      "payload": {
+        "success": false,
+        "error": { "message": "Data not found or operation failed." }
+      }
+    }
+    ```
+
+*Note: This pattern should only be used for fast operations that complete immediately. Time-consuming operations must use the traditional `call` + `setData` pattern to avoid blocking the bridge.*
+
+### 7.4. View -> Logic (Simple Event Notification)
 
 *Scenario: User performs a minor interaction tracked for analytics.*
 
