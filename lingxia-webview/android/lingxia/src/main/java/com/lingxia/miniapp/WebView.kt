@@ -224,7 +224,7 @@ class WebView @JvmOverloads constructor(
 
     data class WebViewConfig(
         val enableJavaScript: Boolean = true,
-        val enableDomStorage: Boolean = true
+        val enableDomStorage: Boolean = false
     )
 
     init {
