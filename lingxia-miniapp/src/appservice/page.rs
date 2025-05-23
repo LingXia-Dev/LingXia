@@ -29,6 +29,7 @@ struct PageSvcState {
     callback: HashMap<String, JSFunc>,
     callbackid: AtomicUsize,
     init_data: Option<JSObject>,
+    bridge_rdy: bool,
 }
 
 impl BridgeTransport for PageSvc {
@@ -59,6 +60,7 @@ impl PageSvc {
                 callback: HashMap::new(),
                 callbackid: AtomicUsize::new(0),
                 init_data,
+                bridge_rdy: false,
             })),
         };
 
@@ -74,9 +76,15 @@ impl PageSvc {
 
     #[js_method(rename = "_setData")]
     async fn set_data(&mut self, data: String, callback: Optional<JSFunc>) -> JSResult<()> {
+        let mut state = self.state.lock().await;
+        if !state.bridge_rdy {
+            return Err(RongJSError::Error(
+                "View Bridge is not ready to receive data".to_string(),
+            ));
+        }
+
         // If we have a callback, register it and get a callback ID
         let callback_id = if let Some(cb) = callback.0 {
-            let mut state = self.state.lock().await;
             let counter = state.callbackid.fetch_add(1, Ordering::SeqCst);
             let callbackid = format!("setData-{}", counter);
             state.callback.insert(callbackid.clone(), cb);
@@ -165,11 +173,13 @@ impl PageSvc {
     }
 
     // post init data to view
-    pub async fn post_init_data(&mut self) -> JSResult<()> {
+    pub async fn handle_lxport_ready(&mut self) -> JSResult<()> {
         let mut state = self.state.lock().await;
 
         // only post one time
         if let Some(data) = state.init_data.take() {
+            state.bridge_rdy = true;
+
             drop(state);
             self.as_bridge()
                 .set_data(&data.json_stringify()?, None)

@@ -296,13 +296,13 @@ async fn handle_view_source(
             let name_owned = name.clone();
             let payload_owned = payload.clone();
 
+            if name == "LXPortRdy" {
+                let _ = page_svc_clone.handle_lxport_ready().await;
+                return;
+            }
+
             // All captures for the spawned task are now owned or 'static.
             let task = async move {
-                if name == "LXPortRdy" {
-                    let _ = page_svc_clone.post_init_data().await;
-                    return;
-                }
-
                 if let Some(callbackid) = callbackid {
                     if let Err(e) = page_svc_clone.callback(&callbackid).await {
                         let _ = log_sender_for_task.send(LogMessage {
