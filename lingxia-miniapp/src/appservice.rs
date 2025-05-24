@@ -432,15 +432,26 @@ async fn miniapp_service_handler(
             let js = app_path.join("app.js");
             if js.exists() {
                 if let Ok(js) = Source::from_path(&ctx, js).await {
-                    if let Ok(svc) = ctx.eval::<MiniAppSvc>(js) {
-                        miniapp.svc = Some(svc);
-                        log(
-                            LogLevel::Info,
-                            &format!(
-                                "[Worker {}] Successfully loaded app JS for {}",
-                                worker_id, appid
-                            ),
-                        );
+                    match ctx.eval::<MiniAppSvc>(js) {
+                        Ok(svc) => {
+                            miniapp.svc = Some(svc);
+                            log(
+                                LogLevel::Info,
+                                &format!(
+                                    "[Worker {}] Successfully loaded app JS for {}",
+                                    worker_id, appid
+                                ),
+                            );
+                        }
+                        Err(e) => {
+                            log(
+                                LogLevel::Error,
+                                &format!(
+                                    "[Worker {}] eval JS for {} failed: {}",
+                                    worker_id, appid, e
+                                ),
+                            );
+                        }
                     }
                 }
             } else {
@@ -492,35 +503,38 @@ async fn miniapp_service_handler(
 
                 if page_js_path.exists() {
                     if let Ok(js) = Source::from_path(ctx, &page_js_path).await {
-                        if let Ok(obj) = ctx.eval::<JSObject>(js) {
-                            if let Ok(mut svc) = obj.borrow_mut::<PageSvc>() {
-                                svc.attach_page(page);
+                        match ctx.eval::<JSObject>(js) {
+                            Ok(obj) => {
+                                if let Ok(mut svc) = obj.borrow_mut::<PageSvc>() {
+                                    svc.attach_page(page);
 
-                                app_ctx.page_svc.insert(path.clone(), svc.clone());
-                                log(
-                                    LogLevel::Info,
-                                    &format!(
-                                        "[Worker {}] Successfully loaded page JS for {}/{}",
-                                        worker_id, appid, path
-                                    ),
-                                );
-                            } else {
+                                    app_ctx.page_svc.insert(path.clone(), svc.clone());
+                                    log(
+                                        LogLevel::Info,
+                                        &format!(
+                                            "[Worker {}] Successfully loaded page JS for {}/{}",
+                                            worker_id, appid, path
+                                        ),
+                                    );
+                                } else {
+                                    log(
+                                        LogLevel::Error,
+                                        &format!(
+                                            "[Worker {}] Failed to borrow PageSvc for {}/{}",
+                                            worker_id, appid, path
+                                        ),
+                                    );
+                                }
+                            }
+                            Err(e) => {
                                 log(
                                     LogLevel::Error,
                                     &format!(
-                                        "[Worker {}] Failed to borrow PageSvc for {}/{}",
-                                        worker_id, appid, path
+                                        "[Worker {}] eval JS for {}/{} failed: {}",
+                                        worker_id, appid, path, e
                                     ),
                                 );
                             }
-                        } else {
-                            log(
-                                LogLevel::Error,
-                                &format!(
-                                    "[Worker {}] Failed to eval page JS for {}/{}",
-                                    worker_id, appid, path
-                                ),
-                            );
                         }
                     }
                 } else {
