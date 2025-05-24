@@ -6,6 +6,17 @@ use crate::error::MiniAppError;
 use crate::log::LogLevel;
 use serde::{Deserialize, Serialize};
 
+/// Device information structure
+#[derive(Debug, Clone)]
+pub struct DeviceInfo {
+    pub brand: String,
+    pub model: String,
+
+    /// Screen width in pixels
+    pub screen_width: u32,
+    pub screen_height: u32,
+}
+
 /// Asset file entry for iterator-based asset access
 pub struct AssetFileEntry<'a> {
     pub path: String,
@@ -174,6 +185,12 @@ pub trait AppRuntime: Send + Sync + 'static {
     /// * `level` - Log severity level
     /// * `message` - Log message content
     fn log(&self, level: LogLevel, message: &str);
+
+    /// Get device information
+    ///
+    /// # Returns
+    /// * `DeviceInfo` - Device information including brand, model, and screen dimensions
+    fn device_info(&self) -> DeviceInfo;
 }
 
 /// Interface for controlling app lifecycle and navigation
@@ -218,6 +235,10 @@ impl<T: AppRuntime + ?Sized> AppRuntime for Arc<T> {
 
     fn log(&self, level: LogLevel, message: &str) {
         (**self).log(level, message)
+    }
+
+    fn device_info(&self) -> DeviceInfo {
+        (**self).device_info()
     }
 }
 
