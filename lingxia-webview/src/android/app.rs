@@ -1,10 +1,10 @@
 use crate::PlatformHost;
 use crate::android::{CLASS_MINIAPP, get_env};
-use jni::objects::{GlobalRef, JValue};
+use jni::objects::{GlobalRef, JObject, JValue};
 use jni::sys::jobject;
 use log::info;
 use miniapp::log::LogLevel;
-use miniapp::{AppRuntime, AssetFileEntry, MiniAppError};
+use miniapp::{AppRuntime, AssetFileEntry, DeviceInfo, MiniAppError};
 use ndk_sys;
 use std::ffi::CString;
 use std::io::{Read, Result as IoResult};
@@ -17,6 +17,7 @@ pub struct App {
     java_asset_manager: GlobalRef,
     data_dir: String,
     cache_dir: String,
+    device_info: DeviceInfo,
 }
 
 unsafe impl Send for App {}
@@ -219,32 +220,38 @@ impl App {
         java_asset_manager_obj: jobject,
         data_dir: String,
         cache_dir: String,
+        device_brand: String,
+        device_model: String,
+        screen_width: u32,
+        screen_height: u32,
     ) -> Result<Self, String> {
-        unsafe {
-            let native_am_ptr = ndk_sys::AAssetManager_fromJava(
-                jni_env.get_native_interface(),
-                java_asset_manager_obj,
-            );
-            if native_am_ptr.is_null() {
-                return Err("Failed to get native AAssetManager from Java object".to_string());
-            }
+        // Get the native asset manager pointer from the Java AssetManager
+        let asset_manager_ptr =
+            unsafe { ndk_sys::AAssetManager_fromJava(jni_env.get_raw(), java_asset_manager_obj) };
 
-            let java_asset_manager_jobject =
-                jni::objects::JObject::from_raw(java_asset_manager_obj);
-            let global_java_am_ref =
-                jni_env
-                    .new_global_ref(java_asset_manager_jobject)
-                    .map_err(|e| {
-                        format!("Failed to create global ref for Java AssetManager: {:?}", e)
-                    })?;
-
-            Ok(App {
-                asset_manager: native_am_ptr,
-                java_asset_manager: global_java_am_ref,
-                data_dir,
-                cache_dir,
-            })
+        if asset_manager_ptr.is_null() {
+            return Err("Failed to get native AssetManager".to_string());
         }
+
+        // Create a global reference to the Java AssetManager for later use
+        let java_asset_manager = jni_env
+            .new_global_ref(unsafe { JObject::from_raw(java_asset_manager_obj) })
+            .map_err(|e| format!("Failed to create global reference: {:?}", e))?;
+
+        let device_info = DeviceInfo {
+            brand: device_brand,
+            model: device_model,
+            screen_width,
+            screen_height,
+        };
+
+        Ok(App {
+            asset_manager: asset_manager_ptr,
+            java_asset_manager,
+            data_dir,
+            cache_dir,
+            device_info,
+        })
     }
 }
 
@@ -296,6 +303,10 @@ impl AppRuntime for App {
             LogLevel::Warn => log::warn!("{}", message),
             LogLevel::Error => log::error!("{}", message),
         }
+    }
+
+    fn device_info(&self) -> DeviceInfo {
+        self.device_info.clone()
     }
 }
 

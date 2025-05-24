@@ -58,13 +58,15 @@ cp -R "$LINGXIA_ROOT/examples/demo/"* "$ASSETS_DIR/"
 
 echo "Building Android library..."
 cd "$PROJECT_ROOT/android"
-./gradlew :lingxia:clean
+# ./gradlew :lingxia:clean
 ./gradlew :lingxia:assembleDebug
 
 echo "Building and installing Android app..."
 cd "$SCRIPT_DIR"
-./gradlew clean
+# ./gradlew clean
 ./gradlew assembleDebug
+
+adb devices
 adb install -r ./app/build/outputs/apk/debug/app-debug.apk
 
 echo "Starting logcat capture..."

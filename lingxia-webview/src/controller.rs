@@ -6,7 +6,8 @@ use std::sync::{Mutex, OnceLock, mpsc};
 use std::thread::{self, ThreadId};
 
 use miniapp::{
-    AppController, AppRuntime, AssetFileEntry, ControllerCmd, MiniAppError, log::LogLevel,
+    AppController, AppRuntime, AssetFileEntry, ControllerCmd, DeviceInfo, MiniAppError,
+    log::LogLevel,
 };
 
 use crate::{App, WebView};
@@ -59,6 +60,10 @@ impl AppRuntime for Controller {
 
     fn log(&self, level: LogLevel, message: &str) {
         self.app.log(level, message)
+    }
+
+    fn device_info(&self) -> DeviceInfo {
+        self.app.device_info()
     }
 }
 
