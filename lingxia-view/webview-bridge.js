@@ -194,7 +194,7 @@
 
     try {
       if (replyMessage.payload?.success === true) {
-        if (replyMessage.payload.hasOwnProperty('result')) {
+        if (replyMessage.payload.hasOwnProperty("result")) {
           callInfo.resolve(replyMessage.payload.result);
         } else {
           callInfo.resolve();
@@ -441,6 +441,38 @@
     );
   }
 
+  // Create lx proxy object for API interception
+  const lx = new Proxy(
+    {},
+    {
+      get: function (target, prop, receiver) {
+        // Return a function that will call the native layer
+        return function (...args) {
+          // Method parameters should be either empty or a single object
+          let payload = null;
+          if (
+            args.length === 1 &&
+            typeof args[0] === "object" &&
+            args[0] !== null
+          ) {
+            payload = args[0];
+          } else if (args.length > 1) {
+            warn(
+              `lx.${prop} called with multiple arguments, only the first object argument will be used`,
+            );
+            if (typeof args[0] === "object" && args[0] !== null) {
+              payload = args[0];
+            }
+          }
+
+          // Call the native layer using LingXiaBridge
+          return LingXiaBridge.call(prop, payload);
+        };
+      },
+    },
+  );
+
+  window.lx = lx;
   window.LingXiaBridge = LingXiaBridge;
   log("Lingxia Bridge initialized.");
 })();
