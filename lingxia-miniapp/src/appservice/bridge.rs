@@ -56,15 +56,16 @@ pub struct ErrorPayload {
 pub(crate) struct DispatchMessage {
     bridge: Bridge,
     message_type: DispatchMessageType,
+    // Internal msg_id for Call messages, used for replies
+    msg_id: Option<String>,
 }
 
 #[derive(Clone)]
-pub enum DispatchMessageType {
+pub(crate) enum DispatchMessageType {
     /// A function call from the view layer
     Call {
         name: String,
         payload: Option<String>,
-        msg_id: String,
     },
     /// An event notification from the view layer
     Event {
@@ -77,10 +78,15 @@ pub enum DispatchMessageType {
 
 impl DispatchMessage {
     /// Create a new DispatchMessage
-    pub(crate) fn new(bridge: Bridge, message_type: DispatchMessageType) -> Self {
+    pub(crate) fn new(
+        bridge: Bridge,
+        message_type: DispatchMessageType,
+        msg_id: Option<String>,
+    ) -> Self {
         Self {
             bridge,
             message_type,
+            msg_id,
         }
     }
 
@@ -92,15 +98,15 @@ impl DispatchMessage {
     ///  that need to return data immediately, or None for operations that don't return data.
     pub fn reply_success(&self, result: Option<&str>) -> Result<(), MiniAppError> {
         match &self.message_type {
-            DispatchMessageType::Call { msg_id, .. } => {
+            DispatchMessageType::Call { .. } => {
                 if let Some(result_json) = result {
                     let result_value = serde_json::from_str::<Value>(result_json).map_err(|e| {
                         MiniAppError::Bridge(format!("Failed to parse result JSON: {}", e))
                     })?;
                     self.bridge
-                        .reply_with_result_internal(Some(msg_id.clone()), result_value)
+                        .reply_with_result_internal(self.msg_id.clone(), result_value)
                 } else {
-                    self.bridge.reply_success_internal(Some(msg_id.clone()))
+                    self.bridge.reply_success_internal(self.msg_id.clone())
                 }
             }
             _ => Ok(()), // Events and callbacks don't need replies
@@ -111,9 +117,9 @@ impl DispatchMessage {
     /// Only works for Call messages, ignored for Event and Callback
     pub fn reply_failure(&self, error_message: &str) -> Result<(), MiniAppError> {
         match &self.message_type {
-            DispatchMessageType::Call { msg_id, .. } => self
+            DispatchMessageType::Call { .. } => self
                 .bridge
-                .reply_failure_internal(Some(msg_id.clone()), error_message),
+                .reply_failure_internal(self.msg_id.clone(), error_message),
             _ => Ok(()), // Events and callbacks don't need replies
         }
     }
@@ -129,11 +135,11 @@ pub struct IncomingMessage {
     #[serde(rename = "msgId")]
     msg_id: Option<String>,
     #[serde(rename = "type")]
-    pub type_: String,
-    pub name: Option<String>,
+    type_: String,
+    name: Option<String>,
     payload: Option<Value>,
     #[serde(rename = "callbackId")]
-    pub callback_id: Option<String>,
+    callback_id: Option<String>,
 }
 
 impl IncomingMessage {
@@ -192,11 +198,8 @@ impl IncomingMessage {
                 let payload = self.payload_as_opt_string()?;
                 Ok(Some(DispatchMessage::new(
                     bridge,
-                    DispatchMessageType::Call {
-                        name,
-                        payload,
-                        msg_id,
-                    },
+                    DispatchMessageType::Call { name, payload },
+                    Some(msg_id),
                 )))
             }
             "event" => {
@@ -205,6 +208,7 @@ impl IncomingMessage {
                 Ok(Some(DispatchMessage::new(
                     bridge,
                     DispatchMessageType::Event { name, payload },
+                    None,
                 )))
             }
             "callback" => {
@@ -212,6 +216,7 @@ impl IncomingMessage {
                 Ok(Some(DispatchMessage::new(
                     bridge,
                     DispatchMessageType::Callback { callback_id },
+                    None,
                 )))
             }
             "reply" => {
