@@ -643,11 +643,37 @@ impl AppUiDelegate for MiniApp {
     }
 
     fn on_page_show(&mut self, path: String) {
-        self.pages.navigate_to_page(path.clone());
+        // Navigate to the new page and get the previous page if there was a switch
+        let previous_page = self.pages.navigate_to_page(path.clone());
 
         if let Ok(manager) = self.svc_manager.lock() {
-            let _ =
-                manager.invoke_page_function(self.appid.clone(), path, "onShow".to_string(), None);
+            // Call onHide for the previous page if there was a page switch
+            if let Some(prev_path) = previous_page {
+                if let Err(e) = manager.invoke_page_function(
+                    self.appid.clone(),
+                    prev_path.clone(),
+                    "onHide".to_string(),
+                    None,
+                ) {
+                    self.error(
+                        "AppUiDelegate",
+                        format!("Failed to call onHide for page {}: {}", prev_path, e),
+                    );
+                }
+            }
+
+            // Call onShow for the new page
+            if let Err(e) = manager.invoke_page_function(
+                self.appid.clone(),
+                path.clone(),
+                "onShow".to_string(),
+                None,
+            ) {
+                self.error(
+                    "AppUiDelegate",
+                    format!("Failed to call onShow for page {}: {}", path, e),
+                );
+            }
         }
     }
 

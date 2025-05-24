@@ -172,7 +172,17 @@ impl Pages {
     }
 
     /// Navigates to a page by updating the current stack and marking the page as active
-    pub fn navigate_to_page(&mut self, path: String) {
+    /// Returns the previous page path if there was a page switch that should trigger onHide
+    pub fn navigate_to_page(&mut self, path: String) -> Option<String> {
+        // Get the current page before navigation
+        let previous_page = if self.stacks.is_empty() {
+            None
+        } else {
+            self.stacks[self.current_index]
+                .current_page()
+                .map(String::from)
+        };
+
         // Handle tab page navigation
         if self.has_tabbar() && self.tab_paths.contains(&path) {
             if let Some(index) = self.tab_paths.iter().position(|p| p == &path) {
@@ -193,6 +203,15 @@ impl Pages {
         if let Some(page) = self.pages.get(&path) {
             page.mark_active();
         }
+
+        // Return previous page if it's different from the new page
+        if let Some(prev_path) = previous_page {
+            if prev_path != path {
+                return Some(prev_path);
+            }
+        }
+
+        None
     }
 
     /// Pops the current page from the current stack if possible.

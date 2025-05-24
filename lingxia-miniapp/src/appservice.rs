@@ -538,12 +538,14 @@ async fn miniapp_service_handler(
         }
         ServiceMessage::TerminatePage { appid, path } => {
             if let Some(app_ctx) = current_miniapp.as_mut() {
-                // Remove page from page_svc map
-                if app_ctx.page_svc.remove(&path).is_some() {
+                // Then remove page from page_svc map
+                if let Some(page_svc) = app_ctx.page_svc.remove(&path) {
+                    let _ = page_svc.call_or_event(&app_ctx.ctx, "onUnload", None).await;
+
                     log(
                         LogLevel::Info,
                         &format!(
-                            "[Worker {}] Removed page '{}' from MiniApp '{}'",
+                            "[Worker {}] Removed page '{}' of MiniApp '{}'",
                             worker_id, path, appid
                         ),
                     );
