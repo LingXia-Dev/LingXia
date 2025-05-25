@@ -5,7 +5,7 @@ use android_logger::Config;
 use http;
 use http::header::{HeaderMap, HeaderName, HeaderValue};
 use http::{Method, Request, Response};
-use jni::objects::{JClass, JObject, JString};
+use jni::objects::{GlobalRef, JClass, JObject, JString};
 use jni::sys::jint;
 use jni::{JNIEnv, JavaVM};
 use log::{error, info};
@@ -16,8 +16,8 @@ use std::sync::{Arc, OnceLock, mpsc};
 
 pub static JAVA_VM: OnceLock<JavaVM> = OnceLock::new();
 
-/// Java class name for MiniApp
-pub(crate) const CLASS_MINIAPP: &str = "com/lingxia/miniapp/MiniApp";
+/// Global reference to MiniApp class for worker threads
+pub(crate) static MINIAPP_CLASS: OnceLock<GlobalRef> = OnceLock::new();
 
 #[unsafe(no_mangle)]
 pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> jint {
@@ -30,6 +30,16 @@ pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> j
     // Store JavaVM globally
     let _ = JAVA_VM.set(vm);
 
+    // Create global reference to MiniApp class for worker threads
+    if let Some(jvm) = JAVA_VM.get() {
+        if let Ok(mut env) = jvm.attach_current_thread() {
+            if let Ok(local_class) = env.find_class("com/lingxia/miniapp/MiniApp") {
+                if let Ok(global_class) = env.new_global_ref(local_class) {
+                    let _ = MINIAPP_CLASS.set(global_class);
+                }
+            }
+        }
+    }
     info!("Rust library loaded successfully");
     jni::sys::JNI_VERSION_1_6
 }

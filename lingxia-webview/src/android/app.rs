@@ -1,8 +1,7 @@
 use crate::PlatformHost;
-use crate::android::{CLASS_MINIAPP, get_env};
-use jni::objects::{GlobalRef, JObject, JValue};
+use crate::android::{MINIAPP_CLASS, get_env};
+use jni::objects::{GlobalRef, JClass, JObject, JValue};
 use jni::sys::jobject;
-use log::info;
 use miniapp::log::LogLevel;
 use miniapp::{AppRuntime, AssetFileEntry, DeviceInfo, MiniAppError};
 use ndk_sys;
@@ -312,12 +311,14 @@ impl AppRuntime for App {
 
 impl PlatformHost for App {
     fn open_miniapp(&self, appid: &str, path: &str) -> Result<(), MiniAppError> {
-        info!("Opening mini app with appId: {}, path: {}", appid, path);
-
         match || -> Result<(), Box<dyn std::error::Error>> {
             let mut env = get_env().unwrap();
 
-            let miniapp_class = env.find_class(CLASS_MINIAPP)?;
+            let miniapp_class: &JClass = MINIAPP_CLASS
+                .get()
+                .ok_or("Global MiniApp class reference not available")?
+                .as_obj()
+                .into();
             let appid_jstring = env.new_string(appid)?;
             let path_jstring = env.new_string(path)?;
 
@@ -344,7 +345,11 @@ impl PlatformHost for App {
         match || -> Result<(), Box<dyn std::error::Error>> {
             let mut env = get_env().unwrap();
 
-            let miniapp_class = env.find_class(CLASS_MINIAPP)?;
+            let miniapp_class: &JClass = MINIAPP_CLASS
+                .get()
+                .ok_or("Global MiniApp class reference not available")?
+                .as_obj()
+                .into();
             let appid_jstring = env.new_string(appid)?;
             let path_jstring = env.new_string(path)?;
 
