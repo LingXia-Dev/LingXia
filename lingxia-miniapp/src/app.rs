@@ -252,7 +252,7 @@ impl<T: AppRuntime + ?Sized> AppRuntime for Arc<T> {
 /// # Returns
 /// * `Ok(())` - If the command was sent successfully
 /// * `Err(MiniAppError)` - If the command failed to send or execute
-pub(crate) fn switch_page<T: AppController>(
+pub(crate) fn switch_page<T: AppController + ?Sized>(
     controller: &T,
     appid: &str,
     path: &str,
@@ -283,7 +283,7 @@ pub(crate) fn switch_page<T: AppController>(
 /// # Returns
 /// * `Ok(())` - If the command was sent successfully
 /// * `Err(MiniAppError)` - If the command failed to send or execute
-pub(crate) fn open_miniapp<T: AppController>(
+pub(crate) fn open_miniapp<T: AppController + ?Sized>(
     controller: &T,
     appid: &str,
     path: &str,

@@ -18,6 +18,8 @@ use bridge::DispatchMessageType;
 mod page;
 use page::PageSvc;
 
+mod lx;
+
 /// Message type for MiniApp service system
 #[derive(Clone)]
 enum ServiceMessage {
@@ -433,7 +435,9 @@ async fn miniapp_service_handler(
             // register Page, App and getApp function
             let _ = app::init(&ctx);
             let _ = page::init(&ctx);
+
             let _ = rong_modules::init(&ctx);
+            let _ = lx::init(&ctx);
 
             log(
                 LogLevel::Info,
