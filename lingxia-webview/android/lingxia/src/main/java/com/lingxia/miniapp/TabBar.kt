@@ -115,25 +115,25 @@ private val badgeDrawables = mutableMapOf<View, BadgeDrawable>()
 class TabBar(context: Context) : LinearLayout(context) {
     companion object {
         private const val TAG = "LingXia.TabBar"
-        private const val DEFAULT_TAB_BAR_SIZE_DP = 56
+        private const val DEFAULT_TAB_BAR_SIZE_DP = 48
         private const val VERTICAL_TAB_BAR_WIDTH_MULTIPLIER = 1.0f
         // Constants for vertical TabBar item styling
         private const val VERTICAL_ITEM_MAX_HEIGHT_DP = 70
         private const val VERTICAL_ITEM_MIN_HEIGHT_DP = 48
         private const val VERTICAL_ITEM_PADDING_HORIZONTAL_DP = 6
         private const val VERTICAL_ITEM_PADDING_VERTICAL_DP = 8
-        private const val VERTICAL_ITEM_ICON_SIZE_DP = 24
-        private const val HORIZONTAL_ITEM_ICON_SIZE_DP = 28
+        private const val VERTICAL_ITEM_ICON_SIZE_DP = 22
+        private const val HORIZONTAL_ITEM_ICON_SIZE_DP = 24
         private const val VERTICAL_ITEM_TEXT_SIZE_SP = 12f
-        private const val HORIZONTAL_ITEM_TEXT_SIZE_SP = 13f
-        private const val ITEM_ICON_TOP_MARGIN_DP = 2
-        private const val ITEM_TEXT_TOP_MARGIN_DP = 2
-        private const val ITEM_TEXT_BOTTOM_MARGIN_DP = 2
+        private const val HORIZONTAL_ITEM_TEXT_SIZE_SP = 12f
+        private const val ITEM_ICON_TOP_MARGIN_DP = 1
+        private const val ITEM_TEXT_TOP_MARGIN_DP = 1
+        private const val ITEM_TEXT_BOTTOM_MARGIN_DP = 1
         private const val ITEM_BORDER_THICKNESS_DP = 1f
 
         // Padding for individual TabBarItems when TabBar is horizontal
         private const val HORIZONTAL_ITEM_PADDING_SIDES_DP = 4
-        private const val HORIZONTAL_ITEM_PADDING_VERTICAL_DP = 3
+        private const val HORIZONTAL_ITEM_PADDING_VERTICAL_DP = 2
 
         private val VERTICAL_BORDER_COLOR = Color.parseColor("#E0E0E0")
         private val VERTICAL_TABBAR_BACKGROUND_COLOR = Color.parseColor("#F8F8F8")
@@ -595,7 +595,7 @@ class TabBar(context: Context) : LinearLayout(context) {
             setColor(if (selected)
                 config.selectedColor ?: TabBarConfig.DEFAULT_SELECTED_COLOR
                 else config.color ?: TabBarConfig.DEFAULT_UNSELECTED_COLOR)
-            val size = (28 * resources.displayMetrics.density).toInt()
+            val size = (24 * resources.displayMetrics.density).toInt()
             setSize(size, size)
         }
     }
