@@ -92,6 +92,7 @@ pub(crate) struct MiniAppServiceManager {
     worker_assignments: HashMap<String, usize>, // appid -> worker_id
     free_workers: Vec<usize>,                   // available worker ids
     log_sender: Sender<LogMessage>,
+    controller: Arc<dyn AppController>,
 }
 
 impl MiniAppServiceManager {
@@ -99,12 +100,14 @@ impl MiniAppServiceManager {
         sender: Sender<ServiceMessage>,
         worker_count: usize,
         log_sender: Sender<LogMessage>,
+        controller: Arc<dyn AppController>,
     ) -> Self {
         Self {
             sender,
             worker_assignments: HashMap::new(),
             free_workers: Vec::with_capacity(worker_count),
             log_sender,
+            controller,
         }
     }
 
@@ -243,6 +246,11 @@ impl MiniAppServiceManager {
         })?;
 
         Ok(())
+    }
+
+    // Get the controller reference
+    fn get_controller(&self) -> Arc<dyn AppController> {
+        self.controller.clone()
     }
 }
 
@@ -408,6 +416,12 @@ async fn miniapp_service_handler(
     match message {
         ServiceMessage::CreateMiniApp { appid, app_path } => {
             let ctx = runtime.context();
+
+            // Store the controller in a way that can be retrieved later
+            // Since we can't store trait objects directly, we'll store the manager reference
+            // and access the controller through it when needed
+            let manager_weak = Arc::downgrade(&manager);
+            ctx.set_user_data(manager_weak);
 
             let mut miniapp = MiniAppCtx {
                 ctx: ctx.clone(),
@@ -661,6 +675,7 @@ pub(crate) fn init<T: AppController + 'static>(
         service_sender.clone(),
         num,
         log_sender.clone(),
+        controller.clone(),
     )));
 
     // Clone the manager to return at the end
