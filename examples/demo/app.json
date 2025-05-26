@@ -1,0 +1,10 @@
+{
+  "productName": "LingXia Mini App Demo",
+  "version": "1.0.0",
+  "identifier": "app.lingxia.demo",
+  "apiServer": "https://api.lingxia.com",
+  "apiKey": "demo_api_key_12345",
+  "homeMiniAppID": "homeminiapp",
+  "homeMiniAppVersion": "1.0.0",
+  "maxAllowedMiniApps": 2
+}

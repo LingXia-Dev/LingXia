@@ -1,0 +1,35 @@
+{
+  "pages": [
+    "pages/home/index.html",
+    "pages/API/index.html",
+    "pages/todo/index.html"
+  ],
+  "debug": true,
+  "tabBar": {
+    "color": "#999999",
+    "selectedColor": "#1677ff",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "#eeeeee",
+    "position": "bottom",
+    "list": [
+      {
+        "text": "Home",
+        "pagePath": "pages/home/index.html",
+        "iconPath": "images/home.png",
+        "selectedIconPath": "images/home_selected.png",
+        "selected": true
+      },
+      {
+        "text": "API",
+        "pagePath": "pages/API/index.html",
+        "iconPath": "images/api.png"
+      },
+      {
+        "text": "ToDo",
+        "pagePath": "pages/todo/index.html",
+        "iconPath": "images/todo.png",
+        "selectedIconPath": "images/todo_selected.png"
+      }
+    ]
+  }
+}

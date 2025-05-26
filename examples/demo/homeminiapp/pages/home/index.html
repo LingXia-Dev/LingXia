@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+</head>
+<body>
+    <div class="container">
+        <h1>Welcome to LingXia</h1>
+
+        <div class="input-group">
+            <input type="text" id="name-input" placeholder="Enter a name" />
+            <button id="greet-button">Greet</button>
+        </div>
+
+        <div id="result" class="result hidden"></div>
+    </div>
+
+    <div class="footer" id="ip-footer">
+        Powered by LingXia.
+    </div>
+
+    <script>
+        const nameInput = document.getElementById('name-input');
+        const greetButton = document.getElementById('greet-button');
+        const resultElement = document.getElementById('result');
+        const ipFooter = document.getElementById('ip-footer');
+
+        // Send greeting to native layer
+        function sendGreeting() {
+            const name = nameInput.value.trim();
+            if (!name) {
+                nameInput.focus();
+                return;
+            }
+
+            greetButton.disabled = true;
+            LingXiaBridge.call('greet', { name })
+                .catch(err => {
+                    showResult(`Error: ${err.message || 'Failed to send greeting'}`);
+                    greetButton.disabled = false;
+                });
+        }
+
+        // Display result message
+        function showResult(message) {
+            resultElement.textContent = message;
+            resultElement.classList.remove('hidden');
+        }
+
+        // Process initial data
+        function handleInitialData(data) {
+            console.log('Initial data received:', data);
+
+            if (data.greeting) showResult(data.greeting);
+
+            if (data.imageUrl) {
+                document.body.style.backgroundImage = `url(${data.imageUrl})`;
+                document.body.style.backgroundSize = 'cover';
+                document.body.style.backgroundRepeat = 'no-repeat';
+                document.body.style.backgroundPosition = 'center';
+            }
+
+            if (data.ipAddr) {
+                ipFooter.textContent = `Powered by LingXia. Public IP is: ${data.ipAddr}`;
+            }
+        }
+
+        // Subscribe to data updates
+        LingXiaBridge.subscribe((data, callbackId, isInitialData) => {
+            if (isInitialData) {
+                handleInitialData(data);
+            } else {
+                // Handle data updates
+                if (data.greeting) {
+                    showResult(data.greeting);
+                    greetButton.disabled = false;
+                }
+
+                // Handle IP address update from setData
+                if (data.ipAddr) {
+                    console.log("Received IP via setData:", data.ipAddr);
+                    ipFooter.textContent = `Powered by LingXia. Public IP is: ${data.ipAddr}`;
+                }
+            }
+
+          if (callbackId){ console.log("send callback"); LingXiaBridge.resolveCallback(callbackId);}
+        });
+
+        // Event listeners
+        greetButton.addEventListener('click', sendGreeting);
+        nameInput.addEventListener('keypress', e => {
+            if (e.key === 'Enter') sendGreeting();
+        });
+    </script>
+</body>
+</html>
+

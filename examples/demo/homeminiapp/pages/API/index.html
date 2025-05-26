@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Mini Program API Capabilities</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="icon">⚏</div>
+            <p>The following demonstrates some of the key API capabilities available in the LingXia platform.</p>
+        </div>
+
+        <div class="category" id="navigation-category">
+            <div class="category-header" onclick="toggleNavigation()">
+                <div class="category-icon">🧭</div>
+                <span class="category-title">Navigation</span>
+                <div class="category-toggle" id="nav-toggle">›</div>
+            </div>
+            <div class="category-content" id="navigation-content" style="display: none;">
+                <div class="api-item" onclick="testNavigateToMiniProgram()">
+                    <span class="api-name">Open Mini Program</span>
+                    <div class="api-status" id="nav-status"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="category" id="device-category">
+            <div class="category-header" onclick="toggleDevice()">
+                <div class="category-icon">📱</div>
+                <span class="category-title">Device</span>
+                <div class="category-toggle" id="device-toggle">›</div>
+            </div>
+            <div class="category-content" id="device-content" style="display: none;">
+                <div class="api-item" onclick="testGetDeviceInfo()">
+                    <span class="api-name">Device Information</span>
+                    <div class="api-status" id="device-status"></div>
+                    <div class="device-info" id="device-info">
+                        <div class="device-info-item">
+                            <span class="device-info-label">Brand:</span>
+                            <span class="device-info-value" id="device-brand">-</span>
+                        </div>
+                        <div class="device-info-item">
+                            <span class="device-info-label">Model:</span>
+                            <span class="device-info-value" id="device-model">-</span>
+                        </div>
+                        <div class="device-info-item">
+                            <span class="device-info-label">System:</span>
+                            <span class="device-info-value" id="device-system">-</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function toggleNavigation() {
+            const content = document.getElementById('navigation-content');
+            const toggle = document.getElementById('nav-toggle');
+
+            if (content.style.display === 'none') {
+                content.style.display = 'block';
+                toggle.textContent = '⌄';
+                toggle.style.transform = 'rotate(0deg)';
+            } else {
+                content.style.display = 'none';
+                toggle.textContent = '›';
+                toggle.style.transform = 'rotate(0deg)';
+            }
+        }
+
+        function toggleDevice() {
+            const content = document.getElementById('device-content');
+            const toggle = document.getElementById('device-toggle');
+
+            if (content.style.display === 'none') {
+                content.style.display = 'block';
+                toggle.textContent = '⌄';
+                toggle.style.transform = 'rotate(0deg)';
+            } else {
+                content.style.display = 'none';
+                toggle.textContent = '›';
+                toggle.style.transform = 'rotate(0deg)';
+            }
+        }
+
+        function testNavigateToMiniProgram() {
+            const statusDiv = document.getElementById('nav-status');
+
+            statusDiv.textContent = 'Opening...';
+            statusDiv.className = 'api-status loading';
+
+            try {
+                LingXiaBridge.event('openMiniProgram', {
+                    appId: 'testminiapp',
+                    path: 'pages/home/index.html'
+                });
+
+                statusDiv.textContent = 'Event Sent';
+                statusDiv.className = 'api-status success';
+
+            } catch (error) {
+                statusDiv.textContent = 'Failed';
+                statusDiv.className = 'api-status error';
+
+                setTimeout(() => {
+                    statusDiv.textContent = '';
+                    statusDiv.className = 'api-status';
+                }, 2000);
+            }
+        }
+
+        async function testGetDeviceInfo() {
+            const statusDiv = document.getElementById('device-status');
+            const deviceInfoDiv = document.getElementById('device-info');
+
+            statusDiv.textContent = 'Getting...';
+            statusDiv.className = 'api-status loading';
+
+            // Hide device info while loading
+            deviceInfoDiv.style.display = 'none';
+
+            try {
+                const deviceInfo = await lx.getDeviceInfo();
+
+                statusDiv.textContent = 'Success';
+                statusDiv.className = 'api-status success';
+
+                // Update device info display
+                document.getElementById('device-brand').textContent = deviceInfo.brand || 'Unknown';
+                document.getElementById('device-model').textContent = deviceInfo.model || 'Unknown';
+                document.getElementById('device-system').textContent = deviceInfo.system || 'Unknown';
+
+                // Show device info
+                deviceInfoDiv.style.display = 'block';
+
+                // Log the device info to console
+                console.log('Device Info:', deviceInfo);
+
+                setTimeout(() => {
+                    statusDiv.textContent = '';
+                    statusDiv.className = 'api-status';
+                }, 3000); // Keep success status a bit longer
+            } catch (error) {
+                statusDiv.textContent = 'Failed';
+                statusDiv.className = 'api-status error';
+
+                // Hide device info on error
+                deviceInfoDiv.style.display = 'none';
+
+                console.error('Failed to get device info:', error);
+
+                setTimeout(() => {
+                    statusDiv.textContent = '';
+                    statusDiv.className = 'api-status';
+                }, 2000);
+            }
+        }
+    </script>
+</body>
+</html>
