@@ -1,4 +1,5 @@
 use super::bridge::{Bridge, BridgeTransport};
+use super::lx;
 use crate::error::MiniAppError;
 use crate::page::{Page, WebViewController};
 use rong::{
@@ -15,6 +16,7 @@ use tokio::sync::Mutex;
 pub(crate) struct PageSvc {
     functions: HashMap<String, JSFunc>,
     this: JSObject,
+    fast_api: Rc<lx::FastJSApi>,
 
     // use Option for late initialization
     page: Option<Page>,
@@ -38,7 +40,13 @@ impl BridgeTransport for PageSvc {
     }
 
     fn has_service(&self, service_name: &str) -> bool {
-        self.functions.contains_key(service_name)
+        // Check regular functions first
+        if self.functions.contains_key(service_name) {
+            return true;
+        }
+
+        // Check FastJSApi
+        self.fast_api.has_fast_api(service_name)
     }
 }
 
@@ -50,10 +58,15 @@ impl PageSvc {
         let page_class = Class::get::<PageSvc>(&ctx)?;
 
         let init_data = obj.get::<_, JSObject>("data").ok();
+        let fast_api = ctx
+            .get_user_data::<Rc<lx::FastJSApi>>()
+            .ok_or_else(|| RongJSError::Error("FastJSApi not found in context".to_string()))?
+            .clone();
 
         let mut page_svc = PageSvc {
             functions: HashMap::new(),
             this: obj.clone(),
+            fast_api,
             page: None,
             bridge: None,
             state: Rc::new(Mutex::new(PageSvcState {
@@ -156,6 +169,39 @@ impl PageSvc {
             dispatch_msg.message_type(),
             crate::appservice::bridge::DispatchMessageType::Call { .. }
         ) {
+            if self.fast_api.has_fast_api(func_name) {
+                // Handle fast API call
+                match self
+                    .fast_api
+                    .call_fast_api(ctx, func_name, args, self.this.clone())
+                    .await
+                {
+                    Ok(js_value) => {
+                        if js_value.is_null() || js_value.is_undefined() {
+                            let _ = dispatch_msg.reply_success(None);
+                        } else if let Some(js_object) = js_value.into_object() {
+                            match js_object.json_stringify() {
+                                Ok(json_string) => {
+                                    let _ = dispatch_msg.reply_success(Some(&json_string));
+                                }
+                                Err(_) => {
+                                    let _ =
+                                        dispatch_msg.reply_failure("Failed to stringify object");
+                                }
+                            }
+                        } else {
+                            let _ = dispatch_msg.reply_failure("Invalid result type");
+                        }
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        let _ = dispatch_msg.reply_failure(&e.to_string());
+                        return Ok(());
+                    }
+                }
+            }
+
+            // Not a fast API, reply success at once
             let _ = dispatch_msg.reply_success(None);
         }
 
