@@ -141,6 +141,9 @@ pub struct MiniApp {
 
     // debug mode
     debug: bool,
+
+    // opened or closed
+    opened: bool,
 }
 
 impl MiniApp {
@@ -163,6 +166,7 @@ impl MiniApp {
             config: MiniAppConfig::default(),
             svc_manager,
             debug: false,
+            opened: false,
         }
     }
 
@@ -317,6 +321,10 @@ impl MiniApp {
         self.debug || self.config.is_debug_enabled()
     }
 
+    pub fn is_opened(&self) -> bool {
+        self.opened
+    }
+
     /// Uninstalls the mini app by removing its version record and directories
     ///
     /// # Returns
@@ -454,7 +462,7 @@ pub trait AppUiDelegate {
     fn get_page_config(&self, path: &str) -> Result<String, MiniAppError>;
 
     /// Called when mini app is opened
-    fn on_miniapp_opened(&self);
+    fn on_miniapp_opened(&mut self);
 
     /// Called when mini app is closed
     fn on_miniapp_closed(&mut self);
@@ -555,9 +563,11 @@ impl AppUiDelegate for MiniApp {
         }
     }
 
-    fn on_miniapp_opened(&self) {
+    fn on_miniapp_opened(&mut self) {
         // Log the app opening event
         self.info("AppUiDelegate", format!("Mini app {} opened", self.appid));
+
+        self.opened = true;
 
         // Initialize app service for home app
         if let Ok(mut manager) = self.svc_manager.lock() {
@@ -577,6 +587,8 @@ impl AppUiDelegate for MiniApp {
     }
 
     fn on_miniapp_closed(&mut self) {
+        self.opened = false;
+
         // Update last active time
         self.last_active_time = Instant::now();
 
