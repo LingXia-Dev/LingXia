@@ -133,8 +133,47 @@ impl PageSvc {
         Ok(())
     }
 
-    // handler for bridge type: call or event
-    pub async fn call_or_event(
+    // handler for bridge type: call or event from view
+    pub async fn call_or_event_from_view(
+        &self,
+        ctx: &JSContext,
+        dispatch_msg: &crate::appservice::bridge::DispatchMessage,
+    ) -> JSResult<()> {
+        // Extract function name and args from dispatch message
+        let (func_name, args) = match dispatch_msg.message_type() {
+            crate::appservice::bridge::DispatchMessageType::Call { name, payload, .. }
+            | crate::appservice::bridge::DispatchMessageType::Event { name, payload } => {
+                (name.as_str(), payload.as_deref())
+            }
+            crate::appservice::bridge::DispatchMessageType::Callback { .. } => {
+                // This should never happen as callbacks are handled separately in appservice.rs
+                return Ok(());
+            }
+        };
+
+        // For Call messages, reply success first
+        if matches!(
+            dispatch_msg.message_type(),
+            crate::appservice::bridge::DispatchMessageType::Call { .. }
+        ) {
+            let _ = dispatch_msg.reply_success(None);
+        }
+
+        self.call_function_internal(ctx, func_name, args).await
+    }
+
+    // handler for bridge type: call or event from native
+    pub async fn call_or_event_from_native(
+        &self,
+        ctx: &JSContext,
+        func_name: &str,
+        args: Option<&str>,
+    ) -> JSResult<()> {
+        self.call_function_internal(ctx, func_name, args).await
+    }
+
+    // Internal method to actually call the function
+    async fn call_function_internal(
         &self,
         ctx: &JSContext,
         func_name: &str,

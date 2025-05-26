@@ -303,29 +303,23 @@ async fn handle_view_source(
         .as_bridge()
         .process_incoming_message(incoming, async move |dispatch_msg| {
             match dispatch_msg.message_type() {
-                DispatchMessageType::Call { name, payload, .. }
-                | DispatchMessageType::Event { name, payload } => {
+                DispatchMessageType::Call {
+                    name, payload: _, ..
+                }
+                | DispatchMessageType::Event { name, payload: _ } => {
                     // handle LXPortRdy event without spawn_local task
                     if name == "LXPortRdy" {
                         let _ = page_svc_clone.handle_lxport_ready().await;
                         return;
                     }
 
-                    // For Call messages, reply success first
-                    if matches!(
-                        dispatch_msg.message_type(),
-                        DispatchMessageType::Call { .. }
-                    ) {
-                        let _ = dispatch_msg.reply_success(None);
-                    }
-
                     // Extract values before moving into task
                     let name_owned = name.clone();
-                    let payload_owned = payload.clone();
+                    let dispatch_msg_clone = dispatch_msg.clone();
 
                     let task = async move {
                         if let Err(e) = page_svc_clone
-                            .call_or_event(&ctx, &name_owned, payload_owned.as_deref())
+                            .call_or_event_from_view(&ctx, &dispatch_msg_clone)
                             .await
                         {
                             let _ = log_sender_for_task.send(LogMessage {
@@ -378,7 +372,7 @@ async fn handle_native_source(
 
     let task = async move {
         if let Err(e) = page_svc_clone
-            .call_or_event(&ctx, &name, args.as_deref())
+            .call_or_event_from_native(&ctx, &name, args.as_deref())
             .await
         {
             let _ = log_sender_for_task.send(LogMessage {
@@ -566,7 +560,9 @@ async fn miniapp_service_handler(
             if let Some(app_ctx) = current_miniapp.as_mut() {
                 // Then remove page from page_svc map
                 if let Some(page_svc) = app_ctx.page_svc.remove(&path) {
-                    let _ = page_svc.call_or_event(&app_ctx.ctx, "onUnload", None).await;
+                    let _ = page_svc
+                        .call_or_event_from_native(&app_ctx.ctx, "onUnload", None)
+                        .await;
 
                     log(
                         LogLevel::Info,
