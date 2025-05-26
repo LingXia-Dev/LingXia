@@ -4,10 +4,11 @@ use std::sync::{Arc, mpsc};
 
 use crate::error::MiniAppError;
 use crate::log::LogLevel;
+use rong::IntoJSObj;
 use serde::{Deserialize, Serialize};
 
 /// Device information
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, IntoJSObj)]
 pub struct DeviceInfo {
     pub brand: String,
     pub model: String,
