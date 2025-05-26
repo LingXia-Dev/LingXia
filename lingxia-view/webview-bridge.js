@@ -465,8 +465,8 @@
             }
           }
 
-          // Call the native layer using LingXiaBridge
-          return LingXiaBridge.call(prop, payload);
+          // Call the native layer using LingXiaBridge with "lx." prefix to avoid name conflicts
+          return LingXiaBridge.call(`lx.${prop}`, payload);
         };
       },
     },

@@ -56,7 +56,7 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     lx.set("getDeviceInfo", device_info.clone())?;
 
     let mut api = FastJSApi::new();
-    api.register_fast_api("getDeviceInfo".to_string(), device_info);
+    api.register_fast_api("lx.getDeviceInfo".to_string(), device_info);
     let api_rc = Rc::new(api);
 
     ctx.set_user_data(api_rc);
