@@ -4,11 +4,14 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-http = "1.3.1"
-dashmap = "6.1.0"
-serde_json = "1.0.140"
-thiserror = "2.0.12"
-serde = { version = "1.0", features = ["derive"] }
-tokio = { version = "1.0", features = ["rt", "time", "macros"] }
-rong = { path = "../../starfire" }
-rong_modules = { path = "../../starfire/rong_modules" }
+# Use workspace dependencies
+http = { workspace = true }
+dashmap = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+tokio = { workspace = true }
+
+# Local dependencies
+rong = { workspace = true }
+rong_modules = { workspace = true }

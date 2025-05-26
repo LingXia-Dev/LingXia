@@ -292,24 +292,5 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     let page_js = Source::from_bytes(include_str!("scripts/Page.js"));
     ctx.eval::<()>(page_js)?;
 
-    use log;
-    ctx.global().set(
-        "print",
-        JSFunc::new(ctx, |msg: String| log::info!("{}", msg)),
-    )?;
-
-    ctx.eval::<()>(Source::from_bytes(
-        r#"
-                    const console={
-                        log: function(...args){
-                            print(args.join(' '))
-                        },
-                        error: function(...args){
-                            print(args.join(' '))
-                        }
-                    }
-                "#,
-    ))?;
-
     Ok(())
 }

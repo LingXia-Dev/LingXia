@@ -7,6 +7,7 @@ set -e
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$SCRIPT_DIR/../.."
 LINGXIA_ROOT="$PROJECT_ROOT/../" # LingXia project root directory
+WORKSPACE_ROOT="$LINGXIA_ROOT" # Workspace root is the same as LingXia root
 
 # Package name of the app
 APP_PACKAGE="com.lingxia.example.miniapp"
@@ -28,19 +29,19 @@ cleanup() {
 trap cleanup EXIT
 
 echo "Building Rust library..."
-cd "$PROJECT_ROOT"
+cd "$WORKSPACE_ROOT"
 env \
 CMAKE_CONFIGURE_ARGS="-DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake -DCMAKE_SYSTEM_PROCESSOR=aarch64"  \
 AR_aarch64_linux_android="$ANDROID_NDK/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-ar" \
 CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$ANDROID_NDK/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android33-clang" \
 CC_aarch64_linux_android="$ANDROID_NDK/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android33-clang" \
 CXX_aarch64_linux_android="$ANDROID_NDK/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android33-clang++" \
-cargo build --target aarch64-linux-android --release
+cargo build --target aarch64-linux-android --release -p lingxia
 
 echo "Copying Rust library to jniLibs..."
 JNILIBS_DIR="$PROJECT_ROOT/android/lingxia/src/main/jniLibs/arm64-v8a"
 mkdir -p "$JNILIBS_DIR"
-cp "$PROJECT_ROOT/target/aarch64-linux-android/release/liblingxia.so" "$JNILIBS_DIR/"
+cp "$WORKSPACE_ROOT/target/aarch64-linux-android/release/liblingxia.so" "$JNILIBS_DIR/"
 
 # Create assets directory if it doesn't exist
 mkdir -p "$ASSETS_DIR"
