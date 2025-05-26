@@ -5,7 +5,7 @@ use crate::miniapp::MiniApp;
 
 impl MiniApp {
     /// Handler for lx:// scheme requests to access app assets
-    pub(crate) fn lingxia_handler(&mut self, req: Request<Vec<u8>>) -> Option<Response<Vec<u8>>> {
+    pub(crate) fn lingxia_handler(&self, req: Request<Vec<u8>>) -> Option<Response<Vec<u8>>> {
         let uri = req.uri();
 
         // Get the path part after lx://
@@ -39,11 +39,12 @@ impl MiniApp {
 
                 // If this is an HTML file, inject script and CSS
                 let response_data = if is_html {
-                    let is_script_injected = if let Some(page) = self.pages.get_page(path) {
-                        page.is_script_injected()
-                    } else {
-                        false
-                    };
+                    let is_script_injected =
+                        if let Some(page) = self.state.lock().unwrap().pages.get_page(path) {
+                            page.is_script_injected()
+                        } else {
+                            false
+                        };
 
                     // Inject both bridge script and CSS only if not already injected
                     let html_data = if is_script_injected {
@@ -78,7 +79,7 @@ impl MiniApp {
                             }
                         }
 
-                        if let Some(page) = self.pages.get_page(path) {
+                        if let Some(page) = self.state.lock().unwrap().pages.get_page(path) {
                             page.mark_script_injected();
                         }
 
@@ -134,7 +135,14 @@ impl MiniApp {
         // Check if the domain is allowed
         if let Some(host) = uri.host() {
             // First check domain whitelist
-            if !self.network_security.is_domain_allowed(host) && !self.home_miniapp {
+            if !self
+                .state
+                .lock()
+                .unwrap()
+                .network_security
+                .is_domain_allowed(host)
+                && !self.home_miniapp
+            {
                 return Some(
                     Response::builder()
                         .status(StatusCode::FORBIDDEN)

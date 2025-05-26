@@ -32,7 +32,7 @@ impl MiniApp {
     /// * `true` - If the app needs to be updated
     /// * `false` - If the app already has an equal or newer version
     pub(crate) fn should_update(&self, required_version: &str) -> bool {
-        let installed_version = self.get_version();
+        let installed_version = self.read_version();
 
         // Parse both versions
         if let (Ok(installed_version), Ok(required_version)) = (

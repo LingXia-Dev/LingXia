@@ -165,9 +165,8 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnWebViewCreated(
     }
 
     // Notify miniapp about page creation with the WebView controller
-    if let Ok(mut miniapp) = miniapp::get_or_init_miniapp(appid).write() {
-        miniapp.on_page_created(path);
-    }
+    let miniapp = miniapp::get_or_init_miniapp(appid);
+    miniapp.on_page_created(path);
     0
 }
 
@@ -183,12 +182,9 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeHandlePostMessage(
     let path: String = env.get_string(&path).unwrap().into();
     let message: String = env.get_string(&message).unwrap().into();
 
-    if let Ok(miniapp) = miniapp::get_or_init_miniapp(appid.clone()).read() {
-        miniapp.handle_post_message(path, message);
-        0
-    } else {
-        -1
-    }
+    let miniapp = miniapp::get_or_init_miniapp(appid.clone());
+    miniapp.handle_post_message(path, message);
+    0
 }
 
 #[unsafe(no_mangle)]
@@ -201,9 +197,8 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnPageStarted(
     let appid: String = env.get_string(&appid).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
 
-    if let Ok(miniapp) = miniapp::get_or_init_miniapp(appid).read() {
-        miniapp.on_page_started(path);
-    }
+    let miniapp = miniapp::get_or_init_miniapp(appid);
+    miniapp.on_page_started(path);
     0
 }
 
@@ -217,9 +212,8 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnPageFinished(
     let appid: String = env.get_string(&appid).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
 
-    if let Ok(miniapp) = miniapp::get_or_init_miniapp(appid).read() {
-        miniapp.on_page_finished(path);
-    }
+    let miniapp = miniapp::get_or_init_miniapp(appid);
+    miniapp.on_page_finished(path);
     0
 }
 
@@ -233,9 +227,8 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnPageShow(
     let appid: String = env.get_string(&appid).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
 
-    if let Ok(mut miniapp) = miniapp::get_or_init_miniapp(appid).write() {
-        miniapp.on_page_show(path);
-    }
+    let miniapp = miniapp::get_or_init_miniapp(appid);
+    miniapp.on_page_show(path);
 }
 
 #[unsafe(no_mangle)]
@@ -249,16 +242,12 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeShouldOverrideUrlL
     let url: String = env.get_string(&url).unwrap().into();
 
     // Get the miniapp instance and check if we should override the URL
-    miniapp::get_or_init_miniapp(appid.clone())
-        .read()
-        .map(|miniapp| {
-            if miniapp.should_override_url_loading(url) {
-                1
-            } else {
-                0
-            }
-        })
-        .unwrap_or(0)
+    let miniapp = miniapp::get_or_init_miniapp(appid.clone());
+    if miniapp.should_override_url_loading(url) {
+        1
+    } else {
+        0
+    }
 }
 
 #[unsafe(no_mangle)]
@@ -344,15 +333,11 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeHandleRequest<'a>(
     };
 
     // Handle request and convert response
-    match miniapp::get_or_init_miniapp(appid.clone()).write() {
-        Ok(mut miniapp) => {
-            if let Some(response) = miniapp.handle_request(request) {
-                create_java_response(&mut env, response)
-            } else {
-                JObject::null()
-            }
-        }
-        Err(_) => JObject::null(),
+    let miniapp = miniapp::get_or_init_miniapp(appid.clone());
+    if let Some(response) = miniapp.handle_request(request) {
+        create_java_response(&mut env, response)
+    } else {
+        JObject::null()
     }
 }
 
@@ -453,9 +438,8 @@ pub extern "system" fn Java_com_lingxia_miniapp_MiniAppActivity_nativeOnMiniAppC
 ) -> jint {
     let appid: String = env.get_string(&appid).unwrap().into();
 
-    if let Ok(mut miniapp) = miniapp::get_or_init_miniapp(appid.clone()).write() {
-        miniapp.on_miniapp_closed();
-    };
+    let miniapp = miniapp::get_or_init_miniapp(appid.clone());
+    miniapp.on_miniapp_closed();
     0
 }
 
@@ -472,21 +456,18 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnConsoleMessage(
     let path: String = env.get_string(&path).unwrap().into();
     let message: String = env.get_string(&message).unwrap().into();
 
-    if let Ok(miniapp) = miniapp::get_or_init_miniapp(appid.clone()).read() {
-        let log_level = match level {
-            2 => LogLevel::Verbose, // VERBOSE
-            3 => LogLevel::Debug,   // DEBUG
-            4 => LogLevel::Info,    // INFO
-            5 => LogLevel::Warn,    // WARN
-            6 => LogLevel::Error,   // ERROR
-            _ => LogLevel::Info,    // Default to INFO
-        };
+    let miniapp = miniapp::get_or_init_miniapp(appid.clone());
+    let log_level = match level {
+        2 => LogLevel::Verbose, // VERBOSE
+        3 => LogLevel::Debug,   // DEBUG
+        4 => LogLevel::Info,    // INFO
+        5 => LogLevel::Warn,    // WARN
+        6 => LogLevel::Error,   // ERROR
+        _ => LogLevel::Info,    // Default to INFO
+    };
 
-        miniapp.log(&path, log_level, &message);
-        1
-    } else {
-        0
-    }
+    miniapp.log(&path, log_level, &message);
+    1
 }
 
 #[unsafe(no_mangle)]
@@ -500,18 +481,14 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeGetPageConfig<'a>(
     let path: String = env.get_string(&path).unwrap().into();
 
     // Get the miniapp instance and get page config
-    match miniapp::get_or_init_miniapp(appid).read() {
-        Ok(miniapp) => {
-            if let Ok(json) = miniapp.get_page_config(&path) {
-                // Create Java string from JSON
-                if let Ok(java_string) = env.new_string(&json) {
-                    return java_string.into();
-                }
-            }
-            JObject::null()
+    let miniapp = miniapp::get_or_init_miniapp(appid);
+    if let Ok(json) = miniapp.get_page_config(&path) {
+        // Create Java string from JSON
+        if let Ok(java_string) = env.new_string(&json) {
+            return java_string.into();
         }
-        Err(_) => JObject::null(),
     }
+    JObject::null()
 }
 
 #[unsafe(no_mangle)]
@@ -521,11 +498,8 @@ pub extern "C" fn Java_com_lingxia_miniapp_MiniAppActivity_nativeOnBackPressed(
     appid: JString,
 ) -> jint {
     let appid: String = env.get_string(&appid).unwrap().into();
-    if let Ok(mut miniapp) = miniapp::get_or_init_miniapp(appid).write() {
-        if miniapp.on_back_pressed() { 1 } else { 0 }
-    } else {
-        0
-    }
+    let miniapp = miniapp::get_or_init_miniapp(appid);
+    if miniapp.on_back_pressed() { 1 } else { 0 }
 }
 
 // Function to notify the Rust layer that a mini app has been opened
@@ -537,9 +511,8 @@ pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeOnMiniAppOpened(
 ) -> jint {
     let appid: String = env.get_string(&appid).unwrap().into();
 
-    if let Ok(mut miniapp) = miniapp::get_or_init_miniapp(appid.clone()).write() {
-        miniapp.on_miniapp_opened();
-    };
+    let miniapp = miniapp::get_or_init_miniapp(appid.clone());
+    miniapp.on_miniapp_opened();
     0
 }
 
@@ -552,11 +525,10 @@ pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeGetTabBarConfig(
 ) -> jni::sys::jobject {
     let appid: String = env.get_string(&appid).unwrap().into();
 
-    if let Ok(miniapp) = miniapp::get_or_init_miniapp(appid).read() {
-        if let Ok(config) = miniapp.get_tab_bar_config() {
-            if let Ok(result) = env.new_string(&config) {
-                return result.into_raw();
-            }
+    let miniapp = miniapp::get_or_init_miniapp(appid);
+    if let Ok(config) = miniapp.get_tab_bar_config() {
+        if let Ok(result) = env.new_string(&config) {
+            return result.into_raw();
         }
     }
 

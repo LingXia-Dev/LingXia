@@ -25,8 +25,7 @@ mod lx;
 enum ServiceMessage {
     // Create a new miniapp service
     CreateMiniApp {
-        appid: String,
-        app_path: PathBuf,
+        miniapp: Arc<crate::miniapp::MiniApp>,
     },
     // Delete an miniapp service
     TerminateMiniApp {
@@ -94,7 +93,6 @@ pub(crate) struct MiniAppServiceManager {
     worker_assignments: HashMap<String, usize>, // appid -> worker_id
     free_workers: Vec<usize>,                   // available worker ids
     log_sender: Sender<LogMessage>,
-    controller: Arc<dyn AppController>,
 }
 
 impl MiniAppServiceManager {
@@ -102,14 +100,12 @@ impl MiniAppServiceManager {
         sender: Sender<ServiceMessage>,
         worker_count: usize,
         log_sender: Sender<LogMessage>,
-        controller: Arc<dyn AppController>,
     ) -> Self {
         Self {
             sender,
             worker_assignments: HashMap::new(),
             free_workers: Vec::with_capacity(worker_count),
             log_sender,
-            controller,
         }
     }
 
@@ -119,9 +115,14 @@ impl MiniAppServiceManager {
     }
 
     /// Create a new mini app service
-    pub fn create_app_svc(&mut self, appid: String, app_path: PathBuf) -> Result<(), MiniAppError> {
+    pub fn create_app_svc(
+        &mut self,
+        miniapp: Arc<crate::miniapp::MiniApp>,
+    ) -> Result<(), MiniAppError> {
+        let appid = &miniapp.appid;
+
         // Check if app already exists
-        if self.worker_assignments.contains_key(&appid) {
+        if self.worker_assignments.contains_key(appid) {
             return Ok(());
         }
 
@@ -138,9 +139,9 @@ impl MiniAppServiceManager {
         // Update assignment
         self.worker_assignments.insert(appid.clone(), worker_id);
 
-        // Send message
+        // Send message with MiniApp reference
         self.sender
-            .send(ServiceMessage::CreateMiniApp { appid, app_path })?;
+            .send(ServiceMessage::CreateMiniApp { miniapp })?;
 
         Ok(())
     }
@@ -248,11 +249,6 @@ impl MiniAppServiceManager {
         })?;
 
         Ok(())
-    }
-
-    // Get the controller reference
-    fn get_controller(&self) -> Arc<dyn AppController> {
-        self.controller.clone()
     }
 }
 
@@ -416,18 +412,16 @@ async fn miniapp_service_handler(
     };
 
     match message {
-        ServiceMessage::CreateMiniApp { appid, app_path } => {
+        ServiceMessage::CreateMiniApp { miniapp } => {
             let ctx = runtime.context();
 
-            // Store the controller in a way that can be retrieved later
-            // Since we can't store trait objects directly, we'll store the manager reference
-            // and access the controller through it when needed
-            let manager_weak = Arc::downgrade(&manager);
-            ctx.set_user_data(manager_weak);
+            // Store the MiniApp reference directly in JSContext user data
+            // This allows navigator and other modules to access MiniApp data directly
+            ctx.set_user_data(miniapp.clone());
 
-            let mut miniapp = MiniAppCtx {
+            let mut miniapp_ctx = MiniAppCtx {
                 ctx: ctx.clone(),
-                app_path: app_path.clone(),
+                app_path: miniapp.app_dir.clone(),
                 svc: None,
                 page_svc: HashMap::new(),
             };
@@ -443,21 +437,21 @@ async fn miniapp_service_handler(
                 LogLevel::Info,
                 &format!(
                     "[Worker {}] Created JS context for MiniApp '{}'",
-                    worker_id, appid
+                    worker_id, miniapp.appid
                 ),
             );
 
-            let js = app_path.join("app.js");
+            let js = miniapp.app_dir.join("app.js");
             if js.exists() {
                 if let Ok(js) = Source::from_path(&ctx, js).await {
                     match ctx.eval::<MiniAppSvc>(js) {
                         Ok(svc) => {
-                            miniapp.svc = Some(svc);
+                            miniapp_ctx.svc = Some(svc);
                             log(
                                 LogLevel::Info,
                                 &format!(
                                     "[Worker {}] Successfully loaded app JS for {}",
-                                    worker_id, appid
+                                    worker_id, miniapp.appid
                                 ),
                             );
                         }
@@ -466,7 +460,7 @@ async fn miniapp_service_handler(
                                 LogLevel::Error,
                                 &format!(
                                     "[Worker {}] eval JS for {} failed: {}",
-                                    worker_id, appid, e
+                                    worker_id, miniapp.appid, e
                                 ),
                             );
                         }
@@ -478,18 +472,18 @@ async fn miniapp_service_handler(
                     &format!(
                         "[Worker {}] MiniApp '{}' has no JS file: '{}'",
                         worker_id,
-                        appid,
+                        miniapp.appid,
                         js.display()
                     ),
                 );
             }
 
-            *current_miniapp = Some(miniapp);
+            *current_miniapp = Some(miniapp_ctx);
 
             // Only lock once to update app info
             {
                 let mut manager_guard = manager.lock().unwrap();
-                manager_guard.add_miniapp(&appid, worker_id);
+                manager_guard.add_miniapp(&miniapp.appid, worker_id);
             }
         }
         ServiceMessage::TerminateMiniApp { appid } => {
@@ -679,7 +673,6 @@ pub(crate) fn init<T: AppController + 'static>(
         service_sender.clone(),
         num,
         log_sender.clone(),
-        controller.clone(),
     )));
 
     // Clone the manager to return at the end
@@ -782,8 +775,22 @@ pub(crate) fn init<T: AppController + 'static>(
                 match recv.lock().unwrap().recv() {
                     Ok(message) => {
                         match &message {
-                            ServiceMessage::CreateMiniApp { appid, .. }
-                            | ServiceMessage::TerminateMiniApp { appid, .. }
+                            ServiceMessage::CreateMiniApp { miniapp } => {
+                                let appid = &miniapp.appid;
+                                // Find worker for appid and send message
+                                if let Some(worker_id) =
+                                    manager_clone.lock().unwrap().get_worker_id(appid)
+                                {
+                                    if let Some(worker) = workers_map.get(&worker_id) {
+                                        let _ = worker.post_message(WorkerMessage::Custom(
+                                            Box::new(WorkerService {
+                                                svc: message.clone(),
+                                            }),
+                                        ));
+                                    }
+                                }
+                            }
+                            ServiceMessage::TerminateMiniApp { appid }
                             | ServiceMessage::CallAppSvc { appid, .. }
                             | ServiceMessage::CallPageSvc { appid, .. }
                             | ServiceMessage::TerminatePage { appid, .. }

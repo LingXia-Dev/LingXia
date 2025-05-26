@@ -1,11 +1,11 @@
+use dashmap::DashMap;
 use http::{Response, StatusCode};
-use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::fs;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::{Mutex, OnceLock, RwLock};
+use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
 
 use crate::app::{AppConfig, AppController, switch_page};
@@ -35,7 +35,7 @@ const DEFAULT_VERSION: &str = "0.0.1";
 /// Manages a collection of mini applications
 pub struct MiniApps {
     // Collection of mini apps, keyed by app ID
-    miniapps: HashMap<String, Arc<RwLock<MiniApp>>>,
+    miniapps: DashMap<String, Arc<MiniApp>>,
     // Reference to the app controller
     controller: Arc<dyn AppController>,
     // Maximum number of apps allowed in memory
@@ -53,15 +53,40 @@ impl MiniApps {
         let controller = Arc::new(controller);
 
         Self {
-            miniapps: HashMap::new(),
+            miniapps: DashMap::new(),
             controller,
             max_apps,
             svc_manager,
         }
     }
 
+    /// Get or initialize a specific MiniApp instance by appid
+    pub fn get_or_init_miniapp(&self, appid: String) -> Arc<MiniApp> {
+        // If the miniapp already exists, return it directly
+        if let Some(app_arc) = self.miniapps.get(&appid) {
+            return app_arc.clone();
+        }
+
+        // Check if we've reached the maximum number of apps
+        if self.miniapps.len() >= self.max_apps {
+            // Find and remove the least active app to make room
+            self.destroy_least_active_miniapp();
+        }
+
+        // Create new MiniApp
+        let new_miniapp = Arc::new(MiniApp::new(
+            appid.clone(),
+            self.controller.clone(),
+            self.svc_manager.clone(),
+        ));
+
+        // Insert into collection and return
+        self.miniapps.insert(appid, new_miniapp.clone());
+        new_miniapp
+    }
+
     /// Destroys the least recently active mini app to free up memory
-    fn destroy_least_active_miniapp(&mut self) {
+    fn destroy_least_active_miniapp(&self) {
         if self.miniapps.is_empty() {
             return;
         }
@@ -70,13 +95,14 @@ impl MiniApps {
         let least_active = self
             .miniapps
             .iter()
-            .filter_map(|(appid, app_arc)| {
-                let app = app_arc.read().unwrap();
+            .filter_map(|entry| {
+                let (appid, app_arc) = entry.pair();
+                let state = app_arc.state.lock().unwrap();
                 // Skip home app from destruction
-                if app.home_miniapp {
+                if app_arc.home_miniapp {
                     None
                 } else {
-                    Some((appid.clone(), app.last_active_time))
+                    Some((appid.clone(), state.last_active_time))
                 }
             })
             .min_by(|(_, time1), (_, time2)| time1.cmp(time2));
@@ -89,8 +115,8 @@ impl MiniApps {
             );
 
             // Clean up app service before removing the app
-            if let Ok(mut manager) = self.svc_manager.lock() {
-                if let Err(e) = manager.terminate_app_svc(appid.clone()) {
+            if let Ok(mut svc_manager) = self.svc_manager.lock() {
+                if let Err(e) = svc_manager.terminate_app_svc(appid.clone()) {
                     self.controller.log(
                         LogLevel::Error,
                         &format!("Failed to terminate app service for {}: {}", appid, e),
@@ -101,49 +127,69 @@ impl MiniApps {
             self.miniapps.remove(&appid);
         }
     }
+
+    /// Uninstall a mini app by removing its files and version record
+    pub fn uninstall_miniapp(&self, appid: &str) -> Result<(), MiniAppError> {
+        // Log operation
+        self.controller
+            .log(LogLevel::Info, &format!("Uninstalling mini app: {}", appid));
+
+        // Get or create the miniapp instance
+        let app_arc = self.get_or_init_miniapp(appid.to_string());
+
+        // Call the uninstall method on the MiniApp instance
+        let result = app_arc.uninstall();
+
+        // If successful, remove the app from the collection
+        if result.is_ok() {
+            self.miniapps.remove(appid);
+        }
+
+        result
+    }
+}
+
+/// Mutable state of a MiniApp that requires synchronization
+pub(crate) struct MiniAppState {
+    /// Collection of pages in this app
+    pages: Pages,
+    /// Time when this app was last active
+    last_active_time: Instant,
+    /// Debug mode override (can be enabled at runtime)
+    debug: bool,
+    /// Whether the app is currently opened or closed
+    opened: bool,
+    /// Network security configuration
+    network_security: NetworkSecurity,
+}
+
+impl MiniAppState {
+    fn new() -> Self {
+        Self {
+            pages: Pages::new(),
+            last_active_time: Instant::now(),
+            debug: false,
+            opened: false,
+            network_security: NetworkSecurity::new(),
+        }
+    }
 }
 
 /// Represents a single mini application
 pub struct MiniApp {
-    pub(crate) appid: String,
-
-    // Collection of pages in this app
-    pages: Pages,
-
-    // Time when this app was last active
-    last_active_time: Instant,
-
-    // Reference to the app controller
-    pub(crate) controller: Arc<dyn AppController>,
-
-    // Directory for miniapp files (HTML, JS, CSS, etc.)
-    app_dir: PathBuf,
-
-    // Directory for miniapp-specific storage (database, etc.)
-    storage_dir: PathBuf,
-
-    // Directory for miniapp-specific cache
-    cache_dir: PathBuf,
-
-    // whether it's home mini app
-    home_miniapp: bool,
-
-    // Current version of the mini app
-    version: String,
-
+    // Immutable data - initialized once and never changed
+    pub appid: String,
+    pub controller: Arc<dyn AppController>,
+    pub app_dir: PathBuf,
+    pub storage_dir: PathBuf,
+    pub cache_dir: PathBuf,
+    pub home_miniapp: bool,
+    pub version: String,
     config: MiniAppConfig,
-
-    // Network security configuration
-    network_security: NetworkSecurity,
-
-    // Reference to the app service manager
     svc_manager: Arc<Mutex<MiniAppServiceManager>>,
 
-    // debug mode
-    debug: bool,
-
-    // opened or closed
-    opened: bool,
+    // Mutable state - protected by mutex for fine-grained locking
+    pub(crate) state: Mutex<MiniAppState>,
 }
 
 impl MiniApp {
@@ -154,19 +200,15 @@ impl MiniApp {
     ) -> Self {
         Self {
             appid,
-            pages: Pages::new(),
-            last_active_time: Instant::now(),
             controller,
             app_dir: PathBuf::new(),
             storage_dir: PathBuf::new(),
             cache_dir: PathBuf::new(),
             home_miniapp: false,
             version: String::new(),
-            network_security: NetworkSecurity::new(),
             config: MiniAppConfig::default(),
             svc_manager,
-            debug: false,
-            opened: false,
+            state: Mutex::new(MiniAppState::new()),
         }
     }
 
@@ -192,7 +234,7 @@ impl MiniApp {
     ) -> Self {
         let mut app = Self::_new(appid, controller, svc_manager);
 
-        // it's home miniapp
+        // Mark as home miniapp
         app.home_miniapp = true;
 
         if let Err(e) = app.setup() {
@@ -205,7 +247,7 @@ impl MiniApp {
     // Setup will initialize paths and load config
     fn setup(&mut self) -> Result<(), MiniAppError> {
         // Get the app's version
-        self.version = self.get_version();
+        self.version = self.read_version();
 
         // Calculate the directory name based on appid, user and whether this is a home app
         let dir_name = if self.home_miniapp {
@@ -264,16 +306,20 @@ impl MiniApp {
             .map(|app_json| {
                 self.config = MiniAppConfig::from_value(app_json)
                     .map_err(|e| MiniAppError::InvalidJsonFile(format!("app.json: {}", e)))?;
-                self.pages.set_tabbar_items(self.config.get_tab_pages());
+
+                // Set tabbar items in the state
+                let mut state = self.state.lock().unwrap();
+                state.pages.set_tabbar_items(self.config.get_tab_pages());
                 Ok(())
             })
             .inspect_err(|_| {
-                self.debug = true;
+                let mut state = self.state.lock().unwrap();
+                state.debug = true;
             })?
     }
 
     /// Get the version of this app from storage
-    fn get_version(&self) -> String {
+    fn read_version(&self) -> String {
         let version_path = self
             .controller
             .app_data_dir()
@@ -318,11 +364,11 @@ impl MiniApp {
     }
 
     pub fn is_debug_enabled(&self) -> bool {
-        self.debug || self.config.is_debug_enabled()
+        self.state.lock().unwrap().debug || self.config.is_debug_enabled()
     }
 
     pub fn is_opened(&self) -> bool {
-        self.opened
+        self.state.lock().unwrap().opened
     }
 
     /// Uninstalls the mini app by removing its version record and directories
@@ -462,13 +508,13 @@ pub trait AppUiDelegate {
     fn get_page_config(&self, path: &str) -> Result<String, MiniAppError>;
 
     /// Called when mini app is opened
-    fn on_miniapp_opened(&mut self);
+    fn on_miniapp_opened(&self);
 
     /// Called when mini app is closed
-    fn on_miniapp_closed(&mut self);
+    fn on_miniapp_closed(&self);
 
     /// Called when a page is created
-    fn on_page_created(&mut self, path: String);
+    fn on_page_created(&self, path: String);
 
     /// Called when the page starts loading
     fn on_page_started(&self, path: String);
@@ -477,11 +523,11 @@ pub trait AppUiDelegate {
     fn on_page_finished(&self, path: String);
 
     /// Called when the page showed in the view
-    fn on_page_show(&mut self, path: String);
+    fn on_page_show(&self, path: String);
 
     /// Handle back button press
     /// Return true to indicate the back press had been handled
-    fn on_back_pressed(&mut self) -> bool;
+    fn on_back_pressed(&self) -> bool;
 
     /// Determines whether to override URL loading in the page.
     ///
@@ -497,7 +543,7 @@ pub trait AppUiDelegate {
     fn handle_post_message(&self, path: String, msg: String);
 
     /// Handles an HTTP request from the page
-    fn handle_request(&mut self, req: http::Request<Vec<u8>>) -> Option<http::Response<Vec<u8>>>;
+    fn handle_request(&self, req: http::Request<Vec<u8>>) -> Option<http::Response<Vec<u8>>>;
 
     /// Receive log from WebView
     fn log(&self, path: &str, level: LogLevel, message: &str);
@@ -563,47 +609,57 @@ impl AppUiDelegate for MiniApp {
         }
     }
 
-    fn on_miniapp_opened(&mut self) {
+    fn on_miniapp_opened(&self) {
         // Log the app opening event
         self.info("AppUiDelegate", format!("Mini app {} opened", self.appid));
 
-        self.opened = true;
+        self.state.lock().unwrap().opened = true;
 
-        // Initialize app service for home app
-        if let Ok(mut manager) = self.svc_manager.lock() {
-            if let Err(e) = manager.create_app_svc(self.appid.clone(), self.app_dir.clone()) {
-                self.error(
-                    "AppUiDelegate",
-                    format!("Failed to triger app service: {}", e),
-                );
-            }
-            if let Err(e) = manager.app_svc(self.appid.clone(), "onLaunch".to_string(), None) {
-                self.error(
-                    "AppUiDelegate",
-                    format!("Failed to triger onLaunch service: {}", e),
-                );
+        // We need to get Arc<Self> to pass to the service manager
+        // This requires finding ourselves in the global collection
+        let manager = MINIAPPS_MANAGER.get().expect("MiniApps not initialized");
+        if let Some(self_arc) = manager.miniapps.get(&self.appid) {
+            let self_arc = self_arc.clone();
+
+            // Initialize app service for home app
+            if let Ok(mut svc_manager) = self.svc_manager.lock() {
+                if let Err(e) = svc_manager.create_app_svc(self_arc) {
+                    self.error(
+                        "AppUiDelegate",
+                        format!("Failed to trigger app service: {}", e),
+                    );
+                }
+                if let Err(e) =
+                    svc_manager.app_svc(self.appid.clone(), "onLaunch".to_string(), None)
+                {
+                    self.error(
+                        "AppUiDelegate",
+                        format!("Failed to trigger onLaunch service: {}", e),
+                    );
+                }
             }
         }
     }
 
-    fn on_miniapp_closed(&mut self) {
-        self.opened = false;
+    fn on_miniapp_closed(&self) {
+        self.state.lock().unwrap().opened = false;
 
         // Update last active time
-        self.last_active_time = Instant::now();
+        self.state.lock().unwrap().last_active_time = Instant::now();
 
         // Log the app closing event
         self.info("AppUiDelegate", format!("Mini app {} closed", self.appid));
     }
 
-    fn on_page_created(&mut self, path: String) {
+    fn on_page_created(&self, path: String) {
         let url = format!("lx://{}", path.clone());
         let appid_clone = self.appid.clone();
         let controller_clone = self.controller.clone();
         let debug = self.is_debug_enabled();
 
         // Create the page first
-        let page = self.pages.create_page(
+        let mut state = self.state.lock().unwrap();
+        let page = state.pages.create_page(
             appid_clone,
             path.clone(),
             controller_clone,
@@ -619,6 +675,7 @@ impl AppUiDelegate for MiniApp {
         } else {
             Ok(())
         };
+        drop(state); // Release the lock
 
         // Now we can use self again as the mutable borrow has ended
         if let Err(e) = url_load_result {
@@ -654,9 +711,14 @@ impl AppUiDelegate for MiniApp {
         }
     }
 
-    fn on_page_show(&mut self, path: String) {
+    fn on_page_show(&self, path: String) {
         // Navigate to the new page and get the previous page if there was a switch
-        let previous_page = self.pages.navigate_to_page(path.clone());
+        let previous_page = self
+            .state
+            .lock()
+            .unwrap()
+            .pages
+            .navigate_to_page(path.clone());
 
         if let Ok(manager) = self.svc_manager.lock() {
             // Call onHide for the previous page if there was a page switch
@@ -689,11 +751,11 @@ impl AppUiDelegate for MiniApp {
         }
     }
 
-    fn on_back_pressed(&mut self) -> bool {
+    fn on_back_pressed(&self) -> bool {
         self.info("AppUiDelegate", "Backbutton pressed");
 
         // Try to pop the current page from the stack
-        if let Some(previous_page) = self.pages.pop_from_current_stack() {
+        if let Some(previous_page) = self.state.lock().unwrap().pages.pop_from_current_stack() {
             // it's at top tab page
             if self.config.is_initial_route(&previous_page)
                 || self.config.is_tab_page(&previous_page)
@@ -754,7 +816,7 @@ impl AppUiDelegate for MiniApp {
         }
     }
 
-    fn handle_request(&mut self, req: http::Request<Vec<u8>>) -> Option<http::Response<Vec<u8>>> {
+    fn handle_request(&self, req: http::Request<Vec<u8>>) -> Option<http::Response<Vec<u8>>> {
         let uri = req.uri();
         let scheme = uri.scheme_str().unwrap_or("");
 
@@ -782,8 +844,8 @@ impl AppUiDelegate for MiniApp {
     }
 }
 
-// Global instance of MiniApps
-static MINIAPPS: OnceLock<RwLock<MiniApps>> = OnceLock::new();
+// Global instance of MiniApps manager
+static MINIAPPS_MANAGER: OnceLock<Arc<MiniApps>> = OnceLock::new();
 
 /// Initialize the MiniApps singleton
 /// Returns an Option of (home_app_id, initial_route) on success.
@@ -822,8 +884,7 @@ pub fn init<T: AppController + 'static>(controller: T) -> Option<(String, String
 
             let svc_manager = appservice::init(controller_arc.clone(), max_apps);
 
-            // Now create the MiniApp instance and call setup
-            // new_as_home itself calls setup(), which loads its app.json.
+            // Create the home MiniApp instance
             let home_miniapp = MiniApp::new_as_home(
                 home_miniapp_id.clone(),
                 controller_arc.clone(),
@@ -846,30 +907,30 @@ pub fn init<T: AppController + 'static>(controller: T) -> Option<(String, String
                 }
             }
 
-            // Get the initial route from the now-configured home_miniapp
+            // Get the initial route from the configured home_miniapp
             let initial_route = home_miniapp.config.get_initial_route();
 
-            // Initialize MiniApps collection
-            let mut miniapps = MiniApps::new(controller_arc.clone(), svc_manager, max_apps);
+            // Create MiniApps manager
+            let miniapps_manager =
+                Arc::new(MiniApps::new(controller_arc.clone(), svc_manager, max_apps));
 
-            // Wrap the home miniapp in Arc<RwLock<>> and add it to the collection
-            let home_miniapp_arc = Arc::new(RwLock::new(home_miniapp));
-
-            // Add home mini app to the collection
-            miniapps
+            // Add home miniapp to the manager
+            let home_miniapp_arc = Arc::new(home_miniapp);
+            miniapps_manager
                 .miniapps
                 .insert(home_miniapp_id.clone(), home_miniapp_arc);
 
-            if MINIAPPS.set(RwLock::new(miniapps)).is_err() {
+            // Set global instance
+            if MINIAPPS_MANAGER.set(miniapps_manager).is_err() {
                 controller_arc.log(
                     LogLevel::Error,
-                    "MiniApps singleton had been initialized by another instance",
+                    "MiniApps manager singleton had been initialized by another instance",
                 );
-                None
-            } else {
-                controller_arc.log(LogLevel::Info, "MiniApps initialized successfully");
-                Some((home_miniapp_id, initial_route))
+                return None;
             }
+
+            controller_arc.log(LogLevel::Info, "MiniApps initialized successfully");
+            Some((home_miniapp_id, initial_route))
         }
 
         Err(e) => {
@@ -903,82 +964,12 @@ pub fn init<T: AppController + 'static>(controller: T) -> Option<(String, String
 /// * `appid` - The ID of the mini app to get or create
 ///
 /// # Returns
-/// A thread-safe reference to the MiniAppUnit
+/// A thread-safe reference to the MiniApp
 ///
 /// # Panics
 /// Panics if `MiniApps` is not initialized
-pub fn get_or_init_miniapp(appid: String) -> Arc<RwLock<MiniApp>> {
-    let mut miniapps = MINIAPPS
-        .get()
-        .expect("MiniApps not initialized")
-        .write()
-        .unwrap();
+pub fn get_or_init_miniapp(appid: String) -> Arc<MiniApp> {
+    let manager = MINIAPPS_MANAGER.get().expect("MiniApps not initialized");
 
-    // If the miniapp already exists, return it directly
-    if let Some(app_arc) = miniapps.miniapps.get(&appid) {
-        return app_arc.clone();
-    }
-
-    // Check if we've reached the maximum number of apps
-    if miniapps.miniapps.len() >= miniapps.max_apps {
-        // Destroy the least active app to make room
-        miniapps.destroy_least_active_miniapp();
-    }
-
-    let controller = miniapps.controller.clone();
-
-    // Create new MiniApp with app_service_manager
-    let unit = MiniApp::new(appid.clone(), controller, miniapps.svc_manager.clone());
-    let app_arc = Arc::new(RwLock::new(unit));
-
-    // Insert into collection and return
-    miniapps.miniapps.insert(appid, app_arc.clone());
-    app_arc
-}
-
-/// Uninstall a mini app by removing its files and version record
-///
-/// This function uninstalls a specified mini app, removing all its files and data.
-/// It protects the home mini app from being uninstalled.
-///
-/// # Arguments
-/// * `appid` - The ID of the mini app to uninstall
-///
-/// # Returns
-/// * `Ok(())` - If the mini app was uninstalled successfully
-/// * `Err(MiniAppError)` - If there was an error during uninstallation
-///
-/// # Panics
-/// Panics if `MiniApps` is not initialized
-pub fn uninstall_miniapp(appid: &str) -> Result<(), MiniAppError> {
-    let miniapps = MINIAPPS
-        .get()
-        .expect("MiniApps not initialized")
-        .read()
-        .unwrap();
-
-    // Get controller to log operation
-    let controller = miniapps.controller.clone();
-    controller.log(LogLevel::Info, &format!("Uninstalling mini app: {}", appid));
-
-    // Get or create the miniapp instance
-    let app_arc = get_or_init_miniapp(appid.to_string());
-
-    // Call the uninstall method on the MiniApp instance
-    let result = app_arc.write().unwrap().uninstall();
-
-    // If successful, remove the app from the collection
-    if result.is_ok() {
-        // Drop read lock and acquire write lock to modify collection
-        drop(miniapps);
-        let mut miniapps_write = MINIAPPS
-            .get()
-            .expect("MiniApps not initialized")
-            .write()
-            .unwrap();
-
-        miniapps_write.miniapps.remove(appid);
-    }
-
-    result
+    manager.get_or_init_miniapp(appid)
 }
