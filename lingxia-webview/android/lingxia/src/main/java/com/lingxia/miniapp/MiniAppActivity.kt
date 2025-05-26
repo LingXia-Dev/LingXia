@@ -408,7 +408,9 @@ class MiniAppActivity : AppCompatActivity() {
 
             // Add to webview container if not already added
             if (view.parent != webViewContainer) {
-                // We already removed from old parent in findOrCreateWebViewForPage if reused
+                // Remove from existing parent if it has one
+                (view.parent as? ViewGroup)?.removeView(view)
+                // Now add to webview container
                 webViewContainer.addView(view)
             } else {
                 // If already in the container (e.g., initial load), ensure it's visible and resumed
