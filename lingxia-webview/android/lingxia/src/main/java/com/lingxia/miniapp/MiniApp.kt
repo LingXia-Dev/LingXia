@@ -4,9 +4,6 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.util.Log
-import android.util.DisplayMetrics
-import android.view.WindowManager
-import android.os.Build
 
 // Import the top-level action string constants
 import com.lingxia.miniapp.ACTION_SWITCH_PAGE
@@ -37,25 +34,10 @@ class MiniApp private constructor(private val context: Context) {
             }
             val appContext = context.applicationContext
 
-            // Get device information
-            val deviceBrand = Build.BRAND ?: "Unknown"
-            val deviceModel = Build.MODEL ?: "Unknown"
-
-            // Get screen dimensions
-            val windowManager = appContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-            val displayMetrics = DisplayMetrics()
-            windowManager.defaultDisplay.getMetrics(displayMetrics)
-            val screenWidth = displayMetrics.widthPixels
-            val screenHeight = displayMetrics.heightPixels
-
             val initResultString = nativeOnMiniAppInited(
                 appContext.filesDir.absolutePath,
                 appContext.cacheDir.absolutePath,
-                appContext.assets,
-                deviceBrand,
-                deviceModel,
-                screenWidth,
-                screenHeight
+                appContext.assets
             )
 
             if (initResultString != null) {
@@ -78,11 +60,7 @@ class MiniApp private constructor(private val context: Context) {
         private external fun nativeOnMiniAppInited(
             dataDir: String,
             cacheDir: String,
-            assetManager: android.content.res.AssetManager,
-            deviceBrand: String,
-            deviceModel: String,
-            screenWidth: Int,
-            screenHeight: Int
+            assetManager: android.content.res.AssetManager
         ): String?
 
         @JvmStatic

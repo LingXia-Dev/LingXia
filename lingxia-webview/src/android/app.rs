@@ -219,10 +219,6 @@ impl App {
         java_asset_manager_obj: jobject,
         data_dir: String,
         cache_dir: String,
-        device_brand: String,
-        device_model: String,
-        screen_width: u32,
-        screen_height: u32,
     ) -> Result<Self, String> {
         // Get the native asset manager pointer from the Java AssetManager
         let asset_manager_ptr =
@@ -237,11 +233,32 @@ impl App {
             .new_global_ref(unsafe { JObject::from_raw(java_asset_manager_obj) })
             .map_err(|e| format!("Failed to create global reference: {:?}", e))?;
 
+        // Get device information using getprop commands
+        let device_brand = std::process::Command::new("getprop")
+            .arg("ro.product.brand")
+            .output()
+            .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+            .unwrap_or_else(|_| "Unknown".to_string());
+
+        let device_model = std::process::Command::new("getprop")
+            .arg("ro.product.model")
+            .output()
+            .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+            .unwrap_or_else(|_| "Unknown".to_string());
+
+        let system = std::process::Command::new("getprop")
+            .arg("ro.build.version.release")
+            .output()
+            .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+            .unwrap_or_else(|_| "Unknown".to_string());
+
+        // Combine OS name with version
+        let system = format!("{} {}", "Android", system);
+
         let device_info = DeviceInfo {
             brand: device_brand,
             model: device_model,
-            screen_width,
-            screen_height,
+            system,
         };
 
         Ok(App {

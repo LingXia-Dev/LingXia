@@ -6,15 +6,12 @@ use crate::error::MiniAppError;
 use crate::log::LogLevel;
 use serde::{Deserialize, Serialize};
 
-/// Device information structure
+/// Device information
 #[derive(Debug, Clone)]
 pub struct DeviceInfo {
     pub brand: String,
     pub model: String,
-
-    /// Screen width in pixels
-    pub screen_width: u32,
-    pub screen_height: u32,
+    pub system: String, // Operating system version
 }
 
 /// Asset file entry for iterator-based asset access

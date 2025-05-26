@@ -73,26 +73,11 @@ pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeOnMiniAppInited(
     data_dir: JString,
     cache_dir: JString,
     asset_manager: JObject,
-    device_brand: JString,
-    device_model: JString,
-    screen_width: jni::sys::jint,
-    screen_height: jni::sys::jint,
 ) -> jni::sys::jstring {
     let data_dir = env.get_string(&data_dir).unwrap().into();
     let cache_dir = env.get_string(&cache_dir).unwrap().into();
-    let device_brand = env.get_string(&device_brand).unwrap().into();
-    let device_model = env.get_string(&device_model).unwrap().into();
 
-    let app = match App::from_java(
-        &mut env,
-        asset_manager.as_raw(),
-        data_dir,
-        cache_dir,
-        device_brand,
-        device_model,
-        screen_width as u32,
-        screen_height as u32,
-    ) {
+    let app = match App::from_java(&mut env, asset_manager.as_raw(), data_dir, cache_dir) {
         Ok(app) => app,
         Err(_) => {
             return JObject::null().into_raw();
