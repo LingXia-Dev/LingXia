@@ -3,8 +3,8 @@ use std::rc::Rc;
 
 use rong::{JSContext, JSFunc, JSObject, JSResult, JSValue};
 
-mod device;
 mod navigator;
+mod system;
 
 /// Rust implemented JS function and it return result directly and quickly
 pub(crate) struct FastJSApi {
@@ -52,7 +52,7 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     let navigator_miniapp = JSFunc::new(ctx, navigator::navigator_to_miniapp)?;
     lx.set("navigateToMiniProgram", navigator_miniapp)?;
 
-    let device_info = JSFunc::new(ctx, device::derive_info)?;
+    let device_info = JSFunc::new(ctx, system::device_info)?;
     lx.set("getDeviceInfo", device_info.clone())?;
 
     let mut api = FastJSApi::new();
