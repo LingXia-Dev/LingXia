@@ -1,0 +1,46 @@
+{
+  "name": "@lingxia/miniapp-builder",
+  "version": "1.0.0",
+  "description": "Official build tool for LingXia MiniApp development",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./vite": "./vite-plugin.js"
+  },
+  "files": [
+    "index.js",
+    "vite-plugin.js",
+    "cli.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "node build.js",
+    "test": "node test.js"
+  },
+  "keywords": [
+    "lingxia",
+    "miniapp",
+    "vite-plugin",
+    "build-tool",
+    "packer"
+  ],
+  "author": "LingXia Team",
+  "license": "MIT",
+  "dependencies": {
+    "terser": "^5.0.0",
+    "archiver": "^6.0.0"
+  },
+  "peerDependencies": {
+    "vite": "^5.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lingxia/miniapp-builder.git"
+  },
+  "bugs": {
+    "url": "https://github.com/lingxia/miniapp-builder/issues"
+  },
+  "homepage": "https://github.com/lingxia/miniapp-builder#readme"
+}

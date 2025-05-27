@@ -1,0 +1,37 @@
+# Development files
+*.log
+.DS_Store
+node_modules/
+.vscode/
+.idea/
+
+# Test files
+test/
+tests/
+__tests__/
+*.test.js
+*.spec.js
+
+# Build artifacts
+dist/
+build/
+coverage/
+
+# Documentation drafts
+docs/
+examples/
+
+# Git files
+.git/
+.gitignore
+
+# CI/CD
+.github/
+.travis.yml
+.circleci/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
