@@ -54,8 +54,31 @@ echo "Copying lingxia-view files to assets..."
 cp "$LINGXIA_ROOT/lingxia-view/404.html" "$ASSETS_DIR/"
 cp "$LINGXIA_ROOT/lingxia-view/webview-bridge.js" "$ASSETS_DIR/"
 
-echo "Copying demo files to assets..."
-cp -R "$LINGXIA_ROOT/examples/demo/"* "$ASSETS_DIR/"
+echo "Copying host app configuration..."
+cp "$LINGXIA_ROOT/examples/demo/app.json" "$ASSETS_DIR/"
+
+echo "Building and copying demo MiniApp..."
+# Build homeminiapp using LingXia MiniApp Builder
+cd "$LINGXIA_ROOT/examples/demo/homeminiapp"
+if [ -f "package.json" ] && [ -f "vite.config.js" ]; then
+    echo "Building homeminiapp with Vite..."
+    npm install --silent
+    npm run build
+
+    # Copy built MiniApp to assets with proper directory structure
+    if [ -d "dist" ]; then
+        echo "Copying built MiniApp to assets..."
+        mkdir -p "$ASSETS_DIR/homeminiapp"
+        cp -R dist/* "$ASSETS_DIR/homeminiapp/"
+    else
+        echo "Warning: dist directory not found, copying source files..."
+        cp -R . "$ASSETS_DIR/homeminiapp/"
+    fi
+else
+    echo "No Vite config found, copying source files..."
+    mkdir -p "$ASSETS_DIR/homeminiapp"
+    cp -R "$LINGXIA_ROOT/examples/demo/homeminiapp/"* "$ASSETS_DIR/homeminiapp/"
+fi
 
 echo "Building Android library..."
 cd "$PROJECT_ROOT/android"
