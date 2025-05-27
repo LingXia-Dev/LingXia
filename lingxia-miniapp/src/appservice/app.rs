@@ -1,6 +1,6 @@
 use rong::{
-    Class, JSContext, JSFunc, JSObject, JSResult, JSValue, RongJSError, Source, js_class,
-    js_export, js_method,
+    JSContext, JSFunc, JSObject, JSResult, JSValue, RongJSError, Source, js_class, js_export,
+    js_method,
 };
 use std::collections::HashMap;
 
@@ -13,11 +13,7 @@ pub(crate) struct MiniAppSvc {
 #[js_class]
 impl MiniAppSvc {
     #[js_method(constructor)]
-    fn _new(ctx: JSContext, obj: JSObject) -> JSResult<JSObject> {
-        // Get the MiniApp class
-        let miniapp_class = Class::get::<MiniAppSvc>(&ctx)?;
-
-        // Create a new MiniApp instance
+    fn _new(ctx: JSContext, obj: JSObject) -> JSResult<Self> {
         let mut app_svc = MiniAppSvc {
             functions: HashMap::new(),
             this: obj.clone(),
@@ -26,11 +22,9 @@ impl MiniAppSvc {
         // Extract all functions from the object
         app_svc.assign_funcs(&obj)?;
 
-        // Create a new JSObject using the instance method
-        let app = miniapp_class.instance(app_svc);
-        ctx.global().set("_MINIAPP_OBJ_", app.clone())?;
+        ctx.set_user_data(app_svc.clone());
 
-        Ok(app)
+        Ok(app_svc)
     }
 
     #[js_method(gc_mark)]
