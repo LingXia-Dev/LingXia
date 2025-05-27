@@ -3,9 +3,8 @@ use crate::error::MiniAppError;
 use crate::log::LogLevel;
 use crate::page::Page;
 
-use rong::{JSContext, JSObject, JSRuntime, Rong, RongJS, Source, Worker, WorkerMessage};
+use rong::{JSContext, JSFunc, JSObject, JSRuntime, Rong, RongJS, Source, Worker, WorkerMessage};
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, mpsc};
 
@@ -76,7 +75,6 @@ struct WorkerService {
 
 struct MiniAppCtx {
     ctx: JSContext,
-    app_path: PathBuf, // base Path of MiniApp
     svc: Option<MiniAppSvc>,
     page_svc: HashMap<String, PageSvc>,
 }
@@ -415,7 +413,6 @@ async fn miniapp_service_handler(
 
             let mut miniapp_ctx = MiniAppCtx {
                 ctx: ctx.clone(),
-                app_path: miniapp.app_dir.clone(),
                 svc: None,
                 page_svc: HashMap::new(),
             };
@@ -435,25 +432,49 @@ async fn miniapp_service_handler(
                 ),
             );
 
-            let js = miniapp.app_dir.join("app.js");
+            let js = miniapp.app_dir.join("logic.js");
             if js.exists() {
                 if let Ok(js) = Source::from_path(&ctx, js).await {
-                    match ctx.eval::<MiniAppSvc>(js) {
-                        Ok(svc) => {
-                            miniapp_ctx.svc = Some(svc);
-                            log(
-                                LogLevel::Info,
-                                &format!(
-                                    "[Worker {}] Successfully loaded app JS for {}",
-                                    worker_id, miniapp.appid
-                                ),
-                            );
+                    match ctx.eval::<()>(js) {
+                        Ok(_) => {
+                            // After executing logic.js, get the App service object
+                            match ctx.global().get::<_, JSObject>("_MINIAPP_OBJ_") {
+                                Ok(app_obj) => {
+                                    if let Ok(svc) = app_obj.borrow::<MiniAppSvc>() {
+                                        miniapp_ctx.svc = Some(svc.clone());
+                                        log(
+                                            LogLevel::Info,
+                                            &format!(
+                                                "[Worker {}] Successfully loaded logic JS for {}",
+                                                worker_id, miniapp.appid
+                                            ),
+                                        );
+                                    } else {
+                                        log(
+                                            LogLevel::Error,
+                                            &format!(
+                                                "[Worker {}] Failed to borrow MiniAppSvc from app object for {}",
+                                                worker_id, miniapp.appid
+                                            ),
+                                        );
+                                    }
+                                }
+                                Err(e) => {
+                                    log(
+                                        LogLevel::Error,
+                                        &format!(
+                                            "[Worker {}] Failed to get app object for {}: {}",
+                                            worker_id, miniapp.appid, e
+                                        ),
+                                    );
+                                }
+                            }
                         }
                         Err(e) => {
                             log(
                                 LogLevel::Error,
                                 &format!(
-                                    "[Worker {}] eval JS for {} failed: {}",
+                                    "[Worker {}] eval logic JS for {} failed: {}",
                                     worker_id, miniapp.appid, e
                                 ),
                             );
@@ -503,56 +524,53 @@ async fn miniapp_service_handler(
             if let Some(app_ctx) = current_miniapp.as_mut() {
                 // Extract app ID and path from page
                 let (appid, path) = (page.appid(), page.path());
-
-                let page_js_path = app_ctx.app_path.join(&path).with_extension("js");
                 let ctx = &app_ctx.ctx;
 
-                if page_js_path.exists() {
-                    if let Ok(js) = Source::from_path(ctx, &page_js_path).await {
-                        match ctx.eval::<JSObject>(js) {
-                            Ok(obj) => {
-                                if let Ok(mut svc) = obj.borrow_mut::<PageSvc>() {
-                                    svc.attach_page(page);
+                // Call __CREATE_PAGE__ function to get PageSvc object
+                match ctx.global().get::<_, JSFunc>("__CREATE_PAGE__") {
+                    Ok(page_jsfunc) => match page_jsfunc.call::<_, JSObject>(None, (path.clone(),))
+                    {
+                        Ok(obj) => {
+                            if let Ok(mut svc) = obj.borrow_mut::<PageSvc>() {
+                                svc.attach_page(page);
 
-                                    app_ctx.page_svc.insert(path.clone(), svc.clone());
-                                    log(
-                                        LogLevel::Info,
-                                        &format!(
-                                            "[Worker {}] Successfully loaded page JS for {}/{}",
-                                            worker_id, appid, path
-                                        ),
-                                    );
-                                } else {
-                                    log(
-                                        LogLevel::Error,
-                                        &format!(
-                                            "[Worker {}] Failed to borrow PageSvc for {}/{}",
-                                            worker_id, appid, path
-                                        ),
-                                    );
-                                }
-                            }
-                            Err(e) => {
+                                app_ctx.page_svc.insert(path.clone(), svc.clone());
+                                log(
+                                    LogLevel::Info,
+                                    &format!(
+                                        "[Worker {}] Successfully created page service for {}/{}",
+                                        worker_id, appid, path
+                                    ),
+                                );
+                            } else {
                                 log(
                                     LogLevel::Error,
                                     &format!(
-                                        "[Worker {}] eval JS for {}/{} failed: {}",
-                                        worker_id, appid, path, e
+                                        "[Worker {}] Failed to borrow PageSvc for {}/{}",
+                                        worker_id, appid, path
                                     ),
                                 );
                             }
                         }
+                        Err(e) => {
+                            log(
+                                LogLevel::Error,
+                                &format!(
+                                    "[Worker {}] __CREATE_PAGE__ call failed for {}/{}: {}",
+                                    worker_id, appid, path, e
+                                ),
+                            );
+                        }
+                    },
+                    Err(e) => {
+                        log(
+                            LogLevel::Error,
+                            &format!(
+                                "[Worker {}] Failed to get __CREATE_PAGE__ function for {}/{}: {}",
+                                worker_id, appid, path, e
+                            ),
+                        );
                     }
-                } else {
-                    log(
-                        LogLevel::Info,
-                        &format!(
-                            "[Worker {}] MiniApp '{}' has no JS file: '{}'",
-                            worker_id,
-                            appid,
-                            page_js_path.display()
-                        ),
-                    );
                 }
             }
         }

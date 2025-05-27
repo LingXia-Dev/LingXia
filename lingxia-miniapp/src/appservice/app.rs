@@ -79,6 +79,7 @@ fn app_func(ctx: JSContext, obj: JSObject) -> JSResult<JSObject> {
 
     // Create a new JSObject using the instance method
     let app = miniapp_class.instance(app_svc);
+    ctx.global().set("_MINIAPP_OBJ_", app.clone())?;
 
     // save object for getApp
     ctx.global().set("_lingxia_app_obj", obj.clone())?;

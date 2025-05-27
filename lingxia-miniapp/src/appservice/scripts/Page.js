@@ -1,10 +1,15 @@
-// Augments the global Page function with enhanced setData:
-// - Path syntax support.
-// - Debouncing.
-// - Diff/Patch generation for optimized data transfer.
+// Enhanced Page function with unified logic.js support:
+// - Path syntax support for setData
+// - Debouncing for performance optimization
+// - Diff/Patch generation for optimized data transfer
+// - Page registration system for unified loading
 
 (function () {
-  globalThis.Page = function (pageConfig) {
+  // Page configuration registry for unified logic.js
+  const __PAGE_REGISTRY__ = {};
+
+  // Core Page instance creation function
+  function createPageInstance(pageConfig) {
     if (!pageConfig || typeof pageConfig !== "object") {
       throw new Error("setData: Invalid page configuration");
     }
@@ -82,6 +87,29 @@
     };
 
     return pageSvc;
+  }
+
+  // Enhanced Page function with registration support
+  globalThis.Page = function (pageConfig, pagePath) {
+    if (pagePath) {
+      // Register page configuration for unified logic.js
+      __PAGE_REGISTRY__[pagePath] = pageConfig;
+    } else {
+      // This should not happen in production builds
+      throw new Error(
+        "Page() called without path parameter. This indicates a build configuration issue.",
+      );
+    }
+  };
+
+  // Page instance creation function (called by Rust)
+  globalThis.__CREATE_PAGE__ = function (pagePath) {
+    const pageConfig = __PAGE_REGISTRY__[pagePath];
+    if (pageConfig) {
+      return createPageInstance(pageConfig);
+    } else {
+      throw new Error(`Page not found: ${pagePath}`);
+    }
   };
 })();
 
