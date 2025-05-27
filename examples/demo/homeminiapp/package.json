@@ -1,0 +1,19 @@
+{
+  "name": "homeminiapp",
+  "version": "1.0.0",
+  "description": "LingXia MiniApp demo with unified logic.js build system",
+  "type": "module",
+  "scripts": {
+    "build": "NODE_ENV=development vite build",
+    "build:dev": "NODE_ENV=development vite build",
+    "build:prod": "NODE_ENV=production vite build"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0",
+    "terser": "^5.0.0",
+    "archiver": "^6.0.0"
+  },
+  "keywords": ["lingxia", "miniapp", "vite", "logic.js"],
+  "author": "LingXia Team",
+  "license": "MIT"
+} 
