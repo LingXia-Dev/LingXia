@@ -360,25 +360,18 @@ async function generateLogicJs(pages, rootDir, options = {}) {
 
 /**
  * Process and copy global CSS file to build directory
- * This function handles CSS preprocessing (Sass, Less, etc.) through Vite
+ * Only processes plain CSS files that WebView can understand
  * @param {string} rootDir - Root directory
  * @param {string} buildDir - Build output directory
  */
 async function processGlobalCSS(rootDir, buildDir) {
-  const globalCSSFiles = [
-    "app.css",
-    "app.scss",
-    "app.sass",
-    "app.less",
-    "app.styl",
-  ];
+  // Only look for plain CSS files that WebView can handle
+  const globalCSSFiles = ["app.css"];
 
   for (const cssFile of globalCSSFiles) {
     const srcFile = path.resolve(rootDir, cssFile);
     if (fs.existsSync(srcFile)) {
       try {
-        // For now, just copy the file directly
-        // TODO: In the future, we could use Vite's CSS processing here
         const destFile = path.resolve(buildDir, "app.css");
         fs.copyFileSync(srcFile, destFile);
         console.log(`🎨 Copied global CSS: ${cssFile} → app.css`);
