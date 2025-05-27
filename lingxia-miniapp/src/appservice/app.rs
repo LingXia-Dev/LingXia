@@ -1,6 +1,6 @@
 use rong::{
-    Class, JSContext, JSFunc, JSObject, JSResult, JSValue, RongJSError, js_class, js_export,
-    js_method,
+    Class, JSContext, JSFunc, JSObject, JSResult, JSValue, RongJSError, Source, js_class,
+    js_export, js_method,
 };
 use std::collections::HashMap;
 
@@ -13,7 +13,25 @@ pub(crate) struct MiniAppSvc {
 #[js_class]
 impl MiniAppSvc {
     #[js_method(constructor)]
-    fn _new() {}
+    fn _new(ctx: JSContext, obj: JSObject) -> JSResult<JSObject> {
+        // Get the MiniApp class
+        let miniapp_class = Class::get::<MiniAppSvc>(&ctx)?;
+
+        // Create a new MiniApp instance
+        let mut app_svc = MiniAppSvc {
+            functions: HashMap::new(),
+            this: obj.clone(),
+        };
+
+        // Extract all functions from the object
+        app_svc.assign_funcs(&obj)?;
+
+        // Create a new JSObject using the instance method
+        let app = miniapp_class.instance(app_svc);
+        ctx.global().set("_MINIAPP_OBJ_", app.clone())?;
+
+        Ok(app)
+    }
 
     #[js_method(gc_mark)]
     fn gc_mark_with<F>(&self, mut mark_fn: F)
@@ -64,42 +82,12 @@ impl MiniAppSvc {
     }
 }
 
-fn app_func(ctx: JSContext, obj: JSObject) -> JSResult<JSObject> {
-    // Get the MiniApp class
-    let miniapp_class = Class::get::<MiniAppSvc>(&ctx)?;
-
-    // Create a new MiniApp instance
-    let mut app_svc = MiniAppSvc {
-        functions: HashMap::new(),
-        this: obj.clone(),
-    };
-
-    // Extract all functions from the object
-    app_svc.assign_funcs(&obj)?;
-
-    // Create a new JSObject using the instance method
-    let app = miniapp_class.instance(app_svc);
-    ctx.global().set("_MINIAPP_OBJ_", app.clone())?;
-
-    // save object for getApp
-    ctx.global().set("_lingxia_app_obj", obj.clone())?;
-    Ok(app)
-}
-
-fn get_app_func(ctx: JSContext) -> JSResult<JSObject> {
-    // save object for getApp
-    ctx.global().get::<_, JSObject>("_lingxia_app_obj")
-}
-
 // Register the global App & getApp function
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     ctx.register_class::<MiniAppSvc>()?;
 
-    let app_func = JSFunc::new(ctx, app_func)?.name("App")?;
-    ctx.global().set("App", app_func)?;
-
-    let get_app_func = JSFunc::new(ctx, get_app_func)?.name("getApp")?;
-    ctx.global().set("getApp", get_app_func)?;
+    let app_js = Source::from_bytes(include_str!("scripts/App.js"));
+    ctx.eval::<()>(app_js)?;
 
     Ok(())
 }
