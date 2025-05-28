@@ -27,6 +27,33 @@ pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> j
             .with_tag("Rust"),
     );
 
+    // Initialize the new logging system
+    miniapp::log::LogManager::init(|log_message| {
+        let formatted_message = format!(
+            "[{}{}{}] {}",
+            log_message.tag.as_str(),
+            log_message
+                .appid
+                .as_ref()
+                .map(|id| format!(":{}", id))
+                .unwrap_or_default(),
+            log_message
+                .path
+                .as_ref()
+                .map(|p| format!(":{}", p))
+                .unwrap_or_default(),
+            log_message.message
+        );
+
+        match log_message.level {
+            LogLevel::Verbose => log::trace!("{}", formatted_message),
+            LogLevel::Debug => log::debug!("{}", formatted_message),
+            LogLevel::Info => log::info!("{}", formatted_message),
+            LogLevel::Warn => log::warn!("{}", formatted_message),
+            LogLevel::Error => log::error!("{}", formatted_message),
+        }
+    });
+
     // Store JavaVM globally
     let _ = JAVA_VM.set(vm);
 

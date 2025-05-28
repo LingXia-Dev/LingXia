@@ -171,7 +171,7 @@ pub(crate) fn handle_webview_cmd(
         WebViewCmd::DropWebView { appid, path } => {
             if let Ok(mut webviews_map) = webviews.lock() {
                 #[cfg(debug_assertions)]
-                log::info!("WebView dropped for appId: {}, path: {}", appid, path);
+                miniapp::log::debug!("WebView dropped for appId: {}, path: {}", appid, path);
 
                 // Remove entry and let it drop automatically
                 webviews_map.remove(&(appid, path));
