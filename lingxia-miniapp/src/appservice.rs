@@ -1,7 +1,9 @@
 use crate::error::MiniAppError;
+use crate::log::{LogBuilder, LogLevel, LogTag};
 use crate::{error, info};
 
 use rong::{JSContext, JSFunc, JSRuntime, Rong, RongJS, Source, Worker, WorkerMessage};
+use rong_modules::console;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -364,6 +366,11 @@ async fn miniapp_service_handler(
             let _ = app::init(&ctx);
             let _ = page::init(&ctx);
 
+            // config console writer
+            console::set_writer(Box::new(JSConsole {
+                appid: miniapp.appid.clone(),
+            }));
+
             let _ = rong_modules::init(&ctx);
             let _ = lx::init(&ctx);
 
@@ -663,4 +670,35 @@ pub(crate) fn init(num: usize) -> Arc<Mutex<MiniAppServiceManager>> {
 
     barrier.wait();
     result_manager
+}
+
+#[derive(Debug)]
+struct JSConsole {
+    appid: String,
+}
+
+impl console::ConsoleWriter for JSConsole {
+    fn write(&self, level: console::LogLevel, message: String) {
+        let log = LogBuilder::new(LogTag::MiniAppServiceConsole, message);
+        match level {
+            console::LogLevel::Verbose => log
+                .with_level(LogLevel::Verbose)
+                .with_appid(self.appid.clone()),
+            console::LogLevel::Info => log
+                .with_level(LogLevel::Info)
+                .with_appid(self.appid.clone()),
+            console::LogLevel::Debug => log
+                .with_level(LogLevel::Debug)
+                .with_appid(self.appid.clone()),
+            console::LogLevel::Error => log
+                .with_level(LogLevel::Error)
+                .with_appid(self.appid.clone()),
+            console::LogLevel::Warn => log
+                .with_level(LogLevel::Warn)
+                .with_appid(self.appid.clone()),
+        };
+    }
+    fn is_tty(&self) -> bool {
+        false
+    }
 }
