@@ -1,6 +1,6 @@
 {
   "name": "@lingxia/miniapp-builder",
-  "version": 0.0.1",
+  "version": "0.0.1",
   "description": "Official build tool for LingXia MiniApp development",
   "type": "module",
   "main": "index.js",

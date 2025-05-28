@@ -611,25 +611,13 @@ function getFileType(filePath) {
 }
 
 /**
- * Create ZIP package
- * @param {string} buildDir - Build directory
- * @param {string} outputPath - Output ZIP path
- * @returns {Promise<void>}
+ * Create ZIP package from build directory
+ * @param {string} buildDir - Build directory path
+ * @param {string} outputPath - Output ZIP file path
+ * @returns {Promise} Promise that resolves when package is created
  */
 function createZipPackage(buildDir, outputPath) {
   return new Promise((resolve, reject) => {
-    // Check if build directory exists and has files
-    if (!fs.existsSync(buildDir)) {
-      reject(new Error(`Build directory does not exist: ${buildDir}`));
-      return;
-    }
-
-    const files = fs.readdirSync(buildDir);
-    if (files.length === 0) {
-      reject(new Error(`Build directory is empty: ${buildDir}`));
-      return;
-    }
-
     const output = fs.createWriteStream(outputPath);
     const archive = archiver("zip", { zlib: { level: 9 } });
 
@@ -644,7 +632,17 @@ function createZipPackage(buildDir, outputPath) {
     archive.on("error", reject);
 
     archive.pipe(output);
-    archive.directory(buildDir, false);
+
+    // Add files from build directory, excluding hidden files
+    archive.glob("**/*", {
+      cwd: buildDir,
+      ignore: [
+        "**/.*", // Exclude all hidden files (starting with .)
+        "**/.DS_Store", // Explicitly exclude .DS_Store files
+        "**/Thumbs.db", // Exclude Windows thumbnail cache
+      ],
+    });
+
     archive.finalize();
   });
 }
@@ -760,14 +758,6 @@ export function LingXiaMiniAppBuilder(options = {}) {
 
       // Copy app.json only (app.js is merged into logic.js)
       fs.copyFileSync(configPath, path.resolve(fullBuildDir, "app.json"));
-
-      // Copy project.config.json if exists
-      if (fs.existsSync(projectConfigPath)) {
-        fs.copyFileSync(
-          projectConfigPath,
-          path.resolve(fullBuildDir, "project.config.json"),
-        );
-      }
 
       // Generate logic.js (includes app.js content)
       const logicContent = await generateLogicJs(pages, rootDir, {
