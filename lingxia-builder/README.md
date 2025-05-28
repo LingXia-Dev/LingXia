@@ -6,6 +6,7 @@ Official build tool for LingXia MiniApp development. Combines individual page fi
 
 - **Unified Logic.js**: Combines all page JavaScript files into a single optimized file
 - **Asset Bundling**: Automatically packages images, styles, and layouts
+- **JSON Validation**: Validates all JSON files for syntax errors before building
 - **Code Optimization**: Minification and comment removal for production builds
 - **ZIP Packaging**: Creates ready-to-deploy MiniApp packages
 - **Vite Integration**: Modern build system with plugin architecture

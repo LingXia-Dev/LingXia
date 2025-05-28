@@ -7,6 +7,7 @@
  * Features:
  * - Unified logic.js generation
  * - Asset bundling (images, styles, layouts)
+ * - JSON Validation: Validates all JSON files for syntax errors before building
  * - Code minification and optimization
  * - ZIP package generation
  */
@@ -15,6 +16,123 @@ import fs from "fs";
 import path from "path";
 import { minify } from "terser";
 import archiver from "archiver";
+
+/**
+ * Validate JSON file syntax
+ * @param {string} filePath - Path to JSON file
+ * @param {string} content - JSON content to validate
+ * @returns {Object} Validation result with isValid and error properties
+ */
+function validateJsonSyntax(filePath, content) {
+  try {
+    JSON.parse(content);
+    return { isValid: true, error: null };
+  } catch (error) {
+    return {
+      isValid: false,
+      error: {
+        message: error.message,
+        line: getErrorLine(content, error),
+        column: getErrorColumn(error),
+      },
+    };
+  }
+}
+
+/**
+ * Extract line number from JSON parse error
+ * @param {string} content - JSON content
+ * @param {Error} error - JSON parse error
+ * @returns {number} Line number where error occurred
+ */
+function getErrorLine(content, error) {
+  // Try to extract line number from error message
+  const lineMatch = error.message.match(/line (\d+)/i);
+  if (lineMatch) {
+    return parseInt(lineMatch[1]);
+  }
+
+  // Try to extract position and calculate line
+  const posMatch = error.message.match(/position (\d+)/i);
+  if (posMatch) {
+    const position = parseInt(posMatch[1]);
+    const lines = content.substring(0, position).split("\n");
+    return lines.length;
+  }
+
+  return 1;
+}
+
+/**
+ * Extract column number from JSON parse error
+ * @param {Error} error - JSON parse error
+ * @returns {number} Column number where error occurred
+ */
+function getErrorColumn(error) {
+  const columnMatch = error.message.match(/column (\d+)/i);
+  if (columnMatch) {
+    return parseInt(columnMatch[1]);
+  }
+  return 1;
+}
+
+/**
+ * Validate all JSON files in the project
+ * @param {string} rootDir - Root directory path
+ * @param {Array<string>} pages - List of page paths
+ * @returns {Array} Array of validation errors
+ */
+function validateAllJsonFiles(rootDir, pages) {
+  const errors = [];
+  const jsonFiles = new Set();
+
+  // Add main configuration files
+  const mainConfigFiles = ["app.json", "project.config.json"];
+
+  for (const configFile of mainConfigFiles) {
+    const filePath = path.resolve(rootDir, configFile);
+    if (fs.existsSync(filePath)) {
+      jsonFiles.add(filePath);
+    }
+  }
+
+  // Add page JSON files
+  for (const pagePath of pages) {
+    const jsonPath = pagePath.replace(/\.html$/, ".json");
+    const jsonFile = path.resolve(rootDir, jsonPath);
+    if (fs.existsSync(jsonFile)) {
+      jsonFiles.add(jsonFile);
+    }
+  }
+
+  // Validate each JSON file
+  for (const jsonFile of jsonFiles) {
+    try {
+      const content = fs.readFileSync(jsonFile, "utf-8");
+      const validation = validateJsonSyntax(jsonFile, content);
+
+      if (!validation.isValid) {
+        const relativePath = path.relative(rootDir, jsonFile);
+        errors.push({
+          file: relativePath,
+          error: validation.error,
+        });
+      }
+    } catch (readError) {
+      const relativePath = path.relative(rootDir, jsonFile);
+      errors.push({
+        file: relativePath,
+        error: {
+          message: `Failed to read file: ${readError.message}`,
+          line: 1,
+          column: 1,
+        },
+      });
+    }
+  }
+
+  return errors;
+}
 
 /**
  * Transform Page() call to include page path parameter
@@ -617,6 +735,24 @@ export function LingXiaMiniAppBuilder(options = {}) {
       // Extract page paths (keep original format for Page() registration)
       const pages = appConfig.pages;
       console.log(`📄 Found ${pages.length} pages:`, pages);
+
+      // Validate all JSON files
+      console.log("🔍 Validating JSON files...");
+      const jsonErrors = validateAllJsonFiles(rootDir, pages);
+
+      if (jsonErrors.length > 0) {
+        console.error("❌ JSON validation failed:");
+        for (const error of jsonErrors) {
+          console.error(`  📄 ${error.file}:`);
+          console.error(
+            `     Line ${error.error.line}, Column ${error.error.column}: ${error.error.message}`,
+          );
+        }
+        throw new Error(
+          `Found ${jsonErrors.length} JSON syntax error(s). Please fix them before building.`,
+        );
+      }
+      console.log("✅ All JSON files are valid");
 
       // Create build directory
       const fullBuildDir = path.resolve(rootDir, buildDir);
