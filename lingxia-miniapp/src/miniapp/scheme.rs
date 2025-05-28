@@ -166,6 +166,8 @@ impl MiniApp {
                     "mp3" | "wav" | "ogg" |
                     // Video
                     "mp4" | "webm" | "ogv" |
+                    // multimedia playlist
+                    "m3u" | "m3u8"|
                     // Fonts
                     "ttf" | "woff" | "woff2" | "eot"
                 ),
