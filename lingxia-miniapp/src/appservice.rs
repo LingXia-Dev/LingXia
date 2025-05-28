@@ -1,6 +1,5 @@
-use crate::AppController;
 use crate::error::MiniAppError;
-use crate::log::LogLevel;
+use crate::{error, info};
 
 use rong::{JSContext, JSFunc, JSRuntime, Rong, RongJS, Source, Worker, WorkerMessage};
 use std::cell::RefCell;
@@ -74,31 +73,19 @@ struct WorkerService {
     svc: ServiceMessage,
 }
 
-#[derive(Debug)]
-struct LogMessage {
-    level: LogLevel,
-    message: String,
-}
-
 /// Manager for MiniApp services
 pub(crate) struct MiniAppServiceManager {
     sender: Sender<ServiceMessage>,
     worker_assignments: HashMap<String, usize>, // appid -> worker_id
     free_workers: Vec<usize>,                   // available worker ids
-    log_sender: Sender<LogMessage>,
 }
 
 impl MiniAppServiceManager {
-    fn new(
-        sender: Sender<ServiceMessage>,
-        worker_count: usize,
-        log_sender: Sender<LogMessage>,
-    ) -> Self {
+    fn new(sender: Sender<ServiceMessage>, worker_count: usize) -> Self {
         Self {
             sender,
             worker_assignments: HashMap::new(),
             free_workers: Vec::with_capacity(worker_count),
-            log_sender,
         }
     }
 
@@ -191,11 +178,6 @@ impl MiniAppServiceManager {
         None
     }
 
-    // Get a log sender that can be passed to worker threads
-    fn get_log_sender(&self) -> Sender<LogMessage> {
-        self.log_sender.clone()
-    }
-
     /// Call a function on an App service
     pub fn app_svc(
         &self,
@@ -250,30 +232,22 @@ async fn handle_app_service_call(
     appid: String,
     name: String,
     args: Option<String>,
-    log_sender: Sender<LogMessage>,
 ) {
     if let Some(svc) = ctx.get_user_data::<MiniAppSvc>() {
         let svc_clone = svc.clone();
         let ctx_clone_for_task = ctx.clone();
-        let log_sender_for_task = log_sender.clone();
 
         let task = async move {
             if let Err(e) = svc_clone.call(&ctx_clone_for_task, &name, args).await {
-                let _ = log_sender_for_task.send(LogMessage {
-                    level: LogLevel::Error,
-                    message: format!(
-                        "[Worker {}] App service '{}' call '{}' failed, Error: {}",
-                        worker_id, appid, name, e
-                    ),
-                });
+                error!(
+                    "[Worker {}] App service '{}' call '{}' failed, Error: {}",
+                    worker_id, appid, name, e
+                );
             }
         };
         tokio::task::spawn_local(task);
     } else {
-        let _ = log_sender.send(LogMessage {
-            level: LogLevel::Error,
-            message: format!("[Worker {}] App service '{}' not loaded", worker_id, appid),
-        });
+        error!("[Worker {}] App service '{}' not loaded", worker_id, appid);
     }
 }
 
@@ -284,10 +258,8 @@ async fn handle_view_source(
     page_svc_ref: &PageSvc,
     path: String,
     incoming: Arc<bridge::IncomingMessage>,
-    log_sender: Sender<LogMessage>,
 ) -> Result<(), MiniAppError> {
     let mut page_svc_clone = page_svc_ref.clone();
-    let log_sender_for_task = log_sender.clone();
     let path_clone = path.clone();
 
     page_svc_ref
@@ -313,13 +285,10 @@ async fn handle_view_source(
                             .call_or_event_from_view(&ctx, &dispatch_msg_clone)
                             .await
                         {
-                            let _ = log_sender_for_task.send(LogMessage {
-                                level: LogLevel::Error,
-                                message: format!(
-                                    "[Worker {}] Exec Page {} service/event '{}' failed, Error: {}",
-                                    worker_id, path_clone, name_owned, e
-                                ),
-                            });
+                            error!(
+                                "[Worker {}] Exec Page {} service/event '{}' failed, Error: {}",
+                                worker_id, path_clone, name_owned, e
+                            );
                         }
                     };
                     tokio::task::spawn_local(task);
@@ -330,13 +299,10 @@ async fn handle_view_source(
 
                     let task = async move {
                         if let Err(e) = page_svc_clone.callback(&callback_id_owned).await {
-                            let _ = log_sender_for_task.send(LogMessage {
-                                level: LogLevel::Error,
-                                message: format!(
-                                    "[Worker {}] No callback handler: {}, Error: {}",
-                                    worker_id, callback_id_owned, e
-                                ),
-                            });
+                            error!(
+                                "[Worker {}] No callback handler: {}, Error: {}",
+                                worker_id, callback_id_owned, e
+                            );
                         }
                     };
                     tokio::task::spawn_local(task);
@@ -354,10 +320,8 @@ async fn handle_native_source(
     path: String,
     name: String,
     args: Option<String>,
-    log_sender: Sender<LogMessage>,
 ) {
     let page_svc_clone = page_svc.clone();
-    let log_sender_for_task = log_sender.clone();
     let path_clone = path.clone();
     let name_clone = name.clone();
 
@@ -366,13 +330,10 @@ async fn handle_native_source(
             .call_or_event_from_native(&ctx, &name, args.as_deref())
             .await
         {
-            let _ = log_sender_for_task.send(LogMessage {
-                level: LogLevel::Error,
-                message: format!(
-                    "[Worker {}] Page service '{}' call '{}' failed, Error: {}",
-                    worker_id, path_clone, name_clone, e
-                ),
-            });
+            error!(
+                "[Worker {}] Page service '{}' call '{}' failed, Error: {}",
+                worker_id, path_clone, name_clone, e
+            );
         }
     };
     tokio::task::spawn_local(task);
@@ -386,16 +347,7 @@ async fn miniapp_service_handler(
     runtime: JSRuntime,
     message: ServiceMessage,
     current_ctx: &mut Option<JSContext>,
-    log_sender: Sender<LogMessage>,
 ) {
-    // Helper function for logging without locking
-    let log = |level: LogLevel, message: &str| {
-        let _ = log_sender.send(LogMessage {
-            level,
-            message: message.to_string(),
-        });
-    };
-
     match message {
         ServiceMessage::CreateMiniApp { miniapp } => {
             let ctx = runtime.context();
@@ -415,48 +367,29 @@ async fn miniapp_service_handler(
             let _ = rong_modules::init(&ctx);
             let _ = lx::init(&ctx);
 
-            log(
-                LogLevel::Info,
-                &format!(
-                    "[Worker {}] Created JS context for MiniApp '{}'",
-                    worker_id, miniapp.appid
-                ),
-            );
+            info!("[Worker {}] Created JS context", worker_id).with_appid(miniapp.appid.clone());
 
             let js = miniapp.app_dir.join("logic.js");
             if js.exists() {
                 if let Ok(js) = Source::from_path(&ctx, js).await {
                     match ctx.eval::<()>(js) {
                         Ok(_) => {
-                            log(
-                                LogLevel::Info,
-                                &format!(
-                                    "[Worker {}] Successfully loaded logic JS for {}",
-                                    worker_id, miniapp.appid
-                                ),
-                            );
+                            info!("[Worker {}] Successfully loaded logic JS", worker_id)
+                                .with_appid(miniapp.appid.clone());
                         }
                         Err(e) => {
-                            log(
-                                LogLevel::Error,
-                                &format!(
-                                    "[Worker {}] eval logic JS for {} failed: {}",
-                                    worker_id, miniapp.appid, e
-                                ),
-                            );
+                            info!("[Worker {}] eval logic JS  failed: {}", worker_id, e)
+                                .with_appid(miniapp.appid.clone());
                         }
                     }
                 }
             } else {
-                log(
-                    LogLevel::Info,
-                    &format!(
-                        "[Worker {}] MiniApp '{}' has no JS file: '{}'",
-                        worker_id,
-                        miniapp.appid,
-                        js.display()
-                    ),
-                );
+                error!(
+                    "[Worker {}] Not found JS file: '{}'",
+                    worker_id,
+                    js.display()
+                )
+                .with_appid(miniapp.appid.clone());
             }
 
             *current_ctx = Some(ctx.clone());
@@ -477,26 +410,16 @@ async fn miniapp_service_handler(
                     manager_guard.remove_miniapp(&appid);
                 }
 
-                log(
-                    LogLevel::Info,
-                    &format!(
-                        "[Worker {}] Removed MiniApp context for '{}'",
-                        worker_id, appid
-                    ),
-                );
+                info!("[Worker {}] Removed MiniApp context ", worker_id).with_appid(appid.clone());
             }
         }
         ServiceMessage::CreatePage { appid, path } => {
             if let Some(ctx) = current_ctx.as_ref() {
                 if let Ok(page_jsfunc) = ctx.global().get::<_, JSFunc>("__CREATE_PAGE__") {
                     if let Err(e) = page_jsfunc.call::<_, ()>(None, (path.clone(),)) {
-                        log(
-                            LogLevel::Error,
-                            &format!(
-                                "[Worker {}] __CREATE_PAGE__ call failed for {}/{}: {}",
-                                worker_id, appid, path, e
-                            ),
-                        );
+                        error!("[Worker {}] __CREATE_PAGE__ call failed: {}", worker_id, e)
+                            .with_appid(appid)
+                            .with_path(path);
                     }
                 }
             }
@@ -517,24 +440,19 @@ async fn miniapp_service_handler(
                         .call_or_event_from_native(ctx, "onUnload", None)
                         .await;
 
-                    log(
-                        LogLevel::Info,
-                        &format!(
-                            "[Worker {}] Removed page '{}' of MiniApp '{}'",
-                            worker_id, path, appid
-                        ),
-                    );
+                    info!("[Worker {}] Removed page", worker_id)
+                        .with_appid(appid)
+                        .with_path(path);
                 }
             }
         }
         ServiceMessage::CallAppSvc { appid, name, args } => {
             if let Some(ctx) = current_ctx.as_ref() {
-                handle_app_service_call(worker_id, ctx, appid, name, args, log_sender.clone())
-                    .await;
+                handle_app_service_call(worker_id, ctx, appid, name, args).await;
             }
         }
         ServiceMessage::CallPageSvc {
-            appid: _,
+            appid,
             path,
             source,
         } => {
@@ -558,26 +476,18 @@ async fn miniapp_service_handler(
                                 &page_svc.clone(),
                                 path_str,
                                 incoming,
-                                log_sender.clone(),
                             )
                             .await
                             {
-                                log(
-                                    LogLevel::Error,
-                                    &format!(
-                                        "[Worker {}] Handle incoming message error: {}",
-                                        worker_id, e
-                                    ),
+                                error!(
+                                    "[Worker {}] Handle incoming message error: {}",
+                                    worker_id, e
                                 );
                             }
                         } else {
-                            log(
-                                LogLevel::Error,
-                                &format!(
-                                    "[Worker {}] Page service '{}' not loaded",
-                                    worker_id, path
-                                ),
-                            );
+                            error!("[Worker {}] Page service not loaded", worker_id)
+                                .with_path(path)
+                                .with_appid(appid);
                         }
                     }
                     PageSvcSource::Native { name, args } => {
@@ -599,17 +509,12 @@ async fn miniapp_service_handler(
                                 path_str,
                                 name,
                                 args,
-                                log_sender.clone(),
                             )
                             .await;
                         } else {
-                            log(
-                                LogLevel::Error,
-                                &format!(
-                                    "[Worker {}] Page service '{}' not loaded",
-                                    worker_id, path
-                                ),
-                            );
+                            error!("[Worker {}] Page service not loaded", worker_id)
+                                .with_appid(appid)
+                                .with_path(path);
                         }
                     }
                 }
@@ -620,24 +525,17 @@ async fn miniapp_service_handler(
 
 /// Initialize the MiniAppService system
 /// Returns the MiniAppServiceManager for the caller to manage
-pub(crate) fn init<T: AppController + 'static>(
-    controller: Arc<T>,
-    num: usize,
-) -> Arc<Mutex<MiniAppServiceManager>> {
+pub(crate) fn init(num: usize) -> Arc<Mutex<MiniAppServiceManager>> {
     let (service_sender, service_receiver) = mpsc::channel::<ServiceMessage>();
     let service_receiver = Arc::new(Mutex::new(service_receiver));
 
     let barrier = Arc::new(std::sync::Barrier::new(2));
     let worker_barrier = barrier.clone();
 
-    // Create a dedicated channel for logging
-    let (log_sender, log_receiver) = mpsc::channel::<LogMessage>();
-
     // Create the manager with the controller and log sender
     let manager = Arc::new(Mutex::new(MiniAppServiceManager::new(
         service_sender.clone(),
         num,
-        log_sender.clone(),
     )));
 
     // Clone the manager to return at the end
@@ -645,15 +543,6 @@ pub(crate) fn init<T: AppController + 'static>(
 
     // Clone manager for use in thread
     let manager_clone = manager.clone();
-
-    // Start log processor thread
-    let controller_for_logs = controller.clone();
-    std::thread::spawn(move || {
-        // Process log messages in a dedicated thread
-        while let Ok(log_msg) = log_receiver.recv() {
-            controller_for_logs.log(log_msg.level, &log_msg.message);
-        }
-    });
 
     std::thread::spawn(move || {
         let rt = tokio::runtime::Builder::new_current_thread()
@@ -685,20 +574,10 @@ pub(crate) fn init<T: AppController + 'static>(
                 worker_barrier.wait();
             }
 
-            // Get log sender for this thread
-            let main_log_sender = {
-                let manager = manager_clone.lock().unwrap();
-                manager.get_log_sender()
-            };
-
             // Set up tasks for each worker
             for worker in &workers {
                 let worker_id = worker.id();
                 let manager_c = manager_clone.clone();
-                let worker_log_sender = {
-                    let manager = manager_clone.lock().unwrap();
-                    manager.get_log_sender()
-                };
 
                 if worker
                     .spawn_future(async move |runtime, mut receiver| {
@@ -715,7 +594,6 @@ pub(crate) fn init<T: AppController + 'static>(
                                     runtime.clone(),
                                     service.svc,
                                     &mut current_ctx,
-                                    worker_log_sender.clone(),
                                 )
                                 .await;
                             }
@@ -728,10 +606,7 @@ pub(crate) fn init<T: AppController + 'static>(
                     })
                     .is_err()
                 {
-                    let _ = main_log_sender.send(LogMessage {
-                        level: LogLevel::Error,
-                        message: format!("Failed to spawn worker {}", worker_id),
-                    });
+                    error!("Failed to spawn worker {}", worker_id);
                 }
             }
 
@@ -776,10 +651,7 @@ pub(crate) fn init<T: AppController + 'static>(
                         }
                     }
                     Err(_) => {
-                        let _ = main_log_sender.send(LogMessage {
-                            level: LogLevel::Error,
-                            message: "Service message channel closed".to_string(),
-                        });
+                        error!("Service message channel closed");
                         break;
                     }
                 }

@@ -1,4 +1,3 @@
-use crate::miniapp::MiniApp;
 use std::sync::{Arc, OnceLock};
 use tokio::sync::watch;
 
@@ -26,51 +25,6 @@ impl LogTag {
             LogTag::WebViewConsole => "JSView",
             LogTag::MiniAppServiceConsole => "JSService",
         }
-    }
-}
-
-pub(crate) trait Logging {
-    /// Advanced logging for mini-app framework
-    /// This logs both to the local platform and can be extended
-    /// to handle different log sources (WebView, native, etc.)
-    /// and targets (local, remote servers, analytics, etc.)
-    fn write_log(&self, path: &str, level: LogLevel, tag: LogTag, message: impl std::fmt::Display);
-
-    fn verbose(&self, path: &str, message: impl std::fmt::Display) {
-        self.write_log(path, LogLevel::Verbose, LogTag::Native, message)
-    }
-
-    fn debug(&self, path: &str, message: impl std::fmt::Display) {
-        self.write_log(path, LogLevel::Debug, LogTag::Native, message)
-    }
-
-    fn info(&self, path: &str, message: impl std::fmt::Display) {
-        self.write_log(path, LogLevel::Info, LogTag::Native, message)
-    }
-
-    fn warn(&self, path: &str, message: impl std::fmt::Display) {
-        self.write_log(path, LogLevel::Warn, LogTag::Native, message)
-    }
-
-    fn error(&self, path: &str, message: impl std::fmt::Display) {
-        self.write_log(path, LogLevel::Error, LogTag::Native, message)
-    }
-}
-
-impl Logging for MiniApp {
-    // Comprehensive logging system for mini-app framework
-    fn write_log(
-        &self,
-        _path: &str,
-        level: LogLevel,
-        tag: LogTag,
-        message: impl std::fmt::Display,
-    ) {
-        // Log to local platform (essential logs)
-        self.controller
-            .log(level, &format!("[{}] {}", tag.as_str(), message));
-
-        // TODO: Log to network server for remote diagnostics
     }
 }
 

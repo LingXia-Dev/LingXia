@@ -1,7 +1,7 @@
 use http::{Request, Response, StatusCode};
 
-use crate::log::Logging;
 use crate::miniapp::MiniApp;
+use crate::{error, info};
 
 impl MiniApp {
     /// Handler for lx:// scheme requests to access app assets
@@ -48,19 +48,17 @@ impl MiniApp {
 
                     // Inject both bridge script and CSS only if not already injected
                     let html_data = if is_script_injected {
-                        self.info(
-                            path,
-                            format!("Page already injected, skipping injection for {}", path),
-                        );
+                        info!("Page already injected, skipping injection for {}", path)
+                            .with_appid(self.appid.clone());
                         data
                     } else {
-                        self.info(path, format!("Injecting bridge script to {}", path));
+                        info!("Injecting bridge script to {}", path).with_appid(self.appid.clone());
                         let mut injected_data = inject_bridge_script(&data, self);
 
                         // Also inject CSS when injecting script (both happen only on first load)
                         // First try to inject global app.css
                         if let Ok(app_css_data) = self.read_bytes("app.css") {
-                            self.info(path, "Injecting global app.css".to_string());
+                            info!("Injecting global app.css").with_appid(self.appid.clone());
                             injected_data = inject_css(&injected_data, &app_css_data, self, path);
                         }
 
@@ -68,13 +66,8 @@ impl MiniApp {
                         if let Some(css_path) = path.strip_suffix(".html") {
                             let css_full_path = format!("{}.css", css_path);
                             if let Ok(css_data) = self.read_bytes(&css_full_path) {
-                                self.info(
-                                    path,
-                                    format!(
-                                        "Found and injecting matching CSS file: {}",
-                                        css_full_path
-                                    ),
-                                );
+                                info!("Found and injecting matching CSS file: {}", css_full_path)
+                                    .with_appid(&self.appid);
                                 injected_data = inject_css(&injected_data, &css_data, self, path);
                             }
                         }
@@ -104,7 +97,7 @@ impl MiniApp {
                     })
             }
             Err(e) => {
-                self.error("", format!("Fallback to reading 404.html due to {}", e));
+                error!("Fallback to reading 404.html due to {}", e).with_appid(self.appid.clone());
 
                 // Return a 404 Not Found response
                 Response::builder()
@@ -224,15 +217,12 @@ fn inject_bridge_script(html_data: &[u8], app: &MiniApp) -> Vec<u8> {
             if reader.read_to_end(&mut script_data).is_ok() {
                 String::from_utf8_lossy(&script_data).to_string()
             } else {
-                app.error("inject_bridge", "Failed to read bridge script content");
+                error!("Failed to read bridge script content").with_appid(app.appid.clone());
                 return html_data.to_vec();
             }
         }
         Err(e) => {
-            app.error(
-                "inject_bridge",
-                format!("Failed to open bridge script: {}", e),
-            );
+            error!("Failed to open bridge script: {}", e).with_appid(app.appid.clone());
             return html_data.to_vec();
         }
     };
@@ -245,7 +235,7 @@ fn inject_bridge_script(html_data: &[u8], app: &MiniApp) -> Vec<u8> {
         // Try to insert before </head> tag (preferred location for early initialization)
         if let Some(head_pos) = html_str.to_lowercase().find("</head>") {
             let (before, after) = html_str.split_at(head_pos);
-            app.info("inject_bridge", "Injected script before </head>");
+            info!("Injected script before </head>").with_appid(app.appid.clone());
             return format!("{}{}{}", before, script_tag, after).into_bytes();
         }
         // If no </head> tag, try to insert at the beginning of <body> tag
@@ -253,25 +243,19 @@ fn inject_bridge_script(html_data: &[u8], app: &MiniApp) -> Vec<u8> {
             if let Some(body_end) = html_str[body_pos..].find('>') {
                 let insert_pos = body_pos + body_end + 1;
                 let (before, after) = html_str.split_at(insert_pos);
-                app.info("inject_bridge", "Injected script after <body>");
+                info!("Injected script after <body>").with_appid(app.appid.clone());
                 return format!("{}{}{}", before, script_tag, after).into_bytes();
             }
         }
         // If neither tag is found, insert at the beginning of the HTML
         else {
-            app.info(
-                "inject_bridge",
-                "Injected script at beginning of HTML (fallback)",
-            );
+            info!("Injected script at beginning of HTML (fallback)").with_appid(app.appid.clone());
             return format!("{}{}", script_tag, html_str).into_bytes();
         }
     }
 
     // If all injection attempts failed, return the original data
-    app.error(
-        "inject_bridge",
-        "All injection attempts failed, returning original HTML",
-    );
+    error!("All injection attempts failed, returning original HTML").with_appid(app.appid.clone());
     html_data.to_vec()
 }
 
@@ -286,10 +270,7 @@ fn inject_css(html_data: &[u8], css_data: &[u8], app: &MiniApp, path: &str) -> V
         // Try to insert before </head> tag (preferred location for styles)
         if let Some(head_pos) = html_str.to_lowercase().find("</head>") {
             let (before, after) = html_str.split_at(head_pos);
-            app.info(
-                "inject_css",
-                format!("Injected CSS before </head> in {}", path),
-            );
+            info!("Injected CSS before </head> in {}", path).with_appid(app.appid.clone());
             return format!("{}{}{}", before, style_tag, after).into_bytes();
         }
         // If no </head> tag, try to insert at the beginning of <body> tag
@@ -297,27 +278,20 @@ fn inject_css(html_data: &[u8], css_data: &[u8], app: &MiniApp, path: &str) -> V
             if let Some(body_end) = html_str[body_pos..].find('>') {
                 let insert_pos = body_pos + body_end + 1;
                 let (before, after) = html_str.split_at(insert_pos);
-                app.info(
-                    "inject_css",
-                    format!("Injected CSS after <body> in {}", path),
-                );
+                info!("Injected CSS after <body> in {}", path).with_appid(app.appid.clone());
                 return format!("{}{}{}", before, style_tag, after).into_bytes();
             }
         }
         // If neither tag is found, insert at the beginning of the HTML
         else {
-            app.info(
-                "inject_css",
-                format!("Injected CSS at beginning of HTML in {} (fallback)", path),
-            );
+            info!("Injected CSS at beginning of HTML in {} (fallback)", path)
+                .with_appid(app.appid.clone());
             return format!("{}{}", style_tag, html_str).into_bytes();
         }
     }
 
     // If all injection attempts failed, return the original data
-    app.error(
-        "inject_css",
-        format!("CSS injection failed for {}, returning original HTML", path),
-    );
+    error!("CSS injection failed for {}, returning original HTML", path)
+        .with_appid(app.appid.clone());
     html_data.to_vec()
 }

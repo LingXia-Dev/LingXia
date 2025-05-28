@@ -11,10 +11,11 @@ use std::time::Instant;
 use crate::app::{AppConfig, AppController, switch_page};
 use crate::appservice::{self, MiniAppServiceManager};
 use crate::error::MiniAppError;
-use crate::log::{LogLevel, LogTag, Logging};
+use crate::log::{self, LogLevel, LogTag};
 use crate::page::{Page, Pages, WebViewController};
+use crate::{error, info};
 use config::{MiniAppConfig, PageConfig};
-use security::NetworkSecurity;
+use security::NetworkSecurity; // Import the new logging macros
 
 mod config;
 mod install;
@@ -220,7 +221,7 @@ impl MiniApp {
     ) -> Self {
         let mut app = Self::_new(appid, controller, svc_manager);
         if let Err(e) = app.setup() {
-            app.error("system", e.to_string());
+            error!("Setup failed: {}", e).with_appid(&app.appid);
         }
 
         app
@@ -238,7 +239,7 @@ impl MiniApp {
         app.home_miniapp = true;
 
         if let Err(e) = app.setup() {
-            app.error("system", e.to_string());
+            error!("Setup failed for home app: {}", e).with_appid(&app.appid);
         }
 
         app
@@ -417,10 +418,6 @@ impl MiniApp {
             fs::remove_dir_all(&self.cache_dir)?;
         }
 
-        self.info(
-            "system",
-            format!("Mini app {} uninstalled successfully", self.appid),
-        );
         Ok(())
     }
 }
@@ -617,7 +614,7 @@ impl AppUiDelegate for MiniApp {
 
     fn on_miniapp_opened(&self) {
         // Log the app opening event
-        self.info("AppUiDelegate", format!("Mini app {} opened", self.appid));
+        info!("Mini app opened").with_appid(&self.appid);
 
         self.state.lock().unwrap().opened = true;
 
@@ -630,18 +627,13 @@ impl AppUiDelegate for MiniApp {
             // Initialize app service for home app
             if let Ok(mut svc_manager) = self.svc_manager.lock() {
                 if let Err(e) = svc_manager.create_app_svc(self_arc) {
-                    self.error(
-                        "AppUiDelegate",
-                        format!("Failed to trigger app service: {}", e),
-                    );
+                    error!("Failed to trigger app service: {}", e).with_appid(self.appid.clone());
                 }
                 if let Err(e) =
                     svc_manager.app_svc(self.appid.clone(), "onLaunch".to_string(), None)
                 {
-                    self.error(
-                        "AppUiDelegate",
-                        format!("Failed to trigger onLaunch service: {}", e),
-                    );
+                    error!("Failed to trigger onLaunch service: {}", e)
+                        .with_appid(self.appid.clone());
                 }
             }
         }
@@ -654,7 +646,7 @@ impl AppUiDelegate for MiniApp {
         self.state.lock().unwrap().last_active_time = Instant::now();
 
         // Log the app closing event
-        self.info("AppUiDelegate", format!("Mini app {} closed", self.appid));
+        info!("Mini app closed").with_appid(self.appid.clone());
     }
 
     fn on_page_created(&self, path: String) {
@@ -685,14 +677,20 @@ impl AppUiDelegate for MiniApp {
 
         // Now we can use self again as the mutable borrow has ended
         if let Err(e) = url_load_result {
-            self.error(&path, format!("Failed to load URL {}: {}", url, e));
+            error!("Failed to load URL {}: {}", url, e)
+                .with_appid(self.appid.clone())
+                .with_path(path.clone());
         }
 
         if let Err(e) = devtools_result {
-            self.error(&path, format!("Failed to enable devtools: {}", e));
+            error!("Failed to enable devtools: {}", e)
+                .with_appid(self.appid.clone())
+                .with_path(path.clone());
         }
 
-        self.info("AppUiDelegate", format!("Page {} created", path));
+        info!("Page reated")
+            .with_appid(self.appid.clone())
+            .with_path(path.clone());
     }
 
     fn on_page_started(&self, path: String) {
@@ -735,10 +733,8 @@ impl AppUiDelegate for MiniApp {
                     "onHide".to_string(),
                     None,
                 ) {
-                    self.error(
-                        "AppUiDelegate",
-                        format!("Failed to call onHide for page {}: {}", prev_path, e),
-                    );
+                    error!("Failed to call onHide for page {}: {}", prev_path, e)
+                        .with_appid(self.appid.clone());
                 }
             }
 
@@ -749,16 +745,15 @@ impl AppUiDelegate for MiniApp {
                 "onShow".to_string(),
                 None,
             ) {
-                self.error(
-                    "AppUiDelegate",
-                    format!("Failed to call onShow for page {}: {}", path, e),
-                );
+                error!("Failed to call onShow: {}", e)
+                    .with_appid(self.appid.clone())
+                    .with_path(path.clone());
             }
         }
     }
 
     fn on_back_pressed(&self) -> bool {
-        self.info("AppUiDelegate", "Backbutton pressed");
+        info!("Backbutton pressed").with_appid(self.appid.clone());
 
         // Try to pop the current page from the stack
         if let Some(previous_page) = self.state.lock().unwrap().pages.pop_from_current_stack() {
@@ -769,17 +764,13 @@ impl AppUiDelegate for MiniApp {
                 return false;
             }
 
-            self.info(
-                "AppUiDelegate",
-                format!("Popped page, switching back to: {}", previous_page),
-            );
+            info!("Popped page, switching back to: {}", previous_page)
+                .with_appid(self.appid.clone());
 
             // Request to switch to the previous page
             if let Err(e) = switch_page(&self.controller, &self.appid, &previous_page) {
-                self.error(
-                    "AppUiDelegate",
-                    format!("Failed to switch to page {}: {}", previous_page, e),
-                );
+                error!("Failed to switch to page {}: {}", previous_page, e)
+                    .with_appid(self.appid.clone());
             }
 
             // Return true to indicate we handled the back press
@@ -814,10 +805,7 @@ impl AppUiDelegate for MiniApp {
             if let Err(e) =
                 manager.handle_view_message(self.appid.clone(), path, Arc::new(incoming))
             {
-                self.error(
-                    "AppUiDelegate",
-                    format!("Failed to create app service: {}", e),
-                );
+                error!("Failed to create app service: {}", e).with_appid(self.appid.clone());
             }
         }
     }
@@ -846,7 +834,10 @@ impl AppUiDelegate for MiniApp {
     }
 
     fn log(&self, path: &str, level: LogLevel, message: &str) {
-        self.write_log(path, level, LogTag::WebViewConsole, message);
+        log::LogBuilder::new(LogTag::WebViewConsole, message)
+            .with_level(level)
+            .with_path(path)
+            .with_appid(self.appid.clone());
     }
 }
 
@@ -888,7 +879,7 @@ pub fn init<T: AppController + 'static>(controller: T) -> Option<(String, String
                 }
             }
 
-            let svc_manager = appservice::init(controller_arc.clone(), max_apps);
+            let svc_manager = appservice::init(max_apps);
 
             // Create the home MiniApp instance
             let home_miniapp = MiniApp::new_as_home(
