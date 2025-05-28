@@ -95,7 +95,7 @@ impl DispatchMessage {
     ///
     /// # Arguments
     /// * `result` - Optional JSON string to include in the reply. Use Some(json_string) for fast operations
-    ///  that need to return data immediately, or None for operations that don't return data.
+    ///   that need to return data immediately, or None for operations that don't return data.
     pub fn reply_success(&self, result: Option<&str>) -> Result<(), MiniAppError> {
         match &self.message_type {
             DispatchMessageType::Call { .. } => {
@@ -299,10 +299,9 @@ impl Bridge {
 
         self.transport
             .post_message_to_view(&serialized)
-            .map_err(|e| {
+            .inspect_err(|_e| {
                 let mut pending_on_err = self.pending_calls.lock().unwrap();
                 pending_on_err.remove(&msg_id);
-                e
             })?;
 
         match timeout(Duration::from_millis(DEFAULT_TIMEOUT_MS), rx).await {

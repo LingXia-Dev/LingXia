@@ -12,7 +12,7 @@ use crate::app::{AppConfig, AppController, switch_page};
 use crate::appservice::{self, MiniAppServiceManager};
 use crate::error::MiniAppError;
 use crate::log::{LogLevel, LogTag, Logging};
-use crate::page::{Pages, WebViewController};
+use crate::page::{Page, Pages, WebViewController};
 use config::{MiniAppConfig, PageConfig};
 use security::NetworkSecurity;
 
@@ -369,6 +369,12 @@ impl MiniApp {
 
     pub fn is_opened(&self) -> bool {
         self.state.lock().unwrap().opened
+    }
+
+    /// Get a page by path
+    pub fn get_page(&self, path: &str) -> Option<Page> {
+        let state = self.state.lock().unwrap();
+        state.pages.get_page(path).cloned()
     }
 
     /// Uninstalls the mini app by removing its version record and directories

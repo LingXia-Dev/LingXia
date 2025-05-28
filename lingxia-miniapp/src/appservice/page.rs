@@ -1,13 +1,16 @@
 use super::bridge::{Bridge, BridgeTransport};
 use super::lx;
 use crate::error::MiniAppError;
+use crate::miniapp::MiniApp;
 use crate::page::{Page, WebViewController};
 use rong::{
     Class, JSContext, JSFunc, JSObject, JSResult, JSValue, RongJSError, Source, function::Optional,
     js_class, js_export, js_method,
 };
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::sync::Mutex;
 
@@ -18,8 +21,7 @@ pub(crate) struct PageSvc {
     this: JSObject,
     fast_api: Rc<lx::FastJSApi>,
 
-    // use Option for late initialization
-    page: Option<Page>,
+    page: Page,
     bridge: Option<Bridge>,
 
     // state of PageSvc
@@ -36,7 +38,7 @@ struct PageSvcState {
 
 impl BridgeTransport for PageSvc {
     fn post_message_to_view(&self, message_json: &str) -> Result<(), MiniAppError> {
-        self.page.as_ref().unwrap().post_message(message_json)
+        self.page.post_message(message_json)
     }
 
     fn has_service(&self, service_name: &str) -> bool {
@@ -53,21 +55,25 @@ impl BridgeTransport for PageSvc {
 #[js_class]
 impl PageSvc {
     #[js_method(constructor)]
-    fn _new(ctx: JSContext, obj: JSObject) -> JSResult<JSObject> {
-        // Get the PageSvc class
-        let page_class = Class::get::<PageSvc>(&ctx)?;
-
-        let init_data = obj.get::<_, JSObject>("data").ok();
+    fn _new(ctx: JSContext, config: JSObject, path: String) -> JSResult<JSObject> {
+        let init_data = config.get::<_, JSObject>("data").ok();
         let fast_api = ctx
             .get_user_data::<Rc<lx::FastJSApi>>()
             .ok_or_else(|| RongJSError::Error("FastJSApi not found in context".to_string()))?
             .clone();
 
+        let miniapp = ctx.get_user_data::<Arc<MiniApp>>().unwrap();
+
+        // Get the page from MiniApp
+        let page = miniapp
+            .get_page(&path)
+            .ok_or_else(|| RongJSError::Error(format!("Page not found: {}", path)))?;
+
         let mut page_svc = PageSvc {
             functions: HashMap::new(),
-            this: obj.clone(),
+            this: config.clone(), // will be updated later
             fast_api,
-            page: None,
+            page,
             bridge: None,
             state: Rc::new(Mutex::new(PageSvcState {
                 callback: HashMap::new(),
@@ -77,14 +83,25 @@ impl PageSvc {
             })),
         };
 
-        // Extract all functions from the object
-        page_svc.assign_funcs(&obj)?;
+        // Extract functions from page config
+        page_svc.assign_funcs(&config)?;
 
-        let page = page_class.instance(page_svc);
+        // Create bridge with self reference
+        page_svc.bridge = Some(Bridge::new(Rc::new(page_svc.clone())));
 
-        // bind the object to member of 'this'
-        page.borrow_mut::<PageSvc>().unwrap().this = page.clone();
-        Ok(page)
+        let class = Class::get::<PageSvc>(&ctx).unwrap();
+        let instance = class.instance(page_svc);
+
+        let binding = instance.clone();
+        let mut page_svc = binding.borrow_mut::<PageSvc>().unwrap();
+        page_svc.this = instance.clone();
+
+        // Register the PageSvc in the JSContext HashMap
+        if let Some(page_svc_map) = ctx.get_user_data::<Rc<RefCell<HashMap<String, PageSvc>>>>() {
+            page_svc_map.borrow_mut().insert(path, page_svc.clone());
+        }
+
+        Ok(instance)
     }
 
     #[js_method(rename = "_setData")]
@@ -272,13 +289,6 @@ impl PageSvc {
                 .map_err(|e| RongJSError::Error(e.to_string()))?;
         }
         Ok(())
-    }
-
-    // attach Page to PageSvc and init its bridge
-    pub fn attach_page(&mut self, page: Page) {
-        self.page = Some(page);
-        let bridge = Bridge::new(Rc::new(self.clone()));
-        self.bridge = Some(bridge);
     }
 
     pub fn as_bridge(&self) -> &Bridge {

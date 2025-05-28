@@ -148,7 +148,7 @@ impl Pages {
 
         // Request to create page service
         if let Ok(guard) = svc_manager.lock() {
-            if let Err(e) = guard.create_page_svc(page.clone()) {
+            if let Err(e) = guard.create_page_svc(appid.clone(), path.clone()) {
                 controller.log(
                     LogLevel::Error,
                     &format!(
@@ -327,7 +327,7 @@ pub(crate) struct PageInner {
 
 /// Represents a single page in a mini app
 #[derive(Clone)]
-pub(crate) struct Page {
+pub struct Page {
     // Use Arc to share the inner state across threads
     inner: Arc<PageInner>,
 }

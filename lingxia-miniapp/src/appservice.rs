@@ -1,9 +1,8 @@
 use crate::AppController;
 use crate::error::MiniAppError;
 use crate::log::LogLevel;
-use crate::page::Page;
 
-use rong::{JSContext, JSFunc, JSObject, JSRuntime, Rong, RongJS, Source, Worker, WorkerMessage};
+use rong::{JSContext, JSFunc, JSRuntime, Rong, RongJS, Source, Worker, WorkerMessage};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -35,7 +34,7 @@ enum ServiceMessage {
     // Create a new page service
     CreatePage {
         appid: String,
-        page: Page,
+        path: String,
     },
     // Delete a page service
     TerminatePage {
@@ -141,11 +140,9 @@ impl MiniAppServiceManager {
     }
 
     /// Create a new page service in an existing mini app
-    pub fn create_page_svc(&self, page: Page) -> Result<(), MiniAppError> {
-        self.sender.send(ServiceMessage::CreatePage {
-            appid: page.appid(),
-            page,
-        })?;
+    pub fn create_page_svc(&self, appid: String, path: String) -> Result<(), MiniAppError> {
+        self.sender
+            .send(ServiceMessage::CreatePage { appid, path })?;
         Ok(())
     }
 
@@ -284,7 +281,7 @@ async fn handle_app_service_call(
 async fn handle_view_source(
     worker_id: usize,
     ctx: JSContext,
-    page_svc_ref: &mut PageSvc,
+    page_svc_ref: &PageSvc,
     path: String,
     incoming: Arc<bridge::IncomingMessage>,
     log_sender: Sender<LogMessage>,
@@ -489,58 +486,14 @@ async fn miniapp_service_handler(
                 );
             }
         }
-        ServiceMessage::CreatePage { appid: _, page } => {
+        ServiceMessage::CreatePage { appid, path } => {
             if let Some(ctx) = current_ctx.as_ref() {
-                // Extract app ID and path from page
-                let (appid, path) = (page.appid(), page.path());
-
-                // Call __CREATE_PAGE__ function to get PageSvc object
-                match ctx.global().get::<_, JSFunc>("__CREATE_PAGE__") {
-                    Ok(page_jsfunc) => match page_jsfunc.call::<_, JSObject>(None, (path.clone(),))
-                    {
-                        Ok(obj) => {
-                            if let Ok(mut svc) = obj.borrow_mut::<PageSvc>() {
-                                svc.attach_page(page);
-
-                                // Register the PageSvc in the JSContext HashMap
-                                if let Some(page_svc_map) =
-                                    ctx.get_user_data::<Rc<RefCell<HashMap<String, PageSvc>>>>()
-                                {
-                                    page_svc_map.borrow_mut().insert(path.clone(), svc.clone());
-                                }
-
-                                log(
-                                    LogLevel::Info,
-                                    &format!(
-                                        "[Worker {}] Successfully created page service for {}/{}",
-                                        worker_id, appid, path
-                                    ),
-                                );
-                            } else {
-                                log(
-                                    LogLevel::Error,
-                                    &format!(
-                                        "[Worker {}] Failed to borrow PageSvc for {}/{}",
-                                        worker_id, appid, path
-                                    ),
-                                );
-                            }
-                        }
-                        Err(e) => {
-                            log(
-                                LogLevel::Error,
-                                &format!(
-                                    "[Worker {}] __CREATE_PAGE__ call failed for {}/{}: {}",
-                                    worker_id, appid, path, e
-                                ),
-                            );
-                        }
-                    },
-                    Err(e) => {
+                if let Ok(page_jsfunc) = ctx.global().get::<_, JSFunc>("__CREATE_PAGE__") {
+                    if let Err(e) = page_jsfunc.call::<_, ()>(None, (path.clone(),)) {
                         log(
                             LogLevel::Error,
                             &format!(
-                                "[Worker {}] Failed to get __CREATE_PAGE__ function for {}/{}: {}",
+                                "[Worker {}] __CREATE_PAGE__ call failed for {}/{}: {}",
                                 worker_id, appid, path, e
                             ),
                         );
@@ -551,22 +504,26 @@ async fn miniapp_service_handler(
         ServiceMessage::TerminatePage { appid, path } => {
             if let Some(ctx) = current_ctx.as_ref() {
                 // Remove page from page_svc map stored in JSContext
-                if let Some(page_svc_map) =
+                let page_svc = if let Some(page_svc_map) =
                     ctx.get_user_data::<Rc<RefCell<HashMap<String, PageSvc>>>>()
                 {
-                    if let Some(page_svc) = page_svc_map.borrow_mut().remove(&path) {
-                        let _ = page_svc
-                            .call_or_event_from_native(ctx, "onUnload", None)
-                            .await;
+                    page_svc_map.borrow_mut().remove(&path)
+                } else {
+                    None
+                };
 
-                        log(
-                            LogLevel::Info,
-                            &format!(
-                                "[Worker {}] Removed page '{}' of MiniApp '{}'",
-                                worker_id, path, appid
-                            ),
-                        );
-                    }
+                if let Some(page_svc) = page_svc {
+                    let _ = page_svc
+                        .call_or_event_from_native(ctx, "onUnload", None)
+                        .await;
+
+                    log(
+                        LogLevel::Info,
+                        &format!(
+                            "[Worker {}] Removed page '{}' of MiniApp '{}'",
+                            worker_id, path, appid
+                        ),
+                    );
                 }
             }
         }
@@ -585,75 +542,73 @@ async fn miniapp_service_handler(
                 match source {
                     PageSvcSource::View { incoming } => {
                         let path_str = path.clone();
-                        if let Some(page_svc_map) =
+                        let page_svc = if let Some(page_svc_map) =
                             ctx.get_user_data::<Rc<RefCell<HashMap<String, PageSvc>>>>()
                         {
-                            if let Some(page_svc) = page_svc_map.borrow().get(&path).cloned() {
-                                let ctx_clone = ctx.clone();
-                                if let Err(e) = handle_view_source(
-                                    worker_id,
-                                    ctx_clone,
-                                    &mut page_svc.clone(),
-                                    path_str,
-                                    incoming,
-                                    log_sender.clone(),
-                                )
-                                .await
-                                {
-                                    log(
-                                        LogLevel::Error,
-                                        &format!(
-                                            "[Worker {}] Handle incoming message error: {}",
-                                            worker_id, e
-                                        ),
-                                    );
-                                }
-                            } else {
+                            page_svc_map.borrow().get(&path).cloned()
+                        } else {
+                            None
+                        };
+
+                        if let Some(page_svc) = page_svc {
+                            let ctx_clone = ctx.clone();
+                            if let Err(e) = handle_view_source(
+                                worker_id,
+                                ctx_clone,
+                                &page_svc.clone(),
+                                path_str,
+                                incoming,
+                                log_sender.clone(),
+                            )
+                            .await
+                            {
                                 log(
                                     LogLevel::Error,
                                     &format!(
-                                        "[Worker {}] Page service '{}' not loaded",
-                                        worker_id, path
+                                        "[Worker {}] Handle incoming message error: {}",
+                                        worker_id, e
                                     ),
                                 );
                             }
                         } else {
                             log(
                                 LogLevel::Error,
-                                &format!("[Worker {}] Page service map not found", worker_id),
+                                &format!(
+                                    "[Worker {}] Page service '{}' not loaded",
+                                    worker_id, path
+                                ),
                             );
                         }
                     }
                     PageSvcSource::Native { name, args } => {
                         let path_str = path.clone();
-                        if let Some(page_svc_map) =
+                        let page_svc = if let Some(page_svc_map) =
                             ctx.get_user_data::<Rc<RefCell<HashMap<String, PageSvc>>>>()
                         {
-                            if let Some(page_svc) = page_svc_map.borrow().get(&path).cloned() {
-                                let ctx_clone = ctx.clone();
-                                handle_native_source(
-                                    worker_id,
-                                    ctx_clone,
-                                    &mut page_svc.clone(),
-                                    path_str,
-                                    name,
-                                    args,
-                                    log_sender.clone(),
-                                )
-                                .await;
-                            } else {
-                                log(
-                                    LogLevel::Error,
-                                    &format!(
-                                        "[Worker {}] Page service '{}' not loaded",
-                                        worker_id, path
-                                    ),
-                                );
-                            }
+                            page_svc_map.borrow().get(&path).cloned()
+                        } else {
+                            None
+                        };
+
+                        if let Some(page_svc) = page_svc {
+                            let ctx_clone = ctx.clone();
+                            handle_native_source(
+                                worker_id,
+                                ctx_clone,
+                                &mut page_svc.clone(),
+                                path_str,
+                                name,
+                                args,
+                                log_sender.clone(),
+                            )
+                            .await;
                         } else {
                             log(
                                 LogLevel::Error,
-                                &format!("[Worker {}] Page service map not found", worker_id),
+                                &format!(
+                                    "[Worker {}] Page service '{}' not loaded",
+                                    worker_id, path
+                                ),
                             );
                         }
                     }

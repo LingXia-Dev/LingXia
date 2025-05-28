@@ -9,12 +9,12 @@
   const __PAGE_REGISTRY__ = {};
 
   // Core Page instance creation function
-  function createPageInstance(pageConfig) {
+  function createPageInstance(pageConfig, pagePath) {
     if (!pageConfig || typeof pageConfig !== "object") {
       throw new Error("setData: Invalid page configuration");
     }
 
-    const pageSvc = new PageSvc(pageConfig);
+    const pageSvc = new PageSvc(pageConfig, pagePath);
 
     // Initialize data
     pageSvc.data = JSON.parse(JSON.stringify(pageConfig.data || {}));
@@ -106,7 +106,7 @@
   globalThis.__CREATE_PAGE__ = function (pagePath) {
     const pageConfig = __PAGE_REGISTRY__[pagePath];
     if (pageConfig) {
-      return createPageInstance(pageConfig);
+      return createPageInstance(pageConfig, pagePath);
     } else {
       throw new Error(`Page not found: ${pagePath}`);
     }
