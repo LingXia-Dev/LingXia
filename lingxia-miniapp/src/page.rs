@@ -1,6 +1,5 @@
 use crate::appservice::MiniAppServiceManager;
-use crate::log::LogLevel;
-use crate::{AppController, ControllerCmd, MiniAppError, WebViewCmd};
+use crate::{AppController, ControllerCmd, MiniAppError, WebViewCmd, error};
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::Instant;
@@ -149,22 +148,14 @@ impl Pages {
         // Request to create page service
         if let Ok(guard) = svc_manager.lock() {
             if let Err(e) = guard.create_page_svc(appid.clone(), path.clone()) {
-                controller.log(
-                    LogLevel::Error,
-                    &format!(
-                        "Failed to request page service creation for {}/{}: {}",
-                        appid, path, e
-                    ),
-                );
+                error!("Failed to request page service creation: {}", e)
+                    .with_appid(appid.clone())
+                    .with_path(path.clone());
             }
         } else {
-            controller.log(
-                LogLevel::Error,
-                &format!(
-                    "Mutex poisoned when trying to create page service for {}/{}",
-                    appid, path,
-                ),
-            );
+            error!("Mutex poisoned when trying to create page service")
+                .with_appid(appid.clone())
+                .with_path(path.clone());
         }
 
         // Return reference to the newly created page

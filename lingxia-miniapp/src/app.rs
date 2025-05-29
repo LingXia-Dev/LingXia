@@ -3,7 +3,6 @@ use std::path::PathBuf;
 use std::sync::{Arc, mpsc};
 
 use crate::error::MiniAppError;
-use crate::log::LogLevel;
 use rong::IntoJSObj;
 use serde::{Deserialize, Serialize};
 
@@ -139,7 +138,7 @@ impl AppConfig {
 /// Base platform runtime capabilities
 ///
 /// This trait defines the core capabilities required for the mini app platform,
-/// including resource access, directory management, and logging.
+/// including resource access, directory management
 pub trait AppRuntime: Send + Sync + 'static {
     /// Read asset file from platform-specific location as a streaming reader
     ///
@@ -176,13 +175,6 @@ pub trait AppRuntime: Send + Sync + 'static {
     /// # Returns
     /// * `PathBuf` - Path to the application's cache directory
     fn app_cache_dir(&self) -> PathBuf;
-
-    /// Log message to platform-specific logging system
-    ///
-    /// # Arguments
-    /// * `level` - Log severity level
-    /// * `message` - Log message content
-    fn log(&self, level: LogLevel, message: &str);
 
     /// Get device information
     ///
@@ -229,10 +221,6 @@ impl<T: AppRuntime + ?Sized> AppRuntime for Arc<T> {
 
     fn app_cache_dir(&self) -> PathBuf {
         (**self).app_cache_dir()
-    }
-
-    fn log(&self, level: LogLevel, message: &str) {
-        (**self).log(level, message)
     }
 
     fn device_info(&self) -> DeviceInfo {

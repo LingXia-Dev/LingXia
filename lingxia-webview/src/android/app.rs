@@ -2,7 +2,6 @@ use crate::PlatformHost;
 use crate::android::{MINIAPP_CLASS, get_env};
 use jni::objects::{GlobalRef, JClass, JObject, JValue};
 use jni::sys::jobject;
-use miniapp::log::LogLevel;
 use miniapp::{AppRuntime, AssetFileEntry, DeviceInfo, MiniAppError};
 use ndk_sys;
 use std::ffi::CString;
@@ -309,16 +308,6 @@ impl AppRuntime for App {
 
     fn app_cache_dir(&self) -> PathBuf {
         PathBuf::from(&self.cache_dir)
-    }
-
-    fn log(&self, level: LogLevel, message: &str) {
-        match level {
-            LogLevel::Verbose => log::trace!("{}", message),
-            LogLevel::Debug => log::debug!("{}", message),
-            LogLevel::Info => log::info!("{}", message),
-            LogLevel::Warn => log::warn!("{}", message),
-            LogLevel::Error => log::error!("{}", message),
-        }
     }
 
     fn device_info(&self) -> DeviceInfo {

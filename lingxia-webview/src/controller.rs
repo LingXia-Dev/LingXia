@@ -6,8 +6,7 @@ use std::sync::{Mutex, OnceLock, mpsc};
 use std::thread::{self, ThreadId};
 
 use miniapp::{
-    AppController, AppRuntime, AssetFileEntry, ControllerCmd, DeviceInfo, MiniAppError,
-    log::LogLevel,
+    AppController, AppRuntime, AssetFileEntry, ControllerCmd, DeviceInfo, MiniAppError, error, info,
 };
 
 use crate::{App, WebView};
@@ -56,10 +55,6 @@ impl AppRuntime for Controller {
 
     fn app_cache_dir(&self) -> PathBuf {
         self.app.app_cache_dir()
-    }
-
-    fn log(&self, level: LogLevel, message: &str) {
-        self.app.log(level, message)
     }
 
     fn device_info(&self) -> DeviceInfo {
@@ -127,28 +122,19 @@ impl Controller {
     fn handle_request(controller: &Controller, request: ControllerCmd) -> bool {
         match request {
             ControllerCmd::Shutdown => {
-                controller.log(
-                    LogLevel::Info,
-                    "Shutdown command received, stopping command loop",
-                );
+                info!("Shutdown command received, stopping command loop");
                 return false; // Stop processing commands
             }
             ControllerCmd::WebView(cmd) => {
                 if let Err(err) = webview::handle_webview_cmd(&controller.webviews, cmd) {
                     // Log error but continue processing
-                    controller.log(
-                        LogLevel::Error,
-                        &format!("Error processing WebView command: {}", err),
-                    );
+                    error!("Error processing WebView command: {}", err);
                 }
             }
             ControllerCmd::MiniApp(cmd) => {
                 if let Err(err) = app::handle_miniapp_cmd(&controller.app, cmd) {
                     // Log error but continue processing
-                    controller.log(
-                        LogLevel::Error,
-                        &format!("Error processing MiniApp command: {}", err),
-                    );
+                    error!("Error processing MiniApp command: {}", err);
                 }
             }
         }

@@ -110,18 +110,12 @@ impl MiniApps {
 
         // If we found a non-home app, remove it
         if let Some((appid, _)) = least_active {
-            self.controller.log(
-                LogLevel::Info,
-                &format!("Destroying least active mini app: {}", appid),
-            );
+            info!("Destroying least active mini app").with_appid(appid.clone());
 
             // Clean up app service before removing the app
             if let Ok(mut svc_manager) = self.svc_manager.lock() {
                 if let Err(e) = svc_manager.terminate_app_svc(appid.clone()) {
-                    self.controller.log(
-                        LogLevel::Error,
-                        &format!("Failed to terminate app service for {}: {}", appid, e),
-                    );
+                    error!("Failed to terminate app service: {}", e).with_appid(appid.clone());
                 }
             }
 
@@ -132,8 +126,7 @@ impl MiniApps {
     /// Uninstall a mini app by removing its files and version record
     pub fn uninstall_miniapp(&self, appid: &str) -> Result<(), MiniAppError> {
         // Log operation
-        self.controller
-            .log(LogLevel::Info, &format!("Uninstalling mini app: {}", appid));
+        info!("Uninstalling mini app").with_appid(appid);
 
         // Get or create the miniapp instance
         let app_arc = self.get_or_init_miniapp(appid.to_string());
@@ -851,10 +844,7 @@ pub fn init<T: AppController + 'static>(controller: T) -> Option<(String, String
 
     // Prepare the directory structure
     if let Err(e) = prepare_directory_structure(controller_arc.as_ref()) {
-        controller_arc.log(
-            LogLevel::Error,
-            &format!("Failed to prepare directory structure: {}", e),
-        );
+        error!("Failed to prepare directory structure: {}", e);
         return None;
     }
 
@@ -870,11 +860,7 @@ pub fn init<T: AppController + 'static>(controller: T) -> Option<(String, String
                     &home_miniapp_id,
                     home_miniapp_version,
                 ) {
-                    controller_arc.log(
-                        LogLevel::Error,
-                        &format!("Failed to install home MiniApp: {}", e),
-                    );
-
+                    error!("Failed to install home MiniApp: {}", e);
                     return None;
                 }
             }
@@ -895,10 +881,7 @@ pub fn init<T: AppController + 'static>(controller: T) -> Option<(String, String
                     &home_miniapp_id,
                     home_miniapp_version,
                 ) {
-                    controller_arc.log(
-                        LogLevel::Error,
-                        &format!("Failed to install home MiniApp: {}", e),
-                    );
+                    error!("Failed to install home MiniApp: {}", e);
 
                     return None;
                 }
@@ -919,14 +902,11 @@ pub fn init<T: AppController + 'static>(controller: T) -> Option<(String, String
 
             // Set global instance
             if MINIAPPS_MANAGER.set(miniapps_manager).is_err() {
-                controller_arc.log(
-                    LogLevel::Error,
-                    "MiniApps manager singleton had been initialized by another instance",
-                );
+                error!("MiniApps manager singleton had been initialized by another instance");
                 return None;
             }
 
-            controller_arc.log(LogLevel::Info, "MiniApps initialized successfully");
+            info!("MiniApps initialized successfully");
             Some((home_miniapp_id, initial_route))
         }
 
@@ -945,7 +925,7 @@ pub fn init<T: AppController + 'static>(controller: T) -> Option<(String, String
                 _ => format!("Failed to load app configuration: {}", e),
             };
 
-            controller_arc.log(LogLevel::Error, &error_message);
+            error!("{}", error_message);
             None
         }
     }
