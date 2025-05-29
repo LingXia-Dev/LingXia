@@ -161,6 +161,37 @@ class MiniApp private constructor(private val context: Context) {
             }
             instance.context.sendBroadcast(intent)
         }
+
+        /**
+         * Creates a WebView for the specified appId and path.
+         * This method is called from the Rust layer to create WebViews for better performance.
+         * The WebView will be created and automatically registered when attached to window.
+         *
+         * @param appId The miniapp ID
+         * @param path The page path
+         */
+        @JvmStatic
+        fun createWebView(appId: String, path: String): com.lingxia.miniapp.WebView? {
+            Log.d(TAG, "Creating hidden WebView for appId=$appId, path=$path")
+
+            return try {
+                val context = getInstance().context
+
+                // Create WebView with hidden visibility
+                val webView = com.lingxia.miniapp.WebView.createWebView(
+                    context = context,
+                    appId = appId,
+                    path = path,
+                    visible = false
+                )
+
+                Log.d(TAG, "Successfully created hidden WebView for appId=$appId, path=$path")
+                webView
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to create hidden WebView for appId=$appId, path=$path: ${e.message}", e)
+                null
+            }
+        }
     }
 
     private fun openInNewActivity(appId: String, path: String) {

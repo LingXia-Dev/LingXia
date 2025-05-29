@@ -382,11 +382,14 @@ class MiniAppActivity : AppCompatActivity() {
                 Log.e(TAG, "findOrCreateWebViewForPage failed: Cannot create WebView, appId is missing.")
                 return Pair(null, null)
             }
-            webView = com.lingxia.miniapp.WebView(this).apply {
-                handleWebViewCreated(appId, path)
-            }
+            webView = com.lingxia.miniapp.WebView.createWebView(
+                context = this,
+                appId = appId,
+                path = path,
+                visible = true
+            )
         } else {
-            Log.d(TAG, "Reusing existing WebView instance for page: $path")
+            Log.d(TAG, "Using existing WebView instance for page: $path")
         }
 
         // Get page config - Nav bar configuration is now handled by the caller
@@ -403,6 +406,14 @@ class MiniAppActivity : AppCompatActivity() {
         }
         if (!isDestroyed) {
             Log.d(TAG, "Attaching and resuming WebView for path: ${view.currentPath}")
+
+            // Check if this WebView was in an off-screen container
+            val wasInOffScreenContainer = view.parent?.let { parent ->
+                val parentView = parent as? ViewGroup
+                parentView?.tag?.toString()?.startsWith("hiddenWebViewContainer_") == true &&
+                parentView.translationX < 0  // Check if positioned off-screen
+            } ?: false
+
             // Ensure view is visible (might have been set to GONE previously)
             view.visibility = View.VISIBLE
 
@@ -410,8 +421,37 @@ class MiniAppActivity : AppCompatActivity() {
             if (view.parent != webViewContainer) {
                 // Remove from existing parent if it has one
                 (view.parent as? ViewGroup)?.removeView(view)
+
+                // Set proper layout parameters before adding
+                view.layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+
                 // Now add to webview container
                 webViewContainer.addView(view)
+
+                // Only perform special handling for WebViews from off-screen containers
+                if (wasInOffScreenContainer) {
+                    Log.d(TAG, "WebView moved from off-screen container, ensuring proper layout")
+
+                    // Use a simple post to ensure layout is applied after the view is added
+                    view.post {
+                        val containerWidth = webViewContainer.width
+                        val containerHeight = webViewContainer.height
+
+                        if (containerWidth > 0 && containerHeight > 0) {
+                            Log.d(TAG, "Applying layout for WebView from off-screen container: ${containerWidth}x${containerHeight}")
+
+                            // Use WebView's layout helper function
+                            com.lingxia.miniapp.WebView.applyLayout(view, containerWidth, containerHeight)
+
+                            // Simple invalidation to refresh the view
+                            view.invalidate()
+                            view.requestLayout()
+                        }
+                    }
+                }
             } else {
                 // If already in the container (e.g., initial load), ensure it's visible and resumed
                 Log.d(TAG, "WebView for ${view.currentPath} already in container, ensuring resume.")

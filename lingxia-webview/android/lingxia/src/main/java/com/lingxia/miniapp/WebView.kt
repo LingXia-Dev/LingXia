@@ -64,146 +64,18 @@ data class WebResourceResponseData(
     }
 }
 
-class MiniWebViewContainer @JvmOverloads constructor(
-    context: Context,
-    attrs: AttributeSet? = null,
-    defStyleAttr: Int = 0
-) : FrameLayout(context, attrs, defStyleAttr), ViewTreeObserver.OnGlobalLayoutListener {
-    private var webView: com.lingxia.miniapp.WebView? = null
-    private val mainHandler = Handler(Looper.getMainLooper())
-
-    init {
-        // Set container layout parameters
-        val params = LayoutParams(
-            LayoutParams.MATCH_PARENT,
-            LayoutParams.MATCH_PARENT
-        )
-        params.gravity = android.view.Gravity.CENTER
-        layoutParams = params
-
-        // Set visibility
-        visibility = View.VISIBLE
-
-        // Add view tree observer
-        viewTreeObserver.addOnGlobalLayoutListener(this)
-    }
-
-    override fun onAttachedToWindow() {
-        super.onAttachedToWindow()
-        Log.d(TAG, "Container attached to window")
-        viewTreeObserver.addOnGlobalLayoutListener(this)
-        setWebViewVisible()
-    }
-
-    override fun onDetachedFromWindow() {
-        super.onDetachedFromWindow()
-        viewTreeObserver.removeOnGlobalLayoutListener(this)
-    }
-
-    override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
-        super.onLayout(changed, left, top, right, bottom)
-        val width = right - left
-        val height = bottom - top
-        Log.d(TAG, "Container layout: ${width}x${height}")
-
-        webView?.let { view ->
-            Log.d(TAG, "WebView layout: ${view.width}x${view.height}")
-            Log.d(TAG, "Container layout changed: ${width}x${height}")
-            Log.d(TAG, "Found WebView child, updating layout")
-            view.layout(0, 0, width, height)
-            Log.d(TAG, "WebView dimensions after layout: ${view.width}x${view.height}")
-            Log.d(TAG, "WebView visibility: ${view.visibility}")
-            Log.d(TAG, "WebView parent: ${view.parent != null}")
-            ensureWebViewVisible()
-        }
-    }
-
-    override fun onGlobalLayout() {
-        Log.d(TAG, "Global layout pass")
-        Log.d(TAG, "Container dimensions in global layout: ${width}x${height}")
-        webView?.let { view ->
-            Log.d(TAG, "WebView dimensions in global layout: ${view.width}x${view.height}")
-            Log.d(TAG, "WebView visibility in global layout: ${view.visibility}")
-            Log.d(TAG, "WebView parent in global layout: ${view.parent != null}")
-            ensureWebViewVisible()
-        }
-    }
-
-    override fun addView(child: View, index: Int, params: ViewGroup.LayoutParams) {
-        super.addView(child, index, params)
-        Log.d(TAG, "Added view to container: $child")
-
-        if (child is WebView) {
-            // Ensure WebView is visible
-            child.visibility = View.VISIBLE
-
-            // Set WebView layout parameters
-            child.layoutParams = LayoutParams(
-                LayoutParams.MATCH_PARENT,
-                LayoutParams.MATCH_PARENT
-            ).apply {
-                gravity = android.view.Gravity.CENTER
-            }
-
-            // Force layout update
-            post {
-                val width = width
-                val height = height
-                if (width > 0 && height > 0) {
-                    child.measure(
-                        MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY),
-                        MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY)
-                    )
-                    child.layout(0, 0, width, height)
-                }
-                child.visibility = View.VISIBLE
-                child.requestLayout()
-                child.invalidate()
-            }
-        }
-    }
-
-    fun setWebView(webView: com.lingxia.miniapp.WebView?) {
-        this.webView = webView
-        removeAllViews()
-        webView?.let {
-            addView(it, LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            ))
-            setWebViewVisible()
-        }
-    }
-
-    fun setWebViewVisible() {
-        Log.d(TAG, "Setting WebView visibility")
-        visibility = View.VISIBLE
-        webView?.visibility = View.VISIBLE
-        requestLayout()
-        invalidate()
-    }
-
-    private fun ensureWebViewVisible() {
-        if (webView?.visibility != View.VISIBLE) {
-            setWebViewVisible()
-        }
-    }
-
-    /**
-     * Returns the WebView contained within this container.
-     * @return The WebView instance, or null if none is set
-     */
-    fun getWebView(): com.lingxia.miniapp.WebView? {
-        return webView
-    }
-}
+data class WebViewConfig(
+    val enableJavaScript: Boolean = true,
+    val enableDomStorage: Boolean = false
+)
 
 class WebView @JvmOverloads constructor(
     context: Context,
     private val config: WebViewConfig = WebViewConfig()
 ) : WebView(context) {
-    private var appId: String? = null
+    internal var appId: String? = null
     internal var currentPath: String? = null
+    private var isRegistered = false  // Track if WebView has been registered with native layer
     private var isFirstLoad = true
     private var pageLoaded = false
     private var savedScrollX: Int = 0
@@ -220,12 +92,111 @@ class WebView @JvmOverloads constructor(
 
         @JvmStatic
         external fun nativeGetExistingWebView(appId: String, path: String): com.lingxia.miniapp.WebView?
-    }
 
-    data class WebViewConfig(
-        val enableJavaScript: Boolean = true,
-        val enableDomStorage: Boolean = false
-    )
+        /**
+         * Helper function to apply proper layout to a view with screen dimensions
+         */
+        @JvmStatic
+        fun applyScreenLayout(view: View, container: ViewGroup? = null) {
+            val context = view.context
+            val displayMetrics = context.resources.displayMetrics
+            applyLayout(view, displayMetrics.widthPixels, displayMetrics.heightPixels, container)
+        }
+
+        /**
+         * Helper function to apply layout with custom dimensions
+         */
+        @JvmStatic
+        fun applyLayout(view: View, width: Int, height: Int, container: ViewGroup? = null) {
+            val widthSpec = View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY)
+            val heightSpec = View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY)
+
+            container?.let {
+                it.measure(widthSpec, heightSpec)
+                it.layout(0, 0, width, height)
+            }
+
+            view.measure(widthSpec, heightSpec)
+            view.layout(0, 0, width, height)
+
+            Log.d(TAG, "Applied layout: ${width}x${height}")
+        }
+
+        /**
+         * Creates a new WebView instance with the specified parameters.
+         * This is the primary API for creating WebView instances from both Kotlin and Rust.
+         *
+         * @param context The Android context
+         * @param appId The mini app ID
+         * @param path The page path
+         * @param visible Whether the WebView should be immediately visible
+         * @param enableJavaScript Whether to enable JavaScript
+         * @param enableDomStorage Whether to enable DOM storage
+         * @return A configured WebView instance
+         */
+        @JvmStatic
+        @JvmOverloads
+        fun createWebView(
+            context: Context,
+            appId: String,
+            path: String,
+            visible: Boolean = true,
+            enableJavaScript: Boolean = true,
+            enableDomStorage: Boolean = false
+        ): com.lingxia.miniapp.WebView {
+            val config = WebViewConfig(enableJavaScript, enableDomStorage)
+            val webView = com.lingxia.miniapp.WebView(context, config)
+
+            // Set appId and path directly
+            webView.appId = appId
+            webView.currentPath = path
+
+            // Set default layout parameters
+            webView.layoutParams = android.view.ViewGroup.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT
+            )
+
+            if (!visible) {
+                // For hidden WebViews, place in off-screen container
+                webView.visibility = View.VISIBLE
+
+                val container = android.widget.FrameLayout(context).apply {
+                    val metrics = context.resources.displayMetrics
+                    layoutParams = android.view.ViewGroup.LayoutParams(metrics.widthPixels, metrics.heightPixels)
+                    visibility = View.VISIBLE
+                    translationX = -metrics.widthPixels * 3f  // Position off-screen
+                    tag = "hiddenWebViewContainer_${appId}_${path.replace("/", "_")}"
+                }
+
+                webView.layoutParams = android.widget.FrameLayout.LayoutParams(
+                    android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                    android.widget.FrameLayout.LayoutParams.MATCH_PARENT
+                )
+                container.addView(webView)
+
+                // Add to root view
+                try {
+                    if (context is android.app.Activity) {
+                        val rootView = context.findViewById<android.view.ViewGroup>(android.R.id.content)
+                        rootView?.addView(container)
+
+                        // Apply layout using helper function
+                        container.post { applyScreenLayout(webView, container) }
+
+                        Log.d(TAG, "Hidden WebView added to off-screen container")
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not add off-screen container: ${e.message}")
+                }
+            } else {
+                webView.visibility = View.VISIBLE
+            }
+
+            Log.d(TAG, "WebView created: appId=$appId, path=$path, visible=$visible")
+            return webView
+        }
+    }
 
     init {
         initializeWebView()
@@ -423,18 +394,6 @@ class WebView @JvmOverloads constructor(
         messageChannel?.postMessage(WebMessage(message))
     }
 
-    fun handleWebViewCreated(appId: String, path: String) {
-        // If appId and path are the same as current values, no need to re-register
-        if (appId == this.appId && path == this.currentPath) {
-            return
-        }
-
-        this.appId = appId
-        this.currentPath = path
-        nativeOnWebViewCreated(appId, path, this)
-        Log.d(TAG, "WebView registered to native layer: appId=$appId, path=$path")
-    }
-
     fun clearBrowsingData() {
         Log.d(TAG, "Clearing browsing data")
         clearHistory()
@@ -518,14 +477,23 @@ class WebView @JvmOverloads constructor(
         } else {
             Log.d(TAG, "WebView not ready for PageShow: attached=$isAttachedToWindow, appId=$appId, path=$currentPath")
         }
-
-        requestLayout()
-        invalidate()
     }
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         Log.d(TAG, "WebView attached to window")
+
+        // Register with native layer if not already registered and we have appId/path
+        if (!isRegistered && appId != null && currentPath != null) {
+            Log.d(TAG, "Registering WebView with native layer: appId=$appId, path=$currentPath")
+            val result = nativeOnWebViewCreated(appId!!, currentPath!!, this)
+            if (result == 0) {
+                isRegistered = true
+                Log.d(TAG, "WebView registered successfully: appId=$appId, path=$currentPath")
+            } else {
+                Log.e(TAG, "Failed to register WebView: appId=$appId, path=$currentPath")
+            }
+        }
 
         // If no working channel, set it up
         if (!channelInitialized || messageChannel == null) {
