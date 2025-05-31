@@ -1,6 +1,6 @@
 use std::io::Read;
 use std::path::PathBuf;
-use std::sync::{Arc, mpsc};
+use std::sync::Arc;
 
 use crate::error::MiniAppError;
 use rong::IntoJSObj;
@@ -181,26 +181,45 @@ pub trait AppRuntime: Send + Sync + 'static {
     /// # Returns
     /// * `DeviceInfo` - Device information including brand, model, and screen dimensions
     fn device_info(&self) -> DeviceInfo;
-}
 
-/// Interface for controlling app lifecycle and navigation
-pub trait AppController: AppRuntime {
-    /// Send a command to the controller and wait for the response
-    ///
-    /// This method creates a channel for the response, sends the command, and waits for the result
+    /// Create a WebView instance
     ///
     /// # Arguments
-    /// * `cmd` - Command to send to the controller
+    /// * `appid` - Application identifier
+    /// * `path` - Page path within the application
     ///
     /// # Returns
-    /// * `Result<(), MiniAppError>` - Success or error response
-    fn send_cmd(&self, cmd: ControllerCmd) -> Result<(), MiniAppError>;
-}
+    /// * `Result<Arc<dyn crate::page::WebViewController>, MiniAppError>` - WebView controller instance or error
+    fn create_webview(&self, appid: String, path: String) -> Result<Arc<dyn crate::page::WebViewController>, MiniAppError>;
 
-impl<T: AppController + ?Sized> AppController for Arc<T> {
-    fn send_cmd(&self, cmd: crate::ControllerCmd) -> Result<(), MiniAppError> {
-        (**self).send_cmd(cmd)
-    }
+    /// Open a mini app
+    ///
+    /// # Arguments
+    /// * `appid` - The ID of the mini app to open
+    /// * `path` - The initial path to navigate to within the mini app
+    ///
+    /// # Returns
+    /// * `Result<(), MiniAppError>` - Success or error
+    fn open_miniapp(&self, appid: String, path: String) -> Result<(), MiniAppError>;
+
+    /// Close a mini app
+    ///
+    /// # Arguments
+    /// * `appid` - The ID of the mini app to close
+    ///
+    /// # Returns
+    /// * `Result<(), MiniAppError>` - Success or error
+    fn close_miniapp(&self, appid: String) -> Result<(), MiniAppError>;
+
+    /// Switch to a different page within the same mini app
+    ///
+    /// # Arguments
+    /// * `appid` - The ID of the mini app to switch pages in
+    /// * `path` - The path of the page to switch to
+    ///
+    /// # Returns
+    /// * `Result<(), MiniAppError>` - Success or error
+    fn switch_page(&self, appid: String, path: String) -> Result<(), MiniAppError>;
 }
 
 impl<T: AppRuntime + ?Sized> AppRuntime for Arc<T> {
@@ -226,128 +245,24 @@ impl<T: AppRuntime + ?Sized> AppRuntime for Arc<T> {
     fn device_info(&self) -> DeviceInfo {
         (**self).device_info()
     }
-}
 
-/// Send a command to switch to a different page within the same mini app
-///
-/// # Arguments
-/// * `controller` - The controller to send the command to
-/// * `appid` - The ID of the mini app to switch pages in
-/// * `path` - The path of the page to switch to
-///
-/// # Returns
-/// * `Ok(())` - If the command was sent successfully
-/// * `Err(MiniAppError)` - If the command failed to send or execute
-pub(crate) fn switch_page<T: AppController + ?Sized>(
-    controller: &T,
-    appid: &str,
-    path: &str,
-) -> Result<(), MiniAppError> {
-    let (responder, receiver) = mpsc::channel();
-
-    let cmd = MiniAppCmd::SwitchPage {
-        appid: appid.to_string(),
-        path: path.to_string(),
-        responder,
-    };
-
-    controller.send_cmd(ControllerCmd::MiniApp(cmd))?;
-
-    // Wait for the response
-    receiver.recv().map_err(|_| {
-        MiniAppError::WebView("UI thread dropped without sending result".to_string())
-    })?
-}
-
-/// Send a command to open a mini app
-///
-/// # Arguments
-/// * `controller` - The controller to send the command to
-/// * `appid` - The ID of the mini app to open
-/// * `path` - The initial path to navigate to within the mini app
-///
-/// # Returns
-/// * `Ok(())` - If the command was sent successfully
-/// * `Err(MiniAppError)` - If the command failed to send or execute
-pub(crate) fn open_miniapp<T: AppController + ?Sized>(
-    controller: &T,
-    appid: &str,
-    path: &str,
-) -> Result<(), MiniAppError> {
-    let (responder, receiver) = mpsc::channel();
-
-    let cmd = MiniAppCmd::OpenMiniApp {
-        appid: appid.to_string(),
-        path: path.to_string(),
-        responder,
-    };
-
-    controller.send_cmd(ControllerCmd::MiniApp(cmd))?;
-
-    // Wait for the response
-    receiver.recv().map_err(|_| {
-        MiniAppError::WebView("UI thread dropped without sending result".to_string())
-    })?
-}
-
-#[derive(Debug)]
-pub enum ControllerCmd {
-    WebView(WebViewCmd),
-    MiniApp(MiniAppCmd),
-    Shutdown,
-}
-
-#[derive(Debug)]
-pub enum WebViewCmd {
-    LoadUrl {
+    fn create_webview(
+        &self,
         appid: String,
         path: String,
-        url: String,
-        responder: mpsc::Sender<Result<(), MiniAppError>>,
-    },
-    EvaluateJavascript {
-        appid: String,
-        path: String,
-        script: String,
-        responder: mpsc::Sender<Result<(), MiniAppError>>,
-    },
-    PostMessage {
-        appid: String,
-        path: String,
-        message: String,
-        responder: mpsc::Sender<Result<(), MiniAppError>>,
-    },
-    SetDevtools {
-        appid: String,
-        enabled: bool,
-        responder: mpsc::Sender<Result<(), MiniAppError>>,
-    },
-    ClearBrowsingData {
-        appid: String,
-        path: String,
-        responder: mpsc::Sender<Result<(), MiniAppError>>,
-    },
-    SetUserAgent {
-        appid: String,
-        ua: String,
-        responder: mpsc::Sender<Result<(), MiniAppError>>,
-    },
-    DropWebView {
-        appid: String,
-        path: String,
-    },
-}
+    ) -> Result<Arc<dyn crate::page::WebViewController>, MiniAppError> {
+        (**self).create_webview(appid, path)
+    }
 
-#[derive(Debug)]
-pub enum MiniAppCmd {
-    SwitchPage {
-        appid: String,
-        path: String,
-        responder: mpsc::Sender<Result<(), MiniAppError>>,
-    },
-    OpenMiniApp {
-        appid: String,
-        path: String,
-        responder: mpsc::Sender<Result<(), MiniAppError>>,
-    },
+    fn open_miniapp(&self, appid: String, path: String) -> Result<(), MiniAppError> {
+        (**self).open_miniapp(appid, path)
+    }
+
+    fn close_miniapp(&self, appid: String) -> Result<(), MiniAppError> {
+        (**self).close_miniapp(appid)
+    }
+
+    fn switch_page(&self, appid: String, path: String) -> Result<(), MiniAppError> {
+        (**self).switch_page(appid, path)
+    }
 }

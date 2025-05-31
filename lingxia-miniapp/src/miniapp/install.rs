@@ -1,6 +1,6 @@
 use super::version::Version;
 use super::{LINGXIA_DIR, MINIAPPS_DIR, VERSIONS_DIR};
-use crate::{AppController, MiniApp, MiniAppError};
+use crate::{AppRuntime, MiniApp, MiniAppError};
 
 /// Check if a mini app is installed
 ///
@@ -11,7 +11,7 @@ use crate::{AppController, MiniApp, MiniAppError};
 /// # Returns
 /// * `true` - If the app is installed (version file exists)
 /// * `false` - If the app is not installed
-pub(crate) fn is_installed<T: AppController + ?Sized>(controller: &T, appid: &str) -> bool {
+pub(crate) fn is_installed<T: AppRuntime + ?Sized>(controller: &T, appid: &str) -> bool {
     let version_path = controller
         .app_data_dir()
         .join(LINGXIA_DIR)
@@ -50,7 +50,7 @@ impl MiniApp {
 
 // Copy files from assets to destination directory and update version
 pub(crate) fn install_home_miniapp(
-    controller: &dyn AppController,
+    controller: &dyn AppRuntime,
     appid: &str,
     version: &str,
 ) -> Result<(), MiniAppError> {
@@ -126,7 +126,7 @@ pub(crate) fn install_home_miniapp(
 }
 
 fn update_version(
-    controller: &dyn AppController,
+    controller: &dyn AppRuntime,
     appid: &str,
     new_version: &str,
 ) -> Result<(), MiniAppError> {

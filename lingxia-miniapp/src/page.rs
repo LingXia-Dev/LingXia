@@ -1,7 +1,7 @@
 use crate::appservice::MiniAppServiceManager;
-use crate::{AppController, ControllerCmd, MiniAppError, WebViewCmd, error};
+use crate::{AppRuntime, MiniAppError, error};
 use std::collections::{HashMap, VecDeque};
-use std::sync::{Arc, Mutex, mpsc};
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 /// A page stack represents a group of pages starting with a tab page
@@ -41,15 +41,15 @@ impl PageStack {
 }
 
 /// Interface for controlling WebView
-pub trait WebViewController {
+pub trait WebViewController: Send + Sync {
     /// Load a URL in the WebView
-    fn load_url(&self, url: &str) -> Result<(), MiniAppError>;
+    fn load_url(&self, url: String) -> Result<(), MiniAppError>;
 
     /// Evaluate JavaScript in the WebView
-    fn evaluate_javascript(&self, js: &str) -> Result<(), MiniAppError>;
+    fn evaluate_javascript(&self, js: String) -> Result<(), MiniAppError>;
 
     /// Post a message to the JavaScript context
-    fn post_message(&self, message: &str) -> Result<(), MiniAppError>;
+    fn post_message(&self, message: String) -> Result<(), MiniAppError>;
 
     /// Enable or disable developer tools
     fn set_devtools(&self, enabled: bool) -> Result<(), MiniAppError>;
@@ -58,7 +58,7 @@ pub trait WebViewController {
     fn clear_browsing_data(&self) -> Result<(), MiniAppError>;
 
     /// Set the user agent string for the WebView
-    fn set_user_agent(&self, ua: &str) -> Result<(), MiniAppError>;
+    fn set_user_agent(&self, ua: String) -> Result<(), MiniAppError>;
 }
 
 /// Manages a collection of pages for a single miniapp
@@ -89,6 +89,24 @@ impl Pages {
     /// Get a reference to a page by path
     pub fn get_page(&self, path: &str) -> Option<&Page> {
         self.pages.get(path)
+    }
+
+    /// Get an existing page or create a new one if it doesn't exist
+    /// Returns a reference to the page (existing or newly created)
+    pub fn get_or_create_page(
+        &mut self,
+        appid: String,
+        path: String,
+        controller: Arc<dyn AppRuntime>,
+        svc_manager: Arc<Mutex<MiniAppServiceManager>>,
+    ) -> Result<&Page, MiniAppError> {
+        // Check if page already exists
+        if self.pages.contains_key(&path) {
+            return Ok(self.pages.get(&path).unwrap());
+        }
+
+        // Page doesn't exist, create it
+        self.create_page(appid, path, controller, svc_manager)
     }
 
     /// Set tab bar items with ordered paths and initialize stacks
@@ -127,19 +145,22 @@ impl Pages {
         &mut self,
         appid: String,
         path: String,
-        controller: Arc<dyn AppController>,
+        controller: Arc<dyn AppRuntime>,
         svc_manager: Arc<Mutex<MiniAppServiceManager>>,
-    ) -> &Page {
+    ) -> Result<&Page, MiniAppError> {
         if self.pages.len() >= self.max_pages {
             self.destroy_least_active();
         }
 
-        // Create and insert new page
-        let page = Page::new(
-            controller.clone(),
+        // Create WebView controller for this page (required)
+        let webview_controller = controller.create_webview(appid.clone(), path.clone())?;
+
+        // Create and insert new page with WebView controller
+        let page = Page::new_with_webview(
             appid.clone(),
             path.clone(),
             svc_manager.clone(),
+            webview_controller,
         );
 
         // Insert the page into the hashmap
@@ -159,7 +180,7 @@ impl Pages {
         }
 
         // Return reference to the newly created page
-        self.pages.get(&path).unwrap()
+        Ok(self.pages.get(&path).unwrap())
     }
 
     /// Navigates to a page by updating the current stack and marking the page as active
@@ -304,8 +325,8 @@ pub(crate) struct PageInner {
     appid: String,
     path: String,
 
-    // Reference to the app controller
-    controller: Arc<dyn AppController>,
+    // Reference to the WebView controller (required)
+    webview_controller: Arc<dyn WebViewController>,
     // Reference to the service manager
     svc_manager: Arc<Mutex<MiniAppServiceManager>>,
 
@@ -324,19 +345,19 @@ pub struct Page {
 }
 
 impl Page {
-    pub(crate) fn new(
-        controller: Arc<dyn AppController>,
+    pub(crate) fn new_with_webview(
         appid: String,
         path: String,
         svc_manager: Arc<Mutex<MiniAppServiceManager>>,
+        webview_controller: Arc<dyn WebViewController>,
     ) -> Self {
         let inner = Arc::new(PageInner {
-            controller,
             appid,
             path,
             svc_manager,
             last_active_time: Arc::new(Mutex::new(Instant::now())),
             script_injected: Arc::new(Mutex::new(false)),
+            webview_controller,
         });
 
         Self { inner }
@@ -354,6 +375,11 @@ impl Page {
             .lock()
             .map(|guard| *guard)
             .unwrap_or(false)
+    }
+
+    /// Get the WebView controller for this page
+    pub(crate) fn webview_controller(&self) -> Arc<dyn WebViewController> {
+        self.inner.webview_controller.clone()
     }
 
     /// Returns the appid of this page
@@ -378,142 +404,6 @@ impl Page {
             guard.terminate_page_svc(self.inner.appid.clone(), self.inner.path.clone())?;
         }
 
-        self.inner
-            .controller
-            .send_cmd(ControllerCmd::WebView(WebViewCmd::DropWebView {
-                appid: self.inner.appid.clone(),
-                path: self.inner.path.clone(),
-            }))?;
-
         Ok(())
-    }
-}
-
-impl WebViewController for Page {
-    fn load_url(&self, url: &str) -> Result<(), MiniAppError> {
-        let (responder, receiver) = mpsc::channel();
-
-        let cmd = WebViewCmd::LoadUrl {
-            appid: self.inner.appid.clone(),
-            path: self.inner.path.clone(),
-            url: url.to_string(),
-            responder,
-        };
-
-        self.inner
-            .controller
-            .send_cmd(ControllerCmd::WebView(cmd))?;
-
-        // Wait for the response
-        receiver.recv().map_err(|_| {
-            MiniAppError::WebView("WebView command 'LoadUrl' failed: channel closed".to_string())
-        })?
-    }
-
-    fn evaluate_javascript(&self, js: &str) -> Result<(), MiniAppError> {
-        let (responder, receiver) = mpsc::channel();
-
-        let cmd = WebViewCmd::EvaluateJavascript {
-            appid: self.inner.appid.clone(),
-            path: self.inner.path.clone(),
-            script: js.to_string(),
-            responder,
-        };
-
-        self.inner
-            .controller
-            .send_cmd(ControllerCmd::WebView(cmd))?;
-
-        // Wait for the response
-        receiver.recv().map_err(|_| {
-            MiniAppError::WebView(
-                "WebView command 'EvaluateJavascript' failed: channel closed".to_string(),
-            )
-        })?
-    }
-
-    fn post_message(&self, message: &str) -> Result<(), MiniAppError> {
-        let (responder, receiver) = mpsc::channel();
-
-        let cmd = WebViewCmd::PostMessage {
-            appid: self.inner.appid.clone(),
-            path: self.inner.path.clone(),
-            message: message.to_string(),
-            responder,
-        };
-
-        self.inner
-            .controller
-            .send_cmd(ControllerCmd::WebView(cmd))?;
-
-        // Wait for the response
-        receiver.recv().map_err(|_| {
-            MiniAppError::WebView(
-                "WebView command 'PostMessage' failed: channel closed".to_string(),
-            )
-        })?
-    }
-
-    fn set_devtools(&self, enabled: bool) -> Result<(), MiniAppError> {
-        let (responder, receiver) = mpsc::channel();
-
-        let cmd = WebViewCmd::SetDevtools {
-            appid: self.inner.appid.clone(),
-            enabled,
-            responder,
-        };
-
-        self.inner
-            .controller
-            .send_cmd(ControllerCmd::WebView(cmd))?;
-
-        // Wait for the response
-        receiver.recv().map_err(|_| {
-            MiniAppError::WebView(
-                "WebView command 'SetDevtools' failed: channel closed".to_string(),
-            )
-        })?
-    }
-
-    fn clear_browsing_data(&self) -> Result<(), MiniAppError> {
-        let (responder, receiver) = mpsc::channel();
-
-        let cmd = WebViewCmd::ClearBrowsingData {
-            appid: self.inner.appid.clone(),
-            path: self.inner.path.clone(),
-            responder,
-        };
-
-        self.inner
-            .controller
-            .send_cmd(ControllerCmd::WebView(cmd))?;
-
-        // Wait for the response
-        receiver.recv().map_err(|_| {
-            MiniAppError::WebView(
-                "WebView command 'ClearBrowsingData' failed: channel closed".to_string(),
-            )
-        })?
-    }
-
-    fn set_user_agent(&self, ua: &str) -> Result<(), MiniAppError> {
-        let (responder, receiver) = mpsc::channel();
-
-        let cmd = WebViewCmd::SetUserAgent {
-            appid: self.inner.appid.clone(),
-            ua: ua.to_string(),
-            responder,
-        };
-
-        self.inner
-            .controller
-            .send_cmd(ControllerCmd::WebView(cmd))?;
-
-        // Wait for the response
-        receiver.recv().map_err(|_| {
-            MiniAppError::WebView(
-                "WebView command 'SetUserAgent' failed: channel closed".to_string(),
-            )
-        })?
     }
 }

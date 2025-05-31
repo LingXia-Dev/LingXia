@@ -2,7 +2,7 @@ use super::bridge::{Bridge, BridgeTransport};
 use super::lx;
 use crate::error::MiniAppError;
 use crate::miniapp::MiniApp;
-use crate::page::{Page, WebViewController};
+use crate::page::Page;
 use rong::{
     Class, JSContext, JSFunc, JSObject, JSResult, JSValue, RongJSError, Source, function::Optional,
     js_class, js_export, js_method,
@@ -37,8 +37,8 @@ struct PageSvcState {
 }
 
 impl BridgeTransport for PageSvc {
-    fn post_message_to_view(&self, message_json: &str) -> Result<(), MiniAppError> {
-        self.page.post_message(message_json)
+    fn post_message_to_view(&self, message_json: String) -> Result<(), MiniAppError> {
+        self.page.webview_controller().post_message(message_json)
     }
 
     fn has_service(&self, service_name: &str) -> bool {

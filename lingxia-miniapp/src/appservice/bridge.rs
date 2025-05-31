@@ -14,7 +14,7 @@ use tokio::time::timeout;
 
 /// Defines transport and service discovery for the Bridge.
 pub(crate) trait BridgeTransport {
-    fn post_message_to_view(&self, message_json: &str) -> Result<(), MiniAppError>;
+    fn post_message_to_view(&self, message_json: String) -> Result<(), MiniAppError>;
     fn has_service(&self, service_name: &str) -> bool;
 }
 
@@ -272,7 +272,7 @@ impl Bridge {
         });
 
         let serialized = serde_json::to_string(&event_message)?;
-        self.transport.post_message_to_view(&serialized)?;
+        self.transport.post_message_to_view(serialized)?;
         Ok(())
     }
 
@@ -298,7 +298,7 @@ impl Bridge {
         }
 
         self.transport
-            .post_message_to_view(&serialized)
+            .post_message_to_view(serialized)
             .inspect_err(|_e| {
                 let mut pending_on_err = self.pending_calls.lock().unwrap();
                 pending_on_err.remove(&msg_id);
@@ -515,7 +515,7 @@ impl Bridge {
         let serialized_reply = serde_json::to_string(&reply_message)?;
 
         self.transport
-            .post_message_to_view(&serialized_reply)
+            .post_message_to_view(serialized_reply)
             .map_err(|e| MiniAppError::Bridge(format!("Failed to post reply: {}", e)))
     }
 }

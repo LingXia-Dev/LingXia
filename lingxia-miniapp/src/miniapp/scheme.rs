@@ -103,7 +103,7 @@ impl MiniApp {
                 Response::builder()
                     .status(StatusCode::NOT_FOUND)
                     .header("Content-Type", "text/html")
-                    .body(match self.controller.read_asset("404.html") {
+                    .body(match self.runtime.read_asset("404.html") {
                         Ok(mut reader) => {
                             let mut data = Vec::new();
                             if reader.read_to_end(&mut data).is_ok() {
@@ -211,7 +211,7 @@ impl MiniApp {
 /// Injects WebView bridge script into HTML content
 fn inject_bridge_script(html_data: &[u8], app: &MiniApp) -> Vec<u8> {
     // First, load the bridge script from assets
-    let bridge_script = match app.controller.read_asset("webview-bridge.js") {
+    let bridge_script = match app.runtime.read_asset("webview-bridge.js") {
         Ok(mut reader) => {
             let mut script_data = Vec::new();
             if reader.read_to_end(&mut script_data).is_ok() {

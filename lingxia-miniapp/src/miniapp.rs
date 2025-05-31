@@ -8,12 +8,12 @@ use std::sync::Arc;
 use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
 
-use crate::app::{AppConfig, AppController, switch_page};
+use crate::app::AppConfig;
 use crate::appservice::{self, MiniAppServiceManager};
 use crate::error::MiniAppError;
 use crate::log::{self, LogLevel, LogTag};
-use crate::page::{Page, Pages, WebViewController};
-use crate::{error, info};
+use crate::page::{Page, Pages};
+use crate::{AppRuntime, error, info};
 use config::{MiniAppConfig, PageConfig};
 use security::NetworkSecurity; // Import the new logging macros
 
@@ -37,8 +37,8 @@ const DEFAULT_VERSION: &str = "0.0.1";
 pub struct MiniApps {
     // Collection of mini apps, keyed by app ID
     miniapps: DashMap<String, Arc<MiniApp>>,
-    // Reference to the app controller
-    controller: Arc<dyn AppController>,
+    // Reference to the app runtime
+    runtime: Arc<dyn AppRuntime>,
     // Maximum number of apps allowed in memory
     max_apps: usize,
     // Reference to the app service manager
@@ -46,16 +46,16 @@ pub struct MiniApps {
 }
 
 impl MiniApps {
-    fn new<T: AppController + 'static>(
-        controller: T,
+    fn new<T: AppRuntime + 'static>(
+        runtime: T,
         svc_manager: Arc<Mutex<MiniAppServiceManager>>,
         max_apps: usize,
     ) -> Self {
-        let controller = Arc::new(controller);
+        let runtime = Arc::new(runtime);
 
         Self {
             miniapps: DashMap::new(),
-            controller,
+            runtime,
             max_apps,
             svc_manager,
         }
@@ -77,7 +77,7 @@ impl MiniApps {
         // Create new MiniApp
         let new_miniapp = Arc::new(MiniApp::new(
             appid.clone(),
-            self.controller.clone(),
+            self.runtime.clone(),
             self.svc_manager.clone(),
         ));
 
@@ -173,7 +173,7 @@ impl MiniAppState {
 pub struct MiniApp {
     // Immutable data - initialized once and never changed
     pub appid: String,
-    pub controller: Arc<dyn AppController>,
+    pub runtime: Arc<dyn AppRuntime>,
     pub app_dir: PathBuf,
     pub storage_dir: PathBuf,
     pub cache_dir: PathBuf,
@@ -189,12 +189,12 @@ pub struct MiniApp {
 impl MiniApp {
     fn _new(
         appid: String,
-        controller: Arc<dyn AppController>,
+        runtime: Arc<dyn AppRuntime>,
         svc_manager: Arc<Mutex<MiniAppServiceManager>>,
     ) -> Self {
         Self {
             appid,
-            controller,
+            runtime,
             app_dir: PathBuf::new(),
             storage_dir: PathBuf::new(),
             cache_dir: PathBuf::new(),
@@ -209,10 +209,10 @@ impl MiniApp {
     /// Create a new regular mini-app (not home app)
     fn new(
         appid: String,
-        controller: Arc<dyn AppController>,
+        runtime: Arc<dyn AppRuntime>,
         svc_manager: Arc<Mutex<MiniAppServiceManager>>,
     ) -> Self {
-        let mut app = Self::_new(appid, controller, svc_manager);
+        let mut app = Self::_new(appid, runtime, svc_manager);
         if let Err(e) = app.setup() {
             error!("Setup failed: {}", e).with_appid(&app.appid);
         }
@@ -223,10 +223,10 @@ impl MiniApp {
     /// Create a new MiniApp instance marked as the home mini app
     fn new_as_home(
         appid: String,
-        controller: Arc<dyn AppController>,
+        runtime: Arc<dyn AppRuntime>,
         svc_manager: Arc<Mutex<MiniAppServiceManager>>,
     ) -> Self {
-        let mut app = Self::_new(appid, controller, svc_manager);
+        let mut app = Self::_new(appid, runtime, svc_manager);
 
         // Mark as home miniapp
         app.home_miniapp = true;
@@ -249,13 +249,13 @@ impl MiniApp {
             self.appid.clone()
         } else {
             // Regular mini app uses a hash based on app_id and user_id
-            let user_id = get_user_id(self.controller.as_ref());
+            let user_id = get_user_id(self.runtime.as_ref());
             generate_app_hash(&self.appid, &user_id)
         };
 
         // Set up app directory
         let base_dir = self
-            .controller
+            .runtime
             .app_data_dir()
             .join(LINGXIA_DIR)
             .join(MINIAPPS_DIR);
@@ -269,7 +269,7 @@ impl MiniApp {
 
         // Set up storage directory
         let storage_base_dir = self
-            .controller
+            .runtime
             .app_data_dir()
             .join(LINGXIA_DIR)
             .join(STORAGE_DIR);
@@ -283,7 +283,7 @@ impl MiniApp {
 
         // Set up cache directory
         let cache_base_dir = self
-            .controller
+            .runtime
             .app_cache_dir()
             .join(LINGXIA_DIR)
             .join(MINIAPPS_DIR);
@@ -315,7 +315,7 @@ impl MiniApp {
     /// Get the version of this app from storage
     fn read_version(&self) -> String {
         let version_path = self
-            .controller
+            .runtime
             .app_data_dir()
             .join(LINGXIA_DIR)
             .join(VERSIONS_DIR)
@@ -386,7 +386,7 @@ impl MiniApp {
 
         //  Remove the version record file
         let version_path = self
-            .controller
+            .runtime
             .app_data_dir()
             .join(LINGXIA_DIR)
             .join(VERSIONS_DIR)
@@ -430,11 +430,8 @@ fn generate_app_hash(app_id: &str, user_id: &str) -> String {
 }
 
 /// Gets the current user ID from storage or returns the default
-fn get_user_id<T: AppController + ?Sized>(controller: &T) -> String {
-    let userid_path = controller
-        .app_data_dir()
-        .join(LINGXIA_DIR)
-        .join(USERID_FILE);
+fn get_user_id<T: AppRuntime + ?Sized>(runtime: &T) -> String {
+    let userid_path = runtime.app_data_dir().join(LINGXIA_DIR).join(USERID_FILE);
 
     if userid_path.exists() {
         if let Ok(content) = fs::read_to_string(&userid_path) {
@@ -450,11 +447,8 @@ fn get_user_id<T: AppController + ?Sized>(controller: &T) -> String {
 }
 
 /// Sets the current user ID in storage
-fn set_user_id<T: AppController + ?Sized>(
-    controller: &T,
-    user_id: &str,
-) -> Result<(), MiniAppError> {
-    let lingxia_dir = controller.app_data_dir().join(LINGXIA_DIR);
+fn set_user_id<T: AppRuntime + ?Sized>(runtime: &T, user_id: &str) -> Result<(), MiniAppError> {
+    let lingxia_dir = runtime.app_data_dir().join(LINGXIA_DIR);
     if !lingxia_dir.exists() {
         fs::create_dir_all(&lingxia_dir)?;
     }
@@ -466,11 +460,9 @@ fn set_user_id<T: AppController + ?Sized>(
 }
 
 /// Prepares the base directory structure for mini apps
-fn prepare_directory_structure<T: AppController + ?Sized>(
-    controller: &T,
-) -> Result<(), MiniAppError> {
-    let data_dir = controller.app_data_dir();
-    let cache_dir = controller.app_cache_dir();
+fn prepare_directory_structure<T: AppRuntime + ?Sized>(runtime: &T) -> Result<(), MiniAppError> {
+    let data_dir = runtime.app_data_dir();
+    let cache_dir = runtime.app_cache_dir();
 
     // Create required directories
     let dirs = [
@@ -504,7 +496,7 @@ pub trait AppUiDelegate {
     fn get_page_config(&self, path: &str) -> Result<String, MiniAppError>;
 
     /// Called when mini app is opened
-    fn on_miniapp_opened(&self);
+    fn on_miniapp_opened(&self, path: String);
 
     /// Called when mini app is closed
     fn on_miniapp_closed(&self);
@@ -605,11 +597,10 @@ impl AppUiDelegate for MiniApp {
         }
     }
 
-    fn on_miniapp_opened(&self) {
-        // Log the app opening event
-        info!("Mini app opened").with_appid(&self.appid);
-
-        self.state.lock().unwrap().opened = true;
+    fn on_miniapp_opened(&self, path: String) {
+        info!("Mini app opened")
+            .with_appid(self.appid.clone())
+            .with_path(path.clone());
 
         // We need to get Arc<Self> to pass to the service manager
         // This requires finding ourselves in the global collection
@@ -630,6 +621,21 @@ impl AppUiDelegate for MiniApp {
                 }
             }
         }
+
+        // Create the page for the given path if it doesn't exist
+        // This path is typically the initial_route.
+        let mut state = self.state.lock().unwrap();
+        if let Err(e) = state.pages.get_or_create_page(
+            self.appid.clone(),
+            path.clone(),
+            self.runtime.clone(),
+            self.svc_manager.clone(),
+        ) {
+            error!("Failed to create page for initial_route: {}", e)
+                .with_appid(self.appid.clone())
+                .with_path(path.clone());
+        }
+        state.opened = true;
     }
 
     fn on_miniapp_closed(&self) {
@@ -643,32 +649,42 @@ impl AppUiDelegate for MiniApp {
     }
 
     fn on_page_created(&self, path: String) {
+        info!("Mini app page created")
+            .with_appid(self.appid.clone())
+            .with_path(path.clone());
+
         let url = format!("lx://{}", path.clone());
-        let appid_clone = self.appid.clone();
-        let controller_clone = self.controller.clone();
         let debug = self.is_debug_enabled();
 
-        // Create the page first
-        let mut state = self.state.lock().unwrap();
-        let page = state.pages.create_page(
-            appid_clone,
-            path.clone(),
-            controller_clone,
-            self.svc_manager.clone(),
-        );
+        // Get the page (should already exist)
+        let page = {
+            let state = self.state.lock().unwrap();
+            state.pages.get_page(&path).cloned()
+        };
+
+        let page = match page {
+            Some(page) => page,
+            None => {
+                error!("Page not found: {}", path)
+                    .with_appid(self.appid.clone())
+                    .with_path(path.clone());
+                return;
+            }
+        };
+
+        // Get the WebView controller for this page
+        let webview_controller = page.webview_controller();
 
         // Store the result of loading the URL
-        let url_load_result = page.load_url(&url);
+        let url_load_result = webview_controller.load_url(url.clone());
 
         // Enable devtools if debug mode is enabled in config
         let devtools_result = if debug {
-            page.set_devtools(true)
+            webview_controller.set_devtools(true)
         } else {
             Ok(())
         };
-        drop(state); // Release the lock
 
-        // Now we can use self again as the mutable borrow has ended
         if let Err(e) = url_load_result {
             error!("Failed to load URL {}: {}", url, e)
                 .with_appid(self.appid.clone())
@@ -681,7 +697,7 @@ impl AppUiDelegate for MiniApp {
                 .with_path(path.clone());
         }
 
-        info!("Page reated")
+        info!("Page created")
             .with_appid(self.appid.clone())
             .with_path(path.clone());
     }
@@ -743,6 +759,26 @@ impl AppUiDelegate for MiniApp {
                     .with_path(path.clone());
             }
         }
+
+        // preload other tab pages
+        if self.config.is_initial_route(&path) {
+            let mut state = self.state.lock().unwrap();
+            for p in self.config.get_tab_pages() {
+                if p == path {
+                    continue;
+                }
+                if let Err(e) = state.pages.get_or_create_page(
+                    self.appid.clone(),
+                    p.clone(),
+                    self.runtime.clone(),
+                    self.svc_manager.clone(),
+                ) {
+                    error!("Failed to create page: {}", e)
+                        .with_appid(self.appid.clone())
+                        .with_path(p.clone());
+                }
+            }
+        }
     }
 
     fn on_back_pressed(&self) -> bool {
@@ -761,7 +797,10 @@ impl AppUiDelegate for MiniApp {
                 .with_appid(self.appid.clone());
 
             // Request to switch to the previous page
-            if let Err(e) = switch_page(&self.controller, &self.appid, &previous_page) {
+            if let Err(e) = self
+                .runtime
+                .switch_page(self.appid.clone(), previous_page.clone())
+            {
                 error!("Failed to switch to page {}: {}", previous_page, e)
                     .with_appid(self.appid.clone());
             }
@@ -839,24 +878,24 @@ static MINIAPPS_MANAGER: OnceLock<Arc<MiniApps>> = OnceLock::new();
 
 /// Initialize the MiniApps singleton
 /// Returns an Option of (home_app_id, initial_route) on success.
-pub fn init<T: AppController + 'static>(controller: T) -> Option<(String, String)> {
-    let controller_arc = Arc::new(controller);
+pub fn init<R: AppRuntime + 'static>(runtime: R) -> Option<(String, String)> {
+    let runtime_arc = Arc::new(runtime);
 
     // Prepare the directory structure
-    if let Err(e) = prepare_directory_structure(controller_arc.as_ref()) {
+    if let Err(e) = prepare_directory_structure(runtime_arc.as_ref()) {
         error!("Failed to prepare directory structure: {}", e);
         return None;
     }
 
-    match AppConfig::load(controller_arc.as_ref()) {
+    match AppConfig::load(runtime_arc.as_ref()) {
         Ok(config) => {
             let home_miniapp_id = config.home_mini_app_id.clone();
             let home_miniapp_version = &config.home_mini_app_version;
             let max_apps = config.max_allowed_miniapps;
 
-            if !install::is_installed(controller_arc.as_ref(), &home_miniapp_id) {
+            if !install::is_installed(runtime_arc.as_ref(), &home_miniapp_id) {
                 if let Err(e) = install::install_home_miniapp(
-                    controller_arc.as_ref(),
+                    runtime_arc.as_ref(),
                     &home_miniapp_id,
                     home_miniapp_version,
                 ) {
@@ -870,14 +909,14 @@ pub fn init<T: AppController + 'static>(controller: T) -> Option<(String, String
             // Create the home MiniApp instance
             let home_miniapp = MiniApp::new_as_home(
                 home_miniapp_id.clone(),
-                controller_arc.clone(),
+                runtime_arc.clone(),
                 svc_manager.clone(),
             );
 
             // Check if home mini app needs updating after loading its configuration
             if home_miniapp.is_debug_enabled() || home_miniapp.should_update(home_miniapp_version) {
                 if let Err(e) = install::install_home_miniapp(
-                    controller_arc.as_ref(),
+                    runtime_arc.as_ref(),
                     &home_miniapp_id,
                     home_miniapp_version,
                 ) {
@@ -892,13 +931,13 @@ pub fn init<T: AppController + 'static>(controller: T) -> Option<(String, String
 
             // Create MiniApps manager
             let miniapps_manager =
-                Arc::new(MiniApps::new(controller_arc.clone(), svc_manager, max_apps));
+                Arc::new(MiniApps::new(runtime_arc.clone(), svc_manager, max_apps));
 
             // Add home miniapp to the manager
             let home_miniapp_arc = Arc::new(home_miniapp);
             miniapps_manager
                 .miniapps
-                .insert(home_miniapp_id.clone(), home_miniapp_arc);
+                .insert(home_miniapp_id.clone(), home_miniapp_arc.clone());
 
             // Set global instance
             if MINIAPPS_MANAGER.set(miniapps_manager).is_err() {
