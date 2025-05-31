@@ -6,10 +6,11 @@ use std::sync::{Mutex, OnceLock, mpsc};
 use std::thread::{self, ThreadId};
 
 use miniapp::{
-    AppController, AppRuntime, AssetFileEntry, ControllerCmd, DeviceInfo, MiniAppError, error, info,
+    AppRuntime, AssetFileEntry, DeviceInfo, MiniAppError, WebViewController, error, info,
 };
 
-use crate::{App, WebView};
+use crate::webview::ControllerCmd;
+use crate::{App, webview::WebView};
 
 mod app;
 mod webview;
@@ -18,13 +19,18 @@ static CONTROLLER: OnceLock<Arc<Controller>> = OnceLock::new();
 
 pub(crate) struct Controller {
     app: App,
-    webviews: Mutex<HashMap<(String, String), Arc<WebView>>>,
+    webviews: Mutex<HashMap<(String, String), WebView>>,
     sender: mpsc::Sender<ControllerCmd>,
     ui_thread_id: ThreadId,
 }
 
 impl Drop for Controller {
     fn drop(&mut self) {
+        // Clean up all WebViews before dropping
+        if let Ok(mut webviews) = self.webviews.lock() {
+            webviews.clear();
+        }
+
         // Try to send shutdown command, ignore errors since we're dropping anyway
         let _ = self.sender.send(ControllerCmd::Shutdown);
     }
@@ -60,26 +66,93 @@ impl AppRuntime for Controller {
     fn device_info(&self) -> DeviceInfo {
         self.app.device_info()
     }
-}
 
-impl AppController for Controller {
-    fn send_cmd(&self, cmd: ControllerCmd) -> Result<(), MiniAppError> {
+    fn create_webview(
+        &self,
+        appid: String,
+        path: String,
+    ) -> Result<Arc<dyn WebViewController>, MiniAppError> {
         // Check if we're on the UI thread
-        let current_thread_id = thread::current().id();
-        let is_ui_thread = self.ui_thread_id == current_thread_id;
-
-        // If we're on the UI thread, process directly
-        if is_ui_thread {
-            // log::info!("On UI thread, directly handling command");
-
-            Self::handle_request(self, cmd);
-            return Ok(());
+        let current_thread_id = std::thread::current().id();
+        if current_thread_id == self.ui_thread_id {
+            // We're on UI thread, create WebView directly
+            let webview = WebView::create_and_register(
+                appid.clone(),
+                path.clone(),
+                self.ui_thread_id,
+                self.sender.clone(),
+                |appid, path, webview| self.put_webview(appid, path, webview),
+            )?;
+            Ok(Arc::new(webview))
         } else {
-            self.sender
-                .send(cmd)
-                .map_err(|e| MiniAppError::WebView(format!("Failed to send command: {}", e)))?;
-            Ok(())
+            // We're not on UI thread, use message passing
+            let (responder, receiver) = mpsc::channel();
+            let cmd = ControllerCmd::CreateWebViewInstance {
+                appid,
+                path,
+                responder,
+            };
+
+            self.sender.send(cmd).map_err(|e| {
+                MiniAppError::WebView(format!("Failed to send create command: {}", e))
+            })?;
+
+            let webview = receiver.recv().map_err(|_| {
+                MiniAppError::WebView("Failed to receive WebView creation result".to_string())
+            })??;
+
+            Ok(Arc::new(webview))
         }
+    }
+
+    fn open_miniapp(&self, appid: String, path: String) -> Result<(), MiniAppError> {
+        let (responder, receiver) = mpsc::channel();
+        let cmd = ControllerCmd::MiniAppOperation(crate::webview::MiniAppCmd::OpenMiniApp {
+            appid,
+            path,
+            responder,
+        });
+
+        self.sender.send(cmd).map_err(|e| {
+            MiniAppError::WebView(format!("Failed to send open miniapp command: {}", e))
+        })?;
+
+        receiver.recv().map_err(|_| {
+            MiniAppError::WebView("Failed to receive open miniapp result".to_string())
+        })?
+    }
+
+    fn close_miniapp(&self, appid: String) -> Result<(), MiniAppError> {
+        let (responder, receiver) = mpsc::channel();
+        let cmd = ControllerCmd::MiniAppOperation(crate::webview::MiniAppCmd::CloseMiniApp {
+            appid,
+            responder,
+        });
+
+        self.sender.send(cmd).map_err(|e| {
+            MiniAppError::WebView(format!("Failed to send close miniapp command: {}", e))
+        })?;
+
+        receiver.recv().map_err(|_| {
+            MiniAppError::WebView("Failed to receive close miniapp result".to_string())
+        })?
+    }
+
+    fn switch_page(&self, appid: String, path: String) -> Result<(), MiniAppError> {
+        let (responder, receiver) = mpsc::channel();
+        let cmd = ControllerCmd::MiniAppOperation(crate::webview::MiniAppCmd::SwitchPage {
+            appid,
+            path,
+            responder,
+        });
+
+        self.sender.send(cmd).map_err(|e| {
+            MiniAppError::WebView(format!("Failed to send switch page command: {}", e))
+        })?;
+
+        receiver.recv().map_err(|_| {
+            MiniAppError::WebView("Failed to receive switch page result".to_string())
+        })?
     }
 }
 
@@ -125,17 +198,32 @@ impl Controller {
                 info!("Shutdown command received, stopping command loop");
                 return false; // Stop processing commands
             }
-            ControllerCmd::WebView(cmd) => {
-                if let Err(err) = webview::handle_webview_cmd(&controller.webviews, cmd) {
+            ControllerCmd::WebViewOperation(cmd) => {
+                if let Err(err) = webview::handle_webview_cmd(cmd) {
                     // Log error but continue processing
                     error!("Error processing WebView command: {}", err);
                 }
             }
-            ControllerCmd::MiniApp(cmd) => {
+            ControllerCmd::MiniAppOperation(cmd) => {
                 if let Err(err) = app::handle_miniapp_cmd(&controller.app, cmd) {
                     // Log error but continue processing
                     error!("Error processing MiniApp command: {}", err);
                 }
+            }
+            ControllerCmd::CreateWebViewInstance {
+                appid,
+                path,
+                responder,
+            } => {
+                let result = WebView::create_and_register(
+                    appid.clone(),
+                    path.clone(),
+                    controller.ui_thread_id,
+                    controller.sender.clone(),
+                    |appid, path, webview| controller.put_webview(appid, path, webview),
+                );
+
+                let _ = responder.send(result);
             }
         }
 
@@ -145,7 +233,7 @@ impl Controller {
 
     /// Get a WebView instance directly from the HashMap
     /// This is meant to be used only internally by the FFI layer
-    pub(crate) fn get_webview(&self, appid: &str, path: &str) -> Option<Arc<WebView>> {
+    pub(crate) fn get_webview(&self, appid: &str, path: &str) -> Option<WebView> {
         if let Ok(webviews) = self.webviews.lock() {
             webviews
                 .get(&(appid.to_string(), path.to_string()))
@@ -157,7 +245,7 @@ impl Controller {
 
     /// Put a WebView instance into the HashMap
     /// This is meant to be used only internally by the FFI layer
-    pub(crate) fn put_webview(&self, appid: String, path: String, webview: Arc<WebView>) -> bool {
+    pub(crate) fn put_webview(&self, appid: String, path: String, webview: WebView) -> bool {
         if let Ok(mut webviews) = self.webviews.lock() {
             webviews.insert((appid, path), webview);
             true

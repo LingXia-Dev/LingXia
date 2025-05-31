@@ -91,7 +91,7 @@ class WebView @JvmOverloads constructor(
         private const val ANDROID_PORT_INIT_MESSAGE_DATA = "LingXia-port-init"
 
         @JvmStatic
-        external fun nativeGetExistingWebView(appId: String, path: String): com.lingxia.miniapp.WebView?
+        external fun nativeFindWebView(appId: String, path: String): com.lingxia.miniapp.WebView?
 
         /**
          * Helper function to apply proper layout to a view with screen dimensions
@@ -129,7 +129,6 @@ class WebView @JvmOverloads constructor(
          * @param context The Android context
          * @param appId The mini app ID
          * @param path The page path
-         * @param visible Whether the WebView should be immediately visible
          * @param enableJavaScript Whether to enable JavaScript
          * @param enableDomStorage Whether to enable DOM storage
          * @return A configured WebView instance
@@ -140,10 +139,47 @@ class WebView @JvmOverloads constructor(
             context: Context,
             appId: String,
             path: String,
-            visible: Boolean = true,
             enableJavaScript: Boolean = true,
             enableDomStorage: Boolean = false
         ): com.lingxia.miniapp.WebView {
+            // Ensure we're on the main thread
+            if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
+                // We're not on the main thread, use Handler to post to main thread
+                var result: com.lingxia.miniapp.WebView? = null
+                var exception: Exception? = null
+                val latch = java.util.concurrent.CountDownLatch(1)
+
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    try {
+                        val config = WebViewConfig(enableJavaScript, enableDomStorage)
+                        result = com.lingxia.miniapp.WebView(context, config)
+
+                        // Set appId and path directly
+                        result!!.appId = appId
+                        result!!.currentPath = path
+
+                        // All WebViews are created as invisible by default
+                        // Visibility will be controlled by Rust layer
+                        result!!.visibility = android.view.View.GONE
+
+                        Log.d(TAG, "WebView created: appId=$appId, path=$path, visible=false")
+                    } catch (e: Exception) {
+                        exception = e
+                    } finally {
+                        latch.countDown()
+                    }
+                }
+
+                try {
+                    latch.await()
+                } catch (e: InterruptedException) {
+                    throw RuntimeException("Interrupted while waiting for WebView creation", e)
+                }
+
+                exception?.let { throw it }
+                return result ?: throw RuntimeException("Failed to create WebView")
+            }
+
             val config = WebViewConfig(enableJavaScript, enableDomStorage)
             val webView = com.lingxia.miniapp.WebView(context, config)
 
@@ -151,49 +187,11 @@ class WebView @JvmOverloads constructor(
             webView.appId = appId
             webView.currentPath = path
 
-            // Set default layout parameters
-            webView.layoutParams = android.view.ViewGroup.LayoutParams(
-                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                android.view.ViewGroup.LayoutParams.MATCH_PARENT
-            )
+            // All WebViews are created as invisible by default
+            // Visibility will be controlled by Rust layer
+            webView.visibility = android.view.View.GONE
 
-            if (!visible) {
-                // For hidden WebViews, place in off-screen container
-                webView.visibility = View.VISIBLE
-
-                val container = android.widget.FrameLayout(context).apply {
-                    val metrics = context.resources.displayMetrics
-                    layoutParams = android.view.ViewGroup.LayoutParams(metrics.widthPixels, metrics.heightPixels)
-                    visibility = View.VISIBLE
-                    translationX = -metrics.widthPixels * 3f  // Position off-screen
-                    tag = "hiddenWebViewContainer_${appId}_${path.replace("/", "_")}"
-                }
-
-                webView.layoutParams = android.widget.FrameLayout.LayoutParams(
-                    android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
-                    android.widget.FrameLayout.LayoutParams.MATCH_PARENT
-                )
-                container.addView(webView)
-
-                // Add to root view
-                try {
-                    if (context is android.app.Activity) {
-                        val rootView = context.findViewById<android.view.ViewGroup>(android.R.id.content)
-                        rootView?.addView(container)
-
-                        // Apply layout using helper function
-                        container.post { applyScreenLayout(webView, container) }
-
-                        Log.d(TAG, "Hidden WebView added to off-screen container")
-                    }
-                } catch (e: Exception) {
-                    Log.w(TAG, "Could not add off-screen container: ${e.message}")
-                }
-            } else {
-                webView.visibility = View.VISIBLE
-            }
-
-            Log.d(TAG, "WebView created: appId=$appId, path=$path, visible=$visible")
+            Log.d(TAG, "WebView created: appId=$appId, path=$path, visible=false")
             return webView
         }
     }
@@ -485,8 +483,8 @@ class WebView @JvmOverloads constructor(
 
         // Register with native layer if not already registered and we have appId/path
         if (!isRegistered && appId != null && currentPath != null) {
-            Log.d(TAG, "Registering WebView with native layer: appId=$appId, path=$currentPath")
-            val result = nativeOnWebViewCreated(appId!!, currentPath!!, this)
+            Log.d(TAG, "WebView attached to window: appId=$appId, path=$currentPath")
+            val result = nativeOnWebViewAttached(appId!!, currentPath!! )
             if (result == 0) {
                 isRegistered = true
                 Log.d(TAG, "WebView registered successfully: appId=$appId, path=$currentPath")
@@ -598,7 +596,7 @@ class WebView @JvmOverloads constructor(
     }
 
     // Native instance methods
-    private external fun nativeOnWebViewCreated(appId: String, path: String, webview: WebView): Int
+    private external fun nativeOnWebViewAttached(appId: String, path: String): Int
     private external fun nativeHandlePostMessage(appId: String, path: String, message: String): Int
     private external fun nativeOnPageStarted(appId: String, path: String): Int
     private external fun nativeOnPageFinished(appId: String, path: String): Int

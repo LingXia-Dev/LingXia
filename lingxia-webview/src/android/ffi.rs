@@ -1,5 +1,4 @@
 use super::app::App;
-use super::webview::WebView;
 use crate::controller::Controller;
 use android_logger::Config;
 use http;
@@ -12,7 +11,7 @@ use log::{error, info};
 use miniapp::AppUiDelegate;
 use miniapp::log::LogLevel;
 use serde_json;
-use std::sync::{Arc, OnceLock, mpsc};
+use std::sync::{OnceLock, mpsc};
 
 pub static JAVA_VM: OnceLock<JavaVM> = OnceLock::new();
 
@@ -169,29 +168,16 @@ pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeOnMiniAppInited(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnWebViewCreated(
+pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnWebViewAttached(
     mut env: JNIEnv,
     _class: JClass,
     appid: JString,
     path: JString,
-    java_webview: JObject,
 ) -> jint {
     let appid: String = env.get_string(&appid).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
 
-    // Create WebView
-    let webview = WebView::from_java(java_webview, appid.clone(), path.clone());
-
-    // Add WebView to Controller
-    if let Some(controller) = Controller::get() {
-        if controller.put_webview(appid.clone(), path.clone(), Arc::new(webview)) {
-            info!("WebView added to Controller for {}/{}", appid, path);
-        } else {
-            error!("Failed to add WebView to Controller");
-        }
-    }
-
-    // Notify miniapp about page creation with the WebView controller
+    // Notify miniapp about page attached to window
     let miniapp = miniapp::get_or_init_miniapp(appid);
     miniapp.on_page_created(path);
     0
@@ -278,7 +264,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeShouldOverrideUrlL
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeGetExistingWebView<'a>(
+pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeFindWebView<'a>(
     mut env: JNIEnv<'a>,
     _class: JClass<'a>,
     appid: JString<'a>,
@@ -289,9 +275,9 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeGetExistingWebView
 
     // Get the controller and try to find the WebView
     if let Some(controller) = Controller::get() {
-        if let Some(webview_rc) = controller.get_webview(&appid, &path) {
+        if let Some(webview) = controller.get_webview(&appid, &path) {
             // Create a new local reference to the Java WebView object
-            match env.new_local_ref(webview_rc.get_java_webview()) {
+            match env.new_local_ref(webview.inner().get_java_webview()) {
                 Ok(local_ref) => unsafe { JObject::from_raw(local_ref.into_raw()) },
                 Err(e) => {
                     error!("Failed to create local reference to WebView: {:?}", e);
@@ -535,11 +521,13 @@ pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeOnMiniAppOpened(
     mut env: JNIEnv,
     _class: JClass,
     appid: JString,
+    path: JString,
 ) -> jint {
     let appid: String = env.get_string(&appid).unwrap().into();
+    let path: String = env.get_string(&path).unwrap().into();
 
     let miniapp = miniapp::get_or_init_miniapp(appid.clone());
-    miniapp.on_miniapp_opened();
+    miniapp.on_miniapp_opened(path);
     0
 }
 

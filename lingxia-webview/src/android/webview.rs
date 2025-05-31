@@ -1,43 +1,74 @@
-use crate::android::get_env;
+use crate::android::{MINIAPP_CLASS, get_env};
 use jni::objects::{GlobalRef, JObject, JValue};
-use log;
 use miniapp::{MiniAppError, WebViewController};
 
-#[derive(Clone)]
-pub struct WebView {
+#[derive(Clone, Debug)]
+pub struct WebViewInner {
     java_webview: GlobalRef,
 }
 
-impl Drop for WebView {
-    fn drop(&mut self) {
-        log::info!("destroying webview by Drop");
-        let _ = self.destroy_webview();
-    }
-}
+impl WebViewInner {
+    /// Create a new WebView by calling Kotlin createWebView
+    pub(crate) fn create(appid: &str, path: &str) -> Result<Self, MiniAppError> {
+        use jni::objects::JValue;
 
-impl WebView {
-    pub(crate) fn from_java(java_webview: JObject, _appid: String, _path: String) -> Self {
-        let env = get_env().unwrap();
-        let java_webview = env.new_global_ref(java_webview).unwrap();
+        let mut env = get_env().unwrap();
 
-        return WebView { java_webview };
+        let miniapp_class = MINIAPP_CLASS
+            .get()
+            .ok_or_else(|| MiniAppError::WebView("MiniApp class not initialized".to_string()))?;
+
+        let appid_jstring = env.new_string(appid).unwrap();
+        let path_jstring = env.new_string(path).unwrap();
+
+        // Call Kotlin createWebView method
+        let webview_result = env
+            .call_static_method(
+                miniapp_class,
+                "createWebView",
+                "(Ljava/lang/String;Ljava/lang/String;)Lcom/lingxia/miniapp/WebView;",
+                &[
+                    JValue::Object(&appid_jstring),
+                    JValue::Object(&path_jstring),
+                ],
+            )
+            .map_err(|e| MiniAppError::WebView(format!("Failed to call createWebView: {:?}", e)))?;
+
+        let java_webview = webview_result
+            .l()
+            .map_err(|e| MiniAppError::WebView(format!("Failed to get WebView object: {:?}", e)))?;
+
+        if java_webview.is_null() {
+            return Err(MiniAppError::WebView(
+                "createWebView returned null".to_string(),
+            ));
+        }
+
+        let java_webview = env
+            .new_global_ref(java_webview)
+            .map_err(|e| MiniAppError::WebView(format!("Failed to create global ref: {:?}", e)))?;
+
+        Ok(WebViewInner { java_webview })
     }
 
     pub(crate) fn get_java_webview(&self) -> &GlobalRef {
         &self.java_webview
     }
+}
 
-    fn destroy_webview(&self) {
-        let mut env = get_env().unwrap();
-        let _ = env.call_method(self.java_webview.as_obj(), "destroy", "()V", &[]);
+impl Drop for WebViewInner {
+    fn drop(&mut self) {
+        if let Some(mut env) = get_env() {
+            let _ = env.call_method(self.java_webview.as_obj(), "destroy", "()V", &[]);
+        }
     }
 }
 
-impl WebViewController for WebView {
-    fn load_url(&self, url: &str) -> Result<(), MiniAppError> {
+impl WebViewController for WebViewInner {
+    fn load_url(&self, url: String) -> Result<(), MiniAppError> {
         let mut env = get_env().unwrap();
 
-        match env.new_string(url) {
+        match env.new_string(&url) {
             Ok(url_string) => {
                 let result = env.call_method(
                     self.java_webview.as_obj(),
@@ -58,10 +89,10 @@ impl WebViewController for WebView {
         }
     }
 
-    fn evaluate_javascript(&self, js: &str) -> Result<(), MiniAppError> {
+    fn evaluate_javascript(&self, js: String) -> Result<(), MiniAppError> {
         let mut env = get_env().unwrap();
 
-        let script_string = match env.new_string(js) {
+        let script_string = match env.new_string(&js) {
             Ok(s) => s,
             Err(_) => {
                 return Err(MiniAppError::WebView(
@@ -126,10 +157,10 @@ impl WebViewController for WebView {
         }
     }
 
-    fn post_message(&self, message: &str) -> Result<(), MiniAppError> {
+    fn post_message(&self, message: String) -> Result<(), MiniAppError> {
         let mut env = get_env().unwrap();
 
-        let msg_string = match env.new_string(message) {
+        let msg_string = match env.new_string(&message) {
             Ok(s) => s,
             Err(_) => {
                 return Err(MiniAppError::WebView(
@@ -152,10 +183,10 @@ impl WebViewController for WebView {
         }
     }
 
-    fn set_user_agent(&self, ua: &str) -> Result<(), MiniAppError> {
+    fn set_user_agent(&self, ua: String) -> Result<(), MiniAppError> {
         let mut env = get_env().unwrap();
 
-        let ua_string = match env.new_string(ua) {
+        let ua_string = match env.new_string(&ua) {
             Ok(s) => s,
             Err(_) => {
                 return Err(MiniAppError::WebView(

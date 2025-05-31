@@ -123,7 +123,7 @@ class MiniAppActivity : AppCompatActivity() {
                     // Added try-catch and pre-load logic
                     try {
                         // Pre-load existing WebView if available to prevent white screen
-                        val existingWebView = com.lingxia.miniapp.WebView.nativeGetExistingWebView(appId, targetPath)
+                        val existingWebView = com.lingxia.miniapp.WebView.nativeFindWebView(appId, targetPath)
                         if (existingWebView != null) {
                             existingWebView.visibility = View.VISIBLE
                             existingWebView.resume()
@@ -373,21 +373,13 @@ class MiniAppActivity : AppCompatActivity() {
         //Log.d(TAG, "Updated layout: bottomMargin=${(webViewContainer.layoutParams as FrameLayout.LayoutParams).bottomMargin}, containerTransY=${container?.translationY}")
     }
 
-    // Helper function to find existing or create new WebView instance for a given path/page
-    private fun findOrCreateWebViewForPage(appId: String, path: String): Pair<com.lingxia.miniapp.WebView?, NavigationBarConfig?> {
-        var webView = com.lingxia.miniapp.WebView.nativeGetExistingWebView(appId, path)
+    // Helper function to find existing WebView instance for a given path/page
+    private fun findWebViewForPage(appId: String, path: String): Pair<com.lingxia.miniapp.WebView?, NavigationBarConfig?> {
+        var webView = com.lingxia.miniapp.WebView.nativeFindWebView(appId, path)
 
         if (webView == null) {
-            if (appId.isEmpty()) {
-                Log.e(TAG, "findOrCreateWebViewForPage failed: Cannot create WebView, appId is missing.")
-                return Pair(null, null)
-            }
-            webView = com.lingxia.miniapp.WebView.createWebView(
-                context = this,
-                appId = appId,
-                path = path,
-                visible = true
-            )
+            Log.w(TAG, "WebView not found for appId=$appId, path=$path. WebView should be created by Rust layer.")
+            return Pair(null, null)
         } else {
             Log.d(TAG, "Using existing WebView instance for page: $path")
         }
@@ -463,7 +455,7 @@ class MiniAppActivity : AppCompatActivity() {
     }
 
     private fun setupWebViewContent(appId: String, path: String) {
-        val initialWebView = findOrCreateWebViewForPage(appId, path)
+        val initialWebView = findWebViewForPage(appId, path)
         if (initialWebView.first == null) {
             Log.e(TAG, "Failed to find or create initial WebView for $path")
             finish(); return
@@ -752,9 +744,9 @@ class MiniAppActivity : AppCompatActivity() {
         }
 
         // Find or create target WebView
-        val (targetWebView, pageConfig) = findOrCreateWebViewForPage(appId, targetPath)
+        val (targetWebView, pageConfig) = findWebViewForPage(appId, targetPath)
         if (targetWebView == null) {
-            Log.e(TAG, "switchToTab failed: findOrCreateWebViewForPage returned null for $targetPath")
+            Log.e(TAG, "switchToTab failed: findWebViewForPage returned null for $targetPath")
             return
         }
 
@@ -875,7 +867,7 @@ class MiniAppActivity : AppCompatActivity() {
             val oldWebView = currentWebView
 
             // Find or create WebView for the target page
-            val (newWebView, pageConfig) = findOrCreateWebViewForPage(appId, targetPath)
+            val (newWebView, pageConfig) = findWebViewForPage(appId, targetPath)
             if (newWebView == null) {
                 Log.e(TAG, "Failed to create WebView for path: $targetPath")
                 return

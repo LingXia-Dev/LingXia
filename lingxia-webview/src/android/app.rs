@@ -1,8 +1,7 @@
-use crate::PlatformHost;
 use crate::android::{MINIAPP_CLASS, get_env};
 use jni::objects::{GlobalRef, JClass, JObject, JValue};
 use jni::sys::jobject;
-use miniapp::{AppRuntime, AssetFileEntry, DeviceInfo, MiniAppError};
+use miniapp::{AssetFileEntry, DeviceInfo, MiniAppError};
 use ndk_sys;
 use std::ffi::CString;
 use std::io::{Read, Result as IoResult};
@@ -268,10 +267,9 @@ impl App {
             device_info,
         })
     }
-}
 
-impl AppRuntime for App {
-    fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, MiniAppError> {
+    /// Read asset file from platform-specific location as a streaming reader
+    pub fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, MiniAppError> {
         unsafe {
             // Convert path to CString to ensure proper null-termination
             let c_path = std::ffi::CString::new(path)
@@ -295,28 +293,30 @@ impl AppRuntime for App {
         }
     }
 
-    fn asset_dir_iter<'a>(
+    /// Iterate over files in an asset directory
+    pub fn asset_dir_iter<'a>(
         &'a self,
         asset_dir: &str,
     ) -> Box<dyn Iterator<Item = Result<AssetFileEntry<'a>, MiniAppError>> + 'a> {
         Box::new(RecursiveAssetIterator::new(self, asset_dir))
     }
 
-    fn app_data_dir(&self) -> PathBuf {
+    /// Get data directory path
+    pub fn app_data_dir(&self) -> PathBuf {
         PathBuf::from(&self.data_dir)
     }
 
-    fn app_cache_dir(&self) -> PathBuf {
+    /// Get cache directory path
+    pub fn app_cache_dir(&self) -> PathBuf {
         PathBuf::from(&self.cache_dir)
     }
 
-    fn device_info(&self) -> DeviceInfo {
+    /// Get device information
+    pub fn device_info(&self) -> DeviceInfo {
         self.device_info.clone()
     }
-}
 
-impl PlatformHost for App {
-    fn open_miniapp(&self, appid: &str, path: &str) -> Result<(), MiniAppError> {
+    pub fn open_miniapp(&self, appid: &str, path: &str) -> Result<(), MiniAppError> {
         match || -> Result<(), Box<dyn std::error::Error>> {
             let mut env = get_env().unwrap();
 
@@ -347,7 +347,34 @@ impl PlatformHost for App {
         }
     }
 
-    fn switch_page(&self, appid: &str, path: &str) -> Result<(), MiniAppError> {
+    pub fn close_miniapp(&self, appid: &str) -> Result<(), MiniAppError> {
+        match || -> Result<(), Box<dyn std::error::Error>> {
+            let mut env = get_env().unwrap();
+
+            let miniapp_class: &JClass = MINIAPP_CLASS
+                .get()
+                .ok_or("Global MiniApp class reference not available")?
+                .as_obj()
+                .into();
+            let appid_jstring = env.new_string(appid)?;
+
+            env.call_static_method(
+                miniapp_class,
+                "closeMiniApp",
+                "(Ljava/lang/String;)V",
+                &[JValue::Object(&appid_jstring)],
+            )?;
+            Ok(())
+        }() {
+            Ok(_) => Ok(()),
+            Err(e) => Err(MiniAppError::WebView(format!(
+                "Failed to close miniapp: {}",
+                e
+            ))),
+        }
+    }
+
+    pub fn switch_page(&self, appid: &str, path: &str) -> Result<(), MiniAppError> {
         match || -> Result<(), Box<dyn std::error::Error>> {
             let mut env = get_env().unwrap();
 

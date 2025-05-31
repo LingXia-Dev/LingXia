@@ -64,7 +64,7 @@ class MiniApp private constructor(private val context: Context) {
         ): String?
 
         @JvmStatic
-        private external fun nativeOnMiniAppOpened(appId: String): Int
+        private external fun nativeOnMiniAppOpened(appId: String, path: String): Int
 
         /**
          * Get the TabBar configuration for a mini app from the native layer
@@ -164,31 +164,27 @@ class MiniApp private constructor(private val context: Context) {
 
         /**
          * Creates a WebView for the specified appId and path.
-         * This method is called from the Rust layer to create WebViews for better performance.
-         * The WebView will be created and automatically registered when attached to window.
+         * This method is called from the Rust layer to create WebViews.
+         * The WebView crate handles thread switching, so no need for Looper checks here.
          *
          * @param appId The miniapp ID
          * @param path The page path
          */
         @JvmStatic
         fun createWebView(appId: String, path: String): com.lingxia.miniapp.WebView? {
-            Log.d(TAG, "Creating hidden WebView for appId=$appId, path=$path")
 
             return try {
                 val context = getInstance().context
 
-                // Create WebView with hidden visibility
                 val webView = com.lingxia.miniapp.WebView.createWebView(
                     context = context,
                     appId = appId,
-                    path = path,
-                    visible = false
+                    path = path
                 )
-
-                Log.d(TAG, "Successfully created hidden WebView for appId=$appId, path=$path")
+                Log.d(TAG, "Successfully created WebView for appId=$appId, path=$path")
                 webView
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to create hidden WebView for appId=$appId, path=$path: ${e.message}", e)
+                Log.e(TAG, "Failed to create WebView for appId=$appId, path=$path: ${e.message}", e)
                 null
             }
         }
@@ -204,7 +200,7 @@ class MiniApp private constructor(private val context: Context) {
         try {
             context.startActivity(intent)
             // Notify native in background thread to avoid UI blocking
-            Thread { nativeOnMiniAppOpened(appId) }.start()
+            Thread { nativeOnMiniAppOpened(appId, path) }.start()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start MiniAppActivity: ${e.message}")
         }
