@@ -14,7 +14,6 @@ mod app;
 use app::MiniAppSvc;
 
 pub mod bridge;
-use bridge::DispatchMessageType;
 
 mod page;
 use page::PageSvc;
@@ -255,76 +254,19 @@ async fn handle_app_service_call(
 
 // Handles a message from the view layer to a Page service
 async fn handle_view_source(
-    worker_id: usize,
-    ctx: JSContext,
     page_svc_ref: &PageSvc,
-    path: String,
     incoming: Arc<bridge::IncomingMessage>,
 ) -> Result<(), MiniAppError> {
-    let mut page_svc_clone = page_svc_ref.clone();
-    let path_clone = path.clone();
-
     page_svc_ref
         .as_bridge()
-        .process_incoming_message(incoming, async move |dispatch_msg| {
-            match dispatch_msg.message_type() {
-                DispatchMessageType::Call {
-                    name, payload: _, ..
-                }
-                | DispatchMessageType::Event { name, payload: _ } => {
-                    // handle LXPortRdy event without spawn_local task
-                    if name == "LXPortRdy" {
-                        let _ = page_svc_clone.handle_lxport_ready().await;
-                        return;
-                    }
-
-                    // Extract values before moving into task
-                    let name_owned = name.clone();
-                    let dispatch_msg_clone = dispatch_msg.clone();
-
-                    let task = async move {
-                        if let Err(e) = page_svc_clone
-                            .call_or_event_from_view(&ctx, &dispatch_msg_clone)
-                            .await
-                        {
-                            error!(
-                                "[Worker {}] Exec Page {} service/event '{}' failed, Error: {}",
-                                worker_id, path_clone, name_owned, e
-                            );
-                        }
-                    };
-                    tokio::task::spawn_local(task);
-                }
-                DispatchMessageType::Callback { callback_id } => {
-                    // Extract value before moving into task
-                    let callback_id_owned = callback_id.clone();
-
-                    let task = async move {
-                        if let Err(e) = page_svc_clone.callback(&callback_id_owned).await {
-                            error!(
-                                "[Worker {}] No callback handler: {}, Error: {}",
-                                worker_id, callback_id_owned, e
-                            );
-                        }
-                    };
-                    tokio::task::spawn_local(task);
-                }
-            }
-        })
+        .process_incoming_message(page_svc_ref, page_svc_ref, incoming)
         .await
 }
 
 // Handles a call from native code to a Page service function
-async fn handle_native_source(
-    worker_id: usize,
-    ctx: JSContext,
-    page_svc: &mut PageSvc,
-    path: String,
-    name: String,
-    args: Option<String>,
-) {
+async fn handle_native_source(page_svc: &PageSvc, name: String, args: Option<String>) {
+    let ctx = page_svc.get_ctx();
     let page_svc_clone = page_svc.clone();
-    let path_clone = path.clone();
     let name_clone = name.clone();
 
     let task = async move {
@@ -332,10 +274,7 @@ async fn handle_native_source(
             .call_or_event_from_native(&ctx, &name, args.as_deref())
             .await
         {
-            error!(
-                "[Worker {}] Page service '{}' call '{}' failed, Error: {}",
-                worker_id, path_clone, name_clone, e
-            );
+            crate::error!("Page service call '{}' failed: {}", name_clone, e);
         }
     };
     tokio::task::spawn_local(task);
@@ -466,7 +405,6 @@ async fn miniapp_service_handler(
             if let Some(ctx) = current_ctx.as_ref() {
                 match source {
                     PageSvcSource::View { incoming } => {
-                        let path_str = path.clone();
                         let page_svc = if let Some(page_svc_map) =
                             ctx.get_user_data::<Rc<RefCell<HashMap<String, PageSvc>>>>()
                         {
@@ -476,16 +414,7 @@ async fn miniapp_service_handler(
                         };
 
                         if let Some(page_svc) = page_svc {
-                            let ctx_clone = ctx.clone();
-                            if let Err(e) = handle_view_source(
-                                worker_id,
-                                ctx_clone,
-                                &page_svc.clone(),
-                                path_str,
-                                incoming,
-                            )
-                            .await
-                            {
+                            if let Err(e) = handle_view_source(&page_svc, incoming).await {
                                 error!(
                                     "[Worker {}] Handle incoming message error: {}",
                                     worker_id, e
@@ -498,7 +427,6 @@ async fn miniapp_service_handler(
                         }
                     }
                     PageSvcSource::Native { name, args } => {
-                        let path_str = path.clone();
                         let page_svc = if let Some(page_svc_map) =
                             ctx.get_user_data::<Rc<RefCell<HashMap<String, PageSvc>>>>()
                         {
@@ -508,16 +436,7 @@ async fn miniapp_service_handler(
                         };
 
                         if let Some(page_svc) = page_svc {
-                            let ctx_clone = ctx.clone();
-                            handle_native_source(
-                                worker_id,
-                                ctx_clone,
-                                &mut page_svc.clone(),
-                                path_str,
-                                name,
-                                args,
-                            )
-                            .await;
+                            handle_native_source(&page_svc, name, args).await;
                         } else {
                             error!("[Worker {}] Page service not loaded", worker_id)
                                 .with_appid(appid)

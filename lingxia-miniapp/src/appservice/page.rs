@@ -1,4 +1,6 @@
-use super::bridge::{Bridge, BridgeTransport};
+use super::bridge::{
+    Bridge, DispatchMessage, DispatchMessageType, MessageHandler, MessageTransport, ServiceType,
+};
 use super::lx;
 use crate::error::MiniAppError;
 use crate::miniapp::MiniApp;
@@ -22,7 +24,7 @@ pub(crate) struct PageSvc {
     fast_api: Rc<lx::FastJSApi>,
 
     page: Page,
-    bridge: Option<Bridge>,
+    bridge: Bridge,
 
     // state of PageSvc
     state: Rc<Mutex<PageSvcState>>,
@@ -36,19 +38,86 @@ struct PageSvcState {
     bridge_rdy: bool,
 }
 
-impl BridgeTransport for PageSvc {
+impl MessageTransport for PageSvc {
     fn post_message_to_view(&self, message_json: String) -> Result<(), MiniAppError> {
         self.page.webview_controller().post_message(message_json)
     }
+}
 
-    fn has_service(&self, service_name: &str) -> bool {
-        // Check regular functions first
+impl MessageHandler for PageSvc {
+    fn get_service_type(&self, service_name: &str) -> ServiceType {
+        // Check regular JS functions first
         if self.functions.contains_key(service_name) {
-            return true;
+            return ServiceType::JSFunc;
         }
 
-        // Check FastJSApi
-        self.fast_api.has_fast_api(service_name)
+        // Check FastJSApi (also treated as JSFunc for now)
+        if self.fast_api.has_fast_api(service_name) {
+            return ServiceType::JSFunc;
+        }
+
+        ServiceType::None
+    }
+
+    async fn handle_message(&self, dispatch_msg: DispatchMessage, service_type: ServiceType) {
+        match dispatch_msg.message_type() {
+            DispatchMessageType::Call {
+                name, payload: _, ..
+            }
+            | DispatchMessageType::Event { name, payload: _ } => {
+                // handle LXPortRdy event without spawn_local task
+                if name == "LXPortRdy" {
+                    let mut page_svc_clone = self.clone();
+                    let _ = page_svc_clone.handle_lxport_ready().await;
+                    return;
+                }
+
+                let ctx = self.get_ctx();
+
+                // Extract values before moving into task
+                let name_owned = name.clone();
+                let dispatch_msg_clone = dispatch_msg.clone();
+                let page_svc_clone = self.clone();
+
+                // Handle different service types
+                match service_type {
+                    ServiceType::JSFunc => {
+                        // For JS functions, execute in JS context
+                        let task = async move {
+                            if let Err(e) = page_svc_clone
+                                .call_or_event_from_view(&ctx, &dispatch_msg_clone)
+                                .await
+                            {
+                                crate::error!(
+                                    "JS function call/event '{}' failed: {}",
+                                    name_owned,
+                                    e
+                                );
+                            }
+                        };
+                        tokio::task::spawn_local(task);
+                    }
+                    ServiceType::FastAPI => {
+                        todo!();
+                    }
+                    ServiceType::None => {
+                        // This shouldn't happen for Call/Event messages
+                    }
+                }
+            }
+            DispatchMessageType::Callback { callback_id } => {
+                // Callbacks are always handled the same way regardless of service_type
+                let callback_id_owned = callback_id.clone();
+                let mut page_svc_clone = self.clone();
+
+                let task = async move {
+                    if let Err(e) = page_svc_clone.callback(&callback_id_owned).await {
+                        crate::error!("No callback handler: {}, Error: {}", callback_id_owned, e);
+                    }
+                };
+                tokio::task::spawn_local(task);
+            }
+        }
     }
 }
 
@@ -74,7 +143,7 @@ impl PageSvc {
             this: config.clone(), // will be updated later
             fast_api,
             page,
-            bridge: None,
+            bridge: Bridge::new(),
             state: Rc::new(Mutex::new(PageSvcState {
                 callback: HashMap::new(),
                 callbackid: AtomicUsize::new(0),
@@ -85,9 +154,6 @@ impl PageSvc {
 
         // Extract functions from page config
         page_svc.assign_funcs(&config)?;
-
-        // Create bridge with self reference
-        page_svc.bridge = Some(Bridge::new(Rc::new(page_svc.clone())));
 
         let class = Class::get::<PageSvc>(&ctx).unwrap();
         let instance = class.instance(page_svc);
@@ -124,8 +190,8 @@ impl PageSvc {
         };
 
         // Use the set_data method with optional callback_id
-        self.as_bridge()
-            .set_data(&data, callback_id)
+        self.bridge
+            .set_data(self, &data, callback_id)
             .await
             .map_err(|e| RongJSError::Error(e.to_string()))?;
 
@@ -164,18 +230,16 @@ impl PageSvc {
     }
 
     // handler for bridge type: call or event from view
-    pub async fn call_or_event_from_view(
+    pub(crate) async fn call_or_event_from_view(
         &self,
         ctx: &JSContext,
-        dispatch_msg: &crate::appservice::bridge::DispatchMessage,
+        dispatch_msg: &DispatchMessage,
     ) -> JSResult<()> {
         // Extract function name and args from dispatch message
         let (func_name, args) = match dispatch_msg.message_type() {
-            crate::appservice::bridge::DispatchMessageType::Call { name, payload, .. }
-            | crate::appservice::bridge::DispatchMessageType::Event { name, payload } => {
-                (name.as_str(), payload.as_deref())
-            }
-            crate::appservice::bridge::DispatchMessageType::Callback { .. } => {
+            DispatchMessageType::Call { name, payload, .. }
+            | DispatchMessageType::Event { name, payload } => (name.as_str(), payload.as_deref()),
+            DispatchMessageType::Callback { .. } => {
                 // This should never happen as callbacks are handled separately in appservice.rs
                 return Ok(());
             }
@@ -184,7 +248,7 @@ impl PageSvc {
         // For Call messages, reply success first
         if matches!(
             dispatch_msg.message_type(),
-            crate::appservice::bridge::DispatchMessageType::Call { .. }
+            DispatchMessageType::Call { .. }
         ) {
             if self.fast_api.has_fast_api(func_name) {
                 // Handle fast API call
@@ -195,38 +259,35 @@ impl PageSvc {
                 {
                     Ok(js_value) => {
                         if js_value.is_null() || js_value.is_undefined() {
-                            let _ = dispatch_msg.reply_success(None);
+                            let _ = dispatch_msg.reply_success(self, None);
                         } else if let Some(js_object) = js_value.into_object() {
                             match js_object.json_stringify() {
                                 Ok(json_string) => {
-                                    let _ = dispatch_msg.reply_success(Some(&json_string));
+                                    let _ = dispatch_msg.reply_success(self, Some(&json_string));
                                 }
                                 Err(_) => {
-                                    let _ =
-                                        dispatch_msg.reply_failure("Failed to stringify object");
+                                    let _ = dispatch_msg
+                                        .reply_failure(self, "Failed to stringify object");
                                 }
                             }
                         } else {
-                            let _ = dispatch_msg.reply_failure("Invalid result type");
+                            let _ = dispatch_msg.reply_failure(self, "Invalid result type");
                         }
                         return Ok(());
                     }
                     Err(e) => {
-                        let _ = dispatch_msg.reply_failure(&e.to_string());
+                        let _ = dispatch_msg.reply_failure(self, &e.to_string());
                         return Ok(());
                     }
                 }
             }
-
-            // Not a fast API, reply success at once
-            let _ = dispatch_msg.reply_success(None);
         }
 
         self.call_function_internal(ctx, func_name, args).await
     }
 
     // handler for bridge type: call or event from native
-    pub async fn call_or_event_from_native(
+    pub(crate) async fn call_or_event_from_native(
         &self,
         ctx: &JSContext,
         func_name: &str,
@@ -260,7 +321,7 @@ impl PageSvc {
     }
 
     // handler for bridge type: callback
-    pub async fn callback(&mut self, callbackid: &str) -> JSResult<()> {
+    async fn callback(&mut self, callbackid: &str) -> JSResult<()> {
         let mut state = self.state.lock().await;
         if let Some(callback) = state.callback.remove(callbackid) {
             // Release the lock before calling the callback to avoid potential deadlocks
@@ -275,7 +336,7 @@ impl PageSvc {
     }
 
     // post init data to view
-    pub async fn handle_lxport_ready(&mut self) -> JSResult<()> {
+    async fn handle_lxport_ready(&mut self) -> JSResult<()> {
         let mut state = self.state.lock().await;
 
         // only post one time
@@ -283,16 +344,22 @@ impl PageSvc {
             state.bridge_rdy = true;
 
             drop(state);
-            self.as_bridge()
-                .set_data(&data.json_stringify()?, None)
+            self.bridge
+                .set_data(self, &data.json_stringify()?, None)
                 .await
                 .map_err(|e| RongJSError::Error(e.to_string()))?;
+        } else {
+            state.bridge_rdy = true;
         }
         Ok(())
     }
 
-    pub fn as_bridge(&self) -> &Bridge {
-        self.bridge.as_ref().unwrap()
+    pub(crate) fn as_bridge(&self) -> &Bridge {
+        &self.bridge
+    }
+
+    pub fn get_ctx(&self) -> JSContext {
+        self.this.get_ctx()
     }
 }
 
