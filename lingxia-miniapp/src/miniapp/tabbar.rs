@@ -132,8 +132,9 @@ pub struct TabItem {
     /// Page path for this tab
     pub pagePath: String,
 
-    /// Text displayed under the icon
-    pub text: String,
+    /// Text displayed under the icon (optional, if not provided, no text will be shown)
+    #[serde(default)]
+    pub text: Option<String>,
 
     /// Path to the icon when not selected
     #[serde(default)]

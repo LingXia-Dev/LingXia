@@ -74,13 +74,44 @@ class MiniAppActivity : AppCompatActivity() {
             // Enable Edge-to-Edge using WindowCompat
             WindowCompat.setDecorFitsSystemWindows(activity.window, false)
 
-            // Explicitly set system bar colors to transparent
-            activity.window.statusBarColor = Color.TRANSPARENT
-            activity.window.navigationBarColor = Color.TRANSPARENT
+            activity.window.apply {
+                addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+                clearFlags(android.view.WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS)
+                clearFlags(android.view.WindowManager.LayoutParams.FLAG_TRANSLUCENT_NAVIGATION)
+                statusBarColor = Color.TRANSPARENT
+                // Navigation bar color will be set by updateNavigationBarTransparency
+            }
 
-            // Set status bar icon colors based on preference
             WindowCompat.getInsetsController(activity.window, activity.window.decorView).apply {
                 isAppearanceLightStatusBars = lightStatusBarIcons
+                isAppearanceLightNavigationBars = lightStatusBarIcons
+            }
+        }
+
+        @JvmStatic
+        fun updateNavigationBarTransparency(activity: AppCompatActivity, isTabBarTransparent: Boolean, tabBarBackgroundColor: Int? = null) {
+            activity.window.apply {
+                if (isTabBarTransparent) {
+                    // TabBar is transparent, make navigation bar transparent for overlay effect
+                    addFlags(android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
+                    navigationBarColor = Color.TRANSPARENT
+                    isNavigationBarContrastEnforced = false
+                    navigationBarDividerColor = Color.TRANSPARENT
+                } else {
+                    // TabBar is not transparent, use TabBar's background color for navigation bar
+                    clearFlags(android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
+
+                    // Use TabBar's background color, fallback to white if not provided
+                    val navBarColor = tabBarBackgroundColor ?: Color.WHITE
+                    navigationBarColor = navBarColor
+
+                    // Set contrast enforcement based on color brightness
+                    val brightness = (Color.red(navBarColor) * 0.299 + Color.green(navBarColor) * 0.587 + Color.blue(navBarColor) * 0.114)
+                    isNavigationBarContrastEnforced = brightness > 128 // Light background
+
+                    // Remove divider completely for seamless appearance
+                    navigationBarDividerColor = Color.TRANSPARENT
+                }
             }
         }
     }
@@ -177,8 +208,11 @@ class MiniAppActivity : AppCompatActivity() {
             }
         })
 
-        // Configure transparent system bars
+        // Configure transparent system bars (initially with non-transparent navigation bar)
         configureTransparentSystemBars(this)
+        // Set initial navigation bar to non-transparent with white background (will be updated in setupTabBar)
+        updateNavigationBarTransparency(this, false, Color.WHITE)
+        // Navigation bar transparency will be updated in setupTabBar based on TabBar config
 
         // Initialize appId from intent (check for null)
         appId = intent.getStringExtra(EXTRA_APP_ID) ?: run {
@@ -201,14 +235,26 @@ class MiniAppActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
+            setBackgroundColor(Color.TRANSPARENT)
         }
         setContentView(rootContainer)
 
-        // Apply window insets as padding to the root container
+        window.setBackgroundDrawableResource(android.R.color.transparent)
+
         ViewCompat.setOnApplyWindowInsetsListener(rootContainer) { view, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            view.setPadding(systemBars.left, 0, systemBars.right, systemBars.bottom)
-            insets // Return original insets
+
+            val tabBarBgColor = tabBarConfig?.backgroundColor
+            val isTabBarTransparent = tabBarBgColor == Color.TRANSPARENT ||
+                                     (tabBarBgColor != null && Color.alpha(tabBarBgColor) < 255)
+
+            if (isTabBarTransparent) {
+                view.setPadding(0, 0, 0, 0)
+            } else {
+                view.setPadding(systemBars.left, 0, systemBars.right, systemBars.bottom)
+            }
+
+            insets
         }
 
         // Setup WebView container
@@ -236,6 +282,8 @@ class MiniAppActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
+            // Set transparent background to allow TabBar transparency to work
+            setBackgroundColor(Color.TRANSPARENT)
         }
         setContentView(rootContainer)
 
@@ -245,6 +293,8 @@ class MiniAppActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
+            // Set transparent background to allow TabBar transparency to work
+            setBackgroundColor(Color.TRANSPARENT)
         }
         rootContainer.addView(webViewContainer)
     }
@@ -255,29 +305,46 @@ class MiniAppActivity : AppCompatActivity() {
             return
         }
 
+        val tabBarBgColor = config.backgroundColor
+        val isTabBarTransparent = tabBarBgColor == Color.TRANSPARENT ||
+                                 (tabBarBgColor != null && Color.alpha(tabBarBgColor) < 255)
+
+        // Get the actual TabBar background color (considering defaults)
+        val actualTabBarColor = when {
+            config.backgroundColor != null -> config.backgroundColor!!
+            config.position == TabBarConfig.Position.LEFT || config.position == TabBarConfig.Position.RIGHT -> {
+                // Use vertical TabBar default color from TabBar class
+                Color.parseColor("#F8F8F8") // VERTICAL_TABBAR_BACKGROUND_COLOR
+            }
+            else -> Color.WHITE // DEFAULT_BACKGROUND_COLOR
+        }
+
+        // Update system navigation bar transparency based on TabBar transparency and color
+        updateNavigationBarTransparency(this, isTabBarTransparent, actualTabBarColor)
+
         if (tabBar == null) {
-            // Create and add TabBar
             tabBar = TabBar(this).apply {
                 setConfig(config)
                 setOnTabSelectedListener { index, path ->
                     Log.d(TAG, "Tab clicked: index=$index, path=$path")
                     switchToTab(path)
                 }
-                // Apply layout params using the helper function
                 applyTabBarLayoutParams(this, config)
             }
-            // Add TabBar to the container AFTER the apply block completes
-            rootContainer.addView(tabBar)
-            Log.d(TAG, "TabBar added with ${config.list.size} items.")
+
+            if (isTabBarTransparent) {
+                if (webViewContainer.parent == null) {
+                    rootContainer.addView(webViewContainer)
+                }
+                rootContainer.addView(tabBar)
+            } else {
+                rootContainer.addView(tabBar)
+            }
         } else {
-            // If TabBar already exists (e.g., during re-creation), just update its config
             tabBar?.setConfig(config)
-            // Update layout params if necessary
-            tabBar?.let { tb -> applyTabBarLayoutParams(tb, config) } // Use helper here
-            Log.d(TAG, "TabBar config updated.")
+            tabBar?.let { tb -> applyTabBarLayoutParams(tb, config) }
         }
 
-        // Initial margin update needed after TabBar is added/configured
         updateLayoutMargins()
     }
 
@@ -285,7 +352,11 @@ class MiniAppActivity : AppCompatActivity() {
         val isVertical = config.position == TabBarConfig.Position.LEFT || config.position == TabBarConfig.Position.RIGHT
         val density = resources.displayMetrics.density
         val defaultTabBarSizePx = (DEFAULT_TAB_BAR_SIZE_DP * density).toInt()
-        val verticalWidthPx = (DEFAULT_TAB_BAR_SIZE_DP * 1.0f * density).toInt() // Vertical TabBar width
+        val verticalWidthPx = (DEFAULT_TAB_BAR_SIZE_DP * 1.0f * density).toInt()
+
+        val tabBarBgColor = config.backgroundColor
+        val isTabBarTransparent = tabBarBgColor == Color.TRANSPARENT ||
+                                 (tabBarBgColor != null && Color.alpha(tabBarBgColor) < 255)
 
         (tabBar.layoutParams as? FrameLayout.LayoutParams)?.apply {
             if (isVertical) {
@@ -294,7 +365,7 @@ class MiniAppActivity : AppCompatActivity() {
                 gravity = when (config.position) {
                     TabBarConfig.Position.LEFT -> Gravity.START
                     TabBarConfig.Position.RIGHT -> Gravity.END
-                    else -> Gravity.START // Should not happen
+                    else -> Gravity.START
                 }
             } else {
                 width = ViewGroup.LayoutParams.MATCH_PARENT
@@ -302,13 +373,16 @@ class MiniAppActivity : AppCompatActivity() {
                 gravity = when (config.position) {
                     TabBarConfig.Position.TOP -> Gravity.TOP
                     TabBarConfig.Position.BOTTOM -> Gravity.BOTTOM
-                    else -> Gravity.BOTTOM // Should not happen
+                    else -> Gravity.BOTTOM
+                }
+
+                if (isTabBarTransparent && config.position == TabBarConfig.Position.BOTTOM) {
+                    val navBarHeight = getNavigationBarHeight()
+                    bottomMargin = navBarHeight
                 }
             }
-            // Re-assign layoutParams to ensure changes are applied, especially when modifying existing params.
             tabBar.layoutParams = this
         } ?: run {
-            // Fallback for initial creation or if layoutParams are not FrameLayout.LayoutParams.
             val newLayoutParams = FrameLayout.LayoutParams(0,0)
             if (isVertical) {
                 newLayoutParams.width = verticalWidthPx
@@ -316,7 +390,7 @@ class MiniAppActivity : AppCompatActivity() {
                 newLayoutParams.gravity = when (config.position) {
                     TabBarConfig.Position.LEFT -> Gravity.START
                     TabBarConfig.Position.RIGHT -> Gravity.END
-                    else -> Gravity.START // Should not happen
+                    else -> Gravity.START
                 }
             } else {
                 newLayoutParams.width = ViewGroup.LayoutParams.MATCH_PARENT
@@ -324,10 +398,25 @@ class MiniAppActivity : AppCompatActivity() {
                 newLayoutParams.gravity = when (config.position) {
                     TabBarConfig.Position.TOP -> Gravity.TOP
                     TabBarConfig.Position.BOTTOM -> Gravity.BOTTOM
-                    else -> Gravity.BOTTOM // Should not happen
+                    else -> Gravity.BOTTOM
+                }
+
+                if (isTabBarTransparent && config.position == TabBarConfig.Position.BOTTOM) {
+                    val navBarHeight = getNavigationBarHeight()
+                    newLayoutParams.bottomMargin = navBarHeight
                 }
             }
             tabBar.layoutParams = newLayoutParams
+        }
+    }
+
+    // Helper function to get navigation bar height
+    private fun getNavigationBarHeight(): Int {
+        val resourceId = resources.getIdentifier("navigation_bar_height", "dimen", "android")
+        return if (resourceId > 0) {
+            resources.getDimensionPixelSize(resourceId)
+        } else {
+            (48 * resources.displayMetrics.density).toInt()
         }
     }
 
@@ -335,42 +424,41 @@ class MiniAppActivity : AppCompatActivity() {
         val isTabBarVisible = tabBar?.visibility == View.VISIBLE
         val tabBarHeight = tabBar?.layoutParams?.height ?: 0
         val tabBarWidth = tabBar?.layoutParams?.width ?: 0
+        val tabBarBgColor = tabBar?.config?.backgroundColor
+        val isTabBarTransparent = tabBarBgColor == Color.TRANSPARENT ||
+                                 (tabBarBgColor != null && Color.alpha(tabBarBgColor) < 255)
 
-        // Adjust WebView container margins based on TabBar position
         (webViewContainer.layoutParams as FrameLayout.LayoutParams).apply {
             topMargin = 0
             bottomMargin = 0
             leftMargin = 0
             rightMargin = 0
 
-            // Set margins based on TabBar position
-            when (tabBar?.config?.position) {
-                TabBarConfig.Position.BOTTOM -> {
-                    if (isTabBarVisible) bottomMargin = tabBarHeight
+            if (!isTabBarTransparent) {
+                when (tabBar?.config?.position) {
+                    TabBarConfig.Position.BOTTOM -> {
+                        if (isTabBarVisible) bottomMargin = tabBarHeight
+                    }
+                    TabBarConfig.Position.TOP -> {
+                        if (isTabBarVisible) topMargin = tabBarHeight
+                    }
+                    TabBarConfig.Position.LEFT -> {
+                        if (isTabBarVisible) leftMargin = tabBarWidth
+                    }
+                    TabBarConfig.Position.RIGHT -> {
+                        if (isTabBarVisible) rightMargin = tabBarWidth
+                    }
+                    null -> { }
                 }
-                TabBarConfig.Position.TOP -> {
-                    if (isTabBarVisible) topMargin = tabBarHeight
-                }
-                TabBarConfig.Position.LEFT -> {
-                    if (isTabBarVisible) leftMargin = tabBarWidth
-                }
-                TabBarConfig.Position.RIGHT -> {
-                    if (isTabBarVisible) rightMargin = tabBarWidth
-                }
-                null -> { /* No TabBar config, do nothing */ }
             }
 
             webViewContainer.layoutParams = this
-            // Request layout for the container itself
             webViewContainer.requestLayout()
         }
 
-        // Apply translation to the current WebView CONTAINER
         val container = webViewContainer.findViewWithTag<ViewGroup>("current_webview_container")
-        container?.translationY = calculateWebViewTranslationY()
+        container?.translationY = if (!isTabBarTransparent) calculateWebViewTranslationY() else 0f
         container?.requestLayout()
-
-        //Log.d(TAG, "Updated layout: bottomMargin=${(webViewContainer.layoutParams as FrameLayout.LayoutParams).bottomMargin}, containerTransY=${container?.translationY}")
     }
 
     // Helper function to find existing WebView instance for a given path/page
@@ -489,10 +577,11 @@ class MiniAppActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
-            // Margins will be set by updateLayoutMargins
+            setBackgroundColor(Color.TRANSPARENT)
         }
-        rootContainer.addView(webViewContainer)
-        Log.d(TAG, "WebView container added.")
+        if (webViewContainer.parent == null) {
+            rootContainer.addView(webViewContainer)
+        }
     }
 
     private class MoreDotsDrawable : Drawable() {
