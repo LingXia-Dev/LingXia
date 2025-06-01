@@ -377,8 +377,9 @@ class MiniAppActivity : AppCompatActivity() {
                 }
 
                 if (isTabBarTransparent && config.position == TabBarConfig.Position.BOTTOM) {
-                    val navBarHeight = getNavigationBarHeight()
-                    bottomMargin = navBarHeight
+                    // For transparent TabBar, use a small fixed margin to avoid excessive spacing
+                    // while still providing enough space to avoid overlap with system navigation
+                    bottomMargin = (8 * resources.displayMetrics.density).toInt()
                 }
             }
             tabBar.layoutParams = this
@@ -402,21 +403,12 @@ class MiniAppActivity : AppCompatActivity() {
                 }
 
                 if (isTabBarTransparent && config.position == TabBarConfig.Position.BOTTOM) {
-                    val navBarHeight = getNavigationBarHeight()
-                    newLayoutParams.bottomMargin = navBarHeight
+                    // For transparent TabBar, use a small fixed margin to avoid excessive spacing
+                    // while still providing enough space to avoid overlap with system navigation
+                    newLayoutParams.bottomMargin = (8 * resources.displayMetrics.density).toInt()
                 }
             }
             tabBar.layoutParams = newLayoutParams
-        }
-    }
-
-    // Helper function to get navigation bar height
-    private fun getNavigationBarHeight(): Int {
-        val resourceId = resources.getIdentifier("navigation_bar_height", "dimen", "android")
-        return if (resourceId > 0) {
-            resources.getDimensionPixelSize(resourceId)
-        } else {
-            (48 * resources.displayMetrics.density).toInt()
         }
     }
 
