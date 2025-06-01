@@ -490,32 +490,32 @@ fn prepare_directory_structure<T: AppRuntime + ?Sized>(runtime: &T) -> Result<()
 
 pub trait AppUiDelegate {
     /// Get tabbar configuration for mini app
-    fn get_tab_bar_config(&self) -> Result<String, MiniAppError>;
+    fn get_tab_bar_config(self: &Arc<Self>) -> Result<String, MiniAppError>;
 
     /// Get page configuration for a specific page
-    fn get_page_config(&self, path: &str) -> Result<String, MiniAppError>;
+    fn get_page_config(self: &Arc<Self>, path: &str) -> Result<String, MiniAppError>;
 
     /// Called when mini app is opened
-    fn on_miniapp_opened(&self, path: String);
+    fn on_miniapp_opened(self: Arc<Self>, path: String);
 
     /// Called when mini app is closed
-    fn on_miniapp_closed(&self);
+    fn on_miniapp_closed(self: &Arc<Self>);
 
     /// Called when a page is created
-    fn on_page_created(&self, path: String);
+    fn on_page_created(self: &Arc<Self>, path: String);
 
     /// Called when the page starts loading
-    fn on_page_started(&self, path: String);
+    fn on_page_started(self: &Arc<Self>, path: String);
 
     /// Called when the page finishes loading
-    fn on_page_finished(&self, path: String);
+    fn on_page_finished(self: &Arc<Self>, path: String);
 
     /// Called when the page showed in the view
-    fn on_page_show(&self, path: String);
+    fn on_page_show(self: &Arc<Self>, path: String);
 
     /// Handle back button press
     /// Return true to indicate the back press had been handled
-    fn on_back_pressed(&self) -> bool;
+    fn on_back_pressed(self: &Arc<Self>) -> bool;
 
     /// Determines whether to override URL loading in the page.
     ///
@@ -525,20 +525,23 @@ pub trait AppUiDelegate {
     /// # Returns
     /// * `true` - To intercept and handle the URL loading
     /// * `false` - To allow the page to continue loading the URL
-    fn should_override_url_loading(&self, url: String) -> bool;
+    fn should_override_url_loading(self: &Arc<Self>, url: String) -> bool;
 
     /// Handles a postMessage from the page View(WebView)
-    fn handle_post_message(&self, path: String, msg: String);
+    fn handle_post_message(self: &Arc<Self>, path: String, msg: String);
 
     /// Handles an HTTP request from the page
-    fn handle_request(&self, req: http::Request<Vec<u8>>) -> Option<http::Response<Vec<u8>>>;
+    fn handle_request(
+        self: &Arc<Self>,
+        req: http::Request<Vec<u8>>,
+    ) -> Option<http::Response<Vec<u8>>>;
 
     /// Receive log from WebView
-    fn log(&self, path: &str, level: LogLevel, message: &str);
+    fn log(self: &Arc<Self>, path: &str, level: LogLevel, message: &str);
 }
 
 impl AppUiDelegate for MiniApp {
-    fn get_tab_bar_config(&self) -> Result<String, MiniAppError> {
+    fn get_tab_bar_config(self: &Arc<Self>) -> Result<String, MiniAppError> {
         // Handle TabBar configuration
         if let Some(tab_bar_json) = self.config.get_tabbar_json_with_base_path(&self.app_dir) {
             // self.info("TabBar", &tab_bar_json);
@@ -549,7 +552,7 @@ impl AppUiDelegate for MiniApp {
         }
     }
 
-    fn get_page_config(&self, path: &str) -> Result<String, MiniAppError> {
+    fn get_page_config(self: &Arc<Self>, path: &str) -> Result<String, MiniAppError> {
         // Handle different possible path formats:
         // 1. "pages/home/index.html" -> "pages/home/index.json"
         // 2. "pages/home/index" -> "pages/home/index.json"
@@ -597,28 +600,18 @@ impl AppUiDelegate for MiniApp {
         }
     }
 
-    fn on_miniapp_opened(&self, path: String) {
+    fn on_miniapp_opened(self: Arc<Self>, path: String) {
         info!("Mini app opened")
             .with_appid(self.appid.clone())
             .with_path(path.clone());
 
-        // We need to get Arc<Self> to pass to the service manager
-        // This requires finding ourselves in the global collection
-        let manager = MINIAPPS_MANAGER.get().expect("MiniApps not initialized");
-        if let Some(self_arc) = manager.miniapps.get(&self.appid) {
-            let self_arc = self_arc.clone();
-
-            // Initialize app service for home app
-            if let Ok(mut svc_manager) = self.svc_manager.lock() {
-                if let Err(e) = svc_manager.create_app_svc(self_arc) {
-                    error!("Failed to trigger app service: {}", e).with_appid(self.appid.clone());
-                }
-                if let Err(e) =
-                    svc_manager.app_svc(self.appid.clone(), "onLaunch".to_string(), None)
-                {
-                    error!("Failed to trigger onLaunch service: {}", e)
-                        .with_appid(self.appid.clone());
-                }
+        // Use the Arc<Self> directly instead of looking it up in the global manager
+        if let Ok(mut svc_manager) = self.svc_manager.lock() {
+            if let Err(e) = svc_manager.create_app_svc(self.clone()) {
+                error!("Failed to trigger app service: {}", e).with_appid(self.appid.clone());
+            }
+            if let Err(e) = svc_manager.app_svc(self.appid.clone(), "onLaunch".to_string(), None) {
+                error!("Failed to trigger onLaunch service: {}", e).with_appid(self.appid.clone());
             }
         }
 
@@ -638,7 +631,7 @@ impl AppUiDelegate for MiniApp {
         state.opened = true;
     }
 
-    fn on_miniapp_closed(&self) {
+    fn on_miniapp_closed(self: &Arc<Self>) {
         self.state.lock().unwrap().opened = false;
 
         // Update last active time
@@ -648,7 +641,7 @@ impl AppUiDelegate for MiniApp {
         info!("Mini app closed").with_appid(self.appid.clone());
     }
 
-    fn on_page_created(&self, path: String) {
+    fn on_page_created(self: &Arc<Self>, path: String) {
         info!("Mini app page created")
             .with_appid(self.appid.clone())
             .with_path(path.clone());
@@ -702,7 +695,7 @@ impl AppUiDelegate for MiniApp {
             .with_path(path.clone());
     }
 
-    fn on_page_started(&self, path: String) {
+    fn on_page_started(self: &Arc<Self>, path: String) {
         if let Ok(manager) = self.svc_manager.lock() {
             let _ = manager.invoke_page_function(
                 self.appid.clone(),
@@ -713,7 +706,7 @@ impl AppUiDelegate for MiniApp {
         }
     }
 
-    fn on_page_finished(&self, path: String) {
+    fn on_page_finished(self: &Arc<Self>, path: String) {
         if let Ok(manager) = self.svc_manager.lock() {
             let _ = manager.invoke_page_function(
                 self.appid.clone(),
@@ -724,7 +717,7 @@ impl AppUiDelegate for MiniApp {
         }
     }
 
-    fn on_page_show(&self, path: String) {
+    fn on_page_show(self: &Arc<Self>, path: String) {
         // Navigate to the new page and get the previous page if there was a switch
         let previous_page = self
             .state
@@ -781,7 +774,7 @@ impl AppUiDelegate for MiniApp {
         }
     }
 
-    fn on_back_pressed(&self) -> bool {
+    fn on_back_pressed(self: &Arc<Self>) -> bool {
         info!("Backbutton pressed").with_appid(self.appid.clone());
 
         // Try to pop the current page from the stack
@@ -814,7 +807,7 @@ impl AppUiDelegate for MiniApp {
     }
 
     // Determines whether to override URL loading in the page.
-    fn should_override_url_loading(&self, url: String) -> bool {
+    fn should_override_url_loading(self: &Arc<Self>, url: String) -> bool {
         // Extract scheme from URL
         let scheme = if let Some(scheme_end) = url.find("://") {
             &url[..scheme_end]
@@ -830,7 +823,7 @@ impl AppUiDelegate for MiniApp {
         }
     }
 
-    fn handle_post_message(&self, path: String, msg: String) {
+    fn handle_post_message(self: &Arc<Self>, path: String, msg: String) {
         let incoming = appservice::bridge::IncomingMessage::from_json_str(&msg).unwrap();
 
         if let Ok(manager) = self.svc_manager.lock() {
@@ -842,7 +835,10 @@ impl AppUiDelegate for MiniApp {
         }
     }
 
-    fn handle_request(&self, req: http::Request<Vec<u8>>) -> Option<http::Response<Vec<u8>>> {
+    fn handle_request(
+        self: &Arc<Self>,
+        req: http::Request<Vec<u8>>,
+    ) -> Option<http::Response<Vec<u8>>> {
         let uri = req.uri();
         let scheme = uri.scheme_str().unwrap_or("");
 
@@ -865,7 +861,7 @@ impl AppUiDelegate for MiniApp {
         }
     }
 
-    fn log(&self, path: &str, level: LogLevel, message: &str) {
+    fn log(self: &Arc<Self>, path: &str, level: LogLevel, message: &str) {
         log::LogBuilder::new(LogTag::WebViewConsole, message)
             .with_level(level)
             .with_path(path)
