@@ -438,6 +438,19 @@ impl Bridge {
         T: MessageTransport,
         H: MessageHandler,
     {
+        // Check bridge ready state first - only allow LXPortRdy event when not ready
+        if !self.is_ready() {
+            if message.type_ == "event" && message.name.as_deref() == Some("LXPortRdy") {
+                self.set_ready(true);
+                handler.handle_bridge_ready().await;
+                return Ok(());
+            } else {
+                return Err(MiniAppError::Bridge(
+                    "Bridge is not ready for communication".to_string(),
+                ));
+            }
+        }
+
         // Handle reply messages internally
         if message.type_ == "reply" {
             let msg_id = message.msg_id().unwrap();
@@ -489,16 +502,6 @@ impl Bridge {
             match &dispatch_msg.message_type {
                 DispatchMessageType::Call { name, .. }
                 | DispatchMessageType::Event { name, .. } => {
-                    // Special handling for LXPortRdy event
-                    if !self.is_ready()
-                        && matches!(dispatch_msg.message_type, DispatchMessageType::Event { .. })
-                        && name == "LXPortRdy"
-                    {
-                        self.set_ready(true);
-                        handler.handle_bridge_ready().await;
-                        return Ok(());
-                    }
-
                     let service_type = handler.get_service_type(name);
                     match service_type {
                         ServiceType::None => {
