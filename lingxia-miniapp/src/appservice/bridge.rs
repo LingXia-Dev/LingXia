@@ -36,6 +36,9 @@ pub(crate) trait MessageHandler {
 
     /// Handle a dispatch message with service type information
     async fn handle_message(&self, dispatch_msg: DispatchMessage, service_type: ServiceType);
+
+    /// Handle bridge ready event (LXPortRdy)
+    async fn handle_bridge_ready(&self);
 }
 
 /// Bridge for communicating between Logic Layer and View Layer
@@ -47,6 +50,7 @@ pub(crate) trait MessageHandler {
 pub(crate) struct Bridge {
     msg_counter: Rc<AtomicUsize>,
     pending_calls: Rc<Mutex<PendingCallsMap>>,
+    bridge_ready: Rc<Mutex<bool>>,
 }
 
 /// Type alias for the pending calls map to simplify the complex type.
@@ -279,7 +283,17 @@ impl Bridge {
         Self {
             msg_counter: Rc::new(AtomicUsize::new(0)),
             pending_calls: Rc::new(Mutex::new(HashMap::new())),
+            bridge_ready: Rc::new(Mutex::new(false)),
         }
+    }
+
+    /// Check if the bridge is ready for communication
+    pub(crate) fn is_ready(&self) -> bool {
+        *self.bridge_ready.lock().unwrap()
+    }
+
+    fn set_ready(&self, ready: bool) {
+        *self.bridge_ready.lock().unwrap() = ready;
     }
 
     fn generate_msg_id(&self) -> String {
@@ -471,9 +485,20 @@ impl Bridge {
 
         // Convert to dispatch message and handle
         if let Some(dispatch_msg) = message.to_dispatch_message(self.clone())? {
-            // For Call messages, check service type and handle accordingly
+            // For Call and Event messages, check service type and handle accordingly
             match &dispatch_msg.message_type {
-                DispatchMessageType::Call { name, .. } => {
+                DispatchMessageType::Call { name, .. }
+                | DispatchMessageType::Event { name, .. } => {
+                    // Special handling for LXPortRdy event
+                    if !self.is_ready()
+                        && matches!(dispatch_msg.message_type, DispatchMessageType::Event { .. })
+                        && name == "LXPortRdy"
+                    {
+                        self.set_ready(true);
+                        handler.handle_bridge_ready().await;
+                        return Ok(());
+                    }
+
                     let service_type = handler.get_service_type(name);
                     match service_type {
                         ServiceType::None => {
@@ -482,7 +507,11 @@ impl Bridge {
                             return Ok(());
                         }
                         ServiceType::JSFunc(_) => {
-                            let _ = dispatch_msg.reply_success(transport, None);
+                            // For Call messages, reply success first
+                            if matches!(dispatch_msg.message_type, DispatchMessageType::Call { .. })
+                            {
+                                let _ = dispatch_msg.reply_success(transport, None);
+                            }
                             handler.handle_message(dispatch_msg, service_type).await;
                         }
                         ServiceType::FastAPI(ref _fast_api_handler) => {
@@ -492,8 +521,8 @@ impl Bridge {
                         }
                     }
                 }
-                DispatchMessageType::Event { .. } | DispatchMessageType::Callback { .. } => {
-                    // Events and callbacks don't need service type checking
+                DispatchMessageType::Callback { .. } => {
+                    // Callbacks don't need service type checking
                     handler
                         .handle_message(dispatch_msg, ServiceType::None)
                         .await;

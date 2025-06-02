@@ -35,7 +35,6 @@ struct PageSvcState {
     callback: HashMap<String, JSFunc>,
     callbackid: AtomicUsize,
     init_data: Option<JSObject>,
-    bridge_rdy: bool,
 }
 
 impl MessageTransport for PageSvc {
@@ -67,13 +66,6 @@ impl MessageHandler for PageSvc {
                 name, payload: _, ..
             }
             | DispatchMessageType::Event { name, payload: _ } => {
-                // handle LXPortRdy event without spawn_local task
-                if name == "LXPortRdy" {
-                    let mut page_svc_clone = self.clone();
-                    let _ = page_svc_clone.handle_lxport_ready().await;
-                    return;
-                }
-
                 let ctx = self.get_ctx();
 
                 // Extract values before moving into task
@@ -155,6 +147,11 @@ impl MessageHandler for PageSvc {
             }
         }
     }
+
+    async fn handle_bridge_ready(&self) {
+        let mut page_svc_clone = self.clone();
+        let _ = page_svc_clone.handle_lxport_ready().await;
+    }
 }
 
 #[js_class]
@@ -179,7 +176,6 @@ impl PageSvc {
                 callback: HashMap::new(),
                 callbackid: AtomicUsize::new(0),
                 init_data,
-                bridge_rdy: false,
             })),
         };
 
@@ -204,7 +200,9 @@ impl PageSvc {
     #[js_method(rename = "_setData")]
     async fn set_data(&mut self, data: String, callback: Optional<JSFunc>) -> JSResult<()> {
         let mut state = self.state.lock().await;
-        if !state.bridge_rdy {
+
+        // Check if bridge is ready
+        if !self.bridge.is_ready() {
             return Err(RongJSError::Error(
                 "View Bridge is not ready to receive data".to_string(),
             ));
@@ -306,15 +304,10 @@ impl PageSvc {
 
         // only post one time
         if let Some(data) = state.init_data.take() {
-            state.bridge_rdy = true;
-
-            drop(state);
             self.bridge
                 .set_data(self, &data.json_stringify()?, None)
                 .await
                 .map_err(|e| RongJSError::Error(e.to_string()))?;
-        } else {
-            state.bridge_rdy = true;
         }
         Ok(())
     }
