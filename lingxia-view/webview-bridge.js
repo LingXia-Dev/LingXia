@@ -235,20 +235,19 @@
         const appliedPatch = _deepCopy(dataToApply);
         _applyPatch(pageData, dataToApply);
 
-        setTimeout(() => {
-          dataSubscribers.forEach((listener) => {
-            try {
-              if (!subscriberInitStatus.has(listener)) {
-                subscriberInitStatus.set(listener, true);
-                listener(_deepCopy(pageData), callbackId, true);
-              } else {
-                listener(appliedPatch, callbackId, false);
-              }
-            } catch (e) {
-              error("Subscriber error:", e);
+        // Notify subscribers immediately
+        dataSubscribers.forEach((listener) => {
+          try {
+            if (!subscriberInitStatus.has(listener)) {
+              subscriberInitStatus.set(listener, true);
+              listener(_deepCopy(pageData), callbackId, true);
+            } else {
+              listener(appliedPatch, callbackId, false);
             }
-          });
-        }, 0);
+          } catch (e) {
+            error("Subscriber error:", e);
+          }
+        });
 
         _sendReply(msgId, true);
       } else {
@@ -331,18 +330,16 @@
 
       dataSubscribers.add(callback);
 
-      // Send initial data if available
+      // Send initial data immediately if available
       if (Object.keys(pageData).length > 0) {
-        setTimeout(() => {
-          if (dataSubscribers.has(callback)) {
-            subscriberInitStatus.set(callback, true);
-            try {
-              callback(_deepCopy(pageData), null, true);
-            } catch (e) {
-              error("Initial data callback error:", e);
-            }
+        if (dataSubscribers.has(callback)) {
+          subscriberInitStatus.set(callback, true);
+          try {
+            callback(_deepCopy(pageData), null, true);
+          } catch (e) {
+            error("Initial data callback error:", e);
           }
-        }, 0);
+        }
       }
 
       return () => {

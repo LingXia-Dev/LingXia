@@ -269,15 +269,13 @@ class WebView @JvmOverloads constructor(
 
                 resetViewport()  // Reset viewport after page load
 
-                // Setup message channel and handle page finished in sequence
-                postDelayed({
+                // Setup message channel after page is fully loaded
+                if (!channelInitialized && isAttachedToWindow && windowToken != null) {
+                    Log.d(TAG, "Setting up message channel after page finished loading")
                     setupMessageChannel()
+                }
 
-                    // Call nativeOnPageFinished after channel setup
-                    postDelayed({
-                        handlePageFinishedAfterChannelSetup(url)
-                    }, 50)
-                }, 50)
+                handlePageFinished(url)
             }
 
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
@@ -339,6 +337,12 @@ class WebView @JvmOverloads constructor(
     }
 
     private fun setupMessageChannel() {
+        // If channel is already initialized, don't recreate
+        if (channelInitialized && messageChannel != null) {
+            Log.d(TAG, "Message channel already initialized, skipping setup")
+            return
+        }
+
         // Clean up existing channel if any
         messageChannel?.close()
         messageChannel = null
@@ -351,31 +355,57 @@ class WebView @JvmOverloads constructor(
         // Set up native side message handler
         messageChannel?.setWebMessageCallback(object : WebMessagePort.WebMessageCallback() {
             override fun onMessage(port: WebMessagePort, message: WebMessage) {
-                nativeHandlePostMessage(appId ?: return, currentPath ?: return, message.data)
+                val messageData = message.data
+
+                // Only check for LXPortRdy event if channel is not yet initialized
+                if (!channelInitialized && messageData.contains("\"name\":\"LXPortRdy\"") && messageData.contains("\"type\":\"event\"")) {
+                    Log.d(TAG, "LXPortRdy event detected, message channel is ready")
+                    channelInitialized = true
+                }
+
+                // Forward message to native layer
+                nativeHandlePostMessage(appId ?: return, currentPath ?: return, messageData)
             }
         }, Handler(Looper.getMainLooper()))
 
-        // Transfer port2 to WebView
-        post {
-            if (isAttachedToWindow && windowToken != null) {
-                val origin = url?.let { Uri.parse(it) } ?: Uri.EMPTY
-                try {
-                    postWebMessage(WebMessage(ANDROID_PORT_INIT_MESSAGE_DATA, arrayOf(ports[1])), origin)
-                    channelInitialized = true
-                    Log.d(TAG, "WebMessage channel initialized and port transferred to WebView")
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to post WebMessage: ${e.message}", e)
+        // Transfer port to WebView - try immediate transfer first
+        if (isAttachedToWindow && windowToken != null) {
+            val origin = url?.let { Uri.parse(it) } ?: Uri.EMPTY
+            try {
+                postWebMessage(WebMessage(ANDROID_PORT_INIT_MESSAGE_DATA, arrayOf(ports[1])), origin)
+                Log.d(TAG, "WebMessage channel initialized and port transferred to WebView")
+                // Note: channelInitialized will be set to true when LXPortRdy event is received
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to transfer port to WebView: ${e.message}", e)
+                channelInitialized = false
+                // Clean up on failure
+                messageChannel?.close()
+                messageChannel = null
+            }
+        } else {
+            Log.w(TAG, "WebView not ready for message channel setup, will retry with post")
+            // Use post as fallback if not immediately ready
+            post {
+                if (isAttachedToWindow && windowToken != null) {
+                    val origin = url?.let { Uri.parse(it) } ?: Uri.EMPTY
+                    try {
+                        postWebMessage(WebMessage(ANDROID_PORT_INIT_MESSAGE_DATA, arrayOf(ports[1])), origin)
+                        Log.d(TAG, "WebMessage channel initialized and port transferred to WebView (via post)")
+                        // Note: channelInitialized will be set to true when LXPortRdy event is received
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to transfer port to WebView via post: ${e.message}", e)
+                        channelInitialized = false
+                        // Clean up on failure
+                        messageChannel?.close()
+                        messageChannel = null
+                    }
+                } else {
+                    Log.w(TAG, "WebView still not ready for message channel setup")
                     channelInitialized = false
                     // Clean up on failure
                     messageChannel?.close()
                     messageChannel = null
                 }
-            } else {
-                Log.w(TAG, "WebView not fully attached (isAttachedToWindow: $isAttachedToWindow, windowToken: $windowToken), skipping postWebMessage for '$ANDROID_PORT_INIT_MESSAGE_DATA'.")
-                channelInitialized = false
-                // Clean up on failure
-                messageChannel?.close()
-                messageChannel = null
             }
         }
     }
@@ -492,14 +522,6 @@ class WebView @JvmOverloads constructor(
                 Log.e(TAG, "Failed to register WebView: appId=$appId, path=$currentPath")
             }
         }
-
-        // If no working channel, set it up
-        if (!channelInitialized || messageChannel == null) {
-            Log.d(TAG, "WebView attached but no message channel, setting up")
-            post {
-                setupMessageChannel()
-            }
-        }
     }
 
     override fun onDetachedFromWindow() {
@@ -611,34 +633,16 @@ class WebView @JvmOverloads constructor(
     private external fun nativeOnConsoleMessage(appId: String, path:String, level: Int, message: String):Int
     private external fun nativeGetPageConfig(appId: String, path: String): String?  // Returns JSON string of page config
 
-    private fun handlePageFinishedAfterChannelSetup(url: String?) {
-        if (channelInitialized) {
-            nativeOnPageFinished(appId ?: return, currentPath ?: return)
+    private fun handlePageFinished(url: String?) {
+        nativeOnPageFinished(appId ?: return, currentPath ?: return)
 
-            // If page is loaded and attached to window, and we haven't sent PageShow yet
-            if (isAttachedToWindow && url != null && !showEventSent) {
-                Log.d(TAG, "Page loaded and attached to window, triggering PageShow")
-                nativeOnPageShow(appId ?: return, currentPath ?: return)
-                showEventSent = true
-            } else if (showEventSent) {
-                Log.d(TAG, "Skipping PageShow in onPageFinished - already sent in this session")
-            }
-        } else {
-            Log.w(TAG, "Message channel not initialized, retrying once")
-            // Single retry after a short delay
-            postDelayed({
-                if (channelInitialized) {
-                    nativeOnPageFinished(appId ?: return@postDelayed, currentPath ?: return@postDelayed)
-
-                    if (isAttachedToWindow && url != null && !showEventSent) {
-                        Log.d(TAG, "Page loaded and attached to window, triggering PageShow (retry)")
-                        nativeOnPageShow(appId ?: return@postDelayed, currentPath ?: return@postDelayed)
-                        showEventSent = true
-                    }
-                } else {
-                    Log.e(TAG, "Message channel still not initialized after retry")
-                }
-            }, 100)
+        // If page is loaded and attached to window, and we haven't sent PageShow yet
+        if (isAttachedToWindow && url != null && !showEventSent) {
+            Log.d(TAG, "Page loaded and attached to window, triggering PageShow")
+            nativeOnPageShow(appId ?: return, currentPath ?: return)
+            showEventSent = true
+        } else if (showEventSent) {
+            Log.d(TAG, "Skipping PageShow - already sent in this session")
         }
     }
 }
