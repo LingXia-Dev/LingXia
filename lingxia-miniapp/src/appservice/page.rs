@@ -2,6 +2,7 @@ use super::bridge::{
     Bridge, DispatchMessage, DispatchMessageType, MessageHandler, MessageTransport, ServiceType,
 };
 use super::lx;
+use crate::error;
 use crate::error::MiniAppError;
 use crate::miniapp::MiniApp;
 use crate::page::Page;
@@ -21,7 +22,6 @@ use tokio::sync::Mutex;
 pub(crate) struct PageSvc {
     functions: HashMap<String, JSFunc>,
     this: JSObject,
-    fast_api: Rc<lx::FastJSApi>,
 
     page: Page,
     bridge: Bridge,
@@ -46,14 +46,16 @@ impl MessageTransport for PageSvc {
 
 impl MessageHandler for PageSvc {
     fn get_service_type(&self, service_name: &str) -> ServiceType {
-        // Check regular JS functions first
-        if self.functions.contains_key(service_name) {
-            return ServiceType::JSFunc;
+        // Check if it's a FastAPI call with lx. prefix
+        if let Some(api_name) = service_name.strip_prefix("lx.") {
+            if let Some(handler) = lx::get_fast_api(api_name) {
+                return ServiceType::FastAPI(handler);
+            }
         }
 
-        // Check FastJSApi (also treated as JSFunc for now)
-        if self.fast_api.has_fast_api(service_name) {
-            return ServiceType::JSFunc;
+        // Check page-specific JS functions
+        if let Some(js_func) = self.functions.get(service_name) {
+            return ServiceType::JSFunc(js_func.clone());
         }
 
         ServiceType::None
@@ -76,29 +78,63 @@ impl MessageHandler for PageSvc {
 
                 // Extract values before moving into task
                 let name_owned = name.clone();
-                let dispatch_msg_clone = dispatch_msg.clone();
                 let page_svc_clone = self.clone();
+
+                // Pre-extract parameters to avoid duplication
+                let (func_name, args) = match dispatch_msg.message_type() {
+                    DispatchMessageType::Call { name, payload, .. }
+                    | DispatchMessageType::Event { name, payload } => {
+                        (name.as_str(), payload.as_deref())
+                    }
+                    _ => unreachable!(), // We're in Call/Event branch
+                };
+
+                let func_name_owned = func_name.to_string();
+                let args_owned = args.map(|s| s.to_string());
 
                 // Handle different service types
                 match service_type {
-                    ServiceType::JSFunc => {
-                        // For JS functions, execute in JS context
+                    ServiceType::JSFunc(js_func) => {
                         let task = async move {
                             if let Err(e) = page_svc_clone
-                                .call_or_event_from_view(&ctx, &dispatch_msg_clone)
+                                .call_or_event_from_view(
+                                    &ctx,
+                                    &func_name_owned,
+                                    args_owned.as_deref(),
+                                    js_func,
+                                )
                                 .await
                             {
-                                crate::error!(
-                                    "JS function call/event '{}' failed: {}",
-                                    name_owned,
-                                    e
-                                );
+                                error!("JS function call/event '{}' failed: {}", name_owned, e);
                             }
                         };
                         tokio::task::spawn_local(task);
                     }
-                    ServiceType::FastAPI => {
-                        todo!();
+                    ServiceType::FastAPI(handler) => {
+                        // For FastAPI, handle directly and reply
+                        let miniapp = ctx.get_user_data::<Arc<MiniApp>>().unwrap().clone();
+
+                        match handler.call(miniapp, args) {
+                            Ok(result) => {
+                                // Reply with the result for Call messages
+                                if matches!(
+                                    dispatch_msg.message_type(),
+                                    DispatchMessageType::Call { .. }
+                                ) {
+                                    let _ = dispatch_msg.reply_success(self, Some(&result));
+                                }
+                            }
+                            Err(e) => {
+                                error!("Fast API call '{}' failed: {}", name, e);
+                                // Reply with error for Call messages
+                                if matches!(
+                                    dispatch_msg.message_type(),
+                                    DispatchMessageType::Call { .. }
+                                ) {
+                                    let _ = dispatch_msg.reply_failure(self, &e.to_string());
+                                }
+                            }
+                        }
                     }
                     ServiceType::None => {
                         // This shouldn't happen for Call/Event messages
@@ -112,7 +148,7 @@ impl MessageHandler for PageSvc {
 
                 let task = async move {
                     if let Err(e) = page_svc_clone.callback(&callback_id_owned).await {
-                        crate::error!("No callback handler: {}, Error: {}", callback_id_owned, e);
+                        error!("No callback handler: {}, Error: {}", callback_id_owned, e);
                     }
                 };
                 tokio::task::spawn_local(task);
@@ -126,10 +162,6 @@ impl PageSvc {
     #[js_method(constructor)]
     fn _new(ctx: JSContext, config: JSObject, path: String) -> JSResult<JSObject> {
         let init_data = config.get::<_, JSObject>("data").ok();
-        let fast_api = ctx
-            .get_user_data::<Rc<lx::FastJSApi>>()
-            .ok_or_else(|| RongJSError::Error("FastJSApi not found in context".to_string()))?
-            .clone();
 
         let miniapp = ctx.get_user_data::<Arc<MiniApp>>().unwrap();
 
@@ -141,7 +173,6 @@ impl PageSvc {
         let mut page_svc = PageSvc {
             functions: HashMap::new(),
             this: config.clone(), // will be updated later
-            fast_api,
             page,
             bridge: Bridge::new(),
             state: Rc::new(Mutex::new(PageSvcState {
@@ -229,63 +260,6 @@ impl PageSvc {
         Ok(())
     }
 
-    // handler for bridge type: call or event from view
-    pub(crate) async fn call_or_event_from_view(
-        &self,
-        ctx: &JSContext,
-        dispatch_msg: &DispatchMessage,
-    ) -> JSResult<()> {
-        // Extract function name and args from dispatch message
-        let (func_name, args) = match dispatch_msg.message_type() {
-            DispatchMessageType::Call { name, payload, .. }
-            | DispatchMessageType::Event { name, payload } => (name.as_str(), payload.as_deref()),
-            DispatchMessageType::Callback { .. } => {
-                // This should never happen as callbacks are handled separately in appservice.rs
-                return Ok(());
-            }
-        };
-
-        // For Call messages, reply success first
-        if matches!(
-            dispatch_msg.message_type(),
-            DispatchMessageType::Call { .. }
-        ) {
-            if self.fast_api.has_fast_api(func_name) {
-                // Handle fast API call
-                match self
-                    .fast_api
-                    .call_fast_api(ctx, func_name, args, self.this.clone())
-                    .await
-                {
-                    Ok(js_value) => {
-                        if js_value.is_null() || js_value.is_undefined() {
-                            let _ = dispatch_msg.reply_success(self, None);
-                        } else if let Some(js_object) = js_value.into_object() {
-                            match js_object.json_stringify() {
-                                Ok(json_string) => {
-                                    let _ = dispatch_msg.reply_success(self, Some(&json_string));
-                                }
-                                Err(_) => {
-                                    let _ = dispatch_msg
-                                        .reply_failure(self, "Failed to stringify object");
-                                }
-                            }
-                        } else {
-                            let _ = dispatch_msg.reply_failure(self, "Invalid result type");
-                        }
-                        return Ok(());
-                    }
-                    Err(e) => {
-                        let _ = dispatch_msg.reply_failure(self, &e.to_string());
-                        return Ok(());
-                    }
-                }
-            }
-        }
-
-        self.call_function_internal(ctx, func_name, args).await
-    }
-
     // handler for bridge type: call or event from native
     pub(crate) async fn call_or_event_from_native(
         &self,
@@ -293,31 +267,22 @@ impl PageSvc {
         func_name: &str,
         args: Option<&str>,
     ) -> JSResult<()> {
-        self.call_function_internal(ctx, func_name, args).await
-    }
-
-    // Internal method to actually call the function
-    async fn call_function_internal(
-        &self,
-        ctx: &JSContext,
-        func_name: &str,
-        args: Option<&str>,
-    ) -> JSResult<()> {
         if let Some(func) = self.functions.get(func_name) {
-            let args = args.and_then(|json| JSObject::from_json_string(ctx, json).ok());
-            match args {
-                Some(obj) => {
-                    func.call_async::<_, ()>(Some(self.this.clone()), (obj,))
-                        .await?;
-                }
-                None => {
-                    func.call_async::<_, ()>(Some(self.this.clone()), ())
-                        .await?;
-                }
-            };
-            return Ok(());
+            return self.call_js_func_with_args(func.clone(), ctx, args).await;
         }
         Err(RongJSError::Error(format!("No service: {}", func_name)))
+    }
+
+    // handler for bridge type: call or event from view
+    pub(crate) async fn call_or_event_from_view(
+        &self,
+        ctx: &JSContext,
+        _func_name: &str,
+        args: Option<&str>,
+        js_func: rong::JSFunc,
+    ) -> JSResult<()> {
+        // Reuse the common function calling logic
+        self.call_js_func_with_args(js_func, ctx, args).await
     }
 
     // handler for bridge type: callback
@@ -358,8 +323,31 @@ impl PageSvc {
         &self.bridge
     }
 
-    pub fn get_ctx(&self) -> JSContext {
+    pub(crate) fn get_ctx(&self) -> JSContext {
         self.this.get_ctx()
+    }
+
+    // Common helper method for calling JS functions with arguments
+    async fn call_js_func_with_args(
+        &self,
+        js_func: rong::JSFunc,
+        ctx: &JSContext,
+        args: Option<&str>,
+    ) -> JSResult<()> {
+        let args_obj = args.and_then(|json| rong::JSObject::from_json_string(ctx, json).ok());
+        match args_obj {
+            Some(obj) => {
+                js_func
+                    .call_async::<_, ()>(Some(self.this.clone()), (obj,))
+                    .await?;
+            }
+            None => {
+                js_func
+                    .call_async::<_, ()>(Some(self.this.clone()), ())
+                    .await?;
+            }
+        }
+        Ok(())
     }
 }
 

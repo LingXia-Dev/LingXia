@@ -7,7 +7,7 @@ use rong::IntoJSObj;
 use serde::{Deserialize, Serialize};
 
 /// Device information
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, IntoJSObj, Serialize)]
 pub struct DeviceInfo {
     pub brand: String,
     pub model: String,
@@ -190,7 +190,11 @@ pub trait AppRuntime: Send + Sync + 'static {
     ///
     /// # Returns
     /// * `Result<Arc<dyn crate::page::WebViewController>, MiniAppError>` - WebView controller instance or error
-    fn create_webview(&self, appid: String, path: String) -> Result<Arc<dyn crate::page::WebViewController>, MiniAppError>;
+    fn create_webview(
+        &self,
+        appid: String,
+        path: String,
+    ) -> Result<Arc<dyn crate::page::WebViewController>, MiniAppError>;
 
     /// Open a mini app
     ///

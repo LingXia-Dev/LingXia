@@ -1,3 +1,4 @@
+use crate::appservice::lx;
 use crate::error::MiniAppError;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -13,16 +14,14 @@ use tokio::sync::oneshot;
 use tokio::time::timeout;
 
 /// Indicates the type of service and how it should be handled
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone)]
 pub(crate) enum ServiceType {
     /// Service not found or not supported
     None,
     /// JavaScript function (needs immediate reply, data returned via setData)
-    JSFunc,
-    /// Fast API implemented by Rust
-    /// and does not run in JSContext
-    /// returns result directly
-    FastAPI,
+    JSFunc(rong::JSFunc),
+    /// Fast API implemented by Rust (returns result directly)
+    FastAPI(Arc<dyn lx::FastApiHandler>),
 }
 
 /// Trait for message transport - handles message sending only
@@ -276,7 +275,7 @@ impl std::fmt::Display for ErrorPayload {
 impl std::error::Error for ErrorPayload {}
 
 impl Bridge {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             msg_counter: Rc::new(AtomicUsize::new(0)),
             pending_calls: Rc::new(Mutex::new(HashMap::new())),
@@ -300,6 +299,7 @@ impl Bridge {
     /// * `transport` - The message transport implementation
     /// * `name` - The event name
     /// * `payload` - Optional data associated with the event
+    #[allow(dead_code)]
     pub fn send_event<T: MessageTransport>(
         &self,
         transport: &T,
@@ -368,27 +368,6 @@ impl Bridge {
                 )))
             }
         }
-    }
-
-    /// Call a method on the View Layer and expect a result value.
-    /// This is a convenience method that's identical to call() but provides clearer semantics
-    /// for operations that are expected to return data.
-    ///
-    /// # Arguments
-    /// * `transport` - The message transport implementation
-    /// * `name` - The method name to call
-    /// * `payload` - Optional parameters for the method
-    ///
-    /// # Returns
-    /// * `Ok(Value)` - The result data from the View Layer
-    /// * `Err(MiniAppError)` - If the call failed or timed out
-    pub async fn call_with_result<T: MessageTransport>(
-        &self,
-        transport: &T,
-        name: &str,
-        payload: Option<Value>,
-    ) -> Result<Value, MiniAppError> {
-        self.call(transport, name, payload).await
     }
 
     /// Send data, optionally with a callback ID.
@@ -502,11 +481,13 @@ impl Bridge {
                                 .reply_failure(transport, &format!("service {} not found", name));
                             return Ok(());
                         }
-                        ServiceType::JSFunc => {
+                        ServiceType::JSFunc(_) => {
                             let _ = dispatch_msg.reply_success(transport, None);
                             handler.handle_message(dispatch_msg, service_type).await;
                         }
-                        ServiceType::FastAPI => {
+                        ServiceType::FastAPI(ref _fast_api_handler) => {
+                            // FastAPI handlers don't need the MessageHandler interface
+                            // They are called directly in PageSvc
                             handler.handle_message(dispatch_msg, service_type).await;
                         }
                     }
