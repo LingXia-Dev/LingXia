@@ -1,11 +1,12 @@
 .container {
     background-color: #fff;
-    padding: 2rem;
+    padding: 2rem 2rem 3rem 2rem;
     border-radius: 8px;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
     width: 80%;
     max-width: 400px;
     z-index: 1;
+    position: relative;
 }
 
 h1 {
@@ -66,6 +67,19 @@ button:disabled {
 
 .hidden {
     display: none;
+}
+
+.ip-info {
+    position: absolute;
+    bottom: 10px;
+    left: 20px;
+    right: 20px;
+    padding: 0.4rem 0.8rem;
+    color: #888;
+    font-size: 0.8rem;
+    font-family: monospace;
+    text-align: center;
+    z-index: 2;
 }
 
 .footer {

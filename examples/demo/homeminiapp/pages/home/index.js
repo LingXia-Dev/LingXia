@@ -44,13 +44,18 @@ Page({
 
   greet: async function (option) {
     const count = this.data.greetCount + 1;
-    await this.setData({
-      greeting: `👋 Hello ${option.name}! (#${count})
+    await this.setData(
+      {
+        greeting: `👋 Hello ${option.name}! (#${count})
 
 🌍 Greetings from appservice powered by Rust and JS engine
 🕒 ${new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`,
-      greetCount: count,
-    });
+        greetCount: count,
+      },
+      () => {
+        console.log("setData callback");
+      },
+    );
   },
 });
 
