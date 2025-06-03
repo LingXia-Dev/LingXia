@@ -1026,11 +1026,9 @@ pub fn init<R: AppRuntime + 'static>(runtime: R) -> Option<(String, String)> {
     }
 }
 
-/// Get or initialize a specific MiniApp instance by appid
+/// Get a specific MiniApp instance by appid
 ///
-/// This function provides a get-or-create semantic for MiniApp instances.
 /// If the MiniApp with the given appid exists, it returns a reference to it.
-/// If it doesn't exist, it creates a new one with default settings and returns a reference.
 ///
 /// # Arguments
 /// * `appid` - The ID of the mini app to get or create
@@ -1039,9 +1037,11 @@ pub fn init<R: AppRuntime + 'static>(runtime: R) -> Option<(String, String)> {
 /// A thread-safe reference to the MiniApp
 ///
 /// # Panics
-/// Panics if `MiniApps` is not initialized
-pub fn get_or_init_miniapp(appid: String) -> Arc<MiniApp> {
+/// Panics if `MiniApps` is not initialized or MiniApp doesn't exist
+pub fn get(appid: String) -> Arc<MiniApp> {
     let manager = MINIAPPS_MANAGER.get().expect("MiniApps not initialized");
-
-    manager.get_or_init_miniapp(appid)
+    if let Some(app_arc) = manager.miniapps.get(&appid) {
+        return app_arc.clone();
+    }
+    panic!("Not found miniapp {}", appid);
 }

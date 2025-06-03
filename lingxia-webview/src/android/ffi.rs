@@ -178,7 +178,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnWebViewAttached(
     let path: String = env.get_string(&path).unwrap().into();
 
     // Notify miniapp about page attached to window
-    let miniapp = miniapp::get_or_init_miniapp(appid);
+    let miniapp = miniapp::get(appid);
     miniapp.on_page_created(path);
     0
 }
@@ -195,7 +195,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeHandlePostMessage(
     let path: String = env.get_string(&path).unwrap().into();
     let message: String = env.get_string(&message).unwrap().into();
 
-    let miniapp = miniapp::get_or_init_miniapp(appid.clone());
+    let miniapp = miniapp::get(appid.clone());
     miniapp.handle_post_message(path, message);
     0
 }
@@ -210,7 +210,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnPageStarted(
     let appid: String = env.get_string(&appid).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
 
-    let miniapp = miniapp::get_or_init_miniapp(appid);
+    let miniapp = miniapp::get(appid);
     miniapp.on_page_started(path);
     0
 }
@@ -225,7 +225,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnPageFinished(
     let appid: String = env.get_string(&appid).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
 
-    let miniapp = miniapp::get_or_init_miniapp(appid);
+    let miniapp = miniapp::get(appid);
     miniapp.on_page_finished(path);
     0
 }
@@ -240,7 +240,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnPageShow(
     let appid: String = env.get_string(&appid).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
 
-    let miniapp = miniapp::get_or_init_miniapp(appid);
+    let miniapp = miniapp::get(appid);
     miniapp.on_page_show(path);
 }
 
@@ -255,7 +255,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeShouldOverrideUrlL
     let url: String = env.get_string(&url).unwrap().into();
 
     // Get the miniapp instance and check if we should override the URL
-    let miniapp = miniapp::get_or_init_miniapp(appid.clone());
+    let miniapp = miniapp::get(appid.clone());
     if miniapp.should_override_url_loading(url) {
         1
     } else {
@@ -346,7 +346,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeHandleRequest<'a>(
     };
 
     // Handle request and convert response
-    let miniapp = miniapp::get_or_init_miniapp(appid.clone());
+    let miniapp = miniapp::get(appid.clone());
     if let Some(response) = miniapp.handle_request(request) {
         create_java_response(&mut env, response)
     } else {
@@ -451,7 +451,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_MiniAppActivity_nativeOnMiniAppC
 ) -> jint {
     let appid: String = env.get_string(&appid).unwrap().into();
 
-    let miniapp = miniapp::get_or_init_miniapp(appid.clone());
+    let miniapp = miniapp::get(appid.clone());
     miniapp.on_miniapp_closed();
     0
 }
@@ -469,7 +469,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnConsoleMessage(
     let path: String = env.get_string(&path).unwrap().into();
     let message: String = env.get_string(&message).unwrap().into();
 
-    let miniapp = miniapp::get_or_init_miniapp(appid.clone());
+    let miniapp = miniapp::get(appid.clone());
     let log_level = match level {
         2 => LogLevel::Verbose, // VERBOSE
         3 => LogLevel::Debug,   // DEBUG
@@ -494,7 +494,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeGetPageConfig<'a>(
     let path: String = env.get_string(&path).unwrap().into();
 
     // Get the miniapp instance and get page config
-    let miniapp = miniapp::get_or_init_miniapp(appid);
+    let miniapp = miniapp::get(appid);
     if let Ok(json) = miniapp.get_page_config(&path) {
         // Create Java string from JSON
         if let Ok(java_string) = env.new_string(&json) {
@@ -511,7 +511,7 @@ pub extern "C" fn Java_com_lingxia_miniapp_MiniAppActivity_nativeOnBackPressed(
     appid: JString,
 ) -> jint {
     let appid: String = env.get_string(&appid).unwrap().into();
-    let miniapp = miniapp::get_or_init_miniapp(appid);
+    let miniapp = miniapp::get(appid);
     if miniapp.on_back_pressed() { 1 } else { 0 }
 }
 
@@ -526,7 +526,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeOnMiniAppOpened(
     let appid: String = env.get_string(&appid).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
 
-    let miniapp = miniapp::get_or_init_miniapp(appid.clone());
+    let miniapp = miniapp::get(appid.clone());
     miniapp.on_miniapp_opened(path);
     0
 }
@@ -540,7 +540,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeGetTabBarConfig(
 ) -> jni::sys::jobject {
     let appid: String = env.get_string(&appid).unwrap().into();
 
-    let miniapp = miniapp::get_or_init_miniapp(appid);
+    let miniapp = miniapp::get(appid);
     if let Ok(config) = miniapp.get_tab_bar_config() {
         if let Ok(result) = env.new_string(&config) {
             return result.into_raw();
@@ -564,7 +564,7 @@ pub extern "C" fn Java_com_lingxia_miniapp_WebView_nativeOnScrollChanged(
     let appid: String = env.get_string(&appid).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
 
-    let miniapp = miniapp::get_or_init_miniapp(appid.clone());
+    let miniapp = miniapp::get(appid.clone());
     miniapp.on_page_scroll_changed(path, scroll_x, scroll_y, max_scroll_x, max_scroll_y);
     0
 }
