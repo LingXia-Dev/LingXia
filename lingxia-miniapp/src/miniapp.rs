@@ -1,5 +1,6 @@
 use dashmap::DashMap;
 use http::{Response, StatusCode};
+use rong::FromJSObj;
 use std::collections::hash_map::DefaultHasher;
 use std::fs;
 use std::hash::{Hash, Hasher};
@@ -186,6 +187,13 @@ pub struct MiniApp {
     pub(crate) state: Mutex<MiniAppState>,
 }
 
+#[derive(FromJSObj)]
+pub struct MiniAppNavigator {
+    #[rename = "appId"]
+    pub appid: String,
+    pub path: String,
+}
+
 impl MiniApp {
     fn _new(
         appid: String,
@@ -369,6 +377,21 @@ impl MiniApp {
     pub fn get_page(&self, path: &str) -> Option<Page> {
         let state = self.state.lock().unwrap();
         state.pages.get_page(path).cloned()
+    }
+
+    pub fn navigator_to_miniapp(&self, to: MiniAppNavigator) -> Result<(), MiniAppError> {
+        // ignore if appid is the same
+        if self.appid == to.appid {
+            return Ok(());
+        }
+
+        if let Some(manager) = MINIAPPS_MANAGER.get() {
+            let app = manager.get_or_init_miniapp(to.appid.clone());
+            if !app.is_opened() {
+                app.runtime.open_miniapp(to.appid, to.path)?;
+            }
+        }
+        Ok(())
     }
 
     /// Uninstalls the mini app by removing its version record and directories
