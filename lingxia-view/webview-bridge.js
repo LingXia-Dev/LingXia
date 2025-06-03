@@ -215,48 +215,50 @@
   function _handleEvent(eventMessage) {
     const { name, payload } = eventMessage;
 
-    if (!name) {
-      warn("Event missing name field:", eventMessage);
-      return;
-    }
+    if (name === "setData") {
+      let dataToApply;
+      let callbackId = null;
 
-    try {
-      if (name === "setData") {
-        let dataToApply;
-        let callbackId = null;
-
-        if (payload && typeof payload.data !== "undefined") {
-          dataToApply = payload.data;
-          callbackId = payload.callbackId;
-        } else {
-          dataToApply = payload;
-        }
-
-        const appliedPatch = _deepCopy(dataToApply);
-        _applyPatch(pageData, dataToApply);
-
-        // Notify subscribers immediately
-        dataSubscribers.forEach((listener) => {
-          try {
-            if (!subscriberInitStatus.has(listener)) {
-              subscriberInitStatus.set(listener, true);
-              listener(_deepCopy(pageData), callbackId, true);
-            } else {
-              listener(appliedPatch, callbackId, false);
-            }
-          } catch (e) {
-            error("Subscriber error:", e);
-          }
-        });
-
-        // No reply needed for events
+      if (payload && typeof payload.data !== "undefined") {
+        dataToApply = payload.data;
+        callbackId = payload.callbackId;
       } else {
-        // Handle other events if needed
-        log("Unhandled event:", name);
+        dataToApply = payload;
       }
-    } catch (e) {
-      error("Event handler error:", e);
+
+      const appliedPatch = _deepCopy(dataToApply);
+      _applyPatch(pageData, dataToApply);
+
+      // Notify subscribers immediately
+      dataSubscribers.forEach((listener) => {
+        try {
+          if (!subscriberInitStatus.has(listener)) {
+            subscriberInitStatus.set(listener, true);
+            listener(pageData, null, true); // Initial data: (data, callbackId=null, isInitialData=true)
+          } else {
+            listener(pageData, callbackId, false); // Update data: (data, callbackId, isInitialData=false)
+          }
+        } catch (e) {
+          warn("Data subscriber error:", e);
+        }
+      });
+
+      // Send callback automatically if provided (maintain original behavior)
+      if (callbackId) {
+        _sendCallback(callbackId);
+      }
+    } else {
+      warn("Unknown event:", name);
     }
+  }
+
+  // Send callback to native
+  function _sendCallback(callbackId) {
+    _sendMessageToNative({
+      msgId: null,
+      type: "callback",
+      callbackId: callbackId,
+    });
   }
 
   // Send reply to native
@@ -357,24 +359,6 @@
       return _deepCopy(pageData);
     },
 
-    /**
-     * Called by data subscribers (e.g., UI frameworks) after they have processed
-     * a data update associated with a callbackId and wish to trigger the callback in the Logic Layer.
-     * @param {string} callbackId - The ID originally provided with the setData call.
-     */
-    resolveCallback: function (callbackId) {
-      if (typeof callbackId !== "string" || !callbackId) {
-        error("Invalid callbackId");
-        return;
-      }
-
-      _sendMessageToNative({
-        msgId: null,
-        type: "callback",
-        callbackId: callbackId,
-      });
-    },
-
     // Connect to Android message port
     _connectAndroidPort: function (port) {
       if (!isAndroid) return;
@@ -471,6 +455,29 @@
   );
 
   window.lx = lx;
+
+  // Initialize the bridge when DOM is ready
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", _init);
+  } else {
+    _init();
+  }
+
+  // Export bridge to global scope
   window.LingXiaBridge = LingXiaBridge;
   log("Lingxia Bridge initialized.");
+
+  // Initialize bridge
+  function _init() {
+    log("Initializing LingXia Bridge...");
+
+    // For Android, set up message listener if available
+    if (isAndroid && window.LingxiaAndroidInterface) {
+      window.LingxiaAndroidInterface.setMessageListener(_handleIncomingMessage);
+      log("Android port connected and ready");
+    }
+
+    // Send ready event for both platforms
+    LingXiaBridge.event("LXPortRdy", null);
+  }
 })();
