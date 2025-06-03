@@ -513,6 +513,16 @@ pub trait AppUiDelegate {
     /// Called when the page showed in the view
     fn on_page_show(self: &Arc<Self>, path: String);
 
+    // Called when Scroll changed
+    fn on_page_scroll_changed(
+        self: &Arc<Self>,
+        path: String,
+        scroll_x: i32,
+        scroll_y: i32,
+        max_scroll_x: i32,
+        max_scroll_y: i32,
+    );
+
     /// Handle back button press
     /// Return true to indicate the back press had been handled
     fn on_back_pressed(self: &Arc<Self>) -> bool;
@@ -772,6 +782,33 @@ impl AppUiDelegate for MiniApp {
                 }
             }
         }
+    }
+
+    fn on_page_scroll_changed(
+        self: &Arc<Self>,
+        _path: String,
+        scroll_x: i32,
+        scroll_y: i32,
+        max_scroll_x: i32,
+        max_scroll_y: i32,
+    ) {
+        // safe division to avoid division by zero
+        let scroll_percent_x = if max_scroll_x > 0 {
+            (scroll_x as f64 / max_scroll_x as f64 * 100.0) as i32
+        } else {
+            0
+        };
+
+        let scroll_percent_y = if max_scroll_y > 0 {
+            (scroll_y as f64 / max_scroll_y as f64 * 100.0) as i32
+        } else {
+            0
+        };
+
+        info!(
+            "Scroll: x={}/{} ({}%), y={}/{} ({}%)",
+            scroll_x, max_scroll_x, scroll_percent_x, scroll_y, max_scroll_y, scroll_percent_y
+        );
     }
 
     fn on_back_pressed(self: &Arc<Self>) -> bool {

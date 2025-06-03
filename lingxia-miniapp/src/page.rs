@@ -59,6 +59,14 @@ pub trait WebViewController: Send + Sync {
 
     /// Set the user agent string for the WebView
     fn set_user_agent(&self, ua: String) -> Result<(), MiniAppError>;
+
+    /// Enable or disable scroll event listener with optional throttle time
+    /// When enabled, scroll events will be sent to the native layer
+    fn set_scroll_listener_enabled(
+        &self,
+        enabled: bool,
+        throttle_ms: Option<u64>,
+    ) -> Result<(), MiniAppError>;
 }
 
 /// Manages a collection of pages for a single miniapp
