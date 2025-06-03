@@ -172,8 +172,8 @@
       case "reply":
         _handleReply(message);
         break;
-      case "call":
-        _handleCall(message);
+      case "event":
+        _handleEvent(message);
         break;
       default:
         warn("Unknown message type:", message.type);
@@ -211,12 +211,12 @@
     }
   }
 
-  // Handle call from native
-  function _handleCall(callMessage) {
-    const { msgId, name, payload } = callMessage;
+  // Handle event from native
+  function _handleEvent(eventMessage) {
+    const { name, payload } = eventMessage;
 
-    if (!msgId || !name) {
-      _sendReply(msgId, false, { message: "Invalid call format" });
+    if (!name) {
+      warn("Event missing name field:", eventMessage);
       return;
     }
 
@@ -249,12 +249,13 @@
           }
         });
 
-        _sendReply(msgId, true);
+        // No reply needed for events
       } else {
-        _sendReply(msgId, false, { message: `Unhandled call '${name}'` });
+        // Handle other events if needed
+        log("Unhandled event:", name);
       }
     } catch (e) {
-      _sendReply(msgId, false, { message: `Handler error: ${e.message}` });
+      error("Event handler error:", e);
     }
   }
 

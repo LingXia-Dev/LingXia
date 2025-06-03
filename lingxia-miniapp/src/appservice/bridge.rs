@@ -296,6 +296,7 @@ impl Bridge {
         *self.bridge_ready.lock().unwrap() = ready;
     }
 
+    #[allow(dead_code)]
     fn generate_msg_id(&self) -> String {
         let count = self.msg_counter.fetch_add(1, Ordering::Relaxed);
         let timestamp = std::time::SystemTime::now()
@@ -313,7 +314,6 @@ impl Bridge {
     /// * `transport` - The message transport implementation
     /// * `name` - The event name
     /// * `payload` - Optional data associated with the event
-    #[allow(dead_code)]
     pub fn send_event<T: MessageTransport>(
         &self,
         transport: &T,
@@ -337,6 +337,7 @@ impl Bridge {
     /// This function sends a message to the View Layer and waits for a response.
     /// If the View Layer doesn't respond within the timeout period, an error is returned
     /// and the pending call is cleaned up.
+    #[allow(dead_code)]
     async fn call<T: MessageTransport>(
         &self,
         transport: &T,
@@ -408,10 +409,9 @@ impl Bridge {
             });
         }
 
-        // Send the call with the prepared payload
-        self.call(transport, "setData", Some(data_patch_value))
-            .await
-            .map(|_| ())
+        // setData is fire-and-forget, we don't need to wait for View layer confirmation
+        self.send_event(transport, "setData", Some(data_patch_value))?;
+        Ok(())
     }
 
     /// Process a raw message string received from the View Layer

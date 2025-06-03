@@ -180,11 +180,11 @@ The `payload` of a `reply` message **must** conform to one of the following stru
 
 *Scenario: Logic Layer updates data and needs the View Layer to apply it. An optional callback identifier can be passed for asynchronous notification after the view update is processed.*
 
-1.  **Logic Sends `call`:**
+1.  **Logic Sends `event`:**
     ```json
     {
-      "msgId": "logic-1678886400567-10",
-      "type": "call",
+      "msgId": null,
+      "type": "event",
       "name": "setData",
       "payload": {
         "data": { // The patch object or full data state
@@ -197,33 +197,14 @@ The `payload` of a `reply` message **must** conform to one of the following stru
     ```
     *The `callbackId`, if provided, is opaque to the View Layer's immediate `setData` handler but should be relayed if the View Layer itself intends to signal further processing completion.*
 
-2.  **View Bridge Processes and Responds `reply` (Success - Sent Immediately):**
-    ```json
-    {
-      "msgId": "logic-1678886400567-10",
-      "type": "reply",
-      "payload": { "success": true }
-    }
-    ```
-    *Logic Layer receives reply. This reply acknowledges the `setData` call was received and accepted for initial processing by the View Layer. It **does not** indicate that any associated `callbackId` has been processed or that view rendering is complete.*
+2.  **View Bridge Processes (No Reply Required):**
+    *The View Layer receives the `setData` event and processes it immediately. Since this is an `event` type message, no reply is sent back to the Logic Layer. This design choice optimizes performance by eliminating the need for synchronous confirmation, as `setData` operations are inherently fire-and-forget data updates.*
 
-3.  **View Bridge Responds `reply` (Failure - Sent Immediately):**
-    *(Alternative to step 2 if handler invocation failed immediately)*
-    ```json
-    {
-      "msgId": "logic-1678886400567-10",
-      "type": "reply",
-      "payload": {
-        "success": false,
-        "error": { "message": "Failed to apply data update: Invalid data format." }
-      }
-    }
-    ```
-    *Logic Layer receives reply, logs the error. The operation associated with `callbackId` (if any) will not proceed.*
+
 
 ### 7.2.1. View -> Logic (Callback for `setData` - OPTIONAL)
 
-*Scenario: After the View Layer has processed a `setData` call that included a `callbackId`, and any relevant internal view updates are considered complete by the View Layer, it can send a callback notification back to the Logic Layer.*
+*Scenario: After the View Layer has processed a `setData` event that included a `callbackId`, and any relevant internal view updates are considered complete by the View Layer, it can send a callback notification back to the Logic Layer.*
 
 1.  **View Sends `callback`:**
     ```json
@@ -233,7 +214,7 @@ The `payload` of a `reply` message **must** conform to one of the following stru
       "callbackId": "<String>" 
     }
     ```
-    *Logic Layer receives this callback notification. If it has a pending operation associated with this `callbackId`, it can now proceed with it (e.g., invoke a stored JavaScript callback function). The `callbackId` must match one that was previously sent from Logic to View in a call message.*
+    *Logic Layer receives this callback notification. If it has a pending operation associated with this `callbackId`, it can now proceed with it (e.g., invoke a stored JavaScript callback function). The `callbackId` must match one that was previously sent from Logic to View in a `setData` event.*
 
 ### 7.3. View -> Logic (Call with Result - Fast Operations)
 
