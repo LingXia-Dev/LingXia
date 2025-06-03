@@ -164,6 +164,30 @@ impl WebViewController for WebView {
             })?
         }
     }
+
+    fn set_scroll_listener_enabled(
+        &self,
+        enabled: bool,
+        throttle_ms: Option<u64>,
+    ) -> Result<(), MiniAppError> {
+        if self.is_ui_thread() {
+            self.inner.set_scroll_listener_enabled(enabled, throttle_ms)
+        } else {
+            let (responder, receiver) = mpsc::channel();
+            let cmd = WebViewCmd::SetScrollListenerEnabled {
+                webview: self.clone(),
+                enabled,
+                throttle_ms,
+                responder,
+            };
+            self.send_cmd(cmd)?;
+            receiver.recv().map_err(|_| {
+                MiniAppError::WebView(
+                    "WebView command 'SetScrollListenerEnabled' failed: channel closed".to_string(),
+                )
+            })?
+        }
+    }
 }
 
 /// WebView commands for the controller
@@ -196,6 +220,12 @@ pub(crate) enum WebViewCmd {
     SetUserAgent {
         webview: WebView,
         ua: String,
+        responder: mpsc::Sender<Result<(), MiniAppError>>,
+    },
+    SetScrollListenerEnabled {
+        webview: WebView,
+        enabled: bool,
+        throttle_ms: Option<u64>,
         responder: mpsc::Sender<Result<(), MiniAppError>>,
     },
 }

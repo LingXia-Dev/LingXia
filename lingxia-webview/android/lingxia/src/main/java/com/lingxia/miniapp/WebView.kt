@@ -86,6 +86,12 @@ class WebView @JvmOverloads constructor(
     private var messageChannel: WebMessagePort? = null
     private var channelInitialized = false  // Track if the channel has been initialized
 
+    // Scroll event tracking
+    private var lastScrollX: Int = 0
+    private var lastScrollY: Int = 0
+    private var scrollEventThrottleMs: Long = 100  // Throttle scroll events to avoid excessive calls
+    private var lastScrollEventTime: Long = 0
+
     companion object {
         private const val TAG = "WebView"
         private const val ANDROID_PORT_INIT_MESSAGE_DATA = "LingXia-port-init"
@@ -336,6 +342,32 @@ class WebView @JvmOverloads constructor(
         }
     }
 
+    private fun handleScrollChange(scrollX: Int, scrollY: Int, oldScrollX: Int, oldScrollY: Int) {
+        // Throttle scroll events to avoid excessive native calls
+        val currentTime = System.currentTimeMillis()
+        if (currentTime - lastScrollEventTime < scrollEventThrottleMs) {
+            return
+        }
+        lastScrollEventTime = currentTime
+
+        // Only send scroll events if WebView is properly initialized and visible
+        if (appId != null && currentPath != null && pageLoaded && visibility == View.VISIBLE) {
+            // Calculate scroll range
+            val maxScrollX = computeHorizontalScrollRange() - width
+            val maxScrollY = computeVerticalScrollRange() - height
+
+            // Send scroll event to native layer
+            nativeOnScrollChanged(
+                appId!!,
+                currentPath!!,
+                scrollX,
+                scrollY,
+                maxScrollX,
+                maxScrollY
+            )
+        }
+    }
+
     private fun setupMessageChannel() {
         // If channel is already initialized, don't recreate
         if (channelInitialized && messageChannel != null) {
@@ -563,6 +595,30 @@ class WebView @JvmOverloads constructor(
     }
 
     /**
+     * Enable or disable scroll event listener with optional throttle time.
+     * When enabled, scroll events will be sent to the native layer via nativeOnScroll.
+     *
+     * @param enabled Whether to enable scroll event listening
+     * @param throttleMs Throttle time in milliseconds (minimum 16ms for 60fps), defaults to 100ms
+     */
+    fun setScrollListenerEnabled(enabled: Boolean, throttleMs: Long = 100) {
+        // Set throttle time first (with validation)
+        scrollEventThrottleMs = maxOf(16, throttleMs)
+
+        if (enabled) {
+            // Set up scroll listener when enabling
+            setOnScrollChangeListener { view, scrollX, scrollY, oldScrollX, oldScrollY ->
+              handleScrollChange(scrollX, scrollY, oldScrollX, oldScrollY)
+            }
+            Log.d(TAG, "Scroll listener enabled with ${scrollEventThrottleMs}ms throttle")
+        } else {
+            // Clear scroll listener when disabling
+            setOnScrollChangeListener(null)
+            Log.d(TAG, "Scroll listener disabled")
+        }
+    }
+
+   /**
      * Destroy this WebView instance and release all resources.
      * This method is called from the Rust layer when the WebView instance is being dropped.
      */
@@ -632,6 +688,14 @@ class WebView @JvmOverloads constructor(
     ): WebResourceResponseData?
     private external fun nativeOnConsoleMessage(appId: String, path:String, level: Int, message: String):Int
     private external fun nativeGetPageConfig(appId: String, path: String): String?  // Returns JSON string of page config
+    private external fun nativeOnScrollChanged(
+        appId: String,
+        path: String,
+        scrollX: Int,
+        scrollY: Int,
+        maxScrollX: Int,
+        maxScrollY: Int
+    ): Int
 
     private fun handlePageFinished(url: String?) {
         nativeOnPageFinished(appId ?: return, currentPath ?: return)

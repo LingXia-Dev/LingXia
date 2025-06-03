@@ -54,5 +54,17 @@ pub(crate) fn handle_webview_cmd(cmd: WebViewCmd) -> Result<(), MiniAppError> {
             let _ = responder.send(result);
             Ok(())
         }
+        WebViewCmd::SetScrollListenerEnabled {
+            webview,
+            enabled,
+            throttle_ms,
+            responder,
+        } => {
+            let result = webview
+                .inner()
+                .set_scroll_listener_enabled(enabled, throttle_ms);
+            let _ = responder.send(result);
+            Ok(())
+        }
     }
 }

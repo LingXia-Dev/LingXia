@@ -549,3 +549,22 @@ pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeGetTabBarConfig(
 
     JObject::null().into_raw()
 }
+
+#[unsafe(no_mangle)]
+pub extern "C" fn Java_com_lingxia_miniapp_WebView_nativeOnScrollChanged(
+    mut env: JNIEnv,
+    _class: JClass,
+    appid: JString,
+    path: JString,
+    scroll_x: jint,
+    scroll_y: jint,
+    max_scroll_x: jint,
+    max_scroll_y: jint,
+) -> jint {
+    let appid: String = env.get_string(&appid).unwrap().into();
+    let path: String = env.get_string(&path).unwrap().into();
+
+    let miniapp = miniapp::get_or_init_miniapp(appid.clone());
+    miniapp.on_page_scroll_changed(path, scroll_x, scroll_y, max_scroll_x, max_scroll_y);
+    0
+}
