@@ -2,25 +2,81 @@ use super::app::App;
 use crate::controller::Controller;
 use miniapp::AppUiDelegate;
 use miniapp::log::LogLevel;
-use std::ffi::{CStr, CString};
-use std::os::raw::{c_char, c_int, c_void};
 use std::sync::{OnceLock, mpsc};
 
 /// Global reference to the native app delegate for callbacks
 /// Using usize to make it thread-safe
 pub(crate) static APP_DELEGATE: OnceLock<usize> = OnceLock::new();
 
+#[swift_bridge::bridge]
+mod bridge {
+    extern "Rust" {
+        #[swift_bridge(swift_name = "miniappInit")]
+        fn miniapp_init(data_dir: &str, cache_dir: &str, app_delegate: usize) -> Option<String>;
+
+        #[swift_bridge(swift_name = "onWebviewAttached")]
+        fn on_webview_attached(appid: &str, path: &str) -> i32;
+
+        #[swift_bridge(swift_name = "handlePostMessage")]
+        fn handle_post_message(appid: &str, path: &str, message: &str) -> i32;
+
+        #[swift_bridge(swift_name = "onPageStarted")]
+        fn on_page_started(appid: &str, path: &str) -> i32;
+
+        #[swift_bridge(swift_name = "onPageFinished")]
+        fn on_page_finished(appid: &str, path: &str) -> i32;
+
+        #[swift_bridge(swift_name = "onPageShow")]
+        fn on_page_show(appid: &str, path: &str);
+
+        #[swift_bridge(swift_name = "shouldOverrideUrlLoading")]
+        fn should_override_url_loading(appid: &str, url: &str) -> bool;
+
+        #[swift_bridge(swift_name = "handleRequest")]
+        fn handle_request(
+            appid: &str,
+            url: &str,
+            method: &str,
+            headers: &str,
+            body: Vec<u8>,
+        ) -> Option<String>;
+
+        #[swift_bridge(swift_name = "onMiniappClosed")]
+        fn on_miniapp_closed(appid: &str) -> i32;
+
+        #[swift_bridge(swift_name = "consoleMessage")]
+        fn console_message(appid: &str, path: &str, level: i32, message: &str) -> i32;
+
+        #[swift_bridge(swift_name = "getPageConfig")]
+        fn get_page_config(appid: &str, path: &str) -> Option<String>;
+
+        #[swift_bridge(swift_name = "onBackPressed")]
+        fn on_back_pressed(appid: &str) -> bool;
+
+        #[swift_bridge(swift_name = "onMiniappOpened")]
+        fn on_miniapp_opened(appid: &str, path: &str) -> i32;
+
+        #[swift_bridge(swift_name = "getTabBarConfig")]
+        fn get_tab_bar_config(appid: &str) -> Option<String>;
+
+        #[swift_bridge(swift_name = "onScrollChanged")]
+        fn on_scroll_changed(
+            appid: &str,
+            path: &str,
+            scroll_x: i32,
+            scroll_y: i32,
+            max_scroll_x: i32,
+            max_scroll_y: i32,
+        ) -> i32;
+    }
+}
+
 /// Initialize the MiniApp system for iOS/macOS
-#[unsafe(no_mangle)]
-pub extern "C" fn rust_miniapp_init(
-    data_dir: *const c_char,
-    cache_dir: *const c_char,
-    app_delegate: *mut c_void,
-) -> *mut c_char {
+pub fn miniapp_init(data_dir: &str, cache_dir: &str, app_delegate: usize) -> Option<String> {
     oslog::OsLogger::new("com.lingxia.miniapp")
-    .level_filter(log::LevelFilter::Info)
-    .init()
-    .unwrap();
+        .level_filter(log::LevelFilter::Info)
+        .init()
+        .unwrap();
 
     // Initialize the new logging system
     miniapp::log::LogManager::init(|log_msg| {
@@ -58,18 +114,19 @@ pub extern "C" fn rust_miniapp_init(
     });
 
     // Store app delegate globally as usize
-    let _ = APP_DELEGATE.set(app_delegate as usize);
+    let _ = APP_DELEGATE.set(app_delegate);
 
-    let data_dir_str = unsafe { CStr::from_ptr(data_dir).to_string_lossy().into_owned() };
-    let cache_dir_str = unsafe { CStr::from_ptr(cache_dir).to_string_lossy().into_owned() };
+    log::info!(
+        "Initializing MiniApp with data_dir: {}, cache_dir: {}",
+        data_dir,
+        cache_dir
+    );
 
-    log::info!("Initializing MiniApp with data_dir: {}, cache_dir: {}", data_dir_str, cache_dir_str);
-
-    let app = match App::new(data_dir_str, cache_dir_str) {
+    let app = match App::new(data_dir.to_string(), cache_dir.to_string()) {
         Ok(app) => app,
         Err(e) => {
             log::error!("Failed to create App: {}", e);
-            return std::ptr::null_mut();
+            return None;
         }
     };
 
@@ -91,7 +148,7 @@ pub extern "C" fn rust_miniapp_init(
     ) {
         log::error!("Controller::run reported failure (returned false).");
         let _ = rx.recv();
-        return std::ptr::null_mut();
+        return None;
     }
 
     let final_init_details = match rx.recv() {
@@ -107,130 +164,69 @@ pub extern "C" fn rust_miniapp_init(
         Some((home_app_id, initial_route)) => {
             let combined_details = format!("{}:{}", home_app_id, initial_route);
             log::info!("MiniApp initialization successful: {}", combined_details);
-            match CString::new(combined_details) {
-                Ok(c_string) => c_string.into_raw(),
-                Err(_) => std::ptr::null_mut(),
-            }
+            Some(combined_details)
         }
         None => {
             log::error!("Failed to obtain MiniApp home app details during initialization.");
-            std::ptr::null_mut()
+            None
         }
     }
 }
 
 /// Notify that a WebView has been attached to the window
-#[unsafe(no_mangle)]
-pub extern "C" fn rust_webview_attached(appid: *const c_char, path: *const c_char) -> c_int {
-    let appid = unsafe { CStr::from_ptr(appid).to_string_lossy().into_owned() };
-    let path = unsafe { CStr::from_ptr(path).to_string_lossy().into_owned() };
-
-    let miniapp = miniapp::get(appid);
-    miniapp.on_page_created(path);
+pub fn on_webview_attached(appid: &str, path: &str) -> i32 {
+    let miniapp = miniapp::get(appid.to_string());
+    miniapp.on_page_created(path.to_string());
     0
 }
 
-/// Handle post message from WebView - improved interface
-#[unsafe(no_mangle)]
-pub extern "C" fn rust_handle_post_message(
-    appid: *const c_char,
-    path: *const c_char,
-    message: *const c_char,
-    message_len: usize,
-) -> c_int {
-    let appid = unsafe { CStr::from_ptr(appid).to_string_lossy().into_owned() };
-    let path = unsafe { CStr::from_ptr(path).to_string_lossy().into_owned() };
-    
-    // Handle message with explicit length to support binary data
-    let message = if message_len > 0 {
-        let message_bytes = unsafe { std::slice::from_raw_parts(message as *const u8, message_len) };
-        String::from_utf8_lossy(message_bytes).into_owned()
-    } else {
-        unsafe { CStr::from_ptr(message).to_string_lossy().into_owned() }
-    };
-
-    let miniapp = miniapp::get(appid);
-    miniapp.handle_post_message(path, message);
+/// Handle post message from WebView
+pub fn handle_post_message(appid: &str, path: &str, message: &str) -> i32 {
+    let miniapp = miniapp::get(appid.to_string());
+    miniapp.handle_post_message(path.to_string(), message.to_string());
     0
 }
 
 /// Notify that a page has started loading
-#[unsafe(no_mangle)]
-pub extern "C" fn rust_page_started(appid: *const c_char, path: *const c_char) -> c_int {
-    let appid = unsafe { CStr::from_ptr(appid).to_string_lossy().into_owned() };
-    let path = unsafe { CStr::from_ptr(path).to_string_lossy().into_owned() };
-
-    let miniapp = miniapp::get(appid);
-    miniapp.on_page_started(path);
+pub fn on_page_started(appid: &str, path: &str) -> i32 {
+    let miniapp = miniapp::get(appid.to_string());
+    miniapp.on_page_started(path.to_string());
     0
 }
 
 /// Notify that a page has finished loading
-#[unsafe(no_mangle)]
-pub extern "C" fn rust_page_finished(appid: *const c_char, path: *const c_char) -> c_int {
-    let appid = unsafe { CStr::from_ptr(appid).to_string_lossy().into_owned() };
-    let path = unsafe { CStr::from_ptr(path).to_string_lossy().into_owned() };
-
-    let miniapp = miniapp::get(appid);
-    miniapp.on_page_finished(path);
+pub fn on_page_finished(appid: &str, path: &str) -> i32 {
+    let miniapp = miniapp::get(appid.to_string());
+    miniapp.on_page_finished(path.to_string());
     0
 }
 
 /// Notify that a page is being shown
-#[unsafe(no_mangle)]
-pub extern "C" fn rust_page_show(appid: *const c_char, path: *const c_char) {
-    let appid = unsafe { CStr::from_ptr(appid).to_string_lossy().into_owned() };
-    let path = unsafe { CStr::from_ptr(path).to_string_lossy().into_owned() };
-
-    let miniapp = miniapp::get(appid);
-    miniapp.on_page_show(path);
+pub fn on_page_show(appid: &str, path: &str) {
+    let miniapp = miniapp::get(appid.to_string());
+    miniapp.on_page_show(path.to_string());
 }
 
-/// Check if URL loading should be overridden - fixed to match Android interface
-#[unsafe(no_mangle)]
-pub extern "C" fn rust_should_override_url_loading(
-    appid: *const c_char,
-    url: *const c_char,
-) -> c_int {
-    let appid = unsafe { CStr::from_ptr(appid).to_string_lossy().into_owned() };
-    let url = unsafe { CStr::from_ptr(url).to_string_lossy().into_owned() };
-
-    let miniapp = miniapp::get(appid);
-    if miniapp.should_override_url_loading(url) { 1 } else { 0 }
+/// Check if URL loading should be overridden
+pub fn should_override_url_loading(appid: &str, url: &str) -> bool {
+    let miniapp = miniapp::get(appid.to_string());
+    miniapp.should_override_url_loading(url.to_string())
 }
 
-/// Find WebView instance - simplified implementation
-#[unsafe(no_mangle)]
-pub extern "C" fn rust_find_webview(appid: *const c_char, path: *const c_char) -> *mut c_void {
-    let _appid = unsafe { CStr::from_ptr(appid).to_string_lossy().into_owned() };
-    let _path = unsafe { CStr::from_ptr(path).to_string_lossy().into_owned() };
-
-    // For now, return null as we don't have a webview registry in miniapp crate
-    // This would need to be implemented based on the actual webview management system
-    std::ptr::null_mut()
-}
-
-/// Handle HTTP request - improved with body support
-#[unsafe(no_mangle)]
-pub extern "C" fn rust_handle_request(
-    appid: *const c_char,
-    url: *const c_char,
-    method: *const c_char,
-    headers: *const c_char,
-    body: *const u8,
-    body_len: usize,
-) -> *mut c_char {
-    let appid = unsafe { CStr::from_ptr(appid).to_string_lossy().into_owned() };
-    let url = unsafe { CStr::from_ptr(url).to_string_lossy().into_owned() };
-    let method = unsafe { CStr::from_ptr(method).to_string_lossy().into_owned() };
-    let headers = unsafe { CStr::from_ptr(headers).to_string_lossy().into_owned() };
-
+/// Handle HTTP request
+pub fn handle_request(
+    appid: &str,
+    url: &str,
+    method: &str,
+    headers: &str,
+    body: Vec<u8>,
+) -> Option<String> {
     // Parse headers from JSON string
-    let header_map: std::collections::HashMap<String, String> = 
-        serde_json::from_str(&headers).unwrap_or_default();
+    let header_map: std::collections::HashMap<String, String> =
+        serde_json::from_str(headers).unwrap_or_default();
 
     // Convert to HTTP types
-    let http_method = match method.as_str() {
+    let http_method = match method {
         "GET" => http::Method::GET,
         "POST" => http::Method::POST,
         "PUT" => http::Method::PUT,
@@ -241,25 +237,18 @@ pub extern "C" fn rust_handle_request(
         _ => http::Method::GET,
     };
 
-    let mut request_builder = http::Request::builder().method(http_method).uri(&url);
+    let mut request_builder = http::Request::builder().method(http_method).uri(url);
 
     for (key, value) in header_map {
         request_builder = request_builder.header(&key, &value);
     }
 
-    // Handle request body
-    let request_body = if body_len > 0 && !body.is_null() {
-        unsafe { std::slice::from_raw_parts(body, body_len).to_vec() }
-    } else {
-        Vec::new()
-    };
-
-    let request = match request_builder.body(request_body) {
+    let request = match request_builder.body(body) {
         Ok(req) => req,
-        Err(_) => return std::ptr::null_mut(),
+        Err(_) => return None,
     };
 
-    let miniapp = miniapp::get(appid);
+    let miniapp = miniapp::get(appid.to_string());
     match miniapp.handle_request(request) {
         Some(response) => {
             // Convert response to JSON string
@@ -271,37 +260,21 @@ pub extern "C" fn rust_handle_request(
                 "body": response.body()
             });
 
-            match CString::new(response_data.to_string()) {
-                Ok(c_string) => c_string.into_raw(),
-                Err(_) => std::ptr::null_mut(),
-            }
+            Some(response_data.to_string())
         }
-        None => std::ptr::null_mut(),
+        None => None,
     }
 }
 
 /// Notify that MiniApp was closed
-#[unsafe(no_mangle)]
-pub extern "C" fn rust_miniapp_closed(appid: *const c_char) -> c_int {
-    let appid = unsafe { CStr::from_ptr(appid).to_string_lossy().into_owned() };
-    
-    let miniapp = miniapp::get(appid);
+pub fn on_miniapp_closed(appid: &str) -> i32 {
+    let miniapp = miniapp::get(appid.to_string());
     miniapp.on_miniapp_closed();
     0
 }
 
-/// Handle console message - fixed to match Android implementation
-#[unsafe(no_mangle)]
-pub extern "C" fn rust_console_message(
-    appid: *const c_char,
-    path: *const c_char,
-    level: c_int,
-    message: *const c_char,
-) -> c_int {
-    let appid = unsafe { CStr::from_ptr(appid).to_string_lossy().into_owned() };
-    let path = unsafe { CStr::from_ptr(path).to_string_lossy().into_owned() };
-    let message = unsafe { CStr::from_ptr(message).to_string_lossy().into_owned() };
-
+/// Handle console message
+pub fn console_message(appid: &str, path: &str, level: i32, message: &str) -> i32 {
     let log_level = match level {
         2 => LogLevel::Verbose, // VERBOSE
         3 => LogLevel::Debug,   // DEBUG
@@ -311,96 +284,58 @@ pub extern "C" fn rust_console_message(
         _ => LogLevel::Info,    // Default to INFO
     };
 
-    let miniapp = miniapp::get(appid);
-    miniapp.log(&path, log_level, &message);
+    let miniapp = miniapp::get(appid.to_string());
+    miniapp.log(path, log_level, message);
     1
 }
 
 /// Get page configuration
-#[unsafe(no_mangle)]
-pub extern "C" fn rust_get_page_config(appid: *const c_char, path: *const c_char) -> *mut c_char {
-    let appid = unsafe { CStr::from_ptr(appid).to_string_lossy().into_owned() };
-    let path = unsafe { CStr::from_ptr(path).to_string_lossy().into_owned() };
-
-    let miniapp = miniapp::get(appid);
-    match miniapp.get_page_config(&path) {
-        Ok(config) => {
-            match CString::new(config) {
-                Ok(c_string) => c_string.into_raw(),
-                Err(_) => std::ptr::null_mut(),
-            }
-        }
-        Err(_) => std::ptr::null_mut(),
+pub fn get_page_config(appid: &str, path: &str) -> Option<String> {
+    let miniapp = miniapp::get(appid.to_string());
+    match miniapp.get_page_config(path) {
+        Ok(config) => Some(config),
+        Err(_) => None,
     }
 }
 
 /// Handle back button press
-#[unsafe(no_mangle)]
-pub extern "C" fn rust_back_pressed(appid: *const c_char) -> c_int {
-    let appid = unsafe { CStr::from_ptr(appid).to_string_lossy().into_owned() };
-    
-    let miniapp = miniapp::get(appid);
-    if miniapp.on_back_pressed() { 1 } else { 0 }
+pub fn on_back_pressed(appid: &str) -> bool {
+    let miniapp = miniapp::get(appid.to_string());
+    miniapp.on_back_pressed()
 }
 
 /// Notify that MiniApp was opened
-#[unsafe(no_mangle)]
-pub extern "C" fn rust_miniapp_opened(appid: *const c_char, path: *const c_char) -> c_int {
-    let appid = unsafe { CStr::from_ptr(appid).to_string_lossy().into_owned() };
-    let path = unsafe { CStr::from_ptr(path).to_string_lossy().into_owned() };
-
-    let miniapp = miniapp::get(appid);
-    miniapp.on_miniapp_opened(path);
+pub fn on_miniapp_opened(appid: &str, path: &str) -> i32 {
+    let miniapp = miniapp::get(appid.to_string());
+    miniapp.on_miniapp_opened(path.to_string());
     0
 }
 
 /// Get tab bar configuration
-#[unsafe(no_mangle)]
-pub extern "C" fn rust_get_tab_bar_config(appid: *const c_char) -> *mut c_char {
-    let appid = unsafe { CStr::from_ptr(appid).to_string_lossy().into_owned() };
-
-    let miniapp = miniapp::get(appid);
+pub fn get_tab_bar_config(appid: &str) -> Option<String> {
+    let miniapp = miniapp::get(appid.to_string());
     match miniapp.get_tab_bar_config() {
-        Ok(config) => {
-            match CString::new(config) {
-                Ok(c_string) => c_string.into_raw(),
-                Err(_) => std::ptr::null_mut(),
-            }
-        }
-        Err(_) => std::ptr::null_mut(),
+        Ok(config) => Some(config),
+        Err(_) => None,
     }
 }
 
 /// Handle scroll change event
-#[unsafe(no_mangle)]
-pub extern "C" fn rust_scroll_changed(
-    appid: *const c_char,
-    path: *const c_char,
-    scroll_x: c_int,
-    scroll_y: c_int,
-    max_scroll_x: c_int,
-    max_scroll_y: c_int,
-) -> c_int {
-    let appid = unsafe { CStr::from_ptr(appid).to_string_lossy().into_owned() };
-    let path = unsafe { CStr::from_ptr(path).to_string_lossy().into_owned() };
-
-    let miniapp = miniapp::get(appid);
+pub fn on_scroll_changed(
+    appid: &str,
+    path: &str,
+    scroll_x: i32,
+    scroll_y: i32,
+    max_scroll_x: i32,
+    max_scroll_y: i32,
+) -> i32 {
+    let miniapp = miniapp::get(appid.to_string());
     miniapp.on_page_scroll_changed(
-        path,
-        scroll_x as i32,
-        scroll_y as i32,
-        max_scroll_x as i32,
-        max_scroll_y as i32,
+        path.to_string(),
+        scroll_x,
+        scroll_y,
+        max_scroll_x,
+        max_scroll_y,
     );
     0
-}
-
-/// Free a C string allocated by Rust
-#[unsafe(no_mangle)]
-pub extern "C" fn rust_free_string(ptr: *mut c_char) {
-    if !ptr.is_null() {
-        unsafe {
-            let _ = CString::from_raw(ptr);
-        }
-    }
 }

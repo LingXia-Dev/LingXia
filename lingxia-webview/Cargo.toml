@@ -25,3 +25,7 @@ ndk = "0.9.0"
 # iOS/macOS-specific dependencies for proper os_log integration
 [target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
 oslog = "0.2.0"
+swift-bridge = "0.1"
+
+[build-dependencies]
+swift-bridge-build = "0.1"

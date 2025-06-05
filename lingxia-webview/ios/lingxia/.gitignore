@@ -8,3 +8,6 @@ DerivedData/
 .netrc
 
 /xtool
+
+# Generated Swift bridge files
+Sources/generated

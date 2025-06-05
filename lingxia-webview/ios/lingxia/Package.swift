@@ -23,6 +23,11 @@ let package = Package(
     targets: [
         .target(
             name: "lingxia",
+            path: "Sources",
+            publicHeadersPath: "generated",
+            cSettings: [
+                .headerSearchPath("generated"),
+            ],
             linkerSettings: [
                 .unsafeFlags([libraryPath], .when(platforms: [.iOS])),
             ]
