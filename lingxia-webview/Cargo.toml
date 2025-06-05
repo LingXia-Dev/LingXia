@@ -5,11 +5,11 @@ edition = "2024"
 
 [lib]
 name = "lingxia"
-crate-type = ["cdylib"]
+crate-type = ["staticlib", "cdylib"]
 
 [dependencies]
-# Local crate dependency
 miniapp = { package = "lingxia-miniapp", path = "../lingxia-miniapp" }
+log = "0.4.27"
 
 # Use workspace dependencies
 serde_json = { workspace = true }
@@ -18,7 +18,10 @@ http = { workspace = true }
 # Android-specific dependencies
 [target.'cfg(target_os = "android")'.dependencies]
 jni = "0.21.1"
-log = "0.4.27"
 android_logger = "0.15.0"
 ndk-sys = "0.6.0"
 ndk = "0.9.0"
+
+# iOS/macOS-specific dependencies for proper os_log integration
+[target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
+oslog = "0.2.0"

@@ -4,4 +4,4 @@ mod webview;
 
 pub use app::App;
 pub use ffi::*;
-pub use webview::WebView;
+pub use webview::WebViewInner;
