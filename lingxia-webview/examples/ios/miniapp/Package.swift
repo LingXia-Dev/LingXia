@@ -23,6 +23,9 @@ let package = Package(
             name: "miniapp",
             dependencies: [
                 .product(name: "lingxia", package: "lingxia"),
+            ],
+            resources: [
+                .copy("Resources")
             ]
         ),
     ]
