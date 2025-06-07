@@ -69,11 +69,23 @@ mod bridge {
             max_scroll_y: i32,
         ) -> i32;
     }
+
+    extern "Swift" {
+        // Resource access functions implemented in Swift
+        #[swift_bridge(swift_name = "read_asset_data")]
+        fn read_asset_data(path: &str) -> Vec<u8>;
+
+        #[swift_bridge(swift_name = "list_asset_directory")]
+        fn list_asset_directory(dir_path: &str) -> Vec<String>;
+    }
 }
+
+// Re-export the bridge functions for use in other modules
+pub use bridge::{list_asset_directory, read_asset_data};
 
 /// Initialize the MiniApp system for iOS/macOS
 pub fn miniapp_init(data_dir: &str, cache_dir: &str, app_delegate: usize) -> Option<String> {
-    oslog::OsLogger::new("com.lingxia.miniapp")
+    oslog::OsLogger::new("LingXia.Rust")
         .level_filter(log::LevelFilter::Info)
         .init()
         .unwrap();

@@ -11,4 +11,4 @@ mod webview;
 pub use android::{App, WebViewInner};
 
 #[cfg(any(target_os = "ios", target_os = "macos"))]
-pub use apple::{App, WebViewInner};
+pub use apple::{app::App, WebViewInner};
