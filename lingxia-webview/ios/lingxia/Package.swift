@@ -21,10 +21,18 @@ let package = Package(
         ),
     ],
     targets: [
+        .systemLibrary(
+            name: "CLingXiaFFI",
+            path: "Sources/generated",
+            pkgConfig: nil,
+            providers: nil
+        ),
         .target(
             name: "lingxia",
+            dependencies: ["CLingXiaFFI"],
             path: "Sources",
-            publicHeadersPath: "generated",
+            exclude: ["generated"],
+            publicHeadersPath: nil,
             cSettings: [
                 .headerSearchPath("generated"),
             ],
