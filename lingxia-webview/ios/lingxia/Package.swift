@@ -31,7 +31,6 @@ let package = Package(
             name: "lingxia",
             dependencies: ["CLingXiaFFI"],
             path: "Sources",
-            exclude: ["generated"],
             publicHeadersPath: nil,
             cSettings: [
                 .headerSearchPath("generated"),
