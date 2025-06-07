@@ -10,6 +10,25 @@ pub(crate) static APP_DELEGATE: OnceLock<usize> = OnceLock::new();
 
 #[swift_bridge::bridge]
 mod bridge {
+    // High-efficiency HTTP request/response structures
+    #[swift_bridge(swift_repr = "struct")]
+    struct HttpRequest {
+        url: String,
+        method: String,
+        header_keys: Vec<String>,
+        header_values: Vec<String>,
+        body: Vec<u8>,
+    }
+
+    #[swift_bridge(swift_repr = "struct")]
+    struct HttpResponse {
+        status_code: u16,
+        header_keys: Vec<String>,
+        header_values: Vec<String>,
+        body: Vec<u8>,
+        mime_type: String,
+    }
+
     extern "Rust" {
         #[swift_bridge(swift_name = "miniappInit")]
         fn miniapp_init(data_dir: &str, cache_dir: &str, app_delegate: usize) -> Option<String>;
@@ -33,13 +52,7 @@ mod bridge {
         fn should_override_url_loading(appid: &str, url: &str) -> bool;
 
         #[swift_bridge(swift_name = "handleRequest")]
-        fn handle_request(
-            appid: &str,
-            url: &str,
-            method: &str,
-            headers: &str,
-            body: Vec<u8>,
-        ) -> Option<String>;
+        fn handle_request(appid: &str, request: HttpRequest) -> Option<HttpResponse>;
 
         #[swift_bridge(swift_name = "onMiniappClosed")]
         fn on_miniapp_closed(appid: &str) -> i32;
@@ -81,7 +94,7 @@ mod bridge {
 }
 
 // Re-export the bridge functions for use in other modules
-pub use bridge::{list_asset_directory, read_asset_data};
+pub use bridge::{HttpRequest, HttpResponse, list_asset_directory, read_asset_data};
 
 /// Initialize the MiniApp system for iOS/macOS
 pub fn miniapp_init(data_dir: &str, cache_dir: &str, app_delegate: usize) -> Option<String> {
@@ -225,54 +238,64 @@ pub fn should_override_url_loading(appid: &str, url: &str) -> bool {
     miniapp.should_override_url_loading(url.to_string())
 }
 
-/// Handle HTTP request
-pub fn handle_request(
-    appid: &str,
-    url: &str,
-    method: &str,
-    headers: &str,
-    body: Vec<u8>,
-) -> Option<String> {
-    // Parse headers from JSON string
-    let header_map: std::collections::HashMap<String, String> =
-        serde_json::from_str(headers).unwrap_or_default();
+/// Handle HTTP request using high-efficiency swift-bridge types
+pub fn handle_request(appid: &str, request: HttpRequest) -> Option<HttpResponse> {
+    // Build HTTP request directly from swift-bridge struct
+    let mut request_builder = http::Request::builder()
+        .method(request.method.as_str())
+        .uri(&request.url);
 
-    // Convert to HTTP types
-    let http_method = match method {
-        "GET" => http::Method::GET,
-        "POST" => http::Method::POST,
-        "PUT" => http::Method::PUT,
-        "DELETE" => http::Method::DELETE,
-        "PATCH" => http::Method::PATCH,
-        "HEAD" => http::Method::HEAD,
-        "OPTIONS" => http::Method::OPTIONS,
-        _ => http::Method::GET,
-    };
-
-    let mut request_builder = http::Request::builder().method(http_method).uri(url);
-
-    for (key, value) in header_map {
-        request_builder = request_builder.header(&key, &value);
+    // Add headers efficiently using parallel arrays
+    for (key, value) in request.header_keys.iter().zip(request.header_values.iter()) {
+        if let (Ok(name), Ok(val)) = (
+            http::HeaderName::from_bytes(key.as_bytes()),
+            http::HeaderValue::from_str(value),
+        ) {
+            request_builder = request_builder.header(name, val);
+        }
     }
 
-    let request = match request_builder.body(body) {
+    let http_request = match request_builder.body(request.body) {
         Ok(req) => req,
         Err(_) => return None,
     };
 
+    // Call existing handle_request infrastructure
     let miniapp = miniapp::get(appid.to_string());
-    match miniapp.handle_request(request) {
+    match miniapp.handle_request(http_request) {
         Some(response) => {
-            // Convert response to JSON string
-            let response_data = serde_json::json!({
-                "status": response.status().as_u16(),
-                "headers": response.headers().iter().map(|(k, v)| {
-                    (k.as_str(), v.to_str().unwrap_or(""))
-                }).collect::<std::collections::HashMap<_, _>>(),
-                "body": response.body()
-            });
+            // Convert response headers efficiently using parallel arrays
+            let mut header_keys = Vec::new();
+            let mut header_values = Vec::new();
+            for (key, value) in response.headers().iter() {
+                if let Ok(value_str) = value.to_str() {
+                    header_keys.push(key.as_str().to_string());
+                    header_values.push(value_str.to_string());
+                }
+            }
 
-            Some(response_data.to_string())
+            // Determine MIME type from Content-Type header
+            let mime_type = response
+                .headers()
+                .get(http::header::CONTENT_TYPE)
+                .and_then(|h| h.to_str().ok())
+                .map(|content_type| {
+                    content_type
+                        .split(';')
+                        .next()
+                        .unwrap_or("application/octet-stream")
+                        .trim()
+                })
+                .unwrap_or("application/octet-stream");
+
+            // Return high-efficiency response struct
+            Some(HttpResponse {
+                status_code: response.status().as_u16(),
+                header_keys,
+                header_values,
+                body: response.body().clone(),
+                mime_type: mime_type.to_string(),
+            })
         }
         None => None,
     }

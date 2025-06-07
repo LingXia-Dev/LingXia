@@ -2,6 +2,7 @@ import UIKit
 import WebKit
 import Foundation
 import os.log
+import CLingXiaFFI
 
 /// Manager class for WebView instances, providing centralized storage and retrieval
 @MainActor
@@ -286,6 +287,13 @@ public class LingXiaWebView: WKWebView {
     }
 
     private func initializeWebView() {
+        // Add URL scheme handler for lx://
+        if let appId = appId {
+            let schemeHandler = SchemeHandler(appId: appId)
+            configuration.setURLSchemeHandler(schemeHandler, forURLScheme: "lx")
+            os_log("Registered lx:// scheme handler for appId: %@", log: Self.log, type: .info, appId)
+        }
+
         applyWebViewSettings()
         setupWebViewDelegates()
     }
@@ -499,12 +507,7 @@ public class LingXiaWebView: WKWebView {
                 }
             } else if isFirstLoad {
                 // First load, PageShow will be triggered in navigation delegate
-
             }
-        } else if showEventSent {
-
-        } else {
-
         }
     }
 
@@ -518,9 +521,6 @@ public class LingXiaWebView: WKWebView {
                 let result = dummyNativeOnWebViewAttached(appId: appId, path: currentPath)
                 if result == 0 {
                     isRegistered = true
-
-                } else {
-
                 }
             }
         } else {
@@ -700,11 +700,8 @@ public class LingXiaWebView: WKWebView {
 
         // If page is loaded and attached to superview, and we haven't sent PageShow yet
         if superview != nil && url != nil && !showEventSent {
-
             dummyNativeOnPageShow(appId: appId, path: currentPath)
             showEventSent = true
-        } else if showEventSent {
-
         }
     }
 }
@@ -742,24 +739,95 @@ extension LingXiaWebView: WKNavigationDelegate {
     }
 
     public func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
-        if let url = navigationAction.request.url {
+        guard let url = navigationAction.request.url else {
+            decisionHandler(.allow)
+            return
+        }
 
+        // For HTTPS requests, check if we should intercept them
+        if url.scheme == "https" {
+            let request = navigationAction.request
 
-            if let appId = appId {
-                let result = dummyNativeShouldOverrideUrlLoading(appId: appId, url: url.absoluteString)
-                if result == 1 {
+            // Convert to HttpRequest for Rust processing
+            if let httpRequest = convertToHttpRequest(request),
+               let appId = appId {
+
+                // Call Rust to check if we should handle this request
+                if let httpResponse = dummyNativehandleRequest(appId: appId, httpRequest: httpRequest) {
+                    // If Rust handled it, cancel the navigation
                     decisionHandler(.cancel)
+
+                    // Check if this is a blocked request (403 status)
+                    if httpResponse.status_code == 403 {
+                        os_log("HTTPS request blocked by Rust: %@", log: Self.log, type: .default, url.absoluteString)
+                        // Could show an error page or just silently block
+                        return
+                    }
+
+                    // For other responses, we could inject custom content
+                    // This is more complex and might require custom handling
+                    os_log("HTTPS request handled by Rust: %@ (status: %d)", log: Self.log, type: .info, url.absoluteString, httpResponse.status_code)
                     return
                 }
+            }
+        }
+
+        // Default URL override check (existing logic)
+        if let appId = appId {
+            let result = dummyNativeShouldOverrideUrlLoading(appId: appId, url: url.absoluteString)
+            if result == 1 {
+                decisionHandler(.cancel)
+                return
             }
         }
 
         decisionHandler(.allow)
     }
 
-    public func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+    private func convertToHttpRequest(_ request: URLRequest) -> HttpRequest? {
+        guard let url = request.url?.absoluteString else { return nil }
 
+        let method = request.httpMethod ?? "GET"
+
+        // Convert headers to RustVec efficiently
+        var headerKeys: [RustString] = []
+        var headerValues: [RustString] = []
+        if let requestHeaders = request.allHTTPHeaderFields {
+            for (key, value) in requestHeaders {
+                headerKeys.append(RustString(key))
+                headerValues.append(RustString(value))
+            }
+        }
+
+        // Get request body
+        let body = request.httpBody ?? Data()
+
+        // Create high-efficiency HttpRequest struct
+        let headerKeysVec = RustVec<RustString>()
+        for key in headerKeys {
+            headerKeysVec.push(value: key)
+        }
+
+        let headerValuesVec = RustVec<RustString>()
+        for value in headerValues {
+            headerValuesVec.push(value: value)
+        }
+
+        let bodyVec = RustVec<UInt8>()
+        for byte in body {
+            bodyVec.push(value: byte)
+        }
+
+        return HttpRequest(
+            url: RustString(url),
+            method: RustString(method),
+            header_keys: headerKeysVec,
+            header_values: headerValuesVec,
+            body: bodyVec
+        )
     }
+
+
 }
 
 // MARK: - WKUIDelegate
@@ -794,4 +862,8 @@ private class WebViewMessageHandler: NSObject, WKScriptMessageHandler {
             messageHandler(messageBody)
         }
     }
+}
+
+private func dummyNativehandleRequest(appId: String, httpRequest: HttpRequest) -> HttpResponse? {
+    return nil
 }
