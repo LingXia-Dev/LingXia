@@ -177,9 +177,9 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnWebViewAttached(
     let appid: String = env.get_string(&appid).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
 
-    // Notify miniapp about page attached to window
+    // Notify miniapp about WebView attached to window
     let miniapp = miniapp::get(appid);
-    miniapp.on_page_created(path);
+    miniapp.on_webview_attached(path);
     0
 }
 

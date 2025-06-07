@@ -524,8 +524,8 @@ pub trait AppUiDelegate {
     /// Called when mini app is closed
     fn on_miniapp_closed(self: &Arc<Self>);
 
-    /// Called when a page is created
-    fn on_page_created(self: &Arc<Self>, path: String);
+    /// Called when a WebView is attached to the window and ready for interaction
+    fn on_webview_attached(self: &Arc<Self>, path: String);
 
     /// Called when the page starts loading
     fn on_page_started(self: &Arc<Self>, path: String);
@@ -674,8 +674,8 @@ impl AppUiDelegate for MiniApp {
         info!("Mini app closed").with_appid(self.appid.clone());
     }
 
-    fn on_page_created(self: &Arc<Self>, path: String) {
-        info!("Mini app page created")
+    fn on_webview_attached(self: &Arc<Self>, path: String) {
+        info!("Mini app WebView attached")
             .with_appid(self.appid.clone())
             .with_path(path.clone());
 
