@@ -59,7 +59,9 @@ private func readAssetDataInternal(path: String) -> [UInt8] {
         withExtension: pathExtension.isEmpty ? nil : pathExtension,
         subdirectory: subdirectory
     ) else {
-        os_log("Resource not found: %{public}@", log: resourceLogger, type: .error, path)
+        if !pathExtension.isEmpty {
+            os_log("Resource not found: %{public}@", log: resourceLogger, type: .debug, path)
+        }
         return []
     }
 

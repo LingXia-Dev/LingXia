@@ -33,20 +33,12 @@ impl App {
 
     /// Read an asset file from the SPM bundle resources
     pub fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, MiniAppError> {
-        log::debug!("Reading asset: {}", path);
-
         // Call Swift function to read asset data
         let data = super::ffi::read_asset_data(path);
 
         if data.is_empty() {
-            log::error!("Asset not found or failed to read: {}", path);
             Err(MiniAppError::ResourceNotFound(path.to_string()))
         } else {
-            log::debug!(
-                "Successfully read {} bytes from asset: {}",
-                data.len(),
-                path
-            );
             Ok(Box::new(Cursor::new(data)))
         }
     }
@@ -56,33 +48,51 @@ impl App {
         &'a self,
         asset_dir: &str,
     ) -> Box<dyn Iterator<Item = Result<AssetFileEntry<'a>, MiniAppError>> + 'a> {
-        log::debug!("Listing asset directory: {}", asset_dir);
+        let entries = self.collect_files_recursively(asset_dir);
+        Box::new(entries.into_iter())
+    }
 
-        // Get directory contents from Swift
-        let contents = super::ffi::list_asset_directory(asset_dir);
+    /// Recursively collect all files from a directory
+    fn collect_files_recursively<'a>(
+        &'a self,
+        dir_path: &str,
+    ) -> Vec<Result<AssetFileEntry<'a>, MiniAppError>> {
+        let mut all_files = Vec::new();
+        let mut dirs_to_process = vec![dir_path.to_string()];
 
-        let base_path = asset_dir.to_string();
-        let entries: Vec<Result<AssetFileEntry<'a>, MiniAppError>> = contents
-            .into_iter()
-            .map(move |name| {
-                let full_path = if base_path.is_empty() || base_path == "/" {
+        while let Some(current_dir) = dirs_to_process.pop() {
+            // Get directory contents from Swift
+            let contents = super::ffi::list_asset_directory(&current_dir);
+
+            for name in contents {
+                let full_path = if current_dir.is_empty() || current_dir == "/" {
                     name.clone()
                 } else {
-                    format!("{}/{}", base_path.trim_end_matches('/'), name)
+                    format!("{}/{}", current_dir.trim_end_matches('/'), name)
                 };
 
-                // Create a reader for the file
+                // Try to read as file first
                 let data = super::ffi::read_asset_data(&full_path);
-                let reader: Box<dyn Read + 'a> = Box::new(Cursor::new(data));
 
-                Ok(AssetFileEntry {
-                    path: full_path,
-                    reader,
-                })
-            })
-            .collect();
+                if !data.is_empty() {
+                    // It's a file, add it to results
+                    let reader: Box<dyn Read + 'a> = Box::new(Cursor::new(data));
+                    all_files.push(Ok(AssetFileEntry {
+                        path: full_path,
+                        reader,
+                    }));
+                } else {
+                    // It might be a directory, try to list it
+                    let sub_contents = super::ffi::list_asset_directory(&full_path);
+                    if !sub_contents.is_empty() {
+                        // It's a directory with contents, add it to processing queue
+                        dirs_to_process.push(full_path);
+                    }
+                }
+            }
+        }
 
-        Box::new(entries.into_iter())
+        all_files
     }
 
     /// Get device information

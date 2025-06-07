@@ -577,7 +577,7 @@ impl AppUiDelegate for MiniApp {
     fn get_tab_bar_config(self: &Arc<Self>) -> Result<String, MiniAppError> {
         // Handle TabBar configuration
         if let Some(tab_bar_json) = self.config.get_tabbar_json_with_base_path(&self.app_dir) {
-            // self.info("TabBar", &tab_bar_json);
+            // crate::info!("TabBar: {}", tab_bar_json);
             Ok(tab_bar_json)
         } else {
             // TabBar is optional or invalid, return a valid empty tabbar JSON
