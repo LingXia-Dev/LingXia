@@ -85,10 +85,10 @@ mod bridge {
 
     extern "Swift" {
         // Resource access functions implemented in Swift
-        #[swift_bridge(swift_name = "read_asset_data")]
+        #[swift_bridge(swift_name = "readAssetData")]
         fn read_asset_data(path: &str) -> Vec<u8>;
 
-        #[swift_bridge(swift_name = "list_asset_directory")]
+        #[swift_bridge(swift_name = "listAssetDirectory")]
         fn list_asset_directory(dir_path: &str) -> Vec<String>;
     }
 }
