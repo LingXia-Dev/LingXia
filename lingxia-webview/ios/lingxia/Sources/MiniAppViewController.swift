@@ -155,7 +155,7 @@ public class MiniAppViewController: UIViewController {
 
         setupNotificationObservers()
 
-        let tabBarJson = MiniApp.dummyNativeGetTabBarConfig(appId: appId)
+        let tabBarJson = lingxia.getTabBarConfig(appId)?.toString()
         let tabBarConfig = TabBarConfig.fromJson(tabBarJson)
 
         setupRootContainer()

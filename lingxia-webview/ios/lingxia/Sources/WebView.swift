@@ -548,7 +548,7 @@ public class LingXiaWebView: WKWebView {
 
     public func getPageConfig() -> NavigationBarConfig? {
         guard let appId = appId, let currentPath = currentPath else { return nil }
-        let configJson = dummyNativeGetPageConfig(appId: appId, path: currentPath)
+        let configJson = lingxia.getPageConfig(appId, currentPath)?.toString()
         return NavigationBarConfig.fromJson(configJson)
     }
 
@@ -654,39 +654,7 @@ public class LingXiaWebView: WKWebView {
         return 0
     }
 
-    private func dummyNativeGetPageConfig(appId: String, path: String) -> String? {
-        os_log("LingXia: [DUMMY] %{public}@ called - appId: %{public}@, path: %{public}@", log: Self.log, type: .debug, #function, appId, path)
 
-        // Different configs for different pages
-        let result: String
-        let isHomePage = path.contains("home/index.html")
-        os_log("LingXia: [DUMMY] Path matching - path: '%{public}@', contains 'home/index.html': %{public}@", log: Self.log, type: .debug, path, String(isHomePage))
-
-        if isHomePage {
-            // Home page - hidden navigation bar (backgroundColor ignored when hidden)
-            result = """
-            {
-                "hidden": true
-            }
-            """
-            os_log("LingXia: [DUMMY] Returning HOME page config with hidden=true", log: Self.log, type: .debug)
-        } else {
-            // Other pages - show navigation bar with white background
-            result = """
-            {
-                "hidden": false,
-                "navigationBarTitleText": "LingXia Demo",
-                "navigationBarBackgroundColor": "#ffffff",
-                "navigationBarTextStyle": "black",
-                "backgroundColor": "#ffffff"
-            }
-            """
-            os_log("LingXia: [DUMMY] Returning OTHER page config with navigationBar visible", log: Self.log, type: .debug)
-        }
-
-        os_log("LingXia: [DUMMY] %{public}@ returning: %{public}@", log: Self.log, type: .debug, #function, result)
-        return result
-    }
 
     private func dummyNativeOnScrollChanged(appId: String, path: String, scrollX: Int, scrollY: Int, maxScrollX: Int, maxScrollY: Int) -> Int32 {
         os_log("[DUMMY] Scroll changed for %{public}@ at %{public}@: (%d,%d)", log: Self.log, type: .debug, appId, path, scrollX, scrollY)

@@ -84,7 +84,8 @@ public class MiniApp {
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?.path ?? ""
         let cachesPath = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?.path ?? ""
 
-        let initResultString = dummyNativeOnMiniAppInited(dataDir: documentsPath, cacheDir: cachesPath)
+        let initResult = lingxia.miniappInit(documentsPath, cachesPath, 0)
+        let initResultString = initResult?.toString()
 
         if let initResult = initResultString {
             let parts = initResult.components(separatedBy: ":")
@@ -100,51 +101,12 @@ public class MiniApp {
         }
     }
 
-    // Dummy native function - replace with actual native call
-    private static func dummyNativeOnMiniAppInited(dataDir: String, cacheDir: String) -> String? {
-        os_log("[DUMMY] Native init called with dataDir: %@ cacheDir: %@", log: log, type: .debug, dataDir, cacheDir)
-        return "homeminiapp:pages/home/index.html"
-    }
-
     private static func dummyNativeOnMiniAppOpened(appId: String, path: String) -> Int32 {
         os_log("[DUMMY] Native app opened: %@ at %@", log: log, type: .debug, appId, path)
         return 0
     }
 
-    public static func dummyNativeGetTabBarConfig(appId: String) -> String? {
-        let jsonString = """
-        {
-            "color": "#999999",
-            "selectedColor": "#1677ff",
-            "backgroundColor": "transparent",
-            "borderStyle": "#eeeeee",
-            "position": "bottom",
-            "list": [
-                {
-                    "text": "Home",
-                    "pagePath": "pages/home/index.html",
-                    "iconPath": "house",
-                    "selectedIconPath": "house.fill",
-                    "selected": true
-                },
-                {
-                    "text": "API",
-                    "pagePath": "pages/API/index.html",
-                    "iconPath": "globe",
-                    "selectedIconPath": "globe"
-                },
-                {
-                    "pagePath": "pages/todo/index.html",
-                    "iconPath": "list.bullet",
-                    "selectedIconPath": "list.bullet"
-                }
-            ]
-        }
-        """
 
-        os_log("[DUMMY] Getting TabBar config for app: %@ - JSON: %@", log: log, type: .info, appId, jsonString)
-        return jsonString
-    }
 
     /// Gets the singleton MiniApp instance
     public static func getInstance() -> MiniApp {
