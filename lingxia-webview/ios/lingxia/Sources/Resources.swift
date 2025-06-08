@@ -31,6 +31,25 @@ public func readAssetData(path: RustStr) -> RustVec<UInt8> {
     return rustVec
 }
 
+/// Check if a path exists and whether it's a directory or file
+/// - Parameter path: The path to check
+/// - Returns: (exists: Bool, isDirectory: Bool)
+private func checkPathType(path: String) -> (exists: Bool, isDirectory: Bool) {
+    guard let bundle = getResourceBundle(),
+          let bundleResourcePath = bundle.resourcePath else {
+        return (false, false)
+    }
+
+    let cleanPath = path.hasPrefix("/") ? String(path.dropFirst()) : path
+    let fullPath = cleanPath.isEmpty ? bundleResourcePath : "\(bundleResourcePath)/\(cleanPath)"
+
+    let fileManager = FileManager.default
+    var isDirectory: ObjCBool = false
+    let exists = fileManager.fileExists(atPath: fullPath, isDirectory: &isDirectory)
+
+    return (exists, isDirectory.boolValue)
+}
+
 private func readAssetDataInternal(path: String) -> [UInt8] {
     guard let bundle = getResourceBundle() else {
         os_log("Failed to get resource bundle", log: resourceLogger, type: .error)
@@ -43,6 +62,13 @@ private func readAssetDataInternal(path: String) -> [UInt8] {
 
     guard !components.isEmpty else {
         os_log("Invalid path: %{public}@", log: resourceLogger, type: .error, path)
+        return []
+    }
+
+    // Check if the path is a directory first to avoid unnecessary error logging
+    let (exists, isDirectory) = checkPathType(path: cleanPath)
+    if exists && isDirectory {
+        // Path is a directory, return empty data silently (this is expected behavior)
         return []
     }
 
@@ -59,8 +85,9 @@ private func readAssetDataInternal(path: String) -> [UInt8] {
         withExtension: pathExtension.isEmpty ? nil : pathExtension,
         subdirectory: subdirectory
     ) else {
-        if !pathExtension.isEmpty {
-            os_log("Resource not found: %{public}@", log: resourceLogger, type: .debug, path)
+        // Only log if it's not a directory and has an extension (likely a file)
+        if !pathExtension.isEmpty && !isDirectory {
+            os_log("Resource file not found: %{public}@", log: resourceLogger, type: .debug, path)
         }
         return []
     }
@@ -69,8 +96,15 @@ private func readAssetDataInternal(path: String) -> [UInt8] {
         let data = try Data(contentsOf: resourceURL)
         return Array(data)
     } catch {
-        os_log("Failed to read asset data for %{public}@: %{public}@", log: resourceLogger, type: .error, path, error.localizedDescription)
-        return []
+        // Check if the error is because we're trying to read a directory
+        if (error as NSError).code == NSFileReadNoSuchFileError ||
+           (error as NSError).domain == NSCocoaErrorDomain && (error as NSError).code == 260 {
+            // File not found - this might be normal during directory detection
+            return []
+        } else {
+            os_log("Failed to read asset data for %{public}@: %{public}@", log: resourceLogger, type: .error, path, error.localizedDescription)
+            return []
+        }
     }
 }
 
