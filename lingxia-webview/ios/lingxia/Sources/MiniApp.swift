@@ -86,7 +86,7 @@ public class MiniApp {
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?.path ?? ""
         let cachesPath = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?.path ?? ""
 
-        let initResult = lingxia.miniappInit(documentsPath, cachesPath, 0)
+        let initResult = lingxia.miniappInit(documentsPath, cachesPath)
         let initResultString = initResult?.toString()
 
         if let initResult = initResultString {

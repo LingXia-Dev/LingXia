@@ -2,11 +2,7 @@ use super::app::App;
 use crate::controller::Controller;
 use miniapp::AppUiDelegate;
 use miniapp::log::LogLevel;
-use std::sync::{OnceLock, mpsc};
-
-/// Global reference to the native app delegate for callbacks
-/// Using usize to make it thread-safe
-pub(crate) static APP_DELEGATE: OnceLock<usize> = OnceLock::new();
+use std::sync::mpsc;
 
 #[swift_bridge::bridge]
 mod bridge {
@@ -31,7 +27,7 @@ mod bridge {
 
     extern "Rust" {
         #[swift_bridge(swift_name = "miniappInit")]
-        fn miniapp_init(data_dir: &str, cache_dir: &str, app_delegate: usize) -> Option<String>;
+        fn miniapp_init(data_dir: &str, cache_dir: &str) -> Option<String>;
 
         #[swift_bridge(swift_name = "onWebviewAttached")]
         fn on_webview_attached(appid: &str, path: &str) -> i32;
@@ -149,7 +145,7 @@ pub use bridge::{
 };
 
 /// Initialize the MiniApp system for iOS/macOS
-pub fn miniapp_init(data_dir: &str, cache_dir: &str, app_delegate: usize) -> Option<String> {
+pub fn miniapp_init(data_dir: &str, cache_dir: &str) -> Option<String> {
     oslog::OsLogger::new("LingXia.Rust")
         .level_filter(log::LevelFilter::Info)
         .init()
@@ -189,9 +185,6 @@ pub fn miniapp_init(data_dir: &str, cache_dir: &str, app_delegate: usize) -> Opt
             }
         }
     });
-
-    // Store app delegate globally as usize
-    let _ = APP_DELEGATE.set(app_delegate);
 
     log::info!(
         "Initializing MiniApp with data_dir: {}, cache_dir: {}",
