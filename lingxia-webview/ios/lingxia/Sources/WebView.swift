@@ -453,9 +453,6 @@ public class LingXiaWebView: WKWebView {
 
         // Forward to Rust
         let _ = lingxia.consoleMessage(appId, currentPath, logLevel, consoleMessage)
-
-        // Also log locally
-        os_log("Console.%{public}@: %{public}@", log: webViewLog, type: osLogType, level, consoleMessage)
     }
 
 
@@ -1049,13 +1046,13 @@ private class WebViewMessageHandler: NSObject, WKScriptMessageHandler {
         if let stringBody = message.body as? String {
             // Already a string
             messageString = stringBody
-            os_log("WebViewMessageHandler: Received string message from JavaScript", log: webViewLog, type: .info)
+            // os_log("WebViewMessageHandler: Received string message from JavaScript", log: webViewLog, type: .info)
         } else if let dictBody = message.body as? [String: Any] {
             // Convert NSDictionary to JSON string
             do {
                 let jsonData = try JSONSerialization.data(withJSONObject: dictBody, options: [])
                 messageString = String(data: jsonData, encoding: .utf8)
-                os_log("WebViewMessageHandler: Converted NSDictionary to JSON string", log: webViewLog, type: .info)
+                // os_log("WebViewMessageHandler: Converted NSDictionary to JSON string", log: webViewLog, type: .info)
             } catch {
                 os_log("WebViewMessageHandler: Failed to convert NSDictionary to JSON: %{public}@", log: webViewLog, type: .error, error.localizedDescription)
                 return
@@ -1070,7 +1067,7 @@ private class WebViewMessageHandler: NSObject, WKScriptMessageHandler {
             return
         }
 
-        os_log("WebViewMessageHandler: Processing message: %{public}@", log: webViewLog, type: .info, String(finalMessageString.prefix(200)))
+        // os_log("WebViewMessageHandler: Processing message: %{public}@", log: webViewLog, type: .info, String(finalMessageString.prefix(200)))
         messageHandler(finalMessageString)
     }
 }

@@ -159,10 +159,7 @@
 
   // Process incoming messages
   function _handleIncomingMessage(message) {
-    log(
-      "Message Received:",
-      typeof message === "object" ? JSON.stringify(message) : message,
-    );
+    // log( "Message Received:", typeof message === "object" ? JSON.stringify(message) : message,);
     if (!message || typeof message !== "object" || !message.type) {
       warn("Invalid message format:", message);
       return;
