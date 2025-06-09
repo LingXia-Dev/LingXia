@@ -4,7 +4,7 @@ import os.log
 @preconcurrency import ObjectiveC
 
 // Log instance outside of @MainActor to avoid isolation issues
-private let miniAppViewControllerLog = OSLog(subsystem: "LingXia", category: "MiniAppViewController")
+private let miniAppViewControllerLog = OSLog(subsystem: "LingXia", category: "MiniAppView")
 
 @MainActor
 public class MiniAppViewController: UIViewController {
@@ -37,10 +37,7 @@ public class MiniAppViewController: UIViewController {
     nonisolated(unsafe) private var closeAppObserver: NSObjectProtocol?
     nonisolated(unsafe) private var switchPageObserver: NSObjectProtocol?
 
-    private static func dummyNativeOnMiniAppClosed(appId: String) -> Int32 {
-        os_log("[DUMMY] MiniApp closed: %{public}@", log: miniAppViewControllerLog, type: .debug, appId)
-        return 0
-    }
+
 
     private static func dummyNativeOnBackPressed(appId: String) -> Int32 {
         os_log("[DUMMY] Back pressed for: %{public}@", log: miniAppViewControllerLog, type: .debug, appId)
@@ -346,12 +343,48 @@ public class MiniAppViewController: UIViewController {
     }
 
     private func setupInitialContent(path: String) {
-        // For initial load, use a simpler approach without animation
-        guard let webView = LingXiaWebView.dummyNativeFindWebView(appId: appId, path: path) else {
-            os_log("Failed to create initial WebView for path: %{public}@", log: Self.log, type: .error, path)
-            return
-        }
+        // NEW APPROACH: Register for WebView creation notification instead of polling
+        // This eliminates the retry mechanism and makes the flow event-driven
 
+        // Capture appId to avoid MainActor issues in closure
+        let currentAppId = appId
+
+        // Use a weak reference to avoid circular reference
+        var observer: NSObjectProtocol?
+        observer = NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("WebViewCreated"),
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self = self,
+                  let userInfo = notification.userInfo,
+                  let notificationAppId = userInfo["appId"] as? String,
+                  let notificationPath = userInfo["path"] as? String,
+                  notificationAppId == currentAppId,
+                  notificationPath == path else {
+                return
+            }
+
+            // Remove observer immediately to prevent multiple calls
+            if let observer = observer {
+                NotificationCenter.default.removeObserver(observer)
+            }
+
+            // Use Task to handle MainActor calls
+            Task { @MainActor in
+                // Find the WebView that was just created
+                guard let webView = self.findWebView(appId: currentAppId, path: path) else {
+                    os_log("WebView creation notification received but WebView not found for path: %{public}@", log: Self.log, type: .error, path)
+                    return
+                }
+
+                self.attachWebViewToUI(webView: webView)
+            }
+        }
+    }
+
+    /// Attaches WebView to UI and triggers the attached event at the right time
+    private func attachWebViewToUI(webView: LingXiaWebView) {
         // Add webview to container first (while hidden)
         webViewContainer.addSubview(webView)
         webView.translatesAutoresizingMaskIntoConstraints = false
@@ -365,10 +398,17 @@ public class MiniAppViewController: UIViewController {
         // Set as current webview
         currentWebView = webView
 
-        // Start loading content in background
+        // Force layout to ensure WebView has correct frame
+        webViewContainer.layoutIfNeeded()
+
+        // NOW trigger attached event - WebView is properly attached and laid out
+        let attachResult = webView.dummyNativeOnWebViewAttached(appId: appId, path: webView.currentPath ?? "")
+        os_log("WebView attached event triggered with result: %d", log: Self.log, type: .info, attachResult)
+
+        // Start loading content
         webView.resumeWebView()
 
-        // Show webview after brief delay to ensure layout is ready
+        // Show webview after brief delay to ensure rendering is ready
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             webView.isHidden = false
 
@@ -807,9 +847,9 @@ public class MiniAppViewController: UIViewController {
             return
         }
 
-        // Find or create target WebView
-        guard let targetWebView = LingXiaWebView.dummyNativeFindWebView(appId: appId, path: targetPath) else {
-            os_log("switchToTab failed: Could not find/create WebView for %{public}@", log: Self.log, type: .error, targetPath)
+        // Find target WebView
+        guard let targetWebView = findWebView(appId: appId, path: targetPath) else {
+            os_log("switchToTab failed: WebView not found for %{public}@, should be created by Rust system", log: Self.log, type: .error, targetPath)
             return
         }
 
@@ -897,9 +937,9 @@ public class MiniAppViewController: UIViewController {
         // Get current WebView before changes
         let oldWebView = currentWebView
 
-        // Find or create WebView for the target page
-        guard let newWebView = LingXiaWebView.dummyNativeFindWebView(appId: appId, path: targetPath) else {
-            os_log("Failed to create WebView for path: %{public}@", log: Self.log, type: .error, targetPath)
+        // Find WebView for the target page
+        guard let newWebView = findWebView(appId: appId, path: targetPath) else {
+            os_log("WebView not found for path: %{public}@, should be created by Rust system", log: Self.log, type: .info, targetPath)
             return
         }
 
@@ -1131,8 +1171,8 @@ public class MiniAppViewController: UIViewController {
         // Pause current WebView
         currentWebView?.pauseWebView()
 
-        // Notify native layer that mini app is being closed
-        let _ = MiniAppViewController.dummyNativeOnMiniAppClosed(appId: appId)
+        // Notify Rust layer that mini app is being closed
+        let _ = lingxia.onMiniappClosed(appId)
 
         // Mark as destroyed to prevent further operations
         isDestroyed = true
@@ -1155,8 +1195,8 @@ public class MiniAppViewController: UIViewController {
             // Schedule UI cleanup on main thread without capturing self
             let appIdCopy = appId
             DispatchQueue.main.async {
-                // Notify native layer about cleanup without retaining self
-                let _ = MiniAppViewController.dummyNativeOnMiniAppClosed(appId: appIdCopy)
+                // Notify Rust layer about cleanup without retaining self
+                let _ = lingxia.onMiniappClosed(appIdCopy)
             }
         }
 
@@ -1396,5 +1436,25 @@ public class MiniAppViewController: UIViewController {
 
         // Use the TabBar's built-in transparency enforcement
         tabBar.forceTransparencyMode()
+    }
+
+    /// Finds existing WebView from Rust
+    /// - Parameters:
+    ///   - appId: The miniapp ID
+    ///   - path: The page path of miniapp
+    /// - Returns: LingXiaWebView instance or nil if not found
+    @MainActor
+    private func findWebView(appId: String, path: String) -> LingXiaWebView? {
+        // Find existing WebView from Rust
+        let webViewPtr = lingxia.findWebView(appId, path)
+
+        if webViewPtr != 0 {
+            // WebView exists in Rust, restore from pointer
+            let pointer = UnsafeRawPointer(bitPattern: webViewPtr)!
+            return Unmanaged<LingXiaWebView>.fromOpaque(pointer).takeUnretainedValue()
+        } else {
+            // WebView doesn't exist in Rust
+            return nil
+        }
     }
 }

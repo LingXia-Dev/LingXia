@@ -39,7 +39,7 @@ public let ACTION_CLOSE_MINIAPP = "com.lingxia.CLOSE_MINIAPP_ACTION"
 /// ```
 @MainActor
 public class MiniApp {
-    private static let log = OSLog(subsystem: "com.lingxia.miniapp", category: "MiniApp")
+    private static let log = OSLog(subsystem: "LingXia", category: "MiniApp")
 
     /// Singleton instance
     private static var instance: MiniApp?
@@ -69,15 +69,16 @@ public class MiniApp {
     /// - Parameter mode: Launch mode (.replaceRoot for main app, .modal for sub-module)
     /// - Warning: Must be called on the main thread
     public static func initialize(mode: MiniAppLaunchMode = .replaceRoot) {
-        self.launchMode = mode
-
-        guard Thread.isMainThread else {
-            DispatchQueue.main.async {
-                initialize(mode: mode)
-            }
+        if homeMiniAppId != nil {
+            os_log("MiniApp.initialize() already called (homeMiniAppId exists), skipping", log: log, type: .info)
             return
         }
 
+        self.launchMode = mode
+        performInitialization(mode: mode)
+    }
+
+    private static func performInitialization(mode: MiniAppLaunchMode) {
         instance = MiniApp(context: UIApplication.shared)
         configureGlobalSystemBars()
 
@@ -100,13 +101,6 @@ public class MiniApp {
             os_log("Failed to get home MiniApp details from native init", log: log, type: .error)
         }
     }
-
-    private static func dummyNativeOnMiniAppOpened(appId: String, path: String) -> Int32 {
-        os_log("[DUMMY] Native app opened: %@ at %@", log: log, type: .debug, appId, path)
-        return 0
-    }
-
-
 
     /// Gets the singleton MiniApp instance
     public static func getInstance() -> MiniApp {
@@ -148,7 +142,9 @@ public class MiniApp {
     ///
     /// - Note: The home app ID and route are set during initialize()
     public static func openHomeMiniApp() {
+        os_log("openHomeMiniApp called", log: log, type: .info)
         if let homeMiniAppId = homeMiniAppId, let homeMiniAppInitialRoute = homeMiniAppInitialRoute {
+            os_log("Opening home app: %@ at %@", log: log, type: .info, homeMiniAppId, homeMiniAppInitialRoute)
             openMiniApp(appId: homeMiniAppId, path: homeMiniAppInitialRoute)
         } else {
             os_log("Home app details not available", log: log, type: .error)
@@ -255,8 +251,9 @@ public class MiniApp {
             }
         }
 
+        // Asynchronously notify Rust to initialize the MiniApp
         Task {
-            let _ = MiniApp.dummyNativeOnMiniAppOpened(appId: appId, path: path)
+            lingxia.onMiniappOpened(appId, path)
         }
     }
 
@@ -274,16 +271,10 @@ public class MiniApp {
         UINavigationBar.appearance().compactAppearance = appearance
         UINavigationBar.appearance().scrollEdgeAppearance = appearance
         UINavigationBar.appearance().compactScrollEdgeAppearance = appearance
-
-        os_log("Global system bars configured for transparency", log: log, type: .info)
     }
 
     // Dummy native function - replace with actual native call
     public static func dummyNativeOnPageSwitched(appId: String, path: String) {
         os_log("[DUMMY] Page switched for %@ to %@", log: log, type: .debug, appId, path)
-    }
-
-    public static func dummyNativeOnAppClosed(appId: String) {
-        os_log("[DUMMY] App closed: %@", log: log, type: .debug, appId)
     }
 }

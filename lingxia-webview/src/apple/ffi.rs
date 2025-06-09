@@ -81,6 +81,9 @@ mod bridge {
             max_scroll_x: i32,
             max_scroll_y: i32,
         ) -> i32;
+
+        #[swift_bridge(swift_name = "findWebView")]
+        fn find_webview(appid: &str, path: &str) -> usize;
     }
 
     extern "Swift" {
@@ -90,11 +93,17 @@ mod bridge {
 
         #[swift_bridge(swift_name = "listAssetDirectory")]
         fn list_asset_directory(dir_path: &str) -> Vec<String>;
+
+        // WebView creation function - returns pointer as usize to Swift WebView object
+        #[swift_bridge(swift_name = "createWebViewPtr")]
+        fn create_webview_ptr(appid: &str, path: &str) -> usize;
     }
 }
 
 // Re-export the bridge functions for use in other modules
-pub use bridge::{HttpRequest, HttpResponse, list_asset_directory, read_asset_data};
+pub use bridge::{
+    HttpRequest, HttpResponse, create_webview_ptr, list_asset_directory, read_asset_data,
+};
 
 /// Initialize the MiniApp system for iOS/macOS
 pub fn miniapp_init(data_dir: &str, cache_dir: &str, app_delegate: usize) -> Option<String> {
@@ -373,4 +382,23 @@ pub fn on_scroll_changed(
         max_scroll_y,
     );
     0
+}
+
+/// Find a WebView for the specified app and path
+/// This is called from Swift to get a WebView instance pointer managed by Rust
+/// Returns the usize pointer to the WebView, or 0 if not found
+pub fn find_webview(appid: &str, path: &str) -> usize {
+    // Get the controller and try to find the WebView
+    if let Some(controller) = Controller::get() {
+        if let Some(webview) = controller.get_webview(appid, path) {
+            // WebView exists, return its pointer
+            webview.inner().get_swift_webview_ptr()
+        } else {
+            // No WebView found
+            0
+        }
+    } else {
+        log::error!("Controller not initialized");
+        0
+    }
 }

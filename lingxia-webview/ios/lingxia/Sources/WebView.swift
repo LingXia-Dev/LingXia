@@ -4,64 +4,8 @@ import Foundation
 import os.log
 import CLingXiaFFI
 
-/// Manager class for WebView instances, providing centralized storage and retrieval
-@MainActor
-public class WebViewManager {
-    private static let log = OSLog(subsystem: "LingXia", category: "WebViewManager")
-
-    public static let shared = WebViewManager()
-    private var webViewStorage: [String: LingXiaWebView] = [:]
-
-    private init() {}
-
-    private func makeKey(appId: String, path: String) -> String {
-        return "\(appId):\(path)"
-    }
-
-    /// Stores a WebView instance
-    public func storeWebView(_ webView: LingXiaWebView, appId: String, path: String) {
-        let key = makeKey(appId: appId, path: path)
-        webViewStorage[key] = webView
-        os_log("Stored WebView for key: %@", log: Self.log, type: .info, key)
-    }
-
-    /// Retrieves a WebView instance
-    public func getWebView(appId: String, path: String) -> LingXiaWebView? {
-        let key = makeKey(appId: appId, path: path)
-        return webViewStorage[key]
-    }
-
-    /// Removes a WebView instance from storage
-    @discardableResult
-    public func removeWebView(appId: String, path: String) -> LingXiaWebView? {
-        let key = makeKey(appId: appId, path: path)
-        let webView = webViewStorage.removeValue(forKey: key)
-        if webView != nil {
-            os_log("Removed WebView for key: %@", log: Self.log, type: .info, key)
-        }
-        return webView
-    }
-
-    /// Removes all WebView instances for a specific app
-    public func removeAllWebViews(for appId: String) -> [LingXiaWebView] {
-        let keysToRemove = webViewStorage.keys.filter { $0.hasPrefix("\(appId):") }
-        var removedWebViews: [LingXiaWebView] = []
-
-        for key in keysToRemove {
-            if let webView = webViewStorage.removeValue(forKey: key) {
-                removedWebViews.append(webView)
-            }
-        }
-
-        os_log("Removed %d WebViews for appId: %@", log: Self.log, type: .info, removedWebViews.count, appId)
-        return removedWebViews
-    }
-
-    /// Gets the total number of stored WebView instances
-    public func getWebViewCount() -> Int {
-        return webViewStorage.count
-    }
-}
+// Global log instance for WebView-related logging (not bound to MainActor)
+private let webViewLog = OSLog(subsystem: "LingXia", category: "WebView")
 
 /// Data structure representing a web resource response
 public struct WebResourceResponseData {
@@ -109,10 +53,8 @@ public struct WebViewConfig {
 /// webView.resumeWebView()
 /// ```
 ///
-/// - Note: All WebView instances are managed centrally through WebViewManager
+/// - Note: WebView instances are managed by Rust layer through direct pointer references
 public class LingXiaWebView: WKWebView {
-    private static let log = OSLog(subsystem: "LingXia", category: "WebView")
-
     internal var appId: String?
     internal var currentPath: String?
     private var isRegistered = false
@@ -133,31 +75,6 @@ public class LingXiaWebView: WKWebView {
     private var scrollEventEnabled: Bool = false
 
     private let config: WebViewConfig
-
-    private static let WEBKIT_PORT_INIT_MESSAGE_DATA = "LingXia-port-init"
-
-    /// Finds an existing WebView instance or creates a new one if not found
-    /// This method manages WebView instances in Swift until native integration is complete
-    /// - Parameters:
-    ///   - appId: The mini app identifier
-    ///   - path: The page path
-    /// - Returns: Existing or newly created WebView instance
-    public static func dummyNativeFindWebView(appId: String, path: String) -> LingXiaWebView? {
-        if let existingWebView = WebViewManager.shared.getWebView(appId: appId, path: path) {
-            os_log("Found existing WebView for appId=%@ path=%@", log: Self.log, type: .info, appId, path)
-            return existingWebView
-        }
-
-        do {
-            let newWebView = try createWebView(appId: appId, path: path)
-            WebViewManager.shared.storeWebView(newWebView, appId: appId, path: path)
-            os_log("Created and stored new WebView for appId=%@ path=%@", log: Self.log, type: .info, appId, path)
-            return newWebView
-        } catch {
-            os_log("Failed to create WebView for appId=%@ path=%@: %@", log: Self.log, type: .error, appId, path, error.localizedDescription)
-            return nil
-        }
-    }
 
     /// Applies screen-sized layout to a view and its container
     /// - Parameters:
@@ -180,7 +97,7 @@ public class LingXiaWebView: WKWebView {
         container?.frame = frame
         view.frame = frame
 
-        os_log("Applied layout: %fx%f", log: Self.log, type: .info, width, height)
+        os_log("Applied layout: %fx%f", log: webViewLog, type: .info, width, height)
     }
 
     /// Creates a new WebView instance with the specified parameters
@@ -200,6 +117,7 @@ public class LingXiaWebView: WKWebView {
     /// - Throws: Error if WebView creation fails
     /// - Note: Created WebViews are initially hidden and should be made visible when needed
     /// - Warning: WebView creation is a heavy operation and should be done sparingly
+    @MainActor
     public static func createWebView(
         appId: String,
         path: String,
@@ -207,18 +125,7 @@ public class LingXiaWebView: WKWebView {
         enableDomStorage: Bool = false
     ) throws -> LingXiaWebView {
         // CRITICAL: WebView creation must happen on main thread
-        // Throw error instead of blocking to prevent deadlocks
-        guard Thread.isMainThread else {
-            throw NSError(
-                domain: "WebViewCreation",
-                code: -2,
-                userInfo: [
-                    NSLocalizedDescriptionKey: "WebView creation must be called on the main thread",
-                    NSLocalizedRecoverySuggestionErrorKey: "Dispatch to main thread before calling createWebView"
-                ]
-            )
-        }
-
+        // This is now enforced by @MainActor
         return try createWebViewOnMainThread(
             appId: appId,
             path: path,
@@ -229,7 +136,7 @@ public class LingXiaWebView: WKWebView {
 
     /// Internal method to create WebView on main thread
     /// - Warning: This method assumes it's being called on the main thread
-    private static func createWebViewOnMainThread(
+    internal static func createWebViewOnMainThread(
         appId: String,
         path: String,
         enableJavaScript: Bool,
@@ -240,9 +147,12 @@ public class LingXiaWebView: WKWebView {
         let config = WebViewConfig(enableJavaScript: enableJavaScript, enableDomStorage: enableDomStorage)
         let webView = LingXiaWebView(config: config)
 
-        // Set appId and path directly
+        // Set appId and path BEFORE calling initializeWebView
         webView.appId = appId
         webView.currentPath = path
+
+        // Now initialize the WebView with appId and path set
+        webView.initializeWebViewWithAppId()
 
         // All WebViews are created as invisible by default
         // Visibility will be controlled by Rust layer
@@ -287,15 +197,19 @@ public class LingXiaWebView: WKWebView {
     }
 
     private func initializeWebView() {
+        // Basic initialization without appId-dependent setup
+        applyWebViewSettings()
+        setupWebViewDelegates()
+    }
+
+    /// Initialize WebView with appId-dependent setup
+    /// This should be called after appId is set
+    internal func initializeWebViewWithAppId() {
         // Add URL scheme handler for lx://
         if let appId = appId {
             let schemeHandler = SchemeHandler(appId: appId)
             configuration.setURLSchemeHandler(schemeHandler, forURLScheme: "lx")
-            os_log("Registered lx:// scheme handler for appId: %@", log: Self.log, type: .info, appId)
         }
-
-        applyWebViewSettings()
-        setupWebViewDelegates()
     }
 
     private func applyWebViewSettings() {
@@ -400,7 +314,7 @@ public class LingXiaWebView: WKWebView {
         configuration.userContentController.add(messageHandler, name: "LingXia")
         channelInitialized = true
 
-        os_log("WebView bridge ready for appId=%@ path=%@", log: Self.log, type: .info,
+        os_log("WebView bridge ready for appId=%@ path=%@", log: webViewLog, type: .info,
                appId ?? "nil", currentPath ?? "nil")
     }
 
@@ -459,7 +373,7 @@ public class LingXiaWebView: WKWebView {
     public func resumeWebView() {
         // Ensure we're on the main thread for UI operations
         guard Thread.isMainThread else {
-            os_log("resumeWebView called from background thread, dispatching to main", log: Self.log, type: .debug)
+            os_log("resumeWebView called from background thread, dispatching to main", log: webViewLog, type: .debug)
             DispatchQueue.main.async { [weak self] in
                 self?.resumeWebViewOnMainThread()
             }
@@ -473,7 +387,6 @@ public class LingXiaWebView: WKWebView {
     /// - Warning: This method assumes it's being called on the main thread
     private func resumeWebViewOnMainThread() {
         assert(Thread.isMainThread, "resumeWebViewOnMainThread must be called on main thread")
-        os_log("Resuming WebView operations, appId=%{public}@ path=%{public}@ isFirstLoad=%{public}@ pageLoaded=%{public}@ showEventSent=%{public}@", log: Self.log, type: .debug, self.appId ?? "nil", self.currentPath ?? "nil", String(self.isFirstLoad), String(self.pageLoaded), String(self.showEventSent))
 
         // Set to visible
         isHidden = false
@@ -566,7 +479,7 @@ public class LingXiaWebView: WKWebView {
             self.scrollEventEnabled = enabled
 
             os_log("WebView.setScrollListenerEnabled: enabled=%@ throttleMs=%.3f",
-                   log: Self.log, type: .info, String(enabled), throttleMs)
+                   log: webViewLog, type: .info, String(enabled), throttleMs)
 
             if enabled {
                 // Enable scroll delegate if not already set
@@ -579,85 +492,49 @@ public class LingXiaWebView: WKWebView {
     }
 
     // Dummy native functions - replace with actual native calls
-    private func dummyNativeOnWebViewAttached(appId: String, path: String) -> Int32 {
-        os_log("[DUMMY] Webview attached for %{public}@ at %{public}@", log: Self.log, type: .debug, appId, path)
-
+    internal func dummyNativeOnWebViewAttached(appId: String, path: String) -> Int32 {
         // Move the page creation logic here from dummyNativeOnPageCreated
-        os_log("LingXia: [DUMMY] %{public}@ called - appId: %{public}@, path: %{public}@", log: Self.log, type: .debug, #function, appId, path)
+        os_log("LingXia: [DUMMY] %{public}@ called - appId: %{public}@, path: %{public}@", log: webViewLog, type: .debug, #function, appId, path)
 
         // Load bing.com in the current webview for demo purposes
         DispatchQueue.main.async { [weak self] in
             if let url = URL(string: "https://www.bing.com") {
                 let request = URLRequest(url: url)
                 let _ = self?.load(request)
-                os_log("LingXia: [DUMMY] Loading bing.com in current WebView for appId: %{public}@, path: %{public}@", log: Self.log, type: .debug, appId, path)
+                os_log("LingXia: [DUMMY] Loading bing.com in current WebView for appId: %{public}@, path: %{public}@", log: webViewLog, type: .debug, appId, path)
             }
         }
-
-        // Pre-create other tabBar pages when home page is attached
-        if path.contains("home/index.html") {
-            os_log("LingXia: [DUMMY] Home page attached, pre-creating other tabBar pages", log: Self.log, type: .info)
-
-            let tabBarPages = [
-                "pages/API/index.html",
-                "pages/todo/index.html"
-            ]
-
-            DispatchQueue.main.async {
-                for tabPage in tabBarPages {
-                    // Check if WebView already exists
-                    if WebViewManager.shared.getWebView(appId: appId, path: tabPage) == nil {
-                        do {
-                            let preCreatedWebView = try LingXiaWebView.createWebView(appId: appId, path: tabPage)
-                            WebViewManager.shared.storeWebView(preCreatedWebView, appId: appId, path: tabPage)
-                            os_log("LingXia: [DUMMY] Pre-created WebView for %{public}@", log: Self.log, type: .info, tabPage)
-
-                            if let url = URL(string: "https://www.baidu.com") {
-                                let request = URLRequest(url: url)
-                                let _ = preCreatedWebView.load(request)
-                                os_log("LingXia: [DUMMY] Pre-loading content for %{public}@", log: Self.log, type: .info, tabPage)
-                            }
-                        } catch {
-                            os_log("LingXia: [DUMMY] Failed to pre-create WebView for %{public}@: %{public}@", log: Self.log, type: .error, tabPage, error.localizedDescription)
-                        }
-                    } else {
-                        os_log("LingXia: [DUMMY] WebView for %{public}@ already exists, skipping pre-creation", log: Self.log, type: .debug, tabPage)
-                    }
-                }
-            }
-        }
-
         return 0
     }
 
     private func dummyNativeHandlePostMessage(appId: String, path: String, message: String) -> Int32 {
-        os_log("[DUMMY] Page handledPost for %{public}@ at %{public}@", log: Self.log, type: .debug, appId, path)
+        os_log("[DUMMY] Page handledPost for %{public}@ at %{public}@", log: webViewLog, type: .debug, appId, path)
         return 0
     }
 
     private func dummyNativeOnPageStarted(appId: String, path: String) -> Int32 {
-        os_log("[DUMMY] Page started for %{public}@ at %{public}@", log: Self.log, type: .debug, appId, path)
+        os_log("[DUMMY] Page started for %{public}@ at %{public}@", log: webViewLog, type: .debug, appId, path)
         return 0
     }
 
     private func dummyNativeOnPageFinished(appId: String, path: String) -> Int32 {
-        os_log("[DUMMY] Page finished for %{public}@ at %{public}@", log: Self.log, type: .debug, appId, path)
+        os_log("[DUMMY] Page finished for %{public}@ at %{public}@", log: webViewLog, type: .debug, appId, path)
         return 0
     }
 
     private func dummyNativeOnPageShow(appId: String, path: String) {
-        os_log("[DUMMY] Page show for %{public}@ at %{public}@", log: Self.log, type: .debug, appId, path)
+        os_log("[DUMMY] Page show for %{public}@ at %{public}@", log: webViewLog, type: .debug, appId, path)
     }
 
     private func dummyNativeShouldOverrideUrlLoading(appId: String, url: String) -> Int32 {
-        os_log("[DUMMY] Should override URL loading for %{public}@: %{public}@", log: Self.log, type: .debug, appId, url)
+        os_log("[DUMMY] Should override URL loading for %{public}@: %{public}@", log: webViewLog, type: .debug, appId, url)
         return 0
     }
 
 
 
     private func dummyNativeOnScrollChanged(appId: String, path: String, scrollX: Int, scrollY: Int, maxScrollX: Int, maxScrollY: Int) -> Int32 {
-        os_log("[DUMMY] Scroll changed for %{public}@ at %{public}@: (%d,%d)", log: Self.log, type: .debug, appId, path, scrollX, scrollY)
+        os_log("[DUMMY] Scroll changed for %{public}@ at %{public}@: (%d,%d)", log: webViewLog, type: .debug, appId, path, scrollX, scrollY)
         return 0
     }
 
@@ -727,14 +604,14 @@ extension LingXiaWebView: WKNavigationDelegate {
 
                     // Check if this is a blocked request (403 status)
                     if httpResponse.status_code == 403 {
-                        os_log("HTTPS request blocked by Rust: %@", log: Self.log, type: .default, url.absoluteString)
+                        os_log("HTTPS request blocked by Rust: %@", log: webViewLog, type: .default, url.absoluteString)
                         // Could show an error page or just silently block
                         return
                     }
 
                     // For other responses, we could inject custom content
                     // This is more complex and might require custom handling
-                    os_log("HTTPS request handled by Rust: %@ (status: %d)", log: Self.log, type: .info, url.absoluteString, httpResponse.status_code)
+                    os_log("HTTPS request handled by Rust: %@ (status: %d)", log: webViewLog, type: .info, url.absoluteString, httpResponse.status_code)
                     return
                 }
             }
@@ -834,4 +711,72 @@ private class WebViewMessageHandler: NSObject, WKScriptMessageHandler {
 
 private func dummyNativehandleRequest(appId: String, httpRequest: HttpRequest) -> HttpResponse? {
     return nil
+}
+
+
+/// Creates a WebView and returns its pointer as UInt for Rust to hold
+/// This function is called by Rust through swift-bridge
+public func createWebViewPtr(appid: RustStr, path: RustStr) -> UInt {
+    // Convert RustStr to String
+    let appidString = appid.toString()
+    let pathString = path.toString()
+
+    // Use DispatchQueue.main.sync to ensure we're on main thread
+    // This works whether we're already on main thread or not
+    var result: UInt = 0
+    var webView: LingXiaWebView?
+
+    // Use MainActor.assumeIsolated since we know we're on main thread
+    // This allows us to call @MainActor methods synchronously
+    if Thread.isMainThread {
+        do {
+            webView = try MainActor.assumeIsolated {
+                try LingXiaWebView.createWebView(appId: appidString, path: pathString)
+            }
+            if let webView = webView {
+                let pointer = Unmanaged.passRetained(webView).toOpaque()
+                result = UInt(bitPattern: pointer)
+                os_log("createWebViewPtr: WebView created successfully, pointer=%{public}@", log: webViewLog, type: .info, String(describing: result))
+            }
+        } catch {
+            os_log("createWebViewPtr: Failed to create WebView: %@", log: webViewLog, type: .error, error.localizedDescription)
+            result = 0
+        }
+    } else {
+        // Not on main thread, use sync dispatch
+        DispatchQueue.main.sync {
+            do {
+                webView = try MainActor.assumeIsolated {
+                    try LingXiaWebView.createWebView(appId: appidString, path: pathString)
+                }
+                if let webView = webView {
+                    let pointer = Unmanaged.passRetained(webView).toOpaque()
+                    result = UInt(bitPattern: pointer)
+                    os_log("createWebViewPtr: WebView created successfully via sync dispatch, pointer=%{public}@", log: webViewLog, type: .info, String(describing: result))
+                }
+            } catch {
+                os_log("createWebViewPtr: Failed to create WebView via sync dispatch: %@", log: webViewLog, type: .error, error.localizedDescription)
+                result = 0
+            }
+        }
+    }
+
+    // Send notification that WebView was created (instead of immediately triggering attached)
+    // This allows UI layer to attach WebView properly before triggering attached event
+    if let _ = webView, result != 0 {
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(
+                name: NSNotification.Name("WebViewCreated"),
+                object: nil,
+                userInfo: [
+                    "appId": appidString,
+                    "path": pathString,
+                    "webViewPtr": result
+                ]
+            )
+            os_log("createWebViewPtr: Posted WebViewCreated notification for appId=%{public}@, path=%{public}@", log: webViewLog, type: .info, appidString, pathString)
+        }
+    }
+
+    return result
 }
