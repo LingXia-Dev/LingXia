@@ -2,59 +2,61 @@ import Foundation
 import os.log
 import CLingXiaFFI
 
-private let resourceLogger = OSLog(subsystem: "LingXia", category: "Resources")
+/// Resources class for handling asset data and directory operations
+public class Resources {
+    private static let resourceLogger = OSLog(subsystem: "LingXia", category: "Resources")
 
-/// Get the resource bundle for the package
-/// - Returns: The bundle containing resources, or nil if not found
-private func getResourceBundle() -> Bundle? {
-    let mainBundle = Bundle.main
+    /// Get the resource bundle for the package
+    /// - Returns: The bundle containing resources, or nil if not found
+    private static func getResourceBundle() -> Bundle? {
+        let mainBundle = Bundle.main
 
-    // Look for the SPM resource bundle first
-    if let bundlePath = mainBundle.path(forResource: "miniapp_miniapp", ofType: "bundle"),
-       let resourceBundle = Bundle(path: bundlePath) {
-        return resourceBundle
+        // Look for the SPM resource bundle first
+        if let bundlePath = mainBundle.path(forResource: "miniapp_miniapp", ofType: "bundle"),
+           let resourceBundle = Bundle(path: bundlePath) {
+            return resourceBundle
+        }
+
+        // Fallback to main bundle
+        return mainBundle
     }
 
-    // Fallback to main bundle
-    return mainBundle
-}
-
-/// Read asset data from the bundle resources
-/// - Parameter path: The relative path to the asset within the bundle
-/// - Returns: The asset data as bytes, or empty array if not found
-public func readAssetData(path: RustStr) -> RustVec<UInt8> {
-    let data = readAssetDataInternal(path: path.toString())
-    let rustVec = RustVec<UInt8>()
-    for byte in data {
-        rustVec.push(value: byte)
-    }
-    return rustVec
-}
-
-/// Check if a path exists and whether it's a directory or file
-/// - Parameter path: The path to check
-/// - Returns: (exists: Bool, isDirectory: Bool)
-private func checkPathType(path: String) -> (exists: Bool, isDirectory: Bool) {
-    guard let bundle = getResourceBundle(),
-          let bundleResourcePath = bundle.resourcePath else {
-        return (false, false)
+    /// Read asset data from the bundle resources
+    /// - Parameter path: The relative path to the asset within the bundle
+    /// - Returns: The asset data as bytes, or empty array if not found
+    public static func readAssetData(path: RustStr) -> RustVec<UInt8> {
+        let data = readAssetDataInternal(path: path.toString())
+        let rustVec = RustVec<UInt8>()
+        for byte in data {
+            rustVec.push(value: byte)
+        }
+        return rustVec
     }
 
-    let cleanPath = path.hasPrefix("/") ? String(path.dropFirst()) : path
-    let fullPath = cleanPath.isEmpty ? bundleResourcePath : "\(bundleResourcePath)/\(cleanPath)"
+    /// Check if a path exists and whether it's a directory or file
+    /// - Parameter path: The path to check
+    /// - Returns: (exists: Bool, isDirectory: Bool)
+    private static func checkPathType(path: String) -> (exists: Bool, isDirectory: Bool) {
+        guard let bundle = getResourceBundle(),
+              let bundleResourcePath = bundle.resourcePath else {
+            return (false, false)
+        }
 
-    let fileManager = FileManager.default
-    var isDirectory: ObjCBool = false
-    let exists = fileManager.fileExists(atPath: fullPath, isDirectory: &isDirectory)
+        let cleanPath = path.hasPrefix("/") ? String(path.dropFirst()) : path
+        let fullPath = cleanPath.isEmpty ? bundleResourcePath : "\(bundleResourcePath)/\(cleanPath)"
 
-    return (exists, isDirectory.boolValue)
-}
+        let fileManager = FileManager.default
+        var isDirectory: ObjCBool = false
+        let exists = fileManager.fileExists(atPath: fullPath, isDirectory: &isDirectory)
 
-private func readAssetDataInternal(path: String) -> [UInt8] {
-    guard let bundle = getResourceBundle() else {
-        os_log("Failed to get resource bundle", log: resourceLogger, type: .error)
-        return []
+        return (exists, isDirectory.boolValue)
     }
+
+    private static func readAssetDataInternal(path: String) -> [UInt8] {
+        guard let bundle = getResourceBundle() else {
+            os_log("Failed to get resource bundle", log: resourceLogger, type: .error)
+            return []
+        }
 
     // Handle different path formats
     let cleanPath = path.hasPrefix("/") ? String(path.dropFirst()) : path
@@ -108,23 +110,23 @@ private func readAssetDataInternal(path: String) -> [UInt8] {
     }
 }
 
-/// List contents of an asset directory
-/// - Parameter dir_path: The directory path within the bundle
-/// - Returns: Array of file/directory names in the directory
-public func listAssetDirectory(dir_path: RustStr) -> RustVec<RustString> {
-    let files = listAssetDirectoryInternal(dir_path: dir_path.toString())
-    let rustVec = RustVec<RustString>()
-    for file in files {
-        rustVec.push(value: RustString(file))
+    /// List contents of an asset directory
+    /// - Parameter dir_path: The directory path within the bundle
+    /// - Returns: Array of file/directory names in the directory
+    public static func listAssetDirectory(dir_path: RustStr) -> RustVec<RustString> {
+        let files = listAssetDirectoryInternal(dir_path: dir_path.toString())
+        let rustVec = RustVec<RustString>()
+        for file in files {
+            rustVec.push(value: RustString(file))
+        }
+        return rustVec
     }
-    return rustVec
-}
 
-private func listAssetDirectoryInternal(dir_path: String) -> [String] {
-    guard let bundle = getResourceBundle() else {
-        os_log("Failed to get resource bundle", log: resourceLogger, type: .error)
-        return []
-    }
+    private static func listAssetDirectoryInternal(dir_path: String) -> [String] {
+        guard let bundle = getResourceBundle() else {
+            os_log("Failed to get resource bundle", log: resourceLogger, type: .error)
+            return []
+        }
 
     // Handle root directory case
     let cleanPath = dir_path.hasPrefix("/") ? String(dir_path.dropFirst()) : dir_path
@@ -148,4 +150,5 @@ private func listAssetDirectoryInternal(dir_path: String) -> [String] {
         os_log("Failed to list directory %{public}@: %{public}@", log: resourceLogger, type: .error, dir_path, error.localizedDescription)
         return []
     }
+}
 }

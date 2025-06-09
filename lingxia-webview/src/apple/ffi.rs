@@ -84,10 +84,10 @@ mod bridge {
 
     extern "Swift" {
         // Resource access functions implemented in Swift
-        #[swift_bridge(swift_name = "readAssetData")]
+        #[swift_bridge(swift_name = "Resources.readAssetData")]
         fn read_asset_data(path: &str) -> Vec<u8>;
 
-        #[swift_bridge(swift_name = "listAssetDirectory")]
+        #[swift_bridge(swift_name = "Resources.listAssetDirectory")]
         fn list_asset_directory(dir_path: &str) -> Vec<String>;
 
         // Device info functions
