@@ -455,10 +455,12 @@ class WebView @JvmOverloads constructor(
     }
 
     fun clearBrowsingData() {
-        Log.d(TAG, "Clearing browsing data")
-        clearHistory()
-        clearCache(true)
-        clearFormData()
+        ensureMainThread {
+            Log.d(TAG, "Clearing browsing data")
+            clearHistory()
+            clearCache(true)
+            clearFormData()
+        }
     }
 
     fun resetViewport() {
@@ -577,15 +579,19 @@ class WebView @JvmOverloads constructor(
     }
 
     fun setUserAgent(userAgent: String) {
-        settings.userAgentString = userAgent
+        ensureMainThread {
+            settings.userAgentString = userAgent
+        }
     }
 
     override fun loadUrl(url: String) {
-        Log.d(TAG, "Loading URL: $url")
-        savedUrl = url
-        resetViewport()
-        visibility = View.VISIBLE
-        super.loadUrl(url)
+        ensureMainThread {
+            Log.d(TAG, "Loading URL: $url")
+            savedUrl = url
+            resetViewport()
+            visibility = View.VISIBLE
+            super.loadUrl(url)
+        }
     }
 
     fun getPageConfig(): NavigationBarConfig? {
@@ -602,19 +608,21 @@ class WebView @JvmOverloads constructor(
      * @param throttleMs Throttle time in milliseconds (minimum 16ms for 60fps), defaults to 100ms
      */
     fun setScrollListenerEnabled(enabled: Boolean, throttleMs: Long = 100) {
-        // Set throttle time first (with validation)
-        scrollEventThrottleMs = maxOf(16, throttleMs)
+        ensureMainThread {
+            // Set throttle time first (with validation)
+            scrollEventThrottleMs = maxOf(16, throttleMs)
 
-        if (enabled) {
-            // Set up scroll listener when enabling
-            setOnScrollChangeListener { view, scrollX, scrollY, oldScrollX, oldScrollY ->
-              handleScrollChange(scrollX, scrollY, oldScrollX, oldScrollY)
+            if (enabled) {
+                // Set up scroll listener when enabling
+                setOnScrollChangeListener { view, scrollX, scrollY, oldScrollX, oldScrollY ->
+                  handleScrollChange(scrollX, scrollY, oldScrollX, oldScrollY)
+                }
+                Log.d(TAG, "Scroll listener enabled with ${scrollEventThrottleMs}ms throttle")
+            } else {
+                // Clear scroll listener when disabling
+                setOnScrollChangeListener(null)
+                Log.d(TAG, "Scroll listener disabled")
             }
-            Log.d(TAG, "Scroll listener enabled with ${scrollEventThrottleMs}ms throttle")
-        } else {
-            // Clear scroll listener when disabling
-            setOnScrollChangeListener(null)
-            Log.d(TAG, "Scroll listener disabled")
         }
     }
 
@@ -707,6 +715,57 @@ class WebView @JvmOverloads constructor(
             showEventSent = true
         } else if (showEventSent) {
             Log.d(TAG, "Skipping PageShow - already sent in this session")
+        }
+    }
+
+    /**
+     * Helper method to ensure code runs on the main thread.
+     * If called from a non-main thread, it will post to the main thread and wait for completion.
+     * If called from the main thread, it executes immediately.
+     *
+     * @param action The action to execute on the main thread
+     * @throws RuntimeException if the action throws an exception
+     */
+    private fun ensureMainThread(action: () -> Unit) {
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
+            // Already on main thread, execute directly
+            action()
+        } else {
+            // Not on main thread, post to main thread and wait
+            var exception: Exception? = null
+            val latch = java.util.concurrent.CountDownLatch(1)
+
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                try {
+                    action()
+                } catch (e: Exception) {
+                    exception = e
+                } finally {
+                    latch.countDown()
+                }
+            }
+
+            try {
+                latch.await()
+            } catch (e: InterruptedException) {
+                throw RuntimeException("Interrupted while waiting for main thread execution", e)
+            }
+
+            exception?.let { throw RuntimeException("Error executing on main thread", it) }
+        }
+    }
+
+    /**
+     * Evaluates JavaScript code in the WebView.
+     * This method is thread-safe and can be called from any thread.
+     * Overrides the Android WebView's evaluateJavascript method.
+     *
+     * @param script The JavaScript code to evaluate
+     * @param resultCallback Optional callback for the result
+     */
+    override fun evaluateJavascript(script: String, resultCallback: android.webkit.ValueCallback<String>?) {
+        ensureMainThread {
+            super.evaluateJavascript(script, resultCallback)
         }
     }
 }
