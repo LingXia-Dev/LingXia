@@ -45,22 +45,38 @@
             resultElement.classList.remove('hidden');
         }
 
+        // Set background image using img element (compatible with lx:// scheme)
+        function setBackgroundImage(imageUrl) {
+            // Remove existing background image if any
+            const existingBg = document.getElementById('background-image');
+            if (existingBg) {
+                existingBg.remove();
+            }
+
+            // Create img element as background
+            const bgImg = document.createElement('img');
+            bgImg.id = 'background-image';
+            bgImg.src = imageUrl;
+            bgImg.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+                z-index: -1;
+                pointer-events: none;
+            `;
+
+            // Insert as first child to ensure it's behind other content
+            document.body.insertBefore(bgImg, document.body.firstChild);
+        }
+
         // Process initial data
         function handleInitialData(data) {
-            console.log('Initial data received:', data);
-
             if (data.greeting) showResult(data.greeting);
-
-            if (data.imageUrl) {
-                document.body.style.backgroundImage = `url(${data.imageUrl})`;
-                document.body.style.backgroundSize = 'cover';
-                document.body.style.backgroundRepeat = 'no-repeat';
-                document.body.style.backgroundPosition = 'center';
-            }
-
-            if (data.ipAddr) {
-                ipInfo.textContent = `Public IP: ${data.ipAddr}`;
-            }
+            if (data.imageUrl) setBackgroundImage(data.imageUrl);
+            if (data.ipAddr) ipInfo.textContent = `Public IP: ${data.ipAddr}`;
         }
 
         // Subscribe to data updates
