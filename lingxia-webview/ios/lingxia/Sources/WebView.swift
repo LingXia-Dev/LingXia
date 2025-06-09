@@ -309,16 +309,25 @@ public class LingXiaWebView: WKWebView {
         let messageHandler = WebViewMessageHandler { [weak self] message in
             guard let self = self else { return }
 
+            // Check for LXPortRdy event to mark channel as initialized
+            if !self.channelInitialized && message.contains("\"name\":\"LXPortRdy\"") && message.contains("\"type\":\"event\"") {
+                os_log("LXPortRdy event detected, message channel is ready", log: webViewLog, type: .info)
+                self.channelInitialized = true
+            }
+
             // Forward message to native layer
-            guard let appId = self.appId, let currentPath = self.currentPath else { return }
+            guard let appId = self.appId, let currentPath = self.currentPath else {
+                os_log("WebViewMessageHandler: Missing appId or currentPath, cannot forward message", log: webViewLog, type: .error)
+                return
+            }
+
             let _ = lingxia.handlePostMessage(appId, currentPath, message)
         }
 
         messageChannel = messageHandler
         configuration.userContentController.add(messageHandler, name: "LingXia")
-        channelInitialized = true
 
-        os_log("WebView bridge ready for appId=%@ path=%@", log: webViewLog, type: .info,
+        os_log("WebView bridge setup for appId=%@ path=%@ (waiting for LXPortRdy)", log: webViewLog, type: .info,
                appId ?? "nil", currentPath ?? "nil")
     }
 
@@ -908,8 +917,33 @@ private class WebViewMessageHandler: NSObject, WKScriptMessageHandler {
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        if let messageBody = message.body as? String {
-            messageHandler(messageBody)
+        var messageString: String?
+
+        if let stringBody = message.body as? String {
+            // Already a string
+            messageString = stringBody
+            os_log("WebViewMessageHandler: Received string message from JavaScript", log: webViewLog, type: .info)
+        } else if let dictBody = message.body as? [String: Any] {
+            // Convert NSDictionary to JSON string
+            do {
+                let jsonData = try JSONSerialization.data(withJSONObject: dictBody, options: [])
+                messageString = String(data: jsonData, encoding: .utf8)
+                os_log("WebViewMessageHandler: Converted NSDictionary to JSON string", log: webViewLog, type: .info)
+            } catch {
+                os_log("WebViewMessageHandler: Failed to convert NSDictionary to JSON: %{public}@", log: webViewLog, type: .error, error.localizedDescription)
+                return
+            }
+        } else {
+            os_log("WebViewMessageHandler: Received unsupported message type: %{public}@", log: webViewLog, type: .error, String(describing: type(of: message.body)))
+            return
         }
+
+        guard let finalMessageString = messageString else {
+            os_log("WebViewMessageHandler: Failed to get message string", log: webViewLog, type: .error)
+            return
+        }
+
+        os_log("WebViewMessageHandler: Processing message: %{public}@", log: webViewLog, type: .info, String(finalMessageString.prefix(200)))
+        messageHandler(finalMessageString)
     }
 }
