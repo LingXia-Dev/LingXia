@@ -146,14 +146,13 @@ public class LingXiaWebView: WKWebView {
         assert(Thread.isMainThread, "createWebViewOnMainThread must be called on main thread")
 
         let config = WebViewConfig(enableJavaScript: enableJavaScript, enableDomStorage: enableDomStorage)
-        let webView = LingXiaWebView(config: config)
 
-        // Set appId and path BEFORE calling initializeWebView
+        // Create WebView with pre-configured scheme handler
+        let webView = LingXiaWebView(config: config, appId: appId)
+
+        // Set appId and path
         webView.appId = appId
         webView.currentPath = path
-
-        // Now initialize the WebView with appId and path set
-        webView.initializeWebViewWithAppId()
 
         // All WebViews are created as invisible by default
         // Visibility will be controlled by Rust layer
@@ -195,6 +194,44 @@ public class LingXiaWebView: WKWebView {
         initializeWebView()
     }
 
+    /// Initialize WebView with appId for scheme handler setup
+    public init(config: WebViewConfig = WebViewConfig(), appId: String) {
+        self.config = config
+
+        let configuration = WKWebViewConfiguration()
+
+        // Optimize for faster loading
+        configuration.allowsInlineMediaPlayback = true
+        configuration.mediaTypesRequiringUserActionForPlayback = []
+        if #available(iOS 14.0, *) {
+            configuration.limitsNavigationsToAppBoundDomains = false
+        }
+
+        // Enable faster networking
+        configuration.upgradeKnownHostsToHTTPS = false
+
+        // CRITICAL: Set up scheme handler BEFORE creating WebView
+        let schemeHandler = SchemeHandler(appId: appId)
+        configuration.setURLSchemeHandler(schemeHandler, forURLScheme: "lx")
+
+        super.init(frame: .zero, configuration: configuration)
+
+        os_log("WebView initialized with frame: %{public}@ and lx:// scheme handler for appId=%@", log: webViewLog, type: .info, String(describing: frame), appId)
+
+        // CRITICAL: Force transparent background at all levels
+        backgroundColor = UIColor.clear
+        isOpaque = false
+
+        // Force the layer to be transparent as well
+        layer.backgroundColor = UIColor.clear.cgColor
+        layer.isOpaque = false
+
+        // Disable any default background drawing
+        layer.masksToBounds = false
+
+        initializeWebView()
+    }
+
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
@@ -203,17 +240,6 @@ public class LingXiaWebView: WKWebView {
         // Basic initialization without appId-dependent setup
         applyWebViewSettings()
         setupWebViewDelegates()
-    }
-
-    /// Initialize WebView with appId-dependent setup
-    /// This should be called after appId is set
-    internal func initializeWebViewWithAppId() {
-        // Add URL scheme handler for lx://
-        if let appId = appId {
-            let schemeHandler = SchemeHandler(appId: appId)
-            configuration.setURLSchemeHandler(schemeHandler, forURLScheme: "lx")
-            os_log("Registered lx:// scheme handler for appId=%@", log: webViewLog, type: .info, appId)
-        }
     }
 
     private func applyWebViewSettings() {
