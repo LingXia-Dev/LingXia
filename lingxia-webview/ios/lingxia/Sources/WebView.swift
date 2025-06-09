@@ -240,6 +240,58 @@ public class LingXiaWebView: WKWebView {
         // Basic initialization without appId-dependent setup
         applyWebViewSettings()
         setupWebViewDelegates()
+        setupConsoleInterceptor()
+    }
+
+    /// Setup JavaScript console interceptor
+    private func setupConsoleInterceptor() {
+        let consoleScript = """
+        (function() {
+            const originalLog = console.log;
+            const originalError = console.error;
+            const originalWarn = console.warn;
+            const originalInfo = console.info;
+
+            function sendConsoleMessage(level, args) {
+                const message = args.map(arg =>
+                    typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
+                ).join(' ');
+
+                try {
+                    // Use dedicated console handler
+                    window.webkit.messageHandlers.LingXiaConsole.postMessage({
+                        level: level,
+                        message: message
+                    });
+                } catch (e) {
+                    // Fallback if message handler not ready
+                }
+            }
+
+            console.log = function(...args) {
+                sendConsoleMessage('log', args);
+                originalLog.apply(console, args);
+            };
+
+            console.error = function(...args) {
+                sendConsoleMessage('error', args);
+                originalError.apply(console, args);
+            };
+
+            console.warn = function(...args) {
+                sendConsoleMessage('warn', args);
+                originalWarn.apply(console, args);
+            };
+
+            console.info = function(...args) {
+                sendConsoleMessage('info', args);
+                originalInfo.apply(console, args);
+            };
+        })();
+        """
+
+        let userScript = WKUserScript(source: consoleScript, injectionTime: .atDocumentStart, forMainFrameOnly: false)
+        configuration.userContentController.addUserScript(userScript)
     }
 
     private func applyWebViewSettings() {
@@ -324,14 +376,15 @@ public class LingXiaWebView: WKWebView {
             return
         }
 
-        // Clean up existing channel if any
+        // Clean up existing channels if any
         if messageChannel != nil {
             configuration.userContentController.removeScriptMessageHandler(forName: "LingXia")
+            configuration.userContentController.removeScriptMessageHandler(forName: "LingXiaConsole")
             messageChannel = nil
         }
         channelInitialized = false
 
-        // Setup message handler for bridge.js communication
+        // Setup main message handler for bridge.js communication
         let messageHandler = WebViewMessageHandler { [weak self] message in
             guard let self = self else { return }
 
@@ -350,11 +403,59 @@ public class LingXiaWebView: WKWebView {
             let _ = lingxia.handlePostMessage(appId, currentPath, message)
         }
 
+        // Setup dedicated console message handler
+        let consoleHandler = WebViewMessageHandler { [weak self] message in
+            guard let self = self else { return }
+            self.handleConsoleMessage(message)
+        }
+
         messageChannel = messageHandler
         configuration.userContentController.add(messageHandler, name: "LingXia")
+        configuration.userContentController.add(consoleHandler, name: "LingXiaConsole")
 
         os_log("WebView bridge setup for appId=%@ path=%@ (waiting for LXPortRdy)", log: webViewLog, type: .info,
                appId ?? "nil", currentPath ?? "nil")
+    }
+
+    /// Handle console messages from JavaScript
+    private func handleConsoleMessage(_ message: String) {
+        guard let appId = appId, let currentPath = currentPath else { return }
+
+        // Parse console message JSON (simplified format from dedicated handler)
+        guard let data = message.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let level = json["level"] as? String,
+              let consoleMessage = json["message"] as? String else {
+            os_log("Failed to parse console message: %{public}@", log: webViewLog, type: .error, message)
+            return
+        }
+
+        // Map console levels to log levels
+        let logLevel: Int32
+        let osLogType: OSLogType
+        switch level {
+        case "error":
+            logLevel = 6 // ERROR
+            osLogType = .error
+        case "warn":
+            logLevel = 5 // WARN
+            osLogType = .default
+        case "info":
+            logLevel = 4 // INFO
+            osLogType = .info
+        case "log":
+            logLevel = 4 // INFO
+            osLogType = .info
+        default:
+            logLevel = 4 // INFO
+            osLogType = .info
+        }
+
+        // Forward to Rust
+        let _ = lingxia.consoleMessage(appId, currentPath, logLevel, consoleMessage)
+
+        // Also log locally
+        os_log("Console.%{public}@: %{public}@", log: webViewLog, type: osLogType, level, consoleMessage)
     }
 
 
@@ -917,7 +1018,7 @@ extension LingXiaWebView: WKNavigationDelegate {
 
 // MARK: - WKUIDelegate
 extension LingXiaWebView: WKUIDelegate {
-    // Handle console messages and other UI delegate methods
+    // WKUIDelegate methods can be added here if needed for alert/confirm/prompt handling
 }
 
 // MARK: - UIScrollViewDelegate
