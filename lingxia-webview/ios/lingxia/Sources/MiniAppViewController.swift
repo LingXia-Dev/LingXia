@@ -402,8 +402,15 @@ public class MiniAppViewController: UIViewController {
         webViewContainer.layoutIfNeeded()
 
         // NOW trigger attached event - WebView is properly attached and laid out
-        let attachResult = webView.dummyNativeOnWebViewAttached(appId: appId, path: webView.currentPath ?? "")
-        os_log("WebView attached event triggered with result: %d", log: Self.log, type: .info, attachResult)
+        let currentPath = webView.currentPath ?? ""
+        let attachResult = appId.toRustStr { appidRustStr in
+            currentPath.toRustStr { pathRustStr in
+                lingxia.onWebviewAttached(appidRustStr, pathRustStr)
+            }
+        }
+        if attachResult == 0 {
+            webView.isRegistered = true
+        }
 
         // Start loading content
         webView.resumeWebView()
@@ -840,14 +847,16 @@ public class MiniAppViewController: UIViewController {
 
         // Capture reference to previous WebView before changing anything
         let previousWebView = currentWebView
+        os_log("switchToTab: Previous WebView path=%{public}@", log: Self.log, type: .info, previousWebView?.currentPath ?? "nil")
 
         // Find target tab index
         guard let targetIndex = tabBar?.findTabIndexByPath(targetPath), targetIndex >= 0 else {
             os_log("switchToTab failed: Path '%{public}@' not found in TabBar items.", log: Self.log, type: .error, targetPath)
             return
         }
+        os_log("switchToTab: Found target tab index=%d", log: Self.log, type: .info, targetIndex)
 
-        // Find target WebView
+        // Find target WebView (should be created by Rust layer when needed)
         guard let targetWebView = findWebView(appId: appId, path: targetPath) else {
             os_log("switchToTab failed: WebView not found for %{public}@, should be created by Rust system", log: Self.log, type: .error, targetPath)
             return
@@ -871,27 +880,8 @@ public class MiniAppViewController: UIViewController {
             navigationBar?.isHidden = true
         }
 
-        // Add target view if it's not already there
-        if targetWebView.superview != webViewContainer {
-            if targetWebView.superview != nil {
-                targetWebView.removeFromSuperview()
-            }
-
-            webViewContainer.addSubview(targetWebView)
-            targetWebView.translatesAutoresizingMaskIntoConstraints = false
-            NSLayoutConstraint.activate([
-                targetWebView.topAnchor.constraint(equalTo: webViewContainer.topAnchor),
-                targetWebView.leadingAnchor.constraint(equalTo: webViewContainer.leadingAnchor),
-                targetWebView.trailingAnchor.constraint(equalTo: webViewContainer.trailingAnchor),
-                targetWebView.bottomAnchor.constraint(equalTo: webViewContainer.bottomAnchor)
-            ])
-        } else {
-            webViewContainer.bringSubviewToFront(targetWebView)
-        }
-
-        // Immediate switch without animation or layout changes
-        targetWebView.isHidden = false
-        targetWebView.resumeWebView()
+        // Attach and resume WebView (similar to Android's implementation attachAndResumeWebView)
+        attachAndResumeWebView(targetWebView)
 
         // Hide previous WebView
         if let previousWebView = previousWebView, previousWebView != targetWebView {
@@ -1451,10 +1441,63 @@ public class MiniAppViewController: UIViewController {
         if webViewPtr != 0 {
             // WebView exists in Rust, restore from pointer
             let pointer = UnsafeRawPointer(bitPattern: webViewPtr)!
-            return Unmanaged<LingXiaWebView>.fromOpaque(pointer).takeUnretainedValue()
+            let webView = Unmanaged<LingXiaWebView>.fromOpaque(pointer).takeUnretainedValue()
+            return webView
         } else {
             // WebView doesn't exist in Rust
+            os_log("findWebView: WebView not found in Rust (ptr=0)", log: Self.log, type: .error)
             return nil
+        }
+    }
+
+    /// Attach WebView to container and resume it
+    @MainActor
+    private func attachAndResumeWebView(_ webView: LingXiaWebView) {
+        // Ensure WebView is visible
+        webView.isHidden = false
+
+        // Add to container if not already there
+        if webView.superview != webViewContainer {
+            if webView.superview != nil {
+                webView.removeFromSuperview()
+            }
+
+            webViewContainer.addSubview(webView)
+            webView.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                webView.topAnchor.constraint(equalTo: webViewContainer.topAnchor),
+                webView.leadingAnchor.constraint(equalTo: webViewContainer.leadingAnchor),
+                webView.trailingAnchor.constraint(equalTo: webViewContainer.trailingAnchor),
+                webView.bottomAnchor.constraint(equalTo: webViewContainer.bottomAnchor)
+            ])
+
+            os_log("attachAndResumeWebView: Added WebView to container", log: Self.log, type: .info)
+        } else {
+            webViewContainer.bringSubviewToFront(webView)
+            os_log("attachAndResumeWebView: WebView already in container, brought to front", log: Self.log, type: .info)
+        }
+
+        // Resume WebView
+        webView.resumeWebView()
+
+        // CRITICAL: Trigger onWebviewAttached if not already registered
+        // This will cause Rust to load the URL and trigger the proper page lifecycle
+        if !webView.isRegistered {
+            os_log("attachAndResumeWebView: WebView not registered, triggering onWebviewAttached", log: Self.log, type: .info)
+            let currentPath = webView.currentPath ?? ""
+            let attachResult = appId.toRustStr { appidRustStr in
+                currentPath.toRustStr { pathRustStr in
+                    lingxia.onWebviewAttached(appidRustStr, pathRustStr)
+                }
+            }
+            if attachResult == 0 {
+                webView.isRegistered = true
+                os_log("attachAndResumeWebView: WebView registered successfully", log: Self.log, type: .info)
+            } else {
+                os_log("attachAndResumeWebView: Failed to register WebView", log: Self.log, type: .error)
+            }
+        } else {
+            os_log("attachAndResumeWebView: WebView already registered", log: Self.log, type: .info)
         }
     }
 }

@@ -346,16 +346,16 @@ public class LingXiaTabBar: UIView {
             let backgroundColor: UIColor
             if TabBarConfig.isTransparent(config.backgroundColor) {
                 backgroundColor = UIColor.clear
-                os_log("updateItemsContainerLayout: Setting itemsContainer to transparent", log: OSLog(subsystem: "LingXia", category: "TabBar"), type: .debug)
+                //os_log("updateItemsContainerLayout: Setting itemsContainer to transparent", log: OSLog(subsystem: "LingXia", category: "TabBar"), type: .debug)
             } else if let configBgColor = config.backgroundColor {
                 backgroundColor = configBgColor
-                os_log("updateItemsContainerLayout: Setting itemsContainer to config color: %@", log: OSLog(subsystem: "LingXia", category: "TabBar"), type: .debug, configBgColor.description)
+                //os_log("updateItemsContainerLayout: Setting itemsContainer to config color: %@", log: OSLog(subsystem: "LingXia", category: "TabBar"), type: .debug, configBgColor.description)
             } else if isVerticalTabBar {
                 backgroundColor = LingXiaTabBar.VERTICAL_TABBAR_BACKGROUND_COLOR
-                os_log("updateItemsContainerLayout: Setting itemsContainer to vertical default", log: OSLog(subsystem: "LingXia", category: "TabBar"), type: .debug)
+                //os_log("updateItemsContainerLayout: Setting itemsContainer to vertical default", log: OSLog(subsystem: "LingXia", category: "TabBar"), type: .debug)
             } else {
                 backgroundColor = TabBarConfig.DEFAULT_BACKGROUND_COLOR
-                os_log("updateItemsContainerLayout: Setting itemsContainer to default", log: OSLog(subsystem: "LingXia", category: "TabBar"), type: .debug)
+                //os_log("updateItemsContainerLayout: Setting itemsContainer to default", log: OSLog(subsystem: "LingXia", category: "TabBar"), type: .debug)
             }
 
             itemsContainer.backgroundColor = backgroundColor
@@ -660,12 +660,19 @@ public class LingXiaTabBar: UIView {
     }
 
     @objc private func tabTapped(_ gesture: UITapGestureRecognizer) {
-        guard let view = gesture.view else { return }
+        guard let view = gesture.view else {
+            os_log("TabBar.tabTapped: gesture.view is nil", log: LingXiaTabBar.log, type: .error)
+            return
+        }
         let index = view.tag
 
         if index < items.count {
+            let item = items[index]
+            os_log("TabBar.tabTapped: Tapping tab at index %d, path=%{public}@", log: LingXiaTabBar.log, type: .info, index, item.pagePath)
             // Update TabBar's internal state first
             setSelectedIndex(index, notifyListener: true)
+        } else {
+            os_log("TabBar.tabTapped: Invalid index %d >= items.count %d", log: LingXiaTabBar.log, type: .error, index, items.count)
         }
     }
 
@@ -677,9 +684,9 @@ public class LingXiaTabBar: UIView {
             (config.selectedColor ?? TabBarConfig.DEFAULT_SELECTED_COLOR) :
             (config.color ?? TabBarConfig.DEFAULT_UNSELECTED_COLOR)
 
-        os_log("getIconImage: iconPath=%{public}@ selected=%{public}@ iconColor=%{public}@",
-               log: OSLog(subsystem: "LingXia", category: "TabBar"), type: .info,
-               iconPath, String(selected), iconColor.description)
+        // os_log("getIconImage: iconPath=%{public}@ selected=%{public}@ iconColor=%{public}@",
+        //        log: OSLog(subsystem: "LingXia", category: "TabBar"), type: .info,
+        //        iconPath, String(selected), iconColor.description)
 
         // First try as SF Symbol (iOS system icons)
         if let systemImage = UIImage(systemName: iconPath) {
@@ -815,7 +822,10 @@ public class LingXiaTabBar: UIView {
 
             // Notify listener
             if notifyListener {
+                os_log("TabBar.setSelectedIndex: Notifying listener for index %d, path=%{public}@", log: LingXiaTabBar.log, type: .info, index, items[index].pagePath)
                 onTabSelectedListener?(index, items[index].pagePath)
+            } else {
+                os_log("TabBar.setSelectedIndex: Not notifying listener (notifyListener=false)", log: LingXiaTabBar.log, type: .debug)
             }
         } else {
             os_log("setSelectedIndex: Already at index %d, no change needed",

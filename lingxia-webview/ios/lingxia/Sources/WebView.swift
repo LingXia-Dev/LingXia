@@ -57,7 +57,7 @@ public struct WebViewConfig {
 public class LingXiaWebView: WKWebView {
     internal var appId: String?
     internal var currentPath: String?
-    private var isRegistered = false
+    internal var isRegistered = false
     private var isFirstLoad = true
     private var pageLoaded = false
     private var savedScrollX: CGFloat = 0
@@ -67,6 +67,7 @@ public class LingXiaWebView: WKWebView {
     private var showEventSent = false
     private var messageChannel: WKScriptMessageHandler?
     private var channelInitialized = false
+    private var processingRequest = false  // Prevent infinite loops
 
     private var lastScrollX: CGFloat = 0
     private var lastScrollY: CGFloat = 0
@@ -178,6 +179,8 @@ public class LingXiaWebView: WKWebView {
 
         super.init(frame: .zero, configuration: configuration)
 
+        os_log("WebView initialized with frame: %{public}@", log: webViewLog, type: .info, String(describing: frame))
+
         // CRITICAL: Force transparent background at all levels
         backgroundColor = UIColor.clear
         isOpaque = false
@@ -209,6 +212,7 @@ public class LingXiaWebView: WKWebView {
         if let appId = appId {
             let schemeHandler = SchemeHandler(appId: appId)
             configuration.setURLSchemeHandler(schemeHandler, forURLScheme: "lx")
+            os_log("Registered lx:// scheme handler for appId=%@", log: webViewLog, type: .info, appId)
         }
     }
 
@@ -305,9 +309,9 @@ public class LingXiaWebView: WKWebView {
         let messageHandler = WebViewMessageHandler { [weak self] message in
             guard let self = self else { return }
 
-            // Forward message to native layer (dummy implementation)
+            // Forward message to native layer
             guard let appId = self.appId, let currentPath = self.currentPath else { return }
-            let _ = self.dummyNativeHandlePostMessage(appId: appId, path: currentPath, message: message)
+            let _ = lingxia.handlePostMessage(appId, currentPath, message)
         }
 
         messageChannel = messageHandler
@@ -414,7 +418,7 @@ public class LingXiaWebView: WKWebView {
                     } else {
                         // If we're resuming an already loaded page, trigger PageShow
 
-                        let _ = self.dummyNativeOnPageShow(appId: appId, path: currentPath)
+                        lingxia.onPageShow(appId, currentPath)
                         self.showEventSent = true  // Mark that we've sent the event
                     }
                 }
@@ -428,14 +432,9 @@ public class LingXiaWebView: WKWebView {
         super.willMove(toSuperview: newSuperview)
 
         if newSuperview != nil {
-            // Register with native layer if not already registered and we have appId/path
-            if !isRegistered, let appId = appId, let currentPath = currentPath {
-
-                let result = dummyNativeOnWebViewAttached(appId: appId, path: currentPath)
-                if result == 0 {
-                    isRegistered = true
-                }
-            }
+            // WebView is being attached to superview
+            // Note: onWebviewAttached will be called by MiniAppViewController after proper layout
+            os_log("WebView attached to superview for appId=%@ path=%@", log: webViewLog, type: .debug, appId ?? "nil", currentPath ?? "nil")
         } else {
             // Clean up resources when being removed from superview
             if messageChannel != nil {
@@ -444,6 +443,7 @@ public class LingXiaWebView: WKWebView {
             }
             channelInitialized = false  // Reset the flag when detached
             pauseWebView()
+            isRegistered = false  // Reset registration status when detached
         }
     }
 
@@ -491,48 +491,6 @@ public class LingXiaWebView: WKWebView {
         }
     }
 
-    // Dummy native functions - replace with actual native calls
-    internal func dummyNativeOnWebViewAttached(appId: String, path: String) -> Int32 {
-        // Move the page creation logic here from dummyNativeOnPageCreated
-        os_log("LingXia: [DUMMY] %{public}@ called - appId: %{public}@, path: %{public}@", log: webViewLog, type: .debug, #function, appId, path)
-
-        // Load bing.com in the current webview for demo purposes
-        DispatchQueue.main.async { [weak self] in
-            if let url = URL(string: "https://www.bing.com") {
-                let request = URLRequest(url: url)
-                let _ = self?.load(request)
-                os_log("LingXia: [DUMMY] Loading bing.com in current WebView for appId: %{public}@, path: %{public}@", log: webViewLog, type: .debug, appId, path)
-            }
-        }
-        return 0
-    }
-
-    private func dummyNativeHandlePostMessage(appId: String, path: String, message: String) -> Int32 {
-        os_log("[DUMMY] Page handledPost for %{public}@ at %{public}@", log: webViewLog, type: .debug, appId, path)
-        return 0
-    }
-
-    private func dummyNativeOnPageStarted(appId: String, path: String) -> Int32 {
-        os_log("[DUMMY] Page started for %{public}@ at %{public}@", log: webViewLog, type: .debug, appId, path)
-        return 0
-    }
-
-    private func dummyNativeOnPageFinished(appId: String, path: String) -> Int32 {
-        os_log("[DUMMY] Page finished for %{public}@ at %{public}@", log: webViewLog, type: .debug, appId, path)
-        return 0
-    }
-
-    private func dummyNativeOnPageShow(appId: String, path: String) {
-        os_log("[DUMMY] Page show for %{public}@ at %{public}@", log: webViewLog, type: .debug, appId, path)
-    }
-
-    private func dummyNativeShouldOverrideUrlLoading(appId: String, url: String) -> Int32 {
-        os_log("[DUMMY] Should override URL loading for %{public}@: %{public}@", log: webViewLog, type: .debug, appId, url)
-        return 0
-    }
-
-
-
     private func dummyNativeOnScrollChanged(appId: String, path: String, scrollX: Int, scrollY: Int, maxScrollX: Int, maxScrollY: Int) -> Int32 {
         os_log("[DUMMY] Scroll changed for %{public}@ at %{public}@: (%d,%d)", log: webViewLog, type: .debug, appId, path, scrollX, scrollY)
         return 0
@@ -541,11 +499,11 @@ public class LingXiaWebView: WKWebView {
     private func handlePageFinished(url: String?) {
         guard let appId = appId, let currentPath = currentPath else { return }
 
-        let _ = dummyNativeOnPageFinished(appId: appId, path: currentPath)
+        lingxia.onPageFinished(appId, currentPath)
 
         // If page is loaded and attached to superview, and we haven't sent PageShow yet
         if superview != nil && url != nil && !showEventSent {
-            dummyNativeOnPageShow(appId: appId, path: currentPath)
+            lingxia.onPageShow(appId, currentPath)
             showEventSent = true
         }
     }
@@ -746,12 +704,13 @@ extension LingXiaWebView: WKNavigationDelegate {
         pageLoaded = false
 
         if let appId = appId, let currentPath = currentPath {
-            let _ = dummyNativeOnPageStarted(appId: appId, path: currentPath)
+            lingxia.onPageStarted(appId, currentPath)
         }
     }
 
     public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-
+        let finalURL = webView.url?.absoluteString ?? "nil"
+        os_log("WebView didFinish navigation: %{public}@", log: webViewLog, type: .info, finalURL)
 
         // Record that the page has finished loading
         pageLoaded = true
@@ -771,14 +730,45 @@ extension LingXiaWebView: WKNavigationDelegate {
         handlePageFinished(url: webView.url?.absoluteString)
     }
 
+    public func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        os_log("WebView didFail navigation with error: %{public}@", log: webViewLog, type: .error, error.localizedDescription)
+    }
+
+    public func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        os_log("WebView didFailProvisionalNavigation with error: %{public}@", log: webViewLog, type: .error, error.localizedDescription)
+    }
+
     public func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
         guard let url = navigationAction.request.url else {
+            os_log("decidePolicyFor: URL is nil, allowing", log: webViewLog, type: .info)
             decisionHandler(.allow)
             return
         }
 
-        // For HTTPS requests, check if we should intercept them
-        if url.scheme == "https" {
+        // Skip interception for data URLs (generated by loadHTMLString)
+        if url.scheme == "data" {
+            os_log("Allowing data URL navigation (from loadHTMLString): %{public}@", log: webViewLog, type: .info, String(url.absoluteString.prefix(100)))
+            decisionHandler(.allow)
+            return
+        }
+
+        // Skip interception for about:blank and other special URLs
+        if url.scheme == "about" || url.absoluteString == "about:blank" {
+            os_log("Allowing about: URL navigation: %{public}@", log: webViewLog, type: .info, url.absoluteString)
+            decisionHandler(.allow)
+            return
+        }
+
+        // Prevent infinite loops
+        if processingRequest {
+            os_log("Already processing a request, allowing navigation to prevent loop", log: webViewLog, type: .info)
+            decisionHandler(.allow)
+            return
+        }
+
+        // For HTTPS and LX requests, check if we should intercept them
+        if url.scheme == "https" || url.scheme == "lx" {
+            processingRequest = true  // Set flag to prevent loops
             let request = navigationAction.request
 
             // Convert to HttpRequest for Rust processing
@@ -786,29 +776,59 @@ extension LingXiaWebView: WKNavigationDelegate {
                let appId = appId {
 
                 // Call Rust to check if we should handle this request
-                if let httpResponse = dummyNativehandleRequest(appId: appId, httpRequest: httpRequest) {
+                if let httpResponse = appId.toRustStr({ appidRustStr in
+                    lingxia.handleRequest(appidRustStr, httpRequest)
+                }) {
                     // If Rust handled it, cancel the navigation
                     decisionHandler(.cancel)
 
+                    // Reset processing flag after a delay to allow HTML injection to complete
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        self.processingRequest = false
+                    }
+
                     // Check if this is a blocked request (403 status)
                     if httpResponse.status_code == 403 {
-                        os_log("HTTPS request blocked by Rust: %@", log: webViewLog, type: .default, url.absoluteString)
+                        os_log("Request blocked by Rust: %@", log: webViewLog, type: .default, url.absoluteString)
                         // Could show an error page or just silently block
                         return
                     }
 
-                    // For other responses, we could inject custom content
-                    // This is more complex and might require custom handling
-                    os_log("HTTPS request handled by Rust: %@ (status: %d)", log: webViewLog, type: .info, url.absoluteString, httpResponse.status_code)
+                    // For successful responses, inject the content into WebView
+                    if httpResponse.status_code == 200 {
+                        let bodyData = Data(Array(httpResponse.body))
+                        if let htmlString = String(data: bodyData, encoding: .utf8) {
+                            // os_log("HTML content decoded successfully, length: %d chars", log: webViewLog, type: .info, htmlString.count)
+                            // os_log("HTML preview: %{public}@", log: webViewLog, type: .debug, String(htmlString.prefix(200)))
+
+                            // Inject the HTML content into WebView
+                            DispatchQueue.main.async { [weak self] in
+                                guard let self = self else { return }
+
+                                // Load the actual Rust HTML content
+                                let navigation = self.loadHTMLString(htmlString, baseURL: url)
+                                os_log("loadHTMLString returned navigation: %{public}@", log: webViewLog, type: .info, navigation?.description ?? "nil")
+                            }
+                        } else {
+                            os_log("Request handled by Rust but failed to decode HTML content as UTF-8", log: webViewLog, type: .error)
+                            // Try to decode as raw bytes for debugging
+                            let rawString = bodyData.map { String(format: "%02x", $0) }.joined(separator: " ")
+                            os_log("Raw body bytes (first 100): %{public}@", log: webViewLog, type: .debug, String(rawString.prefix(200)))
+                        }
+                    }
                     return
+                } else {
+                    // Rust didn't handle the request
+                    os_log("Rust did not handle request: %@, allowing normal navigation", log: webViewLog, type: .info, url.absoluteString)
+                    processingRequest = false  // Reset flag
                 }
             }
         }
 
         // Default URL override check (existing logic)
         if let appId = appId {
-            let result = dummyNativeShouldOverrideUrlLoading(appId: appId, url: url.absoluteString)
-            if result == 1 {
+            let result = lingxia.shouldOverrideUrlLoading(appId, url.absoluteString)
+            if result {
                 decisionHandler(.cancel)
                 return
             }
@@ -895,8 +915,4 @@ private class WebViewMessageHandler: NSObject, WKScriptMessageHandler {
             messageHandler(messageBody)
         }
     }
-}
-
-private func dummyNativehandleRequest(appId: String, httpRequest: HttpRequest) -> HttpResponse? {
-    return nil
 }

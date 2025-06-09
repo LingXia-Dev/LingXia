@@ -260,13 +260,6 @@ public class MiniApp {
         UINavigationBar.appearance().scrollEdgeAppearance = appearance
         UINavigationBar.appearance().compactScrollEdgeAppearance = appearance
     }
-
-    // Dummy native function - replace with actual native call
-    public static func dummyNativeOnPageSwitched(appId: String, path: String) {
-        os_log("[DUMMY] Page switched for %@ to %@", log: log, type: .debug, appId, path)
-    }
-
-
 }
 
 /// Get device model (e.g., "iPhone14,2")
