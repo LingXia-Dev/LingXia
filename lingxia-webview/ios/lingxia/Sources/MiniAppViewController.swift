@@ -37,13 +37,6 @@ public class MiniAppViewController: UIViewController {
     nonisolated(unsafe) private var closeAppObserver: NSObjectProtocol?
     nonisolated(unsafe) private var switchPageObserver: NSObjectProtocol?
 
-
-
-    private static func dummyNativeOnBackPressed(appId: String) -> Int32 {
-        os_log("[DUMMY] Back pressed for: %{public}@", log: miniAppViewControllerLog, type: .debug, appId)
-        return 0
-    }
-
     /// Configures the system bars to be transparent and edge-to-edge
     public static func configureTransparentSystemBars(viewController: UIViewController, lightStatusBarIcons: Bool = false) {
         if #available(iOS 13.0, *) {
@@ -366,8 +359,8 @@ public class MiniAppViewController: UIViewController {
             }
 
             // Remove observer immediately to prevent multiple calls
-            if let observer = observer {
-                NotificationCenter.default.removeObserver(observer)
+            if let obs = observer {
+                NotificationCenter.default.removeObserver(obs)
             }
 
             // Use Task to handle MainActor calls
@@ -1127,10 +1120,8 @@ public class MiniAppViewController: UIViewController {
 
     /// Handles back button click events
     private func handleBackButtonClick() {
-        let result = MiniAppViewController.dummyNativeOnBackPressed(appId: appId)
-        os_log("[DUMMY] Back press handled by native: %d", log: Self.log, type: .debug, result)
-
-        if result > 0 {
+        let result = lingxia.onBackPressed(appId)
+        if result {
             return
         }
 

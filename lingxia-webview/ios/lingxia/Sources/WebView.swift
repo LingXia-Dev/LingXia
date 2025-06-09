@@ -277,14 +277,14 @@ public class LingXiaWebView: WKWebView {
             let maxScrollX = scrollView.contentSize.width - scrollView.frame.width
             let maxScrollY = scrollView.contentSize.height - scrollView.frame.height
 
-            // Send scroll event to native layer (dummy implementation)
-            let _ = dummyNativeOnScrollChanged(
-                appId: appId,
-                path: currentPath,
-                scrollX: Int(scrollX),
-                scrollY: Int(scrollY),
-                maxScrollX: Int(maxScrollX),
-                maxScrollY: Int(maxScrollY)
+            // Send scroll event to native layer
+            let _ = lingxia.onScrollChanged(
+                appId,
+                currentPath,
+                Int32(scrollX),
+                Int32(scrollY),
+                Int32(maxScrollX),
+                Int32(maxScrollY)
             )
         }
     }
@@ -491,15 +491,12 @@ public class LingXiaWebView: WKWebView {
         }
     }
 
-    private func dummyNativeOnScrollChanged(appId: String, path: String, scrollX: Int, scrollY: Int, maxScrollX: Int, maxScrollY: Int) -> Int32 {
-        os_log("[DUMMY] Scroll changed for %{public}@ at %{public}@: (%d,%d)", log: webViewLog, type: .debug, appId, path, scrollX, scrollY)
-        return 0
-    }
+
 
     private func handlePageFinished(url: String?) {
         guard let appId = appId, let currentPath = currentPath else { return }
 
-        lingxia.onPageFinished(appId, currentPath)
+        let _ = lingxia.onPageFinished(appId, currentPath)
 
         // If page is loaded and attached to superview, and we haven't sent PageShow yet
         if superview != nil && url != nil && !showEventSent {
@@ -601,7 +598,7 @@ public class LingXiaWebView: WKWebView {
 
         DispatchQueue.main.async {
             let request = URLRequest(url: url)
-            webView.load(request)
+            let _ = webView.load(request)
         }
 
         return true
@@ -704,7 +701,7 @@ extension LingXiaWebView: WKNavigationDelegate {
         pageLoaded = false
 
         if let appId = appId, let currentPath = currentPath {
-            lingxia.onPageStarted(appId, currentPath)
+            let _ = lingxia.onPageStarted(appId, currentPath)
         }
     }
 
