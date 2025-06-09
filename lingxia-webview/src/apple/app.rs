@@ -1,3 +1,4 @@
+use super::ffi;
 use miniapp::{AssetFileEntry, DeviceInfo, MiniAppError};
 use std::io::{Cursor, Read};
 use std::path::PathBuf;
@@ -97,21 +98,50 @@ impl App {
 
     /// Get device information
     pub fn device_info(&self) -> DeviceInfo {
-        todo!()
+        let brand = "Apple".to_string(); // Fixed for Apple devices
+        let model = ffi::get_device_model();
+        let system = ffi::get_system_version();
+
+        DeviceInfo {
+            brand,
+            model,
+            system,
+        }
     }
 
     /// Open a mini app
-    pub fn open_miniapp(&self, _appid: &str, _path: &str) -> Result<(), MiniAppError> {
-        Ok(())
+    pub fn open_miniapp(&self, appid: &str, path: &str) -> Result<(), MiniAppError> {
+        if ffi::open_miniapp(appid, path) {
+            Ok(())
+        } else {
+            Err(MiniAppError::WebView(format!(
+                "Failed to open miniapp: appid={}, path={}",
+                appid, path
+            )))
+        }
     }
 
     /// Close a mini app
-    pub fn close_miniapp(&self, _appid: &str) -> Result<(), MiniAppError> {
-        Ok(())
+    pub fn close_miniapp(&self, appid: &str) -> Result<(), MiniAppError> {
+        if ffi::close_miniapp(appid) {
+            Ok(())
+        } else {
+            Err(MiniAppError::WebView(format!(
+                "Failed to close miniapp: appid={}",
+                appid
+            )))
+        }
     }
 
     /// Switch to a page in a mini app
-    pub fn switch_page(&self, _appid: &str, _path: &str) -> Result<(), MiniAppError> {
-        Ok(())
+    pub fn switch_page(&self, appid: &str, path: &str) -> Result<(), MiniAppError> {
+        if ffi::switch_page(appid, path) {
+            Ok(())
+        } else {
+            Err(MiniAppError::WebView(format!(
+                "Failed to switch page: appid={}, path={}",
+                appid, path
+            )))
+        }
     }
 }

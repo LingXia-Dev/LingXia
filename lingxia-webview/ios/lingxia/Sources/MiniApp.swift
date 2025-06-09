@@ -1,6 +1,7 @@
 import Foundation
 import UIKit
 import os.log
+import CLingXiaFFI
 
 /// MiniApp launch mode
 public enum MiniAppLaunchMode {
@@ -39,7 +40,7 @@ public let ACTION_CLOSE_MINIAPP = "com.lingxia.CLOSE_MINIAPP_ACTION"
 /// ```
 @MainActor
 public class MiniApp {
-    private static let log = OSLog(subsystem: "LingXia", category: "MiniApp")
+    nonisolated private static let log = OSLog(subsystem: "LingXia", category: "MiniApp")
 
     /// Singleton instance
     private static var instance: MiniApp?
@@ -120,18 +121,15 @@ public class MiniApp {
     ///   - appId: The unique identifier of the mini app
     ///   - path: The initial page path within the mini app
     /// - Note: Automatically ensures execution on main thread for UI operations
-    public static func openMiniApp(appId: String, path: String) {
-        if Thread.isMainThread {
-            // Already on main thread, execute directly
+    nonisolated public static func openMiniApp(appid: RustStr, path: RustStr) -> Bool {
+        let appidString = appid.toString()
+        let pathString = path.toString()
+        // Always dispatch to main thread for UI operations
+        DispatchQueue.main.async {
             let instance = getInstance()
-            instance.openInNewViewController(appId: appId, path: path)
-        } else {
-            // Not on main thread, dispatch to main thread
-            DispatchQueue.main.async {
-                let instance = getInstance()
-                instance.openInNewViewController(appId: appId, path: path)
-            }
+            instance.openInNewViewController(appId: appidString, path: pathString)
         }
+        return true
     }
 
     /// Opens the home mini app
@@ -142,10 +140,13 @@ public class MiniApp {
     ///
     /// - Note: The home app ID and route are set during initialize()
     public static func openHomeMiniApp() {
-        os_log("openHomeMiniApp called", log: log, type: .info)
         if let homeMiniAppId = homeMiniAppId, let homeMiniAppInitialRoute = homeMiniAppInitialRoute {
             os_log("Opening home app: %@ at %@", log: log, type: .info, homeMiniAppId, homeMiniAppInitialRoute)
-            openMiniApp(appId: homeMiniAppId, path: homeMiniAppInitialRoute)
+            _ = homeMiniAppId.toRustStr { appidRustStr in
+                homeMiniAppInitialRoute.toRustStr { pathRustStr in
+                    MiniApp.openMiniApp(appid: appidRustStr, path: pathRustStr)
+                }
+            }
         } else {
             os_log("Home app details not available", log: log, type: .error)
         }
@@ -155,50 +156,37 @@ public class MiniApp {
      * Notifies the system to close a mini app with the specified appId
      * - Note: Automatically ensures execution on main thread for UI operations
      */
-    public static func closeMiniApp(appId: String) {
-            os_log("Closing MiniApp: %@", log: log, type: .info, appId)
-        if Thread.isMainThread {
-            // Already on main thread, execute directly
+    nonisolated public static func closeMiniApp(appid: RustStr) -> Bool {
+        let appidString = appid.toString()
+            os_log("Closing MiniApp: %@", log: log, type: .info, appidString)
+        // Always dispatch to main thread for notification posting
+        DispatchQueue.main.async {
             NotificationCenter.default.post(
-                name: NSNotification.Name(ACTION_CLOSE_MINIAPP),
+                name: NSNotification.Name("com.lingxia.CLOSE_MINIAPP_ACTION"),
                 object: nil,
-                userInfo: ["appId": appId]
+                userInfo: ["appId": appidString]
             )
-        } else {
-            // Not on main thread, dispatch to main thread
-            DispatchQueue.main.async {
-                NotificationCenter.default.post(
-                    name: NSNotification.Name(ACTION_CLOSE_MINIAPP),
-                    object: nil,
-                    userInfo: ["appId": appId]
-                )
-            }
         }
+        return true
     }
 
     /**
      * Switches the current page within a running MiniAppViewController
      * - Note: Automatically ensures execution on main thread for UI operations
      */
-    public static func switchPage(appId: String, path: String) {
-        os_log("Switching page for %@ to %@", log: log, type: .info, appId, path)
-        if Thread.isMainThread {
-            // Already on main thread, execute directly
+    nonisolated public static func switchPage(appid: RustStr, path: RustStr) -> Bool {
+        let appidString = appid.toString()
+        let pathString = path.toString()
+        os_log("Switching page for %@ to %@", log: log, type: .info, appidString, pathString)
+        // Always dispatch to main thread for notification posting
+        DispatchQueue.main.async {
             NotificationCenter.default.post(
-                name: NSNotification.Name(ACTION_SWITCH_PAGE),
+                name: NSNotification.Name("com.lingxia.SWITCH_PAGE_ACTION"),
                 object: nil,
-                userInfo: ["appId": appId, "path": path]
+                userInfo: ["appId": appidString, "path": pathString]
             )
-        } else {
-            // Not on main thread, dispatch to main thread
-            DispatchQueue.main.async {
-                NotificationCenter.default.post(
-                    name: NSNotification.Name(ACTION_SWITCH_PAGE),
-                    object: nil,
-                    userInfo: ["appId": appId, "path": path]
-                )
-            }
         }
+        return true
     }
 
     /**
@@ -276,5 +264,27 @@ public class MiniApp {
     // Dummy native function - replace with actual native call
     public static func dummyNativeOnPageSwitched(appId: String, path: String) {
         os_log("[DUMMY] Page switched for %@ to %@", log: log, type: .debug, appId, path)
+    }
+
+
+}
+
+/// Get device model (e.g., "iPhone14,2")
+func getDeviceModel() -> String {
+    var systemInfo = utsname()
+    uname(&systemInfo)
+    let machineMirror = Mirror(reflecting: systemInfo.machine)
+    let identifier = machineMirror.children.reduce("") { identifier, element in
+        guard let value = element.value as? Int8, value != 0 else { return identifier }
+        return identifier + String(UnicodeScalar(UInt8(value)))
+    }
+
+    return identifier
+}
+
+/// Get system version (e.g., "17.0")
+nonisolated func getSystemVersion() -> String {
+    return DispatchQueue.main.sync {
+        UIDevice.current.systemVersion
     }
 }

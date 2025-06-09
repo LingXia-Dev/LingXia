@@ -549,6 +549,194 @@ public class LingXiaWebView: WKWebView {
             showEventSent = true
         }
     }
+
+    /// Helper function to get WebView from pointer
+    nonisolated private static func getWebView(from pointer: UInt) -> LingXiaWebView? {
+        guard pointer != 0 else {
+            os_log("LingXiaWebView.getWebView: Invalid pointer (0)", log: webViewLog, type: .error)
+            return nil
+        }
+
+        let webView = Unmanaged<LingXiaWebView>.fromOpaque(UnsafeRawPointer(bitPattern: pointer)!).takeUnretainedValue()
+        return webView
+    }
+
+    /// Creates a WebView and returns its pointer as UInt for Rust to hold
+    /// This function is called by Rust through swift-bridge
+    nonisolated public static func createWebViewPtr(appid: RustStr, path: RustStr) -> UInt {
+        // Convert RustStr to String
+        let appidString = appid.toString()
+        let pathString = path.toString()
+
+        // Use DispatchQueue.main.sync to ensure we're on main thread
+        // This works whether we're already on main thread or not
+        var result: UInt = 0
+        var webView: LingXiaWebView?
+
+        // Use MainActor.assumeIsolated since we know we're on main thread
+        // This allows us to call @MainActor methods synchronously
+        if Thread.isMainThread {
+            do {
+                webView = try MainActor.assumeIsolated {
+                    try LingXiaWebView.createWebView(appId: appidString, path: pathString)
+                }
+                if let webView = webView {
+                    let pointer = Unmanaged.passRetained(webView).toOpaque()
+                    result = UInt(bitPattern: pointer)
+                    os_log("LingXiaWebView.createWebViewPtr: WebView created successfully, pointer=%{public}@", log: webViewLog, type: .info, String(describing: result))
+                }
+            } catch {
+                os_log("LingXiaWebView.createWebViewPtr: Failed to create WebView: %@", log: webViewLog, type: .error, error.localizedDescription)
+                result = 0
+            }
+        } else {
+            // Not on main thread, use sync dispatch
+            DispatchQueue.main.sync {
+                do {
+                    webView = try MainActor.assumeIsolated {
+                        try LingXiaWebView.createWebView(appId: appidString, path: pathString)
+                    }
+                    if let webView = webView {
+                        let pointer = Unmanaged.passRetained(webView).toOpaque()
+                        result = UInt(bitPattern: pointer)
+                        os_log("LingXiaWebView.createWebViewPtr: WebView created successfully via sync dispatch, pointer=%{public}@", log: webViewLog, type: .info, String(describing: result))
+                    }
+                } catch {
+                    os_log("LingXiaWebView.createWebViewPtr: Failed to create WebView via sync dispatch: %@", log: webViewLog, type: .error, error.localizedDescription)
+                    result = 0
+                }
+            }
+        }
+
+        // Send notification that WebView was created (instead of immediately triggering attached)
+        // This allows UI layer to attach WebView properly before triggering attached event
+        if let _ = webView, result != 0 {
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(
+                    name: NSNotification.Name("WebViewCreated"),
+                    object: nil,
+                    userInfo: [
+                        "appId": appidString,
+                        "path": pathString,
+                        "webViewPtr": result
+                    ]
+                )
+                os_log("LingXiaWebView.createWebViewPtr: Posted WebViewCreated notification for appId=%{public}@, path=%{public}@", log: webViewLog, type: .info, appidString, pathString)
+            }
+        }
+
+        return result
+    }
+
+    /// Load URL in WebView - static method for swift-bridge
+    nonisolated public static func loadUrl(webview_ptr: UInt, url: RustStr) -> Bool {
+        let urlString = url.toString()
+        os_log("LingXiaWebView.loadUrl: ptr=%{public}@, url=%{public}@", log: webViewLog, type: .info, String(webview_ptr), urlString)
+
+        guard let webView = getWebView(from: webview_ptr) else {
+            return false
+        }
+
+        guard let url = URL(string: urlString) else {
+            return false
+        }
+
+        DispatchQueue.main.async {
+            let request = URLRequest(url: url)
+            webView.load(request)
+        }
+
+        return true
+    }
+
+    /// Evaluate JavaScript in WebView - static method for swift-bridge
+    nonisolated public static func evaluateJavaScript(webview_ptr: UInt, js: RustStr) -> Bool {
+        let jsString = js.toString()
+
+        os_log("LingXiaWebView.evaluateJavaScript: ptr=%{public}@", log: webViewLog, type: .info, String(webview_ptr))
+
+        guard let webView = getWebView(from: webview_ptr) else {
+            return false
+        }
+
+        DispatchQueue.main.async {
+            webView.evaluateJavaScript(jsString) { result, error in
+                if let error = error {
+                    os_log("LingXiaWebView.evaluateJavaScript: Error: %{public}@", log: webViewLog, type: .error, error.localizedDescription)
+                }
+            }
+        }
+
+        return true
+    }
+
+    /// Clear browsing data in WebView - static method for swift-bridge
+    nonisolated public static func clearBrowsingData(webview_ptr: UInt) -> Bool {
+        guard let webView = getWebView(from: webview_ptr) else {
+            return false
+        }
+
+        // Always dispatch to main thread for WebKit operations
+        DispatchQueue.main.async {
+            let dataStore = webView.configuration.websiteDataStore
+            let dataTypes = WKWebsiteDataStore.allWebsiteDataTypes()
+            dataStore.removeData(ofTypes: dataTypes, modifiedSince: Date.distantPast) {
+                os_log("LingXiaWebView.clearBrowsingData: Browsing data cleared successfully", log: webViewLog, type: .info)
+            }
+        }
+
+        return true
+    }
+
+    /// Set devtools enabled/disabled in WebView - static method for swift-bridge
+    nonisolated public static func setDevtools(webview_ptr: UInt, enabled: Bool) -> Bool {
+
+        guard let webView = getWebView(from: webview_ptr) else {
+            return false
+        }
+
+        // Always dispatch to main thread for WebKit operations
+        DispatchQueue.main.async {
+            if #available(iOS 16.4, *) {
+                webView.isInspectable = enabled
+                os_log("LingXiaWebView.setDevtools: Devtools %{public}@ successfully", log: webViewLog, type: .info, enabled ? "enabled" : "disabled")
+            }
+        }
+
+        return true
+    }
+
+    /// Set user agent in WebView - static method for swift-bridge
+    nonisolated public static func setUserAgent(webview_ptr: UInt, ua: RustStr) -> Bool {
+        let userAgent = ua.toString()
+
+        guard let webView = getWebView(from: webview_ptr) else {
+            return false
+        }
+
+        // Always dispatch to main thread for WebKit operations
+        DispatchQueue.main.async {
+            webView.customUserAgent = userAgent.isEmpty ? nil : userAgent
+            os_log("setUserAgent: User agent set successfully", log: webViewLog, type: .info)
+        }
+
+        return true
+    }
+
+    /// Set scroll listener enabled/disabled in WebView - static method for swift-bridge
+    nonisolated public static func setScrollListenerEnabled(webview_ptr: UInt, enabled: Bool, throttle_ms: UInt64) -> Bool {
+        guard let webView = getWebView(from: webview_ptr) else {
+            return false
+        }
+
+        // Always dispatch to main thread for WebKit operations
+        DispatchQueue.main.async {
+            webView.setScrollListenerEnabled(enabled: enabled, throttleMs: TimeInterval(throttle_ms) / 1000.0)
+            os_log("setScrollListenerEnabled: Scroll listener %{public}@ successfully", log: webViewLog, type: .info, enabled ? "enabled" : "disabled")
+        }
+
+        return true
+    }
 }
 
 // MARK: - WKNavigationDelegate
@@ -711,72 +899,4 @@ private class WebViewMessageHandler: NSObject, WKScriptMessageHandler {
 
 private func dummyNativehandleRequest(appId: String, httpRequest: HttpRequest) -> HttpResponse? {
     return nil
-}
-
-
-/// Creates a WebView and returns its pointer as UInt for Rust to hold
-/// This function is called by Rust through swift-bridge
-public func createWebViewPtr(appid: RustStr, path: RustStr) -> UInt {
-    // Convert RustStr to String
-    let appidString = appid.toString()
-    let pathString = path.toString()
-
-    // Use DispatchQueue.main.sync to ensure we're on main thread
-    // This works whether we're already on main thread or not
-    var result: UInt = 0
-    var webView: LingXiaWebView?
-
-    // Use MainActor.assumeIsolated since we know we're on main thread
-    // This allows us to call @MainActor methods synchronously
-    if Thread.isMainThread {
-        do {
-            webView = try MainActor.assumeIsolated {
-                try LingXiaWebView.createWebView(appId: appidString, path: pathString)
-            }
-            if let webView = webView {
-                let pointer = Unmanaged.passRetained(webView).toOpaque()
-                result = UInt(bitPattern: pointer)
-                os_log("createWebViewPtr: WebView created successfully, pointer=%{public}@", log: webViewLog, type: .info, String(describing: result))
-            }
-        } catch {
-            os_log("createWebViewPtr: Failed to create WebView: %@", log: webViewLog, type: .error, error.localizedDescription)
-            result = 0
-        }
-    } else {
-        // Not on main thread, use sync dispatch
-        DispatchQueue.main.sync {
-            do {
-                webView = try MainActor.assumeIsolated {
-                    try LingXiaWebView.createWebView(appId: appidString, path: pathString)
-                }
-                if let webView = webView {
-                    let pointer = Unmanaged.passRetained(webView).toOpaque()
-                    result = UInt(bitPattern: pointer)
-                    os_log("createWebViewPtr: WebView created successfully via sync dispatch, pointer=%{public}@", log: webViewLog, type: .info, String(describing: result))
-                }
-            } catch {
-                os_log("createWebViewPtr: Failed to create WebView via sync dispatch: %@", log: webViewLog, type: .error, error.localizedDescription)
-                result = 0
-            }
-        }
-    }
-
-    // Send notification that WebView was created (instead of immediately triggering attached)
-    // This allows UI layer to attach WebView properly before triggering attached event
-    if let _ = webView, result != 0 {
-        DispatchQueue.main.async {
-            NotificationCenter.default.post(
-                name: NSNotification.Name("WebViewCreated"),
-                object: nil,
-                userInfo: [
-                    "appId": appidString,
-                    "path": pathString,
-                    "webViewPtr": result
-                ]
-            )
-            os_log("createWebViewPtr: Posted WebViewCreated notification for appId=%{public}@, path=%{public}@", log: webViewLog, type: .info, appidString, pathString)
-        }
-    }
-
-    return result
 }

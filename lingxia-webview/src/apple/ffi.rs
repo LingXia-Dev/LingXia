@@ -94,15 +94,58 @@ mod bridge {
         #[swift_bridge(swift_name = "listAssetDirectory")]
         fn list_asset_directory(dir_path: &str) -> Vec<String>;
 
+        // Device info functions
+        #[swift_bridge(swift_name = "getDeviceModel")]
+        fn get_device_model() -> String;
+
+        #[swift_bridge(swift_name = "getSystemVersion")]
+        fn get_system_version() -> String;
+
+        // MiniApp navigation functions
+        #[swift_bridge(swift_name = "MiniApp.openMiniApp")]
+        fn open_miniapp(appid: &str, path: &str) -> bool;
+
+        #[swift_bridge(swift_name = "MiniApp.closeMiniApp")]
+        fn close_miniapp(appid: &str) -> bool;
+
+        #[swift_bridge(swift_name = "MiniApp.switchPage")]
+        fn switch_page(appid: &str, path: &str) -> bool;
+
         // WebView creation function - returns pointer as usize to Swift WebView object
-        #[swift_bridge(swift_name = "createWebViewPtr")]
+        #[swift_bridge(swift_name = "LingXiaWebView.createWebViewPtr")]
         fn create_webview_ptr(appid: &str, path: &str) -> usize;
+
+        // WebView control functions
+        #[swift_bridge(swift_name = "LingXiaWebView.loadUrl")]
+        fn webview_load_url(webview_ptr: usize, url: &str) -> bool;
+
+        #[swift_bridge(swift_name = "LingXiaWebView.evaluateJavaScript")]
+        fn webview_evaluate_javascript(webview_ptr: usize, js: &str) -> bool;
+
+        #[swift_bridge(swift_name = "LingXiaWebView.clearBrowsingData")]
+        fn webview_clear_browsing_data(webview_ptr: usize) -> bool;
+
+        #[swift_bridge(swift_name = "LingXiaWebView.setDevtools")]
+        fn webview_set_devtools(webview_ptr: usize, enabled: bool) -> bool;
+
+        #[swift_bridge(swift_name = "LingXiaWebView.setUserAgent")]
+        fn webview_set_user_agent(webview_ptr: usize, ua: &str) -> bool;
+
+        #[swift_bridge(swift_name = "LingXiaWebView.setScrollListenerEnabled")]
+        fn webview_set_scroll_listener_enabled(
+            webview_ptr: usize,
+            enabled: bool,
+            throttle_ms: u64,
+        ) -> bool;
     }
 }
 
 // Re-export the bridge functions for use in other modules
 pub use bridge::{
-    HttpRequest, HttpResponse, create_webview_ptr, list_asset_directory, read_asset_data,
+    HttpRequest, HttpResponse, close_miniapp, create_webview_ptr, get_device_model,
+    get_system_version, list_asset_directory, open_miniapp, read_asset_data, switch_page,
+    webview_clear_browsing_data, webview_evaluate_javascript, webview_load_url,
+    webview_set_devtools, webview_set_scroll_listener_enabled, webview_set_user_agent,
 };
 
 /// Initialize the MiniApp system for iOS/macOS
