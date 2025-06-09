@@ -309,8 +309,10 @@ public class MiniAppViewController: UIViewController {
 
     private func setupWebViewContainer() {
         webViewContainer = UIView()
-        // Use clean white background for better loading experience
+        // CRITICAL: Use stable background that won't change during lifecycle
+        // This prevents rendering conflicts that cause progress bar breaks
         webViewContainer.backgroundColor = UIColor.white
+        webViewContainer.isOpaque = true
         webViewContainer.translatesAutoresizingMaskIntoConstraints = false
         rootContainer.addSubview(webViewContainer)
 
@@ -861,7 +863,7 @@ public class MiniAppViewController: UIViewController {
         // Update TabBar UI (without triggering listener)
         tabBar?.setSelectedIndex(targetIndex, notifyListener: false)
 
-        // ZERO LAYOUT CHANGES - only show/hide NavigationBar without relayout
+        // Handle NavigationBar visibility and update layout accordingly
         let pageConfig = targetWebView.getPageConfig()
         let shouldShowNavigationBar = !(pageConfig?.hidden ?? false)
 
@@ -870,8 +872,14 @@ public class MiniAppViewController: UIViewController {
             navigationBar?.isHidden = false
             configureNavigationBar(pageConfig: pageConfig, isBackNavigation: false, disableAnimation: true)
         } else {
-            navigationBar?.isHidden = true
+            // CRITICAL: Completely remove navigation bar instead of just hiding it
+            // This prevents black areas when navigation bar should be hidden
+            removeNavigationBar()
         }
+
+        // CRITICAL: Update layout margins to ensure WebView container is positioned correctly
+        // This ensures WebView starts below NavigationBar when it exists, or from top when hidden
+        updateLayoutMargins()
 
         // Attach and resume WebView (similar to Android's implementation attachAndResumeWebView)
         attachAndResumeWebView(targetWebView)
@@ -1032,7 +1040,20 @@ public class MiniAppViewController: UIViewController {
         // When NavigationBar is hidden, ensure the entire status bar and navigation area is transparent
         // Force transparent backgrounds in the view hierarchy
         view.backgroundColor = UIColor.clear
+        view.isOpaque = false
+        view.layer.backgroundColor = UIColor.clear.cgColor
+
         rootContainer.backgroundColor = UIColor.clear
+        rootContainer.isOpaque = false
+        rootContainer.layer.backgroundColor = UIColor.clear.cgColor
+
+        // Keep webViewContainer white for stable rendering
+        webViewContainer?.backgroundColor = UIColor.white
+        webViewContainer?.isOpaque = true
+
+        // Force layout update to ensure transparency takes effect
+        view.setNeedsLayout()
+        view.layoutIfNeeded()
 
         os_log("MiniAppViewController.ensureTransparentNavigationArea: Applied transparent background for hidden NavigationBar",
                log: Self.log, type: .info)
@@ -1111,11 +1132,18 @@ public class MiniAppViewController: UIViewController {
     /// Removes NavigationBar completely
     private func removeNavigationBar() {
         guard let navigationBar = navigationBar else {
+            // Even if no navigation bar exists, ensure transparent area
+            ensureTransparentNavigationArea()
             return
         }
 
+        os_log("removeNavigationBar: Removing navigation bar", log: Self.log, type: .info)
+
         navigationBar.removeFromSuperview()
         self.navigationBar = nil
+
+        // Ensure transparent area after removal
+        ensureTransparentNavigationArea()
     }
 
     /// Handles back button click events
@@ -1201,13 +1229,6 @@ public class MiniAppViewController: UIViewController {
             rootContainer.backgroundColor = UIColor.clear
             rootContainer.isOpaque = false
             rootContainer.layer.backgroundColor = UIColor.clear.cgColor
-        }
-
-        // Force webview container
-        if let webViewContainer = webViewContainer {
-            webViewContainer.backgroundColor = UIColor.clear
-            webViewContainer.isOpaque = false
-            webViewContainer.layer.backgroundColor = UIColor.clear.cgColor
         }
 
         // Force window transparency
@@ -1310,26 +1331,30 @@ public class MiniAppViewController: UIViewController {
             rootContainer.isOpaque = true
             rootContainer.layer.backgroundColor = UIColor.white.cgColor
         }
-
-        // Set webview container to white
-        if let webViewContainer = webViewContainer {
-            webViewContainer.backgroundColor = UIColor.white
-            webViewContainer.isOpaque = true
-            webViewContainer.layer.backgroundColor = UIColor.white.cgColor
-        }
     }
 
     /// Configures WebView's edge-to-edge content behavior based on TabBar transparency
     /// - Parameter isTransparent: Whether content should extend to screen edges
     private func configureWebViewEdgeToEdgeBehavior(_ isTransparent: Bool) {
-        guard let currentWebView = currentWebView else { return }
+        guard let currentWebView = currentWebView else {
+            // Store the transparency state for later when WebView is available
+            return
+        }
 
-        if isTransparent {
-            // For transparent TabBar: allow content to extend to all edges
-            currentWebView.scrollView.contentInsetAdjustmentBehavior = .never
-        } else {
-            // For opaque TabBar: respect safe areas to avoid content being hidden
-            currentWebView.scrollView.contentInsetAdjustmentBehavior = .automatic
+        // Only configure if WebView is properly attached and visible
+        guard !currentWebView.isHidden else { return }
+
+        // Delay the configuration to ensure WebView is fully ready
+        DispatchQueue.main.async { [weak currentWebView] in
+            guard let webView = currentWebView else { return }
+
+            if isTransparent {
+                // For transparent TabBar: allow content to extend to all edges
+                webView.scrollView.contentInsetAdjustmentBehavior = .never
+            } else {
+                // For opaque TabBar: respect safe areas to avoid content being hidden
+                webView.scrollView.contentInsetAdjustmentBehavior = .automatic
+            }
         }
     }
 
@@ -1444,8 +1469,11 @@ public class MiniAppViewController: UIViewController {
     /// Attach WebView to container and resume it
     @MainActor
     private func attachAndResumeWebView(_ webView: LingXiaWebView) {
-        // Ensure WebView is visible
+        // Ensure WebView is visible with transparent background for proper layering
         webView.isHidden = false
+        webView.backgroundColor = UIColor.clear
+        webView.scrollView.backgroundColor = UIColor.clear
+        webView.isOpaque = false
 
         // Add to container if not already there
         if webView.superview != webViewContainer {
