@@ -13,5 +13,13 @@ serde = { workspace = true }
 tokio = { workspace = true }
 
 # Local dependencies
-rong = { workspace = true }
 rong_modules = { workspace = true }
+
+# Target-specific JavaScript engine selection
+# iOS/macOS automatically use JavaScriptCore
+[target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
+rong = { workspace = true, features = ["jscore"] }
+
+# Other platforms automatically use QuickJS
+[target.'cfg(not(any(target_os = "ios", target_os = "macos")))'.dependencies]
+rong = { workspace = true, features = ["quickjs"] }
