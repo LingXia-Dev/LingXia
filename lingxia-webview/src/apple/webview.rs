@@ -118,3 +118,13 @@ impl WebViewController for WebViewInner {
         }
     }
 }
+
+impl Drop for WebViewInner {
+    fn drop(&mut self) {
+        // Call Swift to destroy the WebView
+        if self.swift_webview_ptr != 0 {
+            ffi::webview_destroy(self.swift_webview_ptr);
+            self.swift_webview_ptr = 0;
+        }
+    }
+}

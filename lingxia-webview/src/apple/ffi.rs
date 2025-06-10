@@ -121,6 +121,9 @@ mod bridge {
         #[swift_bridge(swift_name = "LingXiaWebView.clearBrowsingData")]
         fn webview_clear_browsing_data(webview_ptr: usize) -> bool;
 
+        #[swift_bridge(swift_name = "LingXiaWebView.destroy")]
+        fn webview_destroy(webview_ptr: usize);
+
         #[swift_bridge(swift_name = "LingXiaWebView.setDevtools")]
         fn webview_set_devtools(webview_ptr: usize, enabled: bool) -> bool;
 
@@ -140,7 +143,7 @@ mod bridge {
 pub use bridge::{
     HttpRequest, HttpResponse, close_miniapp, create_webview_ptr, get_device_model,
     get_system_version, list_asset_directory, open_miniapp, read_asset_data, switch_page,
-    webview_clear_browsing_data, webview_evaluate_javascript, webview_load_url,
+    webview_clear_browsing_data, webview_destroy, webview_evaluate_javascript, webview_load_url,
     webview_set_devtools, webview_set_scroll_listener_enabled, webview_set_user_agent,
 };
 

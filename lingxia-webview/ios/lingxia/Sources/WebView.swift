@@ -1086,6 +1086,28 @@ extension LingXiaWebView: WKNavigationDelegate {
         )
     }
 
+    /// Destroy the WebView and clean up resources
+    /// Called from Rust layer when WebView is being dropped
+    nonisolated public static func destroy(webview_ptr webviewPtr: UInt) {
+        guard webviewPtr != 0 else { return }
+
+        // Use safer getWebView method instead of direct pointer manipulation
+        if let webView = getWebView(from: webviewPtr) {
+            DispatchQueue.main.async {
+                // Clean up WebView resources
+                webView.stopLoading()
+                webView.removeFromSuperview()
+
+                // Clear message handlers to prevent memory leaks
+                webView.configuration.userContentController.removeAllUserScripts()
+                webView.configuration.userContentController.removeScriptMessageHandler(forName: "lingxia")
+
+                os_log("WebView destroyed for appId=%@ path=%@",
+                       log: webViewLog, type: .info,
+                       webView.appId ?? "unknown", webView.currentPath ?? "unknown")
+            }
+        }
+    }
 
 }
 
