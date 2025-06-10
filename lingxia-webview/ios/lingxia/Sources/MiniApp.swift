@@ -52,7 +52,10 @@ public class MiniApp {
     internal static var homeMiniAppId: String?
 
     /// Home mini app initial route obtained from native initialization
-    private static var homeMiniAppInitialRoute: String?
+    internal static var homeMiniAppInitialRoute: String?
+
+    /// Storage for last active paths of miniapps to restore state when reopening
+    private static var lastActivePaths: [String: String] = [:]
 
     /// Application context
     private let context: UIApplication
@@ -124,7 +127,8 @@ public class MiniApp {
     nonisolated public static func openMiniApp(appid: RustStr, path: RustStr) -> Bool {
         let appidString = appid.toString()
         let pathString = path.toString()
-        // Always dispatch to main thread for UI operations
+        os_log("Opening app: %@ at %@", log: log, type: .info, appidString, pathString)
+
         DispatchQueue.main.async {
             let instance = getInstance()
             instance.openInNewViewController(appId: appidString, path: pathString)
@@ -141,7 +145,6 @@ public class MiniApp {
     /// - Note: The home app ID and route are set during initialize()
     public static func openHomeMiniApp() {
         if let homeMiniAppId = homeMiniAppId, let homeMiniAppInitialRoute = homeMiniAppInitialRoute {
-            os_log("Opening home app: %@ at %@", log: log, type: .info, homeMiniAppId, homeMiniAppInitialRoute)
             _ = homeMiniAppId.toRustStr { appidRustStr in
                 homeMiniAppInitialRoute.toRustStr { pathRustStr in
                     MiniApp.openMiniApp(appid: appidRustStr, path: pathRustStr)
@@ -152,17 +155,15 @@ public class MiniApp {
         }
     }
 
-    /**
-     * Notifies the system to close a mini app with the specified appId
-     * - Note: Automatically ensures execution on main thread for UI operations
-     */
+    /// Closes a mini app with the specified appId (called from Rust layer)
+    /// This is the main API for programmatic miniapp closure
     nonisolated public static func closeMiniApp(appid: RustStr) -> Bool {
         let appidString = appid.toString()
-            os_log("Closing MiniApp: %@", log: log, type: .info, appidString)
-        // Always dispatch to main thread for notification posting
+        os_log("Closing MiniApp: %@", log: log, type: .info, appidString)
+
         DispatchQueue.main.async {
             NotificationCenter.default.post(
-                name: NSNotification.Name("com.lingxia.CLOSE_MINIAPP_ACTION"),
+                name: NSNotification.Name(ACTION_CLOSE_MINIAPP),
                 object: nil,
                 userInfo: ["appId": appidString]
             )
@@ -181,12 +182,23 @@ public class MiniApp {
         // Always dispatch to main thread for notification posting
         DispatchQueue.main.async {
             NotificationCenter.default.post(
-                name: NSNotification.Name("com.lingxia.SWITCH_PAGE_ACTION"),
+                name: NSNotification.Name(ACTION_SWITCH_PAGE),
                 object: nil,
                 userInfo: ["appId": appidString, "path": pathString]
             )
         }
         return true
+    }
+
+    /// Stores the last active path for a miniapp to enable state restoration
+    internal static func storeLastActivePath(appId: String, path: String) {
+        lastActivePaths[appId] = path
+    }
+
+    /// Retrieves the last active path for a miniapp, or returns the initial route if none stored
+    internal static func getLastActivePath(appId: String, defaultPath: String) -> String {
+        let storedPath = lastActivePaths[appId] ?? defaultPath
+        return storedPath
     }
 
     /**
@@ -224,12 +236,36 @@ public class MiniApp {
             return
         }
 
-        let miniAppVC = MiniAppViewController(appId: appId, path: path)
+        let actualPath: String
+        let storedPath = MiniApp.getLastActivePath(appId: appId, defaultPath: path)
+
+        if storedPath != path && appId != MiniApp.homeMiniAppId {
+            actualPath = storedPath
+            os_log("openInNewViewController: Using stored path for state restoration: %@ (requested: %@)",
+                   log: Self.log, type: .info, actualPath, path)
+        } else {
+            actualPath = path
+            os_log("openInNewViewController: Using requested path: %@", log: Self.log, type: .info, actualPath)
+        }
+
+        let existingWebView = findExistingWebView(appId: appId, path: actualPath)
+
+        let miniAppVC: MiniAppViewController
+        if let webView = existingWebView {
+            miniAppVC = MiniAppViewController(appId: appId, path: actualPath)
+            miniAppVC.setCurrentWebView(webView)
+        } else {
+            os_log("openInNewViewController: No existing WebView found for %@ at %@",
+                   log: Self.log, type: .info, appId, actualPath)
+            miniAppVC = MiniAppViewController(appId: appId, path: actualPath)
+        }
+
+        // Store reference to current miniapp for cleanup after replacement
+        let currentMiniAppId: String? = nil
 
         switch MiniApp.launchMode {
         case .replaceRoot:
-            window.rootViewController = miniAppVC
-            window.makeKeyAndVisible()
+            setupNavigationStack(window: window, newController: miniAppVC)
         case .modal:
             if let rootVC = window.rootViewController {
                 rootVC.present(miniAppVC, animated: true)
@@ -239,10 +275,57 @@ public class MiniApp {
             }
         }
 
-        // Asynchronously notify Rust to initialize the MiniApp
-        Task {
-            lingxia.onMiniappOpened(appId, path)
+        notifyRustLayerOfMiniAppChange(currentAppId: currentMiniAppId, newAppId: appId, newPath: path)
+    }
+
+    /// Sets up navigation stack for miniapp management
+    private func setupNavigationStack(window: UIWindow, newController: MiniAppViewController) {
+        if let currentRootVC = window.rootViewController {
+            if let navController = currentRootVC as? UINavigationController {
+                navController.pushViewController(newController, animated: false)
+            } else if let currentMiniAppVC = currentRootVC as? MiniAppViewController {
+                window.rootViewController = nil
+                let navController = UINavigationController(rootViewController: currentMiniAppVC)
+                navController.setNavigationBarHidden(true, animated: false)
+                navController.pushViewController(newController, animated: false)
+                window.rootViewController = navController
+                window.makeKeyAndVisible()
+            } else {
+                window.rootViewController = newController
+                window.makeKeyAndVisible()
+            }
+        } else {
+            window.rootViewController = newController
+            window.makeKeyAndVisible()
         }
+    }
+
+    /// Notifies Rust layer of miniapp changes
+    private func notifyRustLayerOfMiniAppChange(currentAppId: String?, newAppId: String, newPath: String) {
+        Task {
+            if let previousAppId = currentAppId {
+                let closeResult = lingxia.onMiniappClosed(previousAppId)
+                os_log("Notified Rust to close previous miniapp: %@ (result: %d)", log: Self.log, type: .info, previousAppId, closeResult)
+            }
+
+            let openResult = lingxia.onMiniappOpened(newAppId, newPath)
+            os_log("Notified Rust to open new miniapp: %@ (result: %d)", log: Self.log, type: .info, newAppId, openResult)
+        }
+    }
+
+    /// Find existing WebView for the given appId and path
+    private func findExistingWebView(appId: String, path: String) -> LingXiaWebView? {
+        let webViewPtr = lingxia.findWebView(appId, path)
+
+        if webViewPtr != 0 {
+            let pointer = UnsafeRawPointer(bitPattern: webViewPtr)!
+            let webView = Unmanaged<LingXiaWebView>.fromOpaque(pointer).takeUnretainedValue()
+            os_log("Found existing WebView for %@ at %@ - pageLoaded=%@",
+                   log: Self.log, type: .info, appId, path, String(webView.pageLoaded))
+            return webView
+        }
+
+        return nil
     }
 
     /// Configures global system bars for the mini app system
@@ -279,5 +362,49 @@ func getDeviceModel() -> String {
 nonisolated func getSystemVersion() -> String {
     return DispatchQueue.main.sync {
         UIDevice.current.systemVersion
+    }
+}
+
+/// Simple controller stack to simulate Android's Activity stack behavior
+/// This helps maintain state when switching between miniapps
+@MainActor
+class MiniAppControllerStack {
+    private static let log = OSLog(subsystem: "LingXia", category: "ControllerStack")
+
+    /// Represents the state of a previous controller
+    struct ControllerState {
+        let appId: String
+        let path: String
+        let webView: LingXiaWebView?
+    }
+
+    /// Stack to store previous controller states
+    private static var controllerStack: [ControllerState] = []
+
+    /// Push current controller state to stack before opening new miniapp
+    static func pushCurrentController(appId: String, path: String, webView: LingXiaWebView?) {
+        let state = ControllerState(appId: appId, path: path, webView: webView)
+        controllerStack.append(state)
+        os_log("pushCurrentController: Pushed controller for %@ at %@ (stack size: %d)",
+               log: log, type: .info, appId, path, controllerStack.count)
+    }
+
+    /// Pop previous controller state when closing current miniapp
+    static func popPreviousController() -> ControllerState? {
+        guard !controllerStack.isEmpty else {
+            os_log("popPreviousController: Stack is empty", log: log, type: .info)
+            return nil
+        }
+
+        let state = controllerStack.removeLast()
+        os_log("popPreviousController: Popped controller for %@ at %@ (stack size: %d)",
+               log: log, type: .info, state.appId, state.path, controllerStack.count)
+        return state
+    }
+
+    /// Clear the entire stack (useful for debugging or reset)
+    static func clearStack() {
+        controllerStack.removeAll()
+        os_log("clearStack: Cleared controller stack", log: log, type: .info)
     }
 }

@@ -59,14 +59,14 @@ public class LingXiaWebView: WKWebView {
     internal var currentPath: String?
     internal var isRegistered = false
     private var isFirstLoad = true
-    private var pageLoaded = false
+    internal var pageLoaded = false
     private var savedScrollX: CGFloat = 0
     private var savedScrollY: CGFloat = 0
     private var savedScale: CGFloat = 1.0
     private var savedUrl: String?
-    private var showEventSent = false
+    internal var showEventSent = false  // Made internal for MiniAppViewController access
     private var messageChannel: WKScriptMessageHandler?
-    private var channelInitialized = false
+    internal var channelInitialized = false  // Made internal for MiniAppViewController access
     private var processingRequest = false  // Prevent infinite loops
 
     private var lastScrollX: CGFloat = 0
@@ -371,17 +371,33 @@ public class LingXiaWebView: WKWebView {
     /// This method sets up the message handler for bridge.js to communicate with native layer
     /// - Note: Called from WebView lifecycle methods which are already on main thread
     public func ensureBridgeReady() {
-        // If channel is already initialized, don't recreate
+        // CRITICAL FIX: Only reset bridge if it's actually broken or not initialized
+        // For reused WebViews that are working, don't break the existing bridge
         if channelInitialized && messageChannel != nil {
             return
         }
 
-        // Clean up existing channels if any
+        os_log("ensureBridgeReady: Setting up bridge for appId=%@ path=%@ (channelInitialized=%@)",
+               log: webViewLog, type: .info, appId ?? "nil", currentPath ?? "nil", String(channelInitialized))
+
+        // Clean up existing channels if any - use try-catch to handle cases where handlers don't exist
         if messageChannel != nil {
-            configuration.userContentController.removeScriptMessageHandler(forName: "LingXia")
-            configuration.userContentController.removeScriptMessageHandler(forName: "LingXiaConsole")
-            messageChannel = nil
+            do {
+                configuration.userContentController.removeScriptMessageHandler(forName: "LingXia")
+                os_log("ensureBridgeReady: Removed existing LingXia handler", log: webViewLog, type: .info)
+            } catch {
+                // Handler doesn't exist, ignore
+            }
+
+            do {
+                configuration.userContentController.removeScriptMessageHandler(forName: "LingXiaConsole")
+                os_log("ensureBridgeReady: Removed existing LingXiaConsole handler", log: webViewLog, type: .info)
+            } catch {
+                // Handler doesn't exist, ignore
+            }
         }
+
+        messageChannel = nil
         channelInitialized = false
 
         // Setup main message handler for bridge.js communication
@@ -499,6 +515,53 @@ public class LingXiaWebView: WKWebView {
         isHidden = true
     }
 
+    /// Resumes WebView operations and restores saved state WITHOUT reloading URL
+    ///
+    /// This method restores the WebView to its previous state, including scroll position,
+    /// zoom level, and bridge connectivity, but does NOT reload the URL. This is useful
+    /// for reusing existing WebViews without triggering content reload.
+    ///
+    /// - Note: The WebView becomes visible after calling this method
+    /// - Warning: Must be called on the main thread
+    public func resumeWebViewWithoutReload() {
+        // Ensure we're on the main thread for UI operations
+        guard Thread.isMainThread else {
+            os_log("resumeWebViewWithoutReload called from background thread, dispatching to main", log: webViewLog, type: .debug)
+            DispatchQueue.main.async { [weak self] in
+                self?.resumeWebViewWithoutReloadOnMainThread()
+            }
+            return
+        }
+
+        resumeWebViewWithoutReloadOnMainThread()
+    }
+
+    /// Internal method to resume WebView on main thread without reloading URL
+    /// - Warning: This method assumes it's being called on the main thread
+    private func resumeWebViewWithoutReloadOnMainThread() {
+        assert(Thread.isMainThread, "resumeWebViewWithoutReloadOnMainThread must be called on main thread")
+
+        // Set to visible
+        isHidden = false
+
+        // Ensure bridge is working when resuming
+        if !channelInitialized || messageChannel == nil {
+            ensureBridgeReady()
+        }
+
+        // Restore scroll position and scale if page was already loaded
+        if pageLoaded {
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                self.scrollView.setContentOffset(CGPoint(x: self.savedScrollX, y: self.savedScrollY), animated: false)
+                self.scrollView.setZoomScale(self.savedScale, animated: false)
+                os_log("resumeWebViewWithoutReload: Restored scroll position and zoom", log: webViewLog, type: .info)
+            }
+        }
+
+        os_log("resumeWebViewWithoutReload: WebView resumed without URL reload", log: webViewLog, type: .info)
+    }
+
     /// Resumes WebView operations and restores saved state
     ///
     /// This method restores the WebView to its previous state, including scroll position,
@@ -544,15 +607,16 @@ public class LingXiaWebView: WKWebView {
 
                     // Only reload URL if needed
                     if let savedUrl = self.savedUrl, self.url?.absoluteString != savedUrl {
-
                         if let url = URL(string: savedUrl) {
                             let _ = self.load(URLRequest(url: url))
                         }
                     } else {
                         // If we're resuming an already loaded page, trigger PageShow
-
-                        lingxia.onPageShow(appId, currentPath)
-                        self.showEventSent = true  // Mark that we've sent the event
+                        // This matches Android's behavior in WebView.kt line 525
+                        if !self.showEventSent {
+                            lingxia.onPageShow(appId, currentPath)
+                            self.showEventSent = true  // Mark that we've sent the event
+                        }
                     }
                 }
             } else if isFirstLoad {
@@ -571,7 +635,18 @@ public class LingXiaWebView: WKWebView {
         } else {
             // Clean up resources when being removed from superview
             if messageChannel != nil {
-                configuration.userContentController.removeScriptMessageHandler(forName: "lingxiaMessageHandler")
+                do {
+                    configuration.userContentController.removeScriptMessageHandler(forName: "LingXia")
+                } catch {
+                    // Handler doesn't exist, ignore
+                }
+
+                do {
+                    configuration.userContentController.removeScriptMessageHandler(forName: "LingXiaConsole")
+                } catch {
+                    // Handler doesn't exist, ignore
+                }
+
                 messageChannel = nil
             }
             channelInitialized = false  // Reset the flag when detached
@@ -632,6 +707,7 @@ public class LingXiaWebView: WKWebView {
         let _ = lingxia.onPageFinished(appId, currentPath)
 
         // If page is loaded and attached to superview, and we haven't sent PageShow yet
+        // This matches Android's behavior in WebView.kt line 706
         if superview != nil && url != nil && !showEventSent {
             lingxia.onPageShow(appId, currentPath)
             showEventSent = true

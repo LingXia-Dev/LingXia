@@ -21,7 +21,7 @@ public class MiniAppViewController: UIViewController {
     private static let CURRENT_WEBVIEW_CONTAINER_TAG = 999
     private static let OLD_WEBVIEW_CONTAINER_TAG = 998
 
-    private var appId: String
+    internal var appId: String
     private var initialPath: String
     private var rootContainer: UIView!
     private var statusBarBackground: UIView!
@@ -33,6 +33,16 @@ public class MiniAppViewController: UIViewController {
     private var isDisplayingHomeMiniApp: Bool = false
 
     private var currentWebView: LingXiaWebView?
+
+    /// Internal getter for currentWebView to allow access from MiniApp class
+    internal var getCurrentWebView: LingXiaWebView? {
+        return currentWebView
+    }
+
+    /// Internal setter for currentWebView to allow setting from MiniApp class
+    internal func setCurrentWebView(_ webView: LingXiaWebView) {
+        currentWebView = webView
+    }
 
     nonisolated(unsafe) private var closeAppObserver: NSObjectProtocol?
     nonisolated(unsafe) private var switchPageObserver: NSObjectProtocol?
@@ -161,7 +171,14 @@ public class MiniAppViewController: UIViewController {
         }
 
         addCapsuleButton()
-        setupInitialContent(path: initialPath)
+
+        if currentWebView == nil {
+            setupInitialContent(path: initialPath)
+        } else {
+            os_log("Using existing WebView for appId=%@ path=%@ pageLoaded=%@",
+                   log: Self.log, type: .info, appId, initialPath, String(currentWebView!.pageLoaded))
+            attachExistingWebView(currentWebView!)
+        }
 
         // Sync TabBar selected state with current path
         if let tabBar = tabBar {
@@ -255,7 +272,14 @@ public class MiniAppViewController: UIViewController {
                 guard targetAppId == self.appId else { return }
 
                 os_log("Received close request for appId: %@", log: Self.log, type: .info, self.appId)
-                self.dismiss(animated: true)
+
+                if self.presentingViewController != nil {
+                    self.dismiss(animated: true) {
+                        Task { lingxia.onMiniappClosed(self.appId) }
+                    }
+                } else if !self.isDisplayingHomeMiniApp {
+                    self.performMiniAppClose()
+                }
             }
         }
 
@@ -338,14 +362,33 @@ public class MiniAppViewController: UIViewController {
     }
 
     private func setupInitialContent(path: String) {
-        // NEW APPROACH: Register for WebView creation notification instead of polling
-        // This eliminates the retry mechanism and makes the flow event-driven
+        MiniApp.storeLastActivePath(appId: appId, path: path)
 
-        // Capture appId to avoid MainActor issues in closure
+        if let existingWebView = findWebView(appId: appId, path: path) {
+            if existingWebView.pageLoaded {
+                attachExistingWebView(existingWebView)
+                let pageConfig = existingWebView.getPageConfig()
+                updateNavigationBar(pageConfig: pageConfig, isBackNavigation: false, disableAnimation: true)
+                return
+            } else {
+                currentWebView = existingWebView
+            }
+        }
+
+        if let webView = currentWebView {
+            attachWebViewToUI(webView: webView)
+            return
+        }
+
+        waitForWebViewCreation(appId: appId, path: path)
+
+    }
+
+    /// Waits for WebView creation notification from Rust layer
+    private func waitForWebViewCreation(appId: String, path: String) {
         let currentAppId = appId
+        nonisolated(unsafe) var observer: NSObjectProtocol?
 
-        // Use a weak reference to avoid circular reference
-        var observer: NSObjectProtocol?
         observer = NotificationCenter.default.addObserver(
             forName: NSNotification.Name("WebViewCreated"),
             object: nil,
@@ -356,47 +399,84 @@ public class MiniAppViewController: UIViewController {
                   let notificationAppId = userInfo["appId"] as? String,
                   let notificationPath = userInfo["path"] as? String,
                   notificationAppId == currentAppId,
-                  notificationPath == path else {
-                return
-            }
+                  notificationPath == path else { return }
 
-            // Remove observer immediately to prevent multiple calls
             if let obs = observer {
                 NotificationCenter.default.removeObserver(obs)
             }
 
-            // Use Task to handle MainActor calls
             Task { @MainActor in
-                // Find the WebView that was just created
                 guard let webView = self.findWebView(appId: currentAppId, path: path) else {
-                    os_log("WebView creation notification received but WebView not found for path: %{public}@", log: Self.log, type: .error, path)
+                    os_log("WebView creation notification received but WebView not found", log: Self.log, type: .error)
                     return
                 }
-
                 self.attachWebViewToUI(webView: webView)
             }
         }
     }
 
-    /// Attaches WebView to UI and triggers the attached event at the right time
+    /// Attaches WebView to UI for newly created WebViews that need full initialization
     private func attachWebViewToUI(webView: LingXiaWebView) {
-        // Add webview to container first (while hidden)
-        webViewContainer.addSubview(webView)
-        webView.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            webView.topAnchor.constraint(equalTo: webViewContainer.topAnchor),
-            webView.leadingAnchor.constraint(equalTo: webViewContainer.leadingAnchor),
-            webView.trailingAnchor.constraint(equalTo: webViewContainer.trailingAnchor),
-            webView.bottomAnchor.constraint(equalTo: webViewContainer.bottomAnchor)
-        ])
-
-        // Set as current webview
         currentWebView = webView
+        addWebViewToContainer(webView)
 
-        // Force layout to ensure WebView has correct frame
+        if !webView.isRegistered {
+            registerWebViewWithRust(webView)
+        }
+
+        webView.resumeWebView()
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            webView.isHidden = false
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            if let loadingIndicator = self.webViewContainer.viewWithTag(9997) {
+                loadingIndicator.removeFromSuperview()
+            }
+        }
+
+        let pageConfig = webView.getPageConfig()
+        updateNavigationBar(pageConfig: pageConfig, isBackNavigation: false, disableAnimation: true)
+    }
+
+    /// Attaches an existing WebView that's already loaded without triggering reload
+    private func attachExistingWebView(_ webView: LingXiaWebView) {
+        currentWebView = webView
+        addWebViewToContainer(webView)
+
+        if !webView.isRegistered {
+            webView.isRegistered = true
+        }
+
+        webView.resumeWebViewWithoutReload()
+
+        let pageConfig = webView.getPageConfig()
+        updateNavigationBar(pageConfig: pageConfig, isBackNavigation: false, disableAnimation: true)
+    }
+
+    /// Adds WebView to container with proper constraints
+    private func addWebViewToContainer(_ webView: LingXiaWebView) {
+        if webView.superview != webViewContainer {
+            if webView.superview != nil {
+                webView.removeFromSuperview()
+            }
+            webViewContainer.addSubview(webView)
+            webView.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                webView.topAnchor.constraint(equalTo: webViewContainer.topAnchor),
+                webView.leadingAnchor.constraint(equalTo: webViewContainer.leadingAnchor),
+                webView.trailingAnchor.constraint(equalTo: webViewContainer.trailingAnchor),
+                webView.bottomAnchor.constraint(equalTo: webViewContainer.bottomAnchor)
+            ])
+        } else {
+            webViewContainer.bringSubviewToFront(webView)
+        }
         webViewContainer.layoutIfNeeded()
+    }
 
-        // NOW trigger attached event - WebView is properly attached and laid out
+    /// Registers WebView with Rust layer
+    private func registerWebViewWithRust(_ webView: LingXiaWebView) {
         let currentPath = webView.currentPath ?? ""
         let attachResult = appId.toRustStr { appidRustStr in
             currentPath.toRustStr { pathRustStr in
@@ -406,26 +486,9 @@ public class MiniAppViewController: UIViewController {
         if attachResult == 0 {
             webView.isRegistered = true
         }
-
-        // Start loading content
-        webView.resumeWebView()
-
-        // Show webview after brief delay to ensure rendering is ready
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            webView.isHidden = false
-
-            // Remove loading indicator after a reasonable delay
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                if let loadingIndicator = self.webViewContainer.viewWithTag(9997) {
-                    loadingIndicator.removeFromSuperview()
-                }
-            }
-        }
-
-        // Get page configuration and update NavigationBar
-        let pageConfig = webView.getPageConfig()
-        updateNavigationBar(pageConfig: pageConfig, isBackNavigation: false, disableAnimation: true)
     }
+
+
 
     private func setupTabBar(config: TabBarConfig?) {
         guard let config = config else {
@@ -831,7 +894,8 @@ public class MiniAppViewController: UIViewController {
     }
 
     @objc private func closeButtonTapped() {
-        dismiss(animated: true)
+        guard !isDisplayingHomeMiniApp else { return }
+        performMiniAppClose()
     }
 
     private func switchToTab(targetPath: String) {
@@ -881,8 +945,16 @@ public class MiniAppViewController: UIViewController {
         // This ensures WebView starts below NavigationBar when it exists, or from top when hidden
         updateLayoutMargins()
 
-        // Attach and resume WebView (similar to Android's implementation attachAndResumeWebView)
-        attachAndResumeWebView(targetWebView)
+        // Check if this WebView has been loaded before
+        if targetWebView.pageLoaded {
+            // WebView already loaded, just attach without resuming to avoid reloading
+            os_log("switchToTab: WebView already loaded, attaching existing WebView", log: Self.log, type: .info)
+            attachExistingWebView(targetWebView)
+        } else {
+            // WebView not loaded yet, need initial load
+            os_log("switchToTab: WebView not loaded yet, performing initial load", log: Self.log, type: .info)
+            attachAndResumeWebView(targetWebView)
+        }
 
         // Hide previous WebView
         if let previousWebView = previousWebView, previousWebView != targetWebView {
@@ -904,6 +976,9 @@ public class MiniAppViewController: UIViewController {
         if currentWebView?.currentPath == targetPath {
             return
         }
+
+        // Store the target path as the last active path for state restoration
+        MiniApp.storeLastActivePath(appId: appId, path: targetPath)
 
         // Check if this is a tab page
         if let tabIndex = tabBar?.findTabIndexByPath(targetPath), tabIndex >= 0 {
@@ -1153,8 +1228,10 @@ public class MiniAppViewController: UIViewController {
             return
         }
 
-        // No back navigation available, close activity
-        dismiss(animated: true)
+        // No back navigation available, close activity (same as Android's finish())
+        if !isDisplayingHomeMiniApp {
+            performMiniAppClose()
+        }
     }
 
     public override func viewWillDisappear(_ animated: Bool) {
@@ -1467,56 +1544,160 @@ public class MiniAppViewController: UIViewController {
     }
 
     /// Attach WebView to container and resume it
+    /// This method is for tab switching where we need to ensure proper WebView state
     @MainActor
     private func attachAndResumeWebView(_ webView: LingXiaWebView) {
-        // Ensure WebView is visible with transparent background for proper layering
-        webView.isHidden = false
-        webView.backgroundColor = UIColor.clear
-        webView.scrollView.backgroundColor = UIColor.clear
-        webView.isOpaque = false
+        os_log("attachAndResumeWebView: START for appId=%@ path=%@",
+               log: Self.log, type: .info, webView.appId ?? "nil", webView.currentPath ?? "nil")
 
-        // Add to container if not already there
-        if webView.superview != webViewContainer {
-            if webView.superview != nil {
-                webView.removeFromSuperview()
-            }
+        // Set as current WebView
+        currentWebView = webView
 
-            webViewContainer.addSubview(webView)
-            webView.translatesAutoresizingMaskIntoConstraints = false
-            NSLayoutConstraint.activate([
-                webView.topAnchor.constraint(equalTo: webViewContainer.topAnchor),
-                webView.leadingAnchor.constraint(equalTo: webViewContainer.leadingAnchor),
-                webView.trailingAnchor.constraint(equalTo: webViewContainer.trailingAnchor),
-                webView.bottomAnchor.constraint(equalTo: webViewContainer.bottomAnchor)
-            ])
+        // Add webview to container
+        addWebViewToContainer(webView)
 
-            os_log("attachAndResumeWebView: Added WebView to container", log: Self.log, type: .info)
-        } else {
-            webViewContainer.bringSubviewToFront(webView)
-            os_log("attachAndResumeWebView: WebView already in container, brought to front", log: Self.log, type: .info)
-        }
-
-        // Resume WebView
-        webView.resumeWebView()
-
-        // CRITICAL: Trigger onWebviewAttached if not already registered
-        // This will cause Rust to load the URL and trigger the proper page lifecycle
+        // Register with Rust layer if needed
         if !webView.isRegistered {
-            os_log("attachAndResumeWebView: WebView not registered, triggering onWebviewAttached", log: Self.log, type: .info)
-            let currentPath = webView.currentPath ?? ""
-            let attachResult = appId.toRustStr { appidRustStr in
-                currentPath.toRustStr { pathRustStr in
-                    lingxia.onWebviewAttached(appidRustStr, pathRustStr)
-                }
-            }
-            if attachResult == 0 {
-                webView.isRegistered = true
-                os_log("attachAndResumeWebView: WebView registered successfully", log: Self.log, type: .info)
-            } else {
-                os_log("attachAndResumeWebView: Failed to register WebView", log: Self.log, type: .error)
-            }
-        } else {
-            os_log("attachAndResumeWebView: WebView already registered", log: Self.log, type: .info)
+            registerWebViewWithRust(webView)
         }
+
+        // Resume WebView - onPageShow will be called by WebView when appropriate
+        webView.resumeWebView()
+        webView.isHidden = false
+
+        os_log("attachAndResumeWebView: Completed", log: Self.log, type: .info)
+    }
+
+    /// Internal method to handle miniapp closure for both UI and API calls
+    @MainActor
+    private func performMiniAppClose() {
+        Task {
+            let result = lingxia.onMiniappClosed(appId)
+            os_log("Closed miniapp %@ (result: %d)", log: Self.log, type: .info, appId, result)
+        }
+
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let window = windowScene.windows.first else { return }
+
+        if let navController = window.rootViewController as? UINavigationController {
+            navController.popViewController(animated: false)
+        } else {
+            openHomeMiniAppAsFallback()
+        }
+    }
+
+    /// Find existing home miniapp WebView to avoid re-rendering
+    /// This is the key to preventing re-rendering - we reuse existing WebViews
+    @MainActor
+    private func findExistingHomeMiniAppWebView() -> LingXiaWebView? {
+        guard let homeMiniAppId = MiniApp.homeMiniAppId,
+              let homeMiniAppInitialRoute = MiniApp.homeMiniAppInitialRoute else {
+            os_log("findExistingHomeMiniAppWebView: No home miniapp ID or initial route", log: Self.log, type: .error)
+            return nil
+        }
+
+        // Get the last active path of home miniapp
+        let lastActivePath = MiniApp.getLastActivePath(appId: homeMiniAppId, defaultPath: homeMiniAppInitialRoute)
+        os_log("findExistingHomeMiniAppWebView: Looking for home WebView - homeMiniAppId=%@, lastActivePath=%@, initialRoute=%@",
+               log: Self.log, type: .info, homeMiniAppId, lastActivePath, homeMiniAppInitialRoute)
+
+        // Try to find existing WebView from Rust layer first
+        if let existingWebView = findWebView(appId: homeMiniAppId, path: lastActivePath) {
+            os_log("findExistingHomeMiniAppWebView: Found existing WebView for %@ at %@", log: Self.log, type: .info, homeMiniAppId, lastActivePath)
+            return existingWebView
+        } else {
+            os_log("findExistingHomeMiniAppWebView: No WebView found for %@ at %@", log: Self.log, type: .info, homeMiniAppId, lastActivePath)
+        }
+
+        // If not found with exact path, try to find any WebView for home miniapp
+        if let existingWebView = findWebView(appId: homeMiniAppId, path: homeMiniAppInitialRoute) {
+            os_log("findExistingHomeMiniAppWebView: Found existing WebView for %@ at initial route", log: Self.log, type: .info, homeMiniAppId)
+            return existingWebView
+        } else {
+            os_log("findExistingHomeMiniAppWebView: No WebView found for %@ at initial route %@", log: Self.log, type: .info, homeMiniAppId, homeMiniAppInitialRoute)
+        }
+
+        // Try to find ANY WebView for home miniapp regardless of path
+        os_log("findExistingHomeMiniAppWebView: Trying to find ANY WebView for home miniapp %@", log: Self.log, type: .info, homeMiniAppId)
+        // TODO: We need a way to find any WebView for a given appId regardless of path
+
+        os_log("findExistingHomeMiniAppWebView: No existing home WebView found anywhere", log: Self.log, type: .info)
+        return nil
+    }
+
+    /// Restore previous controller from stack (simulating Android's Activity stack behavior)
+    /// This is the key method to prevent re-rendering - we reuse the existing WebView from stack
+    @MainActor
+    private func restorePreviousControllerFromStack(_ controllerState: MiniAppControllerStack.ControllerState) {
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let window = windowScene.windows.first else {
+            os_log("Failed to get window for restoring controller from stack", log: Self.log, type: .error)
+            return
+        }
+
+        os_log("restorePreviousControllerFromStack: Restoring controller for %@ at %@ with existing WebView",
+               log: Self.log, type: .info, controllerState.appId, controllerState.path)
+
+        // Create a new controller with the saved state
+        let restoredController = MiniAppViewController(appId: controllerState.appId, path: controllerState.path)
+
+        // CRITICAL: Set the existing WebView BEFORE setting as root controller
+        // This ensures the WebView is set before viewDidLoad is called, preventing re-rendering
+        if let existingWebView = controllerState.webView {
+            restoredController.currentWebView = existingWebView
+            os_log("restorePreviousControllerFromStack: Using existing WebView from stack", log: Self.log, type: .info)
+        } else {
+            os_log("restorePreviousControllerFromStack: No existing WebView in stack, will create new one", log: Self.log, type: .info)
+        }
+
+        // Replace the root controller - this will trigger viewDidLoad which will skip setupInitialContent if WebView exists
+        window.rootViewController = restoredController
+        window.makeKeyAndVisible()
+    }
+
+    /// Open home miniapp as fallback when no previous state is found
+    @MainActor
+    private func openHomeMiniAppAsFallback() {
+        guard let homeMiniAppId = MiniApp.homeMiniAppId,
+              let homeMiniAppInitialRoute = MiniApp.homeMiniAppInitialRoute else {
+            os_log("Home miniapp details not available", log: Self.log, type: .error)
+            return
+        }
+
+        os_log("openHomeMiniAppAsFallback: Opening home miniapp: %@ at %@", log: Self.log, type: .info, homeMiniAppId, homeMiniAppInitialRoute)
+        _ = homeMiniAppId.toRustStr { appidRustStr in
+            homeMiniAppInitialRoute.toRustStr { pathRustStr in
+                MiniApp.openMiniApp(appid: appidRustStr, path: pathRustStr)
+            }
+        }
+    }
+
+
+
+
+
+
+    /// Performs UI cleanup before this view controller is replaced by another MiniAppViewController
+    /// This ensures proper resource cleanup but does NOT notify Rust layer (that's done separately)
+    @MainActor
+    internal func performCleanupBeforeReplacement() {
+        os_log("performCleanupBeforeReplacement: START for appId=%@ (UI cleanup only)", log: Self.log, type: .info, appId)
+
+        // Pause and hide current WebView
+        if let currentWebView = currentWebView {
+            currentWebView.isHidden = true
+            currentWebView.pauseWebView()
+            os_log("performCleanupBeforeReplacement: Paused current WebView", log: Self.log, type: .info)
+        }
+
+        // CRITICAL FIX: Don't remove ALL observers - this breaks WebView creation notifications
+        // Only remove specific observers that this view controller registered
+        // The setupInitialContent method relies on WebViewCreated notifications
+        os_log("performCleanupBeforeReplacement: Skipping observer removal to preserve WebView creation notifications", log: Self.log, type: .info)
+
+        // Clear current WebView reference
+        self.currentWebView = nil
+
+        os_log("performCleanupBeforeReplacement: Completed UI cleanup", log: Self.log, type: .info)
     }
 }
