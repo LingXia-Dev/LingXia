@@ -195,12 +195,19 @@ class MiniApp private constructor(private val context: Context) {
             putExtra(MiniAppActivity.EXTRA_APP_ID, appId)
             putExtra(MiniAppActivity.EXTRA_PATH, path)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            // Add flags for faster activity launch
+            addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
         }
 
         try {
+            // Notify native layer BEFORE starting activity
+            // This allows Rust layer to prepare resources while activity is starting
+            val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+            executor.submit {
+                nativeOnMiniAppOpened(appId, path)
+            }
+            executor.shutdown()
             context.startActivity(intent)
-            // Notify native in background thread to avoid UI blocking
-            Thread { nativeOnMiniAppOpened(appId, path) }.start()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start MiniAppActivity: ${e.message}")
         }

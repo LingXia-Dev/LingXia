@@ -208,7 +208,13 @@ class WebView @JvmOverloads constructor(
 
     private fun initializeWebView() {
         applyWebViewSettings()
-        WebView.setWebContentsDebuggingEnabled(false)
+
+        // Only enable debugging in debug builds
+        if (android.util.Log.isLoggable(TAG, android.util.Log.DEBUG)) {
+            WebView.setWebContentsDebuggingEnabled(true)
+        }
+
+        // Setup clients after settings for better performance
         setupWebViewClients()
     }
 
@@ -218,14 +224,26 @@ class WebView @JvmOverloads constructor(
             javaScriptEnabled = config.enableJavaScript
             domStorageEnabled = config.enableDomStorage
 
+            //  Enable hardware acceleration for better performance
+            setRenderPriority(WebSettings.RenderPriority.HIGH)
+
+            // Viewport and zoom settings
             useWideViewPort = true
             loadWithOverviewMode = true
             setSupportZoom(true)
             builtInZoomControls = true
             displayZoomControls = false
-            cacheMode = WebSettings.LOAD_NO_CACHE
+
+            //  Use default cache mode for better performance LOAD_NO_CACHE can slow down loading significantly
+            cacheMode = WebSettings.LOAD_DEFAULT
+
+            // Security settings
             allowFileAccess = false
             allowContentAccess = false
+
+            //  Enable additional performance settings
+            databaseEnabled = true
+            setGeolocationEnabled(false) // Disable if not needed
         }
     }
 

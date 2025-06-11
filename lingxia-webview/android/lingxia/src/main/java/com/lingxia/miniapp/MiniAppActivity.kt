@@ -173,63 +173,35 @@ class MiniAppActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Force navigationBar to null for recreations due to screen rotation
-        navigationBar = null
-
-        // Register broadcast receiver for close requests
-        registerReceiver(closeAppReceiver, android.content.IntentFilter(ACTION_CLOSE_MINIAPP))
-
-        // Register broadcast receiver for switch page requests
-        registerReceiver(switchPageReceiver, android.content.IntentFilter(ACTION_SWITCH_PAGE))
-
-        // Back press handler // Changed comment and added try-catch + visibility logic
-        onBackPressedDispatcher.addCallback(object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() {
-                 try {
-                    // Ensure current WebView stays visible
-                    currentWebView?.visibility = View.VISIBLE // Changed from direct access to safe call
-
-                    // Call Rust to handle back navigation
-                    val result = nativeOnBackPressed(appId)
-                    Log.d(TAG, "Back press handled by native: $result") // Added log
-
-                    if (result > 0) {
-                        return
-                    }
-
-                    // No back navigation available, close activity
-                    Log.d(TAG, "No back navigation available, finishing") // Added log
-                    finish()
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error handling back press: ${e.message}")
-                    // Ensure finish is called even on error
-                    finish()
-                }
-            }
-        })
-
-        // Configure transparent system bars (initially with non-transparent navigation bar)
-        configureTransparentSystemBars(this)
-        // Set initial navigation bar to non-transparent with white background (will be updated in setupTabBar)
-        updateNavigationBarTransparency(this, false, Color.WHITE)
-        // Navigation bar transparency will be updated in setupTabBar based on TabBar config
-
-        // Initialize appId from intent (check for null)
+        // Initialize appId from intent FIRST (check for null)
         appId = intent.getStringExtra(EXTRA_APP_ID) ?: run {
             Log.e(TAG, "Missing required parameter: appId")
             finish()
             return
         }
+        val initialPath = intent.getStringExtra(EXTRA_PATH) ?: ""
+
         // Initialize the new flag
         isDisplayingHomeMiniApp = (this.appId == MiniApp.HomeMiniAppId)
 
-        val initialPath = intent.getStringExtra(EXTRA_PATH) ?: ""
+        // Start WebView creation in parallel while setting up UI
+        var webViewFuture: java.util.concurrent.Future<Pair<com.lingxia.miniapp.WebView?, NavigationBarConfig?>>? = null
+        val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
 
-        // Get TabBar config from native layer
-        val tabBarJson = MiniApp.nativeGetTabBarConfig(appId)
-        val tabBarConfig = TabBarConfig.fromJson(tabBarJson)
+        try {
+            webViewFuture = executor.submit<Pair<com.lingxia.miniapp.WebView?, NavigationBarConfig?>> {
+                Log.d(TAG, "Starting parallel WebView creation for $appId:$initialPath")
+                findWebViewForPage(appId, initialPath)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to start parallel WebView creation: ${e.message}")
+        }
 
-        // Setup root container FIRST
+        // Force navigationBar to null for recreations due to screen rotation
+        navigationBar = null
+
+        // Defer broadcast receiver registration to reduce onCreate time
+        // These are not critical for initial display
         rootContainer = FrameLayout(this).apply {
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -239,11 +211,27 @@ class MiniAppActivity : AppCompatActivity() {
         }
         setContentView(rootContainer)
 
+        // Get TabBar config and setup UI in parallel
+        val tabBarJson = MiniApp.nativeGetTabBarConfig(appId)
+        val tabBarConfig = TabBarConfig.fromJson(tabBarJson)
+
+        // Configure system UI early but efficiently
+        configureTransparentSystemBars(this)
+        updateNavigationBarTransparency(this, false, Color.WHITE)
         window.setBackgroundDrawableResource(android.R.color.transparent)
 
+        // Setup containers and UI components
+        setupWebViewContainer()
+        setupTabBar(tabBarConfig)
+
+        // Defer capsule button creation to post-layout
+        rootContainer.post {
+            addCapsuleButton()
+        }
+
+        // Setup window insets listener
         ViewCompat.setOnApplyWindowInsetsListener(rootContainer) { view, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-
             val tabBarBgColor = tabBarConfig?.backgroundColor
             val isTabBarTransparent = tabBarBgColor == Color.TRANSPARENT ||
                                      (tabBarBgColor != null && Color.alpha(tabBarBgColor) < 255)
@@ -253,24 +241,51 @@ class MiniAppActivity : AppCompatActivity() {
             } else {
                 view.setPadding(systemBars.left, 0, systemBars.right, systemBars.bottom)
             }
-
             insets
         }
 
-        // Setup WebView container
-        setupWebViewContainer()
+        // Setup WebView content using parallel result
+        try {
+            val webViewResult = webViewFuture?.get(500, java.util.concurrent.TimeUnit.MILLISECONDS)
+            if (webViewResult?.first != null) {
+                setupWebViewContentWithExisting(webViewResult.first!!)
+            } else {
+                setupWebViewContent(appId, initialPath)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Parallel WebView creation timeout/error, falling back to sync: ${e.message}")
+            setupWebViewContent(appId, initialPath)
+        } finally {
+            executor.shutdown()
+        }
 
-        // Setup TabBar
-        setupTabBar(tabBarConfig)
+        // Defer non-critical setup to post-layout
+        rootContainer.post {
+            // Register broadcast receivers after UI is ready
+            registerReceiver(closeAppReceiver, android.content.IntentFilter(ACTION_CLOSE_MINIAPP))
+            registerReceiver(switchPageReceiver, android.content.IntentFilter(ACTION_SWITCH_PAGE))
 
-        // Add capsule button on top (always present)
-        addCapsuleButton()
+            // Setup back press handler
+            onBackPressedDispatcher.addCallback(object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    try {
+                        currentWebView?.visibility = View.VISIBLE
+                        val result = nativeOnBackPressed(appId)
+                        Log.d(TAG, "Back press handled by native: $result")
+                        if (result <= 0) {
+                            Log.d(TAG, "No back navigation available, finishing")
+                            finish()
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error handling back press: ${e.message}")
+                        finish()
+                    }
+                }
+            })
 
-        // Perform initial layout margin update (AFTER all UI setup)
-        updateLayoutMargins()
-
-        // Load initial WebView content
-        setupWebViewContent(appId, initialPath)
+            // Final layout update
+            updateLayoutMargins()
+        }
 
         Log.d(TAG, "MiniAppActivity onCreate completed for appId: $appId, path: $initialPath")
     }
@@ -540,26 +555,19 @@ class MiniAppActivity : AppCompatActivity() {
             Log.e(TAG, "Failed to find or create initial WebView for $path")
             finish(); return
         }
+        setupWebViewContentWithExisting(initialWebView.first!!)
+    }
 
-        // Handle the special delay logic if reusing the immediately previous WebView
-        if (lastWebView?.get() == initialWebView.first) {
-            pendingWebViewSetup = true
-            webViewContainer.postDelayed({
-                if (!isDestroyed) {
-                    attachAndResumeWebView(initialWebView.first)
-                    pendingWebViewSetup = false
-                }
-            }, 100)
-        } else {
-            // Attach and resume immediately for initial load or reuse of non-last view
-            attachAndResumeWebView(initialWebView.first)
-        }
+    // New method to setup WebView content with an existing WebView
+    private fun setupWebViewContentWithExisting(webView: com.lingxia.miniapp.WebView) {
+        // Attach and resume immediately
+        attachAndResumeWebView(webView)
 
         // Set the current WebView
-        this.currentWebView = initialWebView.first
+        this.currentWebView = webView
 
         // Update last used WebView reference
-        lastWebView = WeakReference(initialWebView.first)
+        lastWebView = WeakReference(webView)
     }
 
     // Function to setup the FrameLayout that holds the WebViews
