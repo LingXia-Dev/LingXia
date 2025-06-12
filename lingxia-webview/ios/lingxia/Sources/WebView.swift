@@ -605,18 +605,11 @@ public class LingXiaWebView: WKWebView {
                     self.scrollView.setContentOffset(CGPoint(x: self.savedScrollX, y: self.savedScrollY), animated: false)
                     self.scrollView.setZoomScale(self.savedScale, animated: false)
 
-                    // Only reload URL if needed
-                    if let savedUrl = self.savedUrl, self.url?.absoluteString != savedUrl {
-                        if let url = URL(string: savedUrl) {
-                            let _ = self.load(URLRequest(url: url))
-                        }
-                    } else {
-                        // If we're resuming an already loaded page, trigger PageShow
-                        // This matches Android's behavior in WebView.kt line 525
-                        if !self.showEventSent {
-                            lingxia.onPageShow(appId, currentPath)
-                            self.showEventSent = true  // Mark that we've sent the event
-                        }
+                    // If we're resuming an already loaded page, trigger PageShow
+                    // Swift only handles display, URL loading is managed by Rust layer
+                    if !self.showEventSent {
+                        lingxia.onPageShow(appId, currentPath)
+                        self.showEventSent = true  // Mark that we've sent the event
                     }
                 }
             } else if isFirstLoad {

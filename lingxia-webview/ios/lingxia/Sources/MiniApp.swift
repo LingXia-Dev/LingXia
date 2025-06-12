@@ -248,20 +248,12 @@ public class MiniApp {
             os_log("openInNewViewController: Using requested path: %@", log: Self.log, type: .info, actualPath)
         }
 
-        let existingWebView = findExistingWebView(appId: appId, path: actualPath)
+        // Call onMiniappOpened FIRST to ensure WebView is created before we try to find it
+        let openResult = lingxia.onMiniappOpened(appId, actualPath)
+        os_log("onMiniappOpened completed with result=%d for appId=%@ path=%@", log: Self.log, type: .info, openResult, appId, actualPath)
 
-        let miniAppVC: MiniAppViewController
-        if let webView = existingWebView {
-            miniAppVC = MiniAppViewController(appId: appId, path: actualPath)
-            miniAppVC.setCurrentWebView(webView)
-        } else {
-            os_log("openInNewViewController: No existing WebView found for %@ at %@",
-                   log: Self.log, type: .info, appId, actualPath)
-            miniAppVC = MiniAppViewController(appId: appId, path: actualPath)
-        }
-
-        // Store reference to current miniapp for cleanup after replacement
-        let currentMiniAppId: String? = nil
+        // Create MiniAppViewController - it will find and setup WebView in viewDidLoad
+        let miniAppVC = MiniAppViewController(appId: appId, path: actualPath)
 
         switch MiniApp.launchMode {
         case .replaceRoot:
@@ -274,8 +266,6 @@ public class MiniApp {
                 return
             }
         }
-
-        notifyRustLayerOfMiniAppChange(currentAppId: currentMiniAppId, newAppId: appId, newPath: path)
     }
 
     /// Sets up navigation stack for miniapp management
@@ -300,21 +290,10 @@ public class MiniApp {
         }
     }
 
-    /// Notifies Rust layer of miniapp changes
-    private func notifyRustLayerOfMiniAppChange(currentAppId: String?, newAppId: String, newPath: String) {
-        Task {
-            if let previousAppId = currentAppId {
-                let closeResult = lingxia.onMiniappClosed(previousAppId)
-                os_log("Notified Rust to close previous miniapp: %@ (result: %d)", log: Self.log, type: .info, previousAppId, closeResult)
-            }
 
-            let openResult = lingxia.onMiniappOpened(newAppId, newPath)
-            os_log("Notified Rust to open new miniapp: %@ (result: %d)", log: Self.log, type: .info, newAppId, openResult)
-        }
-    }
 
-    /// Find existing WebView for the given appId and path
-    private func findExistingWebView(appId: String, path: String) -> LingXiaWebView? {
+    /// Find WebView for the given appId and path
+    internal static func findWebView(appId: String, path: String) -> LingXiaWebView? {
         let webViewPtr = lingxia.findWebView(appId, path)
 
         if webViewPtr != 0 {
