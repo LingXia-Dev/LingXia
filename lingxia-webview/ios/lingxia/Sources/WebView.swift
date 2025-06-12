@@ -44,17 +44,6 @@ extension WKWebView {
         isHidden = false
     }
 
-    /// Get page configuration for Rust WebViews
-    func getPageConfig() -> NavigationBarConfig? {
-        guard let appId = appId, let currentPath = currentPath else {
-            // No app info available, return nil to let Swift decide
-            return nil
-        }
-
-        let configJson = lingxia.getPageConfig(appId, currentPath)?.toString()
-        return NavigationBarConfig.fromJson(configJson)
-    }
-
     /// Set up the WebView with app ID and path for Rust integration
     /// Note: All WebView configuration is now handled by Rust layer
     @MainActor

@@ -207,6 +207,44 @@ public class LingXiaNavigationBar: UIView {
         isHidden = true
     }
 
+    /// Updates the NavigationBar with provided configuration
+    /// Returns true if NavigationBar should be shown, false if it should be hidden
+    public func updateWithConfig(
+        pageConfig: NavigationBarConfig?,
+        isBackNavigation: Bool,
+        disableAnimation: Bool,
+        onBackClickListener: @escaping () -> Void,
+        onAnimationEnd: (() -> Void)? = nil
+    ) -> Bool {
+        // Check if NavigationBar should be hidden
+        let shouldHide = pageConfig?.hidden ?? false
+        if shouldHide {
+            hide()
+            return false
+        }
+
+        // Extract configuration values with defaults
+        let titleText = pageConfig?.navigationBarTitleText ?? ""
+        let backgroundColor = pageConfig?.navigationBarBackgroundColor ?? NavigationBarConfig.DEFAULT_BACKGROUND_COLOR
+        let textStyle = pageConfig?.navigationBarTextStyle ?? "black"
+        let textColor = textStyle == "white" ? UIColor.white : UIColor.black
+        let showBackButton = !disableAnimation
+
+        // Update state with provided configuration
+        updateStateAndAnimate(
+            title: titleText,
+            bgColor: backgroundColor,
+            textColor: textColor,
+            showBackButton: showBackButton,
+            isBackNavigation: isBackNavigation,
+            disableAnimation: disableAnimation,
+            onBackClickListener: onBackClickListener,
+            onAnimationEnd: onAnimationEnd
+        )
+
+        return true
+    }
+
     /// Updates the state of the NavigationBar and optionally animates the transition
     public func updateStateAndAnimate(
         title: String,

@@ -360,8 +360,7 @@ public class MiniAppViewController: UIViewController {
     private func setupWebViewIfReady(appId: String, path: String) {
         if let webView = MiniApp.findWebView(appId: appId, path: path) {
             attachWebViewToUI(webView: webView)
-            let pageConfig = webView.getPageConfig()
-            updateNavigationBar(pageConfig: pageConfig, isBackNavigation: false, disableAnimation: true)
+            updateNavigationBar(appId: appId, path: path, isBackNavigation: false, disableAnimation: true)
         } else {
             os_log("setupWebViewIfReady: WebView NOT FOUND for appId=%@ path=%@", log: Self.log, type: .error, appId, path)
         }
@@ -410,8 +409,7 @@ public class MiniAppViewController: UIViewController {
             }
         }
 
-        let pageConfig = webView.getPageConfig()
-        updateNavigationBar(pageConfig: pageConfig, isBackNavigation: false, disableAnimation: true)
+        updateNavigationBar(appId: appId, path: webView.currentPath ?? "", isBackNavigation: false, disableAnimation: true)
     }
 
     /// Adds WebView to container with proper constraints
@@ -888,19 +886,8 @@ public class MiniAppViewController: UIViewController {
         // Update TabBar UI (without triggering listener)
         tabBar?.setSelectedIndex(targetIndex, notifyListener: false)
 
-        // Handle NavigationBar visibility and update layout accordingly
-        let pageConfig = targetWebView.getPageConfig()
-        let shouldShowNavigationBar = !(pageConfig?.hidden ?? false)
-
-        if shouldShowNavigationBar {
-            ensureNavigationBarExists()
-            navigationBar?.isHidden = false
-            configureNavigationBar(pageConfig: pageConfig, isBackNavigation: false, disableAnimation: true)
-        } else {
-            // CRITICAL: Completely remove navigation bar instead of just hiding it
-            // This prevents black areas when navigation bar should be hidden
-            removeNavigationBar()
-        }
+        // Handle NavigationBar using the new unified approach
+        updateNavigationBar(appId: appId, path: targetPath, isBackNavigation: false, disableAnimation: true)
 
         // CRITICAL: Update layout margins to ensure WebView container is positioned correctly
         // This ensures WebView starts below NavigationBar when it exists, or from top when hidden
@@ -963,10 +950,8 @@ public class MiniAppViewController: UIViewController {
             return
         }
 
-        let pageConfig = newWebView.getPageConfig()
-
         // Update navigation bar configuration
-        updateNavigationBar(pageConfig: pageConfig, isBackNavigation: isBackNavigation, disableAnimation: false)
+        updateNavigationBar(appId: appId, path: targetPath, isBackNavigation: isBackNavigation, disableAnimation: false)
 
         // Remove from existing parent if any
         if newWebView.superview != nil {
@@ -1045,23 +1030,66 @@ public class MiniAppViewController: UIViewController {
         }
     }
 
-    /// Updates the navigation bar based on page configuration
+    /// Updates the navigation bar based on app and path
     /// - Parameters:
-    ///   - pageConfig: The navigation bar configuration for the target page
+    ///   - appId: The app ID
+    ///   - path: The page path
     ///   - isBackNavigation: Whether this is a back navigation
     ///   - disableAnimation: Whether to disable animation
-    private func updateNavigationBar(pageConfig: NavigationBarConfig?, isBackNavigation: Bool, disableAnimation: Bool = false) {
-        let shouldShowNavigationBar = !(pageConfig?.hidden ?? false)
+    private func updateNavigationBar(appId: String, path: String, isBackNavigation: Bool, disableAnimation: Bool = false) {
+        let pageConfig = getPageConfig(appId: appId, path: path)
+
+        // Determine NavigationBar visibility
+        let shouldShowNavigationBar: Bool
+        if let config = pageConfig {
+            // Use explicit configuration from Rust
+            shouldShowNavigationBar = !config.hidden
+        } else {
+            // No configuration available - use default behavior (show NavigationBar)
+            // This provides a safe fallback when Rust doesn't have page config
+            shouldShowNavigationBar = true
+            os_log("updateNavigationBar: No page config found for appId=%@ path=%@, using default (show NavigationBar)",
+                   log: Self.log, type: .info, appId, path)
+        }
 
         if shouldShowNavigationBar {
-            // Need to show NavigationBar
+            // Ensure NavigationBar exists
             ensureNavigationBarExists()
-            configureNavigationBar(pageConfig: pageConfig, isBackNavigation: isBackNavigation, disableAnimation: disableAnimation)
+
+            guard let navigationBar = navigationBar else {
+                os_log("updateNavigationBar: Failed to create NavigationBar", log: Self.log, type: .error)
+                return
+            }
+
+            // Update NavigationBar with configuration
+            let _ = navigationBar.updateWithConfig(
+                pageConfig: pageConfig,
+                isBackNavigation: isBackNavigation,
+                disableAnimation: disableAnimation,
+                onBackClickListener: { [weak self] in
+                    self?.handleBackButtonClick()
+                },
+                onAnimationEnd: { [weak self] in
+                    if isBackNavigation {
+                        let currentPath = self?.currentWebView?.currentPath ?? ""
+                        let isNowOnTabRoot = (self?.tabBar?.findTabIndexByPath(currentPath) ?? -1) != -1
+                        if isNowOnTabRoot {
+                            self?.navigationBar?.setBackButtonVisible(false)
+                        }
+                    }
+                }
+            )
         } else {
-            // Need to hide NavigationBar and ensure transparent background
+            // NavigationBar should be hidden - remove it completely
             removeNavigationBar()
             ensureTransparentNavigationArea()
         }
+    }
+
+    /// Get page configuration from Rust layer
+    private func getPageConfig(appId: String, path: String) -> NavigationBarConfig? {
+        let configJson = lingxia.getPageConfig(appId, path)?.toString()
+        return NavigationBarConfig.fromJson(configJson)
     }
 
     /// Ensures the navigation area is transparent when NavigationBar is hidden
@@ -1121,42 +1149,7 @@ public class MiniAppViewController: UIViewController {
         rootContainer.bringSubviewToFront(newNavBar)
     }
 
-    /// Configures the existing NavigationBar with page settings
-    private func configureNavigationBar(pageConfig: NavigationBarConfig?, isBackNavigation: Bool, disableAnimation: Bool) {
-        guard let navigationBar = navigationBar else {
-            os_log("LingXia: ERROR: Trying to configure non-existent NavigationBar", log: Self.log, type: .error)
-            return
-        }
 
-        let titleText = pageConfig?.navigationBarTitleText ?? ""
-        let backgroundColor = pageConfig?.navigationBarBackgroundColor ?? NavigationBarConfig.DEFAULT_BACKGROUND_COLOR
-        let textStyle = pageConfig?.navigationBarTextStyle ?? "black"
-        let textColor = textStyle == "white" ? UIColor.white : UIColor.black
-        let showBackButton = !disableAnimation
-
-        let onAnimationEnd = { [weak self] in
-            if isBackNavigation {
-                let currentPath = self?.currentWebView?.currentPath ?? ""
-                let isNowOnTabRoot = (self?.tabBar?.findTabIndexByPath(currentPath) ?? -1) != -1
-                if isNowOnTabRoot {
-                    self?.navigationBar?.setBackButtonVisible(false)
-                }
-            }
-        }
-
-        navigationBar.updateStateAndAnimate(
-            title: titleText,
-            bgColor: backgroundColor,
-            textColor: textColor,
-            showBackButton: showBackButton,
-            isBackNavigation: isBackNavigation,
-            disableAnimation: disableAnimation,
-            onBackClickListener: { [weak self] in
-                self?.handleBackButtonClick()
-            },
-            onAnimationEnd: onAnimationEnd
-        )
-    }
 
     /// Removes NavigationBar completely
     private func removeNavigationBar() {
