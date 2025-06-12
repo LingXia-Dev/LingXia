@@ -32,7 +32,7 @@ public class MiniAppViewController: UIViewController {
     private var pendingWebViewSetup = false
     private var isDisplayingHomeMiniApp: Bool = false
 
-    private var currentWebView: LingXiaWebView?
+    private var currentWebView: WKWebView?
 
     nonisolated(unsafe) private var closeAppObserver: NSObjectProtocol?
     nonisolated(unsafe) private var switchPageObserver: NSObjectProtocol?
@@ -167,7 +167,7 @@ public class MiniAppViewController: UIViewController {
         } else {
             os_log("Using existing WebView for appId=%@ path=%@ pageLoaded=%@",
                    log: Self.log, type: .info, appId, initialPath, String(currentWebView!.pageLoaded))
-            attachExistingWebView(currentWebView!)
+            attachWebViewToUI(webView: currentWebView!)
         }
 
         // Sync TabBar selected state with current path
@@ -321,10 +321,10 @@ public class MiniAppViewController: UIViewController {
 
     private func setupWebViewContainer() {
         webViewContainer = UIView()
-        // CRITICAL: Use stable background that won't change during lifecycle
-        // This prevents rendering conflicts that cause progress bar breaks
-        webViewContainer.backgroundColor = UIColor.white
-        webViewContainer.isOpaque = true
+        // CRITICAL: Use transparent background to allow WebView transparency to show through
+        // WebView transparency is now managed by Rust layer
+        webViewContainer.backgroundColor = UIColor.clear
+        webViewContainer.isOpaque = false
         webViewContainer.translatesAutoresizingMaskIntoConstraints = false
         rootContainer.addSubview(webViewContainer)
 
@@ -359,11 +359,7 @@ public class MiniAppViewController: UIViewController {
 
     private func setupWebViewIfReady(appId: String, path: String) {
         if let webView = MiniApp.findWebView(appId: appId, path: path) {
-            if webView.pageLoaded {
-                attachExistingWebView(webView)
-            } else {
-                attachWebViewToUI(webView: webView)
-            }
+            attachWebViewToUI(webView: webView)
             let pageConfig = webView.getPageConfig()
             updateNavigationBar(pageConfig: pageConfig, isBackNavigation: false, disableAnimation: true)
         } else {
@@ -371,24 +367,46 @@ public class MiniAppViewController: UIViewController {
         }
     }
 
-    /// Attaches WebView to UI for newly created WebViews that need full initialization
-    private func attachWebViewToUI(webView: LingXiaWebView) {
+    /// Attaches WebView to UI - handles both loaded and unloaded WebViews
+    private func attachWebViewToUI(webView: WKWebView) {
         currentWebView = webView
         addWebViewToContainer(webView)
 
         if !webView.isRegistered {
-            registerWebViewWithRust(webView)
+            notifyWebViewAttachedToRust(webView)
         }
 
-        webView.resumeWebView()
+        // Choose appropriate resume method based on WebView state
+        if webView.pageLoaded {
+            // WebView already loaded, resume without reload
+            webView.resumeWebViewWithoutReload()
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            webView.isHidden = false
-        }
+            // For already loaded WebViews, trigger onPageShow immediately
+            if let appId = webView.appId, let currentPath = webView.currentPath {
+                let _ = lingxia.onPageShow(appId, currentPath)
+                os_log("attachWebViewToUI: Triggered onPageShow for loaded WebView appId=%@ path=%@",
+                       log: Self.log, type: .info, appId, currentPath)
+            }
+        } else {
+            // WebView not loaded yet, resume normally (will trigger loading)
+            webView.resumeWebView()
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            if let loadingIndicator = self.webViewContainer.viewWithTag(9997) {
-                loadingIndicator.removeFromSuperview()
+            // For unloaded WebViews, trigger onPageShow after a delay to ensure content is ready
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                webView.isHidden = false
+
+                if let appId = webView.appId, let currentPath = webView.currentPath {
+                    let _ = lingxia.onPageShow(appId, currentPath)
+                    os_log("attachWebViewToUI: Triggered onPageShow for new WebView appId=%@ path=%@",
+                           log: Self.log, type: .info, appId, currentPath)
+                }
+            }
+
+            // Remove loading indicator after content loads
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                if let loadingIndicator = self.webViewContainer.viewWithTag(9997) {
+                    loadingIndicator.removeFromSuperview()
+                }
             }
         }
 
@@ -396,31 +414,8 @@ public class MiniAppViewController: UIViewController {
         updateNavigationBar(pageConfig: pageConfig, isBackNavigation: false, disableAnimation: true)
     }
 
-    /// Attaches an existing WebView that's already loaded without triggering reload
-    private func attachExistingWebView(_ webView: LingXiaWebView) {
-        currentWebView = webView
-
-        addWebViewToContainer(webView)
-
-        if !webView.isRegistered {
-            registerWebViewWithRust(webView)
-        }
-
-        // For first-time WebView, we need to ensure it loads content
-        if !webView.pageLoaded {
-            // Use the same logic as attachWebViewToUI for consistency
-            attachWebViewToUI(webView: webView)
-            return
-        }
-
-        webView.resumeWebViewWithoutReload()
-
-        let pageConfig = webView.getPageConfig()
-        updateNavigationBar(pageConfig: pageConfig, isBackNavigation: false, disableAnimation: true)
-    }
-
     /// Adds WebView to container with proper constraints
-    private func addWebViewToContainer(_ webView: LingXiaWebView) {
+    private func addWebViewToContainer(_ webView: WKWebView) {
 
         if webView.superview != webViewContainer {
             if webView.superview != nil {
@@ -434,25 +429,23 @@ public class MiniAppViewController: UIViewController {
                 webView.trailingAnchor.constraint(equalTo: webViewContainer.trailingAnchor),
                 webView.bottomAnchor.constraint(equalTo: webViewContainer.bottomAnchor)
             ])
+
+            // CRITICAL: Re-enforce transparency after adding to view hierarchy
+            // The addSubview and constraint operations may reset WebView properties
+            forceWebViewTransparency(webView: webView)
         } else {
             webViewContainer.bringSubviewToFront(webView)
         }
         webViewContainer.layoutIfNeeded()
     }
 
-    /// Registers WebView with Rust layer
-    private func registerWebViewWithRust(_ webView: LingXiaWebView) {
+    /// Notify Rust layer that WebView has been attached to Swift UI
+    private func notifyWebViewAttachedToRust(_ webView: WKWebView) {
         let currentPath = webView.currentPath ?? ""
-        let attachResult = appId.toRustStr { appidRustStr in
-            currentPath.toRustStr { pathRustStr in
-                lingxia.onWebviewAttached(appidRustStr, pathRustStr)
-            }
-        }
+        let success = WebViewManager.notifyWebViewAttached(webView, appId: appId, path: currentPath)
 
-        if attachResult == 0 {
-            webView.isRegistered = true
-        } else {
-            os_log("registerWebViewWithRust: Failed to register WebView, result=%d", log: Self.log, type: .error, attachResult)
+        if !success {
+            os_log("notifyWebViewAttachedToRust: Failed to notify Rust", log: Self.log, type: .error)
         }
     }
 
@@ -913,16 +906,9 @@ public class MiniAppViewController: UIViewController {
         // This ensures WebView starts below NavigationBar when it exists, or from top when hidden
         updateLayoutMargins()
 
-        // Check if this WebView has been loaded before
-        if targetWebView.pageLoaded {
-            // WebView already loaded, just attach without resuming to avoid reloading
-            os_log("switchToTab: WebView already loaded, attaching existing WebView", log: Self.log, type: .info)
-            attachExistingWebView(targetWebView)
-        } else {
-            // WebView not loaded yet, need initial load
-            os_log("switchToTab: WebView not loaded yet, performing initial load", log: Self.log, type: .info)
-            attachAndResumeWebView(targetWebView)
-        }
+        // Use unified attachment logic - attachWebViewToUI handles both loaded and unloaded WebViews
+        os_log("switchToTab: Attaching WebView pageLoaded=%@", log: Self.log, type: .info, String(targetWebView.pageLoaded))
+        attachWebViewToUI(webView: targetWebView)
 
         // Hide previous WebView
         if let previousWebView = previousWebView, previousWebView != targetWebView {
@@ -1090,9 +1076,9 @@ public class MiniAppViewController: UIViewController {
         rootContainer.isOpaque = false
         rootContainer.layer.backgroundColor = UIColor.clear.cgColor
 
-        // Keep webViewContainer white for stable rendering
-        webViewContainer?.backgroundColor = UIColor.white
-        webViewContainer?.isOpaque = true
+        // Keep webViewContainer transparent to allow WebView transparency
+        webViewContainer?.backgroundColor = UIColor.clear
+        webViewContainer?.isOpaque = false
 
         // Force layout update to ensure transparency takes effect
         view.setNeedsLayout()
@@ -1247,13 +1233,35 @@ public class MiniAppViewController: UIViewController {
         os_log("MiniAppViewController: MiniAppViewController deinitialized", log: miniAppViewControllerLog, type: .debug)
     }
 
+    /// Forces transparency on a specific WebView after it's added to view hierarchy
+    /// This is critical because addSubview and constraint operations may reset WebView properties
+    private func forceWebViewTransparency(webView: WKWebView) {
+        // Force WebView transparency (same as Rust configuration)
+        webView.backgroundColor = UIColor.clear
+        webView.isOpaque = false
+        webView.layer.backgroundColor = UIColor.clear.cgColor
 
+        // Force ScrollView transparency
+        webView.scrollView.backgroundColor = UIColor.clear
+        webView.scrollView.isOpaque = false
+        webView.scrollView.layer.backgroundColor = UIColor.clear.cgColor
+        webView.scrollView.layer.isOpaque = false
+
+        // Set underpage background to clear
+        if webView.responds(to: Selector(("setUnderPageBackgroundColor:"))) {
+            webView.underPageBackgroundColor = UIColor.clear
+        }
+
+        // Configure scroll behavior (same as Rust configuration)
+        webView.allowsBackForwardNavigationGestures = true
+        webView.scrollView.bounces = true
+        webView.scrollView.showsVerticalScrollIndicator = true
+        webView.scrollView.showsHorizontalScrollIndicator = true
+        webView.scrollView.contentInsetAdjustmentBehavior = .never
+    }
 
     /// Forces complete transparency across the entire view hierarchy
     private func forceCompleteTransparency() {
-        os_log("MiniAppViewController.forceCompleteTransparency: Applying complete transparency",
-               log: Self.log, type: .info)
-
         // Force main view controller view
         view.backgroundColor = UIColor.clear
         view.isOpaque = false
@@ -1264,6 +1272,13 @@ public class MiniAppViewController: UIViewController {
             rootContainer.backgroundColor = UIColor.clear
             rootContainer.isOpaque = false
             rootContainer.layer.backgroundColor = UIColor.clear.cgColor
+        }
+
+        // Force webViewContainer transparency
+        if let webViewContainer = webViewContainer {
+            webViewContainer.backgroundColor = UIColor.clear
+            webViewContainer.isOpaque = false
+            webViewContainer.layer.backgroundColor = UIColor.clear.cgColor
         }
 
         // Force window transparency
@@ -1300,13 +1315,12 @@ public class MiniAppViewController: UIViewController {
             tabBar.layer.isOpaque = false
             tabBar.layer.shadowOpacity = 0
             tabBar.layer.borderWidth = 0
+            tabBar.forceTransparencyMode()
         }
 
         os_log("MiniAppViewController.forceCompleteTransparency: Complete transparency applied",
                log: Self.log, type: .info)
     }
-
-    // MARK: - TabBar Transparency Management
 
     /// Configures the entire app layout based on TabBar transparency state
     /// This function intelligently adapts WebView behavior, safe area handling, and positioning
@@ -1484,7 +1498,7 @@ public class MiniAppViewController: UIViewController {
     /// Attach WebView to container and resume it
     /// This method is for tab switching where we need to ensure proper WebView state
     @MainActor
-    private func attachAndResumeWebView(_ webView: LingXiaWebView) {
+    private func attachAndResumeWebView(_ webView: WKWebView) {
         os_log("attachAndResumeWebView: START for appId=%@ path=%@",
                log: Self.log, type: .info, webView.appId ?? "nil", webView.currentPath ?? "nil")
 
@@ -1496,7 +1510,7 @@ public class MiniAppViewController: UIViewController {
 
         // Register with Rust layer if needed
         if !webView.isRegistered {
-            registerWebViewWithRust(webView)
+            notifyWebViewAttachedToRust(webView)
         }
 
         // Resume WebView - onPageShow will be called by WebView when appropriate
@@ -1528,7 +1542,7 @@ public class MiniAppViewController: UIViewController {
     /// Find existing home miniapp WebView to avoid re-rendering
     /// This is the key to preventing re-rendering - we reuse existing WebViews
     @MainActor
-    private func findExistingHomeMiniAppWebView() -> LingXiaWebView? {
+    private func findExistingHomeMiniAppWebView() -> WKWebView? {
         guard let homeMiniAppId = MiniApp.homeMiniAppId,
               let homeMiniAppInitialRoute = MiniApp.homeMiniAppInitialRoute else {
             os_log("findExistingHomeMiniAppWebView: No home miniapp ID or initial route", log: Self.log, type: .error)

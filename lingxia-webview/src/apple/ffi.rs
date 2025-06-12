@@ -35,11 +35,7 @@ mod bridge {
         #[swift_bridge(swift_name = "handlePostMessage")]
         fn handle_post_message(appid: &str, path: &str, message: &str) -> i32;
 
-        #[swift_bridge(swift_name = "onPageStarted")]
-        fn on_page_started(appid: &str, path: &str) -> i32;
 
-        #[swift_bridge(swift_name = "onPageFinished")]
-        fn on_page_finished(appid: &str, path: &str) -> i32;
 
         #[swift_bridge(swift_name = "onPageShow")]
         fn on_page_show(appid: &str, path: &str);
@@ -106,45 +102,13 @@ mod bridge {
 
         #[swift_bridge(swift_name = "MiniApp.switchPage")]
         fn switch_page(appid: &str, path: &str) -> bool;
-
-        // WebView creation function - returns pointer as usize to Swift WebView object
-        #[swift_bridge(swift_name = "LingXiaWebView.createWebViewPtr")]
-        fn create_webview_ptr(appid: &str, path: &str) -> usize;
-
-        // WebView control functions
-        #[swift_bridge(swift_name = "LingXiaWebView.loadUrl")]
-        fn webview_load_url(webview_ptr: usize, url: &str) -> bool;
-
-        #[swift_bridge(swift_name = "LingXiaWebView.evaluateJavaScript")]
-        fn webview_evaluate_javascript(webview_ptr: usize, js: &str) -> bool;
-
-        #[swift_bridge(swift_name = "LingXiaWebView.clearBrowsingData")]
-        fn webview_clear_browsing_data(webview_ptr: usize) -> bool;
-
-        #[swift_bridge(swift_name = "LingXiaWebView.destroy")]
-        fn webview_destroy(webview_ptr: usize);
-
-        #[swift_bridge(swift_name = "LingXiaWebView.setDevtools")]
-        fn webview_set_devtools(webview_ptr: usize, enabled: bool) -> bool;
-
-        #[swift_bridge(swift_name = "LingXiaWebView.setUserAgent")]
-        fn webview_set_user_agent(webview_ptr: usize, ua: &str) -> bool;
-
-        #[swift_bridge(swift_name = "LingXiaWebView.setScrollListenerEnabled")]
-        fn webview_set_scroll_listener_enabled(
-            webview_ptr: usize,
-            enabled: bool,
-            throttle_ms: u64,
-        ) -> bool;
     }
 }
 
 // Re-export the bridge functions for use in other modules
 pub use bridge::{
-    HttpRequest, HttpResponse, close_miniapp, create_webview_ptr, get_device_model,
-    get_system_version, list_asset_directory, open_miniapp, read_asset_data, switch_page,
-    webview_clear_browsing_data, webview_destroy, webview_evaluate_javascript, webview_load_url,
-    webview_set_devtools, webview_set_scroll_listener_enabled, webview_set_user_agent,
+    HttpRequest, HttpResponse, close_miniapp, get_device_model, get_system_version,
+    list_asset_directory, open_miniapp, read_asset_data, switch_page,
 };
 
 /// Initialize the MiniApp system for iOS/macOS
@@ -260,19 +224,7 @@ pub fn handle_post_message(appid: &str, path: &str, message: &str) -> i32 {
     0
 }
 
-/// Notify that a page has started loading
-pub fn on_page_started(appid: &str, path: &str) -> i32 {
-    let miniapp = miniapp::get(appid.to_string());
-    miniapp.on_page_started(path.to_string());
-    0
-}
 
-/// Notify that a page has finished loading
-pub fn on_page_finished(appid: &str, path: &str) -> i32 {
-    let miniapp = miniapp::get(appid.to_string());
-    miniapp.on_page_finished(path.to_string());
-    0
-}
 
 /// Notify that a page is being shown
 pub fn on_page_show(appid: &str, path: &str) {

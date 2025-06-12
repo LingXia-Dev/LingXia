@@ -38,6 +38,7 @@ let package = Package(
             linkerSettings: [
                 .unsafeFlags([libraryPath], .when(platforms: [.iOS])),
                 .linkedFramework("JavaScriptCore", .when(platforms: [.iOS])),
+                .linkedFramework("WebKit", .when(platforms: [.iOS])),
             ]
         ),
     ]

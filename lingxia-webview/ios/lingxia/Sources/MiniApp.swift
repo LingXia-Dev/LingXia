@@ -1,5 +1,6 @@
 import Foundation
 import UIKit
+import WebKit
 import os.log
 import CLingXiaFFI
 
@@ -26,7 +27,6 @@ public let ACTION_CLOSE_MINIAPP = "com.lingxia.CLOSE_MINIAPP_ACTION"
 /// Features:
 /// - Singleton pattern for system-wide access
 /// - Home mini app configuration management
-/// - WebView creation and management
 /// - Page navigation coordination
 /// - Integration with native layer
 ///
@@ -201,33 +201,8 @@ public class MiniApp {
         return storedPath
     }
 
-    /**
-     * Creates a WebView for the specified appId and path.
-     * This method is called from the Rust layer to create WebViews.
-     * - Note: Automatically ensures execution on main thread for UI operations
-     */
-    public static func createWebView(appId: String, path: String) -> LingXiaWebView? {
-        if Thread.isMainThread {
-            // Already on main thread, execute directly
-            return createWebViewOnMainThread(appId: appId, path: path)
-        } else {
-            // Not on main thread, synchronously dispatch to main thread
-            return DispatchQueue.main.sync {
-                return createWebViewOnMainThread(appId: appId, path: path)
-            }
-        }
-    }
-
-    private static func createWebViewOnMainThread(appId: String, path: String) -> LingXiaWebView? {
-        do {
-            let webView = try LingXiaWebView.createWebView(appId: appId, path: path)
-            os_log("Created WebView for %@ at %@", log: log, type: .info, appId, path)
-            return webView
-        } catch {
-            os_log("Failed to create WebView for %@ at %@: %@", log: log, type: .error, appId, path, error.localizedDescription)
-            return nil
-        }
-    }
+    // Note: WebView creation is now handled directly by Rust layer using objc2
+    // Swift only needs to find and manage existing WebViews
 
     private func openInNewViewController(appId: String, path: String) {
         guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
@@ -293,18 +268,8 @@ public class MiniApp {
 
 
     /// Find WebView for the given appId and path
-    internal static func findWebView(appId: String, path: String) -> LingXiaWebView? {
-        let webViewPtr = lingxia.findWebView(appId, path)
-
-        if webViewPtr != 0 {
-            let pointer = UnsafeRawPointer(bitPattern: webViewPtr)!
-            let webView = Unmanaged<LingXiaWebView>.fromOpaque(pointer).takeUnretainedValue()
-            os_log("Found existing WebView for %@ at %@ - pageLoaded=%@",
-                   log: Self.log, type: .info, appId, path, String(webView.pageLoaded))
-            return webView
-        }
-
-        return nil
+    internal static func findWebView(appId: String, path: String) -> WKWebView? {
+        return WebViewManager.findWebView(appId: appId, path: path)
     }
 
     /// Configures global system bars for the mini app system
@@ -354,14 +319,14 @@ class MiniAppControllerStack {
     struct ControllerState {
         let appId: String
         let path: String
-        let webView: LingXiaWebView?
+        let webView: WKWebView?
     }
 
     /// Stack to store previous controller states
     private static var controllerStack: [ControllerState] = []
 
     /// Push current controller state to stack before opening new miniapp
-    static func pushCurrentController(appId: String, path: String, webView: LingXiaWebView?) {
+    static func pushCurrentController(appId: String, path: String, webView: WKWebView?) {
         let state = ControllerState(appId: appId, path: path, webView: webView)
         controllerStack.append(state)
         os_log("pushCurrentController: Pushed controller for %@ at %@ (stack size: %d)",

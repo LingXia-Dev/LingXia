@@ -26,6 +26,14 @@ ndk = "0.9.0"
 [target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
 oslog = "0.2.0"
 swift-bridge = "0.1"
+# objc2 dependencies for direct WebView management
+objc2 = "0.6"
+objc2-web-kit = "0.3"
+objc2-foundation = "0.3"
+# block2 for Objective-C blocks and delegates
+block2 = "0.6"
+# GCD dispatch for main thread operations
+dispatch2 = "0.3"
 
 [build-dependencies]
 swift-bridge-build = "0.1"
