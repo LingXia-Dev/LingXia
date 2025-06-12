@@ -1,0 +1,30 @@
+import SwiftUI
+import UIKit
+import lingxia
+
+public struct ContentView: View {
+    // Use a global flag instead of @State to avoid SwiftUI update cycle issues
+    private static var hasInitialized = false
+    
+    public var body: some View {
+        Color.clear
+            .onAppear {
+                if !Self.hasInitialized {
+                    Self.hasInitialized = true
+                    MiniApp.initialize(mode: .replaceRoot)
+                    MiniApp.openHomeMiniApp()
+                }
+            }
+    }
+}
+
+@main
+public struct MiniAppApp: App {
+    public init() { }
+    
+    public var body: some Scene {
+        WindowGroup {
+            ContentView()
+        }
+    }
+}

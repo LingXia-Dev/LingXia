@@ -159,10 +159,7 @@
 
   // Process incoming messages
   function _handleIncomingMessage(message) {
-    log(
-      "Message Received:",
-      typeof message === "object" ? JSON.stringify(message) : message,
-    );
+    // log( "Message Received:", typeof message === "object" ? JSON.stringify(message) : message,);
     if (!message || typeof message !== "object" || !message.type) {
       warn("Invalid message format:", message);
       return;
@@ -404,7 +401,7 @@
   // Platform Initialization
   if (isIOS) {
     window[GLOBAL_RECEIVER_NAME] = LingXiaBridge._receiveIOsMessage;
-    setTimeout(() => LingXiaBridge.event("LXPortRdy"), 0);
+    LingXiaBridge.event("LXPortRdy");
   }
 
   if (isAndroid) {
