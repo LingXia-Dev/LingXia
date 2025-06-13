@@ -6,25 +6,6 @@ use std::sync::mpsc;
 
 #[swift_bridge::bridge]
 mod bridge {
-    // High-efficiency HTTP request/response structures
-    #[swift_bridge(swift_repr = "struct")]
-    struct HttpRequest {
-        url: String,
-        method: String,
-        header_keys: Vec<String>,
-        header_values: Vec<String>,
-        body: Vec<u8>,
-    }
-
-    #[swift_bridge(swift_repr = "struct")]
-    struct HttpResponse {
-        status_code: u16,
-        header_keys: Vec<String>,
-        header_values: Vec<String>,
-        body: Vec<u8>,
-        mime_type: String,
-    }
-
     extern "Rust" {
         #[swift_bridge(swift_name = "miniappInit")]
         fn miniapp_init(data_dir: &str, cache_dir: &str) -> Option<String>;
@@ -32,25 +13,11 @@ mod bridge {
         #[swift_bridge(swift_name = "onWebviewAttached")]
         fn on_webview_attached(appid: &str, path: &str) -> i32;
 
-        #[swift_bridge(swift_name = "handlePostMessage")]
-        fn handle_post_message(appid: &str, path: &str, message: &str) -> i32;
-
-
-
         #[swift_bridge(swift_name = "onPageShow")]
         fn on_page_show(appid: &str, path: &str);
 
-        #[swift_bridge(swift_name = "shouldOverrideUrlLoading")]
-        fn should_override_url_loading(appid: &str, url: &str) -> bool;
-
-        #[swift_bridge(swift_name = "handleRequest")]
-        fn handle_request(appid: &str, request: HttpRequest) -> Option<HttpResponse>;
-
         #[swift_bridge(swift_name = "onMiniappClosed")]
         fn on_miniapp_closed(appid: &str) -> i32;
-
-        #[swift_bridge(swift_name = "consoleMessage")]
-        fn console_message(appid: &str, path: &str, level: i32, message: &str) -> i32;
 
         #[swift_bridge(swift_name = "getPageConfig")]
         fn get_page_config(appid: &str, path: &str) -> Option<String>;
@@ -64,35 +31,11 @@ mod bridge {
         #[swift_bridge(swift_name = "getTabBarConfig")]
         fn get_tab_bar_config(appid: &str) -> Option<String>;
 
-        #[swift_bridge(swift_name = "onScrollChanged")]
-        fn on_scroll_changed(
-            appid: &str,
-            path: &str,
-            scroll_x: i32,
-            scroll_y: i32,
-            max_scroll_x: i32,
-            max_scroll_y: i32,
-        ) -> i32;
-
         #[swift_bridge(swift_name = "findWebView")]
         fn find_webview(appid: &str, path: &str) -> usize;
     }
 
     extern "Swift" {
-        // Resource access functions implemented in Swift
-        #[swift_bridge(swift_name = "Resources.readAssetData")]
-        fn read_asset_data(path: &str) -> Vec<u8>;
-
-        #[swift_bridge(swift_name = "Resources.listAssetDirectory")]
-        fn list_asset_directory(dir_path: &str) -> Vec<String>;
-
-        // Device info functions
-        #[swift_bridge(swift_name = "getDeviceModel")]
-        fn get_device_model() -> String;
-
-        #[swift_bridge(swift_name = "getSystemVersion")]
-        fn get_system_version() -> String;
-
         // MiniApp navigation functions
         #[swift_bridge(swift_name = "MiniApp.openMiniApp")]
         fn open_miniapp(appid: &str, path: &str) -> bool;
@@ -106,10 +49,7 @@ mod bridge {
 }
 
 // Re-export the bridge functions for use in other modules
-pub use bridge::{
-    HttpRequest, HttpResponse, close_miniapp, get_device_model, get_system_version,
-    list_asset_directory, open_miniapp, read_asset_data, switch_page,
-};
+pub use bridge::{close_miniapp, open_miniapp, switch_page};
 
 /// Initialize the MiniApp system for iOS/macOS
 pub fn miniapp_init(data_dir: &str, cache_dir: &str) -> Option<String> {
@@ -217,88 +157,10 @@ pub fn on_webview_attached(appid: &str, path: &str) -> i32 {
     0
 }
 
-/// Handle post message from WebView
-pub fn handle_post_message(appid: &str, path: &str, message: &str) -> i32 {
-    let miniapp = miniapp::get(appid.to_string());
-    miniapp.handle_post_message(path.to_string(), message.to_string());
-    0
-}
-
-
-
 /// Notify that a page is being shown
 pub fn on_page_show(appid: &str, path: &str) {
     let miniapp = miniapp::get(appid.to_string());
     miniapp.on_page_show(path.to_string());
-}
-
-/// Check if URL loading should be overridden
-pub fn should_override_url_loading(appid: &str, url: &str) -> bool {
-    let miniapp = miniapp::get(appid.to_string());
-    miniapp.should_override_url_loading(url.to_string())
-}
-
-/// Handle HTTP request using high-efficiency swift-bridge types
-pub fn handle_request(appid: &str, request: HttpRequest) -> Option<HttpResponse> {
-    // Build HTTP request directly from swift-bridge struct
-    let mut request_builder = http::Request::builder()
-        .method(request.method.as_str())
-        .uri(&request.url);
-
-    // Add headers efficiently using parallel arrays
-    for (key, value) in request.header_keys.iter().zip(request.header_values.iter()) {
-        if let (Ok(name), Ok(val)) = (
-            http::HeaderName::from_bytes(key.as_bytes()),
-            http::HeaderValue::from_str(value),
-        ) {
-            request_builder = request_builder.header(name, val);
-        }
-    }
-
-    let http_request = match request_builder.body(request.body) {
-        Ok(req) => req,
-        Err(_) => return None,
-    };
-
-    // Call existing handle_request infrastructure
-    let miniapp = miniapp::get(appid.to_string());
-    match miniapp.handle_request(http_request) {
-        Some(response) => {
-            // Convert response headers efficiently using parallel arrays
-            let mut header_keys = Vec::new();
-            let mut header_values = Vec::new();
-            for (key, value) in response.headers().iter() {
-                if let Ok(value_str) = value.to_str() {
-                    header_keys.push(key.as_str().to_string());
-                    header_values.push(value_str.to_string());
-                }
-            }
-
-            // Determine MIME type from Content-Type header
-            let mime_type = response
-                .headers()
-                .get(http::header::CONTENT_TYPE)
-                .and_then(|h| h.to_str().ok())
-                .map(|content_type| {
-                    content_type
-                        .split(';')
-                        .next()
-                        .unwrap_or("application/octet-stream")
-                        .trim()
-                })
-                .unwrap_or("application/octet-stream");
-
-            // Return high-efficiency response struct
-            Some(HttpResponse {
-                status_code: response.status().as_u16(),
-                header_keys,
-                header_values,
-                body: response.body().clone(),
-                mime_type: mime_type.to_string(),
-            })
-        }
-        None => None,
-    }
 }
 
 /// Notify that MiniApp was closed
@@ -306,22 +168,6 @@ pub fn on_miniapp_closed(appid: &str) -> i32 {
     let miniapp = miniapp::get(appid.to_string());
     miniapp.on_miniapp_closed();
     0
-}
-
-/// Handle console message
-pub fn console_message(appid: &str, path: &str, level: i32, message: &str) -> i32 {
-    let log_level = match level {
-        2 => LogLevel::Verbose, // VERBOSE
-        3 => LogLevel::Debug,   // DEBUG
-        4 => LogLevel::Info,    // INFO
-        5 => LogLevel::Warn,    // WARN
-        6 => LogLevel::Error,   // ERROR
-        _ => LogLevel::Info,    // Default to INFO
-    };
-
-    let miniapp = miniapp::get(appid.to_string());
-    miniapp.log(path, log_level, message);
-    1
 }
 
 /// Get page configuration
@@ -353,26 +199,6 @@ pub fn get_tab_bar_config(appid: &str) -> Option<String> {
         Ok(config) => Some(config),
         Err(_) => None,
     }
-}
-
-/// Handle scroll change event
-pub fn on_scroll_changed(
-    appid: &str,
-    path: &str,
-    scroll_x: i32,
-    scroll_y: i32,
-    max_scroll_x: i32,
-    max_scroll_y: i32,
-) -> i32 {
-    let miniapp = miniapp::get(appid.to_string());
-    miniapp.on_page_scroll_changed(
-        path.to_string(),
-        scroll_x,
-        scroll_y,
-        max_scroll_x,
-        max_scroll_y,
-    );
-    0
 }
 
 /// Find a WebView for the specified app and path

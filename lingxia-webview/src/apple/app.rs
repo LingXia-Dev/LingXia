@@ -3,6 +3,38 @@ use miniapp::{AssetFileEntry, DeviceInfo, MiniAppError};
 use std::io::{Cursor, Read};
 use std::path::PathBuf;
 
+#[cfg(target_os = "macos")]
+use objc2_foundation::NSProcessInfo;
+
+#[cfg(target_os = "ios")]
+use objc2::{extern_class, runtime::NSObject, msg_send, rc::Retained, ClassType};
+
+#[cfg(target_os = "ios")]
+use objc2_foundation::NSString;
+
+#[cfg(target_os = "ios")]
+extern_class!(
+    #[derive(Debug, PartialEq, Eq, Hash)]
+    #[unsafe(super(NSObject))]
+    pub struct UIDevice;
+);
+
+#[cfg(target_os = "ios")]
+impl UIDevice {
+    pub fn current() -> Retained<Self> {
+        unsafe { msg_send![Self::class(), currentDevice] }
+    }
+
+    #[allow(dead_code)]
+    pub fn model(&self) -> Retained<NSString> {
+        unsafe { msg_send![self, model] }
+    }
+
+    pub fn system_version(&self) -> Retained<NSString> {
+        unsafe { msg_send![self, systemVersion] }
+    }
+}
+
 /// Shared App structure between Rust and Swift
 #[derive(Clone)]
 pub struct App {
@@ -34,8 +66,7 @@ impl App {
 
     /// Read an asset file from the SPM bundle resources
     pub fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, MiniAppError> {
-        // Call Swift function to read asset data
-        let data = super::ffi::read_asset_data(path);
+        let data = super::resources::read_asset_data(path);
 
         if data.is_empty() {
             Err(MiniAppError::ResourceNotFound(path.to_string()))
@@ -62,8 +93,7 @@ impl App {
         let mut dirs_to_process = vec![dir_path.to_string()];
 
         while let Some(current_dir) = dirs_to_process.pop() {
-            // Get directory contents from Swift
-            let contents = super::ffi::list_asset_directory(&current_dir);
+            let contents = super::resources::list_asset_directory(&current_dir);
 
             for name in contents {
                 let full_path = if current_dir.is_empty() || current_dir == "/" {
@@ -73,7 +103,7 @@ impl App {
                 };
 
                 // Try to read as file first
-                let data = super::ffi::read_asset_data(&full_path);
+                let data = super::resources::read_asset_data(&full_path);
 
                 if !data.is_empty() {
                     // It's a file, add it to results
@@ -84,7 +114,7 @@ impl App {
                     }));
                 } else {
                     // It might be a directory, try to list it
-                    let sub_contents = super::ffi::list_asset_directory(&full_path);
+                    let sub_contents = super::resources::list_asset_directory(&full_path);
                     if !sub_contents.is_empty() {
                         // It's a directory with contents, add it to processing queue
                         dirs_to_process.push(full_path);
@@ -99,8 +129,8 @@ impl App {
     /// Get device information
     pub fn device_info(&self) -> DeviceInfo {
         let brand = "Apple".to_string(); // Fixed for Apple devices
-        let model = ffi::get_device_model();
-        let system = ffi::get_system_version();
+        let model = get_device_model();
+        let system = get_system_version();
 
         DeviceInfo {
             brand,
@@ -142,6 +172,82 @@ impl App {
                 "Failed to switch page: appid={}, path={}",
                 appid, path
             )))
+        }
+    }
+}
+
+/// Get device model using system calls (like Swift version)
+/// Returns device model string like "iPhone14,2" or "MacBookPro18,1"
+fn get_device_model() -> String {
+    #[cfg(any(target_os = "ios", target_os = "macos"))]
+    {
+        use std::ffi::CStr;
+        use std::mem;
+
+        // Define utsname structure manually to avoid libc dependency
+        #[repr(C)]
+        struct UtsName {
+            sysname: [i8; 256],
+            nodename: [i8; 256],
+            release: [i8; 256],
+            version: [i8; 256],
+            machine: [i8; 256],
+        }
+
+        unsafe extern "C" {
+            fn uname(buf: *mut UtsName) -> i32;
+        }
+
+        unsafe {
+            let mut system_info: UtsName = mem::zeroed();
+            if uname(&mut system_info) == 0 {
+                // Convert machine field to String (like Swift version)
+                let machine_ptr = system_info.machine.as_ptr();
+                let machine_cstr = CStr::from_ptr(machine_ptr);
+                if let Ok(machine_str) = machine_cstr.to_str() {
+                    return machine_str.to_string();
+                }
+            }
+
+            // Fallback if utsname fails
+            #[cfg(target_os = "ios")]
+            {
+                "iPhone".to_string()
+            }
+            #[cfg(target_os = "macos")]
+            {
+                "Mac".to_string()
+            }
+        }
+    }
+
+    #[cfg(not(any(target_os = "ios", target_os = "macos")))]
+    {
+        "Unknown".to_string()
+    }
+}
+
+/// Get system version using objc2 bindings
+/// Returns system version string like "17.0" or "14.0"
+fn get_system_version() -> String {
+    #[cfg(target_os = "ios")]
+    {
+        let device = UIDevice::current();
+        let version = device.system_version();
+        version.to_string()
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        unsafe {
+            // Get NSProcessInfo shared instance
+            let process_info = NSProcessInfo::processInfo();
+
+            // Get operating system version
+            let version = process_info.operatingSystemVersionString();
+
+            // Convert NSString to Rust String
+            version.to_string()
         }
     }
 }
