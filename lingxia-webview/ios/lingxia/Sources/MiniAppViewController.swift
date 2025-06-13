@@ -447,8 +447,6 @@ public class MiniAppViewController: UIViewController {
         }
     }
 
-
-
     private func setupTabBar(config: TabBarConfig?) {
         guard let config = config else {
             os_log("Invalid or insufficient TabBar config", log: Self.log, type: .error)
@@ -1149,8 +1147,6 @@ public class MiniAppViewController: UIViewController {
         rootContainer.bringSubviewToFront(newNavBar)
     }
 
-
-
     /// Removes NavigationBar completely
     private func removeNavigationBar() {
         guard let navigationBar = navigationBar else {
@@ -1486,8 +1482,6 @@ public class MiniAppViewController: UIViewController {
         tabBar.forceTransparencyMode()
     }
 
-
-
     /// Attach WebView to container and resume it
     /// This method is for tab switching where we need to ensure proper WebView state
     @MainActor
@@ -1547,25 +1541,13 @@ public class MiniAppViewController: UIViewController {
         os_log("findExistingHomeMiniAppWebView: Looking for home WebView - homeMiniAppId=%@, lastActivePath=%@, initialRoute=%@",
                log: Self.log, type: .info, homeMiniAppId, lastActivePath, homeMiniAppInitialRoute)
 
-        // Try to find existing WebView from Rust layer first
+        // find existing WebView from Rust layer first
         if let existingWebView = MiniApp.findWebView(appId: homeMiniAppId, path: lastActivePath) {
             os_log("findExistingHomeMiniAppWebView: Found existing WebView for %@ at %@", log: Self.log, type: .info, homeMiniAppId, lastActivePath)
             return existingWebView
         } else {
             os_log("findExistingHomeMiniAppWebView: No WebView found for %@ at %@", log: Self.log, type: .info, homeMiniAppId, lastActivePath)
         }
-
-        // If not found with exact path, try to find any WebView for home miniapp
-        if let existingWebView = MiniApp.findWebView(appId: homeMiniAppId, path: homeMiniAppInitialRoute) {
-            os_log("findExistingHomeMiniAppWebView: Found existing WebView for %@ at initial route", log: Self.log, type: .info, homeMiniAppId)
-            return existingWebView
-        } else {
-            os_log("findExistingHomeMiniAppWebView: No WebView found for %@ at initial route %@", log: Self.log, type: .info, homeMiniAppId, homeMiniAppInitialRoute)
-        }
-
-        // Try to find ANY WebView for home miniapp regardless of path
-        os_log("findExistingHomeMiniAppWebView: Trying to find ANY WebView for home miniapp %@", log: Self.log, type: .info, homeMiniAppId)
-        // TODO: We need a way to find any WebView for a given appId regardless of path
 
         os_log("findExistingHomeMiniAppWebView: No existing home WebView found anywhere", log: Self.log, type: .info)
         return nil
@@ -1630,11 +1612,6 @@ public class MiniAppViewController: UIViewController {
             currentWebView.pauseWebView()
             os_log("performCleanupBeforeReplacement: Paused current WebView", log: Self.log, type: .info)
         }
-
-        // CRITICAL FIX: Don't remove ALL observers - this breaks WebView creation notifications
-        // Only remove specific observers that this view controller registered
-        // The setupInitialContent method relies on WebViewCreated notifications
-        os_log("performCleanupBeforeReplacement: Skipping observer removal to preserve WebView creation notifications", log: Self.log, type: .info)
 
         // Clear current WebView reference
         self.currentWebView = nil

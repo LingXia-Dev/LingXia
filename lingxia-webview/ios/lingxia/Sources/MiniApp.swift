@@ -289,26 +289,6 @@ public class MiniApp {
     }
 }
 
-/// Get device model (e.g., "iPhone14,2")
-func getDeviceModel() -> String {
-    var systemInfo = utsname()
-    uname(&systemInfo)
-    let machineMirror = Mirror(reflecting: systemInfo.machine)
-    let identifier = machineMirror.children.reduce("") { identifier, element in
-        guard let value = element.value as? Int8, value != 0 else { return identifier }
-        return identifier + String(UnicodeScalar(UInt8(value)))
-    }
-
-    return identifier
-}
-
-/// Get system version (e.g., "17.0")
-nonisolated func getSystemVersion() -> String {
-    return DispatchQueue.main.sync {
-        UIDevice.current.systemVersion
-    }
-}
-
 /// Simple controller stack to simulate Android's Activity stack behavior
 /// This helps maintain state when switching between miniapps
 @MainActor
