@@ -114,6 +114,9 @@ class MiniAppActivity : AppCompatActivity() {
                 }
             }
         }
+
+        @JvmStatic
+        external fun nativeOnPageShow(appId: String, path: String)
     }
 
     private lateinit var appId: String
@@ -480,7 +483,7 @@ class MiniAppActivity : AppCompatActivity() {
         }
 
         // Get page config - Nav bar configuration is now handled by the caller
-        val pageConfig = webView?.getPageConfig()
+        val pageConfig = MiniApp.getPageConfig(appId, path)
 
         return Pair(webView, pageConfig)
     }
@@ -546,6 +549,13 @@ class MiniAppActivity : AppCompatActivity() {
 
             // Resume the WebView's activities
             view.resume()
+            if (view.parent == webViewContainer && view.appId != null && view.currentPath != null) {
+                try {
+                    nativeOnPageShow(view.appId!!, view.currentPath!!)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to call nativeOnPageShow: ${e.message}")
+                }
+            }
         }
     }
 
@@ -802,6 +812,9 @@ class MiniAppActivity : AppCompatActivity() {
             Log.d(TAG, "Pausing current WebView (onDestroy)")
             view.pause()
         }
+
+        // Clear page config cache to prevent memory leaks
+        MiniApp.clearPageConfigCache()
 
         super.onDestroy()
     }
@@ -1213,7 +1226,7 @@ class MiniAppActivity : AppCompatActivity() {
         updateLayoutMargins()
 
         // Reconfigure navigation bar if needed
-        val pageConfig = currentWebView?.getPageConfig()
+        val pageConfig = MiniApp.getPageConfig(appId, currentWebView?.currentPath ?: "")
         updateNavigationBar(pageConfig, false, true)
     }
 }

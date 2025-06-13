@@ -231,7 +231,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnPageFinished(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnPageShow(
+pub extern "system" fn Java_com_lingxia_miniapp_MiniAppActivity_nativeOnPageShow(
     mut env: JNIEnv,
     _class: JClass,
     appid: JString,
@@ -484,7 +484,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnConsoleMessage(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeGetPageConfig<'a>(
+pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeGetPageConfig<'a>(
     mut env: JNIEnv<'a>,
     _class: JClass<'a>,
     appid: JString<'a>,

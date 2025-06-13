@@ -76,7 +76,6 @@ class WebView @JvmOverloads constructor(
     internal var appId: String? = null
     internal var currentPath: String? = null
     private var isRegistered = false  // Track if WebView has been registered with native layer
-    private var isFirstLoad = true
     private var pageLoaded = false
     private var savedScrollX: Int = 0
     private var savedScrollY: Int = 0
@@ -285,11 +284,6 @@ class WebView @JvmOverloads constructor(
 
                 // Record that the page has finished loading
                 pageLoaded = true
-
-                // Update isFirstLoad flag after the first load completes
-                if (isFirstLoad) {
-                    isFirstLoad = false
-                }
 
                 resetViewport()  // Reset viewport after page load
 
@@ -505,8 +499,7 @@ class WebView @JvmOverloads constructor(
 
     fun resume() {
         val callStackTrace = Exception("Resume call stack trace").stackTraceToString()
-        Log.d(TAG, "Resuming WebView operations, appId=$appId, path=$currentPath, isFirstLoad=$isFirstLoad, pageLoaded=$pageLoaded, showEventSent=$showEventSent")
-        // Log.d(TAG, "Resume called from: $callStackTrace")
+        Log.d(TAG, "Resuming WebView operations, appId=$appId, path=$currentPath, pageLoaded=$pageLoaded, showEventSent=$showEventSent")
 
         onResume()
 
@@ -524,38 +517,20 @@ class WebView @JvmOverloads constructor(
             }
         }
 
-        // Only trigger PageShow if we haven't already in this session
-        // Only consider triggering PageShow when window is visible and appId/path are valid
-        if (isAttachedToWindow && appId != null && currentPath != null && !showEventSent) {
-            if (!isFirstLoad && pageLoaded) {
-                // Page already loaded, restore scroll position and scale
+        if (isAttachedToWindow && appId != null && currentPath != null) {
+            if (pageLoaded) {
+                // Page already loaded, restore scroll position and scale only
                 post {
                     scrollTo(savedScrollX, savedScrollY)
                     setInitialScale((savedScale * 100).toInt())
 
-                    // Only reload URL if needed
-                    // PageShow will be triggered in onPageFinished
-                    if (url != savedUrl && savedUrl != null) {
-                        Log.d(TAG, "Restoring URL: $savedUrl (current URL: $url)")
-                        loadUrl(savedUrl!!)
-                    } else {
-                        // If we're resuming an already loaded page, trigger PageShow
-                        // Avoid duplicate triggers with onPageFinished
-                        Log.d(TAG, "Page already loaded, triggering PageShow on resume")
-                        nativeOnPageShow(appId!!, currentPath!!)
-                        showEventSent = true  // Mark that we've sent the event
-                        invalidate()
-                    }
+                    // Just refresh the display, no URL loading
+                    invalidate()
                 }
-            } else if (isFirstLoad) {
-                // First load, PageShow will be triggered in onPageFinished
-                Log.d(TAG, "First load of WebView, visibility set to VISIBLE")
-                // Note: isFirstLoad will be set to false in onPageFinished
-            }
-        } else if (showEventSent) {
-            Log.d(TAG, "Skipping PageShow event - already sent in this session")
+                Log.d(TAG, "WebView resumed with existing content")
+            } 
         } else {
-            Log.d(TAG, "WebView not ready for PageShow: attached=$isAttachedToWindow, appId=$appId, path=$currentPath")
+            Log.d(TAG, "WebView not ready for display: attached=$isAttachedToWindow, appId=$appId, path=$currentPath")
         }
     }
 
@@ -602,19 +577,18 @@ class WebView @JvmOverloads constructor(
         }
     }
 
+    /**
+     * Load URL in WebView. This method should ONLY be called by the Rust layer.
+     * Kotlin/Java code should never call loadUrl directly - all URL loading is managed by Rust.
+     * WebView.kt is only responsible for displaying content, not initiating navigation.
+     */
     override fun loadUrl(url: String) {
         ensureMainThread {
-            Log.d(TAG, "Loading URL: $url")
+            Log.d(TAG, "Loading URL from Rust layer: $url")
             savedUrl = url
             resetViewport()
             visibility = View.VISIBLE
             super.loadUrl(url)
-        }
-    }
-
-    fun getPageConfig(): NavigationBarConfig? {
-        return nativeGetPageConfig(appId ?: "", currentPath ?: "")?.let {
-            NavigationBarConfig.fromJson(it)
         }
     }
 
@@ -704,7 +678,6 @@ class WebView @JvmOverloads constructor(
     private external fun nativeHandlePostMessage(appId: String, path: String, message: String): Int
     private external fun nativeOnPageStarted(appId: String, path: String): Int
     private external fun nativeOnPageFinished(appId: String, path: String): Int
-    private external fun nativeOnPageShow(appId: String, path: String)
     private external fun nativeShouldOverrideUrlLoading(appId: String, url: String): Int
     private external fun nativeHandleRequest(
         appId: String,
@@ -713,7 +686,6 @@ class WebView @JvmOverloads constructor(
         headers: String
     ): WebResourceResponseData?
     private external fun nativeOnConsoleMessage(appId: String, path:String, level: Int, message: String):Int
-    private external fun nativeGetPageConfig(appId: String, path: String): String?  // Returns JSON string of page config
     private external fun nativeOnScrollChanged(
         appId: String,
         path: String,
@@ -725,15 +697,6 @@ class WebView @JvmOverloads constructor(
 
     private fun handlePageFinished(url: String?) {
         nativeOnPageFinished(appId ?: return, currentPath ?: return)
-
-        // If page is loaded and attached to window, and we haven't sent PageShow yet
-        if (isAttachedToWindow && url != null && !showEventSent) {
-            Log.d(TAG, "Page loaded and attached to window, triggering PageShow")
-            nativeOnPageShow(appId ?: return, currentPath ?: return)
-            showEventSent = true
-        } else if (showEventSent) {
-            Log.d(TAG, "Skipping PageShow - already sent in this session")
-        }
     }
 
     /**

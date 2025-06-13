@@ -18,6 +18,13 @@ class MiniApp private constructor(private val context: Context) {
         var HomeMiniAppId: String? = null
         var HomeMiniAppInitialRoute: String? = null
 
+        private val pageConfigCache = mutableMapOf<String, NavigationBarConfig>()
+
+        // Clear cache when app is closed to prevent memory leaks
+        fun clearPageConfigCache() {
+            pageConfigCache.clear()
+        }
+
         init {
             System.loadLibrary("lingxia")
         }
@@ -188,6 +195,20 @@ class MiniApp private constructor(private val context: Context) {
                 null
             }
         }
+
+        @JvmStatic
+        fun getPageConfig(appId: String, path: String): NavigationBarConfig? {
+            val key = "$appId|$path"
+            return pageConfigCache[key] ?: run {
+                val configJson = nativeGetPageConfig(appId, path)
+                val config = configJson?.let { NavigationBarConfig.fromJson(it) }
+                if (config != null) pageConfigCache[key] = config
+                config
+            }
+        }
+
+        @JvmStatic
+        external fun nativeGetPageConfig(appId: String, path: String): String?
     }
 
     private fun openInNewActivity(appId: String, path: String) {
