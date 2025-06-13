@@ -935,6 +935,23 @@ static MINIAPPS_MANAGER: OnceLock<Arc<MiniApps>> = OnceLock::new();
 /// Initialize the MiniApps singleton
 /// Returns an Option of (home_app_id, initial_route) on success.
 pub fn init<R: AppRuntime + 'static>(runtime: R) -> Option<(String, String)> {
+    // Set up panic hook to capture panic information
+    std::panic::set_hook(Box::new(|panic_info| {
+        let location = panic_info
+            .location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+            .unwrap_or_else(|| "unknown location".to_string());
+        let message = if let Some(s) = panic_info.payload().downcast_ref::<&str>() {
+            s.to_string()
+        } else if let Some(s) = panic_info.payload().downcast_ref::<String>() {
+            s.clone()
+        } else {
+            "unknown panic message".to_string()
+        };
+
+        error!("RUST PANIC: {} at {}", message, location);
+    }));
+
     let runtime_arc = Arc::new(runtime);
 
     // Prepare the directory structure
