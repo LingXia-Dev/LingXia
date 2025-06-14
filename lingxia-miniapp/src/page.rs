@@ -49,7 +49,29 @@ pub trait WebViewController: Send + Sync {
     fn evaluate_javascript(&self, js: String) -> Result<(), MiniAppError>;
 
     /// Post a message to the JavaScript context
-    fn post_message(&self, message: String) -> Result<(), MiniAppError>;
+    fn post_message(&self, message: String) -> Result<(), MiniAppError> {
+        // Escape the JSON message for safe JavaScript injection
+        // Since message is already JSON, we need to escape it properly for JS string literal
+        let escaped_message = message
+            .replace('\\', "\\\\") // Escape backslashes first
+            .replace('"', "\\\"") // Escape double quotes
+            .replace('\n', "\\n") // Escape newlines
+            .replace('\r', "\\r") // Escape carriage returns
+            .replace('\t', "\\t"); // Escape tabs
+
+        // Call the global receiver function defined in webview-bridge.js
+        let js_code = format!(
+            "if (typeof window.__LingXiaRecvMessage === 'function') {{ \
+                window.__LingXiaRecvMessage(\"{}\"); \
+            }} else {{ \
+                console.warn('[LingXia] __LingXiaRecvMessage not available'); \
+            }}",
+            escaped_message
+        );
+
+        // Use evaluateJavaScript to send the message to the WebView
+        self.evaluate_javascript(js_code)
+    }
 
     /// Enable or disable developer tools
     fn set_devtools(&self, enabled: bool) -> Result<(), MiniAppError>;
