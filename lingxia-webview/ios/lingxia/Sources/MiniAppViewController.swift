@@ -165,8 +165,8 @@ public class MiniAppViewController: UIViewController {
         if currentWebView == nil {
             setupInitialContent(path: initialPath)
         } else {
-            os_log("Using existing WebView for appId=%@ path=%@ pageLoaded=%@",
-                   log: Self.log, type: .info, appId, initialPath, String(currentWebView!.pageLoaded))
+            os_log("Using existing WebView for appId=%@ path=%@",
+                   log: Self.log, type: .info, appId, initialPath)
             attachWebViewToUI(webView: currentWebView!)
         }
 
@@ -366,43 +366,26 @@ public class MiniAppViewController: UIViewController {
         }
     }
 
-    /// Attaches WebView to UI - handles both loaded and unloaded WebViews
+    /// Attaches WebView to UI - simplified and unified handling
     private func attachWebViewToUI(webView: WKWebView) {
         currentWebView = webView
         addWebViewToContainer(webView)
 
-        // Choose appropriate resume method based on WebView state
-        if webView.pageLoaded {
-            // WebView already loaded, resume without reload
-            webView.resumeWebViewWithoutReload()
+        // Resume WebView operations
+        webView.resumeWebView()
 
-            // For already loaded WebViews, trigger onPageShow immediately
-            if let appId = webView.appId, let currentPath = webView.currentPath {
-                let _ = lingxia.onPageShow(appId, currentPath)
-                os_log("attachWebViewToUI: Triggered onPageShow for loaded WebView appId=%@ path=%@",
-                       log: Self.log, type: .info, appId, currentPath)
+        // Remove any existing loading indicator
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            if let loadingIndicator = self.webViewContainer.viewWithTag(9997) {
+                loadingIndicator.removeFromSuperview()
             }
-        } else {
-            // WebView not loaded yet, resume normally (will trigger loading)
-            webView.resumeWebView()
+        }
 
-            // For unloaded WebViews, trigger onPageShow after a delay to ensure content is ready
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                webView.isHidden = false
-
-                if let appId = webView.appId, let currentPath = webView.currentPath {
-                    let _ = lingxia.onPageShow(appId, currentPath)
-                    os_log("attachWebViewToUI: Triggered onPageShow for new WebView appId=%@ path=%@",
-                           log: Self.log, type: .info, appId, currentPath)
-                }
-            }
-
-            // Remove loading indicator after content loads
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                if let loadingIndicator = self.webViewContainer.viewWithTag(9997) {
-                    loadingIndicator.removeFromSuperview()
-                }
-            }
+        // Unified onPageShow trigger - called for all WebViews when attached to UI
+        if let appId = webView.appId, let currentPath = webView.currentPath {
+            let _ = lingxia.onPageShow(appId, currentPath)
+            os_log("attachWebViewToUI: Triggered onPageShow for appId=%@ path=%@",
+                   log: Self.log, type: .info, appId, currentPath)
         }
 
         updateNavigationBar(appId: appId, path: webView.currentPath ?? "", isBackNavigation: false, disableAnimation: true)
@@ -877,8 +860,7 @@ public class MiniAppViewController: UIViewController {
         // This ensures WebView starts below NavigationBar when it exists, or from top when hidden
         updateLayoutMargins()
 
-        // Use unified attachment logic - attachWebViewToUI handles both loaded and unloaded WebViews
-        os_log("switchToTab: Attaching WebView pageLoaded=%@", log: Self.log, type: .info, String(targetWebView.pageLoaded))
+        os_log("switchToTab: Attaching WebView", log: Self.log, type: .info)
         attachWebViewToUI(webView: targetWebView)
 
         // Hide previous WebView

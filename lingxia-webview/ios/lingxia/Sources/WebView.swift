@@ -6,11 +6,6 @@ import os.log
 /// This provides compatibility methods for WebViews created by Rust using objc2
 extension WKWebView {
 
-    /// Check if this WebView has loaded content (for Rust WebViews)
-    var pageLoaded: Bool {
-        return url != nil && !isLoading
-    }
-
     /// Get the app ID associated with this WebView (stored in accessibilityIdentifier)
     var appId: String? {
         get { return accessibilityIdentifier }
@@ -30,11 +25,6 @@ extension WKWebView {
 
     /// Resume WebView operations (simplified version for Rust WebViews)
     @objc func resumeWebView() {
-        isHidden = false
-    }
-
-    /// Resume WebView without reloading (simplified version for Rust WebViews)
-    @objc func resumeWebViewWithoutReload() {
         isHidden = false
     }
 
