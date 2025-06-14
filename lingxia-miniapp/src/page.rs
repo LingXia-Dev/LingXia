@@ -341,8 +341,16 @@ pub(crate) struct PageInner {
     // Time when this page was last active
     last_active_time: Arc<Mutex<Instant>>,
 
-    // Tracks whether bridge script has been injected
-    script_injected: Arc<Mutex<bool>>,
+    // state of Page
+    state: Arc<Mutex<PageState>>,
+}
+
+#[derive(Copy, Clone, PartialEq)]
+pub enum PageState {
+    PageCreated,
+    PageLoading,
+    PageLoaded,
+    PageUnknownState,
 }
 
 /// Represents a single page in a mini app
@@ -353,7 +361,7 @@ pub struct Page {
 }
 
 impl Page {
-    pub(crate) fn new_with_webview(
+    fn new_with_webview(
         appid: String,
         path: String,
         svc_manager: Arc<Mutex<MiniAppServiceManager>>,
@@ -364,25 +372,26 @@ impl Page {
             path,
             svc_manager,
             last_active_time: Arc::new(Mutex::new(Instant::now())),
-            script_injected: Arc::new(Mutex::new(false)),
+            state: Arc::new(Mutex::new(PageState::PageCreated)),
             webview_controller,
         });
 
         Self { inner }
     }
 
-    pub(crate) fn mark_script_injected(&self) {
-        if let Ok(mut injected) = self.inner.script_injected.lock() {
-            *injected = true;
+    // pls proivde one api to set page state ,one api to get
+    pub(crate) fn set_page_state(&self, state: PageState) {
+        if let Ok(mut guard) = self.inner.state.lock() {
+            *guard = state;
         }
     }
 
-    pub(crate) fn is_script_injected(&self) -> bool {
+    pub(crate) fn get_page_state(&self) -> PageState {
         self.inner
-            .script_injected
+            .state
             .lock()
             .map(|guard| *guard)
-            .unwrap_or(false)
+            .unwrap_or(PageState::PageUnknownState)
     }
 
     /// Get the WebView controller for this page

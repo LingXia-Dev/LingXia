@@ -13,6 +13,7 @@ use crate::app::AppConfig;
 use crate::appservice::{self, MiniAppServiceManager};
 use crate::error::MiniAppError;
 use crate::log::{self, LogLevel, LogTag};
+pub use crate::page::PageState;
 use crate::page::{Page, Pages};
 use crate::{AppRuntime, error, info};
 use config::{MiniAppConfig, PageConfig};

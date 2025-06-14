@@ -1,6 +1,7 @@
 use http::{Request, Response, StatusCode};
 
 use crate::miniapp::MiniApp;
+use crate::page::PageState;
 use crate::{error, info};
 
 impl MiniApp {
@@ -41,7 +42,7 @@ impl MiniApp {
                 let response_data = if is_html {
                     let is_script_injected =
                         if let Some(page) = self.state.lock().unwrap().pages.get_page(path) {
-                            page.is_script_injected()
+                            page.get_page_state() == PageState::PageLoaded
                         } else {
                             false
                         };
@@ -73,7 +74,7 @@ impl MiniApp {
                         }
 
                         if let Some(page) = self.state.lock().unwrap().pages.get_page(path) {
-                            page.mark_script_injected();
+                            page.set_page_state(PageState::PageLoaded);
                         }
 
                         injected_data
