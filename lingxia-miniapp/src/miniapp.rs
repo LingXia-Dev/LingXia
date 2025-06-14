@@ -525,9 +525,6 @@ pub trait AppUiDelegate {
     /// Called when mini app is closed
     fn on_miniapp_closed(self: &Arc<Self>);
 
-    /// Called when a WebView is attached to the window and ready for interaction
-    fn on_webview_attached(self: &Arc<Self>, path: String);
-
     /// Called when the page starts loading
     fn on_page_started(self: &Arc<Self>, path: String);
 
@@ -675,60 +672,6 @@ impl AppUiDelegate for MiniApp {
         info!("Mini app closed").with_appid(self.appid.clone());
     }
 
-    fn on_webview_attached(self: &Arc<Self>, path: String) {
-        info!("Mini app WebView attached")
-            .with_appid(self.appid.clone())
-            .with_path(path.clone());
-
-        let url = format!("lx://{}", path.clone());
-        let debug = self.is_debug_enabled();
-
-        // Get the page (should already exist)
-        let page = {
-            let state = self.state.lock().unwrap();
-            state.pages.get_page(&path).cloned()
-        };
-
-        let page = match page {
-            Some(page) => page,
-            None => {
-                error!("Page not found: {}", path)
-                    .with_appid(self.appid.clone())
-                    .with_path(path.clone());
-                return;
-            }
-        };
-
-        // Get the WebView controller for this page
-        let webview_controller = page.webview_controller();
-
-        // Store the result of loading the URL
-        let url_load_result = webview_controller.load_url(url.clone());
-
-        // Enable devtools if debug mode is enabled in config
-        let devtools_result = if debug {
-            webview_controller.set_devtools(true)
-        } else {
-            Ok(())
-        };
-
-        if let Err(e) = url_load_result {
-            error!("Failed to load URL {}: {}", url, e)
-                .with_appid(self.appid.clone())
-                .with_path(path.clone());
-        }
-
-        if let Err(e) = devtools_result {
-            error!("Failed to enable devtools: {}", e)
-                .with_appid(self.appid.clone())
-                .with_path(path.clone());
-        }
-
-        info!("Page created")
-            .with_appid(self.appid.clone())
-            .with_path(path.clone());
-    }
-
     fn on_page_started(self: &Arc<Self>, path: String) {
         if let Ok(manager) = self.svc_manager.lock() {
             let _ = manager.invoke_page_function(
@@ -752,6 +695,58 @@ impl AppUiDelegate for MiniApp {
     }
 
     fn on_page_show(self: &Arc<Self>, path: String) {
+        // Get the page (should already exist)
+        let page = {
+            let state = self.state.lock().unwrap();
+            state.pages.get_page(&path).cloned()
+        };
+
+        let page = match page {
+            Some(page) => page,
+            None => {
+                error!("Page not found: {}", path)
+                    .with_appid(self.appid.clone())
+                    .with_path(path.clone());
+                return;
+            }
+        };
+
+        if page.get_page_state() == PageState::PageCreated {
+            let url = format!("lx://{}", path.clone());
+            let debug = self.is_debug_enabled();
+
+            // Get the WebView controller for this page
+            let webview_controller = page.webview_controller();
+
+            // Store the result of loading the URL
+            let url_load_result = webview_controller.load_url(url.clone());
+
+            page.set_page_state(PageState::PageLoading);
+
+            // Enable devtools if debug mode is enabled in config
+            let devtools_result = if debug {
+                webview_controller.set_devtools(true)
+            } else {
+                Ok(())
+            };
+
+            if let Err(e) = url_load_result {
+                error!("Failed to load URL {}: {}", url, e)
+                    .with_appid(self.appid.clone())
+                    .with_path(path.clone());
+            }
+
+            if let Err(e) = devtools_result {
+                error!("Failed to enable devtools: {}", e)
+                    .with_appid(self.appid.clone())
+                    .with_path(path.clone());
+            }
+
+            info!("Page created")
+                .with_appid(self.appid.clone())
+                .with_path(path.clone());
+        }
+
         // Navigate to the new page and get the previous page if there was a switch
         let previous_page = self
             .state
