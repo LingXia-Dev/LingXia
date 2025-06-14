@@ -75,7 +75,6 @@ class WebView @JvmOverloads constructor(
 ) : WebView(context) {
     internal var appId: String? = null
     internal var currentPath: String? = null
-    private var isRegistered = false  // Track if WebView has been registered with native layer
     private var pageLoaded = false
     private var savedScrollX: Int = 0
     private var savedScrollY: Int = 0
@@ -534,23 +533,6 @@ class WebView @JvmOverloads constructor(
         }
     }
 
-    override fun onAttachedToWindow() {
-        super.onAttachedToWindow()
-        Log.d(TAG, "WebView attached to window")
-
-        // Register with native layer if not already registered and we have appId/path
-        if (!isRegistered && appId != null && currentPath != null) {
-            Log.d(TAG, "WebView attached to window: appId=$appId, path=$currentPath")
-            val result = nativeOnWebViewAttached(appId!!, currentPath!! )
-            if (result == 0) {
-                isRegistered = true
-                Log.d(TAG, "WebView registered successfully: appId=$appId, path=$currentPath")
-            } else {
-                Log.e(TAG, "Failed to register WebView: appId=$appId, path=$currentPath")
-            }
-        }
-    }
-
     override fun onDetachedFromWindow() {
         Log.d(TAG, "WebView detached from window")
         messageChannel?.close()
@@ -674,7 +656,6 @@ class WebView @JvmOverloads constructor(
     }
 
     // Native instance methods
-    private external fun nativeOnWebViewAttached(appId: String, path: String): Int
     private external fun nativeHandlePostMessage(appId: String, path: String, message: String): Int
     private external fun nativeOnPageStarted(appId: String, path: String): Int
     private external fun nativeOnPageFinished(appId: String, path: String): Int

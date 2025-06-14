@@ -168,22 +168,6 @@ pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeOnMiniAppInited(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnWebViewAttached(
-    mut env: JNIEnv,
-    _class: JClass,
-    appid: JString,
-    path: JString,
-) -> jint {
-    let appid: String = env.get_string(&appid).unwrap().into();
-    let path: String = env.get_string(&path).unwrap().into();
-
-    // Notify miniapp about WebView attached to window
-    let miniapp = miniapp::get(appid);
-    miniapp.on_webview_attached(path);
-    0
-}
-
-#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeHandlePostMessage(
     mut env: JNIEnv,
     _class: JClass,

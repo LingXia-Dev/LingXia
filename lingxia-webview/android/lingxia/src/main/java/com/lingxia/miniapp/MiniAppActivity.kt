@@ -489,22 +489,15 @@ class MiniAppActivity : AppCompatActivity() {
     }
 
     // Helper function to attach a WebView to the container and resume it
-    private fun attachAndResumeWebView(view: com.lingxia.miniapp.WebView?) {
+    private fun attachWebViewToUI(view: com.lingxia.miniapp.WebView?) {
         if (view == null) {
-            Log.e(TAG, "attachAndResumeWebView called with null view!")
+            Log.e(TAG, "attachWebViewToUI called with null view!")
             return
         }
         if (!isDestroyed) {
             Log.d(TAG, "Attaching and resuming WebView for path: ${view.currentPath}")
 
-            // Check if this WebView was in an off-screen container
-            val wasInOffScreenContainer = view.parent?.let { parent ->
-                val parentView = parent as? ViewGroup
-                parentView?.tag?.toString()?.startsWith("hiddenWebViewContainer_") == true &&
-                parentView.translationX < 0  // Check if positioned off-screen
-            } ?: false
-
-            // Ensure view is visible (might have been set to GONE previously)
+            // Ensure view is visible
             view.visibility = View.VISIBLE
 
             // Add to webview container if not already added
@@ -518,38 +511,15 @@ class MiniAppActivity : AppCompatActivity() {
                     ViewGroup.LayoutParams.MATCH_PARENT
                 )
 
-                // Now add to webview container
+                // Add to webview container
                 webViewContainer.addView(view)
-
-                // Only perform special handling for WebViews from off-screen containers
-                if (wasInOffScreenContainer) {
-                    Log.d(TAG, "WebView moved from off-screen container, ensuring proper layout")
-
-                    // Use a simple post to ensure layout is applied after the view is added
-                    view.post {
-                        val containerWidth = webViewContainer.width
-                        val containerHeight = webViewContainer.height
-
-                        if (containerWidth > 0 && containerHeight > 0) {
-                            Log.d(TAG, "Applying layout for WebView from off-screen container: ${containerWidth}x${containerHeight}")
-
-                            // Use WebView's layout helper function
-                            com.lingxia.miniapp.WebView.applyLayout(view, containerWidth, containerHeight)
-
-                            // Simple invalidation to refresh the view
-                            view.invalidate()
-                            view.requestLayout()
-                        }
-                    }
-                }
-            } else {
-                // If already in the container (e.g., initial load), ensure it's visible and resumed
-                Log.d(TAG, "WebView for ${view.currentPath} already in container, ensuring resume.")
             }
 
             // Resume the WebView's activities
             view.resume()
-            if (view.parent == webViewContainer && view.appId != null && view.currentPath != null) {
+            
+            // Unified onPageShow trigger - called for all WebViews when attached to UI
+            if (view.appId != null && view.currentPath != null) {
                 try {
                     nativeOnPageShow(view.appId!!, view.currentPath!!)
                 } catch (e: Exception) {
@@ -571,7 +541,7 @@ class MiniAppActivity : AppCompatActivity() {
     // New method to setup WebView content with an existing WebView
     private fun setupWebViewContentWithExisting(webView: com.lingxia.miniapp.WebView) {
         // Attach and resume immediately
-        attachAndResumeWebView(webView)
+        attachWebViewToUI(webView)
 
         // Set the current WebView
         this.currentWebView = webView
@@ -821,7 +791,7 @@ class MiniAppActivity : AppCompatActivity() {
 
     // Handles switching ROOT pages associated with Tabs
     private fun switchToTab(targetPath: String) {
-        Log.d(TAG, "Switching TAB to path: $targetPath, container children: ${webViewContainer.childCount}") // Added child count
+        Log.d(TAG, "Switching TAB to path: $targetPath, container children: ${webViewContainer.childCount}")
 
         val appId = intent.getStringExtra(EXTRA_APP_ID)
         if (appId.isNullOrEmpty()) {
@@ -831,7 +801,7 @@ class MiniAppActivity : AppCompatActivity() {
 
         // Bail early if trying to switch to the current path
         if (currentWebView?.currentPath == targetPath) {
-            Log.d(TAG, "Already on this tab, no need to switch") // Added log
+            Log.d(TAG, "Already on this tab, no need to switch")
             return
         }
 
@@ -864,55 +834,16 @@ class MiniAppActivity : AppCompatActivity() {
         // Configure navigation bar for the TARGET tab page using the helper (disable animation)
         updateNavigationBar(pageConfig, isBackNavigation = false, disableAnimation = true)
 
-        // Pre-position the target WebView correctly while still INVISIBLE
-        // Add target view first if it's not already there
-        if (targetWebView.parent != webViewContainer) {
-            targetWebView.visibility = View.INVISIBLE // Keep invisible until layout pass
+        // Use unified attachment logic - this will trigger nativeOnPageShow
+        attachWebViewToUI(targetWebView)
 
-            if (targetWebView.parent != null) {
-                (targetWebView.parent as? ViewGroup)?.removeView(targetWebView)
-            }
-
-            try {
-                webViewContainer.addView(targetWebView)
-                Log.d(TAG, "Added new WebView for $targetPath to container. Container now has ${webViewContainer.childCount} children")
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to add WebView to container: ${e.message}")
-                return
-            }
-        } else {
-            targetWebView.bringToFront() // Ensure it's on top if reused
-            Log.d(TAG, "WebView already in container, bringing to front")
-        }
-
-        // Post ensures layout calculations are done *before* we make it visible
-        webViewContainer.post {
-            if (isDestroyed) return@post
-
-            // Apply translation based on current nav/tab bar state
-            targetWebView.translationY = calculateWebViewTranslationY()
-
-            // Make target visible and resume it
-            targetWebView.visibility = View.VISIBLE
-            targetWebView.resume()
-
-            // Pause and remove the previous view *after* the new one is resumed and visible
-            // Use a small delay to prevent visual flicker
-            if (previousWebView != null && previousWebView != targetWebView) {
-                webViewContainer.postDelayed({
-                    if (isDestroyed) return@postDelayed
-                    if (previousWebView.parent == webViewContainer) {
-                         Log.d(TAG, "Pausing and removing previous tab WebView: ${previousWebView.currentPath}")
-                         previousWebView.pause()
-                         // Consider setting to GONE instead of INVISIBLE before remove
-                         previousWebView.visibility = View.GONE
-                         webViewContainer.removeView(previousWebView)
-                         Log.d(TAG, "Container now has ${webViewContainer.childCount} children after removing previous WebView") // Added log
-
-                         // Added update nav bar call after removal (disable animation)
-                         updateNavigationBar(pageConfig, false, disableAnimation = true)
-                    }
-                }, 50) // Small delay to help smooth transition
+        // Pause and hide the previous WebView
+        if (previousWebView != null && previousWebView != targetWebView) {
+            previousWebView.pause()
+            previousWebView.visibility = View.GONE
+            if (previousWebView.parent == webViewContainer) {
+                webViewContainer.removeView(previousWebView)
+                Log.d(TAG, "Removed previous tab WebView: ${previousWebView.currentPath}")
             }
         }
     }
@@ -1030,7 +961,18 @@ class MiniAppActivity : AppCompatActivity() {
                 .translationX(0f)
                 .setDuration(duration)
                 .setInterpolator(interpolator)
-                .start() // No complex end action needed here for new container
+                .withEndAction {
+                    // Trigger nativeOnPageShow after animation completes
+                    if (newWebView.appId != null && newWebView.currentPath != null) {
+                        try {
+                            nativeOnPageShow(newWebView.appId!!, newWebView.currentPath!!)
+                            Log.d(TAG, "navigateToPage: Triggered onPageShow for appId=${newWebView.appId} path=${newWebView.currentPath}")
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to call nativeOnPageShow in navigateToPage: ${e.message}")
+                        }
+                    }
+                }
+                .start()
 
             // Update the current WebView reference BEFORE animating old container out
             currentWebView = newWebView
