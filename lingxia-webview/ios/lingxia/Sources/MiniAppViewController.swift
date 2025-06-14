@@ -976,6 +976,13 @@ public class MiniAppViewController: UIViewController {
         UIView.animate(withDuration: duration, animations: {
             newContainer.transform = .identity
         }) { _ in
+            // Trigger onPageShow after animation completes
+            if let appId = newWebView.appId, let currentPath = newWebView.currentPath {
+                let _ = lingxia.onPageShow(appId, currentPath)
+                os_log("navigateToPage: Triggered onPageShow for appId=%@ path=%@",
+                       log: Self.log, type: .info, appId, currentPath)
+            }
+            
             // CRITICAL: Ensure capsule button stays on top after animation
             self.bringUIElementsToFront()
         }
