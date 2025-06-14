@@ -711,7 +711,8 @@ impl AppUiDelegate for MiniApp {
             }
         };
 
-        if page.get_page_state() == PageState::PageCreated {
+        let state = page.get_page_state();
+        if state == PageState::PageCreated {
             let url = format!("lx://{}", path.clone());
             let debug = self.is_debug_enabled();
 
@@ -782,8 +783,8 @@ impl AppUiDelegate for MiniApp {
             }
         }
 
-        // preload other tab pages
-        if self.config.is_initial_route(&path) {
+        // precreate webviews for other tab pages
+        if self.config.is_initial_route(&path) && state == PageState::PageCreated {
             let mut state = self.state.lock().unwrap();
             for p in self.config.get_tab_pages() {
                 if p == path {
