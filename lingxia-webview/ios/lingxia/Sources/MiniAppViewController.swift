@@ -371,10 +371,6 @@ public class MiniAppViewController: UIViewController {
         currentWebView = webView
         addWebViewToContainer(webView)
 
-        if !webView.isRegistered {
-            notifyWebViewAttachedToRust(webView)
-        }
-
         // Choose appropriate resume method based on WebView state
         if webView.pageLoaded {
             // WebView already loaded, resume without reload
@@ -435,16 +431,6 @@ public class MiniAppViewController: UIViewController {
             webViewContainer.bringSubviewToFront(webView)
         }
         webViewContainer.layoutIfNeeded()
-    }
-
-    /// Notify Rust layer that WebView has been attached to Swift UI
-    private func notifyWebViewAttachedToRust(_ webView: WKWebView) {
-        let currentPath = webView.currentPath ?? ""
-        let success = WebViewManager.notifyWebViewAttached(webView, appId: appId, path: currentPath)
-
-        if !success {
-            os_log("notifyWebViewAttachedToRust: Failed to notify Rust", log: Self.log, type: .error)
-        }
     }
 
     private func setupTabBar(config: TabBarConfig?) {
@@ -1494,11 +1480,6 @@ public class MiniAppViewController: UIViewController {
 
         // Add webview to container
         addWebViewToContainer(webView)
-
-        // Register with Rust layer if needed
-        if !webView.isRegistered {
-            notifyWebViewAttachedToRust(webView)
-        }
 
         // Resume WebView - onPageShow will be called by WebView when appropriate
         webView.resumeWebView()

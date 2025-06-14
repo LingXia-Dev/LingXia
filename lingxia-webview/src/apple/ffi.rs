@@ -10,9 +10,6 @@ mod bridge {
         #[swift_bridge(swift_name = "miniappInit")]
         fn miniapp_init(data_dir: &str, cache_dir: &str) -> Option<String>;
 
-        #[swift_bridge(swift_name = "onWebviewAttached")]
-        fn on_webview_attached(appid: &str, path: &str) -> i32;
-
         #[swift_bridge(swift_name = "onPageShow")]
         fn on_page_show(appid: &str, path: &str);
 
@@ -148,13 +145,6 @@ pub fn miniapp_init(data_dir: &str, cache_dir: &str) -> Option<String> {
             None
         }
     }
-}
-
-/// Notify that a WebView has been attached to the window
-pub fn on_webview_attached(appid: &str, path: &str) -> i32 {
-    let miniapp = miniapp::get(appid.to_string());
-    miniapp.on_webview_attached(path.to_string());
-    0
 }
 
 /// Notify that a page is being shown

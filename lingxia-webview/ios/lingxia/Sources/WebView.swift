@@ -23,12 +23,6 @@ extension WKWebView {
         set { accessibilityLabel = newValue }
     }
 
-    /// Check if WebView is registered with Rust layer (stored in accessibilityHint)
-    var isRegistered: Bool {
-        get { return accessibilityHint == "registered" }
-        set { accessibilityHint = newValue ? "registered" : nil }
-    }
-
     /// Pause WebView operations (simplified version for Rust WebViews)
     @objc func pauseWebView() {
         isHidden = true
@@ -50,7 +44,6 @@ extension WKWebView {
     func setup(appId: String, path: String) {
         self.appId = appId
         self.currentPath = path
-        self.isRegistered = false
     }
 }
 
@@ -76,22 +69,5 @@ class WebViewManager {
         }
 
         return nil
-    }
-
-    /// Notify Rust layer that WebView has been attached to Swift UI
-    @MainActor
-    static func notifyWebViewAttached(_ webView: WKWebView, appId: String, path: String) -> Bool {
-        let attachResult = appId.toRustStr { appidRustStr in
-            path.toRustStr { pathRustStr in
-                lingxia.onWebviewAttached(appidRustStr, pathRustStr)
-            }
-        }
-
-        if attachResult == 0 {
-            webView.isRegistered = true
-            return true
-        } else {
-            return false
-        }
     }
 }
