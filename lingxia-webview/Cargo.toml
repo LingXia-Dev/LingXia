@@ -35,5 +35,9 @@ block2 = "0.6"
 # GCD dispatch for main thread operations
 dispatch2 = "0.3"
 
+[target.'cfg(all(target_os = "linux", target_env = "ohos"))'.dependencies]
+ohos_hilog = "0.1"
+napi-ohos = "1.0.4"
+
 [build-dependencies]
 swift-bridge-build = "0.1"
