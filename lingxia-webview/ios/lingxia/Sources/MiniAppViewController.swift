@@ -15,6 +15,8 @@ public class MiniAppViewController: UIViewController {
     internal static let DEFAULT_NAV_BAR_HEIGHT: CGFloat = 44
     internal static let DEFAULT_TAB_BAR_SIZE: CGFloat = 64
     internal static let STATUS_BAR_HEIGHT: CGFloat = 48
+    // NavigationBar title and capsule button vertical position (status bar + margin)
+    internal static let NAV_TITLE_VERTICAL_POSITION: CGFloat = 48 + 8
 
     // MARK: - UI Element Tags
     private static let CAPSULE_BUTTON_TAG = 9999
@@ -649,8 +651,8 @@ public class MiniAppViewController: UIViewController {
         // Create capsule container (matching Android dimensions and styling)
         let capsule = UIView()
         capsule.backgroundColor = UIColor.white
-        capsule.layer.cornerRadius = 20 // Android: 20f * density
-        capsule.layer.borderWidth = 0.5 // Android: 0.5f * density
+        capsule.layer.cornerRadius = 18 // Half of height (36/2) for perfect rounded corners
+        capsule.layer.borderWidth = 0.5 // 0.5f * density
         capsule.layer.borderColor = UIColor(red: 0.867, green: 0.867, blue: 0.867, alpha: 1.0).cgColor // #DDDDDD
         capsule.layer.shadowColor = UIColor.black.cgColor
         capsule.layer.shadowOffset = CGSize(width: 0, height: 1)
@@ -660,18 +662,18 @@ public class MiniAppViewController: UIViewController {
         capsule.tag = Self.CAPSULE_BUTTON_TAG // Special tag for identification and management
         capsule.translatesAutoresizingMaskIntoConstraints = false
 
-        // Create more button with custom dots (matching Android MoreDotsDrawable)
+        // Create more button with custom dots
         let btnMore = UIButton(type: .custom)
         btnMore.backgroundColor = UIColor.clear
         btnMore.setImage(createMoreDotsImage(), for: .normal)
         btnMore.addTarget(self, action: #selector(moreButtonTapped), for: .touchUpInside)
 
-        // Create divider (matching Android implementation)
+        // Create divider 
         let divider = UIView()
         divider.backgroundColor = UIColor(red: 0.867, green: 0.867, blue: 0.867, alpha: 1.0) // #DDDDDD
         divider.translatesAutoresizingMaskIntoConstraints = false
 
-        // Create close button with custom X (matching Android CloseButtonDrawable)
+        // Create close button with custom X 
         let btnClose = UIButton(type: .custom)
         btnClose.backgroundColor = UIColor.clear
         btnClose.setImage(createCloseButtonImage(), for: .normal)
@@ -691,24 +693,25 @@ public class MiniAppViewController: UIViewController {
 
         // Set up constraints to match Android layout exactly
         NSLayoutConstraint.activate([
-            // Capsule positioning (using fixed status bar height + 8pt margin)
-            capsule.topAnchor.constraint(equalTo: rootContainer.topAnchor, constant: MiniAppViewController.STATUS_BAR_HEIGHT + 8),
+            // Capsule positioning (aligned with NavigationBar title - same as NavigationBar title position)
+            // NavigationBar title and capsule button share the same vertical position
+            capsule.topAnchor.constraint(equalTo: rootContainer.topAnchor, constant: MiniAppViewController.NAV_TITLE_VERTICAL_POSITION - 4),
             capsule.trailingAnchor.constraint(equalTo: rootContainer.trailingAnchor, constant: -12),
             capsule.heightAnchor.constraint(equalToConstant: 36), // Android: 36dp
 
-            // More button (Android: 44dp width)
+            // More button
             btnMore.leadingAnchor.constraint(equalTo: capsule.leadingAnchor, constant: 2), // Android padding
             btnMore.topAnchor.constraint(equalTo: capsule.topAnchor),
             btnMore.bottomAnchor.constraint(equalTo: capsule.bottomAnchor),
             btnMore.widthAnchor.constraint(equalToConstant: 44),
 
-            // Divider (Android: 1dp width, 20dp height)
+            // Divider
             divider.leadingAnchor.constraint(equalTo: btnMore.trailingAnchor),
             divider.centerYAnchor.constraint(equalTo: capsule.centerYAnchor),
             divider.widthAnchor.constraint(equalToConstant: 1),
             divider.heightAnchor.constraint(equalToConstant: 20),
 
-            // Close button (Android: 44dp width)
+            // Close button
             btnClose.leadingAnchor.constraint(equalTo: divider.trailingAnchor),
             btnClose.trailingAnchor.constraint(equalTo: capsule.trailingAnchor, constant: -2), // Android padding
             btnClose.topAnchor.constraint(equalTo: capsule.topAnchor),
@@ -717,7 +720,7 @@ public class MiniAppViewController: UIViewController {
         ])
     }
 
-    /// Creates the more dots image (matching Android MoreDotsDrawable exactly)
+    /// Creates the more dots image
     private func createMoreDotsImage() -> UIImage? {
         let size = CGSize(width: 24, height: 24)
         UIGraphicsBeginImageContextWithOptions(size, false, 0)
@@ -728,17 +731,15 @@ public class MiniAppViewController: UIViewController {
         context.setShouldAntialias(true)
         context.setAllowsAntialiasing(true)
 
-        // Set color to match Android (black)
         UIColor.black.setFill()
 
         let centerY = size.height / 2
         let centerX = size.width / 2
 
-        // Match Android dimensions exactly:
         // Center dot is larger, side dots are smaller
-        let centerDotRadius = size.height / 7  // Larger center dot (Android: bounds.height() / 7f)
-        let sideDotRadius = size.height / 10   // Smaller side dots (Android: bounds.height() / 10f)
-        let spacing = centerDotRadius * 2.8    // Adjusted spacing (Android: centerDotRadius * 2.8f)
+        let centerDotRadius = size.height / 7  // Larger center dot
+        let sideDotRadius = size.height / 10   // Smaller side dots 
+        let spacing = centerDotRadius * 2.8    // Adjusted spacing
 
         // Draw side dots (smaller)
         let leftDotRect = CGRect(
@@ -771,7 +772,7 @@ public class MiniAppViewController: UIViewController {
         return image
     }
 
-    /// Creates the close button image (matching Android CloseButtonDrawable exactly)
+    /// Creates the close button image
     private func createCloseButtonImage() -> UIImage? {
         let size = CGSize(width: 24, height: 24)
         UIGraphicsBeginImageContextWithOptions(size, false, 0)
@@ -1193,7 +1194,6 @@ public class MiniAppViewController: UIViewController {
             // Mark as destroyed to prevent further operations
             isDestroyed = true
         }
-
         os_log("MiniAppViewController: MiniAppViewController deinitialized", log: miniAppViewControllerLog, type: .debug)
     }
 

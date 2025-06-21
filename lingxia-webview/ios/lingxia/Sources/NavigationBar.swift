@@ -138,19 +138,19 @@ public class LingXiaNavigationBar: UIView {
         NSLayoutConstraint.activate([
             // Back button constraints
             backButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
-            backButton.topAnchor.constraint(equalTo: topAnchor, constant: 48 + 6),
+            backButton.topAnchor.constraint(equalTo: topAnchor, constant: MiniAppViewController.NAV_TITLE_VERTICAL_POSITION - 2),
             backButton.widthAnchor.constraint(equalToConstant: 44),
             backButton.heightAnchor.constraint(equalToConstant: 32),
 
             // Title label constraints - ensure it doesn't overlap with back button
             titleLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
-            titleLabel.topAnchor.constraint(equalTo: topAnchor, constant: 48 + 8),
+            titleLabel.topAnchor.constraint(equalTo: topAnchor, constant: MiniAppViewController.NAV_TITLE_VERTICAL_POSITION),
             titleLabel.leadingAnchor.constraint(greaterThanOrEqualTo: backButton.trailingAnchor, constant: 8),
             titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -52), // Leave space for potential right button
 
             // Loading indicator constraints
             loadingIndicator.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
-            loadingIndicator.topAnchor.constraint(equalTo: topAnchor, constant: 48 + 10),
+            loadingIndicator.topAnchor.constraint(equalTo: topAnchor, constant: MiniAppViewController.NAV_TITLE_VERTICAL_POSITION),
             loadingIndicator.widthAnchor.constraint(equalToConstant: 24),
             loadingIndicator.heightAnchor.constraint(equalToConstant: 24)
         ])
