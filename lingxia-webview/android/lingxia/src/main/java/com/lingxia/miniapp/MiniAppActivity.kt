@@ -517,7 +517,7 @@ class MiniAppActivity : AppCompatActivity() {
 
             // Resume the WebView's activities
             view.resume()
-            
+
             // Unified onPageShow trigger - called for all WebViews when attached to UI
             if (view.appId != null && view.currentPath != null) {
                 try {
@@ -659,7 +659,7 @@ class MiniAppActivity : AppCompatActivity() {
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
                 setColor(Color.parseColor("#FFFFFF"))
-                cornerRadius = 20f * resources.displayMetrics.density
+                cornerRadius = 18f * resources.displayMetrics.density // Half of height (36/2) for perfect rounded corners
                 setStroke((0.5f * resources.displayMetrics.density).toInt(), Color.parseColor("#DDDDDD"))
             }
 
@@ -669,8 +669,8 @@ class MiniAppActivity : AppCompatActivity() {
                 (36 * resources.displayMetrics.density).toInt()
             ).apply {
                 gravity = Gravity.TOP or Gravity.END
-                // Position with fixed offset relative to status bar
-                topMargin = statusBarHeight + (8 * resources.displayMetrics.density).toInt()
+                // Position with fixed offset relative to status bar (moved up 4dp to avoid overlap with navbar)
+                topMargin = statusBarHeight + (4 * resources.displayMetrics.density).toInt()
                 rightMargin = (12 * resources.displayMetrics.density).toInt()
             }
             layoutParams = capsuleLayoutParams
