@@ -127,3 +127,23 @@ pub fn miniapp_init(
         }
     }
 }
+
+/// Get tab bar configuration
+#[napi]
+fn get_tab_bar_config(appid: String) -> Option<String> {
+    let miniapp = miniapp::get(appid);
+    match miniapp.get_tab_bar_config() {
+        Ok(config) => Some(config),
+        Err(_) => None,
+    }
+}
+
+/// Get page configuration
+#[napi]
+pub fn get_page_config(appid: String, path: String) -> Option<String> {
+    let miniapp = miniapp::get(appid);
+    match miniapp.get_page_config(&path) {
+        Ok(config) => Some(config),
+        Err(_) => None,
+    }
+}

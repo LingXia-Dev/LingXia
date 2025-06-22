@@ -5,6 +5,7 @@ import { common } from '@kit.AbilityKit';
 import { MiniApp } from './MiniApp';
 import { NavigationBar, type NavigationBarConfig } from './NavigationBar';
 import { TabBar, type TabBarConfig, type TabBarItem } from './TabBar';
+import { getTabBarConfig, getPageConfig } from 'liblingxia.so';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.Container';
@@ -29,14 +30,14 @@ export struct MiniAppContainer {
     this.path = this.initialPath;
     hilog.info(DOMAIN, TAG, `Container creating for ${this.appId}:${this.path}, isHome=${this.isHomeMiniApp()}`);
 
-    const pageConfigJson = MiniApp.getInstance().get_page_config(this.appId, this.path);
+    const pageConfigJson: string | null = getPageConfig(this.appId, this.path);
     this.pageConfig = this.parsePageConfig(pageConfigJson);
     //hilog.info(DOMAIN, TAG, `Parsed page config: title=${this.pageConfig?.navigationBarTitleText}, hidden=${this.pageConfig?.hidden}`);
 
     const webViewController = MiniApp.getInstance().find_webview(this.appId, this.path);
     hilog.info(DOMAIN, TAG, `WebView controller for ${this.appId}:${this.path} = ${webViewController ? 'found' : 'NOT FOUND'}`);
 
-    const tabBarConfigJson = MiniApp.getInstance().get_tab_bar_config(this.appId);
+    const tabBarConfigJson: string | null = getTabBarConfig(this.appId);
     this.tabBarConfig = this.parseTabBarConfig(tabBarConfigJson);
     this.setInitialSelectedTab();
     hilog.info(DOMAIN, TAG, `Container initialized: tabs=${this.tabBarConfig?.list.length || 0}, isTabBarApp=${this.tabBarConfig !== null}`);
@@ -90,7 +91,7 @@ export struct MiniAppContainer {
         }
         .width('100%')
         .height('100%')
-        
+
         this.buildTabBar()
       }
       .width('100%')
@@ -457,17 +458,8 @@ export struct MiniAppContainer {
 
   private handleTabSelected(index: number) {
     hilog.info(DOMAIN, TAG, `Tab selected: ${index}, current: ${this.selectedTabIndex}`);
-
     if (this.tabBarConfig && index < this.tabBarConfig.list.length) {
       this.switchToTabByIndex(index);
-
-      if (index === 2) {
-        hilog.info(DOMAIN, TAG, `ToDo tab clicked, opening second miniapp with correct path... Current appId: ${this.appId}`);
-        setTimeout(() => {
-            MiniApp.openMiniApp('secondapp', 'pages/home/index.html');
-            hilog.info(DOMAIN, TAG, `MiniApp.openMiniApp called successfully`);
-        }, 100);
-      }
     }
   }
 
@@ -504,7 +496,7 @@ export struct MiniAppContainer {
       }
     }
 
-    const pageConfigJson = MiniApp.getInstance().get_page_config(this.appId, newPath);
+    const pageConfigJson: string | null = getPageConfig(this.appId, newPath);
     const newPageConfig = this.parsePageConfig(pageConfigJson);
     this.pageConfig = newPageConfig;
 

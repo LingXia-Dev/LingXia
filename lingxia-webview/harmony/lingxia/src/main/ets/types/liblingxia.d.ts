@@ -10,7 +10,7 @@ declare module 'liblingxia.so' {
    * Initialize MiniApp with callback function and system paths
    * @param callbackFunction - Callback function for native-to-JS communication
    * @param dataDir - Data directory path
-   * @param cacheDir - Cache directory path  
+   * @param cacheDir - Cache directory path
    * @param resourceManager - HarmonyOS resource manager (optional)
    * @returns Home MiniApp details in format "appId:path" or null if failed
    */
@@ -20,4 +20,19 @@ declare module 'liblingxia.so' {
     cacheDir: string,
     resourceManager: resourceManager.ResourceManager | null
   ): string | null;
+
+  /**
+   * Get tab bar configuration for a specific MiniApp
+   * @param appid - MiniApp ID
+   * @returns Tab bar configuration as JSON string or null if not found
+   */
+  export function getTabBarConfig(appid: string): string | null;
+
+  /**
+   * Get page configuration for a specific MiniApp page
+   * @param appid - MiniApp ID
+   * @param path - Page path
+   * @returns Page configuration as JSON string or null if not found
+   */
+  export function getPageConfig(appid: string, path: string): string | null;
 }
