@@ -5,6 +5,9 @@ import { resourceManager } from '@kit.LocalizationKit';
 import { MiniAppContainer } from './MiniAppContainer';
 import { initNativeBridge, getNativeCallbackFunction } from './NativeBridge';
 
+// Import native functions from Rust
+import { miniappInit } from 'liblingxia.so';
+
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.MiniApp';
 
@@ -71,19 +74,23 @@ export class MiniApp {
     // Initialize native bridge
     initNativeBridge();
 
-    // Call native init with callback function first, then file system info (ONLY ONCE)
-    const dataDir = context?.filesDir || '';
-    const cacheDir = context?.cacheDir || '';
-    const resourceManager = context?.resourceManager || null;
+    // Get application-level file system paths (not module-specific)
+    const appContext = context!.getApplicationContext();
+    const dataDir = appContext.filesDir;
+    const cacheDir = appContext.cacheDir;
+    const resourceManager = context!.resourceManager;
+
+    hilog.info(DOMAIN, TAG, `Using application context - dataDir: ${dataDir}, cacheDir: ${cacheDir}`);
+
     const callbackFunction = getNativeCallbackFunction();
 
-    hilog.info(DOMAIN, TAG, `Calling native_miniapp_init with callback and file system paths (FIRST AND ONLY TIME)`);
-    const result = instance.native_miniapp_init(callbackFunction, dataDir, cacheDir, resourceManager);
+    hilog.info(DOMAIN, TAG, `Calling miniappInit with callback and file system paths (FIRST AND ONLY TIME)`);
+    const result: string | null = miniappInit(callbackFunction, dataDir, cacheDir, resourceManager);
 
     if (result) {
       hilog.info(DOMAIN, TAG, `MiniApp initialized successfully: ${result}`);
 
-      const parts = result.split(':', 2);
+      const parts: string[] = result.split(':', 2);
       if (parts.length === 2) {
         instance.homeMiniAppId = parts[0];
         instance.homeMiniAppInitialRoute = parts[1];
@@ -165,18 +172,6 @@ export class MiniApp {
 
     hilog.info(DOMAIN, TAG, 'Using MiniAppManager for openMiniApp (legacy)');
     MiniApp.managerInstance.doOpenMiniApp(appId, path, isHomeMiniApp);
-  }
-
-  private native_miniapp_init(
-    callbackFunction: (name: string, ...args: Object[]) => Object | null,
-    dataDir: string,
-    cacheDir: string,
-    resourceManager: resourceManager.ResourceManager | null
-  ): string | null {
-    // When Rust implementation is ready, replace with:
-    // return LingXiaNative.nativeMiniappInit(callbackFunction, dataDir, cacheDir, resourceManager);
-
-    return 'homeminiapp:/pages/home/index.html';
   }
 
   /**
