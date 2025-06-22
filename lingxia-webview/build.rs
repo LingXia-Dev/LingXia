@@ -22,15 +22,20 @@ fn main() {
         let add_import_if_missing = |file_path: &std::path::Path, file_name: &str| {
             if let Ok(contents) = fs::read_to_string(file_path) {
                 if !contents.contains("import CLingXiaFFI") {
-                    let new_contents = format!("import Foundation\nimport CLingXiaFFI\n\n{}", contents);
-                    fs::write(file_path, new_contents)
-                        .expect(&format!("Failed to add import statement to {} file", file_name));
+                    let new_contents =
+                        format!("import Foundation\nimport CLingXiaFFI\n\n{}", contents);
+                    fs::write(file_path, new_contents).expect(&format!(
+                        "Failed to add import statement to {} file",
+                        file_name
+                    ));
                 }
             }
         };
 
         // 1. Add to main LingxiaFFI.swift file
-        let swift_file_path = generated_dir.join(package_name).join(format!("{}.swift", package_name));
+        let swift_file_path = generated_dir
+            .join(package_name)
+            .join(format!("{}.swift", package_name));
         add_import_if_missing(&swift_file_path, "LingxiaFFI.swift");
 
         // 2. Add to SwiftBridgeCore.swift file
@@ -51,5 +56,10 @@ fn main() {
             .expect("Failed to write module.modulemap");
 
         // println!( "cargo:warning=Swift bridge files generated to {}", generated_dir.display());
+    }
+
+    let env = env::var("CARGO_CFG_TARGET_ENV").unwrap_or_default();
+    if target.contains("linux") && env.eq("ohos") {
+        napi_build_ohos::setup();
     }
 }
