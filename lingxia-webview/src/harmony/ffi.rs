@@ -1,11 +1,16 @@
+use crate::controller::Controller;
+use crate::harmony::app::App;
 use log::LevelFilter;
+use miniapp::AppUiDelegate;
 use miniapp::log::LogLevel;
 use napi_derive_ohos::napi;
 use napi_ohos::bindgen_prelude::*;
 use ohos_hilog::Config;
+use std::sync::mpsc;
 
 #[napi]
 pub fn miniapp_init(
+    env: Env,
     callback_function: Function,
     data_dir: String,
     cache_dir: String,
@@ -60,58 +65,65 @@ pub fn miniapp_init(
         cache_dir,
     );
 
-    // TODO:
-    // For now, return a hardcoded value for testing
-    return Some("homeminiapp:pages/home/index.html".to_string());
+    // Only create App if we have ResourceManager
+    if resource_manager.is_none() {
+        log::error!("ResourceManager is required but not provided");
+        return None;
+    }
 
-    // TODO: Implement proper initialization when ready
-    // let app = match App::new(data_dir.to_string(), cache_dir.to_string()) {
-    //     Ok(app) => app,
-    //     Err(e) => {
-    //         log::error!("Failed to create App: {}", e);
-    //         return None;
-    //     }
-    // };
-    //
-    // // Create a channel to receive the result from the closure
-    // let (tx, rx) = mpsc::channel::<Option<(String, String)>>();
-    //
-    // if !Controller::run(
-    //     move |controller| -> bool {
-    //         let result_option = miniapp::init(controller);
-    //
-    //         // Send the result back to the main thread
-    //         if tx.send(result_option).is_err() {
-    //             log::error!("Failed to send init result: Receiver dropped?");
-    //         }
-    //
-    //         true
-    //     },
-    //     app,
-    // ) {
-    //     log::error!("Controller::run reported failure (returned false).");
-    //     let _ = rx.recv();
-    //     return None;
-    // }
-    //
-    // let final_init_details = match rx.recv() {
-    //     Ok(details_option) => details_option,
-    //     Err(e) => {
-    //         log::error!("Failed to receive result from channel: {}", e);
-    //         None
-    //     }
-    // };
-    //
-    // // Format and return the result
-    // match final_init_details {
-    //     Some((home_app_id, initial_route)) => {
-    //         let combined_details = format!("{}:{}", home_app_id, initial_route);
-    //         log::info!("MiniApp initialization successful: {}", combined_details);
-    //         Some(combined_details)
-    //     }
-    //     None => {
-    //         log::error!("Failed to obtain MiniApp home app details during initialization.");
-    //         None
-    //     }
-    // }
+    // Create App instance
+    let app = match App::new(
+        data_dir.to_string(),
+        cache_dir.to_string(),
+        env,
+        resource_manager,
+    ) {
+        Ok(app) => app,
+        Err(e) => {
+            log::error!("Failed to create App: {}", e);
+            return None;
+        }
+    };
+
+    // Create a channel to receive the result from the closure
+    let (tx, rx) = mpsc::channel::<Option<(String, String)>>();
+
+    if !Controller::run(
+        move |controller| -> bool {
+            let result_option = miniapp::init(controller);
+
+            // Send the result back to the main thread
+            if tx.send(result_option).is_err() {
+                log::error!("Failed to send init result: Receiver dropped?");
+            }
+
+            true
+        },
+        app,
+    ) {
+        log::error!("Controller::run reported failure (returned false).");
+        let _ = rx.recv();
+        return None;
+    }
+
+    let final_init_details = match rx.recv() {
+        Ok(details_option) => details_option,
+        Err(e) => {
+            log::error!("Failed to receive result from channel: {}", e);
+            None
+        }
+    };
+
+    // Format and return the result
+    match final_init_details {
+        Some((home_app_id, initial_route)) => {
+            let combined_details = format!("{}:{}", home_app_id, initial_route);
+            log::info!("MiniApp initialization successful: {}", combined_details);
+            Some(combined_details)
+        }
+        None => {
+            log::error!("Failed to obtain MiniApp home app details during initialization.");
+            None
+        }
+    }
 }

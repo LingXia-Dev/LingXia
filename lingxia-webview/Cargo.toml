@@ -39,6 +39,7 @@ dispatch2 = "0.3"
 ohos_hilog = "0.1"
 napi-ohos = "1.0.4"
 napi-derive-ohos = "1.0.4"
+ohos-raw-sys="0.0.1"
 
 [build-dependencies]
 swift-bridge-build = "0.1"
