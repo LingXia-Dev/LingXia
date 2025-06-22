@@ -1,4 +1,9 @@
+use crate::harmony::ffi::CALLBACK_TSFN;
 use miniapp::{MiniAppError, WebViewController};
+use napi_ohos::{
+    JsString, Result as NapiResult, Status,
+    threadsafe_function::{ThreadsafeCallContext, ThreadsafeFunctionCallMode},
+};
 
 #[derive(Debug)]
 pub struct WebViewInner {
@@ -11,9 +16,16 @@ unsafe impl Sync for WebViewInner {}
 impl WebViewInner {
     /// Create a new WebView instance for HarmonyOS
     pub fn create(appid: &str, path: &str) -> Result<Self, MiniAppError> {
-        Ok(WebViewInner {
-            webtag: appid.to_string(),
-        })
+        let key = format!("{}:{}", appid, path);
+
+        // Call ArkTS to create WebView controller first
+        match create_webview_controller(appid, path) {
+            Ok(_) => Ok(WebViewInner { webtag: key }),
+            Err(e) => Err(MiniAppError::WebView(format!(
+                "Failed to create WebView: {}",
+                e
+            ))),
+        }
     }
 }
 
@@ -44,5 +56,65 @@ impl WebViewController for WebViewInner {
         _throttle_ms: Option<u64>,
     ) -> Result<(), MiniAppError> {
         Ok(())
+    }
+}
+
+/// Create WebView controller in ArkTS
+pub fn create_webview_controller(app_id: &str, path: &str) -> NapiResult<()> {
+    if let Some(tsfn) = CALLBACK_TSFN.get() {
+        // Node-API ThreadSafe Function limitation: can only pass single string
+        // Format: "function_name:arg1:arg2:..."
+        let data = format!("createWebViewController:{}:{}", app_id, path);
+        let status = tsfn.call(data, ThreadsafeFunctionCallMode::Blocking);
+        if status == Status::Ok {
+            log::info!(
+                "Successfully created WebView controller for {}:{}",
+                app_id,
+                path
+            );
+            Ok(())
+        } else {
+            log::error!("Failed to create WebView controller: {:?}", status);
+            Err(napi_ohos::Error::new(
+                Status::GenericFailure,
+                format!("Failed to create WebView controller: {:?}", status),
+            ))
+        }
+    } else {
+        log::error!("No callback available");
+        Err(napi_ohos::Error::new(
+            Status::GenericFailure,
+            "No callback available".to_string(),
+        ))
+    }
+}
+
+/// Destroy WebView controller in ArkTS
+pub fn destroy_webview_controller(appid: &str, path: &str) -> NapiResult<()> {
+    if let Some(tsfn) = CALLBACK_TSFN.get() {
+        // Node-API ThreadSafe Function limitation: can only pass single string
+        // Format: "function_name:arg1:arg2:..."
+        let data = format!("destroyWebViewController:{}:{}", appid, path);
+        let status = tsfn.call(data, ThreadsafeFunctionCallMode::Blocking);
+        if status == Status::Ok {
+            log::info!(
+                "Successfully destroyed WebView controller: {}:{}",
+                appid,
+                path
+            );
+            Ok(())
+        } else {
+            log::error!("Failed to destroy WebView controller: {:?}", status);
+            Err(napi_ohos::Error::new(
+                Status::GenericFailure,
+                format!("Failed to destroy WebView controller: {:?}", status),
+            ))
+        }
+    } else {
+        log::error!("No callback available");
+        Err(napi_ohos::Error::new(
+            Status::GenericFailure,
+            "No callback available".to_string(),
+        ))
     }
 }
