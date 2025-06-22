@@ -94,13 +94,22 @@ export struct TabBar {
       Stack() {
         // Tab icon - support full path icons from native
         if (item.iconPath || item.selectedIconPath) {
-          Image(this.selectedIndex === index ?
-            (item.selectedIconPath || item.iconPath) :
-            item.iconPath)
+          Image(this.getIconUrl(item, index))
             .width(24)
             .height(24)
             .fillColor(this.selectedIndex === index ? this.getSelectedColor() : this.getNormalColor())
             .objectFit(ImageFit.Contain)
+            .onError((error) => {
+              const currentIconPath = this.selectedIndex === index ?
+                (item.selectedIconPath || item.iconPath) :
+                item.iconPath;
+              hilog.error(DOMAIN, TAG, `Tab ${index} icon load error: ${JSON.stringify(error)}, path: ${currentIconPath}`);
+            })
+            .onComplete(() => {
+              const currentIconPath = this.selectedIndex === index ?
+                (item.selectedIconPath || item.iconPath) :
+                item.iconPath;
+            })
         }
 
         // Badge or red dot
@@ -158,6 +167,24 @@ export struct TabBar {
         this.onTabSelected(this.appId, index, item);
       }
     })
+  }
+
+  /**
+   * Get icon URL with proper file:// prefix for absolute paths
+   */
+  private getIconUrl(item: TabBarItem, index: number): string {
+    const iconPath = this.selectedIndex === index ?
+      (item.selectedIconPath || item.iconPath) :
+      item.iconPath;
+
+    if (!iconPath) {
+      return '';
+    }
+
+    // Add file:// prefix for absolute paths
+    const fileUrl = iconPath.startsWith('/') ? `file://${iconPath}` : iconPath;
+    hilog.info(DOMAIN, TAG, `Tab ${index} icon URL: ${iconPath} -> ${fileUrl}`);
+    return fileUrl;
   }
 
   /**
