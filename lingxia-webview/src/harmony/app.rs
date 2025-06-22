@@ -5,11 +5,13 @@ use ohos_raw_sys::*;
 use std::ffi::{CString, c_void};
 use std::io::{Cursor, Read};
 use std::path::PathBuf;
+use std::process::Command;
 
 pub struct App {
     pub data_dir: String,
     pub cache_dir: String,
     resource_manager: Option<*mut NativeResourceManager>,
+    device_info: DeviceInfo,
     // Store the original napi values for cloning
     env: Option<napi_ohos::sys::napi_env>,
     js_resource_manager: Option<napi_ohos::sys::napi_value>,
@@ -35,6 +37,7 @@ impl Clone for App {
             data_dir: self.data_dir.clone(),
             cache_dir: self.cache_dir.clone(),
             resource_manager,
+            device_info: self.device_info.clone(),
             env: self.env,
             js_resource_manager: self.js_resource_manager,
         }
@@ -43,6 +46,25 @@ impl Clone for App {
 
 unsafe impl Send for App {}
 unsafe impl Sync for App {}
+
+/// Get system parameter using param command
+fn get_system_param(param_name: &str) -> Option<String> {
+    match Command::new("param").arg("get").arg(param_name).output() {
+        Ok(output) => {
+            if output.status.success() {
+                let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !result.is_empty() {
+                    Some(result)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        }
+        Err(_) => None,
+    }
+}
 
 impl App {
     /// Create a new App instance
@@ -72,10 +94,29 @@ impl App {
                 (None, None, None)
             };
 
+        // Get device information using param commands during initialization
+        let brand = get_system_param("const.product.brand").unwrap_or_else(|| "HUAWEI".to_string());
+
+        let model =
+            get_system_param("const.product.model").unwrap_or_else(|| "Unknown".to_string());
+
+        let os_version = get_system_param("const.product.os.dist.version")
+            .unwrap_or_else(|| "Unknown".to_string());
+
+        // Construct system string with HarmonyOS version
+        let system = format!("HarmonyOS {}", os_version);
+
+        let device_info = DeviceInfo {
+            brand,
+            model,
+            system,
+        };
+
         Ok(App {
             data_dir,
             cache_dir,
             resource_manager: resource_manager_ptr,
+            device_info,
             env: env_raw,
             js_resource_manager: js_rm_raw,
         })
@@ -260,15 +301,7 @@ impl App {
     }
 
     pub fn device_info(&self) -> DeviceInfo {
-        let brand = "HuaWei".to_string();
-        let model = "HarmonyOS Device".to_string();
-        let system = "HarmonyOS 4.0".to_string();
-
-        DeviceInfo {
-            brand,
-            model,
-            system,
-        }
+        self.device_info.clone()
     }
 
     pub fn open_miniapp(&self, appid: &str, path: &str) -> Result<(), MiniAppError> {
