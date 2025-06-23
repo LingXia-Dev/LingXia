@@ -2,14 +2,22 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { webview } from '@kit.ArkWeb';
 import { window } from '@kit.ArkUI';
 import { resourceManager } from '@kit.LocalizationKit';
+import { taskpool } from '@kit.ArkTS';
 import { MiniAppContainer } from './MiniAppContainer';
 import { initNativeBridge, getNativeCallbackFunction } from './NativeBridge';
+import { WebViewManager, WebViewComponent, findWebview } from './WebView';
 
 // Import native functions from Rust
-import { miniappInit } from 'liblingxia.so';
+import { miniappInit, onMiniappOpened, onMiniappClosed } from 'liblingxia.so';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.MiniApp';
+
+// Task function for handling MiniApp close operation asynchronously
+@Concurrent
+function closeMiniAppTask(appId: string): number {
+  return onMiniappClosed(appId);
+}
 
 interface NavigationInstance {
   openMiniApp(appId: string, path: string): void;
@@ -122,7 +130,8 @@ export class MiniApp {
   }
 
   public static closeMiniApp(appId: string): void {
-    hilog.info(DOMAIN, TAG, `Closing miniapp: ${appId}`);
+    // Call native onMiniappClosed asynchronously (fire and forget)
+    taskpool.execute(new taskpool.Task(closeMiniAppTask, appId));
 
     if (MiniApp.navigationInstance) {
       hilog.info(DOMAIN, TAG, 'Using MiniAppNavigation for closeMiniApp');
@@ -174,56 +183,6 @@ export class MiniApp {
     MiniApp.managerInstance.doOpenMiniApp(appId, path, isHomeMiniApp);
   }
 
-
-
-  /**
-   * Dummy implementation: MiniApp opened event
-   */
-  public on_miniapp_opened(appId: string, path: string): number {
-    hilog.info(DOMAIN, TAG, `on_miniapp_opened called with appId: ${appId}, path: ${path}`);
-    return 0; // Return success status code
-  }
-
-  /**
-   * Dummy implementation: MiniApp closed event
-   */
-  public on_miniapp_closed(appId: string): number {
-    hilog.info(DOMAIN, TAG, `on_miniapp_closed called with appId: ${appId}`);
-    return 0; // Return success status code
-  }
-
-
-
-  // Store WebView controllers for reuse
-  private webviewControllers: Map<string, webview.WebviewController> = new Map();
-
-  public find_webview(appId: string, path: string): webview.WebviewController | null {
-    hilog.info(DOMAIN, TAG, `find_webview called with appId: ${appId}, path: ${path}`);
-
-    const key = `${appId}:${path}`;
-
-    // Return existing controller if available
-    if (this.webviewControllers.has(key)) {
-      const controller = this.webviewControllers.get(key);
-      if (controller) {
-        hilog.info(DOMAIN, TAG, `Found existing WebView controller for ${key}`);
-        return controller;
-      }
-    }
-
-    try {
-      hilog.info(DOMAIN, TAG, `Creating new WebView controller for ${key} (only place allowed to create)`);
-      const webviewController = new webview.WebviewController();
-      this.webviewControllers.set(key, webviewController);
-
-      hilog.info(DOMAIN, TAG, `Created WebView controller for ${key} - ready for UI association`);
-      return webviewController;
-    } catch (error) {
-      hilog.error(DOMAIN, TAG, `Failed to create WebView controller for ${key}: ${error}`);
-      return null;
-    }
-  }
-
   /**
    * Dummy function: onPageShow - called when WebView is actually shown to user
    * This is where URL loading should happen (like iOS)
@@ -233,7 +192,7 @@ export class MiniApp {
     hilog.info(DOMAIN, TAG, `onPageShow called: ${appId}:${path} - WebView is now visible to user`);
 
     // Find the WebView controller
-    const controller = this.find_webview(appId, path);
+    const controller = findWebview(appId, path);
     if (controller) {
       try {
         // Load different URLs based on path to simulate different pages
@@ -417,7 +376,7 @@ struct MiniAppManager {
     hilog.info(DOMAIN, TAG, `Opening MiniApp: ${appId}:${path}, isHome: ${isHomeMiniApp}`);
 
     try {
-      const result = MiniApp.getInstance().on_miniapp_opened(appId, path);
+      const result: number = onMiniappOpened(appId, path);
       hilog.info(DOMAIN, TAG, `Native onMiniappOpened result: ${result}`);
 
       if (isHomeMiniApp) {
@@ -477,7 +436,7 @@ struct MiniAppManager {
   public closeModalMiniApp(): void {
     hilog.info(DOMAIN, TAG, `Closing modal miniapp: visible=${this.modalMiniAppVisible}, id=${this.modalMiniAppId}`);
 
-    // Update UI state immediately
+    // Update UI state immediately (onMiniappClosed already called in static closeMiniApp)
     this.modalMiniAppVisible = false;
     this.modalMiniAppId = '';
     this.modalMiniAppPath = '';

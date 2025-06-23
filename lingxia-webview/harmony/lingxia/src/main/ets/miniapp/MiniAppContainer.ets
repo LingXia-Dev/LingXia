@@ -3,6 +3,7 @@ import { webview } from '@kit.ArkWeb';
 import { window } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { MiniApp } from './MiniApp';
+import { findWebview } from './WebView';
 import { NavigationBar, type NavigationBarConfig } from './NavigationBar';
 import { TabBar, type TabBarConfig, type TabBarItem } from './TabBar';
 import { getTabBarConfig, getPageConfig } from 'liblingxia.so';
@@ -34,7 +35,7 @@ export struct MiniAppContainer {
     this.pageConfig = this.parsePageConfig(pageConfigJson);
     //hilog.info(DOMAIN, TAG, `Parsed page config: title=${this.pageConfig?.navigationBarTitleText}, hidden=${this.pageConfig?.hidden}`);
 
-    const webViewController = MiniApp.getInstance().find_webview(this.appId, this.path);
+    const webViewController = findWebview(this.appId, this.path);
     hilog.info(DOMAIN, TAG, `WebView controller for ${this.appId}:${this.path} = ${webViewController ? 'found' : 'NOT FOUND'}`);
 
     const tabBarConfigJson: string | null = getTabBarConfig(this.appId);
@@ -374,7 +375,7 @@ export struct MiniAppContainer {
           ForEach(this.tabBarConfig.list, (item: TabBarItem, index: number) => {
             Web({
               src: '',
-              controller: MiniApp.getInstance().find_webview(this.appId, item.pagePath)
+              controller: findWebview(this.appId, item.pagePath)
             })
               .width('100%')
               .height('100%')
@@ -389,7 +390,7 @@ export struct MiniAppContainer {
         } else {
           Web({
             src: '',
-            controller: MiniApp.getInstance().find_webview(this.appId, this.path)
+            controller: findWebview(this.appId, this.path)
           })
             .width('100%')
             .height('100%')
@@ -410,7 +411,7 @@ export struct MiniAppContainer {
           ForEach(this.tabBarConfig.list, (item: TabBarItem, index: number) => {
             Web({
               src: '',
-              controller: MiniApp.getInstance().find_webview(this.appId, item.pagePath)
+              controller: findWebview(this.appId, item.pagePath)
             })
               .width('100%')
               .height('100%')
@@ -425,7 +426,7 @@ export struct MiniAppContainer {
         } else {
           Web({
             src: '',
-            controller: MiniApp.getInstance().find_webview(this.appId, this.path)
+            controller: findWebview(this.appId, this.path)
           })
             .width('100%')
             .height('100%')

@@ -1,6 +1,7 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { webview } from '@kit.ArkWeb';
 import { MiniApp } from './MiniApp';
+import { createWebViewController, destroyWebViewController } from './WebView';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.NativeBridge';
@@ -49,9 +50,14 @@ class NativeBridge {
     });
 
     // WebView management
-    this.register('createWebViewController', (key: string) => {
-      hilog.info(DOMAIN, TAG, `Native callback: createWebViewController(${key})`);
-      return this.createWebViewController(key);
+    this.register('createWebViewController', (appId: string, path: string) => {
+      hilog.info(DOMAIN, TAG, `Native callback: createWebViewController(${appId}, ${path})`);
+      return createWebViewController(appId, path);
+    });
+
+    this.register('destroyWebViewController', (appId: string, path: string) => {
+      hilog.info(DOMAIN, TAG, `Native callback: destroyWebViewController(${appId}, ${path})`);
+      return destroyWebViewController(appId, path);
     });
 
     hilog.info(DOMAIN, TAG, `Registered ${NativeBridge.callbacks.size} default callbacks`);
@@ -84,54 +90,18 @@ class NativeBridge {
       return null;
     }
   }
-
-  /**
-   * Get callback function for native layer
-   * This returns the actual callback function that native can store and call
-   */
-  public static getCallbackFunction(): (name: string, ...args: Object[]) => Object | null {
-    return NativeBridge.call;
-  }
-
-  /**
-   * Create WebView controller for native layer
-   * This creates a new controller, not finding existing one
-   */
-  private createWebViewController(key: string): webview.WebviewController | null {
-    hilog.info(DOMAIN, TAG, `Creating new WebView controller for key: ${key}`);
-    
-    const parts = key.split(':', 2);
-    if (parts.length !== 2) {
-      hilog.error(DOMAIN, TAG, `Invalid key format: ${key}, expected "appId:path"`);
-      return null;
-    }
-
-    try {
-      const webviewController = new webview.WebviewController();
-      hilog.info(DOMAIN, TAG, `Created new WebView controller for ${key}`);
-      return webviewController;
-    } catch (error) {
-      hilog.error(DOMAIN, TAG, `Failed to create WebView controller for ${key}: ${error}`);
-      return null;
-    }
-  }
-
-}
-
-/**
- * Global function for native layer to call ArkTS functions
- * This is the main entry point that Rust native code will call
- */
-export function nativeCallback(functionName: string, ...args: Object[]): Object | null {
-  return NativeBridge.call(functionName, ...args);
 }
 
 /**
  * Get the callback function for native layer
- * This should be called during native_miniapp_init to pass the callback to native
+ * Node-API ThreadSafe Function limitation: can only pass single string
+ * Format: "function_name:arg1:arg2:..."
  */
-export function getNativeCallbackFunction(): (name: string, ...args: Object[]) => Object | null {
-  return NativeBridge.getCallbackFunction();
+export function getNativeCallbackFunction(): (data: string) => Object | null {
+  return (data: string) => {
+    const parts = data.split(':');
+    return parts.length >= 3 ? NativeBridge.call(parts[0], parts[1], parts[2]) : null;
+  };
 }
 
 /**

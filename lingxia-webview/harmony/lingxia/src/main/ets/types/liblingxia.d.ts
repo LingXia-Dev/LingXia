@@ -35,4 +35,19 @@ declare module 'liblingxia.so' {
    * @returns Page configuration as JSON string or null if not found
    */
   export function getPageConfig(appid: string, path: string): string | null;
+
+  /**
+   * Notify that MiniApp was opened
+   * @param appid - MiniApp ID
+   * @param path - Page path
+   * @returns Status code (0 for success)
+   */
+  export function onMiniappOpened(appid: string, path: string): number;
+
+  /**
+   * Notify that MiniApp was closed
+   * @param appid - MiniApp ID
+   * @returns Status code (0 for success)
+   */
+  export function onMiniappClosed(appid: string): number;
 }
