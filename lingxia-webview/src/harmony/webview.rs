@@ -1,9 +1,9 @@
 use crate::harmony::ffi::CALLBACK_TSFN;
 use crate::harmony::schemehandler::set_webview_scheme_handler;
-use miniapp::{MiniAppError, WebViewController};
+use miniapp::{AppUiDelegate, MiniAppError, WebViewController};
 use napi_ohos::{Result as NapiResult, Status, threadsafe_function::ThreadsafeFunctionCallMode};
 use ohos_web_sys::*;
-use std::ffi::CString;
+use std::ffi::{CStr, CString, c_char, c_void};
 
 #[derive(Debug)]
 pub struct WebViewInner {
@@ -27,6 +27,15 @@ impl WebViewInner {
                         "Failed to set scheme handler: {}",
                         e
                     )));
+                }
+
+                // Register WebView lifecycle callbacks
+                if let Err(e) = register_webview_callbacks(&webtag) {
+                    log::error!(
+                        "Failed to register WebView callbacks for {}: {:?}",
+                        webtag,
+                        e
+                    );
                 }
 
                 Ok(WebViewInner { webtag })
@@ -142,6 +151,62 @@ impl WebViewController for WebViewInner {
     }
 }
 
+/// Register WebView lifecycle callbacks
+fn register_webview_callbacks(webtag: &str) -> Result<(), MiniAppError> {
+    unsafe {
+        let webtag_cstr = CString::new(webtag).unwrap();
+
+        // Get the ArkWeb_ComponentAPI using the correct API
+        let component_api =
+            OH_ArkWeb_GetNativeAPI(ArkWeb_NativeAPIVariantKind_ARKWEB_NATIVE_COMPONENT);
+        if component_api.is_null() {
+            return Err(MiniAppError::WebView(
+                "Failed to get ArkWeb_ComponentAPI".to_string(),
+            ));
+        }
+
+        let api = &*(component_api as *const ArkWeb_ComponentAPI);
+
+        // Register onControllerAttached callback
+        if let Some(on_controller_attached) = api.onControllerAttached {
+            on_controller_attached(
+                webtag_cstr.as_ptr(),
+                Some(on_controller_attached_callback),
+                std::ptr::null_mut(),
+            );
+        }
+
+        // Register onPageBegin callback
+        if let Some(on_page_begin) = api.onPageBegin {
+            on_page_begin(
+                webtag_cstr.as_ptr(),
+                Some(on_page_begin_callback),
+                std::ptr::null_mut(),
+            );
+        }
+
+        // Register onPageEnd callback
+        if let Some(on_page_end) = api.onPageEnd {
+            on_page_end(
+                webtag_cstr.as_ptr(),
+                Some(on_page_end_callback),
+                std::ptr::null_mut(),
+            );
+        }
+
+        // Register onDestroy callback
+        if let Some(on_destroy) = api.onDestroy {
+            on_destroy(
+                webtag_cstr.as_ptr(),
+                Some(on_destroy_callback),
+                std::ptr::null_mut(),
+            );
+        }
+
+        Ok(())
+    }
+}
+
 /// Create WebView controller in ArkTS
 pub fn create_webview_controller(app_id: &str, path: &str) -> NapiResult<()> {
     if let Some(tsfn) = CALLBACK_TSFN.get() {
@@ -199,5 +264,42 @@ pub fn destroy_webview_controller(appid: &str, path: &str) -> NapiResult<()> {
             Status::GenericFailure,
             "No callback available".to_string(),
         ))
+    }
+}
+
+// WebView lifecycle callback functions
+extern "C" fn on_controller_attached_callback(web_tag: *const c_char, _user_data: *mut c_void) {
+    if let Ok(webtag) = unsafe { CStr::from_ptr(web_tag).to_str() } {
+        log::info!("WebView controller attached: {}", webtag);
+    }
+}
+
+extern "C" fn on_page_begin_callback(web_tag: *const c_char, _user_data: *mut c_void) {
+    if let Ok(webtag) = unsafe { CStr::from_ptr(web_tag).to_str() } {
+        log::info!("Page begin loading: {}", webtag);
+
+        // Extract app_id and path from webtag (format: "appid:path")
+        if let Some((appid, path)) = webtag.split_once(':') {
+            let miniapp = miniapp::get(appid.to_string());
+            miniapp.on_page_started(path.to_string());
+        }
+    }
+}
+
+extern "C" fn on_page_end_callback(web_tag: *const c_char, _user_data: *mut c_void) {
+    if let Ok(webtag) = unsafe { CStr::from_ptr(web_tag).to_str() } {
+        log::info!("Page end loading: {}", webtag);
+
+        // Extract app_id and path from webtag (format: "appid:path")
+        if let Some((appid, path)) = webtag.split_once(':') {
+            let miniapp = miniapp::get(appid.to_string());
+            miniapp.on_page_finished(path.to_string());
+        }
+    }
+}
+
+extern "C" fn on_destroy_callback(web_tag: *const c_char, _user_data: *mut c_void) {
+    if let Ok(webtag) = unsafe { CStr::from_ptr(web_tag).to_str() } {
+        log::info!("WebView destroyed: {}", webtag);
     }
 }
