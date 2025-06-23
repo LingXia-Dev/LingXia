@@ -29,34 +29,27 @@ class NativeBridge {
    * Register default callbacks that native layer can call
    */
   private registerDefaultCallbacks(): void {
-    hilog.info(DOMAIN, TAG, 'Registering default native callbacks');
-
     // Core MiniApp functions
     this.register('openMiniApp', (appId: string, path: string) => {
-      hilog.info(DOMAIN, TAG, `Native callback: openMiniApp(${appId}, ${path})`);
       MiniApp.openMiniApp(appId, path);
       return true;
     });
 
     this.register('closeMiniApp', (appId: string) => {
-      hilog.info(DOMAIN, TAG, `Native callback: closeMiniApp(${appId})`);
       MiniApp.closeMiniApp(appId);
       return true;
     });
 
     this.register('switchToPage', (appId: string, path: string) => {
-      hilog.info(DOMAIN, TAG, `Native callback: switchToPage(${appId}, ${path})`);
       return MiniApp.switchToPage(appId, path);
     });
 
     // WebView management
     this.register('createWebViewController', (appId: string, path: string) => {
-      hilog.info(DOMAIN, TAG, `Native callback: createWebViewController(${appId}, ${path})`);
       return createWebViewController(appId, path);
     });
 
     this.register('destroyWebViewController', (appId: string, path: string) => {
-      hilog.info(DOMAIN, TAG, `Native callback: destroyWebViewController(${appId}, ${path})`);
       return destroyWebViewController(appId, path);
     });
 
@@ -68,7 +61,6 @@ class NativeBridge {
    */
   public register(name: string, callback: Function): void {
     NativeBridge.callbacks.set(name, callback);
-    hilog.info(DOMAIN, TAG, `Registered callback: ${name}`);
   }
 
   /**

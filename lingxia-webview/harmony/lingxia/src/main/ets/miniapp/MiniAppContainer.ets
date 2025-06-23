@@ -6,7 +6,7 @@ import { MiniApp } from './MiniApp';
 import { findWebview } from './WebView';
 import { NavigationBar, type NavigationBarConfig } from './NavigationBar';
 import { TabBar, type TabBarConfig, type TabBarItem } from './TabBar';
-import { getTabBarConfig, getPageConfig } from 'liblingxia.so';
+import { getTabBarConfig, getPageConfig, onPageShow } from 'liblingxia.so';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.Container';
@@ -22,6 +22,10 @@ export struct MiniAppContainer {
   @State pageConfig: NavigationBarConfig | null = null
   @State tabBarConfig: TabBarConfig | null = null
   @State selectedTabIndex: number = 0
+  @State currentWebViewController: webview.WebviewController | null = null
+
+  // Watch for external path changes from MiniApp.switchPage API
+  @Watch('onExternalPathChange') @Prop externalPath: string = ''
 
   // Manual animation control for new miniapps
   @State animationOffsetY: number = 0 // 0 = final position, positive = off-screen bottom
@@ -33,15 +37,23 @@ export struct MiniAppContainer {
 
     const pageConfigJson: string | null = getPageConfig(this.appId, this.path);
     this.pageConfig = this.parsePageConfig(pageConfigJson);
-    //hilog.info(DOMAIN, TAG, `Parsed page config: title=${this.pageConfig?.navigationBarTitleText}, hidden=${this.pageConfig?.hidden}`);
-
-    const webViewController = findWebview(this.appId, this.path);
-    hilog.info(DOMAIN, TAG, `WebView controller for ${this.appId}:${this.path} = ${webViewController ? 'found' : 'NOT FOUND'}`);
 
     const tabBarConfigJson: string | null = getTabBarConfig(this.appId);
     this.tabBarConfig = this.parseTabBarConfig(tabBarConfigJson);
     this.setInitialSelectedTab();
-    hilog.info(DOMAIN, TAG, `Container initialized: tabs=${this.tabBarConfig?.list.length || 0}, isTabBarApp=${this.tabBarConfig !== null}`);
+
+    // Only find WebView for the initial page when actually needed
+    this.currentWebViewController = findWebview(this.appId, this.path);
+  }
+
+  /**
+   * Handle external path changes from MiniApp.switchPage API
+   */
+  onExternalPathChange() {
+    if (this.externalPath && this.externalPath !== this.path) {
+      hilog.info(DOMAIN, TAG, `External path change detected: ${this.externalPath}, switching from ${this.path}`);
+      this.switchToPageInternal(this.externalPath);
+    }
   }
 
   build() {
@@ -80,9 +92,6 @@ export struct MiniAppContainer {
       .height('100%')
       .backgroundColor(Color.Transparent)
       .expandSafeArea(this.shouldExpandSafeAreaForContainer() ? [SafeAreaType.SYSTEM] : [], this.shouldExpandSafeAreaForContainer() ? [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM] : [])
-      .onAppear(() => {
-        MiniApp.getInstance().on_page_show(this.appId, this.path);
-      })
     } else if (this.isTabBarTransparent()) {
 
       Stack({ alignContent: this.getTabBarAlignment() }) {
@@ -99,9 +108,6 @@ export struct MiniAppContainer {
       .height('100%')
       .backgroundColor(Color.Transparent)
       .expandSafeArea(this.shouldExpandSafeAreaForContainer() ? [SafeAreaType.SYSTEM] : [], this.shouldExpandSafeAreaForContainer() ? [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM] : [])
-      .onAppear(() => {
-        MiniApp.getInstance().on_page_show(this.appId, this.path);
-      })
     } else {
       Stack() {
         Column() {
@@ -125,9 +131,6 @@ export struct MiniAppContainer {
       .height('100%')
       .backgroundColor(Color.Transparent)
       .expandSafeArea(this.shouldExpandSafeAreaForContainer() ? [SafeAreaType.SYSTEM] : [], this.shouldExpandSafeAreaForContainer() ? [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM] : [])
-      .onAppear(() => {
-        MiniApp.getInstance().on_page_show(this.appId, this.path);
-      })
     }
   }
 
@@ -371,34 +374,16 @@ export struct MiniAppContainer {
   buildWebViewArea(): void {
     if (this.navigationMode) {
       Stack() {
-        if (this.tabBarConfig && this.tabBarConfig.list.length > 0) {
-          ForEach(this.tabBarConfig.list, (item: TabBarItem, index: number) => {
-            Web({
-              src: '',
-              controller: findWebview(this.appId, item.pagePath)
-            })
-              .width('100%')
-              .height('100%')
-              .visibility(this.selectedTabIndex === index ? Visibility.Visible : Visibility.Hidden)
-              .onAppear(() => {
-                if (this.selectedTabIndex === index) {
-                  hilog.info(DOMAIN, TAG, `WebView[${index}] appeared, triggering onPageShow for path: ${item.pagePath}`);
-                  MiniApp.getInstance().on_page_show(this.appId, item.pagePath);
-                }
-              })
+        Web({
+          src: '',
+          controller: this.currentWebViewController
+        })
+          .width('100%')
+          .height('100%')
+          .onAppear(() => {
+            hilog.info(DOMAIN, TAG, `WebView appeared for path: ${this.path}`);
+            onPageShow(this.appId, this.path);
           })
-        } else {
-          Web({
-            src: '',
-            controller: findWebview(this.appId, this.path)
-          })
-            .width('100%')
-            .height('100%')
-            .onAppear(() => {
-              hilog.info(DOMAIN, TAG, `WebView appeared, triggering onPageShow for path: ${this.path}`);
-              MiniApp.getInstance().on_page_show(this.appId, this.path);
-            })
-        }
       }
       .width('100%')
       .height('100%')
@@ -407,34 +392,16 @@ export struct MiniAppContainer {
       .clip(true)
     } else {
       Stack() {
-        if (this.tabBarConfig && this.tabBarConfig.list.length > 0) {
-          ForEach(this.tabBarConfig.list, (item: TabBarItem, index: number) => {
-            Web({
-              src: '',
-              controller: findWebview(this.appId, item.pagePath)
-            })
-              .width('100%')
-              .height('100%')
-              .visibility(this.selectedTabIndex === index ? Visibility.Visible : Visibility.Hidden)
-              .onAppear(() => {
-                if (this.selectedTabIndex === index) {
-                  hilog.info(DOMAIN, TAG, `WebView[${index}] appeared, triggering onPageShow for path: ${item.pagePath}`);
-                  MiniApp.getInstance().on_page_show(this.appId, item.pagePath);
-                }
-              })
+        Web({
+          src: '',
+          controller: this.currentWebViewController
+        })
+          .width('100%')
+          .height('100%')
+          .onAppear(() => {
+            hilog.info(DOMAIN, TAG, `WebView appeared for path: ${this.path}`);
+            onPageShow(this.appId, this.path);
           })
-        } else {
-          Web({
-            src: '',
-            controller: findWebview(this.appId, this.path)
-          })
-            .width('100%')
-            .height('100%')
-            .onAppear(() => {
-              hilog.info(DOMAIN, TAG, `WebView appeared, triggering onPageShow for path: ${this.path}`);
-              MiniApp.getInstance().on_page_show(this.appId, this.path);
-            })
-        }
       }
       .width('100%')
       .height('100%')
@@ -489,7 +456,19 @@ export struct MiniAppContainer {
     // Update current path to the new tab path
     this.path = newPath;
 
-    // If this is home miniapp, update the manager's current path state
+    // Find WebView for the new tab (only when switching)
+    hilog.info(DOMAIN, TAG, `Finding WebView for tab switch: ${this.appId}:${newPath}`);
+    this.currentWebViewController = findWebview(this.appId, newPath);
+    hilog.info(DOMAIN, TAG, `WebView for tab switch ${newPath}: ${this.currentWebViewController ? 'found' : 'not found'}`);
+
+    // Update page config
+    const pageConfigJson: string | null = getPageConfig(this.appId, newPath);
+    const newPageConfig = this.parsePageConfig(pageConfigJson);
+    this.pageConfig = newPageConfig;
+
+    hilog.info(DOMAIN, TAG, `Page config updated: hidden=${newPageConfig.hidden}, title=${newPageConfig.navigationBarTitleText}`);
+
+    // Update manager state if this is home miniapp
     if (this.isHomeMiniApp()) {
       const manager = MiniApp.managerInstance;
       if (manager) {
@@ -497,27 +476,17 @@ export struct MiniAppContainer {
       }
     }
 
-    const pageConfigJson: string | null = getPageConfig(this.appId, newPath);
-    const newPageConfig = this.parsePageConfig(pageConfigJson);
-    this.pageConfig = newPageConfig;
-
-    hilog.info(DOMAIN, TAG, `Page config updated: hidden=${newPageConfig.hidden}, title=${newPageConfig.navigationBarTitleText}`);
-
-    // Directly trigger onPageShow for the new tab
+    // Trigger onPageShow for the new tab
     hilog.info(DOMAIN, TAG, `Tab switched to ${index}, triggering onPageShow for path: ${newPath}`);
-
-    // Use setTimeout to ensure visibility change is processed first
-    setTimeout(() => {
-      MiniApp.getInstance().on_page_show(this.appId, newPath);
-    }, 50);
+    onPageShow(this.appId, newPath);
   }
 
   /**
-   * Switch to page by path
-   * Called by MiniApp.switchToPage API
+   * Switch to page internally (handles both tab and non-tab pages)
+   * Called by external API or tab clicks
    */
-  public switchToPageByPath(path: string): boolean {
-    hilog.info(DOMAIN, TAG, `switchToPageByPath called: ${path}`);
+  private switchToPageInternal(path: string): void {
+    hilog.info(DOMAIN, TAG, `switchToPageInternal called: ${this.appId}:${path}`);
 
     // Use cached TabBar config to find tab index
     if (this.tabBarConfig) {
@@ -528,12 +497,20 @@ export struct MiniAppContainer {
       if (tabIndex >= 0) {
         hilog.info(DOMAIN, TAG, `Found tab ${tabIndex} for path ${path}, switching tab`);
         this.switchToTabByIndex(tabIndex);
-        return true;
+        return;
       }
     }
 
-    hilog.warn(DOMAIN, TAG, `Path ${path} not found in cached TabBar config`);
-    return false;
+    // For non-tabbar pages, directly switch
+    hilog.info(DOMAIN, TAG, `Direct page switch for path ${path}`);
+    this.path = path;
+    this.currentWebViewController = findWebview(this.appId, path);
+    hilog.info(DOMAIN, TAG, `WebView for page switch ${path}: ${this.currentWebViewController ? 'found' : 'not found'}`);
+
+    const pageConfigJson: string | null = getPageConfig(this.appId, path);
+    this.pageConfig = this.parsePageConfig(pageConfigJson);
+
+    onPageShow(this.appId, path);
   }
 
   private handleNavigationBack() {
@@ -595,11 +572,6 @@ export struct MiniAppContainer {
         position: (config.position as string) || 'bottom',
         list: (config.list as TabBarItem[]) || []
       };
-
-      hilog.info(DOMAIN, TAG, `Parsed TabBar config: ${tabConfig.list.length} items`);
-      tabConfig.list.forEach((item, index) => {
-        hilog.info(DOMAIN, TAG, `Tab ${index}: path=${item.pagePath}, text=${item.text || 'none'}, icon=${item.iconPath || 'none'}`);
-      });
 
       return tabConfig;
     } catch (error) {

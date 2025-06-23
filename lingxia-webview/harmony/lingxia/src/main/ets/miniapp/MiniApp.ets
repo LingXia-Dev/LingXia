@@ -5,10 +5,10 @@ import { resourceManager } from '@kit.LocalizationKit';
 import { taskpool } from '@kit.ArkTS';
 import { MiniAppContainer } from './MiniAppContainer';
 import { initNativeBridge, getNativeCallbackFunction } from './NativeBridge';
-import { WebViewManager, WebViewComponent, findWebview } from './WebView';
+import { WebViewManager, createWebViewController } from './WebView';
 
 // Import native functions from Rust
-import { miniappInit, onMiniappOpened, onMiniappClosed } from 'liblingxia.so';
+import { miniappInit, onMiniappOpened, onMiniappClosed, onPageShow } from 'liblingxia.so';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.MiniApp';
@@ -103,9 +103,11 @@ export class MiniApp {
         instance.homeMiniAppId = parts[0];
         instance.homeMiniAppInitialRoute = parts[1];
 
-        //if (windowStage) {
-          //instance.setSystemStatusBarTransparent(windowStage);
-        //}
+        // Initialize Web component core: initialize the Browser process and create BrowserContext.
+        webview.WebviewController.initializeWebEngine();
+
+        const success = createWebViewController(instance.homeMiniAppId, instance.homeMiniAppInitialRoute);
+        hilog.info(DOMAIN, TAG, `Initial WebView creation result: ${success}`);
       } else {
         hilog.error(DOMAIN, TAG, `Failed to parse home MiniApp details from native (expected 2 parts): ${result}`);
       }
@@ -184,45 +186,20 @@ export class MiniApp {
   }
 
   /**
-   * Dummy function: onPageShow - called when WebView is actually shown to user
-   * This is where URL loading should happen (like iOS)
-   * Loads different URLs based on the page path to simulate tab switching
+   * Switch to a specific page within a MiniApp
+   * @param appId - MiniApp ID
+   * @param path - Page path to switch to
    */
-  public on_page_show(appId: string, path: string): void {
-    hilog.info(DOMAIN, TAG, `onPageShow called: ${appId}:${path} - WebView is now visible to user`);
+  public static switchPage(appId: string, path: string): boolean {
+    hilog.info(DOMAIN, TAG, `switchPage API called: ${appId}:${path}`);
 
-    // Find the WebView controller
-    const controller = findWebview(appId, path);
-    if (controller) {
-      try {
-        // Load different URLs based on path to simulate different pages
-        let url = "https://www.bing.com"; // Default URL
-
-        // More precise path matching to avoid conflicts
-        if (path === 'pages/home/index.html' || path === '/pages/home/index.html') {
-          url = "https://www.baidu.com";
-          hilog.info(DOMAIN, TAG, `Matched HOME page: ${path}`);
-        } else if (path === 'pages/API/index.html' || path === '/pages/API/index.html') {
-          url = "https://www.bing.com";
-          hilog.info(DOMAIN, TAG, `Matched API page: ${path}`);
-        } else if (path === 'pages/todo/index.html' || path === '/pages/todo/index.html') {
-          url = "https://www.ifeng.com";
-          hilog.info(DOMAIN, TAG, `Matched TODO page: ${path}`);
-        } else {
-          hilog.warn(DOMAIN, TAG, `No specific URL mapping for path: ${path}, using default`);
-        }
-
-        hilog.info(DOMAIN, TAG, `Loading URL for path ${path}: ${url}`);
-
-        // Force reload even if WebView already has content
-        controller.loadUrl(url);
-        hilog.info(DOMAIN, TAG, `onPageShow: URL loaded successfully for path ${path}: ${url}`);
-      } catch (error) {
-        hilog.error(DOMAIN, TAG, `onPageShow: Failed to load URL: ${error}`);
-      }
-    } else {
-      hilog.error(DOMAIN, TAG, `onPageShow: WebView controller not found for ${appId}:${path}`);
+    // The manager finds the right container and handles the switch
+    if (MiniApp.managerInstance) {
+      return MiniApp.managerInstance.switchToPage(appId, path);
     }
+
+    hilog.warn(DOMAIN, TAG, 'No MiniApp manager ready for switchPage');
+    return false;
   }
 
   /**
@@ -283,10 +260,20 @@ export class MiniApp {
     hilog.info(DOMAIN, TAG, `switchToPageInternal called: appId=${appId}, path=${path}`);
 
     try {
-      // Simply trigger page show - UI layer will handle the rest
-      this.on_page_show(appId, path);
-      hilog.info(DOMAIN, TAG, `Successfully triggered page show for: ${path}`);
-      return true;
+      // Find the container and switch to the page
+      if (MiniApp.managerInstance) {
+        const success: boolean = MiniApp.managerInstance.switchToPage(appId, path);
+        if (success) {
+          hilog.info(DOMAIN, TAG, `Successfully switched to page: ${path}`);
+          return true;
+        } else {
+          hilog.warn(DOMAIN, TAG, `Failed to switch to page: ${path} - page not found in TabBar`);
+          return false;
+        }
+      } else {
+        hilog.error(DOMAIN, TAG, `No MiniApp manager instance available for page switch`);
+        return false;
+      }
     } catch (error) {
       hilog.error(DOMAIN, TAG, `Error switching to page ${path}: ${error}`);
       return false;
@@ -310,6 +297,10 @@ struct MiniAppManager {
   @State modalMiniAppPath: string = ''
   @State hideHomeMiniApp: boolean = false
 
+  // References to containers for direct method calls
+  private homeContainerRef: MiniAppContainer | null = null
+  private modalContainerRef: MiniAppContainer | null = null
+
   aboutToAppear() {
     hilog.info(DOMAIN, TAG, 'MiniAppManager starting - intelligent initialization');
 
@@ -327,7 +318,8 @@ struct MiniAppManager {
         // Use current path if available, otherwise use initial path
         MiniAppContainer({
           appId: this.homeAppId,
-          initialPath: this.homeAppCurrentPath || this.homeAppPath
+          initialPath: this.homeAppCurrentPath || this.homeAppPath,
+          externalPath: this.homeAppCurrentPath || this.homeAppPath
         })
       } else if (this.errorMessage) {
       // Minimalist error display
@@ -359,7 +351,8 @@ struct MiniAppManager {
     if (this.modalMiniAppVisible && this.modalMiniAppId && this.modalMiniAppPath) {
       MiniAppContainer({
         appId: this.modalMiniAppId,
-        initialPath: this.modalMiniAppPath
+        initialPath: this.modalMiniAppPath,
+        externalPath: this.modalMiniAppPath
       })
       .zIndex(999) // Display on top but below system UI
     }
@@ -444,5 +437,32 @@ struct MiniAppManager {
     // Show home miniapp when modal is closed
     MiniApp.hideHomeMiniApp = false;
     this.hideHomeMiniApp = false;
+  }
+
+  /**
+   * Switch to specific page in any MiniApp (External API for Rust)
+   * @param appId MiniApp ID
+   * @param path Page path to switch to
+   * @returns true if successful, false otherwise
+   */
+  public switchToPage(appId: string, path: string): boolean {
+    hilog.info(DOMAIN, TAG, `switchToPage API called: ${appId}:${path}`);
+
+    // Handle home miniapp
+    if (appId === this.homeAppId) {
+      hilog.info(DOMAIN, TAG, `Switching home miniapp page to: ${path}`);
+      this.homeAppCurrentPath = path;
+      return true;
+    }
+
+    // Handle modal miniapp
+    if (appId === this.modalMiniAppId) {
+      hilog.info(DOMAIN, TAG, `Switching modal miniapp page to: ${path}`);
+      this.modalMiniAppPath = path;
+      return true;
+    }
+
+    hilog.warn(DOMAIN, TAG, `MiniApp ${appId} not currently active`);
+    return false;
   }
 }

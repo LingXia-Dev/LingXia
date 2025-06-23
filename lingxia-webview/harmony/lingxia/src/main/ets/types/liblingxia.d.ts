@@ -50,4 +50,12 @@ declare module 'liblingxia.so' {
    * @returns Status code (0 for success)
    */
   export function onMiniappClosed(appid: string): number;
+
+  /**
+   * Notify that a page is being shown (WebView becomes visible)
+   * @param appid - MiniApp ID
+   * @param path - Page path
+   * @returns Status code (0 for success, -1 for error)
+   */
+  export function onPageShow(appid: string, path: string): number;
 }

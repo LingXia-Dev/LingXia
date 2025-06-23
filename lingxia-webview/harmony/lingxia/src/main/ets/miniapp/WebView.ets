@@ -1,5 +1,6 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { webview } from '@kit.ArkWeb';
+import { onPageShow } from 'liblingxia.so';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.WebView';
@@ -25,15 +26,8 @@ export class WebViewManager {
   // Map to store WebView info for UI management
   private static webViewInfos: Map<string, WebViewInfo> = new Map();
 
-  // Callback for UI component creation/destruction
+  // Callback for UI component creation/destruction (if needed)
   private static uiCallback: ((action: string, info: WebViewInfo) => void) | null = null;
-
-  /**
-   * Set UI callback for WebView component management
-   */
-  static setUICallback(callback: (action: string, info: WebViewInfo) => void) {
-    WebViewManager.uiCallback = callback;
-  }
 
   /**
    * Create WebView by appId and path (called by Rust)
@@ -43,7 +37,6 @@ export class WebViewManager {
    */
   static createWebview(appId: string, path: string): boolean {
     const webtag = `${appId}:${path}`;
-    hilog.info(DOMAIN, TAG, `Creating WebView: ${webtag}`);
 
     // Check if already exists
     if (WebViewManager.controllers.has(webtag)) {
@@ -53,7 +46,7 @@ export class WebViewManager {
 
     // Create new WebView
     try {
-      const controller = new webview.WebviewController();
+      const controller = new webview.WebviewController(webtag);
 
       // Store in map
       WebViewManager.controllers.set(webtag, controller);
@@ -193,7 +186,7 @@ export class WebViewManager {
  * Create WebView controller (called by Rust)
  * @param appId - MiniApp ID
  * @param path - Page path
- * @returns true if created successfully
+ * @returns true if created successfully, false otherwise
  */
 export function createWebViewController(appId: string, path: string): boolean {
   return WebViewManager.createWebview(appId, path);
@@ -217,43 +210,4 @@ export function findWebview(appId: string, path: string): webview.WebviewControl
  */
 export function destroyWebViewController(appId: string, path: string): boolean {
   return WebViewManager.destroyWebview(appId, path);
-}
-
-/**
- * WebView component for UI rendering
- */
-@Component
-export struct WebViewComponent {
-  @Prop webViewInfo: WebViewInfo;
-
-  private get webtag(): string {
-    return `${this.webViewInfo.appId}:${this.webViewInfo.path}`;
-  }
-
-  build() {
-    if (this.webViewInfo.controller) {
-      Web({ src: 'about:blank', controller: this.webViewInfo.controller })
-        .id(this.webtag) // Set webtag as component ID for Native API access
-        .width('100%')
-        .height('100%')
-        .visibility(this.webViewInfo.visible ? Visibility.Visible : Visibility.Hidden)
-        .onPageBegin((event) => {
-          hilog.info(DOMAIN, TAG, `WebView ${this.webtag} page begin: ${event?.url}`);
-        })
-        .onPageEnd((event) => {
-          hilog.info(DOMAIN, TAG, `WebView ${this.webtag} page end: ${event?.url}`);
-        })
-        .onErrorReceive((event) => {
-          hilog.error(DOMAIN, TAG, `WebView ${this.webtag} error: ${event?.error?.getErrorInfo()}`);
-        })
-    }
-  }
-
-  aboutToAppear() {
-    hilog.info(DOMAIN, TAG, `WebView component appeared: ${this.webtag}`);
-  }
-
-  aboutToDisappear() {
-    hilog.info(DOMAIN, TAG, `WebView component disappeared: ${this.webtag}`);
-  }
 }

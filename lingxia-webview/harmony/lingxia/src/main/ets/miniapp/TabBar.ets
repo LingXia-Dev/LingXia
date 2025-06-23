@@ -183,7 +183,6 @@ export struct TabBar {
 
     // Add file:// prefix for absolute paths
     const fileUrl = iconPath.startsWith('/') ? `file://${iconPath}` : iconPath;
-    hilog.info(DOMAIN, TAG, `Tab ${index} icon URL: ${iconPath} -> ${fileUrl}`);
     return fileUrl;
   }
 

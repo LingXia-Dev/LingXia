@@ -76,7 +76,7 @@ impl App {
     ) -> Result<Self, MiniAppError> {
         let (resource_manager_ptr, env_raw, js_rm_raw) =
             if let Some(resource_manager) = resource_manager {
-                let env_raw = unsafe { env.raw() };
+                let env_raw = env.raw();
                 let js_rm_raw = unsafe { resource_manager.raw() };
 
                 // Extract the native ResourceManager pointer from the JS object

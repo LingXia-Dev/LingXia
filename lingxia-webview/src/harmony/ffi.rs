@@ -1,5 +1,6 @@
 use crate::controller::Controller;
 use crate::harmony::app::App;
+use crate::harmony::schemehandler::register_custom_schemes;
 use log::LevelFilter;
 use miniapp::AppUiDelegate;
 use miniapp::log::LogLevel;
@@ -20,6 +21,8 @@ type CallbackTsfn = napi_ohos::threadsafe_function::ThreadsafeFunction<
     napi_ohos::JsUnknown,
     napi_ohos::JsString,
     false,
+    false,
+    200,
 >;
 pub static CALLBACK_TSFN: OnceLock<CallbackTsfn> = OnceLock::new();
 
@@ -80,11 +83,18 @@ pub fn miniapp_init(
         cache_dir,
     );
 
+    // Register custom schemes globally
+    // https://developer.huawei.com/consumer/cn/doc/harmonyos-guides/web-scheme-handler
+    if let Err(e) = register_custom_schemes() {
+        log::error!("Failed to register custom schemes: {}", e);
+        return None;
+    }
+
     // Create ThreadSafe Function for callback - pass colon-separated string with function name and args
     let tsfn = callback_function
         .build_threadsafe_function::<String>()
         .callee_handled::<false>()
-        .max_queue_size::<0>()
+        .max_queue_size::<200>()
         .build_callback(|ctx: ThreadsafeCallContext<String>| {
             let data = ctx.value;
             log::info!("ThreadSafe callback called with data: {}", data);
@@ -207,5 +217,13 @@ pub fn on_miniapp_opened(appid: String, path: String) -> i32 {
 pub fn on_miniapp_closed(appid: String) -> i32 {
     let miniapp = miniapp::get(appid);
     miniapp.on_miniapp_closed();
+    0
+}
+
+/// Notify that a page is being shown
+#[napi]
+pub fn on_page_show(appid: String, path: String) -> i32 {
+    let miniapp = miniapp::get(appid);
+    miniapp.on_page_show(path);
     0
 }

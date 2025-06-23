@@ -2,7 +2,6 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { MiniApp } from './MiniApp';
 import { MiniAppContainer } from './MiniAppContainer';
-import { findWebview } from './WebView';
 import { onMiniappOpened, onMiniappClosed } from 'liblingxia.so';
 
 const DOMAIN = 0xA000;
@@ -78,12 +77,8 @@ export struct MiniAppNavigation {
     hilog.info(DOMAIN, TAG, `Opening miniapp with manual Stack animation: ${appId}:${path}`);
 
     try {
-      const webViewController = findWebview(appId, path);
-      if (webViewController) {
-        hilog.info(DOMAIN, TAG, `WebView pre-warmed for smoother animation: ${appId}:${path}`);
-      }
-
       const result: number = onMiniappOpened(appId, path);
+      hilog.info(DOMAIN, TAG, `onMiniappOpened result: ${result}`);
 
       const newStackItem: MiniAppStackItem = {
         appId: appId,
