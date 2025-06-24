@@ -3,7 +3,7 @@ import { webview } from '@kit.ArkWeb';
 import { window } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { MiniApp } from './MiniApp';
-import { findWebview } from './WebView';
+import { findWebview, handleScrollChanged, toWebTag } from './WebView';
 import { NavigationBar, type NavigationBarConfig } from './NavigationBar';
 import { TabBar, type TabBarConfig, type TabBarItem } from './TabBar';
 import { getTabBarConfig, getPageConfig, onPageShow } from 'liblingxia.so';
@@ -368,45 +368,40 @@ export struct MiniAppContainer {
   }
 
   /**
+   * Build WebView component with common configuration
+   */
+  @Builder
+  buildWebView(): void {
+    Web({
+      src: '',
+      controller: this.currentWebViewController
+    })
+      .width('100%')
+      .height('100%')
+      .onAppear(() => {
+        hilog.info(DOMAIN, TAG, `WebView appeared for path: ${this.path}`);
+        onPageShow(this.appId, this.path);
+      })
+      .onScroll((event) => {
+        // Handle scroll event when scroll listener is enabled
+        const webtag = toWebTag(this.appId, this.path);
+        handleScrollChanged(webtag, event.xOffset, event.yOffset);
+      })
+  }
+
+  /**
    * Build WebView area
    */
   @Builder
   buildWebViewArea(): void {
-    if (this.navigationMode) {
-      Stack() {
-        Web({
-          src: '',
-          controller: this.currentWebViewController
-        })
-          .width('100%')
-          .height('100%')
-          .onAppear(() => {
-            hilog.info(DOMAIN, TAG, `WebView appeared for path: ${this.path}`);
-            onPageShow(this.appId, this.path);
-          })
-      }
-      .width('100%')
-      .height('100%')
-      .layoutWeight(this.isTabBarTransparent() ? 0 : 1)
-      .backgroundColor(Color.White)
-      .clip(true)
-    } else {
-      Stack() {
-        Web({
-          src: '',
-          controller: this.currentWebViewController
-        })
-          .width('100%')
-          .height('100%')
-          .onAppear(() => {
-            hilog.info(DOMAIN, TAG, `WebView appeared for path: ${this.path}`);
-            onPageShow(this.appId, this.path);
-          })
-      }
-      .width('100%')
-      .height('100%')
-      .layoutWeight(this.isTabBarTransparent() ? 0 : 1)
+    Stack() {
+      this.buildWebView()
     }
+    .width('100%')
+    .height('100%')
+    .layoutWeight(this.isTabBarTransparent() ? 0 : 1)
+    .backgroundColor(this.navigationMode ? Color.White : Color.Transparent)
+    .clip(this.navigationMode)
   }
 
   private setInitialSelectedTab() {

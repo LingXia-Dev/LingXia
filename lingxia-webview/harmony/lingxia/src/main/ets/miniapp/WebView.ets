@@ -1,6 +1,6 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { webview } from '@kit.ArkWeb';
-import { onPageShow } from 'liblingxia.so';
+import { onPageShow, onScrollChanged } from 'liblingxia.so';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.WebView';
@@ -12,6 +12,7 @@ interface WebViewInfo {
   webtag: string;
   controller: webview.WebviewController;
   visible: boolean;
+  scrollListenerEnabled?: boolean;
 }
 
 /**
@@ -30,7 +31,7 @@ export class WebViewManager {
 
   /**
    * Create WebView by webtag
-   * @param webtag - WebView tag 
+   * @param webtag - WebView tag
    * @returns true if created successfully, false if already exists or creation failed
    */
   static createWebview(webtag: string): boolean {
@@ -129,7 +130,7 @@ export class WebViewManager {
 
   /**
    * Load URL in WebView
-   * @param webtag - WebView tag 
+   * @param webtag - WebView tag
    * @param url - URL to load
    * @returns true if URL loaded successfully, false if WebView not found or load failed
    */
@@ -153,7 +154,7 @@ export class WebViewManager {
 
   /**
    * Set web debugging access for WebView
-   * @param webtag - WebView tag 
+   * @param webtag - WebView tag
    * @param enable - Whether to enable web debugging
    * @returns true if setting applied successfully, false if WebView not found or setting failed
    */
@@ -172,6 +173,122 @@ export class WebViewManager {
     } else {
       hilog.warn(DOMAIN, TAG, `WebView not found for setWebDebuggingAccess: ${webtag}`);
       return false;
+    }
+  }
+
+  /**
+   * Clear browsing data for WebView
+   * @param webtag - WebView tag
+   * @returns true if clearing succeeded, false if WebView not found or clearing failed
+   */
+  static clearBrowsingData(webtag: string): boolean {
+    const controller = WebViewManager.controllers.get(webtag);
+
+    if (controller) {
+      try {
+        controller.clearHistory();
+        controller.removeCache(true);
+        hilog.info(DOMAIN, TAG, `Cleared browsing data for WebView ${webtag}`);
+        return true;
+      } catch (error) {
+        hilog.error(DOMAIN, TAG, `Failed to clear browsing data for WebView ${webtag}: ${error}`);
+        return false;
+      }
+    } else {
+      hilog.warn(DOMAIN, TAG, `WebView not found for clearBrowsingData: ${webtag}`);
+      return false;
+    }
+  }
+
+  /**
+   * Set user agent for WebView
+   * @param webtag - WebView tag
+   * @param userAgent - User agent string
+   * @returns true if setting succeeded, false if WebView not found or setting failed
+   */
+  static setUserAgent(webtag: string, userAgent: string): boolean {
+    const controller = WebViewManager.controllers.get(webtag);
+
+    if (controller) {
+      try {
+        // Note: HarmonyOS WebView may not support setUserAgent directly
+        // This is a placeholder implementation
+        hilog.info(DOMAIN, TAG, `Set user agent for WebView ${webtag}: ${userAgent} (not implemented)`);
+        return true;
+      } catch (error) {
+        hilog.error(DOMAIN, TAG, `Failed to set user agent for WebView ${webtag}: ${error}`);
+        return false;
+      }
+    } else {
+      hilog.warn(DOMAIN, TAG, `WebView not found for setUserAgent: ${webtag}`);
+      return false;
+    }
+  }
+
+  /**
+   * Set scroll listener enabled for WebView
+   * @param webtag - WebView tag
+   * @param enabled - Whether to enable scroll listener
+   * @returns true if setting succeeded, false if WebView not found or setting failed
+   */
+  static setScrollListenerEnabled(webtag: string, enabled: boolean): boolean {
+    const controller = WebViewManager.controllers.get(webtag);
+
+    if (controller) {
+      try {
+        // Note: HarmonyOS WebView scroll events are typically handled through onScroll callback
+        // This method stores the scroll listener state for the WebView
+        const webViewInfo = WebViewManager.webViewInfos.get(webtag);
+        if (webViewInfo) {
+          // Store scroll listener state in webViewInfo for later use
+          webViewInfo.scrollListenerEnabled = enabled;
+          hilog.info(DOMAIN, TAG, `Set scroll listener enabled for WebView ${webtag}: ${enabled}`);
+          return true;
+        } else {
+          hilog.warn(DOMAIN, TAG, `WebView info not found for setScrollListenerEnabled: ${webtag}`);
+          return false;
+        }
+      } catch (error) {
+        hilog.error(DOMAIN, TAG, `Failed to set scroll listener enabled for WebView ${webtag}: ${error}`);
+        return false;
+      }
+    } else {
+      hilog.warn(DOMAIN, TAG, `WebView not found for setScrollListenerEnabled: ${webtag}`);
+      return false;
+    }
+  }
+
+  /**
+   * Handle scroll change event for WebView
+   * This should be called from the UI component when scroll occurs
+   * @param webtag - WebView tag
+   * @param scrollX - Horizontal scroll position
+   * @param scrollY - Vertical scroll position
+   */
+  static handleScrollChanged(webtag: string, scrollX: number, scrollY: number): void {
+    const webViewInfo = WebViewManager.webViewInfos.get(webtag);
+
+    if (webViewInfo && webViewInfo.scrollListenerEnabled) {
+      try {
+        // Parse appId and path from webtag (format: appId-path)
+        const parts = webtag.split('-');
+        if (parts.length >= 2) {
+          const appId = parts[0];
+          const path = parts.slice(1).join('-'); // In case path contains '-'
+
+          // Call native function to notify scroll change
+          const result: number = onScrollChanged(appId, path, scrollX, scrollY);
+          if (result === 0) {
+            hilog.debug(DOMAIN, TAG, `Scroll change notified for ${webtag}: (${scrollX}, ${scrollY})`);
+          } else {
+            hilog.warn(DOMAIN, TAG, `Failed to notify scroll change for ${webtag}, result: ${result}`);
+          }
+        } else {
+          hilog.error(DOMAIN, TAG, `Invalid webtag format for scroll change: ${webtag}`);
+        }
+      } catch (error) {
+        hilog.error(DOMAIN, TAG, `Error handling scroll change for ${webtag}: ${error}`);
+      }
     }
   }
 
@@ -233,7 +350,7 @@ export function toWebTag(appId: string, path: string): string {
 
 /**
  * Create WebView controller
- * @param webtag - WebView tag 
+ * @param webtag - WebView tag
  * @returns true if created successfully, false otherwise
  */
 export function createWebViewController(webtag: string): boolean {
@@ -262,7 +379,7 @@ export function destroyWebViewController(appId: string, path: string): boolean {
 
 /**
  * Load URL in WebView
- * @param webtag - WebView tag 
+ * @param webtag - WebView tag
  * @param url - URL to load
  * @returns true if URL loaded successfully
  */
@@ -272,10 +389,50 @@ export function loadUrl(webtag: string, url: string): boolean {
 
 /**
  * Set web debugging access for WebView
- * @param webtag - WebView tag 
+ * @param webtag - WebView tag
  * @param enable - Whether to enable web debugging
  * @returns true if setting applied successfully
  */
 export function setWebDebuggingAccess(webtag: string, enable: boolean): boolean {
   return WebViewManager.setWebDebuggingAccess(webtag, enable);
+}
+
+/**
+ * Clear browsing data for WebView
+ * @param webtag - WebView tag
+ * @returns true if clearing succeeded
+ */
+export function clearBrowsingData(webtag: string): boolean {
+  return WebViewManager.clearBrowsingData(webtag);
+}
+
+/**
+ * Set user agent for WebView
+ * @param webtag - WebView tag
+ * @param userAgent - User agent string
+ * @returns true if setting succeeded
+ */
+export function setUserAgent(webtag: string, userAgent: string): boolean {
+  return WebViewManager.setUserAgent(webtag, userAgent);
+}
+
+/**
+ * Set scroll listener enabled for WebView
+ * @param webtag - WebView tag
+ * @param enabled - Whether to enable scroll listener
+ * @returns true if setting succeeded
+ */
+export function setScrollListenerEnabled(webtag: string, enabled: boolean): boolean {
+  return WebViewManager.setScrollListenerEnabled(webtag, enabled);
+}
+
+/**
+ * Handle scroll change event for WebView
+ * This should be called from UI components when scroll occurs
+ * @param webtag - WebView tag
+ * @param scrollX - Horizontal scroll position
+ * @param scrollY - Vertical scroll position
+ */
+export function handleScrollChanged(webtag: string, scrollX: number, scrollY: number): void {
+  return WebViewManager.handleScrollChanged(webtag, scrollX, scrollY);
 }

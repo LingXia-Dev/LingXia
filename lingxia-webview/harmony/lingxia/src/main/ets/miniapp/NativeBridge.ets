@@ -1,7 +1,15 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { webview } from '@kit.ArkWeb';
 import { MiniApp } from './MiniApp';
-import { createWebViewController, destroyWebViewController, loadUrl, setWebDebuggingAccess } from './WebView';
+import {
+  createWebViewController,
+  destroyWebViewController,
+  loadUrl,
+  setWebDebuggingAccess,
+  clearBrowsingData,
+  setUserAgent,
+  setScrollListenerEnabled
+} from './WebView';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.NativeBridge';
@@ -63,6 +71,22 @@ class NativeBridge {
       return setWebDebuggingAccess(webtag, enable);
     });
 
+
+    // WebView data management
+    this.register('clearBrowsingData', (webtag: string) => {
+      return clearBrowsingData(webtag);
+    });
+
+    // WebView user agent
+    this.register('setUserAgent', (webtag: string, userAgent: string) => {
+      return setUserAgent(webtag, userAgent);
+    });
+
+    // WebView scroll listener
+    this.register('setScrollListenerEnabled', (webtag: string, enabled: boolean) => {
+      return setScrollListenerEnabled(webtag, enabled);
+    });
+
     hilog.info(DOMAIN, TAG, `Registered ${NativeBridge.callbacks.size} default callbacks`);
   }
 
@@ -110,6 +134,9 @@ export function getNativeCallbackFunction(): (data: string) => Object | null {
       let args: Object[] = rawArgs;
       if (functionName === 'setDevtools' && rawArgs.length >= 2) {
         // Convert the second argument (enable) from string to boolean
+        args = [rawArgs[0], rawArgs[1] === 'true'];
+      } else if (functionName === 'setScrollListenerEnabled' && rawArgs.length >= 2) {
+        // Convert the second argument (enabled) from string to boolean
         args = [rawArgs[0], rawArgs[1] === 'true'];
       }
 

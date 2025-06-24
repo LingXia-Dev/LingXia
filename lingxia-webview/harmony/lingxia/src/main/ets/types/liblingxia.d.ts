@@ -58,4 +58,14 @@ declare module 'liblingxia.so' {
    * @returns Status code (0 for success, -1 for error)
    */
   export function onPageShow(appid: string, path: string): number;
+
+  /**
+   * Notify that WebView scroll position has changed
+   * @param appid - MiniApp ID
+   * @param path - Page path
+   * @param scrollX - Horizontal scroll position
+   * @param scrollY - Vertical scroll position
+   * @returns Status code (0 for success, -1 for error)
+   */
+  export function onScrollChanged(appid: string, path: string, scrollX: number, scrollY: number): number;
 }
