@@ -10,18 +10,30 @@
   let pageData = {};
   const dataSubscribers = new Set();
   const subscriberInitStatus = new WeakMap();
-  let androidMessagePort = null;
-  let harmonyMessagePort = null;
+  let messagePort = null; // Unified port for MessagePort-based platforms
 
-  const isIOS = !!(
-    window.webkit &&
-    window.webkit.messageHandlers &&
-    window.webkit.messageHandlers[NATIVE_HANDLER_NAME]
-  );
+  // Detect communication method based on available APIs
+  function detectCommunicationMethod() {
+    if (
+      window.webkit &&
+      window.webkit.messageHandlers &&
+      window.webkit.messageHandlers[NATIVE_HANDLER_NAME]
+    ) {
+      return "webkit";
+    }
 
-  // Force HarmonyOS for testing - assume we're always on HarmonyOS when not iOS
-  const isHarmonyOS = !isIOS;
-  const isAndroid = false;
+    // MessagePort API available (Android WebView, HarmonyOS ArkWeb)
+    if (
+      typeof MessagePort !== "undefined" &&
+      typeof MessageChannel !== "undefined"
+    ) {
+      return "messageport";
+    }
+
+    return "unknown";
+  }
+
+  const communicationMethod = detectCommunicationMethod();
 
   function log(...args) {
     console.log(LOG_PREFIX, ...args);
@@ -148,14 +160,11 @@
   // Send message to native layer
   function _sendMessageToNative(message) {
     try {
-      if (isIOS) {
+      if (communicationMethod === "webkit") {
         window.webkit.messageHandlers[NATIVE_HANDLER_NAME].postMessage(message);
-      } else if (isHarmonyOS && harmonyMessagePort) {
+      } else if (communicationMethod === "messageport" && messagePort) {
         const messageString = JSON.stringify(message);
-        harmonyMessagePort.postMessage(messageString);
-      } else if (isAndroid && androidMessagePort) {
-        const messageString = JSON.stringify(message);
-        androidMessagePort.postMessage(messageString);
+        messagePort.postMessage(messageString);
       } else {
         warn("Bridge not ready for sending");
       }
@@ -230,7 +239,6 @@
         dataToApply = payload;
       }
 
-      const appliedPatch = _deepCopy(dataToApply);
       _applyPatch(pageData, dataToApply);
 
       // Notify subscribers immediately
@@ -262,19 +270,6 @@
       msgId: null,
       type: "callback",
       callbackId: callbackId,
-    });
-  }
-
-  // Send reply to native
-  function _sendReply(originalMsgId, success, errorPayload = null) {
-    const replyPayload = success
-      ? { success: true }
-      : { success: false, error: errorPayload || { message: "Unknown error" } };
-
-    _sendMessageToNative({
-      msgId: originalMsgId,
-      type: "reply",
-      payload: replyPayload,
     });
   }
 
@@ -363,19 +358,14 @@
       return _deepCopy(pageData);
     },
 
-    // Connect to WebMessage port (used by both Android and HarmonyOS)
+    // Connect to WebMessage port (used by MessagePort-based platforms)
     _connectWebMessagePort: function (port) {
-      if (!isAndroid && !isHarmonyOS) return;
+      if (communicationMethod !== "messageport") return;
 
-      const platform = isHarmonyOS ? "HarmonyOS" : "Android";
-      log(`Connecting ${platform} WebMessage port...`);
+      log("Connecting WebMessage port...");
 
-      // Store the port
-      if (isHarmonyOS) {
-        harmonyMessagePort = port;
-      } else {
-        androidMessagePort = port;
-      }
+      // Store the unified port
+      messagePort = port;
 
       // Set up message handler
       port.onmessage = (event) => {
@@ -384,24 +374,20 @@
           try {
             messageData = JSON.parse(messageData);
           } catch (e) {
-            error(`Invalid JSON from ${platform} Port:`, e);
+            error("Invalid JSON from MessagePort:", e);
             return;
           }
         }
         _handleIncomingMessage(messageData);
       };
 
-      try {
-        this.event("LXPortRdy");
-        log(`${platform} port connected and ready`);
-      } catch (e) {
-        error(`Failed to send LXPortRdy to ${platform}:`, e);
-      }
+      log("MessagePort connected and ready");
+      this.event("LXPortRdy");
     },
 
-    // Internal: Receive message from evaluate_javascript (iOS and HarmonyOS)
+    // Internal: Receive message from evaluate_javascript (WebKit platforms)
     _receiveEvaluateMessage: function (messageString) {
-      if (!isIOS && !isHarmonyOS) return;
+      if (communicationMethod !== "webkit") return;
       try {
         if (!messageString) return;
         const message = JSON.parse(messageString);
@@ -412,39 +398,11 @@
     },
   };
 
-  // Platform Initialization
-  if (isIOS || isHarmonyOS) {
-    window[GLOBAL_RECEIVER_NAME] = LingXiaBridge._receiveEvaluateMessage;
-
-    if (isIOS) {
-      // iOS sends LXPortRdy immediately since it doesn't use ports
-      LingXiaBridge.event("LXPortRdy");
-    }
-    // HarmonyOS will send LXPortRdy when WebMessage port connects
-  }
-
-  // HarmonyOS and Android use the same WebMessage mechanism
-  if (isHarmonyOS || isAndroid) {
-    window.addEventListener(
-      "message",
-      (event) => {
-        if (
-          event.data === ANDROID_PORT_INIT_CMD &&
-          event.ports &&
-          event.ports.length > 0
-        ) {
-          LingXiaBridge._connectWebMessagePort(event.ports[0]);
-        }
-      },
-      false,
-    );
-  }
-
   // Create lx proxy object for API interception
   const lx = new Proxy(
     {},
     {
-      get: function (target, prop, receiver) {
+      get: function (_target, prop, _receiver) {
         // Return a function that will call the native layer
         return function (...args) {
           // Method parameters should be either empty or a single object
@@ -480,23 +438,33 @@
     _init();
   }
 
-  // Export bridge to global scope
-  window.LingXiaBridge = LingXiaBridge;
-  log("Lingxia Bridge initialized.");
-
-  // Initialize bridge
   function _init() {
-    log("Initializing LingXia Bridge...");
+    log(`Detected communication method: ${communicationMethod}`);
 
-    // For Android, set up message listener if available
-    if (isAndroid && window.LingxiaAndroidInterface) {
-      window.LingxiaAndroidInterface.setMessageListener(_handleIncomingMessage);
-      log("Android port connected and ready");
-      // Send ready event for Android interface
-      LingXiaBridge.event("LXPortRdy", null);
+    // Platform-specific initialization
+    if (communicationMethod === "webkit") {
+      window[GLOBAL_RECEIVER_NAME] = LingXiaBridge._receiveEvaluateMessage;
+      LingXiaBridge.event("LXPortRdy");
+    } else if (communicationMethod === "messageport") {
+      window.addEventListener(
+        "message",
+        (event) => {
+          if (
+            event.data === ANDROID_PORT_INIT_CMD &&
+            event.ports &&
+            event.ports.length > 0
+          ) {
+            LingXiaBridge._connectWebMessagePort(event.ports[0]);
+          }
+        },
+        false,
+      );
+    } else {
+      warn("Unknown communication method, bridge may not work properly");
     }
 
-    // Note: iOS already sent LXPortRdy during platform initialization
-    // HarmonyOS and Android (WebMessage) will send LXPortRdy when ports connect
+    log("LingXia Bridge initialization completed");
   }
+
+  window.LingXiaBridge = LingXiaBridge;
 })();
