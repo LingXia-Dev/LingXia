@@ -5,6 +5,53 @@ use miniapp::{AppUiDelegate, MiniAppError, WebViewController};
 use napi_ohos::{Result as NapiResult, Status, threadsafe_function::ThreadsafeFunctionCallMode};
 use ohos_web_sys::*;
 use std::ffi::{CStr, CString, c_char, c_void};
+use std::sync::{Arc, Mutex, OnceLock};
+
+/// Wrapper for API pointers to make them Send + Sync
+#[derive(Debug, Clone, Copy)]
+struct ApiPtr<T>(*const T);
+unsafe impl<T> Send for ApiPtr<T> {}
+unsafe impl<T> Sync for ApiPtr<T> {}
+
+/// Global cached APIs - initialized once and reused
+static PORT_API: OnceLock<ApiPtr<ArkWeb_WebMessagePortAPI>> = OnceLock::new();
+static MESSAGE_API: OnceLock<ApiPtr<ArkWeb_WebMessageAPI>> = OnceLock::new();
+
+/// Get cached WebMessagePort API
+fn get_port_api() -> Result<&'static ArkWeb_WebMessagePortAPI, MiniAppError> {
+    let api_ptr = PORT_API.get_or_init(|| unsafe {
+        ApiPtr(
+            OH_ArkWeb_GetNativeAPI(ArkWeb_NativeAPIVariantKind_ARKWEB_NATIVE_WEB_MESSAGE_PORT)
+                as *const ArkWeb_WebMessagePortAPI,
+        )
+    });
+
+    if api_ptr.0.is_null() {
+        Err(MiniAppError::WebView(
+            "Failed to get WebMessagePort API".to_string(),
+        ))
+    } else {
+        Ok(unsafe { &*api_ptr.0 })
+    }
+}
+
+/// Get cached WebMessage API
+fn get_message_api() -> Result<&'static ArkWeb_WebMessageAPI, MiniAppError> {
+    let api_ptr = MESSAGE_API.get_or_init(|| unsafe {
+        ApiPtr(
+            OH_ArkWeb_GetNativeAPI(ArkWeb_NativeAPIVariantKind_ARKWEB_NATIVE_WEB_MESSAGE)
+                as *const ArkWeb_WebMessageAPI,
+        )
+    });
+
+    if api_ptr.0.is_null() {
+        Err(MiniAppError::WebView(
+            "Failed to get WebMessage API".to_string(),
+        ))
+    } else {
+        Ok(unsafe { &*api_ptr.0 })
+    }
+}
 
 /// WebTag newtype for better type safety
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -55,8 +102,8 @@ impl std::fmt::Display for WebTag {
 #[derive(Debug)]
 pub struct WebViewInner {
     webtag: WebTag,
-    native_port: Option<*mut ArkWeb_WebMessagePort>,
-    console_port: Option<*mut ArkWeb_WebMessagePort>,
+    native_port: Arc<Mutex<Option<*mut ArkWeb_WebMessagePort>>>,
+    console_port: Arc<Mutex<Option<*mut ArkWeb_WebMessagePort>>>,
 }
 
 unsafe impl Send for WebViewInner {}
@@ -80,8 +127,8 @@ impl WebViewInner {
 
                 let webview_inner = WebViewInner {
                     webtag: webtag.clone(),
-                    native_port: None,
-                    console_port: None,
+                    native_port: Arc::new(Mutex::new(None)),
+                    console_port: Arc::new(Mutex::new(None)),
                 };
 
                 // Register WebView lifecycle callbacks with WebViewInner Box as user_data
@@ -255,6 +302,80 @@ impl WebViewController for WebViewInner {
             &[self.webtag.as_str(), &enabled.to_string()],
         )
     }
+
+    fn post_message(&self, message: String) -> Result<(), MiniAppError> {
+        // Use the native port from WebViewInner
+        let port = if let Ok(port_guard) = self.native_port.lock() {
+            *port_guard
+        } else {
+            None
+        };
+
+        if let Some(port) = port {
+            unsafe {
+                let webtag_cstr = CString::new(self.webtag.as_str()).unwrap();
+                let message_cstr = CString::new(message.clone()).unwrap();
+
+                // Get cached APIs
+                let port_api = get_port_api()?;
+                let message_api = get_message_api()?;
+
+                // Create WebMessage
+                let create_fn = message_api.createWebMessage.ok_or_else(|| {
+                    MiniAppError::WebView("createWebMessage not available".to_string())
+                })?;
+                let web_message = create_fn();
+
+                if web_message.is_null() {
+                    return Err(MiniAppError::WebView(
+                        "Failed to create WebMessage".to_string(),
+                    ));
+                }
+
+                // Set message type to string
+                if let Some(set_type) = message_api.setType {
+                    set_type(web_message, ArkWeb_WebMessageType_ARKWEB_STRING);
+                }
+
+                // Set message data
+                if let Some(set_data) = message_api.setData {
+                    set_data(
+                        web_message,
+                        message_cstr.as_ptr() as *mut std::ffi::c_void,
+                        message.len() + 1,
+                    );
+                }
+
+                // Post message using the existing port
+                let result = port_api.postMessage.ok_or_else(|| {
+                    MiniAppError::WebView("postMessage not available".to_string())
+                })?(port, webtag_cstr.as_ptr(), web_message);
+
+                // Clean up the created message
+                if let Some(destroy_message) = message_api.destroyWebMessage {
+                    let mut msg_ptr = web_message;
+                    destroy_message(&mut msg_ptr as *mut *mut ArkWeb_WebMessage);
+                }
+
+                if result != ArkWeb_ErrorCode_ARKWEB_SUCCESS {
+                    return Err(MiniAppError::WebView(format!(
+                        "Failed to post message via port: error {:?}",
+                        result
+                    )));
+                }
+
+                // log::info!(
+                //     "Successfully posted message via native WebMessagePort for {}",
+                //     self.webtag
+                // );
+                Ok(())
+            }
+        } else {
+            return Err(MiniAppError::WebView(
+                "No native port available for post_message".to_string(),
+            ));
+        }
+    }
 }
 
 impl Drop for WebViewInner {
@@ -271,6 +392,14 @@ fn register_webview_callbacks(
 ) -> Result<Box<WebViewInner>, MiniAppError> {
     unsafe {
         let webtag_cstr = CString::new(webview.webtag.as_str()).unwrap();
+
+        // Clone the webview for return, but keep the original for user_data
+        let webview_clone = WebViewInner {
+            webtag: webview.webtag.clone(),
+            native_port: Arc::clone(&webview.native_port),
+            console_port: Arc::clone(&webview.console_port),
+        };
+
         let user_data = Box::into_raw(webview) as *mut c_void;
 
         // Get the ArkWeb_ComponentAPI using the correct API
@@ -312,18 +441,8 @@ fn register_webview_callbacks(
             on_destroy(webtag_cstr.as_ptr(), Some(on_destroy_callback), user_data);
         }
 
-        // Don't reconstruct the Box here - let it stay as raw pointer for callbacks
-        // We'll clean it up in on_destroy_callback
-        Ok(Box::new(WebViewInner {
-            webtag: WebTag(
-                CStr::from_ptr(webtag_cstr.as_ptr())
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-            ),
-            native_port: None,
-            console_port: None,
-        }))
+        // Return the cloned instance that shares the same Arc<Mutex<>> for ports
+        Ok(Box::new(webview_clone))
     }
 }
 
@@ -373,14 +492,16 @@ extern "C" fn on_page_end_callback(web_tag: *const c_char, user_data: *mut c_voi
             let miniapp = miniapp::get(appid.to_string());
             miniapp.on_page_finished(path.to_string());
 
-            // Now that the page is loaded, set up WebMessage handlers using WebViewInner from user_data
+            // Now that the page is loaded, set up WebMessage handlers and store port in WebViewInner
             if !user_data.is_null() {
-                let webview = unsafe { &*(user_data as *const WebViewInner) };
+                let webview = unsafe { &mut *(user_data as *mut WebViewInner) };
                 log::info!(
                     "Page loaded, setting up WebMessage handlers for {}",
                     &webview.webtag
                 );
-                if let Err(e) = webview.setup_webmessage_handlers() {
+
+                // Create and setup WebMessage handlers directly here
+                if let Err(e) = setup_webmessage_handlers_and_store_port(webview) {
                     log::error!(
                         "Failed to setup WebMessage handlers for {}: {:?}",
                         &webview.webtag,
@@ -406,6 +527,84 @@ extern "C" fn on_destroy_callback(web_tag: *const c_char, user_data: *mut c_void
                 log::info!("WebViewInner cleaned up for {}", webtag);
             }
         }
+    }
+}
+
+/// Set up WebMessage handlers and store the native port in WebViewInner
+fn setup_webmessage_handlers_and_store_port(
+    webview: &mut WebViewInner,
+) -> Result<(), MiniAppError> {
+    unsafe {
+        let webtag_cstr = CString::new(webview.webtag.as_str()).unwrap();
+
+        // Get APIs
+        let controller_api =
+            OH_ArkWeb_GetNativeAPI(ArkWeb_NativeAPIVariantKind_ARKWEB_NATIVE_CONTROLLER);
+        let port_api =
+            OH_ArkWeb_GetNativeAPI(ArkWeb_NativeAPIVariantKind_ARKWEB_NATIVE_WEB_MESSAGE_PORT);
+
+        if controller_api.is_null() || port_api.is_null() {
+            return Err(MiniAppError::WebView(
+                "Failed to get WebMessage APIs".to_string(),
+            ));
+        }
+
+        let controller = &*(controller_api as *const ArkWeb_ControllerAPI);
+        let port_api_struct = &*(port_api as *const ArkWeb_WebMessagePortAPI);
+
+        // Create WebMessage ports
+        let mut size: usize = 0;
+        let ports = controller.createWebMessagePorts.ok_or_else(|| {
+            MiniAppError::WebView("createWebMessagePorts not available".to_string())
+        })?(webtag_cstr.as_ptr(), &mut size);
+
+        if ports.is_null() || size < 2 {
+            return Err(MiniAppError::WebView(
+                "Failed to create WebMessage ports".to_string(),
+            ));
+        }
+
+        let port1 = *ports.offset(0); // Native side port
+        let port2 = *ports.offset(1); // WebView side port
+        log::info!("Created {} WebMessage ports for {}", size, webview.webtag);
+
+        // Store the native port in WebViewInner for post_message
+        if let Ok(mut port_guard) = webview.native_port.lock() {
+            *port_guard = Some(port1);
+            log::info!("Stored native port for {} in WebViewInner", webview.webtag);
+        }
+
+        // Set message event handler
+        if let Some(set_handler) = port_api_struct.setMessageEventHandler {
+            set_handler(
+                port1,
+                webtag_cstr.as_ptr(),
+                Some(on_web_message_received),
+                webview as *mut WebViewInner as *mut c_void,
+            );
+            log::info!("Set WebMessage event handler for {}", webview.webtag);
+        }
+
+        // Post port to WebView
+        let result = controller
+            .postWebMessage
+            .ok_or_else(|| MiniAppError::WebView("postWebMessage not available".to_string()))?(
+            webtag_cstr.as_ptr(),
+            CString::new("LingXia-port-init").unwrap().as_ptr(),
+            [port2].as_mut_ptr(),
+            1,
+            CString::new("*").unwrap().as_ptr(),
+        );
+
+        if result != 0 {
+            return Err(MiniAppError::WebView(format!(
+                "Failed to post WebMessage port: error {}",
+                result
+            )));
+        }
+
+        log::info!("Set up main WebMessage handlers for {}", webview.webtag);
+        Ok(())
     }
 }
 
