@@ -1,7 +1,7 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { webview } from '@kit.ArkWeb';
 import { MiniApp } from './MiniApp';
-import { createWebViewController, destroyWebViewController } from './WebView';
+import { createWebViewController, destroyWebViewController, loadUrl, setWebDebuggingAccess } from './WebView';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.NativeBridge';
@@ -45,12 +45,22 @@ class NativeBridge {
     });
 
     // WebView management
-    this.register('createWebViewController', (appId: string, path: string) => {
-      return createWebViewController(appId, path);
+    this.register('createWebViewController', (webtag: string) => {
+      return createWebViewController(webtag);
     });
 
     this.register('destroyWebViewController', (appId: string, path: string) => {
       return destroyWebViewController(appId, path);
+    });
+
+    // WebView URL loading
+    this.register('loadUrl', (webtag: string, url: string) => {
+      return loadUrl(webtag, url);
+    });
+
+    // WebView debugging access
+    this.register('setDevtools', (webtag: string, enable: boolean) => {
+      return setWebDebuggingAccess(webtag, enable);
     });
 
     hilog.info(DOMAIN, TAG, `Registered ${NativeBridge.callbacks.size} default callbacks`);
@@ -87,12 +97,25 @@ class NativeBridge {
 /**
  * Get the callback function for native layer
  * Node-API ThreadSafe Function limitation: can only pass single string
- * Format: "function_name:arg1:arg2:..."
+ * Format: "function_name|arg1|arg2|arg3|..." (using | as separator to avoid conflicts with URLs)
  */
 export function getNativeCallbackFunction(): (data: string) => Object | null {
   return (data: string) => {
-    const parts = data.split(':');
-    return parts.length >= 3 ? NativeBridge.call(parts[0], parts[1], parts[2]) : null;
+    const parts = data.split('|');
+    if (parts.length >= 1) {
+      const functionName = parts[0];
+      const rawArgs = parts.slice(1); // Get all arguments after function name
+
+      // Convert arguments based on function type
+      let args: Object[] = rawArgs;
+      if (functionName === 'setDevtools' && rawArgs.length >= 2) {
+        // Convert the second argument (enable) from string to boolean
+        args = [rawArgs[0], rawArgs[1] === 'true'];
+      }
+
+      return NativeBridge.call(functionName, ...args);
+    }
+    return null;
   };
 }
 

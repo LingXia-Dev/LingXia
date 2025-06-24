@@ -9,8 +9,7 @@ const TAG = 'LingXia.WebView';
  * WebView information for management
  */
 interface WebViewInfo {
-  appId: string;
-  path: string;
+  webtag: string;
   controller: webview.WebviewController;
   visible: boolean;
 }
@@ -30,14 +29,11 @@ export class WebViewManager {
   private static uiCallback: ((action: string, info: WebViewInfo) => void) | null = null;
 
   /**
-   * Create WebView by appId and path (called by Rust)
-   * @param appId - MiniApp ID
-   * @param path - Page path
+   * Create WebView by webtag
+   * @param webtag - WebView tag 
    * @returns true if created successfully, false if already exists or creation failed
    */
-  static createWebview(appId: string, path: string): boolean {
-    const webtag = `${appId}:${path}`;
-
+  static createWebview(webtag: string): boolean {
     // Check if already exists
     if (WebViewManager.controllers.has(webtag)) {
       hilog.warn(DOMAIN, TAG, `WebView already exists: ${webtag}`);
@@ -53,8 +49,7 @@ export class WebViewManager {
 
       // Create WebView info
       const webViewInfo: WebViewInfo = {
-        appId,
-        path,
+        webtag,
         controller,
         visible: false
       };
@@ -80,7 +75,7 @@ export class WebViewManager {
    * @returns WebView controller or null if not found
    */
   static findWebview(appId: string, path: string): webview.WebviewController | null {
-    const webtag = `${appId}:${path}`;
+    const webtag = toWebTag(appId, path);
     const controller = WebViewManager.controllers.get(webtag);
 
     if (controller) {
@@ -100,7 +95,7 @@ export class WebViewManager {
    * @returns true if destroyed successfully, false if not found
    */
   static destroyWebview(appId: string, path: string): boolean {
-    const webtag = `${appId}:${path}`;
+    const webtag = toWebTag(appId, path);
     hilog.info(DOMAIN, TAG, `Destroying WebView: ${webtag}`);
 
     const controller = WebViewManager.controllers.get(webtag);
@@ -133,6 +128,54 @@ export class WebViewManager {
   }
 
   /**
+   * Load URL in WebView
+   * @param webtag - WebView tag 
+   * @param url - URL to load
+   * @returns true if URL loaded successfully, false if WebView not found or load failed
+   */
+  static loadUrl(webtag: string, url: string): boolean {
+    const controller = WebViewManager.controllers.get(webtag);
+
+    if (controller) {
+      try {
+        controller.loadUrl(url);
+        hilog.info(DOMAIN, TAG, `Loaded URL in WebView ${webtag}: ${url}`);
+        return true;
+      } catch (error) {
+        hilog.error(DOMAIN, TAG, `Failed to load URL in WebView ${webtag}: ${error}`);
+        return false;
+      }
+    } else {
+      hilog.warn(DOMAIN, TAG, `WebView not found for loadUrl: ${webtag}`);
+      return false;
+    }
+  }
+
+  /**
+   * Set web debugging access for WebView
+   * @param webtag - WebView tag 
+   * @param enable - Whether to enable web debugging
+   * @returns true if setting applied successfully, false if WebView not found or setting failed
+   */
+  static setWebDebuggingAccess(webtag: string, enable: boolean): boolean {
+    const controller = WebViewManager.controllers.get(webtag);
+
+    if (controller) {
+      try {
+        webview.WebviewController.setWebDebuggingAccess(enable);
+        hilog.info(DOMAIN, TAG, `Set web debugging access for WebView ${webtag}: ${enable}`);
+        return true;
+      } catch (error) {
+        hilog.error(DOMAIN, TAG, `Failed to set web debugging access for WebView ${webtag}: ${error}`);
+        return false;
+      }
+    } else {
+      hilog.warn(DOMAIN, TAG, `WebView not found for setWebDebuggingAccess: ${webtag}`);
+      return false;
+    }
+  }
+
+  /**
    * Get WebView controller by webtag (internal use)
    * @param webtag - WebView tag
    * @returns WebView controller or null
@@ -157,7 +200,7 @@ export class WebViewManager {
    * @param visible - Whether WebView should be visible
    */
   static setWebViewVisibility(appId: string, path: string, visible: boolean) {
-    const webtag = `${appId}:${path}`;
+    const webtag = toWebTag(appId, path);
     const webViewInfo = WebViewManager.webViewInfos.get(webtag);
 
     if (webViewInfo) {
@@ -179,17 +222,22 @@ export class WebViewManager {
 }
 
 /**
- * Export functions for external use
- */
-
-/**
- * Create WebView controller (called by Rust)
+ * Create webtag from appId and path
  * @param appId - MiniApp ID
  * @param path - Page path
+ * @returns webtag in format "appId-path"
+ */
+export function toWebTag(appId: string, path: string): string {
+  return `${appId}-${path}`;
+}
+
+/**
+ * Create WebView controller
+ * @param webtag - WebView tag 
  * @returns true if created successfully, false otherwise
  */
-export function createWebViewController(appId: string, path: string): boolean {
-  return WebViewManager.createWebview(appId, path);
+export function createWebViewController(webtag: string): boolean {
+  return WebViewManager.createWebview(webtag);
 }
 
 /**
@@ -210,4 +258,24 @@ export function findWebview(appId: string, path: string): webview.WebviewControl
  */
 export function destroyWebViewController(appId: string, path: string): boolean {
   return WebViewManager.destroyWebview(appId, path);
+}
+
+/**
+ * Load URL in WebView
+ * @param webtag - WebView tag 
+ * @param url - URL to load
+ * @returns true if URL loaded successfully
+ */
+export function loadUrl(webtag: string, url: string): boolean {
+  return WebViewManager.loadUrl(webtag, url);
+}
+
+/**
+ * Set web debugging access for WebView
+ * @param webtag - WebView tag 
+ * @param enable - Whether to enable web debugging
+ * @returns true if setting applied successfully
+ */
+export function setWebDebuggingAccess(webtag: string, enable: boolean): boolean {
+  return WebViewManager.setWebDebuggingAccess(webtag, enable);
 }

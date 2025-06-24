@@ -16,10 +16,10 @@ unsafe impl Sync for WebViewInner {}
 impl WebViewInner {
     /// Create a new WebView instance for HarmonyOS
     pub fn create(appid: &str, path: &str) -> Result<Self, MiniAppError> {
-        let webtag = format!("{}:{}", appid, path);
+        let webtag = format!("{}-{}", appid, path);
 
         // Call ArkTS to create WebView controller first
-        match create_webview_controller(appid, path) {
+        match create_webview_controller(&webtag) {
             Ok(_) => {
                 // Set scheme handler for this WebView
                 if let Err(e) = set_webview_scheme_handler(&webtag) {
@@ -56,55 +56,27 @@ impl WebViewController for WebViewInner {
             url
         );
 
-        unsafe {
-            let web_tag_cstr = CString::new(self.webtag.clone()).unwrap();
-
-            // Use HTML redirect approach
-            let html = format!(
-                r#"
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-</head>
-<body>
-    <script>
-        window.location.href = '{}';
-    </script>
-</body>
-</html>
-"#,
-                url
-            );
-
-            let data_cstr = CString::new(html).unwrap();
-
-            // Use HTML content with redirect
-            let base_url_cstr = CString::new(url.clone()).unwrap();
-            let result = OH_NativeArkWeb_LoadData(
-                web_tag_cstr.as_ptr(),
-                data_cstr.as_ptr(),
-                c"text/html".as_ptr(),
-                c"UTF-8".as_ptr(),
-                base_url_cstr.as_ptr(),
-                c"".as_ptr(),
-            );
-
-            if result == 0 {
-                log::info!("Successfully loaded URL {} in WebView {}", url, self.webtag);
+        // Call ArkTS loadUrl implementation
+        if let Some(tsfn) = CALLBACK_TSFN.get() {
+            let data = format!("loadUrl|{}|{}", self.webtag, url);
+            let status = tsfn.call(data, ThreadsafeFunctionCallMode::Blocking);
+            if status == Status::Ok {
+                log::info!(
+                    "Successfully called ArkTS loadUrl for {}: {}",
+                    self.webtag,
+                    url
+                );
                 Ok(())
             } else {
-                log::error!(
-                    "Failed to load URL {} in WebView {}, error: {}",
-                    url,
-                    self.webtag,
-                    result
-                );
+                log::error!("Failed to call ArkTS loadUrl: {:?}", status);
                 Err(MiniAppError::WebView(format!(
-                    "Failed to load URL: error code {}",
-                    result
+                    "Failed to call ArkTS loadUrl: {:?}",
+                    status
                 )))
             }
+        } else {
+            log::error!("No callback available for loadUrl");
+            Err(MiniAppError::WebView("No callback available".to_string()))
         }
     }
 
@@ -130,8 +102,35 @@ impl WebViewController for WebViewInner {
         }
     }
 
-    fn set_devtools(&self, _enabled: bool) -> Result<(), MiniAppError> {
-        Ok(())
+    fn set_devtools(&self, enabled: bool) -> Result<(), MiniAppError> {
+        log::info!(
+            "WebViewController::set_devtools called for {}: {}",
+            self.webtag,
+            enabled
+        );
+
+        // Call ArkTS setDevtools implementation
+        if let Some(tsfn) = CALLBACK_TSFN.get() {
+            let data = format!("setDevtools|{}|{}", self.webtag, enabled);
+            let status = tsfn.call(data, ThreadsafeFunctionCallMode::Blocking);
+            if status == Status::Ok {
+                log::info!(
+                    "Successfully called ArkTS setDevtools for {}: {}",
+                    self.webtag,
+                    enabled
+                );
+                Ok(())
+            } else {
+                log::error!("Failed to call ArkTS setDevtools: {:?}", status);
+                Err(MiniAppError::WebView(format!(
+                    "Failed to call ArkTS setDevtools: {:?}",
+                    status
+                )))
+            }
+        } else {
+            log::error!("No callback available for setDevtools");
+            Err(MiniAppError::WebView("No callback available".to_string()))
+        }
     }
 
     fn clear_browsing_data(&self) -> Result<(), MiniAppError> {
@@ -208,17 +207,16 @@ fn register_webview_callbacks(webtag: &str) -> Result<(), MiniAppError> {
 }
 
 /// Create WebView controller in ArkTS
-pub fn create_webview_controller(app_id: &str, path: &str) -> NapiResult<()> {
+pub fn create_webview_controller(webtag: &str) -> NapiResult<()> {
     if let Some(tsfn) = CALLBACK_TSFN.get() {
         // Node-API ThreadSafe Function limitation: can only pass single string
-        // Format: "function_name:arg1:arg2:..."
-        let data = format!("createWebViewController:{}:{}", app_id, path);
+        // Format: "function_name|arg1|..." (using | to avoid conflicts with URLs)
+        let data = format!("createWebViewController|{}", webtag);
         let status = tsfn.call(data, ThreadsafeFunctionCallMode::Blocking);
         if status == Status::Ok {
             log::info!(
-                "Successfully created WebView controller for {}:{}",
-                app_id,
-                path
+                "Successfully created WebView controller for {}",
+                webtag
             );
             Ok(())
         } else {
@@ -241,12 +239,12 @@ pub fn create_webview_controller(app_id: &str, path: &str) -> NapiResult<()> {
 pub fn destroy_webview_controller(appid: &str, path: &str) -> NapiResult<()> {
     if let Some(tsfn) = CALLBACK_TSFN.get() {
         // Node-API ThreadSafe Function limitation: can only pass single string
-        // Format: "function_name:arg1:arg2:..."
-        let data = format!("destroyWebViewController:{}:{}", appid, path);
+        // Format: "function_name|arg1|arg2|..." (using | to avoid conflicts with URLs)
+        let data = format!("destroyWebViewController|{}|{}", appid, path);
         let status = tsfn.call(data, ThreadsafeFunctionCallMode::Blocking);
         if status == Status::Ok {
             log::info!(
-                "Successfully destroyed WebView controller: {}:{}",
+                "Successfully destroyed WebView controller: {}-{}",
                 appid,
                 path
             );
@@ -278,8 +276,8 @@ extern "C" fn on_page_begin_callback(web_tag: *const c_char, _user_data: *mut c_
     if let Ok(webtag) = unsafe { CStr::from_ptr(web_tag).to_str() } {
         log::info!("Page begin loading: {}", webtag);
 
-        // Extract app_id and path from webtag (format: "appid:path")
-        if let Some((appid, path)) = webtag.split_once(':') {
+        // Extract app_id and path from webtag (format: "appid-path")
+        if let Some((appid, path)) = webtag.split_once('-') {
             let miniapp = miniapp::get(appid.to_string());
             miniapp.on_page_started(path.to_string());
         }
@@ -290,8 +288,8 @@ extern "C" fn on_page_end_callback(web_tag: *const c_char, _user_data: *mut c_vo
     if let Ok(webtag) = unsafe { CStr::from_ptr(web_tag).to_str() } {
         log::info!("Page end loading: {}", webtag);
 
-        // Extract app_id and path from webtag (format: "appid:path")
-        if let Some((appid, path)) = webtag.split_once(':') {
+        // Extract app_id and path from webtag (format: "appid-path")
+        if let Some((appid, path)) = webtag.split_once('-') {
             let miniapp = miniapp::get(appid.to_string());
             miniapp.on_page_finished(path.to_string());
         }

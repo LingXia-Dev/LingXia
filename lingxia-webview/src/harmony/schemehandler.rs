@@ -285,8 +285,8 @@ pub fn register_custom_schemes() -> NapiResult<()> {
 pub fn set_webview_scheme_handler(webtag: &str) -> NapiResult<()> {
     log::info!("Setting scheme handler for WebView: {}", webtag);
 
-    // Extract app_id from webtag (format: "appid:path")
-    let app_id = webtag.split(':').next().unwrap().to_string();
+    // Extract app_id from webtag (format: "appid-path")
+    let app_id = webtag.split('-').next().unwrap().to_string();
     log::info!("Extracted app_id from webtag {}: {}", webtag, app_id);
 
     unsafe {
