@@ -1,3 +1,4 @@
+use crate::harmony::webview::WebTag;
 use miniapp::{self, AppUiDelegate};
 use napi_ohos::Result as NapiResult;
 use ohos_web_sys::*;
@@ -282,20 +283,17 @@ pub fn register_custom_schemes() -> NapiResult<()> {
 }
 
 /// Set scheme handler for a specific WebView (called in WebViewInner::create)
-pub fn set_webview_scheme_handler(webtag: &str) -> NapiResult<()> {
+pub fn set_webview_scheme_handler(webtag: &WebTag) -> NapiResult<()> {
     log::info!("Setting scheme handler for WebView: {}", webtag);
 
-    // Extract app_id from webtag (format: "appid-path")
-    let app_id = webtag.split('-').next().unwrap().to_string();
-    log::info!("Extracted app_id from webtag {}: {}", webtag, app_id);
+    // Extract app_id from webtag
+    let app_id = webtag.extract_appid().unwrap();
 
     unsafe {
         // Create scheme handler for lx://
         let mut lx_scheme_handler: *mut ArkWeb_SchemeHandler = std::ptr::null_mut();
         OH_ArkWeb_CreateSchemeHandler(&mut lx_scheme_handler);
 
-        // Set app_id as user_data (like iOS ivars)
-        // We need to allocate persistent memory for the app_id string
         let app_id_cstr = CString::new(app_id.clone()).unwrap();
         let app_id_ptr = app_id_cstr.into_raw(); // Transfer ownership to raw pointer
         OH_ArkWebSchemeHandler_SetUserData(lx_scheme_handler, app_id_ptr as *mut std::ffi::c_void);
@@ -306,7 +304,7 @@ pub fn set_webview_scheme_handler(webtag: &str) -> NapiResult<()> {
 
         // Register lx:// handler for this WebView specifically
         let lx_scheme_cstr = CString::new("lx").unwrap();
-        let webtag_cstr = CString::new(webtag).unwrap();
+        let webtag_cstr = CString::new(webtag.as_str()).unwrap();
         let lx_success = OH_ArkWeb_SetSchemeHandler(
             lx_scheme_cstr.as_ptr(),
             webtag_cstr.as_ptr(),

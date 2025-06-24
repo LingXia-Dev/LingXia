@@ -227,3 +227,17 @@ pub fn on_page_show(appid: String, path: String) -> i32 {
     miniapp.on_page_show(path);
     0
 }
+
+#[napi]
+pub fn on_scroll_changed(
+    appid: String,
+    path: String,
+    scroll_x: i32,
+    scroll_y: i32,
+    max_scroll_x: i32,
+    max_scroll_y: i32,
+) -> i32 {
+    let miniapp = miniapp::get(appid);
+    miniapp.on_page_scroll_changed(path, scroll_x, scroll_y, max_scroll_x, max_scroll_y);
+    0
+}

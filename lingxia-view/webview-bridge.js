@@ -11,13 +11,17 @@
   const dataSubscribers = new Set();
   const subscriberInitStatus = new WeakMap();
   let androidMessagePort = null;
+  let harmonyMessagePort = null;
 
   const isIOS = !!(
     window.webkit &&
     window.webkit.messageHandlers &&
     window.webkit.messageHandlers[NATIVE_HANDLER_NAME]
   );
-  const isAndroid = !isIOS;
+
+  // Force HarmonyOS for testing - assume we're always on HarmonyOS when not iOS
+  const isHarmonyOS = !isIOS;
+  const isAndroid = false;
 
   function log(...args) {
     console.log(LOG_PREFIX, ...args);
@@ -146,6 +150,9 @@
     try {
       if (isIOS) {
         window.webkit.messageHandlers[NATIVE_HANDLER_NAME].postMessage(message);
+      } else if (isHarmonyOS && harmonyMessagePort) {
+        const messageString = JSON.stringify(message);
+        harmonyMessagePort.postMessage(messageString);
       } else if (isAndroid && androidMessagePort) {
         const messageString = JSON.stringify(message);
         androidMessagePort.postMessage(messageString);
@@ -356,21 +363,28 @@
       return _deepCopy(pageData);
     },
 
-    // Connect to Android message port
-    _connectAndroidPort: function (port) {
-      if (!isAndroid) return;
+    // Connect to WebMessage port (used by both Android and HarmonyOS)
+    _connectWebMessagePort: function (port) {
+      if (!isAndroid && !isHarmonyOS) return;
 
-      // Always use the new port. If there was an old one, it's implicitly replaced.
-      // The native side is responsible for managing the lifecycle of its end of the previous port.
-      androidMessagePort = port;
+      const platform = isHarmonyOS ? "HarmonyOS" : "Android";
+      log(`Connecting ${platform} WebMessage port...`);
 
-      androidMessagePort.onmessage = (event) => {
+      // Store the port
+      if (isHarmonyOS) {
+        harmonyMessagePort = port;
+      } else {
+        androidMessagePort = port;
+      }
+
+      // Set up message handler
+      port.onmessage = (event) => {
         let messageData = event.data;
         if (typeof messageData === "string") {
           try {
             messageData = JSON.parse(messageData);
           } catch (e) {
-            error("Invalid JSON from Android Port:", e);
+            error(`Invalid JSON from ${platform} Port:`, e);
             return;
           }
         }
@@ -379,32 +393,38 @@
 
       try {
         this.event("LXPortRdy");
-        log("Android port connected and ready");
+        log(`${platform} port connected and ready`);
       } catch (e) {
-        error("Failed to send LXPortRdy:", e);
+        error(`Failed to send LXPortRdy to ${platform}:`, e);
       }
     },
 
-    // Internal: Receive iOS message
-    _receiveIOsMessage: function (messageString) {
-      if (!isIOS) return;
+    // Internal: Receive message from evaluate_javascript (iOS and HarmonyOS)
+    _receiveEvaluateMessage: function (messageString) {
+      if (!isIOS && !isHarmonyOS) return;
       try {
         if (!messageString) return;
         const message = JSON.parse(messageString);
         _handleIncomingMessage(message);
       } catch (e) {
-        error("Invalid JSON from iOS:", e);
+        error("Invalid JSON from evaluate_javascript:", e);
       }
     },
   };
 
   // Platform Initialization
-  if (isIOS) {
-    window[GLOBAL_RECEIVER_NAME] = LingXiaBridge._receiveIOsMessage;
-    LingXiaBridge.event("LXPortRdy");
+  if (isIOS || isHarmonyOS) {
+    window[GLOBAL_RECEIVER_NAME] = LingXiaBridge._receiveEvaluateMessage;
+
+    if (isIOS) {
+      // iOS sends LXPortRdy immediately since it doesn't use ports
+      LingXiaBridge.event("LXPortRdy");
+    }
+    // HarmonyOS will send LXPortRdy when WebMessage port connects
   }
 
-  if (isAndroid) {
+  // HarmonyOS and Android use the same WebMessage mechanism
+  if (isHarmonyOS || isAndroid) {
     window.addEventListener(
       "message",
       (event) => {
@@ -413,7 +433,7 @@
           event.ports &&
           event.ports.length > 0
         ) {
-          LingXiaBridge._connectAndroidPort(event.ports[0]);
+          LingXiaBridge._connectWebMessagePort(event.ports[0]);
         }
       },
       false,
@@ -472,9 +492,11 @@
     if (isAndroid && window.LingxiaAndroidInterface) {
       window.LingxiaAndroidInterface.setMessageListener(_handleIncomingMessage);
       log("Android port connected and ready");
+      // Send ready event for Android interface
+      LingXiaBridge.event("LXPortRdy", null);
     }
 
-    // Send ready event for both platforms
-    LingXiaBridge.event("LXPortRdy", null);
+    // Note: iOS already sent LXPortRdy during platform initialization
+    // HarmonyOS and Android (WebMessage) will send LXPortRdy when ports connect
   }
 })();
