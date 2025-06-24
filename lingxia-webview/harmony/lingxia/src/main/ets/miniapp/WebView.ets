@@ -91,12 +91,10 @@ export class WebViewManager {
   /**
    * Destroy WebView by appId and path
    * Remove from map and release resources
-   * @param appId - MiniApp ID
-   * @param path - Page path
+   * @param webtag - WebView tag
    * @returns true if destroyed successfully, false if not found
    */
-  static destroyWebview(appId: string, path: string): boolean {
-    const webtag = toWebTag(appId, path);
+  static destroyWebview(webtag: string): boolean {
     hilog.info(DOMAIN, TAG, `Destroying WebView: ${webtag}`);
 
     const controller = WebViewManager.controllers.get(webtag);
@@ -369,12 +367,11 @@ export function findWebview(appId: string, path: string): webview.WebviewControl
 
 /**
  * Destroy WebView controller
- * @param appId - MiniApp ID
- * @param path - Page path
+ * @param webtag - WebView tag
  * @returns true if destroyed successfully
  */
-export function destroyWebViewController(appId: string, path: string): boolean {
-  return WebViewManager.destroyWebview(appId, path);
+export function destroyWebViewController(webtag: string): boolean {
+  return WebViewManager.destroyWebview(webtag);
 }
 
 /**

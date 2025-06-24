@@ -57,8 +57,8 @@ class NativeBridge {
       return createWebViewController(webtag);
     });
 
-    this.register('destroyWebViewController', (appId: string, path: string) => {
-      return destroyWebViewController(appId, path);
+    this.register('destroyWebViewController', (webtag: string) => {
+      return destroyWebViewController(webtag);
     });
 
     // WebView URL loading

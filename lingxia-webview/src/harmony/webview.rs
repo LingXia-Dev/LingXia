@@ -68,7 +68,7 @@ impl WebViewInner {
         let webtag = WebTag::new(appid, path);
 
         // Call ArkTS to create WebView controller first
-        match create_webview_controller(webtag.as_str()) {
+        match call_arkts("createWebViewController", &[webtag.as_str()]) {
             Ok(_) => {
                 // Set scheme handler for this WebView
                 if let Err(e) = set_webview_scheme_handler(&webtag) {
@@ -178,36 +178,21 @@ impl WebViewInner {
     }
 }
 
+/// Helper function for TSFN calls
+fn call_arkts(name: &str, args: &[&str]) -> Result<(), MiniAppError> {
+    let tsfn = CALLBACK_TSFN
+        .get()
+        .ok_or_else(|| MiniAppError::WebView("No callback".to_string()))?;
+    let data = format!("{}|{}", name, args.join("|"));
+    match tsfn.call(data, ThreadsafeFunctionCallMode::Blocking) {
+        Status::Ok => Ok(()),
+        _ => Err(MiniAppError::WebView("TSFN call failed".to_string())),
+    }
+}
+
 impl WebViewController for WebViewInner {
     fn load_url(&self, url: String) -> Result<(), MiniAppError> {
-        log::info!(
-            "WebViewController::load_url called for {}: {}",
-            self.webtag,
-            url
-        );
-
-        // Call ArkTS loadUrl implementation
-        if let Some(tsfn) = CALLBACK_TSFN.get() {
-            let data = format!("loadUrl|{}|{}", self.webtag, url);
-            let status = tsfn.call(data, ThreadsafeFunctionCallMode::Blocking);
-            if status == Status::Ok {
-                log::info!(
-                    "Successfully called ArkTS loadUrl for {}: {}",
-                    self.webtag,
-                    url
-                );
-                Ok(())
-            } else {
-                log::error!("Failed to call ArkTS loadUrl: {:?}", status);
-                Err(MiniAppError::WebView(format!(
-                    "Failed to call ArkTS loadUrl: {:?}",
-                    status
-                )))
-            }
-        } else {
-            log::error!("No callback available for loadUrl");
-            Err(MiniAppError::WebView("No callback available".to_string()))
-        }
+        call_arkts("loadUrl", &[self.webtag.as_str(), &url])
     }
 
     fn evaluate_javascript(&self, js: String) -> Result<(), MiniAppError> {
@@ -249,50 +234,34 @@ impl WebViewController for WebViewInner {
     }
 
     fn set_devtools(&self, enabled: bool) -> Result<(), MiniAppError> {
-        log::info!(
-            "WebViewController::set_devtools called for {}: {}",
-            self.webtag,
-            enabled
-        );
-
-        // Call ArkTS setDevtools implementation
-        if let Some(tsfn) = CALLBACK_TSFN.get() {
-            let data = format!("setDevtools|{}|{}", self.webtag, enabled);
-            let status = tsfn.call(data, ThreadsafeFunctionCallMode::Blocking);
-            if status == Status::Ok {
-                log::info!(
-                    "Successfully called ArkTS setDevtools for {}: {}",
-                    self.webtag,
-                    enabled
-                );
-                Ok(())
-            } else {
-                log::error!("Failed to call ArkTS setDevtools: {:?}", status);
-                Err(MiniAppError::WebView(format!(
-                    "Failed to call ArkTS setDevtools: {:?}",
-                    status
-                )))
-            }
-        } else {
-            log::error!("No callback available for setDevtools");
-            Err(MiniAppError::WebView("No callback available".to_string()))
-        }
+        call_arkts("setDevtools", &[self.webtag.as_str(), &enabled.to_string()])
     }
 
     fn clear_browsing_data(&self) -> Result<(), MiniAppError> {
-        Ok(())
+        call_arkts("clearBrowsingData", &[self.webtag.as_str()])
     }
 
-    fn set_user_agent(&self, _ua: String) -> Result<(), MiniAppError> {
-        Ok(())
+    fn set_user_agent(&self, ua: String) -> Result<(), MiniAppError> {
+        call_arkts("setUserAgent", &[self.webtag.as_str(), &ua])
     }
 
     fn set_scroll_listener_enabled(
         &self,
-        _enabled: bool,
+        enabled: bool,
         _throttle_ms: Option<u64>,
     ) -> Result<(), MiniAppError> {
-        Ok(())
+        call_arkts(
+            "setScrollListenerEnabled",
+            &[self.webtag.as_str(), &enabled.to_string()],
+        )
+    }
+}
+
+impl Drop for WebViewInner {
+    fn drop(&mut self) {
+        if let Err(e) = call_arkts("destroyWebViewController", &[self.webtag.as_str()]) {
+            log::error!("Failed to destroy WebView controller: {:?}", e);
+        }
     }
 }
 
@@ -355,62 +324,6 @@ fn register_webview_callbacks(
             native_port: None,
             console_port: None,
         }))
-    }
-}
-
-/// Create WebView controller in ArkTS
-pub fn create_webview_controller(webtag: &str) -> NapiResult<()> {
-    if let Some(tsfn) = CALLBACK_TSFN.get() {
-        // Node-API ThreadSafe Function limitation: can only pass single string
-        // Format: "function_name|arg1|..." (using | to avoid conflicts with URLs)
-        let data = format!("createWebViewController|{}", webtag);
-        let status = tsfn.call(data, ThreadsafeFunctionCallMode::Blocking);
-        if status == Status::Ok {
-            log::info!("Successfully created WebView controller for {}", webtag);
-            Ok(())
-        } else {
-            log::error!("Failed to create WebView controller: {:?}", status);
-            Err(napi_ohos::Error::new(
-                Status::GenericFailure,
-                format!("Failed to create WebView controller: {:?}", status),
-            ))
-        }
-    } else {
-        log::error!("No callback available");
-        Err(napi_ohos::Error::new(
-            Status::GenericFailure,
-            "No callback available".to_string(),
-        ))
-    }
-}
-
-/// Destroy WebView controller in ArkTS
-pub fn destroy_webview_controller(appid: &str, path: &str) -> NapiResult<()> {
-    if let Some(tsfn) = CALLBACK_TSFN.get() {
-        // Node-API ThreadSafe Function limitation: can only pass single string
-        // Format: "function_name|arg1|arg2|..." (using | to avoid conflicts with URLs)
-        let data = format!("destroyWebViewController|{}|{}", appid, path);
-        let status = tsfn.call(data, ThreadsafeFunctionCallMode::Blocking);
-        if status == Status::Ok {
-            log::info!(
-                "Successfully destroyed WebView controller: {}-{}",
-                appid,
-                path
-            );
-            Ok(())
-        } else {
-            log::error!("Failed to destroy WebView controller: {:?}", status);
-            Err(napi_ohos::Error::new(
-                Status::GenericFailure,
-                format!("Failed to destroy WebView controller: {:?}", status),
-            ))
-        }
-    } else {
-        log::error!("No callback available");
-        Err(napi_ohos::Error::new(
-            Status::GenericFailure,
-            "No callback available".to_string(),
-        ))
     }
 }
 
