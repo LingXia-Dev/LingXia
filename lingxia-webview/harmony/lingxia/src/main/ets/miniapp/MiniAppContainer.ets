@@ -54,6 +54,8 @@ export struct MiniAppContainer {
           onPageShow(appId, actualPath);
         }
       }
+    } else {
+      hilog.info(DOMAIN, TAG, `onPageShow already triggered for: ${webTag}, skipping`);
     }
   }
 
@@ -88,6 +90,9 @@ export struct MiniAppContainer {
       // Ensure currentWebTag is set for initial page
       this.currentWebTag = initialWebTag;
       hilog.info(DOMAIN, TAG, `Set initial currentWebTag to: ${initialWebTag}`);
+
+      // Don't mark as triggered yet - let onAppear handle the first trigger
+      hilog.info(DOMAIN, TAG, `Initial page setup completed, will trigger onPageShow when WebView appears: ${initialWebTag}`);
     }
   }
 

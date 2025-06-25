@@ -125,8 +125,16 @@ export class MiniApp {
     const homeAppPath = instance.getHomeMiniAppInitialRoute();
 
     if (homeAppId && homeAppPath) {
+      // Home MiniApp has special handling - it's displayed in the base layer, not in stack
+      hilog.info(DOMAIN, TAG, `Opening home MiniApp directly: ${homeAppId}:${homeAppPath}`);
 
-      MiniApp.openMiniApp(homeAppId, homeAppPath);
+      try {
+        // Just call the native function for home MiniApp
+        const result: number = onMiniappOpened(homeAppId, homeAppPath);
+        hilog.info(DOMAIN, TAG, `onMiniappOpened result for home: ${result}`);
+      } catch (error) {
+        hilog.error(DOMAIN, TAG, `Failed to open home MiniApp: ${error}`);
+      }
     } else {
       hilog.error(DOMAIN, TAG, 'Home MiniApp info not available for openHomeMiniApp');
     }
