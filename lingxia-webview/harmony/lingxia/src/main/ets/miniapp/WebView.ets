@@ -8,7 +8,7 @@ const TAG = 'LingXia.WebView';
 /**
  * WebView information for management
  */
-interface WebViewInfo {
+export interface WebViewInfo {
   webtag: string;
   controller: webview.WebviewController;
   visible: boolean;
@@ -28,6 +28,14 @@ export class WebViewManager {
 
   // Callback for UI component creation/destruction (if needed)
   private static uiCallback: ((action: string, info: WebViewInfo) => void) | null = null;
+
+  /**
+   * Set UI callback for WebView component management
+   * @param callback - Callback function to handle WebView UI events
+   */
+  static setUiCallback(callback: (action: string, info: WebViewInfo) => void) {
+    WebViewManager.uiCallback = callback;
+  }
 
   /**
    * Create WebView by webtag
@@ -344,6 +352,14 @@ export class WebViewManager {
  */
 export function toWebTag(appId: string, path: string): string {
   return `${appId}-${path}`;
+}
+
+/**
+ * Set UI callback for WebView component management
+ * @param callback - Callback function to handle WebView UI events
+ */
+export function setWebViewUiCallback(callback: (action: string, info: WebViewInfo) => void) {
+  WebViewManager.setUiCallback(callback);
 }
 
 /**

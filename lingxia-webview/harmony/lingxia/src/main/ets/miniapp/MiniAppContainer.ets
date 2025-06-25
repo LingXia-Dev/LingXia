@@ -3,7 +3,7 @@ import { webview } from '@kit.ArkWeb';
 import { window } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { MiniApp } from './MiniApp';
-import { findWebview, handleScrollChanged, toWebTag } from './WebView';
+import { findWebview, handleScrollChanged, toWebTag, setWebViewUiCallback, WebViewInfo } from './WebView';
 import { NavigationBar, type NavigationBarConfig } from './NavigationBar';
 import { TabBar, type TabBarConfig, type TabBarItem } from './TabBar';
 import { getTabBarConfig, getPageConfig, onPageShow } from 'liblingxia.so';
@@ -22,7 +22,9 @@ export struct MiniAppContainer {
   @State pageConfig: NavigationBarConfig | null = null
   @State tabBarConfig: TabBarConfig | null = null
   @State selectedTabIndex: number = 0
-  @State currentWebViewController: webview.WebviewController | null = null
+  @State webViewComponents: Map<string, webview.WebviewController> = new Map() // Store Web components for each WebView
+  @State currentWebTag: string = '' // Current active WebView tag
+  @State webViewKeys: string[] = [] // Array of webView keys for ForEach
 
   // Watch for external path changes from MiniApp.switchPage API
   @Watch('onExternalPathChange') @Prop externalPath: string = ''
@@ -35,6 +37,11 @@ export struct MiniAppContainer {
     this.path = this.initialPath;
     hilog.info(DOMAIN, TAG, `Container creating for ${this.appId}:${this.path}, isHome=${this.isHomeMiniApp()}`);
 
+    // Set up WebView UI callback to handle component creation
+    setWebViewUiCallback((action: string, info: WebViewInfo) => {
+      this.handleWebViewUiEvent(action, info);
+    });
+
     const pageConfigJson: string | null = getPageConfig(this.appId, this.path);
     this.pageConfig = this.parsePageConfig(pageConfigJson);
 
@@ -43,7 +50,14 @@ export struct MiniAppContainer {
     this.setInitialSelectedTab();
 
     // Only find WebView for the initial page when actually needed
-    this.currentWebViewController = findWebview(this.appId, this.path);
+    const initialWebTag = toWebTag(this.appId, this.path);
+    const initialController = findWebview(this.appId, this.path);
+    if (initialController) {
+      this.storeWebViewComponent(initialWebTag, initialController);
+      // Ensure currentWebTag is set for initial page
+      this.currentWebTag = initialWebTag;
+      hilog.info(DOMAIN, TAG, `Set initial currentWebTag to: ${initialWebTag}`);
+    }
   }
 
   /**
@@ -53,6 +67,51 @@ export struct MiniAppContainer {
     if (this.externalPath && this.externalPath !== this.path) {
       hilog.info(DOMAIN, TAG, `External path change detected: ${this.externalPath}, switching from ${this.path}`);
       this.switchToPageInternal(this.externalPath);
+    }
+  }
+
+  /**
+   * Handle WebView UI events from WebViewManager
+   */
+  handleWebViewUiEvent(action: string, info: WebViewInfo) {
+    hilog.info(DOMAIN, TAG, `WebView UI event: ${action} for ${info.webtag}`);
+
+    switch (action) {
+      case 'create':
+        this.webViewComponents.set(info.webtag, info.controller);
+        this.webViewKeys = Array.from(this.webViewComponents.keys());
+        hilog.info(DOMAIN, TAG, `Stored WebView component: ${info.webtag}, total components: ${this.webViewComponents.size}`);
+        break;
+      case 'destroy':
+        this.webViewComponents.delete(info.webtag);
+        this.webViewKeys = Array.from(this.webViewComponents.keys());
+
+        // If the destroyed WebView was currently displayed, switch to another one
+        if (this.currentWebTag === info.webtag) {
+          if (this.webViewKeys.length > 0) {
+            // Switch to the first available WebView
+            this.currentWebTag = this.webViewKeys[0];
+            hilog.info(DOMAIN, TAG, `Destroyed current WebView ${info.webtag}, switched to: ${this.currentWebTag}`);
+          } else {
+            // No WebViews left
+            this.currentWebTag = '';
+            hilog.info(DOMAIN, TAG, `Destroyed last WebView: ${info.webtag}`);
+          }
+        }
+        break;
+    }
+  }
+
+  storeWebViewComponent(webTag: string, controller: webview.WebviewController) {
+    hilog.info(DOMAIN, TAG, `Storing Web component for webTag: ${webTag}`);
+    this.webViewComponents.set(webTag, controller);
+    this.webViewKeys = Array.from(this.webViewComponents.keys());
+
+    // If this is the current tab, set it as current and trigger onPageShow
+    if (webTag === toWebTag(this.appId, this.path)) {
+      this.currentWebTag = webTag;
+      hilog.info(DOMAIN, TAG, `Set as current WebView: ${webTag}, triggering onPageShow`);
+      onPageShow(this.appId, this.path);
     }
   }
 
@@ -368,34 +427,15 @@ export struct MiniAppContainer {
   }
 
   /**
-   * Build WebView component with common configuration
-   */
-  @Builder
-  buildWebView(): void {
-    Web({
-      src: '',
-      controller: this.currentWebViewController
-    })
-      .width('100%')
-      .height('100%')
-      .onAppear(() => {
-        hilog.info(DOMAIN, TAG, `WebView appeared for path: ${this.path}`);
-        onPageShow(this.appId, this.path);
-      })
-      .onScroll((event) => {
-        // Handle scroll event when scroll listener is enabled
-        const webtag = toWebTag(this.appId, this.path);
-        handleScrollChanged(webtag, event.xOffset, event.yOffset);
-      })
-  }
-
-  /**
    * Build WebView area
    */
   @Builder
   buildWebViewArea(): void {
     Stack() {
-      this.buildWebView()
+      // Render all WebView components so they can be associated with controllers
+      ForEach(this.webViewKeys, (webTag: string) => {
+        this.buildWebViewComponent(webTag, this.webViewComponents.get(webTag)!)
+      })
     }
     .width('100%')
     .height('100%')
@@ -453,8 +493,22 @@ export struct MiniAppContainer {
 
     // Find WebView for the new tab (only when switching)
     hilog.info(DOMAIN, TAG, `Finding WebView for tab switch: ${this.appId}:${newPath}`);
-    this.currentWebViewController = findWebview(this.appId, newPath);
-    hilog.info(DOMAIN, TAG, `WebView for tab switch ${newPath}: ${this.currentWebViewController ? 'found' : 'not found'}`);
+    const newWebTag = toWebTag(this.appId, newPath);
+    const newWebViewController = findWebview(this.appId, newPath);
+    if (newWebViewController) {
+      hilog.info(DOMAIN, TAG, `WebView for tab switch ${newPath}: found`);
+      // Store the Web component for this WebView
+      this.webViewComponents.set(newWebTag, newWebViewController);
+      this.webViewKeys = Array.from(this.webViewComponents.keys()); // Update ForEach keys
+      this.currentWebTag = newWebTag;
+      hilog.info(DOMAIN, TAG, `Updated currentWebTag to: ${newWebTag}`);
+
+      // Trigger onPageShow for the new tab
+      hilog.info(DOMAIN, TAG, `Triggering onPageShow for tab switch to: ${newPath}`);
+      onPageShow(this.appId, newPath);
+    } else {
+      hilog.error(DOMAIN, TAG, `WebView for tab switch ${newPath}: not found`);
+    }
 
     // Update page config
     const pageConfigJson: string | null = getPageConfig(this.appId, newPath);
@@ -471,9 +525,7 @@ export struct MiniAppContainer {
       }
     }
 
-    // Trigger onPageShow for the new tab
-    hilog.info(DOMAIN, TAG, `Tab switched to ${index}, triggering onPageShow for path: ${newPath}`);
-    onPageShow(this.appId, newPath);
+    hilog.info(DOMAIN, TAG, `Tab switched to ${index}, onPageShow will be triggered automatically for path: ${newPath}`);
   }
 
   /**
@@ -499,13 +551,15 @@ export struct MiniAppContainer {
     // For non-tabbar pages, directly switch
     hilog.info(DOMAIN, TAG, `Direct page switch for path ${path}`);
     this.path = path;
-    this.currentWebViewController = findWebview(this.appId, path);
-    hilog.info(DOMAIN, TAG, `WebView for page switch ${path}: ${this.currentWebViewController ? 'found' : 'not found'}`);
+    const webTag = toWebTag(this.appId, path);
+    const controller = findWebview(this.appId, path);
+    if (controller) {
+      this.storeWebViewComponent(webTag, controller);
+    }
+    hilog.info(DOMAIN, TAG, `WebView for page switch ${path}: ${controller ? 'found' : 'not found'}`);
 
     const pageConfigJson: string | null = getPageConfig(this.appId, path);
     this.pageConfig = this.parsePageConfig(pageConfigJson);
-
-    onPageShow(this.appId, path);
   }
 
   private handleNavigationBack() {
@@ -573,5 +627,27 @@ export struct MiniAppContainer {
       hilog.error(DOMAIN, TAG, `Failed to parse TabBar config JSON: ${error}`);
       return null;
     }
+  }
+
+  /**
+   * Build individual WebView component for a specific webTag
+   */
+  @Builder
+  buildWebViewComponent(webTag: string, controller: webview.WebviewController): void {
+    Web({
+      src: '',
+      controller: controller
+    })
+      .visibility(webTag === this.currentWebTag ? Visibility.Visible : Visibility.Hidden)
+      .onAppear(() => {
+        hilog.info(DOMAIN, TAG, `WebView component appeared for webTag: ${webTag}, visible: ${webTag === this.currentWebTag}`);
+      })
+      .onScroll((event) => {
+        // Handle scroll event when scroll listener is enabled
+        handleScrollChanged(webTag, event.xOffset, event.yOffset);
+      })
+      .width('100%')
+      .height('100%')
+      .backgroundColor(Color.Transparent)
   }
 }
