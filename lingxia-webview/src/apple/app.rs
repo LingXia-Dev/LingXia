@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use objc2_foundation::NSProcessInfo;
 
 #[cfg(target_os = "ios")]
-use objc2::{extern_class, runtime::NSObject, msg_send, rc::Retained, ClassType};
+use objc2::{ClassType, extern_class, msg_send, rc::Retained, runtime::NSObject};
 
 #[cfg(target_os = "ios")]
 use objc2_foundation::NSString;
@@ -228,13 +228,13 @@ fn get_device_model() -> String {
 }
 
 /// Get system version using objc2 bindings
-/// Returns system version string like "17.0" or "14.0"
+/// Returns system version string like "iOS 17.0" or "macOS 14.0"
 fn get_system_version() -> String {
     #[cfg(target_os = "ios")]
     {
         let device = UIDevice::current();
         let version = device.system_version();
-        version.to_string()
+        format!("iOS {}", version.to_string())
     }
 
     #[cfg(target_os = "macos")]
@@ -246,8 +246,8 @@ fn get_system_version() -> String {
             // Get operating system version
             let version = process_info.operatingSystemVersionString();
 
-            // Convert NSString to Rust String
-            version.to_string()
+            // Convert NSString to Rust String and prefix with macOS
+            format!("macOS {}", version.to_string())
         }
     }
 }
