@@ -284,8 +284,6 @@ pub fn register_custom_schemes() -> NapiResult<()> {
 
 /// Set scheme handler for a specific WebView (called in WebViewInner::create)
 pub fn set_webview_scheme_handler(webtag: &WebTag) -> NapiResult<()> {
-    log::info!("Setting scheme handler for WebView: {}", webtag);
-
     // Extract app_id from webtag
     let app_id = webtag.extract_appid().unwrap();
 
