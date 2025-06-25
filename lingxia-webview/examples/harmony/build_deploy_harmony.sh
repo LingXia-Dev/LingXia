@@ -13,12 +13,19 @@ NC='\033[0m' # No Color
 APP_PACKAGE="app.lingxia.miniapp.example"
 APP_ABILITY="EntryAbility"
 HAP_PATH="entry/build/default/outputs/default/entry-default-signed.hap"
-LOG_TAG="LingXia"
 SCREENSHOT_DEVICE_PATH="/data/local/tmp/lingxia_screenshot.jpeg"
 SCREENSHOT_LOCAL_PATH="./lingxia_screenshot.jpeg"
 
+export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_OHOS_LINKER="$OHOS_NDK_HOME/native/llvm/bin/aarch64-unknown-linux-ohos-clang"
+export CPATH=$OHOS_NDK_HOME/native/sysroot/usr/include/:$OHOS_NDK_HOME/native/sysroot/usr/include/aarch64-linux-ohos
+
 echo -e "${BLUE}🚀 LingXia MiniApp Harmony Build & Deploy Script${NC}"
 echo "=================================================="
+
+# Get the absolute path of the script directory
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+# Navigate to LingXia root (3 levels up from examples/harmony)
+LINGXIA_ROOT="$SCRIPT_DIR/../../.."
 
 # Function to print step headers
 print_step() {
@@ -42,176 +49,203 @@ check_hdc() {
     echo -e "${GREEN}✅ HarmonyOS device connected${NC}"
 }
 
-# Function to build HAR library
-build_har() {
-    print_step "1" "Building HAR Library"
+# Function to build Rust library
+build_rust() {
+    print_step "1" "Building Rust Library"
 
-    cd ../../harmony
-    echo "Building lingxia HAR library..."
+    # Navigate to the LingXia root directory where Cargo.toml is located
+    cd "$LINGXIA_ROOT"
 
-    if hvigorw assembleHar; then
-        echo -e "${GREEN}✅ HAR library built successfully${NC}"
+    # Build Rust library with HarmonyOS target
+    echo "Building Rust library for HarmonyOS..."
+     env CARGO_TARGET_AARCH64_UNKNOWN_LINUX_OHOS_LINKER="$OHOS_NDK_HOME/native/llvm/bin/aarch64-unknown-linux-ohos-clang" \
+         cargo build --release --target=aarch64-unknown-linux-ohos
+
+    # Copy the SO file to the example project
+    SO_SOURCE="$LINGXIA_ROOT/target/aarch64-unknown-linux-ohos/release/liblingxia.so"
+    SO_DEST="$SCRIPT_DIR/entry/libs/arm64-v8a/liblingxia.so"
+
+    mkdir -p "$SCRIPT_DIR/entry/libs/arm64-v8a"
+    cp "$SO_SOURCE" "$SO_DEST"
+
+    echo -e "${GREEN}✅ Rust library copied${NC}"
+    cd "$SCRIPT_DIR"
+}
+
+# Function to build and copy MiniApp assets
+build_miniapp_assets() {
+    print_step "2" "Building MiniApp Assets"
+
+    ASSETS_DIR="$SCRIPT_DIR/entry/src/main/resources/rawfile"
+    mkdir -p "$ASSETS_DIR"
+    rm -rf "$ASSETS_DIR"/*
+
+    echo "Copying lingxia-view files to assets..."
+    cp "$LINGXIA_ROOT/lingxia-view/404.html" "$ASSETS_DIR/"
+    cp "$LINGXIA_ROOT/lingxia-view/webview-bridge.js" "$ASSETS_DIR/"
+
+    echo "Copying host app configuration..."
+    cp "$LINGXIA_ROOT/examples/demo/app.json" "$ASSETS_DIR/"
+
+    echo "Building and copying demo MiniApp..."
+    cd "$LINGXIA_ROOT/examples/demo/homeminiapp"
+    if [ -f "package.json" ] && [ -f "vite.config.js" ]; then
+        echo "Building homeminiapp with Vite..."
+        npm install --silent
+        npm run build
+
+        if [ -d "dist" ]; then
+            echo "Copying built MiniApp to assets..."
+            mkdir -p "$ASSETS_DIR/homeminiapp"
+            cp -R dist/* "$ASSETS_DIR/homeminiapp/"
+        else
+            echo "Warning: dist directory not found, copying source files..."
+            cp -R . "$ASSETS_DIR/homeminiapp/"
+        fi
     else
-        echo -e "${RED}❌ Failed to build HAR library${NC}"
-        exit 1
+        echo "No Vite config found, copying source files..."
+        mkdir -p "$ASSETS_DIR/homeminiapp"
+        cp -R "$LINGXIA_ROOT/examples/demo/homeminiapp/"* "$ASSETS_DIR/homeminiapp/"
     fi
 
-    cd ../examples/harmony
+    echo -e "${GREEN}✅ MiniApp assets copied${NC}"
+    cd "$SCRIPT_DIR"
+}
+
+# Function to build HAR library
+build_har() {
+    print_step "3" "Building HAR Library"
+
+    cd "$LINGXIA_ROOT/lingxia-webview/harmony"
+    echo "Building HAR library..."
+    hvigorw assembleHar
+    echo -e "${GREEN}✅ HAR library built${NC}"
+    cd "$SCRIPT_DIR"
 }
 
 # Function to build HAP application
 build_hap() {
-    print_step "2" "Building HAP Application"
+    print_step "4" "Building HAP Application"
 
-    echo "Building example HAP application..."
-
-    if hvigorw assembleHap; then
-        echo -e "${GREEN}✅ HAP application built successfully${NC}"
-
-        if [ -f "$HAP_PATH" ]; then
-            echo -e "${GREEN}✅ HAP file found: $HAP_PATH${NC}"
-        else
-            echo -e "${RED}❌ HAP file not found at expected path: $HAP_PATH${NC}"
-            exit 1
-        fi
-    else
-        echo -e "${RED}❌ Failed to build HAP application${NC}"
-        exit 1
-    fi
+    echo "Building HAP application..."
+    hvigorw assembleHap
+    echo -e "${GREEN}✅ HAP application built${NC}"
 }
 
 # Function to uninstall existing app
 uninstall_app() {
-    print_step "3" "Uninstalling Existing App"
+    print_step "5" "Uninstalling App"
 
-    echo "Checking if app is already installed..."
-
-    if hdc shell bm dump -n $APP_PACKAGE &> /dev/null; then
-        echo "App is installed, uninstalling..."
-        if hdc uninstall $APP_PACKAGE; then
-            echo -e "${GREEN}✅ App uninstalled successfully${NC}"
-        else
-            echo -e "${YELLOW}⚠️  Failed to uninstall app (may not be installed)${NC}"
-        fi
-    else
-        echo -e "${GREEN}✅ App not previously installed${NC}"
-    fi
+    hdc uninstall $APP_PACKAGE > /dev/null 2>&1 || true
+    echo -e "${GREEN}✅ App uninstalled${NC}"
 }
 
 # Function to install HAP
 install_hap() {
-    print_step "4" "Installing HAP Application"
+    print_step "6" "Installing HAP Application"
 
-    echo "Installing HAP to device..."
-
-    if hdc install "$HAP_PATH"; then
-        echo -e "${GREEN}✅ HAP installed successfully${NC}"
-    else
-        echo -e "${RED}❌ Failed to install HAP${NC}"
-        exit 1
-    fi
+    hdc install "$HAP_PATH" > /dev/null 2>&1
+    echo -e "${GREEN}✅ HAP installed${NC}"
 }
 
 # Function to start app
 start_app() {
-    print_step "5" "Starting Application"
+    print_step "7" "Starting Application"
 
-    echo "Starting LingXia MiniApp example..."
-
-    if hdc shell aa start -a $APP_ABILITY -b $APP_PACKAGE; then
-        echo -e "${GREEN}✅ App started successfully${NC}"
-        echo "Waiting 3 seconds for app to initialize..."
-        sleep 3
-    else
-        echo -e "${RED}❌ Failed to start app${NC}"
-        exit 1
-    fi
-}
-
-# Function to capture screenshot
-capture_screenshot() {
-    print_step "6" "Capturing Screenshot"
-
-    echo "Taking screenshot..."
-
-    if hdc shell snapshot_display -f $SCREENSHOT_DEVICE_PATH; then
-        echo -e "${GREEN}✅ Screenshot captured on device${NC}"
-
-        echo "Downloading screenshot to local..."
-        if hdc file recv $SCREENSHOT_DEVICE_PATH $SCREENSHOT_LOCAL_PATH; then
-            echo -e "${GREEN}✅ Screenshot saved to: $SCREENSHOT_LOCAL_PATH${NC}"
-
-            # Clean up device screenshot
-            hdc shell rm $SCREENSHOT_DEVICE_PATH
-        else
-            echo -e "${RED}❌ Failed to download screenshot${NC}"
-        fi
-    else
-        echo -e "${RED}❌ Failed to capture screenshot${NC}"
-    fi
+    hdc shell aa start -a $APP_ABILITY -b $APP_PACKAGE > /dev/null 2>&1
+    echo -e "${GREEN}✅ Application started${NC}"
+    sleep 2
 }
 
 # Function to capture logs
 capture_logs() {
-    print_step "7" "Capturing Application Logs"
+    print_step "8" "Capturing Application Logs"
 
-    echo "Capturing logs for 10 seconds..."
+    echo "Clearing existing logs..."
+    hdc hilog -r
+
+    echo "Capturing logs (press Ctrl+C to stop)..."
     echo -e "${BLUE}📝 Log output:${NC}"
     echo "----------------------------------------"
 
-    # Clear existing logs first
-    hdc shell hilog -r
-
-    # Show logs directly in terminal (like Android build script)
-    echo "Showing logs (will auto-stop after 40 seconds)..."
-    timeout 40s hdc hilog | grep -E "(LingXia|MainActivity|MiniApp|WebView)" &
+    # Show logs and filter for LingXia
+    timeout 30s hdc hilog | grep -E "(LingXia|MiniApp|WebView)"
 }
 
 # Main execution
 main() {
     echo -e "${BLUE}Starting build and deploy process...${NC}"
 
-    # check_hdc
-    # build_har
+    check_hdc
+    build_rust
+    build_miniapp_assets
+    build_har
     build_hap
-    # uninstall_app
+    uninstall_app
     install_hap
-    capture_logs
     start_app
-    # capture_screenshot
+    capture_logs
 
     echo -e "\n${GREEN}🎉 Build and deploy completed successfully!${NC}"
     echo -e "${GREEN}📱 LingXia MiniApp should now be running on your device${NC}"
 }
 
-# Handle script arguments
-case "${1:-}" in
-    "build-only")
-        echo -e "${BLUE}Building only (no deploy)...${NC}"
-        check_hdc
-        build_har
-        build_hap
-        echo -e "${GREEN}✅ Build completed${NC}"
-        ;;
-    "deploy-only")
-        echo -e "${BLUE}Deploying only (assuming already built)...${NC}"
-        check_hdc
-        uninstall_app
-        install_hap
-        start_app
-        capture_logs
-        ;;
-    "logs-only")
-        echo -e "${BLUE}Capturing logs only...${NC}"
-        check_hdc
-        capture_logs
-        ;;
-    "screenshot-only")
-        echo -e "${BLUE}Taking screenshot only...${NC}"
-        check_hdc
-        capture_screenshot
-        ;;
-    *)
-        main
-        ;;
-esac
+# Parse arguments
+SKIP_RUST=false
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --skip-rust|-s)
+            SKIP_RUST=true
+            shift
+            ;;
+        *)
+            echo -e "${RED}Unknown option: $1${NC}"
+            echo -e "${YELLOW}Usage: $0 [--skip-rust|-s]${NC}"
+            exit 1
+            ;;
+    esac
+done
+
+# Main build and deploy flow
+if [ "$SKIP_RUST" = true ]; then
+    echo -e "${BLUE}Starting quick build and deploy (skipping Rust)...${NC}"
+else
+    echo -e "${BLUE}Starting full build and deploy (including Rust)...${NC}"
+fi
+
+check_hdc
+
+# Build phase
+if [ "$SKIP_RUST" = false ]; then
+    build_rust
+else
+    echo -e "${YELLOW}⏭️  Skipping Rust compilation${NC}"
+fi
+
+build_miniapp_assets
+build_hap
+
+# Deploy phase
+uninstall_app
+install_hap
+
+# Start log capture BEFORE launching the app to catch startup logs
+echo -e "${BLUE}📝 Starting log capture before app launch...${NC}"
+echo "Clearing existing logs..."
+timeout 2s hdc shell hilog -r >/dev/null 2>&1 || true
+
+echo "Starting log capture in background..."
+timeout 30s hdc hilog | grep -E "(LingXia|MiniApp|WebView)" &
+LOG_PID=$!
+
+# Now start the app
+start_app
+
+echo -e "${GREEN}✅ Build and deploy completed${NC}"
+echo -e "${BLUE}📱 App launched, logs are being captured for 30 seconds...${NC}"
+echo -e "${YELLOW}💡 Press Ctrl+C to stop log capture early, or use 'hdc hilog | grep LingXia' for manual monitoring${NC}"
+ hdc fport tcp:9222 localabstract:webview_devtools_remote_$( hdc shell cat /proc/net/unix |grep devtools | grep -o '[0-9]*$')
+# Wait for log capture to complete
+wait $LOG_PID 2>/dev/null
+echo -e "${BLUE}📝 Log capture completed${NC}"
