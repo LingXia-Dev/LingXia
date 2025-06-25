@@ -818,11 +818,6 @@ impl LingXiaMessageHandler {
                 json.get("level").and_then(|v| v.as_str()),
                 json.get("message").and_then(|v| v.as_str()),
             ) {
-                if console_message.starts_with("__SCROLL_EVENT__") {
-                    self.handle_scroll_event(console_message);
-                    return;
-                }
-
                 let log_level = match level {
                     "error" => LogLevel::Error,
                     "warn" => LogLevel::Warn,
@@ -838,37 +833,6 @@ impl LingXiaMessageHandler {
             }
         } else {
             log::error!("Failed to parse console message JSON: {}", message);
-        }
-    }
-
-    /// Handle scroll events from JavaScript
-    fn handle_scroll_event(&self, message: &str) {
-        let ivars = self.ivars();
-
-        // Extract JSON from the scroll event message
-        if let Some(json_start) = message.find('{') {
-            let json_str = &message[json_start..];
-            if let Ok(scroll_data) = serde_json::from_str::<serde_json::Value>(json_str) {
-                if let (Some(scroll_x), Some(scroll_y), Some(max_scroll_x), Some(max_scroll_y)) = (
-                    scroll_data.get("scrollX").and_then(|v| v.as_i64()),
-                    scroll_data.get("scrollY").and_then(|v| v.as_i64()),
-                    scroll_data.get("maxScrollX").and_then(|v| v.as_i64()),
-                    scroll_data.get("maxScrollY").and_then(|v| v.as_i64()),
-                ) {
-                    let miniapp = miniapp::get(ivars.appid.clone());
-                    miniapp.on_page_scroll_changed(
-                        ivars.path.clone(),
-                        scroll_x as i32,
-                        scroll_y as i32,
-                        max_scroll_x as i32,
-                        max_scroll_y as i32,
-                    );
-                } else {
-                    log::error!("Failed to parse scroll event data: {}", json_str);
-                }
-            } else {
-                log::error!("Failed to parse scroll event JSON: {}", json_str);
-            }
         }
     }
 }
