@@ -355,6 +355,30 @@ export function toWebTag(appId: string, path: string): string {
 }
 
 /**
+ * WebTag parts interface
+ */
+export interface WebTagParts {
+  appId: string;
+  path: string;
+}
+
+/**
+ * Extract appId and path from webtag
+ * @param webtag - WebView tag in format "appId-path"
+ * @returns Object with appId and path, or null if invalid format
+ */
+export function extractWebTag(webtag: string): WebTagParts | null {
+  const dashIndex = webtag.indexOf('-');
+  if (dashIndex === -1) {
+    return null;
+  }
+
+  const appId = webtag.substring(0, dashIndex);
+  const path = webtag.substring(dashIndex + 1);
+  return { appId: appId, path: path };
+}
+
+/**
  * Set UI callback for WebView component management
  * @param callback - Callback function to handle WebView UI events
  */

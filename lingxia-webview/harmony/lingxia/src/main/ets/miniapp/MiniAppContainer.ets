@@ -3,7 +3,7 @@ import { webview } from '@kit.ArkWeb';
 import { window } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { MiniApp } from './MiniApp';
-import { findWebview, handleScrollChanged, toWebTag, setWebViewUiCallback, WebViewInfo } from './WebView';
+import { findWebview, handleScrollChanged, toWebTag, extractWebTag, WebTagParts, setWebViewUiCallback, WebViewInfo } from './WebView';
 import { NavigationBar, type NavigationBarConfig } from './NavigationBar';
 import { TabBar, type TabBarConfig, type TabBarItem } from './TabBar';
 import { getTabBarConfig, getPageConfig, onPageShow } from 'liblingxia.so';
@@ -25,6 +25,37 @@ export struct MiniAppContainer {
   @State webViewComponents: Map<string, webview.WebviewController> = new Map() // Store Web components for each WebView
   @State currentWebTag: string = '' // Current active WebView tag
   @State webViewKeys: string[] = [] // Array of webView keys for ForEach
+  private pageShowTriggered: Set<string> = new Set() // Track which pages have triggered onPageShow
+
+  /**
+   * Trigger onPageShow for a WebView if it hasn't been triggered yet
+   */
+  private triggerOnPageShowIfNeeded(webTag: string) {
+    if (!this.pageShowTriggered.has(webTag)) {
+      const extracted = extractWebTag(webTag);
+      if (extracted) {
+        const appId = extracted.appId;
+        const path = extracted.path;
+        const actualPath = path.replace(/-/g, '/');
+
+        // Check if this is the first page (MiniApp runtime might not be ready)
+        const isFirstPage = this.pageShowTriggered.size === 0;
+        this.pageShowTriggered.add(webTag);
+
+        if (isFirstPage) {
+          // Delay first page to ensure MiniApp runtime is ready
+          setTimeout(() => {
+            hilog.info(DOMAIN, TAG, `Triggering onPageShow for first page: ${appId}:${actualPath}`);
+            onPageShow(appId, actualPath);
+          }, 100);
+        } else {
+          // No delay for subsequent pages
+          hilog.info(DOMAIN, TAG, `Triggering onPageShow for: ${appId}:${actualPath}`);
+          onPageShow(appId, actualPath);
+        }
+      }
+    }
+  }
 
   // Watch for external path changes from MiniApp.switchPage API
   @Watch('onExternalPathChange') @Prop externalPath: string = ''
@@ -107,11 +138,10 @@ export struct MiniAppContainer {
     this.webViewComponents.set(webTag, controller);
     this.webViewKeys = Array.from(this.webViewComponents.keys());
 
-    // If this is the current tab, set it as current and trigger onPageShow
+    // If this is the current tab, set it as current (onPageShow will be triggered when WebView appears)
     if (webTag === toWebTag(this.appId, this.path)) {
       this.currentWebTag = webTag;
-      hilog.info(DOMAIN, TAG, `Set as current WebView: ${webTag}, triggering onPageShow`);
-      onPageShow(this.appId, this.path);
+      hilog.info(DOMAIN, TAG, `Set as current WebView: ${webTag}, onPageShow will be triggered when WebView appears`);
     }
   }
 
@@ -501,11 +531,12 @@ export struct MiniAppContainer {
       this.webViewComponents.set(newWebTag, newWebViewController);
       this.webViewKeys = Array.from(this.webViewComponents.keys()); // Update ForEach keys
       this.currentWebTag = newWebTag;
+      // Clear the pageShow trigger state for this WebView so it can trigger again
+      this.pageShowTriggered.delete(newWebTag);
       hilog.info(DOMAIN, TAG, `Updated currentWebTag to: ${newWebTag}`);
 
-      // Trigger onPageShow for the new tab
-      hilog.info(DOMAIN, TAG, `Triggering onPageShow for tab switch to: ${newPath}`);
-      onPageShow(this.appId, newPath);
+      // Trigger onPageShow immediately for tab switches
+      this.triggerOnPageShowIfNeeded(newWebTag);
     } else {
       hilog.error(DOMAIN, TAG, `WebView for tab switch ${newPath}: not found`);
     }
@@ -641,6 +672,11 @@ export struct MiniAppContainer {
       .visibility(webTag === this.currentWebTag ? Visibility.Visible : Visibility.Hidden)
       .onAppear(() => {
         hilog.info(DOMAIN, TAG, `WebView component appeared for webTag: ${webTag}, visible: ${webTag === this.currentWebTag}`);
+
+        // Trigger onPageShow if this is the current WebView
+        if (webTag === this.currentWebTag) {
+          this.triggerOnPageShowIfNeeded(webTag);
+        }
       })
       .onScroll((event) => {
         // Handle scroll event when scroll listener is enabled
