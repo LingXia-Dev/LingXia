@@ -2,22 +2,38 @@
   const NATIVE_HANDLER_NAME = "LingXia";
   const GLOBAL_RECEIVER_NAME = "__LingXiaRecvMessage";
   const CALL_TIMEOUT_MS = 5000;
-  const LOG_PREFIX = "[LingxiaBridge]";
-  const ANDROID_PORT_INIT_CMD = "LingXia-port-init";
+  const LOG_PREFIX = "[LX.Bridge]";
+  const MESSAGE_PORT_TYPE = "messageport";
 
   let messageCounter = 0;
   const pendingCalls = new Map(); // msgId -> { resolve, reject, timerId }
   let pageData = {};
   const dataSubscribers = new Set();
   const subscriberInitStatus = new WeakMap();
-  let androidMessagePort = null;
+  let messagePort = null; // Unified port for MessagePort-based platforms
 
-  const isIOS = !!(
-    window.webkit &&
-    window.webkit.messageHandlers &&
-    window.webkit.messageHandlers[NATIVE_HANDLER_NAME]
-  );
-  const isAndroid = !isIOS;
+  // Detect communication method based on available APIs
+  function detectCommunicationMethod() {
+    if (
+      window.webkit &&
+      window.webkit.messageHandlers &&
+      window.webkit.messageHandlers[NATIVE_HANDLER_NAME]
+    ) {
+      return "webkit";
+    }
+
+    // MessagePort API available (Android WebView, HarmonyOS ArkWeb)
+    if (
+      typeof MessagePort !== "undefined" &&
+      typeof MessageChannel !== "undefined"
+    ) {
+      return MESSAGE_PORT_TYPE;
+    }
+
+    return "unknown";
+  }
+
+  const communicationMethod = detectCommunicationMethod();
 
   function log(...args) {
     console.log(LOG_PREFIX, ...args);
@@ -144,17 +160,39 @@
   // Send message to native layer
   function _sendMessageToNative(message) {
     try {
-      if (isIOS) {
+      if (communicationMethod === "webkit") {
         window.webkit.messageHandlers[NATIVE_HANDLER_NAME].postMessage(message);
-      } else if (isAndroid && androidMessagePort) {
+      } else if (communicationMethod === MESSAGE_PORT_TYPE && messagePort) {
         const messageString = JSON.stringify(message);
-        androidMessagePort.postMessage(messageString);
+        messagePort.postMessage(messageString);
       } else {
         warn("Bridge not ready for sending");
       }
     } catch (e) {
       error("Send message error:", e, message);
     }
+  }
+
+  // Get MessagePort using proxy mechanism
+  function _getMessagePort() {
+    return new Promise((resolve) => {
+      // Trigger native to send LingXiaPort
+      window.LingXiaProxy.getPort("LingXiaPort");
+
+      // Wait for port init event
+      const handlePortInit = (event) => {
+        if (event.data === "LingXia-port-init") {
+          window.removeEventListener("message", handlePortInit);
+          const port = event.ports[0];
+
+          // Connect the port
+          LingXiaBridge._connectWebMessagePort(port);
+          resolve(port);
+        }
+      };
+
+      window.addEventListener("message", handlePortInit);
+    });
   }
 
   // Process incoming messages
@@ -223,7 +261,6 @@
         dataToApply = payload;
       }
 
-      const appliedPatch = _deepCopy(dataToApply);
       _applyPatch(pageData, dataToApply);
 
       // Notify subscribers immediately
@@ -255,19 +292,6 @@
       msgId: null,
       type: "callback",
       callbackId: callbackId,
-    });
-  }
-
-  // Send reply to native
-  function _sendReply(originalMsgId, success, errorPayload = null) {
-    const replyPayload = success
-      ? { success: true }
-      : { success: false, error: errorPayload || { message: "Unknown error" } };
-
-    _sendMessageToNative({
-      msgId: originalMsgId,
-      type: "reply",
-      payload: replyPayload,
     });
   }
 
@@ -356,75 +380,51 @@
       return _deepCopy(pageData);
     },
 
-    // Connect to Android message port
-    _connectAndroidPort: function (port) {
-      if (!isAndroid) return;
+    // Connect to WebMessage port (used by MessagePort-based platforms)
+    _connectWebMessagePort: function (port) {
+      if (communicationMethod !== MESSAGE_PORT_TYPE) return;
 
-      // Always use the new port. If there was an old one, it's implicitly replaced.
-      // The native side is responsible for managing the lifecycle of its end of the previous port.
-      androidMessagePort = port;
+      log("Connecting WebMessage port...");
 
-      androidMessagePort.onmessage = (event) => {
+      // Store the unified port
+      messagePort = port;
+
+      // Set up message handler
+      port.onmessage = (event) => {
         let messageData = event.data;
         if (typeof messageData === "string") {
           try {
             messageData = JSON.parse(messageData);
           } catch (e) {
-            error("Invalid JSON from Android Port:", e);
+            error("Invalid JSON from MessagePort:", e);
             return;
           }
         }
         _handleIncomingMessage(messageData);
       };
 
-      try {
-        this.event("LXPortRdy");
-        log("Android port connected and ready");
-      } catch (e) {
-        error("Failed to send LXPortRdy:", e);
-      }
+      log("MessagePort connected and ready");
+      this.event("LXPortRdy");
     },
 
-    // Internal: Receive iOS message
-    _receiveIOsMessage: function (messageString) {
-      if (!isIOS) return;
+    // Internal: Receive message from evaluate_javascript (WebKit platforms)
+    _receiveEvaluateMessage: function (messageString) {
+      if (communicationMethod !== "webkit") return;
       try {
         if (!messageString) return;
         const message = JSON.parse(messageString);
         _handleIncomingMessage(message);
       } catch (e) {
-        error("Invalid JSON from iOS:", e);
+        error("Invalid JSON from evaluate_javascript:", e);
       }
     },
   };
-
-  // Platform Initialization
-  if (isIOS) {
-    window[GLOBAL_RECEIVER_NAME] = LingXiaBridge._receiveIOsMessage;
-    LingXiaBridge.event("LXPortRdy");
-  }
-
-  if (isAndroid) {
-    window.addEventListener(
-      "message",
-      (event) => {
-        if (
-          event.data === ANDROID_PORT_INIT_CMD &&
-          event.ports &&
-          event.ports.length > 0
-        ) {
-          LingXiaBridge._connectAndroidPort(event.ports[0]);
-        }
-      },
-      false,
-    );
-  }
 
   // Create lx proxy object for API interception
   const lx = new Proxy(
     {},
     {
-      get: function (target, prop, receiver) {
+      get: function (_target, prop, _receiver) {
         // Return a function that will call the native layer
         return function (...args) {
           // Method parameters should be either empty or a single object
@@ -460,21 +460,22 @@
     _init();
   }
 
-  // Export bridge to global scope
-  window.LingXiaBridge = LingXiaBridge;
-  log("Lingxia Bridge initialized.");
-
-  // Initialize bridge
   function _init() {
-    log("Initializing LingXia Bridge...");
+    log(`Detected communication method: ${communicationMethod}`);
 
-    // For Android, set up message listener if available
-    if (isAndroid && window.LingxiaAndroidInterface) {
-      window.LingxiaAndroidInterface.setMessageListener(_handleIncomingMessage);
-      log("Android port connected and ready");
+    // Platform-specific initialization
+    if (communicationMethod === "webkit") {
+      window[GLOBAL_RECEIVER_NAME] = LingXiaBridge._receiveEvaluateMessage;
+      LingXiaBridge.event("LXPortRdy");
+    } else if (communicationMethod === MESSAGE_PORT_TYPE) {
+      _getMessagePort().catch((e) => {
+        warn("Failed to initialize MessagePort:", e);
+      });
+    } else {
+      warn("Unknown communication method, bridge may not work properly");
     }
-
-    // Send ready event for both platforms
-    LingXiaBridge.event("LXPortRdy", null);
+    log("LingXia Bridge initialization completed");
   }
+
+  window.LingXiaBridge = LingXiaBridge;
 })();

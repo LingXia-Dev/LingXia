@@ -1,0 +1,12 @@
+{
+  "name": "lingxia-webview-harmony",
+  "version": "1.0.0",
+  "modelVersion": "5.0.5",
+  "description": "LingXia WebView HAR library for HarmonyOS",
+  "dependencies": {
+  },
+  "devDependencies": {
+    "@ohos/hypium": "1.0.21",
+    "@ohos/hamock": "1.0.0"
+  }
+}
