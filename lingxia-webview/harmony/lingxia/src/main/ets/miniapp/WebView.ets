@@ -103,35 +103,23 @@ export class WebViewManager {
    * @returns true if destroyed successfully, false if not found
    */
   static destroyWebview(webtag: string): boolean {
-    hilog.info(DOMAIN, TAG, `Destroying WebView: ${webtag}`);
-
     const controller = WebViewManager.controllers.get(webtag);
     const webViewInfo = WebViewManager.webViewInfos.get(webtag);
 
-    if (controller && webViewInfo) {
-      try {
-        // Remove from maps
-        WebViewManager.controllers.delete(webtag);
-        WebViewManager.webViewInfos.delete(webtag);
-
-        // Notify UI to remove component
-        if (WebViewManager.uiCallback) {
-          WebViewManager.uiCallback('destroy', webViewInfo);
-        }
-
-        // Release WebView resources if API supports it
-        // controller.destroy(); // Uncomment if HarmonyOS provides destroy method
-
-        hilog.info(DOMAIN, TAG, `Successfully destroyed WebView: ${webtag}`);
-        return true;
-      } catch (error) {
-        hilog.error(DOMAIN, TAG, `Failed to destroy WebView ${webtag}: ${error}`);
-        return false;
-      }
-    } else {
+    if (!controller || !webViewInfo) {
       hilog.warn(DOMAIN, TAG, `WebView not found for destroy: ${webtag}`);
       return false;
     }
+
+    WebViewManager.controllers.delete(webtag);
+    WebViewManager.webViewInfos.delete(webtag);
+
+    if (WebViewManager.uiCallback) {
+      WebViewManager.uiCallback('destroy', webViewInfo);
+    }
+
+    hilog.info(DOMAIN, TAG, `Destroyed WebView: ${webtag}`);
+    return true;
   }
 
   /**
@@ -142,18 +130,17 @@ export class WebViewManager {
    */
   static loadUrl(webtag: string, url: string): boolean {
     const controller = WebViewManager.controllers.get(webtag);
-
-    if (controller) {
-      try {
-        controller.loadUrl(url);
-        hilog.info(DOMAIN, TAG, `Loaded URL in WebView ${webtag}: ${url}`);
-        return true;
-      } catch (error) {
-        hilog.error(DOMAIN, TAG, `Failed to load URL in WebView ${webtag}: ${error}`);
-        return false;
-      }
-    } else {
+    if (!controller) {
       hilog.warn(DOMAIN, TAG, `WebView not found for loadUrl: ${webtag}`);
+      return false;
+    }
+
+    try {
+      controller.loadUrl(url);
+      hilog.info(DOMAIN, TAG, `Loaded URL in WebView ${webtag}: ${url}`);
+      return true;
+    } catch (error) {
+      hilog.error(DOMAIN, TAG, `Failed to load URL in WebView ${webtag}: ${error}`);
       return false;
     }
   }
@@ -165,19 +152,17 @@ export class WebViewManager {
    * @returns true if setting applied successfully, false if WebView not found or setting failed
    */
   static setWebDebuggingAccess(webtag: string, enable: boolean): boolean {
-    const controller = WebViewManager.controllers.get(webtag);
-
-    if (controller) {
-      try {
-        webview.WebviewController.setWebDebuggingAccess(enable);
-        hilog.info(DOMAIN, TAG, `Set web debugging access for WebView ${webtag}: ${enable}`);
-        return true;
-      } catch (error) {
-        hilog.error(DOMAIN, TAG, `Failed to set web debugging access for WebView ${webtag}: ${error}`);
-        return false;
-      }
-    } else {
+    if (!WebViewManager.controllers.has(webtag)) {
       hilog.warn(DOMAIN, TAG, `WebView not found for setWebDebuggingAccess: ${webtag}`);
+      return false;
+    }
+
+    try {
+      webview.WebviewController.setWebDebuggingAccess(enable);
+      hilog.info(DOMAIN, TAG, `Set web debugging access for WebView ${webtag}: ${enable}`);
+      return true;
+    } catch (error) {
+      hilog.error(DOMAIN, TAG, `Failed to set web debugging access for WebView ${webtag}: ${error}`);
       return false;
     }
   }
@@ -189,19 +174,18 @@ export class WebViewManager {
    */
   static clearBrowsingData(webtag: string): boolean {
     const controller = WebViewManager.controllers.get(webtag);
-
-    if (controller) {
-      try {
-        controller.clearHistory();
-        controller.removeCache(true);
-        hilog.info(DOMAIN, TAG, `Cleared browsing data for WebView ${webtag}`);
-        return true;
-      } catch (error) {
-        hilog.error(DOMAIN, TAG, `Failed to clear browsing data for WebView ${webtag}: ${error}`);
-        return false;
-      }
-    } else {
+    if (!controller) {
       hilog.warn(DOMAIN, TAG, `WebView not found for clearBrowsingData: ${webtag}`);
+      return false;
+    }
+
+    try {
+      controller.clearHistory();
+      controller.removeCache(true);
+      hilog.info(DOMAIN, TAG, `Cleared browsing data for WebView ${webtag}`);
+      return true;
+    } catch (error) {
+      hilog.error(DOMAIN, TAG, `Failed to clear browsing data for WebView ${webtag}: ${error}`);
       return false;
     }
   }
@@ -213,22 +197,13 @@ export class WebViewManager {
    * @returns true if setting succeeded, false if WebView not found or setting failed
    */
   static setUserAgent(webtag: string, userAgent: string): boolean {
-    const controller = WebViewManager.controllers.get(webtag);
-
-    if (controller) {
-      try {
-        // Note: HarmonyOS WebView may not support setUserAgent directly
-        // This is a placeholder implementation
-        hilog.info(DOMAIN, TAG, `Set user agent for WebView ${webtag}: ${userAgent} (not implemented)`);
-        return true;
-      } catch (error) {
-        hilog.error(DOMAIN, TAG, `Failed to set user agent for WebView ${webtag}: ${error}`);
-        return false;
-      }
-    } else {
+    if (!WebViewManager.controllers.has(webtag)) {
       hilog.warn(DOMAIN, TAG, `WebView not found for setUserAgent: ${webtag}`);
       return false;
     }
+
+    hilog.info(DOMAIN, TAG, `Set user agent for WebView ${webtag}: ${userAgent} (not implemented)`);
+    return true;
   }
 
   /**
@@ -238,30 +213,15 @@ export class WebViewManager {
    * @returns true if setting succeeded, false if WebView not found or setting failed
    */
   static setScrollListenerEnabled(webtag: string, enabled: boolean): boolean {
-    const controller = WebViewManager.controllers.get(webtag);
-
-    if (controller) {
-      try {
-        // Note: HarmonyOS WebView scroll events are typically handled through onScroll callback
-        // This method stores the scroll listener state for the WebView
-        const webViewInfo = WebViewManager.webViewInfos.get(webtag);
-        if (webViewInfo) {
-          // Store scroll listener state in webViewInfo for later use
-          webViewInfo.scrollListenerEnabled = enabled;
-          hilog.info(DOMAIN, TAG, `Set scroll listener enabled for WebView ${webtag}: ${enabled}`);
-          return true;
-        } else {
-          hilog.warn(DOMAIN, TAG, `WebView info not found for setScrollListenerEnabled: ${webtag}`);
-          return false;
-        }
-      } catch (error) {
-        hilog.error(DOMAIN, TAG, `Failed to set scroll listener enabled for WebView ${webtag}: ${error}`);
-        return false;
-      }
-    } else {
+    const webViewInfo = WebViewManager.webViewInfos.get(webtag);
+    if (!webViewInfo) {
       hilog.warn(DOMAIN, TAG, `WebView not found for setScrollListenerEnabled: ${webtag}`);
       return false;
     }
+
+    webViewInfo.scrollListenerEnabled = enabled;
+    hilog.info(DOMAIN, TAG, `Set scroll listener enabled for WebView ${webtag}: ${enabled}`);
+    return true;
   }
 
   /**
