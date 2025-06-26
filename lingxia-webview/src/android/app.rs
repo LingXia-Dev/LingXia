@@ -82,7 +82,7 @@ impl<'a> RecursiveAssetIterator<'a> {
 
     fn list_via_jni(&self, path_to_list: &str) -> Result<Option<Vec<String>>, MiniAppError> {
         let mut jni_env =
-            get_env().ok_or_else(|| MiniAppError::IoError("Failed to get JNIEnv".to_string()))?;
+            get_env().map_err(|e| MiniAppError::IoError(format!("Failed to get JNIEnv: {}", e)))?;
         let path_jstring = Self::handle_jni_error(jni_env.new_string(path_to_list), path_to_list)?;
 
         let java_am_obj = self.app.java_asset_manager.as_obj();
@@ -318,7 +318,7 @@ impl App {
 
     pub fn open_miniapp(&self, appid: &str, path: &str) -> Result<(), MiniAppError> {
         match || -> Result<(), Box<dyn std::error::Error>> {
-            let mut env = get_env().unwrap();
+            let mut env = get_env()?;
 
             let miniapp_class: &JClass = MINIAPP_CLASS
                 .get()
@@ -349,13 +349,14 @@ impl App {
 
     pub fn close_miniapp(&self, appid: &str) -> Result<(), MiniAppError> {
         match || -> Result<(), Box<dyn std::error::Error>> {
-            let mut env = get_env().unwrap();
+            let mut env = get_env()?;
 
             let miniapp_class: &JClass = MINIAPP_CLASS
                 .get()
                 .ok_or("Global MiniApp class reference not available")?
                 .as_obj()
                 .into();
+
             let appid_jstring = env.new_string(appid)?;
 
             env.call_static_method(
@@ -376,13 +377,14 @@ impl App {
 
     pub fn switch_page(&self, appid: &str, path: &str) -> Result<(), MiniAppError> {
         match || -> Result<(), Box<dyn std::error::Error>> {
-            let mut env = get_env().unwrap();
+            let mut env = get_env()?;
 
             let miniapp_class: &JClass = MINIAPP_CLASS
                 .get()
                 .ok_or("Global MiniApp class reference not available")?
                 .as_obj()
                 .into();
+
             let appid_jstring = env.new_string(appid)?;
             let path_jstring = env.new_string(path)?;
 

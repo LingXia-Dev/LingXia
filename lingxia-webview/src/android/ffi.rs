@@ -1,5 +1,5 @@
 use super::app::App;
-use crate::controller::Controller;
+use crate::runtime::SimpleAppRuntime;
 use android_logger::Config;
 use http;
 use http::header::{HeaderMap, HeaderName, HeaderValue};
@@ -11,9 +11,10 @@ use log::{error, info};
 use miniapp::AppUiDelegate;
 use miniapp::log::LogLevel;
 use serde_json;
-use std::sync::{OnceLock, mpsc};
+use std::sync::{Arc, OnceLock};
 
-pub static JAVA_VM: OnceLock<JavaVM> = OnceLock::new();
+pub static JAVA_VM: OnceLock<Arc<JavaVM>> = OnceLock::new();
+static MAIN_THREAD_ID: OnceLock<std::thread::ThreadId> = OnceLock::new();
 
 /// Global reference to MiniApp class for worker threads
 pub(crate) static MINIAPP_CLASS: OnceLock<GlobalRef> = OnceLock::new();
@@ -54,7 +55,10 @@ pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> j
     });
 
     // Store JavaVM globally
-    let _ = JAVA_VM.set(vm);
+    let _ = JAVA_VM.set(Arc::new(vm));
+
+    // Store the main thread ID
+    let _ = MAIN_THREAD_ID.set(std::thread::current().id());
 
     // Create global reference to MiniApp class for worker threads
     if let Some(jvm) = JAVA_VM.get() {
@@ -66,28 +70,44 @@ pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> j
             }
         }
     }
+
     info!("Rust library loaded successfully");
     jni::sys::JNI_VERSION_1_6
 }
 
 // Helper function to get JNIEnv for current thread
-// IMPORTANT: This should only be called from the UI thread that was attached to the JVM by Controller::run
-pub(crate) fn get_env() -> Option<JNIEnv<'static>> {
-    let vm = match JAVA_VM.get() {
-        Some(vm) => vm,
-        None => {
-            error!("JavaVM not initialized");
-            return None;
-        }
-    };
+pub(crate) fn get_env() -> Result<JNIEnv<'static>, Box<dyn std::error::Error>> {
+    let vm = JAVA_VM.get().ok_or("JavaVM not initialized")?;
 
-    // Only get the environment if the thread is already attached
-    // This ensures get_env() is only used by the UI thread that was attached in Controller::run
-    match vm.get_env() {
-        Ok(env) => unsafe { JNIEnv::from_raw(env.get_raw()).ok() },
-        Err(_) => {
-            error!("current thread requires JVM");
-            None
+    // Check if we're on the main thread
+    let current_thread = std::thread::current().id();
+    let is_main_thread = MAIN_THREAD_ID
+        .get()
+        .map(|main_id| *main_id == current_thread)
+        .unwrap_or(false);
+
+    if is_main_thread {
+        // If we're on the main thread, get the env
+        match vm.get_env() {
+            Ok(env) => unsafe {
+                JNIEnv::from_raw(env.get_raw()).map_err(|e| {
+                    error!("JNI error: {:?}", e);
+                    e.into()
+                })
+            },
+            Err(e) => {
+                error!("Failed to get JNI env for main thread: {:?}", e);
+                Err(e.into())
+            }
+        }
+    } else {
+        // If we're not on the main thread, attach as daemon to avoid lifecycle issues
+        match vm.attach_current_thread_as_daemon() {
+            Ok(env) => Ok(env),
+            Err(e) => {
+                error!("Failed to attach thread as daemon: {:?}", e);
+                Err(e.into())
+            }
         }
     }
 }
@@ -103,6 +123,12 @@ pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeOnMiniAppInited(
     let data_dir = env.get_string(&data_dir).unwrap().into();
     let cache_dir = env.get_string(&cache_dir).unwrap().into();
 
+    log::info!(
+        "Initializing MiniApp with data_dir: {}, cache_dir: {}",
+        data_dir,
+        cache_dir,
+    );
+
     let app = match App::from_java(&mut env, asset_manager.as_raw(), data_dir, cache_dir) {
         Ok(app) => app,
         Err(_) => {
@@ -110,46 +136,17 @@ pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeOnMiniAppInited(
         }
     };
 
-    // Create a channel to receive the result from the closure
-    let (tx, rx) = mpsc::channel::<Option<(String, String)>>();
-
-    if !Controller::run(
-        move |controller| -> bool {
-            let jvm = JAVA_VM.get().unwrap();
-
-            // Use attach_current_thread_as_daemon to ensure the attached state persists
-            if let Err(e) = jvm.attach_current_thread_as_daemon() {
-                error!("Failed to attach UI thread to JVM: {:?}", e);
-                let _ = tx.send(None);
-                return false;
-            }
-
-            let result_option = miniapp::init(controller);
-
-            // Send the result back to the main thread
-            if tx.send(result_option).is_err() {
-                error!("Failed to send init result: Receiver dropped?");
-            }
-
-            true
-        },
-        app,
-    ) {
-        error!("Controller::run reported failure (returned false).");
-        let _ = rx.recv(); // Consume potential message to avoid blocking later if logic changes
-        return JObject::null().into_raw();
-    }
-
-    let final_init_details = match rx.recv() {
-        Ok(details_option) => details_option,
+    // Initialize SimpleAppRuntime
+    let runtime = match SimpleAppRuntime::init(app) {
+        Ok(runtime) => runtime,
         Err(e) => {
-            error!(
-                "Failed to receive result from channel (sender dropped?): {}",
-                e
-            );
-            None
+            error!("Failed to initialize runtime: {}", e);
+            return JObject::null().into_raw();
         }
     };
+
+    // Initialize miniapp directly
+    let final_init_details = miniapp::init(runtime);
 
     // Format and return the result
     match final_init_details {
@@ -257,11 +254,11 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeFindWebView<'a>(
     let appid: String = env.get_string(&appid).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
 
-    // Get the controller and try to find the WebView
-    if let Some(controller) = Controller::get() {
-        if let Some(webview) = controller.get_webview(&appid, &path) {
+    // Get the runtime and try to find the WebView
+    if let Some(runtime) = SimpleAppRuntime::get() {
+        if let Some(webview) = runtime.get_webview(&appid, &path) {
             // Create a new local reference to the Java WebView object
-            match env.new_local_ref(webview.inner().get_java_webview()) {
+            match env.new_local_ref(webview.get_java_webview()) {
                 Ok(local_ref) => unsafe { JObject::from_raw(local_ref.into_raw()) },
                 Err(e) => {
                     error!("Failed to create local reference to WebView: {:?}", e);
@@ -273,7 +270,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeFindWebView<'a>(
             JObject::null()
         }
     } else {
-        error!("Controller not initialized");
+        error!("Runtime not initialized");
         JObject::null()
     }
 }

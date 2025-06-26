@@ -1,8 +1,7 @@
 use super::app::App;
-use crate::controller::Controller;
+use crate::runtime::SimpleAppRuntime;
 use miniapp::AppUiDelegate;
 use miniapp::log::LogLevel;
-use std::sync::mpsc;
 
 #[swift_bridge::bridge]
 mod bridge {
@@ -104,34 +103,17 @@ pub fn miniapp_init(data_dir: &str, cache_dir: &str) -> Option<String> {
         }
     };
 
-    // Create a channel to receive the result from the closure
-    let (tx, rx) = mpsc::channel::<Option<(String, String)>>();
-
-    if !Controller::run(
-        move |controller| -> bool {
-            let result_option = miniapp::init(controller);
-
-            // Send the result back to the main thread
-            if tx.send(result_option).is_err() {
-                log::error!("Failed to send init result: Receiver dropped?");
-            }
-
-            true
-        },
-        app,
-    ) {
-        log::error!("Controller::run reported failure (returned false).");
-        let _ = rx.recv();
-        return None;
-    }
-
-    let final_init_details = match rx.recv() {
-        Ok(details_option) => details_option,
+    // Initialize SimpleAppRuntime
+    let runtime = match SimpleAppRuntime::init(app) {
+        Ok(runtime) => runtime,
         Err(e) => {
-            log::error!("Failed to receive result from channel: {}", e);
-            None
+            log::error!("Failed to initialize runtime: {}", e);
+            return None;
         }
     };
+
+    // Initialize miniapp directly
+    let final_init_details = miniapp::init(runtime);
 
     // Format and return the result
     match final_init_details {
@@ -195,17 +177,17 @@ pub fn get_tab_bar_config(appid: &str) -> Option<String> {
 /// This is called from Swift to get a WebView instance pointer managed by Rust
 /// Returns the usize pointer to the WebView, or 0 if not found
 pub fn find_webview(appid: &str, path: &str) -> usize {
-    // Get the controller and try to find the WebView
-    if let Some(controller) = Controller::get() {
-        if let Some(webview) = controller.get_webview(appid, path) {
+    // Get the runtime and try to find the WebView
+    if let Some(runtime) = SimpleAppRuntime::get() {
+        if let Some(webview) = runtime.get_webview(appid, path) {
             // WebView exists, return its pointer
-            webview.inner().get_swift_webview_ptr()
+            webview.get_swift_webview_ptr()
         } else {
             // No WebView found
             0
         }
     } else {
-        log::error!("Controller not initialized");
+        log::error!("Runtime not initialized");
         0
     }
 }

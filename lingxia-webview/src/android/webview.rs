@@ -1,4 +1,4 @@
-use crate::android::{MINIAPP_CLASS, get_env};
+use crate::android::get_env;
 use jni::objects::{GlobalRef, JObject, JValue};
 use miniapp::{MiniAppError, WebViewController};
 
@@ -14,9 +14,9 @@ impl WebViewInner {
 
         let mut env = get_env().unwrap();
 
-        let miniapp_class = MINIAPP_CLASS
-            .get()
-            .ok_or_else(|| MiniAppError::WebView("MiniApp class not initialized".to_string()))?;
+        let miniapp_class = env
+            .find_class("com/lingxia/miniapp/MiniApp")
+            .map_err(|e| MiniAppError::WebView(format!("Failed to find MiniApp class: {:?}", e)))?;
 
         let appid_jstring = env.new_string(appid).unwrap();
         let path_jstring = env.new_string(path).unwrap();
@@ -24,7 +24,7 @@ impl WebViewInner {
         // Call Kotlin createWebView method
         let webview_result = env
             .call_static_method(
-                miniapp_class,
+                &miniapp_class,
                 "createWebView",
                 "(Ljava/lang/String;Ljava/lang/String;)Lcom/lingxia/miniapp/WebView;",
                 &[
@@ -58,7 +58,7 @@ impl WebViewInner {
 
 impl Drop for WebViewInner {
     fn drop(&mut self) {
-        if let Some(mut env) = get_env() {
+        if let Ok(mut env) = get_env() {
             let _ = env.call_method(self.java_webview.as_obj(), "destroy", "()V", &[]);
         }
     }

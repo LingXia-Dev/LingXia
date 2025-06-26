@@ -7,9 +7,6 @@ mod apple;
 #[cfg(all(target_os = "linux", target_env = "ohos"))]
 mod harmony;
 
-mod controller;
-mod webview;
-
 #[cfg(target_os = "android")]
 pub use android::{App, WebViewInner};
 
@@ -18,3 +15,6 @@ pub use apple::{App, WebViewInner};
 
 #[cfg(all(target_os = "linux", target_env = "ohos"))]
 pub use harmony::{App, WebViewInner};
+
+mod runtime;
+pub use runtime::SimpleAppRuntime;

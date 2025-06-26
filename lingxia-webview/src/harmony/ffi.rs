@@ -1,6 +1,6 @@
-use crate::controller::Controller;
 use crate::harmony::app::App;
 use crate::harmony::schemehandler::register_custom_schemes;
+use crate::runtime::SimpleAppRuntime;
 use log::LevelFilter;
 use miniapp::AppUiDelegate;
 use miniapp::log::LogLevel;
@@ -9,7 +9,7 @@ use napi_ohos::bindgen_prelude::Object;
 use napi_ohos::bindgen_prelude::*;
 use napi_ohos::threadsafe_function::ThreadsafeCallContext;
 use ohos_hilog::Config;
-use std::sync::{OnceLock, mpsc};
+use std::sync::OnceLock;
 
 // Global ThreadSafe Function storage
 //
@@ -78,7 +78,7 @@ pub fn miniapp_init(
     });
 
     log::info!(
-        "Initializing MiniApp with callback_function, data_dir: {}, cache_dir: {}",
+        "Initializing MiniApp with data_dir: {}, cache_dir: {}",
         data_dir,
         cache_dir,
     );
@@ -141,34 +141,11 @@ pub fn miniapp_init(
         }
     };
 
-    // Create a channel to receive the result from the closure
-    let (tx, rx) = mpsc::channel::<Option<(String, String)>>();
+    // Create SimpleAppRuntime directly
+    let runtime = SimpleAppRuntime::new(app);
 
-    if !Controller::run(
-        move |controller| -> bool {
-            let result_option = miniapp::init(controller);
-
-            // Send the result back to the main thread
-            if tx.send(result_option).is_err() {
-                log::error!("Failed to send init result: Receiver dropped?");
-            }
-
-            true
-        },
-        app,
-    ) {
-        log::error!("Controller::run reported failure (returned false).");
-        let _ = rx.recv();
-        return None;
-    }
-
-    let final_init_details = match rx.recv() {
-        Ok(details_option) => details_option,
-        Err(e) => {
-            log::error!("Failed to receive result from channel: {}", e);
-            None
-        }
-    };
+    // Initialize miniapp directly
+    let final_init_details = miniapp::init(runtime);
 
     // Format and return the result
     match final_init_details {
@@ -241,3 +218,4 @@ pub fn on_scroll_changed(
     miniapp.on_page_scroll_changed(path, scroll_x, scroll_y, max_scroll_x, max_scroll_y);
     0
 }
+
