@@ -2,8 +2,8 @@
   const NATIVE_HANDLER_NAME = "LingXia";
   const GLOBAL_RECEIVER_NAME = "__LingXiaRecvMessage";
   const CALL_TIMEOUT_MS = 5000;
-  const LOG_PREFIX = "[LingxiaBridge]";
-  const ANDROID_PORT_INIT_CMD = "LingXia-port-init";
+  const LOG_PREFIX = "[LX.Bridge]";
+  const MESSAGE_PORT_TYPE = "messageport";
 
   let messageCounter = 0;
   const pendingCalls = new Map(); // msgId -> { resolve, reject, timerId }
@@ -27,7 +27,7 @@
       typeof MessagePort !== "undefined" &&
       typeof MessageChannel !== "undefined"
     ) {
-      return "messageport";
+      return MESSAGE_PORT_TYPE;
     }
 
     return "unknown";
@@ -162,7 +162,7 @@
     try {
       if (communicationMethod === "webkit") {
         window.webkit.messageHandlers[NATIVE_HANDLER_NAME].postMessage(message);
-      } else if (communicationMethod === "messageport" && messagePort) {
+      } else if (communicationMethod === MESSAGE_PORT_TYPE && messagePort) {
         const messageString = JSON.stringify(message);
         messagePort.postMessage(messageString);
       } else {
@@ -171,6 +171,28 @@
     } catch (e) {
       error("Send message error:", e, message);
     }
+  }
+
+  // Get MessagePort using proxy mechanism
+  function _getMessagePort() {
+    return new Promise((resolve) => {
+      // Trigger native to send LingXiaPort
+      window.LingXiaProxy.getPort("LingXiaPort");
+
+      // Wait for port init event
+      const handlePortInit = (event) => {
+        if (event.data === "LingXia-port-init") {
+          window.removeEventListener("message", handlePortInit);
+          const port = event.ports[0];
+
+          // Connect the port
+          LingXiaBridge._connectWebMessagePort(port);
+          resolve(port);
+        }
+      };
+
+      window.addEventListener("message", handlePortInit);
+    });
   }
 
   // Process incoming messages
@@ -360,7 +382,7 @@
 
     // Connect to WebMessage port (used by MessagePort-based platforms)
     _connectWebMessagePort: function (port) {
-      if (communicationMethod !== "messageport") return;
+      if (communicationMethod !== MESSAGE_PORT_TYPE) return;
 
       log("Connecting WebMessage port...");
 
@@ -445,24 +467,13 @@
     if (communicationMethod === "webkit") {
       window[GLOBAL_RECEIVER_NAME] = LingXiaBridge._receiveEvaluateMessage;
       LingXiaBridge.event("LXPortRdy");
-    } else if (communicationMethod === "messageport") {
-      window.addEventListener(
-        "message",
-        (event) => {
-          if (
-            event.data === ANDROID_PORT_INIT_CMD &&
-            event.ports &&
-            event.ports.length > 0
-          ) {
-            LingXiaBridge._connectWebMessagePort(event.ports[0]);
-          }
-        },
-        false,
-      );
+    } else if (communicationMethod === MESSAGE_PORT_TYPE) {
+      _getMessagePort().catch((e) => {
+        warn("Failed to initialize MessagePort:", e);
+      });
     } else {
       warn("Unknown communication method, bridge may not work properly");
     }
-
     log("LingXia Bridge initialization completed");
   }
 
