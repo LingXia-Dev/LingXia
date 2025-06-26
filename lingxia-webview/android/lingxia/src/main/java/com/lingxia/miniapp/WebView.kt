@@ -26,6 +26,21 @@ import java.io.ByteArrayInputStream
 
 private const val TAG = "LingXia.WebView"
 
+class LingXiaProxy(webView: com.lingxia.miniapp.WebView) {
+    private val webViewRef = java.lang.ref.WeakReference(webView)
+
+    @android.webkit.JavascriptInterface
+    fun getPort(portType: String): String {
+        if (portType == "LingXiaPort") {
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                webViewRef.get()?.sendMessagePortToWebView()
+            }
+            return "Message port sent"
+        }
+        return "Unknown port type"
+    }
+}
+
 data class WebResourceResponseData(
     val mimeType: String,
     val encoding: String,
@@ -72,7 +87,7 @@ data class WebViewConfig(
 class WebView @JvmOverloads constructor(
     context: Context,
     private val config: WebViewConfig = WebViewConfig()
-) : WebView(context) {
+) : android.webkit.WebView(context) {
     internal var appId: String? = null
     internal var currentPath: String? = null
     private var pageLoaded = false
@@ -81,8 +96,9 @@ class WebView @JvmOverloads constructor(
     private var savedScale: Float = 1.0f
     private var savedUrl: String? = null
     private var showEventSent = false  // Track if we've sent a show event in this session
-    private var messageChannel: WebMessagePort? = null
-    private var channelInitialized = false  // Track if the channel has been initialized
+    private var nativePort: WebMessagePort? = null
+    private var webviewPort: WebMessagePort? = null
+    private var portsInitialized = false  // Track if ports have been initialized
 
     // Scroll event tracking
     private var lastScrollX: Int = 0
@@ -92,7 +108,7 @@ class WebView @JvmOverloads constructor(
 
     companion object {
         private const val TAG = "WebView"
-        private const val ANDROID_PORT_INIT_MESSAGE_DATA = "LingXia-port-init"
+        private const val ANDROID_MESSAGE_PORT_INIT = "LingXia-port-init"
 
         @JvmStatic
         external fun nativeFindWebView(appId: String, path: String): com.lingxia.miniapp.WebView?
@@ -159,8 +175,7 @@ class WebView @JvmOverloads constructor(
                         result = com.lingxia.miniapp.WebView(context, config)
 
                         // Set appId and path directly
-                        result!!.appId = appId
-                        result!!.currentPath = path
+                        result!!.initializeWebView(appId, path)
 
                         // All WebViews are created as invisible by default
                         // Visibility will be controlled by Rust layer
@@ -188,8 +203,7 @@ class WebView @JvmOverloads constructor(
             val webView = com.lingxia.miniapp.WebView(context, config)
 
             // Set appId and path directly
-            webView.appId = appId
-            webView.currentPath = path
+            webView.initializeWebView(appId, path)
 
             // All WebViews are created as invisible by default
             // Visibility will be controlled by Rust layer
@@ -286,12 +300,6 @@ class WebView @JvmOverloads constructor(
 
                 resetViewport()  // Reset viewport after page load
 
-                // Setup message channel after page is fully loaded
-                if (!channelInitialized && isAttachedToWindow && windowToken != null) {
-                    Log.d(TAG, "Setting up message channel after page finished loading")
-                    setupMessageChannel()
-                }
-
                 handlePageFinished(url)
             }
 
@@ -379,76 +387,59 @@ class WebView @JvmOverloads constructor(
         }
     }
 
-    private fun setupMessageChannel() {
-        // If channel is already initialized, don't recreate
-        if (channelInitialized && messageChannel != null) {
-            Log.d(TAG, "Message channel already initialized, skipping setup")
+    private fun initializeWebView(appId: String, path: String) {
+        this.appId = appId
+        this.currentPath = path
+        addJavascriptInterface(LingXiaProxy(this), "LingXiaProxy")
+        setupMessagePorts()
+    }
+
+    private fun setupMessagePorts() {
+        // If ports are already initialized, don't recreate
+        if (portsInitialized) {
+            Log.d(TAG, "Message ports already initialized, skipping setup")
             return
         }
 
-        // Clean up existing channel if any
-        messageChannel?.close()
-        messageChannel = null
-        channelInitialized = false
+        // Clean up existing ports if any
+        cleanupPorts()
 
-        // Create new message channel
-        val ports = createWebMessageChannel()
-        messageChannel = ports[0]
+        try {
+            // Create message port pair
+            val messagePorts = createWebMessageChannel()
+            nativePort = messagePorts[0]
+            webviewPort = messagePorts[1]
 
-        // Set up native side message handler
-        messageChannel?.setWebMessageCallback(object : WebMessagePort.WebMessageCallback() {
-            override fun onMessage(port: WebMessagePort, message: WebMessage) {
-                val messageData = message.data
-
-                // Only check for LXPortRdy event if channel is not yet initialized
-                if (!channelInitialized && messageData.contains("\"name\":\"LXPortRdy\"") && messageData.contains("\"type\":\"event\"")) {
-                    Log.d(TAG, "LXPortRdy event detected, message channel is ready")
-                    channelInitialized = true
+            // Set up native side message handler for main port
+            nativePort?.setWebMessageCallback(object : WebMessagePort.WebMessageCallback() {
+                override fun onMessage(port: WebMessagePort, message: WebMessage) {
+                    val messageData = message.data
+                    // Forward message to native layer
+                    nativeHandlePostMessage(appId ?: return, currentPath ?: return, messageData)
                 }
+            }, Handler(Looper.getMainLooper()))
 
-                // Forward message to native layer
-                nativeHandlePostMessage(appId ?: return, currentPath ?: return, messageData)
-            }
-        }, Handler(Looper.getMainLooper()))
+            portsInitialized = true
+            Log.d(TAG, "Message ports setup completed")
 
-        // Transfer port to WebView - try immediate transfer first
-        if (isAttachedToWindow && windowToken != null) {
-            val origin = url?.let { Uri.parse(it) } ?: Uri.EMPTY
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to setup message ports: ${e.message}", e)
+            cleanupPorts()
+        }
+    }
+
+    private fun cleanupPorts() {
+        nativePort = null
+        webviewPort = null
+        portsInitialized = false
+    }
+
+    fun sendMessagePortToWebView() {
+        if (portsInitialized && webviewPort != null) {
             try {
-                postWebMessage(WebMessage(ANDROID_PORT_INIT_MESSAGE_DATA, arrayOf(ports[1])), origin)
-                Log.d(TAG, "WebMessage channel initialized and port transferred to WebView")
-                // Note: channelInitialized will be set to true when LXPortRdy event is received
+                postWebMessage(WebMessage(ANDROID_MESSAGE_PORT_INIT, arrayOf(webviewPort!!)), Uri.EMPTY)
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to transfer port to WebView: ${e.message}", e)
-                channelInitialized = false
-                // Clean up on failure
-                messageChannel?.close()
-                messageChannel = null
-            }
-        } else {
-            Log.w(TAG, "WebView not ready for message channel setup, will retry with post")
-            // Use post as fallback if not immediately ready
-            post {
-                if (isAttachedToWindow && windowToken != null) {
-                    val origin = url?.let { Uri.parse(it) } ?: Uri.EMPTY
-                    try {
-                        postWebMessage(WebMessage(ANDROID_PORT_INIT_MESSAGE_DATA, arrayOf(ports[1])), origin)
-                        Log.d(TAG, "WebMessage channel initialized and port transferred to WebView (via post)")
-                        // Note: channelInitialized will be set to true when LXPortRdy event is received
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Failed to transfer port to WebView via post: ${e.message}", e)
-                        channelInitialized = false
-                        // Clean up on failure
-                        messageChannel?.close()
-                        messageChannel = null
-                    }
-                } else {
-                    Log.w(TAG, "WebView still not ready for message channel setup")
-                    channelInitialized = false
-                    // Clean up on failure
-                    messageChannel?.close()
-                    messageChannel = null
-                }
+                Log.e(TAG, "Failed to send message port: ${e.message}")
             }
         }
     }
@@ -459,10 +450,9 @@ class WebView @JvmOverloads constructor(
      * The message should be a valid JSON string that can be parsed by the JavaScript side.
      *
      * @param message The message to be sent to the JavaScript context
-     * @see com.lingxia.miniapp.WebView.setupMessageChannel
      */
     fun postMessageToWebView(message: String) {
-        messageChannel?.postMessage(WebMessage(message))
+        nativePort?.postMessage(WebMessage(message))
     }
 
     fun clearBrowsingData() {
@@ -505,13 +495,13 @@ class WebView @JvmOverloads constructor(
         // Set to visible
         visibility = View.VISIBLE
 
-        // Ensure message channel is working when resuming
+        // Ensure message ports are working when resuming
         if (isAttachedToWindow) {
-            // If channel was lost during pause/resume cycle, re-establish it
-            if (!channelInitialized || messageChannel == null) {
-                Log.d(TAG, "Message channel lost during pause/resume, re-establishing")
+            // If ports were lost during pause/resume cycle, re-establish them
+            if (!portsInitialized) {
+                Log.d(TAG, "Message ports lost during pause/resume, re-establishing")
                 post {
-                    setupMessageChannel()
+                    setupMessagePorts()
                 }
             }
         }
@@ -527,7 +517,7 @@ class WebView @JvmOverloads constructor(
                     invalidate()
                 }
                 Log.d(TAG, "WebView resumed with existing content")
-            } 
+            }
         } else {
             Log.d(TAG, "WebView not ready for display: attached=$isAttachedToWindow, appId=$appId, path=$currentPath")
         }
@@ -535,9 +525,8 @@ class WebView @JvmOverloads constructor(
 
     override fun onDetachedFromWindow() {
         Log.d(TAG, "WebView detached from window")
-        messageChannel?.close()
-        messageChannel = null
-        channelInitialized = false  // Reset the flag when detached
+        // Don't cleanup ports when detached - WebView is just hidden, not destroyed
+        // Ports should remain active for when WebView is reattached
         pause()
         super.onDetachedFromWindow()
     }
@@ -618,9 +607,8 @@ class WebView @JvmOverloads constructor(
             webViewClient = WebViewClient()
             webChromeClient = WebChromeClient()
 
-            // Clean up message channel
-            messageChannel?.close()
-            messageChannel = null
+            // Clean up message ports
+            cleanupPorts()
 
             // Clear all data
             try {
