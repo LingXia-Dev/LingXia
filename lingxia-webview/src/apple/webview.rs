@@ -188,7 +188,7 @@ impl WebViewInner {
                 ProtocolObject::from_ref(&*navigation_delegate);
             let _: () = msg_send![webview, setNavigationDelegate: Some(proto_navigation_delegate)];
 
-            // Set up message handler for bridge communication (critical for LXPortRdy)
+            // Set up message handler for bridge communication
             let message_handler = Self::setup_message_handler(webview, &appid, &path)?;
 
             // Create WebViewInner instance with navigation delegate and message handler
@@ -683,7 +683,6 @@ use objc2_web_kit::WKScriptMessageHandler;
 pub struct LingXiaMessageHandlerIvars {
     appid: String,
     path: String,
-    bridge_ready: std::cell::Cell<bool>, // Track if LXPortRdy has been received
 }
 
 define_class!(
@@ -782,11 +781,7 @@ impl LingXiaMessageHandler {
     pub fn new(appid: String, path: String, mtm: MainThreadMarker) -> Option<Retained<Self>> {
         unsafe {
             let instance = Self::alloc(mtm);
-            let instance = instance.set_ivars(LingXiaMessageHandlerIvars {
-                appid,
-                path,
-                bridge_ready: std::cell::Cell::new(false), // Start as not ready
-            });
+            let instance = instance.set_ivars(LingXiaMessageHandlerIvars { appid, path });
             let instance: Retained<Self> = msg_send![super(instance), init];
             Some(instance)
         }
@@ -795,15 +790,6 @@ impl LingXiaMessageHandler {
     /// Handle bridge messages
     fn handle_bridge_message(&self, message: String) {
         let ivars = self.ivars();
-
-        // Only check for LXPortRdy if bridge is not ready yet (efficiency optimization)
-        if !ivars.bridge_ready.get() {
-            if message.contains("\"name\":\"LXPortRdy\"") && message.contains("\"type\":\"event\"")
-            {
-                log::info!("LXPortRdy event detected, message channel is ready");
-                ivars.bridge_ready.set(true); // Mark as ready, no more checks needed
-            }
-        }
 
         let miniapp = miniapp::get(ivars.appid.clone());
         miniapp.handle_post_message(ivars.path.clone(), message);
