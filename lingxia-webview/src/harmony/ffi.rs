@@ -141,10 +141,8 @@ pub fn miniapp_init(
         }
     };
 
-    // Create SimpleAppRuntime directly
-    let runtime = SimpleAppRuntime::new(app);
-
-    // Initialize miniapp directly
+    // Initialize global runtime and pass to miniapp::init
+    let runtime = SimpleAppRuntime::init(app);
     let final_init_details = miniapp::init(runtime);
 
     // Format and return the result
@@ -218,4 +216,3 @@ pub fn on_scroll_changed(
     miniapp.on_page_scroll_changed(path, scroll_x, scroll_y, max_scroll_x, max_scroll_y);
     0
 }
-

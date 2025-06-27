@@ -1,4 +1,4 @@
-use crate::harmony::webview::WebTag;
+use crate::runtime::WebTag;
 use miniapp::{self, AppUiDelegate};
 use napi_ohos::Result as NapiResult;
 use ohos_web_sys::*;
@@ -285,7 +285,7 @@ pub fn register_custom_schemes() -> NapiResult<()> {
 /// Set scheme handler for a specific WebView (called in WebViewInner::create)
 pub fn set_webview_scheme_handler(webtag: &WebTag) -> NapiResult<()> {
     // Extract app_id from webtag
-    let app_id = webtag.extract_appid().unwrap();
+    let app_id = webtag.extract_appid();
 
     unsafe {
         // Create scheme handler for lx://
