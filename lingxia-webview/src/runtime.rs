@@ -9,26 +9,84 @@ use crate::{App, WebViewInner};
 
 static RUNTIME: OnceLock<Arc<SimpleAppRuntime>> = OnceLock::new();
 
+/// WebTag newtype for better type safety
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct WebTag(String);
+
+impl WebTag {
+    pub fn new(appid: &str, path: &str) -> Self {
+        Self(format!("{}-{}", appid, path))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Extract appid from WebTag
+    pub fn extract_appid(&self) -> String {
+        self.0
+            .split_once('-')
+            .map(|(appid, _)| appid.to_string())
+            .unwrap()
+    }
+
+    /// Extract appid and path from WebTag
+    /// This will always succeed since WebTag is constructed with a valid format
+    pub fn extract_parts(&self) -> (String, String) {
+        self.0
+            .split_once('-')
+            .map(|(appid, path)| (appid.to_string(), path.to_string()))
+            .unwrap()
+    }
+}
+
+impl From<(String, String)> for WebTag {
+    fn from((appid, path): (String, String)) -> Self {
+        Self::new(&appid, &path)
+    }
+}
+
+impl From<(&str, &str)> for WebTag {
+    fn from((appid, path): (&str, &str)) -> Self {
+        Self::new(appid, path)
+    }
+}
+
+impl From<&str> for WebTag {
+    fn from(webtag_str: &str) -> Self {
+        Self(webtag_str.to_string())
+    }
+}
+
+impl From<String> for WebTag {
+    fn from(webtag_str: String) -> Self {
+        Self(webtag_str)
+    }
+}
+
+impl std::fmt::Display for WebTag {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 /// Simplified AppRuntime implementation
 pub struct SimpleAppRuntime {
     app: App,
-    webviews: Mutex<HashMap<(String, String), Arc<WebViewInner>>>,
+    webviews: Mutex<HashMap<WebTag, Arc<Mutex<WebViewInner>>>>,
 }
 
 impl SimpleAppRuntime {
-    /// Create a new SimpleAppRuntime instance
-    pub fn new(app: App) -> Self {
-        Self {
+    /// Initialize the global runtime instance
+    pub fn init(app: App) -> Arc<SimpleAppRuntime> {
+        let runtime = Arc::new(SimpleAppRuntime {
             app,
             webviews: Mutex::new(HashMap::new()),
-        }
-    }
+        });
 
-    /// Initialize the global runtime instance
-    pub fn init(app: App) -> Result<Arc<SimpleAppRuntime>, &'static str> {
-        let runtime = Arc::new(SimpleAppRuntime::new(app));
-        RUNTIME.set(runtime.clone()).map_err(|_| "Runtime already initialized")?;
-        Ok(runtime)
+        // Set global runtime, ignore error if already initialized
+        let _ = RUNTIME.set(runtime.clone());
+        runtime
     }
 
     /// Get the global runtime instance
@@ -37,20 +95,39 @@ impl SimpleAppRuntime {
     }
 
     /// Get a WebView instance from the registry
-    pub fn get_webview(&self, appid: &str, path: &str) -> Option<Arc<WebViewInner>> {
+    pub fn get_webview(&self, appid: &str, path: &str) -> Option<Arc<Mutex<WebViewInner>>> {
         if let Ok(webviews) = self.webviews.lock() {
-            webviews
-                .get(&(appid.to_string(), path.to_string()))
-                .cloned()
+            let webtag = WebTag::new(appid, path);
+            webviews.get(&webtag).cloned()
+        } else {
+            None
+        }
+    }
+
+    /// Get a WebView by WebTag
+    pub fn get_webview_by_tag(&self, webtag: &WebTag) -> Option<Arc<Mutex<WebViewInner>>> {
+        if let Ok(webviews) = self.webviews.lock() {
+            webviews.get(webtag).cloned()
         } else {
             None
         }
     }
 
     /// Register a WebView instance
-    pub fn put_webview(&self, appid: String, path: String, webview: Arc<WebViewInner>) -> bool {
+    pub fn put_webview(&self, appid: String, path: String, webview: WebViewInner) -> bool {
         if let Ok(mut webviews) = self.webviews.lock() {
-            webviews.insert((appid, path), webview);
+            let webtag = WebTag::new(&appid, &path);
+            webviews.insert(webtag, Arc::new(Mutex::new(webview)));
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Register a WebView instance by WebTag
+    pub fn put_webview_by_tag(&self, webtag: WebTag, webview: WebViewInner) -> bool {
+        if let Ok(mut webviews) = self.webviews.lock() {
+            webviews.insert(webtag, Arc::new(Mutex::new(webview)));
             true
         } else {
             false
@@ -94,18 +171,34 @@ impl AppRuntime for SimpleAppRuntime {
         appid: String,
         path: String,
     ) -> Result<Arc<dyn WebViewController>, MiniAppError> {
-        // Create the actual platform-specific WebView using WebViewInner::create
-        let webview_inner = Arc::new(WebViewInner::create(&appid, &path)?);
+        // Create WebView and store it in global runtime
+        let webtag = WebTag::new(&appid, &path);
+        let webview_inner = WebViewInner::create(&appid, &path)?;
 
-        // Register the WebView
-        if self.put_webview(appid, path, webview_inner.clone()) {
-            // Return WebViewInner directly since it implements WebViewController
-            Ok(webview_inner)
+        // Store WebView in global runtime
+        if let Some(global_runtime) = SimpleAppRuntime::get() {
+            if !global_runtime.put_webview_by_tag(webtag, webview_inner) {
+                log::error!("Failed to store WebView in runtime: {}-{}", appid, path);
+                return Err(MiniAppError::WebView(
+                    "Failed to store WebView in runtime".to_string(),
+                ));
+            } else {
+                log::info!("WebView stored in runtime: {}-{}", appid, path);
+            }
         } else {
-            Err(MiniAppError::WebView(
-                "Failed to register WebView".to_string(),
-            ))
+            log::error!(
+                "Global runtime not available for WebView storage: {}-{}",
+                appid,
+                path
+            );
+            return Err(MiniAppError::WebView(
+                "Global runtime not available".to_string(),
+            ));
         }
+
+        // Create a new WebView instance to return (since the previous one was moved)
+        let return_webview = WebViewInner::create(&appid, &path)?;
+        Ok(Arc::new(return_webview))
     }
 
     fn open_miniapp(&self, appid: String, path: String) -> Result<(), MiniAppError> {
