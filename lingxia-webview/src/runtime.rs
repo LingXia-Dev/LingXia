@@ -1,3 +1,4 @@
+use crate::{App, WebViewInner};
 use std::collections::HashMap;
 use std::io::Read;
 use std::path::PathBuf;
@@ -5,11 +6,10 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use miniapp::{AppRuntime, AssetFileEntry, DeviceInfo, MiniAppError, WebViewController};
 
-use crate::{App, WebViewInner};
-
+/// Global runtime instance
 static RUNTIME: OnceLock<Arc<SimpleAppRuntime>> = OnceLock::new();
 
-/// WebTag newtype for better type safety
+/// WebView identifier combining appid and path
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct WebTag(String);
 
@@ -22,12 +22,9 @@ impl WebTag {
         &self.0
     }
 
-    /// Extract appid from WebTag
+    /// Extract appid from the webtag
     pub fn extract_appid(&self) -> String {
-        self.0
-            .split_once('-')
-            .map(|(appid, _)| appid.to_string())
-            .unwrap()
+        self.0.split('-').next().unwrap_or("").to_string()
     }
 
     /// Extract appid and path from WebTag
@@ -73,7 +70,7 @@ impl std::fmt::Display for WebTag {
 /// Simplified AppRuntime implementation
 pub struct SimpleAppRuntime {
     app: App,
-    webviews: Mutex<HashMap<WebTag, Arc<Mutex<WebViewInner>>>>,
+    webviews: Mutex<HashMap<WebTag, Arc<WebViewInner>>>,
 }
 
 impl SimpleAppRuntime {
@@ -95,7 +92,7 @@ impl SimpleAppRuntime {
     }
 
     /// Get a WebView instance from the registry
-    pub fn get_webview(&self, appid: &str, path: &str) -> Option<Arc<Mutex<WebViewInner>>> {
+    pub fn get_webview(&self, appid: &str, path: &str) -> Option<Arc<WebViewInner>> {
         if let Ok(webviews) = self.webviews.lock() {
             let webtag = WebTag::new(appid, path);
             webviews.get(&webtag).cloned()
@@ -105,7 +102,7 @@ impl SimpleAppRuntime {
     }
 
     /// Get a WebView by WebTag
-    pub fn get_webview_by_tag(&self, webtag: &WebTag) -> Option<Arc<Mutex<WebViewInner>>> {
+    pub fn get_webview_by_tag(&self, webtag: &WebTag) -> Option<Arc<WebViewInner>> {
         if let Ok(webviews) = self.webviews.lock() {
             webviews.get(webtag).cloned()
         } else {
@@ -114,10 +111,10 @@ impl SimpleAppRuntime {
     }
 
     /// Register a WebView instance
-    pub fn put_webview(&self, appid: String, path: String, webview: WebViewInner) -> bool {
+    pub fn put_webview(&self, appid: String, path: String, webview: Arc<WebViewInner>) -> bool {
         if let Ok(mut webviews) = self.webviews.lock() {
             let webtag = WebTag::new(&appid, &path);
-            webviews.insert(webtag, Arc::new(Mutex::new(webview)));
+            webviews.insert(webtag, webview);
             true
         } else {
             false
@@ -125,9 +122,9 @@ impl SimpleAppRuntime {
     }
 
     /// Register a WebView instance by WebTag
-    pub fn put_webview_by_tag(&self, webtag: WebTag, webview: WebViewInner) -> bool {
+    pub fn put_webview_by_tag(&self, webtag: WebTag, webview: Arc<WebViewInner>) -> bool {
         if let Ok(mut webviews) = self.webviews.lock() {
-            webviews.insert(webtag, Arc::new(Mutex::new(webview)));
+            webviews.insert(webtag, webview);
             true
         } else {
             false
@@ -171,34 +168,32 @@ impl AppRuntime for SimpleAppRuntime {
         appid: String,
         path: String,
     ) -> Result<Arc<dyn WebViewController>, MiniAppError> {
-        // Create WebView and store it in global runtime
         let webtag = WebTag::new(&appid, &path);
-        let webview_inner = WebViewInner::create(&appid, &path)?;
 
-        // Store WebView in global runtime
-        if let Some(global_runtime) = SimpleAppRuntime::get() {
-            if !global_runtime.put_webview_by_tag(webtag, webview_inner) {
-                log::error!("Failed to store WebView in runtime: {}-{}", appid, path);
-                return Err(MiniAppError::WebView(
-                    "Failed to store WebView in runtime".to_string(),
-                ));
-            } else {
-                log::info!("WebView stored in runtime: {}-{}", appid, path);
+        // Check if WebView already exists
+        if let Ok(webviews) = self.webviews.lock() {
+            if let Some(existing_webview) = webviews.get(&webtag) {
+                log::info!("WebView already exists, reusing: {}-{}", appid, path);
+                return Ok(existing_webview.clone());
             }
+        }
+
+        // Create new WebView only if it doesn't exist
+        let webview_inner = WebViewInner::create(&appid, &path)?;
+        let webview = Arc::new(webview_inner);
+
+        // Store WebView in HashMap
+        if let Ok(mut webviews) = self.webviews.lock() {
+            webviews.insert(webtag, webview.clone());
+            log::info!("WebView created and stored in runtime: {}-{}", appid, path);
         } else {
-            log::error!(
-                "Global runtime not available for WebView storage: {}-{}",
-                appid,
-                path
-            );
             return Err(MiniAppError::WebView(
-                "Global runtime not available".to_string(),
+                "Failed to acquire webviews lock".to_string(),
             ));
         }
 
-        // Create a new WebView instance to return (since the previous one was moved)
-        let return_webview = WebViewInner::create(&appid, &path)?;
-        Ok(Arc::new(return_webview))
+        // Return the same WebView instance that was stored
+        Ok(webview)
     }
 
     fn open_miniapp(&self, appid: String, path: String) -> Result<(), MiniAppError> {
