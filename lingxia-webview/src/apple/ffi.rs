@@ -103,16 +103,8 @@ pub fn miniapp_init(data_dir: &str, cache_dir: &str) -> Option<String> {
         }
     };
 
-    // Initialize SimpleAppRuntime
-    let runtime = match SimpleAppRuntime::init(app) {
-        Ok(runtime) => runtime,
-        Err(e) => {
-            log::error!("Failed to initialize runtime: {}", e);
-            return None;
-        }
-    };
-
-    // Initialize miniapp directly
+    // Initialize SimpleAppRuntime and miniapp
+    let runtime = SimpleAppRuntime::init(app);
     let final_init_details = miniapp::init(runtime);
 
     // Format and return the result
@@ -183,6 +175,11 @@ pub fn find_webview(appid: &str, path: &str) -> usize {
             // WebView exists, return its pointer
             webview.get_swift_webview_ptr()
         } else {
+            log::error!(
+                "💥 WebView NOT FOUND in runtime for appid={}, path={}",
+                appid,
+                path
+            );
             // No WebView found
             0
         }

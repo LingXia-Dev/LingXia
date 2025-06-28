@@ -2,15 +2,17 @@ use dispatch2::DispatchQueue;
 use miniapp::log::LogLevel;
 use miniapp::{AppUiDelegate, MiniAppError, WebViewController};
 use objc2::runtime::{AnyObject, NSObject, ProtocolObject};
-use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send, rc::Retained};
+use objc2::{
+    DefinedClass, MainThreadMarker, MainThreadOnly, class, define_class, msg_send, rc::Retained,
+};
 use objc2_foundation::{NSObjectProtocol, NSPoint, NSRect, NSSize, NSString, NSURL, NSURLRequest};
 use objc2_web_kit::{WKNavigation, WKNavigationDelegate, WKWebViewConfiguration};
-use std::cell::RefCell;
+
+use crate::runtime::WebTag;
 
 // Custom Navigation Delegate for handling page lifecycle events
 pub struct LingXiaNavigationDelegateIvars {
-    appid: String,
-    path: String,
+    webtag: WebTag,
 }
 
 define_class!(
@@ -29,8 +31,8 @@ define_class!(
             _webview: *mut AnyObject,
             _navigation: &WKNavigation,
         ) {
-            let appid = &self.ivars().appid;
-            let path = &self.ivars().path;
+            let webtag = &self.ivars().webtag;
+            let (appid, path) = webtag.extract_parts();
 
             // Call miniapp's on_page_started
             let miniapp = miniapp::get(appid.clone());
@@ -40,8 +42,8 @@ define_class!(
 
         #[unsafe(method(webView:didFinishNavigation:))]
         fn did_finish_navigation(&self, _webview: *mut AnyObject, _navigation: &WKNavigation) {
-            let appid = &self.ivars().appid;
-            let path = &self.ivars().path;
+            let webtag = &self.ivars().webtag;
+            let (appid, path) = webtag.extract_parts();
 
             // Call miniapp's on_page_finished
             let miniapp = miniapp::get(appid.clone());
@@ -53,9 +55,10 @@ define_class!(
 
 impl LingXiaNavigationDelegate {
     pub fn new(appid: String, path: String, mtm: MainThreadMarker) -> Retained<Self> {
+        let webtag = WebTag::new(&appid, &path);
         let delegate = mtm
             .alloc::<LingXiaNavigationDelegate>()
-            .set_ivars(LingXiaNavigationDelegateIvars { appid, path });
+            .set_ivars(LingXiaNavigationDelegateIvars { webtag });
 
         unsafe { msg_send![super(delegate), init] }
     }
@@ -63,23 +66,20 @@ impl LingXiaNavigationDelegate {
 
 pub struct WebViewInner {
     webview: *mut AnyObject,
-    _navigation_delegate: Option<Retained<LingXiaNavigationDelegate>>,
-    _message_handler: Option<Retained<LingXiaMessageHandler>>,
-    _scroll_delegate: RefCell<Option<Retained<LingXiaScrollDelegate>>>,
-    owns_webview: bool,
-    // Store appid and path for scroll delegate
-    appid: String,
-    path: String,
+    _navigation_delegate: Retained<LingXiaNavigationDelegate>,
+    _message_handler: Retained<LingXiaMessageHandler>,
+    _scroll_delegate: std::cell::RefCell<Option<Retained<LingXiaScrollDelegate>>>,
+    webtag: WebTag,
 }
 
 impl std::fmt::Debug for WebViewInner {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("WebViewInner")
             .field("webview", &self.webview)
-            .field(
-                "has_navigation_delegate",
-                &self._navigation_delegate.is_some(),
-            )
+            .field("webtag", &self.webtag)
+            .field("navigation_delegate", &"<LingXiaNavigationDelegate>")
+            .field("message_handler", &"<LingXiaMessageHandler>")
+            .field("scroll_delegate", &self._scroll_delegate.borrow().is_some())
             .finish()
     }
 }
@@ -104,7 +104,6 @@ impl WebViewInner {
         unsafe {
             // Create WKWebViewConfiguration
             let config = WKWebViewConfiguration::new(mtm);
-            log::debug!("WKWebViewConfiguration created");
 
             // Set up comprehensive WebView configuration
             let _: () = msg_send![&*config, setAllowsInlineMediaPlayback: true];
@@ -192,14 +191,13 @@ impl WebViewInner {
             let message_handler = Self::setup_message_handler(webview, &appid, &path)?;
 
             // Create WebViewInner instance with navigation delegate and message handler
+            let webtag = WebTag::new(appid, path);
             let webview_inner = WebViewInner {
                 webview,
-                _navigation_delegate: Some(navigation_delegate),
-                _message_handler: Some(message_handler),
-                _scroll_delegate: RefCell::new(None), // Will be set when scroll listener is enabled
-                owns_webview: true,
-                appid: appid.to_string(),
-                path: path.to_string(),
+                _navigation_delegate: navigation_delegate,
+                _message_handler: message_handler,
+                _scroll_delegate: std::cell::RefCell::new(None), // Will be set when scroll listener is enabled
+                webtag,
             };
 
             log::info!(
@@ -391,9 +389,10 @@ impl WebViewInner {
                 if self._scroll_delegate.borrow().is_none() {
                     let throttle = throttle_ms.unwrap_or(100);
 
-                    if let Some(scroll_delegate) =
-                        LingXiaScrollDelegate::new(self.appid.clone(), self.path.clone(), throttle)
-                    {
+                    if let Some(scroll_delegate) = {
+                        let (appid, path) = self.webtag.extract_parts();
+                        LingXiaScrollDelegate::new(appid, path, throttle)
+                    } {
                         // Set the delegate on the scroll view
                         let _: () = msg_send![scroll_view, setDelegate: &*scroll_delegate];
                         *self._scroll_delegate.borrow_mut() = Some(scroll_delegate);
@@ -437,12 +436,13 @@ impl WebViewController for WebViewInner {
             let webview_ptr_addr = self.webview as usize;
             let url_clone = url.clone();
 
-            DispatchQueue::main().exec_async(move || {
-                // Reconstruct the WebViewInner from the pointer address
+            DispatchQueue::main().exec_async(move || unsafe {
                 let webview_ptr = webview_ptr_addr as *mut AnyObject;
-                let temp_webview = WebViewInner::create_temporary(webview_ptr);
-                if let Err(e) = temp_webview.load_url_on_main_thread(url_clone) {
-                    log::error!("Failed to load URL on main thread: {}", e);
+                let url_nsstring = NSString::from_str(&url_clone);
+                let url = NSURL::URLWithString(&url_nsstring);
+                if let Some(url) = url {
+                    let request = NSURLRequest::requestWithURL(&url);
+                    let _: () = msg_send![webview_ptr, loadRequest: &*request];
                 }
             });
 
@@ -460,11 +460,10 @@ impl WebViewController for WebViewInner {
             let js_clone = js.clone();
 
             DispatchQueue::main().exec_async(move || {
-                // Reconstruct the WebViewInner from the pointer address
-                let webview_ptr = webview_ptr_addr as *mut AnyObject;
-                let temp_webview = WebViewInner::create_temporary(webview_ptr);
-                if let Err(e) = temp_webview.evaluate_javascript_on_main_thread(js_clone) {
-                    log::error!("Failed to evaluate JavaScript on main thread: {}", e);
+                unsafe {
+                    let webview_ptr = webview_ptr_addr as *mut AnyObject;
+                    let js_nsstring = NSString::from_str(&js_clone);
+                    let _: () = msg_send![webview_ptr, evaluateJavaScript: &*js_nsstring, completionHandler: std::ptr::null::<*const AnyObject>()];
                 }
             });
 
@@ -481,11 +480,13 @@ impl WebViewController for WebViewInner {
             let webview_ptr_addr = self.webview as usize;
 
             DispatchQueue::main().exec_async(move || {
-                // Reconstruct the WebViewInner from the pointer address
-                let webview_ptr = webview_ptr_addr as *mut AnyObject;
-                let temp_webview = WebViewInner::create_temporary(webview_ptr);
-                if let Err(e) = temp_webview.clear_browsing_data_on_main_thread() {
-                    log::error!("Failed to clear browsing data on main thread: {}", e);
+                unsafe {
+                    let webview_ptr = webview_ptr_addr as *mut AnyObject;
+                    // Get WKWebsiteDataStore and clear data
+                    let configuration: *mut AnyObject = msg_send![webview_ptr, configuration];
+                    let data_store: *mut AnyObject = msg_send![configuration, websiteDataStore];
+                    let data_types: *mut AnyObject = msg_send![class!(WKWebsiteDataStore), allWebsiteDataTypes];
+                    let _: () = msg_send![data_store, removeDataOfTypes: data_types, modifiedSince: std::ptr::null::<*const AnyObject>(), completionHandler: std::ptr::null::<*const AnyObject>()];
                 }
             });
 
@@ -501,13 +502,12 @@ impl WebViewController for WebViewInner {
             // Not on main thread, dispatch to main thread using GCD
             let webview_ptr_addr = self.webview as usize;
 
-            DispatchQueue::main().exec_async(move || {
-                // Reconstruct the WebViewInner from the pointer address
+            DispatchQueue::main().exec_async(move || unsafe {
                 let webview_ptr = webview_ptr_addr as *mut AnyObject;
-                let temp_webview = WebViewInner::create_temporary(webview_ptr);
-                if let Err(e) = temp_webview.set_devtools_on_main_thread(enabled) {
-                    log::error!("Failed to set devtools on main thread: {}", e);
-                }
+                let configuration: *mut AnyObject = msg_send![webview_ptr, configuration];
+                let preferences: *mut AnyObject = msg_send![configuration, preferences];
+                let key_nsstring = NSString::from_str("developerExtrasEnabled");
+                let _: () = msg_send![preferences, setValue: enabled, forKey: &*key_nsstring];
             });
 
             Ok(())
@@ -523,13 +523,10 @@ impl WebViewController for WebViewInner {
             let webview_ptr_addr = self.webview as usize;
             let ua_clone = ua.clone();
 
-            DispatchQueue::main().exec_async(move || {
-                // Reconstruct the WebViewInner from the pointer address
+            DispatchQueue::main().exec_async(move || unsafe {
                 let webview_ptr = webview_ptr_addr as *mut AnyObject;
-                let temp_webview = WebViewInner::create_temporary(webview_ptr);
-                if let Err(e) = temp_webview.set_user_agent_on_main_thread(ua_clone) {
-                    log::error!("Failed to set user agent on main thread: {}", e);
-                }
+                let ua_nsstring = NSString::from_str(&ua_clone);
+                let _: () = msg_send![webview_ptr, setCustomUserAgent: &*ua_nsstring];
             });
 
             Ok(())
@@ -545,65 +542,36 @@ impl WebViewController for WebViewInner {
             // Already on main thread, execute directly
             self.set_scroll_listener_on_main_thread(enabled, throttle_ms)
         } else {
-            // Not on main thread, dispatch to main thread using GCD
-            let webview_ptr_addr = self.webview as usize;
-            let throttle = throttle_ms.unwrap_or(100);
-
-            DispatchQueue::main().exec_async(move || {
-                // Reconstruct the WebViewInner from the pointer address
-                let webview_ptr = webview_ptr_addr as *mut AnyObject;
-                let temp_webview = WebViewInner::create_temporary(webview_ptr);
-                if let Err(e) =
-                    temp_webview.set_scroll_listener_on_main_thread(enabled, Some(throttle))
-                {
-                    log::error!("Failed to set scroll listener on main thread: {}", e);
-                }
-            });
-
-            Ok(())
+            // Cross-thread scroll listener setup is complex and requires webtag
+            // For now, return error - this should be called on main thread
+            Err(MiniAppError::WebView(
+                "Scroll listener must be set on main thread".to_string(),
+            ))
         }
     }
 }
 
 impl Drop for WebViewInner {
     fn drop(&mut self) {
-        // Only cleanup if this instance owns the WebView
-        if self.owns_webview {
-            // Check if we're on main thread - if not, dispatch cleanup to main thread
-            if MainThreadMarker::new().is_some() {
-                // Already on main thread, perform cleanup directly
-                self.cleanup_webview();
-            } else {
-                // Not on main thread, dispatch cleanup to main thread using GCD
-                let webview_ptr_addr = self.webview as usize;
-
-                DispatchQueue::main().exec_async(move || {
-                    // Reconstruct the WebViewInner from the pointer address for cleanup
+        // WebView cleanup - only cleanup the actual WebView resources
+        // Runtime storage is managed separately
+        if MainThreadMarker::new().is_some() {
+            self.cleanup_webview();
+        } else {
+            let webview_ptr_addr = self.webview as usize;
+            DispatchQueue::main().exec_async(move || {
+                unsafe {
                     let webview_ptr = webview_ptr_addr as *mut AnyObject;
-                    let temp_webview = WebViewInner::create_temporary(webview_ptr);
-                    temp_webview.cleanup_webview_owned(); // Use special cleanup for owned WebView
-                });
-            }
+                    // Direct cleanup without creating temporary instance
+                    let _: () = msg_send![webview_ptr, removeFromSuperview];
+                    let _: () = msg_send![webview_ptr, stopLoading];
+                }
+            });
         }
-        // Temporary instances (owns_webview = false) don't perform cleanup
     }
 }
 
 impl WebViewInner {
-    /// Create a temporary WebViewInner for operations that don't need navigation delegate
-    /// This is used when we need to call methods on a WebView from a different thread
-    fn create_temporary(webview_ptr: *mut AnyObject) -> Self {
-        WebViewInner {
-            webview: webview_ptr,
-            _navigation_delegate: None,
-            _message_handler: None,
-            _scroll_delegate: RefCell::new(None),
-            owns_webview: false,
-            appid: "unknown".to_string(), // Temporary instances don't have real appid/path
-            path: "unknown".to_string(),
-        }
-    }
-
     /// Cleanup WebView resources on main thread and properly release the WebView
     fn cleanup_webview(&self) {
         unsafe {
@@ -627,46 +595,8 @@ impl WebViewInner {
                     msg_send![scroll_view, setDelegate: std::ptr::null::<*const AnyObject>()];
             }
 
-            // Clear our scroll delegate
-            *self._scroll_delegate.borrow_mut() = None;
-
-            // Only release if this instance owns the WebView
-            if self.owns_webview {
-                // Explicitly release the WebView object
-                // This is critical for proper memory management
-                let _: () = msg_send![self.webview, release];
-
-                log::info!(
-                    "WebView instance completely released: removed from superview, cleared all delegates, and released object"
-                );
-            }
-        }
-    }
-
-    /// Cleanup WebView resources for owned instances (called from async context)
-    fn cleanup_webview_owned(&self) {
-        unsafe {
-            // Remove from superview if attached to prevent memory leaks
-            let _: () = msg_send![self.webview, removeFromSuperview];
-
-            // Stop loading any ongoing requests
-            let _: () = msg_send![self.webview, stopLoading];
-
-            // Clear navigation delegate to prevent callbacks after deallocation
-            let _: () = msg_send![self.webview, setNavigationDelegate: std::ptr::null::<*const AnyObject>()];
-
-            // Clear UI delegate to prevent callbacks after deallocation
-            let _: () =
-                msg_send![self.webview, setUIDelegate: std::ptr::null::<*const AnyObject>()];
-
-            // Clear scroll view delegate if any
-            let scroll_view: *mut AnyObject = msg_send![self.webview, scrollView];
-            if !scroll_view.is_null() {
-                let _: () =
-                    msg_send![scroll_view, setDelegate: std::ptr::null::<*const AnyObject>()];
-            }
-
-            // Always release in this method (it's only called for owned WebViews)
+            // Release the WebView object
+            // This is critical for proper memory management
             let _: () = msg_send![self.webview, release];
 
             log::info!(
