@@ -534,43 +534,6 @@ extern "C" fn on_controller_attached_callback(web_tag: *const c_char, user_data:
                     webtag_str
                 );
             }
-
-            // Also setup message ports when controller is attached
-            // This ensures ports are available even if page loading doesn't trigger
-            log::info!("Setting up message ports in onAttach for: {}", webtag_str);
-
-            // Setup console port
-            if let Err(e) = inject_console_script(webtag_str) {
-                log::error!(
-                    "Failed to inject console script in onAttach for {}: {}",
-                    webtag_str,
-                    e
-                );
-            }
-            if let Err(e) = setup_webmessage_port_for_webtag(
-                &webtag,
-                PortType::Console,
-                on_console_message_received,
-            ) {
-                log::error!(
-                    "Failed to setup console port in onAttach for {}: {}",
-                    webtag_str,
-                    e
-                );
-            }
-
-            // Setup message port
-            if let Err(e) = setup_webmessage_port_for_webtag(
-                &webtag,
-                PortType::Message,
-                on_web_message_received,
-            ) {
-                log::error!(
-                    "Failed to setup message port in onAttach for {}: {}",
-                    webtag_str,
-                    e
-                );
-            }
         }
     }
 }
