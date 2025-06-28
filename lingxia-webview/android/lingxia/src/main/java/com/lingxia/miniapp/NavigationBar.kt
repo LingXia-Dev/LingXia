@@ -187,7 +187,9 @@ class NavigationBar @JvmOverloads constructor(
         // Title TextView setup
         titleTextView = TextView(context).apply {
             layoutParams = LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
-                gravity = Gravity.CENTER
+                gravity = Gravity.CENTER_HORIZONTAL or Gravity.TOP
+                // Align title with capsule button center: 24dp (status bar) + 18dp (adjustment)
+                topMargin = (42 * density).toInt()
             }
             gravity = Gravity.CENTER
             textAlignment = View.TEXT_ALIGNMENT_CENTER

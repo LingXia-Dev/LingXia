@@ -35,7 +35,7 @@ class MiniAppActivity : AppCompatActivity() {
         private const val TAG = "LingXia.WebView"
         const val EXTRA_APP_ID = "appId"
         const val EXTRA_PATH = "path"
-        internal const val DEFAULT_NAV_BAR_HEIGHT_DP =12
+        internal const val DEFAULT_NAV_BAR_HEIGHT_DP = 44
         internal const val DEFAULT_TAB_BAR_SIZE_DP = 56
 
         private var lastWebView: WeakReference<com.lingxia.miniapp.WebView>? = null
@@ -1067,16 +1067,21 @@ class MiniAppActivity : AppCompatActivity() {
                 }
 
                 navigationBar = newNavBar
+            }
 
-                // Check if rootContainer is initialized before adding the view
-                if (::rootContainer.isInitialized) {
-                    rootContainer.addView(navigationBar, 0)
-                    rootContainer.post {
-                        Log.d(TAG, "MiniAppActivity: After layout pass, navigationBar.height = ${navigationBar?.height}, navigationBar.measuredHeight = ${navigationBar?.measuredHeight}")
-                    }
-                } else {
-                    Log.e(TAG, "Unable to add NavigationBar: rootContainer not initialized")
+            // Always ensure NavigationBar is added to rootContainer (whether new or existing)
+            if (navigationBar != null && ::rootContainer.isInitialized) {
+                // Remove from parent if already added
+                if (navigationBar?.parent != null) {
+                    (navigationBar?.parent as? ViewGroup)?.removeView(navigationBar)
                 }
+
+                rootContainer.addView(navigationBar)  // Add to top, not index 0
+                rootContainer.post {
+                    Log.d(TAG, "MiniAppActivity: After layout pass, navigationBar.height = ${navigationBar?.height}, navigationBar.measuredHeight = ${navigationBar?.measuredHeight}")
+                }
+            } else if (!::rootContainer.isInitialized) {
+                Log.e(TAG, "Unable to add NavigationBar: rootContainer not initialized")
             }
 
             val titleText = config?.navigationBarTitleText ?: ""
