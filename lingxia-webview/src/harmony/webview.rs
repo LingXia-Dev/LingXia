@@ -6,6 +6,7 @@ use miniapp::{AppUiDelegate, MiniAppError, WebViewController};
 use napi_ohos::{Status, threadsafe_function::ThreadsafeFunctionCallMode};
 use ohos_web_sys::*;
 
+use std::cell::RefCell;
 use std::ffi::{CStr, CString, c_char, c_void};
 use std::sync::OnceLock;
 
@@ -58,10 +59,10 @@ fn get_message_api() -> Result<&'static ArkWeb_WebMessageAPI, MiniAppError> {
 #[derive(Debug)]
 pub struct WebViewInner {
     webtag: WebTag,
-    native_port: Option<*mut ArkWeb_WebMessagePort>,
-    console_port: Option<*mut ArkWeb_WebMessagePort>,
-    webview_native_port: Option<*mut ArkWeb_WebMessagePort>,
-    webview_console_port: Option<*mut ArkWeb_WebMessagePort>,
+    native_port: RefCell<Option<*mut ArkWeb_WebMessagePort>>,
+    console_port: RefCell<Option<*mut ArkWeb_WebMessagePort>>,
+    webview_native_port: RefCell<Option<*mut ArkWeb_WebMessagePort>>,
+    webview_console_port: RefCell<Option<*mut ArkWeb_WebMessagePort>>,
 }
 
 unsafe impl Send for WebViewInner {}
@@ -187,12 +188,9 @@ pub fn send_port_to_webview_for_webtag(
     let runtime = crate::runtime::SimpleAppRuntime::get()
         .ok_or_else(|| MiniAppError::WebView("Runtime not initialized".to_string()))?;
 
-    let webview_mutex = runtime.get_webview_by_tag(webtag).ok_or_else(|| {
+    let webview = runtime.get_webview_by_tag(webtag).ok_or_else(|| {
         MiniAppError::WebView(format!("WebView not found for webtag: {}", webtag.as_str()))
     })?;
-    let mut webview = webview_mutex
-        .lock()
-        .map_err(|_| MiniAppError::WebView("Failed to lock WebView".to_string()))?;
 
     webview.send_port(port_type)
 }
@@ -205,10 +203,10 @@ impl WebViewInner {
         // Create WebView instance
         let webview_inner = WebViewInner {
             webtag: webtag.clone(),
-            native_port: None,
-            console_port: None,
-            webview_native_port: None,
-            webview_console_port: None,
+            native_port: RefCell::new(None),
+            console_port: RefCell::new(None),
+            webview_native_port: RefCell::new(None),
+            webview_console_port: RefCell::new(None),
         };
 
         // Call ArkTS to create WebView controller with callback for proper timing
@@ -263,7 +261,7 @@ impl WebViewInner {
     }
 
     /// Send port to WebView
-    pub fn send_port(&mut self, port_type: PortType) -> Result<(), MiniAppError> {
+    pub fn send_port(&self, port_type: PortType) -> Result<(), MiniAppError> {
         unsafe {
             let webtag_cstr = CString::new(self.webtag.as_str()).unwrap();
             let controller_api =
@@ -276,8 +274,16 @@ impl WebViewInner {
             let controller = &*(controller_api as *const ArkWeb_ControllerAPI);
 
             let (port, message, port_name) = match port_type {
-                PortType::Console => (self.webview_console_port, "LingXia-console-init", "console"),
-                PortType::Message => (self.webview_native_port, "LingXia-port-init", "message"),
+                PortType::Console => (
+                    self.webview_console_port.borrow_mut().take(),
+                    "LingXia-console-init",
+                    "console",
+                ),
+                PortType::Message => (
+                    self.webview_native_port.borrow_mut().take(),
+                    "LingXia-port-init",
+                    "message",
+                ),
             };
 
             if let Some(webview_port) = port {
@@ -419,16 +425,8 @@ impl WebViewController for WebViewInner {
     }
 
     fn post_message(&self, message: String) -> Result<(), MiniAppError> {
-        // Get the latest WebView instance from Runtime to access updated native_port
-        let runtime = crate::runtime::SimpleAppRuntime::get()
-            .ok_or_else(|| MiniAppError::WebView("Runtime not available".to_string()))?;
-        let webview_mutex = runtime
-            .get_webview_by_tag(&self.webtag)
-            .ok_or_else(|| MiniAppError::WebView("WebView not found in runtime".to_string()))?;
-        let webview = webview_mutex
-            .lock()
-            .map_err(|_| MiniAppError::WebView("Failed to lock WebView".to_string()))?;
-        let port = webview.native_port;
+        // Access native_port directly through RefCell
+        let port = *self.native_port.borrow();
 
         if let Some(port) = port {
             unsafe {
@@ -725,21 +723,18 @@ fn setup_webmessage_port_for_webtag(
         // Store both ports in WebViewInner through runtime
         let runtime = crate::runtime::SimpleAppRuntime::get()
             .ok_or_else(|| MiniAppError::WebView("Runtime not initialized".to_string()))?;
-        let webview_mutex = runtime
+        let webview = runtime
             .get_webview_by_tag(webtag)
             .ok_or_else(|| MiniAppError::WebView("WebView not found".to_string()))?;
-        let mut webview = webview_mutex
-            .lock()
-            .map_err(|_| MiniAppError::WebView("Failed to lock WebView".to_string()))?;
 
         match port_type {
             PortType::Message => {
-                webview.native_port = Some(port1);
-                webview.webview_native_port = Some(port2);
+                *webview.native_port.borrow_mut() = Some(port1);
+                *webview.webview_native_port.borrow_mut() = Some(port2);
             }
             PortType::Console => {
-                webview.console_port = Some(port1);
-                webview.webview_console_port = Some(port2);
+                *webview.console_port.borrow_mut() = Some(port1);
+                *webview.webview_console_port.borrow_mut() = Some(port2);
             }
         }
 
