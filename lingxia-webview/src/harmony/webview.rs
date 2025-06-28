@@ -62,6 +62,8 @@ pub struct WebViewInner {
     console_port: RefCell<Option<*mut ArkWeb_WebMessagePort>>,
     webview_native_port: RefCell<Option<*mut ArkWeb_WebMessagePort>>,
     webview_console_port: RefCell<Option<*mut ArkWeb_WebMessagePort>>,
+    // Store user_data pointers for cleanup
+    user_data_ptrs: RefCell<Vec<*mut c_void>>,
 }
 
 unsafe impl Send for WebViewInner {}
@@ -102,6 +104,12 @@ fn register_proxy_for_webtag(webtag: &WebTag) -> Result<(), MiniAppError> {
         let proxy_data = Box::new(webtag_string);
         let proxy_data_ptr = Box::into_raw(proxy_data) as *mut std::ffi::c_void;
 
+        // Track this allocation for cleanup in the WebView
+        let runtime = crate::runtime::SimpleAppRuntime::get().unwrap();
+        if let Some(webview) = runtime.get_webview_by_tag(webtag) {
+            webview.track_user_data(proxy_data_ptr);
+        }
+
         let object_name_cstr = CString::new("LingXiaProxy").unwrap();
         let get_port_cstr = CString::new("getPort").unwrap();
 
@@ -122,6 +130,7 @@ fn register_proxy_for_webtag(webtag: &WebTag) -> Result<(), MiniAppError> {
             log::info!("Registered LingXiaProxy for {}", webtag.as_str());
             Ok(())
         } else {
+            // Cleanup manually since registration failed
             let _ = Box::from_raw(proxy_data_ptr as *mut String);
             Err(MiniAppError::WebView(
                 "registerJavaScriptProxy not available".to_string(),
@@ -206,6 +215,7 @@ impl WebViewInner {
             console_port: RefCell::new(None),
             webview_native_port: RefCell::new(None),
             webview_console_port: RefCell::new(None),
+            user_data_ptrs: RefCell::new(Vec::new()),
         };
 
         // Call ArkTS to create WebView controller with callback for proper timing
@@ -252,6 +262,34 @@ impl WebViewInner {
         })?;
 
         Ok(webview_inner)
+    }
+
+    /// Add a user_data pointer for cleanup
+    fn track_user_data(&self, ptr: *mut c_void) {
+        self.user_data_ptrs.borrow_mut().push(ptr);
+        log::debug!("Tracked user_data for {}: {:?}", self.webtag.as_str(), ptr);
+    }
+
+    /// Cleanup all tracked user_data
+    fn cleanup_user_data(&self) {
+        let ptrs = self
+            .user_data_ptrs
+            .borrow_mut()
+            .drain(..)
+            .collect::<Vec<_>>();
+        let count = ptrs.len();
+        for ptr in ptrs {
+            unsafe {
+                let _cleanup = Box::from_raw(ptr as *mut String);
+            }
+        }
+        if count > 0 {
+            log::info!(
+                "Cleaned up {} user_data pointers for {}",
+                count,
+                self.webtag.as_str()
+            );
+        }
     }
 
     /// Send port to WebView
@@ -453,6 +491,9 @@ impl WebViewController for WebViewInner {
 
 impl Drop for WebViewInner {
     fn drop(&mut self) {
+        // Cleanup all tracked user_data first
+        self.cleanup_user_data();
+
         if let Err(e) = call_arkts("destroyWebViewController", &[self.webtag.as_str()]) {
             log::error!("Failed to destroy WebView controller: {:?}", e);
         }
@@ -467,6 +508,12 @@ fn register_webview_callbacks(webtag: &WebTag) -> Result<(), MiniAppError> {
         // Create a single shared user_data for all callbacks (like the original implementation)
         let webtag_string = webtag.as_str().to_string();
         let user_data = Box::into_raw(Box::new(webtag_string)) as *mut c_void;
+
+        // Track this user_data for cleanup (but don't double-cleanup in on_destroy_callback)
+        let runtime = crate::runtime::SimpleAppRuntime::get().unwrap();
+        if let Some(webview) = runtime.get_webview_by_tag(webtag) {
+            webview.track_user_data(user_data);
+        }
 
         // Get the ArkWeb_ComponentAPI using the correct API
         let component_api =
@@ -576,18 +623,9 @@ extern "C" fn on_page_end_callback(web_tag: *const c_char, _user_data: *mut c_vo
     }
 }
 
-extern "C" fn on_destroy_callback(web_tag: *const c_char, user_data: *mut c_void) {
+extern "C" fn on_destroy_callback(web_tag: *const c_char, _user_data: *mut c_void) {
     if let Ok(webtag_str) = unsafe { CStr::from_ptr(web_tag).to_str() } {
         log::info!("WebView destroyed: {}", webtag_str);
-
-        // Properly release the Box containing the webtag string
-        if !user_data.is_null() {
-            unsafe {
-                let _webtag_string = Box::from_raw(user_data as *mut String);
-                // Box will be automatically dropped here, cleaning up the string
-                log::info!("WebView user_data cleaned up for {}", webtag_str);
-            }
-        }
     }
 }
 
@@ -660,6 +698,9 @@ fn setup_webmessage_port_for_webtag(
         // Set message event handler
         let webtag_string = webtag.as_str().to_string();
         let user_data_ptr = Box::into_raw(Box::new(webtag_string)) as *mut c_void;
+
+        // Track this allocation for cleanup in the WebView
+        webview.track_user_data(user_data_ptr);
 
         if let Some(set_handler) = port_api_struct.setMessageEventHandler {
             set_handler(
