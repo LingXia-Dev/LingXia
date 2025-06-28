@@ -234,20 +234,15 @@ impl WebViewInner {
                 );
             }
 
-            // Register LingXiaProxy for home page
-            if webtag_for_callback.as_str().contains("home") {
-                if let Err(e) = register_proxy_for_webtag(&webtag_for_callback) {
-                    log::error!(
-                        "Failed to register LingXiaProxy for home page {}: {}",
-                        webtag_for_callback.as_str(),
-                        e
-                    );
-                } else {
-                    log::info!(
-                        "Registered LingXiaProxy for home page: {}",
-                        webtag_for_callback.as_str()
-                    );
-                }
+            // why call here ?
+            // for init route page of home miniapp, it has no change to trigger onControllerAttached
+            // and it only be workable for init route page.
+            if let Err(e) = register_proxy_for_webtag(&webtag_for_callback) {
+                log::error!(
+                    "Failed to register LingXiaProxy for home page {}: {}",
+                    webtag_for_callback.as_str(),
+                    e
+                );
             }
 
             log::info!(
@@ -548,7 +543,7 @@ extern "C" fn on_page_begin_callback(web_tag: *const c_char, user_data: *mut c_v
             let webtag = WebTag::from(webtag_string.as_str());
 
             // Setup console and message ports
-            if let Err(e) = inject_console_script(webtag_str) {
+            if let Err(e) = inject_console_script(&webtag) {
                 log::error!("Failed to inject console script for {}: {}", webtag_str, e);
             }
             if let Err(e) = setup_webmessage_port_for_webtag(
@@ -681,7 +676,7 @@ fn setup_webmessage_port_for_webtag(
 }
 
 /// Inject console interception script
-fn inject_console_script(webtag: &str) -> Result<(), MiniAppError> {
+fn inject_console_script(webtag: &WebTag) -> Result<(), MiniAppError> {
     let console_script = r#"
         (function() {
             const orig = {
@@ -724,7 +719,7 @@ fn inject_console_script(webtag: &str) -> Result<(), MiniAppError> {
     "#;
 
     unsafe {
-        let webtag_cstr = CString::new(webtag).unwrap();
+        let webtag_cstr = CString::new(webtag.as_str()).unwrap();
 
         // Get Controller API
         let controller_api =
