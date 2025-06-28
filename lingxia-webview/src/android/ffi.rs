@@ -136,16 +136,8 @@ pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeOnMiniAppInited(
         }
     };
 
-    // Initialize SimpleAppRuntime
-    let runtime = match SimpleAppRuntime::init(app) {
-        Ok(runtime) => runtime,
-        Err(e) => {
-            error!("Failed to initialize runtime: {}", e);
-            return JObject::null().into_raw();
-        }
-    };
-
-    // Initialize miniapp directly
+    // Initialize SimpleAppRuntime and miniapp
+    let runtime = SimpleAppRuntime::init(app);
     let final_init_details = miniapp::init(runtime);
 
     // Format and return the result
@@ -257,7 +249,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeFindWebView<'a>(
     // Get the runtime and try to find the WebView
     if let Some(runtime) = SimpleAppRuntime::get() {
         if let Some(webview) = runtime.get_webview(&appid, &path) {
-            // Create a new local reference to the Java WebView object
+            // Get direct access to the WebView and create a new local reference to the Java WebView object
             match env.new_local_ref(webview.get_java_webview()) {
                 Ok(local_ref) => unsafe { JObject::from_raw(local_ref.into_raw()) },
                 Err(e) => {
@@ -267,6 +259,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeFindWebView<'a>(
             }
         } else {
             // No WebView found for this appid/path
+            error!("💥 Not found webview for {}-{}", appid, path);
             JObject::null()
         }
     } else {

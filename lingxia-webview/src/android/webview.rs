@@ -1,8 +1,8 @@
-use crate::android::get_env;
-use jni::objects::{GlobalRef, JObject, JValue};
+use crate::android::{MINIAPP_CLASS, get_env};
+use jni::objects::{GlobalRef, JClass, JObject, JValue};
 use miniapp::{MiniAppError, WebViewController};
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct WebViewInner {
     java_webview: GlobalRef,
 }
@@ -14,9 +14,13 @@ impl WebViewInner {
 
         let mut env = get_env().unwrap();
 
-        let miniapp_class = env
-            .find_class("com/lingxia/miniapp/MiniApp")
-            .map_err(|e| MiniAppError::WebView(format!("Failed to find MiniApp class: {:?}", e)))?;
+        let miniapp_class: &JClass = MINIAPP_CLASS
+            .get()
+            .ok_or_else(|| {
+                MiniAppError::WebView("Global MiniApp class reference not available".to_string())
+            })?
+            .as_obj()
+            .into();
 
         let appid_jstring = env.new_string(appid).unwrap();
         let path_jstring = env.new_string(path).unwrap();
@@ -24,7 +28,7 @@ impl WebViewInner {
         // Call Kotlin createWebView method
         let webview_result = env
             .call_static_method(
-                &miniapp_class,
+                miniapp_class,
                 "createWebView",
                 "(Ljava/lang/String;Ljava/lang/String;)Lcom/lingxia/miniapp/WebView;",
                 &[
