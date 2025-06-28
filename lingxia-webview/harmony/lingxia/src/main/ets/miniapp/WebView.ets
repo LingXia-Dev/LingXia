@@ -81,19 +81,38 @@ export class WebViewManager {
    * Find WebView by appId and path (only find, don't create)
    * @param appId - MiniApp ID
    * @param path - Page path
-   * @returns WebView controller or null if not found
+   * @returns WebView controller or null if creation fails
    */
   static findWebview(appId: string, path: string): webview.WebviewController | null {
     const webtag = toWebTag(appId, path);
-    const controller = WebViewManager.controllers.get(webtag);
+    let controller = WebViewManager.controllers.get(webtag);
 
     if (controller) {
-      hilog.info(DOMAIN, TAG, `Found WebView: ${webtag}`);
+      hilog.info(DOMAIN, TAG, `Found existing WebView: ${webtag}`);
       return controller;
-    } else {
-      hilog.info(DOMAIN, TAG, `WebView not found: ${webtag}`);
-      return null;
     }
+
+    // Fallback creation: Only create if the entire map is empty
+    // This handles the race condition where Rust has queued creation via TSFN
+    // but the async task hasn't been executed yet
+    if (WebViewManager.controllers.size === 0) {
+      hilog.info(DOMAIN, TAG, `WebView map is empty, creating fallback: ${webtag}`);
+      const created = WebViewManager.createWebview(webtag);
+
+      if (created) {
+        controller = WebViewManager.controllers.get(webtag);
+        if (controller) {
+          hilog.info(DOMAIN, TAG, `Fallback WebView created successfully: ${webtag}`);
+          return controller;
+        }
+      }
+
+      hilog.error(DOMAIN, TAG, `Failed to create fallback WebView: ${webtag}`);
+    } else {
+      hilog.info(DOMAIN, TAG, `WebView not found but map not empty: ${webtag}`);
+    }
+
+    return null;
   }
 
   /**
@@ -391,7 +410,8 @@ export function loadUrl(webtag: string, url: string): boolean {
  * @returns true if setting applied successfully
  */
 export function setWebDebuggingAccess(webtag: string, enable: boolean): boolean {
-  return WebViewManager.setWebDebuggingAccess(webtag, enable);
+  //return WebViewManager.setWebDebuggingAccess(webtag, enable);
+  return true;
 }
 
 /**

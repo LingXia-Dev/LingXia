@@ -5,7 +5,7 @@ import { resourceManager } from '@kit.LocalizationKit';
 import { taskpool } from '@kit.ArkTS';
 import { MiniAppContainer } from './MiniAppContainer';
 import { initNativeBridge, getNativeCallbackFunction } from './NativeBridge';
-import { WebViewManager, createWebViewController, toWebTag } from './WebView';
+import { WebViewManager, toWebTag } from './WebView';
 
 // Import native functions from Rust
 import { miniappInit, onMiniappOpened, onMiniappClosed, onPageShow } from 'liblingxia.so';
@@ -106,9 +106,6 @@ export class MiniApp {
         // Initialize Web component core: initialize the Browser process and create BrowserContext.
         webview.WebviewController.initializeWebEngine();
 
-        const webtag = toWebTag(instance.homeMiniAppId, instance.homeMiniAppInitialRoute);
-        const success = createWebViewController(webtag);
-        hilog.info(DOMAIN, TAG, `Initial WebView creation result: ${success}`);
       } else {
         hilog.error(DOMAIN, TAG, `Failed to parse home MiniApp details from native (expected 2 parts): ${result}`);
       }
