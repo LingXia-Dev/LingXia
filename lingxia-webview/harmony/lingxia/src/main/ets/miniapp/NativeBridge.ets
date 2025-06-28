@@ -48,7 +48,7 @@ class NativeBridge {
       return true;
     });
 
-    this.register('switchToPage', (appId: string, path: string) => {
+    this.register('switchPage', (appId: string, path: string) => {
       return MiniApp.switchToPage(appId, path);
     });
 

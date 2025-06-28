@@ -1,9 +1,8 @@
-use crate::harmony::ffi::CALLBACK_TSFN;
 use crate::harmony::schemehandler::set_webview_scheme_handler;
+use crate::harmony::tsfn::{call_arkts, call_arkts_with_callback};
 use crate::runtime::WebTag;
 use miniapp::log::LogLevel;
 use miniapp::{AppUiDelegate, MiniAppError, WebViewController};
-use napi_ohos::{Status, threadsafe_function::ThreadsafeFunctionCallMode};
 use ohos_web_sys::*;
 
 use std::cell::RefCell;
@@ -317,44 +316,6 @@ impl WebViewInner {
                 )))
             }
         }
-    }
-}
-
-/// Helper function for TSFN calls
-fn call_arkts(name: &str, args: &[&str]) -> Result<(), MiniAppError> {
-    let tsfn = CALLBACK_TSFN
-        .get()
-        .ok_or_else(|| MiniAppError::WebView("No callback".to_string()))?;
-    let data = format!("{}|{}", name, args.join("|"));
-    match tsfn.call(data, ThreadsafeFunctionCallMode::Blocking) {
-        Status::Ok => Ok(()),
-        _ => Err(MiniAppError::WebView("TSFN call failed".to_string())),
-    }
-}
-
-/// Helper function for TSFN calls with callback
-fn call_arkts_with_callback<F>(name: &str, args: &[&str], callback: F) -> Result<(), MiniAppError>
-where
-    F: FnOnce() + Send + 'static,
-{
-    let tsfn = CALLBACK_TSFN
-        .get()
-        .ok_or_else(|| MiniAppError::WebView("No callback".to_string()))?;
-    let data = format!("{}|{}", name, args.join("|"));
-
-    // Call ArkTS with return value and wait for completion
-    match tsfn.call_with_return_value(
-        data,
-        ThreadsafeFunctionCallMode::Blocking,
-        |_env, _result| {
-            callback();
-            Ok(())
-        },
-    ) {
-        Status::Ok => Ok(()),
-        _ => Err(MiniAppError::WebView(
-            "TSFN call_with_return_value failed".to_string(),
-        )),
     }
 }
 

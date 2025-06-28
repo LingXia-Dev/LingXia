@@ -1,3 +1,4 @@
+use crate::harmony::tsfn;
 use miniapp::{AssetFileEntry, DeviceInfo, MiniAppError};
 use napi_ohos::NapiRaw;
 use napi_ohos::bindgen_prelude::{Env, Object};
@@ -305,14 +306,14 @@ impl App {
     }
 
     pub fn open_miniapp(&self, appid: &str, path: &str) -> Result<(), MiniAppError> {
-        todo!()
+        tsfn::call_arkts("openMiniApp", &[appid, path])
     }
 
     pub fn close_miniapp(&self, appid: &str) -> Result<(), MiniAppError> {
-        todo!()
+        tsfn::call_arkts("closeMiniApp", &[appid])
     }
 
     pub fn switch_page(&self, appid: &str, path: &str) -> Result<(), MiniAppError> {
-        todo!()
+        tsfn::call_arkts("switchPage", &[appid, path])
     }
 }
