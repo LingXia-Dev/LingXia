@@ -1,4 +1,3 @@
-
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { MiniApp } from './MiniApp';
 import { MiniAppContainer } from './MiniAppContainer';
@@ -17,32 +16,32 @@ interface MiniAppStackItem {
   zIndex: number;  // Layer index
 }
 
+/**
+ * MiniApp Navigation with WebView preservation
+ * - Hides MiniApps instead of destroying them to preserve WebViews
+ * - Uses independent hiddenApps Set to avoid miniAppStack mutations
+ */
 @Component
 export struct MiniAppNavigation {
   @State isReady: boolean = false
   @State homeAppId: string = ''
   @State homeAppPath: string = ''
   @State errorMessage: string = ''
+  @Prop autoOpenHome: boolean = true
 
   @State private miniAppStack: MiniAppStackItem[] = []
-
-  // Optional parameter: whether to auto open home MiniApp (default: true)
-  @Prop autoOpenHome: boolean = true
+  @State private hiddenApps: Set<string> = new Set<string>()
 
   @Provide navPageInfos: NavPathStack = new NavPathStack()
 
   aboutToAppear() {
-    hilog.info(DOMAIN, TAG, 'MiniAppNavigation starting - Manual Stack-based architecture');
-
+    hilog.info(DOMAIN, TAG, 'MiniAppNavigation starting with WebView preservation');
     MiniApp.setNavigationInstance(this);
-
     this.initializeMiniApp();
   }
 
   private async initializeMiniApp(): Promise<void> {
     try {
-      // MiniApp should already be initialized in EntryAbility
-      // Just get the home app info from the already initialized instance
       const instance = MiniApp.getInstance();
       const homeAppId = instance.getHomeMiniAppId();
       const homeAppPath = instance.getHomeMiniAppInitialRoute();
@@ -52,12 +51,9 @@ export struct MiniAppNavigation {
         this.homeAppPath = homeAppPath;
 
         if (this.autoOpenHome) {
-          // Auto mode: internally call openHomeMiniApp
           hilog.info(DOMAIN, TAG, `Auto-opening home MiniApp: ${this.homeAppId}:${this.homeAppPath}`);
           MiniApp.openHomeMiniApp();
-          hilog.info(DOMAIN, TAG, `Auto openHomeMiniApp completed`);
         } else {
-          // Manual mode: wait for external openHomeMiniApp call
           hilog.info(DOMAIN, TAG, `MiniApp initialized, waiting for manual openHomeMiniApp call: ${this.homeAppId}:${this.homeAppPath}`);
         }
 
@@ -65,64 +61,96 @@ export struct MiniAppNavigation {
         hilog.info(DOMAIN, TAG, `MiniApp Navigation ready: ${this.homeAppId}:${this.homeAppPath}`);
       } else {
         this.errorMessage = 'MiniApp not initialized. Please call MiniApp.initialize() in EntryAbility first.';
-        hilog.error(DOMAIN, TAG, 'MiniApp not initialized. Please call MiniApp.initialize() in EntryAbility first.');
+        hilog.error(DOMAIN, TAG, 'MiniApp not initialized');
       }
     } catch (error) {
       this.errorMessage = `Initialization error: ${error}`;
-      hilog.error(DOMAIN, TAG, `Failed to initialize MiniApp: ${error}`);
+      hilog.error(DOMAIN, TAG, `Initialization error: ${error}`);
     }
   }
 
   public openMiniApp(appId: string, path: string): void {
-    hilog.info(DOMAIN, TAG, `Opening miniapp with manual Stack animation: ${appId}:${path}`);
+    hilog.info(DOMAIN, TAG, `Opening miniapp: ${appId}:${path}`);
 
     try {
       const result: number = onMiniappOpened(appId, path);
       hilog.info(DOMAIN, TAG, `onMiniappOpened result: ${result}`);
 
-      const newStackItem: MiniAppStackItem = {
-        appId: appId,
-        path: path,
-        offsetY: 0,
-        zIndex: 1000 + this.miniAppStack.length
-      };
+      const existingIndex = this.miniAppStack.findIndex(item => item.appId === appId);
 
-      this.miniAppStack.push(newStackItem);
-      hilog.info(DOMAIN, TAG, `MiniApp opened with manual Stack animation: ${appId}:${path}, stack size: ${this.miniAppStack.length}`);
+      if (existingIndex >= 0) {
+        hilog.info(DOMAIN, TAG, `MiniApp ${appId} already exists, showing and bringing to front`);
+        this.showMiniApp(appId, existingIndex);
+      } else {
+        this.createNewMiniApp(appId, path);
+      }
     } catch (error) {
       hilog.error(DOMAIN, TAG, `Failed to open MiniApp ${appId}: ${error}`);
     }
   }
 
   public closeMiniApp(appId: string): void {
-    hilog.info(DOMAIN, TAG, `Closing miniapp with manual Stack animation: ${appId}`);
+    hilog.info(DOMAIN, TAG, `Hiding miniapp (preserving WebViews): ${appId}`);
 
     try {
       const stackIndex = this.miniAppStack.findIndex(item => item.appId === appId);
-
       if (stackIndex >= 0) {
-
-        animateTo({
-          duration: 250,
-          curve: Curve.EaseIn,
-          playMode: PlayMode.Normal
-        }, () => {
-          if (stackIndex < this.miniAppStack.length) {
-            this.miniAppStack[stackIndex].offsetY = 800;
-          }
-        });
-
-        setTimeout(() => {
-          this.miniAppStack = this.miniAppStack.filter(item => item.appId !== appId);
-          onMiniappClosed(appId);
-        }, 300);
-
+        this.hideMiniAppWithAnimation(appId, stackIndex);
       } else {
         hilog.warn(DOMAIN, TAG, `MiniApp not found in stack: ${appId}`);
       }
     } catch (error) {
       hilog.error(DOMAIN, TAG, `Failed to close MiniApp ${appId}: ${error}`);
     }
+  }
+
+  private showMiniApp(appId: string, stackIndex: number): void {
+    const newHiddenApps = new Set<string>();
+    this.hiddenApps.forEach(id => {
+      if (id !== appId) {
+        newHiddenApps.add(id);
+      }
+    });
+    this.hiddenApps = newHiddenApps;
+
+    this.miniAppStack[stackIndex].offsetY = 0;
+    this.miniAppStack[stackIndex].zIndex = 1000 + this.miniAppStack.length;
+  }
+
+  private createNewMiniApp(appId: string, path: string): void {
+    const newStackItem: MiniAppStackItem = {
+      appId: appId,
+      path: path,
+      offsetY: 0,
+      zIndex: 1000 + this.miniAppStack.length
+    };
+
+    this.miniAppStack.push(newStackItem);
+    hilog.info(DOMAIN, TAG, `MiniApp created: ${appId}:${path}, stack size: ${this.miniAppStack.length}`);
+  }
+
+  private hideMiniAppWithAnimation(appId: string, stackIndex: number): void {
+    animateTo({
+      duration: 250,
+      curve: Curve.EaseIn,
+      playMode: PlayMode.Normal
+    }, () => {
+      if (stackIndex < this.miniAppStack.length) {
+        this.miniAppStack[stackIndex].offsetY = 800;
+      }
+    });
+
+    setTimeout(() => {
+      if (stackIndex < this.miniAppStack.length) {
+        this.hiddenApps = new Set(this.hiddenApps).add(appId);
+        hilog.info(DOMAIN, TAG, `MiniApp ${appId} hidden, WebViews preserved for reuse`);
+      }
+      onMiniappClosed(appId);
+    }, 300);
+  }
+
+  private isMiniAppVisible(appId: string): boolean {
+    return !this.hiddenApps.has(appId);
   }
 
   build() {
@@ -132,7 +160,7 @@ export struct MiniAppNavigation {
           appId: this.homeAppId,
           initialPath: this.homeAppPath,
           navigationMode: false,
-          closeCallback: 'navigation'
+          closeCallback: undefined
         })
         .zIndex(0)
       } else if (this.errorMessage) {
@@ -150,9 +178,12 @@ export struct MiniAppNavigation {
         })
         .width('100%')
         .height('100%')
-        .zIndex(stackItem.zIndex)
+        .zIndex(this.isMiniAppVisible(stackItem.appId) ? stackItem.zIndex : -1)
         .backgroundColor(Color.White)
         .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+        .translate({ y: stackItem.offsetY })
+        .visibility(this.isMiniAppVisible(stackItem.appId) ? Visibility.Visible : Visibility.Hidden)
+        .enabled(this.isMiniAppVisible(stackItem.appId))
       })
     }
     .width('100%')
