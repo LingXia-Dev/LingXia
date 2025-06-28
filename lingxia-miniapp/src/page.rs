@@ -45,6 +45,19 @@ pub trait WebViewController: Send + Sync {
     /// Load a URL in the WebView
     fn load_url(&self, url: String) -> Result<(), MiniAppError>;
 
+    /// Load HTML data into the WebView
+    ///
+    /// # Arguments
+    /// * `data` - The HTML content to load
+    /// * `base_url` - Base URL for resolving relative paths in the HTML
+    /// * `history_url` - Optional URL to use for history (defaults to base_url if None)
+    fn load_data(
+        &self,
+        data: String,
+        base_url: String,
+        history_url: Option<String>,
+    ) -> Result<(), MiniAppError>;
+
     /// Evaluate JavaScript in the WebView
     fn evaluate_javascript(&self, js: String) -> Result<(), MiniAppError>;
 
@@ -122,21 +135,23 @@ impl Pages {
     }
 
     /// Get an existing page or create a new one if it doesn't exist
-    /// Returns a reference to the page (existing or newly created)
+    /// Returns a clone of the page (existing or newly created)
     pub fn get_or_create_page(
         &mut self,
         appid: String,
         path: String,
         controller: Arc<dyn AppRuntime>,
         svc_manager: Arc<Mutex<MiniAppServiceManager>>,
-    ) -> Result<&Page, MiniAppError> {
+    ) -> Result<Page, MiniAppError> {
         // Check if page already exists
         if self.pages.contains_key(&path) {
-            return Ok(self.pages.get(&path).unwrap());
+            return Ok(self.pages.get(&path).unwrap().clone());
         }
 
         // Page doesn't exist, create it
-        self.create_page(appid, path, controller, svc_manager)
+        Ok(self
+            .create_page(appid, path, controller, svc_manager)?
+            .clone())
     }
 
     /// Set tab bar items with ordered paths and initialize stacks
@@ -170,14 +185,14 @@ impl Pages {
     }
 
     /// Creates a new page and adds it to the pages collection
-    /// Returns a reference to the newly created page
+    /// Returns the newly created page
     pub fn create_page(
         &mut self,
         appid: String,
         path: String,
         controller: Arc<dyn AppRuntime>,
         svc_manager: Arc<Mutex<MiniAppServiceManager>>,
-    ) -> Result<&Page, MiniAppError> {
+    ) -> Result<Page, MiniAppError> {
         if self.pages.len() >= self.max_pages {
             self.destroy_least_active();
         }
@@ -209,21 +224,22 @@ impl Pages {
                 .with_path(path.clone());
         }
 
-        // Return reference to the newly created page
-        Ok(self.pages.get(&path).unwrap())
+        Ok(page)
     }
 
     /// Navigates to a page by updating the current stack and marking the page as active
     /// Returns the previous page path if there was a page switch that should trigger onHide
     pub fn navigate_to_page(&mut self, path: String) -> Option<String> {
+        // Ensure we have at least one stack initialized
+        if self.stacks.is_empty() {
+            self.stacks.push(PageStack::new());
+            self.current_index = 0;
+        }
+
         // Get the current page before navigation
-        let previous_page = if self.stacks.is_empty() {
-            None
-        } else {
-            self.stacks[self.current_index]
-                .current_page()
-                .map(String::from)
-        };
+        let previous_page = self.stacks[self.current_index]
+            .current_page()
+            .map(String::from);
 
         // Handle tab page navigation
         if self.has_tabbar() && self.tab_paths.contains(&path) {
@@ -367,12 +383,12 @@ pub(crate) struct PageInner {
     state: Arc<Mutex<PageState>>,
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 pub enum PageState {
-    PageCreated,
-    PageLoading,
-    PageLoaded,
-    PageUnknownState,
+    Created, // Page created but no HTML loaded
+    Loaded,  // HTML loaded into page
+    Showed,  // Page has been shown to user
+    Unknown, // Unknown state
 }
 
 /// Represents a single page in a mini app
@@ -394,7 +410,7 @@ impl Page {
             path,
             svc_manager,
             last_active_time: Arc::new(Mutex::new(Instant::now())),
-            state: Arc::new(Mutex::new(PageState::PageCreated)),
+            state: Arc::new(Mutex::new(PageState::Created)),
             webview_controller,
         });
 
@@ -413,12 +429,27 @@ impl Page {
             .state
             .lock()
             .map(|guard| *guard)
-            .unwrap_or(PageState::PageUnknownState)
+            .unwrap_or(PageState::Unknown)
     }
 
     /// Get the WebView controller for this page
     pub(crate) fn webview_controller(&self) -> Arc<dyn WebViewController> {
         self.inner.webview_controller.clone()
+    }
+
+    /// Load HTML content into this page's WebView
+    ///
+    /// # Arguments
+    /// * `html_data` - The HTML content to load
+    /// * `base_url` - Base URL for resolving relative paths in the HTML
+    pub(crate) fn load_html(
+        &self,
+        html_data: String,
+        base_url: String,
+    ) -> Result<(), MiniAppError> {
+        self.inner.webview_controller.load_data(
+            html_data, base_url, None, // Use base_url as history_url
+        )
     }
 
     /// Returns the appid of this page

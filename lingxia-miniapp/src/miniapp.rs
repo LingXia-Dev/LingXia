@@ -20,6 +20,7 @@ use config::{MiniAppConfig, PageConfig};
 use security::NetworkSecurity; // Import the new logging macros
 
 mod config;
+mod content;
 mod install;
 mod scheme;
 mod security;
@@ -380,6 +381,40 @@ impl MiniApp {
         state.pages.get_page(path).cloned()
     }
 
+    /// This method should only be called when page is in Created state
+    fn setup_page(&self, page: &Page, path: &str) {
+        let state = page.get_page_state();
+        if state != PageState::Created {
+            return;
+        }
+
+        // Enable devtools if debug mode is enabled
+        if self.is_debug_enabled() {
+            if let Err(e) = page.webview_controller().set_devtools(true) {
+                error!("Failed to enable devtools: {}", e)
+                    .with_appid(self.appid.clone())
+                    .with_path(path.to_string());
+            }
+        }
+
+        // Load HTML - this might fail on HarmonyOS if WebView isn't ready yet
+        let html_data = self.generate_page_html(path);
+        match page.load_html(
+            String::from_utf8_lossy(&html_data).to_string(),
+            "lx://./".to_string(),
+        ) {
+            Ok(_) => {
+                // HTML loaded successfully
+                page.set_page_state(PageState::Loaded);
+            }
+            Err(e) => {
+                error!("Failed to load HTML: {}", e)
+                    .with_appid(self.appid.clone())
+                    .with_path(path.to_string());
+            }
+        }
+    }
+
     pub fn navigator_to_miniapp(&self, to: MiniAppNavigator) -> Result<(), MiniAppError> {
         // ignore if appid is the same
         if self.appid == to.appid {
@@ -695,6 +730,10 @@ impl AppUiDelegate for MiniApp {
     }
 
     fn on_page_show(self: &Arc<Self>, path: String) {
+        info!("on_page_show called for path: {}", path)
+            .with_appid(self.appid.clone())
+            .with_path(path.clone());
+
         // Get the page (should already exist)
         let page = {
             let state = self.state.lock().unwrap();
@@ -711,42 +750,8 @@ impl AppUiDelegate for MiniApp {
             }
         };
 
-        let state = page.get_page_state();
-        if state == PageState::PageCreated {
-            let url = format!("lx://{}", path.clone());
-            let debug = self.is_debug_enabled();
-
-            // Get the WebView controller for this page
-            let webview_controller = page.webview_controller();
-
-            // Store the result of loading the URL
-            let url_load_result = webview_controller.load_url(url.clone());
-
-            page.set_page_state(PageState::PageLoading);
-
-            // Enable devtools if debug mode is enabled in config
-            let devtools_result = if debug {
-                webview_controller.set_devtools(true)
-            } else {
-                Ok(())
-            };
-
-            if let Err(e) = url_load_result {
-                error!("Failed to load URL {}: {}", url, e)
-                    .with_appid(self.appid.clone())
-                    .with_path(path.clone());
-            }
-
-            if let Err(e) = devtools_result {
-                error!("Failed to enable devtools: {}", e)
-                    .with_appid(self.appid.clone())
-                    .with_path(path.clone());
-            }
-
-            info!("Page created")
-                .with_appid(self.appid.clone())
-                .with_path(path.clone());
-        }
+        // Setup page if it hasn't been setup yet
+        self.setup_page(&page, &path);
 
         // Navigate to the new page and get the previous page if there was a switch
         let previous_page = self
@@ -784,24 +789,36 @@ impl AppUiDelegate for MiniApp {
         }
 
         // precreate webviews for other tab pages
-        if self.config.is_initial_route(&path) && state == PageState::PageCreated {
-            let mut state = self.state.lock().unwrap();
-            for p in self.config.get_tab_pages() {
+        let current_state = page.get_page_state();
+        let should_precreate =
+            self.config.is_initial_route(&path) && current_state == PageState::Loaded;
+
+        if should_precreate {
+            let tab_pages = self.config.get_tab_pages();
+            for p in tab_pages {
                 if p == path {
                     continue;
                 }
-                if let Err(e) = state.pages.get_or_create_page(
+
+                // Create new page and setup content
+                let mut state = self.state.lock().unwrap();
+                if let Ok(page) = state.pages.create_page(
                     self.appid.clone(),
                     p.clone(),
                     self.runtime.clone(),
                     self.svc_manager.clone(),
                 ) {
-                    error!("Failed to create page: {}", e)
-                        .with_appid(self.appid.clone())
-                        .with_path(p.clone());
+                    drop(state); // Release lock before setup
+
+                    // On HarmonyOS, setup_page might fail if WebView isn't ready yet
+                    // This is OK - the page will be setup when onPageShow is called for that tab
+                    self.setup_page(&page, &p);
                 }
             }
         }
+
+        // Mark page as shown (at the end of on_page_show)
+        page.set_page_state(PageState::Showed);
     }
 
     fn on_page_scroll_changed(

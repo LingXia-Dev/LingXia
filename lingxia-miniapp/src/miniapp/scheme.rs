@@ -1,11 +1,11 @@
 use http::{Request, Response, StatusCode};
 
+use crate::error;
 use crate::miniapp::MiniApp;
-use crate::page::PageState;
-use crate::{error, info};
 
 impl MiniApp {
-    /// Handler for lx:// scheme requests to access app assets
+    /// Handler for lx:// scheme requests to access static app assets (images, CSS, JS, etc.)
+    /// HTML files are handled separately through generate_page_html and load_data
     pub(crate) fn lingxia_handler(&self, req: Request<Vec<u8>>) -> Option<Response<Vec<u8>>> {
         let uri = req.uri();
 
@@ -13,16 +13,28 @@ impl MiniApp {
         let uri_str = uri.to_string();
         let path = uri_str.trim_start_matches("lx://").trim_start_matches('/');
 
-        // Try to read the asset from app directory
+        // Block HTML requests - they should be handled by generate_page_html/load_data
+        if path.ends_with(".html") {
+            return Some(
+                Response::builder()
+                    .status(StatusCode::FORBIDDEN)
+                    .header("Content-Type", "text/plain")
+                    .body(
+                        "HTML files should be loaded through WebView load_data, not scheme handler"
+                            .as_bytes()
+                            .to_vec(),
+                    )
+                    .unwrap(),
+            );
+        }
+
+        // Try to read the static asset from app directory
         let file_result = self.read_bytes(path);
 
         let response = match file_result {
             Ok(data) => {
                 // Determine MIME type based on file extension
-                let is_html = path.ends_with(".html");
-                let mime_type = if is_html {
-                    "text/html"
-                } else if path.ends_with(".js") {
+                let mime_type = if path.ends_with(".js") {
                     "application/javascript"
                 } else if path.ends_with(".css") {
                     "text/css"
@@ -30,66 +42,31 @@ impl MiniApp {
                     "image/png"
                 } else if path.ends_with(".jpg") || path.ends_with(".jpeg") {
                     "image/jpeg"
+                } else if path.ends_with(".gif") {
+                    "image/gif"
                 } else if path.ends_with(".svg") {
                     "image/svg+xml"
+                } else if path.ends_with(".webp") {
+                    "image/webp"
+                } else if path.ends_with(".ico") {
+                    "image/x-icon"
                 } else if path.ends_with(".json") {
                     "application/json"
+                } else if path.ends_with(".woff") {
+                    "font/woff"
+                } else if path.ends_with(".woff2") {
+                    "font/woff2"
+                } else if path.ends_with(".ttf") {
+                    "font/ttf"
                 } else {
                     "application/octet-stream"
-                };
-
-                // If this is an HTML file, inject script and CSS
-                let response_data = if is_html {
-                    let is_script_injected =
-                        if let Some(page) = self.state.lock().unwrap().pages.get_page(path) {
-                            page.get_page_state() == PageState::PageLoaded
-                        } else {
-                            false
-                        };
-
-                    // Inject both bridge script and CSS only if not already injected
-                    let html_data = if is_script_injected {
-                        info!("Page already injected, skipping injection for {}", path)
-                            .with_appid(self.appid.clone());
-                        data
-                    } else {
-                        info!("Injecting bridge script to {}", path).with_appid(self.appid.clone());
-                        let mut injected_data = inject_bridge_script(&data, self);
-
-                        // Also inject CSS when injecting script (both happen only on first load)
-                        // First try to inject global app.css
-                        if let Ok(app_css_data) = self.read_bytes("app.css") {
-                            info!("Injecting global app.css").with_appid(self.appid.clone());
-                            injected_data = inject_css(&injected_data, &app_css_data, self, path);
-                        }
-
-                        // Then inject page-specific CSS if it exists
-                        if let Some(css_path) = path.strip_suffix(".html") {
-                            let css_full_path = format!("{}.css", css_path);
-                            if let Ok(css_data) = self.read_bytes(&css_full_path) {
-                                info!("Found and injecting matching CSS file: {}", css_full_path)
-                                    .with_appid(&self.appid);
-                                injected_data = inject_css(&injected_data, &css_data, self, path);
-                            }
-                        }
-
-                        if let Some(page) = self.state.lock().unwrap().pages.get_page(path) {
-                            page.set_page_state(PageState::PageLoaded);
-                        }
-
-                        injected_data
-                    };
-
-                    html_data
-                } else {
-                    data
                 };
 
                 Response::builder()
                     .status(StatusCode::OK)
                     .header("Content-Type", mime_type)
-                    .header("Content-Length", response_data.len().to_string())
-                    .body(response_data)
+                    .header("Content-Length", data.len().to_string())
+                    .body(data)
                     .unwrap_or_else(|_| {
                         Response::builder()
                             .status(StatusCode::INTERNAL_SERVER_ERROR)
@@ -98,23 +75,17 @@ impl MiniApp {
                     })
             }
             Err(e) => {
-                error!("Fallback to reading 404.html due to {}", e).with_appid(self.appid.clone());
+                error!("Static asset not found: {} - {}", path, e).with_appid(self.appid.clone());
 
-                // Return a 404 Not Found response
+                // Return a 404 Not Found response for static assets
                 Response::builder()
                     .status(StatusCode::NOT_FOUND)
-                    .header("Content-Type", "text/html")
-                    .body(match self.runtime.read_asset("404.html") {
-                        Ok(mut reader) => {
-                            let mut data = Vec::new();
-                            if reader.read_to_end(&mut data).is_ok() {
-                                data
-                            } else {
-                                "Not Found".as_bytes().to_vec()
-                            }
-                        }
-                        Err(_) => "Not Found".as_bytes().to_vec(),
-                    })
+                    .header("Content-Type", "text/plain")
+                    .body(
+                        format!("Static asset not found: {}", path)
+                            .as_bytes()
+                            .to_vec(),
+                    )
                     .unwrap()
             }
         };
@@ -207,92 +178,4 @@ impl MiniApp {
                 .unwrap(),
         )
     }
-}
-
-/// Injects WebView bridge script into HTML content
-fn inject_bridge_script(html_data: &[u8], app: &MiniApp) -> Vec<u8> {
-    // First, load the bridge script from assets
-    let bridge_script = match app.runtime.read_asset("webview-bridge.js") {
-        Ok(mut reader) => {
-            let mut script_data = Vec::new();
-            if reader.read_to_end(&mut script_data).is_ok() {
-                String::from_utf8_lossy(&script_data).to_string()
-            } else {
-                error!("Failed to read bridge script content").with_appid(app.appid.clone());
-                return html_data.to_vec();
-            }
-        }
-        Err(e) => {
-            error!("Failed to open bridge script: {}", e).with_appid(app.appid.clone());
-            return html_data.to_vec();
-        }
-    };
-
-    // Convert HTML content to string
-    if let Ok(html_str) = String::from_utf8(html_data.to_vec()) {
-        // Create script tag with the bridge script
-        let script_tag = format!("<script>\n{}\n</script>", bridge_script);
-
-        // Try to insert before </head> tag (preferred location for early initialization)
-        if let Some(head_pos) = html_str.to_lowercase().find("</head>") {
-            let (before, after) = html_str.split_at(head_pos);
-            info!("Injected script before </head>").with_appid(app.appid.clone());
-            return format!("{}{}{}", before, script_tag, after).into_bytes();
-        }
-        // If no </head> tag, try to insert at the beginning of <body> tag
-        else if let Some(body_pos) = html_str.to_lowercase().find("<body") {
-            if let Some(body_end) = html_str[body_pos..].find('>') {
-                let insert_pos = body_pos + body_end + 1;
-                let (before, after) = html_str.split_at(insert_pos);
-                info!("Injected script after <body>").with_appid(app.appid.clone());
-                return format!("{}{}{}", before, script_tag, after).into_bytes();
-            }
-        }
-        // If neither tag is found, insert at the beginning of the HTML
-        else {
-            info!("Injected script at beginning of HTML (fallback)").with_appid(app.appid.clone());
-            return format!("{}{}", script_tag, html_str).into_bytes();
-        }
-    }
-
-    // If all injection attempts failed, return the original data
-    error!("All injection attempts failed, returning original HTML").with_appid(app.appid.clone());
-    html_data.to_vec()
-}
-
-/// Injects CSS into HTML content
-fn inject_css(html_data: &[u8], css_data: &[u8], app: &MiniApp, path: &str) -> Vec<u8> {
-    // Convert CSS content to string
-    let css_content = String::from_utf8_lossy(css_data).to_string();
-    let style_tag = format!("<style>\n{}\n</style>", css_content);
-
-    // Convert HTML content to string
-    if let Ok(html_str) = String::from_utf8(html_data.to_vec()) {
-        // Try to insert before </head> tag (preferred location for styles)
-        if let Some(head_pos) = html_str.to_lowercase().find("</head>") {
-            let (before, after) = html_str.split_at(head_pos);
-            info!("Injected CSS before </head> in {}", path).with_appid(app.appid.clone());
-            return format!("{}{}{}", before, style_tag, after).into_bytes();
-        }
-        // If no </head> tag, try to insert at the beginning of <body> tag
-        else if let Some(body_pos) = html_str.to_lowercase().find("<body") {
-            if let Some(body_end) = html_str[body_pos..].find('>') {
-                let insert_pos = body_pos + body_end + 1;
-                let (before, after) = html_str.split_at(insert_pos);
-                info!("Injected CSS after <body> in {}", path).with_appid(app.appid.clone());
-                return format!("{}{}{}", before, style_tag, after).into_bytes();
-            }
-        }
-        // If neither tag is found, insert at the beginning of the HTML
-        else {
-            info!("Injected CSS at beginning of HTML in {} (fallback)", path)
-                .with_appid(app.appid.clone());
-            return format!("{}{}", style_tag, html_str).into_bytes();
-        }
-    }
-
-    // If all injection attempts failed, return the original data
-    error!("CSS injection failed for {}, returning original HTML", path)
-        .with_appid(app.appid.clone());
-    html_data.to_vec()
 }

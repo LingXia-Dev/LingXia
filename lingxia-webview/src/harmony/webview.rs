@@ -357,6 +357,47 @@ impl WebViewController for WebViewInner {
         call_arkts("loadUrl", &[self.webtag.as_str(), &url])
     }
 
+    fn load_data(
+        &self,
+        data: String,
+        base_url: String,
+        history_url: Option<String>,
+    ) -> Result<(), MiniAppError> {
+        unsafe {
+            let webtag_cstr = CString::new(self.webtag.as_str()).unwrap();
+            let data_cstr = CString::new(data.clone()).unwrap();
+            let base_url_cstr = CString::new(base_url.clone()).unwrap();
+
+            // Use history_url if provided, otherwise use base_url
+            let history_url_str = history_url.unwrap_or(base_url.clone());
+            let history_url_cstr = CString::new(history_url_str).unwrap();
+
+            // Use the native HarmonyOS OH_NativeArkWeb_LoadData function
+            let result = OH_NativeArkWeb_LoadData(
+                webtag_cstr.as_ptr(),
+                data_cstr.as_ptr(),
+                CString::new("text/html").unwrap().as_ptr(), // MIME type: text/html
+                CString::new("UTF-8").unwrap().as_ptr(),     // Encoding: UTF-8
+                base_url_cstr.as_ptr(),
+                history_url_cstr.as_ptr(),
+            );
+
+            if result == ArkWeb_ErrorCode_ARKWEB_SUCCESS {
+                log::info!(
+                    "Successfully loaded data into WebView {} with base URL: {}",
+                    self.webtag.as_str(),
+                    base_url
+                );
+                Ok(())
+            } else {
+                Err(MiniAppError::WebView(format!(
+                    "Failed to load data into WebView: error code {:?}",
+                    result
+                )))
+            }
+        }
+    }
+
     fn evaluate_javascript(&self, js: String) -> Result<(), MiniAppError> {
         unsafe {
             let web_tag_cstr = CString::new(self.webtag.as_str()).unwrap();

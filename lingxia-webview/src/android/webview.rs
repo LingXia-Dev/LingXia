@@ -93,6 +93,39 @@ impl WebViewController for WebViewInner {
         }
     }
 
+    fn load_data(
+        &self,
+        data: String,
+        base_url: String,
+        history_url: Option<String>,
+    ) -> Result<(), MiniAppError> {
+        let mut env = get_env().unwrap();
+
+        let data_string = env.new_string(&data).unwrap();
+        let base_url_string = env.new_string(&base_url).unwrap();
+        let history_url_string = match history_url {
+            Some(url) => env.new_string(&url).unwrap(),
+            None => env.new_string(&base_url).unwrap(),
+        };
+
+        let result = env.call_method(
+            self.java_webview.as_obj(),
+            "loadHtmlData",
+            "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
+            &[
+                JValue::Object(&data_string),
+                JValue::Object(&base_url_string),
+                JValue::Object(&history_url_string),
+            ],
+        );
+
+        if result.is_ok() {
+            Ok(())
+        } else {
+            Err(MiniAppError::WebView("Failed to load data".to_string()))
+        }
+    }
+
     fn evaluate_javascript(&self, js: String) -> Result<(), MiniAppError> {
         let mut env = get_env().unwrap();
 

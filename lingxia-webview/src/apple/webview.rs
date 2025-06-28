@@ -313,6 +313,32 @@ impl WebViewInner {
         }
     }
 
+    /// Helper method to load HTML data on main thread
+    fn load_data_on_main_thread(
+        &self,
+        data: String,
+        base_url: String,
+        _history_url: Option<String>
+    ) -> Result<(), MiniAppError> {
+        unsafe {
+            let data_nsstring = NSString::from_str(&data);
+            let base_url_nsstring = NSString::from_str(&base_url);
+            if let Some(base_url_obj) = NSURL::URLWithString(&base_url_nsstring) {
+                let _: () = msg_send![self.webview, loadHTMLString: &*data_nsstring, baseURL: &*base_url_obj];
+                log::info!(
+                    "Loaded HTML data into WebView with base URL: {}",
+                    base_url
+                );
+                Ok(())
+            } else {
+                Err(MiniAppError::WebView(format!(
+                    "Invalid base URL: {}",
+                    base_url
+                )))
+            }
+        }
+    }
+
     /// Helper method to evaluate JavaScript on main thread
     fn evaluate_javascript_on_main_thread(&self, js: String) -> Result<(), MiniAppError> {
         unsafe {
@@ -443,6 +469,36 @@ impl WebViewController for WebViewInner {
                 if let Some(url) = url {
                     let request = NSURLRequest::requestWithURL(&url);
                     let _: () = msg_send![webview_ptr, loadRequest: &*request];
+                }
+            });
+
+            Ok(())
+        }
+    }
+
+    fn load_data(
+        &self,
+        data: String,
+        base_url: String,
+        history_url: Option<String>
+    ) -> Result<(), MiniAppError> {
+        if MainThreadMarker::new().is_some() {
+            // Already on main thread, execute directly
+            self.load_data_on_main_thread(data, base_url, history_url)
+        } else {
+            // Not on main thread, dispatch to main thread using GCD
+            let webview_ptr_addr = self.webview as usize;
+            let data_clone = data.clone();
+            let base_url_clone = base_url.clone();
+
+            DispatchQueue::main().exec_async(move || unsafe {
+                let webview_ptr = webview_ptr_addr as *mut AnyObject;
+                let data_nsstring = NSString::from_str(&data_clone);
+                let base_url_nsstring = NSString::from_str(&base_url_clone);
+                let base_url = NSURL::URLWithString(&base_url_nsstring);
+
+                if let Some(base_url) = base_url {
+                    let _: () = msg_send![webview_ptr, loadHTMLString: &*data_nsstring, baseURL: &*base_url];
                 }
             });
 

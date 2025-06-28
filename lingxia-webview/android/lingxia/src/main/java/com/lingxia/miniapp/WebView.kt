@@ -564,6 +564,21 @@ class WebView @JvmOverloads constructor(
     }
 
     /**
+     * Load HTML data with base URL
+     * Uses fixed mime type (text/html) and encoding (UTF-8) suitable
+     * This method should ONLY be called by the Rust layer.
+     */
+    fun loadHtmlData(data: String, baseUrl: String, historyUrl: String?) {
+        ensureMainThread {
+            Log.d(TAG, "Loading mini-app data from Rust layer with baseUrl: $baseUrl")
+            savedUrl = baseUrl
+            resetViewport()
+            visibility = View.VISIBLE
+            super.loadDataWithBaseURL(baseUrl, data, "text/html", "UTF-8", historyUrl)
+        }
+    }
+
+    /**
      * Enable or disable scroll event listener with optional throttle time.
      * When enabled, scroll events will be sent to the native layer via nativeOnScroll.
      *
