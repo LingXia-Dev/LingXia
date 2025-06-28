@@ -197,6 +197,7 @@ export struct MiniAppContainer {
         .height('100%')
 
         this.buildTabBar()
+        this.buildStandaloneCapsuleButton()
       }
       .width('100%')
       .height('100%')
