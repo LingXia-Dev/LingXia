@@ -158,14 +158,20 @@ impl MessageHandler for PageSvc {
 impl PageSvc {
     #[js_method(constructor)]
     fn _new(ctx: JSContext, config: JSObject, path: String) -> JSResult<JSObject> {
-        let init_data = config.get::<_, JSObject>("data").ok();
-
         let miniapp = ctx.get_user_data::<Arc<MiniApp>>().unwrap();
 
         // Get the page from MiniApp
         let page = miniapp
             .get_page(&path)
             .ok_or_else(|| RongJSError::Error(format!("Page not found: {}", path)))?;
+
+        let init_data = JSObject::new(&ctx);
+
+        if let Ok(original_data) = config.get::<_, JSObject>("data") {
+            init_data.set("data", original_data)?;
+        } else {
+            init_data.set("data", JSObject::new(&ctx))?;
+        }
 
         let mut page_svc = PageSvc {
             functions: HashMap::new(),
@@ -175,12 +181,21 @@ impl PageSvc {
             state: Rc::new(Mutex::new(PageSvcState {
                 callback: HashMap::new(),
                 callbackid: AtomicUsize::new(0),
-                init_data,
+                init_data: None,
             })),
         };
 
-        // Extract functions from page config
-        page_svc.assign_funcs(&config)?;
+        // Register all functions and get public function list
+        let public_functions = page_svc.register_functions(&config)?;
+
+        // Set public functions list for smart method interception
+        init_data.set("__LingXiaPageFuncs__", public_functions)?;
+
+        // Store the complete init data
+        {
+            let mut state = page_svc.state.try_lock().unwrap();
+            state.init_data = Some(init_data);
+        }
 
         let class = Class::get::<PageSvc>(&ctx).unwrap();
         let instance = class.instance(page_svc);
@@ -246,16 +261,33 @@ impl PageSvc {
 }
 
 impl PageSvc {
-    fn assign_funcs(&mut self, obj: &JSObject) -> JSResult<()> {
+    /// Register all functions from page config and return public function names
+    /// 1. Registers ALL functions (including lifecycle) for internal use
+    /// 2. Returns only PUBLIC page functions that can be called from View layer
+    fn register_functions(&mut self, obj: &JSObject) -> JSResult<Vec<String>> {
+        let mut page_functions = Vec::new();
+
+        // Lifecycle functions should NOT be exposed to View layer calls
+        let lifecycle_functions = ["onLoad", "onReady", "onShow", "onHide", "onUnload"];
+
         for key_value in obj.keys()? {
-            // obj.keys() returns JSValue, not String
-            if let Ok(key_string) = key_value.try_into::<String>() {
-                if let Ok(func) = obj.get::<_, JSFunc>(key_string.as_str()) {
-                    self.functions.insert(key_string, func);
+            if let Ok(function_name) = key_value.try_into::<String>() {
+                if function_name.starts_with('_') {
+                    continue;
+                }
+
+                if let Ok(func) = obj.get::<_, JSFunc>(function_name.as_str()) {
+                    self.functions.insert(function_name.clone(), func);
+
+                    // Only expose non-lifecycle functions to View layer
+                    if !lifecycle_functions.contains(&function_name.as_str()) {
+                        page_functions.push(function_name);
+                    }
                 }
             }
         }
-        Ok(())
+
+        Ok(page_functions)
     }
 
     // handler for bridge type: call or event from native
