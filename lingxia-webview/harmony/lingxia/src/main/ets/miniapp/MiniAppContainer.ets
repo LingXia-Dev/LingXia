@@ -318,8 +318,8 @@ export struct MiniAppContainer {
           Button() {
             this.buildThreeDots()
           }
-          .width(40)
-          .height(36)
+          .width(44)
+          .height(32)
           .backgroundColor(Color.Transparent)
           .onClick(() => {
             hilog.info(DOMAIN, TAG, 'Capsule more button pressed');
@@ -328,14 +328,14 @@ export struct MiniAppContainer {
 
           Column()
             .width(0.5)
-            .height(18)
+            .height(16)
             .backgroundColor('#DDDDDD')
 
           Button() {
             this.buildCloseIcon()
           }
-          .width(40)
-          .height(36)
+          .width(44)
+          .height(32)
           .backgroundColor(Color.Transparent)
           .onClick(() => {
             hilog.info(DOMAIN, TAG, `Capsule close button pressed for appId: ${this.appId}`);
@@ -343,13 +343,13 @@ export struct MiniAppContainer {
           })
         }
         .backgroundColor('rgba(255,255,255,0.9)')
-        .borderRadius(20)
+        .borderRadius(16)
         .border({ width: 0.5, color: '#DDDDDD' })
       }
       .position({ x: '100%', y: 44 })
-      .translate({ x: -95, y: 6 })
-      .width(95)
-      .height(36)
+      .translate({ x: -102, y: 6 })
+      .width(102) // 44+0.5+44+padding
+      .height(32)
       .zIndex(9999)
     }
   }
@@ -378,20 +378,20 @@ export struct MiniAppContainer {
           this.buildThreeDots()
         }
         .width(44)
-        .height(36)
+        .height(32)
         .backgroundColor(Color.Transparent)
         .onClick(() => this.handleCapsuleMore())
 
         Column()
           .width(0.5)
-          .height(18)
+          .height(16)
           .backgroundColor('#DDDDDD')
 
         Button() {
           this.buildCloseIcon()
         }
         .width(44)
-        .height(36)
+        .height(32)
         .backgroundColor(Color.Transparent)
         .enabled(true)
         .onClick(() => {
@@ -402,12 +402,12 @@ export struct MiniAppContainer {
         })
       }
       .backgroundColor('rgba(255,255,255,0.9)')
-      .borderRadius(20)
+      .borderRadius(16)
       .border({ width: 0.5, color: '#DDDDDD' })
       .margin({ top: 8, right: 12 })
     }
     .width('100%')
-    .height(64)
+    .height(56)
     .backgroundColor(Color.Transparent)
     .zIndex(9999)
   }
