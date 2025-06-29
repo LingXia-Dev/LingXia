@@ -76,7 +76,7 @@ impl MiniApp {
             .unwrap_or_else(|_| "Not Found".as_bytes().to_vec())
     }
 
-    /// Inject WebView bridge script into HTML content
+    /// Inject WebView bridge script and framework integration into HTML content
     fn inject_bridge_script(&self, html_data: &[u8]) -> Result<Vec<u8>, MiniAppError> {
         // Load the bridge script from assets
         let bridge_script = match self.runtime.read_asset("webview-bridge.js") {
@@ -95,31 +95,52 @@ impl MiniApp {
             }
         };
 
+        // Load the framework integration script from assets (optional)
+        let framework_script = match self.runtime.read_asset("framwork.js") {
+            Ok(mut reader) => {
+                let mut script_data = Vec::new();
+                reader.read_to_end(&mut script_data).map_err(|e| {
+                    MiniAppError::IoError(format!("Failed to read framework script: {}", e))
+                })?;
+                Some(String::from_utf8_lossy(&script_data).to_string())
+            }
+            Err(e) => {
+                info!("Framework integration script not found (optional): {}", e)
+                    .with_appid(self.appid.clone());
+                None
+            }
+        };
+
         // Convert HTML content to string
         let html_str = String::from_utf8_lossy(html_data);
 
-        // Create script tag with the bridge script
-        let script_tag = format!("<script>\n{}\n</script>", bridge_script);
+        // Create script tags - first bridge script, then framework script
+        let mut script_tags = format!("<script>\n{}\n</script>", bridge_script);
+
+        if let Some(framework_content) = framework_script {
+            script_tags.push_str(&format!("\n<script>\n{}\n</script>", framework_content));
+        }
 
         // Try to insert before </head> tag (preferred location)
         if let Some(head_pos) = html_str.to_lowercase().find("</head>") {
             let (before, after) = html_str.split_at(head_pos);
-            info!("Injected script before </head>").with_appid(self.appid.clone());
-            return Ok(format!("{}{}{}", before, script_tag, after).into_bytes());
+            info!("Injected scripts before </head>").with_appid(self.appid.clone());
+            return Ok(format!("{}{}{}", before, script_tags, after).into_bytes());
         }
         // If no </head> tag, try to insert at the beginning of <body> tag
         else if let Some(body_pos) = html_str.to_lowercase().find("<body") {
             if let Some(body_end) = html_str[body_pos..].find('>') {
                 let insert_pos = body_pos + body_end + 1;
                 let (before, after) = html_str.split_at(insert_pos);
-                info!("Injected script after <body>").with_appid(self.appid.clone());
-                return Ok(format!("{}{}{}", before, script_tag, after).into_bytes());
+                info!("Injected scripts after <body>").with_appid(self.appid.clone());
+                return Ok(format!("{}{}{}", before, script_tags, after).into_bytes());
             }
         }
         // If neither tag is found, insert at the beginning of the HTML
         else {
-            info!("Injected script at beginning of HTML (fallback)").with_appid(self.appid.clone());
-            return Ok(format!("{}{}", script_tag, html_str).into_bytes());
+            info!("Injected scripts at beginning of HTML (fallback)")
+                .with_appid(self.appid.clone());
+            return Ok(format!("{}{}", script_tags, html_str).into_bytes());
         }
 
         // If all injection attempts failed, return the original data
@@ -170,4 +191,3 @@ impl MiniApp {
         Ok(html_data.to_vec())
     }
 }
-

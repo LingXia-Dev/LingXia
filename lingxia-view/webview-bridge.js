@@ -5,6 +5,10 @@
   const LOG_PREFIX = "[LX.Bridge]";
   const MESSAGE_PORT_TYPE = "messageport";
 
+  // Framework integration - function list management
+  const PAGE_FUNC_LIST_KEY = "__LingXiaPageFuncs__";
+  let pageFunctions = new Set();
+
   let messageCounter = 0;
   const pendingCalls = new Map(); // msgId -> { resolve, reject, timerId }
   let pageData = {};
@@ -43,6 +47,67 @@
   }
   function error(...args) {
     console.error(LOG_PREFIX, ...args);
+  }
+
+  function _handleFunctionList(functionList) {
+    if (Array.isArray(functionList) && functionList.length > 0) {
+      pageFunctions.clear();
+      functionList.forEach((funcName) => {
+        if (typeof funcName === "string") {
+          pageFunctions.add(funcName);
+        }
+      });
+    }
+  }
+
+  function _isPageFunction(methodName) {
+    return pageFunctions.has(methodName);
+  }
+
+  function _createSmartMethodProxy() {
+    return new Proxy(
+      {},
+      {
+        get(target, prop) {
+          const methodName = String(prop);
+
+          if (
+            methodName.startsWith("_") ||
+            methodName === "constructor" ||
+            methodName === "toString" ||
+            methodName === "valueOf"
+          ) {
+            return target[prop];
+          }
+
+          return function (...args) {
+            let payload;
+            if (args.length === 0) payload = null;
+            else if (args.length === 1) payload = args[0];
+            else payload = args;
+
+            if (_isPageFunction(methodName)) {
+              //log(`Calling page function: ${methodName}`);
+              return LingXiaBridge.call(methodName, payload);
+            } else {
+              warn(
+                `Method '${methodName}' not found in page functions, call ignored`,
+              );
+              return Promise.resolve(null);
+            }
+          };
+        },
+
+        has(target, prop) {
+          const methodName = String(prop);
+          return _isPageFunction(methodName) || prop in target;
+        },
+
+        ownKeys(target) {
+          return Array.from(pageFunctions);
+        },
+      },
+    );
   }
 
   // Creates an isolated copy of data
@@ -146,6 +211,11 @@
     let changesApplied = false;
     for (const path in patch) {
       if (Object.prototype.hasOwnProperty.call(patch, path)) {
+        if (path === PAGE_FUNC_LIST_KEY) {
+          _handleFunctionList(patch[path]);
+          continue;
+        }
+
         const value = patch[path];
         if (value === undefined) {
           if (_deleteValueByPath(target, path)) changesApplied = true;
@@ -257,6 +327,10 @@
       if (payload && typeof payload.data !== "undefined") {
         dataToApply = payload.data;
         callbackId = payload.callbackId;
+
+        if (payload[PAGE_FUNC_LIST_KEY]) {
+          _handleFunctionList(payload[PAGE_FUNC_LIST_KEY]);
+        }
       } else {
         dataToApply = payload;
       }
@@ -372,13 +446,11 @@
       };
     },
 
-    /**
-     * Get a deep copy of the current page data.
-     * @returns {object}
-     */
-    getCurrentData: function () {
-      return _deepCopy(pageData);
+    getPageFunctions: function () {
+      return Array.from(pageFunctions);
     },
+
+    isPageFunction: _isPageFunction,
 
     // Connect to WebMessage port (used by MessagePort-based platforms)
     _connectWebMessagePort: function (port) {
@@ -474,6 +546,15 @@
     } else {
       warn("Unknown communication method, bridge may not work properly");
     }
+
+    // Create smart method proxy for framework integration
+    window.lxSmartMethods = _createSmartMethodProxy();
+
+    // Dispatch ready event for framework integration
+    if (typeof CustomEvent !== "undefined") {
+      window.dispatchEvent(new CustomEvent("LingXiaBridgeReady"));
+    }
+
     log("LingXia Bridge initialization completed");
   }
 
