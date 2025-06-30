@@ -55,59 +55,36 @@
       functionList.forEach((funcName) => {
         if (typeof funcName === "string") {
           pageFunctions.add(funcName);
+          
+          // Register function to window object directly
+          window[funcName] = function (...args) {
+            let payload = null;
+            if (args.length === 1 && typeof args[0] === "object" && args[0] !== null) {
+              payload = args[0];
+            } else if (args.length > 1) {
+              warn(`${funcName} called with multiple arguments, only the first object argument will be used`);
+              if (typeof args[0] === "object" && args[0] !== null) {
+                payload = args[0];
+              }
+            }
+            return window.LingXiaBridge.call(funcName, payload);
+          };
         }
       });
-    }
-  }
 
-  function _isPageFunction(methodName) {
-    return pageFunctions.has(methodName);
-  }
-
-  function _createSmartMethodProxy() {
-    return new Proxy(
-      {},
-      {
-        get(target, prop) {
-          const methodName = String(prop);
-
-          if (
-            methodName.startsWith("_") ||
-            methodName === "constructor" ||
-            methodName === "toString" ||
-            methodName === "valueOf"
-          ) {
-            return target[prop];
+      // Dispatch custom event to notify framework for initialization
+      if (typeof window.dispatchEvent === 'function') {
+        const event = new CustomEvent('lingxia:init', {
+          detail: {
+            functions: Array.from(pageFunctions),
+            bridge: window.LingXiaBridge,
+            timestamp: Date.now()
           }
-
-          return function (...args) {
-            let payload;
-            if (args.length === 0) payload = null;
-            else if (args.length === 1) payload = args[0];
-            else payload = args;
-
-            if (_isPageFunction(methodName)) {
-              //log(`Calling page function: ${methodName}`);
-              return LingXiaBridge.call(methodName, payload);
-            } else {
-              warn(
-                `Method '${methodName}' not found in page functions, call ignored`,
-              );
-              return Promise.resolve(null);
-            }
-          };
-        },
-
-        has(target, prop) {
-          const methodName = String(prop);
-          return _isPageFunction(methodName) || prop in target;
-        },
-
-        ownKeys(target) {
-          return Array.from(pageFunctions);
-        },
-      },
-    );
+        });
+        window.dispatchEvent(event);
+        log("Dispatched lingxia:init event");
+      }
+    }
   }
 
   // Creates an isolated copy of data
@@ -446,12 +423,6 @@
       };
     },
 
-    getPageFunctions: function () {
-      return Array.from(pageFunctions);
-    },
-
-    isPageFunction: _isPageFunction,
-
     // Connect to WebMessage port (used by MessagePort-based platforms)
     _connectWebMessagePort: function (port) {
       if (communicationMethod !== MESSAGE_PORT_TYPE) return;
@@ -545,14 +516,6 @@
       });
     } else {
       warn("Unknown communication method, bridge may not work properly");
-    }
-
-    // Create smart method proxy for framework integration
-    window.lxSmartMethods = _createSmartMethodProxy();
-
-    // Dispatch ready event for framework integration
-    if (typeof CustomEvent !== "undefined") {
-      window.dispatchEvent(new CustomEvent("LingXiaBridgeReady"));
     }
 
     log("LingXia Bridge initialization completed");

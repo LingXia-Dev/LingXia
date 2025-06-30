@@ -96,7 +96,7 @@ impl MiniApp {
         };
 
         // Load the framework integration script from assets (optional)
-        let framework_script = match self.runtime.read_asset("framwork.js") {
+        let framework_script = match self.runtime.read_asset("framework.js") {
             Ok(mut reader) => {
                 let mut script_data = Vec::new();
                 reader.read_to_end(&mut script_data).map_err(|e| {
