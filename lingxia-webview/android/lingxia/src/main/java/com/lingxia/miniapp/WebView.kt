@@ -236,9 +236,6 @@ class WebView @JvmOverloads constructor(
             javaScriptEnabled = config.enableJavaScript
             domStorageEnabled = config.enableDomStorage
 
-            //  Enable hardware acceleration for better performance
-            setRenderPriority(WebSettings.RenderPriority.HIGH)
-
             // Viewport and zoom settings
             useWideViewPort = true
             loadWithOverviewMode = true
