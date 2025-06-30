@@ -121,21 +121,28 @@ impl MiniApp {
             let path = uri.path();
             let extension = path.rfind('.').map(|pos| path[pos + 1..].to_lowercase());
 
-            // Allow only media resource types (images, audio, video, fonts)
-            let is_allowed_resource = match extension {
-                Some(ext) => matches!(
-                    ext.as_str(),
-                    // Images
-                    "jpg" | "jpeg" | "png" | "gif" | "svg" | "webp" | "ico" |
-                    // Audio
-                    "mp3" | "wav" | "ogg" |
-                    // Video
-                    "mp4" | "webm" | "ogv" |
-                    // multimedia playlist
-                    "m3u" | "m3u8"|
-                    // Fonts
-                    "ttf" | "woff" | "woff2" | "eot"
-                ),
+            // Allow media resources and JavaScript/CSS from trusted domain
+            let is_allowed_resource = match extension.as_ref() {
+                Some(ext) => {
+                    let is_media_resource = matches!(
+                        ext.as_str(),
+                        // Images
+                        "jpg" | "jpeg" | "png" | "gif" | "svg" | "webp" | "ico" |
+                        // Audio
+                        "mp3" | "wav" | "ogg" |
+                        // Video
+                        "mp4" | "webm" | "ogv" |
+                        // multimedia playlist
+                        "m3u" | "m3u8"|
+                        // Fonts
+                        "ttf" | "woff" | "woff2" | "eot"
+                    );
+
+                    let is_script_or_style = matches!(ext.as_str(), "js" | "css");
+
+                    // Allow media resources always, and scripts/styles only from trusted domain
+                    is_media_resource || is_script_or_style
+                }
                 None => false, // No extension, likely not a static resource
             };
 
@@ -145,7 +152,7 @@ impl MiniApp {
                 Some(accept) => {
                     accept.contains("application/json")
                         || accept.contains("application/xml")
-                        || accept.contains("application/")
+                        || (accept.contains("application/") && !accept.contains("javascript"))
                 }
                 None => false,
             };
@@ -157,9 +164,8 @@ impl MiniApp {
                         .status(StatusCode::FORBIDDEN)
                         .header("Content-Type", "text/plain")
                         .body(
-                            "Only static resources (images, audio, video, fonts) are allowed"
-                                .as_bytes()
-                                .to_vec(),
+                            format!("Only static resources are allowed. Domain: {}, Path: {}, Extension: {:?}",
+                                   host, path, extension).as_bytes().to_vec(),
                         )
                         .unwrap(),
                 );
