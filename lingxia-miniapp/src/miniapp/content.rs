@@ -19,7 +19,7 @@ impl MiniApp {
         let data = match self.read_bytes(path) {
             Ok(data) => data,
             Err(_) => {
-                return self.get_404_page();
+                return self.get_404_page(path);
             }
         };
 
@@ -63,17 +63,27 @@ impl MiniApp {
         injected_data
     }
 
-    /// Get 404 page content
-    fn get_404_page(&self) -> Vec<u8> {
+    /// Get 404 page content with path injection
+    fn get_404_page(&self, failed_path: &str) -> Vec<u8> {
         self.runtime
             .read_asset("404.html")
             .and_then(|mut r| {
                 let mut data = Vec::new();
                 r.read_to_end(&mut data)
                     .map_err(|e| MiniAppError::IoError(e.to_string()))
-                    .map(|_| data)
+                    .map(|_| {
+                        // Replace placeholder with actual failed path
+                        let html_str = String::from_utf8_lossy(&data);
+                        let updated_html = html_str.replace("{{FAILED_PATH}}", failed_path);
+                        updated_html.into_bytes()
+                    })
             })
-            .unwrap_or_else(|_| "Not Found".as_bytes().to_vec())
+            .unwrap_or_else(|_| {
+                format!(
+                    "<!DOCTYPE html><html><head><title>404</title></head><body><h1>404 - Page Not Found</h1><p>Path: {}</p></body></html>",
+                    failed_path
+                ).as_bytes().to_vec()
+            })
     }
 
     /// Inject WebView bridge script and framework integration into HTML content

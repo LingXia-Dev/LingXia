@@ -24,13 +24,7 @@
     </svg>
     <h1 class="e">404</h1>
     <h2 class="t">Page Not Found</h2>
-    <div class="u" id="u"></div>
+    <div class="u">{{FAILED_PATH}}</div>
   </div>
-  <script>
-    window.onload=function(){
-      var u=window.location.href.replace(/^.*?\/\//,'');
-      document.getElementById('u').textContent=u;
-    }
-  </script>
 </body>
 </html>
