@@ -53,6 +53,7 @@ rm -rf "$ASSETS_DIR"/*
 echo "Copying lingxia-view files to assets..."
 cp "$LINGXIA_ROOT/lingxia-view/404.html" "$ASSETS_DIR/"
 cp "$LINGXIA_ROOT/lingxia-view/webview-bridge.js" "$ASSETS_DIR/"
+cp "$LINGXIA_ROOT/lingxia-view/framework.js" "$ASSETS_DIR/"
 
 echo "Copying host app configuration..."
 cp "$LINGXIA_ROOT/examples/demo/app.json" "$ASSETS_DIR/"
