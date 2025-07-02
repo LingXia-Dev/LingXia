@@ -45,19 +45,17 @@ impl MiniApp {
         }
 
         // Inject page-specific CSS if it exists (optional)
-        if let Some(css_path) = path.strip_suffix(".html") {
-            let css_full_path = format!("{}.css", css_path);
-            if let Ok(css_data) = self.read_bytes(&css_full_path) {
-                info!("Found and injecting matching CSS file: {}", css_full_path)
-                    .with_appid(self.appid.clone());
-                injected_data = self
-                    .inject_css(&injected_data, &css_data, path)
-                    .unwrap_or_else(|e| {
-                        error!("Failed to inject page CSS: {}, skipping", e)
-                            .with_appid(self.appid.clone());
-                        injected_data
-                    });
-            }
+        let css_path = path.replace(path.split('.').last().unwrap_or(""), "css");
+        if let Ok(css_data) = self.read_bytes(&css_path) {
+            info!("Found and injecting matching CSS file: {}", css_path)
+                .with_appid(self.appid.clone());
+            injected_data = self
+                .inject_css(&injected_data, &css_data, path)
+                .unwrap_or_else(|e| {
+                    error!("Failed to inject page CSS: {}, skipping", e)
+                        .with_appid(self.appid.clone());
+                    injected_data
+                });
         }
 
         injected_data
