@@ -13,17 +13,13 @@ impl MiniApp {
         let uri_str = uri.to_string();
         let path = uri_str.trim_start_matches("lx://").trim_start_matches('/');
 
-        // Block HTML requests - they should be handled by generate_page_html/load_data
-        if path.ends_with(".html") {
+        // ignore base Url
+        if path.ends_with("./") {
             return Some(
                 Response::builder()
-                    .status(StatusCode::FORBIDDEN)
+                    .status(StatusCode::NO_CONTENT)
                     .header("Content-Type", "text/plain")
-                    .body(
-                        "HTML files should be loaded through WebView load_data, not scheme handler"
-                            .as_bytes()
-                            .to_vec(),
-                    )
+                    .body(Vec::new())
                     .unwrap(),
             );
         }

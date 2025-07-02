@@ -218,9 +218,10 @@ impl PageSvc {
 
         // Check if bridge is ready
         if !self.bridge.is_ready() {
-            return Err(RongJSError::Error(
-                "View Bridge is not ready to receive data".to_string(),
-            ));
+            return Err(RongJSError::Error(format!(
+                "Bridge of {} is not ready to receive data",
+                self.page.path()
+            )));
         }
 
         // If we have a callback, register it and get a callback ID

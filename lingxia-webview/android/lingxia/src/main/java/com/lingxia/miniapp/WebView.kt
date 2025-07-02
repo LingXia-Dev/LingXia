@@ -567,7 +567,6 @@ class WebView @JvmOverloads constructor(
      */
     fun loadHtmlData(data: String, baseUrl: String, historyUrl: String?) {
         ensureMainThread {
-            Log.d(TAG, "Loading mini-app data from Rust layer with baseUrl: $baseUrl")
             savedUrl = baseUrl
             resetViewport()
             visibility = View.VISIBLE
