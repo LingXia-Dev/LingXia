@@ -58,17 +58,34 @@
     },
 
     react: {
-      createReactiveData: () => ({}),
+      createReactiveData: () => {
+        // React uses useState hooks for reactivity
+        // Return a proxy that will be used in components
+        const reactiveData = { value: {} };
+
+        // Store reference for updates
+        reactiveData._updateCallbacks = new Set();
+
+        return reactiveData;
+      },
 
       updateData: (dataInstance, newData) => {
-        // TODO: Implement React state updates
-        Object.assign(dataInstance, newData);
+        // Update the data and notify React components
+        Object.assign(dataInstance.value, newData);
+
+        // Trigger React re-renders
+        dataInstance._updateCallbacks.forEach((callback) => {
+          try {
+            callback(dataInstance.value);
+          } catch (e) {
+            console.error("[LingXia] React update callback error:", e);
+          }
+        });
       },
 
       registerPageFunctions: (functionNames, bridge) => {
-        // TODO: Implement React Context/Hook registration
-        console.log("[LingXia] React support not yet implemented");
-        return false;
+        // For React, functions are accessed directly from window
+        return true;
       },
     },
 
