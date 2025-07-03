@@ -102,7 +102,6 @@ impl MiniApp {
                 .unwrap()
                 .network_security
                 .is_domain_allowed(host)
-                && !self.home_miniapp
             {
                 return Some(
                     Response::builder()
