@@ -161,63 +161,6 @@ unsafe fn send_response(
     }
 }
 
-/// Send an error response
-unsafe fn send_error_response(
-    resource_handler: *const ArkWeb_ResourceHandler,
-    status_code: i32,
-    error_message: &str,
-) {
-    // Create ArkWeb response
-    let mut response: *mut ArkWeb_Response = ptr::null_mut();
-    unsafe {
-        OH_ArkWeb_CreateResponse(&mut response);
-    }
-
-    // Set status code
-    unsafe {
-        OH_ArkWebResponse_SetStatus(response, status_code);
-    }
-
-    // Set content type
-    let content_type_key = CString::new("Content-Type").unwrap();
-    let content_type_value = CString::new("text/plain").unwrap();
-    unsafe {
-        OH_ArkWebResponse_SetHeaderByName(
-            response,
-            content_type_key.as_ptr(),
-            content_type_value.as_ptr(),
-            true,
-        );
-    }
-
-    // Send response headers
-    unsafe {
-        OH_ArkWebResourceHandler_DidReceiveResponse(resource_handler, response);
-    }
-
-    // Send error message as body
-    let error_bytes = error_message.as_bytes();
-    unsafe {
-        OH_ArkWebResourceHandler_DidReceiveData(
-            resource_handler,
-            error_bytes.as_ptr(),
-            error_bytes.len() as i64,
-        );
-    }
-
-    // Finish the response
-    unsafe {
-        OH_ArkWebResourceHandler_DidFinish(resource_handler);
-    }
-
-    // Clean up
-    unsafe {
-        OH_ArkWeb_DestroyResponse(response);
-    }
-
-    log::error!("SchemeHandler error: {}", error_message);
-}
-
 /// Callback function for stopping scheme requests
 pub unsafe extern "C" fn on_lx_request_stop(
     _scheme_handler: *const ArkWeb_SchemeHandler,

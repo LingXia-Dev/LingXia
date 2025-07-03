@@ -658,11 +658,11 @@ extern "C" fn on_page_begin_callback(web_tag: *const c_char, user_data: *mut c_v
     if let Ok(webtag_str) = unsafe { CStr::from_ptr(web_tag).to_str() } {
         log::info!("Page begin loading: {}", webtag_str);
 
+        let webtag_string = unsafe { &*(user_data as *const String) };
+        let webtag = WebTag::from(webtag_string.as_str());
+
         // Setup ports when page begins loading - WebView is fully ready now
         if !user_data.is_null() {
-            let webtag_string = unsafe { &*(user_data as *const String) };
-            let webtag = WebTag::from(webtag_string.as_str());
-
             // Setup console and message ports
             if let Err(e) = inject_console_script(&webtag) {
                 log::error!("Failed to inject console script for {}: {}", webtag_str, e);
@@ -682,6 +682,10 @@ extern "C" fn on_page_begin_callback(web_tag: *const c_char, user_data: *mut c_v
                 log::error!("Failed to setup message port for {}: {}", webtag_str, e);
             }
         }
+
+        let (appid, path) = webtag.extract_parts();
+        let miniapp = miniapp::get(appid);
+        miniapp.on_page_started(path);
     }
 }
 
