@@ -34,7 +34,6 @@ const VERSIONS_DIR: &str = "versions";
 const STORAGE_DIR: &str = "storage";
 const USER_DATA_DIR: &str = "userdata";
 const USER_CACHE_DIR: &str = "usercache";
-const USERID_FILE: &str = "userid.txt";
 
 const DEFAULT_USER_ID: &str = "default";
 const DEFAULT_VERSION: &str = "0.0.1";
@@ -56,6 +55,10 @@ pub struct MiniApps {
     /// Reference to the app service manager
     /// Handles background services for mini apps
     svc_manager: Arc<Mutex<MiniAppServiceManager>>,
+
+    /// Current user ID (hashed for privacy)
+    /// Used to generate directory names for user-specific storage
+    user_id: Mutex<String>,
 }
 
 impl MiniApps {
@@ -66,11 +69,43 @@ impl MiniApps {
     ) -> Self {
         let runtime = Arc::new(runtime);
 
+        // Initialize with default user ID
+        let user_id = Mutex::new(DEFAULT_USER_ID.to_string());
+
         Self {
             miniapps: DashMap::new(),
             runtime,
             max_apps,
             svc_manager,
+            user_id,
+        }
+    }
+
+    /// Set the current user ID for all LingXia apps
+    ///
+    /// This will affect the directory structure for new lx apps.
+    /// Existing lx apps will continue to use their current directories.
+    ///
+    /// The user ID is used to generate hashed directory names for privacy protection.
+    /// Each user gets isolated storage and cache directories.
+    ///
+    /// # Arguments
+    /// * `new_user_id` - The new user ID to use (will be hashed for directory names)
+    /// ```
+    pub fn set_user_id(&self, new_user_id: String) {
+        if let Ok(mut user_id) = self.user_id.lock() {
+            *user_id = new_user_id;
+        }
+    }
+
+    /// Get the current user ID
+    fn get_user_id(&self) -> String {
+        match self.user_id.lock() {
+            Ok(user_id) => user_id.clone(),
+            Err(_) => {
+                // If lock is poisoned, return default
+                DEFAULT_USER_ID.to_string()
+            }
         }
     }
 
@@ -279,8 +314,7 @@ impl MiniApp {
             // Home mini app uses appid directly as directory name
             self.appid.clone()
         } else {
-            // Regular mini app uses a hash based on app_id and user_id
-            let user_id = get_user_id(self.runtime.as_ref());
+            let user_id = MINIAPPS_MANAGER.get().unwrap().get_user_id();
             generate_app_hash(&self.appid, &user_id)
         };
 
@@ -515,36 +549,6 @@ fn generate_app_hash(app_id: &str, user_id: &str) -> String {
     format!("{:x}", result)
 }
 
-/// Gets the current user ID from storage or returns the default
-fn get_user_id<T: AppRuntime + ?Sized>(runtime: &T) -> String {
-    let userid_path = runtime.app_data_dir().join(LINGXIA_DIR).join(USERID_FILE);
-
-    if userid_path.exists() {
-        if let Ok(content) = fs::read_to_string(&userid_path) {
-            let trimmed = content.trim();
-            if !trimmed.is_empty() {
-                return trimmed.to_string();
-            }
-        }
-    }
-
-    // Return default user ID
-    DEFAULT_USER_ID.to_string()
-}
-
-/// Sets the current user ID in storage
-fn set_user_id<T: AppRuntime + ?Sized>(runtime: &T, user_id: &str) -> Result<(), MiniAppError> {
-    let lingxia_dir = runtime.app_data_dir().join(LINGXIA_DIR);
-    if !lingxia_dir.exists() {
-        fs::create_dir_all(&lingxia_dir)?;
-    }
-
-    let userid_path = lingxia_dir.join(USERID_FILE);
-    fs::write(userid_path, user_id)?;
-
-    Ok(())
-}
-
 /// Prepares the base directory structure for mini apps
 fn prepare_directory_structure<T: AppRuntime + ?Sized>(runtime: &T) -> Result<(), MiniAppError> {
     let data_dir = runtime.app_data_dir();
@@ -561,15 +565,6 @@ fn prepare_directory_structure<T: AppRuntime + ?Sized>(runtime: &T) -> Result<()
 
     for dir in &dirs {
         fs::create_dir_all(dir)?;
-    }
-
-    // Ensure user ID file exists with default value if needed
-    let userid_path = data_dir.join(LINGXIA_DIR).join(USERID_FILE);
-    if !userid_path.exists() {
-        if let Some(parent) = userid_path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        fs::write(userid_path, DEFAULT_USER_ID)?;
     }
 
     Ok(())
