@@ -1,5 +1,6 @@
 use rong::{JSContext, JSFunc, JSObject, JSResult};
 
+mod env;
 mod fastapi;
 mod navigator;
 mod system;
@@ -19,6 +20,8 @@ pub use fastapi::{FastApiHandler, register_fast_api};
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     let lx = JSObject::new(ctx);
     ctx.global().set("lx", lx.clone())?;
+
+    lx.set("env", env::init(ctx))?;
 
     // Register navigator
     let navigator_miniapp = JSFunc::new(ctx, navigator::navigator_to_miniapp)?;
