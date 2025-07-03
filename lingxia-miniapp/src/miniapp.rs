@@ -29,22 +29,32 @@ mod version;
 
 /// Constants for miniapp storage layout
 const LINGXIA_DIR: &str = "lingxia";
-const MINIAPPS_DIR: &str = "miniapps";
+const LXAPPS_DIR: &str = "lxapps";
 const VERSIONS_DIR: &str = "versions";
 const STORAGE_DIR: &str = "storage";
+const USER_DATA_DIR: &str = "userdata";
+const USER_CACHE_DIR: &str = "usercache";
 const USERID_FILE: &str = "userid.txt";
+
 const DEFAULT_USER_ID: &str = "default";
 const DEFAULT_VERSION: &str = "0.0.1";
 
 /// Manages a collection of mini applications
 pub struct MiniApps {
-    // Collection of mini apps, keyed by app ID
+    /// Collection of mini apps, keyed by app ID
+    /// Uses DashMap for thread-safe concurrent access
     miniapps: DashMap<String, Arc<MiniApp>>,
-    // Reference to the app runtime
+
+    /// Reference to the platform-specific app runtime
+    /// Provides file system access, UI callbacks, etc.
     runtime: Arc<dyn AppRuntime>,
-    // Maximum number of apps allowed in memory
+
+    /// Maximum number of apps allowed in memory simultaneously
+    /// When exceeded, least recently used apps are destroyed
     max_apps: usize,
-    // Reference to the app service manager
+
+    /// Reference to the app service manager
+    /// Handles background services for mini apps
     svc_manager: Arc<Mutex<MiniAppServiceManager>>,
 }
 
@@ -148,15 +158,24 @@ impl MiniApps {
 
 /// Mutable state of a MiniApp that requires synchronization
 pub(crate) struct MiniAppState {
-    /// Collection of pages in this app
+    /// Collection of pages in this app with their current states
+    /// Manages page lifecycle (show/hide/destroy)
     pages: Pages,
+
     /// Time when this app was last active
+    /// Used for LRU (Least Recently Used) eviction when memory is low
     last_active_time: Instant,
+
     /// Debug mode override (can be enabled at runtime)
+    /// When true, enables additional logging and debugging features
     debug: bool,
+
     /// Whether the app is currently opened or closed
+    /// Controls app lifecycle and resource allocation
     opened: bool,
-    /// Network security configuration
+
+    /// Network security configuration for HTTPS domain filtering
+    /// Manages which domains this app is allowed to access
     network_security: NetworkSecurity,
 }
 
@@ -177,9 +196,10 @@ pub struct MiniApp {
     // Immutable data - initialized once and never changed
     pub appid: String,
     pub runtime: Arc<dyn AppRuntime>,
-    pub app_dir: PathBuf,
+    pub lxapp_dir: PathBuf,
+    pub user_data_dir: PathBuf,
     pub storage_dir: PathBuf,
-    pub cache_dir: PathBuf,
+    pub user_cache_dir: PathBuf,
     pub home_miniapp: bool,
     pub version: String,
     config: MiniAppConfig,
@@ -205,9 +225,10 @@ impl MiniApp {
         Self {
             appid,
             runtime,
-            app_dir: PathBuf::new(),
+            lxapp_dir: PathBuf::new(),
             storage_dir: PathBuf::new(),
-            cache_dir: PathBuf::new(),
+            user_data_dir: PathBuf::new(),
+            user_cache_dir: PathBuf::new(),
             home_miniapp: false,
             version: String::new(),
             config: MiniAppConfig::default(),
@@ -268,26 +289,32 @@ impl MiniApp {
             .runtime
             .app_data_dir()
             .join(LINGXIA_DIR)
-            .join(MINIAPPS_DIR);
+            .join(LXAPPS_DIR);
 
-        self.app_dir = base_dir.join(&dir_name);
-        if !self.app_dir.exists() {
-            std::fs::create_dir_all(&self.app_dir).map_err(|e| {
-                MiniAppError::IoError(format!("Failed to create app directory: {}", e))
+        self.lxapp_dir = base_dir.join(&dir_name);
+        if !self.lxapp_dir.exists() {
+            std::fs::create_dir_all(&self.lxapp_dir).map_err(|e| {
+                MiniAppError::IoError(format!("Failed to create lx apps directory: {}", e))
             })?;
         }
 
-        // Set up storage directory
-        let storage_base_dir = self
+        self.storage_dir = self
             .runtime
             .app_data_dir()
             .join(LINGXIA_DIR)
             .join(STORAGE_DIR);
 
-        self.storage_dir = storage_base_dir.join(&dir_name);
-        if !self.storage_dir.exists() {
-            std::fs::create_dir_all(&self.storage_dir).map_err(|e| {
-                MiniAppError::IoError(format!("Failed to create storage directory: {}", e))
+        // Set up userdata directory
+        let userdata_base_dir = self
+            .runtime
+            .app_data_dir()
+            .join(LINGXIA_DIR)
+            .join(USER_DATA_DIR);
+
+        self.user_data_dir = userdata_base_dir.join(&dir_name);
+        if !self.user_data_dir.exists() {
+            std::fs::create_dir_all(&self.user_data_dir).map_err(|e| {
+                MiniAppError::IoError(format!("Failed to create user data directory: {}", e))
             })?;
         }
 
@@ -296,11 +323,11 @@ impl MiniApp {
             .runtime
             .app_cache_dir()
             .join(LINGXIA_DIR)
-            .join(MINIAPPS_DIR);
+            .join(USER_CACHE_DIR);
 
-        self.cache_dir = cache_base_dir.join(&dir_name);
-        if !self.cache_dir.exists() {
-            std::fs::create_dir_all(&self.cache_dir).map_err(|e| {
+        self.user_cache_dir = cache_base_dir.join(&dir_name);
+        if !self.user_cache_dir.exists() {
+            std::fs::create_dir_all(&self.user_cache_dir).map_err(|e| {
                 MiniAppError::IoError(format!("Failed to create cache directory: {}", e))
             })?;
         }
@@ -346,7 +373,7 @@ impl MiniApp {
 
     // Reads binary data from the specified relative path
     fn read_bytes(&self, relative_path: &str) -> Result<Vec<u8>, MiniAppError> {
-        let file_path = self.app_dir.join(relative_path);
+        let file_path = self.lxapp_dir.join(relative_path);
 
         // Try to read from the filesystem
         fs::read(file_path)
@@ -456,8 +483,8 @@ impl MiniApp {
         }
 
         //  Remove the app directory
-        if self.app_dir.exists() {
-            fs::remove_dir_all(&self.app_dir)?;
+        if self.lxapp_dir.exists() {
+            fs::remove_dir_all(&self.lxapp_dir)?;
         }
 
         // Remove the storage directory
@@ -466,8 +493,8 @@ impl MiniApp {
         }
 
         //  Remove the cache directory
-        if self.cache_dir.exists() {
-            fs::remove_dir_all(&self.cache_dir)?;
+        if self.user_cache_dir.exists() {
+            fs::remove_dir_all(&self.user_cache_dir)?;
         }
 
         Ok(())
@@ -525,10 +552,11 @@ fn prepare_directory_structure<T: AppRuntime + ?Sized>(runtime: &T) -> Result<()
 
     // Create required directories
     let dirs = [
-        data_dir.join(LINGXIA_DIR).join(MINIAPPS_DIR),
+        data_dir.join(LINGXIA_DIR).join(LXAPPS_DIR),
         data_dir.join(LINGXIA_DIR).join(VERSIONS_DIR),
+        data_dir.join(LINGXIA_DIR).join(USER_DATA_DIR),
         data_dir.join(LINGXIA_DIR).join(STORAGE_DIR),
-        cache_dir.join(LINGXIA_DIR).join(MINIAPPS_DIR),
+        cache_dir.join(LINGXIA_DIR).join(LXAPPS_DIR),
     ];
 
     for dir in &dirs {
@@ -609,7 +637,7 @@ pub trait AppUiDelegate {
 impl AppUiDelegate for MiniApp {
     fn get_tab_bar_config(self: &Arc<Self>) -> Result<String, MiniAppError> {
         // Handle TabBar configuration
-        if let Some(tab_bar_json) = self.config.get_tabbar_json_with_base_path(&self.app_dir) {
+        if let Some(tab_bar_json) = self.config.get_tabbar_json_with_base_path(&self.lxapp_dir) {
             // crate::info!("TabBar: {}", tab_bar_json);
             Ok(tab_bar_json)
         } else {

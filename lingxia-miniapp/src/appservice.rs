@@ -315,7 +315,7 @@ async fn miniapp_service_handler(
 
             info!("[Worker {}] Created JS context", worker_id).with_appid(miniapp.appid.clone());
 
-            let js = miniapp.app_dir.join("logic.js");
+            let js = miniapp.lxapp_dir.join("logic.js");
             if js.exists() {
                 if let Ok(js) = Source::from_path(&ctx, js).await {
                     match ctx.eval::<()>(js) {

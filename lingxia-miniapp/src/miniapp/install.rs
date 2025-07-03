@@ -1,5 +1,5 @@
 use super::version::Version;
-use super::{LINGXIA_DIR, MINIAPPS_DIR, VERSIONS_DIR};
+use super::{LINGXIA_DIR, LXAPPS_DIR, VERSIONS_DIR};
 use crate::{AppRuntime, MiniApp, MiniAppError};
 
 /// Check if a mini app is installed
@@ -56,10 +56,7 @@ pub(crate) fn install_home_miniapp(
 ) -> Result<(), MiniAppError> {
     // Calculate base app directory and destination directory using appid
     // Note: Base directories are already created by prepare_directory_structure
-    let base_dir = controller
-        .app_data_dir()
-        .join(LINGXIA_DIR)
-        .join(MINIAPPS_DIR);
+    let base_dir = controller.app_data_dir().join(LINGXIA_DIR).join(LXAPPS_DIR);
     let destination = base_dir.join(appid);
 
     // Delete the existing app directory if it exists to ensure no old files remain
