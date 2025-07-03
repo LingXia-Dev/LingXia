@@ -64,6 +64,8 @@ pub struct WebViewInner {
     webview_console_port: RefCell<Option<*mut ArkWeb_WebMessagePort>>,
     // Store user_data pointers for cleanup
     user_data_ptrs: RefCell<Vec<*mut c_void>>,
+    // Store scheme handlers for cleanup
+    scheme_handlers: RefCell<Vec<*mut ohos_web_sys::ArkWeb_SchemeHandler>>,
 }
 
 unsafe impl Send for WebViewInner {}
@@ -216,6 +218,7 @@ impl WebViewInner {
             webview_native_port: RefCell::new(None),
             webview_console_port: RefCell::new(None),
             user_data_ptrs: RefCell::new(Vec::new()),
+            scheme_handlers: RefCell::new(Vec::new()),
         };
 
         // Call ArkTS to create WebView controller with callback for proper timing
@@ -270,6 +273,11 @@ impl WebViewInner {
         log::debug!("Tracked user_data for {}: {:?}", self.webtag.as_str(), ptr);
     }
 
+    /// Track scheme handler for cleanup
+    pub fn track_scheme_handler(&self, handler: *mut ohos_web_sys::ArkWeb_SchemeHandler) {
+        self.scheme_handlers.borrow_mut().push(handler);
+    }
+
     /// Cleanup all tracked user_data
     fn cleanup_user_data(&self) {
         let ptrs = self
@@ -286,6 +294,28 @@ impl WebViewInner {
         if count > 0 {
             log::info!(
                 "Cleaned up {} user_data pointers for {}",
+                count,
+                self.webtag.as_str()
+            );
+        }
+    }
+
+    /// Cleanup all tracked scheme handlers
+    fn cleanup_scheme_handlers(&self) {
+        let handlers = self
+            .scheme_handlers
+            .borrow_mut()
+            .drain(..)
+            .collect::<Vec<_>>();
+        let count = handlers.len();
+        for handler in handlers {
+            unsafe {
+                super::schemehandler::cleanup_scheme_handler(handler);
+            }
+        }
+        if count > 0 {
+            log::info!(
+                "Cleaned up {} scheme handlers for {}",
                 count,
                 self.webtag.as_str()
             );
@@ -532,7 +562,10 @@ impl WebViewController for WebViewInner {
 
 impl Drop for WebViewInner {
     fn drop(&mut self) {
-        // Cleanup all tracked user_data first
+        // Cleanup all tracked scheme handlers first
+        self.cleanup_scheme_handlers();
+
+        // Cleanup all tracked user_data
         self.cleanup_user_data();
 
         if let Err(e) = call_arkts("destroyWebViewController", &[self.webtag.as_str()]) {

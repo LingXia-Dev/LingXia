@@ -6,7 +6,7 @@ use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int};
 use std::ptr;
 
-/// Callback function for handling lx:// scheme requests
+/// Callback function for handling lx:// and https:// scheme requests
 pub unsafe extern "C" fn on_lx_request_start(
     scheme_handler: *const ArkWeb_SchemeHandler,
     resource_request: *mut ArkWeb_ResourceRequest,
@@ -69,70 +69,37 @@ pub unsafe extern "C" fn on_lx_request_start(
     };
 
     log::info!(
-        "Processing lx:// request: {} {} for app_id: {}",
+        "Processing request: {} {} for app_id: {}",
         method,
         url,
         app_id
     );
 
-    // Set intercept to true to handle this request
-    unsafe {
-        *intercept = true;
-    }
-
-    // Handle the request directly
-    unsafe {
-        process_lx_request(&app_id, &url, &method, resource_handler);
-    }
-}
-
-/// Process the actual lx:// request and send response
-unsafe fn process_lx_request(
-    app_id: &str,
-    url: &str,
-    method: &str,
-    resource_handler: *const ArkWeb_ResourceHandler,
-) {
-    // Build HTTP request for miniapp
+    // Build HTTP request to check if miniapp wants to handle it
     let http_request = match http::Request::builder()
-        .method(method)
-        .uri(url)
-        .body(Vec::new())
+        .method(method.as_str())
+        .uri(&url)
+        .body(Vec::new()) // TODO
     {
         Ok(req) => req,
         Err(e) => {
             log::error!("Failed to build HTTP request: {}", e);
-            unsafe {
-                send_lx_error_response(resource_handler, 500, "Failed to build HTTP request");
-            }
-            return;
+            return; // Don't intercept if we can't build request
         }
     };
 
-    // Forward request to miniapp
+    // Ask miniapp if it wants to handle this request
     let miniapp = miniapp::get(app_id.to_string());
-    match miniapp.handle_request(http_request) {
-        Some(http_response) => {
-            log::info!(
-                "Got response from handle_request, status: {}, body length: {}",
-                http_response.status(),
-                http_response.body().len()
-            );
-            unsafe {
-                send_lx_response(resource_handler, http_response);
-            }
-        }
-        None => {
-            log::warn!("handle_request returned None, sending 404");
-            unsafe {
-                send_lx_error_response(resource_handler, 404, "Not Found");
-            }
+    if let Some(http_response) = miniapp.handle_request(http_request) {
+        unsafe {
+            *intercept = true;
+            send_response(resource_handler, http_response);
         }
     }
 }
 
 /// Send a successful response
-unsafe fn send_lx_response(
+unsafe fn send_response(
     resource_handler: *const ArkWeb_ResourceHandler,
     http_response: http::Response<Vec<u8>>,
 ) {
@@ -195,7 +162,7 @@ unsafe fn send_lx_response(
 }
 
 /// Send an error response
-unsafe fn send_lx_error_response(
+unsafe fn send_error_response(
     resource_handler: *const ArkWeb_ResourceHandler,
     status_code: i32,
     error_message: &str,
@@ -256,13 +223,33 @@ pub unsafe extern "C" fn on_lx_request_stop(
     _scheme_handler: *const ArkWeb_SchemeHandler,
     resource_request: *const ArkWeb_ResourceRequest,
 ) {
-    log::debug!("Stopped lx:// request");
+    log::debug!("Stopped request");
 
     // Clean up the resource request
     if !resource_request.is_null() {
         unsafe {
             OH_ArkWebResourceRequest_Destroy(resource_request);
         }
+    }
+}
+
+/// Clean up scheme handler and its user data
+pub unsafe fn cleanup_scheme_handler(scheme_handler: *mut ArkWeb_SchemeHandler) {
+    if scheme_handler.is_null() {
+        return;
+    }
+
+    unsafe {
+        // Get and free the user data (app_id CString)
+        let user_data = OH_ArkWebSchemeHandler_GetUserData(scheme_handler);
+        if !user_data.is_null() {
+            // Reconstruct CString from raw pointer to properly free it
+            let _app_id_cstr = CString::from_raw(user_data as *mut c_char);
+            // CString will be automatically dropped here, freeing the memory
+        }
+
+        // Destroy the scheme handler
+        OH_ArkWeb_DestroySchemeHandler(scheme_handler);
     }
 }
 
@@ -287,6 +274,15 @@ pub fn set_webview_scheme_handler(webtag: &WebTag) -> NapiResult<()> {
     // Extract app_id from webtag
     let app_id = webtag.extract_appid();
 
+    // Get the WebView instance to track scheme handlers
+    let runtime = crate::runtime::SimpleAppRuntime::get().unwrap();
+    let webview = runtime.get_webview_by_tag(webtag).ok_or_else(|| {
+        napi_ohos::Error::new(
+            napi_ohos::Status::GenericFailure,
+            format!("WebView not found for tag: {}", webtag),
+        )
+    })?;
+
     unsafe {
         // Create scheme handler for lx://
         let mut lx_scheme_handler: *mut ArkWeb_SchemeHandler = std::ptr::null_mut();
@@ -309,19 +305,60 @@ pub fn set_webview_scheme_handler(webtag: &WebTag) -> NapiResult<()> {
             lx_scheme_handler,
         );
 
-        if lx_success {
-            log::info!(
-                "Successfully set lx:// scheme handler for web_tag: {}",
-                webtag
-            );
-            Ok(())
-        } else {
+        if !lx_success {
             log::error!("Failed to set lx:// scheme handler for web_tag: {}", webtag);
-            OH_ArkWeb_DestroySchemeHandler(lx_scheme_handler);
-            Err(napi_ohos::Error::new(
+            cleanup_scheme_handler(lx_scheme_handler);
+            return Err(napi_ohos::Error::new(
                 napi_ohos::Status::GenericFailure,
                 format!("Failed to set lx:// scheme handler for web_tag: {}", webtag),
-            ))
+            ));
         }
+
+        // Track the lx scheme handler for cleanup
+        webview.track_scheme_handler(lx_scheme_handler);
+
+        // Create scheme handler for https://
+        let mut https_scheme_handler: *mut ArkWeb_SchemeHandler = std::ptr::null_mut();
+        OH_ArkWeb_CreateSchemeHandler(&mut https_scheme_handler);
+
+        let app_id_cstr2 = CString::new(app_id.clone()).unwrap();
+        let app_id_ptr2 = app_id_cstr2.into_raw(); // Transfer ownership to raw pointer
+        OH_ArkWebSchemeHandler_SetUserData(
+            https_scheme_handler,
+            app_id_ptr2 as *mut std::ffi::c_void,
+        );
+
+        // Set callbacks (same callbacks as lx://)
+        OH_ArkWebSchemeHandler_SetOnRequestStart(https_scheme_handler, Some(on_lx_request_start));
+        OH_ArkWebSchemeHandler_SetOnRequestStop(https_scheme_handler, Some(on_lx_request_stop));
+
+        // Register https:// handler for this WebView specifically
+        let https_scheme_cstr = CString::new("https").unwrap();
+        let https_success = OH_ArkWeb_SetSchemeHandler(
+            https_scheme_cstr.as_ptr(),
+            webtag_cstr.as_ptr(),
+            https_scheme_handler,
+        );
+
+        if !https_success {
+            log::error!(
+                "Failed to set https:// scheme handler for web_tag: {}",
+                webtag
+            );
+            cleanup_scheme_handler(https_scheme_handler);
+            // Don't fail completely if https handler fails, lx:// is more critical
+            log::warn!("Continuing without https:// scheme handler");
+        } else {
+            // Track the https scheme handler for cleanup only if successful
+            webview.track_scheme_handler(https_scheme_handler);
+        }
+
+        log::info!(
+            "Successfully set scheme handlers for web_tag: {} (lx: {}, https: {})",
+            webtag,
+            lx_success,
+            https_success
+        );
+        Ok(())
     }
 }
