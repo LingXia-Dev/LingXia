@@ -1,3 +1,4 @@
+use block2::Block;
 use dispatch2::DispatchQueue;
 use miniapp::log::LogLevel;
 use miniapp::{AppUiDelegate, MiniAppError, WebViewController};
@@ -50,10 +51,107 @@ define_class!(
             miniapp.on_page_finished(path.clone());
             log::info!("WebView page finished: {} at {}", appid, path);
         }
+
+        #[unsafe(method(webView:decidePolicyForNavigationAction:decisionHandler:))]
+        fn decide_policy_for_navigation_action(
+            &self,
+            _webview: *mut AnyObject,
+            navigation_action: *mut AnyObject,
+            decision_handler: *mut AnyObject,
+        ) {
+            // Helper function to call decision handler with policy
+            let call_decision_handler = |policy: i32| {
+                let handler: &Block<dyn Fn(i32)> =
+                    unsafe { &*(decision_handler as *const Block<dyn Fn(i32)>) };
+                handler.call((policy,));
+            };
+
+            // Helper function to allow navigation
+            let allow_navigation = || call_decision_handler(1); // WKNavigationActionPolicyAllow = 1
+            let cancel_navigation = || call_decision_handler(0); // WKNavigationActionPolicyCancel = 0
+
+            // Extract URL from navigation action
+            let url = match self.extract_url_from_navigation_action(navigation_action) {
+                Some(url) => url,
+                None => {
+                    allow_navigation();
+                    return;
+                }
+            };
+
+            // Only intercept HTTPS navigation requests
+            if !url.starts_with("https://") {
+                allow_navigation();
+                return;
+            }
+
+            let webtag = &self.ivars().webtag;
+            let (appid, _) = webtag.extract_parts();
+
+            // Build HTTP request for miniapp to check
+            let http_request = match http::Request::builder()
+                .method("GET")
+                .uri(&url)
+                .body(Vec::new())
+            {
+                Ok(req) => req,
+                Err(_) => {
+                    log::warn!("Failed to build HTTP request for URL: {}", url);
+                    allow_navigation();
+                    return;
+                }
+            };
+
+            // Ask miniapp if it wants to handle this HTTPS navigation request
+            let miniapp = miniapp::get(appid.clone());
+            match miniapp.handle_request(http_request) {
+                Some(_) => {
+                    // log::info!("Miniapp handling HTTPS navigation, canceling: {}", url);
+                    cancel_navigation();
+                }
+                None => {
+                    // log::info!("Miniapp allows HTTPS navigation: {}", url);
+                    allow_navigation();
+                }
+            }
+        }
     }
 );
 
 impl LingXiaNavigationDelegate {
+    /// Extract URL string from navigation action, returns None if extraction fails
+    fn extract_url_from_navigation_action(
+        &self,
+        navigation_action: *mut AnyObject,
+    ) -> Option<String> {
+        unsafe {
+            let request: *mut AnyObject = msg_send![navigation_action, request];
+            if request.is_null() {
+                return None;
+            }
+
+            let url_obj: *mut AnyObject = msg_send![request, URL];
+            if url_obj.is_null() {
+                return None;
+            }
+
+            let url_string: *mut AnyObject = msg_send![url_obj, absoluteString];
+            if url_string.is_null() {
+                return None;
+            }
+
+            let url_cstring: *const std::ffi::c_char = msg_send![url_string, UTF8String];
+            if url_cstring.is_null() {
+                return None;
+            }
+
+            Some(
+                std::ffi::CStr::from_ptr(url_cstring)
+                    .to_string_lossy()
+                    .to_string(),
+            )
+        }
+    }
     pub fn new(appid: String, path: String, mtm: MainThreadMarker) -> Retained<Self> {
         let webtag = WebTag::new(&appid, &path);
         let delegate = mtm
@@ -318,17 +416,14 @@ impl WebViewInner {
         &self,
         data: String,
         base_url: String,
-        _history_url: Option<String>
+        _history_url: Option<String>,
     ) -> Result<(), MiniAppError> {
         unsafe {
             let data_nsstring = NSString::from_str(&data);
             let base_url_nsstring = NSString::from_str(&base_url);
             if let Some(base_url_obj) = NSURL::URLWithString(&base_url_nsstring) {
                 let _: () = msg_send![self.webview, loadHTMLString: &*data_nsstring, baseURL: &*base_url_obj];
-                log::info!(
-                    "Loaded HTML data into WebView with base URL: {}",
-                    base_url
-                );
+                log::info!("Loaded HTML data into WebView with base URL: {}", base_url);
                 Ok(())
             } else {
                 Err(MiniAppError::WebView(format!(
@@ -480,7 +575,7 @@ impl WebViewController for WebViewInner {
         &self,
         data: String,
         base_url: String,
-        history_url: Option<String>
+        history_url: Option<String>,
     ) -> Result<(), MiniAppError> {
         if MainThreadMarker::new().is_some() {
             // Already on main thread, execute directly
