@@ -100,7 +100,7 @@ impl MessageHandler for PageSvc {
                                 error!("JS function call/event '{}' failed: {}", name_owned, e);
                             }
                         };
-                        tokio::task::spawn_local(task);
+                        rong::spawn(task);
                     }
                     ServiceType::FastAPI(handler) => {
                         // For FastAPI, handle directly and reply
@@ -143,7 +143,7 @@ impl MessageHandler for PageSvc {
                         error!("No callback handler: {}, Error: {}", callback_id_owned, e);
                     }
                 };
-                tokio::task::spawn_local(task);
+                rong::spawn(task);
             }
         }
     }

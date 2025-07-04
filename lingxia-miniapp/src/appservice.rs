@@ -251,7 +251,7 @@ async fn handle_app_service_call(
                 );
             }
         };
-        tokio::task::spawn_local(task);
+        rong::spawn(task);
     } else {
         error!("[Worker {}] App service '{}' not loaded", worker_id, appid);
     }
@@ -282,7 +282,7 @@ async fn handle_native_source(page_svc: &PageSvc, name: String, args: Option<Str
             crate::error!("Page service call '{}' failed: {}", name_clone, e);
         }
     };
-    tokio::task::spawn_local(task);
+    rong::spawn(task);
 }
 
 /// The core logic for a persistent worker task.
@@ -710,4 +710,3 @@ impl http::NetworkAccessGuard for MiniAppCtx {
         }
     }
 }
-
