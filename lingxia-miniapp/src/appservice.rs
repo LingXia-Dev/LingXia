@@ -7,7 +7,7 @@ use rong::{
     JSContext, JSFunc, JSResult, JSRuntime, Rong, RongJS, RongJSError, Source, Worker,
     WorkerMessage,
 };
-use rong_modules::{console, fs};
+use rong_modules::{console, fs, http};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::Path;
@@ -316,6 +316,9 @@ async fn miniapp_service_handler(
             // Set file access guard to prevent cross-app file access
             fs::set_file_access_guard(Box::new(MiniAppCtx::new(miniapp.clone())));
 
+            // Set network access guard to prevent unauthorized domain access
+            http::set_network_access_guard(Box::new(MiniAppCtx::new(miniapp.clone())));
+
             let _ = rong_modules::init(&ctx);
             let _ = lx::init(&ctx);
 
@@ -616,7 +619,6 @@ impl std::fmt::Debug for MiniAppCtx {
     }
 }
 
-// Implement ConsoleWriter for MiniAppCtx
 impl console::ConsoleWriter for MiniAppCtx {
     fn write(&self, level: console::LogLevel, message: String) {
         let log = LogBuilder::new(LogTag::MiniAppServiceConsole, message);
@@ -644,7 +646,6 @@ impl console::ConsoleWriter for MiniAppCtx {
     }
 }
 
-// Implement FileAccessGuard for MiniAppCtx
 impl fs::FileAccessGuard for MiniAppCtx {
     /// Check if the mini app has access to the specified path
     ///
@@ -688,10 +689,25 @@ impl fs::FileAccessGuard for MiniAppCtx {
         {
             Ok(())
         } else {
+            Err(RongJSError::Error(
+                "Access denied: path outside allowed".to_string(),
+            ))
+        }
+    }
+}
+
+impl http::NetworkAccessGuard for MiniAppCtx {
+    /// Check if the mini app has access to the specified domain
+    /// Returns Ok(()) if access is granted, Err with error message if denied
+    fn check_access(&self, domain: &str) -> JSResult<()> {
+        if self.miniapp.is_domain_allowed(domain) {
+            Ok(())
+        } else {
             Err(RongJSError::Error(format!(
-                "Access denied: path outside allowed for lx app {}",
-                self.miniapp.appid
+                "Access denied: domain '{}' is not allowed ",
+                domain
             )))
         }
     }
 }
+

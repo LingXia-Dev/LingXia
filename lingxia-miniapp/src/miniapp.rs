@@ -436,6 +436,15 @@ impl MiniApp {
         self.state.lock().unwrap().opened
     }
 
+    /// Check if a domain is allowed for network access
+    pub fn is_domain_allowed(&self, domain: &str) -> bool {
+        self.state
+            .lock()
+            .unwrap()
+            .network_security
+            .is_domain_allowed(domain)
+    }
+
     /// Get a page by path
     pub fn get_page(&self, path: &str) -> Option<Page> {
         let state = self.state.lock().unwrap();
