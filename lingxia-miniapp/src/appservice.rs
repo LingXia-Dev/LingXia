@@ -1,11 +1,16 @@
 use crate::error::MiniAppError;
 use crate::log::{LogBuilder, LogLevel, LogTag};
+use crate::miniapp::MiniApp;
 use crate::{error, info};
 
-use rong::{JSContext, JSFunc, JSRuntime, Rong, RongJS, Source, Worker, WorkerMessage};
-use rong_modules::console;
+use rong::{
+    JSContext, JSFunc, JSResult, JSRuntime, Rong, RongJS, RongJSError, Source, Worker,
+    WorkerMessage,
+};
+use rong_modules::{console, fs};
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::path::Path;
 use std::rc::Rc;
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, mpsc};
@@ -25,7 +30,7 @@ mod lx;
 enum ServiceMessage {
     // Create a new miniapp service
     CreateMiniApp {
-        miniapp: Arc<crate::miniapp::MiniApp>,
+        miniapp: Arc<MiniApp>,
     },
     // Delete an miniapp service
     TerminateMiniApp {
@@ -305,10 +310,11 @@ async fn miniapp_service_handler(
             let _ = app::init(&ctx);
             let _ = page::init(&ctx);
 
-            // config console writer
-            console::set_writer(Box::new(JSConsole {
-                appid: miniapp.appid.clone(),
-            }));
+            // Set console writer
+            console::set_writer(Box::new(MiniAppCtx::new(miniapp.clone())));
+
+            // Set file access guard to prevent cross-app file access
+            fs::set_file_access_guard(Box::new(MiniAppCtx::new(miniapp.clone())));
 
             let _ = rong_modules::init(&ctx);
             let _ = lx::init(&ctx);
@@ -591,33 +597,101 @@ pub(crate) fn init(num: usize) -> Arc<Mutex<MiniAppServiceManager>> {
     result_manager
 }
 
-#[derive(Debug)]
-struct JSConsole {
-    appid: String,
+/// Wrapper for MiniApp to implement external traits
+struct MiniAppCtx {
+    miniapp: Arc<MiniApp>,
 }
 
-impl console::ConsoleWriter for JSConsole {
+impl MiniAppCtx {
+    pub fn new(miniapp: Arc<MiniApp>) -> Self {
+        Self { miniapp }
+    }
+}
+
+impl std::fmt::Debug for MiniAppCtx {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MiniAppCtx")
+            .field("appid", &self.miniapp.appid)
+            .finish()
+    }
+}
+
+// Implement ConsoleWriter for MiniAppCtx
+impl console::ConsoleWriter for MiniAppCtx {
     fn write(&self, level: console::LogLevel, message: String) {
         let log = LogBuilder::new(LogTag::MiniAppServiceConsole, message);
         match level {
             console::LogLevel::Verbose => log
                 .with_level(LogLevel::Verbose)
-                .with_appid(self.appid.clone()),
+                .with_appid(self.miniapp.appid.clone()),
             console::LogLevel::Info => log
                 .with_level(LogLevel::Info)
-                .with_appid(self.appid.clone()),
+                .with_appid(self.miniapp.appid.clone()),
             console::LogLevel::Debug => log
                 .with_level(LogLevel::Debug)
-                .with_appid(self.appid.clone()),
+                .with_appid(self.miniapp.appid.clone()),
             console::LogLevel::Error => log
                 .with_level(LogLevel::Error)
-                .with_appid(self.appid.clone()),
+                .with_appid(self.miniapp.appid.clone()),
             console::LogLevel::Warn => log
                 .with_level(LogLevel::Warn)
-                .with_appid(self.appid.clone()),
+                .with_appid(self.miniapp.appid.clone()),
         };
     }
+
     fn is_tty(&self) -> bool {
         false
+    }
+}
+
+// Implement FileAccessGuard for MiniAppCtx
+impl fs::FileAccessGuard for MiniAppCtx {
+    /// Check if the mini app has access to the specified path
+    ///
+    /// This prevents one mini app from accessing another mini app's files.
+    /// Only allows access to absolute paths within:
+    /// - The app's own user data directory
+    /// - The app's own user cache directory
+    ///
+    /// Relative paths are rejected
+    fn check_access(&self, path: &str) -> JSResult<()> {
+        let path = Path::new(path);
+
+        // Reject relative paths
+        if !path.is_absolute() {
+            return Err(RongJSError::Error(format!(
+                "Access denied: relative paths not allowed"
+            )));
+        }
+
+        // Helper function to canonicalize paths
+        let canonicalize = |p: &Path| -> Result<std::path::PathBuf, String> {
+            p.canonicalize().or_else(|_| {
+                // If path doesn't exist, try parent + filename
+                p.parent()
+                    .and_then(|parent| parent.canonicalize().ok())
+                    .map(|parent| parent.join(p.file_name().unwrap_or_default()))
+                    .ok_or_else(|| format!("Invalid path: {}", p.display()))
+            })
+        };
+
+        // Get canonical paths
+        let canonical_path = canonicalize(path).map_err(|e| RongJSError::Error(e))?;
+        let user_data_canonical =
+            canonicalize(&self.miniapp.user_data_dir).map_err(|e| RongJSError::Error(e))?;
+        let user_cache_canonical =
+            canonicalize(&self.miniapp.user_cache_dir).map_err(|e| RongJSError::Error(e))?;
+
+        // Check if path is within allowed directories
+        if canonical_path.starts_with(&user_data_canonical)
+            || canonical_path.starts_with(&user_cache_canonical)
+        {
+            Ok(())
+        } else {
+            Err(RongJSError::Error(format!(
+                "Access denied: path outside allowed for lx app {}",
+                self.miniapp.appid
+            )))
+        }
     }
 }
