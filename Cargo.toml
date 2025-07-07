@@ -16,7 +16,7 @@ dashmap = "6.1.0"
 
 # Local dependencies
 rong = { path = "../starfire" }
-rong_modules = { path = "../starfire/rong_modules" }
+rong_modules = { path = "../starfire/rong_modules", features=["default", "storage"]}
 
 [profile.release]
 opt-level = 'z'

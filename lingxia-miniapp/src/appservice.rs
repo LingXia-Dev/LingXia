@@ -7,7 +7,7 @@ use rong::{
     JSContext, JSFunc, JSResult, JSRuntime, Rong, RongJS, RongJSError, Source, Worker,
     WorkerMessage,
 };
-use rong_modules::{console, fs, http};
+use rong_modules::{console, fs, http, storage};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::Path;
@@ -318,6 +318,12 @@ async fn miniapp_service_handler(
 
             // Set network access guard to prevent unauthorized domain access
             http::set_network_access_guard(Box::new(MiniAppCtx::new(miniapp.clone())));
+
+            let localstorage = miniapp.storage_dir.join(format!("{}.redb", miniapp.appid));
+            if let Err(e) = storage::set_storage_path(localstorage) {
+                info!("[Worker {}] failed to open localstorage: {}", worker_id, e)
+                    .with_appid(miniapp.appid.clone());
+            }
 
             let _ = rong_modules::init(&ctx);
             let _ = lx::init(&ctx);
