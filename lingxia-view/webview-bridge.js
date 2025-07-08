@@ -5,10 +5,6 @@
   const LOG_PREFIX = "[LX.Bridge]";
   const MESSAGE_PORT_TYPE = "messageport";
 
-  // Framework integration - function list management
-  const PAGE_FUNC_LIST_KEY = "__LingXiaPageFuncs__";
-  let pageFunctions = new Set();
-
   let messageCounter = 0;
   const pendingCalls = new Map(); // msgId -> { resolve, reject, timerId }
   let pageData = {};
@@ -47,44 +43,6 @@
   }
   function error(...args) {
     console.error(LOG_PREFIX, ...args);
-  }
-
-  function _handleFunctionList(functionList) {
-    if (Array.isArray(functionList) && functionList.length > 0) {
-      pageFunctions.clear();
-      functionList.forEach((funcName) => {
-        if (typeof funcName === "string") {
-          pageFunctions.add(funcName);
-          
-          // Register function to window object directly
-          window[funcName] = function (...args) {
-            let payload = null;
-            if (args.length === 1 && typeof args[0] === "object" && args[0] !== null) {
-              payload = args[0];
-            } else if (args.length > 1) {
-              warn(`${funcName} called with multiple arguments, only the first object argument will be used`);
-              if (typeof args[0] === "object" && args[0] !== null) {
-                payload = args[0];
-              }
-            }
-            return window.LingXiaBridge.call(funcName, payload);
-          };
-        }
-      });
-
-      // Dispatch custom event to notify framework for initialization
-      if (typeof window.dispatchEvent === 'function') {
-        const event = new CustomEvent('lingxia:init', {
-          detail: {
-            functions: Array.from(pageFunctions),
-            bridge: window.LingXiaBridge,
-            timestamp: Date.now()
-          }
-        });
-        window.dispatchEvent(event);
-        log("Dispatched lingxia:init event");
-      }
-    }
   }
 
   // Creates an isolated copy of data
@@ -188,11 +146,6 @@
     let changesApplied = false;
     for (const path in patch) {
       if (Object.prototype.hasOwnProperty.call(patch, path)) {
-        if (path === PAGE_FUNC_LIST_KEY) {
-          _handleFunctionList(patch[path]);
-          continue;
-        }
-
         const value = patch[path];
         if (value === undefined) {
           if (_deleteValueByPath(target, path)) changesApplied = true;
@@ -304,10 +257,6 @@
       if (payload && typeof payload.data !== "undefined") {
         dataToApply = payload.data;
         callbackId = payload.callbackId;
-
-        if (payload[PAGE_FUNC_LIST_KEY]) {
-          _handleFunctionList(payload[PAGE_FUNC_LIST_KEY]);
-        }
       } else {
         dataToApply = payload;
       }
