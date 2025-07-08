@@ -20,6 +20,18 @@
     pageSvc.data = JSON.parse(JSON.stringify(pageConfig.data || {}));
     pageSvc._lastData = JSON.parse(JSON.stringify(pageSvc.data));
 
+    // Copy all page properties to pageSvc instance so they can access each other via this
+    for (const [key, value] of Object.entries(pageConfig)) {
+      if (key !== "data") {
+        // Skip private properties and data (already handled)
+        if (typeof value === "function") {
+          pageSvc[key] = value.bind(pageSvc);
+        } else {
+          pageSvc[key] = value; // Copy non-function properties like STORAGE_KEYS
+        }
+      }
+    }
+
     // Setup state management
     let updateTimer = null;
     let pendingData = null;
