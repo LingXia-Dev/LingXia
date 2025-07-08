@@ -1,145 +1,172 @@
-/**
- * LingXia MiniApp Builder - Vite Plugin
- *
- * Official build tool for LingXia MiniApp development.
- * Combines individual page files into optimized packages.
- *
- * Features:
- * - Unified logic.js generation
- * - Asset bundling (images, styles, layouts)
- * - JSON Validation: Validates all JSON files for syntax errors before building
- * - Code minification and optimization
- * - ZIP package generation
- */
-
+// LingXia MiniApp Builder - Vite Plugin
 import fs from "fs";
 import path from "path";
-import { minify } from "terser";
 import archiver from "archiver";
 
-/**
- * Validate JSON file syntax
- * @param {string} filePath - Path to JSON file
- * @param {string} content - JSON content to validate
- * @returns {Object} Validation result with isValid and error properties
- */
-function validateJsonSyntax(filePath, content) {
-  try {
-    JSON.parse(content);
-    return { isValid: true, error: null };
-  } catch (error) {
-    return {
-      isValid: false,
-      error: {
-        message: error.message,
-        line: getErrorLine(content, error),
-        column: getErrorColumn(error),
-      },
-    };
-  }
-}
+import { parseAppConfig } from "./src/core/app-config.js";
+import { PageBuilder } from "./src/core/page-builder.js";
 
-/**
- * Extract line number from JSON parse error
- * @param {string} content - JSON content
- * @param {Error} error - JSON parse error
- * @returns {number} Line number where error occurred
- */
-function getErrorLine(content, error) {
-  // Try to extract line number from error message
-  const lineMatch = error.message.match(/line (\d+)/i);
-  if (lineMatch) {
-    return parseInt(lineMatch[1]);
-  }
+export function lingxiaPlugin(options = {}) {
+  const {
+    appConfig = "./app.json",
+    outputDir = "dist",
+    buildDir = ".lingxia-build",
+    cleanup = true,
+    createPackage = false,
+    minifyCode = false,
+  } = options;
 
-  // Try to extract position and calculate line
-  const posMatch = error.message.match(/position (\d+)/i);
-  if (posMatch) {
-    const position = parseInt(posMatch[1]);
-    const lines = content.substring(0, position).split("\n");
-    return lines.length;
-  }
+  let config;
+  let rootDir;
 
-  return 1;
-}
+  return {
+    name: "lingxia",
 
-/**
- * Extract column number from JSON parse error
- * @param {Error} error - JSON parse error
- * @returns {number} Column number where error occurred
- */
-function getErrorColumn(error) {
-  const columnMatch = error.message.match(/column (\d+)/i);
-  if (columnMatch) {
-    return parseInt(columnMatch[1]);
-  }
-  return 1;
-}
+    configResolved(resolvedConfig) {
+      config = resolvedConfig;
+      rootDir = config.root;
+      console.log("🚀 LingXia MiniApp Builder starting...");
+    },
 
-/**
- * Validate all JSON files in the project
- * @param {string} rootDir - Root directory path
- * @param {Array<string>} pages - List of page paths
- * @returns {Array} Array of validation errors
- */
-function validateAllJsonFiles(rootDir, pages) {
-  const errors = [];
-  const jsonFiles = new Set();
+    async writeBundle() {
+      try {
+        const appConfigPath = path.resolve(rootDir, appConfig);
+        const appInfo = parseAppConfig(appConfigPath);
 
-  // Add main configuration files
-  const mainConfigFiles = ["app.json", "project.config.json"];
+        console.log(`Found project config: ${appConfig}`);
+        console.log(`App ID: ${appInfo.lxAppId}`);
+        console.log(
+          `Found ${appInfo.pages.length} pages: ${JSON.stringify(appInfo.pages)}`,
+        );
 
-  for (const configFile of mainConfigFiles) {
-    const filePath = path.resolve(rootDir, configFile);
-    if (fs.existsSync(filePath)) {
-      jsonFiles.add(filePath);
-    }
-  }
+        const fullOutputDir = path.resolve(rootDir, outputDir);
 
-  // Add page JSON files
-  for (const pagePath of pages) {
-    const jsonPath = pagePath.replace(/\.html$/, ".json");
-    const jsonFile = path.resolve(rootDir, jsonPath);
-    if (fs.existsSync(jsonFile)) {
-      jsonFiles.add(jsonFile);
-    }
-  }
+        // Build pages
+        await buildPages(
+          appInfo.pages,
+          fullOutputDir,
+          rootDir,
+          buildDir,
+          cleanup,
+        );
 
-  // Validate each JSON file
-  for (const jsonFile of jsonFiles) {
-    try {
-      const content = fs.readFileSync(jsonFile, "utf-8");
-      const validation = validateJsonSyntax(jsonFile, content);
+        // Generate logic.js
+        await generateLogicJS(
+          appInfo.pages,
+          fullOutputDir,
+          rootDir,
+          minifyCode,
+        );
 
-      if (!validation.isValid) {
-        const relativePath = path.relative(rootDir, jsonFile);
-        errors.push({
-          file: relativePath,
-          error: validation.error,
-        });
+        // Copy static assets
+        await copyStaticAssets(fullOutputDir, rootDir);
+
+        // Copy app config
+        await copyAppConfig(appConfigPath, fullOutputDir);
+
+        // Clean temp files
+        const tempBuildDir = path.resolve(rootDir, "temp-build");
+        if (fs.existsSync(tempBuildDir)) {
+          fs.rmSync(tempBuildDir, { recursive: true, force: true });
+          console.log("Removed temp-build directory");
+        }
+
+        // Create package
+        if (createPackage) {
+          await createPackageFile(appInfo, fullOutputDir);
+        }
+
+        console.log("LingXia MiniApp build completed successfully");
+      } catch (error) {
+        console.error("❌ LingXia build failed:", error.message);
+        throw error;
       }
-    } catch (readError) {
-      const relativePath = path.relative(rootDir, jsonFile);
-      errors.push({
-        file: relativePath,
-        error: {
-          message: `Failed to read file: ${readError.message}`,
-          line: 1,
-          column: 1,
-        },
-      });
+    },
+  };
+}
+
+// Build all pages
+async function buildPages(pages, outputDir, rootDir, buildDir, cleanup) {
+  console.log("Building pages...");
+
+  const pageBuilder = new PageBuilder({ buildDir, cleanup });
+
+  const buildPromises = pages.map(async (pagePath) => {
+    try {
+      const success = await pageBuilder.buildPage(pagePath, rootDir, outputDir);
+      if (!success) {
+        throw new Error(`Failed to build page: ${pagePath}`);
+      }
+    } catch (error) {
+      console.error(`❌ Error building page ${pagePath}:`, error.message);
+      throw error;
+    }
+  });
+
+  await Promise.all(buildPromises);
+  console.log("All pages built successfully");
+}
+
+// Generate logic.js (merge app.js + page JS + common JS)
+async function generateLogicJS(pages, outputDir, rootDir, minifyCode = false) {
+  console.log("Generating logic.js...");
+
+  let logicCode = "";
+
+  // Add app.js content
+  const appJsPath = path.resolve(rootDir, "app.js");
+  if (fs.existsSync(appJsPath)) {
+    const appContent = fs.readFileSync(appJsPath, "utf-8");
+    logicCode += `// === App Entry ===\n${appContent}\n\n`;
+  }
+
+  // Add common JS files
+  const commonDir = path.resolve(rootDir, "common");
+  if (fs.existsSync(commonDir)) {
+    logicCode += await processCommonJS(commonDir);
+  }
+
+  // Add page JS functions
+  for (const pagePath of pages) {
+    const pageJS = await processPageJS(pagePath, rootDir);
+    if (pageJS) {
+      const pageJSWithPath = transformPageCall(pageJS, pagePath);
+      logicCode += `\n// === Page: ${pagePath} ===\n${pageJSWithPath}\n`;
     }
   }
 
-  return errors;
+  // Minify code if requested (includes removing comments)
+  if (minifyCode || process.env.NODE_ENV === "production") {
+    logicCode = await minifyJSCode(logicCode);
+  }
+
+  // Write logic.js
+  const logicPath = path.join(outputDir, "logic.js");
+  fs.writeFileSync(logicPath, logicCode, "utf-8");
+
+  console.log(
+    `Generated logic.js (${(logicCode.length / 1024).toFixed(2)} KB)`,
+  );
 }
 
-/**
- * Transform Page() call to include page path parameter
- * @param {string} pageJs - Original page JavaScript code
- * @param {string} pagePath - Page path identifier
- * @returns {string} Transformed JavaScript code
- */
+// Process common JS files
+async function processCommonJS(commonDir) {
+  let commonCode = "// === Common Utilities ===\n";
+
+  const files = fs.readdirSync(commonDir);
+  for (const file of files) {
+    if (file.endsWith(".js")) {
+      const filePath = path.join(commonDir, file);
+      const content = fs.readFileSync(filePath, "utf-8");
+      const processedContent = convertESModuleToGlobal(content);
+      commonCode += `\n// --- ${file} ---\n${processedContent}\n`;
+    }
+  }
+
+  return commonCode;
+}
+
+// Transform Page() call to include page path parameter
 function transformPageCall(pageJs, pagePath) {
   const lastPageIndex = pageJs.lastIndexOf("Page(");
   if (lastPageIndex === -1) {
@@ -194,629 +221,140 @@ function transformPageCall(pageJs, pagePath) {
   return pageJs;
 }
 
-/**
- * Generate unified logic.js content
- * @param {Array<string>} pages - List of page paths
- * @param {string} rootDir - Root directory path
- * @param {Object} options - Generation options
- * @returns {string} Generated logic.js content
- */
-async function generateLogicJs(pages, rootDir, options = {}) {
-  const { minifyCode = false, removeComments = false } = options;
+// Process single page JS file
+async function processPageJS(pagePath, rootDir) {
+  const pageDir = path.dirname(pagePath);
+  const pageName = path.basename(pagePath, path.extname(pagePath));
+  const jsPath = path.resolve(rootDir, pageDir, `${pageName}.js`);
 
-  let logicJs = "";
-  let allImports = new Set();
-
-  if (!removeComments) {
-    const timestamp = new Date().toString();
-    logicJs = `// Generated by LingXia MiniApp Builder
-// Generated at: ${timestamp}
-// Pages: ${pages.length}
-
-`;
+  if (!fs.existsSync(jsPath)) {
+    return null;
   }
 
-  // Collect and resolve all dependencies (excluding page files)
-  const resolvedDependencies = new Map();
-  const processedFiles = new Set();
-  const pageFiles = new Set();
+  // Return original Page() code directly
+  const content = fs.readFileSync(jsPath, "utf-8");
+  return content;
+}
 
-  // Mark page files
-  for (const pagePath of pages) {
-    const jsPath = pagePath.replace(/\.html$/, ".js");
-    const jsFile = path.resolve(rootDir, jsPath);
-    pageFiles.add(jsFile);
-  }
+// Convert ES Module to global functions
+function convertESModuleToGlobal(code) {
+  return code
+    .replace(/export\s+function\s+/g, "function ")
+    .replace(/export\s+const\s+(\w+)\s*=\s*/g, "const $1 = ")
+    .replace(/export\s+\{[^}]+\}/g, ""); // Remove export { ... }
+}
 
-  // Recursively resolve dependencies
-  function resolveDependencies(filePath, isPageFile = false) {
-    if (processedFiles.has(filePath)) return;
-    processedFiles.add(filePath);
+// Copy static assets
+async function copyStaticAssets(outputDir, rootDir) {
+  console.log("Copying static assets...");
 
-    if (!fs.existsSync(filePath)) {
-      console.warn(`⚠️  Dependency not found: ${filePath}`);
-      return;
+  // Common static asset directories
+  const staticDirs = ["images", "assets", "static", "public"];
+
+  for (const dirName of staticDirs) {
+    const staticDir = path.resolve(rootDir, dirName);
+    if (fs.existsSync(staticDir)) {
+      const destDir = path.join(outputDir, dirName);
+      await copyDirectory(staticDir, destDir);
+      console.log(`Copied ${dirName}/ directory`);
     }
+  }
 
-    const content = fs.readFileSync(filePath, "utf-8");
-    const importMatches = content.match(
-      /^import\s+.*?from\s+['"]([^'"]+)['"];?\s*$/gm,
+  // Copy app.css
+  const appCss = path.resolve(rootDir, "app.css");
+  if (fs.existsSync(appCss)) {
+    fs.copyFileSync(appCss, path.join(outputDir, "app.css"));
+    console.log("Copied app.css");
+  }
+}
+
+// Copy app configuration
+async function copyAppConfig(appConfigPath, outputDir) {
+  const destPath = path.join(outputDir, "app.json");
+  fs.copyFileSync(appConfigPath, destPath);
+  console.log("Copied app.json");
+}
+
+// Create package file (.zip)
+async function createPackageFile(appInfo, outputDir) {
+  console.log("Creating package...");
+
+  const packageName = `${appInfo.lxAppId || "miniapp"}.zip`;
+  const packagePath = path.join(path.dirname(outputDir), packageName);
+
+  return new Promise((resolve, reject) => {
+    const output = fs.createWriteStream(packagePath);
+    const archive = archiver("zip", { zlib: { level: 9 } });
+
+    output.on("close", () => {
+      console.log(
+        `Package created: ${packageName} (${(archive.pointer() / 1024).toFixed(2)} KB)`,
+      );
+      resolve();
+    });
+
+    archive.on("error", reject);
+    archive.pipe(output);
+
+    // Add entire dist directory to archive
+    archive.directory(outputDir, false);
+    archive.finalize();
+  });
+}
+
+// Minify JavaScript code (includes removing comments)
+async function minifyJSCode(code) {
+  try {
+    // Try to use terser for proper minification
+    const { minify } = await import("terser");
+    const result = await minify(code, {
+      compress: {
+        drop_console: false, // Keep console.log for debugging
+        drop_debugger: true,
+        pure_funcs: [], // Don't remove any function calls
+      },
+      mangle: false, // Don't mangle variable names to keep readability
+      format: {
+        comments: false, // Remove all comments
+        beautify: false, // Minify output
+      },
+    });
+    return result.code || code;
+  } catch (error) {
+    console.warn(
+      "⚠️  Code minification failed, using simple comment removal:",
+      error.message,
     );
-
-    if (importMatches) {
-      for (const importStatement of importMatches) {
-        const match = importStatement.match(/from\s+['"]([^'"]+)['"]/);
-        if (match) {
-          const importPath = match[1];
-          let resolvedPath;
-
-          if (importPath.startsWith("./") || importPath.startsWith("../")) {
-            // Relative import
-            resolvedPath = path.resolve(path.dirname(filePath), importPath);
-            if (!resolvedPath.endsWith(".js")) {
-              resolvedPath += ".js";
-            }
-          } else {
-            // Absolute import (relative to project root)
-            resolvedPath = path.resolve(rootDir, importPath);
-            if (!resolvedPath.endsWith(".js")) {
-              resolvedPath += ".js";
-            }
-          }
-
-          // Recursively resolve nested dependencies (but not page files)
-          if (!pageFiles.has(resolvedPath)) {
-            resolveDependencies(resolvedPath, false);
-          }
-        }
-      }
-    }
-
-    // Only store dependencies, not page files
-    if (!isPageFile) {
-      // Store the cleaned content (without import/export statements)
-      let cleanContent = content.replace(
-        /^import\s+.*?from\s+['"][^'"]+['"];?\s*$/gm,
-        "",
-      );
-
-      // Convert export statements to global assignments
-      cleanContent = cleanContent.replace(
-        /^export\s+function\s+(\w+)/gm,
-        "globalThis.$1 = function $1",
-      );
-      cleanContent = cleanContent.replace(
-        /^export\s+const\s+(\w+)/gm,
-        "globalThis.$1",
-      );
-      cleanContent = cleanContent.replace(
-        /^export\s+let\s+(\w+)/gm,
-        "globalThis.$1",
-      );
-      cleanContent = cleanContent.replace(
-        /^export\s+var\s+(\w+)/gm,
-        "globalThis.$1",
-      );
-      cleanContent = cleanContent.replace(
-        /^export\s+\{([^}]+)\}/gm,
-        (match, exports) => {
-          const exportList = exports.split(",").map((e) => e.trim());
-          return exportList
-            .map((exp) => `globalThis.${exp} = ${exp};`)
-            .join("\n");
-        },
-      );
-
-      if (cleanContent.trim()) {
-        resolvedDependencies.set(filePath, cleanContent);
-      }
-    }
-  }
-
-  // Collect dependencies from all pages
-  for (const pagePath of pages) {
-    const jsPath = pagePath.replace(/\.html$/, ".js");
-    const jsFile = path.resolve(rootDir, jsPath);
-    if (fs.existsSync(jsFile)) {
-      resolveDependencies(jsFile, true); // Mark as page file
-    }
-  }
-
-  // Add resolved dependencies to logic.js
-  if (resolvedDependencies.size > 0) {
-    if (!removeComments) {
-      logicJs += `// === Dependencies ===\n`;
-    }
-
-    // Add dependencies in dependency order (dependencies first, then dependents)
-    const addedDeps = new Set();
-
-    function addDependency(filePath) {
-      if (addedDeps.has(filePath) || !resolvedDependencies.has(filePath))
-        return;
-
-      const content = fs.readFileSync(filePath, "utf-8");
-      const importMatches = content.match(
-        /^import\s+.*?from\s+['"]([^'"]+)['"];?\s*$/gm,
-      );
-
-      // Add dependencies first
-      if (importMatches) {
-        for (const importStatement of importMatches) {
-          const match = importStatement.match(/from\s+['"]([^'"]+)['"]/);
-          if (match) {
-            const importPath = match[1];
-            let resolvedPath;
-
-            if (importPath.startsWith("./") || importPath.startsWith("../")) {
-              resolvedPath = path.resolve(path.dirname(filePath), importPath);
-              if (!resolvedPath.endsWith(".js")) {
-                resolvedPath += ".js";
-              }
-            } else {
-              resolvedPath = path.resolve(rootDir, importPath);
-              if (!resolvedPath.endsWith(".js")) {
-                resolvedPath += ".js";
-              }
-            }
-
-            addDependency(resolvedPath);
-          }
-        }
-      }
-
-      // Then add this dependency
-      if (resolvedDependencies.has(filePath)) {
-        addedDeps.add(filePath);
-        const relativePath = path.relative(rootDir, filePath);
-
-        if (!removeComments) {
-          logicJs += `\n// === ${relativePath} ===\n`;
-        }
-        logicJs += `(function() {\n${resolvedDependencies.get(filePath)}\n})();\n`;
-      }
-    }
-
-    // Add all dependencies
-    for (const filePath of resolvedDependencies.keys()) {
-      addDependency(filePath);
-    }
-
-    logicJs += "\n";
-  }
-
-  // Include app.js content first (App should be executed before Page registrations)
-  const appJsPath = path.resolve(rootDir, "app.js");
-  if (fs.existsSync(appJsPath)) {
-    const appJs = fs.readFileSync(appJsPath, "utf-8");
-    if (!removeComments) {
-      logicJs += `// === App Logic ===\n`;
-    }
-    logicJs += `${appJs}\n\n`;
-  }
-
-  if (!removeComments) {
-    logicJs += `// === Page Registrations ===\n`;
-  }
-
-  logicJs += `(function() {
-  console.log('🚀 LingXia MiniApp loaded with ${pages.length} pages');
-`;
-
-  let processedPages = 0;
-
-  for (const pagePath of pages) {
-    // Convert page path to JS file path (remove .html, add .js)
-    const jsPath = pagePath.replace(/\.html$/, ".js");
-    const jsFile = path.resolve(rootDir, jsPath);
-
-    if (fs.existsSync(jsFile)) {
-      try {
-        let pageJs = fs.readFileSync(jsFile, "utf-8");
-
-        // Remove import statements (they're already at the top level)
-        pageJs = pageJs.replace(
-          /^import\s+.*?from\s+['"][^'"]+['"];?\s*$/gm,
-          "",
-        );
-
-        // Use original pagePath (with .html) for Page() registration
-        const transformedJs = transformPageCall(pageJs, pagePath);
-
-        if (!removeComments) {
-          logicJs += `
-  // === ${pagePath} ===`;
-        }
-
-        logicJs += `
-  (function() {
-    ${transformedJs}
-  })();
-`;
-        processedPages++;
-      } catch (error) {
-        console.error(`❌ Error processing ${pagePath}:`, error.message);
-      }
-    } else {
-      console.warn(`⚠️  Page file not found: ${jsFile}`);
-    }
-  }
-
-  // Close the Page Registrations function
-  logicJs += `
-})();
-`;
-
-  if (minifyCode || removeComments) {
-    try {
-      const result = await minify(logicJs, {
-        compress: minifyCode
-          ? {
-              drop_console: false,
-              drop_debugger: true,
-            }
-          : false,
-        mangle: minifyCode,
-        format: {
-          comments: !removeComments,
-        },
-      });
-      logicJs = result.code;
-    } catch (error) {
-      console.warn(
-        "⚠️  Code processing failed, using original code:",
-        error.message,
-      );
-    }
-  }
-
-  console.log(
-    `✨ Generated logic.js with ${processedPages}/${pages.length} pages`,
-  );
-  return logicJs;
-}
-
-/**
- * Process and copy global CSS file to build directory
- * Only processes plain CSS files that WebView can understand
- * @param {string} rootDir - Root directory
- * @param {string} buildDir - Build output directory
- */
-async function processGlobalCSS(rootDir, buildDir) {
-  // Only look for plain CSS files that WebView can handle
-  const globalCSSFiles = ["app.css"];
-
-  for (const cssFile of globalCSSFiles) {
-    const srcFile = path.resolve(rootDir, cssFile);
-    if (fs.existsSync(srcFile)) {
-      try {
-        const destFile = path.resolve(buildDir, "app.css");
-        fs.copyFileSync(srcFile, destFile);
-        console.log(`🎨 Copied global CSS: ${cssFile} → app.css`);
-        return true;
-      } catch (error) {
-        console.warn(
-          `⚠️  Failed to process CSS file ${cssFile}:`,
-          error.message,
-        );
-      }
-    }
-  }
-
-  console.log(
-    `ℹ️  No global CSS file found (checked: ${globalCSSFiles.join(", ")})`,
-  );
-  return false;
-}
-
-/**
- * Copy assets to build directory
- * @param {string} rootDir - Root directory
- * @param {string} buildDir - Build output directory
- * @param {Array<string>} assetDirs - Asset directories to copy
- */
-function copyAssets(rootDir, buildDir, assetDirs = ["images"]) {
-  for (const assetDir of assetDirs) {
-    const srcDir = path.resolve(rootDir, assetDir);
-    const destDir = path.resolve(buildDir, assetDir);
-
-    if (fs.existsSync(srcDir)) {
-      fs.mkdirSync(destDir, { recursive: true });
-      copyDirectory(srcDir, destDir);
-      console.log(`📁 Copied assets: ${assetDir}`);
-    }
+    // Fallback to simple comment removal
+    return removeCommentsSimple(code);
   }
 }
 
-/**
- * Copy directory recursively
- * @param {string} src - Source directory
- * @param {string} dest - Destination directory
- */
-function copyDirectory(src, dest) {
-  const entries = fs.readdirSync(src, { withFileTypes: true });
+// Simple comment removal fallback
+function removeCommentsSimple(code) {
+  return code
+    .replace(/\/\*[\s\S]*?\*\//g, "") // Remove block comments
+    .replace(/\/\/.*$/gm, "") // Remove line comments
+    .replace(/^\s*[\r\n]/gm, ""); // Remove empty lines
+}
 
-  for (const entry of entries) {
-    const srcPath = path.join(src, entry.name);
-    const destPath = path.join(dest, entry.name);
+// Copy directory recursively
+async function copyDirectory(src, dest) {
+  if (!fs.existsSync(dest)) {
+    fs.mkdirSync(dest, { recursive: true });
+  }
 
-    if (entry.isDirectory()) {
-      fs.mkdirSync(destPath, { recursive: true });
-      copyDirectory(srcPath, destPath);
+  const files = fs.readdirSync(src);
+  for (const file of files) {
+    const srcPath = path.join(src, file);
+    const destPath = path.join(dest, file);
+
+    if (fs.statSync(srcPath).isDirectory()) {
+      await copyDirectory(srcPath, destPath);
     } else {
       fs.copyFileSync(srcPath, destPath);
     }
   }
 }
 
-/**
- * Copy page assets (HTML, CSS, JSON)
- * @param {Array<string>} pages - List of page paths
- * @param {string} rootDir - Root directory
- * @param {string} buildDir - Build output directory
- */
-function copyPageAssets(pages, rootDir, buildDir) {
-  for (const pagePath of pages) {
-    // Remove .html extension to get base path
-    const basePath = pagePath.replace(/\.html$/, "");
-    const pageDir = path.dirname(basePath);
-    const pageName = path.basename(basePath);
-
-    const srcPageDir = path.resolve(rootDir, pageDir);
-    const destPageDir = path.resolve(buildDir, pageDir);
-
-    fs.mkdirSync(destPageDir, { recursive: true });
-
-    // Copy HTML, CSS, JSON files
-    const extensions = [".html", ".css", ".json"];
-    for (const ext of extensions) {
-      const srcFile = path.resolve(srcPageDir, `${pageName}${ext}`);
-      const destFile = path.resolve(destPageDir, `${pageName}${ext}`);
-
-      if (fs.existsSync(srcFile)) {
-        fs.copyFileSync(srcFile, destFile);
-      }
-    }
-  }
-
-  console.log(`📄 Copied page assets for ${pages.length} pages`);
-}
-
-/**
- * Get file type for build processing
- * @param {string} filePath - File path
- * @returns {string} File type
- */
-function getFileType(filePath) {
-  const ext = path.extname(filePath).toLowerCase();
-  switch (ext) {
-    case ".js":
-      return filePath.endsWith("app.js") ? "app" : "page";
-    case ".html":
-      return "layout";
-    case ".css":
-      return "style";
-    case ".json":
-      return filePath.endsWith("app.json") ? "config" : "page-config";
-    case ".png":
-    case ".jpg":
-    case ".jpeg":
-    case ".gif":
-    case ".svg":
-    case ".webp":
-      return "image";
-    default:
-      return "asset";
-  }
-}
-
-/**
- * Create ZIP package from build directory
- * @param {string} buildDir - Build directory path
- * @param {string} outputPath - Output ZIP file path
- * @returns {Promise} Promise that resolves when package is created
- */
-function createZipPackage(buildDir, outputPath) {
-  return new Promise((resolve, reject) => {
-    const output = fs.createWriteStream(outputPath);
-    const archive = archiver("zip", { zlib: { level: 9 } });
-
-    output.on("close", () => {
-      console.log(
-        `📦 Package created: ${outputPath} (${archive.pointer()} bytes)`,
-      );
-      resolve();
-    });
-
-    output.on("error", reject);
-    archive.on("error", reject);
-
-    archive.pipe(output);
-
-    // Add files from build directory, excluding hidden files
-    archive.glob("**/*", {
-      cwd: buildDir,
-      ignore: [
-        "**/.*", // Exclude all hidden files (starting with .)
-        "**/.DS_Store", // Explicitly exclude .DS_Store files
-        "**/Thumbs.db", // Exclude Windows thumbnail cache
-      ],
-    });
-
-    archive.finalize();
-  });
-}
-
-/**
- * LingXia MiniApp Builder Vite Plugin
- * @param {Object} options - Plugin options
- * @returns {Object} Vite plugin configuration
- */
-export function LingXiaMiniAppBuilder(options = {}) {
-  const {
-    configFile = "app.json",
-    projectConfigFile = "project.config.json",
-    outputFile = "logic.js",
-    buildDir = "dist",
-    assetDirs = ["images"],
-    minifyCode = false,
-    removeComments = false,
-    createPackage = false,
-    packageName = null, // Will use appId if not specified
-    appId = null, // MiniApp identifier (fallback)
-    targetDir = null, // Target directory for host app assets
-    copyToTarget = false, // Whether to copy to target directory
-  } = options;
-
-  let rootDir = "";
-
-  let hasGenerated = false;
-
-  return {
-    name: "lingxia-miniapp-builder",
-
-    configResolved(config) {
-      rootDir = config.root || process.cwd();
-    },
-
-    writeBundle() {
-      if (!hasGenerated) {
-        hasGenerated = true;
-        generatePackage();
-      }
-    },
-  };
-
-  async function generatePackage() {
-    try {
-      console.log("🚀 LingXia MiniApp Builder starting...");
-
-      // Read configuration
-      const configPath = path.resolve(rootDir, configFile);
-      if (!fs.existsSync(configPath)) {
-        throw new Error(`Configuration file not found: ${configPath}`);
-      }
-
-      const appConfig = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-
-      if (!appConfig.pages || !Array.isArray(appConfig.pages)) {
-        throw new Error("Invalid app.json: pages array not found");
-      }
-
-      // Get appId from project config or app config (required)
-      let finalAppId = appId;
-
-      // Try to read from project.config.json first (WeChat standard)
-      const projectConfigPath = path.resolve(rootDir, projectConfigFile);
-      if (fs.existsSync(projectConfigPath)) {
-        try {
-          const projectConfig = JSON.parse(
-            fs.readFileSync(projectConfigPath, "utf-8"),
-          );
-          finalAppId = finalAppId || projectConfig.appid;
-          console.log(`📋 Found project config: ${projectConfigFile}`);
-        } catch (error) {
-          console.warn(`⚠️  Failed to read project config: ${error.message}`);
-        }
-      }
-
-      // Fallback to app.json
-      finalAppId = finalAppId || appConfig.appId;
-
-      if (!finalAppId) {
-        throw new Error(
-          "appId is required. Please set it in project.config.json (appid field) or app.json (appId field) or plugin options.",
-        );
-      }
-      console.log(`📱 App ID: ${finalAppId}`);
-
-      // Extract page paths (keep original format for Page() registration)
-      const pages = appConfig.pages;
-      console.log(`📄 Found ${pages.length} pages:`, pages);
-
-      // Validate all JSON files
-      console.log("🔍 Validating JSON files...");
-      const jsonErrors = validateAllJsonFiles(rootDir, pages);
-
-      if (jsonErrors.length > 0) {
-        console.error("❌ JSON validation failed:");
-        for (const error of jsonErrors) {
-          console.error(`  📄 ${error.file}:`);
-          console.error(
-            `     Line ${error.error.line}, Column ${error.error.column}: ${error.error.message}`,
-          );
-        }
-        throw new Error(
-          `Found ${jsonErrors.length} JSON syntax error(s). Please fix them before building.`,
-        );
-      }
-      console.log("✅ All JSON files are valid");
-
-      // Create build directory
-      const fullBuildDir = path.resolve(rootDir, buildDir);
-      fs.mkdirSync(fullBuildDir, { recursive: true });
-
-      // Copy app.json only (app.js is merged into logic.js)
-      fs.copyFileSync(configPath, path.resolve(fullBuildDir, "app.json"));
-
-      // Generate logic.js (includes app.js content)
-      const logicContent = await generateLogicJs(pages, rootDir, {
-        minifyCode,
-        removeComments,
-      });
-
-      const logicPath = path.resolve(fullBuildDir, outputFile);
-      fs.writeFileSync(logicPath, logicContent, "utf-8");
-
-      // Process and copy global CSS file if exists
-      await processGlobalCSS(rootDir, fullBuildDir);
-
-      // Copy page assets
-      copyPageAssets(pages, rootDir, fullBuildDir);
-
-      // Copy other assets
-      copyAssets(rootDir, fullBuildDir, assetDirs);
-
-      // Clean up unwanted files generated by Vite
-      const unwantedFiles = [
-        "entry.js",
-        "main.js",
-        "index.js",
-        "temp.js",
-        "app.js",
-      ];
-      for (const file of unwantedFiles) {
-        const filePath = path.resolve(fullBuildDir, file);
-        if (fs.existsSync(filePath)) {
-          fs.unlinkSync(filePath);
-          console.log(`🗑️  Removed unwanted file: ${file}`);
-        }
-      }
-
-      // Copy to target directory if specified
-      if (copyToTarget && targetDir) {
-        const finalTargetDir = path.resolve(targetDir, finalAppId);
-        console.log(`📁 Copying to target directory: ${finalTargetDir}`);
-        fs.mkdirSync(finalTargetDir, { recursive: true });
-        copyDirectory(fullBuildDir, finalTargetDir);
-        console.log(`✅ Copied to target: ${finalTargetDir}`);
-      }
-
-      // Create ZIP package if requested
-      if (createPackage) {
-        const finalPackageName = packageName || `${finalAppId}.zip`;
-        const packagePath = path.resolve(rootDir, finalPackageName);
-        try {
-          await createZipPackage(fullBuildDir, packagePath);
-        } catch (error) {
-          console.warn("⚠️  Failed to create ZIP package:", error.message);
-        }
-      }
-
-      console.log("✅ LingXia MiniApp build completed successfully");
-    } catch (error) {
-      console.error("❌ LingXia MiniApp Builder failed:", error.message);
-      throw error;
-    }
-  }
-}
+export default lingxiaPlugin;
