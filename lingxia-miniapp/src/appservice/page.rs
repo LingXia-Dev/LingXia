@@ -185,11 +185,8 @@ impl PageSvc {
             })),
         };
 
-        // Register all functions and get public function list
-        let public_functions = page_svc.register_functions(&config)?;
-
-        // Set public functions list for smart method interception
-        init_data.set("__LingXiaPageFuncs__", public_functions)?;
+        // Register all functions
+        page_svc.register_functions(&config)?;
 
         // Store the complete init data
         {
@@ -262,15 +259,8 @@ impl PageSvc {
 }
 
 impl PageSvc {
-    /// Register all functions from page config and return public function names
-    /// 1. Registers ALL functions (including lifecycle) for internal use
-    /// 2. Returns only PUBLIC page functions that can be called from View layer
-    fn register_functions(&mut self, obj: &JSObject) -> JSResult<Vec<String>> {
-        let mut page_functions = Vec::new();
-
-        // Lifecycle functions should NOT be exposed to View layer calls
-        let lifecycle_functions = ["onLoad", "onReady", "onShow", "onHide", "onUnload"];
-
+    /// Register all functions from page config
+    fn register_functions(&mut self, obj: &JSObject) -> JSResult<()> {
         for key_value in obj.keys()? {
             if let Ok(function_name) = key_value.try_into::<String>() {
                 if function_name.starts_with('_') {
@@ -279,16 +269,10 @@ impl PageSvc {
 
                 if let Ok(func) = obj.get::<_, JSFunc>(function_name.as_str()) {
                     self.functions.insert(function_name.clone(), func);
-
-                    // Only expose non-lifecycle functions to View layer
-                    if !lifecycle_functions.contains(&function_name.as_str()) {
-                        page_functions.push(function_name);
-                    }
                 }
             }
         }
-
-        Ok(page_functions)
+        Ok(())
     }
 
     // handler for bridge type: call or event from native
