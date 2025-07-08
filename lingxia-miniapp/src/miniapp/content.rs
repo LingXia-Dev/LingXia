@@ -103,31 +103,10 @@ impl MiniApp {
             }
         };
 
-        // Load the framework integration script from assets (optional)
-        let framework_script = match self.runtime.read_asset("framework.js") {
-            Ok(mut reader) => {
-                let mut script_data = Vec::new();
-                reader.read_to_end(&mut script_data).map_err(|e| {
-                    MiniAppError::IoError(format!("Failed to read framework script: {}", e))
-                })?;
-                Some(String::from_utf8_lossy(&script_data).to_string())
-            }
-            Err(e) => {
-                info!("Framework integration script not found (optional): {}", e)
-                    .with_appid(self.appid.clone());
-                None
-            }
-        };
-
-        // Convert HTML content to string
         let html_str = String::from_utf8_lossy(html_data);
 
         // Create script tags - first bridge script, then framework script
-        let mut script_tags = format!("<script>\n{}\n</script>", bridge_script);
-
-        if let Some(framework_content) = framework_script {
-            script_tags.push_str(&format!("\n<script>\n{}\n</script>", framework_content));
-        }
+        let script_tags = format!("<script>\n{}\n</script>", bridge_script);
 
         // Try to insert before </head> tag (preferred location)
         if let Some(head_pos) = html_str.to_lowercase().find("</head>") {
