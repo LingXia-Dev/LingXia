@@ -6,39 +6,75 @@
 }
 
 html, body {
-    height: 100%;
+    height: 100vh;
+    min-height: 100vh;
+    max-height: 100vh;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', sans-serif;
-    background: #f5f5f5;
-    color: #4d4d4d;
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    color: #2c3e50;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     margin: 0;
     padding: 0;
-    font-size: 16px; /* 防止 iOS 缩放 */
+    font-size: 16px;
+    position: relative;
+    width: 100%;
+    overflow-x: hidden;
+}
+
+/* Background todos text */
+body::before {
+    content: 'todos';
+    position: fixed;
+    top: 15%;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 100px;
+    font-weight: 100;
+    color: rgba(255, 182, 193, 0.25);
+    z-index: 0;
+    pointer-events: none;
+    user-select: none;
+}
+
+@media (max-width: 768px) {
+    html::before {
+        font-size: 80px;
+        top: 15%;
+    }
+}
+
+@media (max-width: 480px) {
+    html::before {
+        font-size: 60px;
+        top: 12%;
+    }
 }
 
 body {
-    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
+    overflow-y: auto;
+    overflow-x: hidden;
 }
 
 .todoapp {
     background: #fff;
-    margin: 20px auto;
+    margin: 20px auto 0;
     position: relative;
-    box-shadow: 0 2px 4px 0 rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 12px 0 rgba(0, 0, 0, 0.15);
     max-width: 100%;
     min-width: 280px;
     border-radius: 8px;
     overflow: hidden;
+    margin-bottom: 0;
+    z-index: 10;
 }
 
-/* 移动端优化 */
 @media (max-width: 768px) {
     .todoapp {
-        margin: 10px;
-        border-radius: 0;
-        box-shadow: none;
-        border-top: 1px solid #e6e6e6;
+        margin: 8px;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px 0 rgba(0, 0, 0, 0.1);
     }
 }
 
@@ -67,7 +103,7 @@ body {
     font-size: 60px;
     font-weight: 100;
     text-align: center;
-    color: rgba(175, 47, 47, 0.4);
+    color: rgba(0, 123, 255, 0.4);
     -webkit-text-rendering: optimizeLegibility;
     -moz-text-rendering: optimizeLegibility;
     text-rendering: optimizeLegibility;
@@ -75,7 +111,6 @@ body {
     pointer-events: none;
 }
 
-/* 移动端标题优化 */
 @media (max-width: 768px) {
     .todoapp h1 {
         top: -50px;
@@ -101,11 +136,10 @@ body {
     -moz-osx-font-smoothing: grayscale;
 }
 
-/* 移动端输入框优化 */
 @media (max-width: 768px) {
     .new-todo {
         font-size: 16px;
-        padding: 14px 14px 14px 45px;
+        padding: 14px 14px 14px 35px;
     }
 }
 
@@ -148,7 +182,6 @@ body {
     color: #737373;
 }
 
-/* 移动端全选按钮优化 */
 @media (max-width: 768px) {
     .toggle-all + label {
         width: 40px;
@@ -176,7 +209,6 @@ body {
     min-height: 50px;
 }
 
-/* 移动端列表项优化 */
 @media (max-width: 768px) {
     .todo-list li {
         font-size: 16px;
@@ -211,10 +243,12 @@ body {
     position: absolute;
     top: 0;
     bottom: 0;
+    left: 5px;
     margin: auto 0;
     border: none;
     -webkit-appearance: none;
     appearance: none;
+    z-index: 2;
 }
 
 .todo-list li .toggle {
@@ -233,19 +267,17 @@ body {
 
 .todo-list li label {
     word-break: break-word;
-    padding: 12px 50px 12px 50px;
+    padding: 12px 50px 12px 55px;
     display: block;
     line-height: 1.4;
-    transition: color 0.4s;
     font-weight: 400;
-    color: #4d4d4d;
+    color: #2c3e50;
     cursor: pointer;
 }
 
-/* 移动端标签优化 */
 @media (max-width: 768px) {
     .todo-list li label {
-        padding: 12px 45px 12px 45px;
+        padding: 12px 35px 12px 45px;
         line-height: 1.3;
     }
 }
@@ -286,7 +318,6 @@ body {
     display: block;
 }
 
-/* 移动端删除按钮优化 - 始终显示 */
 @media (max-width: 768px) {
     .todo-list li .destroy {
         display: block;
@@ -306,7 +337,7 @@ body {
 }
 
 .footer {
-    color: #777;
+    color: #6c757d;
     padding: 12px 15px;
     height: auto;
     min-height: 50px;
@@ -318,9 +349,9 @@ body {
     justify-content: space-between;
     gap: 8px;
     flex-wrap: wrap;
+    z-index: 15;
 }
 
-/* 移动端底部优化 */
 @media (max-width: 768px) {
     .footer {
         padding: 10px 12px;
@@ -329,22 +360,6 @@ body {
         flex-direction: column;
         align-items: stretch;
     }
-}
-
-.footer:before {
-    content: '';
-    position: absolute;
-    right: 0;
-    bottom: -50px;
-    left: 0;
-    height: 50px;
-    overflow: hidden;
-    box-shadow: 0 1px 1px rgba(0, 0, 0, 0.2),
-                0 8px 0 -3px #f6f6f6,
-                0 9px 1px -3px rgba(0, 0, 0, 0.2),
-                0 16px 0 -6px #f6f6f6,
-                0 17px 2px -6px rgba(0, 0, 0, 0.2);
-    z-index: -1;
 }
 
 .todo-count {
@@ -362,7 +377,6 @@ body {
     font-weight: 300;
 }
 
-/* 移动端计数器优化 */
 @media (max-width: 768px) {
     .todo-count {
         text-align: center;
@@ -404,16 +418,15 @@ body {
 }
 
 .filters li a:hover {
-    border-color: rgba(175, 47, 47, 0.1);
-    background: rgba(175, 47, 47, 0.05);
+    border-color: rgba(0, 123, 255, 0.2);
+    background: rgba(0, 123, 255, 0.1);
 }
 
 .filters li a.selected {
-    border-color: rgba(175, 47, 47, 0.2);
-    background: rgba(175, 47, 47, 0.1);
+    border-color: rgba(0, 123, 255, 0.3);
+    background: rgba(0, 123, 255, 0.15);
 }
 
-/* 移动端过滤器优化 */
 @media (max-width: 768px) {
     .filters {
         order: 2;
@@ -436,19 +449,20 @@ body {
     cursor: pointer;
     background: none;
     border: none;
-    color: #777;
+    color: #6c757d;
     white-space: nowrap;
     padding: 8px 12px;
     border-radius: 4px;
-    transition: all 0.2s ease;
+    z-index: 20;
+    position: relative;
+    pointer-events: auto;
 }
 
 .clear-completed:hover {
-    text-decoration: underline;
-    background: rgba(119, 119, 119, 0.1);
+    color: #dc3545;
+    background: rgba(220, 53, 69, 0.1);
 }
 
-/* 移动端清除按钮优化 */
 @media (max-width: 768px) {
     .clear-completed {
         text-align: center;
@@ -458,39 +472,49 @@ body {
     }
 }
 
-.info {
-    margin: 30px auto 0;
-    color: #bfbfbf;
-    font-size: 12px;
-    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+/* Empty state styles */
+.empty-state {
     text-align: center;
-    padding: 0 20px;
+    padding: 40px 20px;
+    color: #6c757d;
 }
 
-.info p {
-    line-height: 1.4;
+.empty-state-icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+    opacity: 0.5;
 }
 
-.info a {
-    color: inherit;
-    text-decoration: none;
-    font-weight: 400;
+.empty-state-text {
+    font-size: 18px;
+    margin-bottom: 8px;
+    font-weight: 500;
 }
 
-.info a:hover {
-    text-decoration: underline;
+.empty-state-hint {
+    font-size: 14px;
+    opacity: 0.7;
 }
 
-/* 移动端信息区域优化 */
 @media (max-width: 768px) {
-    .info {
-        margin: 20px auto 0;
-        font-size: 11px;
-        padding: 0 15px;
+    .empty-state {
+        padding: 30px 15px;
+    }
+
+    .empty-state-icon {
+        font-size: 40px;
+        margin-bottom: 12px;
+    }
+
+    .empty-state-text {
+        font-size: 16px;
+    }
+
+    .empty-state-hint {
+        font-size: 13px;
     }
 }
 
-/* 移动端触摸优化 */
 @media screen and (-webkit-min-device-pixel-ratio:0) {
     .toggle-all,
     .todo-list li .toggle {
@@ -502,7 +526,6 @@ body {
     }
 }
 
-/* 小屏幕设备优化 */
 @media (max-width: 480px) {
     .todoapp {
         margin: 5px;
@@ -524,7 +547,7 @@ body {
     }
 
     .todo-list li label {
-        padding: 10px 40px 10px 40px;
+        padding: 10px 30px 10px 40px;
     }
 
     .filters li a {

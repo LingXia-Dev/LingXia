@@ -8,6 +8,13 @@
       @keyup.enter="handleAddTodo"
       autofocus
     >
+    <!-- Empty state when no todos -->
+    <div class="empty-state" v-show="!data || !data.todos || data.todos.length === 0">
+      <div class="empty-state-icon">📝</div>
+      <div class="empty-state-text">No tasks yet</div>
+      <div class="empty-state-hint">Add a task above to get started</div>
+    </div>
+
     <div class="main" v-show="data && data.todos && data.todos.length > 0">
       <input
         id="toggle-all"
@@ -70,16 +77,12 @@
       <button
         class="clear-completed"
         v-show="todoStats.completed > 0"
-        @click="clearCompleted"
+        @click="clearCompleted()"
       >
         Clear completed
       </button>
     </footer>
   </section>
-
-  <footer class="info">
-    <p>Double-click to edit a todo</p>
-  </footer>
 </template>
 
 <script>
