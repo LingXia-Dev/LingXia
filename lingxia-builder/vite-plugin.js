@@ -3,8 +3,8 @@ import fs from "fs";
 import path from "path";
 import archiver from "archiver";
 
-import { parseAppConfig } from "./src/core/app-config.js";
-import { PageBuilder } from "./src/core/page-builder.js";
+import { parseAppConfig } from "./src/core/config.js";
+import { PageBuilder } from "./src/core/builder.js";
 
 export function lingxiaPlugin(options = {}) {
   const {
@@ -65,10 +65,10 @@ export function lingxiaPlugin(options = {}) {
         await copyAppConfig(appConfigPath, fullOutputDir);
 
         // Clean temp files
-        const tempBuildDir = path.resolve(rootDir, "temp-build");
+        const tempBuildDir = path.resolve(rootDir, ".lingxia-build");
         if (fs.existsSync(tempBuildDir)) {
           fs.rmSync(tempBuildDir, { recursive: true, force: true });
-          console.log("Removed temp-build directory");
+          console.log("Removed .lingxia-build directory");
         }
 
         // Create package
@@ -113,11 +113,21 @@ async function generateLogicJS(pages, outputDir, rootDir, minifyCode = false) {
 
   let logicCode = "";
 
-  // Add app.js content
-  const appJsPath = path.resolve(rootDir, "app.js");
-  if (fs.existsSync(appJsPath)) {
-    const appContent = fs.readFileSync(appJsPath, "utf-8");
+  // Add app.js content (from build output)
+  const builtAppJsPath = path.resolve(
+    rootDir,
+    ".lingxia-build/main-app/app.js",
+  );
+  if (fs.existsSync(builtAppJsPath)) {
+    const appContent = fs.readFileSync(builtAppJsPath, "utf-8");
     logicCode += `// === App Entry ===\n${appContent}\n\n`;
+  } else {
+    // Fallback to source file if build output doesn't exist
+    const appJsPath = path.resolve(rootDir, "app.js");
+    if (fs.existsSync(appJsPath)) {
+      const appContent = fs.readFileSync(appJsPath, "utf-8");
+      logicCode += `// === App Entry ===\n${appContent}\n\n`;
+    }
   }
 
   // Add common JS files

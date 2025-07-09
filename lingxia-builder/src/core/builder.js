@@ -1,15 +1,9 @@
 import fs from "fs";
 import path from "path";
 import { execSync } from "child_process";
-import { fileURLToPath } from "url";
-
-import { detectPageType, getPageFiles, PAGE_TYPES } from "./page-detector.js";
-import {
-  extractPageFunctions,
-  filterPageFunctions,
-} from "./function-extractor.js";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+import { detectPageType, getPageFiles } from "./detector.js";
+import { extractPageFunctions, filterPageFunctions } from "./extractor.js";
+import { ProcessorFactory, PAGE_TYPES } from "./processors/index.js";
 
 // Generate page function creation script
 function generatePageFunctionScript(functionNames) {
@@ -50,17 +44,13 @@ export class PageBuilder {
   // Build a single page
   async buildPage(pagePath, rootDir, outputDir) {
     try {
-      console.log(`🔨 Building page: ${pagePath}`);
+      console.log(`Building page: ${pagePath}`);
 
       const pageType = detectPageType(pagePath);
       const pageFiles = getPageFiles(pagePath, rootDir);
 
-      if (!pageFiles.main.exists) {
-        throw new Error(`Page file not found: ${pageFiles.main.path}`);
-      }
-
       if (pageType === PAGE_TYPES.HTML) {
-        this.processHtmlPage(pagePath, pageFiles, outputDir);
+        this.processHtmlPage(pagePath, pageFiles, rootDir, outputDir);
       } else {
         await this.processSpaPage(
           pagePath,
@@ -75,34 +65,35 @@ export class PageBuilder {
       return true;
     } catch (error) {
       console.error(`❌ Failed to build page ${pagePath}:`, error.message);
+      console.error(`Stack trace:`, error.stack);
       throw new Error(`Failed to build page: ${pagePath}`);
     }
   }
 
-  // Process HTML page (no build needed)
-  processHtmlPage(pagePath, pageFiles, outputDir) {
+  // Process HTML page (static)
+  processHtmlPage(pagePath, pageFiles, rootDir, outputDir) {
     const pageInfo = this.getPageInfo(pagePath);
     const destPageDir = path.resolve(outputDir, pageInfo.dir);
 
-    fs.mkdirSync(destPageDir, { recursive: true });
-    console.log(`Created directory: ${destPageDir}`);
+    if (!fs.existsSync(destPageDir)) {
+      fs.mkdirSync(destPageDir, { recursive: true });
+      console.log(`Created directory: ${destPageDir}`);
+    }
 
-    // Copy HTML file with title and function injection
-    const destFile = path.resolve(destPageDir, `${pageInfo.name}.html`);
+    const destFile = path.resolve(destPageDir, pageInfo.name + ".html");
+    console.log(`Copying HTML: ${pageFiles.main.path} → ${destFile}`);
+
+    // Read HTML content and inject page functions
     let htmlContent = fs.readFileSync(pageFiles.main.path, "utf-8");
-
     htmlContent = this.injectPageTitle(htmlContent, pageFiles.json);
     htmlContent = this.injectPageFunctions(htmlContent, pageFiles.js);
 
     fs.writeFileSync(destFile, htmlContent);
-    console.log(`Copying HTML: ${pageFiles.main.path} → ${destFile}`);
-
-    // Copy assets
     this.copyPageAssets(pageFiles, destPageDir, pageInfo.name);
   }
 
   // Process SPA page (Vue/React - needs build)
-  async processSpaPage(pagePath, pageType, pageFiles, _rootDir, outputDir) {
+  async processSpaPage(pagePath, pageType, pageFiles, rootDir, outputDir) {
     const buildDir = this.createBuildDirectory(pagePath);
 
     try {
@@ -110,10 +101,10 @@ export class PageBuilder {
       const functions = this.extractFunctions(pageFiles.js.path);
       await this.generateFromTemplate(pageType, buildDir, functions, pageFiles);
       await this.runBuild(buildDir, pageType);
-      this.copyBuildResult(buildDir, outputDir, pagePath, pageFiles);
+      this.copyBuiltPage(buildDir, pagePath, pageFiles, outputDir);
     } finally {
-      if (this.options.cleanup) {
-        this.cleanup(buildDir);
+      if (this.options.cleanup && fs.existsSync(buildDir)) {
+        // Keep build directory for debugging in development
       }
     }
   }
@@ -128,68 +119,40 @@ export class PageBuilder {
     if (fs.existsSync(buildDir)) {
       fs.rmSync(buildDir, { recursive: true, force: true });
     }
-
     fs.mkdirSync(buildDir, { recursive: true });
+
     return buildDir;
   }
 
   // Copy user files to build directory
   copyUserFiles(pageFiles, buildDir) {
-    if (pageFiles.main.exists) {
-      const destFile = path.join(
-        buildDir,
-        "App" + path.extname(pageFiles.main.path),
-      );
-      fs.copyFileSync(pageFiles.main.path, destFile);
-    }
+    // Copy user files if they exist
+    Object.entries(pageFiles).forEach(([type, file]) => {
+      if (file.exists && type !== "main") {
+        const destPath = path.join(buildDir, path.basename(file.path));
+        fs.copyFileSync(file.path, destPath);
+      }
+    });
   }
 
-  // Extract functions from JS file
+  // Extract and filter functions
   extractFunctions(jsFilePath) {
-    if (!jsFilePath || !fs.existsSync(jsFilePath)) {
-      return [];
-    }
-
     const allFunctions = extractPageFunctions(jsFilePath);
     const filteredFunctions = filterPageFunctions(allFunctions);
-    console.log(
-      `Extracted ${filteredFunctions.length} functions from ${jsFilePath}:`,
-      filteredFunctions.map((f) => f.name),
-    );
+
+    if (filteredFunctions.length > 0) {
+      const functionNames = filteredFunctions.map((f) => f.name);
+      console.log(
+        `Extracted ${filteredFunctions.length} functions from ${jsFilePath}: [${functionNames.map((name) => ` '${name}'`).join(",")} ]`,
+      );
+    }
+
     return filteredFunctions;
   }
 
   // Generate build files from templates
   async generateFromTemplate(pageType, buildDir, functions, pageFiles) {
-    if (pageType === PAGE_TYPES.VUE) {
-      this.processVueTemplate(buildDir, functions, pageFiles);
-    }
-    // React support can be added later
-  }
-
-  // Process Vue template
-  processVueTemplate(buildDir, functions, _pageFiles) {
-    const templateDir = path.resolve(__dirname, "../templates/vue");
-
-    // Copy template files
-    const templateFiles = ["package.json", "vite.config.js", "index.html"];
-    templateFiles.forEach((file) => {
-      fs.copyFileSync(path.join(templateDir, file), path.join(buildDir, file));
-    });
-
-    // Generate main.js with function injection
-    const mainJsTemplate = fs.readFileSync(
-      path.join(templateDir, "main.js"),
-      "utf-8",
-    );
-    const functionInjection = this.generateFunctionInjection(functions);
-
-    const mainJsContent = mainJsTemplate.replace(
-      /\/\*\s*\{\{PAGE_FUNCTIONS\}\}\s*\*\//,
-      functionInjection,
-    );
-
-    fs.writeFileSync(path.join(buildDir, "main.js"), mainJsContent);
+    await ProcessorFactory.process(pageType, buildDir, functions, pageFiles);
   }
 
   // Generate function injection code
@@ -203,7 +166,7 @@ export class PageBuilder {
   }
 
   // Run build command
-  async runBuild(buildDir, _pageType) {
+  async runBuild(buildDir, pageType) {
     console.log("Installing dependencies...");
     execSync("npm install", { cwd: buildDir, stdio: "inherit" });
 
@@ -211,20 +174,16 @@ export class PageBuilder {
     execSync("npm run build", { cwd: buildDir, stdio: "inherit" });
   }
 
-  // Copy build result to output directory
-  copyBuildResult(buildDir, outputDir, pagePath, pageFiles) {
+  // Copy built page to output directory
+  copyBuiltPage(buildDir, pagePath, pageFiles, outputDir) {
     const pageInfo = this.getPageInfo(pagePath);
     const destPageDir = path.resolve(outputDir, pageInfo.dir);
 
-    fs.mkdirSync(destPageDir, { recursive: true });
-    console.log(`Created directory: ${destPageDir}`);
-
-    if (pageInfo.type === PAGE_TYPES.HTML) {
-      // Already handled in processHtmlPage
-      return;
+    if (!fs.existsSync(destPageDir)) {
+      fs.mkdirSync(destPageDir, { recursive: true });
+      console.log(`Created directory: ${destPageDir}`);
     }
 
-    // Copy SPA build result
     const distDir = path.join(buildDir, "dist");
     if (fs.existsSync(distDir)) {
       const indexHtml = path.join(distDir, "index.html");
@@ -238,7 +197,6 @@ export class PageBuilder {
         );
 
         let htmlContent = fs.readFileSync(indexHtml, "utf-8");
-        // Inline assets manually since Vite plugin doesn't work reliably
         htmlContent = this.inlineAssets(htmlContent, distDir);
         htmlContent = this.injectPageTitle(htmlContent, pageFiles.json);
         htmlContent = this.injectPageFunctions(htmlContent, pageFiles.js);
@@ -250,7 +208,36 @@ export class PageBuilder {
     this.copyPageAssets(pageFiles, destPageDir, pageInfo.name);
   }
 
-  // Inline CSS and JS assets into HTML
+  // Copy page assets (CSS, JSON)
+  copyPageAssets(pageFiles, destPageDir, pageName) {
+    if (pageFiles.css.exists) {
+      const destCssPath = path.join(destPageDir, `${pageName}.css`);
+      fs.copyFileSync(pageFiles.css.path, destCssPath);
+      console.log(`Copied CSS: ${destCssPath}`);
+    }
+
+    if (pageFiles.json.exists) {
+      const destJsonPath = path.join(destPageDir, `${pageName}.json`);
+      fs.copyFileSync(pageFiles.json.path, destJsonPath);
+      console.log(`Copied JSON: ${destJsonPath}`);
+    }
+  }
+
+  // Get page info from path
+  getPageInfo(pagePath) {
+    const ext = path.extname(pagePath);
+    const basePath = pagePath.replace(ext, "");
+    const pageType = detectPageType(pagePath);
+
+    return {
+      dir: path.dirname(basePath),
+      name: path.basename(basePath),
+      extension: ext,
+      type: pageType,
+    };
+  }
+
+  // Inline assets into HTML
   inlineAssets(htmlContent, distDir) {
     // Inline CSS
     htmlContent = htmlContent.replace(
@@ -283,83 +270,33 @@ export class PageBuilder {
 
   // Inject page title from JSON config
   injectPageTitle(htmlContent, jsonFile) {
-    if (jsonFile.exists) {
-      try {
-        const config = JSON.parse(fs.readFileSync(jsonFile.path, "utf-8"));
-        const title = config.navigationBarTitleText || "LingXia Page";
+    if (!jsonFile.exists) return htmlContent;
 
-        if (htmlContent.includes("<title>")) {
-          htmlContent = htmlContent.replace(
-            /<title>.*?<\/title>/i,
-            `<title>${title}</title>`,
-          );
-        } else {
-          htmlContent = htmlContent.replace(
-            /<head>/i,
-            `<head>\n  <title>${title}</title>`,
-          );
-        }
-      } catch (error) {
-        console.warn(`⚠️  Failed to parse JSON config: ${jsonFile.path}`);
+    try {
+      const config = JSON.parse(fs.readFileSync(jsonFile.path, "utf-8"));
+      if (config.navigationBarTitleText) {
+        htmlContent = htmlContent.replace(
+          /<title>.*?<\/title>/,
+          `<title>${config.navigationBarTitleText}</title>`,
+        );
       }
+    } catch (error) {
+      console.warn("Failed to parse page JSON config:", error.message);
     }
+
     return htmlContent;
   }
 
   // Inject page functions into HTML
   injectPageFunctions(htmlContent, jsFile) {
-    if (!jsFile.exists) {
-      return htmlContent;
-    }
+    if (!jsFile.exists) return htmlContent;
 
     const functions = this.extractFunctions(jsFile.path);
-    if (functions.length === 0) {
-      return htmlContent;
-    }
+    const functionInjection = this.generateFunctionInjection(functions);
 
-    const functionNames = functions.map((f) => f.name);
-    const functionScript = `
-    <script>
-      ${generatePageFunctionScript(functionNames)}
-    </script>`;
-
-    return htmlContent.replace("</head>", `${functionScript}\n</head>`);
-  }
-
-  // Copy page assets (CSS, JSON)
-  copyPageAssets(pageFiles, destPageDir, pageName) {
-    if (pageFiles.css.exists) {
-      const destCssFile = path.resolve(destPageDir, `${pageName}.css`);
-      fs.copyFileSync(pageFiles.css.path, destCssFile);
-      console.log(`Copied CSS: ${destCssFile}`);
-    }
-
-    if (pageFiles.json.exists) {
-      const destJsonFile = path.resolve(destPageDir, `${pageName}.json`);
-      fs.copyFileSync(pageFiles.json.path, destJsonFile);
-      console.log(`Copied JSON: ${destJsonFile}`);
-    }
-  }
-
-  // Get page info
-  getPageInfo(pagePath) {
-    const ext = path.extname(pagePath);
-    const type = detectPageType(pagePath);
-    const basePath = pagePath.replace(/\.(html|vue|tsx)$/, "");
-
-    return {
-      path: pagePath,
-      type: type,
-      extension: ext,
-      dir: path.dirname(basePath),
-      name: path.basename(basePath),
-    };
-  }
-
-  // Clean up temporary directory
-  cleanup(buildDir) {
-    if (fs.existsSync(buildDir)) {
-      fs.rmSync(buildDir, { recursive: true, force: true });
-    }
+    return htmlContent.replace(
+      "</head>",
+      `<script>${functionInjection}</script></head>`,
+    );
   }
 }

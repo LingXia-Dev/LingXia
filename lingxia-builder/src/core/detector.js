@@ -1,11 +1,7 @@
 import fs from "fs";
 import path from "path";
 
-export const PAGE_TYPES = {
-  VUE: "vue",
-  REACT: "react",
-  HTML: "html",
-};
+// PAGE_TYPES moved to processors/index.js to avoid circular imports
 
 // Detect page type from file extension
 export function detectPageType(pagePath) {
@@ -13,14 +9,14 @@ export function detectPageType(pagePath) {
 
   switch (ext) {
     case ".vue":
-      return PAGE_TYPES.VUE;
+      return "vue";
     case ".jsx":
     case ".tsx":
-      return PAGE_TYPES.REACT;
+      return "react";
     case ".html":
-      return PAGE_TYPES.HTML;
+      return "html";
     default:
-      throw new Error(`Unsupported page file extension: ${ext}`);
+      return "html";
   }
 }
 
