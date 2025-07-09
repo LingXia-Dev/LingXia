@@ -76,10 +76,7 @@ class LxAppActivity : AppCompatActivity() {
 
             activity.window.apply {
                 addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
-                clearFlags(android.view.WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS)
-                clearFlags(android.view.WindowManager.LayoutParams.FLAG_TRANSLUCENT_NAVIGATION)
                 statusBarColor = Color.TRANSPARENT
-                // Navigation bar color will be set by updateNavigationBarTransparency
             }
 
             WindowCompat.getInsetsController(activity.window, activity.window.decorView).apply {
@@ -438,8 +435,14 @@ class LxAppActivity : AppCompatActivity() {
         val isTabBarTransparent = tabBarBgColor == Color.TRANSPARENT ||
                                  (tabBarBgColor != null && Color.alpha(tabBarBgColor) < 255)
 
+        // Calculate NavigationBar height
+        val isNavBarVisible = navigationBar?.visibility == View.VISIBLE
+        val navBarHeight = if (isNavBarVisible) {
+            (DEFAULT_NAV_BAR_HEIGHT_DP * resources.displayMetrics.density).toInt()
+        } else 0
+
         (webViewContainer.layoutParams as FrameLayout.LayoutParams).apply {
-            topMargin = 0
+            topMargin = navBarHeight  // Always account for NavigationBar at top
             bottomMargin = 0
             leftMargin = 0
             rightMargin = 0
@@ -450,7 +453,7 @@ class LxAppActivity : AppCompatActivity() {
                         if (isTabBarVisible) bottomMargin = tabBarHeight
                     }
                     TabBarConfig.Position.TOP -> {
-                        if (isTabBarVisible) topMargin = tabBarHeight
+                        if (isTabBarVisible) topMargin += tabBarHeight
                     }
                     TabBarConfig.Position.LEFT -> {
                         if (isTabBarVisible) leftMargin = tabBarWidth
