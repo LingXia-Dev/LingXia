@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "pages": [
     "pages/home/index.html",
-    "pages/API/index.html",
+    "pages/API/index.tsx",
     "pages/todo/index.vue"
   ],
   "debug": true,
@@ -24,7 +24,7 @@
       },
       {
         "text": "API",
-        "pagePath": "pages/API/index.html",
+        "pagePath": "pages/API/index.tsx",
         "iconPath": "images/api.png"
       },
       {

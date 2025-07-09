@@ -134,7 +134,7 @@ h1 {
     border: 1px solid #e9ecef;
     border-radius: 6px;
     font-size: 13px;
-    display: none;
+    display: block;
 }
 
 .device-info-item {

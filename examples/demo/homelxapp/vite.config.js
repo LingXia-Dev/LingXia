@@ -18,7 +18,7 @@ export default defineConfig({
       output: {
         format: 'es',
         entryFileNames: '[name].js',
-        dir: 'temp-build' 
+        dir: '.lingxia-build' 
       }
     }
   }

@@ -151,17 +151,17 @@ export default {
 
 <style>
 
-/* Vue.js v-cloak 指令 - 防止未挂载时显示模板 */
+/* Vue.js v-cloak directive - prevents template display before mounting */
 [v-cloak] {
   display: none !important;
 }
 
-/* Vue 组件挂载前的加载状态 */
+/* Loading state before Vue component mounts */
 .todoapp[v-cloak] {
   opacity: 0;
 }
 
-/* Vue 过渡动画 */
+/* Vue transition animations */
 .todo-item-enter-active,
 .todo-item-leave-active {
   transition: all 0.3s ease;
