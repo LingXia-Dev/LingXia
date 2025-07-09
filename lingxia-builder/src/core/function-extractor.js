@@ -95,6 +95,11 @@ export function filterPageFunctions(functions) {
       return false;
     }
 
+    // Exclude private functions (starting with _)
+    if (func.name.startsWith("_")) {
+      return false;
+    }
+
     // Only include functions that look like valid identifiers
     if (!/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(func.name)) {
       return false;
