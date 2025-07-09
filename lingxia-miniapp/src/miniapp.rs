@@ -1008,15 +1008,15 @@ pub fn init<R: AppRuntime + 'static>(runtime: R) -> Option<(String, String)> {
 
     match AppConfig::load(runtime_arc.as_ref()) {
         Ok(config) => {
-            let home_miniapp_id = config.home_mini_app_id.clone();
-            let home_miniapp_version = &config.home_mini_app_version;
-            let max_apps = config.max_allowed_miniapps;
+            let home_lxapp_appid = config.home_lxapp_appid.clone();
+            let home_lxapp_version = &config.home_lxapp_version;
+            let max_apps = config.max_allowed_lxapps;
 
-            if !install::is_installed(runtime_arc.as_ref(), &home_miniapp_id) {
+            if !install::is_installed(runtime_arc.as_ref(), &home_lxapp_appid) {
                 if let Err(e) = install::install_home_miniapp(
                     runtime_arc.as_ref(),
-                    &home_miniapp_id,
-                    home_miniapp_version,
+                    &home_lxapp_appid,
+                    home_lxapp_version,
                 ) {
                     error!("Failed to install home MiniApp: {}", e);
                     return None;
@@ -1027,17 +1027,17 @@ pub fn init<R: AppRuntime + 'static>(runtime: R) -> Option<(String, String)> {
 
             // Create the home MiniApp instance
             let home_miniapp = MiniApp::new_as_home(
-                home_miniapp_id.clone(),
+                home_lxapp_appid.clone(),
                 runtime_arc.clone(),
                 svc_manager.clone(),
             );
 
             // Check if home mini app needs updating after loading its configuration
-            if home_miniapp.is_debug_enabled() || home_miniapp.should_update(home_miniapp_version) {
+            if home_miniapp.is_debug_enabled() || home_miniapp.should_update(home_lxapp_version) {
                 if let Err(e) = install::install_home_miniapp(
                     runtime_arc.as_ref(),
-                    &home_miniapp_id,
-                    home_miniapp_version,
+                    &home_lxapp_appid,
+                    home_lxapp_version,
                 ) {
                     error!("Failed to install home MiniApp: {}", e);
 
@@ -1056,7 +1056,7 @@ pub fn init<R: AppRuntime + 'static>(runtime: R) -> Option<(String, String)> {
             let home_miniapp_arc = Arc::new(home_miniapp);
             miniapps_manager
                 .miniapps
-                .insert(home_miniapp_id.clone(), home_miniapp_arc.clone());
+                .insert(home_lxapp_appid.clone(), home_miniapp_arc.clone());
 
             // Set global instance
             if MINIAPPS_MANAGER.set(miniapps_manager).is_err() {
@@ -1065,7 +1065,7 @@ pub fn init<R: AppRuntime + 'static>(runtime: R) -> Option<(String, String)> {
             }
 
             info!("MiniApps initialized successfully");
-            Some((home_miniapp_id, initial_route))
+            Some((home_lxapp_appid, initial_route))
         }
 
         Err(e) => {

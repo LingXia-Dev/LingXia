@@ -4,7 +4,7 @@
   "identifier": "app.lingxia.demo",
   "apiServer": "https://api.lingxia.com",
   "apiKey": "demo_api_key_12345",
-  "homeMiniAppID": "homelxapp",
-  "homeMiniAppVersion": "1.0.0",
-  "maxAllowedMiniApps": 2
+  "homeLxAppID": "homelxapp",
+  "homeLxAppVersion": "1.0.0",
+  "maxAllowedLxApps": 2
 }

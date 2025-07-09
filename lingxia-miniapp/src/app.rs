@@ -37,23 +37,23 @@ pub struct AppConfig {
     pub api_key: Option<String>, // Key for simple API authentication
 
     // Home/default mini application settings (mandatory)
-    #[serde(rename = "homeMiniAppID")]
-    pub home_mini_app_id: String, // ID of the default/home mini application to load
+    #[serde(rename = "homeLxAppID")]
+    pub home_lxapp_appid: String, // ID of the default/home lx application to load
 
-    #[serde(rename = "homeMiniAppVersion")]
-    pub home_mini_app_version: String, // Version of the home mini application
+    #[serde(rename = "homeLxAppVersion")]
+    pub home_lxapp_version: String, // Version of the home lx application
 
-    // Maximum number of mini applications allowed to run concurrently
+    // Maximum number of lx applications allowed to run concurrently
     #[serde(
-        rename = "maxAllowedMiniApps",
-        default = "AppConfig::default_max_allowed_miniapps"
+        rename = "maxAllowedLxApps",
+        default = "AppConfig::default_max_allowed_lxapps"
     )]
-    pub max_allowed_miniapps: usize,
+    pub max_allowed_lxapps: usize,
 }
 
 impl AppConfig {
-    /// Default value for max_allowed_miniapps
-    fn default_max_allowed_miniapps() -> usize {
+    /// Default value for max_allowed_lxapps
+    fn default_max_allowed_lxapps() -> usize {
         3
     }
 
@@ -111,21 +111,21 @@ impl AppConfig {
         }
 
         // Check homeMiniAppID
-        if config.home_mini_app_id.is_empty() {
+        if config.home_lxapp_appid.is_empty() {
             return Err(MiniAppError::InvalidParameter(
                 "homeMiniAppID is mandatory and cannot be empty".to_string(),
             ));
         }
 
         // Check homeMiniAppVersion
-        if config.home_mini_app_version.is_empty() {
+        if config.home_lxapp_version.is_empty() {
             return Err(MiniAppError::InvalidParameter(
                 "homeMiniAppVersion is mandatory and cannot be empty".to_string(),
             ));
         }
 
         // Validate maxAllowedMiniApps range
-        if config.max_allowed_miniapps < 1 || config.max_allowed_miniapps > 5 {
+        if config.max_allowed_lxapps < 1 || config.max_allowed_lxapps > 5 {
             return Err(MiniAppError::InvalidParameter(
                 "maxAllowedMiniApps must be between 1 and 5".to_string(),
             ));
