@@ -218,8 +218,11 @@ export class PageBuilder {
   copyPageAssets(pageFiles, destPageDir, pageName) {
     if (pageFiles.css.exists) {
       const destCssPath = path.join(destPageDir, `${pageName}.css`);
-      fs.copyFileSync(pageFiles.css.path, destCssPath);
-      console.log(`Copied CSS: ${destCssPath}`);
+
+      // Process CSS to resolve @import dependencies
+      const processedCss = this.processCssImports(pageFiles.css.path);
+      fs.writeFileSync(destCssPath, processedCss);
+      console.log(`Processed and copied CSS: ${destCssPath}`);
     }
 
     if (pageFiles.json.exists) {
@@ -312,5 +315,35 @@ export class PageBuilder {
       "</head>",
       `<script>${functionInjection}</script></head>`,
     );
+  }
+
+  // Process CSS imports and inline them
+  processCssImports(cssFilePath, processedFiles = new Set()) {
+    // Prevent circular imports
+    if (processedFiles.has(cssFilePath)) {
+      console.warn(`Circular CSS import detected: ${cssFilePath}`);
+      return "";
+    }
+
+    processedFiles.add(cssFilePath);
+
+    if (!fs.existsSync(cssFilePath)) {
+      console.warn(`CSS file not found: ${cssFilePath}`);
+      return "";
+    }
+
+    const cssContent = fs.readFileSync(cssFilePath, "utf-8");
+    const cssDir = path.dirname(cssFilePath);
+
+    // Process @import statements
+    const processedCss = cssContent.replace(
+      /@import\s+url\(['"]([^'"]+)['"]\);?/g,
+      (match, importPath) => {
+        const resolvedPath = path.resolve(cssDir, importPath);
+        return this.processCssImports(resolvedPath, processedFiles);
+      },
+    );
+
+    return processedCss;
   }
 }
