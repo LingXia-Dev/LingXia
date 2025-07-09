@@ -1,5 +1,5 @@
 use crate::harmony::tsfn;
-use miniapp::{AssetFileEntry, DeviceInfo, MiniAppError};
+use miniapp::{AssetFileEntry, DeviceInfo, LxAppError};
 use napi_ohos::NapiRaw;
 use napi_ohos::bindgen_prelude::{Env, Object};
 use ohos_raw_sys::*;
@@ -74,7 +74,7 @@ impl App {
         cache_dir: String,
         env: Env,
         resource_manager: Option<Object>,
-    ) -> Result<Self, MiniAppError> {
+    ) -> Result<Self, LxAppError> {
         let (resource_manager_ptr, env_raw, js_rm_raw) =
             if let Some(resource_manager) = resource_manager {
                 let env_raw = env.raw();
@@ -85,7 +85,7 @@ impl App {
                     unsafe { OH_ResourceManager_InitNativeResourceManager(env_raw, js_rm_raw) };
 
                 if native_mgr.is_null() {
-                    return Err(MiniAppError::ResourceNotFound(
+                    return Err(LxAppError::ResourceNotFound(
                         "Failed to initialize NativeResourceManager".to_string(),
                     ));
                 }
@@ -150,13 +150,13 @@ impl App {
     }
 
     /// Read an asset file from the rawfile resources
-    pub fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, MiniAppError> {
+    pub fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, LxAppError> {
         if let Some(raw_file) = self.open_raw_file(path) {
             let file_size = unsafe { OH_ResourceManager_GetRawFileSize(raw_file) };
 
             if file_size <= 0 {
                 unsafe { OH_ResourceManager_CloseRawFile(raw_file) };
-                return Err(MiniAppError::ResourceNotFound(format!(
+                return Err(LxAppError::ResourceNotFound(format!(
                     "Asset '{}' is empty or not found",
                     path
                 )));
@@ -176,7 +176,7 @@ impl App {
             unsafe { OH_ResourceManager_CloseRawFile(raw_file) };
 
             if bytes_read != file_size as i32 {
-                return Err(MiniAppError::ResourceNotFound(format!(
+                return Err(LxAppError::ResourceNotFound(format!(
                     "Failed to read complete asset '{}': expected {} bytes, got {} bytes",
                     path, file_size, bytes_read
                 )));
@@ -186,7 +186,7 @@ impl App {
             buffer.truncate(bytes_read as usize);
             Ok(Box::new(Cursor::new(buffer)))
         } else {
-            Err(MiniAppError::ResourceNotFound(format!(
+            Err(LxAppError::ResourceNotFound(format!(
                 "Asset '{}' not found or ResourceManager not available",
                 path
             )))
@@ -197,7 +197,7 @@ impl App {
     pub fn asset_dir_iter<'a>(
         &'a self,
         asset_dir: &str,
-    ) -> Box<dyn Iterator<Item = Result<AssetFileEntry<'a>, MiniAppError>> + 'a> {
+    ) -> Box<dyn Iterator<Item = Result<AssetFileEntry<'a>, LxAppError>> + 'a> {
         // Collect all files recursively from the directory
         let files = self.collect_files_recursively(asset_dir);
         Box::new(files.into_iter())
@@ -207,14 +207,14 @@ impl App {
     fn collect_files_recursively<'a>(
         &'a self,
         dir_path: &str,
-    ) -> Vec<Result<AssetFileEntry<'a>, MiniAppError>> {
+    ) -> Vec<Result<AssetFileEntry<'a>, LxAppError>> {
         let mut all_files = Vec::new();
 
         if let Some(resource_manager) = self.resource_manager {
             // Use ResourceManager to list rawfile directory
             self.collect_files_from_rawfile(resource_manager, dir_path, &mut all_files);
         } else {
-            all_files.push(Err(MiniAppError::ResourceNotFound(
+            all_files.push(Err(LxAppError::ResourceNotFound(
                 "ResourceManager not available".to_string(),
             )));
         }
@@ -227,7 +227,7 @@ impl App {
         &'a self,
         resource_manager: *mut NativeResourceManager,
         dir_path: &str,
-        all_files: &mut Vec<Result<AssetFileEntry<'a>, MiniAppError>>,
+        all_files: &mut Vec<Result<AssetFileEntry<'a>, LxAppError>>,
     ) {
         let mut dirs_to_process = vec![dir_path.to_string()];
 
@@ -305,15 +305,15 @@ impl App {
         self.device_info.clone()
     }
 
-    pub fn open_miniapp(&self, appid: &str, path: &str) -> Result<(), MiniAppError> {
-        tsfn::call_arkts("openMiniApp", &[appid, path])
+    pub fn open_lxapp(&self, appid: &str, path: &str) -> Result<(), LxAppError> {
+        tsfn::call_arkts("openLxApp", &[appid, path])
     }
 
-    pub fn close_miniapp(&self, appid: &str) -> Result<(), MiniAppError> {
-        tsfn::call_arkts("closeMiniApp", &[appid])
+    pub fn close_miniapp(&self, appid: &str) -> Result<(), LxAppError> {
+        tsfn::call_arkts("closeLxApp", &[appid])
     }
 
-    pub fn switch_page(&self, appid: &str, path: &str) -> Result<(), MiniAppError> {
+    pub fn switch_page(&self, appid: &str, path: &str) -> Result<(), LxAppError> {
         tsfn::call_arkts("switchPage", &[appid, path])
     }
 }

@@ -2,7 +2,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { webview } from '@kit.ArkWeb';
 import { window } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
-import { MiniApp } from './MiniApp';
+import { LxApp } from './LxApp';
 import { findWebview, handleScrollChanged, toWebTag, extractWebTag, WebTagParts, setWebViewUiCallback, WebViewInfo } from './WebView';
 import { NavigationBar, type NavigationBarConfig } from './NavigationBar';
 import { TabBar, type TabBarConfig, type TabBarItem } from './TabBar';
@@ -12,7 +12,7 @@ const DOMAIN = 0x0000;
 const TAG = 'LingXia.Container';
 
 @Component
-export struct MiniAppContainer {
+export struct LxAppContainer {
   @Prop appId: string
   @Prop initialPath: string
   @Prop navigationMode: boolean = false
@@ -38,12 +38,12 @@ export struct MiniAppContainer {
         const path = extracted.path;
         const actualPath = path.replace(/-/g, '/');
 
-        // Check if this is the first page (MiniApp runtime might not be ready)
+        // Check if this is the first page (LxApp runtime might not be ready)
         const isFirstPage = this.pageShowTriggered.size === 0;
         this.pageShowTriggered.add(webTag);
 
         if (isFirstPage) {
-          // Delay first page to ensure MiniApp runtime is ready
+          // Delay first page to ensure LxApp runtime is ready
           setTimeout(() => {
             hilog.info(DOMAIN, TAG, `Triggering onPageShow for first page: ${appId}:${actualPath}`);
             onPageShow(appId, actualPath);
@@ -59,7 +59,7 @@ export struct MiniAppContainer {
     }
   }
 
-  // Watch for external path changes from MiniApp.switchPage API
+  // Watch for external path changes from LxApp.switchPage API
   @Watch('onExternalPathChange') @Prop externalPath: string = ''
 
   // Manual animation control for new miniapps
@@ -68,7 +68,7 @@ export struct MiniAppContainer {
   aboutToAppear() {
 
     this.path = this.initialPath;
-    hilog.info(DOMAIN, TAG, `Container creating for ${this.appId}:${this.path}, isHome=${this.isHomeMiniApp()}`);
+    hilog.info(DOMAIN, TAG, `Container creating for ${this.appId}:${this.path}, isHome=${this.isHomeLxApp()}`);
 
     // Set up WebView UI callback to handle component creation
     setWebViewUiCallback((action: string, info: WebViewInfo) => {
@@ -97,7 +97,7 @@ export struct MiniAppContainer {
   }
 
   /**
-   * Handle external path changes from MiniApp.switchPage API
+   * Handle external path changes from LxApp.switchPage API
    */
   onExternalPathChange() {
     if (this.externalPath && this.externalPath !== this.path) {
@@ -229,9 +229,9 @@ export struct MiniAppContainer {
     }
   }
 
-  private isHomeMiniApp(): boolean {
-    const miniApp = MiniApp.getInstance();
-    const homeAppId = miniApp.getHomeMiniAppId();
+  private isHomeLxApp(): boolean {
+    const miniApp = LxApp.getInstance();
+    const homeAppId = miniApp.getHomeLxAppId();
     return this.appId === homeAppId;
   }
 
@@ -359,7 +359,7 @@ export struct MiniAppContainer {
    * homeminiapp doesn't show capsule button, other miniapps do
    */
   private shouldShowCapsuleButton(): boolean {
-    const isHome = this.isHomeMiniApp();
+    const isHome = this.isHomeLxApp();
     const shouldShow = !isHome;
     hilog.info(DOMAIN, TAG, `shouldShowCapsuleButton: appId=${this.appId}, isHome=${isHome}, shouldShow=${shouldShow}`);
     return shouldShow;
@@ -555,10 +555,10 @@ export struct MiniAppContainer {
     hilog.info(DOMAIN, TAG, `Page config updated: hidden=${newPageConfig.hidden}, title=${newPageConfig.navigationBarTitleText}`);
 
     // Update manager state if this is home miniapp
-    if (this.isHomeMiniApp()) {
-      const manager = MiniApp.managerInstance;
+    if (this.isHomeLxApp()) {
+      const manager = LxApp.managerInstance;
       if (manager) {
-        manager.updateHomeMiniAppCurrentPath(newPath);
+        manager.updateHomeLxAppCurrentPath(newPath);
       }
     }
 
@@ -611,8 +611,8 @@ export struct MiniAppContainer {
 
   private handleCapsuleClose(): void {
     // Close second miniapp if this is not home miniapp
-    if (!this.isHomeMiniApp()) {
-        MiniApp.closeMiniApp(this.appId);
+    if (!this.isHomeLxApp()) {
+        LxApp.closeLxApp(this.appId);
     }
   }
 

@@ -79,7 +79,7 @@ export class WebViewManager {
 
   /**
    * Find WebView by appId and path (only find, don't create)
-   * @param appId - MiniApp ID
+   * @param appId - LxApp ID
    * @param path - Page path
    * @returns WebView controller or null if creation fails
    */
@@ -297,7 +297,7 @@ export class WebViewManager {
 
   /**
    * Set WebView visibility
-   * @param appId - MiniApp ID
+   * @param appId - LxApp ID
    * @param path - Page path
    * @param visible - Whether WebView should be visible
    */
@@ -325,7 +325,7 @@ export class WebViewManager {
 
 /**
  * Create webtag from appId and path
- * @param appId - MiniApp ID
+ * @param appId - LxApp ID
  * @param path - Page path
  * @returns webtag in format "appId-path"
  */
@@ -376,7 +376,7 @@ export function createWebViewController(webtag: string): boolean {
 
 /**
  * Find WebView controller (only find, don't create)
- * @param appId - MiniApp ID
+ * @param appId - LxApp ID
  * @param path - Page path
  * @returns WebView controller or null
  */

@@ -1,10 +1,10 @@
 /**
- * LingXia MiniApp Builder
- * Official build tool for LingXia MiniApp development
+ * LingXia LxApp Builder
+ * Official build tool for LingXia LxApp development
  */
 
-export { LingXiaMiniAppBuilder } from "./vite-plugin.js";
+export { LingXiaLxAppBuilder } from "./vite-plugin.js";
 
 // CLI support for standalone usage
-export { buildMiniApp } from "./cli.js";
+export { buildLxApp } from "./cli.js";
 

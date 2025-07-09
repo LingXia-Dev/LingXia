@@ -30,16 +30,16 @@ cp "$LINGXIA_ROOT/lingxia-view/webview-bridge.js" "$RESOURCES_DIR/"
 echo "Copying host app configuration..."
 cp "$LINGXIA_ROOT/examples/demo/app.json" "$RESOURCES_DIR/"
 
-echo "Building and copying demo MiniApp..."
+echo "Building and copying demo LxApp..."
 cd "$LINGXIA_ROOT/examples/demo/homelxapp"
 if [ -f "package.json" ] && [ -f "vite.config.js" ]; then
     echo "Building homelxapp with Vite..."
     npm install --silent
     npm run build
 
-    # Copy built MiniApp to resources with proper directory structure
+    # Copy built LxApp to resources with proper directory structure
     if [ -d "dist" ]; then
-        echo "Copying built MiniApp to resources..."
+        echo "Copying built LxApp to resources..."
         mkdir -p "$RESOURCES_DIR/homelxapp"
         cp -R dist/* "$RESOURCES_DIR/homelxapp/"
     else

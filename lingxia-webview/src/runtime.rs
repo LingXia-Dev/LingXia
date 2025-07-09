@@ -4,7 +4,7 @@ use std::io::Read;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
 
-use miniapp::{AppRuntime, AssetFileEntry, DeviceInfo, MiniAppError, WebViewController};
+use miniapp::{AppRuntime, AssetFileEntry, DeviceInfo, LxAppError, WebViewController};
 
 /// Global runtime instance
 static RUNTIME: OnceLock<Arc<SimpleAppRuntime>> = OnceLock::new();
@@ -133,14 +133,14 @@ impl SimpleAppRuntime {
 }
 
 impl AppRuntime for SimpleAppRuntime {
-    fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, MiniAppError> {
+    fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, LxAppError> {
         self.app.read_asset(path)
     }
 
     fn asset_dir_iter<'a>(
         &'a self,
         asset_dir: &str,
-    ) -> Box<dyn Iterator<Item = Result<AssetFileEntry<'a>, MiniAppError>> + 'a> {
+    ) -> Box<dyn Iterator<Item = Result<AssetFileEntry<'a>, LxAppError>> + 'a> {
         // Convert from our AssetFileEntry to miniapp's AssetFileEntry
         let iter = self.app.asset_dir_iter(asset_dir);
         Box::new(iter.map(|result| {
@@ -167,7 +167,7 @@ impl AppRuntime for SimpleAppRuntime {
         &self,
         appid: String,
         path: String,
-    ) -> Result<Arc<dyn WebViewController>, MiniAppError> {
+    ) -> Result<Arc<dyn WebViewController>, LxAppError> {
         let webtag = WebTag::new(&appid, &path);
 
         // Check if WebView already exists
@@ -187,7 +187,7 @@ impl AppRuntime for SimpleAppRuntime {
             webviews.insert(webtag, webview.clone());
             log::info!("WebView created and stored in runtime: {}-{}", appid, path);
         } else {
-            return Err(MiniAppError::WebView(
+            return Err(LxAppError::WebView(
                 "Failed to acquire webviews lock".to_string(),
             ));
         }
@@ -196,15 +196,15 @@ impl AppRuntime for SimpleAppRuntime {
         Ok(webview)
     }
 
-    fn open_miniapp(&self, appid: String, path: String) -> Result<(), MiniAppError> {
-        self.app.open_miniapp(&appid, &path)
+    fn open_lxapp(&self, appid: String, path: String) -> Result<(), LxAppError> {
+        self.app.open_lxapp(&appid, &path)
     }
 
-    fn close_miniapp(&self, appid: String) -> Result<(), MiniAppError> {
+    fn close_miniapp(&self, appid: String) -> Result<(), LxAppError> {
         self.app.close_miniapp(&appid)
     }
 
-    fn switch_page(&self, appid: String, path: String) -> Result<(), MiniAppError> {
+    fn switch_page(&self, appid: String, path: String) -> Result<(), LxAppError> {
         self.app.switch_page(&appid, &path)
     }
 }

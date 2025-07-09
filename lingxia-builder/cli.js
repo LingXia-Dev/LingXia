@@ -1,19 +1,19 @@
 #!/usr/bin/env node
 
 /**
- * LingXia MiniApp Builder CLI
- * Command line interface for building MiniApp packages
+ * LingXia LxApp Builder CLI
+ * Command line interface for building LxApp packages
  */
 
 import fs from "fs";
 import path from "path";
-import { LingXiaMiniAppBuilder } from "./vite-plugin.js";
+import { LingXiaLxAppBuilder } from "./vite-plugin.js";
 
 /**
- * Build MiniApp package
+ * Build LxApp package
  * @param {Object} options - Build options
  */
-export async function buildMiniApp(options = {}) {
+export async function buildLxApp(options = {}) {
   const {
     configFile = "lxapp.json",
     outputFile = "logic.js",
@@ -28,12 +28,12 @@ export async function buildMiniApp(options = {}) {
     copyToTarget = false,
   } = options;
 
-  console.log("🚀 LingXia MiniApp Builder CLI");
-  console.log("Building MiniApp package...\n");
+  console.log("🚀 LingXia LxApp Builder CLI");
+  console.log("Building LxApp package...\n");
 
   try {
     // Create a mock Vite plugin context
-    const plugin = LingXiaMiniAppBuilder({
+    const plugin = LingXiaLxAppBuilder({
       configFile,
       outputFile,
       buildDir,
@@ -77,6 +77,6 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     }
   }
 
-  buildMiniApp(options);
+  buildLxApp(options);
 }
 

@@ -1,5 +1,5 @@
 use crate::appservice::lx;
-use crate::error::MiniAppError;
+use crate::error::LxAppError;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -26,7 +26,7 @@ pub(crate) enum ServiceType {
 
 /// Trait for message transport - handles message sending only
 pub(crate) trait MessageTransport {
-    fn post_message_to_view(&self, message_json: String) -> Result<(), MiniAppError>;
+    fn post_message_to_view(&self, message_json: String) -> Result<(), LxAppError>;
 }
 
 /// Trait for message handling - processes incoming messages and service discovery
@@ -54,7 +54,7 @@ pub(crate) struct Bridge {
 }
 
 /// Type alias for the pending calls map to simplify the complex type.
-type PendingCallsMap = HashMap<String, oneshot::Sender<Result<Value, MiniAppError>>>;
+type PendingCallsMap = HashMap<String, oneshot::Sender<Result<Value, LxAppError>>>;
 
 // Set a more reasonable default timeout for message calls (5 seconds)
 #[allow(dead_code)]
@@ -124,12 +124,12 @@ impl DispatchMessage {
         &self,
         transport: &T,
         result: Option<&str>,
-    ) -> Result<(), MiniAppError> {
+    ) -> Result<(), LxAppError> {
         match &self.message_type {
             DispatchMessageType::Call { .. } => {
                 if let Some(result_json) = result {
                     let result_value = serde_json::from_str::<Value>(result_json).map_err(|e| {
-                        MiniAppError::Bridge(format!("Failed to parse result JSON: {}", e))
+                        LxAppError::Bridge(format!("Failed to parse result JSON: {}", e))
                     })?;
                     self.bridge.reply_with_result_internal(
                         transport,
@@ -151,7 +151,7 @@ impl DispatchMessage {
         &self,
         transport: &T,
         error_message: &str,
-    ) -> Result<(), MiniAppError> {
+    ) -> Result<(), LxAppError> {
         match &self.message_type {
             DispatchMessageType::Call { .. } => {
                 self.bridge
@@ -180,18 +180,18 @@ pub struct IncomingMessage {
 }
 
 impl IncomingMessage {
-    pub fn from_json_str(json_str: &str) -> Result<Self, MiniAppError> {
+    pub fn from_json_str(json_str: &str) -> Result<Self, LxAppError> {
         let message: Self = serde_json::from_str(json_str)?;
 
         match message.type_.as_str() {
             "reply" => {
                 if message.msg_id.is_none() {
-                    return Err(MiniAppError::Bridge("Reply missing msgId".to_string()));
+                    return Err(LxAppError::Bridge("Reply missing msgId".to_string()));
                 }
             }
             "call" | "event" => {
                 if message.name.is_none() {
-                    return Err(MiniAppError::Bridge(format!(
+                    return Err(LxAppError::Bridge(format!(
                         "Message type '{}' missing 'name' field",
                         message.type_
                     )));
@@ -199,13 +199,13 @@ impl IncomingMessage {
             }
             "callback" => {
                 if message.callback_id.is_none() {
-                    return Err(MiniAppError::Bridge(
+                    return Err(LxAppError::Bridge(
                         "Callback missing callbackId".to_string(),
                     ));
                 }
             }
             unknown_type => {
-                return Err(MiniAppError::Bridge(format!(
+                return Err(LxAppError::Bridge(format!(
                     "Unknown message type: {}",
                     unknown_type
                 )));
@@ -214,12 +214,12 @@ impl IncomingMessage {
         Ok(message)
     }
 
-    fn payload_as_opt_string(&self) -> Result<Option<String>, MiniAppError> {
+    fn payload_as_opt_string(&self) -> Result<Option<String>, LxAppError> {
         self.payload
             .as_ref()
             .map(serde_json::to_string)
             .transpose()
-            .map_err(|e| MiniAppError::Bridge(format!("Payload serialization failed: {}", e)))
+            .map_err(|e| LxAppError::Bridge(format!("Payload serialization failed: {}", e)))
     }
 
     fn msg_id(&self) -> Option<&str> {
@@ -230,7 +230,7 @@ impl IncomingMessage {
     pub fn to_dispatch_message(
         &self,
         bridge: Bridge,
-    ) -> Result<Option<DispatchMessage>, MiniAppError> {
+    ) -> Result<Option<DispatchMessage>, LxAppError> {
         match self.type_.as_str() {
             "call" => {
                 let name = self.name.as_ref().unwrap().clone();
@@ -263,7 +263,7 @@ impl IncomingMessage {
                 // Reply messages are handled internally, not dispatched
                 Ok(None)
             }
-            _ => Err(MiniAppError::Bridge(format!(
+            _ => Err(LxAppError::Bridge(format!(
                 "Unknown message type: {}",
                 self.type_
             ))),
@@ -319,7 +319,7 @@ impl Bridge {
         transport: &T,
         name: &str,
         payload: Option<Value>,
-    ) -> Result<(), MiniAppError> {
+    ) -> Result<(), LxAppError> {
         let event_message = json!({
             "msgId": Value::Null,
             "type": "event",
@@ -343,7 +343,7 @@ impl Bridge {
         transport: &T,
         name: &str,
         payload: Option<Value>,
-    ) -> Result<Value, MiniAppError> {
+    ) -> Result<Value, LxAppError> {
         let msg_id = self.generate_msg_id();
         let call_message = json!({
             "msgId": msg_id.clone(),
@@ -370,14 +370,14 @@ impl Bridge {
             Ok(Ok(bridge_result)) => bridge_result,
             Ok(Err(_)) => {
                 self.pending_calls.lock().unwrap().remove(&msg_id);
-                Err(MiniAppError::Bridge(format!(
+                Err(LxAppError::Bridge(format!(
                     "Reply channel closed for call '{}' (id: {}) before reply",
                     name, msg_id
                 )))
             }
             Err(_) => {
                 self.pending_calls.lock().unwrap().remove(&msg_id);
-                Err(MiniAppError::Bridge(format!(
+                Err(LxAppError::Bridge(format!(
                     "Call '{}' (id: {}) to view timed out",
                     name, msg_id
                 )))
@@ -397,7 +397,7 @@ impl Bridge {
         transport: &T,
         data_patch_json: &str,
         callback_id: Option<String>,
-    ) -> Result<(), MiniAppError> {
+    ) -> Result<(), LxAppError> {
         let mut data_patch_value = serde_json::from_str::<Value>(data_patch_json)?;
 
         // If we have a callback ID, we need to structure the payload according to the bridge spec
@@ -427,13 +427,13 @@ impl Bridge {
     ///
     /// # Returns
     /// * `Ok(())` if the message was processed successfully
-    /// * `Err(MiniAppError)` if there was an error processing the message
+    /// * `Err(LxAppError)` if there was an error processing the message
     pub async fn process_incoming_message<T, H>(
         &self,
         transport: &T,
         handler: &H,
         message: Arc<IncomingMessage>,
-    ) -> Result<(), MiniAppError>
+    ) -> Result<(), LxAppError>
     where
         T: MessageTransport,
         H: MessageHandler,
@@ -445,7 +445,7 @@ impl Bridge {
                 handler.handle_bridge_ready().await;
                 return Ok(());
             } else {
-                return Err(MiniAppError::Bridge(
+                return Err(LxAppError::Bridge(
                     "Bridge is not ready for communication".to_string(),
                 ));
             }
@@ -470,7 +470,7 @@ impl Bridge {
                         let result = if payload_struct.success {
                             Ok(payload_struct.result.unwrap_or(Value::Null))
                         } else {
-                            Err(MiniAppError::Bridge(
+                            Err(LxAppError::Bridge(
                                 payload_struct
                                     .error
                                     .unwrap_or_else(|| ErrorPayload {
@@ -480,12 +480,12 @@ impl Bridge {
                             ))
                         };
                         let _ = tx.send(result).map_err(|_e| {
-                            MiniAppError::Bridge("Failed to send reply to waiting task".to_string())
+                            LxAppError::Bridge("Failed to send reply to waiting task".to_string())
                         });
                     }
                     Err(e) => {
-                        let _ = tx.send(Err(MiniAppError::from(e))).map_err(|_send_error| {
-                            MiniAppError::Bridge(
+                        let _ = tx.send(Err(LxAppError::from(e))).map_err(|_send_error| {
+                            LxAppError::Bridge(
                                 "Failed to send reply deserialization error to waiting task"
                                     .to_string(),
                             )
@@ -541,7 +541,7 @@ impl Bridge {
         &self,
         transport: &T,
         msg_id: Option<String>,
-    ) -> Result<(), MiniAppError> {
+    ) -> Result<(), LxAppError> {
         self.reply_internal(transport, msg_id, true, None, None)
     }
 
@@ -551,7 +551,7 @@ impl Bridge {
         transport: &T,
         msg_id: Option<String>,
         error_message: &str,
-    ) -> Result<(), MiniAppError> {
+    ) -> Result<(), LxAppError> {
         let error_payload = ErrorPayload {
             message: error_message.to_string(),
         };
@@ -564,7 +564,7 @@ impl Bridge {
         transport: &T,
         msg_id: Option<String>,
         result: Value,
-    ) -> Result<(), MiniAppError> {
+    ) -> Result<(), LxAppError> {
         self.reply_internal(transport, msg_id, true, Some(result), None)
     }
 
@@ -576,7 +576,7 @@ impl Bridge {
         success: bool,
         result: Option<Value>,
         error: Option<ErrorPayload>,
-    ) -> Result<(), MiniAppError> {
+    ) -> Result<(), LxAppError> {
         let mut reply_payload = json!({
             "success": success
         });
@@ -601,6 +601,6 @@ impl Bridge {
 
         transport
             .post_message_to_view(serialized_reply)
-            .map_err(|e| MiniAppError::Bridge(format!("Failed to post reply: {}", e)))
+            .map_err(|e| LxAppError::Bridge(format!("Failed to post reply: {}", e)))
     }
 }

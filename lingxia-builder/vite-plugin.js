@@ -1,4 +1,4 @@
-// LingXia MiniApp Builder - Vite Plugin
+// LingXia LxApp Builder - Vite Plugin
 import fs from "fs";
 import path from "path";
 import archiver from "archiver";
@@ -25,7 +25,7 @@ export function lingxiaPlugin(options = {}) {
     configResolved(resolvedConfig) {
       config = resolvedConfig;
       rootDir = config.root;
-      console.log("🚀 LingXia MiniApp Builder starting...");
+      console.log("🚀 LingXia LxApp Builder starting...");
     },
 
     async writeBundle() {
@@ -76,7 +76,7 @@ export function lingxiaPlugin(options = {}) {
           await createPackageFile(appInfo, fullOutputDir);
         }
 
-        console.log("LingXia MiniApp build completed successfully");
+        console.log("LingXia LxApp build completed successfully");
       } catch (error) {
         console.error("❌ LingXia build failed:", error.message);
         throw error;

@@ -1,6 +1,6 @@
 use crate::android::{MINIAPP_CLASS, get_env};
 use jni::objects::{GlobalRef, JClass, JObject, JValue};
-use miniapp::{MiniAppError, WebViewController};
+use miniapp::{LxAppError, WebViewController};
 
 #[derive(Debug)]
 pub struct WebViewInner {
@@ -9,7 +9,7 @@ pub struct WebViewInner {
 
 impl WebViewInner {
     /// Create a new WebView by calling Kotlin createWebView
-    pub(crate) fn create(appid: &str, path: &str) -> Result<Self, MiniAppError> {
+    pub(crate) fn create(appid: &str, path: &str) -> Result<Self, LxAppError> {
         use jni::objects::JValue;
 
         let mut env = get_env().unwrap();
@@ -17,7 +17,7 @@ impl WebViewInner {
         let miniapp_class: &JClass = MINIAPP_CLASS
             .get()
             .ok_or_else(|| {
-                MiniAppError::WebView("Global MiniApp class reference not available".to_string())
+                LxAppError::WebView("Global LxApp class reference not available".to_string())
             })?
             .as_obj()
             .into();
@@ -36,21 +36,21 @@ impl WebViewInner {
                     JValue::Object(&path_jstring),
                 ],
             )
-            .map_err(|e| MiniAppError::WebView(format!("Failed to call createWebView: {:?}", e)))?;
+            .map_err(|e| LxAppError::WebView(format!("Failed to call createWebView: {:?}", e)))?;
 
         let java_webview = webview_result
             .l()
-            .map_err(|e| MiniAppError::WebView(format!("Failed to get WebView object: {:?}", e)))?;
+            .map_err(|e| LxAppError::WebView(format!("Failed to get WebView object: {:?}", e)))?;
 
         if java_webview.is_null() {
-            return Err(MiniAppError::WebView(
+            return Err(LxAppError::WebView(
                 "createWebView returned null".to_string(),
             ));
         }
 
         let java_webview = env
             .new_global_ref(java_webview)
-            .map_err(|e| MiniAppError::WebView(format!("Failed to create global ref: {:?}", e)))?;
+            .map_err(|e| LxAppError::WebView(format!("Failed to create global ref: {:?}", e)))?;
 
         Ok(WebViewInner { java_webview })
     }
@@ -69,7 +69,7 @@ impl Drop for WebViewInner {
 }
 
 impl WebViewController for WebViewInner {
-    fn load_url(&self, url: String) -> Result<(), MiniAppError> {
+    fn load_url(&self, url: String) -> Result<(), LxAppError> {
         let mut env = get_env().unwrap();
 
         match env.new_string(&url) {
@@ -84,10 +84,10 @@ impl WebViewController for WebViewInner {
                 if result.is_ok() {
                     Ok(())
                 } else {
-                    Err(MiniAppError::WebView("Failed to load URL".to_string()))
+                    Err(LxAppError::WebView("Failed to load URL".to_string()))
                 }
             }
-            Err(_) => Err(MiniAppError::WebView(
+            Err(_) => Err(LxAppError::WebView(
                 "Failed to create Java string".to_string(),
             )),
         }
@@ -98,7 +98,7 @@ impl WebViewController for WebViewInner {
         data: String,
         base_url: String,
         history_url: Option<String>,
-    ) -> Result<(), MiniAppError> {
+    ) -> Result<(), LxAppError> {
         let mut env = get_env().unwrap();
 
         let data_string = env.new_string(&data).unwrap();
@@ -122,17 +122,17 @@ impl WebViewController for WebViewInner {
         if result.is_ok() {
             Ok(())
         } else {
-            Err(MiniAppError::WebView("Failed to load data".to_string()))
+            Err(LxAppError::WebView("Failed to load data".to_string()))
         }
     }
 
-    fn evaluate_javascript(&self, js: String) -> Result<(), MiniAppError> {
+    fn evaluate_javascript(&self, js: String) -> Result<(), LxAppError> {
         let mut env = get_env().unwrap();
 
         let script_string = match env.new_string(&js) {
             Ok(s) => s,
             Err(_) => {
-                return Err(MiniAppError::WebView(
+                return Err(LxAppError::WebView(
                     "Failed to create Java string".to_string(),
                 ));
             }
@@ -151,26 +151,26 @@ impl WebViewController for WebViewInner {
         if result.is_ok() {
             Ok(())
         } else {
-            Err(MiniAppError::WebView(
+            Err(LxAppError::WebView(
                 "JavaScript evaluation failed".to_string(),
             ))
         }
     }
 
-    fn clear_browsing_data(&self) -> Result<(), MiniAppError> {
+    fn clear_browsing_data(&self) -> Result<(), LxAppError> {
         let mut env = get_env().unwrap();
         let result = env.call_method(self.java_webview.as_obj(), "clearBrowsingData", "()V", &[]);
 
         if result.is_ok() {
             Ok(())
         } else {
-            Err(MiniAppError::WebView(
+            Err(LxAppError::WebView(
                 "Failed to clear browsing data".to_string(),
             ))
         }
     }
 
-    fn set_devtools(&self, enabled: bool) -> Result<(), MiniAppError> {
+    fn set_devtools(&self, enabled: bool) -> Result<(), LxAppError> {
         let mut env = get_env().unwrap();
 
         match env.find_class("android/webkit/WebView") {
@@ -185,22 +185,22 @@ impl WebViewController for WebViewInner {
                 if result.is_ok() {
                     Ok(())
                 } else {
-                    Err(MiniAppError::WebView("Failed to set devtools".to_string()))
+                    Err(LxAppError::WebView("Failed to set devtools".to_string()))
                 }
             }
-            Err(_) => Err(MiniAppError::WebView(
+            Err(_) => Err(LxAppError::WebView(
                 "Failed to find WebView class".to_string(),
             )),
         }
     }
 
-    fn post_message(&self, message: String) -> Result<(), MiniAppError> {
+    fn post_message(&self, message: String) -> Result<(), LxAppError> {
         let mut env = get_env().unwrap();
 
         let msg_string = match env.new_string(&message) {
             Ok(s) => s,
             Err(_) => {
-                return Err(MiniAppError::WebView(
+                return Err(LxAppError::WebView(
                     "Failed to create Java string".to_string(),
                 ));
             }
@@ -216,17 +216,17 @@ impl WebViewController for WebViewInner {
         if result.is_ok() {
             Ok(())
         } else {
-            Err(MiniAppError::WebView("Failed to post message".to_string()))
+            Err(LxAppError::WebView("Failed to post message".to_string()))
         }
     }
 
-    fn set_user_agent(&self, ua: String) -> Result<(), MiniAppError> {
+    fn set_user_agent(&self, ua: String) -> Result<(), LxAppError> {
         let mut env = get_env().unwrap();
 
         let ua_string = match env.new_string(&ua) {
             Ok(s) => s,
             Err(_) => {
-                return Err(MiniAppError::WebView(
+                return Err(LxAppError::WebView(
                     "Failed to create Java string".to_string(),
                 ));
             }
@@ -242,7 +242,7 @@ impl WebViewController for WebViewInner {
         if result.is_ok() {
             Ok(())
         } else {
-            Err(MiniAppError::WebView(
+            Err(LxAppError::WebView(
                 "Failed to set user agent".to_string(),
             ))
         }
@@ -252,7 +252,7 @@ impl WebViewController for WebViewInner {
         &self,
         enabled: bool,
         throttle_ms: Option<u64>,
-    ) -> Result<(), MiniAppError> {
+    ) -> Result<(), LxAppError> {
         let mut env = get_env().unwrap();
 
         let throttle_value = throttle_ms.unwrap_or(100); // Default to 100ms
@@ -270,7 +270,7 @@ impl WebViewController for WebViewInner {
         if result.is_ok() {
             Ok(())
         } else {
-            Err(MiniAppError::WebView(
+            Err(LxAppError::WebView(
                 "Failed to set scroll listener enabled".to_string(),
             ))
         }

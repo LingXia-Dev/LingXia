@@ -15,7 +15,7 @@ pub enum LogLevel {
 pub enum LogTag {
     Native,                // For logs from Rust/native code
     WebViewConsole,        // For logs from WebView's JavaScript console
-    MiniAppServiceConsole, // For logs from MiniApp service layer
+    LxAppServiceConsole, // For logs from LxApp service layer
 }
 
 impl LogTag {
@@ -23,7 +23,7 @@ impl LogTag {
         match self {
             LogTag::Native => "Native",
             LogTag::WebViewConsole => "JSView",
-            LogTag::MiniAppServiceConsole => "JSService",
+            LogTag::LxAppServiceConsole => "JSService",
         }
     }
 }

@@ -533,7 +533,7 @@ class WebView @JvmOverloads constructor(
         Log.d(TAG, "Window visibility changed: $visibility")
 
         // Only handle visibility changes to GONE/INVISIBLE
-        // VISIBLE state is managed by MiniAppActivity's lifecycle methods
+        // VISIBLE state is managed by LxAppActivity's lifecycle methods
         if (visibility != View.VISIBLE) {
             pause()
         }

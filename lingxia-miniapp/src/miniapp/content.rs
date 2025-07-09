@@ -1,9 +1,9 @@
-use crate::error::MiniAppError;
-use crate::miniapp::MiniApp;
+use crate::error::LxAppError;
+use crate::miniapp::LxApp;
 use crate::{error, info};
 use std::io::Read;
 
-impl MiniApp {
+impl LxApp {
     /// Generate processed HTML content for a page with script and CSS injection
     ///
     /// This reads the HTML file and injects necessary scripts and styles
@@ -68,7 +68,7 @@ impl MiniApp {
             .and_then(|mut r| {
                 let mut data = Vec::new();
                 r.read_to_end(&mut data)
-                    .map_err(|e| MiniAppError::IoError(e.to_string()))
+                    .map_err(|e| LxAppError::IoError(e.to_string()))
                     .map(|_| {
                         // Replace placeholder with actual failed path
                         let html_str = String::from_utf8_lossy(&data);
@@ -85,18 +85,18 @@ impl MiniApp {
     }
 
     /// Inject WebView bridge script and framework integration into HTML content
-    fn inject_bridge_script(&self, html_data: &[u8]) -> Result<Vec<u8>, MiniAppError> {
+    fn inject_bridge_script(&self, html_data: &[u8]) -> Result<Vec<u8>, LxAppError> {
         // Load the bridge script from assets
         let bridge_script = match self.runtime.read_asset("webview-bridge.js") {
             Ok(mut reader) => {
                 let mut script_data = Vec::new();
                 reader.read_to_end(&mut script_data).map_err(|e| {
-                    MiniAppError::IoError(format!("Failed to read bridge script: {}", e))
+                    LxAppError::IoError(format!("Failed to read bridge script: {}", e))
                 })?;
                 String::from_utf8_lossy(&script_data).to_string()
             }
             Err(e) => {
-                return Err(MiniAppError::IoError(format!(
+                return Err(LxAppError::IoError(format!(
                     "Failed to open bridge script: {}",
                     e
                 )));
@@ -142,7 +142,7 @@ impl MiniApp {
         html_data: &[u8],
         css_data: &[u8],
         path: &str,
-    ) -> Result<Vec<u8>, MiniAppError> {
+    ) -> Result<Vec<u8>, LxAppError> {
         // Convert CSS content to string
         let css_content = String::from_utf8_lossy(css_data);
         let style_tag = format!("<style>\n{}\n</style>", css_content);

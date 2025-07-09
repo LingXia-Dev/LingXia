@@ -1,6 +1,6 @@
 use super::version::Version;
 use super::{LINGXIA_DIR, LXAPPS_DIR, VERSIONS_DIR};
-use crate::{AppRuntime, MiniApp, MiniAppError};
+use crate::{AppRuntime, LxApp, LxAppError};
 
 /// Check if a mini app is installed
 ///
@@ -22,7 +22,7 @@ pub(crate) fn is_installed<T: AppRuntime + ?Sized>(controller: &T, appid: &str) 
     version_path.exists()
 }
 
-impl MiniApp {
+impl LxApp {
     /// Check if this mini app needs to be updated to the specified version
     ///
     /// # Arguments
@@ -53,7 +53,7 @@ pub(crate) fn install_home_miniapp(
     controller: &dyn AppRuntime,
     appid: &str,
     version: &str,
-) -> Result<(), MiniAppError> {
+) -> Result<(), LxAppError> {
     // Calculate base app directory and destination directory using appid
     // Note: Base directories are already created by prepare_directory_structure
     let base_dir = controller.app_data_dir().join(LINGXIA_DIR).join(LXAPPS_DIR);
@@ -66,7 +66,7 @@ pub(crate) fn install_home_miniapp(
 
     // Create the app-specific destination directory
     std::fs::create_dir_all(&destination).map_err(|e| {
-        MiniAppError::IoError(format!(
+        LxAppError::IoError(format!(
             "Failed to create app directory {}: {}",
             destination.display(),
             e
@@ -92,7 +92,7 @@ pub(crate) fn install_home_miniapp(
         // Create parent directories if needed
         if let Some(parent) = dest_file_path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| {
-                MiniAppError::IoError(format!(
+                LxAppError::IoError(format!(
                     "Failed to create directory {}: {}",
                     parent.display(),
                     e
@@ -104,11 +104,11 @@ pub(crate) fn install_home_miniapp(
         let mut reader = entry.reader;
         let mut buffer = Vec::new();
         reader.read_to_end(&mut buffer).map_err(|e| {
-            MiniAppError::IoError(format!("Failed to read asset file {}: {}", entry.path, e))
+            LxAppError::IoError(format!("Failed to read asset file {}: {}", entry.path, e))
         })?;
 
         std::fs::write(&dest_file_path, buffer).map_err(|e| {
-            MiniAppError::IoError(format!(
+            LxAppError::IoError(format!(
                 "Failed to write file {}: {}",
                 dest_file_path.display(),
                 e
@@ -126,7 +126,7 @@ fn update_version(
     controller: &dyn AppRuntime,
     appid: &str,
     new_version: &str,
-) -> Result<(), MiniAppError> {
+) -> Result<(), LxAppError> {
     let version_dir = controller
         .app_data_dir()
         .join(LINGXIA_DIR)

@@ -1,7 +1,7 @@
 {
   "name": "lingxia",
   "version": "1.0.0",
-  "description": "LingXia MiniApp HAR module",
+  "description": "LingXia LxApp HAR module",
   "main": "Index.ets",
   "author": "",
   "license": "Apache-2.0",

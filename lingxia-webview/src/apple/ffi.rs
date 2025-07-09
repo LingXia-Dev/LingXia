@@ -32,22 +32,22 @@ mod bridge {
     }
 
     extern "Swift" {
-        // MiniApp navigation functions
-        #[swift_bridge(swift_name = "MiniApp.openMiniApp")]
-        fn open_miniapp(appid: &str, path: &str) -> bool;
+        // LxApp navigation functions
+        #[swift_bridge(swift_name = "LxApp.openLxApp")]
+        fn open_lxapp(appid: &str, path: &str) -> bool;
 
-        #[swift_bridge(swift_name = "MiniApp.closeMiniApp")]
+        #[swift_bridge(swift_name = "LxApp.closeLxApp")]
         fn close_miniapp(appid: &str) -> bool;
 
-        #[swift_bridge(swift_name = "MiniApp.switchPage")]
+        #[swift_bridge(swift_name = "LxApp.switchPage")]
         fn switch_page(appid: &str, path: &str) -> bool;
     }
 }
 
 // Re-export the bridge functions for use in other modules
-pub use bridge::{close_miniapp, open_miniapp, switch_page};
+pub use bridge::{close_miniapp, open_lxapp, switch_page};
 
-/// Initialize the MiniApp system for iOS/macOS
+/// Initialize the LxApp system for iOS/macOS
 pub fn miniapp_init(data_dir: &str, cache_dir: &str) -> Option<String> {
     oslog::OsLogger::new("LingXia.Rust")
         .level_filter(log::LevelFilter::Info)
@@ -90,7 +90,7 @@ pub fn miniapp_init(data_dir: &str, cache_dir: &str) -> Option<String> {
     });
 
     log::info!(
-        "Initializing MiniApp with data_dir: {}, cache_dir: {}",
+        "Initializing LxApp with data_dir: {}, cache_dir: {}",
         data_dir,
         cache_dir
     );
@@ -111,11 +111,11 @@ pub fn miniapp_init(data_dir: &str, cache_dir: &str) -> Option<String> {
     match final_init_details {
         Some((home_app_id, initial_route)) => {
             let combined_details = format!("{}:{}", home_app_id, initial_route);
-            log::info!("MiniApp initialization successful: {}", combined_details);
+            log::info!("LxApp initialization successful: {}", combined_details);
             Some(combined_details)
         }
         None => {
-            log::error!("Failed to obtain MiniApp home app details during initialization.");
+            log::error!("Failed to obtain LxApp home app details during initialization.");
             None
         }
     }
@@ -127,7 +127,7 @@ pub fn on_page_show(appid: &str, path: &str) {
     miniapp.on_page_show(path.to_string());
 }
 
-/// Notify that MiniApp was closed
+/// Notify that LxApp was closed
 pub fn on_miniapp_closed(appid: &str) -> i32 {
     let miniapp = miniapp::get(appid.to_string());
     miniapp.on_miniapp_closed();
@@ -149,7 +149,7 @@ pub fn on_back_pressed(appid: &str) -> bool {
     miniapp.on_back_pressed()
 }
 
-/// Notify that MiniApp was opened
+/// Notify that LxApp was opened
 pub fn on_miniapp_opened(appid: &str, path: &str) -> i32 {
     let miniapp = miniapp::get(appid.to_string());
     miniapp.on_miniapp_opened(path.to_string());

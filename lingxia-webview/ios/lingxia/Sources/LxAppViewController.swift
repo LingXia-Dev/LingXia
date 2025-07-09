@@ -4,10 +4,10 @@ import os.log
 @preconcurrency import ObjectiveC
 
 // Log instance outside of @MainActor to avoid isolation issues
-private let miniAppViewControllerLog = OSLog(subsystem: "LingXia", category: "MiniAppView")
+private let miniAppViewControllerLog = OSLog(subsystem: "LingXia", category: "LxAppView")
 
 @MainActor
-public class MiniAppViewController: UIViewController {
+public class LxAppViewController: UIViewController {
     private static let log = miniAppViewControllerLog
 
     public static let EXTRA_APP_ID = "appId"
@@ -32,7 +32,7 @@ public class MiniAppViewController: UIViewController {
     private var navigationBar: LingXiaNavigationBar?
     private var isDestroyed = false
     private var pendingWebViewSetup = false
-    private var isDisplayingHomeMiniApp: Bool = false
+    private var isDisplayingHomeLxApp: Bool = false
 
     private var currentWebView: WKWebView?
 
@@ -100,11 +100,11 @@ public class MiniAppViewController: UIViewController {
 
     public init(appId: String, path: String) {
         self.appId = appId
-        self.isDisplayingHomeMiniApp = (appId == MiniApp.homeMiniAppId)
+        self.isDisplayingHomeLxApp = (appId == LxApp.homeLxAppId)
         self.initialPath = path
         super.init(nibName: nil, bundle: nil)
 
-        MiniAppViewController.configureTransparentSystemBars(viewController: self)
+        LxAppViewController.configureTransparentSystemBars(viewController: self)
     }
 
     required init?(coder: NSCoder) {
@@ -157,7 +157,7 @@ public class MiniAppViewController: UIViewController {
             setupTabBar(config: tabBarConfig)
 
             let isTabBarTransparent = TabBarConfig.isTransparent(tabBarConfig.backgroundColor)
-            os_log("MiniAppViewController.viewDidLoad: isTabBarTransparent=%@ backgroundColor=%@",
+            os_log("LxAppViewController.viewDidLoad: isTabBarTransparent=%@ backgroundColor=%@",
                    log: Self.log, type: .debug,
                    String(isTabBarTransparent), tabBarConfig.backgroundColor?.description ?? "nil")
         }
@@ -267,8 +267,8 @@ public class MiniAppViewController: UIViewController {
 
                 if self.presentingViewController != nil {
                     self.dismiss(animated: true)
-                } else if !self.isDisplayingHomeMiniApp {
-                    self.performMiniAppClose()
+                } else if !self.isDisplayingHomeLxApp {
+                    self.performLxAppClose()
                 }
             }
         }
@@ -317,7 +317,7 @@ public class MiniAppViewController: UIViewController {
             statusBarBackground.topAnchor.constraint(equalTo: rootContainer.topAnchor),
             statusBarBackground.leadingAnchor.constraint(equalTo: rootContainer.leadingAnchor),
             statusBarBackground.trailingAnchor.constraint(equalTo: rootContainer.trailingAnchor),
-            statusBarBackground.heightAnchor.constraint(equalToConstant: MiniAppViewController.STATUS_BAR_HEIGHT)
+            statusBarBackground.heightAnchor.constraint(equalToConstant: LxAppViewController.STATUS_BAR_HEIGHT)
         ])
     }
 
@@ -352,7 +352,7 @@ public class MiniAppViewController: UIViewController {
     }
 
     private func setupInitialContent(path: String) {
-        MiniApp.storeLastActivePath(appId: appId, path: path)
+        LxApp.storeLastActivePath(appId: appId, path: path)
 
         // Since onMiniappOpened is now called synchronously before UI presentation,
         // we can directly try to find the WebView
@@ -360,7 +360,7 @@ public class MiniAppViewController: UIViewController {
     }
 
     private func setupWebViewIfReady(appId: String, path: String) {
-        if let webView = MiniApp.findWebView(appId: appId, path: path) {
+        if let webView = LxApp.findWebView(appId: appId, path: path) {
             attachWebViewToUI(webView: webView)
             updateNavigationBar(appId: appId, path: path, isBackNavigation: false, disableAnimation: true)
         } else {
@@ -427,7 +427,7 @@ public class MiniAppViewController: UIViewController {
         let isTabBarTransparent = TabBarConfig.isTransparent(config.backgroundColor)
 
         // Update system navigation bar transparency based on TabBar transparency and color
-        MiniAppViewController.updateNavigationBarTransparency(
+        LxAppViewController.updateNavigationBarTransparency(
             viewController: self,
             isTabBarTransparent: isTabBarTransparent,
             tabBarBackgroundColor: config.backgroundColor
@@ -462,14 +462,14 @@ public class MiniAppViewController: UIViewController {
 
     private func applyTabBarLayoutParams(tabBar: LingXiaTabBar, config: TabBarConfig) {
         let isVertical = config.position == .left || config.position == .right
-        let defaultTabBarSize = MiniAppViewController.DEFAULT_TAB_BAR_SIZE
+        let defaultTabBarSize = LxAppViewController.DEFAULT_TAB_BAR_SIZE
 
         tabBar.translatesAutoresizingMaskIntoConstraints = false
 
         if isVertical {
             NSLayoutConstraint.activate([
                 tabBar.widthAnchor.constraint(equalToConstant: defaultTabBarSize),
-                tabBar.topAnchor.constraint(equalTo: rootContainer.topAnchor, constant: MiniAppViewController.STATUS_BAR_HEIGHT),
+                tabBar.topAnchor.constraint(equalTo: rootContainer.topAnchor, constant: LxAppViewController.STATUS_BAR_HEIGHT),
                 tabBar.bottomAnchor.constraint(equalTo: rootContainer.bottomAnchor)
             ])
 
@@ -487,7 +487,7 @@ public class MiniAppViewController: UIViewController {
 
             if config.position == .top {
                 // For top position, place TabBar right after the fixed status bar area (48pt)
-                tabBar.topAnchor.constraint(equalTo: rootContainer.topAnchor, constant: MiniAppViewController.STATUS_BAR_HEIGHT).isActive = true
+                tabBar.topAnchor.constraint(equalTo: rootContainer.topAnchor, constant: LxAppViewController.STATUS_BAR_HEIGHT).isActive = true
             } else {
                 // For bottom position, always extend to view.bottomAnchor to cover safe area
                 // Both transparent and opaque TabBars extend to actual screen bottom
@@ -639,12 +639,12 @@ public class MiniAppViewController: UIViewController {
         // Use fixed status bar height
         let navBarContentHeight = navigationBar.getCalculatedContentHeight()
 
-        return MiniAppViewController.STATUS_BAR_HEIGHT + navBarContentHeight
+        return LxAppViewController.STATUS_BAR_HEIGHT + navBarContentHeight
     }
 
     private func addCapsuleButton() {
         // Don't show capsule button for the main/home app
-        if isDisplayingHomeMiniApp {
+        if isDisplayingHomeLxApp {
             return
         }
 
@@ -695,7 +695,7 @@ public class MiniAppViewController: UIViewController {
         NSLayoutConstraint.activate([
             // Capsule positioning (aligned with NavigationBar title - same as NavigationBar title position)
             // NavigationBar title and capsule button share the same vertical position
-            capsule.topAnchor.constraint(equalTo: rootContainer.topAnchor, constant: MiniAppViewController.NAV_TITLE_VERTICAL_POSITION - 4),
+            capsule.topAnchor.constraint(equalTo: rootContainer.topAnchor, constant: LxAppViewController.NAV_TITLE_VERTICAL_POSITION - 4),
             capsule.trailingAnchor.constraint(equalTo: rootContainer.trailingAnchor, constant: -12),
             capsule.heightAnchor.constraint(equalToConstant: 36), // Android: 36dp
 
@@ -821,8 +821,8 @@ public class MiniAppViewController: UIViewController {
     }
 
     @objc private func closeButtonTapped() {
-        guard !isDisplayingHomeMiniApp else { return }
-        performMiniAppClose()
+        guard !isDisplayingHomeLxApp else { return }
+        performLxAppClose()
     }
 
     private func switchToTab(targetPath: String) {
@@ -843,7 +843,7 @@ public class MiniAppViewController: UIViewController {
         os_log("switchToTab: Found target tab index=%d", log: Self.log, type: .info, targetIndex)
 
         // Find target WebView (should be created by Rust layer when needed)
-        guard let targetWebView = MiniApp.findWebView(appId: appId, path: targetPath) else {
+        guard let targetWebView = LxApp.findWebView(appId: appId, path: targetPath) else {
             os_log("switchToTab failed: WebView not found for %{public}@, should be created by Rust system", log: Self.log, type: .error, targetPath)
             return
         }
@@ -886,7 +886,7 @@ public class MiniAppViewController: UIViewController {
         }
 
         // Store the target path as the last active path for state restoration
-        MiniApp.storeLastActivePath(appId: appId, path: targetPath)
+        LxApp.storeLastActivePath(appId: appId, path: targetPath)
 
         // Check if this is a tab page
         if let tabIndex = tabBar?.findTabIndexByPath(targetPath), tabIndex >= 0 {
@@ -912,7 +912,7 @@ public class MiniAppViewController: UIViewController {
         let oldWebView = currentWebView
 
         // Find WebView for the target page
-        guard let newWebView = MiniApp.findWebView(appId: appId, path: targetPath) else {
+        guard let newWebView = LxApp.findWebView(appId: appId, path: targetPath) else {
             os_log("WebView not found for path: %{public}@, should be created by Rust system", log: Self.log, type: .info, targetPath)
             return
         }
@@ -1086,7 +1086,7 @@ public class MiniAppViewController: UIViewController {
         view.setNeedsLayout()
         view.layoutIfNeeded()
 
-        os_log("MiniAppViewController.ensureTransparentNavigationArea: Applied transparent background for hidden NavigationBar",
+        os_log("LxAppViewController.ensureTransparentNavigationArea: Applied transparent background for hidden NavigationBar",
                log: Self.log, type: .info)
     }
 
@@ -1100,7 +1100,7 @@ public class MiniAppViewController: UIViewController {
 
         newNavBar.translatesAutoresizingMaskIntoConstraints = false
         // Set external status bar height to our fixed value (NavigationBar will handle status bar area)
-        newNavBar.setExternalStatusBarHeight(MiniAppViewController.STATUS_BAR_HEIGHT)
+        newNavBar.setExternalStatusBarHeight(LxAppViewController.STATUS_BAR_HEIGHT)
 
         newNavBar.backgroundColor = UIColor.white
 
@@ -1117,7 +1117,7 @@ public class MiniAppViewController: UIViewController {
             newNavBar.topAnchor.constraint(equalTo: rootContainer.topAnchor),
             newNavBar.leadingAnchor.constraint(equalTo: rootContainer.leadingAnchor),
             newNavBar.trailingAnchor.constraint(equalTo: rootContainer.trailingAnchor),
-            newNavBar.heightAnchor.constraint(equalToConstant: navBarContentHeight + MiniAppViewController.STATUS_BAR_HEIGHT)
+            newNavBar.heightAnchor.constraint(equalToConstant: navBarContentHeight + LxAppViewController.STATUS_BAR_HEIGHT)
         ])
 
         rootContainer.bringSubviewToFront(newNavBar)
@@ -1148,8 +1148,8 @@ public class MiniAppViewController: UIViewController {
         }
 
         // No back navigation available, close activity (same as Android's finish())
-        if !isDisplayingHomeMiniApp {
-            performMiniAppClose()
+        if !isDisplayingHomeLxApp {
+            performLxAppClose()
         }
     }
 
@@ -1194,7 +1194,7 @@ public class MiniAppViewController: UIViewController {
             // Mark as destroyed to prevent further operations
             isDestroyed = true
         }
-        os_log("MiniAppViewController: MiniAppViewController deinitialized", log: miniAppViewControllerLog, type: .debug)
+        os_log("LxAppViewController: LxAppViewController deinitialized", log: miniAppViewControllerLog, type: .debug)
     }
 
     /// Forces transparency on a specific WebView after it's added to view hierarchy
@@ -1282,7 +1282,7 @@ public class MiniAppViewController: UIViewController {
             tabBar.forceTransparencyMode()
         }
 
-        os_log("MiniAppViewController.forceCompleteTransparency: Complete transparency applied",
+        os_log("LxAppViewController.forceCompleteTransparency: Complete transparency applied",
                log: Self.log, type: .info)
     }
 
@@ -1479,7 +1479,7 @@ public class MiniAppViewController: UIViewController {
 
     /// Internal method to handle miniapp closure for both UI and API calls
     @MainActor
-    private func performMiniAppClose() {
+    private func performLxAppClose() {
         // Notify Rust layer asynchronously without waiting for completion
         Task {
             let result = lingxia.onMiniappClosed(appId)
@@ -1492,41 +1492,41 @@ public class MiniAppViewController: UIViewController {
         if let navController = window.rootViewController as? UINavigationController {
             navController.popViewController(animated: false)
         } else {
-            openHomeMiniAppAsFallback()
+            openHomeLxAppAsFallback()
         }
     }
 
     /// Find existing home miniapp WebView to avoid re-rendering
     /// This is the key to preventing re-rendering - we reuse existing WebViews
     @MainActor
-    private func findExistingHomeMiniAppWebView() -> WKWebView? {
-        guard let homeMiniAppId = MiniApp.homeMiniAppId,
-              let homeMiniAppInitialRoute = MiniApp.homeMiniAppInitialRoute else {
-            os_log("findExistingHomeMiniAppWebView: No home miniapp ID or initial route", log: Self.log, type: .error)
+    private func findExistingHomeLxAppWebView() -> WKWebView? {
+        guard let homeLxAppId = LxApp.homeLxAppId,
+              let homeLxAppInitialRoute = LxApp.homeLxAppInitialRoute else {
+            os_log("findExistingHomeLxAppWebView: No home miniapp ID or initial route", log: Self.log, type: .error)
             return nil
         }
 
         // Get the last active path of home miniapp
-        let lastActivePath = MiniApp.getLastActivePath(appId: homeMiniAppId, defaultPath: homeMiniAppInitialRoute)
-        os_log("findExistingHomeMiniAppWebView: Looking for home WebView - homeMiniAppId=%@, lastActivePath=%@, initialRoute=%@",
-               log: Self.log, type: .info, homeMiniAppId, lastActivePath, homeMiniAppInitialRoute)
+        let lastActivePath = LxApp.getLastActivePath(appId: homeLxAppId, defaultPath: homeLxAppInitialRoute)
+        os_log("findExistingHomeLxAppWebView: Looking for home WebView - homeLxAppId=%@, lastActivePath=%@, initialRoute=%@",
+               log: Self.log, type: .info, homeLxAppId, lastActivePath, homeLxAppInitialRoute)
 
         // find existing WebView from Rust layer first
-        if let existingWebView = MiniApp.findWebView(appId: homeMiniAppId, path: lastActivePath) {
-            os_log("findExistingHomeMiniAppWebView: Found existing WebView for %@ at %@", log: Self.log, type: .info, homeMiniAppId, lastActivePath)
+        if let existingWebView = LxApp.findWebView(appId: homeLxAppId, path: lastActivePath) {
+            os_log("findExistingHomeLxAppWebView: Found existing WebView for %@ at %@", log: Self.log, type: .info, homeLxAppId, lastActivePath)
             return existingWebView
         } else {
-            os_log("findExistingHomeMiniAppWebView: No WebView found for %@ at %@", log: Self.log, type: .info, homeMiniAppId, lastActivePath)
+            os_log("findExistingHomeLxAppWebView: No WebView found for %@ at %@", log: Self.log, type: .info, homeLxAppId, lastActivePath)
         }
 
-        os_log("findExistingHomeMiniAppWebView: No existing home WebView found anywhere", log: Self.log, type: .info)
+        os_log("findExistingHomeLxAppWebView: No existing home WebView found anywhere", log: Self.log, type: .info)
         return nil
     }
 
     /// Restore previous controller from stack (simulating Android's Activity stack behavior)
     /// This is the key method to prevent re-rendering - we reuse the existing WebView from stack
     @MainActor
-    private func restorePreviousControllerFromStack(_ controllerState: MiniAppControllerStack.ControllerState) {
+    private func restorePreviousControllerFromStack(_ controllerState: LxAppControllerStack.ControllerState) {
         guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
               let window = windowScene.windows.first else {
             os_log("Failed to get window for restoring controller from stack", log: Self.log, type: .error)
@@ -1537,7 +1537,7 @@ public class MiniAppViewController: UIViewController {
                log: Self.log, type: .info, controllerState.appId, controllerState.path)
 
         // Create a new controller with the saved state
-        let restoredController = MiniAppViewController(appId: controllerState.appId, path: controllerState.path)
+        let restoredController = LxAppViewController(appId: controllerState.appId, path: controllerState.path)
 
         // CRITICAL: Set the existing WebView BEFORE setting as root controller
         // This ensures the WebView is set before viewDidLoad is called, preventing re-rendering
@@ -1555,22 +1555,22 @@ public class MiniAppViewController: UIViewController {
 
     /// Open home miniapp as fallback when no previous state is found
     @MainActor
-    private func openHomeMiniAppAsFallback() {
-        guard let homeMiniAppId = MiniApp.homeMiniAppId,
-              let homeMiniAppInitialRoute = MiniApp.homeMiniAppInitialRoute else {
+    private func openHomeLxAppAsFallback() {
+        guard let homeLxAppId = LxApp.homeLxAppId,
+              let homeLxAppInitialRoute = LxApp.homeLxAppInitialRoute else {
             os_log("Home miniapp details not available", log: Self.log, type: .error)
             return
         }
 
-        os_log("openHomeMiniAppAsFallback: Opening home miniapp: %@ at %@", log: Self.log, type: .info, homeMiniAppId, homeMiniAppInitialRoute)
-        _ = homeMiniAppId.toRustStr { appidRustStr in
-            homeMiniAppInitialRoute.toRustStr { pathRustStr in
-                MiniApp.openMiniApp(appid: appidRustStr, path: pathRustStr)
+        os_log("openHomeLxAppAsFallback: Opening home miniapp: %@ at %@", log: Self.log, type: .info, homeLxAppId, homeLxAppInitialRoute)
+        _ = homeLxAppId.toRustStr { appidRustStr in
+            homeLxAppInitialRoute.toRustStr { pathRustStr in
+                LxApp.openLxApp(appid: appidRustStr, path: pathRustStr)
             }
         }
     }
 
-    /// Performs UI cleanup before this view controller is replaced by another MiniAppViewController
+    /// Performs UI cleanup before this view controller is replaced by another LxAppViewController
     /// This ensures proper resource cleanup but does NOT notify Rust layer (that's done separately)
     @MainActor
     internal func performCleanupBeforeReplacement() {

@@ -5,16 +5,16 @@ use rong::{
 use std::collections::HashMap;
 
 #[js_export]
-pub(crate) struct MiniAppSvc {
+pub(crate) struct LxAppSvc {
     functions: HashMap<String, JSFunc>,
     this: JSObject,
 }
 
 #[js_class]
-impl MiniAppSvc {
+impl LxAppSvc {
     #[js_method(constructor)]
     fn _new(ctx: JSContext, obj: JSObject) -> JSResult<Self> {
-        let mut app_svc = MiniAppSvc {
+        let mut app_svc = LxAppSvc {
             functions: HashMap::new(),
             this: obj.clone(),
         };
@@ -39,7 +39,7 @@ impl MiniAppSvc {
     }
 }
 
-impl MiniAppSvc {
+impl LxAppSvc {
     fn assign_funcs(&mut self, obj: &JSObject) -> JSResult<()> {
         for key_value in obj.keys()? {
             // obj.keys() returns JSValue, not String
@@ -78,7 +78,7 @@ impl MiniAppSvc {
 
 // Register the global App & getApp function
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
-    ctx.register_class::<MiniAppSvc>()?;
+    ctx.register_class::<LxAppSvc>()?;
 
     let app_js = Source::from_bytes(include_str!("scripts/App.js"));
     ctx.eval::<()>(app_js)?;

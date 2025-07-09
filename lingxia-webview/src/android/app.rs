@@ -1,7 +1,7 @@
 use crate::android::{MINIAPP_CLASS, get_env};
 use jni::objects::{GlobalRef, JClass, JObject, JValue};
 use jni::sys::jobject;
-use miniapp::{AssetFileEntry, DeviceInfo, MiniAppError};
+use miniapp::{AssetFileEntry, DeviceInfo, LxAppError};
 use ndk_sys;
 use std::ffi::CString;
 use std::io::{Read, Result as IoResult};
@@ -74,15 +74,15 @@ impl<'a> RecursiveAssetIterator<'a> {
     fn handle_jni_error<T>(
         result: Result<T, jni::errors::Error>,
         path: &str,
-    ) -> Result<T, MiniAppError> {
+    ) -> Result<T, LxAppError> {
         result.map_err(|e| {
-            MiniAppError::IoError(format!("JNI operation failed for path '{}': {:?}", path, e))
+            LxAppError::IoError(format!("JNI operation failed for path '{}': {:?}", path, e))
         })
     }
 
-    fn list_via_jni(&self, path_to_list: &str) -> Result<Option<Vec<String>>, MiniAppError> {
+    fn list_via_jni(&self, path_to_list: &str) -> Result<Option<Vec<String>>, LxAppError> {
         let mut jni_env =
-            get_env().map_err(|e| MiniAppError::IoError(format!("Failed to get JNIEnv: {}", e)))?;
+            get_env().map_err(|e| LxAppError::IoError(format!("Failed to get JNIEnv: {}", e)))?;
         let path_jstring = Self::handle_jni_error(jni_env.new_string(path_to_list), path_to_list)?;
 
         let java_am_obj = self.app.java_asset_manager.as_obj();
@@ -133,7 +133,7 @@ impl<'a> RecursiveAssetIterator<'a> {
 }
 
 impl<'a> Iterator for RecursiveAssetIterator<'a> {
-    type Item = Result<AssetFileEntry<'a>, MiniAppError>;
+    type Item = Result<AssetFileEntry<'a>, LxAppError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
@@ -141,7 +141,7 @@ impl<'a> Iterator for RecursiveAssetIterator<'a> {
                 let c_path = match CString::new(file_path_to_yield.clone()) {
                     Ok(c) => c,
                     Err(e) => {
-                        return Some(Err(MiniAppError::IoError(format!(
+                        return Some(Err(LxAppError::IoError(format!(
                             "Invalid CString for asset path '{}': {}",
                             file_path_to_yield, e
                         ))));
@@ -154,7 +154,7 @@ impl<'a> Iterator for RecursiveAssetIterator<'a> {
                         ndk_sys::AASSET_MODE_STREAMING as i32,
                     );
                     if asset_ptr.is_null() {
-                        return Some(Err(MiniAppError::IoError(format!(
+                        return Some(Err(LxAppError::IoError(format!(
                             "Asset '{}' was in file_queue, but NDK AAssetManager_open failed.",
                             file_path_to_yield
                         ))));
@@ -269,11 +269,11 @@ impl App {
     }
 
     /// Read asset file from platform-specific location as a streaming reader
-    pub fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, MiniAppError> {
+    pub fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, LxAppError> {
         unsafe {
             // Convert path to CString to ensure proper null-termination
             let c_path = std::ffi::CString::new(path)
-                .map_err(|e| MiniAppError::IoError(format!("Invalid path: {}", e)))?;
+                .map_err(|e| LxAppError::IoError(format!("Invalid path: {}", e)))?;
 
             let asset = ndk_sys::AAssetManager_open(
                 self.asset_manager,
@@ -282,7 +282,7 @@ impl App {
             );
 
             if asset.is_null() {
-                return Err(MiniAppError::IoError(format!(
+                return Err(LxAppError::IoError(format!(
                     "Failed to open asset: {}",
                     path
                 )));
@@ -297,7 +297,7 @@ impl App {
     pub fn asset_dir_iter<'a>(
         &'a self,
         asset_dir: &str,
-    ) -> Box<dyn Iterator<Item = Result<AssetFileEntry<'a>, MiniAppError>> + 'a> {
+    ) -> Box<dyn Iterator<Item = Result<AssetFileEntry<'a>, LxAppError>> + 'a> {
         Box::new(RecursiveAssetIterator::new(self, asset_dir))
     }
 
@@ -316,13 +316,13 @@ impl App {
         self.device_info.clone()
     }
 
-    pub fn open_miniapp(&self, appid: &str, path: &str) -> Result<(), MiniAppError> {
+    pub fn open_lxapp(&self, appid: &str, path: &str) -> Result<(), LxAppError> {
         match || -> Result<(), Box<dyn std::error::Error>> {
             let mut env = get_env()?;
 
             let miniapp_class: &JClass = MINIAPP_CLASS
                 .get()
-                .ok_or("Global MiniApp class reference not available")?
+                .ok_or("Global LxApp class reference not available")?
                 .as_obj()
                 .into();
             let appid_jstring = env.new_string(appid)?;
@@ -330,7 +330,7 @@ impl App {
 
             env.call_static_method(
                 miniapp_class,
-                "openMiniApp",
+                "openLxApp",
                 "(Ljava/lang/String;Ljava/lang/String;)V",
                 &[
                     JValue::Object(&appid_jstring),
@@ -340,20 +340,20 @@ impl App {
             Ok(())
         }() {
             Ok(_) => Ok(()),
-            Err(e) => Err(MiniAppError::WebView(format!(
+            Err(e) => Err(LxAppError::WebView(format!(
                 "Failed to open miniapp: {}",
                 e
             ))),
         }
     }
 
-    pub fn close_miniapp(&self, appid: &str) -> Result<(), MiniAppError> {
+    pub fn close_miniapp(&self, appid: &str) -> Result<(), LxAppError> {
         match || -> Result<(), Box<dyn std::error::Error>> {
             let mut env = get_env()?;
 
             let miniapp_class: &JClass = MINIAPP_CLASS
                 .get()
-                .ok_or("Global MiniApp class reference not available")?
+                .ok_or("Global LxApp class reference not available")?
                 .as_obj()
                 .into();
 
@@ -361,27 +361,27 @@ impl App {
 
             env.call_static_method(
                 miniapp_class,
-                "closeMiniApp",
+                "closeLxApp",
                 "(Ljava/lang/String;)V",
                 &[JValue::Object(&appid_jstring)],
             )?;
             Ok(())
         }() {
             Ok(_) => Ok(()),
-            Err(e) => Err(MiniAppError::WebView(format!(
+            Err(e) => Err(LxAppError::WebView(format!(
                 "Failed to close miniapp: {}",
                 e
             ))),
         }
     }
 
-    pub fn switch_page(&self, appid: &str, path: &str) -> Result<(), MiniAppError> {
+    pub fn switch_page(&self, appid: &str, path: &str) -> Result<(), LxAppError> {
         match || -> Result<(), Box<dyn std::error::Error>> {
             let mut env = get_env()?;
 
             let miniapp_class: &JClass = MINIAPP_CLASS
                 .get()
-                .ok_or("Global MiniApp class reference not available")?
+                .ok_or("Global LxApp class reference not available")?
                 .as_obj()
                 .into();
 
@@ -400,7 +400,7 @@ impl App {
             Ok(())
         }() {
             Ok(_) => Ok(()),
-            Err(e) => Err(MiniAppError::WebView(format!(
+            Err(e) => Err(LxAppError::WebView(format!(
                 "Failed to switch page: {}",
                 e
             ))),

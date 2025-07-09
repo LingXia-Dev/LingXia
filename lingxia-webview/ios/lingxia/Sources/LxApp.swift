@@ -4,11 +4,11 @@ import WebKit
 import os.log
 import CLingXiaFFI
 
-/// MiniApp launch mode
-public enum MiniAppLaunchMode {
-    /// Replace root view controller - for MiniApp as main app
+/// LxApp launch mode
+public enum LxAppLaunchMode {
+    /// Replace root view controller - for LxApp as main app
     case replaceRoot
-    /// Present modally - for MiniApp as sub-module in existing app
+    /// Present modally - for LxApp as sub-module in existing app
     case modal
 }
 
@@ -33,26 +33,26 @@ public let ACTION_CLOSE_MINIAPP = "com.lingxia.CLOSE_MINIAPP_ACTION"
 /// Usage:
 /// ```swift
 /// // Initialize the system
-/// MiniApp.initialize()
+/// LxApp.initialize()
 ///
 /// // Open the home mini app
-/// MiniApp.openHomeMiniApp()
+/// LxApp.openHomeLxApp()
 /// ```
 @MainActor
-public class MiniApp {
-    nonisolated private static let log = OSLog(subsystem: "LingXia", category: "MiniApp")
+public class LxApp {
+    nonisolated private static let log = OSLog(subsystem: "LingXia", category: "LxApp")
 
     /// Singleton instance
-    private static var instance: MiniApp?
+    private static var instance: LxApp?
 
-    /// Launch mode for MiniApp behavior
-    private static var launchMode: MiniAppLaunchMode = .replaceRoot
+    /// Launch mode for LxApp behavior
+    private static var launchMode: LxAppLaunchMode = .replaceRoot
 
     /// Home mini app identifier obtained from native initialization
-    internal static var homeMiniAppId: String?
+    internal static var homeLxAppId: String?
 
     /// Home mini app initial route obtained from native initialization
-    internal static var homeMiniAppInitialRoute: String?
+    internal static var homeLxAppInitialRoute: String?
 
     /// Storage for last active paths of miniapps to restore state when reopening
     private static var lastActivePaths: [String: String] = [:]
@@ -64,17 +64,17 @@ public class MiniApp {
         self.context = context
     }
 
-    /// Initializes the MiniApp system
+    /// Initializes the LxApp system
     ///
-    /// This method must be called before any other MiniApp operations.
+    /// This method must be called before any other LxApp operations.
     /// It sets up the necessary infrastructure and obtains configuration
     /// from the native layer.
     ///
     /// - Parameter mode: Launch mode (.replaceRoot for main app, .modal for sub-module)
     /// - Warning: Must be called on the main thread
-    public static func initialize(mode: MiniAppLaunchMode = .replaceRoot) {
-        if homeMiniAppId != nil {
-            os_log("MiniApp.initialize() already called (homeMiniAppId exists), skipping", log: log, type: .info)
+    public static func initialize(mode: LxAppLaunchMode = .replaceRoot) {
+        if homeLxAppId != nil {
+            os_log("LxApp.initialize() already called (homeLxAppId exists), skipping", log: log, type: .info)
             return
         }
 
@@ -82,8 +82,8 @@ public class MiniApp {
         performInitialization(mode: mode)
     }
 
-    private static func performInitialization(mode: MiniAppLaunchMode) {
-        instance = MiniApp(context: UIApplication.shared)
+    private static func performInitialization(mode: LxAppLaunchMode) {
+        instance = LxApp(context: UIApplication.shared)
         configureGlobalSystemBars()
 
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?.path ?? ""
@@ -95,28 +95,28 @@ public class MiniApp {
         if let initResult = initResultString {
             let parts = initResult.components(separatedBy: ":")
             if parts.count >= 2 {
-                homeMiniAppId = parts[0]
-                homeMiniAppInitialRoute = Array(parts[1...]).joined(separator: ":")
-                os_log("Initialized with home app: %@ at %@", log: log, type: .info, homeMiniAppId!, homeMiniAppInitialRoute!)
+                homeLxAppId = parts[0]
+                homeLxAppInitialRoute = Array(parts[1...]).joined(separator: ":")
+                os_log("Initialized with home app: %@ at %@", log: log, type: .info, homeLxAppId!, homeLxAppInitialRoute!)
             } else {
-                os_log("Failed to parse home MiniApp details: %@", log: log, type: .error, initResult)
+                os_log("Failed to parse home LxApp details: %@", log: log, type: .error, initResult)
             }
         } else {
-            os_log("Failed to get home MiniApp details from native init", log: log, type: .error)
+            os_log("Failed to get home LxApp details from native init", log: log, type: .error)
         }
     }
 
-    /// Gets the singleton MiniApp instance
-    public static func getInstance() -> MiniApp {
+    /// Gets the singleton LxApp instance
+    public static func getInstance() -> LxApp {
         guard let instance = instance else {
-            fatalError("MiniApp not initialized")
+            fatalError("LxApp not initialized")
         }
         return instance
     }
 
     /// Opens a mini app in a new view controller
     ///
-    /// This method creates and presents a new MiniAppViewController for the
+    /// This method creates and presents a new LxAppViewController for the
     /// specified mini app. The view controller is presented modally from the
     /// current root view controller.
     ///
@@ -124,7 +124,7 @@ public class MiniApp {
     ///   - appId: The unique identifier of the mini app
     ///   - path: The initial page path within the mini app
     /// - Note: Automatically ensures execution on main thread for UI operations
-    nonisolated public static func openMiniApp(appid: RustStr, path: RustStr) -> Bool {
+    nonisolated public static func openLxApp(appid: RustStr, path: RustStr) -> Bool {
         let appidString = appid.toString()
         let pathString = path.toString()
         os_log("Opening app: %@ at %@", log: log, type: .info, appidString, pathString)
@@ -143,11 +143,11 @@ public class MiniApp {
     /// an error is logged and no action is taken.
     ///
     /// - Note: The home app ID and route are set during initialize()
-    public static func openHomeMiniApp() {
-        if let homeMiniAppId = homeMiniAppId, let homeMiniAppInitialRoute = homeMiniAppInitialRoute {
-            _ = homeMiniAppId.toRustStr { appidRustStr in
-                homeMiniAppInitialRoute.toRustStr { pathRustStr in
-                    MiniApp.openMiniApp(appid: appidRustStr, path: pathRustStr)
+    public static func openHomeLxApp() {
+        if let homeLxAppId = homeLxAppId, let homeLxAppInitialRoute = homeLxAppInitialRoute {
+            _ = homeLxAppId.toRustStr { appidRustStr in
+                homeLxAppInitialRoute.toRustStr { pathRustStr in
+                    LxApp.openLxApp(appid: appidRustStr, path: pathRustStr)
                 }
             }
         } else {
@@ -157,9 +157,9 @@ public class MiniApp {
 
     /// Closes a mini app with the specified appId (called from Rust layer)
     /// This is the main API for programmatic miniapp closure
-    nonisolated public static func closeMiniApp(appid: RustStr) -> Bool {
+    nonisolated public static func closeLxApp(appid: RustStr) -> Bool {
         let appidString = appid.toString()
-        os_log("Closing MiniApp: %@", log: log, type: .info, appidString)
+        os_log("Closing LxApp: %@", log: log, type: .info, appidString)
 
         DispatchQueue.main.async {
             NotificationCenter.default.post(
@@ -172,7 +172,7 @@ public class MiniApp {
     }
 
     /**
-     * Switches the current page within a running MiniAppViewController
+     * Switches the current page within a running LxAppViewController
      * - Note: Automatically ensures execution on main thread for UI operations
      */
     nonisolated public static func switchPage(appid: RustStr, path: RustStr) -> Bool {
@@ -207,14 +207,14 @@ public class MiniApp {
     private func openInNewViewController(appId: String, path: String) {
         guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
               let window = windowScene.windows.first else {
-            os_log("Failed to get window for presenting MiniAppViewController", log: Self.log, type: .error)
+            os_log("Failed to get window for presenting LxAppViewController", log: Self.log, type: .error)
             return
         }
 
         let actualPath: String
-        let storedPath = MiniApp.getLastActivePath(appId: appId, defaultPath: path)
+        let storedPath = LxApp.getLastActivePath(appId: appId, defaultPath: path)
 
-        if storedPath != path && appId != MiniApp.homeMiniAppId {
+        if storedPath != path && appId != LxApp.homeLxAppId {
             actualPath = storedPath
             os_log("openInNewViewController: Using stored path for state restoration: %@ (requested: %@)",
                    log: Self.log, type: .info, actualPath, path)
@@ -227,10 +227,10 @@ public class MiniApp {
         let openResult = lingxia.onMiniappOpened(appId, actualPath)
         os_log("onMiniappOpened completed with result=%d for appId=%@ path=%@", log: Self.log, type: .info, openResult, appId, actualPath)
 
-        // Create MiniAppViewController - it will find and setup WebView in viewDidLoad
-        let miniAppVC = MiniAppViewController(appId: appId, path: actualPath)
+        // Create LxAppViewController - it will find and setup WebView in viewDidLoad
+        let miniAppVC = LxAppViewController(appId: appId, path: actualPath)
 
-        switch MiniApp.launchMode {
+        switch LxApp.launchMode {
         case .replaceRoot:
             setupNavigationStack(window: window, newController: miniAppVC)
         case .modal:
@@ -244,13 +244,13 @@ public class MiniApp {
     }
 
     /// Sets up navigation stack for miniapp management
-    private func setupNavigationStack(window: UIWindow, newController: MiniAppViewController) {
+    private func setupNavigationStack(window: UIWindow, newController: LxAppViewController) {
         if let currentRootVC = window.rootViewController {
             if let navController = currentRootVC as? UINavigationController {
                 navController.pushViewController(newController, animated: false)
-            } else if let currentMiniAppVC = currentRootVC as? MiniAppViewController {
+            } else if let currentLxAppVC = currentRootVC as? LxAppViewController {
                 window.rootViewController = nil
-                let navController = UINavigationController(rootViewController: currentMiniAppVC)
+                let navController = UINavigationController(rootViewController: currentLxAppVC)
                 navController.setNavigationBarHidden(true, animated: false)
                 navController.pushViewController(newController, animated: false)
                 window.rootViewController = navController
@@ -292,7 +292,7 @@ public class MiniApp {
 /// Simple controller stack to simulate Android's Activity stack behavior
 /// This helps maintain state when switching between miniapps
 @MainActor
-class MiniAppControllerStack {
+class LxAppControllerStack {
     private static let log = OSLog(subsystem: "LingXia", category: "ControllerStack")
 
     /// Represents the state of a previous controller

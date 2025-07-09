@@ -34,7 +34,7 @@ const DOMAIN = 0x0000;
 const TAG = 'LingXia.TabBar';
 
 /**
- * TabBar component for MiniApp
+ * TabBar component for LxApp
  * Displays bottom tab bar with navigation items
  */
 @Component

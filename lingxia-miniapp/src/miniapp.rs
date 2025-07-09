@@ -10,13 +10,13 @@ use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
 
 use crate::app::AppConfig;
-use crate::appservice::{self, MiniAppServiceManager};
-use crate::error::MiniAppError;
+use crate::appservice::{self, LxAppServiceManager};
+use crate::error::LxAppError;
 use crate::log::{self, LogLevel, LogTag};
 pub use crate::page::PageState;
 use crate::page::{Page, Pages};
 use crate::{AppRuntime, error, info};
-use config::{MiniAppConfig, PageConfig};
+use config::{LxAppConfig, PageConfig};
 use security::NetworkSecurity; // Import the new logging macros
 
 mod config;
@@ -39,10 +39,10 @@ const DEFAULT_USER_ID: &str = "default";
 const DEFAULT_VERSION: &str = "0.0.1";
 
 /// Manages a collection of mini applications
-pub struct MiniApps {
+pub struct LxApps {
     /// Collection of mini apps, keyed by app ID
     /// Uses DashMap for thread-safe concurrent access
-    miniapps: DashMap<String, Arc<MiniApp>>,
+    miniapps: DashMap<String, Arc<LxApp>>,
 
     /// Reference to the platform-specific app runtime
     /// Provides file system access, UI callbacks, etc.
@@ -54,17 +54,17 @@ pub struct MiniApps {
 
     /// Reference to the app service manager
     /// Handles background services for mini apps
-    svc_manager: Arc<Mutex<MiniAppServiceManager>>,
+    svc_manager: Arc<Mutex<LxAppServiceManager>>,
 
     /// Current user ID (hashed for privacy)
     /// Used to generate directory names for user-specific storage
     user_id: Mutex<String>,
 }
 
-impl MiniApps {
+impl LxApps {
     fn new<T: AppRuntime + 'static>(
         runtime: T,
-        svc_manager: Arc<Mutex<MiniAppServiceManager>>,
+        svc_manager: Arc<Mutex<LxAppServiceManager>>,
         max_apps: usize,
     ) -> Self {
         let runtime = Arc::new(runtime);
@@ -109,8 +109,8 @@ impl MiniApps {
         }
     }
 
-    /// Get or initialize a specific MiniApp instance by appid
-    pub fn get_or_init_miniapp(&self, appid: String) -> Arc<MiniApp> {
+    /// Get or initialize a specific LxApp instance by appid
+    pub fn get_or_init_miniapp(&self, appid: String) -> Arc<LxApp> {
         // If the miniapp already exists, return it directly
         if let Some(app_arc) = self.miniapps.get(&appid) {
             return app_arc.clone();
@@ -122,8 +122,8 @@ impl MiniApps {
             self.destroy_least_active_miniapp();
         }
 
-        // Create new MiniApp
-        let new_miniapp = Arc::new(MiniApp::new(
+        // Create new LxApp
+        let new_miniapp = Arc::new(LxApp::new(
             appid.clone(),
             self.runtime.clone(),
             self.svc_manager.clone(),
@@ -172,14 +172,14 @@ impl MiniApps {
     }
 
     /// Uninstall a mini app by removing its files and version record
-    pub fn uninstall_miniapp(&self, appid: &str) -> Result<(), MiniAppError> {
+    pub fn uninstall_miniapp(&self, appid: &str) -> Result<(), LxAppError> {
         // Log operation
         info!("Uninstalling mini app").with_appid(appid);
 
         // Get or create the miniapp instance
         let app_arc = self.get_or_init_miniapp(appid.to_string());
 
-        // Call the uninstall method on the MiniApp instance
+        // Call the uninstall method on the LxApp instance
         let result = app_arc.uninstall();
 
         // If successful, remove the app from the collection
@@ -191,8 +191,8 @@ impl MiniApps {
     }
 }
 
-/// Mutable state of a MiniApp that requires synchronization
-pub(crate) struct MiniAppState {
+/// Mutable state of a LxApp that requires synchronization
+pub(crate) struct LxAppState {
     /// Collection of pages in this app with their current states
     /// Manages page lifecycle (show/hide/destroy)
     pages: Pages,
@@ -214,7 +214,7 @@ pub(crate) struct MiniAppState {
     network_security: NetworkSecurity,
 }
 
-impl MiniAppState {
+impl LxAppState {
     fn new() -> Self {
         Self {
             pages: Pages::new(),
@@ -227,7 +227,7 @@ impl MiniAppState {
 }
 
 /// Represents a single mini application
-pub struct MiniApp {
+pub struct LxApp {
     // Immutable data - initialized once and never changed
     pub appid: String,
     pub runtime: Arc<dyn AppRuntime>,
@@ -237,25 +237,25 @@ pub struct MiniApp {
     pub user_cache_dir: PathBuf,
     pub home_miniapp: bool,
     pub version: String,
-    config: MiniAppConfig,
-    svc_manager: Arc<Mutex<MiniAppServiceManager>>,
+    config: LxAppConfig,
+    svc_manager: Arc<Mutex<LxAppServiceManager>>,
 
     // Mutable state - protected by mutex for fine-grained locking
-    pub(crate) state: Mutex<MiniAppState>,
+    pub(crate) state: Mutex<LxAppState>,
 }
 
 #[derive(FromJSObj)]
-pub struct MiniAppNavigator {
+pub struct LxAppNavigator {
     #[rename = "appId"]
     pub appid: String,
     pub path: String,
 }
 
-impl MiniApp {
+impl LxApp {
     fn _new(
         appid: String,
         runtime: Arc<dyn AppRuntime>,
-        svc_manager: Arc<Mutex<MiniAppServiceManager>>,
+        svc_manager: Arc<Mutex<LxAppServiceManager>>,
     ) -> Self {
         Self {
             appid,
@@ -266,9 +266,9 @@ impl MiniApp {
             user_cache_dir: PathBuf::new(),
             home_miniapp: false,
             version: String::new(),
-            config: MiniAppConfig::default(),
+            config: LxAppConfig::default(),
             svc_manager,
-            state: Mutex::new(MiniAppState::new()),
+            state: Mutex::new(LxAppState::new()),
         }
     }
 
@@ -276,7 +276,7 @@ impl MiniApp {
     fn new(
         appid: String,
         runtime: Arc<dyn AppRuntime>,
-        svc_manager: Arc<Mutex<MiniAppServiceManager>>,
+        svc_manager: Arc<Mutex<LxAppServiceManager>>,
     ) -> Self {
         let mut app = Self::_new(appid, runtime, svc_manager);
         if let Err(e) = app.setup() {
@@ -286,11 +286,11 @@ impl MiniApp {
         app
     }
 
-    /// Create a new MiniApp instance marked as the home mini app
+    /// Create a new LxApp instance marked as the home mini app
     fn new_as_home(
         appid: String,
         runtime: Arc<dyn AppRuntime>,
-        svc_manager: Arc<Mutex<MiniAppServiceManager>>,
+        svc_manager: Arc<Mutex<LxAppServiceManager>>,
     ) -> Self {
         let mut app = Self::_new(appid, runtime, svc_manager);
 
@@ -305,7 +305,7 @@ impl MiniApp {
     }
 
     // Setup will initialize paths and load config
-    fn setup(&mut self) -> Result<(), MiniAppError> {
+    fn setup(&mut self) -> Result<(), LxAppError> {
         // Get the app's version
         self.version = self.read_version();
 
@@ -328,7 +328,7 @@ impl MiniApp {
         self.lxapp_dir = base_dir.join(&dir_name);
         if !self.lxapp_dir.exists() {
             std::fs::create_dir_all(&self.lxapp_dir).map_err(|e| {
-                MiniAppError::IoError(format!("Failed to create lx apps directory: {}", e))
+                LxAppError::IoError(format!("Failed to create lx apps directory: {}", e))
             })?;
         }
 
@@ -348,7 +348,7 @@ impl MiniApp {
         self.user_data_dir = userdata_base_dir.join(&dir_name);
         if !self.user_data_dir.exists() {
             std::fs::create_dir_all(&self.user_data_dir).map_err(|e| {
-                MiniAppError::IoError(format!("Failed to create user data directory: {}", e))
+                LxAppError::IoError(format!("Failed to create user data directory: {}", e))
             })?;
         }
 
@@ -362,15 +362,15 @@ impl MiniApp {
         self.user_cache_dir = cache_base_dir.join(&dir_name);
         if !self.user_cache_dir.exists() {
             std::fs::create_dir_all(&self.user_cache_dir).map_err(|e| {
-                MiniAppError::IoError(format!("Failed to create cache directory: {}", e))
+                LxAppError::IoError(format!("Failed to create cache directory: {}", e))
             })?;
         }
 
         // Load app configuration if it exists
         self.read_json("lxapp.json")
             .map(|app_json| {
-                self.config = MiniAppConfig::from_value(app_json)
-                    .map_err(|e| MiniAppError::InvalidJsonFile(format!("lxapp.json: {}", e)))?;
+                self.config = LxAppConfig::from_value(app_json)
+                    .map_err(|e| LxAppError::InvalidJsonFile(format!("lxapp.json: {}", e)))?;
 
                 // Set tabbar items in the state
                 let mut state = self.state.lock().unwrap();
@@ -406,25 +406,25 @@ impl MiniApp {
     }
 
     // Reads binary data from the specified relative path
-    fn read_bytes(&self, relative_path: &str) -> Result<Vec<u8>, MiniAppError> {
+    fn read_bytes(&self, relative_path: &str) -> Result<Vec<u8>, LxAppError> {
         let file_path = self.lxapp_dir.join(relative_path);
 
         // Try to read from the filesystem
         fs::read(file_path)
-            .map_err(|e| MiniAppError::ResourceNotFound(format!("{}:{}", relative_path, e)))
+            .map_err(|e| LxAppError::ResourceNotFound(format!("{}:{}", relative_path, e)))
     }
 
     /// Reads text content from the specified relative path
-    fn read_text(&self, relative_path: &str) -> Result<String, MiniAppError> {
+    fn read_text(&self, relative_path: &str) -> Result<String, LxAppError> {
         self.read_bytes(relative_path)
             .map(|content| String::from_utf8_lossy(&content).to_string())
     }
 
     /// Reads and parses JSON content from the specified relative path
-    fn read_json(&self, relative_path: &str) -> Result<serde_json::Value, MiniAppError> {
+    fn read_json(&self, relative_path: &str) -> Result<serde_json::Value, LxAppError> {
         self.read_text(relative_path).and_then(|content| {
             serde_json::from_str(&content)
-                .map_err(|_| MiniAppError::InvalidJsonFile(relative_path.to_string()))
+                .map_err(|_| LxAppError::InvalidJsonFile(relative_path.to_string()))
         })
     }
 
@@ -485,7 +485,7 @@ impl MiniApp {
         }
     }
 
-    pub fn navigator_to_miniapp(&self, to: MiniAppNavigator) -> Result<(), MiniAppError> {
+    pub fn navigator_to_lxapp(&self, to: LxAppNavigator) -> Result<(), LxAppError> {
         // ignore if appid is the same
         if self.appid == to.appid {
             return Ok(());
@@ -494,7 +494,7 @@ impl MiniApp {
         if let Some(manager) = MINIAPPS_MANAGER.get() {
             let app = manager.get_or_init_miniapp(to.appid.clone());
             if !app.is_opened() {
-                app.runtime.open_miniapp(to.appid, to.path)?;
+                app.runtime.open_lxapp(to.appid, to.path)?;
             }
         }
         Ok(())
@@ -504,11 +504,11 @@ impl MiniApp {
     ///
     /// # Returns
     /// * `Ok(())` - If the mini app was uninstalled successfully
-    /// * `Err(MiniAppError)` - If there was an error during uninstallation
-    pub fn uninstall(&self) -> Result<(), MiniAppError> {
+    /// * `Err(LxAppError)` - If there was an error during uninstallation
+    pub fn uninstall(&self) -> Result<(), LxAppError> {
         // Don't allow uninstalling the home app
         if self.home_miniapp {
-            return Err(MiniAppError::UnsupportedOperation(
+            return Err(LxAppError::UnsupportedOperation(
                 "Cannot uninstall the home mini app".to_string(),
             ));
         }
@@ -559,7 +559,7 @@ fn generate_app_hash(app_id: &str, user_id: &str) -> String {
 }
 
 /// Prepares the base directory structure for mini apps
-fn prepare_directory_structure<T: AppRuntime + ?Sized>(runtime: &T) -> Result<(), MiniAppError> {
+fn prepare_directory_structure<T: AppRuntime + ?Sized>(runtime: &T) -> Result<(), LxAppError> {
     let data_dir = runtime.app_data_dir();
     let cache_dir = runtime.app_cache_dir();
 
@@ -581,10 +581,10 @@ fn prepare_directory_structure<T: AppRuntime + ?Sized>(runtime: &T) -> Result<()
 
 pub trait AppUiDelegate {
     /// Get tabbar configuration for mini app
-    fn get_tab_bar_config(self: &Arc<Self>) -> Result<String, MiniAppError>;
+    fn get_tab_bar_config(self: &Arc<Self>) -> Result<String, LxAppError>;
 
     /// Get page configuration for a specific page
-    fn get_page_config(self: &Arc<Self>, path: &str) -> Result<String, MiniAppError>;
+    fn get_page_config(self: &Arc<Self>, path: &str) -> Result<String, LxAppError>;
 
     /// Called when mini app is opened
     fn on_miniapp_opened(self: Arc<Self>, path: String);
@@ -638,8 +638,8 @@ pub trait AppUiDelegate {
     fn log(self: &Arc<Self>, path: &str, level: LogLevel, message: &str);
 }
 
-impl AppUiDelegate for MiniApp {
-    fn get_tab_bar_config(self: &Arc<Self>) -> Result<String, MiniAppError> {
+impl AppUiDelegate for LxApp {
+    fn get_tab_bar_config(self: &Arc<Self>) -> Result<String, LxAppError> {
         // Handle TabBar configuration
         if let Some(tab_bar_json) = self.config.get_tabbar_json_with_base_path(&self.lxapp_dir) {
             // crate::info!("TabBar: {}", tab_bar_json);
@@ -650,7 +650,7 @@ impl AppUiDelegate for MiniApp {
         }
     }
 
-    fn get_page_config(self: &Arc<Self>, path: &str) -> Result<String, MiniAppError> {
+    fn get_page_config(self: &Arc<Self>, path: &str) -> Result<String, LxAppError> {
         // Handle different possible path formats:
         // 1. "pages/home/index.html" -> "pages/home/index.json"
         // 2. "pages/home/index" -> "pages/home/index.json"
@@ -678,18 +678,18 @@ impl AppUiDelegate for MiniApp {
         match result {
             Ok(page_config_value) => {
                 let page_config = PageConfig::from_value(page_config_value).map_err(|e| {
-                    MiniAppError::InvalidJsonFile(format!("{}:{}", page_config_path, e))
+                    LxAppError::InvalidJsonFile(format!("{}:{}", page_config_path, e))
                 })?;
 
                 serde_json::to_string(&page_config).map_err(|e| {
-                    MiniAppError::InvalidJsonFile(format!("Failed to serialize PageConfig: {}", e))
+                    LxAppError::InvalidJsonFile(format!("Failed to serialize PageConfig: {}", e))
                 })
             }
             Err(_) => {
                 // Fallback to default page config
                 let default_config = PageConfig::default();
                 serde_json::to_string(&default_config).map_err(|e| {
-                    MiniAppError::InvalidJsonFile(format!(
+                    LxAppError::InvalidJsonFile(format!(
                         "Failed to serialize default PageConfig: {}",
                         e
                     ))
@@ -975,10 +975,10 @@ impl AppUiDelegate for MiniApp {
     }
 }
 
-// Global instance of MiniApps manager
-static MINIAPPS_MANAGER: OnceLock<Arc<MiniApps>> = OnceLock::new();
+// Global instance of LxApps manager
+static MINIAPPS_MANAGER: OnceLock<Arc<LxApps>> = OnceLock::new();
 
-/// Initialize the MiniApps singleton
+/// Initialize the LxApps singleton
 /// Returns an Option of (home_app_id, initial_route) on success.
 pub fn init<R: AppRuntime + 'static>(runtime: R) -> Option<(String, String)> {
     // Set up panic hook to capture panic information
@@ -1018,15 +1018,15 @@ pub fn init<R: AppRuntime + 'static>(runtime: R) -> Option<(String, String)> {
                     &home_lxapp_appid,
                     home_lxapp_version,
                 ) {
-                    error!("Failed to install home MiniApp: {}", e);
+                    error!("Failed to install home LxApp: {}", e);
                     return None;
                 }
             }
 
             let svc_manager = appservice::init(max_apps);
 
-            // Create the home MiniApp instance
-            let home_miniapp = MiniApp::new_as_home(
+            // Create the home LxApp instance
+            let home_miniapp = LxApp::new_as_home(
                 home_lxapp_appid.clone(),
                 runtime_arc.clone(),
                 svc_manager.clone(),
@@ -1039,7 +1039,7 @@ pub fn init<R: AppRuntime + 'static>(runtime: R) -> Option<(String, String)> {
                     &home_lxapp_appid,
                     home_lxapp_version,
                 ) {
-                    error!("Failed to install home MiniApp: {}", e);
+                    error!("Failed to install home LxApp: {}", e);
 
                     return None;
                 }
@@ -1048,9 +1048,9 @@ pub fn init<R: AppRuntime + 'static>(runtime: R) -> Option<(String, String)> {
             // Get the initial route from the configured home_miniapp
             let initial_route = home_miniapp.config.get_initial_route();
 
-            // Create MiniApps manager
+            // Create LxApps manager
             let miniapps_manager =
-                Arc::new(MiniApps::new(runtime_arc.clone(), svc_manager, max_apps));
+                Arc::new(LxApps::new(runtime_arc.clone(), svc_manager, max_apps));
 
             // Add home miniapp to the manager
             let home_miniapp_arc = Arc::new(home_miniapp);
@@ -1060,24 +1060,24 @@ pub fn init<R: AppRuntime + 'static>(runtime: R) -> Option<(String, String)> {
 
             // Set global instance
             if MINIAPPS_MANAGER.set(miniapps_manager).is_err() {
-                error!("MiniApps manager singleton had been initialized by another instance");
+                error!("LxApps manager singleton had been initialized by another instance");
                 return None;
             }
 
-            info!("MiniApps initialized successfully");
+            info!("LxApps initialized successfully");
             Some((home_lxapp_appid, initial_route))
         }
 
         Err(e) => {
             // Provide more detailed error messages for different error types
             let error_message = match e {
-                MiniAppError::InvalidParameter(msg) => {
+                LxAppError::InvalidParameter(msg) => {
                     format!("Configuration validation failed: {}", msg)
                 }
-                MiniAppError::InvalidJsonFile(msg) => {
+                LxAppError::InvalidJsonFile(msg) => {
                     format!("Invalid app.json file: {}", msg)
                 }
-                MiniAppError::IoError(msg) => {
+                LxAppError::IoError(msg) => {
                     format!("I/O error while reading configuration: {}", msg)
                 }
                 _ => format!("Failed to load app configuration: {}", e),
@@ -1089,20 +1089,20 @@ pub fn init<R: AppRuntime + 'static>(runtime: R) -> Option<(String, String)> {
     }
 }
 
-/// Get a specific MiniApp instance by appid
+/// Get a specific LxApp instance by appid
 ///
-/// If the MiniApp with the given appid exists, it returns a reference to it.
+/// If the LxApp with the given appid exists, it returns a reference to it.
 ///
 /// # Arguments
 /// * `appid` - The ID of the mini app to get or create
 ///
 /// # Returns
-/// A thread-safe reference to the MiniApp
+/// A thread-safe reference to the LxApp
 ///
 /// # Panics
-/// Panics if `MiniApps` is not initialized or MiniApp doesn't exist
-pub fn get(appid: String) -> Arc<MiniApp> {
-    let manager = MINIAPPS_MANAGER.get().expect("MiniApps not initialized");
+/// Panics if `LxApps` is not initialized or LxApp doesn't exist
+pub fn get(appid: String) -> Arc<LxApp> {
+    let manager = MINIAPPS_MANAGER.get().expect("LxApps not initialized");
     if let Some(app_arc) = manager.miniapps.get(&appid) {
         return app_arc.clone();
     }

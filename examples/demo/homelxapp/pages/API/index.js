@@ -9,7 +9,7 @@ Page({
     console.log("API page onHide");
   },
 
-  openMiniProgram: function (option) {
+  openLxApp: function (option) {
     console.log("getDeviceInfo:", JSON.stringify(lx.getDeviceInfo()));
     lx.navigateToMiniProgram(option);
   },

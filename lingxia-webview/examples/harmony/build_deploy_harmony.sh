@@ -19,7 +19,7 @@ SCREENSHOT_LOCAL_PATH="./lingxia_screenshot.jpeg"
 export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_OHOS_LINKER="$OHOS_NDK_HOME/native/llvm/bin/aarch64-unknown-linux-ohos-clang"
 export CPATH=$OHOS_NDK_HOME/native/sysroot/usr/include/:$OHOS_NDK_HOME/native/sysroot/usr/include/aarch64-linux-ohos
 
-echo -e "${BLUE}🚀 LingXia MiniApp Harmony Build & Deploy Script${NC}"
+echo -e "${BLUE}🚀 LingXia LxApp Harmony Build & Deploy Script${NC}"
 echo "=================================================="
 
 # Get the absolute path of the script directory
@@ -72,9 +72,9 @@ build_rust() {
     cd "$SCRIPT_DIR"
 }
 
-# Function to build and copy MiniApp assets
+# Function to build and copy LxApp assets
 build_miniapp_assets() {
-    print_step "2" "Building MiniApp Assets"
+    print_step "2" "Building LxApp Assets"
 
     ASSETS_DIR="$SCRIPT_DIR/entry/src/main/resources/rawfile"
     mkdir -p "$ASSETS_DIR"
@@ -87,7 +87,7 @@ build_miniapp_assets() {
     echo "Copying host app configuration..."
     cp "$LINGXIA_ROOT/examples/demo/app.json" "$ASSETS_DIR/"
 
-    echo "Building and copying demo MiniApp..."
+    echo "Building and copying demo LxApp..."
     cd "$LINGXIA_ROOT/examples/demo/homelxapp"
     if [ -f "package.json" ] && [ -f "vite.config.js" ]; then
         echo "Building homelxapp with Vite..."
@@ -95,7 +95,7 @@ build_miniapp_assets() {
         npm run build
 
         if [ -d "dist" ]; then
-            echo "Copying built MiniApp to assets..."
+            echo "Copying built LxApp to assets..."
             mkdir -p "$ASSETS_DIR/homelxapp"
             cp -R dist/* "$ASSETS_DIR/homelxapp/"
         else
@@ -108,7 +108,7 @@ build_miniapp_assets() {
         cp -R "$LINGXIA_ROOT/examples/demo/homelxapp/"* "$ASSETS_DIR/homelxapp/"
     fi
 
-    echo -e "${GREEN}✅ MiniApp assets copied${NC}"
+    echo -e "${GREEN}✅ LxApp assets copied${NC}"
     cd "$SCRIPT_DIR"
 }
 
@@ -169,7 +169,7 @@ capture_logs() {
     echo "----------------------------------------"
 
     # Show logs and filter for LingXia
-    timeout 30s hdc hilog | grep -E "(LingXia|MiniApp|WebView)"
+    timeout 30s hdc hilog | grep -E "(LingXia|LxApp|WebView)"
 }
 
 # Main execution
@@ -187,7 +187,7 @@ main() {
     capture_logs
 
     echo -e "\n${GREEN}🎉 Build and deploy completed successfully!${NC}"
-    echo -e "${GREEN}📱 LingXia MiniApp should now be running on your device${NC}"
+    echo -e "${GREEN}📱 LingXia LxApp should now be running on your device${NC}"
 }
 
 # Parse arguments
@@ -236,7 +236,7 @@ echo "Clearing existing logs..."
 timeout 2s hdc shell hilog -r >/dev/null 2>&1 || true
 
 echo "Starting log capture in background..."
-timeout 30s hdc hilog | grep -E "(LingXia|MiniApp|WebView)" &
+timeout 30s hdc hilog | grep -E "(LingXia|LxApp|WebView)" &
 LOG_PID=$!
 
 # Now start the app

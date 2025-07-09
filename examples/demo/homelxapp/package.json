@@ -1,7 +1,7 @@
 {
   "name": "homelxapp",
   "version": "1.0.0",
-  "description": "LingXia MiniApp demo with unified logic.js build system",
+  "description": "LingXia LxApp demo with unified logic.js build system",
   "type": "module",
   "scripts": {
     "build": "NODE_ENV=development vite build",

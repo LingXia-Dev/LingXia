@@ -1,5 +1,5 @@
 /**
- * Common utility functions for LingXia MiniApp
+ * Common utility functions for LingXia LxApp
  */
 
 // Format date to readable string

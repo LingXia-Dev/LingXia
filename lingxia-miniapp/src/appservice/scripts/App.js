@@ -1,5 +1,5 @@
 /**
- * LingXia MiniApp App Service
+ * LingXia LxApp App Service
  * Provides App() function and getApp() global function
  */
 
@@ -22,8 +22,8 @@ function App(appConfig) {
     globalData: appConfig.globalData || {},
   };
 
-  // Create MiniAppSvc for Rust side but store original instance for getApp()
-  const miniAppSvc = new MiniAppSvc(appInstance);
+  // Create LxAppSvc for Rust side but store original instance for getApp()
+  const miniAppSvc = new LxAppSvc(appInstance);
   __APP_INSTANCE__ = appInstance;
 
   console.log("📱 App instance created");

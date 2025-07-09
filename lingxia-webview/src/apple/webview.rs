@@ -1,7 +1,7 @@
 use block2::Block;
 use dispatch2::DispatchQueue;
 use miniapp::log::LogLevel;
-use miniapp::{AppUiDelegate, MiniAppError, WebViewController};
+use miniapp::{AppUiDelegate, LxAppError, WebViewController};
 use objc2::runtime::{AnyObject, NSObject, ProtocolObject};
 use objc2::{
     DefinedClass, MainThreadMarker, MainThreadOnly, class, define_class, msg_send, rc::Retained,
@@ -187,10 +187,10 @@ unsafe impl Sync for WebViewInner {}
 
 impl WebViewInner {
     /// Create a new WebView using objc2 directly
-    pub(crate) fn create(appid: &str, path: &str) -> Result<Self, MiniAppError> {
+    pub(crate) fn create(appid: &str, path: &str) -> Result<Self, LxAppError> {
         // Ensure we're on the main thread for WebView creation
         let mtm = MainThreadMarker::new().ok_or_else(|| {
-            MiniAppError::WebView("WebView creation must be on main thread".to_string())
+            LxAppError::WebView("WebView creation must be on main thread".to_string())
         })?;
 
         log::info!(
@@ -237,7 +237,7 @@ impl WebViewInner {
                 log::error!(
                     "❌ CRITICAL: Failed to create scheme handler - WebView will not handle lx:// URLs!"
                 );
-                return Err(MiniAppError::WebView(
+                return Err(LxAppError::WebView(
                     "Failed to create scheme handler - not on main thread".to_string(),
                 ));
             }
@@ -258,7 +258,7 @@ impl WebViewInner {
             let webview: *mut AnyObject = msg_send![webview_class, alloc];
             if webview.is_null() {
                 log::error!("Failed to allocate WKWebView");
-                return Err(MiniAppError::WebView(
+                return Err(LxAppError::WebView(
                     "Failed to allocate WKWebView".to_string(),
                 ));
             }
@@ -268,7 +268,7 @@ impl WebViewInner {
                 msg_send![webview, initWithFrame: frame, configuration: &*config];
             if webview.is_null() {
                 log::error!("Failed to initialize WKWebView");
-                return Err(MiniAppError::WebView(
+                return Err(LxAppError::WebView(
                     "Failed to initialize WKWebView".to_string(),
                 ));
             }
@@ -313,7 +313,7 @@ impl WebViewInner {
         webview: *mut AnyObject,
         appid: &str,
         path: &str,
-    ) -> Result<Retained<LingXiaMessageHandler>, MiniAppError> {
+    ) -> Result<Retained<LingXiaMessageHandler>, LxAppError> {
         unsafe {
             // Get the configuration from the WebView
             let config: *mut AnyObject = msg_send![webview, configuration];
@@ -380,7 +380,7 @@ impl WebViewInner {
                 path.to_string(),
                 MainThreadMarker::new().unwrap(),
             )
-            .ok_or_else(|| MiniAppError::WebView("Failed to create message handler".to_string()))?;
+            .ok_or_else(|| LxAppError::WebView("Failed to create message handler".to_string()))?;
 
             // Register message handlers with userContentController (like Swift version)
             let lingxia_name = NSString::from_str("LingXia");
@@ -398,7 +398,7 @@ impl WebViewInner {
     }
 
     /// Helper method to load URL on main thread
-    fn load_url_on_main_thread(&self, url: String) -> Result<(), MiniAppError> {
+    fn load_url_on_main_thread(&self, url: String) -> Result<(), LxAppError> {
         unsafe {
             let ns_url_string = NSString::from_str(&url);
             if let Some(ns_url) = NSURL::URLWithString(&ns_url_string) {
@@ -406,7 +406,7 @@ impl WebViewInner {
                 let _: () = msg_send![self.webview, loadRequest: &*request];
                 Ok(())
             } else {
-                Err(MiniAppError::WebView(format!("Invalid URL: {}", url)))
+                Err(LxAppError::WebView(format!("Invalid URL: {}", url)))
             }
         }
     }
@@ -417,7 +417,7 @@ impl WebViewInner {
         data: String,
         base_url: String,
         _history_url: Option<String>,
-    ) -> Result<(), MiniAppError> {
+    ) -> Result<(), LxAppError> {
         unsafe {
             let data_nsstring = NSString::from_str(&data);
             let base_url_nsstring = NSString::from_str(&base_url);
@@ -426,7 +426,7 @@ impl WebViewInner {
                 log::info!("Loaded HTML data into WebView with base URL: {}", base_url);
                 Ok(())
             } else {
-                Err(MiniAppError::WebView(format!(
+                Err(LxAppError::WebView(format!(
                     "Invalid base URL: {}",
                     base_url
                 )))
@@ -435,7 +435,7 @@ impl WebViewInner {
     }
 
     /// Helper method to evaluate JavaScript on main thread
-    fn evaluate_javascript_on_main_thread(&self, js: String) -> Result<(), MiniAppError> {
+    fn evaluate_javascript_on_main_thread(&self, js: String) -> Result<(), LxAppError> {
         unsafe {
             let js_string = NSString::from_str(&js);
             // Note: evaluateJavaScript is async, but we're treating it as fire-and-forget
@@ -446,7 +446,7 @@ impl WebViewInner {
     }
 
     /// Helper method to clear browsing data on main thread
-    fn clear_browsing_data_on_main_thread(&self) -> Result<(), MiniAppError> {
+    fn clear_browsing_data_on_main_thread(&self) -> Result<(), LxAppError> {
         unsafe {
             // Get the website data store from the configuration
             let config: *mut AnyObject = msg_send![self.webview, configuration];
@@ -467,7 +467,7 @@ impl WebViewInner {
     }
 
     /// Helper method to set devtools on main thread
-    fn set_devtools_on_main_thread(&self, enabled: bool) -> Result<(), MiniAppError> {
+    fn set_devtools_on_main_thread(&self, enabled: bool) -> Result<(), LxAppError> {
         unsafe {
             // Check if isInspectable is available (iOS 16.4+)
             let responds: bool =
@@ -481,7 +481,7 @@ impl WebViewInner {
     }
 
     /// Helper method to set user agent on main thread
-    fn set_user_agent_on_main_thread(&self, ua: String) -> Result<(), MiniAppError> {
+    fn set_user_agent_on_main_thread(&self, ua: String) -> Result<(), LxAppError> {
         unsafe {
             let ua_string = NSString::from_str(&ua);
             let _: () = msg_send![self.webview, setCustomUserAgent: if ua.is_empty() { std::ptr::null::<NSString>() } else { &*ua_string }];
@@ -494,13 +494,13 @@ impl WebViewInner {
         &self,
         enabled: bool,
         throttle_ms: Option<u64>,
-    ) -> Result<(), MiniAppError> {
+    ) -> Result<(), LxAppError> {
         unsafe {
             // Get the scroll view from the WebView
             let scroll_view: *mut AnyObject = msg_send![self.webview, scrollView];
             if scroll_view.is_null() {
                 log::error!("Failed to get scroll view from WebView");
-                return Err(MiniAppError::WebView(
+                return Err(LxAppError::WebView(
                     "Failed to get scroll view".to_string(),
                 ));
             }
@@ -523,7 +523,7 @@ impl WebViewInner {
                         );
                     } else {
                         log::error!("Failed to create scroll delegate");
-                        return Err(MiniAppError::WebView(
+                        return Err(LxAppError::WebView(
                             "Failed to create scroll delegate".to_string(),
                         ));
                     }
@@ -548,7 +548,7 @@ impl WebViewInner {
 }
 
 impl WebViewController for WebViewInner {
-    fn load_url(&self, url: String) -> Result<(), MiniAppError> {
+    fn load_url(&self, url: String) -> Result<(), LxAppError> {
         if MainThreadMarker::new().is_some() {
             // Already on main thread, execute directly
             self.load_url_on_main_thread(url)
@@ -576,7 +576,7 @@ impl WebViewController for WebViewInner {
         data: String,
         base_url: String,
         history_url: Option<String>,
-    ) -> Result<(), MiniAppError> {
+    ) -> Result<(), LxAppError> {
         if MainThreadMarker::new().is_some() {
             // Already on main thread, execute directly
             self.load_data_on_main_thread(data, base_url, history_url)
@@ -601,7 +601,7 @@ impl WebViewController for WebViewInner {
         }
     }
 
-    fn evaluate_javascript(&self, js: String) -> Result<(), MiniAppError> {
+    fn evaluate_javascript(&self, js: String) -> Result<(), LxAppError> {
         if MainThreadMarker::new().is_some() {
             // Already on main thread, execute directly
             self.evaluate_javascript_on_main_thread(js)
@@ -622,7 +622,7 @@ impl WebViewController for WebViewInner {
         }
     }
 
-    fn clear_browsing_data(&self) -> Result<(), MiniAppError> {
+    fn clear_browsing_data(&self) -> Result<(), LxAppError> {
         if MainThreadMarker::new().is_some() {
             // Already on main thread, execute directly
             self.clear_browsing_data_on_main_thread()
@@ -645,7 +645,7 @@ impl WebViewController for WebViewInner {
         }
     }
 
-    fn set_devtools(&self, enabled: bool) -> Result<(), MiniAppError> {
+    fn set_devtools(&self, enabled: bool) -> Result<(), LxAppError> {
         if MainThreadMarker::new().is_some() {
             // Already on main thread, execute directly
             self.set_devtools_on_main_thread(enabled)
@@ -665,7 +665,7 @@ impl WebViewController for WebViewInner {
         }
     }
 
-    fn set_user_agent(&self, ua: String) -> Result<(), MiniAppError> {
+    fn set_user_agent(&self, ua: String) -> Result<(), LxAppError> {
         if MainThreadMarker::new().is_some() {
             // Already on main thread, execute directly
             self.set_user_agent_on_main_thread(ua)
@@ -688,14 +688,14 @@ impl WebViewController for WebViewInner {
         &self,
         enabled: bool,
         throttle_ms: Option<u64>,
-    ) -> Result<(), MiniAppError> {
+    ) -> Result<(), LxAppError> {
         if MainThreadMarker::new().is_some() {
             // Already on main thread, execute directly
             self.set_scroll_listener_on_main_thread(enabled, throttle_ms)
         } else {
             // Cross-thread scroll listener setup is complex and requires webtag
             // For now, return error - this should be called on main thread
-            Err(MiniAppError::WebView(
+            Err(LxAppError::WebView(
                 "Scroll listener must be set on main thread".to_string(),
             ))
         }

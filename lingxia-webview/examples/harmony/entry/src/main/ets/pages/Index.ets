@@ -1,15 +1,15 @@
-import { MiniApp, MiniAppNavigation } from 'lingxia';
+import { LxApp, LxAppNavigation } from 'lingxia';
 
 @Entry
 @Component
 struct Index {
   aboutToAppear() {
-    MiniApp.openHomeMiniApp(); 
+    LxApp.openHomeLxApp();
   }
 
   build() {
     Column() {
-      MiniAppNavigation({ autoOpenHome: false })  // Manual mode
+      LxAppNavigation({ autoOpenHome: false })
     }
     .width('100%')
     .height('100%')

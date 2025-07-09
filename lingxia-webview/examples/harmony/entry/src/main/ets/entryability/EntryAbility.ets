@@ -1,7 +1,7 @@
 import { AbilityConstant, ConfigurationConstant, UIAbility, Want } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
-import { MiniApp } from 'lingxia';
+import { LxApp } from 'lingxia';
 
 const DOMAIN = 0x0000;
 
@@ -18,8 +18,8 @@ export default class EntryAbility extends UIAbility {
     // Main window is created, set main page for this ability
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onWindowStageCreate');
 
-    // Initialize MiniApp with context and windowStage (includes status bar setup)
-    MiniApp.initialize(this.context, windowStage);
+    // Initialize LxApp with context and windowStage (includes status bar setup)
+    LxApp.initialize(this.context, windowStage);
 
     windowStage.loadContent('pages/Index', (err) => {
       if (err.code) {

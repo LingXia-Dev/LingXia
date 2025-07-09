@@ -2,7 +2,7 @@ use std::io::Read;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::error::MiniAppError;
+use crate::error::LxAppError;
 use rong::IntoJSObj;
 use serde::{Deserialize, Serialize};
 
@@ -58,17 +58,17 @@ impl AppConfig {
     }
 
     /// Read, parse and validate app.json from the assets directory.
-    pub(crate) fn load<T: AppRuntime + ?Sized>(controller: &T) -> Result<Self, MiniAppError> {
+    pub(crate) fn load<T: AppRuntime + ?Sized>(controller: &T) -> Result<Self, LxAppError> {
         // Read app.json as a string
         let mut reader = controller.read_asset("app.json")?;
         let mut content = String::new();
         reader
             .read_to_string(&mut content)
-            .map_err(|e| MiniAppError::IoError(format!("Failed to read app.json: {}", e)))?;
+            .map_err(|e| LxAppError::IoError(format!("Failed to read app.json: {}", e)))?;
 
         // Parse the JSON into AppConfig
         let config = serde_json::from_str(&content).map_err(|e| {
-            MiniAppError::InvalidJsonFile(format!("Failed to parse app.json: {}", e))
+            LxAppError::InvalidJsonFile(format!("Failed to parse app.json: {}", e))
         })?;
 
         // Validate the config immediately
@@ -78,16 +78,16 @@ impl AppConfig {
     }
 
     /// Validate the AppConfig to ensure all mandatory fields are present and valid
-    fn validate_config(config: &Self) -> Result<(), MiniAppError> {
+    fn validate_config(config: &Self) -> Result<(), LxAppError> {
         // Check all mandatory fields are not empty
         if config.product_name.is_empty() {
-            return Err(MiniAppError::InvalidParameter(
+            return Err(LxAppError::InvalidParameter(
                 "productName is mandatory and cannot be empty".to_string(),
             ));
         }
 
         if config.version.is_empty() {
-            return Err(MiniAppError::InvalidParameter(
+            return Err(LxAppError::InvalidParameter(
                 "version is mandatory and cannot be empty".to_string(),
             ));
         }
@@ -99,35 +99,35 @@ impl AppConfig {
                 .chars()
                 .all(|c| c.is_ascii_digit() || c == '.')
         {
-            return Err(MiniAppError::InvalidParameter(
+            return Err(LxAppError::InvalidParameter(
                 "version must be in format x.y.z with numeric values".to_string(),
             ));
         }
 
         if config.identifier.is_empty() {
-            return Err(MiniAppError::InvalidParameter(
+            return Err(LxAppError::InvalidParameter(
                 "identifier is mandatory and cannot be empty".to_string(),
             ));
         }
 
-        // Check homeMiniAppID
+        // Check homeLxAppID
         if config.home_lxapp_appid.is_empty() {
-            return Err(MiniAppError::InvalidParameter(
-                "homeMiniAppID is mandatory and cannot be empty".to_string(),
+            return Err(LxAppError::InvalidParameter(
+                "homeLxAppID is mandatory and cannot be empty".to_string(),
             ));
         }
 
-        // Check homeMiniAppVersion
+        // Check homeLxAppVersion
         if config.home_lxapp_version.is_empty() {
-            return Err(MiniAppError::InvalidParameter(
-                "homeMiniAppVersion is mandatory and cannot be empty".to_string(),
+            return Err(LxAppError::InvalidParameter(
+                "homeLxAppVersion is mandatory and cannot be empty".to_string(),
             ));
         }
 
-        // Validate maxAllowedMiniApps range
+        // Validate maxAllowedLxApps range
         if config.max_allowed_lxapps < 1 || config.max_allowed_lxapps > 5 {
-            return Err(MiniAppError::InvalidParameter(
-                "maxAllowedMiniApps must be between 1 and 5".to_string(),
+            return Err(LxAppError::InvalidParameter(
+                "maxAllowedLxApps must be between 1 and 5".to_string(),
             ));
         }
 
@@ -146,8 +146,8 @@ pub trait AppRuntime: Send + Sync + 'static {
     /// * `path` - Path to the asset file to read
     ///
     /// # Returns
-    /// * `Result<Box<dyn Read + '_>, MiniAppError>` - A reader for streaming the asset content, or an error
-    fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, MiniAppError>;
+    /// * `Result<Box<dyn Read + '_>, LxAppError>` - A reader for streaming the asset content, or an error
+    fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, LxAppError>;
 
     /// Iterate over files in an asset directory.
     ///
@@ -157,12 +157,12 @@ pub trait AppRuntime: Send + Sync + 'static {
     /// * `asset_dir` - Directory path in assets to iterate
     ///
     /// # Returns
-    /// * `Box<dyn Iterator<Item = Result<AssetFileEntry, MiniAppError>>>` - Iterator over files in the directory
+    /// * `Box<dyn Iterator<Item = Result<AssetFileEntry, LxAppError>>>` - Iterator over files in the directory
     ///   (If directory cannot be opened, the iterator's first element will be an error)
     fn asset_dir_iter<'a>(
         &'a self,
         asset_dir: &str,
-    ) -> Box<dyn Iterator<Item = Result<AssetFileEntry<'a>, MiniAppError>> + 'a>;
+    ) -> Box<dyn Iterator<Item = Result<AssetFileEntry<'a>, LxAppError>> + 'a>;
 
     /// Get data directory path
     ///
@@ -189,12 +189,12 @@ pub trait AppRuntime: Send + Sync + 'static {
     /// * `path` - Page path within the application
     ///
     /// # Returns
-    /// * `Result<Arc<dyn crate::page::WebViewController>, MiniAppError>` - WebView controller instance or error
+    /// * `Result<Arc<dyn crate::page::WebViewController>, LxAppError>` - WebView controller instance or error
     fn create_webview(
         &self,
         appid: String,
         path: String,
-    ) -> Result<Arc<dyn crate::page::WebViewController>, MiniAppError>;
+    ) -> Result<Arc<dyn crate::page::WebViewController>, LxAppError>;
 
     /// Open a mini app
     ///
@@ -203,8 +203,8 @@ pub trait AppRuntime: Send + Sync + 'static {
     /// * `path` - The initial path to navigate to within the mini app
     ///
     /// # Returns
-    /// * `Result<(), MiniAppError>` - Success or error
-    fn open_miniapp(&self, appid: String, path: String) -> Result<(), MiniAppError>;
+    /// * `Result<(), LxAppError>` - Success or error
+    fn open_lxapp(&self, appid: String, path: String) -> Result<(), LxAppError>;
 
     /// Close a mini app
     ///
@@ -212,8 +212,8 @@ pub trait AppRuntime: Send + Sync + 'static {
     /// * `appid` - The ID of the mini app to close
     ///
     /// # Returns
-    /// * `Result<(), MiniAppError>` - Success or error
-    fn close_miniapp(&self, appid: String) -> Result<(), MiniAppError>;
+    /// * `Result<(), LxAppError>` - Success or error
+    fn close_miniapp(&self, appid: String) -> Result<(), LxAppError>;
 
     /// Switch to a different page within the same mini app
     ///
@@ -222,19 +222,19 @@ pub trait AppRuntime: Send + Sync + 'static {
     /// * `path` - The path of the page to switch to
     ///
     /// # Returns
-    /// * `Result<(), MiniAppError>` - Success or error
-    fn switch_page(&self, appid: String, path: String) -> Result<(), MiniAppError>;
+    /// * `Result<(), LxAppError>` - Success or error
+    fn switch_page(&self, appid: String, path: String) -> Result<(), LxAppError>;
 }
 
 impl<T: AppRuntime + ?Sized> AppRuntime for Arc<T> {
-    fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, MiniAppError> {
+    fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, LxAppError> {
         (**self).read_asset(path)
     }
 
     fn asset_dir_iter<'a>(
         &'a self,
         asset_dir: &str,
-    ) -> Box<dyn Iterator<Item = Result<AssetFileEntry<'a>, MiniAppError>> + 'a> {
+    ) -> Box<dyn Iterator<Item = Result<AssetFileEntry<'a>, LxAppError>> + 'a> {
         (**self).asset_dir_iter(asset_dir)
     }
 
@@ -254,19 +254,19 @@ impl<T: AppRuntime + ?Sized> AppRuntime for Arc<T> {
         &self,
         appid: String,
         path: String,
-    ) -> Result<Arc<dyn crate::page::WebViewController>, MiniAppError> {
+    ) -> Result<Arc<dyn crate::page::WebViewController>, LxAppError> {
         (**self).create_webview(appid, path)
     }
 
-    fn open_miniapp(&self, appid: String, path: String) -> Result<(), MiniAppError> {
-        (**self).open_miniapp(appid, path)
+    fn open_lxapp(&self, appid: String, path: String) -> Result<(), LxAppError> {
+        (**self).open_lxapp(appid, path)
     }
 
-    fn close_miniapp(&self, appid: String) -> Result<(), MiniAppError> {
+    fn close_miniapp(&self, appid: String) -> Result<(), LxAppError> {
         (**self).close_miniapp(appid)
     }
 
-    fn switch_page(&self, appid: String, path: String) -> Result<(), MiniAppError> {
+    fn switch_page(&self, appid: String, path: String) -> Result<(), LxAppError> {
         (**self).switch_page(appid, path)
     }
 }

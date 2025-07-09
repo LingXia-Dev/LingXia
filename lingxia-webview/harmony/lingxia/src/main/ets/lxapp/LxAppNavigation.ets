@@ -1,15 +1,15 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { MiniApp } from './MiniApp';
-import { MiniAppContainer } from './MiniAppContainer';
+import { LxApp } from './LxApp';
+import { LxAppContainer } from './LxAppContainer';
 import { onMiniappOpened, onMiniappClosed } from 'liblingxia.so';
 
 const DOMAIN = 0xA000;
 const TAG = 'LingXia.Navigation';
 
 /**
- * MiniApp stack item for manual layer management
+ * LxApp stack item for manual layer management
  */
-interface MiniAppStackItem {
+interface LxAppStackItem {
   appId: string;
   path: string;
   offsetY: number; // For manual animation
@@ -17,51 +17,51 @@ interface MiniAppStackItem {
 }
 
 /**
- * MiniApp Navigation with WebView preservation
- * - Hides MiniApps instead of destroying them to preserve WebViews
+ * LxApp Navigation with WebView preservation
+ * - Hides LxApps instead of destroying them to preserve WebViews
  * - Uses independent hiddenApps Set to avoid miniAppStack mutations
  */
 @Component
-export struct MiniAppNavigation {
+export struct LxAppNavigation {
   @State isReady: boolean = false
   @State homeAppId: string = ''
   @State homeAppPath: string = ''
   @State errorMessage: string = ''
   @Prop autoOpenHome: boolean = true
 
-  @State private miniAppStack: MiniAppStackItem[] = []
+  @State private miniAppStack: LxAppStackItem[] = []
   @State private hiddenApps: Set<string> = new Set<string>()
 
   @Provide navPageInfos: NavPathStack = new NavPathStack()
 
   aboutToAppear() {
-    hilog.info(DOMAIN, TAG, 'MiniAppNavigation starting with WebView preservation');
-    MiniApp.setNavigationInstance(this);
-    this.initializeMiniApp();
+    hilog.info(DOMAIN, TAG, 'LxAppNavigation starting with WebView preservation');
+    LxApp.setNavigationInstance(this);
+    this.initializeLxApp();
   }
 
-  private async initializeMiniApp(): Promise<void> {
+  private async initializeLxApp(): Promise<void> {
     try {
-      const instance = MiniApp.getInstance();
-      const homeAppId = instance.getHomeMiniAppId();
-      const homeAppPath = instance.getHomeMiniAppInitialRoute();
+      const instance = LxApp.getInstance();
+      const homeAppId = instance.getHomeLxAppId();
+      const homeAppPath = instance.getHomeLxAppInitialRoute();
 
       if (homeAppId && homeAppPath) {
         this.homeAppId = homeAppId;
         this.homeAppPath = homeAppPath;
 
         if (this.autoOpenHome) {
-          hilog.info(DOMAIN, TAG, `Auto-opening home MiniApp: ${this.homeAppId}:${this.homeAppPath}`);
-          MiniApp.openHomeMiniApp();
+          hilog.info(DOMAIN, TAG, `Auto-opening home LxApp: ${this.homeAppId}:${this.homeAppPath}`);
+          LxApp.openHomeLxApp();
         } else {
-          hilog.info(DOMAIN, TAG, `MiniApp initialized, waiting for manual openHomeMiniApp call: ${this.homeAppId}:${this.homeAppPath}`);
+          hilog.info(DOMAIN, TAG, `LxApp initialized, waiting for manual openHomeLxApp call: ${this.homeAppId}:${this.homeAppPath}`);
         }
 
         this.isReady = true;
-        hilog.info(DOMAIN, TAG, `MiniApp Navigation ready: ${this.homeAppId}:${this.homeAppPath}`);
+        hilog.info(DOMAIN, TAG, `LxApp Navigation ready: ${this.homeAppId}:${this.homeAppPath}`);
       } else {
-        this.errorMessage = 'MiniApp not initialized. Please call MiniApp.initialize() in EntryAbility first.';
-        hilog.error(DOMAIN, TAG, 'MiniApp not initialized');
+        this.errorMessage = 'LxApp not initialized. Please call LxApp.initialize() in EntryAbility first.';
+        hilog.error(DOMAIN, TAG, 'LxApp not initialized');
       }
     } catch (error) {
       this.errorMessage = `Initialization error: ${error}`;
@@ -69,7 +69,7 @@ export struct MiniAppNavigation {
     }
   }
 
-  public openMiniApp(appId: string, path: string): void {
+  public openLxApp(appId: string, path: string): void {
     hilog.info(DOMAIN, TAG, `Opening miniapp: ${appId}:${path}`);
 
     try {
@@ -79,32 +79,32 @@ export struct MiniAppNavigation {
       const existingIndex = this.miniAppStack.findIndex(item => item.appId === appId);
 
       if (existingIndex >= 0) {
-        hilog.info(DOMAIN, TAG, `MiniApp ${appId} already exists, showing and bringing to front`);
-        this.showMiniApp(appId, existingIndex);
+        hilog.info(DOMAIN, TAG, `LxApp ${appId} already exists, showing and bringing to front`);
+        this.showLxApp(appId, existingIndex);
       } else {
-        this.createNewMiniApp(appId, path);
+        this.createNewLxApp(appId, path);
       }
     } catch (error) {
-      hilog.error(DOMAIN, TAG, `Failed to open MiniApp ${appId}: ${error}`);
+      hilog.error(DOMAIN, TAG, `Failed to open LxApp ${appId}: ${error}`);
     }
   }
 
-  public closeMiniApp(appId: string): void {
+  public closeLxApp(appId: string): void {
     hilog.info(DOMAIN, TAG, `Hiding miniapp (preserving WebViews): ${appId}`);
 
     try {
       const stackIndex = this.miniAppStack.findIndex(item => item.appId === appId);
       if (stackIndex >= 0) {
-        this.hideMiniAppWithAnimation(appId, stackIndex);
+        this.hideLxAppWithAnimation(appId, stackIndex);
       } else {
-        hilog.warn(DOMAIN, TAG, `MiniApp not found in stack: ${appId}`);
+        hilog.warn(DOMAIN, TAG, `LxApp not found in stack: ${appId}`);
       }
     } catch (error) {
-      hilog.error(DOMAIN, TAG, `Failed to close MiniApp ${appId}: ${error}`);
+      hilog.error(DOMAIN, TAG, `Failed to close LxApp ${appId}: ${error}`);
     }
   }
 
-  private showMiniApp(appId: string, stackIndex: number): void {
+  private showLxApp(appId: string, stackIndex: number): void {
     const newHiddenApps = new Set<string>();
     this.hiddenApps.forEach(id => {
       if (id !== appId) {
@@ -117,8 +117,8 @@ export struct MiniAppNavigation {
     this.miniAppStack[stackIndex].zIndex = 1000 + this.miniAppStack.length;
   }
 
-  private createNewMiniApp(appId: string, path: string): void {
-    const newStackItem: MiniAppStackItem = {
+  private createNewLxApp(appId: string, path: string): void {
+    const newStackItem: LxAppStackItem = {
       appId: appId,
       path: path,
       offsetY: 0,
@@ -126,10 +126,10 @@ export struct MiniAppNavigation {
     };
 
     this.miniAppStack.push(newStackItem);
-    hilog.info(DOMAIN, TAG, `MiniApp created: ${appId}:${path}, stack size: ${this.miniAppStack.length}`);
+    hilog.info(DOMAIN, TAG, `LxApp created: ${appId}:${path}, stack size: ${this.miniAppStack.length}`);
   }
 
-  private hideMiniAppWithAnimation(appId: string, stackIndex: number): void {
+  private hideLxAppWithAnimation(appId: string, stackIndex: number): void {
     animateTo({
       duration: 250,
       curve: Curve.EaseIn,
@@ -143,20 +143,20 @@ export struct MiniAppNavigation {
     setTimeout(() => {
       if (stackIndex < this.miniAppStack.length) {
         this.hiddenApps = new Set(this.hiddenApps).add(appId);
-        hilog.info(DOMAIN, TAG, `MiniApp ${appId} hidden, WebViews preserved for reuse`);
+        hilog.info(DOMAIN, TAG, `LxApp ${appId} hidden, WebViews preserved for reuse`);
       }
       onMiniappClosed(appId);
     }, 300);
   }
 
-  private isMiniAppVisible(appId: string): boolean {
+  private isLxAppVisible(appId: string): boolean {
     return !this.hiddenApps.has(appId);
   }
 
   build() {
     Stack() {
       if (this.isReady && this.homeAppId && this.homeAppPath) {
-        MiniAppContainer({
+        LxAppContainer({
           appId: this.homeAppId,
           initialPath: this.homeAppPath,
           navigationMode: false,
@@ -169,8 +169,8 @@ export struct MiniAppNavigation {
         this.buildLoadingPage()
       }
 
-      ForEach(this.miniAppStack, (stackItem: MiniAppStackItem, index: number) => {
-        MiniAppContainer({
+      ForEach(this.miniAppStack, (stackItem: LxAppStackItem, index: number) => {
+        LxAppContainer({
           appId: stackItem.appId,
           initialPath: stackItem.path,
           navigationMode: true,
@@ -178,12 +178,12 @@ export struct MiniAppNavigation {
         })
         .width('100%')
         .height('100%')
-        .zIndex(this.isMiniAppVisible(stackItem.appId) ? stackItem.zIndex : -1)
+        .zIndex(this.isLxAppVisible(stackItem.appId) ? stackItem.zIndex : -1)
         .backgroundColor(Color.White)
         .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
         .translate({ y: stackItem.offsetY })
-        .visibility(this.isMiniAppVisible(stackItem.appId) ? Visibility.Visible : Visibility.Hidden)
-        .enabled(this.isMiniAppVisible(stackItem.appId))
+        .visibility(this.isLxAppVisible(stackItem.appId) ? Visibility.Visible : Visibility.Hidden)
+        .enabled(this.isLxAppVisible(stackItem.appId))
       })
     }
     .width('100%')
@@ -192,7 +192,7 @@ export struct MiniAppNavigation {
 
   @Builder
   buildFixedCapsuleButton(appId: string): void {
-    if (appId !== MiniApp.getInstance().getHomeMiniAppId()) {
+    if (appId !== LxApp.getInstance().getHomeLxAppId()) {
       Stack() {
         Row() {
           Button() {
@@ -218,7 +218,7 @@ export struct MiniAppNavigation {
           .backgroundColor(Color.Transparent)
           .onClick(() => {
             hilog.info(DOMAIN, TAG, `Capsule close button pressed for appId: ${appId}`);
-            this.closeMiniApp(appId);
+            this.closeLxApp(appId);
           })
         }
         .backgroundColor('rgba(255,255,255,0.9)')

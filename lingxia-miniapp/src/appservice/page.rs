@@ -3,8 +3,8 @@ use super::bridge::{
 };
 use super::lx;
 use crate::error;
-use crate::error::MiniAppError;
-use crate::miniapp::MiniApp;
+use crate::error::LxAppError;
+use crate::miniapp::LxApp;
 use crate::page::Page;
 use rong::{
     Class, JSContext, JSFunc, JSObject, JSResult, JSValue, RongJSError, Source, function::Optional,
@@ -38,7 +38,7 @@ struct PageSvcState {
 }
 
 impl MessageTransport for PageSvc {
-    fn post_message_to_view(&self, message_json: String) -> Result<(), MiniAppError> {
+    fn post_message_to_view(&self, message_json: String) -> Result<(), LxAppError> {
         self.page.webview_controller().post_message(message_json)
     }
 }
@@ -104,7 +104,7 @@ impl MessageHandler for PageSvc {
                     }
                     ServiceType::FastAPI(handler) => {
                         // For FastAPI, handle directly and reply
-                        let miniapp = ctx.get_user_data::<Arc<MiniApp>>().unwrap().clone();
+                        let miniapp = ctx.get_user_data::<Arc<LxApp>>().unwrap().clone();
 
                         match handler.call(miniapp, args) {
                             Ok(result) => {
@@ -158,9 +158,9 @@ impl MessageHandler for PageSvc {
 impl PageSvc {
     #[js_method(constructor)]
     fn _new(ctx: JSContext, config: JSObject, path: String) -> JSResult<JSObject> {
-        let miniapp = ctx.get_user_data::<Arc<MiniApp>>().unwrap();
+        let miniapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
 
-        // Get the page from MiniApp
+        // Get the page from LxApp
         let page = miniapp
             .get_page(&path)
             .ok_or_else(|| RongJSError::Error(format!("Page not found: {}", path)))?;

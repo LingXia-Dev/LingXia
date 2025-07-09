@@ -65,7 +65,7 @@ public struct NavigationBarConfig {
     }
 }
 
-/// Custom Navigation Bar view for MiniApp system
+/// Custom Navigation Bar view for LxApp system
 public class LingXiaNavigationBar: UIView {
     private static let log = OSLog(subsystem: "LingXia", category: "NavigationBar")
 
@@ -101,7 +101,7 @@ public class LingXiaNavigationBar: UIView {
         backgroundColor = currentBackgroundColor
 
         let isTablet = UIDevice.current.userInterfaceIdiom == .pad
-        let _ = isTablet ? LingXiaNavigationBar.DEFAULT_TABLET_HEIGHT : MiniAppViewController.DEFAULT_NAV_BAR_HEIGHT
+        let _ = isTablet ? LingXiaNavigationBar.DEFAULT_TABLET_HEIGHT : LxAppViewController.DEFAULT_NAV_BAR_HEIGHT
 
         backButton.setTitle("‹", for: .normal)
         backButton.setTitleColor(currentFrontColor, for: .normal)
@@ -138,19 +138,19 @@ public class LingXiaNavigationBar: UIView {
         NSLayoutConstraint.activate([
             // Back button constraints
             backButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
-            backButton.topAnchor.constraint(equalTo: topAnchor, constant: MiniAppViewController.NAV_TITLE_VERTICAL_POSITION - 2),
+            backButton.topAnchor.constraint(equalTo: topAnchor, constant: LxAppViewController.NAV_TITLE_VERTICAL_POSITION - 2),
             backButton.widthAnchor.constraint(equalToConstant: 44),
             backButton.heightAnchor.constraint(equalToConstant: 32),
 
             // Title label constraints - ensure it doesn't overlap with back button
             titleLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
-            titleLabel.topAnchor.constraint(equalTo: topAnchor, constant: MiniAppViewController.NAV_TITLE_VERTICAL_POSITION),
+            titleLabel.topAnchor.constraint(equalTo: topAnchor, constant: LxAppViewController.NAV_TITLE_VERTICAL_POSITION),
             titleLabel.leadingAnchor.constraint(greaterThanOrEqualTo: backButton.trailingAnchor, constant: 8),
             titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -52), // Leave space for potential right button
 
             // Loading indicator constraints
             loadingIndicator.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
-            loadingIndicator.topAnchor.constraint(equalTo: topAnchor, constant: MiniAppViewController.NAV_TITLE_VERTICAL_POSITION),
+            loadingIndicator.topAnchor.constraint(equalTo: topAnchor, constant: LxAppViewController.NAV_TITLE_VERTICAL_POSITION),
             loadingIndicator.widthAnchor.constraint(equalToConstant: 24),
             loadingIndicator.heightAnchor.constraint(equalToConstant: 24)
         ])
@@ -159,7 +159,7 @@ public class LingXiaNavigationBar: UIView {
     /// Returns the calculated content height based on device type
     public func getCalculatedContentHeight() -> CGFloat {
         let isTablet = UIDevice.current.userInterfaceIdiom == .pad
-        return isTablet ? LingXiaNavigationBar.DEFAULT_TABLET_HEIGHT : MiniAppViewController.DEFAULT_NAV_BAR_HEIGHT
+        return isTablet ? LingXiaNavigationBar.DEFAULT_TABLET_HEIGHT : LxAppViewController.DEFAULT_NAV_BAR_HEIGHT
     }
 
     /// Shows the loading indicator

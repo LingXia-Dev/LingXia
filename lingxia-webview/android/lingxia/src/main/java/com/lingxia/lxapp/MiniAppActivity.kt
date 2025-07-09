@@ -30,7 +30,7 @@ const val ACTION_SWITCH_PAGE = "com.lingxia.SWITCH_PAGE_ACTION"
 // Define a constant for the close mini app action
 const val ACTION_CLOSE_MINIAPP = "com.lingxia.CLOSE_MINIAPP_ACTION"
 
-class MiniAppActivity : AppCompatActivity() {
+class LxAppActivity : AppCompatActivity() {
     companion object {
         private const val TAG = "LingXia.WebView"
         const val EXTRA_APP_ID = "appId"
@@ -42,7 +42,7 @@ class MiniAppActivity : AppCompatActivity() {
 
         // Native method for handling mini app closed event
         @JvmStatic
-        external fun nativeOnMiniAppClosed(appId: String): Int
+        external fun nativeOnLxAppClosed(appId: String): Int
 
         // Native method for handling back press event
         @JvmStatic
@@ -126,7 +126,7 @@ class MiniAppActivity : AppCompatActivity() {
     private var navigationBar: NavigationBar? = null
     private var isDestroyed = false
     private var pendingWebViewSetup = false
-    private var isDisplayingHomeMiniApp: Boolean = false
+    private var isDisplayingHomeLxApp: Boolean = false
 
     // Tracks the currently visible WebView instance
     private var currentWebView: com.lingxia.miniapp.WebView? = null
@@ -185,7 +185,7 @@ class MiniAppActivity : AppCompatActivity() {
         val initialPath = intent.getStringExtra(EXTRA_PATH) ?: ""
 
         // Initialize the new flag
-        isDisplayingHomeMiniApp = (this.appId == MiniApp.HomeMiniAppId)
+        isDisplayingHomeLxApp = (this.appId == LxApp.HomeLxAppId)
 
         // Start WebView creation in parallel while setting up UI
         var webViewFuture: java.util.concurrent.Future<Pair<com.lingxia.miniapp.WebView?, NavigationBarConfig?>>? = null
@@ -215,7 +215,7 @@ class MiniAppActivity : AppCompatActivity() {
         setContentView(rootContainer)
 
         // Get TabBar config and setup UI in parallel
-        val tabBarJson = MiniApp.nativeGetTabBarConfig(appId)
+        val tabBarJson = LxApp.nativeGetTabBarConfig(appId)
         val tabBarConfig = TabBarConfig.fromJson(tabBarJson)
 
         // Configure system UI early but efficiently
@@ -290,7 +290,7 @@ class MiniAppActivity : AppCompatActivity() {
             updateLayoutMargins()
         }
 
-        Log.d(TAG, "MiniAppActivity onCreate completed for appId: $appId, path: $initialPath")
+        Log.d(TAG, "LxAppActivity onCreate completed for appId: $appId, path: $initialPath")
     }
 
     private fun setupContainers() {
@@ -483,7 +483,7 @@ class MiniAppActivity : AppCompatActivity() {
         }
 
         // Get page config - Nav bar configuration is now handled by the caller
-        val pageConfig = MiniApp.getPageConfig(appId, path)
+        val pageConfig = LxApp.getPageConfig(appId, path)
 
         return Pair(webView, pageConfig)
     }
@@ -603,7 +603,7 @@ class MiniAppActivity : AppCompatActivity() {
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.BLACK
             style = Paint.Style.STROKE
-            strokeWidth = 3f * this@MiniAppActivity.resources.displayMetrics.density  // Increase circle thickness
+            strokeWidth = 3f * this@LxAppActivity.resources.displayMetrics.density  // Increase circle thickness
         }
 
         private val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -641,7 +641,7 @@ class MiniAppActivity : AppCompatActivity() {
 
     private fun addCapsuleButton() {
         // Don't show capsule button for the main/home app
-        if (isDisplayingHomeMiniApp) {
+        if (isDisplayingHomeLxApp) {
             Log.d(TAG, "Not adding capsule button because it is the home app.")
             return
         }
@@ -761,8 +761,8 @@ class MiniAppActivity : AppCompatActivity() {
      * Notifies the native layer that a mini app is being closed
      * Used only for state synchronization, doesn't affect closure decision
      */
-    private fun notifyMiniAppClosed() {
-        nativeOnMiniAppClosed(appId)
+    private fun notifyLxAppClosed() {
+        nativeOnLxAppClosed(appId)
     }
 
     override fun onDestroy() {
@@ -784,7 +784,7 @@ class MiniAppActivity : AppCompatActivity() {
         }
 
         // Clear page config cache to prevent memory leaks
-        MiniApp.clearPageConfigCache()
+        LxApp.clearPageConfigCache()
 
         super.onDestroy()
     }
@@ -1036,12 +1036,12 @@ class MiniAppActivity : AppCompatActivity() {
             if (navigationBar == null) {
                 Log.d(TAG, "Creating new NavigationBar")
                 val statusBarHeight = getStatusBarHeight(this)
-                Log.d(TAG, "MiniAppActivity: statusBarHeight = $statusBarHeight")
+                Log.d(TAG, "LxAppActivity: statusBarHeight = $statusBarHeight")
                 val newNavBar = NavigationBar(this)
 
                 // 1. Get the content height explicitly from NavigationBar's calculation.
                 val navBarContentHeightPx = newNavBar.getCalculatedContentHeightPx()
-                Log.d(TAG, "MiniAppActivity: navBarContentHeightPx from getCalculatedContentHeightPx() = $navBarContentHeightPx")
+                Log.d(TAG, "LxAppActivity: navBarContentHeightPx from getCalculatedContentHeightPx() = $navBarContentHeightPx")
 
                 val finalNavBarLayoutParams = FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
@@ -1050,7 +1050,7 @@ class MiniAppActivity : AppCompatActivity() {
                     gravity = Gravity.TOP
                 }
                 newNavBar.layoutParams = finalNavBarLayoutParams
-                Log.d(TAG, "MiniAppActivity: finalNavBarLayoutParams.height = ${finalNavBarLayoutParams.height}")
+                Log.d(TAG, "LxAppActivity: finalNavBarLayoutParams.height = ${finalNavBarLayoutParams.height}")
 
                 // IMPORTANT: Set NavigationBar's own top padding to 0.
                 // Status bar offset for children will be handled by newNavBar.setExternalStatusBarHeight()
@@ -1078,7 +1078,7 @@ class MiniAppActivity : AppCompatActivity() {
 
                 rootContainer.addView(navigationBar)  // Add to top, not index 0
                 rootContainer.post {
-                    Log.d(TAG, "MiniAppActivity: After layout pass, navigationBar.height = ${navigationBar?.height}, navigationBar.measuredHeight = ${navigationBar?.measuredHeight}")
+                    Log.d(TAG, "LxAppActivity: After layout pass, navigationBar.height = ${navigationBar?.height}, navigationBar.measuredHeight = ${navigationBar?.measuredHeight}")
                 }
             } else if (!::rootContainer.isInitialized) {
                 Log.e(TAG, "Unable to add NavigationBar: rootContainer not initialized")
@@ -1155,7 +1155,7 @@ class MiniAppActivity : AppCompatActivity() {
     override fun finish() {
         // Notify Rust before ending the activity
         Log.d(TAG, "Activity finishing, notifying Rust: appId=$appId")
-        notifyMiniAppClosed()
+        notifyLxAppClosed()
 
         // Ensure WebView is paused
         currentWebView?.pause()
@@ -1173,7 +1173,7 @@ class MiniAppActivity : AppCompatActivity() {
         updateLayoutMargins()
 
         // Reconfigure navigation bar if needed
-        val pageConfig = MiniApp.getPageConfig(appId, currentWebView?.currentPath ?: "")
+        val pageConfig = LxApp.getPageConfig(appId, currentWebView?.currentPath ?: "")
         updateNavigationBar(pageConfig, false, true)
     }
 }

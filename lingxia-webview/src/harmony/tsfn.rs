@@ -1,4 +1,4 @@
-use miniapp::MiniAppError;
+use miniapp::LxAppError;
 use napi_ohos::Status;
 use napi_ohos::bindgen_prelude::Function;
 use napi_ohos::threadsafe_function::{ThreadsafeCallContext, ThreadsafeFunctionCallMode};
@@ -56,14 +56,14 @@ pub fn init(callback_function: Function) -> Result<(), String> {
 }
 
 /// Helper function for TSFN calls
-pub fn call_arkts(name: &str, args: &[&str]) -> Result<(), MiniAppError> {
+pub fn call_arkts(name: &str, args: &[&str]) -> Result<(), LxAppError> {
     let tsfn = CALLBACK_TSFN
         .get()
-        .ok_or_else(|| MiniAppError::WebView("No callback".to_string()))?;
+        .ok_or_else(|| LxAppError::WebView("No callback".to_string()))?;
     let data = format!("{}|{}", name, args.join("|"));
     match tsfn.call(data, ThreadsafeFunctionCallMode::Blocking) {
         Status::Ok => Ok(()),
-        _ => Err(MiniAppError::WebView("TSFN call failed".to_string())),
+        _ => Err(LxAppError::WebView("TSFN call failed".to_string())),
     }
 }
 
@@ -72,13 +72,13 @@ pub fn call_arkts_with_callback<F>(
     name: &str,
     args: &[&str],
     callback: F,
-) -> Result<(), MiniAppError>
+) -> Result<(), LxAppError>
 where
     F: FnOnce() + Send + 'static,
 {
     let tsfn = CALLBACK_TSFN
         .get()
-        .ok_or_else(|| MiniAppError::WebView("No callback".to_string()))?;
+        .ok_or_else(|| LxAppError::WebView("No callback".to_string()))?;
     let data = format!("{}|{}", name, args.join("|"));
 
     // Call ArkTS with return value and wait for completion
@@ -91,7 +91,7 @@ where
         },
     ) {
         Status::Ok => Ok(()),
-        _ => Err(MiniAppError::WebView(
+        _ => Err(LxAppError::WebView(
             "TSFN call_with_return_value failed".to_string(),
         )),
     }

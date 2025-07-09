@@ -16,7 +16,7 @@ use std::sync::{Arc, OnceLock};
 pub static JAVA_VM: OnceLock<Arc<JavaVM>> = OnceLock::new();
 static MAIN_THREAD_ID: OnceLock<std::thread::ThreadId> = OnceLock::new();
 
-/// Global reference to MiniApp class for worker threads
+/// Global reference to LxApp class for worker threads
 pub(crate) static MINIAPP_CLASS: OnceLock<GlobalRef> = OnceLock::new();
 
 #[unsafe(no_mangle)]
@@ -60,10 +60,10 @@ pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> j
     // Store the main thread ID
     let _ = MAIN_THREAD_ID.set(std::thread::current().id());
 
-    // Create global reference to MiniApp class for worker threads
+    // Create global reference to LxApp class for worker threads
     if let Some(jvm) = JAVA_VM.get() {
         if let Ok(mut env) = jvm.attach_current_thread() {
-            if let Ok(local_class) = env.find_class("com/lingxia/miniapp/MiniApp") {
+            if let Ok(local_class) = env.find_class("com/lingxia/miniapp/LxApp") {
                 if let Ok(global_class) = env.new_global_ref(local_class) {
                     let _ = MINIAPP_CLASS.set(global_class);
                 }
@@ -113,7 +113,7 @@ pub(crate) fn get_env() -> Result<JNIEnv<'static>, Box<dyn std::error::Error>> {
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeOnMiniAppInited(
+pub extern "system" fn Java_com_lingxia_miniapp_LxApp_nativeOnLxAppInited(
     mut env: JNIEnv,
     _class: JClass,
     data_dir: JString,
@@ -124,7 +124,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeOnMiniAppInited(
     let cache_dir = env.get_string(&cache_dir).unwrap().into();
 
     log::info!(
-        "Initializing MiniApp with data_dir: {}, cache_dir: {}",
+        "Initializing LxApp with data_dir: {}, cache_dir: {}",
         data_dir,
         cache_dir,
     );
@@ -150,7 +150,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeOnMiniAppInited(
             }
         }
         None => {
-            error!("Failed to obtain MiniApp home app details during initialization.");
+            error!("Failed to obtain LxApp home app details during initialization.");
             JObject::null().into_raw()
         }
     }
@@ -204,7 +204,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnPageFinished(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_miniapp_MiniAppActivity_nativeOnPageShow(
+pub extern "system" fn Java_com_lingxia_miniapp_LxAppActivity_nativeOnPageShow(
     mut env: JNIEnv,
     _class: JClass,
     appid: JString,
@@ -416,9 +416,9 @@ fn create_java_response<'a>(env: &mut JNIEnv<'a>, response: Response<Vec<u8>>) -
     }
 }
 
-// Function for MiniAppActivity class to handle the mini app close event
+// Function for LxAppActivity class to handle the mini app close event
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_miniapp_MiniAppActivity_nativeOnMiniAppClosed(
+pub extern "system" fn Java_com_lingxia_miniapp_LxAppActivity_nativeOnLxAppClosed(
     mut env: JNIEnv,
     _class: JClass,
     appid: JString,
@@ -458,7 +458,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnConsoleMessage(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeGetPageConfig<'a>(
+pub extern "system" fn Java_com_lingxia_miniapp_LxApp_nativeGetPageConfig<'a>(
     mut env: JNIEnv<'a>,
     _class: JClass<'a>,
     appid: JString<'a>,
@@ -479,7 +479,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeGetPageConfig<'a>(
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_lingxia_miniapp_MiniAppActivity_nativeOnBackPressed(
+pub extern "C" fn Java_com_lingxia_miniapp_LxAppActivity_nativeOnBackPressed(
     mut env: JNIEnv,
     _class: JClass,
     appid: JString,
@@ -491,7 +491,7 @@ pub extern "C" fn Java_com_lingxia_miniapp_MiniAppActivity_nativeOnBackPressed(
 
 // Function to notify the Rust layer that a mini app has been opened
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeOnMiniAppOpened(
+pub extern "system" fn Java_com_lingxia_miniapp_LxApp_nativeOnLxAppOpened(
     mut env: JNIEnv,
     _class: JClass,
     appid: JString,
@@ -507,7 +507,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeOnMiniAppOpened(
 
 // New function to get app configuration
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_miniapp_MiniApp_nativeGetTabBarConfig(
+pub extern "system" fn Java_com_lingxia_miniapp_LxApp_nativeGetTabBarConfig(
     mut env: JNIEnv,
     _class: JClass,
     appid: JString,

@@ -9,14 +9,14 @@ import android.util.Log
 import com.lingxia.miniapp.ACTION_SWITCH_PAGE
 import com.lingxia.miniapp.ACTION_CLOSE_MINIAPP
 
-class MiniApp private constructor(private val context: Context) {
+class LxApp private constructor(private val context: Context) {
     companion object {
-        private const val TAG = "LingXia.MiniApp"
-        private var instance: MiniApp? = null
+        private const val TAG = "LingXia.LxApp"
+        private var instance: LxApp? = null
 
         // Properties to store home app details from native
-        var HomeMiniAppId: String? = null
-        var HomeMiniAppInitialRoute: String? = null
+        var HomeLxAppId: String? = null
+        var HomeLxAppInitialRoute: String? = null
 
         private val pageConfigCache = mutableMapOf<String, NavigationBarConfig>()
 
@@ -31,17 +31,17 @@ class MiniApp private constructor(private val context: Context) {
 
         @JvmStatic
         fun initialize(context: Context) {
-            if (instance != null && HomeMiniAppId != null && HomeMiniAppInitialRoute != null) {
-                Log.d(TAG, "MiniApp already successfully initialized, skipping")
+            if (instance != null && HomeLxAppId != null && HomeLxAppInitialRoute != null) {
+                Log.d(TAG, "LxApp already successfully initialized, skipping")
                 return
             }
 
             if (instance == null) {
-                instance = MiniApp(context.applicationContext)
+                instance = LxApp(context.applicationContext)
             }
             val appContext = context.applicationContext
 
-            val initResultString = nativeOnMiniAppInited(
+            val initResultString = nativeOnLxAppInited(
                 appContext.filesDir.absolutePath,
                 appContext.cacheDir.absolutePath,
                 appContext.assets
@@ -52,26 +52,26 @@ class MiniApp private constructor(private val context: Context) {
                 // For a simple case like "appId:path/to/page", limit = 2 is good.
                 val parts = initResultString.split(":", limit = 2)
                 if (parts.size == 2) {
-                    HomeMiniAppId = parts[0]
-                    HomeMiniAppInitialRoute = parts[1]
-                    Log.i(TAG, "Native init success. Home App ID: $HomeMiniAppId, Initial Route: $HomeMiniAppInitialRoute")
+                    HomeLxAppId = parts[0]
+                    HomeLxAppInitialRoute = parts[1]
+                    Log.i(TAG, "Native init success. Home App ID: $HomeLxAppId, Initial Route: $HomeLxAppInitialRoute")
                 } else {
                     Log.e(TAG, "Failed to parse home MiniAapp details from native (expected 2 parts): '$initResultString'")
                 }
             } else {
-                Log.e(TAG, "Failed to get home MiniApp details from native init.")
+                Log.e(TAG, "Failed to get home LxApp details from native init.")
             }
         }
 
         @JvmStatic
-        private external fun nativeOnMiniAppInited(
+        private external fun nativeOnLxAppInited(
             dataDir: String,
             cacheDir: String,
             assetManager: android.content.res.AssetManager
         ): String?
 
         @JvmStatic
-        private external fun nativeOnMiniAppOpened(appId: String, path: String): Int
+        private external fun nativeOnLxAppOpened(appId: String, path: String): Int
 
         /**
          * Get the TabBar configuration for a mini app from the native layer
@@ -83,14 +83,14 @@ class MiniApp private constructor(private val context: Context) {
         external fun nativeGetTabBarConfig(appId: String): String?
 
         @JvmStatic
-        fun getInstance(): MiniApp {
-            return instance ?: throw IllegalStateException("MiniApp not initialized")
+        fun getInstance(): LxApp {
+            return instance ?: throw IllegalStateException("LxApp not initialized")
         }
 
         /**
          * Opens a mini app in a new activity
          *
-         * This method creates a new MiniAppActivity to host the specified mini app.
+         * This method creates a new LxAppActivity to host the specified mini app.
          * It notifies the native layer about the mini app being opened for state tracking.
          * The app configuration (including TabBar) will be fetched from the native layer.
          *
@@ -98,21 +98,21 @@ class MiniApp private constructor(private val context: Context) {
          * @param path The initial path to navigate to within the mini app
          */
         @JvmStatic
-        fun openMiniApp(appId: String, path: String) {
+        fun openLxApp(appId: String, path: String) {
             val instance = getInstance()
             instance.openInNewActivity(appId, path)
         }
 
         /**
-         * Opens the home MiniApp
+         * Opens the home LxApp
          * Its appId and initial path are provided by the native layer during initialization.
          *
          * If these details are not available, an error will be logged, and no app will be opened.
          */
         @JvmStatic
-        fun openHomeMiniApp() {
-            if (HomeMiniAppId != null && HomeMiniAppInitialRoute != null) {
-                openMiniApp(HomeMiniAppId!!, HomeMiniAppInitialRoute!!)
+        fun openHomeLxApp() {
+            if (HomeLxAppId != null && HomeLxAppInitialRoute != null) {
+                openLxApp(HomeLxAppId!!, HomeLxAppInitialRoute!!)
             } else {
                 Log.e(TAG, "Native home app details not available. Cannot open home mini app.")
             }
@@ -126,16 +126,16 @@ class MiniApp private constructor(private val context: Context) {
          * @param appId The ID of the mini app to close
          */
         @JvmStatic
-        fun closeMiniApp(appId: String) {
-            Log.d(TAG, "Closing MiniApp with appId: $appId")
+        fun closeLxApp(appId: String) {
+            Log.d(TAG, "Closing LxApp with appId: $appId")
 
-            // Iterate through all activities, find and close the MiniAppActivity with matching appId
+            // Iterate through all activities, find and close the LxAppActivity with matching appId
             // On actual devices, one mini app corresponds to one activity, so this implementation is sufficient
             // Future expansion can be made here if multiple activities are supported
             val activityManager = instance?.context?.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
             activityManager?.appTasks?.forEach { task ->
                 task.taskInfo?.topActivity?.let { componentName ->
-                    if (componentName.className == MiniAppActivity::class.java.name) {
+                    if (componentName.className == LxAppActivity::class.java.name) {
                         // Send broadcast to notify activity to close
                         val intent = Intent(ACTION_CLOSE_MINIAPP)
                         intent.putExtra("appId", appId)
@@ -147,9 +147,9 @@ class MiniApp private constructor(private val context: Context) {
         }
 
         /**
-         * Switches the current page within a running MiniAppActivity
+         * Switches the current page within a running LxAppActivity
          *
-         * This method sends a broadcast intent to the specific MiniAppActivity instance
+         * This method sends a broadcast intent to the specific LxAppActivity instance
          * identified by appId, instructing it to navigate to the targetPath.
          * Unlike switching tabs, this navigation typically implies showing the back button.
          *
@@ -212,9 +212,9 @@ class MiniApp private constructor(private val context: Context) {
     }
 
     private fun openInNewActivity(appId: String, path: String) {
-        val intent = Intent(context, MiniAppActivity::class.java).apply {
-            putExtra(MiniAppActivity.EXTRA_APP_ID, appId)
-            putExtra(MiniAppActivity.EXTRA_PATH, path)
+        val intent = Intent(context, LxAppActivity::class.java).apply {
+            putExtra(LxAppActivity.EXTRA_APP_ID, appId)
+            putExtra(LxAppActivity.EXTRA_PATH, path)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             // Add flags for faster activity launch
             addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
@@ -225,12 +225,12 @@ class MiniApp private constructor(private val context: Context) {
             // This allows Rust layer to prepare resources while activity is starting
             val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
             executor.submit {
-                nativeOnMiniAppOpened(appId, path)
+                nativeOnLxAppOpened(appId, path)
             }
             executor.shutdown()
             context.startActivity(intent)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to start MiniAppActivity: ${e.message}")
+            Log.e(TAG, "Failed to start LxAppActivity: ${e.message}")
         }
     }
 

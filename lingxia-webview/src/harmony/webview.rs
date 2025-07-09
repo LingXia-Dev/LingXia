@@ -2,7 +2,7 @@ use crate::harmony::schemehandler::set_webview_scheme_handler;
 use crate::harmony::tsfn::{call_arkts, call_arkts_with_callback};
 use crate::runtime::WebTag;
 use miniapp::log::LogLevel;
-use miniapp::{AppUiDelegate, MiniAppError, WebViewController};
+use miniapp::{AppUiDelegate, LxAppError, WebViewController};
 use ohos_web_sys::*;
 
 use std::cell::RefCell;
@@ -20,7 +20,7 @@ static PORT_API: OnceLock<ApiPtr<ArkWeb_WebMessagePortAPI>> = OnceLock::new();
 static MESSAGE_API: OnceLock<ApiPtr<ArkWeb_WebMessageAPI>> = OnceLock::new();
 
 /// Get cached WebMessagePort API
-fn get_port_api() -> Result<&'static ArkWeb_WebMessagePortAPI, MiniAppError> {
+fn get_port_api() -> Result<&'static ArkWeb_WebMessagePortAPI, LxAppError> {
     let api_ptr = PORT_API.get_or_init(|| unsafe {
         ApiPtr(
             OH_ArkWeb_GetNativeAPI(ArkWeb_NativeAPIVariantKind_ARKWEB_NATIVE_WEB_MESSAGE_PORT)
@@ -29,7 +29,7 @@ fn get_port_api() -> Result<&'static ArkWeb_WebMessagePortAPI, MiniAppError> {
     });
 
     if api_ptr.0.is_null() {
-        Err(MiniAppError::WebView(
+        Err(LxAppError::WebView(
             "Failed to get WebMessagePort API".to_string(),
         ))
     } else {
@@ -38,7 +38,7 @@ fn get_port_api() -> Result<&'static ArkWeb_WebMessagePortAPI, MiniAppError> {
 }
 
 /// Get cached WebMessage API
-fn get_message_api() -> Result<&'static ArkWeb_WebMessageAPI, MiniAppError> {
+fn get_message_api() -> Result<&'static ArkWeb_WebMessageAPI, LxAppError> {
     let api_ptr = MESSAGE_API.get_or_init(|| unsafe {
         ApiPtr(
             OH_ArkWeb_GetNativeAPI(ArkWeb_NativeAPIVariantKind_ARKWEB_NATIVE_WEB_MESSAGE)
@@ -47,7 +47,7 @@ fn get_message_api() -> Result<&'static ArkWeb_WebMessageAPI, MiniAppError> {
     });
 
     if api_ptr.0.is_null() {
-        Err(MiniAppError::WebView(
+        Err(LxAppError::WebView(
             "Failed to get WebMessage API".to_string(),
         ))
     } else {
@@ -88,14 +88,14 @@ impl std::fmt::Display for PortType {
 }
 
 /// Register LingXiaProxy for a specific webtag
-fn register_proxy_for_webtag(webtag: &WebTag) -> Result<(), MiniAppError> {
+fn register_proxy_for_webtag(webtag: &WebTag) -> Result<(), LxAppError> {
     unsafe {
         let webtag_cstr = CString::new(webtag.as_str()).unwrap();
 
         let controller_api =
             OH_ArkWeb_GetNativeAPI(ArkWeb_NativeAPIVariantKind_ARKWEB_NATIVE_CONTROLLER);
         if controller_api.is_null() {
-            return Err(MiniAppError::WebView(
+            return Err(LxAppError::WebView(
                 "Failed to get Controller API".to_string(),
             ));
         }
@@ -134,7 +134,7 @@ fn register_proxy_for_webtag(webtag: &WebTag) -> Result<(), MiniAppError> {
         } else {
             // Cleanup manually since registration failed
             let _ = Box::from_raw(proxy_data_ptr as *mut String);
-            Err(MiniAppError::WebView(
+            Err(LxAppError::WebView(
                 "registerJavaScriptProxy not available".to_string(),
             ))
         }
@@ -194,12 +194,12 @@ fn extract_string_from_bridge_data(data: &ArkWeb_JavaScriptBridgeData) -> Option
 pub fn send_port_to_webview_for_webtag(
     webtag: &WebTag,
     port_type: PortType,
-) -> Result<(), MiniAppError> {
+) -> Result<(), LxAppError> {
     let runtime = crate::runtime::SimpleAppRuntime::get()
-        .ok_or_else(|| MiniAppError::WebView("Runtime not initialized".to_string()))?;
+        .ok_or_else(|| LxAppError::WebView("Runtime not initialized".to_string()))?;
 
     let webview = runtime.get_webview_by_tag(webtag).ok_or_else(|| {
-        MiniAppError::WebView(format!("WebView not found for webtag: {}", webtag.as_str()))
+        LxAppError::WebView(format!("WebView not found for webtag: {}", webtag.as_str()))
     })?;
 
     webview.send_port(port_type)
@@ -207,7 +207,7 @@ pub fn send_port_to_webview_for_webtag(
 
 impl WebViewInner {
     /// Create a WebView instance
-    pub fn create(appid: &str, path: &str) -> Result<Self, MiniAppError> {
+    pub fn create(appid: &str, path: &str) -> Result<Self, LxAppError> {
         let webtag = WebTag::new(appid, path);
 
         // Create WebView instance
@@ -323,13 +323,13 @@ impl WebViewInner {
     }
 
     /// Send port to WebView
-    pub fn send_port(&self, port_type: PortType) -> Result<(), MiniAppError> {
+    pub fn send_port(&self, port_type: PortType) -> Result<(), LxAppError> {
         unsafe {
             let webtag_cstr = CString::new(self.webtag.as_str()).unwrap();
             let controller_api =
                 OH_ArkWeb_GetNativeAPI(ArkWeb_NativeAPIVariantKind_ARKWEB_NATIVE_CONTROLLER);
             if controller_api.is_null() {
-                return Err(MiniAppError::WebView(
+                return Err(LxAppError::WebView(
                     "Failed to get Controller API".to_string(),
                 ));
             }
@@ -350,7 +350,7 @@ impl WebViewInner {
 
             if let Some(webview_port) = port {
                 let result = controller.postWebMessage.ok_or_else(|| {
-                    MiniAppError::WebView("postWebMessage not available".to_string())
+                    LxAppError::WebView("postWebMessage not available".to_string())
                 })?(
                     webtag_cstr.as_ptr(),
                     CString::new(message).unwrap().as_ptr(),
@@ -367,13 +367,13 @@ impl WebViewInner {
                     );
                     Ok(())
                 } else {
-                    Err(MiniAppError::WebView(format!(
+                    Err(LxAppError::WebView(format!(
                         "Failed to send {} port: error {}",
                         port_name, result
                     )))
                 }
             } else {
-                Err(MiniAppError::WebView(format!(
+                Err(LxAppError::WebView(format!(
                     "{} port not available",
                     port_name
                 )))
@@ -383,7 +383,7 @@ impl WebViewInner {
 }
 
 impl WebViewController for WebViewInner {
-    fn load_url(&self, url: String) -> Result<(), MiniAppError> {
+    fn load_url(&self, url: String) -> Result<(), LxAppError> {
         call_arkts("loadUrl", &[self.webtag.as_str(), &url])
     }
 
@@ -392,7 +392,7 @@ impl WebViewController for WebViewInner {
         data: String,
         base_url: String,
         history_url: Option<String>,
-    ) -> Result<(), MiniAppError> {
+    ) -> Result<(), LxAppError> {
         unsafe {
             let webtag_cstr = CString::new(self.webtag.as_str()).unwrap();
             let data_cstr = CString::new(data.clone()).unwrap();
@@ -420,7 +420,7 @@ impl WebViewController for WebViewInner {
                 );
                 Ok(())
             } else {
-                Err(MiniAppError::WebView(format!(
+                Err(LxAppError::WebView(format!(
                     "Failed to load data into WebView: error code {:?}",
                     result
                 )))
@@ -428,7 +428,7 @@ impl WebViewController for WebViewInner {
         }
     }
 
-    fn evaluate_javascript(&self, js: String) -> Result<(), MiniAppError> {
+    fn evaluate_javascript(&self, js: String) -> Result<(), LxAppError> {
         unsafe {
             let web_tag_cstr = CString::new(self.webtag.as_str()).unwrap();
 
@@ -436,7 +436,7 @@ impl WebViewController for WebViewInner {
             let controller_api =
                 OH_ArkWeb_GetNativeAPI(ArkWeb_NativeAPIVariantKind_ARKWEB_NATIVE_CONTROLLER);
             if controller_api.is_null() {
-                return Err(MiniAppError::WebView(
+                return Err(LxAppError::WebView(
                     "Failed to get Controller API".to_string(),
                 ));
             }
@@ -459,22 +459,22 @@ impl WebViewController for WebViewInner {
                 );
                 Ok(())
             } else {
-                Err(MiniAppError::WebView(
+                Err(LxAppError::WebView(
                     "runJavaScript function not available".to_string(),
                 ))
             }
         }
     }
 
-    fn set_devtools(&self, enabled: bool) -> Result<(), MiniAppError> {
+    fn set_devtools(&self, enabled: bool) -> Result<(), LxAppError> {
         call_arkts("setDevtools", &[self.webtag.as_str(), &enabled.to_string()])
     }
 
-    fn clear_browsing_data(&self) -> Result<(), MiniAppError> {
+    fn clear_browsing_data(&self) -> Result<(), LxAppError> {
         call_arkts("clearBrowsingData", &[self.webtag.as_str()])
     }
 
-    fn set_user_agent(&self, ua: String) -> Result<(), MiniAppError> {
+    fn set_user_agent(&self, ua: String) -> Result<(), LxAppError> {
         call_arkts("setUserAgent", &[self.webtag.as_str(), &ua])
     }
 
@@ -482,14 +482,14 @@ impl WebViewController for WebViewInner {
         &self,
         enabled: bool,
         _throttle_ms: Option<u64>,
-    ) -> Result<(), MiniAppError> {
+    ) -> Result<(), LxAppError> {
         call_arkts(
             "setScrollListenerEnabled",
             &[self.webtag.as_str(), &enabled.to_string()],
         )
     }
 
-    fn post_message(&self, message: String) -> Result<(), MiniAppError> {
+    fn post_message(&self, message: String) -> Result<(), LxAppError> {
         // Access native_port directly through RefCell
         let port = *self.native_port.borrow();
 
@@ -504,12 +504,12 @@ impl WebViewController for WebViewInner {
 
                 // Create WebMessage
                 let create_fn = message_api.createWebMessage.ok_or_else(|| {
-                    MiniAppError::WebView("createWebMessage not available".to_string())
+                    LxAppError::WebView("createWebMessage not available".to_string())
                 })?;
                 let web_message = create_fn();
 
                 if web_message.is_null() {
-                    return Err(MiniAppError::WebView(
+                    return Err(LxAppError::WebView(
                         "Failed to create WebMessage".to_string(),
                     ));
                 }
@@ -530,7 +530,7 @@ impl WebViewController for WebViewInner {
 
                 // Post message using the existing port
                 let result = port_api.postMessage.ok_or_else(|| {
-                    MiniAppError::WebView("postMessage not available".to_string())
+                    LxAppError::WebView("postMessage not available".to_string())
                 })?(port, webtag_cstr.as_ptr(), web_message);
 
                 // Clean up the created message
@@ -540,7 +540,7 @@ impl WebViewController for WebViewInner {
                 }
 
                 if result != ArkWeb_ErrorCode_ARKWEB_SUCCESS {
-                    return Err(MiniAppError::WebView(format!(
+                    return Err(LxAppError::WebView(format!(
                         "Failed to post message via port: error {:?}",
                         result
                     )));
@@ -553,7 +553,7 @@ impl WebViewController for WebViewInner {
                 Ok(())
             }
         } else {
-            return Err(MiniAppError::WebView(
+            return Err(LxAppError::WebView(
                 "No native port available for post_message".to_string(),
             ));
         }
@@ -575,7 +575,7 @@ impl Drop for WebViewInner {
 }
 
 /// Register WebView lifecycle callbacks with shared user_data pointer
-fn register_webview_callbacks(webtag: &WebTag) -> Result<(), MiniAppError> {
+fn register_webview_callbacks(webtag: &WebTag) -> Result<(), LxAppError> {
     unsafe {
         let webtag_cstr = CString::new(webtag.as_str()).unwrap();
 
@@ -593,7 +593,7 @@ fn register_webview_callbacks(webtag: &WebTag) -> Result<(), MiniAppError> {
         let component_api =
             OH_ArkWeb_GetNativeAPI(ArkWeb_NativeAPIVariantKind_ARKWEB_NATIVE_COMPONENT);
         if component_api.is_null() {
-            return Err(MiniAppError::WebView(
+            return Err(LxAppError::WebView(
                 "Failed to get ArkWeb_ComponentAPI".to_string(),
             ));
         }
@@ -717,7 +717,7 @@ fn setup_webmessage_port_for_webtag(
         *mut ArkWeb_WebMessage,
         *mut c_void,
     ),
-) -> Result<(), MiniAppError> {
+) -> Result<(), LxAppError> {
     unsafe {
         let webtag_cstr = CString::new(webtag.as_str()).unwrap();
 
@@ -732,7 +732,7 @@ fn setup_webmessage_port_for_webtag(
 
         let mut size = 0;
         let ports = controller.createWebMessagePorts.ok_or_else(|| {
-            MiniAppError::WebView(format!(
+            LxAppError::WebView(format!(
                 "createWebMessagePorts not available for {:?}",
                 port_type
             ))
@@ -746,7 +746,7 @@ fn setup_webmessage_port_for_webtag(
                 ports,
                 size
             );
-            return Err(MiniAppError::WebView(format!(
+            return Err(LxAppError::WebView(format!(
                 "Failed to create {:?} WebMessage ports",
                 port_type
             )));
@@ -757,10 +757,10 @@ fn setup_webmessage_port_for_webtag(
 
         // Store both ports in WebViewInner through runtime
         let runtime = crate::runtime::SimpleAppRuntime::get()
-            .ok_or_else(|| MiniAppError::WebView("Runtime not initialized".to_string()))?;
+            .ok_or_else(|| LxAppError::WebView("Runtime not initialized".to_string()))?;
         let webview = runtime
             .get_webview_by_tag(webtag)
-            .ok_or_else(|| MiniAppError::WebView("WebView not found".to_string()))?;
+            .ok_or_else(|| LxAppError::WebView("WebView not found".to_string()))?;
 
         match port_type {
             PortType::Message => {
@@ -795,7 +795,7 @@ fn setup_webmessage_port_for_webtag(
 }
 
 /// Inject console interception script
-fn inject_console_script(webtag: &WebTag) -> Result<(), MiniAppError> {
+fn inject_console_script(webtag: &WebTag) -> Result<(), LxAppError> {
     let console_script = r#"
         (function() {
             const orig = {
@@ -844,7 +844,7 @@ fn inject_console_script(webtag: &WebTag) -> Result<(), MiniAppError> {
         let controller_api =
             OH_ArkWeb_GetNativeAPI(ArkWeb_NativeAPIVariantKind_ARKWEB_NATIVE_CONTROLLER);
         if controller_api.is_null() {
-            return Err(MiniAppError::WebView(
+            return Err(LxAppError::WebView(
                 "Failed to get Controller API for console script".to_string(),
             ));
         }
@@ -863,7 +863,7 @@ fn inject_console_script(webtag: &WebTag) -> Result<(), MiniAppError> {
             run_js(webtag_cstr.as_ptr(), &script_object);
             Ok(())
         } else {
-            Err(MiniAppError::WebView(
+            Err(LxAppError::WebView(
                 "runJavaScript not available for console script".to_string(),
             ))
         }

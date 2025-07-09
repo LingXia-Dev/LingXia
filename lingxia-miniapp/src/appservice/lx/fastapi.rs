@@ -2,12 +2,12 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::{Mutex, OnceLock};
 
-use crate::error::MiniAppError;
-use crate::miniapp::MiniApp;
+use crate::error::LxAppError;
+use crate::miniapp::LxApp;
 
 /// FastAPI handler trait
 pub trait FastApiHandler: Send + Sync + 'static {
-    fn call(&self, miniapp: Arc<MiniApp>, input: Option<&str>) -> Result<String, MiniAppError>;
+    fn call(&self, miniapp: Arc<LxApp>, input: Option<&str>) -> Result<String, LxAppError>;
 }
 
 /// FastAPI registry - stores FastAPI handlers
@@ -57,12 +57,12 @@ macro_rules! fast_api {
         impl $crate::appservice::lx::fastapi::FastApiHandler for $name {
             fn call(
                 &self,
-                miniapp: std::sync::Arc<$crate::miniapp::MiniApp>,
+                miniapp: std::sync::Arc<$crate::miniapp::LxApp>,
                 _input: Option<&str>,
-            ) -> Result<String, $crate::error::MiniAppError> {
+            ) -> Result<String, $crate::error::LxAppError> {
                 let result: $output = $body(miniapp)?;
                 serde_json::to_string(&result)
-                    .map_err(|e| $crate::error::MiniAppError::Bridge(e.to_string()))
+                    .map_err(|e| $crate::error::LxAppError::Bridge(e.to_string()))
             }
         }
     };
@@ -74,22 +74,22 @@ macro_rules! fast_api {
         impl $crate::appservice::lx::fastapi::FastApiHandler for $name {
             fn call(
                 &self,
-                miniapp: std::sync::Arc<$crate::miniapp::MiniApp>,
+                miniapp: std::sync::Arc<$crate::miniapp::LxApp>,
                 input: Option<&str>,
-            ) -> Result<String, $crate::error::MiniAppError> {
+            ) -> Result<String, $crate::error::LxAppError> {
                 let input_data: $input = match input {
                     Some(json) => serde_json::from_str(json).map_err(|e| {
-                        $crate::error::MiniAppError::Bridge(format!("Invalid input: {}", e))
+                        $crate::error::LxAppError::Bridge(format!("Invalid input: {}", e))
                     })?,
                     None => {
-                        return Err($crate::error::MiniAppError::Bridge(
+                        return Err($crate::error::LxAppError::Bridge(
                             "Missing input".to_string(),
                         ));
                     }
                 };
                 let result: $output = $body(miniapp, input_data)?;
                 serde_json::to_string(&result)
-                    .map_err(|e| $crate::error::MiniAppError::Bridge(e.to_string()))
+                    .map_err(|e| $crate::error::LxAppError::Bridge(e.to_string()))
             }
         }
     };

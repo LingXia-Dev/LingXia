@@ -17,7 +17,7 @@ export default function APIPage() {
 
     try {
       // Call the page function
-      openMiniProgram({
+      openLxApp({
         appId: 'testminiapp',
         path: 'pages/home/index.html'
       });

@@ -249,7 +249,7 @@ export class NavigationBarController {
   }
 
   /**
-   * Set navigation bar color - MiniApp compatible API
+   * Set navigation bar color - LxApp compatible API
    * @param backgroundColor Background color
    * @param textStyle Text style ('black' | 'white')
    */

@@ -2,12 +2,12 @@ use rong::{JSContext, JSResult};
 use std::sync::Arc;
 
 use crate::app::DeviceInfo;
-use crate::error::MiniAppError;
+use crate::error::LxAppError;
 use crate::fast_api;
-use crate::miniapp::MiniApp;
+use crate::miniapp::LxApp;
 
 pub(crate) fn device_info(ctx: JSContext) -> JSResult<DeviceInfo> {
-    let miniapp = ctx.get_user_data::<Arc<MiniApp>>().unwrap();
+    let miniapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
     let device_info = miniapp.runtime.device_info();
     Ok(device_info)
 }
@@ -15,7 +15,7 @@ pub(crate) fn device_info(ctx: JSContext) -> JSResult<DeviceInfo> {
 fast_api!(
     GetDeviceInfo,
     DeviceInfo,
-    |miniapp: Arc<MiniApp>| -> Result<DeviceInfo, MiniAppError> {
+    |miniapp: Arc<LxApp>| -> Result<DeviceInfo, LxAppError> {
         Ok(miniapp.runtime.device_info())
     }
 );

@@ -1,9 +1,9 @@
 use http::{Request, Response, StatusCode};
 
 use crate::error;
-use crate::miniapp::MiniApp;
+use crate::miniapp::LxApp;
 
-impl MiniApp {
+impl LxApp {
     /// Handler for lx:// scheme requests to access static app assets (images, CSS, JS, etc.)
     /// HTML files are handled separately through generate_page_html and load_data
     pub(crate) fn lingxia_handler(&self, req: Request<Vec<u8>>) -> Option<Response<Vec<u8>>> {

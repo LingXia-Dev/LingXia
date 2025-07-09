@@ -1,5 +1,5 @@
-use crate::appservice::MiniAppServiceManager;
-use crate::{AppRuntime, MiniAppError, error};
+use crate::appservice::LxAppServiceManager;
+use crate::{AppRuntime, LxAppError, error};
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -43,7 +43,7 @@ impl PageStack {
 /// Interface for controlling WebView
 pub trait WebViewController: Send + Sync {
     /// Load a URL in the WebView
-    fn load_url(&self, url: String) -> Result<(), MiniAppError>;
+    fn load_url(&self, url: String) -> Result<(), LxAppError>;
 
     /// Load HTML data into the WebView
     ///
@@ -56,13 +56,13 @@ pub trait WebViewController: Send + Sync {
         data: String,
         base_url: String,
         history_url: Option<String>,
-    ) -> Result<(), MiniAppError>;
+    ) -> Result<(), LxAppError>;
 
     /// Evaluate JavaScript in the WebView
-    fn evaluate_javascript(&self, js: String) -> Result<(), MiniAppError>;
+    fn evaluate_javascript(&self, js: String) -> Result<(), LxAppError>;
 
     /// Post a message to the JavaScript context
-    fn post_message(&self, message: String) -> Result<(), MiniAppError> {
+    fn post_message(&self, message: String) -> Result<(), LxAppError> {
         // Escape the JSON message for safe JavaScript injection
         // Since message is already JSON, we need to escape it properly for JS string literal
         let escaped_message = message
@@ -87,13 +87,13 @@ pub trait WebViewController: Send + Sync {
     }
 
     /// Enable or disable developer tools
-    fn set_devtools(&self, enabled: bool) -> Result<(), MiniAppError>;
+    fn set_devtools(&self, enabled: bool) -> Result<(), LxAppError>;
 
     /// Clear browsing data from the WebView
-    fn clear_browsing_data(&self) -> Result<(), MiniAppError>;
+    fn clear_browsing_data(&self) -> Result<(), LxAppError>;
 
     /// Set the user agent string for the WebView
-    fn set_user_agent(&self, ua: String) -> Result<(), MiniAppError>;
+    fn set_user_agent(&self, ua: String) -> Result<(), LxAppError>;
 
     /// Enable or disable scroll event listener with optional throttle time
     /// When enabled, scroll events will be sent to the native layer
@@ -101,7 +101,7 @@ pub trait WebViewController: Send + Sync {
         &self,
         enabled: bool,
         throttle_ms: Option<u64>,
-    ) -> Result<(), MiniAppError>;
+    ) -> Result<(), LxAppError>;
 }
 
 /// Manages a collection of pages for a single miniapp
@@ -141,8 +141,8 @@ impl Pages {
         appid: String,
         path: String,
         controller: Arc<dyn AppRuntime>,
-        svc_manager: Arc<Mutex<MiniAppServiceManager>>,
-    ) -> Result<Page, MiniAppError> {
+        svc_manager: Arc<Mutex<LxAppServiceManager>>,
+    ) -> Result<Page, LxAppError> {
         // Check if page already exists
         if self.pages.contains_key(&path) {
             return Ok(self.pages.get(&path).unwrap().clone());
@@ -191,8 +191,8 @@ impl Pages {
         appid: String,
         path: String,
         controller: Arc<dyn AppRuntime>,
-        svc_manager: Arc<Mutex<MiniAppServiceManager>>,
-    ) -> Result<Page, MiniAppError> {
+        svc_manager: Arc<Mutex<LxAppServiceManager>>,
+    ) -> Result<Page, LxAppError> {
         if self.pages.len() >= self.max_pages {
             self.destroy_least_active();
         }
@@ -374,7 +374,7 @@ pub(crate) struct PageInner {
     // Reference to the WebView controller (required)
     webview_controller: Arc<dyn WebViewController>,
     // Reference to the service manager
-    svc_manager: Arc<Mutex<MiniAppServiceManager>>,
+    svc_manager: Arc<Mutex<LxAppServiceManager>>,
 
     // Time when this page was last active
     last_active_time: Arc<Mutex<Instant>>,
@@ -402,7 +402,7 @@ impl Page {
     fn new_with_webview(
         appid: String,
         path: String,
-        svc_manager: Arc<Mutex<MiniAppServiceManager>>,
+        svc_manager: Arc<Mutex<LxAppServiceManager>>,
         webview_controller: Arc<dyn WebViewController>,
     ) -> Self {
         let inner = Arc::new(PageInner {
@@ -446,7 +446,7 @@ impl Page {
         &self,
         html_data: String,
         base_url: String,
-    ) -> Result<(), MiniAppError> {
+    ) -> Result<(), LxAppError> {
         self.inner.webview_controller.load_data(
             html_data, base_url, None, // Use base_url as history_url
         )
@@ -469,7 +469,7 @@ impl Page {
         }
     }
 
-    fn terminate_page_service(&self) -> Result<(), MiniAppError> {
+    fn terminate_page_service(&self) -> Result<(), LxAppError> {
         if let Ok(guard) = self.inner.svc_manager.lock() {
             guard.terminate_page_svc(self.inner.appid.clone(), self.inner.path.clone())?;
         }

@@ -3,7 +3,7 @@ use std::io;
 use thiserror::Error;
 
 #[derive(Debug, Clone, Error)]
-pub enum MiniAppError {
+pub enum LxAppError {
     /// Error when performing web operations
     #[error("WebView error: {0}")]
     WebView(String),
@@ -47,26 +47,26 @@ pub enum MiniAppError {
     RongJS(String),
 }
 
-impl From<io::Error> for MiniAppError {
+impl From<io::Error> for LxAppError {
     fn from(error: io::Error) -> Self {
-        MiniAppError::IoError(error.to_string())
+        LxAppError::IoError(error.to_string())
     }
 }
 
-impl<T> From<std::sync::mpsc::SendError<T>> for MiniAppError {
+impl<T> From<std::sync::mpsc::SendError<T>> for LxAppError {
     fn from(error: std::sync::mpsc::SendError<T>) -> Self {
-        MiniAppError::ChannelError(error.to_string())
+        LxAppError::ChannelError(error.to_string())
     }
 }
 
-impl From<serde_json::Error> for MiniAppError {
+impl From<serde_json::Error> for LxAppError {
     fn from(error: serde_json::Error) -> Self {
-        MiniAppError::Bridge(format!("JSON Processing Error: {}", error))
+        LxAppError::Bridge(format!("JSON Processing Error: {}", error))
     }
 }
 
-impl From<RongJSError> for MiniAppError {
+impl From<RongJSError> for LxAppError {
     fn from(error: RongJSError) -> Self {
-        MiniAppError::RongJS(error.to_string())
+        LxAppError::RongJS(error.to_string())
     }
 }

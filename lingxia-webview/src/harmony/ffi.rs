@@ -61,7 +61,7 @@ pub fn miniapp_init(
     });
 
     log::info!(
-        "Initializing MiniApp with data_dir: {}, cache_dir: {}",
+        "Initializing LxApp with data_dir: {}, cache_dir: {}",
         data_dir,
         cache_dir,
     );
@@ -107,11 +107,11 @@ pub fn miniapp_init(
     match final_init_details {
         Some((home_app_id, initial_route)) => {
             let combined_details = format!("{}:{}", home_app_id, initial_route);
-            log::info!("MiniApp initialization successful: {}", combined_details);
+            log::info!("LxApp initialization successful: {}", combined_details);
             Some(combined_details)
         }
         None => {
-            log::error!("Failed to obtain MiniApp home app details during initialization.");
+            log::error!("Failed to obtain LxApp home app details during initialization.");
             None
         }
     }
@@ -137,7 +137,7 @@ pub fn get_page_config(appid: String, path: String) -> Option<String> {
     }
 }
 
-/// Notify that MiniApp was opened
+/// Notify that LxApp was opened
 #[napi]
 pub fn on_miniapp_opened(appid: String, path: String) -> i32 {
     let miniapp = miniapp::get(appid);
@@ -145,7 +145,7 @@ pub fn on_miniapp_opened(appid: String, path: String) -> i32 {
     0
 }
 
-/// Notify that MiniApp was closed
+/// Notify that LxApp was closed
 #[napi]
 pub fn on_miniapp_closed(appid: String) -> i32 {
     let miniapp = miniapp::get(appid);

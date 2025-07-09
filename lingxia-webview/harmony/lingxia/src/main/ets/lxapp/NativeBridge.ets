@@ -1,6 +1,6 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { webview } from '@kit.ArkWeb';
-import { MiniApp } from './MiniApp';
+import { LxApp } from './LxApp';
 import {
   createWebViewController,
   destroyWebViewController,
@@ -37,19 +37,19 @@ class NativeBridge {
    * Register default callbacks that native layer can call
    */
   private registerDefaultCallbacks(): void {
-    // Core MiniApp functions
-    this.register('openMiniApp', (appId: string, path: string) => {
-      MiniApp.openMiniApp(appId, path);
+    // Core LxApp functions
+    this.register('openLxApp', (appId: string, path: string) => {
+      LxApp.openLxApp(appId, path);
       return true;
     });
 
-    this.register('closeMiniApp', (appId: string) => {
-      MiniApp.closeMiniApp(appId);
+    this.register('closeLxApp', (appId: string) => {
+      LxApp.closeLxApp(appId);
       return true;
     });
 
     this.register('switchPage', (appId: string, path: string) => {
-      return MiniApp.switchToPage(appId, path);
+      return LxApp.switchToPage(appId, path);
     });
 
     // WebView management
@@ -148,7 +148,7 @@ export function getNativeCallbackFunction(): (data: string) => Object | null {
 
 /**
  * Initialize the native bridge
- * This should be called during MiniApp initialization
+ * This should be called during LxApp initialization
  */
 export function initNativeBridge(): void {
   NativeBridge.getInstance();

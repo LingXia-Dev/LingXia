@@ -1,6 +1,6 @@
-use crate::error::MiniAppError;
+use crate::error::LxAppError;
 use crate::log::{LogBuilder, LogLevel, LogTag};
-use crate::miniapp::MiniApp;
+use crate::miniapp::LxApp;
 use crate::{error, info};
 
 use rong::{
@@ -16,7 +16,7 @@ use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, mpsc};
 
 mod app;
-use app::MiniAppSvc;
+use app::LxAppSvc;
 
 pub mod bridge;
 
@@ -25,15 +25,15 @@ use page::PageSvc;
 
 mod lx;
 
-/// Message type for MiniApp service system
+/// Message type for LxApp service system
 #[derive(Clone)]
 enum ServiceMessage {
     // Create a new miniapp service
-    CreateMiniApp {
-        miniapp: Arc<MiniApp>,
+    CreateLxApp {
+        miniapp: Arc<LxApp>,
     },
     // Delete an miniapp service
-    TerminateMiniApp {
+    TerminateLxApp {
         appid: String,
     },
     // Create a new page service
@@ -79,14 +79,14 @@ struct WorkerService {
     svc: ServiceMessage,
 }
 
-/// Manager for MiniApp services
-pub(crate) struct MiniAppServiceManager {
+/// Manager for LxApp services
+pub(crate) struct LxAppServiceManager {
     sender: Sender<ServiceMessage>,
     worker_assignments: HashMap<String, usize>, // appid -> worker_id
     free_workers: Vec<usize>,                   // available worker ids
 }
 
-impl MiniAppServiceManager {
+impl LxAppServiceManager {
     fn new(sender: Sender<ServiceMessage>, worker_count: usize) -> Self {
         Self {
             sender,
@@ -103,8 +103,8 @@ impl MiniAppServiceManager {
     /// Create a new mini app service
     pub fn create_app_svc(
         &mut self,
-        miniapp: Arc<crate::miniapp::MiniApp>,
-    ) -> Result<(), MiniAppError> {
+        miniapp: Arc<crate::miniapp::LxApp>,
+    ) -> Result<(), LxAppError> {
         let appid = &miniapp.appid;
 
         // Check if app already exists
@@ -114,7 +114,7 @@ impl MiniAppServiceManager {
 
         // Check if we have free workers available
         if self.free_workers.is_empty() {
-            return Err(MiniAppError::ResourceExhausted(
+            return Err(LxAppError::ResourceExhausted(
                 "No available workers".to_string(),
             ));
         }
@@ -125,22 +125,22 @@ impl MiniAppServiceManager {
         // Update assignment
         self.worker_assignments.insert(appid.clone(), worker_id);
 
-        // Send message with MiniApp reference
+        // Send message with LxApp reference
         self.sender
-            .send(ServiceMessage::CreateMiniApp { miniapp })?;
+            .send(ServiceMessage::CreateLxApp { miniapp })?;
 
         Ok(())
     }
 
     /// Create a new page service in an existing mini app
-    pub fn create_page_svc(&self, appid: String, path: String) -> Result<(), MiniAppError> {
+    pub fn create_page_svc(&self, appid: String, path: String) -> Result<(), LxAppError> {
         self.sender
             .send(ServiceMessage::CreatePage { appid, path })?;
         Ok(())
     }
 
     /// Terminate a page service in a mini app
-    pub fn terminate_page_svc(&self, appid: String, path: String) -> Result<(), MiniAppError> {
+    pub fn terminate_page_svc(&self, appid: String, path: String) -> Result<(), LxAppError> {
         self.sender
             .send(ServiceMessage::TerminatePage { appid, path })?;
 
@@ -148,7 +148,7 @@ impl MiniAppServiceManager {
     }
 
     /// Terminate a mini app service
-    pub fn terminate_app_svc(&mut self, appid: String) -> Result<(), MiniAppError> {
+    pub fn terminate_app_svc(&mut self, appid: String) -> Result<(), LxAppError> {
         // If we have this app, get its worker ID
         if let Some(worker_id) = self.worker_assignments.remove(&appid) {
             // Return worker to free pool
@@ -156,7 +156,7 @@ impl MiniAppServiceManager {
         }
 
         self.sender
-            .send(ServiceMessage::TerminateMiniApp { appid })?;
+            .send(ServiceMessage::TerminateLxApp { appid })?;
 
         Ok(())
     }
@@ -190,7 +190,7 @@ impl MiniAppServiceManager {
         appid: String,
         name: String,
         args: Option<String>,
-    ) -> Result<(), MiniAppError> {
+    ) -> Result<(), LxAppError> {
         self.sender
             .send(ServiceMessage::CallAppSvc { appid, name, args })?;
 
@@ -203,7 +203,7 @@ impl MiniAppServiceManager {
         appid: String,
         path: String,
         incoming: Arc<bridge::IncomingMessage>,
-    ) -> Result<(), MiniAppError> {
+    ) -> Result<(), LxAppError> {
         self.sender.send(ServiceMessage::CallPageSvc {
             appid,
             path,
@@ -220,7 +220,7 @@ impl MiniAppServiceManager {
         path: String,
         name: String,
         args: Option<String>,
-    ) -> Result<(), MiniAppError> {
+    ) -> Result<(), LxAppError> {
         self.sender.send(ServiceMessage::CallPageSvc {
             appid,
             path,
@@ -239,7 +239,7 @@ async fn handle_app_service_call(
     name: String,
     args: Option<String>,
 ) {
-    if let Some(svc) = ctx.get_user_data::<MiniAppSvc>() {
+    if let Some(svc) = ctx.get_user_data::<LxAppSvc>() {
         let svc_clone = svc.clone();
         let ctx_clone_for_task = ctx.clone();
 
@@ -261,7 +261,7 @@ async fn handle_app_service_call(
 async fn handle_view_source(
     page_svc_ref: &PageSvc,
     incoming: Arc<bridge::IncomingMessage>,
-) -> Result<(), MiniAppError> {
+) -> Result<(), LxAppError> {
     page_svc_ref
         .as_bridge()
         .process_incoming_message(page_svc_ref, page_svc_ref, incoming)
@@ -289,16 +289,16 @@ async fn handle_native_source(page_svc: &PageSvc, name: String, args: Option<Str
 /// This function is a handler for messages received by the worker.
 async fn miniapp_service_handler(
     worker_id: usize,
-    manager: Arc<Mutex<MiniAppServiceManager>>,
+    manager: Arc<Mutex<LxAppServiceManager>>,
     runtime: JSRuntime,
     message: ServiceMessage,
     current_ctx: &mut Option<JSContext>,
 ) {
     match message {
-        ServiceMessage::CreateMiniApp { miniapp } => {
+        ServiceMessage::CreateLxApp { miniapp } => {
             let ctx = runtime.context();
 
-            // Store the MiniApp reference directly in JSContext user data
+            // Store the LxApp reference directly in JSContext user data
             ctx.set_user_data(miniapp.clone());
 
             // Create a HashMap for PageSvc instances and store it in JSContext
@@ -311,13 +311,13 @@ async fn miniapp_service_handler(
             let _ = page::init(&ctx);
 
             // Set console writer
-            console::set_writer(Box::new(MiniAppCtx::new(miniapp.clone())));
+            console::set_writer(Box::new(LxAppCtx::new(miniapp.clone())));
 
             // Set file access guard to prevent cross-app file access
-            fs::set_file_access_guard(Box::new(MiniAppCtx::new(miniapp.clone())));
+            fs::set_file_access_guard(Box::new(LxAppCtx::new(miniapp.clone())));
 
             // Set network access guard to prevent unauthorized domain access
-            http::set_network_access_guard(Box::new(MiniAppCtx::new(miniapp.clone())));
+            http::set_network_access_guard(Box::new(LxAppCtx::new(miniapp.clone())));
 
             let localstorage = miniapp.storage_dir.join(format!("{}.redb", miniapp.appid));
             if let Err(e) = storage::set_storage_path(localstorage) {
@@ -361,7 +361,7 @@ async fn miniapp_service_handler(
                 manager_guard.add_miniapp(&miniapp.appid, worker_id);
             }
         }
-        ServiceMessage::TerminateMiniApp { appid } => {
+        ServiceMessage::TerminateLxApp { appid } => {
             if current_ctx.is_some() {
                 *current_ctx = None;
 
@@ -371,7 +371,7 @@ async fn miniapp_service_handler(
                     manager_guard.remove_miniapp(&appid);
                 }
 
-                info!("[Worker {}] Removed MiniApp context ", worker_id).with_appid(appid.clone());
+                info!("[Worker {}] Removed LxApp context ", worker_id).with_appid(appid.clone());
             }
         }
         ServiceMessage::CreatePage { appid, path } => {
@@ -464,9 +464,9 @@ async fn miniapp_service_handler(
     }
 }
 
-/// Initialize the MiniAppService system
-/// Returns the MiniAppServiceManager for the caller to manage
-pub(crate) fn init(num: usize) -> Arc<Mutex<MiniAppServiceManager>> {
+/// Initialize the LxAppService system
+/// Returns the LxAppServiceManager for the caller to manage
+pub(crate) fn init(num: usize) -> Arc<Mutex<LxAppServiceManager>> {
     let (service_sender, service_receiver) = mpsc::channel::<ServiceMessage>();
     let service_receiver = Arc::new(Mutex::new(service_receiver));
 
@@ -474,7 +474,7 @@ pub(crate) fn init(num: usize) -> Arc<Mutex<MiniAppServiceManager>> {
     let worker_barrier = barrier.clone();
 
     // Create the manager with the controller and log sender
-    let manager = Arc::new(Mutex::new(MiniAppServiceManager::new(
+    let manager = Arc::new(Mutex::new(LxAppServiceManager::new(
         service_sender.clone(),
         num,
     )));
@@ -523,7 +523,7 @@ pub(crate) fn init(num: usize) -> Arc<Mutex<MiniAppServiceManager>> {
                 if worker
                     .spawn_future(async move |runtime, mut receiver| {
                         // JSContext it's not Sendable, so we don't hold appid-> JSContext map in
-                        // MiniAppServiceManager
+                        // LxAppServiceManager
                         // a worker either has a current context or it doesn't
                         let mut current_ctx: Option<JSContext> = None;
 
@@ -556,7 +556,7 @@ pub(crate) fn init(num: usize) -> Arc<Mutex<MiniAppServiceManager>> {
                 match recv.lock().unwrap().recv() {
                     Ok(message) => {
                         match &message {
-                            ServiceMessage::CreateMiniApp { miniapp } => {
+                            ServiceMessage::CreateLxApp { miniapp } => {
                                 let appid = &miniapp.appid;
                                 // Find worker for appid and send message
                                 if let Some(worker_id) =
@@ -571,7 +571,7 @@ pub(crate) fn init(num: usize) -> Arc<Mutex<MiniAppServiceManager>> {
                                     }
                                 }
                             }
-                            ServiceMessage::TerminateMiniApp { appid }
+                            ServiceMessage::TerminateLxApp { appid }
                             | ServiceMessage::CallAppSvc { appid, .. }
                             | ServiceMessage::CallPageSvc { appid, .. }
                             | ServiceMessage::TerminatePage { appid, .. }
@@ -606,28 +606,28 @@ pub(crate) fn init(num: usize) -> Arc<Mutex<MiniAppServiceManager>> {
     result_manager
 }
 
-/// Wrapper for MiniApp to implement external traits
-struct MiniAppCtx {
-    miniapp: Arc<MiniApp>,
+/// Wrapper for LxApp to implement external traits
+struct LxAppCtx {
+    miniapp: Arc<LxApp>,
 }
 
-impl MiniAppCtx {
-    pub fn new(miniapp: Arc<MiniApp>) -> Self {
+impl LxAppCtx {
+    pub fn new(miniapp: Arc<LxApp>) -> Self {
         Self { miniapp }
     }
 }
 
-impl std::fmt::Debug for MiniAppCtx {
+impl std::fmt::Debug for LxAppCtx {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("MiniAppCtx")
+        f.debug_struct("LxAppCtx")
             .field("appid", &self.miniapp.appid)
             .finish()
     }
 }
 
-impl console::ConsoleWriter for MiniAppCtx {
+impl console::ConsoleWriter for LxAppCtx {
     fn write(&self, level: console::LogLevel, message: String) {
-        let log = LogBuilder::new(LogTag::MiniAppServiceConsole, message);
+        let log = LogBuilder::new(LogTag::LxAppServiceConsole, message);
         match level {
             console::LogLevel::Verbose => log
                 .with_level(LogLevel::Verbose)
@@ -652,7 +652,7 @@ impl console::ConsoleWriter for MiniAppCtx {
     }
 }
 
-impl fs::FileAccessGuard for MiniAppCtx {
+impl fs::FileAccessGuard for LxAppCtx {
     /// Check if the mini app has access to the specified path
     ///
     /// This prevents one mini app from accessing another mini app's files.
@@ -702,7 +702,7 @@ impl fs::FileAccessGuard for MiniAppCtx {
     }
 }
 
-impl http::NetworkAccessGuard for MiniAppCtx {
+impl http::NetworkAccessGuard for LxAppCtx {
     /// Check if the mini app has access to the specified domain
     /// Returns Ok(()) if access is granted, Err with error message if denied
     fn check_access(&self, domain: &str) -> JSResult<()> {

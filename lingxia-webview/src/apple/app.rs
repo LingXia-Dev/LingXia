@@ -1,5 +1,5 @@
 use super::ffi;
-use miniapp::{AssetFileEntry, DeviceInfo, MiniAppError};
+use miniapp::{AssetFileEntry, DeviceInfo, LxAppError};
 use std::io::{Cursor, Read};
 use std::path::PathBuf;
 
@@ -47,7 +47,7 @@ unsafe impl Sync for App {}
 
 impl App {
     /// Create a new App instance
-    pub fn new(data_dir: String, cache_dir: String) -> Result<Self, MiniAppError> {
+    pub fn new(data_dir: String, cache_dir: String) -> Result<Self, LxAppError> {
         Ok(App {
             data_dir,
             cache_dir,
@@ -65,11 +65,11 @@ impl App {
     }
 
     /// Read an asset file from the SPM bundle resources
-    pub fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, MiniAppError> {
+    pub fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, LxAppError> {
         let data = super::resources::read_asset_data(path);
 
         if data.is_empty() {
-            Err(MiniAppError::ResourceNotFound(path.to_string()))
+            Err(LxAppError::ResourceNotFound(path.to_string()))
         } else {
             Ok(Box::new(Cursor::new(data)))
         }
@@ -79,7 +79,7 @@ impl App {
     pub fn asset_dir_iter<'a>(
         &'a self,
         asset_dir: &str,
-    ) -> Box<dyn Iterator<Item = Result<AssetFileEntry<'a>, MiniAppError>> + 'a> {
+    ) -> Box<dyn Iterator<Item = Result<AssetFileEntry<'a>, LxAppError>> + 'a> {
         let entries = self.collect_files_recursively(asset_dir);
         Box::new(entries.into_iter())
     }
@@ -88,7 +88,7 @@ impl App {
     fn collect_files_recursively<'a>(
         &'a self,
         dir_path: &str,
-    ) -> Vec<Result<AssetFileEntry<'a>, MiniAppError>> {
+    ) -> Vec<Result<AssetFileEntry<'a>, LxAppError>> {
         let mut all_files = Vec::new();
         let mut dirs_to_process = vec![dir_path.to_string()];
 
@@ -140,11 +140,11 @@ impl App {
     }
 
     /// Open a mini app
-    pub fn open_miniapp(&self, appid: &str, path: &str) -> Result<(), MiniAppError> {
-        if ffi::open_miniapp(appid, path) {
+    pub fn open_lxapp(&self, appid: &str, path: &str) -> Result<(), LxAppError> {
+        if ffi::open_lxapp(appid, path) {
             Ok(())
         } else {
-            Err(MiniAppError::WebView(format!(
+            Err(LxAppError::WebView(format!(
                 "Failed to open miniapp: appid={}, path={}",
                 appid, path
             )))
@@ -152,11 +152,11 @@ impl App {
     }
 
     /// Close a mini app
-    pub fn close_miniapp(&self, appid: &str) -> Result<(), MiniAppError> {
+    pub fn close_miniapp(&self, appid: &str) -> Result<(), LxAppError> {
         if ffi::close_miniapp(appid) {
             Ok(())
         } else {
-            Err(MiniAppError::WebView(format!(
+            Err(LxAppError::WebView(format!(
                 "Failed to close miniapp: appid={}",
                 appid
             )))
@@ -164,11 +164,11 @@ impl App {
     }
 
     /// Switch to a page in a mini app
-    pub fn switch_page(&self, appid: &str, path: &str) -> Result<(), MiniAppError> {
+    pub fn switch_page(&self, appid: &str, path: &str) -> Result<(), LxAppError> {
         if ffi::switch_page(appid, path) {
             Ok(())
         } else {
-            Err(MiniAppError::WebView(format!(
+            Err(LxAppError::WebView(format!(
                 "Failed to switch page: appid={}, path={}",
                 appid, path
             )))

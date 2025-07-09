@@ -35,7 +35,7 @@ data class NavigationBarConfig(
         // Default values
         val DEFAULT_BACKGROUND_COLOR = Color.WHITE
         val DEFAULT_TEXT_COLOR = Color.BLACK
-        const val DEFAULT_HEIGHT_DP = MiniAppActivity.DEFAULT_NAV_BAR_HEIGHT_DP
+        const val DEFAULT_HEIGHT_DP = LxAppActivity.DEFAULT_NAV_BAR_HEIGHT_DP
 
         fun fromJson(json: String?): NavigationBarConfig? {
             if (json.isNullOrEmpty()) {
@@ -160,7 +160,7 @@ class NavigationBar @JvmOverloads constructor(
         val smallestScreenWidthDp = context.resources.configuration.smallestScreenWidthDp
         val isTablet = smallestScreenWidthDp >= 600
 
-        val navBarHeightDp = if (isTablet) DEFAULT_TABLET_HEIGHT_DP else MiniAppActivity.DEFAULT_NAV_BAR_HEIGHT_DP
+        val navBarHeightDp = if (isTablet) DEFAULT_TABLET_HEIGHT_DP else LxAppActivity.DEFAULT_NAV_BAR_HEIGHT_DP
 
         Log.d(TAG, "smallestScreenWidthDp: $smallestScreenWidthDp, isTablet: $isTablet, navBarHeightDp: $navBarHeightDp")
         val heightPx = (navBarHeightDp * density).toInt()
@@ -246,7 +246,7 @@ class NavigationBar @JvmOverloads constructor(
     fun getCalculatedContentHeightPx(): Int {
         val density = resources.displayMetrics.density
         val isTablet = context.resources.configuration.smallestScreenWidthDp >= 600
-        val navBarHeightDp = if (isTablet) DEFAULT_TABLET_HEIGHT_DP else MiniAppActivity.DEFAULT_NAV_BAR_HEIGHT_DP
+        val navBarHeightDp = if (isTablet) DEFAULT_TABLET_HEIGHT_DP else LxAppActivity.DEFAULT_NAV_BAR_HEIGHT_DP
         return (navBarHeightDp * density).toInt()
     }
 
