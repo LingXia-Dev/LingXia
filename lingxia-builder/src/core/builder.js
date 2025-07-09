@@ -152,7 +152,13 @@ export class PageBuilder {
 
   // Generate build files from templates
   async generateFromTemplate(pageType, buildDir, functions, pageFiles) {
-    await ProcessorFactory.process(pageType, buildDir, functions, pageFiles);
+    await ProcessorFactory.process(
+      pageType,
+      buildDir,
+      functions,
+      pageFiles,
+      generatePageFunctionScript,
+    );
   }
 
   // Generate function injection code

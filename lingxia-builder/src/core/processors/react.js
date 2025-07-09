@@ -12,7 +12,7 @@ export class ReactProcessor {
     );
   }
 
-  async process(buildDir, functions, pageFiles) {
+  async process(buildDir, functions, pageFiles, generateFunctionScript) {
     // Copy template files
     const templateFiles = ["package.json", "vite.config.js", "index.html"];
     this.copyFiles(templateFiles, buildDir);
@@ -23,7 +23,8 @@ export class ReactProcessor {
       "utf-8",
     );
 
-    const functionInjection = this.generateFunctionInjection(functions);
+    const functionNames = functions.map((f) => f.name);
+    const functionInjection = generateFunctionScript(functionNames);
     const mainJsxContent = mainJsxTemplate.replace(
       /\/\*\s*\{\{PAGE_FUNCTIONS\}\}\s*\*\//,
       functionInjection,
@@ -56,14 +57,5 @@ export class ReactProcessor {
         fs.copyFileSync(srcPath, destPath);
       }
     });
-  }
-
-  generateFunctionInjection(functions) {
-    if (!functions || functions.length === 0) {
-      return "window.__PAGE_FUNCTIONS = [];";
-    }
-
-    const functionList = functions.map((f) => `"${f}"`).join(",");
-    return `window.__PAGE_FUNCTIONS = [${functionList}];`;
   }
 }

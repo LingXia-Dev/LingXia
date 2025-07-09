@@ -24,8 +24,19 @@ export class ProcessorFactory {
     return processor;
   }
 
-  static async process(pageType, buildDir, functions, pageFiles) {
+  static async process(
+    pageType,
+    buildDir,
+    functions,
+    pageFiles,
+    generateFunctionScript,
+  ) {
     const processor = this.getProcessor(pageType);
-    return await processor.process(buildDir, functions, pageFiles);
+    return await processor.process(
+      buildDir,
+      functions,
+      pageFiles,
+      generateFunctionScript,
+    );
   }
 }
