@@ -1,9 +1,36 @@
+function getInitialData() {
+  try {
+    const storedTodos = Rong.storage.get("todo:todos");
+    const storedFilter = Rong.storage.get("todo:filter");
+    const storedLastUpdated = Rong.storage.get("todo:lastUpdated");
+
+    if (storedTodos && Array.isArray(storedTodos) && storedTodos.length > 0) {
+      console.log("[Todo] Found stored todos:", storedTodos.length);
+      return {
+        todos: storedTodos,
+        currentFilter: storedFilter || "all",
+        lastUpdated: storedLastUpdated || new Date().toISOString(),
+      };
+    } else {
+      console.log("[Todo] No stored todos found, using empty state");
+      return {
+        todos: [],
+        currentFilter: "all",
+        lastUpdated: new Date().toISOString(),
+      };
+    }
+  } catch (error) {
+    console.error("[Todo] Error loading initial data:", error);
+    return {
+      todos: [],
+      currentFilter: "all",
+      lastUpdated: new Date().toISOString(),
+    };
+  }
+}
+
 Page({
-  data: {
-    todos: [],
-    currentFilter: "all",
-    lastUpdated: new Date().toISOString(),
-  },
+  data: getInitialData(),
 
   // Storage keys
   STORAGE_KEYS: {
@@ -13,9 +40,8 @@ Page({
   },
 
   // Page lifecycle
-  onLoad: async function () {
-    console.log("[Todo] Page loaded");
-    await this._loadFromStorage();
+  onLoad: function () {
+    console.log("[Todo] Page loaded, initial todos:", this.data.todos.length);
   },
 
   onReady: function () {
@@ -34,54 +60,6 @@ Page({
       console.log("[Todo] saveToStorage: Successfully saved to storage");
     } catch (error) {
       console.error("[Todo] saveToStorage: Error saving to storage:", error);
-    }
-  },
-
-  _loadFromStorage: async function () {
-    try {
-      const storedTodos = Rong.storage.get(this.STORAGE_KEYS.TODOS);
-      const storedFilter = Rong.storage.get(this.STORAGE_KEYS.FILTER);
-      const storedLastUpdated = Rong.storage.get(
-        this.STORAGE_KEYS.LAST_UPDATED,
-      );
-
-      if (storedTodos && Array.isArray(storedTodos) && storedTodos.length > 0) {
-        console.log(
-          "[Todo] loadFromStorage: Found stored todos:",
-          storedTodos.length,
-        );
-        await this.setData({
-          todos: storedTodos,
-          currentFilter: storedFilter || "all",
-          lastUpdated: storedLastUpdated || new Date().toISOString(),
-        });
-      } else {
-        console.log(
-          "[Todo] loadFromStorage: No stored todos found, initializing with sample data",
-        );
-        const defaultTodos = [
-          { id: Date.now(), text: "Welcome to Todo App! 👋", completed: false },
-        ];
-
-        await this.setData({
-          todos: defaultTodos,
-          currentFilter: "all",
-          lastUpdated: new Date().toISOString(),
-        });
-
-        this._saveToStorage();
-      }
-    } catch (error) {
-      console.error(
-        "[Todo] loadFromStorage: Error loading from storage:",
-        error,
-      );
-      // Fallback to empty state
-      await this.setData({
-        todos: [],
-        currentFilter: "all",
-        lastUpdated: new Date().toISOString(),
-      });
     }
   },
 
