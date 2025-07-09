@@ -21,30 +21,25 @@ export function extractPageFunctions(jsFilePath) {
 function parseJavaScriptFunctions(code) {
   const functions = [];
 
-  // Extract function declarations
-  const functionDeclarations = code.match(
-    /function\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*\([^)]*\)\s*\{[\s\S]*?\}/g,
-  );
-  if (functionDeclarations) {
-    functionDeclarations.forEach((funcCode) => {
-      const nameMatch = funcCode.match(/function\s+([a-zA-Z_$][a-zA-Z0-9_$]*)/);
-      if (nameMatch) {
-        functions.push({
-          name: nameMatch[1],
-          code: funcCode.trim(),
-        });
-      }
-    });
+  // Find the Page({...}) call and extract functions from within it
+  const pageMatch = code.match(/Page\s*\(\s*\{([\s\S]*)\}\s*\)/);
+  if (!pageMatch) {
+    console.warn("No Page({}) call found in the code");
+    return functions;
   }
 
-  // Extract arrow functions
-  const arrowFunctions = code.match(
-    /(?:const|let|var)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\s*=\s*\([^)]*\)\s*=>\s*\{[\s\S]*?\}/g,
+  const pageObjectContent = pageMatch[1];
+
+  // Extract object method functions from within Page object
+  // Match patterns like: methodName: function() {}, methodName: async function() {}
+  const objectMethods = pageObjectContent.match(
+    /([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:\s*(?:async\s+)?function\s*\([^)]*\)\s*\{[\s\S]*?\}/g,
   );
-  if (arrowFunctions) {
-    arrowFunctions.forEach((funcCode) => {
+
+  if (objectMethods) {
+    objectMethods.forEach((funcCode) => {
       const nameMatch = funcCode.match(
-        /(?:const|let|var)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)/,
+        /([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:\s*(?:async\s+)?function/,
       );
       if (nameMatch) {
         functions.push({
@@ -55,14 +50,15 @@ function parseJavaScriptFunctions(code) {
     });
   }
 
-  // Extract object method functions (e.g., methodName: function() {} or methodName: async function() {})
-  const objectMethods = code.match(
-    /([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:\s*(?:async\s+)?function\s*\([^)]*\)\s*\{[\s\S]*?\}/g,
+  // Also extract arrow function methods: methodName: () => {}, methodName: async () => {}
+  const arrowMethods = pageObjectContent.match(
+    /([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:\s*(?:async\s+)?\([^)]*\)\s*=>\s*\{[\s\S]*?\}/g,
   );
-  if (objectMethods) {
-    objectMethods.forEach((funcCode) => {
+
+  if (arrowMethods) {
+    arrowMethods.forEach((funcCode) => {
       const nameMatch = funcCode.match(
-        /([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:\s*(?:async\s+)?function/,
+        /([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:\s*(?:async\s+)?\(/,
       );
       if (nameMatch) {
         functions.push({
