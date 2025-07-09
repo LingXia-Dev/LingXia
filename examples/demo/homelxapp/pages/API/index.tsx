@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
+import Button from '../../components/Button';
+import StatusIndicator from '../../components/StatusIndicator';
+import DeviceInfoDisplay from '../../components/DeviceInfoDisplay';
 
 export default function APIPage() {
-  const [navOpen, setNavOpen] = useState(false);
-  const [deviceOpen, setDeviceOpen] = useState(false);
-  const [navStatus, setNavStatus] = useState('');
-  const [deviceStatus, setDeviceStatus] = useState('');
+  const [navStatus, setNavStatus] = useState('idle');
+  const [deviceStatus, setDeviceStatus] = useState('idle');
   const [deviceInfo, setDeviceInfo] = useState({
     brand: '-',
     model: '-',
@@ -16,15 +17,16 @@ export default function APIPage() {
     setNavStatus('loading');
 
     try {
-      // Call the page function
       openLxApp({
         appId: 'testminiapp',
         path: 'pages/home/index.html'
       });
 
       setNavStatus('success');
+      setTimeout(() => setNavStatus('idle'), 2000);
     } catch (error) {
       setNavStatus('error');
+      setTimeout(() => setNavStatus('idle'), 2000);
     }
   };
 
@@ -33,7 +35,6 @@ export default function APIPage() {
     setShowDeviceInfo(false);
 
     try {
-      // Call the global lx function
       const deviceInfo = await lx.getDeviceInfo();
 
       setDeviceInfo({
@@ -44,81 +45,76 @@ export default function APIPage() {
 
       setDeviceStatus('success');
       setShowDeviceInfo(true);
-
+      // Auto hide success status after showing device info
+      setTimeout(() => setDeviceStatus('idle'), 1500);
       console.log('Device Info:', deviceInfo);
     } catch (error) {
       setDeviceStatus('error');
       setShowDeviceInfo(false);
+      setTimeout(() => setDeviceStatus('idle'), 2000);
       console.error('Failed to get device info:', error);
     }
   };
 
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case 'loading': return 'Loading...';
-      case 'success': return 'Success';
-      case 'error': return 'Failed';
-      default: return '';
-    }
-  };
-
   return (
-    <div className="container">
-      <div className="header">
-        <div className="icon">⚏</div>
-        <p>The following demonstrates some of the key API capabilities available in the LingXia platform.</p>
+    <div className="page">
+      <div className="page-header">
+        <div className="page-title">API Capabilities</div>
+        <div className="page-desc">LingXia Platform API Demonstrations</div>
       </div>
 
-      <div className="category">
-        <div className="category-header" onClick={() => setNavOpen(!navOpen)}>
-          <div className="category-icon">🧭</div>
-          <span className="category-title">Navigation</span>
-          <div className="category-toggle">{navOpen ? '⌄' : '›'}</div>
-        </div>
-        {navOpen && (
-          <div className="category-content">
-            <div className="api-item" onClick={navigateToMiniProgram}>
-              <span className="api-name">Open Mini Program</span>
-              <div className={`api-status ${navStatus}`}>
-                {getStatusText(navStatus)}
-              </div>
+      <div className="page-body">
+        <div className="section-title">Navigation APIs</div>
+        <div className="section">
+          <div className="cell">
+            <div className="cell-icon">🧭</div>
+            <div className="cell-body">
+              <div className="cell-title">Open LingXia App</div>
+              <div className="cell-desc">Navigate to another LxApp</div>
+            </div>
+            <div className="cell-footer">
+              <Button
+                onClick={navigateToMiniProgram}
+                disabled={navStatus === 'loading'}
+                loading={navStatus === 'loading'}
+                variant="primary"
+                size="small"
+              >
+                Launch
+              </Button>
+              <StatusIndicator status={navStatus} />
             </div>
           </div>
-        )}
-      </div>
+        </div>
 
-      <div className="category">
-        <div className="category-header" onClick={() => setDeviceOpen(!deviceOpen)}>
-          <div className="category-icon">📱</div>
-          <span className="category-title">Device</span>
-          <div className="category-toggle">{deviceOpen ? '⌄' : '›'}</div>
-        </div>
-        {deviceOpen && (
-          <div className="category-content">
-            <div className="api-item" onClick={getDeviceInfo}>
-              <span className="api-name">Device Information</span>
-              <div className={`api-status ${deviceStatus}`}>
-                {getStatusText(deviceStatus)}
-              </div>
-              {showDeviceInfo && (
-                <div className="device-info">
-                  <div className="device-info-item">
-                    <span className="device-info-label">Brand:</span>
-                    <span className="device-info-value">{deviceInfo.brand}</span>
-                  </div>
-                  <div className="device-info-item">
-                    <span className="device-info-label">Model:</span>
-                    <span className="device-info-value">{deviceInfo.model}</span>
-                  </div>
-                  <div className="device-info-item">
-                    <span className="device-info-label">System:</span>
-                    <span className="device-info-value">{deviceInfo.system}</span>
-                  </div>
-                </div>
-              )}
+        <div className="section-title">Device APIs</div>
+        <div className="section">
+          <div className="cell">
+            <div className="cell-icon">📱</div>
+            <div className="cell-body">
+              <div className="cell-title">Get Device Information</div>
+              <div className="cell-desc">Retrieve current device details</div>
+            </div>
+            <div className="cell-footer">
+              <Button
+                onClick={getDeviceInfo}
+                disabled={deviceStatus === 'loading'}
+                loading={deviceStatus === 'loading'}
+                variant="secondary"
+                size="small"
+              >
+                Get Info
+              </Button>
+              <StatusIndicator status={deviceStatus} />
             </div>
           </div>
-        )}
+
+          {showDeviceInfo && (
+            <div className="device-info-wrapper">
+              <DeviceInfoDisplay deviceInfo={deviceInfo} />
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
