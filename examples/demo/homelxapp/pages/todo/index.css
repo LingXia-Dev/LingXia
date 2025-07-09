@@ -8,9 +8,9 @@
 html, body {
     height: 100vh;
     min-height: 100vh;
-    max-height: 100vh;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', sans-serif;
     background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    background-attachment: fixed;
     color: #2c3e50;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -20,6 +20,20 @@ html, body {
     position: relative;
     width: 100%;
     overflow-x: hidden;
+    touch-action: pan-y;
+}
+
+/* Full screen background */
+body::after {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    z-index: -2;
+    pointer-events: none;
 }
 
 /* Background todos text */
@@ -32,7 +46,7 @@ body::before {
     font-size: 100px;
     font-weight: 100;
     color: rgba(255, 182, 193, 0.25);
-    z-index: 0;
+    z-index: -1;
     pointer-events: none;
     user-select: none;
 }
@@ -52,21 +66,22 @@ body::before {
 }
 
 body {
-    padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
     overflow-y: auto;
     overflow-x: hidden;
+    min-height: 100vh;
+    touch-action: pan-y;
 }
 
 .todoapp {
     background: #fff;
-    margin: 20px auto 0;
+    margin: 20px auto 20px;
     position: relative;
     box-shadow: 0 4px 12px 0 rgba(0, 0, 0, 0.15);
-    max-width: 100%;
+    max-width: calc(100% - 40px);
     min-width: 280px;
     border-radius: 8px;
     overflow: hidden;
-    margin-bottom: 0;
     z-index: 10;
 }
 

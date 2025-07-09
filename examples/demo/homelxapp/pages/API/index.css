@@ -21,9 +21,10 @@ html, body {
 
 .page-header {
     background-color: #fff;
-    padding: 24px 20px;
+    padding: 24px 20px 20px;
     text-align: center;
     border-bottom: 1px solid #e5e5e5;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 .page-title {
@@ -39,27 +40,31 @@ html, body {
 }
 
 .page-body {
-    padding: 0;
+    padding: 0 0 env(safe-area-inset-bottom);
 }
 
 .section-title {
-    margin-top: 24px;
-    margin-bottom: 10px;
+    margin-top: 32px;
+    margin-bottom: 12px;
     padding-left: 20px;
     padding-right: 20px;
-    color: #999;
+    color: #666;
     font-size: 15px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
 .section {
-    margin-top: 0;
+    margin: 0 16px 16px 16px;
     background-color: #fff;
     line-height: 1.4;
     font-size: 17px;
     overflow: hidden;
     position: relative;
-    border-top: 1px solid #e5e5e5;
-    border-bottom: 1px solid #e5e5e5;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    border: 1px solid #e5e5e5;
 }
 
 .cell {
@@ -109,7 +114,7 @@ html, body {
 }
 
 .device-info-wrapper {
-    margin: 16px 20px 0;
+    margin: 16px 20px 24px;
     animation: slideDown 0.3s ease-out;
 }
 
