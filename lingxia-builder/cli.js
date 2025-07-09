@@ -15,7 +15,7 @@ import { LingXiaMiniAppBuilder } from "./vite-plugin.js";
  */
 export async function buildMiniApp(options = {}) {
   const {
-    configFile = "app.json",
+    configFile = "lxapp.json",
     outputFile = "logic.js",
     buildDir = "dist",
     assetDirs = ["images"],

@@ -1,6 +1,6 @@
 import fs from "fs";
 
-// Parse app.json configuration
+// Parse lxapp.json configuration
 export function parseAppConfig(appConfigPath) {
   try {
     if (!fs.existsSync(appConfigPath)) {
@@ -11,20 +11,20 @@ export function parseAppConfig(appConfigPath) {
 
     if (!config.pages || !Array.isArray(config.pages)) {
       throw new Error(
-        'Invalid app.json: "pages" field is required and must be an array',
+        'Invalid lxapp.json: "pages" field is required and must be an array',
       );
     }
 
     if (!config.lxAppId) {
-      throw new Error('Invalid app.json: "lxAppId" field is required');
+      throw new Error('Invalid lxapp.json: "lxAppId" field is required');
     }
 
     if (!config.lxAppName) {
-      throw new Error('Invalid app.json: "lxAppName" field is required');
+      throw new Error('Invalid lxapp.json: "lxAppName" field is required');
     }
 
     if (!config.version) {
-      throw new Error('Invalid app.json: "version" field is required');
+      throw new Error('Invalid lxapp.json: "version" field is required');
     }
 
     return {

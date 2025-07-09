@@ -367,10 +367,10 @@ impl MiniApp {
         }
 
         // Load app configuration if it exists
-        self.read_json("app.json")
+        self.read_json("lxapp.json")
             .map(|app_json| {
                 self.config = MiniAppConfig::from_value(app_json)
-                    .map_err(|e| MiniAppError::InvalidJsonFile(format!("app.json: {}", e)))?;
+                    .map_err(|e| MiniAppError::InvalidJsonFile(format!("lxapp.json: {}", e)))?;
 
                 // Set tabbar items in the state
                 let mut state = self.state.lock().unwrap();

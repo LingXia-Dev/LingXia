@@ -8,7 +8,7 @@ import { PageBuilder } from "./src/core/builder.js";
 
 export function lingxiaPlugin(options = {}) {
   const {
-    appConfig = "./app.json",
+    appConfig = "./lxapp.json",
     outputDir = "dist",
     buildDir = ".lingxia-build",
     cleanup = true,
@@ -107,23 +107,23 @@ async function buildPages(pages, outputDir, rootDir, buildDir, cleanup) {
   console.log("All pages built successfully");
 }
 
-// Generate logic.js (merge app.js + page JS + common JS)
+// Generate logic.js (merge lxapp.js + page JS + common JS)
 async function generateLogicJS(pages, outputDir, rootDir, minifyCode = false) {
   console.log("Generating logic.js...");
 
   let logicCode = "";
 
-  // Add app.js content (from build output)
+  // Add lxapp.js content (from build output)
   const builtAppJsPath = path.resolve(
     rootDir,
-    ".lingxia-build/main-app/app.js",
+    ".lingxia-build/main-app/lxapp.js",
   );
   if (fs.existsSync(builtAppJsPath)) {
     const appContent = fs.readFileSync(builtAppJsPath, "utf-8");
     logicCode += `// === App Entry ===\n${appContent}\n\n`;
   } else {
     // Fallback to source file if build output doesn't exist
-    const appJsPath = path.resolve(rootDir, "app.js");
+    const appJsPath = path.resolve(rootDir, "lxapp.js");
     if (fs.existsSync(appJsPath)) {
       const appContent = fs.readFileSync(appJsPath, "utf-8");
       logicCode += `// === App Entry ===\n${appContent}\n\n`;
@@ -270,19 +270,19 @@ async function copyStaticAssets(outputDir, rootDir) {
     }
   }
 
-  // Copy app.css
-  const appCss = path.resolve(rootDir, "app.css");
+  // Copy lxapp.css
+  const appCss = path.resolve(rootDir, "lxapp.css");
   if (fs.existsSync(appCss)) {
-    fs.copyFileSync(appCss, path.join(outputDir, "app.css"));
-    console.log("Copied app.css");
+    fs.copyFileSync(appCss, path.join(outputDir, "lxapp.css"));
+    console.log("Copied lxapp.css");
   }
 }
 
 // Copy app configuration
 async function copyAppConfig(appConfigPath, outputDir) {
-  const destPath = path.join(outputDir, "app.json");
+  const destPath = path.join(outputDir, "lxapp.json");
   fs.copyFileSync(appConfigPath, destPath);
-  console.log("Copied app.json");
+  console.log("Copied lxapp.json");
 }
 
 // Create package file (.zip)

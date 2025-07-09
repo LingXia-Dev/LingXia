@@ -33,7 +33,7 @@ impl MiniApp {
         };
 
         // Inject global app.css if it exists (optional)
-        if let Ok(app_css_data) = self.read_bytes("app.css") {
+        if let Ok(app_css_data) = self.read_bytes("lxapp.css") {
             info!("Injecting global app.css").with_appid(self.appid.clone());
             injected_data = self
                 .inject_css(&injected_data, &app_css_data, path)
