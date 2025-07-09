@@ -1,5 +1,5 @@
 {
-  "name": "homeminiapp",
+  "name": "homelxapp",
   "version": "1.0.0",
   "description": "LingXia MiniApp demo with unified logic.js build system",
   "type": "module",
@@ -16,4 +16,4 @@
   "keywords": ["lingxia", "miniapp", "vite", "logic.js"],
   "author": "LingXia Team",
   "license": "MIT"
-} 
+}

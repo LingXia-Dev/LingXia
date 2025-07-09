@@ -32,11 +32,7 @@
             }
 
             greetButton.disabled = true;
-            LingXiaBridge.call('greet', { name })
-                .catch(err => {
-                    showResult(`Error: ${err.message || 'Failed to send greeting'}`);
-                    greetButton.disabled = false;
-                });
+            greet({name});
         }
 
         // Display result message

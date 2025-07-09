@@ -1,8 +1,5 @@
 Page({
-  onLoad: function () {
-    console.log("API page onLoad, app:", app);
-    console.log("API page globalData:", globalData);
-  },
+  onLoad: function () {},
 
   onShow: function () {
     console.log("API page onShow");

@@ -31,26 +31,25 @@ echo "Copying host app configuration..."
 cp "$LINGXIA_ROOT/examples/demo/app.json" "$RESOURCES_DIR/"
 
 echo "Building and copying demo MiniApp..."
-# Build homeminiapp using LingXia MiniApp Builder
-cd "$LINGXIA_ROOT/examples/demo/homeminiapp"
+cd "$LINGXIA_ROOT/examples/demo/homelxapp"
 if [ -f "package.json" ] && [ -f "vite.config.js" ]; then
-    echo "Building homeminiapp with Vite..."
+    echo "Building homelxapp with Vite..."
     npm install --silent
     npm run build
 
     # Copy built MiniApp to resources with proper directory structure
     if [ -d "dist" ]; then
         echo "Copying built MiniApp to resources..."
-        mkdir -p "$RESOURCES_DIR/homeminiapp"
-        cp -R dist/* "$RESOURCES_DIR/homeminiapp/"
+        mkdir -p "$RESOURCES_DIR/homelxapp"
+        cp -R dist/* "$RESOURCES_DIR/homelxapp/"
     else
         echo "Warning: dist directory not found, copying source files..."
-        cp -R . "$RESOURCES_DIR/homeminiapp/"
+        cp -R . "$RESOURCES_DIR/homelxapp/"
     fi
 else
     echo "No Vite config found, copying source files..."
-    mkdir -p "$RESOURCES_DIR/homeminiapp"
-    cp -R "$LINGXIA_ROOT/examples/demo/homeminiapp/"* "$RESOURCES_DIR/homeminiapp/"
+    mkdir -p "$RESOURCES_DIR/homelxapp"
+    cp -R "$LINGXIA_ROOT/examples/demo/homelxapp/"* "$RESOURCES_DIR/homelxapp/"
 fi
 
 echo "Building and deploying iOS app..."

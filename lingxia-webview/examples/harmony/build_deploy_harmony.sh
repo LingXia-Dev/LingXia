@@ -88,24 +88,24 @@ build_miniapp_assets() {
     cp "$LINGXIA_ROOT/examples/demo/app.json" "$ASSETS_DIR/"
 
     echo "Building and copying demo MiniApp..."
-    cd "$LINGXIA_ROOT/examples/demo/homeminiapp"
+    cd "$LINGXIA_ROOT/examples/demo/homelxapp"
     if [ -f "package.json" ] && [ -f "vite.config.js" ]; then
-        echo "Building homeminiapp with Vite..."
+        echo "Building homelxapp with Vite..."
         npm install --silent
         npm run build
 
         if [ -d "dist" ]; then
             echo "Copying built MiniApp to assets..."
-            mkdir -p "$ASSETS_DIR/homeminiapp"
-            cp -R dist/* "$ASSETS_DIR/homeminiapp/"
+            mkdir -p "$ASSETS_DIR/homelxapp"
+            cp -R dist/* "$ASSETS_DIR/homelxapp/"
         else
             echo "Warning: dist directory not found, copying source files..."
-            cp -R . "$ASSETS_DIR/homeminiapp/"
+            cp -R . "$ASSETS_DIR/homelxapp/"
         fi
     else
         echo "No Vite config found, copying source files..."
-        mkdir -p "$ASSETS_DIR/homeminiapp"
-        cp -R "$LINGXIA_ROOT/examples/demo/homeminiapp/"* "$ASSETS_DIR/homeminiapp/"
+        mkdir -p "$ASSETS_DIR/homelxapp"
+        cp -R "$LINGXIA_ROOT/examples/demo/homelxapp/"* "$ASSETS_DIR/homelxapp/"
     fi
 
     echo -e "${GREEN}✅ MiniApp assets copied${NC}"

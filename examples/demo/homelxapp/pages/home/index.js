@@ -30,8 +30,22 @@ Page({
     console.log("onUnload: -----");
   },
 
-  onLoad: function () {
+  onLoad: async function () {
     console.log("onLoad: ------");
+    console.log(lx.env.USER_CACHE_PATH);
+    let testFile = `${lx.env.USER_CACHE_PATH}/testFile`;
+    const testContent = "Hello, World!";
+    await Rong.writeTextFile(testFile, testContent);
+    try {
+      await Rong.mkdir(
+        `/data/storage/el2/base/cache/lingxia/usercache/testminiapp`,
+        {
+          recursive: true,
+        },
+      );
+    } catch (e) {
+      console.log(e);
+    }
   },
 
   onHide: function () {
