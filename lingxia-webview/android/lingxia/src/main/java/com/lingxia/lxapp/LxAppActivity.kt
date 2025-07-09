@@ -435,14 +435,27 @@ class LxAppActivity : AppCompatActivity() {
         val isTabBarTransparent = tabBarBgColor == Color.TRANSPARENT ||
                                  (tabBarBgColor != null && Color.alpha(tabBarBgColor) < 255)
 
-        // Calculate NavigationBar height
+        // Calculate NavigationBar height - use the TOTAL height that NavigationBar occupies
         val isNavBarVisible = navigationBar?.visibility == View.VISIBLE
         val navBarHeight = if (isNavBarVisible) {
-            (DEFAULT_NAV_BAR_HEIGHT_DP * resources.displayMetrics.density).toInt()
+            // Use the total height that NavigationBar occupies (content + status bar)
+            // This is the actual space that NavigationBar takes up from the top of the screen
+            navigationBar?.layoutParams?.height ?: run {
+                // Fallback: calculate total height manually
+                val statusBarHeight = getStatusBarHeight(this@LxAppActivity)
+                val contentHeight = navigationBar?.let { navBar ->
+                    try {
+                        navBar.getCalculatedContentHeightPx()
+                    } catch (e: Exception) {
+                        (DEFAULT_NAV_BAR_HEIGHT_DP * resources.displayMetrics.density).toInt()
+                    }
+                } ?: (DEFAULT_NAV_BAR_HEIGHT_DP * resources.displayMetrics.density).toInt()
+                contentHeight + statusBarHeight
+            }
         } else 0
 
         (webViewContainer.layoutParams as FrameLayout.LayoutParams).apply {
-            topMargin = navBarHeight  // Always account for NavigationBar at top
+            topMargin = navBarHeight  // Use NavigationBar's total occupied height
             bottomMargin = 0
             leftMargin = 0
             rightMargin = 0
@@ -1142,7 +1155,19 @@ class LxAppActivity : AppCompatActivity() {
     // Helper to calculate the Y translation based on visible bars
     private fun calculateWebViewTranslationY(): Float {
         val navBarOffset = if (navigationBar?.visibility == View.VISIBLE) {
-            navigationBar?.height ?: 0
+            // Use the total height that NavigationBar occupies (content + status bar)
+            navigationBar?.layoutParams?.height ?: run {
+                // Fallback: calculate total height manually
+                val statusBarHeight = getStatusBarHeight(this)
+                val contentHeight = navigationBar?.let { navBar ->
+                    try {
+                        navBar.getCalculatedContentHeightPx()
+                    } catch (e: Exception) {
+                        (DEFAULT_NAV_BAR_HEIGHT_DP * resources.displayMetrics.density).toInt()
+                    }
+                } ?: (DEFAULT_NAV_BAR_HEIGHT_DP * resources.displayMetrics.density).toInt()
+                contentHeight + statusBarHeight
+            }
         } else {
             0
         }
