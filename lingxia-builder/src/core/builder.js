@@ -281,10 +281,18 @@ export class PageBuilder {
     try {
       const config = JSON.parse(fs.readFileSync(jsonFile.path, "utf-8"));
       if (config.navigationBarTitleText) {
-        htmlContent = htmlContent.replace(
-          /<title>.*?<\/title>/,
-          `<title>${config.navigationBarTitleText}</title>`,
-        );
+        if (htmlContent.includes("<title>")) {
+          htmlContent = htmlContent.replace(
+            /<title>.*?<\/title>/,
+            `<title>${config.navigationBarTitleText}</title>`,
+          );
+        } else {
+          // Add title tag to head
+          htmlContent = htmlContent.replace(
+            "</head>",
+            `    <title>${config.navigationBarTitleText}</title>\n</head>`,
+          );
+        }
       }
     } catch (error) {
       console.warn("Failed to parse page JSON config:", error.message);
