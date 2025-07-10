@@ -435,27 +435,19 @@ class LxAppActivity : AppCompatActivity() {
         val isTabBarTransparent = tabBarBgColor == Color.TRANSPARENT ||
                                  (tabBarBgColor != null && Color.alpha(tabBarBgColor) < 255)
 
-        // Calculate NavigationBar height - use the TOTAL height that NavigationBar occupies
+        // Calculate NavigationBar height - use content height plus small padding for better spacing
         val isNavBarVisible = navigationBar?.visibility == View.VISIBLE
-        val navBarHeight = if (isNavBarVisible) {
-            // Use the total height that NavigationBar occupies (content + status bar)
-            // This is the actual space that NavigationBar takes up from the top of the screen
-            navigationBar?.layoutParams?.height ?: run {
-                // Fallback: calculate total height manually
-                val statusBarHeight = getStatusBarHeight(this@LxAppActivity)
-                val contentHeight = navigationBar?.let { navBar ->
-                    try {
-                        navBar.getCalculatedContentHeightPx()
-                    } catch (e: Exception) {
-                        (DEFAULT_NAV_BAR_HEIGHT_DP * resources.displayMetrics.density).toInt()
-                    }
-                } ?: (DEFAULT_NAV_BAR_HEIGHT_DP * resources.displayMetrics.density).toInt()
-                contentHeight + statusBarHeight
-            }
+        val navBarContentHeight = if (isNavBarVisible) {
+            // Use NavigationBar's content height plus a small padding for optimal visual spacing
+            val contentHeight = navigationBar?.getCalculatedContentHeightPx()
+                ?: (DEFAULT_NAV_BAR_HEIGHT_DP * resources.displayMetrics.density).toInt()
+
+            // Add 8dp padding for better visual spacing
+            contentHeight + (8 * resources.displayMetrics.density).toInt()
         } else 0
 
         (webViewContainer.layoutParams as FrameLayout.LayoutParams).apply {
-            topMargin = navBarHeight  // Use NavigationBar's total occupied height
+            topMargin = navBarContentHeight  // Use NavigationBar content height plus padding
             bottomMargin = 0
             leftMargin = 0
             rightMargin = 0
@@ -1154,30 +1146,15 @@ class LxAppActivity : AppCompatActivity() {
 
     // Helper to calculate the Y translation based on visible bars
     private fun calculateWebViewTranslationY(): Float {
-        val navBarOffset = if (navigationBar?.visibility == View.VISIBLE) {
-            // Use the total height that NavigationBar occupies (content + status bar)
-            navigationBar?.layoutParams?.height ?: run {
-                // Fallback: calculate total height manually
-                val statusBarHeight = getStatusBarHeight(this)
-                val contentHeight = navigationBar?.let { navBar ->
-                    try {
-                        navBar.getCalculatedContentHeightPx()
-                    } catch (e: Exception) {
-                        (DEFAULT_NAV_BAR_HEIGHT_DP * resources.displayMetrics.density).toInt()
-                    }
-                } ?: (DEFAULT_NAV_BAR_HEIGHT_DP * resources.displayMetrics.density).toInt()
-                contentHeight + statusBarHeight
-            }
-        } else {
-            0
-        }
+        // Since topMargin in updateLayoutMargins() already handles NavigationBar positioning,
+        // we only need to handle additional TabBar offset for TOP positioned TabBars
         val tabBarOffset = if (tabBar?.visibility == View.VISIBLE && tabBar?.config?.position == TabBarConfig.Position.TOP) {
             tabBar?.height ?: 0
         } else {
             0
         }
-        // Calculate the required vertical translation for the container
-        return (navBarOffset + tabBarOffset).toFloat()
+        // Return only TabBar offset, NavigationBar is handled by topMargin
+        return tabBarOffset.toFloat()
     }
 
     override fun finish() {
