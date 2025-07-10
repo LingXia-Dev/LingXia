@@ -13,17 +13,16 @@ interface DeviceInfoDisplayProps {
 
 export default function DeviceInfoDisplay({ deviceInfo, className = '' }: DeviceInfoDisplayProps) {
   const infoItems = [
-    { label: 'Brand', value: deviceInfo.brand, icon: '🏷️' },
-    { label: 'Model', value: deviceInfo.model, icon: '📱' },
-    { label: 'System', value: deviceInfo.system, icon: '⚙️' }
+    { label: 'Brand', value: deviceInfo.brand },
+    { label: 'Model', value: deviceInfo.model },
+    { label: 'System', value: deviceInfo.system }
   ];
 
   return (
-    <div className={`device-info-display ${className}`}>
+    <div className={`device-info-card ${className}`}>
       {infoItems.map((item, index) => (
         <div key={index} className="device-info-item">
-          <span className="device-info-icon">{item.icon}</span>
-          <span className="device-info-label">{item.label}:</span>
+          <span className="device-info-label">{item.label}</span>
           <span className="device-info-value">{item.value}</span>
         </div>
       ))}
