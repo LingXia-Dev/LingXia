@@ -8,21 +8,7 @@ impl LxApp {
     /// HTML files are handled separately through generate_page_html and load_data
     pub(crate) fn lingxia_handler(&self, req: Request<Vec<u8>>) -> Option<Response<Vec<u8>>> {
         let uri = req.uri();
-
-        // Get the path part after lx://
-        let uri_str = uri.to_string();
-        let path = uri_str.trim_start_matches("lx://").trim_start_matches('/');
-
-        // ignore base Url
-        if path.ends_with("./") {
-            return Some(
-                Response::builder()
-                    .status(StatusCode::NO_CONTENT)
-                    .header("Content-Type", "text/plain")
-                    .body(Vec::new())
-                    .unwrap(),
-            );
-        }
+        let path = uri.path().trim_start_matches('/');
 
         // Try to read the static asset from app directory
         let file_result = self.read_bytes(path);

@@ -471,7 +471,7 @@ impl LxApp {
         let html_data = self.generate_page_html(path);
         match page.load_html(
             String::from_utf8_lossy(&html_data).to_string(),
-            "lx://./".to_string(),
+            format!("lx://{}/{}", self.appid, path),
         ) {
             Ok(_) => {
                 // HTML loaded successfully
