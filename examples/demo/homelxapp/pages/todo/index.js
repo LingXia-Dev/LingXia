@@ -1,3 +1,5 @@
+import { generateTodoId, validateTodoText, getCurrentTimestamp } from '../../src/lib/todo-utils.js';
+
 function getInitialData() {
   try {
     const storedTodos = Rong.storage.get("todo:todos");
@@ -9,14 +11,14 @@ function getInitialData() {
       return {
         todos: storedTodos,
         currentFilter: storedFilter || "all",
-        lastUpdated: storedLastUpdated || new Date().toISOString(),
+        lastUpdated: storedLastUpdated || getCurrentTimestamp(),
       };
     } else {
       console.log("[Todo] No stored todos found, using empty state");
       return {
         todos: [],
         currentFilter: "all",
-        lastUpdated: new Date().toISOString(),
+        lastUpdated: getCurrentTimestamp(),
       };
     }
   } catch (error) {
@@ -24,7 +26,7 @@ function getInitialData() {
     return {
       todos: [],
       currentFilter: "all",
-      lastUpdated: new Date().toISOString(),
+      lastUpdated: getCurrentTimestamp(),
     };
   }
 }
@@ -50,6 +52,13 @@ Page({
 
   onShow: function () {
     console.log("[Todo] Page shown");
+    // Test bundled utilities access
+    if (typeof LingXiaUtils !== 'undefined' && LingXiaUtils.generateTodoId) {
+      const testId = LingXiaUtils.generateTodoId();
+      console.log("[Todo] Generated test UUID using bundled utilities:", testId);
+    } else {
+      console.log("[Todo] LingXiaUtils utilities not available");
+    }
   },
 
   _saveToStorage: function () {
@@ -77,13 +86,13 @@ Page({
   // Todo core functionality
   addTodo: async function (params) {
     const { text } = params;
-    if (!text || !text.trim()) {
-      console.log("[Todo] addTodo: Empty text, skipping");
+    if (!validateTodoText(text)) {
+      console.log("[Todo] addTodo: Invalid text, skipping");
       return;
     }
 
     const newTodo = {
-      id: Date.now(),
+      id: generateTodoId(),
       text: text.trim(),
       completed: false,
     };
@@ -91,7 +100,7 @@ Page({
     console.log("[Todo] addTodo: Adding new todo:", newTodo);
     await this.setData({
       todos: [...this.data.todos, newTodo],
-      lastUpdated: new Date().toISOString(),
+      lastUpdated: getCurrentTimestamp(),
     });
 
     // Save to storage after adding

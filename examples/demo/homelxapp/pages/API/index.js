@@ -1,8 +1,11 @@
+const app = getApp();
+
 Page({
   onLoad: function () {},
 
   onShow: function () {
     console.log("API page onShow");
+    console.log("App data:", app.globalData);
   },
 
   onHide: function () {
