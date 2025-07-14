@@ -1,14 +1,19 @@
-import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
-export default defineConfig({
+export default {
   plugins: [vue()],
   build: {
-    outDir: 'dist',
     rollupOptions: {
       output: {
-        inlineDynamicImports: true
+        entryFileNames: 'main.js',
+        chunkFileNames: 'chunks/[name]-[hash].js',
+        assetFileNames: 'assets/[name].[ext]'
       }
-    }
-  }
-})
+    },
+    outDir: 'dist',
+    emptyOutDir: true,
+    target: 'es2015',
+    minify: false
+  },
+  logLevel: 'warn'
+}

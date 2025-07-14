@@ -22,8 +22,10 @@ window.useLingXiaData = function () {
 const app = createApp(App);
 
 // Register page functions to Vue global properties (before mount)
-window.__PAGE_FUNCTIONS.forEach((funcName) => {
-  app.config.globalProperties[funcName] = window[funcName];
-});
+if (window.__PAGE_FUNCTIONS) {
+  window.__PAGE_FUNCTIONS.forEach((funcName) => {
+    app.config.globalProperties[funcName] = window[funcName];
+  });
+}
 
 app.mount("#app");

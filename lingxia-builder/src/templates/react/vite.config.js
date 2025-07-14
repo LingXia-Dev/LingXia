@@ -1,15 +1,22 @@
-import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-export default defineConfig({
+export default {
   plugins: [react()],
   build: {
     rollupOptions: {
       output: {
-        entryFileNames: 'assets/[name]-[hash].js',
-        chunkFileNames: 'assets/[name]-[hash].js',
-        assetFileNames: 'assets/[name]-[hash].[ext]'
+        entryFileNames: 'main.js',
+        chunkFileNames: 'chunks/[name]-[hash].js',
+        assetFileNames: 'assets/[name].[ext]'
       }
-    }
-  }
-})
+    },
+    outDir: 'dist',
+    emptyOutDir: true,
+    target: 'es2015',
+    minify: false
+  },
+  esbuild: {
+    jsx: 'automatic'
+  },
+  logLevel: 'warn'
+}
