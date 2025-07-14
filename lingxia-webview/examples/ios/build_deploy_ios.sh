@@ -32,7 +32,7 @@ cp "$LINGXIA_ROOT/examples/demo/app.json" "$RESOURCES_DIR/"
 
 echo "Building and copying demo LxApp..."
 cd "$LINGXIA_ROOT/examples/demo/homelxapp"
-if [ -f "package.json" ] && [ -f "vite.config.js" ]; then
+if [ -f "package.json" ] ; then
     echo "Building homelxapp with Vite..."
     npm install --silent
     npm run build
@@ -47,7 +47,6 @@ if [ -f "package.json" ] && [ -f "vite.config.js" ]; then
         cp -R . "$RESOURCES_DIR/homelxapp/"
     fi
 else
-    echo "No Vite config found, copying source files..."
     mkdir -p "$RESOURCES_DIR/homelxapp"
     cp -R "$LINGXIA_ROOT/examples/demo/homelxapp/"* "$RESOURCES_DIR/homelxapp/"
 fi

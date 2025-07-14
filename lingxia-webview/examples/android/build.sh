@@ -58,10 +58,10 @@ echo "Copying host app configuration..."
 cp "$LINGXIA_ROOT/examples/demo/app.json" "$ASSETS_DIR/"
 
 echo "Building and copying demo LxApp..."
-# Build homelxapp using LingXia LxApp Builder
+# Build homelxapp using LingXia Builder
 cd "$LINGXIA_ROOT/examples/demo/homelxapp"
-if [ -f "package.json" ] && [ -f "vite.config.js" ]; then
-    echo "Building homelxapp with Vite..."
+if [ -f "package.json" ]; then
+    echo "Building homelxapp with LingXia Builder..."
     npm install --silent
     npm run build
 
@@ -70,14 +70,18 @@ if [ -f "package.json" ] && [ -f "vite.config.js" ]; then
         echo "Copying built LxApp to assets..."
         mkdir -p "$ASSETS_DIR/homelxapp"
         cp -R dist/* "$ASSETS_DIR/homelxapp/"
+        echo "✅ Successfully copied dist contents to assets/homelxapp"
+        echo "📁 Contents copied:"
+        ls -la "$ASSETS_DIR/homelxapp"
     else
-        echo "Warning: dist directory not found, copying source files..."
-        cp -R . "$ASSETS_DIR/homelxapp/"
+        echo "❌ Error: dist directory not found after build"
+        echo "📁 Current directory contents:"
+        ls -la .
+        exit 1
     fi
 else
-    echo "No Vite config found, copying source files..."
-    mkdir -p "$ASSETS_DIR/homelxapp"
-    cp -R "$LINGXIA_ROOT/examples/demo/homelxapp/"* "$ASSETS_DIR/homelxapp/"
+    echo "❌ Error: package.json not found in homelxapp directory"
+    exit 1
 fi
 
 echo "Building Android library..."
