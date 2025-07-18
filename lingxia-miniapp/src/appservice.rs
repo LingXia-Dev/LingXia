@@ -242,14 +242,15 @@ async fn handle_app_service_call(
         let task = async move {
             if let Err(e) = svc_clone.call(&ctx_clone_for_task, &name, args).await {
                 error!(
-                    "[Worker {}] App service '{}' call '{}' failed, Error: {}",
-                    worker_id, appid, name, e
-                );
+                    "[Worker {}] App service call '{}' failed, Error: {}",
+                    worker_id, name, e
+                )
+                .with_appid(appid);
             }
         };
         rong::spawn(task);
     } else {
-        error!("[Worker {}] App service '{}' not loaded", worker_id, appid);
+        error!("[Worker {}] App service not loaded", worker_id).with_appid(appid);
     }
 }
 
@@ -265,7 +266,12 @@ async fn handle_view_source(
 }
 
 // Handles a call from native code to a Page service function
-async fn handle_native_source(page_svc: &PageSvc, name: String, args: Option<String>) {
+async fn handle_native_source(
+    page_svc: &PageSvc,
+    appid: String,
+    name: String,
+    args: Option<String>,
+) {
     let ctx = page_svc.get_ctx();
     let page_svc_clone = page_svc.clone();
     let name_clone = name.clone();
@@ -275,7 +281,9 @@ async fn handle_native_source(page_svc: &PageSvc, name: String, args: Option<Str
             .call_or_event_from_native(&ctx, &name, args.as_deref())
             .await
         {
-            crate::error!("Page service call '{}' failed: {}", name_clone, e);
+            crate::error!("Page service call '{}' failed: {}", name_clone, e)
+                .with_appid(appid)
+                .with_path(page_svc_clone.page.path());
         }
     };
     rong::spawn(task);
@@ -447,7 +455,7 @@ async fn lxapp_service_handler(
                         };
 
                         if let Some(page_svc) = page_svc {
-                            handle_native_source(&page_svc, name, args).await;
+                            handle_native_source(&page_svc, appid, name, args).await;
                         } else {
                             error!("[Worker {}] Page service not loaded", worker_id)
                                 .with_appid(appid)

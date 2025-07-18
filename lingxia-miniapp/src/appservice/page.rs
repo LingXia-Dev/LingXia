@@ -23,7 +23,7 @@ pub(crate) struct PageSvc {
     functions: HashMap<String, JSFunc>,
     this: JSObject,
 
-    page: Page,
+    pub(crate) page: Page,
     bridge: Bridge,
 
     // state of PageSvc
