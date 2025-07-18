@@ -230,15 +230,13 @@ fn get_system_version() -> String {
 
     #[cfg(target_os = "macos")]
     {
-        unsafe {
-            // Get NSProcessInfo shared instance
-            let process_info = NSProcessInfo::processInfo();
+        // Get NSProcessInfo shared instance
+        let process_info = NSProcessInfo::processInfo();
 
-            // Get operating system version (returns NSOperatingSystemVersion struct)
-            let version = process_info.operatingSystemVersion();
+        // Get operating system version (returns NSOperatingSystemVersion struct)
+        let version = process_info.operatingSystemVersion();
 
-            // Format as simple version string (e.g., "macOS 15.5")
-            format!("macOS {}.{}", version.majorVersion, version.minorVersion)
-        }
+        // Format as simple version string (e.g., "macOS 15.5")
+        format!("macOS {}.{}", version.majorVersion, version.minorVersion)
     }
 }
