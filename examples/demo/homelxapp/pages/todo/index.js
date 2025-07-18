@@ -52,12 +52,12 @@ Page({
 
   onShow: function () {
     console.log("[Todo] Page shown");
-    // Test bundled utilities access
-    if (typeof LingXiaUtils !== 'undefined' && LingXiaUtils.generateTodoId) {
-      const testId = LingXiaUtils.generateTodoId();
+    // Test bundled utilities access - use direct function calls
+    if (typeof generateTodoId !== 'undefined') {
+      const testId = generateTodoId();
       console.log("[Todo] Generated test UUID using bundled utilities:", testId);
     } else {
-      console.log("[Todo] LingXiaUtils utilities not available");
+      console.log("[Todo] generateTodoId function not available");
     }
   },
 

@@ -53,7 +53,8 @@ Page({
   },
 
   onShow: function () {
-    console.log("onShow: +++++++");
+    console.log("[Home] Page shown");
+    console.log("[Home] App data:", app.globalData);
   },
 
   greet: async function (option) {
