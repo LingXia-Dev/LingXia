@@ -347,7 +347,7 @@ impl App {
         }
     }
 
-    pub fn close_miniapp(&self, appid: &str) -> Result<(), LxAppError> {
+    pub fn close_lxapp(&self, appid: &str) -> Result<(), LxAppError> {
         match || -> Result<(), Box<dyn std::error::Error>> {
             let mut env = get_env()?;
 

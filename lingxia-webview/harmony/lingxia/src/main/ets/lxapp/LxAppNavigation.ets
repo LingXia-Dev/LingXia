@@ -1,7 +1,7 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { LxApp } from './LxApp';
 import { LxAppContainer } from './LxAppContainer';
-import { onMiniappOpened, onMiniappClosed } from 'liblingxia.so';
+import { onLxappOpened, onLxappClosed } from 'liblingxia.so';
 
 const DOMAIN = 0xA000;
 const TAG = 'LingXia.Navigation';
@@ -73,8 +73,8 @@ export struct LxAppNavigation {
     hilog.info(DOMAIN, TAG, `Opening miniapp: ${appId}:${path}`);
 
     try {
-      const result: number = onMiniappOpened(appId, path);
-      hilog.info(DOMAIN, TAG, `onMiniappOpened result: ${result}`);
+      const result: number = onLxappOpened(appId, path);
+      hilog.info(DOMAIN, TAG, `onLxappOpened result: ${result}`);
 
       const existingIndex = this.miniAppStack.findIndex(item => item.appId === appId);
 
@@ -145,7 +145,7 @@ export struct LxAppNavigation {
         this.hiddenApps = new Set(this.hiddenApps).add(appId);
         hilog.info(DOMAIN, TAG, `LxApp ${appId} hidden, WebViews preserved for reuse`);
       }
-      onMiniappClosed(appId);
+      onLxappClosed(appId);
     }, 300);
   }
 

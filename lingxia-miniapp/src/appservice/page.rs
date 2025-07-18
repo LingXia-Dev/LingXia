@@ -104,9 +104,9 @@ impl MessageHandler for PageSvc {
                     }
                     ServiceType::FastAPI(handler) => {
                         // For FastAPI, handle directly and reply
-                        let miniapp = ctx.get_user_data::<Arc<LxApp>>().unwrap().clone();
+                        let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap().clone();
 
-                        match handler.call(miniapp, args) {
+                        match handler.call(lxapp, args) {
                             Ok(result) => {
                                 // Reply with the result for Call messages
                                 if matches!(
@@ -158,10 +158,10 @@ impl MessageHandler for PageSvc {
 impl PageSvc {
     #[js_method(constructor)]
     fn _new(ctx: JSContext, config: JSObject, path: String) -> JSResult<JSObject> {
-        let miniapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+        let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
 
         // Get the page from LxApp
-        let page = miniapp
+        let page = lxapp
             .get_page(&path)
             .ok_or_else(|| RongJSError::Error(format!("Page not found: {}", path)))?;
 

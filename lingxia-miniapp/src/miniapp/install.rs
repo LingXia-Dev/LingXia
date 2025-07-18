@@ -49,7 +49,7 @@ impl LxApp {
 }
 
 // Copy files from assets to destination directory and update version
-pub(crate) fn install_home_miniapp(
+pub(crate) fn install_home_lxapp(
     controller: &dyn AppRuntime,
     appid: &str,
     version: &str,

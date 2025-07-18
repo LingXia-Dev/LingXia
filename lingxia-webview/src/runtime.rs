@@ -200,8 +200,8 @@ impl AppRuntime for SimpleAppRuntime {
         self.app.open_lxapp(&appid, &path)
     }
 
-    fn close_miniapp(&self, appid: String) -> Result<(), LxAppError> {
-        self.app.close_miniapp(&appid)
+    fn close_lxapp(&self, appid: String) -> Result<(), LxAppError> {
+        self.app.close_lxapp(&appid)
     }
 
     fn switch_page(&self, appid: String, path: String) -> Result<(), LxAppError> {

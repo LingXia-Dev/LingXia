@@ -67,9 +67,8 @@ impl AppConfig {
             .map_err(|e| LxAppError::IoError(format!("Failed to read app.json: {}", e)))?;
 
         // Parse the JSON into AppConfig
-        let config = serde_json::from_str(&content).map_err(|e| {
-            LxAppError::InvalidJsonFile(format!("Failed to parse app.json: {}", e))
-        })?;
+        let config = serde_json::from_str(&content)
+            .map_err(|e| LxAppError::InvalidJsonFile(format!("Failed to parse app.json: {}", e)))?;
 
         // Validate the config immediately
         Self::validate_config(&config)?;
@@ -213,7 +212,7 @@ pub trait AppRuntime: Send + Sync + 'static {
     ///
     /// # Returns
     /// * `Result<(), LxAppError>` - Success or error
-    fn close_miniapp(&self, appid: String) -> Result<(), LxAppError>;
+    fn close_lxapp(&self, appid: String) -> Result<(), LxAppError>;
 
     /// Switch to a different page within the same mini app
     ///
@@ -262,8 +261,8 @@ impl<T: AppRuntime + ?Sized> AppRuntime for Arc<T> {
         (**self).open_lxapp(appid, path)
     }
 
-    fn close_miniapp(&self, appid: String) -> Result<(), LxAppError> {
-        (**self).close_miniapp(appid)
+    fn close_lxapp(&self, appid: String) -> Result<(), LxAppError> {
+        (**self).close_lxapp(appid)
     }
 
     fn switch_page(&self, appid: String, path: String) -> Result<(), LxAppError> {

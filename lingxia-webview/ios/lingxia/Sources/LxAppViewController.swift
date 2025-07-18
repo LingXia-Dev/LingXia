@@ -354,7 +354,7 @@ public class LxAppViewController: UIViewController {
     private func setupInitialContent(path: String) {
         LxApp.storeLastActivePath(appId: appId, path: path)
 
-        // Since onMiniappOpened is now called synchronously before UI presentation,
+        // Since onLxappOpened is now called synchronously before UI presentation,
         // we can directly try to find the WebView
         setupWebViewIfReady(appId: appId, path: path)
     }
@@ -1482,7 +1482,7 @@ public class LxAppViewController: UIViewController {
     private func performLxAppClose() {
         // Notify Rust layer asynchronously without waiting for completion
         Task {
-            let result = lingxia.onMiniappClosed(appId)
+            let result = lingxia.onLxappClosed(appId)
             os_log("Closed miniapp %@ (result: %d)", log: Self.log, type: .info, appId, result)
         }
 

@@ -14,7 +14,7 @@ declare module 'liblingxia.so' {
    * @param resourceManager - HarmonyOS resource manager (optional)
    * @returns Home LxApp details in format "appId:path" or null if failed
    */
-  export function miniappInit(
+  export function lxappInit(
     callbackFunction: (name: string, ...args: Object[]) => Object | null,
     dataDir: string,
     cacheDir: string,
@@ -42,14 +42,14 @@ declare module 'liblingxia.so' {
    * @param path - Page path
    * @returns Status code (0 for success)
    */
-  export function onMiniappOpened(appid: string, path: string): number;
+  export function onLxappOpened(appid: string, path: string): number;
 
   /**
    * Notify that LxApp was closed
    * @param appid - LxApp ID
    * @returns Status code (0 for success)
    */
-  export function onMiniappClosed(appid: string): number;
+  export function onLxappClosed(appid: string): number;
 
   /**
    * Notify that a page is being shown (WebView becomes visible)

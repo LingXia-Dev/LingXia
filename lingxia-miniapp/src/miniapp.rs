@@ -27,7 +27,7 @@ mod security;
 mod tabbar;
 mod version;
 
-/// Constants for miniapp storage layout
+/// Constants for lxapp storage layout
 const LINGXIA_DIR: &str = "lingxia";
 const LXAPPS_DIR: &str = "lxapps";
 const VERSIONS_DIR: &str = "versions";
@@ -42,7 +42,7 @@ const DEFAULT_VERSION: &str = "0.0.1";
 pub struct LxApps {
     /// Collection of mini apps, keyed by app ID
     /// Uses DashMap for thread-safe concurrent access
-    miniapps: DashMap<String, Arc<LxApp>>,
+    lxapps: DashMap<String, Arc<LxApp>>,
 
     /// Reference to the platform-specific app runtime
     /// Provides file system access, UI callbacks, etc.
@@ -73,7 +73,7 @@ impl LxApps {
         let user_id = Mutex::new(DEFAULT_USER_ID.to_string());
 
         Self {
-            miniapps: DashMap::new(),
+            lxapps: DashMap::new(),
             runtime,
             max_apps,
             svc_manager,
@@ -110,45 +110,45 @@ impl LxApps {
     }
 
     /// Get or initialize a specific LxApp instance by appid
-    pub fn get_or_init_miniapp(&self, appid: String) -> Arc<LxApp> {
-        // If the miniapp already exists, return it directly
-        if let Some(app_arc) = self.miniapps.get(&appid) {
+    pub fn get_or_init_lxapp(&self, appid: String) -> Arc<LxApp> {
+        // If the lxapp already exists, return it directly
+        if let Some(app_arc) = self.lxapps.get(&appid) {
             return app_arc.clone();
         }
 
         // Check if we've reached the maximum number of apps
-        if self.miniapps.len() >= self.max_apps {
+        if self.lxapps.len() >= self.max_apps {
             // Find and remove the least active app to make room
-            self.destroy_least_active_miniapp();
+            self.destroy_least_active_lxapp();
         }
 
         // Create new LxApp
-        let new_miniapp = Arc::new(LxApp::new(
+        let new_lxapp = Arc::new(LxApp::new(
             appid.clone(),
             self.runtime.clone(),
             self.svc_manager.clone(),
         ));
 
         // Insert into collection and return
-        self.miniapps.insert(appid, new_miniapp.clone());
-        new_miniapp
+        self.lxapps.insert(appid, new_lxapp.clone());
+        new_lxapp
     }
 
     /// Destroys the least recently active mini app to free up memory
-    fn destroy_least_active_miniapp(&self) {
-        if self.miniapps.is_empty() {
+    fn destroy_least_active_lxapp(&self) {
+        if self.lxapps.is_empty() {
             return;
         }
 
         // Find the least active app that isn't the home app
         let least_active = self
-            .miniapps
+            .lxapps
             .iter()
             .filter_map(|entry| {
                 let (appid, app_arc) = entry.pair();
                 let state = app_arc.state.lock().unwrap();
                 // Skip home app from destruction
-                if app_arc.home_miniapp {
+                if app_arc.home_lxapp {
                     None
                 } else {
                     Some((appid.clone(), state.last_active_time))
@@ -167,24 +167,24 @@ impl LxApps {
                 }
             }
 
-            self.miniapps.remove(&appid);
+            self.lxapps.remove(&appid);
         }
     }
 
     /// Uninstall a mini app by removing its files and version record
-    pub fn uninstall_miniapp(&self, appid: &str) -> Result<(), LxAppError> {
+    pub fn uninstall_lxapp(&self, appid: &str) -> Result<(), LxAppError> {
         // Log operation
-        info!("Uninstalling mini app").with_appid(appid);
+        info!("Uninstalling lxapp").with_appid(appid);
 
-        // Get or create the miniapp instance
-        let app_arc = self.get_or_init_miniapp(appid.to_string());
+        // Get or create the lxapp instance
+        let app_arc = self.get_or_init_lxapp(appid.to_string());
 
         // Call the uninstall method on the LxApp instance
         let result = app_arc.uninstall();
 
         // If successful, remove the app from the collection
         if result.is_ok() {
-            self.miniapps.remove(appid);
+            self.lxapps.remove(appid);
         }
 
         result
@@ -235,7 +235,7 @@ pub struct LxApp {
     pub storage_dir: PathBuf,
     pub user_data_dir: PathBuf,
     pub user_cache_dir: PathBuf,
-    pub home_miniapp: bool,
+    pub home_lxapp: bool,
     pub version: String,
     config: LxAppConfig,
     svc_manager: Arc<Mutex<LxAppServiceManager>>,
@@ -264,7 +264,7 @@ impl LxApp {
             storage_dir: PathBuf::new(),
             user_data_dir: PathBuf::new(),
             user_cache_dir: PathBuf::new(),
-            home_miniapp: false,
+            home_lxapp: false,
             version: String::new(),
             config: LxAppConfig::default(),
             svc_manager,
@@ -294,8 +294,8 @@ impl LxApp {
     ) -> Self {
         let mut app = Self::_new(appid, runtime, svc_manager);
 
-        // Mark as home miniapp
-        app.home_miniapp = true;
+        // Mark as home lxapp
+        app.home_lxapp = true;
 
         if let Err(e) = app.setup() {
             error!("Setup failed for home app: {}", e).with_appid(&app.appid);
@@ -310,11 +310,11 @@ impl LxApp {
         self.version = self.read_version();
 
         // Calculate the directory name based on appid, user and whether this is a home app
-        let dir_name = if self.home_miniapp {
+        let dir_name = if self.home_lxapp {
             // Home mini app uses appid directly as directory name
             self.appid.clone()
         } else {
-            let user_id = MINIAPPS_MANAGER.get().unwrap().get_user_id();
+            let user_id = LXAPPS_MANAGER.get().unwrap().get_user_id();
             generate_app_hash(&self.appid, &user_id)
         };
 
@@ -491,8 +491,8 @@ impl LxApp {
             return Ok(());
         }
 
-        if let Some(manager) = MINIAPPS_MANAGER.get() {
-            let app = manager.get_or_init_miniapp(to.appid.clone());
+        if let Some(manager) = LXAPPS_MANAGER.get() {
+            let app = manager.get_or_init_lxapp(to.appid.clone());
             if !app.is_opened() {
                 app.runtime.open_lxapp(to.appid, to.path)?;
             }
@@ -507,7 +507,7 @@ impl LxApp {
     /// * `Err(LxAppError)` - If there was an error during uninstallation
     pub fn uninstall(&self) -> Result<(), LxAppError> {
         // Don't allow uninstalling the home app
-        if self.home_miniapp {
+        if self.home_lxapp {
             return Err(LxAppError::UnsupportedOperation(
                 "Cannot uninstall the home mini app".to_string(),
             ));
@@ -587,10 +587,10 @@ pub trait AppUiDelegate {
     fn get_page_config(self: &Arc<Self>, path: &str) -> Result<String, LxAppError>;
 
     /// Called when mini app is opened
-    fn on_miniapp_opened(self: Arc<Self>, path: String);
+    fn on_lxapp_opened(self: Arc<Self>, path: String);
 
     /// Called when mini app is closed
-    fn on_miniapp_closed(self: &Arc<Self>);
+    fn on_lxapp_closed(self: &Arc<Self>);
 
     /// Called when the page starts loading
     fn on_page_started(self: &Arc<Self>, path: String);
@@ -688,7 +688,7 @@ impl AppUiDelegate for LxApp {
         }
     }
 
-    fn on_miniapp_opened(self: Arc<Self>, path: String) {
+    fn on_lxapp_opened(self: Arc<Self>, path: String) {
         info!("Mini app opened")
             .with_appid(self.appid.clone())
             .with_path(path.clone());
@@ -719,7 +719,7 @@ impl AppUiDelegate for LxApp {
         state.opened = true;
     }
 
-    fn on_miniapp_closed(self: &Arc<Self>) {
+    fn on_lxapp_closed(self: &Arc<Self>) {
         self.state.lock().unwrap().opened = false;
 
         // Update last active time
@@ -949,7 +949,7 @@ impl AppUiDelegate for LxApp {
 }
 
 // Global instance of LxApps manager
-static MINIAPPS_MANAGER: OnceLock<Arc<LxApps>> = OnceLock::new();
+static LXAPPS_MANAGER: OnceLock<Arc<LxApps>> = OnceLock::new();
 
 /// Initialize the LxApps singleton
 /// Returns an Option of (home_app_id, initial_route) on success.
@@ -986,7 +986,7 @@ pub fn init<R: AppRuntime + 'static>(runtime: R) -> Option<(String, String)> {
             let max_apps = config.max_allowed_lxapps;
 
             if !install::is_installed(runtime_arc.as_ref(), &home_lxapp_appid) {
-                if let Err(e) = install::install_home_miniapp(
+                if let Err(e) = install::install_home_lxapp(
                     runtime_arc.as_ref(),
                     &home_lxapp_appid,
                     home_lxapp_version,
@@ -999,15 +999,15 @@ pub fn init<R: AppRuntime + 'static>(runtime: R) -> Option<(String, String)> {
             let svc_manager = appservice::init(max_apps);
 
             // Create the home LxApp instance
-            let home_miniapp = LxApp::new_as_home(
+            let home_lxapp = LxApp::new_as_home(
                 home_lxapp_appid.clone(),
                 runtime_arc.clone(),
                 svc_manager.clone(),
             );
 
             // Check if home mini app needs updating after loading its configuration
-            if home_miniapp.is_debug_enabled() || home_miniapp.should_update(home_lxapp_version) {
-                if let Err(e) = install::install_home_miniapp(
+            if home_lxapp.is_debug_enabled() || home_lxapp.should_update(home_lxapp_version) {
+                if let Err(e) = install::install_home_lxapp(
                     runtime_arc.as_ref(),
                     &home_lxapp_appid,
                     home_lxapp_version,
@@ -1018,21 +1018,20 @@ pub fn init<R: AppRuntime + 'static>(runtime: R) -> Option<(String, String)> {
                 }
             }
 
-            // Get the initial route from the configured home_miniapp
-            let initial_route = home_miniapp.config.get_initial_route();
+            // Get the initial route from the configured home_lxapp
+            let initial_route = home_lxapp.config.get_initial_route();
 
             // Create LxApps manager
-            let miniapps_manager =
-                Arc::new(LxApps::new(runtime_arc.clone(), svc_manager, max_apps));
+            let lxapps_manager = Arc::new(LxApps::new(runtime_arc.clone(), svc_manager, max_apps));
 
-            // Add home miniapp to the manager
-            let home_miniapp_arc = Arc::new(home_miniapp);
-            miniapps_manager
-                .miniapps
-                .insert(home_lxapp_appid.clone(), home_miniapp_arc.clone());
+            // Add home lxapp to the manager
+            let home_lxapp_arc = Arc::new(home_lxapp);
+            lxapps_manager
+                .lxapps
+                .insert(home_lxapp_appid.clone(), home_lxapp_arc.clone());
 
             // Set global instance
-            if MINIAPPS_MANAGER.set(miniapps_manager).is_err() {
+            if LXAPPS_MANAGER.set(lxapps_manager).is_err() {
                 error!("LxApps manager singleton had been initialized by another instance");
                 return None;
             }
@@ -1075,9 +1074,9 @@ pub fn init<R: AppRuntime + 'static>(runtime: R) -> Option<(String, String)> {
 /// # Panics
 /// Panics if `LxApps` is not initialized or LxApp doesn't exist
 pub fn get(appid: String) -> Arc<LxApp> {
-    let manager = MINIAPPS_MANAGER.get().expect("LxApps not initialized");
-    if let Some(app_arc) = manager.miniapps.get(&appid) {
+    let manager = LXAPPS_MANAGER.get().expect("LxApps not initialized");
+    if let Some(app_arc) = manager.lxapps.get(&appid) {
         return app_arc.clone();
     }
-    panic!("Not found miniapp {}", appid);
+    panic!("Not found lxapp {}", appid);
 }

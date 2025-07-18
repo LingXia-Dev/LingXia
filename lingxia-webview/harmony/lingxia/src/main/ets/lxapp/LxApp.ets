@@ -8,7 +8,7 @@ import { initNativeBridge, getNativeCallbackFunction } from './NativeBridge';
 import { WebViewManager, toWebTag } from './WebView';
 
 // Import native functions from Rust
-import { miniappInit, onMiniappOpened, onMiniappClosed, onPageShow } from 'liblingxia.so';
+import { lxappInit, onLxappOpened, onLxappClosed, onPageShow } from 'liblingxia.so';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.LxApp';
@@ -16,7 +16,7 @@ const TAG = 'LingXia.LxApp';
 // Task function for handling LxApp close operation asynchronously
 @Concurrent
 function closeLxAppTask(appId: string): number {
-  return onMiniappClosed(appId);
+  return onLxappClosed(appId);
 }
 
 interface NavigationInstance {
@@ -64,7 +64,7 @@ export class LxApp {
 
     // Check if native layer has already been initialized by checking homeLxAppId
     if (instance.homeLxAppId !== null) {
-      hilog.warn(DOMAIN, TAG, 'Native layer already initialized, skipping native_miniapp_init');
+      hilog.warn(DOMAIN, TAG, 'Native layer already initialized, skipping native_lxapp_init');
       return;
     }
 
@@ -92,8 +92,8 @@ export class LxApp {
 
     const callbackFunction = getNativeCallbackFunction();
 
-    hilog.info(DOMAIN, TAG, `Calling miniappInit with callback and file system paths (FIRST AND ONLY TIME)`);
-    const result: string | null = miniappInit(callbackFunction, dataDir, cacheDir, resourceManager);
+    hilog.info(DOMAIN, TAG, `Calling lxappInit with callback and file system paths (FIRST AND ONLY TIME)`);
+    const result: string | null = lxappInit(callbackFunction, dataDir, cacheDir, resourceManager);
 
     if (result) {
       hilog.info(DOMAIN, TAG, `LxApp initialized successfully: ${result}`);
@@ -127,8 +127,8 @@ export class LxApp {
 
       try {
         // Just call the native function for home LxApp
-        const result: number = onMiniappOpened(homeAppId, homeAppPath);
-        hilog.info(DOMAIN, TAG, `onMiniappOpened result for home: ${result}`);
+        const result: number = onLxappOpened(homeAppId, homeAppPath);
+        hilog.info(DOMAIN, TAG, `onLxappOpened result for home: ${result}`);
       } catch (error) {
         hilog.error(DOMAIN, TAG, `Failed to open home LxApp: ${error}`);
       }
@@ -138,7 +138,7 @@ export class LxApp {
   }
 
   public static closeLxApp(appId: string): void {
-    // Call native onMiniappClosed asynchronously (fire and forget)
+    // Call native onLxappClosed asynchronously (fire and forget)
     taskpool.execute(new taskpool.Task(closeLxAppTask, appId));
 
     if (LxApp.navigationInstance) {
@@ -375,8 +375,8 @@ struct LxAppManager {
     hilog.info(DOMAIN, TAG, `Opening LxApp: ${appId}:${path}, isHome: ${isHomeLxApp}`);
 
     try {
-      const result: number = onMiniappOpened(appId, path);
-      hilog.info(DOMAIN, TAG, `Native onMiniappOpened result: ${result}`);
+      const result: number = onLxappOpened(appId, path);
+      hilog.info(DOMAIN, TAG, `Native onLxappOpened result: ${result}`);
 
       if (isHomeLxApp) {
         this.homeAppId = appId;
@@ -435,7 +435,7 @@ struct LxAppManager {
   public closeModalLxApp(): void {
     hilog.info(DOMAIN, TAG, `Closing modal miniapp: visible=${this.modalLxAppVisible}, id=${this.modalLxAppId}`);
 
-    // Update UI state immediately (onMiniappClosed already called in static closeLxApp)
+    // Update UI state immediately (onLxappClosed already called in static closeLxApp)
     this.modalLxAppVisible = false;
     this.modalLxAppId = '';
     this.modalLxAppPath = '';

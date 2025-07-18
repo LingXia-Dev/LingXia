@@ -7,7 +7,7 @@ use crate::miniapp::LxApp;
 
 /// FastAPI handler trait
 pub trait FastApiHandler: Send + Sync + 'static {
-    fn call(&self, miniapp: Arc<LxApp>, input: Option<&str>) -> Result<String, LxAppError>;
+    fn call(&self, lxapp: Arc<LxApp>, input: Option<&str>) -> Result<String, LxAppError>;
 }
 
 /// FastAPI registry - stores FastAPI handlers
@@ -57,10 +57,10 @@ macro_rules! fast_api {
         impl $crate::appservice::lx::fastapi::FastApiHandler for $name {
             fn call(
                 &self,
-                miniapp: std::sync::Arc<$crate::miniapp::LxApp>,
+                lxapp: std::sync::Arc<$crate::miniapp::LxApp>,
                 _input: Option<&str>,
             ) -> Result<String, $crate::error::LxAppError> {
-                let result: $output = $body(miniapp)?;
+                let result: $output = $body(lxapp)?;
                 serde_json::to_string(&result)
                     .map_err(|e| $crate::error::LxAppError::Bridge(e.to_string()))
             }
@@ -74,7 +74,7 @@ macro_rules! fast_api {
         impl $crate::appservice::lx::fastapi::FastApiHandler for $name {
             fn call(
                 &self,
-                miniapp: std::sync::Arc<$crate::miniapp::LxApp>,
+                lxapp: std::sync::Arc<$crate::miniapp::LxApp>,
                 input: Option<&str>,
             ) -> Result<String, $crate::error::LxAppError> {
                 let input_data: $input = match input {
@@ -87,7 +87,7 @@ macro_rules! fast_api {
                         ));
                     }
                 };
-                let result: $output = $body(miniapp, input_data)?;
+                let result: $output = $body(lxapp, input_data)?;
                 serde_json::to_string(&result)
                     .map_err(|e| $crate::error::LxAppError::Bridge(e.to_string()))
             }

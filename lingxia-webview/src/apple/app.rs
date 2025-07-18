@@ -154,8 +154,8 @@ impl App {
     }
 
     /// Close a mini app
-    pub fn close_miniapp(&self, appid: &str) -> Result<(), LxAppError> {
-        if ffi::close_miniapp(appid) {
+    pub fn close_lxapp(&self, appid: &str) -> Result<(), LxAppError> {
+        if ffi::close_lxapp(appid) {
             Ok(())
         } else {
             Err(LxAppError::WebView(format!(

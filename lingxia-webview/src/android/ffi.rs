@@ -221,10 +221,9 @@ pub extern "system" fn Java_com_lingxia_miniapp_LxAppActivity_nativeOnPageShow(
 pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeShouldOverrideUrlLoading(
     mut env: JNIEnv,
     _class: JClass,
-    appid: JString,
+    _appid: JString,
     url: JString,
 ) -> jint {
-    let appid: String = env.get_string(&appid).unwrap().into();
     let url: String = env.get_string(&url).unwrap().into();
 
     // Extract scheme from URL
@@ -432,7 +431,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_LxAppActivity_nativeOnLxAppClose
     let appid: String = env.get_string(&appid).unwrap().into();
 
     let miniapp = miniapp::get(appid.clone());
-    miniapp.on_miniapp_closed();
+    miniapp.on_lxapp_closed();
     0
 }
 
@@ -507,7 +506,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_LxApp_nativeOnLxAppOpened(
     let path: String = env.get_string(&path).unwrap().into();
 
     let miniapp = miniapp::get(appid.clone());
-    miniapp.on_miniapp_opened(path);
+    miniapp.on_lxapp_opened(path);
     0
 }
 

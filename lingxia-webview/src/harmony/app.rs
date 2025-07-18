@@ -309,7 +309,7 @@ impl App {
         tsfn::call_arkts("openLxApp", &[appid, path])
     }
 
-    pub fn close_miniapp(&self, appid: &str) -> Result<(), LxAppError> {
+    pub fn close_lxapp(&self, appid: &str) -> Result<(), LxAppError> {
         tsfn::call_arkts("closeLxApp", &[appid])
     }
 

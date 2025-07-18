@@ -24,8 +24,8 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     lx.set("env", env::init(ctx))?;
 
     // Register navigator
-    let navigator_miniapp = JSFunc::new(ctx, navigator::navigator_to_lxapp)?;
-    register_js_api(ctx, "navigateToMiniProgram", navigator_miniapp)?;
+    let navigator_lxapp = JSFunc::new(ctx, navigator::navigator_to_lxapp)?;
+    register_js_api(ctx, "navigateToMiniProgram", navigator_lxapp)?;
 
     system::init(ctx)?;
 

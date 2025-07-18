@@ -10,7 +10,7 @@ use napi_ohos::bindgen_prelude::*;
 use ohos_hilog::Config;
 
 #[napi]
-pub fn miniapp_init(
+pub fn lxapp_init(
     env: Env,
     callback_function: Function,
     data_dir: String,
@@ -139,17 +139,17 @@ pub fn get_page_config(appid: String, path: String) -> Option<String> {
 
 /// Notify that LxApp was opened
 #[napi]
-pub fn on_miniapp_opened(appid: String, path: String) -> i32 {
+pub fn on_lxapp_opened(appid: String, path: String) -> i32 {
     let miniapp = miniapp::get(appid);
-    miniapp.on_miniapp_opened(path);
+    miniapp.on_lxapp_opened(path);
     0
 }
 
 /// Notify that LxApp was closed
 #[napi]
-pub fn on_miniapp_closed(appid: String) -> i32 {
+pub fn on_lxapp_closed(appid: String) -> i32 {
     let miniapp = miniapp::get(appid);
-    miniapp.on_miniapp_closed();
+    miniapp.on_lxapp_closed();
     0
 }
 

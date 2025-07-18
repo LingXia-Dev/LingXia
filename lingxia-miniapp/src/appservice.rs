@@ -28,11 +28,11 @@ mod lx;
 /// Message type for LxApp service system
 #[derive(Clone)]
 enum ServiceMessage {
-    // Create a new miniapp service
+    // Create a new lxapp service
     CreateLxApp {
-        miniapp: Arc<LxApp>,
+        lxapp: Arc<LxApp>,
     },
-    // Delete an miniapp service
+    // Delete an lxapp service
     TerminateLxApp {
         appid: String,
     },
@@ -101,11 +101,8 @@ impl LxAppServiceManager {
     }
 
     /// Create a new mini app service
-    pub fn create_app_svc(
-        &mut self,
-        miniapp: Arc<crate::miniapp::LxApp>,
-    ) -> Result<(), LxAppError> {
-        let appid = &miniapp.appid;
+    pub fn create_app_svc(&mut self, lxapp: Arc<crate::miniapp::LxApp>) -> Result<(), LxAppError> {
+        let appid = &lxapp.appid;
 
         // Check if app already exists
         if self.worker_assignments.contains_key(appid) {
@@ -127,7 +124,7 @@ impl LxAppServiceManager {
 
         // Send message with LxApp reference
         self.sender
-            .send(ServiceMessage::CreateLxApp { miniapp })?;
+            .send(ServiceMessage::CreateLxApp { lxapp: lxapp })?;
 
         Ok(())
     }
@@ -155,8 +152,7 @@ impl LxAppServiceManager {
             self.free_workers.push(worker_id);
         }
 
-        self.sender
-            .send(ServiceMessage::TerminateLxApp { appid })?;
+        self.sender.send(ServiceMessage::TerminateLxApp { appid })?;
 
         Ok(())
     }
@@ -165,7 +161,7 @@ impl LxAppServiceManager {
         self.worker_assignments.get(appid).copied()
     }
 
-    fn add_miniapp(&mut self, appid: &str, worker_id: usize) {
+    fn add_lxapp(&mut self, appid: &str, worker_id: usize) {
         // Update assignment map
         self.worker_assignments.insert(appid.to_string(), worker_id);
 
@@ -175,7 +171,7 @@ impl LxAppServiceManager {
         }
     }
 
-    fn remove_miniapp(&mut self, appid: &str) -> Option<usize> {
+    fn remove_lxapp(&mut self, appid: &str) -> Option<usize> {
         // If we have this app, get its worker ID and add back to free pool
         if let Some(worker_id) = self.worker_assignments.remove(appid) {
             self.free_workers.push(worker_id);
@@ -287,7 +283,7 @@ async fn handle_native_source(page_svc: &PageSvc, name: String, args: Option<Str
 
 /// The core logic for a persistent worker task.
 /// This function is a handler for messages received by the worker.
-async fn miniapp_service_handler(
+async fn lxapp_service_handler(
     worker_id: usize,
     manager: Arc<Mutex<LxAppServiceManager>>,
     runtime: JSRuntime,
@@ -295,11 +291,11 @@ async fn miniapp_service_handler(
     current_ctx: &mut Option<JSContext>,
 ) {
     match message {
-        ServiceMessage::CreateLxApp { miniapp } => {
+        ServiceMessage::CreateLxApp { lxapp } => {
             let ctx = runtime.context();
 
             // Store the LxApp reference directly in JSContext user data
-            ctx.set_user_data(miniapp.clone());
+            ctx.set_user_data(lxapp.clone());
 
             // Create a HashMap for PageSvc instances and store it in JSContext
             let page_svc_map: Rc<RefCell<HashMap<String, PageSvc>>> =
@@ -311,36 +307,36 @@ async fn miniapp_service_handler(
             let _ = page::init(&ctx);
 
             // Set console writer
-            console::set_writer(Box::new(LxAppCtx::new(miniapp.clone())));
+            console::set_writer(Box::new(LxAppCtx::new(lxapp.clone())));
 
             // Set file access guard to prevent cross-app file access
-            fs::set_file_access_guard(Box::new(LxAppCtx::new(miniapp.clone())));
+            fs::set_file_access_guard(Box::new(LxAppCtx::new(lxapp.clone())));
 
             // Set network access guard to prevent unauthorized domain access
-            http::set_network_access_guard(Box::new(LxAppCtx::new(miniapp.clone())));
+            http::set_network_access_guard(Box::new(LxAppCtx::new(lxapp.clone())));
 
-            let localstorage = miniapp.storage_dir.join(format!("{}.redb", miniapp.appid));
+            let localstorage = lxapp.storage_dir.join(format!("{}.redb", lxapp.appid));
             if let Err(e) = storage::set_storage_path(localstorage) {
                 info!("[Worker {}] failed to open localstorage: {}", worker_id, e)
-                    .with_appid(miniapp.appid.clone());
+                    .with_appid(lxapp.appid.clone());
             }
 
             let _ = rong_modules::init(&ctx);
             let _ = lx::init(&ctx);
 
-            info!("[Worker {}] Created JS context", worker_id).with_appid(miniapp.appid.clone());
+            info!("[Worker {}] Created JS context", worker_id).with_appid(lxapp.appid.clone());
 
-            let js = miniapp.lxapp_dir.join("logic.js");
+            let js = lxapp.lxapp_dir.join("logic.js");
             if js.exists() {
                 if let Ok(js) = Source::from_path(&ctx, js).await {
                     match ctx.eval::<()>(js) {
                         Ok(_) => {
                             info!("[Worker {}] Successfully loaded logic JS", worker_id)
-                                .with_appid(miniapp.appid.clone());
+                                .with_appid(lxapp.appid.clone());
                         }
                         Err(e) => {
                             info!("[Worker {}] eval logic JS  failed: {}", worker_id, e)
-                                .with_appid(miniapp.appid.clone());
+                                .with_appid(lxapp.appid.clone());
                         }
                     }
                 }
@@ -350,7 +346,7 @@ async fn miniapp_service_handler(
                     worker_id,
                     js.display()
                 )
-                .with_appid(miniapp.appid.clone());
+                .with_appid(lxapp.appid.clone());
             }
 
             *current_ctx = Some(ctx.clone());
@@ -358,7 +354,7 @@ async fn miniapp_service_handler(
             // Only lock once to update app info
             {
                 let mut manager_guard = manager.lock().unwrap();
-                manager_guard.add_miniapp(&miniapp.appid, worker_id);
+                manager_guard.add_lxapp(&lxapp.appid, worker_id);
             }
         }
         ServiceMessage::TerminateLxApp { appid } => {
@@ -368,7 +364,7 @@ async fn miniapp_service_handler(
                 // Only lock once to update app info
                 {
                     let mut manager_guard = manager.lock().unwrap();
-                    manager_guard.remove_miniapp(&appid);
+                    manager_guard.remove_lxapp(&appid);
                 }
 
                 info!("[Worker {}] Removed LxApp context ", worker_id).with_appid(appid.clone());
@@ -529,7 +525,7 @@ pub(crate) fn init(num: usize) -> Arc<Mutex<LxAppServiceManager>> {
 
                         while let Some(WorkerMessage::Custom(cmd)) = receiver.recv().await {
                             if let Ok(service) = cmd.downcast::<WorkerService>() {
-                                miniapp_service_handler(
+                                lxapp_service_handler(
                                     worker_id,
                                     manager_c.clone(),
                                     runtime.clone(),
@@ -556,8 +552,8 @@ pub(crate) fn init(num: usize) -> Arc<Mutex<LxAppServiceManager>> {
                 match recv.lock().unwrap().recv() {
                     Ok(message) => {
                         match &message {
-                            ServiceMessage::CreateLxApp { miniapp } => {
-                                let appid = &miniapp.appid;
+                            ServiceMessage::CreateLxApp { lxapp } => {
+                                let appid = &lxapp.appid;
                                 // Find worker for appid and send message
                                 if let Some(worker_id) =
                                     manager_clone.lock().unwrap().get_worker_id(appid)
@@ -608,19 +604,19 @@ pub(crate) fn init(num: usize) -> Arc<Mutex<LxAppServiceManager>> {
 
 /// Wrapper for LxApp to implement external traits
 struct LxAppCtx {
-    miniapp: Arc<LxApp>,
+    lxapp: Arc<LxApp>,
 }
 
 impl LxAppCtx {
-    pub fn new(miniapp: Arc<LxApp>) -> Self {
-        Self { miniapp }
+    pub fn new(lxapp: Arc<LxApp>) -> Self {
+        Self { lxapp }
     }
 }
 
 impl std::fmt::Debug for LxAppCtx {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("LxAppCtx")
-            .field("appid", &self.miniapp.appid)
+            .field("appid", &self.lxapp.appid)
             .finish()
     }
 }
@@ -631,19 +627,19 @@ impl console::ConsoleWriter for LxAppCtx {
         match level {
             console::LogLevel::Verbose => log
                 .with_level(LogLevel::Verbose)
-                .with_appid(self.miniapp.appid.clone()),
+                .with_appid(self.lxapp.appid.clone()),
             console::LogLevel::Info => log
                 .with_level(LogLevel::Info)
-                .with_appid(self.miniapp.appid.clone()),
+                .with_appid(self.lxapp.appid.clone()),
             console::LogLevel::Debug => log
                 .with_level(LogLevel::Debug)
-                .with_appid(self.miniapp.appid.clone()),
+                .with_appid(self.lxapp.appid.clone()),
             console::LogLevel::Error => log
                 .with_level(LogLevel::Error)
-                .with_appid(self.miniapp.appid.clone()),
+                .with_appid(self.lxapp.appid.clone()),
             console::LogLevel::Warn => log
                 .with_level(LogLevel::Warn)
-                .with_appid(self.miniapp.appid.clone()),
+                .with_appid(self.lxapp.appid.clone()),
         };
     }
 
@@ -685,9 +681,9 @@ impl fs::FileAccessGuard for LxAppCtx {
         // Get canonical paths
         let canonical_path = canonicalize(path).map_err(|e| RongJSError::Error(e))?;
         let user_data_canonical =
-            canonicalize(&self.miniapp.user_data_dir).map_err(|e| RongJSError::Error(e))?;
+            canonicalize(&self.lxapp.user_data_dir).map_err(|e| RongJSError::Error(e))?;
         let user_cache_canonical =
-            canonicalize(&self.miniapp.user_cache_dir).map_err(|e| RongJSError::Error(e))?;
+            canonicalize(&self.lxapp.user_cache_dir).map_err(|e| RongJSError::Error(e))?;
 
         // Check if path is within allowed directories
         if canonical_path.starts_with(&user_data_canonical)
@@ -706,7 +702,7 @@ impl http::NetworkAccessGuard for LxAppCtx {
     /// Check if the mini app has access to the specified domain
     /// Returns Ok(()) if access is granted, Err with error message if denied
     fn check_access(&self, domain: &str) -> JSResult<()> {
-        if self.miniapp.is_domain_allowed(domain) {
+        if self.lxapp.is_domain_allowed(domain) {
             Ok(())
         } else {
             Err(RongJSError::Error(format!(

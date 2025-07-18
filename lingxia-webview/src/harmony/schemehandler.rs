@@ -196,7 +196,7 @@ pub unsafe fn cleanup_scheme_handler(scheme_handler: *mut ArkWeb_SchemeHandler) 
     }
 }
 
-/// Register custom schemes globally (called once during miniapp_init)
+/// Register custom schemes globally (called once during lxapp_init)
 pub fn register_custom_schemes() -> NapiResult<()> {
     log::info!("Registering custom schemes globally");
 

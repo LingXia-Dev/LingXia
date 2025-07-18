@@ -41,12 +41,12 @@ use std::path::Path;
 ///
 /// ## Icon Path Format
 /// The `iconPath` and `selectedIconPath` fields in TabItem should always be relative paths
-/// in the configuration file, relative to the miniapp's own directory. For example:
+/// in the configuration file, relative to the lxapp's own directory. For example:
 ///
-/// - `imags/tabbar/home.png` - Icon in the imags directory of the miniapp
+/// - `imags/tabbar/home.png` - Icon in the imags directory of the lxapp
 ///
 /// The framework automatically converts these relative paths to absolute paths when needed
-/// by prepending the miniapp's directory path.
+/// by prepending the lxapp's directory path.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[allow(non_snake_case)]
 pub(crate) struct TabBar {
@@ -124,7 +124,7 @@ pub enum TabBarPosition {
 /// ## Icon Paths
 /// Both `iconPath` and `selectedIconPath` should be relative paths in the configuration file:
 ///
-/// - All paths are relative to the miniapp's own directory
+/// - All paths are relative to the lxapp's own directory
 /// - The framework will automatically convert these to absolute paths when needed
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[allow(non_snake_case)]
@@ -171,10 +171,10 @@ impl TabBar {
     ///
     /// This method converts all icon paths in the list items to absolute paths
     /// by prepending the provided base_path. All paths in the configuration file
-    /// are expected to be relative to the miniapp's own directory.
+    /// are expected to be relative to the lxapp's own directory.
     ///
     /// # Arguments
-    /// * `base_path` - The miniapp's directory path to prepend to relative paths
+    /// * `base_path` - The lxapp's directory path to prepend to relative paths
     ///
     /// # Returns
     /// A new TabBar instance with all paths converted to absolute paths

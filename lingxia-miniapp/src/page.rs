@@ -104,7 +104,7 @@ pub trait WebViewController: Send + Sync {
     ) -> Result<(), LxAppError>;
 }
 
-/// Manages a collection of pages for a single miniapp
+/// Manages a collection of pages for a single lxapp
 pub(crate) struct Pages {
     /// Map of path to Page
     pages: HashMap<String, Page>,
@@ -442,11 +442,7 @@ impl Page {
     /// # Arguments
     /// * `html_data` - The HTML content to load
     /// * `base_url` - Base URL for resolving relative paths in the HTML
-    pub(crate) fn load_html(
-        &self,
-        html_data: String,
-        base_url: String,
-    ) -> Result<(), LxAppError> {
+    pub(crate) fn load_html(&self, html_data: String, base_url: String) -> Result<(), LxAppError> {
         self.inner.webview_controller.load_data(
             html_data, base_url, None, // Use base_url as history_url
         )

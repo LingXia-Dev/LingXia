@@ -89,7 +89,7 @@ public class LxApp {
         let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?.path ?? ""
         let cachesPath = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?.path ?? ""
 
-        let initResult = lingxia.miniappInit(documentsPath, cachesPath)
+        let initResult = lingxia.lxappInit(documentsPath, cachesPath)
         let initResultString = initResult?.toString()
 
         if let initResult = initResultString {
@@ -223,9 +223,9 @@ public class LxApp {
             os_log("openInNewViewController: Using requested path: %@", log: Self.log, type: .info, actualPath)
         }
 
-        // Call onMiniappOpened FIRST to ensure WebView is created before we try to find it
-        let openResult = lingxia.onMiniappOpened(appId, actualPath)
-        os_log("onMiniappOpened completed with result=%d for appId=%@ path=%@", log: Self.log, type: .info, openResult, appId, actualPath)
+        // Call onLxappOpened FIRST to ensure WebView is created before we try to find it
+        let openResult = lingxia.onLxappOpened(appId, actualPath)
+        os_log("onLxappOpened completed with result=%d for appId=%@ path=%@", log: Self.log, type: .info, openResult, appId, actualPath)
 
         // Create LxAppViewController - it will find and setup WebView in viewDidLoad
         let miniAppVC = LxAppViewController(appId: appId, path: actualPath)

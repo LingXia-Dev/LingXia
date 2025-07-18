@@ -6,14 +6,14 @@ use miniapp::log::LogLevel;
 #[swift_bridge::bridge]
 mod bridge {
     extern "Rust" {
-        #[swift_bridge(swift_name = "miniappInit")]
-        fn miniapp_init(data_dir: &str, cache_dir: &str) -> Option<String>;
+        #[swift_bridge(swift_name = "lxappInit")]
+        fn lxapp_init(data_dir: &str, cache_dir: &str) -> Option<String>;
 
         #[swift_bridge(swift_name = "onPageShow")]
         fn on_page_show(appid: &str, path: &str);
 
-        #[swift_bridge(swift_name = "onMiniappClosed")]
-        fn on_miniapp_closed(appid: &str) -> i32;
+        #[swift_bridge(swift_name = "onLxappClosed")]
+        fn on_lxapp_closed(appid: &str) -> i32;
 
         #[swift_bridge(swift_name = "getPageConfig")]
         fn get_page_config(appid: &str, path: &str) -> Option<String>;
@@ -21,8 +21,8 @@ mod bridge {
         #[swift_bridge(swift_name = "onBackPressed")]
         fn on_back_pressed(appid: &str) -> bool;
 
-        #[swift_bridge(swift_name = "onMiniappOpened")]
-        fn on_miniapp_opened(appid: &str, path: &str) -> i32;
+        #[swift_bridge(swift_name = "onLxappOpened")]
+        fn on_lxapp_opened(appid: &str, path: &str) -> i32;
 
         #[swift_bridge(swift_name = "getTabBarConfig")]
         fn get_tab_bar_config(appid: &str) -> Option<String>;
@@ -37,7 +37,7 @@ mod bridge {
         fn open_lxapp(appid: &str, path: &str) -> bool;
 
         #[swift_bridge(swift_name = "LxApp.closeLxApp")]
-        fn close_miniapp(appid: &str) -> bool;
+        fn close_lxapp(appid: &str) -> bool;
 
         #[swift_bridge(swift_name = "LxApp.switchPage")]
         fn switch_page(appid: &str, path: &str) -> bool;
@@ -45,10 +45,10 @@ mod bridge {
 }
 
 // Re-export the bridge functions for use in other modules
-pub use bridge::{close_miniapp, open_lxapp, switch_page};
+pub use bridge::{close_lxapp, open_lxapp, switch_page};
 
 /// Initialize the LxApp system for iOS/macOS
-pub fn miniapp_init(data_dir: &str, cache_dir: &str) -> Option<String> {
+pub fn lxapp_init(data_dir: &str, cache_dir: &str) -> Option<String> {
     oslog::OsLogger::new("LingXia.Rust")
         .level_filter(log::LevelFilter::Info)
         .init()
@@ -128,9 +128,9 @@ pub fn on_page_show(appid: &str, path: &str) {
 }
 
 /// Notify that LxApp was closed
-pub fn on_miniapp_closed(appid: &str) -> i32 {
+pub fn on_lxapp_closed(appid: &str) -> i32 {
     let miniapp = miniapp::get(appid.to_string());
-    miniapp.on_miniapp_closed();
+    miniapp.on_lxapp_closed();
     0
 }
 
@@ -150,9 +150,9 @@ pub fn on_back_pressed(appid: &str) -> bool {
 }
 
 /// Notify that LxApp was opened
-pub fn on_miniapp_opened(appid: &str, path: &str) -> i32 {
+pub fn on_lxapp_opened(appid: &str, path: &str) -> i32 {
     let miniapp = miniapp::get(appid.to_string());
-    miniapp.on_miniapp_opened(path.to_string());
+    miniapp.on_lxapp_opened(path.to_string());
     0
 }
 
