@@ -10,25 +10,82 @@ fn get_resource_bundle() -> Retained<NSBundle> {
     unsafe {
         let main_bundle = NSBundle::mainBundle();
 
-        // Look for the SPM resource bundle first
-        let bundle_name = NSString::from_str("miniapp_miniapp");
-        let bundle_type = NSString::from_str("bundle");
+        // First try to auto-detect SPM bundle name using native APIs
+        if let Some(detected_bundle_name) = detect_spm_bundle_name() {
+            let bundle_name_ns = NSString::from_str(&detected_bundle_name);
+            let bundle_type = NSString::from_str("bundle");
 
-        let bundle_path: Option<Retained<NSString>> =
-            msg_send![&main_bundle, pathForResource: &*bundle_name, ofType: &*bundle_type];
+            let bundle_path: Option<Retained<NSString>> =
+                msg_send![&main_bundle, pathForResource: &*bundle_name_ns, ofType: &*bundle_type];
 
-        if let Some(path) = bundle_path {
-            let resource_bundle: Option<Retained<NSBundle>> =
-                msg_send![NSBundle::class(), bundleWithPath: &*path];
-            if let Some(bundle) = resource_bundle {
-                log::debug!("Using SPM resource bundle: miniapp_miniapp.bundle");
-                return bundle;
+            if let Some(path) = bundle_path {
+                let resource_bundle: Option<Retained<NSBundle>> =
+                    msg_send![NSBundle::class(), bundleWithPath: &*path];
+                if let Some(bundle) = resource_bundle {
+                    log::debug!(
+                        "Using auto-detected SPM resource bundle: {}.bundle",
+                        detected_bundle_name
+                    );
+                    return bundle;
+                }
             }
         }
 
-        // Fallback to main bundle
-        log::debug!("Using main bundle for resources");
         main_bundle
+    }
+}
+
+/// Auto-detect SPM bundle name using native Bundle APIs
+fn detect_spm_bundle_name() -> Option<String> {
+    unsafe {
+        let main_bundle = NSBundle::mainBundle();
+
+        // Method 1: Based on bundle identifier
+        let bundle_identifier: Option<Retained<NSString>> =
+            msg_send![&main_bundle, bundleIdentifier];
+        if let Some(identifier) = bundle_identifier {
+            let identifier_str = identifier.to_string();
+            if let Some(last_component) = identifier_str.split('.').last() {
+                let spm_bundle_name = format!("{}_{}", last_component, last_component);
+
+                // Verify this bundle exists
+                let bundle_name_ns = NSString::from_str(&spm_bundle_name);
+                let bundle_type = NSString::from_str("bundle");
+                let bundle_path: Option<Retained<NSString>> = msg_send![&main_bundle, pathForResource: &*bundle_name_ns, ofType: &*bundle_type];
+
+                if bundle_path.is_some() {
+                    log::debug!(
+                        "Auto-detected bundle name from identifier: {}",
+                        spm_bundle_name
+                    );
+                    return Some(spm_bundle_name);
+                }
+            }
+        }
+
+        // Method 2: Based on CFBundleName
+        let cf_bundle_name_key = NSString::from_str("CFBundleName");
+        let bundle_name: Option<Retained<NSString>> =
+            msg_send![&main_bundle, objectForInfoDictionaryKey: &*cf_bundle_name_key];
+        if let Some(name) = bundle_name {
+            let name_str = name.to_string();
+            let spm_bundle_name = format!("{}_{}", name_str, name_str);
+
+            let bundle_name_ns = NSString::from_str(&spm_bundle_name);
+            let bundle_type = NSString::from_str("bundle");
+            let bundle_path: Option<Retained<NSString>> =
+                msg_send![&main_bundle, pathForResource: &*bundle_name_ns, ofType: &*bundle_type];
+
+            if bundle_path.is_some() {
+                log::debug!(
+                    "Auto-detected bundle name from CFBundleName: {}",
+                    spm_bundle_name
+                );
+                return Some(spm_bundle_name);
+            }
+        }
+
+        None
     }
 }
 
@@ -170,4 +227,3 @@ pub fn list_asset_directory(dir_path: &str) -> Vec<String> {
         Vec::new()
     }
 }
-
