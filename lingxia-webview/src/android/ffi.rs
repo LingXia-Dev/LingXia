@@ -227,12 +227,18 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeShouldOverrideUrlL
     let appid: String = env.get_string(&appid).unwrap().into();
     let url: String = env.get_string(&url).unwrap().into();
 
-    // Get the miniapp instance and check if we should override the URL
-    let miniapp = miniapp::get(appid.clone());
-    if miniapp.should_override_url_loading(url) {
-        1
+    // Extract scheme from URL
+    let scheme = if let Some(scheme_end) = url.find("://") {
+        &url[..scheme_end]
     } else {
-        0
+        return 0; // Invalid URL, don't override
+    };
+
+    // Handle lingxia scheme or block non-https schemes
+    match scheme {
+        "lx" => 1,    // Always intercept lingxia scheme
+        "https" => 0, // Allow https URLs (they'll be checked in handle_request)
+        _ => 1,       // Block all other schemes
     }
 }
 

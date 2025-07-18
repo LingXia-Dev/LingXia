@@ -615,16 +615,6 @@ pub trait AppUiDelegate {
     /// Return true to indicate the back press had been handled
     fn on_back_pressed(self: &Arc<Self>) -> bool;
 
-    /// Determines whether to override URL loading in the page.
-    ///
-    /// # Arguments
-    /// * `url` - The URL being requested
-    ///
-    /// # Returns
-    /// * `true` - To intercept and handle the URL loading
-    /// * `false` - To allow the page to continue loading the URL
-    fn should_override_url_loading(self: &Arc<Self>, url: String) -> bool;
-
     /// Handles a postMessage from the page View(WebView)
     fn handle_post_message(self: &Arc<Self>, path: String, msg: String);
 
@@ -909,23 +899,6 @@ impl AppUiDelegate for LxApp {
         } else {
             // No page to pop, return false to allow default back behavior
             false
-        }
-    }
-
-    // Determines whether to override URL loading in the page.
-    fn should_override_url_loading(self: &Arc<Self>, url: String) -> bool {
-        // Extract scheme from URL
-        let scheme = if let Some(scheme_end) = url.find("://") {
-            &url[..scheme_end]
-        } else {
-            return false; // Invalid URL, don't override
-        };
-
-        // Handle lingxia scheme or block non-https schemes
-        match scheme {
-            "lx" => true,     // Always intercept lingxia scheme
-            "https" => false, // Allow https URLs (they'll be checked in handle_request)
-            _ => true,        // Block all other schemes
         }
     }
 
