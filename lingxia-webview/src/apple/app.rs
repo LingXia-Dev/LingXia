@@ -1,6 +1,8 @@
 use super::ffi;
 use miniapp::{AssetFileEntry, DeviceInfo, LxAppError};
+use std::ffi::CStr;
 use std::io::{Cursor, Read};
+use std::mem;
 use std::path::PathBuf;
 
 #[cfg(target_os = "macos")]
@@ -179,51 +181,40 @@ impl App {
 /// Get device model using system calls (like Swift version)
 /// Returns device model string like "iPhone14,2" or "MacBookPro18,1"
 fn get_device_model() -> String {
-    #[cfg(any(target_os = "ios", target_os = "macos"))]
-    {
-        use std::ffi::CStr;
-        use std::mem;
-
-        // Define utsname structure manually to avoid libc dependency
-        #[repr(C)]
-        struct UtsName {
-            sysname: [i8; 256],
-            nodename: [i8; 256],
-            release: [i8; 256],
-            version: [i8; 256],
-            machine: [i8; 256],
-        }
-
-        unsafe extern "C" {
-            fn uname(buf: *mut UtsName) -> i32;
-        }
-
-        unsafe {
-            let mut system_info: UtsName = mem::zeroed();
-            if uname(&mut system_info) == 0 {
-                // Convert machine field to String (like Swift version)
-                let machine_ptr = system_info.machine.as_ptr();
-                let machine_cstr = CStr::from_ptr(machine_ptr);
-                if let Ok(machine_str) = machine_cstr.to_str() {
-                    return machine_str.to_string();
-                }
-            }
-
-            // Fallback if utsname fails
-            #[cfg(target_os = "ios")]
-            {
-                "iPhone".to_string()
-            }
-            #[cfg(target_os = "macos")]
-            {
-                "Mac".to_string()
-            }
-        }
+    // Define utsname structure manually to avoid libc dependency
+    #[repr(C)]
+    struct UtsName {
+        sysname: [i8; 256],
+        nodename: [i8; 256],
+        release: [i8; 256],
+        version: [i8; 256],
+        machine: [i8; 256],
     }
 
-    #[cfg(not(any(target_os = "ios", target_os = "macos")))]
-    {
-        "Unknown".to_string()
+    unsafe extern "C" {
+        fn uname(buf: *mut UtsName) -> i32;
+    }
+
+    unsafe {
+        let mut system_info: UtsName = mem::zeroed();
+        if uname(&mut system_info) == 0 {
+            // Convert machine field to String (like Swift version)
+            let machine_ptr = system_info.machine.as_ptr();
+            let machine_cstr = CStr::from_ptr(machine_ptr);
+            if let Ok(machine_str) = machine_cstr.to_str() {
+                return machine_str.to_string();
+            }
+        }
+
+        // Fallback if utsname fails
+        #[cfg(target_os = "ios")]
+        {
+            "iPhone".to_string()
+        }
+        #[cfg(target_os = "macos")]
+        {
+            "Mac".to_string()
+        }
     }
 }
 
@@ -243,11 +234,11 @@ fn get_system_version() -> String {
             // Get NSProcessInfo shared instance
             let process_info = NSProcessInfo::processInfo();
 
-            // Get operating system version
-            let version = process_info.operatingSystemVersionString();
+            // Get operating system version (returns NSOperatingSystemVersion struct)
+            let version = process_info.operatingSystemVersion();
 
-            // Convert NSString to Rust String and prefix with macOS
-            format!("macOS {}", version.to_string())
+            // Format as simple version string (e.g., "macOS 15.5")
+            format!("macOS {}.{}", version.majorVersion, version.minorVersion)
         }
     }
 }
