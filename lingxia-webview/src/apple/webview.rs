@@ -186,25 +186,78 @@ unsafe impl Send for WebViewInner {}
 unsafe impl Sync for WebViewInner {}
 
 impl WebViewInner {
-    /// Create a new WebView using objc2 directly
+    /// Create a new WebView
     pub(crate) fn create(appid: &str, path: &str) -> Result<Self, LxAppError> {
-        // Ensure we're on the main thread for WebView creation
-        let mtm = MainThreadMarker::new().ok_or_else(|| {
-            LxAppError::WebView("WebView creation must be on main thread".to_string())
-        })?;
-
         log::info!(
             "Starting WebView creation for appid={}, path={}",
             appid,
             path
         );
 
+        // Try to get MainThreadMarker, if not available, dispatch to main thread
+        match MainThreadMarker::new() {
+            Some(mtm) => Self::create_with_marker(appid, path, mtm),
+            None => Self::create_on_main_thread(appid, path),
+        }
+    }
+
+    /// Create WebView on main thread using DispatchQueue
+    fn create_on_main_thread(appid: &str, path: &str) -> Result<Self, LxAppError> {
+        use std::sync::{Arc, Condvar, Mutex};
+        use std::time::Duration;
+
+        let result: Arc<Mutex<Option<Result<Self, LxAppError>>>> = Arc::new(Mutex::new(None));
+        let condvar = Arc::new(Condvar::new());
+
+        let result_clone = result.clone();
+        let condvar_clone = condvar.clone();
+        let appid_owned = appid.to_string();
+        let path_owned = path.to_string();
+
+        // Dispatch to main thread
+        DispatchQueue::main().exec_async(move || {
+            let creation_result = match MainThreadMarker::new() {
+                Some(mtm) => Self::create_with_marker(&appid_owned, &path_owned, mtm),
+                None => Err(LxAppError::WebView(
+                    "Still no MainThreadMarker on main thread".to_string(),
+                )),
+            };
+
+            let mut guard = result_clone.lock().unwrap();
+            *guard = Some(creation_result);
+            condvar_clone.notify_one();
+        });
+
+        // Wait for result with timeout
+        let guard = result.lock().unwrap();
+        let (mut guard, timeout_result) = condvar
+            .wait_timeout(guard, Duration::from_secs(10))
+            .unwrap();
+
+        if timeout_result.timed_out() {
+            return Err(LxAppError::WebView(
+                "WebView creation timed out".to_string(),
+            ));
+        }
+
+        match guard.take() {
+            Some(Ok(webview)) => Ok(webview),
+            Some(Err(e)) => Err(e),
+            None => Err(LxAppError::WebView(
+                "WebView creation not available".to_string(),
+            )),
+        }
+    }
+
+    /// Create WebView with MainThreadMarker (must be called on main thread)
+    fn create_with_marker(
+        appid: &str,
+        path: &str,
+        mtm: MainThreadMarker,
+    ) -> Result<Self, LxAppError> {
         unsafe {
             // Create WKWebViewConfiguration
             let config = WKWebViewConfiguration::new(mtm);
-
-            // Set up comprehensive WebView configuration
-            let _: () = msg_send![&*config, setAllowsInlineMediaPlayback: true];
 
             // Configure media playback
             let media_types: i32 = 0; // WKAudiovisualMediaTypeNone
@@ -230,15 +283,15 @@ impl WebViewInner {
                 let lx_scheme = NSString::from_str("lx");
                 let _: () = msg_send![&*config, setURLSchemeHandler: &*scheme_handler, forURLScheme: &*lx_scheme];
                 log::info!(
-                    "✅ Successfully registered lx:// scheme handler for appid={}",
+                    "Successfully registered lx:// scheme handler for appid={}",
                     appid
                 );
             } else {
                 log::error!(
-                    "❌ CRITICAL: Failed to create scheme handler - WebView will not handle lx:// URLs!"
+                    "CRITICAL: Failed to create scheme handler - WebView will not handle lx:// URLs!"
                 );
                 return Err(LxAppError::WebView(
-                    "Failed to create scheme handler - not on main thread".to_string(),
+                    "Failed to create scheme handler".to_string(),
                 ));
             }
 
@@ -500,9 +553,7 @@ impl WebViewInner {
             let scroll_view: *mut AnyObject = msg_send![self.webview, scrollView];
             if scroll_view.is_null() {
                 log::error!("Failed to get scroll view from WebView");
-                return Err(LxAppError::WebView(
-                    "Failed to get scroll view".to_string(),
-                ));
+                return Err(LxAppError::WebView("Failed to get scroll view".to_string()));
             }
 
             if enabled {
