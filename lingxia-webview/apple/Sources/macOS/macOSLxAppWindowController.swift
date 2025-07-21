@@ -146,7 +146,13 @@ class macOSLxAppWindowController: NSWindowController, NSWindowDelegate {
         } else {
             pageConfig = nil
         }
-        navigationBar.updateWithConfig(pageConfig: pageConfig)
+        navigationBar.updateWithConfig(
+            pageConfig: pageConfig,
+            isBackNavigation: false,
+            disableAnimation: true,
+            onBackClickListener: {},
+            onAnimationEnd: nil
+        )
     }
 
 

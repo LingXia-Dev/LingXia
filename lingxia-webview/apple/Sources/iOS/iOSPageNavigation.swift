@@ -1,6 +1,7 @@
 #if os(iOS)
 import UIKit
 import Foundation
+import os.log
 
 /// iOS Page Navigation management for LxApp
 @MainActor
@@ -67,36 +68,44 @@ public class iOSPageNavigation {
         disableAnimation: Bool = false,
         in viewController: iOSLxAppViewController
     ) {
-        guard let pageConfig = getPageConfig(appId: appId, path: path, in: viewController) else {
-            viewController.removeNavigationBar()
-            return
+        let pageConfig = getPageConfig(appId: appId, path: path, in: viewController)
+
+        // Determine NavigationBar visibility
+        let shouldShowNavigationBar: Bool
+        if let config = pageConfig {
+            shouldShowNavigationBar = !config.hidden
+        } else {
+            // No configuration available - use default behavior (show NavigationBar)
+            shouldShowNavigationBar = true
         }
 
-        if pageConfig.hidden {
-            viewController.removeNavigationBar()
-            return
-        }
+        if shouldShowNavigationBar {
+            viewController.ensureNavigationBarExists()
 
-        viewController.ensureNavigationBarExists()
-
-        guard let navigationBar = viewController.navigationBar else { return }
-
-        let title = pageConfig.navigationBarTitleText ?? ""
-        let bgColor = pageConfig.navigationBarBackgroundColor ?? NavigationBarConfig.DEFAULT_BACKGROUND_COLOR
-        let textColor = getTextColor(from: pageConfig.navigationBarTextStyle)
-        let showBackButton = shouldShowBackButton(for: path, appId: appId)
-
-        navigationBar.updateStateAndAnimate(
-            title: title,
-            bgColor: bgColor,
-            textColor: textColor,
-            showBackButton: showBackButton,
-            isBackNavigation: isBackNavigation,
-            disableAnimation: disableAnimation,
-            onBackClickListener: {
-                handleBackButtonClick(in: viewController)
+            guard let navigationBar = viewController.navigationBar else {
+                return
             }
-        )
+
+            let title = pageConfig?.navigationBarTitleText ?? ""
+            let bgColor = pageConfig?.navigationBarBackgroundColor ?? NavigationBarConfig.DEFAULT_BACKGROUND_COLOR
+            let textColor = getTextColor(from: pageConfig?.navigationBarTextStyle)
+            let showBackButton = shouldShowBackButton(for: path, appId: appId)
+
+            navigationBar.updateStateAndAnimate(
+                title: title,
+                bgColor: bgColor,
+                textColor: textColor,
+                showBackButton: showBackButton,
+                isBackNavigation: isBackNavigation,
+                disableAnimation: disableAnimation,
+                onBackClickListener: {
+                    handleBackButtonClick(in: viewController)
+                }
+            )
+        } else {
+            // NavigationBar should be hidden - remove it completely
+            viewController.removeNavigationBar()
+        }
     }
 
     /// Gets page configuration
@@ -109,19 +118,9 @@ public class iOSPageNavigation {
 
     /// Handles back button click
     public static func handleBackButtonClick(in viewController: iOSLxAppViewController) {
-        guard let backResult = lingxia.goBack(viewController.appId) else { return }
-
-        let resultString = backResult.toString()
-        if resultString == "close" {
+        let result = onBackPressed(viewController.appId)
+        if result {
             viewController.performLxAppClose()
-        } else if !resultString.isEmpty {
-            let isBackNavigation = true
-            navigateToPage(
-                targetPath: resultString,
-                isReplace: false,
-                isBackNavigation: isBackNavigation,
-                in: viewController
-            )
         }
     }
 
@@ -138,13 +137,11 @@ public class iOSPageNavigation {
 
     private static func shouldShowBackButton(for path: String, appId: String) -> Bool {
         // Don't show back button for home app or root pages
-        if appId == "homelxapp" {
+        if LxAppCore.isHomeLxApp(appId) {
             return false
         }
 
-        // Check if this is a root page (no back navigation possible)
-        let canGoBack = lingxia.canGoBack(appId)
-        return canGoBack
+        return true
     }
 }
 

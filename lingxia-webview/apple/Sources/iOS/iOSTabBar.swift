@@ -51,10 +51,16 @@ public class iOSTabBarSupport {
             tabBar.frame.size.height = height
         }
 
-        // Configure background
-        let resolvedColor = config.resolvedBackgroundColor(isVertical: isVertical)
-        tabBar.backgroundColor = resolvedColor
-        tabBar.layer.backgroundColor = resolvedColor.cgColor
+        // Configure background - CRITICAL: Don't override transparent backgrounds!
+        if TabBarConfig.isTransparent(config.backgroundColor) {
+            // For transparent backgrounds, force transparency mode instead of using resolved color
+            tabBar.forceTransparencyMode()
+        } else {
+            // For non-transparent backgrounds, use resolved color
+            let resolvedColor = config.resolvedBackgroundColor(isVertical: isVertical)
+            tabBar.backgroundColor = resolvedColor
+            tabBar.layer.backgroundColor = resolvedColor.cgColor
+        }
     }
 
     /// Gets the appropriate content area frame considering tab bar position

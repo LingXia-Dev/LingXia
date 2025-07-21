@@ -28,9 +28,10 @@ public class iOSLxAppViewController: UIViewController {
     private var initialPath: String
     private var rootContainer: UIView!
     private var statusBarBackground: UIView!
-    private var tabBar: LingXiaTabBar?
-    private var navigationBar: NavigationBar?
-    private var isDestroyed = false
+    private var webViewContainer: UIView!
+    internal var tabBar: LingXiaTabBar?
+    internal var navigationBar: NavigationBar?
+    internal var isDestroyed = false
     private var pendingWebViewSetup = false
     private var isDisplayingHomeLxApp: Bool = false
 
@@ -149,6 +150,8 @@ public class iOSLxAppViewController: UIViewController {
         let tabBarConfig = TabBarConfig.fromJson(tabBarJson)
 
         setupRootContainer()
+        setupNavigationBar()
+        setupWebViewContainer()
 
         // Ensure transparent navigation area after containers are set up
         ensureTransparentNavigationArea()
@@ -187,38 +190,36 @@ public class iOSLxAppViewController: UIViewController {
     public override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
 
-        os_log("viewDidAppear: Window is now available, processing transparency", log: Self.log, type: .info)
-
-        // Set transparent background once when view appears
-        setTransparentBackground()
+        // Force window background to be clear to prevent black safe area background
+        forceTransparentBackground()
     }
 
     public override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        // Transparency is set in viewDidAppear when window is available
+        forceTransparentBackground()
     }
 
     public override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
 
+        // Force transparent background on every layout
+        forceTransparentBackground()
+
         if let tabBar = tabBar {
             rootContainer.bringSubviewToFront(tabBar)
-
-            DispatchQueue.main.async {
-                tabBar.setNeedsLayout()
-                tabBar.layoutIfNeeded()
-            }
         }
     }
 
-    private func setTransparentBackground() {
+    private func forceTransparentBackground() {
+        // Force window background to be clear
         if let window = view.window {
             window.backgroundColor = UIColor.clear
             window.isOpaque = false
         }
 
-        if #available(iOS 13.0, *) {
-            if let windowScene = view.window?.windowScene {
+        // Force all connected scenes to have transparent windows
+        for scene in UIApplication.shared.connectedScenes {
+            if let windowScene = scene as? UIWindowScene {
                 for window in windowScene.windows {
                     window.backgroundColor = UIColor.clear
                     window.isOpaque = false
@@ -226,6 +227,7 @@ public class iOSLxAppViewController: UIViewController {
             }
         }
 
+        // Force all view hierarchy to be transparent
         view.backgroundColor = UIColor.clear
         view.isOpaque = false
 
@@ -290,6 +292,14 @@ public class iOSLxAppViewController: UIViewController {
         ])
     }
 
+    /// Gets the actual status bar height from the window scene
+    private func getActualStatusBarHeight() -> CGFloat {
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+            return windowScene.statusBarManager?.statusBarFrame.height ?? 20
+        }
+        return 20 // Default fallback height
+    }
+
     private func setupStatusBarBackground() {
         statusBarBackground = UIView()
         statusBarBackground.backgroundColor = UIColor.clear
@@ -305,21 +315,67 @@ public class iOSLxAppViewController: UIViewController {
         ])
     }
 
+    private func setupNavigationBar() {
+        // NavigationBar will be created on-demand in ensureNavigationBarExists()
+        // This matches the independent implementation approach
+    }
+
+    private func setupWebViewContainer() {
+        webViewContainer = UIView()
+        // CRITICAL: Use transparent background to allow WebView transparency to show through
+        // WebView transparency is now managed by Rust layer
+        webViewContainer.backgroundColor = UIColor.clear
+        webViewContainer.isOpaque = false
+        webViewContainer.translatesAutoresizingMaskIntoConstraints = false
+        rootContainer.addSubview(webViewContainer)
+
+        NSLayoutConstraint.activate([
+            webViewContainer.topAnchor.constraint(equalTo: rootContainer.topAnchor),
+            webViewContainer.leadingAnchor.constraint(equalTo: rootContainer.leadingAnchor),
+            webViewContainer.trailingAnchor.constraint(equalTo: rootContainer.trailingAnchor),
+            webViewContainer.bottomAnchor.constraint(equalTo: rootContainer.bottomAnchor)
+        ])
+    }
+
     private func setupInitialContent(path: String) {
         LxAppCore.setLastActivePath(path, for: appId)
         setupWebViewIfReady(appId: appId, path: path)
     }
 
-    private func setupWebViewIfReady(appId: String, path: String) {
+    internal func setupWebViewIfReady(appId: String, path: String) {
         if let webView = iOSLxApp.findWebView(appId: appId, path: path) {
+            // Pause current WebView if it exists and is different from target
+            if let currentWebView = currentWebView, currentWebView != webView {
+                currentWebView.pauseWebView()
+                currentWebView.isHidden = true
+                os_log("setupWebViewIfReady: Paused current WebView for path=%{public}@", log: Self.log, type: .info, currentWebView.currentPath ?? "nil")
+            }
+
             attachWebViewToUI(webView: webView)
             updateNavigationBar(appId: appId, path: path, isBackNavigation: false, disableAnimation: true)
+
+            // Hide back button for TabBar root pages
+            if let tabBar = tabBar, tabBar.findTabIndexByPath(path) != -1 {
+                navigationBar?.setBackButtonVisible(false)
+            }
+
+            // Force onPageShow to ensure WebView loads content
+            lingxia.onPageShow(appId, path)
         } else {
             // Retry once after a short delay
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
                 if let webView = iOSLxApp.findWebView(appId: appId, path: path) {
+                    // Pause current WebView if it exists and is different from target
+                    if let currentWebView = self?.currentWebView, currentWebView != webView {
+                        currentWebView.pauseWebView()
+                        currentWebView.isHidden = true
+                    }
+
                     self?.attachWebViewToUI(webView: webView)
                     self?.updateNavigationBar(appId: appId, path: path, isBackNavigation: false, disableAnimation: true)
+
+                    // Force onPageShow to ensure WebView loads content
+                    lingxia.onPageShow(appId, path)
                 }
             }
         }
@@ -331,6 +387,7 @@ public class iOSLxAppViewController: UIViewController {
 
         // Resume WebView operations
         webView.resumeWebView()
+        webView.isHidden = false
 
         // Remove any existing loading indicator
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
@@ -340,19 +397,33 @@ public class iOSLxAppViewController: UIViewController {
         }
 
         if let appId = webView.appId, let currentPath = webView.currentPath {
-            os_log("attachWebViewToUI: Calling onPageShow for appId=%{public}@ path=%{public}@",
+            os_log("attachWebViewToUI: WebView attached for appId=%{public}@ path=%{public}@",
                    log: Self.log, type: .info, appId, currentPath)
-            onPageShow(appId, currentPath)
 
+            // Force WebView to reload if needed
+            if webView.url == nil || !webView.pageLoaded {
+                os_log("attachWebViewToUI: WebView not loaded, will be loaded by onPageShow", log: Self.log, type: .info)
+            }
+
+            // Don't call onPageShow here - it will be called by setupWebViewIfReady
         } else {
-            os_log("attachWebViewToUI: CRITICAL - onPageShow NOT called because appId or currentPath is nil!",
+            os_log("attachWebViewToUI: CRITICAL - appId or currentPath is nil!",
                    log: Self.log, type: .error)
         }
 
-        updateNavigationBar(appId: appId, path: webView.currentPath ?? "", isBackNavigation: false, disableAnimation: true)
+        let currentPath = webView.currentPath ?? ""
+        os_log("attachWebViewToUI: Calling updateNavigationBar for appId=%@ path=%@", log: Self.log, type: .info, appId, currentPath)
+        updateNavigationBar(appId: appId, path: currentPath, isBackNavigation: false, disableAnimation: true)
+
+        // Ensure UI elements are on top
+        bringUIElementsToFront()
     }
 
     private func addWebViewToContainer(_ webView: WKWebView) {
+        os_log("addWebViewToContainer: ENTRY - webView.superview=%{public}@ rootContainer=%{public}@",
+               log: Self.log, type: .info,
+               String(describing: webView.superview), String(describing: rootContainer))
+
         if webView.superview != rootContainer {
             if webView.superview != nil {
                 webView.removeFromSuperview()
@@ -361,23 +432,186 @@ public class iOSLxAppViewController: UIViewController {
             rootContainer.addSubview(webView)
             webView.translatesAutoresizingMaskIntoConstraints = false
 
+            // Calculate correct top anchor - same logic as updateLayoutMargins
+            let topAnchor: NSLayoutYAxisAnchor
+            let isTopTabBar = tabBar?.config.position == .top
+            let hasNavigationBar = navigationBar != nil
+
+            os_log("addWebViewToContainer: isTopTabBar=%{public}@ hasNavigationBar=%{public}@",
+                   log: Self.log, type: .info,
+                   String(isTopTabBar), String(hasNavigationBar))
+
+            if isTopTabBar {
+                // WebView starts from TabBar bottom when TabBar is at top
+                topAnchor = tabBar?.bottomAnchor ?? rootContainer.topAnchor
+                os_log("addWebViewToContainer: Using TabBar.bottomAnchor", log: Self.log, type: .info)
+            } else if hasNavigationBar {
+                // WebView starts from NavigationBar bottom when NavigationBar exists
+                topAnchor = navigationBar!.view.bottomAnchor
+                os_log("addWebViewToContainer: Using NavigationBar.bottomAnchor", log: Self.log, type: .info)
+
+                // CRITICAL: Force NavigationBar layout update before using its bottomAnchor
+                navigationBar!.view.setNeedsLayout()
+                navigationBar!.view.layoutIfNeeded()
+                print("DEBUG: addWebViewToContainer: After NavigationBar layout update, frame=\(navigationBar!.view.frame)")
+            } else {
+                // WebView fills entire screen when no NavigationBar or top TabBar
+                topAnchor = rootContainer.topAnchor
+                os_log("addWebViewToContainer: Using rootContainer.topAnchor (no NavigationBar or top TabBar)", log: Self.log, type: .info)
+            }
+
+            // Calculate correct bottom anchor - same logic as updateLayoutMargins
+            let bottomAnchor: NSLayoutYAxisAnchor
+            let isBottomTabBar = tabBar?.config.position == .bottom
+
+            if isBottomTabBar {
+                let isTabBarTransparent = TabBarConfig.isTransparent(tabBar?.config.backgroundColor)
+                if isTabBarTransparent {
+                    // For transparent bottom TabBar, WebView extends to screen bottom (TabBar overlays)
+                    bottomAnchor = rootContainer.bottomAnchor
+                } else {
+                    // For opaque bottom TabBar, WebView ends at TabBar's top edge
+                    bottomAnchor = tabBar?.topAnchor ?? rootContainer.bottomAnchor
+                }
+            } else {
+                // WebView extends to screen bottom when no bottom TabBar
+                bottomAnchor = rootContainer.bottomAnchor
+            }
+
             NSLayoutConstraint.activate([
-                webView.topAnchor.constraint(equalTo: rootContainer.topAnchor),
+                webView.topAnchor.constraint(equalTo: topAnchor),
                 webView.leadingAnchor.constraint(equalTo: rootContainer.leadingAnchor),
                 webView.trailingAnchor.constraint(equalTo: rootContainer.trailingAnchor),
-                webView.bottomAnchor.constraint(equalTo: rootContainer.bottomAnchor)
+                webView.bottomAnchor.constraint(equalTo: bottomAnchor)
             ])
         } else {
+            // WebView is already in container, but we need to update its constraints
+            // when NavigationBar state changes (hidden <-> visible)
+            os_log("addWebViewToContainer: WebView already in container, updating constraints safely", log: Self.log, type: .info)
+
+            // Store current WebView constraints that we need to remove
+            var webViewConstraints: [NSLayoutConstraint] = []
+            for constraint in rootContainer.constraints {
+                if constraint.firstItem === webView || constraint.secondItem === webView {
+                    webViewConstraints.append(constraint)
+                }
+            }
+
+            // Remove only WebView-related constraints, not all constraints
+            NSLayoutConstraint.deactivate(webViewConstraints)
+
+            // Calculate correct top anchor - same logic as above
+            let topAnchor: NSLayoutYAxisAnchor
+            let isTopTabBar = tabBar?.config.position == .top
+            let hasNavigationBar = navigationBar != nil
+
+            os_log("addWebViewToContainer: (safe update) isTopTabBar=%{public}@ hasNavigationBar=%{public}@",
+                   log: Self.log, type: .info,
+                   String(isTopTabBar), String(hasNavigationBar))
+
+            if isTopTabBar {
+                topAnchor = tabBar?.bottomAnchor ?? rootContainer.topAnchor
+                os_log("addWebViewToContainer: (safe update) Using TabBar.bottomAnchor", log: Self.log, type: .info)
+            } else if hasNavigationBar {
+                topAnchor = navigationBar!.view.bottomAnchor
+                os_log("addWebViewToContainer: (safe update) Using NavigationBar.bottomAnchor", log: Self.log, type: .info)
+
+                // Force NavigationBar layout update before using its bottomAnchor
+                navigationBar!.view.setNeedsLayout()
+                navigationBar!.view.layoutIfNeeded()
+            } else {
+                topAnchor = rootContainer.topAnchor
+                os_log("addWebViewToContainer: (safe update) Using rootContainer.topAnchor", log: Self.log, type: .info)
+            }
+
+            // Calculate correct bottom anchor - same logic as normal path
+            let bottomAnchor: NSLayoutYAxisAnchor
+            let isBottomTabBar = tabBar?.config.position == .bottom
+
+            if isBottomTabBar {
+                let isTabBarTransparent = TabBarConfig.isTransparent(tabBar?.config.backgroundColor)
+                if isTabBarTransparent {
+                    // For transparent bottom TabBar, WebView extends to screen bottom (TabBar overlays)
+                    bottomAnchor = rootContainer.bottomAnchor
+                } else {
+                    // For opaque bottom TabBar, WebView ends at TabBar's top edge
+                    bottomAnchor = tabBar?.topAnchor ?? rootContainer.bottomAnchor
+                }
+            } else {
+                // WebView extends to screen bottom when no bottom TabBar
+                bottomAnchor = rootContainer.bottomAnchor
+            }
+
+            // Set new constraints
+            NSLayoutConstraint.activate([
+                webView.topAnchor.constraint(equalTo: topAnchor),
+                webView.leadingAnchor.constraint(equalTo: rootContainer.leadingAnchor),
+                webView.trailingAnchor.constraint(equalTo: rootContainer.trailingAnchor),
+                webView.bottomAnchor.constraint(equalTo: bottomAnchor)
+            ])
+
             rootContainer.bringSubviewToFront(webView)
+
+            // CRITICAL: Apply transparency protection after constraint changes
+            if let tabBar = tabBar, TabBarConfig.isTransparent(tabBar.config.backgroundColor) {
+                os_log("addWebViewToContainer: (safe update) Applying transparency protection", log: Self.log, type: .info)
+
+                // DO NOT force rootContainer layout - this resets TabBar transparency!
+                // Only apply transparency protection without triggering layout
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.001) {
+                    tabBar.forceTransparencyMode()
+                }
+
+                os_log("addWebViewToContainer: (safe update) Transparency protection scheduled", log: Self.log, type: .info)
+            }
+        }
+
+        // Ensure NavigationBar is always on top of the WebView
+        if let navigationBar = navigationBar {
+            rootContainer.bringSubviewToFront(navigationBar.view)
+            os_log("addWebViewToContainer: Brought NavigationBar to front", log: Self.log, type: .info)
         }
 
         webView.isHidden = false
         webView.alpha = 1.0
 
+        // CRITICAL: Re-enforce transparency after adding to view hierarchy
+        // The addSubview and constraint operations may reset WebView properties
+        forceWebViewTransparency(webView: webView)
+
         // Force transparency for transparent TabBar
         if let tabBar = tabBar, TabBarConfig.isTransparent(tabBar.config.backgroundColor) {
-            applyMinimalTabBarTransparency()
+            os_log("addWebViewToContainer: Applying complete transparency for transparent TabBar", log: Self.log, type: .info)
+            setCompleteTransparency()
+        } else {
+            os_log("addWebViewToContainer: TabBar is not transparent or nil", log: Self.log, type: .info)
         }
+
+        // CRITICAL: Force immediate layout update after constraint changes
+        // This ensures WebView frame is updated immediately when NavigationBar state changes
+        rootContainer.setNeedsLayout()
+        rootContainer.layoutIfNeeded()
+        webView.setNeedsLayout()
+        webView.layoutIfNeeded()
+
+        // CRITICAL: Apply transparency protection for initial WebView add
+        if let tabBar = tabBar, TabBarConfig.isTransparent(tabBar.config.backgroundColor) {
+            os_log("addWebViewToContainer: Applying transparency protection for initial add", log: Self.log, type: .info)
+
+            // Apply transparency after layout pass
+            rootContainer.setNeedsLayout()
+            rootContainer.layoutIfNeeded()
+
+            // Single delayed application to ensure layout is complete
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) {
+                tabBar.forceTransparencyMode()
+            }
+        }
+
+        os_log("addWebViewToContainer: Forced layout update, WebView frame=(%f,%f,%f,%f)",
+               log: Self.log, type: .info,
+               webView.frame.origin.x, webView.frame.origin.y,
+               webView.frame.size.width, webView.frame.size.height)
     }
 
     private func setupTabBar(config: TabBarConfig?) {
@@ -660,31 +894,63 @@ public class iOSLxAppViewController: UIViewController {
             tabBar.forceTransparencyMode()
         }
 
+        // Ensure NavigationBar remains visible (don't make it transparent)
+        if let navigationBar = navigationBar {
+            // Keep NavigationBar opaque with white background
+            navigationBar.view.backgroundColor = UIColor.white
+            navigationBar.view.isOpaque = true
+            navigationBar.view.layer.backgroundColor = UIColor.white.cgColor
+            os_log("setCompleteTransparency: NavigationBar kept opaque with white background", log: Self.log, type: .info)
+        }
+
         os_log("iOSLxAppViewController.setCompleteTransparency: Complete transparency applied",
                log: Self.log, type: .info)
     }
 
-    private func performLxAppClose() {
+    /// Forces transparency on a specific WebView after it's added to view hierarchy
+    /// This is critical because addSubview and constraint operations may reset WebView properties
+    private func forceWebViewTransparency(webView: WKWebView) {
+        // Force WebView transparency (same as Rust configuration)
+        webView.backgroundColor = UIColor.clear
+        webView.isOpaque = false
+        webView.layer.backgroundColor = UIColor.clear.cgColor
+
+        // Force ScrollView transparency
+        webView.scrollView.backgroundColor = UIColor.clear
+        webView.scrollView.isOpaque = false
+        webView.scrollView.layer.backgroundColor = UIColor.clear.cgColor
+        webView.scrollView.layer.isOpaque = false
+
+        // Configure scroll indicators and behavior
+        webView.scrollView.indicatorStyle = .default
+        webView.scrollView.showsVerticalScrollIndicator = true
+        webView.scrollView.showsHorizontalScrollIndicator = true
+        webView.scrollView.contentInsetAdjustmentBehavior = .never
+    }
+
+    internal func performLxAppClose() {
         // Notify Rust layer that miniapp is being closed
         let _ = onLxappClosed(appId)
         os_log("performLxAppClose: onLxappClosed called for appId=%@", log: Self.log, type: .info, appId)
 
-        if presentingViewController != nil {
-            dismiss(animated: false)
-        } else if let navController = navigationController {
-            if navController.viewControllers.count > 1 {
-                navController.popViewController(animated: false)
-            } else {
-                // This is the root view controller, dismiss the entire navigation controller
-                navController.dismiss(animated: false, completion: nil)
-            }
+        // Use the same approach as independent iOS implementation
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let window = windowScene.windows.first else {
+            os_log("performLxAppClose: Could not find window scene or window", log: Self.log, type: .error)
+            return
+        }
+
+        if let navController = window.rootViewController as? UINavigationController {
+            navController.popViewController(animated: false)
+            os_log("performLxAppClose: Popped view controller from navigation stack", log: Self.log, type: .info)
         } else {
-            // Fallback: remove from parent or dismiss
-            if parent != nil {
+            os_log("performLxAppClose: No navigation controller found, using fallback", log: Self.log, type: .info)
+            // Fallback: try to dismiss or remove from parent
+            if presentingViewController != nil {
+                dismiss(animated: false)
+            } else if parent != nil {
                 removeFromParent()
                 view.removeFromSuperview()
-            } else {
-                dismiss(animated: false)
             }
         }
     }
@@ -732,8 +998,13 @@ public class iOSLxAppViewController: UIViewController {
             topConstant = 0
         } else if hasNavigationBar {
             // WebView starts from NavigationBar bottom when NavigationBar exists
-            topAnchor = navigationBar!.bottomAnchor
-            topConstant = 0
+            // FORCE correct positioning: NavigationBar is at Y=0 with height=STATUS_BAR_HEIGHT+44
+            topAnchor = rootContainer.topAnchor
+            topConstant = iOSLxAppViewController.STATUS_BAR_HEIGHT + 44 // NavigationBar total height
+            os_log("updateLayoutMargins: FORCED WebView below NavigationBar, topConstant=%f, NavigationBar frame=(%f,%f,%f,%f)",
+                   log: Self.log, type: .info, topConstant,
+                   navigationBar!.view.frame.origin.x, navigationBar!.view.frame.origin.y,
+                   navigationBar!.view.frame.size.width, navigationBar!.view.frame.size.height)
         } else {
             // WebView fills entire screen when no NavigationBar or top TabBar
             topAnchor = rootContainer.topAnchor
@@ -798,10 +1069,19 @@ public class iOSLxAppViewController: UIViewController {
             webViewContainer.bottomAnchor.constraint(equalTo: bottomAnchor)
         ])
 
-        bringUIElementsToFront()
-
+        // FORCE layout update immediately
+        rootContainer.setNeedsLayout()
+        rootContainer.layoutIfNeeded()
         webViewContainer.setNeedsLayout()
         webViewContainer.layoutIfNeeded()
+
+        bringUIElementsToFront()
+
+        // Debug WebView container position
+        os_log("updateLayoutMargins: WebView container frame=(%f,%f,%f,%f)",
+               log: Self.log, type: .info,
+               webViewContainer.frame.origin.x, webViewContainer.frame.origin.y,
+               webViewContainer.frame.size.width, webViewContainer.frame.size.height)
 
         // Force TabBar to be on top with higher z-position for transparent effect
         if let tabBar = tabBar, TabBarConfig.isTransparent(tabBar.config.backgroundColor) {
@@ -810,8 +1090,21 @@ public class iOSLxAppViewController: UIViewController {
     }
 
     private func bringUIElementsToFront() {
+        // Bring NavigationBar to front first
+        if let navigationBar = navigationBar {
+            rootContainer.bringSubviewToFront(navigationBar.view)
+            os_log("bringUIElementsToFront: NavigationBar brought to front", log: Self.log, type: .info)
+        }
+
         if let tabBar = tabBar {
             rootContainer.bringSubviewToFront(tabBar)
+
+            // Re-apply transparency after bringSubviewToFront
+            if TabBarConfig.isTransparent(tabBar.config.backgroundColor) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
+                    tabBar.forceTransparencyMode()
+                }
+            }
         }
 
         // CRITICAL: Find capsule button by tag and bring to front
@@ -1003,242 +1296,26 @@ public class iOSLxAppViewController: UIViewController {
         return image
     }
 
-    @objc private func moreButtonTapped() {
+    @objc internal func moreButtonTapped() {
         // More options functionality to be implemented
     }
 
-    @objc private func closeButtonTapped() {
-        guard !isDisplayingHomeLxApp else { return }
+    @objc internal func closeButtonTapped() {
+        guard !isDisplayingHomeLxApp else {
+            return
+        }
         performLxAppClose()
     }
 
-    private func switchToTab(targetPath: String) {
-        // Bail early if trying to switch to the current path
-        if currentWebView?.currentPath == targetPath {
-            return
-        }
 
-        // Capture reference to previous WebView before changing anything
-        let previousWebView = currentWebView
-        os_log("switchToTab: Previous WebView path=%{public}@", log: Self.log, type: .info, previousWebView?.currentPath ?? "nil")
 
-        // Find target tab index
-        guard let targetIndex = tabBar?.findTabIndexByPath(targetPath), targetIndex >= 0 else {
-            os_log("switchToTab failed: Path '%{public}@' not found in TabBar items.", log: Self.log, type: .error, targetPath)
-            return
-        }
-        os_log("switchToTab: Found target tab index=%d", log: Self.log, type: .info, targetIndex)
 
-        // Find target WebView (should be created by Rust layer when needed)
-        guard let targetWebView = iOSLxApp.findWebView(appId: appId, path: targetPath) else {
-            os_log("switchToTab failed: WebView not found for %{public}@, should be created by Rust system", log: Self.log, type: .error, targetPath)
-            return
-        }
 
-        // Set current WebView to target for tracking
-        currentWebView = targetWebView
 
-        // Update TabBar UI (without triggering listener)
-        tabBar?.setSelectedIndex(targetIndex, notifyListener: false)
 
-        // Handle NavigationBar using the new unified approach
-        updateNavigationBar(appId: appId, path: targetPath, isBackNavigation: false, disableAnimation: true)
 
-        // CRITICAL: Update layout margins to ensure WebView container is positioned correctly
-        // This ensures WebView starts below NavigationBar when it exists, or from top when hidden
-        updateLayoutMargins()
 
-        os_log("switchToTab: Attaching WebView", log: Self.log, type: .info)
-        attachWebViewToUI(webView: targetWebView)
 
-        // Hide and pause previous WebView (but don't release it)
-        if let previousWebView = previousWebView, previousWebView != targetWebView {
-            previousWebView.pauseWebView()
-            previousWebView.isHidden = true
-        }
-
-        // CRITICAL: Ensure capsule button stays on top
-        bringUIElementsToFront()
-    }
-
-    private func switchPage(targetPath: String) {
-        guard !appId.isEmpty else {
-            os_log("Cannot switch page: appId not initialized", log: Self.log, type: .error)
-            return
-        }
-
-        // Check if trying to navigate to current page
-        if currentWebView?.currentPath == targetPath {
-            return
-        }
-
-        // Store the target path as the last active path for state restoration
-        LxAppCore.setLastActivePath(targetPath, for: appId)
-
-        // Check if this is a tab page
-        if let tabIndex = tabBar?.findTabIndexByPath(targetPath), tabIndex >= 0 {
-            switchToTab(targetPath: targetPath)
-        } else {
-            // Handle non-tab page navigation
-
-            // Determine if this is back navigation (simplistically by path length)
-            let currentPath = currentWebView?.currentPath
-            let isBackNavigation = currentPath != nil && currentPath!.count > targetPath.count
-
-            navigateToPage(targetPath: targetPath, isReplace: false, isBackNavigation: isBackNavigation)
-        }
-    }
-
-    private func navigateToPage(targetPath: String, isReplace: Bool = false, isBackNavigation: Bool = false) {
-        // Get current WebView before changes
-        let oldWebView = currentWebView
-
-        // Find WebView for the target page
-        guard let newWebView = iOSLxApp.findWebView(appId: appId, path: targetPath) else {
-            os_log("WebView not found for path: %{public}@, should be created by Rust system", log: Self.log, type: .info, targetPath)
-            return
-        }
-
-        // Update navigation bar configuration
-        updateNavigationBar(appId: appId, path: targetPath, isBackNavigation: isBackNavigation, disableAnimation: false)
-
-        // Remove from existing parent if any
-        if newWebView.superview != nil {
-            newWebView.removeFromSuperview()
-        }
-
-        // Make sure the new WebView is fully prepared before animation
-        newWebView.isHidden = false
-        newWebView.resumeWebView()
-
-        // Create a new container for the WebView
-        let newContainer = UIView()
-        newContainer.translatesAutoresizingMaskIntoConstraints = false
-        newContainer.addSubview(newWebView)
-
-        // Setup WebView constraints within container
-        newWebView.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            newWebView.topAnchor.constraint(equalTo: newContainer.topAnchor),
-            newWebView.leadingAnchor.constraint(equalTo: newContainer.leadingAnchor),
-            newWebView.trailingAnchor.constraint(equalTo: newContainer.trailingAnchor),
-            newWebView.bottomAnchor.constraint(equalTo: newContainer.bottomAnchor)
-        ])
-
-        // Get reference to old container
-        let oldContainer = webViewContainer.subviews.first { $0.tag == Self.CURRENT_WEBVIEW_CONTAINER_TAG } // Use tag to identify current container
-        oldContainer?.tag = Self.OLD_WEBVIEW_CONTAINER_TAG // Re-tag old container
-
-        // Add new container
-        newContainer.tag = Self.CURRENT_WEBVIEW_CONTAINER_TAG // Tag the new container
-        webViewContainer.addSubview(newContainer)
-
-        // Setup container constraints
-        NSLayoutConstraint.activate([
-            newContainer.topAnchor.constraint(equalTo: webViewContainer.topAnchor),
-            newContainer.leadingAnchor.constraint(equalTo: webViewContainer.leadingAnchor),
-            newContainer.trailingAnchor.constraint(equalTo: webViewContainer.trailingAnchor),
-            newContainer.bottomAnchor.constraint(equalTo: webViewContainer.bottomAnchor)
-        ])
-
-        // Update layout margins to position the new container vertically
-        updateLayoutMargins()
-
-        // Set initial horizontal position for animation
-        let startX: CGFloat = isBackNavigation ? -webViewContainer.frame.width : webViewContainer.frame.width
-        newContainer.transform = CGAffineTransform(translationX: startX, y: 0)
-
-        // Animation parameters
-        let duration: TimeInterval = 0.25
-        let endXOld: CGFloat = isBackNavigation ? webViewContainer.frame.width : -webViewContainer.frame.width
-
-        // Update the current WebView reference BEFORE animating
-        currentWebView = newWebView
-
-        // Animate the new container in
-        UIView.animate(withDuration: duration, animations: {
-            newContainer.transform = .identity
-        }) { _ in
-            // Trigger onPageShow after animation completes
-            if let appId = newWebView.appId, let currentPath = newWebView.currentPath {
-                onPageShow(appId, currentPath)
-                os_log("navigateToPage: Triggered onPageShow for appId=%@ path=%@",
-                       log: Self.log, type: .info, appId, currentPath)
-            }
-
-            // CRITICAL: Ensure capsule button stays on top after animation
-            self.bringUIElementsToFront()
-        }
-
-        // Animate the old container out
-        if let oldContainer = oldContainer, let _ = oldWebView {
-            UIView.animate(withDuration: duration, animations: {
-                oldContainer.transform = CGAffineTransform(translationX: endXOld, y: 0)
-            }) { _ in
-                // Remove old container after animation (don't pause WebView - let Rust manage)
-                if !self.isDestroyed {
-                    oldContainer.removeFromSuperview()
-                    // CRITICAL: Ensure capsule button stays on top
-                    self.bringUIElementsToFront()
-                }
-            }
-        }
-    }
-
-    private func updateNavigationBar(appId: String, path: String, isBackNavigation: Bool, disableAnimation: Bool = false) {
-        let pageConfig = getPageConfig(appId: appId, path: path)
-
-        // Determine NavigationBar visibility
-        let shouldShowNavigationBar: Bool
-        if let config = pageConfig {
-            // Use explicit configuration from Rust
-            shouldShowNavigationBar = !config.hidden
-        } else {
-            // No configuration available - use default behavior (show NavigationBar)
-            // This provides a safe fallback when Rust doesn't have page config
-            shouldShowNavigationBar = true
-            os_log("updateNavigationBar: No page config found for appId=%@ path=%@, using default (show NavigationBar)",
-                   log: Self.log, type: .info, appId, path)
-        }
-
-        if shouldShowNavigationBar {
-            // Ensure NavigationBar exists
-            ensureNavigationBarExists()
-
-            guard let navigationBar = navigationBar else {
-                os_log("updateNavigationBar: Failed to create NavigationBar", log: Self.log, type: .error)
-                return
-            }
-
-            // Update NavigationBar with configuration
-            let _ = navigationBar.updateWithConfig(
-                pageConfig: pageConfig,
-                isBackNavigation: isBackNavigation,
-                disableAnimation: disableAnimation,
-                onBackClickListener: { [weak self] in
-                    self?.handleBackButtonClick()
-                },
-                onAnimationEnd: { [weak self] in
-                    if isBackNavigation {
-                        let currentPath = self?.currentWebView?.currentPath ?? ""
-                        let isNowOnTabRoot = (self?.tabBar?.findTabIndexByPath(currentPath) ?? -1) != -1
-                        if isNowOnTabRoot {
-                            self?.navigationBar?.setBackButtonVisible(false)
-                        }
-                    }
-                }
-            )
-        } else {
-            // NavigationBar should be hidden - remove it completely
-            removeNavigationBar()
-            ensureTransparentNavigationArea()
-        }
-    }
-
-    private func getPageConfig(appId: String, path: String) -> NavigationBarConfig? {
-        let configJson = lingxia.getPageConfig(appId, path)?.toString()
-        return NavigationBarConfig.fromJson(configJson)
-    }
 
     private func ensureTransparentNavigationArea() {
         // When NavigationBar is hidden, ensure the entire status bar and navigation area is transparent
@@ -1263,39 +1340,48 @@ public class iOSLxAppViewController: UIViewController {
                log: Self.log, type: .info)
     }
 
-    private func ensureNavigationBarExists() {
+
+
+    internal func ensureNavigationBarExists() {
         guard navigationBar == nil else {
             return
         }
-        let newNavBar = NavigationBar()
-        let navBarContentHeight = newNavBar.getCalculatedContentHeight()
+        // NavigationBar should include status bar area in its total height
+        let navBarContentHeight: CGFloat = 44 // Content area height
+        let totalNavBarHeight = navBarContentHeight + iOSLxAppViewController.STATUS_BAR_HEIGHT
+        let frame = CGRect(x: 0, y: 0, width: view.bounds.width, height: totalNavBarHeight)
+        let newNavBar = NavigationBar(frame: frame)
 
-        newNavBar.translatesAutoresizingMaskIntoConstraints = false
-        // Set external status bar height to our fixed value (NavigationBar will handle status bar area)
-        newNavBar.setExternalStatusBarHeight(iOSLxAppViewController.STATUS_BAR_HEIGHT)
+        newNavBar.view.translatesAutoresizingMaskIntoConstraints = false
+        newNavBar.view.backgroundColor = UIColor.white
 
-        newNavBar.backgroundColor = UIColor.white
-
-        // Set back button click handler
+        // Set back button click handler using the cross-platform API
         newNavBar.setOnBackButtonClickListener { [weak self] in
             self?.handleBackButtonClick()
         }
 
         navigationBar = newNavBar
-        rootContainer.addSubview(newNavBar)
+        rootContainer.addSubview(newNavBar.view)
 
-        // Position NavigationBar from screen top (full screen)
+        // Position NavigationBar from screen top (like independent implementation)
         NSLayoutConstraint.activate([
-            newNavBar.topAnchor.constraint(equalTo: rootContainer.topAnchor),
-            newNavBar.leadingAnchor.constraint(equalTo: rootContainer.leadingAnchor),
-            newNavBar.trailingAnchor.constraint(equalTo: rootContainer.trailingAnchor),
-            newNavBar.heightAnchor.constraint(equalToConstant: navBarContentHeight + iOSLxAppViewController.STATUS_BAR_HEIGHT)
+            newNavBar.view.topAnchor.constraint(equalTo: rootContainer.topAnchor),
+            newNavBar.view.leadingAnchor.constraint(equalTo: rootContainer.leadingAnchor),
+            newNavBar.view.trailingAnchor.constraint(equalTo: rootContainer.trailingAnchor),
+            newNavBar.view.heightAnchor.constraint(equalToConstant: totalNavBarHeight)
         ])
 
-        rootContainer.bringSubviewToFront(newNavBar)
+        rootContainer.bringSubviewToFront(newNavBar.view)
+
+        // Force WebView container constraints to update after NavigationBar creation
+        if let currentWebView = currentWebView {
+            addWebViewToContainer(currentWebView)
+        }
     }
 
-    private func removeNavigationBar() {
+
+
+    internal func removeNavigationBar() {
         guard let navigationBar = navigationBar else {
             // Even if no navigation bar exists, ensure transparent area
             ensureTransparentNavigationArea()
@@ -1304,24 +1390,19 @@ public class iOSLxAppViewController: UIViewController {
 
         os_log("removeNavigationBar: Removing navigation bar", log: Self.log, type: .info)
 
-        navigationBar.removeFromSuperview()
+        navigationBar.view.removeFromSuperview()
         self.navigationBar = nil
 
         // Ensure transparent area after removal
         ensureTransparentNavigationArea()
-    }
 
-    private func handleBackButtonClick() {
-        let result = onBackPressed(appId)
-        if result {
-            return
-        }
-
-        // No back navigation available, close activity (same as Android's finish())
-        if !isDisplayingHomeLxApp {
-            performLxAppClose()
+        // Force WebView container constraints to update after NavigationBar removal
+        if let currentWebView = currentWebView {
+            addWebViewToContainer(currentWebView)
         }
     }
+
+
 
     public override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)

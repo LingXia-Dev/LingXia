@@ -330,17 +330,18 @@ public class LingXiaTabBar: UIView {
 
         if !isDefaultConfig {
             // Set background for itemsContainer to match TabBar background
-            let backgroundColor: UIColor
             if TabBarConfig.isTransparent(config.backgroundColor) {
-                backgroundColor = UIColor.clear
-                //os_log("updateItemsContainerLayout: Setting itemsContainer to transparent", log: OSLog(subsystem: "LingXia", category: "TabBar"), type: .debug)
+                // CRITICAL: For transparent backgrounds, set both backgroundColor and layer.backgroundColor
+                itemsContainer.backgroundColor = UIColor.clear
+                itemsContainer.layer.backgroundColor = UIColor.clear.cgColor
+                itemsContainer.isOpaque = false
+                itemsContainer.layer.isOpaque = false
             } else {
                 // Use platform extension to resolve background color
-                backgroundColor = config.resolvedBackgroundColor(isVertical: isVerticalTabBar)
-                //os_log("updateItemsContainerLayout: Setting itemsContainer to resolved color", log: OSLog(subsystem: "LingXia", category: "TabBar"), type: .debug)
+                let backgroundColor = config.resolvedBackgroundColor(isVertical: isVerticalTabBar)
+                itemsContainer.backgroundColor = backgroundColor
+                itemsContainer.layer.backgroundColor = backgroundColor.cgColor
             }
-
-            itemsContainer.backgroundColor = backgroundColor
         }
     }
 
@@ -518,15 +519,10 @@ public class LingXiaTabBar: UIView {
         setNeedsLayout()
         layoutIfNeeded()
 
-        // Ensure transparency is maintained after layout
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-
-            let asyncIsTransparent = TabBarConfig.isTransparent(self.config.backgroundColor)
-            if asyncIsTransparent {
-                self.forceTransparencyMode()
-            }
-            self.setNeedsDisplay()
+        // Ensure transparency is maintained after layout (synchronously)
+        let isTransparent = TabBarConfig.isTransparent(config.backgroundColor)
+        if isTransparent {
+            forceTransparencyMode()
         }
     }
 
@@ -878,8 +874,7 @@ public class LingXiaTabBar: UIView {
         }
     }
 
-    /// Public method to aggressively enforce transparency on the TabBar and all its subviews
-    /// Call this method when TabBar transparency needs to be re-enforced after layout changes
+    /// Public method to enforce transparency on the TabBar and all its subviews
     public func forceTransparencyMode() {
         guard TabBarConfig.isTransparent(config.backgroundColor) else {
             return
@@ -895,21 +890,21 @@ public class LingXiaTabBar: UIView {
         alpha = 1.0
         layer.masksToBounds = false
 
-        // Force itemsContainer transparency
+        // Apply transparency to itemsContainer and all tab views
         if let itemsContainer = itemsContainer {
             itemsContainer.backgroundColor = UIColor.clear
             itemsContainer.layer.backgroundColor = UIColor.clear.cgColor
             itemsContainer.isOpaque = false
             itemsContainer.layer.isOpaque = false
 
-            // Force transparency on all tab item views
+            // Apply to all tab item views
             for arrangedSubview in itemsContainer.arrangedSubviews {
                 arrangedSubview.backgroundColor = UIColor.clear
                 arrangedSubview.layer.backgroundColor = UIColor.clear.cgColor
                 arrangedSubview.isOpaque = false
                 arrangedSubview.layer.isOpaque = false
 
-                // Also force transparency on nested stack views
+                // Apply to nested views
                 for subview in arrangedSubview.subviews {
                     subview.backgroundColor = UIColor.clear
                     subview.layer.backgroundColor = UIColor.clear.cgColor
@@ -922,13 +917,14 @@ public class LingXiaTabBar: UIView {
 
     /// Override draw to ensure transparent background when configured
     public override func draw(_ rect: CGRect) {
-        let isBackgroundTransparent = TabBarConfig.isTransparent(config.backgroundColor)
+        // Ensure transparency before drawing if configured
+        if TabBarConfig.isTransparent(config.backgroundColor) {
+            backgroundColor = UIColor.clear
+            layer.backgroundColor = UIColor.clear.cgColor
+            isOpaque = false
+            layer.isOpaque = false
+        }
 
-        os_log("TabBar.draw: isBackgroundTransparent=%@ backgroundColor=%@",
-               log: LingXiaTabBar.log, type: .debug,
-               String(isBackgroundTransparent), config.backgroundColor?.description ?? "nil")
-
-        // Always call super.draw to ensure normal functionality
         super.draw(rect)
     }
 }
