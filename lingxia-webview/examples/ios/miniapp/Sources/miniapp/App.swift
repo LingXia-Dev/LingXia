@@ -11,7 +11,7 @@ public struct ContentView: View {
             .onAppear {
                 if !Self.hasInitialized {
                     Self.hasInitialized = true
-                    LxApp.initialize(mode: .replaceRoot)
+                    LxApp.initialize()
                     LxApp.openHomeLxApp()
                 }
             }

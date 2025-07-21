@@ -16,7 +16,7 @@ let package = Package(
         ),
     ],
     dependencies: [
-        .package(path: "../../../ios/lingxia"),
+        .package(name: "lingxia", path: "../../../apple"),
     ],
     targets: [
         .target(
