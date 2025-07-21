@@ -8,7 +8,7 @@ fn main() {
     if target.contains("apple") {
         let package_name = "LingXiaFFI";
         let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-        let sources_dir = manifest_dir.join("ios").join("lingxia").join("Sources");
+        let sources_dir = manifest_dir.join("apple").join("Sources");
         let generated_dir = sources_dir.join("generated");
 
         // Create destination directories
