@@ -18,25 +18,6 @@ WORKSPACE_ROOT="$LINGXIA_ROOT" # Workspace root is the same as LingXia root
 
 cd "$SCRIPT_DIR"
 
-# Check if Rust library exists, if not build it
-if [ "$(uname -m)" = "arm64" ]; then
-    RUST_LIB_PATH="$WORKSPACE_ROOT/target/aarch64-apple-darwin/release/liblingxia.a"
-    RUST_TARGET="aarch64-apple-darwin"
-else
-    RUST_LIB_PATH="$WORKSPACE_ROOT/target/x86_64-apple-darwin/release/liblingxia.a"
-    RUST_TARGET="x86_64-apple-darwin"
-fi
-
-echo "Checking for Rust library at: $RUST_LIB_PATH"
-if [ ! -f "$RUST_LIB_PATH" ]; then
-    echo "Rust library not found, building..."
-    cd "$WORKSPACE_ROOT"
-    cargo rustc --crate-type=staticlib --release --target "$RUST_TARGET" -p lingxia --manifest-path lingxia-webview/Cargo.toml
-    cd "$SCRIPT_DIR"
-else
-    echo "Rust library found, skipping build"
-fi
-
 echo "Building Swift project for debugging..."
 
 # Set the project root environment variable for Package.swift

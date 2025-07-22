@@ -33,24 +33,20 @@ cp "$LINGXIA_ROOT/examples/demo/app.json" "$RESOURCES_DIR/"
 echo "Building and copying demo LxApp..."
 cd "$LINGXIA_ROOT/examples/demo/homelxapp"
 if [ -f "package.json" ] ; then
-    echo "Building homelxapp with Vite..."
-    npm install --silent
-    npm run build
-
     # Copy built LxApp to resources with proper directory structure
     if [ -d "dist" ]; then
         echo "Copying built LxApp to resources..."
         mkdir -p "$RESOURCES_DIR/homelxapp"
         cp -R dist/* "$RESOURCES_DIR/homelxapp/"
     else
-        echo "Warning: dist directory not found, copying source files..."
-        cp -R . "$RESOURCES_DIR/homelxapp/"
+        echo "Error: dist directory not found, copying source files..."
+        exit 1
     fi
 else
-    mkdir -p "$RESOURCES_DIR/homelxapp"
-    cp -R "$LINGXIA_ROOT/examples/demo/homelxapp/"* "$RESOURCES_DIR/homelxapp/"
+    echo "Error: package.json not found"
+    exit 1
 fi
 
 echo "Building and deploying iOS app..."
 cd "$SCRIPT_DIR/miniapp"
-xtool dev
+env LINGXIA_PROJECT_ROOT=$LINGXIA_ROOT xtool dev

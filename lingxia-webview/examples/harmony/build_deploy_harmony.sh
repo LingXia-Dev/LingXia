@@ -90,10 +90,6 @@ build_miniapp_assets() {
     echo "Building and copying demo LxApp..."
     cd "$LINGXIA_ROOT/examples/demo/homelxapp"
     if [ -f "package.json" ]; then
-        echo "Building homelxapp with LingXia Builder..."
-        npm install --silent
-        npm run build
-
         if [ -d "dist" ]; then
             echo "Copying built LxApp to assets..."
             mkdir -p "$ASSETS_DIR/homelxapp"
@@ -104,8 +100,7 @@ build_miniapp_assets() {
         fi
     else
         echo "No package.json found, copying source files..."
-        mkdir -p "$ASSETS_DIR/homelxapp"
-        cp -R "$LINGXIA_ROOT/examples/demo/homelxapp/"* "$ASSETS_DIR/homelxapp/"
+        exit 1
     fi
 
     echo -e "${GREEN}✅ LxApp assets copied${NC}"
