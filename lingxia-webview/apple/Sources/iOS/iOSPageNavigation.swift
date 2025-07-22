@@ -22,14 +22,14 @@ public class iOSPageNavigation {
     public static func switchPage(targetPath: String, in viewController: iOSLxAppViewController) {
         guard !viewController.isDestroyed else { return }
 
-        let isReplace = targetPath.contains("?replace=true")
-        let cleanPath = targetPath.replacingOccurrences(of: "?replace=true", with: "")
+        let params = PageNavigationCore.parseNavigationParams(from: targetPath)
 
-        if isReplace {
-            navigateToPage(targetPath: cleanPath, isReplace: true, isBackNavigation: false, in: viewController)
-        } else {
-            navigateToPage(targetPath: cleanPath, isReplace: false, isBackNavigation: false, in: viewController)
-        }
+        navigateToPage(
+            targetPath: params.cleanPath,
+            isReplace: params.isReplace,
+            isBackNavigation: false,
+            in: viewController
+        )
     }
 
     /// Navigates to a specific page
@@ -87,9 +87,22 @@ public class iOSPageNavigation {
             }
 
             let title = pageConfig?.navigationBarTitleText ?? ""
-            let bgColor = pageConfig?.navigationBarBackgroundColor ?? NavigationBarConfig.DEFAULT_BACKGROUND_COLOR
+            let bgColorString = pageConfig?.navigationBarBackgroundColor ?? NavigationBarConfig.DEFAULT_BACKGROUND_COLOR
+            let bgColor = UIColor(hexString: bgColorString) ?? UIColor.white
             let textColor = getTextColor(from: pageConfig?.navigationBarTextStyle)
-            let showBackButton = shouldShowBackButton(for: path, appId: appId)
+
+            // Get TabBar config to check if this is a tab root page
+            // First try to get from the TabBar instance, then fallback to direct config lookup
+            let tabBarConfig: TabBarConfig?
+            if let existingConfig = viewController.tabBar?.config {
+                tabBarConfig = existingConfig
+            } else {
+                // Fallback: get TabBar config directly from the app configuration
+                let tabBarJson = getTabBarConfig(appId)?.toString()
+                tabBarConfig = TabBarConfig.fromJson(tabBarJson)
+            }
+
+            let showBackButton = shouldShowBackButton(for: path, appId: appId, tabBarConfig: tabBarConfig)
 
             navigationBar.updateStateAndAnimate(
                 title: title,
@@ -110,10 +123,7 @@ public class iOSPageNavigation {
 
     /// Gets page configuration
     public static func getPageConfig(appId: String, path: String, in viewController: iOSLxAppViewController) -> NavigationBarConfig? {
-        guard let pageConfigJson = lingxia.getPageConfig(appId, path)?.toString() else {
-            return nil
-        }
-        return NavigationBarConfig.fromJson(pageConfigJson)
+        return PageNavigationCore.getPageConfig(appId: appId, path: path)
     }
 
     /// Handles back button click
@@ -135,13 +145,8 @@ public class iOSPageNavigation {
         }
     }
 
-    private static func shouldShowBackButton(for path: String, appId: String) -> Bool {
-        // Don't show back button for home app or root pages
-        if LxAppCore.isHomeLxApp(appId) {
-            return false
-        }
-
-        return true
+    private static func shouldShowBackButton(for path: String, appId: String, tabBarConfig: TabBarConfig? = nil) -> Bool {
+        return PageNavigationCore.shouldShowBackButton(for: path, appId: appId, tabBarConfig: tabBarConfig)
     }
 }
 

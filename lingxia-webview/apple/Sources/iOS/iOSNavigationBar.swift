@@ -7,6 +7,9 @@ import os.log
 public class iOSNavigationBarImpl: UIView {
     private static let log = OSLog(subsystem: "LingXia", category: "NavigationBar")
 
+    /// Compatibility property for view access
+    public var view: UIView { return self }
+
     internal static let DEFAULT_BACKGROUND_COLOR = UIColor.white
     internal static let DEFAULT_FRONT_COLOR = UIColor.black
     internal static let DEFAULT_TABLET_HEIGHT: CGFloat = 44
@@ -107,7 +110,8 @@ public class iOSNavigationBarImpl: UIView {
 
         // Extract configuration values with defaults
         let titleText = pageConfig?.navigationBarTitleText ?? ""
-        let backgroundColor = pageConfig?.navigationBarBackgroundColor ?? NavigationBarConfig.DEFAULT_BACKGROUND_COLOR
+        let backgroundColorString = pageConfig?.navigationBarBackgroundColor ?? NavigationBarConfig.DEFAULT_BACKGROUND_COLOR
+        let backgroundColor = UIColor(hexString: backgroundColorString) ?? UIColor.white
         let textStyle = pageConfig?.navigationBarTextStyle ?? "black"
         let textColor = textStyle == "white" ? UIColor.white : UIColor.black
         let showBackButton = isBackNavigation && !disableAnimation
@@ -241,7 +245,7 @@ public class iOSNavigationBarSupport {
     public static func configureTransparentSystemBars(viewController: UIViewController, lightStatusBarIcons: Bool = false) {
         if #available(iOS 13.0, *) {
             let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene
-            let statusBarManager = windowScene?.statusBarManager
+            let _ = windowScene?.statusBarManager
 
             if lightStatusBarIcons {
                 viewController.overrideUserInterfaceStyle = .dark

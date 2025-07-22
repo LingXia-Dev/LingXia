@@ -98,53 +98,7 @@ public class iOSLxApp {
         return WebViewManager.findWebView(appId: appId, path: path)
     }
 
-    /// Open specific LxApp (FFI compatible version)
-    nonisolated public static func openLxApp(appid: RustStr, path: RustStr) -> Bool {
-        let appId = appid.toString()
-        let pathString = path.toString()
 
-        if Thread.isMainThread {
-            MainActor.assumeIsolated {
-                openLxApp(appId: appId, path: pathString)
-            }
-        } else {
-            DispatchQueue.main.sync {
-                openLxApp(appId: appId, path: pathString)
-            }
-        }
-        return true
-    }
-
-    /// Close LxApp (FFI compatible version)
-    nonisolated public static func closeLxApp(appid: RustStr) -> Bool {
-        let appId = appid.toString()
-        if Thread.isMainThread {
-            MainActor.assumeIsolated {
-                closeLxApp(appId: appId)
-            }
-        } else {
-            DispatchQueue.main.sync {
-                closeLxApp(appId: appId)
-            }
-        }
-        return true
-    }
-
-    /// Switch to page in LxApp (FFI compatible version)
-    nonisolated public static func switchPage(appid: RustStr, path: RustStr) -> Bool {
-        let appId = appid.toString()
-        let pathString = path.toString()
-        if Thread.isMainThread {
-            MainActor.assumeIsolated {
-                switchPage(appId: appId, path: pathString)
-            }
-        } else {
-            DispatchQueue.main.sync {
-                switchPage(appId: appId, path: pathString)
-            }
-        }
-        return true
-    }
 
     private func openInNewViewController(appId: String, path: String) {
         guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,

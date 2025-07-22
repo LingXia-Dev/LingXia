@@ -29,16 +29,144 @@ public protocol LxAppPlatformDirectoryProvider {
     static func getDirectoryConfig() -> LxAppDirectoryConfig
 }
 
-#if os(iOS)
-/// iOS directory provider
-public struct iOSDirectoryProvider: LxAppPlatformDirectoryProvider {
-    public static func getDirectoryConfig() -> LxAppDirectoryConfig {
-        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?.path ?? ""
-        let cachesPath = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?.path ?? ""
-        return LxAppDirectoryConfig(dataPath: documentsPath, cachesPath: cachesPath)
+/// Common directory provider utilities
+public struct LxAppDirectoryProviderUtils {
+
+    /// Creates directory if it doesn't exist
+    public static func ensureDirectoryExists(at path: String) throws {
+        try FileManager.default.createDirectory(
+            atPath: path,
+            withIntermediateDirectories: true,
+            attributes: nil
+        )
+    }
+
+    /// Gets bundle identifier safely
+    public static func getBundleIdentifier() throws -> String {
+        guard let bundleId = Bundle.main.bundleIdentifier else {
+            throw LxAppDirectoryError.bundleIdentifierNotFound
+        }
+        return bundleId
+    }
+
+    /// Gets system directory URL safely
+    public static func getSystemDirectoryURL(for directory: FileManager.SearchPathDirectory) throws -> URL {
+        guard let url = FileManager.default.urls(for: directory, in: .userDomainMask).first else {
+            throw LxAppDirectoryError.systemDirectoryNotFound(directory)
+        }
+        return url
+    }
+
+    /// Creates app-specific directory configuration
+    public static func createAppDirectoryConfig(
+        dataDirectory: FileManager.SearchPathDirectory,
+        cacheDirectory: FileManager.SearchPathDirectory
+    ) throws -> LxAppDirectoryConfig {
+        let bundleId = try getBundleIdentifier()
+
+        let dataURL = try getSystemDirectoryURL(for: dataDirectory)
+        let cacheURL = try getSystemDirectoryURL(for: cacheDirectory)
+
+        let dataPath = dataURL.appendingPathComponent(bundleId).path
+        let cachePath = cacheURL.appendingPathComponent(bundleId).path
+
+        try ensureDirectoryExists(at: dataPath)
+        try ensureDirectoryExists(at: cachePath)
+
+        return LxAppDirectoryConfig(dataPath: dataPath, cachesPath: cachePath)
     }
 }
-// macOS directory provider is defined in macOS/macOSLxApp.swift
+
+/// Directory provider errors
+public enum LxAppDirectoryError: Error {
+    case bundleIdentifierNotFound
+    case systemDirectoryNotFound(FileManager.SearchPathDirectory)
+    case directoryCreationFailed(String)
+}
+
+/// Shared FFI utilities for handling cross-platform FFI calls
+@MainActor
+public struct FFIUtils {
+
+    /// Execute FFI call on main thread with proper isolation handling
+    nonisolated public static func executeFFICall<T: Sendable>(
+        _ call: @MainActor () -> T
+    ) -> T {
+        if Thread.isMainThread {
+            return MainActor.assumeIsolated(call)
+        } else {
+            return DispatchQueue.main.sync {
+                MainActor.assumeIsolated(call)
+            }
+        }
+    }
+
+    /// Convert RustStr parameters and execute FFI call
+    nonisolated public static func executeFFICallWithRustStr<T: Sendable>(
+        appid: RustStr,
+        path: RustStr? = nil,
+        _ call: @MainActor (String, String?) -> T
+    ) -> T {
+        let appIdString = appid.toString()
+        let pathString = path?.toString()
+
+        return executeFFICall {
+            call(appIdString, pathString)
+        }
+    }
+
+    /// Convert single RustStr parameter and execute FFI call
+    nonisolated public static func executeFFICallWithSingleRustStr<T: Sendable>(
+        appid: RustStr,
+        _ call: @MainActor (String) -> T
+    ) -> T {
+        let appIdString = appid.toString()
+
+        return executeFFICall {
+            call(appIdString)
+        }
+    }
+}
+
+/// Unified directory provider factory for all platforms
+public struct LxAppDirectoryFactory {
+
+    /// Create platform-specific directory configuration
+    public static func createDirectoryConfig() -> LxAppDirectoryConfig {
+        do {
+            #if os(iOS)
+            return try LxAppDirectoryProviderUtils.createAppDirectoryConfig(
+                dataDirectory: .documentDirectory,
+                cacheDirectory: .cachesDirectory
+            )
+            #elseif os(macOS)
+            return try LxAppDirectoryProviderUtils.createAppDirectoryConfig(
+                dataDirectory: .applicationSupportDirectory,
+                cacheDirectory: .cachesDirectory
+            )
+            #endif
+        } catch {
+            fatalError("Failed to create directory config: \(error)")
+        }
+    }
+}
+
+#if os(iOS)
+/// iOS directory provider (legacy compatibility)
+public struct iOSDirectoryProvider: LxAppPlatformDirectoryProvider {
+    public static func getDirectoryConfig() -> LxAppDirectoryConfig {
+        return LxAppDirectoryFactory.createDirectoryConfig()
+    }
+}
+#endif
+
+#if os(macOS)
+/// macOS Directory Provider (legacy compatibility)
+public struct macOSDirectoryProvider: LxAppPlatformDirectoryProvider {
+    public static func getDirectoryConfig() -> LxAppDirectoryConfig {
+        return LxAppDirectoryFactory.createDirectoryConfig()
+    }
+}
 #endif
 
 /// Core LxApp management logic shared between platforms

@@ -73,59 +73,31 @@ public class LxApp {
     }
 }
 
+/// FFI interface for LxApp
 extension LxApp {
     /// Open specific LxApp
     nonisolated public static func openLxApp(appid: RustStr, path: RustStr) -> Bool {
-        #if os(iOS)
-        let appIdString = appid.toString()
-        let pathString = path.toString()
-        executeOnMainThread {
-            LxAppPlatform.openLxApp(appId: appIdString, path: pathString)
+        FFIUtils.executeFFICallWithRustStr(appid: appid, path: path) { appIdString, pathString in
+            LxAppPlatform.openLxApp(appId: appIdString, path: pathString ?? "")
         }
         return true
-        #elseif os(macOS)
-        return LxAppPlatform.openLxApp(appid: appid, path: path)
-        #endif
     }
 
     /// Close LxApp
     nonisolated public static func closeLxApp(appid: RustStr) -> Bool {
-        #if os(iOS)
-        let appIdString = appid.toString()
-        executeOnMainThread {
+        FFIUtils.executeFFICallWithSingleRustStr(appid: appid) { appIdString in
             LxAppPlatform.closeLxApp(appId: appIdString)
         }
         return true
-        #elseif os(macOS)
-        return LxAppPlatform.closeLxApp(appid: appid)
-        #endif
     }
 
     /// Switch to page in LxApp
     nonisolated public static func switchPage(appid: RustStr, path: RustStr) -> Bool {
-        #if os(iOS)
-        let appIdString = appid.toString()
-        let pathString = path.toString()
-        executeOnMainThread {
-            LxAppPlatform.switchPage(appId: appIdString, path: pathString)
+        FFIUtils.executeFFICallWithRustStr(appid: appid, path: path) { appIdString, pathString in
+            LxAppPlatform.switchPage(appId: appIdString, path: pathString ?? "")
         }
         return true
-        #elseif os(macOS)
-        return LxAppPlatform.switchPage(appid: appid, path: path)
-        #endif
     }
-
-    #if os(iOS)
-    nonisolated private static func executeOnMainThread(_ action: @MainActor () -> Void) {
-        if Thread.isMainThread {
-            MainActor.assumeIsolated(action)
-        } else {
-            DispatchQueue.main.sync {
-                MainActor.assumeIsolated(action)
-            }
-        }
-    }
-    #endif
 }
 
 #if os(iOS)

@@ -16,14 +16,9 @@ public class macOSPageNavigation {
     
     /// Switches to a specific page
     public static func switchPage(targetPath: String, in viewController: macOSLxAppViewController) {
-        let isReplace = targetPath.contains("?replace=true")
-        let cleanPath = targetPath.replacingOccurrences(of: "?replace=true", with: "")
-        
-        if isReplace {
-            navigateToPage(targetPath: cleanPath, isReplace: true, in: viewController)
-        } else {
-            navigateToPage(targetPath: cleanPath, isReplace: false, in: viewController)
-        }
+        let params = PageNavigationCore.parseNavigationParams(from: targetPath)
+
+        navigateToPage(targetPath: params.cleanPath, isReplace: params.isReplace, in: viewController)
     }
     
     /// Navigates to a specific page
@@ -52,10 +47,7 @@ public class macOSPageNavigation {
     
     /// Gets page configuration
     public static func getPageConfig(appId: String, path: String) -> NavigationBarConfig? {
-        guard let pageConfigJson = lingxia.getPageConfig(appId, path)?.toString() else {
-            return nil
-        }
-        return NavigationBarConfig.fromJson(pageConfigJson)
+        return PageNavigationCore.getPageConfig(appId: appId, path: path)
     }
     
     /// Handles back button click (keyboard shortcut on macOS)
@@ -66,7 +58,8 @@ public class macOSPageNavigation {
     
     /// Finds tab index by path
     public static func findTabIndexByPath(_ targetPath: String, in config: TabBarConfig) -> Int? {
-        return config.list.firstIndex { $0.pagePath == targetPath }
+        let index = PageNavigationCore.findTabIndexByPath(targetPath, in: config)
+        return index >= 0 ? index : nil
     }
     
     /// Updates tab bar selection for current path

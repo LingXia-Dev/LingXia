@@ -65,7 +65,10 @@ public class macOSNavigationBar: NSView {
 
         titleLabel.stringValue = config.navigationBarTitleText ?? ""
         titleLabel.textColor = config.navigationBarTextStyle == "white" ? NSColor.white : NSColor.black
-        layer?.backgroundColor = config.navigationBarBackgroundColor?.cgColor ?? NSColor.white.cgColor
+
+        let backgroundColorString = config.navigationBarBackgroundColor ?? NavigationBarConfig.DEFAULT_BACKGROUND_COLOR
+        let backgroundColor = NSColor(hexString: backgroundColorString) ?? NSColor.white
+        layer?.backgroundColor = backgroundColor.cgColor
         onAnimationEnd?()
         return true
     }

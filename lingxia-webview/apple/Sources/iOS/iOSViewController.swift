@@ -10,7 +10,11 @@ public class iOSViewControllerSupport {
     public static func configureEdgeToEdgeDisplay(_ viewController: UIViewController) {
         viewController.edgesForExtendedLayout = [.top, .bottom, .left, .right]
         viewController.extendedLayoutIncludesOpaqueBars = true
-        viewController.automaticallyAdjustsScrollViewInsets = false
+        if #available(iOS 11.0, *) {
+            // Use modern content inset adjustment behavior
+        } else {
+            viewController.automaticallyAdjustsScrollViewInsets = false
+        }
 
         if #available(iOS 11.0, *) {
             viewController.additionalSafeAreaInsets = UIEdgeInsets.zero

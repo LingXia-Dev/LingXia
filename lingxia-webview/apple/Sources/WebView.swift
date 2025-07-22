@@ -1,6 +1,5 @@
 import Foundation
 import WebKit
-import os.log
 import CLingXiaFFI
 @preconcurrency import ObjectiveC
 
@@ -10,10 +9,10 @@ import UIKit
 import Cocoa
 #endif
 
-/// Shared WebView extensions for both iOS and macOS
+/// WebView extensions for display-related functionality
 extension WKWebView {
 
-    /// Get the app ID associated with this WebView (stored in accessibilityIdentifier)
+    /// App ID (stored in accessibilityIdentifier)
     var appId: String? {
         get {
             #if os(iOS)
@@ -31,7 +30,7 @@ extension WKWebView {
         }
     }
 
-    /// Get the current path associated with this WebView (stored in accessibilityLabel)
+    /// Current path (stored in accessibilityLabel)
     var currentPath: String? {
         get {
             #if os(iOS)
@@ -49,29 +48,31 @@ extension WKWebView {
         }
     }
 
-    /// Check if page is loaded
+    /// Simple page loaded check
     var pageLoaded: Bool {
         return url != nil && !isLoading
     }
 
-    /// Pause WebView operations
-    @objc func pauseWebView() {
+    /// Hide WebView
+    @MainActor
+    func pauseWebView() {
         isHidden = true
     }
 
-    /// Resume WebView operations
-    @objc func resumeWebView() {
+    /// Show WebView
+    @MainActor
+    func resumeWebView() {
         isHidden = false
     }
 
-    /// Set up the WebView with app ID and path for Rust integration
+    /// Setup WebView with app info
     @MainActor
     func setup(appId: String, path: String) {
         self.appId = appId
         self.currentPath = path
     }
 
-    /// Check if WebView is registered with Rust layer
+    /// Registration state
     var isRegistered: Bool {
         get {
             return objc_getAssociatedObject(self, &AssociatedKeys.isRegistered) as? Bool ?? false
@@ -82,17 +83,16 @@ extension WKWebView {
     }
 }
 
-/// Associated object keys for WebView properties
+/// Associated object keys
 private struct AssociatedKeys {
-    nonisolated(unsafe) static var isRegistered = "isRegistered"
+    nonisolated(unsafe) static var isRegistered: UInt8 = 0
 }
 
-/// WebView manager for both iOS and macOS
+/// Simple WebView manager - Rust handles creation/lifecycle
+@MainActor
 class WebViewManager {
-    private static let log = OSLog(subsystem: "LingXia", category: "WebView")
 
-    /// Find WebView for the given appId and path from Rust layer
-    @MainActor
+    /// Find WebView from Rust layer
     static func findWebView(appId: String, path: String) -> WKWebView? {
         let webViewPtr = lingxia.findWebView(appId, path)
         guard webViewPtr != 0 else { return nil }
@@ -102,5 +102,9 @@ class WebViewManager {
         return webView
     }
 
-
+    /// Switch between WebViews
+    static func switchWebView(from current: WKWebView?, to new: WKWebView?) {
+        current?.pauseWebView()
+        new?.resumeWebView()
+    }
 }

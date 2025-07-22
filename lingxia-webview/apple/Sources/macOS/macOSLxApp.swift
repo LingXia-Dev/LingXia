@@ -9,30 +9,7 @@ public enum LxAppWindowStyle {
     case customCapsule
 }
 
-public struct macOSDirectoryProvider: LxAppPlatformDirectoryProvider {
-    public static func getDirectoryConfig() -> LxAppDirectoryConfig {
-        guard let bundleId = Bundle.main.bundleIdentifier else {
-            fatalError("Bundle identifier not found")
-        }
-
-        guard let appSupportURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first,
-              let cachesURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else {
-            fatalError("Failed to get system directories")
-        }
-
-        let dataPath = appSupportURL.appendingPathComponent(bundleId).path
-        let cachesPath = cachesURL.appendingPathComponent(bundleId).path
-
-        do {
-            try FileManager.default.createDirectory(atPath: dataPath, withIntermediateDirectories: true, attributes: nil)
-            try FileManager.default.createDirectory(atPath: cachesPath, withIntermediateDirectories: true, attributes: nil)
-        } catch {
-            fatalError("Failed to create app directories: \(error)")
-        }
-
-        return LxAppDirectoryConfig(dataPath: dataPath, cachesPath: cachesPath)
-    }
-}
+// Directory provider is now in shared LxAppDirectoryProvider.swift
 
 @MainActor
 public class macOSLxApp {
@@ -130,53 +107,7 @@ public class macOSLxApp {
         }
     }
 
-    /// Open specific LxApp (FFI compatible version)
-    nonisolated public static func openLxApp(appid: RustStr, path: RustStr) -> Bool {
-        let appId = appid.toString()
-        let pathString = path.toString()
 
-        if Thread.isMainThread {
-            MainActor.assumeIsolated {
-                openLxApp(appId: appId, path: pathString)
-            }
-        } else {
-            DispatchQueue.main.sync {
-                openLxApp(appId: appId, path: pathString)
-            }
-        }
-        return true
-    }
-
-    /// Close LxApp (FFI compatible version)
-    nonisolated public static func closeLxApp(appid: RustStr) -> Bool {
-        let appId = appid.toString()
-        if Thread.isMainThread {
-            MainActor.assumeIsolated {
-                closeLxApp(appId: appId)
-            }
-        } else {
-            DispatchQueue.main.sync {
-                closeLxApp(appId: appId)
-            }
-        }
-        return true
-    }
-
-    /// Switch to page in LxApp (FFI compatible version)
-    nonisolated public static func switchPage(appid: RustStr, path: RustStr) -> Bool {
-        let appId = appid.toString()
-        let pathString = path.toString()
-        if Thread.isMainThread {
-            MainActor.assumeIsolated {
-                switchPage(appId: appId, path: pathString)
-            }
-        } else {
-            DispatchQueue.main.sync {
-                switchPage(appId: appId, path: pathString)
-            }
-        }
-        return true
-    }
 
     internal static func removeWindowController(_ controller: macOSLxAppWindowController) {
         activeWindowControllers.removeAll { $0 === controller }
