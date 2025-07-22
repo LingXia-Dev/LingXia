@@ -304,8 +304,8 @@ impl LxApp {
         app
     }
 
-    // Setup will initialize paths and load config
-    fn setup(&mut self) -> Result<(), LxAppError> {
+    /// Initialize paths and directories for the lxapp
+    fn initialize_paths(&mut self) -> Result<(), LxAppError> {
         // Get the app's version
         self.version = self.read_version();
 
@@ -366,6 +366,11 @@ impl LxApp {
             })?;
         }
 
+        Ok(())
+    }
+
+    /// Load and parse lxapp.json configuration
+    pub fn load_config(&mut self) -> Result<(), LxAppError> {
         // Load app configuration if it exists
         self.read_json("lxapp.json")
             .map(|app_json| {
@@ -381,6 +386,13 @@ impl LxApp {
                 let mut state = self.state.lock().unwrap();
                 state.debug = true;
             })?
+    }
+
+    /// Initialize paths and load configuration
+    fn setup(&mut self) -> Result<(), LxAppError> {
+        self.initialize_paths()?;
+        self.load_config()?;
+        Ok(())
     }
 
     /// Get the version of this app from storage
@@ -999,7 +1011,7 @@ pub fn init<R: AppRuntime + 'static>(runtime: R) -> Option<(String, String)> {
             let svc_manager = appservice::init(max_apps);
 
             // Create the home LxApp instance
-            let home_lxapp = LxApp::new_as_home(
+            let mut home_lxapp = LxApp::new_as_home(
                 home_lxapp_appid.clone(),
                 runtime_arc.clone(),
                 svc_manager.clone(),
@@ -1013,8 +1025,10 @@ pub fn init<R: AppRuntime + 'static>(runtime: R) -> Option<(String, String)> {
                     home_lxapp_version,
                 ) {
                     error!("Failed to install home LxApp: {}", e);
-
                     return None;
+                }
+                if let Err(e) = home_lxapp.load_config() {
+                    error!("Home LxApp failed to load config: {}", e);
                 }
             }
 
