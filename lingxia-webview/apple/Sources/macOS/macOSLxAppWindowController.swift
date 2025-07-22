@@ -27,6 +27,8 @@ class macOSLxAppWindowController: NSWindowController, NSWindowDelegate {
             styleMask = [.titled, .closable, .miniaturizable, .resizable]
         case .customCapsule:
             styleMask = [.titled, .closable, .miniaturizable] // No .resizable for custom style
+        case .borderless:
+            styleMask = [.titled, .closable, .miniaturizable, .resizable] // Keep .titled to show system buttons
         }
 
         let window = macOSLxAppWindow(
@@ -79,6 +81,8 @@ class macOSLxAppWindowController: NSWindowController, NSWindowDelegate {
             return 32  // Custom capsule style needs space for title bar
         case .systemDefault:
             return 0   // System default style uses system title bar
+        case .borderless:
+            return 0   // Content fills entire window, system buttons float on top
         }
     }
 
@@ -94,6 +98,8 @@ class macOSLxAppWindowController: NSWindowController, NSWindowDelegate {
             window.styleMask.update(with: .resizable)
         case .customCapsule:
             window.styleMask.remove(.resizable)
+        case .borderless:
+            window.styleMask.update(with: .resizable)
         }
     }
 

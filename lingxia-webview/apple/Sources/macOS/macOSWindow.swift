@@ -12,19 +12,7 @@ class macOSLxAppWindow: NSWindow {
 
     func configureForStyle(_ style: LxAppWindowStyle) {
         self.windowStyle = style
-
-        switch style {
-        case .customCapsule:
-            self.styleMask.insert(.fullSizeContentView)
-            self.titlebarAppearsTransparent = true
-            self.titleVisibility = .hidden
-            self.isMovableByWindowBackground = true
-        case .systemDefault:
-            self.styleMask.remove(.fullSizeContentView)
-            self.titlebarAppearsTransparent = false
-            self.titleVisibility = .visible
-            self.isMovableByWindowBackground = false
-        }
+        macOSWindowSupport.configureWindow(self, style: style)
     }
 
     override var canBecomeKey: Bool {
@@ -43,16 +31,17 @@ public class macOSWindowSupport {
     /// Configures window for the specified style
     public static func configureWindow(_ window: NSWindow, style: LxAppWindowStyle) {
         switch style {
-        case .customCapsule:
-            window.styleMask.insert(.fullSizeContentView)
-            window.titlebarAppearsTransparent = true
-            window.titleVisibility = .hidden
-            window.isMovableByWindowBackground = true
         case .systemDefault:
             window.styleMask.remove(.fullSizeContentView)
             window.titlebarAppearsTransparent = false
             window.titleVisibility = .visible
             window.isMovableByWindowBackground = false
+        case .customCapsule, .borderless:
+            // Both styles use full-size content view with transparent title bar
+            window.styleMask.insert(.fullSizeContentView)
+            window.titlebarAppearsTransparent = true
+            window.titleVisibility = .hidden
+            window.isMovableByWindowBackground = true
         }
     }
 
@@ -63,6 +52,8 @@ public class macOSWindowSupport {
             return 32  // Custom capsule style needs space for title bar
         case .systemDefault:
             return 0   // System default style uses system title bar
+        case .borderless:
+            return 0   // Content fills entire window, system buttons float on top
         }
     }
 
