@@ -48,6 +48,7 @@ impl LxApp {
                     .status(StatusCode::OK)
                     .header("Content-Type", mime_type)
                     .header("Content-Length", data.len().to_string())
+                    .header("Access-Control-Allow-Origin", "null") // Solve CORS issues on the HarmonyOS platform with the Access-Control-Allow-Origin header
                     .body(data)
                     .unwrap_or_else(|_| {
                         Response::builder()
