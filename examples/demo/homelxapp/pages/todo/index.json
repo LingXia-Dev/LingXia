@@ -2,6 +2,5 @@
   "navigationBarBackgroundColor": "#ffffff",
   "navigationBarTextStyle": "black",
   "navigationBarTitleText": "ToDo",
-  "navigationStyle": "default",
-  "hidden": false
-} 
+  "navigationStyle": "custom",
+}
