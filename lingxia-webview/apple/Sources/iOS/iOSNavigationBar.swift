@@ -17,7 +17,12 @@ public class iOSNavigationBarImpl: UIView {
     private let titleLabel: UILabel
     private let loadingIndicator: UIActivityIndicatorView
     private let backButton: UIButton
-    private var currentConfig: NavigationBarConfig = NavigationBarConfig()
+    private var currentConfig: NavigationBarConfig = NavigationBarConfig(
+        background_color: RustString(""),
+        text_style: RustString(""),
+        title_text: RustString(""),
+        navigation_style: 0
+    )
     private var knownStatusBarHeight: CGFloat = 0
 
     private var currentBackgroundColor = DEFAULT_BACKGROUND_COLOR
@@ -101,18 +106,18 @@ public class iOSNavigationBarImpl: UIView {
         onBackClickListener: @escaping () -> Void,
         onAnimationEnd: (() -> Void)?
     ) -> Bool {
-        // Check if NavigationBar should be hidden
-        let shouldHide = pageConfig?.hidden ?? false
+        // Check if NavigationBar should be hidden (using navigation_style)
+        let shouldHide = pageConfig?.navigation_style == 1 // 1 = hidden
         if shouldHide {
             hide()
             return false
         }
 
         // Extract configuration values with defaults
-        let titleText = pageConfig?.navigationBarTitleText ?? ""
-        let backgroundColorString = pageConfig?.navigationBarBackgroundColor ?? NavigationBarConfig.DEFAULT_BACKGROUND_COLOR
+        let titleText = pageConfig?.title_text.toString() ?? ""
+        let backgroundColorString = pageConfig?.background_color.toString() ?? NavigationBarConfig.DEFAULT_BACKGROUND_COLOR
         let backgroundColor = UIColor(hexString: backgroundColorString) ?? UIColor.white
-        let textStyle = pageConfig?.navigationBarTextStyle ?? "black"
+        let textStyle = pageConfig?.text_style.toString() ?? "black"
         let textColor = textStyle == "white" ? UIColor.white : UIColor.black
         let showBackButton = isBackNavigation && !disableAnimation
 

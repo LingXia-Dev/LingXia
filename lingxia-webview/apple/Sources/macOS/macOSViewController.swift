@@ -36,7 +36,7 @@ public class macOSViewControllerSupport {
         topMargin: CGFloat,
         hasTabBar: Bool,
         tabBarHeight: CGFloat,
-        tabBarPosition: TabBarConfig.Position
+        tabBarPosition: Int32
     ) -> CGRect {
         var contentFrame = containerFrame
 
@@ -47,16 +47,18 @@ public class macOSViewControllerSupport {
         // Apply tab bar constraints if needed
         if hasTabBar {
             switch tabBarPosition {
-            case .bottom:
+            case 0: // bottom
                 contentFrame.size.height -= tabBarHeight
-            case .top:
+            case 1: // top
                 contentFrame.origin.y += tabBarHeight
                 contentFrame.size.height -= tabBarHeight
-            case .left:
+            case 2: // left
                 contentFrame.origin.x += tabBarHeight
                 contentFrame.size.width -= tabBarHeight
-            case .right:
+            case 3: // right
                 contentFrame.size.width -= tabBarHeight
+            default:
+                contentFrame.size.height -= tabBarHeight
             }
         }
 

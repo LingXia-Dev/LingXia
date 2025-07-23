@@ -1,5 +1,54 @@
 import Foundation
 
+/// Extension to add helper methods to swift-bridge generated TabBarConfig
+extension TabBarConfig {
+    /// Get position as enum
+    public var positionEnum: TabBarPosition {
+        switch position {
+        case 1: return .top
+        case 2: return .left
+        case 3: return .right
+        default: return .bottom // 0 or any other value
+        }
+    }
+
+    /// Get all tab items for this config
+    public func getItems(appId: String) -> [TabBarItem] {
+        var items: [TabBarItem] = []
+        for i in 0..<items_count {
+            if let item = getTabBarItem(appId, i) {
+                items.append(item)
+            }
+        }
+        return items
+    }
+
+    /// Parse color string to platform color
+    public static func parseColor(_ colorString: String) -> PlatformColor? {
+        return TabBarHelper.parseColor(colorString)
+    }
+
+    /// Check if color is transparent
+    public static func isTransparent(_ colorString: String) -> Bool {
+        return TabBarHelper.isTransparent(colorString)
+    }
+
+    /// Default color constants
+    public static let DEFAULT_SELECTED_COLOR = TabBarHelper.DEFAULT_SELECTED_COLOR
+    public static let DEFAULT_UNSELECTED_COLOR = TabBarHelper.DEFAULT_UNSELECTED_COLOR
+    public static let DEFAULT_BACKGROUND_COLOR = TabBarHelper.DEFAULT_BACKGROUND_COLOR
+
+    /// Get resolved background color for this configuration
+    public func resolvedBackgroundColor(isVertical: Bool) -> PlatformColor {
+        return TabBarHelper.resolvedBackgroundColor(background_color.toString(), isVertical: isVertical)
+    }
+}
+
+/// Position enum for TabBar
+public enum TabBarPosition {
+    case top, bottom, left, right
+}
+
 /// Constants used across TabBar implementations
 public struct TabBarConstants {
     public static let ICON_SIZE: CGFloat = 24
@@ -11,143 +60,101 @@ public struct TabBarConstants {
     public static let LABEL_BOTTOM_MARGIN: CGFloat = 4
 }
 
-/// Represents a single tab bar item with its configuration
-public struct TabBarItem {
-    let pagePath: String
-    let text: String?
-    let iconPath: String
-    let selectedIconPath: String
-    let selected: Bool
-    let visible: Bool
-
-    public init(
-        pagePath: String,
-        text: String? = nil,
-        iconPath: String,
-        selectedIconPath: String,
-        selected: Bool = false,
-        visible: Bool = true
-    ) {
-        self.pagePath = pagePath
-        self.text = text
-        self.iconPath = iconPath
-        self.selectedIconPath = selectedIconPath
-        self.selected = selected
-        self.visible = visible
-    }
+/// Extension to add helper methods to swift-bridge generated TabBarItem
+extension TabBarItem {
+    /// Check if item is visible (always true for now)
+    public var visible: Bool { true }
 }
 
-/// Configuration structure for the TabBar component
-public struct TabBarConfig {
-    let backgroundColor: String?
-    let selectedColor: String?
-    let color: String?
-    let borderStyle: String?
-    let height: CGFloat?
-    let position: Position
-    let list: [TabBarItem]
-    let visible: Bool
-
-    public enum Position {
-        case top, bottom, left, right
-    }
-
-    static let DEFAULT_SELECTED_COLOR = "#1677FF"
-    static let DEFAULT_UNSELECTED_COLOR = "#666666"
-    static let DEFAULT_BORDER_COLOR = "#F0F0F0"
-    static let DEFAULT_BACKGROUND_COLOR = "#FFFFFF"
-
-    public init(
-        backgroundColor: String? = nil,
-        selectedColor: String? = nil,
-        color: String? = nil,
-        borderStyle: String? = nil,
-        height: CGFloat? = nil,
-        position: Position = .bottom,
-        list: [TabBarItem] = [],
-        visible: Bool = true
-    ) {
-        self.backgroundColor = backgroundColor
-        self.selectedColor = selectedColor
-        self.color = color
-        self.borderStyle = borderStyle
-        self.height = height
-        self.position = position
-        self.list = list
-        self.visible = visible
-    }
-
-    public static func fromJson(_ json: String?) -> TabBarConfig? {
-        guard let json = json, !json.isEmpty,
-              let data = json.data(using: .utf8),
-              let jsonObject = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return nil
-        }
-
-        let list: [TabBarItem] = (jsonObject["list"] as? [[String: Any]])?.compactMap { item in
-            let finalText = item["text"] as? String
-            return TabBarItem(
-                pagePath: item["pagePath"] as? String ?? "",
-                text: finalText?.isEmpty == false ? finalText : nil,
-                iconPath: item["iconPath"] as? String ?? "",
-                selectedIconPath: item["selectedIconPath"] as? String ?? "",
-                selected: item["selected"] as? Bool ?? false,
-                visible: item["visible"] as? Bool ?? true
-            )
-        } ?? []
-
-        let positionString = jsonObject["position"] as? String ?? "bottom"
-        let position: Position
-        switch positionString.lowercased() {
-        case "top": position = .top
-        case "left": position = .left
-        case "right": position = .right
-        default: position = .bottom
-        }
-
-        return TabBarConfig(
-            backgroundColor: jsonObject["backgroundColor"] as? String,
-            selectedColor: jsonObject["selectedColor"] as? String,
-            color: jsonObject["color"] as? String,
-            borderStyle: jsonObject["borderStyle"] as? String,
-            height: jsonObject["height"] as? CGFloat,
-            position: position,
-            list: list,
-            visible: jsonObject["visible"] as? Bool ?? true
-        )
-    }
-
-    /// Determines if a color string should be treated as transparent
-    public static func isTransparent(_ colorString: String?) -> Bool {
-        guard let colorString = colorString else { return true }
-        return colorString.lowercased() == "transparent" || colorString.isEmpty
-    }
+/// Helper methods for TabBar styling and color management
+public struct TabBarHelper {
+    // MARK: - Default Colors
+    public static let DEFAULT_SELECTED_COLOR = "#1677FF"
+    public static let DEFAULT_UNSELECTED_COLOR = "#666666"
+    public static let DEFAULT_BACKGROUND_COLOR = "#ffffff"
+    public static let DEFAULT_BORDER_COLOR = "#F0F0F0"
 
     /// Parse color string to platform color
-    public func parseColor(_ colorString: String?) -> PlatformColor? {
-        guard let colorString = colorString, !colorString.isEmpty else { return nil }
+    public static func parseColor(_ colorString: String) -> PlatformColor? {
+        // Handle special "transparent" case
         if colorString.lowercased() == "transparent" {
             return PlatformColor.clear
         }
         return PlatformColor(hexString: colorString)
     }
 
-    /// Get resolved background color for the tab bar
-    public func resolvedBackgroundColor(isVertical: Bool) -> PlatformColor {
-        if Self.isTransparent(backgroundColor) {
-            return PlatformColor.clear
+    /// Check if color is transparent
+    public static func isTransparent(_ colorString: String) -> Bool {
+        // Handle special "transparent" string case
+        if colorString.lowercased() == "transparent" {
+            return true
         }
 
-        if let bgColor = parseColor(backgroundColor) {
-            return bgColor
+        guard let color = parseColor(colorString) else { return false }
+
+        #if os(macOS)
+        return color.alphaComponent < 1.0
+        #else
+        var alpha: CGFloat = 0
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        color.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+        return alpha < 1.0
+        #endif
+    }
+
+    /// Get resolved background color for TabBar
+    public static func resolvedBackgroundColor(_ colorString: String, isVertical: Bool) -> PlatformColor {
+        if let color = parseColor(colorString) {
+            return color
+        }
+
+        // Default colors based on orientation
+        if isVertical {
+            #if os(macOS)
+            return PlatformColor(hexString: "#F8F8F8") ?? PlatformColor.controlBackgroundColor
+            #else
+            return PlatformColor(hexString: "#F8F8F8") ?? PlatformColor.systemGray6
+            #endif
+        } else {
+            return PlatformColor(hexString: DEFAULT_BACKGROUND_COLOR) ?? PlatformColor.white
+        }
+    }
+}
+
+extension PlatformColor {
+    /// Initialize color from hex string
+    convenience init?(hexString: String) {
+        let hex = hexString.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        var int: UInt64 = 0
+        Scanner(string: hex).scanHexInt64(&int)
+        let a, r, g, b: UInt64
+        switch hex.count {
+        case 3: // RGB (12-bit)
+            (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
+        case 6: // RGB (24-bit)
+            (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
+        case 8: // ARGB (32-bit)
+            (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
+        default:
+            return nil
         }
 
         #if os(iOS)
-        let defaultColor = PlatformColor(hexString: Self.DEFAULT_BACKGROUND_COLOR) ?? PlatformColor.systemBackground
-        return isVertical ? UIColor(red: 0.97, green: 0.97, blue: 0.97, alpha: 1.0) : defaultColor
+        self.init(
+            red: CGFloat(r) / 255,
+            green: CGFloat(g) / 255,
+            blue: CGFloat(b) / 255,
+            alpha: CGFloat(a) / 255
+        )
         #else
-        let defaultColor = PlatformColor(hexString: Self.DEFAULT_BACKGROUND_COLOR) ?? PlatformColor.white
-        return isVertical ? NSColor(red: 0.97, green: 0.97, blue: 0.97, alpha: 1.0) : defaultColor
+        self.init(
+            red: Double(r) / 255,
+            green: Double(g) / 255,
+            blue: Double(b) / 255,
+            alpha: Double(a) / 255
+        )
         #endif
     }
 }
@@ -155,8 +162,8 @@ public struct TabBarConfig {
 /// Protocol for tab bar implementations
 @MainActor
 public protocol TabBarProtocol: AnyObject {
-    var config: TabBarConfig { get }
-    func setConfig(config: TabBarConfig)
+    var config: TabBarConfig? { get }
+    func setConfig(config: TabBarConfig, appId: String)
     func setOnTabSelectedListener(_ listener: @escaping (Int, String) -> Void)
     func findTabIndexByPath(_ path: String) -> Int
     func syncSelectedTabWithCurrentPath(_ currentPath: String)
@@ -168,23 +175,22 @@ public protocol TabBarProtocol: AnyObject {
 @MainActor
 public class TabBarController {
 
-    // MARK: - Properties
-    private var config: TabBarConfig = TabBarConfig()
-    private var items = [TabBarItem]()
+    private var config: TabBarConfig?
+    private var items: [TabBarItem] = []
     private var selectedPosition = -1
     private var onTabSelectedListener: ((Int, String) -> Void)?
-
-    // MARK: - Public Interface
+    private var appId: String = ""
 
     /// Set TabBar configuration and return filtered visible items
-    public func setConfig(_ config: TabBarConfig) -> [TabBarItem] {
+    public func setConfig(_ config: TabBarConfig, appId: String) -> [TabBarItem] {
         self.config = config
-        items = config.list.filter { $0.visible }
+        self.appId = appId
+        items = config.getItems(appId: appId)
         return items
     }
 
     /// Get current configuration
-    public func getConfig() -> TabBarConfig {
+    public func getConfig() -> TabBarConfig? {
         return config
     }
 
@@ -200,7 +206,7 @@ public class TabBarController {
 
     /// Find tab index by path
     public func findTabIndexByPath(_ path: String) -> Int {
-        return items.firstIndex { $0.pagePath == path } ?? -1
+        return items.firstIndex { $0.page_path.toString() == path } ?? -1
     }
 
     /// Sync selected tab with current path
@@ -218,7 +224,7 @@ public class TabBarController {
         selectedPosition = index
 
         if notifyListener {
-            onTabSelectedListener?(index, items[index].pagePath)
+            onTabSelectedListener?(index, items[index].page_path.toString())
         }
     }
 
@@ -229,22 +235,25 @@ public class TabBarController {
 
     /// Check if TabBar should be visible
     public func shouldBeVisible() -> Bool {
-        return config.visible && !items.isEmpty
+        return config != nil && !items.isEmpty
     }
 
     /// Check if TabBar is vertical (left/right position)
     public func isVertical() -> Bool {
-        return config.position == .left || config.position == .right
+        guard let config = config else { return false }
+        return config.position == 2 || config.position == 3 // left=2, right=3
     }
 
     /// Get resolved background color for current configuration
     public func getResolvedBackgroundColor() -> PlatformColor {
-        return config.resolvedBackgroundColor(isVertical: isVertical())
+        guard let config = config else { return PlatformColor.clear }
+        return TabBarHelper.resolvedBackgroundColor(config.background_color.toString(), isVertical: isVertical())
     }
 
     /// Check if background should be transparent
     public func shouldUseTransparentBackground() -> Bool {
-        return TabBarConfig.isTransparent(config.backgroundColor)
+        guard let config = config else { return true }
+        return TabBarHelper.isTransparent(config.background_color.toString())
     }
 
     /// Get tab item at index
@@ -260,16 +269,10 @@ public class TabBarController {
 
     /// Get effective height for TabBar
     public func getEffectiveHeight() -> CGFloat {
-        if let customHeight = config.height {
-            return customHeight
-        }
+        guard let config = config else { return TabBarConstants.TAB_HEIGHT }
 
-        switch config.position {
-        case .top, .bottom:
-            return TabBarConstants.TAB_HEIGHT
-        case .left, .right:
-            return TabBarConstants.TAB_HEIGHT // Can be adjusted for vertical tabs
-        }
+        // Use the configured dimension directly
+        return CGFloat(config.dimension)
     }
 
     /// Handle tab selection
@@ -279,7 +282,7 @@ public class TabBarController {
 
     /// Reset controller state
     public func reset() {
-        config = TabBarConfig()
+        config = nil
         items.removeAll()
         selectedPosition = -1
         onTabSelectedListener = nil
@@ -309,12 +312,12 @@ public protocol EnhancedTabBarProtocol: TabBarProtocol {
 /// Default implementation for enhanced TabBar protocol
 extension EnhancedTabBarProtocol {
 
-    public var config: TabBarConfig {
+    public var config: TabBarConfig? {
         return controller.getConfig()
     }
 
-    public func setConfig(config: TabBarConfig) {
-        let items = controller.setConfig(config)
+    public func setConfig(config: TabBarConfig, appId: String) {
+        let items = controller.setConfig(config, appId: appId)
         uiDelegate?.updateConfiguration()
         uiDelegate?.updateItems(items)
     }

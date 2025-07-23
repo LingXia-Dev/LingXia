@@ -26,7 +26,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     private var webViewContainer: NSView!
     private var tabBarView: NSView?
     private var currentWebView: WKWebView?
-    public var tabBarConfig: TabBarConfig!
+    public var tabBarConfig: TabBarConfig?
 
     nonisolated(unsafe) private var closeAppObserver: NSObjectProtocol?
     nonisolated(unsafe) private var switchPageObserver: NSObjectProtocol?
@@ -94,11 +94,11 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         setupWebViewContainer()
 
         // Add TabBar to view hierarchy and set constraints based on position and transparency
-        if let tabBar = tabBarView, let tabBarConfigRust = getTabBarConfig(appId), let tabBarConfig = TabBarConfig.fromJson(tabBarConfigRust.toString()) {
+        if let tabBar = tabBarView, let tabBarConfig = getTabBarConfig(appId) {
             view.addSubview(tabBar)
 
             // Check if TabBar is transparent using platform extension
-            let isTabBarTransparent = TabBarConfig.isTransparent(tabBarConfig.backgroundColor)
+            let isTabBarTransparent = TabBarHelper.isTransparent(tabBarConfig.background_color.toString())
 
             // Get TabBar height from constants
             let tabBarHeight: CGFloat = Self.TAB_BAR_HEIGHT
@@ -107,7 +107,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
             var tabBarConstraints: [NSLayoutConstraint] = []
 
             switch tabBarConfig.position {
-            case .bottom:
+            case 0: // bottom
                 tabBarConstraints = [
                     tabBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
                     tabBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
@@ -115,7 +115,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
                     tabBar.heightAnchor.constraint(equalToConstant: tabBarHeight)
                 ]
 
-            case .top:
+            case 1: // top
                 tabBarConstraints = [
                     tabBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
                     tabBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
@@ -123,7 +123,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
                     tabBar.heightAnchor.constraint(equalToConstant: tabBarHeight)
                 ]
 
-            case .left:
+            case 2: // left
                 tabBarConstraints = [
                     tabBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
                     tabBar.topAnchor.constraint(equalTo: view.topAnchor),
@@ -131,12 +131,20 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
                     tabBar.widthAnchor.constraint(equalToConstant: 80) // Same width as independent implementation
                 ]
 
-            case .right:
+            case 3: // right
                 tabBarConstraints = [
                     tabBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
                     tabBar.topAnchor.constraint(equalTo: view.topAnchor),
                     tabBar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
                     tabBar.widthAnchor.constraint(equalToConstant: 80) // Same width as independent implementation
+                ]
+
+            default: // fallback to bottom
+                tabBarConstraints = [
+                    tabBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                    tabBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                    tabBar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+                    tabBar.heightAnchor.constraint(equalToConstant: tabBarHeight)
                 ]
             }
 
@@ -149,7 +157,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
             if !isTabBarTransparent {
                 // Non-transparent TabBar: WebView avoids TabBar area
                 switch tabBarConfig.position {
-                case .bottom:
+                case 0: // bottom
                     webViewConstraints = [
                         webViewContainer.topAnchor.constraint(equalTo: view.topAnchor, constant: getTopMargin()),
                         webViewContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -157,7 +165,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
                         webViewContainer.bottomAnchor.constraint(equalTo: tabBar.topAnchor)
                     ]
 
-                case .top:
+                case 1: // top
                     webViewConstraints = [
                         webViewContainer.topAnchor.constraint(equalTo: tabBar.bottomAnchor),
                         webViewContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -165,7 +173,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
                         webViewContainer.bottomAnchor.constraint(equalTo: view.bottomAnchor)
                     ]
 
-                case .left:
+                case 2: // left
                     webViewConstraints = [
                         webViewContainer.topAnchor.constraint(equalTo: view.topAnchor, constant: getTopMargin()),
                         webViewContainer.leadingAnchor.constraint(equalTo: tabBar.trailingAnchor),
@@ -173,12 +181,20 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
                         webViewContainer.bottomAnchor.constraint(equalTo: view.bottomAnchor)
                     ]
 
-                case .right:
+                case 3: // right
                     webViewConstraints = [
                         webViewContainer.topAnchor.constraint(equalTo: view.topAnchor, constant: getTopMargin()),
                         webViewContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
                         webViewContainer.trailingAnchor.constraint(equalTo: tabBar.leadingAnchor),
                         webViewContainer.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+                    ]
+
+                default: // fallback to bottom
+                    webViewConstraints = [
+                        webViewContainer.topAnchor.constraint(equalTo: view.topAnchor, constant: getTopMargin()),
+                        webViewContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                        webViewContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                        webViewContainer.bottomAnchor.constraint(equalTo: tabBar.topAnchor)
                     ]
                 }
             } else {
@@ -216,13 +232,8 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     }
 
     private func setupTabBar(config: TabBarConfig? = nil) {
-        guard let tabBarConfigRust = getTabBarConfig(appId) else {
-            return
-        }
-
-        let tabBarConfigJson = tabBarConfigRust.toString()
-        guard let tabBarConfig = TabBarConfig.fromJson(tabBarConfigJson) else {
-            os_log("Failed to parse TabBar config for appId: %@", log: Self.log, type: .error, appId)
+        guard let tabBarConfig = getTabBarConfig(appId) else {
+            os_log("Failed to get TabBar config for appId: %@", log: Self.log, type: .error, appId)
             return
         }
 
@@ -234,7 +245,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         tabBar.wantsLayer = true
 
         // Set background color using platform extension
-        let resolvedColor = tabBarConfig.resolvedBackgroundColor(isVertical: false)
+        let resolvedColor = TabBarHelper.resolvedBackgroundColor(tabBarConfig.background_color.toString(), isVertical: false)
         tabBar.layer?.backgroundColor = resolvedColor.cgColor
 
         tabBar.translatesAutoresizingMaskIntoConstraints = false
@@ -244,21 +255,26 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
 
         // Set orientation and spacing based on TabBar position
         switch tabBarConfig.position {
-        case .left, .right:
+        case 2, 3: // left, right
             stackView.orientation = .vertical
             stackView.distribution = .equalSpacing  // Same as independent implementation
             stackView.spacing = 10  // Same spacing as independent implementation
-        case .top, .bottom:
+        case 0, 1: // bottom, top
             stackView.orientation = .horizontal
             stackView.distribution = .fillEqually
             stackView.spacing = 8  // Standard spacing for horizontal layout
+        default: // fallback to horizontal
+            stackView.orientation = .horizontal
+            stackView.distribution = .fillEqually
+            stackView.spacing = 8
         }
 
         stackView.translatesAutoresizingMaskIntoConstraints = false
 
-        for (index, item) in tabBarConfig.list.enumerated() {
+        let items = tabBarConfig.getItems(appId: appId)
+        for (index, item) in items.enumerated() {
             let button = NSButton()
-            button.title = item.text ?? ""
+            button.title = item.text.toString()
             button.font = NSFont.systemFont(ofSize: 10, weight: .medium)
             button.isBordered = false
             button.wantsLayer = true
@@ -269,17 +285,18 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
             button.translatesAutoresizingMaskIntoConstraints = false
 
             // Set colors from config using the same method as independent implementation
-            let isSelected = item.pagePath == initialPath
+            let isSelected = item.page_path.toString() == initialPath
             button.contentTintColor = getTabColor(selected: isSelected)
 
             // Set icon if available
-            if !item.iconPath.isEmpty {
-                setButtonIcon(button: button, iconPath: item.iconPath, isSelected: isSelected, item: item)
+            let iconPath = item.icon_path.toString()
+            if !iconPath.isEmpty {
+                setButtonIcon(button: button, iconPath: iconPath, isSelected: isSelected, item: item)
             }
 
             // Configure button layout based on TabBar position
             switch tabBarConfig.position {
-            case .left, .right:
+            case 2, 3: // left, right
                 // For vertical TabBar, use same layout as independent implementation
                 button.imagePosition = .imageAbove
                 button.imageScaling = .scaleProportionallyDown
@@ -287,8 +304,13 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
                 // Set fixed height for vertical buttons (same as independent implementation)
                 button.heightAnchor.constraint(equalToConstant: 50).isActive = true
 
-            case .top, .bottom:
+            case 0, 1: // bottom, top
                 // For horizontal TabBar, use standard layout
+                button.imagePosition = .imageAbove
+                button.imageScaling = .scaleProportionallyDown
+                button.font = NSFont.systemFont(ofSize: 10, weight: .medium)
+
+            default: // fallback to horizontal layout
                 button.imagePosition = .imageAbove
                 button.imageScaling = .scaleProportionallyDown
                 button.font = NSFont.systemFont(ofSize: 10, weight: .medium)
@@ -301,7 +323,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
 
         // Set StackView constraints based on TabBar position
         switch tabBarConfig.position {
-        case .left, .right:
+        case 2, 3: // left, right
             // For vertical TabBar, use centerY constraint (same as independent implementation)
             NSLayoutConstraint.activate([
                 stackView.leadingAnchor.constraint(equalTo: tabBar.leadingAnchor, constant: 4), // Reduced inset like independent implementation
@@ -309,8 +331,16 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
                 stackView.centerYAnchor.constraint(equalTo: tabBar.centerYAnchor)
             ])
 
-        case .top, .bottom:
+        case 0, 1: // bottom, top
             // For horizontal TabBar, fill the entire area
+            NSLayoutConstraint.activate([
+                stackView.leadingAnchor.constraint(equalTo: tabBar.leadingAnchor, constant: 16),
+                stackView.trailingAnchor.constraint(equalTo: tabBar.trailingAnchor, constant: -16),
+                stackView.topAnchor.constraint(equalTo: tabBar.topAnchor),
+                stackView.bottomAnchor.constraint(equalTo: tabBar.bottomAnchor)
+            ])
+
+        default: // fallback to horizontal layout
             NSLayoutConstraint.activate([
                 stackView.leadingAnchor.constraint(equalTo: tabBar.leadingAnchor, constant: 16),
                 stackView.trailingAnchor.constraint(equalTo: tabBar.trailingAnchor, constant: -16),
@@ -470,8 +500,9 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     private func findTabIndexByPath(_ targetPath: String) -> Int? {
         guard let tabBarConfig = tabBarConfig else { return nil }
 
-        for (index, item) in tabBarConfig.list.enumerated() {
-            if item.pagePath == targetPath {
+        let items = tabBarConfig.getItems(appId: appId)
+        for (index, item) in items.enumerated() {
+            if item.page_path.toString() == targetPath {
                 return index
             }
         }
@@ -510,9 +541,13 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
                 button.contentTintColor = getTabColor(selected: isSelected)
 
                 // Update icon if needed
-                let configItem = tabBarConfig.list[buttonIndex]
-                if !configItem.iconPath.isEmpty {
-                    setButtonIcon(button: button, iconPath: configItem.iconPath, isSelected: isSelected, item: configItem)
+                let items = tabBarConfig!.getItems(appId: appId)
+                if buttonIndex < items.count {
+                    let configItem = items[buttonIndex]
+                    let iconPath = configItem.icon_path.toString()
+                    if !iconPath.isEmpty {
+                        setButtonIcon(button: button, iconPath: iconPath, isSelected: isSelected, item: configItem)
+                    }
                 }
             }
         }
@@ -520,10 +555,12 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
 
     @objc private func tabButtonTapped(_ sender: NSButton) {
         let index = sender.tag
-        guard index >= 0 && index < tabBarConfig.list.count else { return }
+        guard let tabBarConfig = tabBarConfig else { return }
+        let items = tabBarConfig.getItems(appId: appId)
+        guard index >= 0 && index < items.count else { return }
 
-        let item = tabBarConfig.list[index]
-        switchPage(targetPath: item.pagePath)
+        let item = items[index]
+        switchPage(targetPath: item.page_path.toString())
     }
 
     private func getResourcesPath() -> String {
@@ -533,16 +570,20 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     }
 
     private func getTabColor(selected: Bool) -> NSColor {
+        guard let tabBarConfig = tabBarConfig else {
+            return selected ? NSColor.controlAccentColor : NSColor.secondaryLabelColor
+        }
+
         if selected {
-            if let selectedColor = tabBarConfig.parseColor(tabBarConfig.selectedColor) {
+            if let selectedColor = TabBarHelper.parseColor(tabBarConfig.selected_color.toString()) {
                 return selectedColor
             }
-            return NSColor(hexString: TabBarConfig.DEFAULT_SELECTED_COLOR) ?? NSColor.controlAccentColor
+            return NSColor(hexString: TabBarHelper.DEFAULT_SELECTED_COLOR) ?? NSColor.controlAccentColor
         } else {
-            if let color = tabBarConfig.parseColor(tabBarConfig.color) {
+            if let color = TabBarHelper.parseColor(tabBarConfig.color.toString()) {
                 return color
             }
-            return NSColor(hexString: TabBarConfig.DEFAULT_UNSELECTED_COLOR) ?? NSColor.secondaryLabelColor
+            return NSColor(hexString: TabBarHelper.DEFAULT_UNSELECTED_COLOR) ?? NSColor.secondaryLabelColor
         }
     }
 
@@ -550,7 +591,8 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         var image: NSImage?
 
         // Use selected icon if available and selected
-        let actualIconPath = (isSelected && !item.selectedIconPath.isEmpty) ? item.selectedIconPath : iconPath
+        let selectedIconPath = item.selected_icon_path.toString()
+        let actualIconPath = (isSelected && !selectedIconPath.isEmpty) ? selectedIconPath : iconPath
 
         if actualIconPath.hasPrefix("SF:") {
             // System SF Symbol

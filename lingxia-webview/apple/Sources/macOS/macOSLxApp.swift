@@ -40,8 +40,6 @@ public class macOSLxApp {
         macOSLxAppWindowController.setWindowSize(width: widthPoints, height: heightPoints)
     }
 
-
-
     /// Set window style for all LxApp windows
     /// - Parameter style: Window style to use
     public static func setWindowStyle(_ style: LxAppWindowStyle) {
@@ -107,8 +105,6 @@ public class macOSLxApp {
             )
         }
     }
-
-
 
     internal static func removeWindowController(_ controller: macOSLxAppWindowController) {
         activeWindowControllers.removeAll { $0 === controller }

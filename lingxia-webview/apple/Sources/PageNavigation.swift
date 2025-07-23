@@ -15,12 +15,9 @@ public struct PageNavigationCore {
         )
     }
 
-    /// Gets page configuration from Rust layer
-    public static func getPageConfig(appId: String, path: String) -> NavigationBarConfig? {
-        guard let pageConfigJson = lingxia.getPageConfig(appId, path)?.toString() else {
-            return nil
-        }
-        return NavigationBarConfig.fromJson(pageConfigJson)
+    /// Gets page configuration from Rust layer using typed API
+    public static func getPageConfig(appId: String, path: String) -> NavigationBarConfig {
+        return getNavigationBarConfig(appId, path)
     }
 
     /// Determines if back button should be shown
@@ -31,17 +28,16 @@ public struct PageNavigationCore {
     }
 
     /// Finds tab index by path in tab bar configuration
-    public static func findTabIndexByPath(_ targetPath: String, in config: TabBarConfig) -> Int {
-        return config.list.firstIndex { $0.pagePath == targetPath } ?? -1
+    public static func findTabIndexByPath(_ targetPath: String, in config: TabBarConfig, appId: String) -> Int {
+        let items = config.getItems(appId: appId)
+        return items.firstIndex { $0.page_path.toString() == targetPath } ?? -1
     }
 
     /// Determines navigation bar visibility from page config
     public static func shouldShowNavigationBar(pageConfig: NavigationBarConfig?) -> Bool {
-        if let config = pageConfig {
-            return !config.hidden
-        }
-        // Default behavior: show navigation bar
-        return true
+        // For now, always show navigation bar since we don't have hidden field in RustNavigationBarConfig
+        // The visibility logic should be handled by the caller
+        return pageConfig != nil
     }
 
     /// Gets text color from navigation bar text style
@@ -63,13 +59,13 @@ public struct PageNavigationCore {
 
     /// Extracts page title from configuration
     public static func getPageTitle(from pageConfig: NavigationBarConfig?, defaultTitle: String = "") -> String {
-        return pageConfig?.navigationBarTitleText ?? defaultTitle
+        return pageConfig?.title_text.toString() ?? defaultTitle
     }
 
     /// Determines if this is a tab navigation
-    public static func isTabNavigation(targetPath: String, tabBarConfig: TabBarConfig?) -> Bool {
+    public static func isTabNavigation(targetPath: String, tabBarConfig: TabBarConfig?, appId: String) -> Bool {
         guard let config = tabBarConfig else { return false }
-        return findTabIndexByPath(targetPath, in: config) >= 0
+        return findTabIndexByPath(targetPath, in: config, appId: appId) >= 0
     }
 }
 

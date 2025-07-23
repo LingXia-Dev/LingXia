@@ -7,6 +7,13 @@ import os.log
 @MainActor
 public class iOSPageNavigation {
 
+    /// Check if a path is the initial route for the given app
+    private static func isInitialRoute(appId: String, path: String) -> Bool {
+        let lxappInfo = getLxAppInfo(appId)
+        let initialRoute = lxappInfo.initial_route.toString()
+        return path == initialRoute
+    }
+
     /// Switches to a specific tab
     public static func switchToTab(targetPath: String, in viewController: iOSLxAppViewController) {
         guard let tabBar = viewController.tabBar else { return }
@@ -73,10 +80,13 @@ public class iOSPageNavigation {
         // Determine NavigationBar visibility
         let shouldShowNavigationBar: Bool
         if let config = pageConfig {
-            shouldShowNavigationBar = !config.hidden
+            // Hide navbar if it's custom style OR if it's the initial route
+            let isInitialRoute = isInitialRoute(appId: appId, path: path)
+            shouldShowNavigationBar = config.navigation_style != 1 && !isInitialRoute // 1 = hidden
         } else {
-            // No configuration available - use default behavior (show NavigationBar)
-            shouldShowNavigationBar = true
+            // No configuration available - check if it's initial route
+            let isInitialRoute = isInitialRoute(appId: appId, path: path)
+            shouldShowNavigationBar = !isInitialRoute
         }
 
         if shouldShowNavigationBar {
@@ -86,10 +96,10 @@ public class iOSPageNavigation {
                 return
             }
 
-            let title = pageConfig?.navigationBarTitleText ?? ""
-            let bgColorString = pageConfig?.navigationBarBackgroundColor ?? NavigationBarConfig.DEFAULT_BACKGROUND_COLOR
+            let title = pageConfig?.title_text.toString() ?? ""
+            let bgColorString = pageConfig?.background_color.toString() ?? NavigationBarConfig.DEFAULT_BACKGROUND_COLOR
             let bgColor = UIColor(hexString: bgColorString) ?? UIColor.white
-            let textColor = getTextColor(from: pageConfig?.navigationBarTextStyle)
+            let textColor = getTextColor(from: pageConfig?.text_style.toString())
 
             // Get TabBar config to check if this is a tab root page
             // First try to get from the TabBar instance, then fallback to direct config lookup
@@ -98,8 +108,7 @@ public class iOSPageNavigation {
                 tabBarConfig = existingConfig
             } else {
                 // Fallback: get TabBar config directly from the app configuration
-                let tabBarJson = getTabBarConfig(appId)?.toString()
-                tabBarConfig = TabBarConfig.fromJson(tabBarJson)
+                tabBarConfig = getTabBarConfig(appId)
             }
 
             let showBackButton = shouldShowBackButton(for: path, appId: appId, tabBarConfig: tabBarConfig)

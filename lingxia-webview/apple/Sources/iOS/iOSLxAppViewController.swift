@@ -146,8 +146,7 @@ public class iOSLxAppViewController: UIViewController {
 
         setupNotificationObservers()
 
-        let tabBarJson = getTabBarConfig(appId)?.toString()
-        let tabBarConfig = TabBarConfig.fromJson(tabBarJson)
+        let tabBarConfig = getTabBarConfig(self.appId)
 
         setupRootContainer()
         setupNavigationBar()
@@ -159,13 +158,18 @@ public class iOSLxAppViewController: UIViewController {
         if let tabBarConfig = tabBarConfig {
             setupTabBar(config: tabBarConfig)
 
-            let isTabBarTransparent = TabBarConfig.isTransparent(tabBarConfig.backgroundColor)
+            let isTabBarTransparent = TabBarConfig.isTransparent(tabBarConfig.background_color.toString())
             os_log("iOSLxAppViewController.viewDidLoad: isTabBarTransparent=%{public}@ backgroundColor=%{public}@",
                    log: Self.log, type: .info,
-                   String(isTabBarTransparent), tabBarConfig.backgroundColor?.description ?? "nil")
+                   String(isTabBarTransparent), tabBarConfig.background_color.toString())
         }
 
         addCapsuleButton()
+
+        // Sync TabBar selected state with current path BEFORE setting up WebView
+        if let tabBar = tabBar {
+            tabBar.syncSelectedTabWithCurrentPath(initialPath)
+        }
 
         if currentWebView == nil {
             setupInitialContent(path: initialPath)
@@ -174,11 +178,7 @@ public class iOSLxAppViewController: UIViewController {
                    log: Self.log, type: .info, appId, initialPath)
 
             attachWebViewToUI(webView: currentWebView!)
-        }
-
-        // Sync TabBar selected state with current path
-        if let tabBar = tabBar {
-            tabBar.syncSelectedTabWithCurrentPath(initialPath)
+            updateNavigationBar(appId: appId, path: initialPath, isBackNavigation: false, disableAnimation: true)
         }
 
         // Set complete transparency for TabBar scenarios
@@ -389,10 +389,6 @@ public class iOSLxAppViewController: UIViewController {
             }
         }
 
-        let currentPath = webView.currentPath ?? ""
-        os_log("attachWebViewToUI: Calling updateNavigationBar for appId=%@ path=%@", log: Self.log, type: .info, appId, currentPath)
-        updateNavigationBar(appId: appId, path: currentPath, isBackNavigation: false, disableAnimation: true)
-
         // Ensure UI elements are on top
         bringUIElementsToFront()
     }
@@ -409,7 +405,7 @@ public class iOSLxAppViewController: UIViewController {
 
             // Calculate correct top anchor - same logic as updateLayoutMargins
             let topAnchor: NSLayoutYAxisAnchor
-            let isTopTabBar = tabBar?.config.position == .top
+            let isTopTabBar = tabBar?.config?.position == 1 // 1 = top
             let hasNavigationBar = navigationBar != nil
 
             if isTopTabBar {
@@ -429,10 +425,10 @@ public class iOSLxAppViewController: UIViewController {
 
             // Calculate correct bottom anchor - same logic as updateLayoutMargins
             let bottomAnchor: NSLayoutYAxisAnchor
-            let isBottomTabBar = tabBar?.config.position == .bottom
+            let isBottomTabBar = tabBar?.config?.position == 0 // 0 = bottom
 
             if isBottomTabBar {
-                let isTabBarTransparent = TabBarConfig.isTransparent(tabBar?.config.backgroundColor)
+                let isTabBarTransparent = TabBarConfig.isTransparent(tabBar?.config?.background_color.toString() ?? "")
                 if isTabBarTransparent {
                     // For transparent bottom TabBar, WebView extends to screen bottom (TabBar overlays)
                     bottomAnchor = rootContainer.bottomAnchor
@@ -465,7 +461,7 @@ public class iOSLxAppViewController: UIViewController {
 
             // Calculate correct top anchor - same logic as above
             let topAnchor: NSLayoutYAxisAnchor
-            let isTopTabBar = tabBar?.config.position == .top
+            let isTopTabBar = tabBar?.config?.position == 1 // 1 = top
             let hasNavigationBar = navigationBar != nil
 
             if isTopTabBar {
@@ -483,10 +479,10 @@ public class iOSLxAppViewController: UIViewController {
 
             // Calculate correct bottom anchor - same logic as normal path
             let bottomAnchor: NSLayoutYAxisAnchor
-            let isBottomTabBar = tabBar?.config.position == .bottom
+            let isBottomTabBar = tabBar?.config?.position == 0 // 0 = bottom
 
             if isBottomTabBar {
-                let isTabBarTransparent = TabBarConfig.isTransparent(tabBar?.config.backgroundColor)
+                let isTabBarTransparent = TabBarConfig.isTransparent(tabBar?.config?.background_color.toString() ?? "")
                 if isTabBarTransparent {
                     // For transparent bottom TabBar, WebView extends to screen bottom (TabBar overlays)
                     bottomAnchor = rootContainer.bottomAnchor
@@ -510,7 +506,7 @@ public class iOSLxAppViewController: UIViewController {
             rootContainer.bringSubviewToFront(webView)
 
             // CRITICAL: Apply transparency protection after constraint changes
-            if let tabBar = tabBar, TabBarConfig.isTransparent(tabBar.config.backgroundColor) {
+            if let tabBar = tabBar, TabBarConfig.isTransparent(tabBar.config?.background_color.toString() ?? "") {
                 // Defer transparency application to avoid layout conflicts
                 scheduleTransparencyApplication(for: tabBar, delay: 0.001)
             }
@@ -537,7 +533,7 @@ public class iOSLxAppViewController: UIViewController {
         webView.layoutIfNeeded()
 
         // Apply transparency protection for initial WebView add
-        if let tabBar = tabBar, TabBarConfig.isTransparent(tabBar.config.backgroundColor) {
+        if let tabBar = tabBar, TabBarConfig.isTransparent(tabBar.config?.background_color.toString() ?? "") {
             // Apply transparency after layout pass
             rootContainer.setNeedsLayout()
             rootContainer.layoutIfNeeded()
@@ -553,18 +549,18 @@ public class iOSLxAppViewController: UIViewController {
             return
         }
 
-        let isTabBarTransparent = TabBarConfig.isTransparent(config.backgroundColor)
+        let isTabBarTransparent = TabBarConfig.isTransparent(config.background_color.toString())
 
         // Update system navigation bar transparency based on TabBar transparency and color
         iOSLxAppViewController.updateNavigationBarTransparency(
             viewController: self,
             isTabBarTransparent: isTabBarTransparent,
-            tabBarBackgroundColor: config.parseColor(config.backgroundColor)
+            tabBarBackgroundColor: TabBarConfig.parseColor(config.background_color.toString())
         )
 
         if tabBar == nil {
             tabBar = LingXiaTabBar()
-            tabBar?.setConfig(config: config)
+            tabBar?.setConfig(config: config, appId: self.appId)
 
             tabBar?.setOnTabSelectedListener { [weak self] index, path in
                 self?.switchToTab(targetPath: path)
@@ -578,7 +574,7 @@ public class iOSLxAppViewController: UIViewController {
                 os_log("setupTabBar: TabBar created, transparency will be configured when window is available", log: Self.log, type: .info)
             }
         } else {
-            tabBar?.setConfig(config: config)
+            tabBar?.setConfig(config: config, appId: self.appId)
             if let tabBar = tabBar {
                 // TabBar is already added to view hierarchy, just update layout
                 applyTabBarLayoutParams(tabBar: tabBar, config: config)
@@ -649,7 +645,7 @@ public class iOSLxAppViewController: UIViewController {
     }
 
     private func calculateTopAnchor() -> (NSLayoutYAxisAnchor, CGFloat) {
-        let isTopTabBar = tabBar?.config.position == .top
+        let isTopTabBar = tabBar?.config?.position == 1 // 1 = top
         let hasNavigationBar = navigationBar != nil
 
         if isTopTabBar {
@@ -662,7 +658,7 @@ public class iOSLxAppViewController: UIViewController {
     }
 
     private func calculateBottomAnchor(isTransparent: Bool) -> NSLayoutYAxisAnchor {
-        let isBottomTabBar = tabBar?.config.position == .bottom
+        let isBottomTabBar = tabBar?.config?.position == 0 // 0 = bottom
 
         if isBottomTabBar {
             if isTransparent {
@@ -692,12 +688,17 @@ public class iOSLxAppViewController: UIViewController {
     /// Applies transparency for transparent TabBar scenarios
     /// Combines setCompleteTransparency and forceWebViewTransparency when needed
     private func applyTransparencyIfNeeded(for webView: WKWebView? = nil) {
-        guard let tabBar = tabBar, TabBarConfig.isTransparent(tabBar.config.backgroundColor) else {
+        guard let tabBar = tabBar, TabBarConfig.isTransparent(tabBar.config?.background_color.toString() ?? "") else {
             return
         }
 
         // Apply complete transparency to all UI elements
         setCompleteTransparency()
+
+        // Re-apply navbar configuration after transparency changes
+        // This ensures page-specific navbar colors are preserved
+        let currentPath = webView?.currentPath ?? initialPath
+        updateNavigationBar(appId: appId, path: currentPath, isBackNavigation: false, disableAnimation: true)
 
         // Apply specific WebView transparency if provided
         if let webView = webView {
@@ -706,7 +707,7 @@ public class iOSLxAppViewController: UIViewController {
     }
 
     private func applyTabBarLayoutParams(tabBar: LingXiaTabBar, config: TabBarConfig) {
-        let isVertical = config.position == .left || config.position == .right
+        let isVertical = config.position == 2 || config.position == 3 // 2=left, 3=right
         let defaultTabBarSize = iOSLxAppViewController.DEFAULT_TAB_BAR_SIZE
 
         tabBar.translatesAutoresizingMaskIntoConstraints = false
@@ -718,7 +719,7 @@ public class iOSLxAppViewController: UIViewController {
                 tabBar.bottomAnchor.constraint(equalTo: rootContainer.bottomAnchor)
             ])
 
-            if config.position == .left {
+            if config.position == 2 { // left
                 tabBar.leadingAnchor.constraint(equalTo: rootContainer.leadingAnchor).isActive = true
             } else {
                 tabBar.trailingAnchor.constraint(equalTo: rootContainer.trailingAnchor).isActive = true
@@ -730,7 +731,7 @@ public class iOSLxAppViewController: UIViewController {
                 tabBar.trailingAnchor.constraint(equalTo: rootContainer.trailingAnchor)
             ])
 
-            if config.position == .top {
+            if config.position == 1 { // top
                 // For top position, place TabBar right after the fixed status bar area (48pt)
                 tabBar.topAnchor.constraint(equalTo: rootContainer.topAnchor, constant: iOSLxAppViewController.STATUS_BAR_HEIGHT).isActive = true
             } else {
@@ -894,7 +895,7 @@ public class iOSLxAppViewController: UIViewController {
         let topAnchor: NSLayoutYAxisAnchor
         let topConstant: CGFloat
 
-        let isTopTabBar = tabBar?.config.position == .top
+        let isTopTabBar = tabBar?.config?.position == 1 // 1 = top
         let hasNavigationBar = navigationBar != nil
 
         if isTopTabBar {
@@ -917,11 +918,11 @@ public class iOSLxAppViewController: UIViewController {
         }
 
         let bottomAnchor: NSLayoutYAxisAnchor
-        let isBottomTabBar = tabBar?.config.position == .bottom
+        let isBottomTabBar = tabBar?.config?.position == 0 // 0 = bottom
 
         if isBottomTabBar {
             // Check if TabBar is transparent using the proper method
-            let isTabBarTransparent = TabBarConfig.isTransparent(tabBar?.config.backgroundColor)
+            let isTabBarTransparent = TabBarConfig.isTransparent(tabBar?.config?.background_color.toString() ?? "")
 
             if isTabBarTransparent {
                 // For transparent TabBar, WebView extends to actual screen bottom (including home indicator area)
@@ -938,11 +939,11 @@ public class iOSLxAppViewController: UIViewController {
         let leadingAnchor: NSLayoutXAxisAnchor
         let trailingAnchor: NSLayoutXAxisAnchor
 
-        let isLeftTabBar = tabBar?.config.position == .left
-        let isRightTabBar = tabBar?.config.position == .right
+        let isLeftTabBar = tabBar?.config?.position == 2 // 2 = left
+        let isRightTabBar = tabBar?.config?.position == 3 // 3 = right
 
         if isLeftTabBar {
-            let isTabBarTransparent = TabBarConfig.isTransparent(tabBar?.config.backgroundColor)
+            let isTabBarTransparent = TabBarConfig.isTransparent(tabBar?.config?.background_color.toString() ?? "")
             if isTabBarTransparent {
                 // For transparent left TabBar, WebView extends to screen edge (TabBar overlays)
                 leadingAnchor = rootContainer.leadingAnchor
@@ -952,7 +953,7 @@ public class iOSLxAppViewController: UIViewController {
             }
             trailingAnchor = rootContainer.trailingAnchor
         } else if isRightTabBar {
-            let isTabBarTransparent = TabBarConfig.isTransparent(tabBar?.config.backgroundColor)
+            let isTabBarTransparent = TabBarConfig.isTransparent(tabBar?.config?.background_color.toString() ?? "")
             leadingAnchor = rootContainer.leadingAnchor
             if isTabBarTransparent {
                 // For transparent right TabBar, WebView extends to screen edge (TabBar overlays)
@@ -989,7 +990,7 @@ public class iOSLxAppViewController: UIViewController {
                webViewContainer.frame.size.width, webViewContainer.frame.size.height)
 
         // Force TabBar to be on top with higher z-position for transparent effect
-        if let tabBar = tabBar, TabBarConfig.isTransparent(tabBar.config.backgroundColor) {
+        if let tabBar = tabBar, TabBarConfig.isTransparent(tabBar.config?.background_color.toString() ?? "") {
             tabBar.layer.zPosition = 1000
         }
     }
@@ -1005,7 +1006,7 @@ public class iOSLxAppViewController: UIViewController {
             rootContainer.bringSubviewToFront(tabBar)
 
             // Re-apply transparency after bringSubviewToFront
-            if TabBarConfig.isTransparent(tabBar.config.backgroundColor) {
+            if TabBarConfig.isTransparent(tabBar.config?.background_color.toString() ?? "") {
                 scheduleTransparencyApplication(for: tabBar, delay: 0.01)
             }
         }
