@@ -1,6 +1,7 @@
 use super::app::App;
 use crate::runtime::SimpleAppRuntime;
 use miniapp::AppUiDelegate;
+use miniapp::config::LxAppInfo as CoreLxAppInfo;
 use miniapp::log::LogLevel;
 
 // Constants for TabBarPosition
@@ -97,6 +98,17 @@ mod bridge {
 
 // Re-export the bridge functions for use in other modules
 pub use bridge::{close_lxapp, open_lxapp, switch_page};
+
+// Conversion from core LxAppInfo to FFI LxAppInfo
+impl From<CoreLxAppInfo> for bridge::LxAppInfo {
+    fn from(core_info: CoreLxAppInfo) -> Self {
+        Self {
+            initial_route: core_info.initial_route,
+            app_name: core_info.app_name,
+            debug: core_info.debug,
+        }
+    }
+}
 
 /// Initialize the LxApp system for iOS/macOS
 pub fn lxapp_init(data_dir: &str, cache_dir: &str) -> Option<String> {
@@ -212,13 +224,10 @@ pub fn find_webview(appid: &str, path: &str) -> usize {
 /// Get LxApp information
 pub fn get_lxapp_info(appid: &str) -> bridge::LxAppInfo {
     let miniapp = miniapp::get(appid.to_string());
-    let (initial_route, app_name, debug) = miniapp.get_config().get_lxapp_info();
+    let lxapp_info = miniapp.get_config().get_lxapp_info();
 
-    bridge::LxAppInfo {
-        initial_route,
-        app_name,
-        debug,
-    }
+    // Convert from core LxAppInfo to FFI LxAppInfo
+    lxapp_info.into()
 }
 
 /// Get NavigationBar configuration

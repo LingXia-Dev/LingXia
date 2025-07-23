@@ -6,6 +6,17 @@ pub use tabbar::{TabBarConfig, TabBarPosition};
 mod navbar;
 mod tabbar;
 
+/// LxApp basic information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LxAppInfo {
+    /// Initial route (first page in the pages array)
+    pub initial_route: String,
+    /// LxApp name
+    pub app_name: String,
+    /// Debug mode enabled
+    pub debug: bool,
+}
+
 /// App config from app.json
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[allow(non_snake_case)]
@@ -48,8 +59,12 @@ impl LxAppConfig {
     }
 
     /// Get LxApp basic information for FFI
-    pub fn get_lxapp_info(&self) -> (String, String, bool) {
-        (self.get_initial_route(), self.lxAppName.clone(), self.debug)
+    pub fn get_lxapp_info(&self) -> LxAppInfo {
+        LxAppInfo {
+            initial_route: self.get_initial_route(),
+            app_name: self.lxAppName.clone(),
+            debug: self.debug,
+        }
     }
 
     /// Check if debug mode is enabled
