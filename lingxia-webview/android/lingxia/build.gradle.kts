@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-    namespace = "com.lingxia.miniapp"
+    namespace = "com.lingxia.lxapp"
     compileSdk = 33
 
     defaultConfig {

@@ -1,4 +1,4 @@
-package com.lingxia.miniapp
+package com.lingxia.lxapp
 
 import android.content.Context
 import android.graphics.Canvas
@@ -38,15 +38,7 @@ class LxAppActivity : AppCompatActivity() {
         internal const val DEFAULT_NAV_BAR_HEIGHT_DP = 44
         internal const val DEFAULT_TAB_BAR_SIZE_DP = 56
 
-        private var lastWebView: WeakReference<com.lingxia.miniapp.WebView>? = null
-
-        // Native method for handling mini app closed event
-        @JvmStatic
-        external fun nativeOnLxAppClosed(appId: String): Int
-
-        // Native method for handling back press event
-        @JvmStatic
-        private external fun nativeOnBackPressed(appId: String): Int
+        private var lastWebView: WeakReference<com.lingxia.lxapp.WebView>? = null
 
         // Helper function to get status bar height
         fun getStatusBarHeight(context: Context): Int {
@@ -111,9 +103,6 @@ class LxAppActivity : AppCompatActivity() {
                 }
             }
         }
-
-        @JvmStatic
-        external fun nativeOnPageShow(appId: String, path: String)
     }
 
     private lateinit var appId: String
@@ -126,7 +115,7 @@ class LxAppActivity : AppCompatActivity() {
     private var isDisplayingHomeLxApp: Boolean = false
 
     // Tracks the currently visible WebView instance
-    private var currentWebView: com.lingxia.miniapp.WebView? = null
+    private var currentWebView: com.lingxia.lxapp.WebView? = null
 
     // Broadcast receiver for receiving mini app close requests
     private val closeAppReceiver = object : android.content.BroadcastReceiver() {
@@ -154,7 +143,7 @@ class LxAppActivity : AppCompatActivity() {
                     // Added try-catch and pre-load logic
                     try {
                         // Pre-load existing WebView if available to prevent white screen
-                        val existingWebView = com.lingxia.miniapp.WebView.nativeFindWebView(appId, targetPath)
+                        val existingWebView = NativeApi.findWebView(appId, targetPath)
                         if (existingWebView != null) {
                             existingWebView.visibility = View.VISIBLE
                             existingWebView.resume()
@@ -185,11 +174,11 @@ class LxAppActivity : AppCompatActivity() {
         isDisplayingHomeLxApp = (this.appId == LxApp.HomeLxAppId)
 
         // Start WebView creation in parallel while setting up UI
-        var webViewFuture: java.util.concurrent.Future<Pair<com.lingxia.miniapp.WebView?, NavigationBarConfig?>>? = null
+        var webViewFuture: java.util.concurrent.Future<Pair<com.lingxia.lxapp.WebView?, NavigationBarConfig?>>? = null
         val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
 
         try {
-            webViewFuture = executor.submit<Pair<com.lingxia.miniapp.WebView?, NavigationBarConfig?>> {
+            webViewFuture = executor.submit<Pair<com.lingxia.lxapp.WebView?, NavigationBarConfig?>> {
                 Log.d(TAG, "Starting parallel WebView creation for $appId:$initialPath")
                 findWebViewForPage(appId, initialPath)
             }
@@ -212,7 +201,7 @@ class LxAppActivity : AppCompatActivity() {
         setContentView(rootContainer)
 
         // Get TabBar config and setup UI in parallel
-        val tabBarConfig = LxApp.nativeGetTabBarConfig(appId)
+        val tabBarConfig = NativeApi.getTabBarConfig(appId)
 
         // Configure system UI early but efficiently
         // Use dark status bar icons since we have white navbar background
@@ -270,7 +259,7 @@ class LxAppActivity : AppCompatActivity() {
                 override fun handleOnBackPressed() {
                     try {
                         currentWebView?.visibility = View.VISIBLE
-                        val result = nativeOnBackPressed(appId)
+                        val result = NativeApi.onBackPressed(appId)
                         Log.d(TAG, "Back press handled by native: $result")
                         if (result <= 0) {
                             Log.d(TAG, "No back navigation available, finishing")
@@ -480,8 +469,8 @@ class LxAppActivity : AppCompatActivity() {
     }
 
     // Helper function to find existing WebView instance for a given path/page
-    private fun findWebViewForPage(appId: String, path: String): Pair<com.lingxia.miniapp.WebView?, NavigationBarConfig?> {
-        var webView = com.lingxia.miniapp.WebView.nativeFindWebView(appId, path)
+    private fun findWebViewForPage(appId: String, path: String): Pair<com.lingxia.lxapp.WebView?, NavigationBarConfig?> {
+        var webView = NativeApi.findWebView(appId, path)
 
         if (webView == null) {
             Log.w(TAG, "WebView not found for appId=$appId, path=$path. WebView should be created by Rust layer.")
@@ -497,7 +486,7 @@ class LxAppActivity : AppCompatActivity() {
     }
 
     // Helper function to attach a WebView to the container and resume it
-    private fun attachWebViewToUI(view: com.lingxia.miniapp.WebView?) {
+    private fun attachWebViewToUI(view: com.lingxia.lxapp.WebView?) {
         if (view == null) {
             Log.e(TAG, "attachWebViewToUI called with null view!")
             return
@@ -529,7 +518,7 @@ class LxAppActivity : AppCompatActivity() {
             // Unified onPageShow trigger - called for all WebViews when attached to UI
             if (view.appId != null && view.currentPath != null) {
                 try {
-                    nativeOnPageShow(view.appId!!, view.currentPath!!)
+                    NativeApi.onPageShow(view.appId!!, view.currentPath!!)
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to call nativeOnPageShow: ${e.message}")
                 }
@@ -547,7 +536,7 @@ class LxAppActivity : AppCompatActivity() {
     }
 
     // New method to setup WebView content with an existing WebView
-    private fun setupWebViewContentWithExisting(webView: com.lingxia.miniapp.WebView) {
+    private fun setupWebViewContentWithExisting(webView: com.lingxia.lxapp.WebView) {
         // Attach and resume immediately
         attachWebViewToUI(webView)
 
@@ -770,7 +759,7 @@ class LxAppActivity : AppCompatActivity() {
      * Used only for state synchronization, doesn't affect closure decision
      */
     private fun notifyLxAppClosed() {
-        nativeOnLxAppClosed(appId)
+        NativeApi.onLxAppClosed(appId)
     }
 
     override fun onDestroy() {
@@ -973,7 +962,7 @@ class LxAppActivity : AppCompatActivity() {
                     // Trigger nativeOnPageShow after animation completes
                     if (newWebView.appId != null && newWebView.currentPath != null) {
                         try {
-                            nativeOnPageShow(newWebView.appId!!, newWebView.currentPath!!)
+                            NativeApi.onPageShow(newWebView.appId!!, newWebView.currentPath!!)
                             Log.d(TAG, "navigateToPage: Triggered onPageShow for appId=${newWebView.appId} path=${newWebView.currentPath}")
                         } catch (e: Exception) {
                             Log.e(TAG, "Failed to call nativeOnPageShow in navigateToPage: ${e.message}")

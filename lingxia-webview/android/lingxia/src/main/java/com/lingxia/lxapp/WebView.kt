@@ -1,4 +1,4 @@
-package com.lingxia.miniapp
+package com.lingxia.lxapp
 
 import android.annotation.SuppressLint
 import android.content.Context
@@ -26,7 +26,7 @@ import java.io.ByteArrayInputStream
 
 private const val TAG = "LingXia.WebView"
 
-class LingXiaProxy(webView: com.lingxia.miniapp.WebView) {
+class LingXiaProxy(webView: com.lingxia.lxapp.WebView) {
     private val webViewRef = java.lang.ref.WeakReference(webView)
 
     @android.webkit.JavascriptInterface
@@ -110,9 +110,6 @@ class WebView @JvmOverloads constructor(
         private const val TAG = "WebView"
         private const val ANDROID_MESSAGE_PORT_INIT = "LingXia-port-init"
 
-        @JvmStatic
-        external fun nativeFindWebView(appId: String, path: String): com.lingxia.miniapp.WebView?
-
         /**
          * Helper function to apply proper layout to a view with screen dimensions
          */
@@ -161,18 +158,18 @@ class WebView @JvmOverloads constructor(
             path: String,
             enableJavaScript: Boolean = true,
             enableDomStorage: Boolean = false
-        ): com.lingxia.miniapp.WebView {
+        ): com.lingxia.lxapp.WebView {
             // Ensure we're on the main thread
             if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) {
                 // We're not on the main thread, use Handler to post to main thread
-                var result: com.lingxia.miniapp.WebView? = null
+                var result: com.lingxia.lxapp.WebView? = null
                 var exception: Exception? = null
                 val latch = java.util.concurrent.CountDownLatch(1)
 
                 android.os.Handler(android.os.Looper.getMainLooper()).post {
                     try {
                         val config = WebViewConfig(enableJavaScript, enableDomStorage)
-                        result = com.lingxia.miniapp.WebView(context, config)
+                        result = com.lingxia.lxapp.WebView(context, config)
 
                         // Set appId and path directly
                         result!!.initializeWebView(appId, path)
@@ -200,7 +197,7 @@ class WebView @JvmOverloads constructor(
             }
 
             val config = WebViewConfig(enableJavaScript, enableDomStorage)
-            val webView = com.lingxia.miniapp.WebView(context, config)
+            val webView = com.lingxia.lxapp.WebView(context, config)
 
             // Set appId and path directly
             webView.initializeWebView(appId, path)
@@ -269,7 +266,7 @@ class WebView @JvmOverloads constructor(
                     else -> 4  // Default to INFO
                 }
 
-                nativeOnConsoleMessage(appId ?: return true, currentPath ?: return true, level, message.message())
+                NativeApi.onConsoleMessage(appId ?: return true, currentPath ?: return true, level, message.message())
                 return true
             }
 
@@ -285,7 +282,7 @@ class WebView @JvmOverloads constructor(
                 super.onPageStarted(view, url, favicon)
                 Log.d(TAG, "Page started loading: $url")
                 pageLoaded = false
-                nativeOnPageStarted(appId ?: return, currentPath ?: return)
+                NativeApi.onPageStarted(appId ?: return, currentPath ?: return)
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
@@ -303,7 +300,7 @@ class WebView @JvmOverloads constructor(
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 request?.url?.let { url ->
                     Log.d(TAG, "Should override URL loading: $url")
-                    return nativeShouldOverrideUrlLoading(appId ?: return false, url.toString()) == 1
+                    return NativeApi.shouldOverrideUrlLoading(appId ?: return false, url.toString()) == 1
                 }
                 return false
             }
@@ -332,7 +329,7 @@ class WebView @JvmOverloads constructor(
                 }.toString()
 
                 // Call native to handle request
-                val response = nativeHandleRequest(
+                val response = NativeApi.handleRequest(
                     appId ?: return null,
                     url,
                     method,
@@ -373,7 +370,7 @@ class WebView @JvmOverloads constructor(
             val maxScrollY = computeVerticalScrollRange() - height
 
             // Send scroll event to native layer
-            nativeOnScrollChanged(
+            NativeApi.onScrollChanged(
                 appId!!,
                 currentPath!!,
                 scrollX,
@@ -412,7 +409,7 @@ class WebView @JvmOverloads constructor(
                 override fun onMessage(port: WebMessagePort, message: WebMessage) {
                     val messageData = message.data
                     // Forward message to native layer
-                    nativeHandlePostMessage(appId ?: return, currentPath ?: return, messageData)
+                    NativeApi.handlePostMessage(appId ?: return, currentPath ?: return, messageData)
                 }
             }, Handler(Looper.getMainLooper()))
 
@@ -654,29 +651,8 @@ class WebView @JvmOverloads constructor(
         }
     }
 
-    // Native instance methods
-    private external fun nativeHandlePostMessage(appId: String, path: String, message: String): Int
-    private external fun nativeOnPageStarted(appId: String, path: String): Int
-    private external fun nativeOnPageFinished(appId: String, path: String): Int
-    private external fun nativeShouldOverrideUrlLoading(appId: String, url: String): Int
-    private external fun nativeHandleRequest(
-        appId: String,
-        url: String,
-        method: String,
-        headers: String
-    ): WebResourceResponseData?
-    private external fun nativeOnConsoleMessage(appId: String, path:String, level: Int, message: String):Int
-    private external fun nativeOnScrollChanged(
-        appId: String,
-        path: String,
-        scrollX: Int,
-        scrollY: Int,
-        maxScrollX: Int,
-        maxScrollY: Int
-    ): Int
-
     private fun handlePageFinished(url: String?) {
-        nativeOnPageFinished(appId ?: return, currentPath ?: return)
+        NativeApi.onPageFinished(appId ?: return, currentPath ?: return)
     }
 
     /**

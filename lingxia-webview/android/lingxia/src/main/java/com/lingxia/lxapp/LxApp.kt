@@ -1,13 +1,9 @@
-package com.lingxia.miniapp
+package com.lingxia.lxapp
 
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.util.Log
-
-// Import the top-level action string constants
-import com.lingxia.miniapp.ACTION_SWITCH_PAGE
-import com.lingxia.miniapp.ACTION_CLOSE_MINIAPP
 
 /**
  * Data class representing LxApp information from the native layer
@@ -45,16 +41,12 @@ class LxApp private constructor(private val context: Context) {
         // Cache initial route for an app
         fun cacheInitialRoute(appId: String) {
             if (!initialRouteCache.containsKey(appId)) {
-                val appInfo = nativeGetLxAppInfo(appId)
+                val appInfo = NativeApi.getLxAppInfo(appId)
                 if (appInfo != null) {
                     initialRouteCache[appId] = appInfo.initialRoute
                     Log.d(TAG, "Cached initial route for $appId: ${appInfo.initialRoute}")
                 }
             }
-        }
-
-        init {
-            System.loadLibrary("lingxia")
         }
 
         @JvmStatic
@@ -69,7 +61,7 @@ class LxApp private constructor(private val context: Context) {
             }
             val appContext = context.applicationContext
 
-            val initResultString = nativeOnLxAppInited(
+            val initResultString = NativeApi.onLxAppInited(
                 appContext.filesDir.absolutePath,
                 appContext.cacheDir.absolutePath,
                 appContext.assets
@@ -78,7 +70,7 @@ class LxApp private constructor(private val context: Context) {
             if (initResultString != null) {
                 HomeLxAppId = initResultString
                 // Get initial route and other app info using new API
-                val appInfo = nativeGetLxAppInfo(initResultString)
+                val appInfo = NativeApi.getLxAppInfo(initResultString)
                 if (appInfo != null) {
                     HomeLxAppInitialRoute = appInfo.initialRoute
                     Log.i(TAG, "Native init success. Home App ID: $HomeLxAppId, Initial Route: $HomeLxAppInitialRoute")
@@ -91,33 +83,7 @@ class LxApp private constructor(private val context: Context) {
             }
         }
 
-        @JvmStatic
-        private external fun nativeOnLxAppInited(
-            dataDir: String,
-            cacheDir: String,
-            assetManager: android.content.res.AssetManager
-        ): String?
 
-        @JvmStatic
-        private external fun nativeOnLxAppOpened(appId: String, path: String): Int
-
-        /**
-         * Get LxApp information using new typed API
-         */
-        @JvmStatic
-        external fun nativeGetLxAppInfo(appId: String): LxAppInfo?
-
-        /**
-         * Get the TabBar configuration for a mini app using new typed API
-         */
-        @JvmStatic
-        external fun nativeGetTabBarConfig(appId: String): TabBarConfig?
-
-        /**
-         * Get a specific TabBar item by index using new typed API
-         */
-        @JvmStatic
-        external fun nativeGetTabBarItem(appId: String, index: Int): TabBarItem?
 
         @JvmStatic
         fun getInstance(): LxApp {
@@ -218,12 +184,12 @@ class LxApp private constructor(private val context: Context) {
          * @param path The page path
          */
         @JvmStatic
-        fun createWebView(appId: String, path: String): com.lingxia.miniapp.WebView? {
+        fun createWebView(appId: String, path: String): com.lingxia.lxapp.WebView? {
 
             return try {
                 val context = getInstance().context
 
-                val webView = com.lingxia.miniapp.WebView.createWebView(
+                val webView = com.lingxia.lxapp.WebView.createWebView(
                     context = context,
                     appId = appId,
                     path = path
@@ -248,17 +214,11 @@ class LxApp private constructor(private val context: Context) {
 
             val key = "$appId|$path"
             return pageConfigCache[key] ?: run {
-                val config = nativeGetNavigationBarConfig(appId, path)
+                val config = NativeApi.getNavigationBarConfig(appId, path)
                 if (config != null) pageConfigCache[key] = config
                 config
             }
         }
-
-        /**
-         * Get the navigation bar configuration for a specific page/path
-         */
-        @JvmStatic
-        external fun nativeGetNavigationBarConfig(appId: String, path: String): NavigationBarConfig?
     }
 
     private fun openInNewActivity(appId: String, path: String) {
@@ -275,7 +235,7 @@ class LxApp private constructor(private val context: Context) {
             // This allows Rust layer to prepare resources while activity is starting
             val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
             executor.submit {
-                nativeOnLxAppOpened(appId, path)
+                NativeApi.onLxAppOpened(appId, path)
             }
             executor.shutdown()
             context.startActivity(intent)

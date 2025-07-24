@@ -1,4 +1,4 @@
-package com.lingxia.miniapp
+package com.lingxia.lxapp
 
 import android.content.Context
 import android.graphics.Color

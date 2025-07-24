@@ -63,7 +63,7 @@ pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> j
     // Create global reference to LxApp class for worker threads
     if let Some(jvm) = JAVA_VM.get() {
         if let Ok(mut env) = jvm.attach_current_thread() {
-            if let Ok(local_class) = env.find_class("com/lingxia/miniapp/LxApp") {
+            if let Ok(local_class) = env.find_class("com/lingxia/lxapp/LxApp") {
                 if let Ok(global_class) = env.new_global_ref(local_class) {
                     let _ = MINIAPP_CLASS.set(global_class);
                 }
@@ -113,7 +113,7 @@ pub(crate) fn get_env() -> Result<JNIEnv<'static>, Box<dyn std::error::Error>> {
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_miniapp_LxApp_nativeOnLxAppInited(
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppInited(
     mut env: JNIEnv,
     _class: JClass,
     data_dir: JString,
@@ -154,7 +154,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_LxApp_nativeOnLxAppInited(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeHandlePostMessage(
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_handlePostMessage(
     mut env: JNIEnv,
     _class: JClass,
     appid: JString,
@@ -171,7 +171,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeHandlePostMessage(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnPageStarted(
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onPageStarted(
     mut env: JNIEnv,
     _class: JClass,
     appid: JString,
@@ -186,7 +186,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnPageStarted(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnPageFinished(
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onPageFinished(
     mut env: JNIEnv,
     _class: JClass,
     appid: JString,
@@ -201,7 +201,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnPageFinished(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_miniapp_LxAppActivity_nativeOnPageShow(
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onPageShow(
     mut env: JNIEnv,
     _class: JClass,
     appid: JString,
@@ -215,7 +215,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_LxAppActivity_nativeOnPageShow(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeShouldOverrideUrlLoading(
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_shouldOverrideUrlLoading(
     mut env: JNIEnv,
     _class: JClass,
     _appid: JString,
@@ -239,7 +239,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeShouldOverrideUrlL
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeFindWebView<'a>(
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_findWebView<'a>(
     mut env: JNIEnv<'a>,
     _class: JClass<'a>,
     appid: JString<'a>,
@@ -271,7 +271,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeFindWebView<'a>(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeHandleRequest<'a>(
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_handleRequest<'a>(
     mut env: JNIEnv<'a>,
     _class: JClass<'a>,
     appid: JString<'a>,
@@ -332,7 +332,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeHandleRequest<'a>(
 
 fn create_java_response<'a>(env: &mut JNIEnv<'a>, response: Response<Vec<u8>>) -> JObject<'a> {
     // Try to find the WebResourceResponseData class
-    let response_class = match env.find_class("com/lingxia/miniapp/WebResourceResponseData") {
+    let response_class = match env.find_class("com/lingxia/lxapp/WebResourceResponseData") {
         Ok(c) => c,
         Err(_) => return JObject::null(),
     };
@@ -420,7 +420,7 @@ fn create_java_response<'a>(env: &mut JNIEnv<'a>, response: Response<Vec<u8>>) -
 
 // Function for LxAppActivity class to handle the mini app close event
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_miniapp_LxAppActivity_nativeOnLxAppClosed(
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppClosed(
     mut env: JNIEnv,
     _class: JClass,
     appid: JString,
@@ -433,7 +433,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_LxAppActivity_nativeOnLxAppClose
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnConsoleMessage(
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onConsoleMessage(
     mut env: JNIEnv,
     _class: JClass,
     appid: JString,
@@ -465,7 +465,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnConsoleMessage(
 /// Kotlin side should handle visibility logic based on:
 /// - navigationStyle: 0=Default (show), 1=Custom (hide)
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_miniapp_LxApp_nativeGetNavigationBarConfig<'a>(
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getNavigationBarConfig<'a>(
     mut env: JNIEnv<'a>,
     _class: JClass<'a>,
     appid: JString<'a>,
@@ -492,7 +492,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_LxApp_nativeGetNavigationBarConf
     );
 
     // Find the NavigationBarConfig class
-    let nav_bar_class = match env.find_class("com/lingxia/miniapp/NavigationBarConfig") {
+    let nav_bar_class = match env.find_class("com/lingxia/lxapp/NavigationBarConfig") {
         Ok(c) => c,
         Err(_) => return JObject::null(),
     };
@@ -542,7 +542,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_LxApp_nativeGetNavigationBarConf
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_lingxia_miniapp_LxAppActivity_nativeOnBackPressed(
+pub extern "C" fn Java_com_lingxia_lxapp_NativeApi_onBackPressed(
     mut env: JNIEnv,
     _class: JClass,
     appid: JString,
@@ -554,7 +554,7 @@ pub extern "C" fn Java_com_lingxia_miniapp_LxAppActivity_nativeOnBackPressed(
 
 // Function to notify the Rust layer that a mini app has been opened
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_miniapp_LxApp_nativeOnLxAppOpened(
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppOpened(
     mut env: JNIEnv,
     _class: JClass,
     appid: JString,
@@ -570,7 +570,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_LxApp_nativeOnLxAppOpened(
 
 /// Get LxApp information using new typed API
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_miniapp_LxApp_nativeGetLxAppInfo<'a>(
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getLxAppInfo<'a>(
     mut env: JNIEnv<'a>,
     _class: JClass<'a>,
     appid: JString<'a>,
@@ -590,7 +590,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_LxApp_nativeGetLxAppInfo<'a>(
     );
 
     // Find the LxAppInfo class
-    let lxapp_info_class = match env.find_class("com/lingxia/miniapp/LxAppInfo") {
+    let lxapp_info_class = match env.find_class("com/lingxia/lxapp/LxAppInfo") {
         Ok(c) => c,
         Err(_) => return JObject::null(),
     };
@@ -622,7 +622,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_LxApp_nativeGetLxAppInfo<'a>(
 
 // Get TabBar configuration using new typed API
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_miniapp_LxApp_nativeGetTabBarConfig<'a>(
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getTabBarConfig<'a>(
     mut env: JNIEnv<'a>,
     _class: JClass<'a>,
     appid: JString<'a>,
@@ -649,7 +649,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_LxApp_nativeGetTabBarConfig<'a>(
     );
 
     // Find the TabBarConfig class
-    let tab_bar_class = match env.find_class("com/lingxia/miniapp/TabBarConfig") {
+    let tab_bar_class = match env.find_class("com/lingxia/lxapp/TabBarConfig") {
         Ok(c) => c,
         Err(_) => return JObject::null(),
     };
@@ -737,7 +737,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_LxApp_nativeGetTabBarConfig<'a>(
         .unwrap_or(JObject::null());
 
     // Create Position enum
-    let position_class = match env.find_class("com/lingxia/miniapp/TabBarConfig$Position") {
+    let position_class = match env.find_class("com/lingxia/lxapp/TabBarConfig$Position") {
         Ok(c) => c,
         Err(_) => return JObject::null(),
     };
@@ -752,7 +752,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_LxApp_nativeGetTabBarConfig<'a>(
     let position_enum = match env.get_static_field(
         position_class,
         position_enum_value,
-        "Lcom/lingxia/miniapp/TabBarConfig$Position;",
+        "Lcom/lingxia/lxapp/TabBarConfig$Position;",
     ) {
         Ok(pos) => pos,
         Err(_) => return JObject::null(),
@@ -761,7 +761,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_LxApp_nativeGetTabBarConfig<'a>(
     // Create TabBarConfig object (using Position enum for backward compatibility)
     match env.new_object(
         tab_bar_class,
-        "(Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;Lcom/lingxia/miniapp/TabBarConfig$Position;Ljava/util/List;Z)V",
+        "(Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;Lcom/lingxia/lxapp/TabBarConfig$Position;Ljava/util/List;Z)V",
         &[
             (&bg_color_obj).into(),
             (&selected_color_obj).into(),
@@ -783,7 +783,7 @@ fn create_tab_bar_item<'a>(
     env: &mut JNIEnv<'a>,
     item: &miniapp::config::TabItem,
 ) -> Option<JObject<'a>> {
-    let tab_bar_item_class = env.find_class("com/lingxia/miniapp/TabBarItem").ok()?;
+    let tab_bar_item_class = env.find_class("com/lingxia/lxapp/TabBarItem").ok()?;
 
     let page_path = env.new_string(&item.pagePath).ok()?;
     let text = if let Some(ref text_str) = item.text {
@@ -821,7 +821,7 @@ fn create_tab_bar_item<'a>(
 
 /// Get TabBar item by index
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_miniapp_LxApp_nativeGetTabBarItem<'a>(
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getTabBarItem<'a>(
     mut env: JNIEnv<'a>,
     _class: JClass<'a>,
     appid: JString<'a>,
@@ -865,7 +865,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_LxApp_nativeGetTabBarItem<'a>(
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_lingxia_miniapp_WebView_nativeOnScrollChanged(
+pub extern "C" fn Java_com_lingxia_lxapp_NativeApi_onScrollChanged(
     mut env: JNIEnv,
     _class: JClass,
     appid: JString,
