@@ -4,12 +4,6 @@ use miniapp::AppUiDelegate;
 use miniapp::config::LxAppInfo as CoreLxAppInfo;
 use miniapp::log::LogLevel;
 
-// Constants for TabBarPosition
-pub const TAB_BAR_POSITION_BOTTOM: i32 = 0;
-pub const TAB_BAR_POSITION_TOP: i32 = 1;
-pub const TAB_BAR_POSITION_LEFT: i32 = 2;
-pub const TAB_BAR_POSITION_RIGHT: i32 = 3;
-
 #[swift_bridge::bridge]
 mod bridge {
     // LxApp basic information for Swift
@@ -256,12 +250,7 @@ pub fn get_tab_bar_config(appid: &str) -> Option<bridge::TabBarConfig> {
             selected_color: config.selectedColor,
             background_color: config.backgroundColor,
             border_style: config.borderStyle,
-            position: match config.position {
-                miniapp::config::TabBarPosition::Bottom => TAB_BAR_POSITION_BOTTOM,
-                miniapp::config::TabBarPosition::Top => TAB_BAR_POSITION_TOP,
-                miniapp::config::TabBarPosition::Left => TAB_BAR_POSITION_LEFT,
-                miniapp::config::TabBarPosition::Right => TAB_BAR_POSITION_RIGHT,
-            },
+            position: config.position.to_i32(),
             dimension: config.dimension,
             items_count: config.list.len() as i32,
         })

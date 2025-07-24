@@ -47,8 +47,8 @@ public class macOSPageNavigation {
     }
     
     /// Gets page configuration
-    public static func getPageConfig(appId: String, path: String) -> NavigationBarConfig? {
-        return PageNavigationCore.getPageConfig(appId: appId, path: path)
+    public static func getNavigationBarConfig(appId: String, path: String) -> NavigationBarConfig? {
+        return PageNavigationCore.getNavigationBarConfig(appId: appId, path: path)
     }
     
     /// Handles back button click (keyboard shortcut on macOS)
@@ -126,8 +126,8 @@ extension macOSLxAppViewController {
     }
     
     /// Gets page config (public interface)
-    public func getPageConfig(appId: String, path: String) -> NavigationBarConfig? {
-        return macOSPageNavigation.getPageConfig(appId: appId, path: path)
+    public func getNavigationBarConfig(appId: String, path: String) -> NavigationBarConfig? {
+        return macOSPageNavigation.getNavigationBarConfig(appId: appId, path: path)
     }
     
     /// Handles back button click (public interface)

@@ -146,7 +146,7 @@ class macOSLxAppWindowController: NSWindowController, NSWindowDelegate {
         self.path = path
         guard let navigationBar = self.navigationBar else { return }
 
-        let pageConfig: NavigationBarConfig? = macOSPageNavigation.getPageConfig(appId: appId, path: path)
+        let pageConfig: NavigationBarConfig? = macOSPageNavigation.getNavigationBarConfig(appId: appId, path: path)
         _ = navigationBar.updateWithConfig(
             pageConfig: pageConfig,
             isBackNavigation: false,

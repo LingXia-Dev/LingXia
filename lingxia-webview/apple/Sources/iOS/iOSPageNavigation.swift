@@ -75,7 +75,7 @@ public class iOSPageNavigation {
         disableAnimation: Bool = false,
         in viewController: iOSLxAppViewController
     ) {
-        let pageConfig = getPageConfig(appId: appId, path: path, in: viewController)
+        let pageConfig = getNavigationBarConfig(appId: appId, path: path, in: viewController)
 
         // Determine NavigationBar visibility
         let shouldShowNavigationBar: Bool
@@ -131,8 +131,8 @@ public class iOSPageNavigation {
     }
 
     /// Gets page configuration
-    public static func getPageConfig(appId: String, path: String, in viewController: iOSLxAppViewController) -> NavigationBarConfig? {
-        return PageNavigationCore.getPageConfig(appId: appId, path: path)
+    public static func getNavigationBarConfig(appId: String, path: String, in viewController: iOSLxAppViewController) -> NavigationBarConfig? {
+        return PageNavigationCore.getNavigationBarConfig(appId: appId, path: path)
     }
 
     /// Handles back button click
@@ -193,8 +193,8 @@ extension iOSLxAppViewController {
     }
 
     /// Gets page config (public interface)
-    public func getPageConfig(appId: String, path: String) -> NavigationBarConfig? {
-        return iOSPageNavigation.getPageConfig(appId: appId, path: path, in: self)
+    public func getNavigationBarConfig(appId: String, path: String) -> NavigationBarConfig? {
+        return iOSPageNavigation.getNavigationBarConfig(appId: appId, path: path, in: self)
     }
 
     /// Handles back button click (public interface)

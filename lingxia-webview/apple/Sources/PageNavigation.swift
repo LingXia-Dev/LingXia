@@ -16,7 +16,7 @@ public struct PageNavigationCore {
     }
 
     /// Gets page configuration from Rust layer using typed API
-    public static func getPageConfig(appId: String, path: String) -> NavigationBarConfig {
+    public static func getNavigationBarConfig(appId: String, path: String) -> NavigationBarConfig {
         return getNavigationBarConfig(appId, path)
     }
 
