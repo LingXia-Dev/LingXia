@@ -7,15 +7,55 @@ import os.log
 @MainActor
 public class iOSPageNavigation {
 
-    /// Switches to a specific tab
+    /// Switches to a specific tab - simplified to match Android/Harmony approach
     public static func switchToTab(targetPath: String, in viewController: iOSLxAppViewController) {
         guard let tabBar = viewController.tabBar else { return }
 
         let tabIndex = tabBar.findTabIndexByPath(targetPath)
         guard tabIndex >= 0 else { return }
 
+        // Skip if already on this tab (like Harmony)
+        if viewController.currentWebView?.currentPath == targetPath { return }
+
+        // Update TabBar UI first (like Android)
         tabBar.setSelectedIndex(tabIndex, notifyListener: false)
-        switchPage(targetPath: targetPath, in: viewController)
+
+        let appId = viewController.appId
+
+        // Optimized NavigationBar handling for TabBar switches
+        let pageConfig = PageNavigationCore.getNavigationBarConfig(appId: appId, path: targetPath)
+        let shouldShowNavigationBar = PageNavigationCore.shouldShowNavigationBar(pageConfig: pageConfig)
+        let currentHasNavBar = viewController.navigationBar != nil
+
+        // Only update NavigationBar if state actually changes (key optimization)
+        if currentHasNavBar != shouldShowNavigationBar {
+            if shouldShowNavigationBar {
+                updateNavigationBar(
+                    appId: appId,
+                    path: targetPath,
+                    isBackNavigation: false,
+                    disableAnimation: true,
+                    in: viewController
+                )
+            } else {
+                // Remove NavigationBar if not needed, but use optimized removal
+                viewController.removeNavigationBarForTabSwitch()
+            }
+        } else if shouldShowNavigationBar {
+            // NavigationBar exists and should stay - just update content without animation
+            updateNavigationBar(
+                appId: appId,
+                path: targetPath,
+                isBackNavigation: false,
+                disableAnimation: true,
+                in: viewController
+            )
+        }
+
+        // Setup WebView
+        viewController.setupWebViewWithoutNavBarUpdate(appId: appId, path: targetPath)
+        LxAppCore.setLastActivePath(targetPath, for: appId)
+        viewController.applyTransparencyEffectsAfterTabSwitch()
     }
 
     /// Switches to a specific page
