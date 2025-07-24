@@ -44,7 +44,7 @@ export struct LxAppNavigation {
     try {
       const instance = LxApp.getInstance();
       const homeAppId = instance.getHomeLxAppId();
-      const homeAppPath = instance.getHomeLxAppInitialRoute();
+      const homeAppPath: string | null = homeAppId ? LxApp.initialRouteCache.get(homeAppId) || null : null;
 
       if (homeAppId && homeAppPath) {
         this.homeAppId = homeAppId;

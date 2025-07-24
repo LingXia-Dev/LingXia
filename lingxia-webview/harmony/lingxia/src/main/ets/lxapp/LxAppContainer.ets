@@ -5,8 +5,8 @@ import { common } from '@kit.AbilityKit';
 import { LxApp } from './LxApp';
 import { findWebview, handleScrollChanged, toWebTag, extractWebTag, WebTagParts, setWebViewUiCallback, WebViewInfo } from './WebView';
 import { NavigationBar, type NavigationBarConfig } from './NavigationBar';
-import { TabBar, type TabBarConfig, type TabBarItem } from './TabBar';
-import { getTabBarConfig, getPageConfig, onPageShow } from 'liblingxia.so';
+import { TabBar, TabBarPosition, type TabBarConfig, type TabBarItem } from './TabBar';
+import { getTabBarConfig, getNavigationBarConfig, onPageShow } from 'liblingxia.so';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.Container';
@@ -75,11 +75,9 @@ export struct LxAppContainer {
       this.handleWebViewUiEvent(action, info);
     });
 
-    const pageConfigJson: string | null = getPageConfig(this.appId, this.path);
-    this.pageConfig = this.parsePageConfig(pageConfigJson);
+    this.pageConfig = getNavigationBarConfig(this.appId, this.path);
 
-    const tabBarConfigJson: string | null = getTabBarConfig(this.appId);
-    this.tabBarConfig = this.parseTabBarConfig(tabBarConfigJson);
+    this.tabBarConfig = getTabBarConfig(this.appId);
     this.setInitialSelectedTab();
 
     // Only find WebView for the initial page when actually needed
@@ -154,7 +152,7 @@ export struct LxAppContainer {
     if (this.isTabBarVertical()) {
 
       Row() {
-        if (this.tabBarConfig && this.tabBarConfig.position === 'left') {
+        if (this.tabBarConfig && this.tabBarConfig.position === TabBarPosition.LEFT) {
           this.buildTabBar()
         }
 
@@ -162,7 +160,7 @@ export struct LxAppContainer {
           if (this.shouldShowCapsuleButton()) {
             this.buildCapsuleButton()
           }
-          if (this.pageConfig && !this.pageConfig.hidden) {
+          if (this.pageConfig && this.pageConfig.navigationStyle === 0 && !this.isInitialRoute()) {
             NavigationBar({
               config: this.pageConfig,
               appId: this.appId,
@@ -178,7 +176,7 @@ export struct LxAppContainer {
         .layoutWeight(1)
         .height('100%')
 
-        if (this.tabBarConfig && this.tabBarConfig.position === 'right') {
+        if (this.tabBarConfig && this.tabBarConfig.position === TabBarPosition.RIGHT) {
           this.buildTabBar()
         }
       }
@@ -206,14 +204,14 @@ export struct LxAppContainer {
     } else {
       Stack() {
         Column() {
-          if (this.tabBarConfig && this.tabBarConfig.position === 'top') {
+          if (this.tabBarConfig && this.tabBarConfig.position === TabBarPosition.TOP) {
             this.buildTabBar()
           }
 
           this.buildNavigationBar()
           this.buildWebViewArea()
 
-          if (this.tabBarConfig && (this.tabBarConfig.position === 'bottom' || !this.tabBarConfig.position)) {
+          if (this.tabBarConfig && (this.tabBarConfig.position === TabBarPosition.BOTTOM || !this.tabBarConfig.position)) {
             this.buildTabBar()
           }
         }
@@ -253,7 +251,7 @@ export struct LxAppContainer {
    * Check if TabBar is vertical (left/right position)
    */
   private isTabBarVertical(): boolean {
-    return this.tabBarConfig?.position === 'left' || this.tabBarConfig?.position === 'right';
+    return this.tabBarConfig?.position === TabBarPosition.LEFT || this.tabBarConfig?.position === TabBarPosition.RIGHT;
   }
 
   /**
@@ -294,7 +292,7 @@ export struct LxAppContainer {
    */
   @Builder
   buildNavigationBar(): void {
-    if (this.pageConfig && !this.pageConfig.hidden) {
+    if (this.pageConfig && this.pageConfig.navigationStyle === 0 && !this.isInitialRoute()) {
       NavigationBar({
         config: this.pageConfig,
         appId: this.appId,
@@ -548,11 +546,9 @@ export struct LxAppContainer {
     }
 
     // Update page config
-    const pageConfigJson: string | null = getPageConfig(this.appId, newPath);
-    const newPageConfig = this.parsePageConfig(pageConfigJson);
-    this.pageConfig = newPageConfig;
+    this.pageConfig = getNavigationBarConfig(this.appId, newPath);
 
-    hilog.info(DOMAIN, TAG, `Page config updated: hidden=${newPageConfig.hidden}, title=${newPageConfig.navigationBarTitleText}`);
+
 
     // Update manager state if this is home miniapp
     if (this.isHomeLxApp()) {
@@ -595,8 +591,7 @@ export struct LxAppContainer {
     }
     hilog.info(DOMAIN, TAG, `WebView for page switch ${path}: ${controller ? 'found' : 'not found'}`);
 
-    const pageConfigJson: string | null = getPageConfig(this.appId, path);
-    this.pageConfig = this.parsePageConfig(pageConfigJson);
+    this.pageConfig = getNavigationBarConfig(this.appId, path);
   }
 
   private handleNavigationBack() {
@@ -616,55 +611,7 @@ export struct LxAppContainer {
     }
   }
 
-  /**
-   * Parse page config JSON
-   */
-  private parsePageConfig(json: string | null): NavigationBarConfig {
-    if (!json) {
-      return { hidden: true };
-    }
 
-    try {
-      const config = JSON.parse(json) as Record<string, Object>;
-      return {
-        navigationBarTitleText: (config.navigationBarTitleText as string) || '',
-        navigationBarBackgroundColor: (config.navigationBarBackgroundColor as string) || '#ffffff',
-        navigationBarTextStyle: (config.navigationBarTextStyle as string) || 'black',
-        navigationStyle: (config.navigationStyle as string) || 'default',
-        backgroundColor: (config.backgroundColor as string) || '#ffffff',
-        hidden: (config.hidden as boolean) || false
-      };
-    } catch (error) {
-      hilog.error(DOMAIN, TAG, `Failed to parse page config JSON: ${error}`);
-      return { hidden: true };
-    }
-  }
-
-  /**
-   * Parse TabBar config JSON
-   */
-  private parseTabBarConfig(json: string | null): TabBarConfig | null {
-    if (!json) {
-      return null;
-    }
-
-    try {
-      const config = JSON.parse(json) as Record<string, Object>;
-      const tabConfig: TabBarConfig = {
-        color: (config.color as string) || '#666666',
-        selectedColor: (config.selectedColor as string) || '#1677FF',
-        backgroundColor: (config.backgroundColor as string) || '#ffffff',
-        borderStyle: (config.borderStyle as string) || 'black',
-        position: (config.position as string) || 'bottom',
-        list: (config.list as TabBarItem[]) || []
-      };
-
-      return tabConfig;
-    } catch (error) {
-      hilog.error(DOMAIN, TAG, `Failed to parse TabBar config JSON: ${error}`);
-      return null;
-    }
-  }
 
   /**
    * Build individual WebView component for a specific webTag
@@ -691,5 +638,13 @@ export struct LxAppContainer {
       .width('100%')
       .height('100%')
       .backgroundColor(Color.Transparent)
+  }
+
+  /**
+   * Check if current page is the initial route
+   */
+  private isInitialRoute(): boolean {
+    const cachedInitialRoute = LxApp.initialRouteCache.get(this.appId);
+    return cachedInitialRoute === this.path;
   }
 }

@@ -1,5 +1,13 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 
+// TabBar position constants
+export class TabBarPosition {
+  static readonly BOTTOM: number = 0;
+  static readonly TOP: number = 1;
+  static readonly LEFT: number = 2;
+  static readonly RIGHT: number = 3;
+}
+
 /**
  * TabBar configuration interfaces
  */
@@ -26,7 +34,7 @@ export interface TabBarConfig {
   selectedColor?: string;
   backgroundColor?: string;
   borderStyle?: string;     // Border style: "black" | "white"
-  position?: string;
+  position?: number;        // 0=bottom, 1=top, 2=left, 3=right
   list: TabBarItem[];
 }
 
@@ -240,7 +248,7 @@ export struct TabBar {
    * Check if TabBar is vertical (left/right position)
    */
   private isVertical(): boolean {
-    return this.config.position === 'left' || this.config.position === 'right';
+    return this.config.position === TabBarPosition.LEFT || this.config.position === TabBarPosition.RIGHT;
   }
 
   /**
@@ -279,12 +287,12 @@ export struct TabBar {
    */
   private getVerticalBorder(): BorderOptions {
     const position = this.config.position;
-    if (position === 'left') {
+    if (position === TabBarPosition.LEFT) {
       return {
         width: { right: this.isTransparent() ? 0 : this.getBorderWidth() },
         color: this.getBorderColor()
       };
-    } else if (position === 'right') {
+    } else if (position === TabBarPosition.RIGHT) {
       return {
         width: { left: this.isTransparent() ? 0 : this.getBorderWidth() },
         color: this.getBorderColor()
@@ -316,7 +324,7 @@ export struct TabBar {
     if (!this.isTransparent()) return undefined;
 
     const position = this.config.position;
-    if (position === 'left') {
+    if (position === TabBarPosition.LEFT) {
       return {
         angle: 90, // Left to right
         colors: [
@@ -325,7 +333,7 @@ export struct TabBar {
           ['rgba(255,255,255,0.85)', 1.0]
         ]
       };
-    } else if (position === 'right') {
+    } else if (position === TabBarPosition.RIGHT) {
       return {
         angle: 270, // Right to left
         colors: [

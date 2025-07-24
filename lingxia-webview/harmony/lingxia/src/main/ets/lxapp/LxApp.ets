@@ -8,7 +8,7 @@ import { initNativeBridge, getNativeCallbackFunction } from './NativeBridge';
 import { WebViewManager, toWebTag } from './WebView';
 
 // Import native functions from Rust
-import { lxappInit, onLxappOpened, onLxappClosed, onPageShow } from 'liblingxia.so';
+import { lxappInit, onLxappOpened, onLxappClosed, onPageShow, getLxAppInfo, LxAppInfo } from 'liblingxia.so';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.LxApp';
@@ -42,7 +42,9 @@ export class LxApp {
   public static navigationInstance: NavigationInstance | null = null;
 
   private homeLxAppId: string | null = null;
-  private homeLxAppInitialRoute: string | null = null;
+
+  // Cache for initial routes of all LxApps
+  public static initialRouteCache: Map<string, string> = new Map();
 
   private constructor() {
     hilog.info(DOMAIN, TAG, 'LxApp instance created');
@@ -57,7 +59,7 @@ export class LxApp {
 
   public static initialize(context?: Context, windowStage?: window.WindowStage): void {
     const instance = LxApp.getInstance();
-    if (instance.homeLxAppId !== null && instance.homeLxAppInitialRoute !== null) {
+    if (instance.homeLxAppId !== null) {
       hilog.info(DOMAIN, TAG, 'LxApp already successfully initialized');
       return;
     }
@@ -96,19 +98,13 @@ export class LxApp {
     const result: string | null = lxappInit(callbackFunction, dataDir, cacheDir, resourceManager);
 
     if (result) {
-      hilog.info(DOMAIN, TAG, `LxApp initialized successfully: ${result}`);
+      hilog.info(DOMAIN, TAG, `LxApp initialized successfully with home app: ${result}`);
+      instance.homeLxAppId = result;
 
-      const parts: string[] = result.split(':', 2);
-      if (parts.length === 2) {
-        instance.homeLxAppId = parts[0];
-        instance.homeLxAppInitialRoute = parts[1];
+      // Initialize Web component core: initialize the Browser process and create BrowserContext.
+      webview.WebviewController.initializeWebEngine();
 
-        // Initialize Web component core: initialize the Browser process and create BrowserContext.
-        webview.WebviewController.initializeWebEngine();
-
-      } else {
-        hilog.error(DOMAIN, TAG, `Failed to parse home LxApp details from native (expected 2 parts): ${result}`);
-      }
+      webview.WebviewController.setWebDebuggingAccess(true);
     } else {
       hilog.error(DOMAIN, TAG, 'Failed to get home LxApp details from native init.');
     }
@@ -119,21 +115,12 @@ export class LxApp {
 
     const instance = LxApp.getInstance();
     const homeAppId = instance.getHomeLxAppId();
-    const homeAppPath = instance.getHomeLxAppInitialRoute();
 
-    if (homeAppId && homeAppPath) {
-      // Home LxApp has special handling - it's displayed in the base layer, not in stack
-      hilog.info(DOMAIN, TAG, `Opening home LxApp directly: ${homeAppId}:${homeAppPath}`);
-
-      try {
-        // Just call the native function for home LxApp
-        const result: number = onLxappOpened(homeAppId, homeAppPath);
-        hilog.info(DOMAIN, TAG, `onLxappOpened result for home: ${result}`);
-      } catch (error) {
-        hilog.error(DOMAIN, TAG, `Failed to open home LxApp: ${error}`);
-      }
+    if (homeAppId) {
+      // Use the general openLxApp method with initial route
+      LxApp.openLxApp(homeAppId, ''); // Empty path means use initial route
     } else {
-      hilog.error(DOMAIN, TAG, 'Home LxApp info not available for openHomeLxApp');
+      hilog.error(DOMAIN, TAG, 'Home LxApp ID not available for openHomeLxApp');
     }
   }
 
@@ -165,22 +152,44 @@ export class LxApp {
 
   public static openLxApp(appId: string, path: string): void {
     hilog.info(DOMAIN, TAG, `openLxApp called: ${appId}:${path}`);
+
+    // Ensure initial route is cached for this app (if not already cached)
+    if (!LxApp.initialRouteCache.has(appId)) {
+      const appInfo: LxAppInfo | null = getLxAppInfo(appId);
+      if (appInfo) {
+        LxApp.initialRouteCache.set(appId, appInfo.initialRoute);
+      }
+    }
+
+    // If path is empty, get the initial route from native
+    let actualPath = path;
+    if (!path || path === '') {
+      const cachedInitialRoute = LxApp.initialRouteCache.get(appId);
+      if (cachedInitialRoute) {
+        actualPath = cachedInitialRoute;
+        hilog.info(DOMAIN, TAG, `Using cached initial route for ${appId}: ${actualPath}`);
+      } else {
+        hilog.error(DOMAIN, TAG, `Could not get initial route for ${appId}`);
+        return;
+      }
+    }
+
     if (LxApp.navigationInstance) {
       hilog.info(DOMAIN, TAG, 'Using LxAppNavigation for openLxApp');
-      LxApp.navigationInstance.openLxApp(appId, path);
+      LxApp.navigationInstance.openLxApp(appId, actualPath);
       return;
     }
 
     if (!LxApp.managerInstance) {
       hilog.info(DOMAIN, TAG, 'No LxApp instance ready, waiting...');
       setTimeout(() => {
-        LxApp.openLxApp(appId, path);
+        LxApp.openLxApp(appId, actualPath);
       }, 50);
       return;
     }
 
     const instance = LxApp.getInstance();
-    const isHomeLxApp = (appId === instance.getHomeLxAppId() && path === instance.getHomeLxAppInitialRoute());
+    const isHomeLxApp = (appId === instance.getHomeLxAppId());
 
     if (isHomeLxApp && LxApp.managerInstance.isReady) {
       hilog.info(DOMAIN, TAG, 'Home LxApp already loaded');
@@ -188,7 +197,7 @@ export class LxApp {
     }
 
     hilog.info(DOMAIN, TAG, 'Using LxAppManager for openLxApp (legacy)');
-    LxApp.managerInstance.doOpenLxApp(appId, path, isHomeLxApp);
+    LxApp.managerInstance.doOpenLxApp(appId, actualPath, isHomeLxApp);
   }
 
   /**
@@ -215,12 +224,7 @@ export class LxApp {
     return this.homeLxAppId;
   }
 
-  /**
-   * Get Home LxApp initial route
-   */
-  public getHomeLxAppInitialRoute(): string | null {
-    return this.homeLxAppInitialRoute;
-  }
+
 
   /**
    * Set manager instance (called by LxAppManager)
@@ -375,6 +379,14 @@ struct LxAppManager {
     hilog.info(DOMAIN, TAG, `Opening LxApp: ${appId}:${path}, isHome: ${isHomeLxApp}`);
 
     try {
+      // Get and cache LxApp info
+      const appInfo: LxAppInfo | null = getLxAppInfo(appId);
+      if (appInfo) {
+        hilog.info(DOMAIN, TAG, `LxApp info: ${appInfo.appName}, initial route: ${appInfo.initialRoute}`);
+        // Cache initial route for later comparison
+        this.cacheInitialRoute(appId, appInfo.initialRoute);
+      }
+
       const result: number = onLxappOpened(appId, path);
       hilog.info(DOMAIN, TAG, `Native onLxappOpened result: ${result}`);
 
@@ -470,5 +482,28 @@ struct LxAppManager {
 
     hilog.warn(DOMAIN, TAG, `LxApp ${appId} not currently active`);
     return false;
+  }
+
+  /**
+   * Cache initial route for a LxApp
+   */
+  private cacheInitialRoute(appId: string, initialRoute: string): void {
+    LxApp.initialRouteCache.set(appId, initialRoute);
+    hilog.info(DOMAIN, TAG, `Cached initial route for ${appId}: ${initialRoute}`);
+  }
+
+  /**
+   * Check if a path is the initial route for a LxApp
+   */
+  public static isInitialRoute(appId: string, path: string): boolean {
+    const initialRoute = LxApp.initialRouteCache.get(appId);
+    return initialRoute === path;
+  }
+
+  /**
+   * Get cached initial route for a LxApp
+   */
+  public static getInitialRoute(appId: string): string | null {
+    return LxApp.initialRouteCache.get(appId) || null;
   }
 }

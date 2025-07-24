@@ -5,12 +5,11 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
  * Contains all page-level configuration including navigation bar settings
  */
 export interface NavigationBarConfig {
-  navigationBarTitleText?: string;
-  navigationBarBackgroundColor?: string;
-  navigationBarTextStyle?: string;  // "black" | "white"
-  navigationStyle?: string;         // "default" | "custom"
-  backgroundColor?: string;         // Page background color
-  hidden?: boolean;
+  navigationBarTitleText: string;
+  navigationBarBackgroundColor: string;
+  navigationBarTextStyle: string;  // "black" | "white"
+  navigationStyle: number;         // 0=default, 1=custom
+  backgroundColor?: string;        // Page background color (local extension)
 }
 
 const DOMAIN = 0x0000;
@@ -30,14 +29,14 @@ export struct NavigationBar {
 
   build() {
     Stack() {
-      // Background extends to status bar (only if NavigationBar is not hidden)
-      if (!this.config.hidden) {
+      // Background extends to status bar (only if NavigationBar is default style)
+      if (this.config.navigationStyle === 0) {
         Column()
           .width('100%')
           .height('100%')
           .backgroundColor(this.getBackgroundColor())
       } else if (this.showCapsuleButton) {
-        // When hidden but showing capsule, create transparent background to cover status bar
+        // When custom style but showing capsule, create transparent background to cover status bar
         Column()
           .width('100%')
           .height('100%')
@@ -46,8 +45,8 @@ export struct NavigationBar {
 
       // NavigationBar content area (below status bar) - use Stack for absolute positioning
       Stack() {
-        // Left side: Back button (only if NavigationBar is not hidden)
-        if (!this.config.hidden && this.shouldShowBackButton()) {
+        // Left side: Back button (only if NavigationBar is default style)
+        if (this.config.navigationStyle === 0 && this.shouldShowBackButton()) {
           Row() {
             Button() {
               Text('←')
@@ -69,8 +68,8 @@ export struct NavigationBar {
           .height('100%')
         }
 
-        // Center: Title (absolutely centered, only if NavigationBar is not hidden)
-        if (!this.config.hidden) {
+        // Center: Title (absolutely centered, only if NavigationBar is default style)
+        if (this.config.navigationStyle === 0) {
           Text(this.config.navigationBarTitleText || '')
             .fontSize(18)
             .fontWeight(FontWeight.Medium)
@@ -87,7 +86,7 @@ export struct NavigationBar {
           }
           .width('100%')
           .height('100%')
-        } else if (!this.config.hidden && this.shouldShowMenuButton()) {
+        } else if (this.config.navigationStyle === 0 && this.shouldShowMenuButton()) {
           Row() {
             Blank()
             Button() {
