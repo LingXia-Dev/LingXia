@@ -831,16 +831,42 @@ class LxAppActivity : AppCompatActivity() {
         // Configure navigation bar for the TARGET tab page using the helper (disable animation)
         updateNavigationBar(pageConfig, isBackNavigation = false, disableAnimation = true)
 
-        // Use unified attachment logic - this will trigger nativeOnPageShow
-        attachWebViewToUI(targetWebView)
+        // Keep all WebViews in container, manage visibility and lifecycle events properly
+        val allWebViews = mutableListOf<com.lingxia.lxapp.WebView>()
+        for (i in 0 until webViewContainer.childCount) {
+            val child = webViewContainer.getChildAt(i)
+            if (child is com.lingxia.lxapp.WebView) {
+                allWebViews.add(child)
+            }
+        }
 
-        // Pause and hide the previous WebView
-        if (previousWebView != null && previousWebView != targetWebView) {
-            previousWebView.pause()
-            previousWebView.visibility = View.GONE
-            if (previousWebView.parent == webViewContainer) {
-                webViewContainer.removeView(previousWebView)
-                Log.d(TAG, "Removed previous tab WebView: ${previousWebView.currentPath}")
+        // Check if target WebView is already attached to container
+        val isAlreadyAttached = allWebViews.contains(targetWebView)
+
+        if (!isAlreadyAttached) {
+            // First time showing this WebView - use attachWebViewToUI for proper lifecycle
+            attachWebViewToUI(targetWebView)
+        } else {
+            // WebView already attached, make visible, resume, and trigger onPageShow
+            targetWebView.visibility = View.VISIBLE
+            targetWebView.resume()
+
+            // Always trigger onPageShow when WebView becomes visible to user (tab switching)
+            if (targetWebView.appId != null && targetWebView.currentPath != null) {
+                try {
+                    NativeApi.onPageShow(targetWebView.appId!!, targetWebView.currentPath!!)
+                    Log.d(TAG, "Tab switching triggered onPageShow for: ${targetWebView.currentPath}")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to call nativeOnPageShow during tab switch: ${e.message}")
+                }
+            }
+        }
+
+        // Hide all other WebViews without removing them (prevent flickering)
+        allWebViews.forEach { webView ->
+            if (webView != targetWebView) {
+                webView.pause()
+                webView.visibility = View.GONE
             }
         }
     }
