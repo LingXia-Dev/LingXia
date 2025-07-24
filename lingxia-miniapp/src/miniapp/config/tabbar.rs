@@ -63,6 +63,18 @@ pub enum TabBarPosition {
     Right,
 }
 
+impl TabBarPosition {
+    /// Convert to i32 for FFI
+    pub fn to_i32(&self) -> i32 {
+        match self {
+            TabBarPosition::Bottom => 0,
+            TabBarPosition::Top => 1,
+            TabBarPosition::Left => 2,
+            TabBarPosition::Right => 3,
+        }
+    }
+}
+
 /// Tab item in the tab bar
 ///
 /// Each tab item represents a button in the tabbar with text and icons.
