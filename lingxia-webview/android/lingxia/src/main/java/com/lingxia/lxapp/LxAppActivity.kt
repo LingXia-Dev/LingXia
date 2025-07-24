@@ -36,7 +36,6 @@ class LxAppActivity : AppCompatActivity() {
         const val EXTRA_APP_ID = "appId"
         const val EXTRA_PATH = "path"
         internal const val DEFAULT_NAV_BAR_HEIGHT_DP = 44
-        internal const val DEFAULT_TAB_BAR_SIZE_DP = 56
 
         private var lastWebView: WeakReference<com.lingxia.lxapp.WebView>? = null
 
@@ -355,8 +354,9 @@ class LxAppActivity : AppCompatActivity() {
     private fun applyTabBarLayoutParams(tabBar: TabBar, config: TabBarConfig) {
         val isVertical = config.position == TabBarConfig.Position.LEFT || config.position == TabBarConfig.Position.RIGHT
         val density = resources.displayMetrics.density
-        val defaultTabBarSizePx = (DEFAULT_TAB_BAR_SIZE_DP * density).toInt()
-        val verticalWidthPx = (DEFAULT_TAB_BAR_SIZE_DP * 1.0f * density).toInt()
+        // Use configured dimension (Rust provides default value)
+        val tabBarDimension = config.dimension ?: 64 // Fallback just in case
+        val tabBarSizePx = (tabBarDimension * density).toInt()
 
         val tabBarBgColor = config.backgroundColor
         val isTabBarTransparent = tabBarBgColor == Color.TRANSPARENT ||
@@ -364,7 +364,7 @@ class LxAppActivity : AppCompatActivity() {
 
         (tabBar.layoutParams as? FrameLayout.LayoutParams)?.apply {
             if (isVertical) {
-                width = verticalWidthPx
+                width = tabBarSizePx
                 height = ViewGroup.LayoutParams.MATCH_PARENT
                 gravity = when (config.position) {
                     TabBarConfig.Position.LEFT -> Gravity.START
@@ -373,7 +373,7 @@ class LxAppActivity : AppCompatActivity() {
                 }
             } else {
                 width = ViewGroup.LayoutParams.MATCH_PARENT
-                height = defaultTabBarSizePx
+                height = tabBarSizePx
                 gravity = when (config.position) {
                     TabBarConfig.Position.TOP -> Gravity.TOP
                     TabBarConfig.Position.BOTTOM -> Gravity.BOTTOM
@@ -390,7 +390,7 @@ class LxAppActivity : AppCompatActivity() {
         } ?: run {
             val newLayoutParams = FrameLayout.LayoutParams(0,0)
             if (isVertical) {
-                newLayoutParams.width = verticalWidthPx
+                newLayoutParams.width = tabBarSizePx
                 newLayoutParams.height = ViewGroup.LayoutParams.MATCH_PARENT
                 newLayoutParams.gravity = when (config.position) {
                     TabBarConfig.Position.LEFT -> Gravity.START
@@ -399,7 +399,7 @@ class LxAppActivity : AppCompatActivity() {
                 }
             } else {
                 newLayoutParams.width = ViewGroup.LayoutParams.MATCH_PARENT
-                newLayoutParams.height = defaultTabBarSizePx
+                newLayoutParams.height = tabBarSizePx
                 newLayoutParams.gravity = when (config.position) {
                     TabBarConfig.Position.TOP -> Gravity.TOP
                     TabBarConfig.Position.BOTTOM -> Gravity.BOTTOM

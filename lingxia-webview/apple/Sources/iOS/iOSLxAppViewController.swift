@@ -14,7 +14,6 @@ public class iOSLxAppViewController: UIViewController {
     public static let EXTRA_APP_ID = "appId"
     public static let EXTRA_PATH = "path"
     internal static let DEFAULT_NAV_BAR_HEIGHT: CGFloat = 44
-    internal static let DEFAULT_TAB_BAR_SIZE: CGFloat = 64
     internal static let STATUS_BAR_HEIGHT: CGFloat = 48
     // NavigationBar title and capsule button vertical position (status bar + margin)
     internal static let NAV_TITLE_VERTICAL_POSITION: CGFloat = 48 + 8
@@ -675,13 +674,13 @@ public class iOSLxAppViewController: UIViewController {
 
     private func applyTabBarLayoutParams(tabBar: LingXiaTabBar, config: TabBarConfig) {
         let isVertical = config.position == 2 || config.position == 3 // 2=left, 3=right
-        let defaultTabBarSize = iOSLxAppViewController.DEFAULT_TAB_BAR_SIZE
+        let tabBarSize = CGFloat(config.dimension) // Use configured dimension instead of default
 
         tabBar.translatesAutoresizingMaskIntoConstraints = false
 
         if isVertical {
             NSLayoutConstraint.activate([
-                tabBar.widthAnchor.constraint(equalToConstant: defaultTabBarSize),
+                tabBar.widthAnchor.constraint(equalToConstant: tabBarSize),
                 tabBar.topAnchor.constraint(equalTo: rootContainer.topAnchor, constant: iOSLxAppViewController.STATUS_BAR_HEIGHT),
                 tabBar.bottomAnchor.constraint(equalTo: rootContainer.bottomAnchor)
             ])
@@ -693,7 +692,7 @@ public class iOSLxAppViewController: UIViewController {
             }
         } else {
             NSLayoutConstraint.activate([
-                tabBar.heightAnchor.constraint(equalToConstant: defaultTabBarSize),
+                tabBar.heightAnchor.constraint(equalToConstant: tabBarSize),
                 tabBar.leadingAnchor.constraint(equalTo: rootContainer.leadingAnchor),
                 tabBar.trailingAnchor.constraint(equalTo: rootContainer.trailingAnchor)
             ])

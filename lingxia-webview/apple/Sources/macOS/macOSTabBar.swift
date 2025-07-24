@@ -85,12 +85,27 @@ public class macOSTabBar: NSView, EnhancedTabBarProtocol, TabBarUIDelegate {
 
         itemsContainer.translatesAutoresizingMaskIntoConstraints = false
 
-        NSLayoutConstraint.activate([
+        // Apply dimension configuration
+        let isVertical = controller.isVertical()
+        let dimension = controller.getEffectiveHeight() // This returns the configured dimension
+
+        var constraints = [
             itemsContainer.topAnchor.constraint(equalTo: topAnchor),
             itemsContainer.leadingAnchor.constraint(equalTo: leadingAnchor),
             itemsContainer.trailingAnchor.constraint(equalTo: trailingAnchor),
             itemsContainer.bottomAnchor.constraint(equalTo: bottomAnchor)
-        ])
+        ]
+
+        // Apply dimension constraints based on orientation
+        if isVertical {
+            // For vertical TabBar, apply width dimension
+            constraints.append(widthAnchor.constraint(equalToConstant: dimension))
+        } else {
+            // For horizontal TabBar, apply height dimension
+            constraints.append(heightAnchor.constraint(equalToConstant: dimension))
+        }
+
+        NSLayoutConstraint.activate(constraints)
     }
 
     private func setItems(_ newItems: [TabBarItem]) {

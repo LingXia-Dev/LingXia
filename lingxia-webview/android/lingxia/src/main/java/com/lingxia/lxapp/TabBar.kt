@@ -93,7 +93,6 @@ private val badgeDrawables = mutableMapOf<View, BadgeDrawable>()
 class TabBar(context: Context) : LinearLayout(context) {
     companion object {
         private const val TAG = "LingXia.TabBar"
-        private const val DEFAULT_TAB_BAR_SIZE_DP = 56
         private const val VERTICAL_TAB_BAR_WIDTH_MULTIPLIER = 1.0f
         // Constants for vertical TabBar item styling
         private const val VERTICAL_ITEM_MAX_HEIGHT_DP = 70
@@ -149,17 +148,20 @@ class TabBar(context: Context) : LinearLayout(context) {
 
             val isVerticalTabBar = currentConfig.position.value == TabBarConfig.POSITION_LEFT || currentConfig.position.value == TabBarConfig.POSITION_RIGHT
 
+            // Use configured dimension (Rust provides default value, but Android FFI might be nullable)
+            val tabBarDimension = currentConfig.dimension ?: 64 // Fallback to default
+
             if (isVerticalTabBar) {
                 // For vertical TabBar, itemsContainer has fixed width and wraps content height
                 layoutParams = LayoutParams(
-                    (DEFAULT_TAB_BAR_SIZE_DP * VERTICAL_TAB_BAR_WIDTH_MULTIPLIER * resources.displayMetrics.density).toInt(),
+                    (tabBarDimension * VERTICAL_TAB_BAR_WIDTH_MULTIPLIER * resources.displayMetrics.density).toInt(),
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 )
             } else {
                 // For horizontal TabBar, itemsContainer matches parent width and has fixed height
                 layoutParams = LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
-                    (DEFAULT_TAB_BAR_SIZE_DP * resources.displayMetrics.density).toInt()
+                    (tabBarDimension * resources.displayMetrics.density).toInt()
                 )
             }
 
@@ -190,17 +192,20 @@ class TabBar(context: Context) : LinearLayout(context) {
 
             val isVerticalTabBar = currentConfig.position.value == TabBarConfig.POSITION_LEFT || currentConfig.position.value == TabBarConfig.POSITION_RIGHT
 
+            // Use configured dimension (Rust provides default value, but Android FFI might be nullable)
+            val tabBarDimension = currentConfig.dimension ?: 64 // Fallback to default
+
             if (isVerticalTabBar) {
                 // For vertical TabBar, itemsContainer has fixed width and wraps content height
                 layoutParams = LayoutParams(
-                    (DEFAULT_TAB_BAR_SIZE_DP * VERTICAL_TAB_BAR_WIDTH_MULTIPLIER * resources.displayMetrics.density).toInt(),
+                    (tabBarDimension * VERTICAL_TAB_BAR_WIDTH_MULTIPLIER * resources.displayMetrics.density).toInt(),
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 )
             } else {
                 // For horizontal TabBar, itemsContainer matches parent width and has fixed height
                 layoutParams = LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
-                    (DEFAULT_TAB_BAR_SIZE_DP * resources.displayMetrics.density).toInt()
+                    (tabBarDimension * resources.displayMetrics.density).toInt()
                 )
             }
 

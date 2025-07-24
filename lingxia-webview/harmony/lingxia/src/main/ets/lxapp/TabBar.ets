@@ -35,6 +35,7 @@ export interface TabBarConfig {
   backgroundColor?: string;
   borderStyle?: string;     // Border style: "black" | "white"
   position?: number;        // 0=bottom, 1=top, 2=left, 3=right
+  dimension?: number;       // Dimension in dp: height for top/bottom, width for left/right
   list: TabBarItem[];
 }
 
@@ -241,7 +242,8 @@ export struct TabBar {
    * Get tab bar size (height for horizontal, width for vertical)
    */
   private getTabBarSize(): number {
-    return this.isVertical() ? 64 : 72; // Narrower width for left/right position
+    // Use configured dimension (Rust provides default value, but TypeScript interface might be undefined)
+    return this.config.dimension ?? (this.isVertical() ? 64 : 72);
   }
 
   /**
