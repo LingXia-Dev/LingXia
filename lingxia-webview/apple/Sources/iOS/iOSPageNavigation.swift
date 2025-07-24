@@ -7,13 +7,6 @@ import os.log
 @MainActor
 public class iOSPageNavigation {
 
-    /// Check if a path is the initial route for the given app
-    private static func isInitialRoute(appId: String, path: String) -> Bool {
-        let lxappInfo = getLxAppInfo(appId)
-        let initialRoute = lxappInfo.initial_route.toString()
-        return path == initialRoute
-    }
-
     /// Switches to a specific tab
     public static func switchToTab(targetPath: String, in viewController: iOSLxAppViewController) {
         guard let tabBar = viewController.tabBar else { return }
@@ -75,19 +68,10 @@ public class iOSPageNavigation {
         disableAnimation: Bool = false,
         in viewController: iOSLxAppViewController
     ) {
-        let pageConfig = getNavigationBarConfig(appId: appId, path: path, in: viewController)
+        let pageConfig = PageNavigationCore.getNavigationBarConfig(appId: appId, path: path)
 
-        // Determine NavigationBar visibility
-        let shouldShowNavigationBar: Bool
-        if let config = pageConfig {
-            // Hide navbar if it's custom style OR if it's the initial route
-            let isInitialRoute = isInitialRoute(appId: appId, path: path)
-            shouldShowNavigationBar = config.navigation_style != 1 && !isInitialRoute // 1 = hidden
-        } else {
-            // No configuration available - check if it's initial route
-            let isInitialRoute = isInitialRoute(appId: appId, path: path)
-            shouldShowNavigationBar = !isInitialRoute
-        }
+        // Determine NavigationBar visibility using PageNavigationCore
+        let shouldShowNavigationBar = PageNavigationCore.shouldShowNavigationBar(pageConfig: pageConfig)
 
         if shouldShowNavigationBar {
             viewController.ensureNavigationBarExists()
@@ -130,10 +114,7 @@ public class iOSPageNavigation {
         }
     }
 
-    /// Gets page configuration
-    public static func getNavigationBarConfig(appId: String, path: String, in viewController: iOSLxAppViewController) -> NavigationBarConfig? {
-        return PageNavigationCore.getNavigationBarConfig(appId: appId, path: path)
-    }
+
 
     /// Handles back button click
     public static func handleBackButtonClick(in viewController: iOSLxAppViewController) {
@@ -194,7 +175,7 @@ extension iOSLxAppViewController {
 
     /// Gets page config (public interface)
     public func getNavigationBarConfig(appId: String, path: String) -> NavigationBarConfig? {
-        return iOSPageNavigation.getNavigationBarConfig(appId: appId, path: path, in: self)
+        return PageNavigationCore.getNavigationBarConfig(appId: appId, path: path)
     }
 
     /// Handles back button click (public interface)

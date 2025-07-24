@@ -4,6 +4,19 @@ import Foundation
 @MainActor
 public struct PageNavigationCore {
 
+    /// Cache for initial routes of each app
+    private static var initialRouteCache: [String: String] = [:]
+
+    /// Cache initial route for an app (called explicitly when app opens)
+    public static func cacheInitialRoute(appId: String, initialRoute: String) {
+        initialRouteCache[appId] = initialRoute
+    }
+
+    /// Check if a path is the initial route using cached data
+    public static func isInitialRoute(appId: String, path: String) -> Bool {
+        return initialRouteCache[appId] == path
+    }
+
     /// Parses navigation parameters from target path
     public static func parseNavigationParams(from targetPath: String) -> NavigationParams {
         let isReplace = targetPath.contains("?replace=true")
@@ -16,8 +29,13 @@ public struct PageNavigationCore {
     }
 
     /// Gets page configuration from Rust layer using typed API
-    public static func getNavigationBarConfig(appId: String, path: String) -> NavigationBarConfig {
-        return getNavigationBarConfig(appId, path)
+    /// Returns nil if this is an initial route (should hide navbar)
+    public static func getNavigationBarConfig(appId: String, path: String) -> NavigationBarConfig? {
+        // Check if this is the initial route - if so, return nil to hide navbar
+        if isInitialRoute(appId: appId, path: path) {
+            return nil
+        }
+        return lingxia.getNavigationBarConfig(appId, path)
     }
 
     /// Determines if back button should be shown
@@ -35,9 +53,10 @@ public struct PageNavigationCore {
 
     /// Determines navigation bar visibility from page config
     public static func shouldShowNavigationBar(pageConfig: NavigationBarConfig?) -> Bool {
-        // For now, always show navigation bar since we don't have hidden field in RustNavigationBarConfig
-        // The visibility logic should be handled by the caller
-        return pageConfig != nil
+        // If pageConfig is nil, it means this is an initial route - hide navbar
+        // If pageConfig exists, check navigation_style (1 = hidden)
+        guard let config = pageConfig else { return false }
+        return config.navigation_style != 1
     }
 
     /// Gets text color from navigation bar text style
