@@ -56,6 +56,11 @@ public class iOSLxApp {
 
     /// Opens a mini app in a new view controller
     public static func openLxApp(appId: String, path: String) {
+        // Get app info and cache initial route for navigation logic
+        let lxappInfo = getLxAppInfo(appId)
+        let initialRoute = lxappInfo.initial_route.toString()
+        PageNavigationCore.cacheInitialRoute(appId: appId, initialRoute: initialRoute)
+
         let instance = getInstance()
         instance.openInNewViewController(appId: appId, path: path)
     }

@@ -1,57 +1,21 @@
 import Foundation
 
-/// Configuration data class for the NavigationBar
-public struct NavigationBarConfig {
-    let hidden: Bool
-    let navigationBarBackgroundColor: String?
-    let navigationBarTextStyle: String?
-    let navigationBarTitleText: String?
-    let navigationStyle: String?
+/// Extension to add helper methods to swift-bridge generated NavigationBarConfig
+extension NavigationBarConfig {
+    /// Check if navbar should be hidden based on style and route
+    public func shouldBeHidden(appId: String, path: String) -> Bool {
+        // Get initial route to determine if navbar should be hidden
+        let lxappInfo = getLxAppInfo(appId)
+        let initialRoute = lxappInfo.initial_route.toString()
 
+        // Hide navbar if it's custom style OR if it's the initial route
+        return navigation_style == 1 || path == initialRoute // 1 = NAVIGATION_STYLE_CUSTOM
+    }
+
+    // Helper constants
     static let DEFAULT_BACKGROUND_COLOR = "#FFFFFF"
     static let DEFAULT_TEXT_COLOR = "#000000"
     static let DEFAULT_HEIGHT: CGFloat = 44
-
-    public init(
-        hidden: Bool = false,
-        navigationBarBackgroundColor: String? = nil,
-        navigationBarTextStyle: String? = nil,
-        navigationBarTitleText: String? = nil,
-        navigationStyle: String? = nil
-    ) {
-        self.hidden = hidden
-        self.navigationBarBackgroundColor = navigationBarBackgroundColor
-        self.navigationBarTextStyle = navigationBarTextStyle
-        self.navigationBarTitleText = navigationBarTitleText
-        self.navigationStyle = navigationStyle
-    }
-
-    public static func fromJson(_ json: String?) -> NavigationBarConfig? {
-        guard let json = json, !json.isEmpty else {
-            return NavigationBarConfig(hidden: true)
-        }
-
-        do {
-            guard let data = json.data(using: .utf8),
-                  let jsonObject = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                return NavigationBarConfig(hidden: true)
-            }
-
-            let navStyle = jsonObject["navigationStyle"] as? String ?? "default"
-            let isHidden = (jsonObject["hidden"] as? Bool ?? false) || navStyle == "custom"
-            let textStyle = jsonObject["navigationBarTextStyle"] as? String ?? "black"
-
-            return NavigationBarConfig(
-                hidden: isHidden,
-                navigationBarBackgroundColor: jsonObject["navigationBarBackgroundColor"] as? String,
-                navigationBarTextStyle: textStyle,
-                navigationBarTitleText: jsonObject["navigationBarTitleText"] as? String ?? "",
-                navigationStyle: navStyle
-            )
-        } catch {
-            return NavigationBarConfig(hidden: true)
-        }
-    }
 }
 
 /// Protocol for navigation bar implementations

@@ -1,4 +1,4 @@
-package com.lingxia.miniapp
+package com.lingxia.lxapp
 
 import android.content.Context
 import android.graphics.Color
@@ -13,7 +13,6 @@ import java.io.File
 import android.util.Log
 import android.widget.FrameLayout
 import android.view.ContextThemeWrapper
-import org.json.JSONObject
 import com.google.android.material.badge.BadgeDrawable
 import com.google.android.material.badge.BadgeUtils
 
@@ -22,94 +21,49 @@ data class TabBarConfig(
     val selectedColor: Int? = null,              // Selected item color, default tech blue
     val color: Int? = null,                      // Unselected item color, default gray
     val borderStyle: Int? = null,                // Top border color, default light gray
-    val height: Int? = null,                     // Height in dp, default 56dp
-    val position: Position = Position.BOTTOM,    // Position, default bottom
+    val dimension: Int? = null,                  // Dimension in dp: height for top/bottom, width for left/right
+    val position: Position = Position.BOTTOM,    // Position: 0=Bottom, 1=Top, 2=Left, 3=Right
     val list: List<TabBarItem> = emptyList(),   // List of tab items
     val visible: Boolean = true                  // TabBar visibility, default true
 ) {
-    enum class Position {
-        TOP, BOTTOM, LEFT, RIGHT
-    }
-
     companion object {
+        // ⚠️  CRITICAL: FFI Alignment Required ⚠️
+        // These values MUST match exactly with Rust TabBarPosition enum!
+        // See: lingxia-miniapp/src/miniapp/config/tabbar.rs
+
+        /** Tab bar at the bottom (default) - MUST match Rust Bottom = 0 */
+        const val POSITION_BOTTOM = 0
+
+        /** Tab bar at the top - MUST match Rust Top = 1 */
+        const val POSITION_TOP = 1
+
+        /** Tab bar at the left - MUST match Rust Left = 2 */
+        const val POSITION_LEFT = 2
+
+        /** Tab bar at the right - MUST match Rust Right = 3 */
+        const val POSITION_RIGHT = 3
+
         // Modern UI color scheme
         val DEFAULT_SELECTED_COLOR = Color.parseColor("#1677FF")    // Primary blue
         val DEFAULT_UNSELECTED_COLOR = Color.parseColor("#666666")  // Dark gray
         val DEFAULT_BORDER_COLOR = Color.parseColor("#F0F0F0")      // Light gray
         val DEFAULT_BACKGROUND_COLOR = Color.WHITE                   // White
+    }
 
-        fun fromJson(json: String?): TabBarConfig? {
-            if (json.isNullOrEmpty()) return null
+    // Position enum for backward compatibility, with int values matching constants
+    enum class Position(val value: Int) {
+        BOTTOM(POSITION_BOTTOM),
+        TOP(POSITION_TOP),
+        LEFT(POSITION_LEFT),
+        RIGHT(POSITION_RIGHT);
 
-            return try {
-                val jsonObject = JSONObject(json)
-                val list = jsonObject.optJSONArray("list")?.let { array ->
-                    (0 until array.length()).mapNotNull { i ->
-                        try {
-                            val item = array.getJSONObject(i)
-                            val finalText = if (item.has("text")) {
-                                val rawText = item.optString("text")
-                                if (rawText.isNullOrEmpty() || rawText == "null") null else rawText
-                            } else null
-
-                            TabBarItem(
-                                pagePath = item.optString("pagePath", ""),
-                                text = finalText,
-                                iconPath = item.optString("iconPath", ""),
-                                selectedIconPath = item.optString("selectedIconPath", ""),
-                                selected = item.optBoolean("selected", false),
-                                visible = item.optBoolean("visible", true)
-                            )
-                        } catch (e: Exception) {
-                            null
-                        }
-                    }
-                } ?: emptyList()
-
-                TabBarConfig(
-                    backgroundColor = if (jsonObject.has("backgroundColor")) parseColor(jsonObject.optString("backgroundColor"), null) else null,
-                    selectedColor = if (jsonObject.has("selectedColor")) parseColor(jsonObject.optString("selectedColor"), null) else null,
-                    color = if (jsonObject.has("color")) parseColor(jsonObject.optString("color"), null) else null,
-                    borderStyle = if (jsonObject.has("borderStyle")) parseColor(jsonObject.optString("borderStyle"), null) else null,
-                    position = when (jsonObject.optString("position", "bottom").lowercase()) {
-                        "top" -> Position.TOP
-                        "left" -> Position.LEFT
-                        "right" -> Position.RIGHT
-                        else -> Position.BOTTOM
-                    },
-                    list = list
-                )
-            } catch (e: Exception) {
-                Log.e("TabBar", "Error parsing TabBar config: ${e.message}")
-                null
+        companion object {
+            fun fromInt(value: Int): Position = when(value) {
+                POSITION_TOP -> TOP
+                POSITION_LEFT -> LEFT
+                POSITION_RIGHT -> RIGHT
+                else -> BOTTOM // default
             }
-        }
-
-        private fun parseColor(colorString: String?, defaultColor: Int?): Int? {
-            if (colorString.isNullOrEmpty()) return defaultColor
-            return try {
-                when {
-                    colorString.equals("transparent", ignoreCase = true) -> Color.TRANSPARENT
-                    colorString.startsWith("rgba(") -> parseRgbaColor(colorString)
-                    else -> Color.parseColor(colorString)
-                }
-            } catch (e: Exception) {
-                defaultColor
-            }
-        }
-
-        private fun parseRgbaColor(rgba: String): Int {
-            val values = rgba.removePrefix("rgba(").removeSuffix(")")
-                .split(",").map { it.trim() }
-
-            if (values.size != 4) throw IllegalArgumentException("Invalid rgba format")
-
-            val r = values[0].toInt().coerceIn(0, 255)
-            val g = values[1].toInt().coerceIn(0, 255)
-            val b = values[2].toInt().coerceIn(0, 255)
-            val a = (values[3].toFloat() * 255).toInt().coerceIn(0, 255)
-
-            return Color.argb(a, r, g, b)
         }
     }
 }
@@ -175,8 +129,8 @@ class TabBar(context: Context) : LinearLayout(context) {
     private var onVisibilityChangedListener: ((Boolean) -> Unit)? = null
 
     init {
-        orientation = when (config.position) {
-            TabBarConfig.Position.LEFT, TabBarConfig.Position.RIGHT -> HORIZONTAL
+        orientation = when (config.position.value) {
+            TabBarConfig.POSITION_LEFT, TabBarConfig.POSITION_RIGHT -> HORIZONTAL
             else -> VERTICAL
         }
         visibility = View.GONE
@@ -188,12 +142,12 @@ class TabBar(context: Context) : LinearLayout(context) {
 
     private fun updateItemsContainerLayout(currentConfig: TabBarConfig) {
         itemsContainer?.apply {
-            orientation = when (currentConfig.position) {
-                TabBarConfig.Position.LEFT, TabBarConfig.Position.RIGHT -> VERTICAL
+            orientation = when (currentConfig.position.value) {
+                TabBarConfig.POSITION_LEFT, TabBarConfig.POSITION_RIGHT -> VERTICAL
                 else -> HORIZONTAL
             }
 
-            val isVerticalTabBar = currentConfig.position == TabBarConfig.Position.LEFT || currentConfig.position == TabBarConfig.Position.RIGHT
+            val isVerticalTabBar = currentConfig.position.value == TabBarConfig.POSITION_LEFT || currentConfig.position.value == TabBarConfig.POSITION_RIGHT
 
             if (isVerticalTabBar) {
                 // For vertical TabBar, itemsContainer has fixed width and wraps content height
@@ -229,12 +183,12 @@ class TabBar(context: Context) : LinearLayout(context) {
 
     private fun updateItemsContainerLayoutOnly(currentConfig: TabBarConfig) {
         itemsContainer?.apply {
-            orientation = when (currentConfig.position) {
-                TabBarConfig.Position.LEFT, TabBarConfig.Position.RIGHT -> VERTICAL
+            orientation = when (currentConfig.position.value) {
+                TabBarConfig.POSITION_LEFT, TabBarConfig.POSITION_RIGHT -> VERTICAL
                 else -> HORIZONTAL
             }
 
-            val isVerticalTabBar = currentConfig.position == TabBarConfig.Position.LEFT || currentConfig.position == TabBarConfig.Position.RIGHT
+            val isVerticalTabBar = currentConfig.position.value == TabBarConfig.POSITION_LEFT || currentConfig.position.value == TabBarConfig.POSITION_RIGHT
 
             if (isVerticalTabBar) {
                 // For vertical TabBar, itemsContainer has fixed width and wraps content height
@@ -265,8 +219,8 @@ class TabBar(context: Context) : LinearLayout(context) {
         val isBackgroundTransparent = config.backgroundColor == Color.TRANSPARENT ||
                                      (config.backgroundColor != null && Color.alpha(config.backgroundColor!!) < 255)
 
-        when (config.position) {
-            TabBarConfig.Position.TOP -> {
+        when (config.position.value) {
+            TabBarConfig.POSITION_TOP -> {
                 addView(itemsContainer)
                 if (!isBackgroundTransparent) {
                     addView(View(context).apply {
@@ -278,7 +232,7 @@ class TabBar(context: Context) : LinearLayout(context) {
                     })
                 }
             }
-            TabBarConfig.Position.BOTTOM -> {
+            TabBarConfig.POSITION_BOTTOM -> {
                 if (!isBackgroundTransparent) {
                     addView(View(context).apply {
                         setBackgroundColor(config.borderStyle ?: TabBarConfig.DEFAULT_BORDER_COLOR)
@@ -290,7 +244,7 @@ class TabBar(context: Context) : LinearLayout(context) {
                 }
                 addView(itemsContainer)
             }
-            TabBarConfig.Position.LEFT -> {
+            TabBarConfig.POSITION_LEFT -> {
                 orientation = HORIZONTAL
                 addView(itemsContainer)
                 if (!isBackgroundTransparent) {
@@ -303,7 +257,7 @@ class TabBar(context: Context) : LinearLayout(context) {
                     })
                 }
             }
-            TabBarConfig.Position.RIGHT -> {
+            TabBarConfig.POSITION_RIGHT -> {
                 orientation = HORIZONTAL
                 if (!isBackgroundTransparent) {
                     addView(View(context).apply {
@@ -333,7 +287,7 @@ class TabBar(context: Context) : LinearLayout(context) {
         val tabBarBackgroundColor = when {
             config.backgroundColor == Color.TRANSPARENT -> Color.TRANSPARENT
             config.backgroundColor != null -> config.backgroundColor!!
-            config.position == TabBarConfig.Position.LEFT || config.position == TabBarConfig.Position.RIGHT -> VERTICAL_TABBAR_BACKGROUND_COLOR
+            config.position.value == TabBarConfig.POSITION_LEFT || config.position.value == TabBarConfig.POSITION_RIGHT -> VERTICAL_TABBAR_BACKGROUND_COLOR
             else -> TabBarConfig.DEFAULT_BACKGROUND_COLOR
         }
 
@@ -354,7 +308,7 @@ class TabBar(context: Context) : LinearLayout(context) {
             tabViews.clear()
 
             if (items.isNotEmpty()) {
-                val isVertical = config.position == TabBarConfig.Position.LEFT || config.position == TabBarConfig.Position.RIGHT
+                val isVertical = config.position.value == TabBarConfig.POSITION_LEFT || config.position.value == TabBarConfig.POSITION_RIGHT
 
                 // Get the size of the space for each item
                 val itemSize = if (isVertical) {
@@ -455,7 +409,7 @@ class TabBar(context: Context) : LinearLayout(context) {
     }
 
     private fun createTabView(item: TabBarItem, config: TabBarConfig, isSelected: Boolean): LinearLayout {
-        val isVertical = config.position == TabBarConfig.Position.LEFT || config.position == TabBarConfig.Position.RIGHT
+        val isVertical = config.position.value == TabBarConfig.POSITION_LEFT || config.position.value == TabBarConfig.POSITION_RIGHT
 
         return LinearLayout(context).apply {
             orientation = VERTICAL

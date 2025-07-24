@@ -24,7 +24,7 @@ public class macOSTabBar: NSView, EnhancedTabBarProtocol, TabBarUIDelegate {
     private func setupUI() {
         isHidden = true
         wantsLayer = true
-        layer?.backgroundColor = NSColor(hexString: TabBarConfig.DEFAULT_BACKGROUND_COLOR)?.cgColor ?? NSColor.white.cgColor
+        layer?.backgroundColor = NSColor(hexString: TabBarHelper.DEFAULT_BACKGROUND_COLOR)?.cgColor ?? NSColor.white.cgColor
         uiDelegate = self
 
         itemsContainer = NSStackView()
@@ -133,13 +133,14 @@ public class macOSTabBar: NSView, EnhancedTabBarProtocol, TabBarUIDelegate {
         iconView.translatesAutoresizingMaskIntoConstraints = false
 
         // Create label
-        let label = NSTextField(labelWithString: item.text ?? "")
+        let labelText = item.text.toString()
+        let label = NSTextField(labelWithString: labelText)
         label.font = NSFont.systemFont(ofSize: TabBarConstants.ITEM_FONT_SIZE)
-        label.alignment = .center
+        label.alignment = NSTextAlignment.center
         label.translatesAutoresizingMaskIntoConstraints = false
 
         stackView.addArrangedSubview(iconView)
-        if item.text != nil && !item.text!.isEmpty {
+        if !labelText.isEmpty {
             stackView.addArrangedSubview(label)
         }
 
@@ -181,11 +182,11 @@ public class macOSTabBar: NSView, EnhancedTabBarProtocol, TabBarUIDelegate {
         guard let stackView = tabView.subviews.first as? NSStackView,
               let iconView = stackView.arrangedSubviews.first as? NSImageView else { return }
 
-        let config = controller.getConfig()
+        guard let config = controller.getConfig() else { return }
 
         // Update colors
-        let selectedColor = config.parseColor(config.selectedColor) ?? NSColor(hexString: TabBarConfig.DEFAULT_SELECTED_COLOR) ?? NSColor.systemBlue
-        let normalColor = config.parseColor(config.color) ?? NSColor(hexString: TabBarConfig.DEFAULT_UNSELECTED_COLOR) ?? NSColor.gray
+        let selectedColor = TabBarHelper.parseColor(config.selected_color.toString()) ?? NSColor(hexString: TabBarHelper.DEFAULT_SELECTED_COLOR) ?? NSColor.systemBlue
+        let normalColor = TabBarHelper.parseColor(config.color.toString()) ?? NSColor(hexString: TabBarHelper.DEFAULT_UNSELECTED_COLOR) ?? NSColor.gray
 
         let color = isSelected ? selectedColor : normalColor
 
@@ -196,7 +197,7 @@ public class macOSTabBar: NSView, EnhancedTabBarProtocol, TabBarUIDelegate {
         }
 
         // Load appropriate icon
-        let iconPath = isSelected ? item.selectedIconPath : item.iconPath
+        let iconPath = isSelected ? item.selected_icon_path.toString() : item.icon_path.toString()
         loadIcon(for: iconView, iconPath: iconPath, tintColor: color)
     }
 

@@ -10,6 +10,7 @@ Page({
   },
 
   onReady: function () {
+    console.log("[Home] Page ready");
     // Add callback directly to App
     app.ipReadyCallback = (ip) => {
       console.log("IP received in Page:", ip);
@@ -27,11 +28,11 @@ Page({
   },
 
   onUnload: function () {
-    console.log("onUnload: -----");
+    console.log("[Home] Page unloaded");
   },
 
   onLoad: async function () {
-    console.log("onLoad: ------");
+    console.log("[Home] Page loaded");
     console.log(lx.env.USER_CACHE_PATH);
     let testFile = `${lx.env.USER_CACHE_PATH}/testFile`;
     const testContent = "Hello, World!";
@@ -49,7 +50,7 @@ Page({
   },
 
   onHide: function () {
-    console.log("onHide: ------");
+    console.log("[Home] Page hidden");
   },
 
   onShow: function () {

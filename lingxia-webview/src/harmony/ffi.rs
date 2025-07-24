@@ -9,6 +9,61 @@ use napi_ohos::bindgen_prelude::Object;
 use napi_ohos::bindgen_prelude::*;
 use ohos_hilog::Config;
 
+/// NAPI-compatible LxApp information
+#[napi(object)]
+pub struct LxAppInfo {
+    pub initial_route: String,
+    pub app_name: String,
+    pub debug: bool,
+}
+
+/// NAPI-compatible TabBar configuration
+#[napi(object)]
+pub struct TabBarConfig {
+    pub color: String,
+    pub selected_color: String,
+    pub background_color: String,
+    pub border_style: String,
+    pub list: Vec<TabItem>,
+    pub position: TabBarPosition,
+    pub dimension: i32,
+}
+
+/// NAPI-compatible TabBar position enum
+#[napi]
+pub enum TabBarPosition {
+    Bottom = 0,
+    Top = 1,
+    Left = 2,
+    Right = 3,
+}
+
+/// NAPI-compatible TabItem
+#[napi(object)]
+pub struct TabItem {
+    pub page_path: String,
+    pub text: Option<String>,
+    pub icon_path: Option<String>,
+    pub selected_icon_path: Option<String>,
+    pub selected: bool,
+}
+
+/// NAPI-compatible Navigation style enum
+#[napi]
+pub enum NavigationStyle {
+    Default = 0,
+    Custom = 1,
+}
+
+/// NAPI-compatible NavigationBar configuration
+#[napi(object)]
+pub struct NavigationBarConfig {
+    pub navigation_bar_background_color: String,
+    pub navigation_bar_text_style: String,
+    pub navigation_bar_title_text: String,
+    pub navigation_style: NavigationStyle,
+}
+
 #[napi]
 pub fn lxapp_init(
     env: Env,
@@ -101,39 +156,80 @@ pub fn lxapp_init(
 
     // Initialize global runtime and pass to miniapp::init
     let runtime = SimpleAppRuntime::init(app);
-    let final_init_details = miniapp::init(runtime);
 
-    // Format and return the result
-    match final_init_details {
-        Some((home_app_id, initial_route)) => {
-            let combined_details = format!("{}:{}", home_app_id, initial_route);
-            log::info!("LxApp initialization successful: {}", combined_details);
-            Some(combined_details)
-        }
-        None => {
-            log::error!("Failed to obtain LxApp home app details during initialization.");
-            None
-        }
-    }
+    // Return only the home app ID
+    let home_app_id = miniapp::init(runtime)?;
+    Some(home_app_id)
+}
+
+/// Get LxApp information
+#[napi]
+fn get_lx_app_info(appid: String) -> Option<LxAppInfo> {
+    let miniapp = miniapp::get(appid);
+    let app_config = miniapp.get_config();
+    let rust_app_info = app_config.get_lxapp_info();
+
+    Some(LxAppInfo {
+        initial_route: rust_app_info.initial_route,
+        app_name: rust_app_info.app_name,
+        debug: rust_app_info.debug,
+    })
 }
 
 /// Get tab bar configuration
 #[napi]
-fn get_tab_bar_config(appid: String) -> Option<String> {
+fn get_tab_bar_config(appid: String) -> Option<TabBarConfig> {
     let miniapp = miniapp::get(appid);
-    match miniapp.get_tab_bar_config() {
-        Ok(config) => Some(config),
-        Err(_) => None,
-    }
+    let app_config = miniapp.get_config();
+    let rust_config = app_config.get_tab_bar_config(&miniapp)?;
+
+    let position = match rust_config.position {
+        miniapp::config::TabBarPosition::Bottom => TabBarPosition::Bottom,
+        miniapp::config::TabBarPosition::Top => TabBarPosition::Top,
+        miniapp::config::TabBarPosition::Left => TabBarPosition::Left,
+        miniapp::config::TabBarPosition::Right => TabBarPosition::Right,
+    };
+
+    let list = rust_config
+        .list
+        .into_iter()
+        .map(|item| TabItem {
+            page_path: item.pagePath,
+            text: item.text,
+            icon_path: item.iconPath,
+            selected_icon_path: item.selectedIconPath,
+            selected: item.selected,
+        })
+        .collect();
+
+    Some(TabBarConfig {
+        color: rust_config.color,
+        selected_color: rust_config.selectedColor,
+        background_color: rust_config.backgroundColor,
+        border_style: rust_config.borderStyle,
+        list,
+        position,
+        dimension: rust_config.dimension,
+    })
 }
 
-/// Get page configuration
+/// Get page navigation bar configuration
 #[napi]
-pub fn get_page_config(appid: String, path: String) -> Option<String> {
+pub fn get_navigation_bar_config(appid: String, path: String) -> NavigationBarConfig {
     let miniapp = miniapp::get(appid);
-    match miniapp.get_page_config(&path) {
-        Ok(config) => Some(config),
-        Err(_) => None,
+    let app_config = miniapp.get_config();
+    let rust_config = app_config.get_nav_bar_config(&miniapp, &path);
+
+    let navigation_style = match rust_config.navigationStyle {
+        miniapp::config::NavigationStyle::Default => NavigationStyle::Default,
+        miniapp::config::NavigationStyle::Custom => NavigationStyle::Custom,
+    };
+
+    NavigationBarConfig {
+        navigation_bar_background_color: rust_config.navigationBarBackgroundColor,
+        navigation_bar_text_style: rust_config.navigationBarTextStyle,
+        navigation_bar_title_text: rust_config.navigationBarTitleText,
+        navigation_style,
     }
 }
 

@@ -1,55 +1,10 @@
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-/// Example TabBar Configuration
-/// ```json
-/// {
-///     "backgroundColor": "#ffffff",
-///     "selectedColor": "#1677ff",
-///     "color": "#666666",
-///     "borderStyle": "#f0f0f0",
-///     "list": [
-///         {
-///             "text": "首页",
-///             "pagePath": "pages/home/index.html",
-///             "iconPath": "imags/home.png",
-///             "selectedIconPath": "imags/home_selected.png",
-///             "selected": true
-///         },
-///         {
-///             "text": "消息",
-///             "pagePath": "pages/message/index.html",
-///             "iconPath": "imags/message.png",
-///             "selectedIconPath": "imags/message_selected.png"
-///         },
-///         {
-///             "text": "我的",
-///             "pagePath": "pages/profile/index.html",
-///             "iconPath": "imags/profile.png",
-///             "selectedIconPath": "imags/profile_selected.png"
-///         }
-///     ]
-/// }
-/// ```
-///
-/// ## Tab Item Requirements
-/// The `list` field must contain:
-/// - At least 2 items (minimum)
-/// - At most 5 items (maximum)
-///
-/// If these requirements are not met, the tabbar will not be displayed.
-///
-/// ## Icon Path Format
-/// The `iconPath` and `selectedIconPath` fields in TabItem should always be relative paths
-/// in the configuration file, relative to the lxapp's own directory. For example:
-///
-/// - `imags/tabbar/home.png` - Icon in the imags directory of the lxapp
-///
-/// The framework automatically converts these relative paths to absolute paths when needed
-/// by prepending the lxapp's directory path.
+/// TabBar configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[allow(non_snake_case)]
-pub(crate) struct TabBar {
+pub struct TabBarConfig {
     /// Text color (color value)
     #[serde(default)]
     pub color: String,
@@ -73,28 +28,19 @@ pub(crate) struct TabBar {
     #[serde(default)]
     pub position: TabBarPosition,
 
-    /// Whether the tab bar is on a transparent background
-    #[serde(default)]
-    pub custom: bool,
-
-    /// TabBar visibility, default true
-    #[serde(default = "default_visible")]
-    pub visible: bool,
-
-    /// Height in dp, default is platform specific
-    #[serde(default)]
-    pub height: Option<i32>,
+    /// Dimension in dp (height for bottom/top, width for left/right)
+    #[serde(default = "default_dimension")]
+    pub dimension: i32,
 }
 
 fn default_background_color() -> String {
     "#ffffff".to_string()
 }
 
-fn default_visible() -> bool {
-    true
+fn default_dimension() -> i32 {
+    64 // Default height/width in dp
 }
 
-/// TODO: detect device type, only allow bottom and top for mobile device
 /// Position of the tab bar
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
@@ -115,6 +61,18 @@ pub enum TabBarPosition {
     /// Tab bar at the right
     #[serde(rename = "right")]
     Right,
+}
+
+impl TabBarPosition {
+    /// Convert to i32 for FFI
+    pub fn to_i32(&self) -> i32 {
+        match self {
+            TabBarPosition::Bottom => 0,
+            TabBarPosition::Top => 1,
+            TabBarPosition::Left => 2,
+            TabBarPosition::Right => 3,
+        }
+    }
 }
 
 /// Tab item in the tab bar
@@ -147,13 +105,9 @@ pub struct TabItem {
     /// Whether this tab is selected by default
     #[serde(default)]
     pub selected: bool,
-
-    /// Whether this tab is visible
-    #[serde(default = "default_visible")]
-    pub visible: bool,
 }
 
-impl TabBar {
+impl TabBarConfig {
     /// Minimum number of tab items required by WeChat
     pub const MIN_ITEMS: usize = 2;
 

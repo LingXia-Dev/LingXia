@@ -16,15 +16,14 @@ use crate::log::{self, LogLevel, LogTag};
 pub use crate::page::PageState;
 use crate::page::{Page, Pages};
 use crate::{AppRuntime, error, info};
-use config::{LxAppConfig, PageConfig};
 use security::NetworkSecurity; // Import the new logging macros
 
-mod config;
+pub mod config;
+use config::LxAppConfig;
 mod content;
 mod install;
 mod scheme;
 mod security;
-mod tabbar;
 mod version;
 
 /// Constants for lxapp storage layout
@@ -110,7 +109,7 @@ impl LxApps {
     }
 
     /// Get or initialize a specific LxApp instance by appid
-    pub fn get_or_init_lxapp(&self, appid: String) -> Arc<LxApp> {
+    fn get_or_init_lxapp(&self, appid: String) -> Arc<LxApp> {
         // If the lxapp already exists, return it directly
         if let Some(app_arc) = self.lxapps.get(&appid) {
             return app_arc.clone();
@@ -554,6 +553,11 @@ impl LxApp {
 
         Ok(())
     }
+
+    /// Get app configuration
+    pub fn get_config(&self) -> &config::LxAppConfig {
+        &self.config
+    }
 }
 
 /// Generates a hash string based on app ID and user ID
@@ -592,12 +596,6 @@ fn prepare_directory_structure<T: AppRuntime + ?Sized>(runtime: &T) -> Result<()
 }
 
 pub trait AppUiDelegate {
-    /// Get tabbar configuration for mini app
-    fn get_tab_bar_config(self: &Arc<Self>) -> Result<String, LxAppError>;
-
-    /// Get page configuration for a specific page
-    fn get_page_config(self: &Arc<Self>, path: &str) -> Result<String, LxAppError>;
-
     /// Called when mini app is opened
     fn on_lxapp_opened(self: Arc<Self>, path: String);
 
@@ -641,65 +639,6 @@ pub trait AppUiDelegate {
 }
 
 impl AppUiDelegate for LxApp {
-    fn get_tab_bar_config(self: &Arc<Self>) -> Result<String, LxAppError> {
-        // Handle TabBar configuration
-        if let Some(tab_bar_json) = self.config.get_tabbar_json_with_base_path(&self.lxapp_dir) {
-            // crate::info!("TabBar: {}", tab_bar_json);
-            Ok(tab_bar_json)
-        } else {
-            // TabBar is optional or invalid, return a valid empty tabbar JSON
-            Ok("{}".to_string())
-        }
-    }
-
-    fn get_page_config(self: &Arc<Self>, path: &str) -> Result<String, LxAppError> {
-        // Handle different possible path formats:
-        // 1. "pages/home/index.html" -> "pages/home/index.json"
-        // 2. "pages/home/index" -> "pages/home/index.json"
-        // 3. "pages/home" -> "pages/home.json"
-        let page_config_path = if path.contains('.') {
-            // Has extension: replace it with .json
-            let pos = path.rfind('.').unwrap();
-            format!("{}.json", &path[0..pos])
-        } else {
-            // No extension: append .json
-            format!("{}.json", path)
-        };
-
-        // Try to read page-specific configuration first from the direct path
-        let result = self.read_json(&page_config_path);
-
-        // If that fails, try the legacy format: "pages/{path}/page.json"
-        let result = if result.is_err() && !path.starts_with("pages/") {
-            self.read_json(&format!("pages/{}/page.json", path))
-        } else {
-            result
-        };
-
-        // Process the configuration or use default
-        match result {
-            Ok(page_config_value) => {
-                let page_config = PageConfig::from_value(page_config_value).map_err(|e| {
-                    LxAppError::InvalidJsonFile(format!("{}:{}", page_config_path, e))
-                })?;
-
-                serde_json::to_string(&page_config).map_err(|e| {
-                    LxAppError::InvalidJsonFile(format!("Failed to serialize PageConfig: {}", e))
-                })
-            }
-            Err(_) => {
-                // Fallback to default page config
-                let default_config = PageConfig::default();
-                serde_json::to_string(&default_config).map_err(|e| {
-                    LxAppError::InvalidJsonFile(format!(
-                        "Failed to serialize default PageConfig: {}",
-                        e
-                    ))
-                })
-            }
-        }
-    }
-
     fn on_lxapp_opened(self: Arc<Self>, path: String) {
         info!("Mini app opened")
             .with_appid(self.appid.clone())
@@ -964,8 +903,8 @@ impl AppUiDelegate for LxApp {
 static LXAPPS_MANAGER: OnceLock<Arc<LxApps>> = OnceLock::new();
 
 /// Initialize the LxApps singleton
-/// Returns an Option of (home_app_id, initial_route) on success.
-pub fn init<R: AppRuntime + 'static>(runtime: R) -> Option<(String, String)> {
+/// Returns an Option of home_app_id on success.
+pub fn init<R: AppRuntime + 'static>(runtime: R) -> Option<String> {
     // Set up panic hook to capture panic information
     std::panic::set_hook(Box::new(|panic_info| {
         let location = panic_info
@@ -1032,9 +971,6 @@ pub fn init<R: AppRuntime + 'static>(runtime: R) -> Option<(String, String)> {
                 }
             }
 
-            // Get the initial route from the configured home_lxapp
-            let initial_route = home_lxapp.config.get_initial_route();
-
             // Create LxApps manager
             let lxapps_manager = Arc::new(LxApps::new(runtime_arc.clone(), svc_manager, max_apps));
 
@@ -1051,7 +987,7 @@ pub fn init<R: AppRuntime + 'static>(runtime: R) -> Option<(String, String)> {
             }
 
             info!("LxApps initialized successfully");
-            Some((home_lxapp_appid, initial_route))
+            Some(home_lxapp_appid)
         }
 
         Err(e) => {
@@ -1092,5 +1028,5 @@ pub fn get(appid: String) -> Arc<LxApp> {
     if let Some(app_arc) = manager.lxapps.get(&appid) {
         return app_arc.clone();
     }
-    panic!("Not found lxapp {}", appid);
+    panic!("Not found lxapp '{}'", appid);
 }

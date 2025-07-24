@@ -9,7 +9,8 @@ public class macOSPageNavigation {
     /// Switches to a specific tab
     public static func switchToTab(targetPath: String, in viewController: macOSLxAppViewController) {
         // Find tab index and switch to tab
-        if let tabIndex = findTabIndexByPath(targetPath, in: viewController.tabBarConfig) {
+        guard let tabBarConfig = viewController.tabBarConfig else { return }
+        if let tabIndex = findTabIndexByPath(targetPath, in: tabBarConfig, appId: viewController.appId) {
             viewController.switchToTab(targetPath: targetPath, tabIndex: tabIndex)
         }
     }
@@ -46,8 +47,8 @@ public class macOSPageNavigation {
     }
     
     /// Gets page configuration
-    public static func getPageConfig(appId: String, path: String) -> NavigationBarConfig? {
-        return PageNavigationCore.getPageConfig(appId: appId, path: path)
+    public static func getNavigationBarConfig(appId: String, path: String) -> NavigationBarConfig? {
+        return PageNavigationCore.getNavigationBarConfig(appId: appId, path: path)
     }
     
     /// Handles back button click (keyboard shortcut on macOS)
@@ -57,8 +58,8 @@ public class macOSPageNavigation {
     }
     
     /// Finds tab index by path
-    public static func findTabIndexByPath(_ targetPath: String, in config: TabBarConfig) -> Int? {
-        let index = PageNavigationCore.findTabIndexByPath(targetPath, in: config)
+    public static func findTabIndexByPath(_ targetPath: String, in config: TabBarConfig, appId: String) -> Int? {
+        let index = PageNavigationCore.findTabIndexByPath(targetPath, in: config, appId: appId)
         return index >= 0 ? index : nil
     }
     
@@ -81,7 +82,7 @@ public class macOSPageNavigation {
     
     private static func shouldShowBackButton(for path: String, appId: String) -> Bool {
         // Don't show back button for home app
-        if appId == "homelxapp" {
+        if appId == LxAppCore.getHomeLxAppId() {
             return false
         }
 
@@ -125,8 +126,8 @@ extension macOSLxAppViewController {
     }
     
     /// Gets page config (public interface)
-    public func getPageConfig(appId: String, path: String) -> NavigationBarConfig? {
-        return macOSPageNavigation.getPageConfig(appId: appId, path: path)
+    public func getNavigationBarConfig(appId: String, path: String) -> NavigationBarConfig? {
+        return macOSPageNavigation.getNavigationBarConfig(appId: appId, path: path)
     }
     
     /// Handles back button click (public interface)

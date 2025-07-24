@@ -17,39 +17,43 @@ public class macOSTabBarSupport {
     }
 
     /// Configures tab bar positioning for macOS layout
-    public static func configureTabBarLayout(_ tabBar: macOSTabBar, position: TabBarConfig.Position, containerFrame: CGRect) {
+    public static func configureTabBarLayout(_ tabBar: macOSTabBar, position: Int32, containerFrame: CGRect) {
         let tabBarHeight = getTabBarHeight()
         var tabBarFrame: NSRect
 
         switch position {
-        case .bottom:
+        case 0: // bottom
             tabBarFrame = NSRect(x: 0, y: 0, width: containerFrame.width, height: tabBarHeight)
-        case .top:
+        case 1: // top
             tabBarFrame = NSRect(x: 0, y: containerFrame.height - tabBarHeight, width: containerFrame.width, height: tabBarHeight)
-        case .left:
+        case 2: // left
             tabBarFrame = NSRect(x: 0, y: 0, width: tabBarHeight, height: containerFrame.height)
-        case .right:
+        case 3: // right
             tabBarFrame = NSRect(x: containerFrame.width - tabBarHeight, y: 0, width: tabBarHeight, height: containerFrame.height)
+        default:
+            tabBarFrame = NSRect(x: 0, y: 0, width: containerFrame.width, height: tabBarHeight)
         }
 
         tabBar.frame = tabBarFrame
     }
 
     /// Gets the appropriate content area frame considering tab bar position
-    public static func getContentAreaFrame(containerFrame: CGRect, tabBarPosition: TabBarConfig.Position, hasTabBar: Bool) -> CGRect {
+    public static func getContentAreaFrame(containerFrame: CGRect, tabBarPosition: Int32, hasTabBar: Bool) -> CGRect {
         guard hasTabBar else { return containerFrame }
 
         let tabBarHeight = getTabBarHeight()
 
         switch tabBarPosition {
-        case .bottom:
+        case 0: // bottom
             return CGRect(x: 0, y: tabBarHeight, width: containerFrame.width, height: containerFrame.height - tabBarHeight)
-        case .top:
+        case 1: // top
             return CGRect(x: 0, y: 0, width: containerFrame.width, height: containerFrame.height - tabBarHeight)
-        case .left:
+        case 2: // left
             return CGRect(x: tabBarHeight, y: 0, width: containerFrame.width - tabBarHeight, height: containerFrame.height)
-        case .right:
+        case 3: // right
             return CGRect(x: 0, y: 0, width: containerFrame.width - tabBarHeight, height: containerFrame.height)
+        default:
+            return CGRect(x: 0, y: tabBarHeight, width: containerFrame.width, height: containerFrame.height - tabBarHeight)
         }
     }
 }

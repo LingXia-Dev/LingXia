@@ -3,8 +3,8 @@ package com.lingxia.example.miniapp
 import android.os.Bundle
 import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
-import com.lingxia.miniapp.LxApp
-import com.lingxia.miniapp.LxAppActivity
+import com.lingxia.lxapp.LxApp
+import com.lingxia.lxapp.LxAppActivity
 
 class MainActivity : AppCompatActivity() {
     private val TAG = "MainActivity"

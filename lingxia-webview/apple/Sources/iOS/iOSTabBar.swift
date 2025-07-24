@@ -22,7 +22,7 @@ public class iOSLingXiaTabBar: UIView, EnhancedTabBarProtocol, TabBarUIDelegate 
 
     private func setupUI() {
         isHidden = true
-        backgroundColor = UIColor(hexString: TabBarConfig.DEFAULT_BACKGROUND_COLOR) ?? UIColor.white
+        backgroundColor = UIColor(hexString: TabBarHelper.DEFAULT_BACKGROUND_COLOR) ?? UIColor.white
         uiDelegate = self
 
         itemsContainer = UIStackView()
@@ -133,13 +133,13 @@ public class iOSLingXiaTabBar: UIView, EnhancedTabBarProtocol, TabBarUIDelegate 
 
         // Create label
         let label = UILabel()
-        label.text = item.text
+        label.text = item.text.toString()
         label.font = UIFont.systemFont(ofSize: TabBarConstants.ITEM_FONT_SIZE)
         label.textAlignment = .center
         label.translatesAutoresizingMaskIntoConstraints = false
 
         stackView.addArrangedSubview(iconView)
-        if item.text != nil && !item.text!.isEmpty {
+        if !item.text.toString().isEmpty {
             stackView.addArrangedSubview(label)
         }
 
@@ -183,8 +183,8 @@ public class iOSLingXiaTabBar: UIView, EnhancedTabBarProtocol, TabBarUIDelegate 
               let iconView = stackView.arrangedSubviews.first as? UIImageView else { return }
 
         // Update colors
-        let selectedColor = config.parseColor(config.selectedColor) ?? UIColor(hexString: TabBarConfig.DEFAULT_SELECTED_COLOR) ?? UIColor.systemBlue
-        let normalColor = config.parseColor(config.color) ?? UIColor(hexString: TabBarConfig.DEFAULT_UNSELECTED_COLOR) ?? UIColor.gray
+        let selectedColor = TabBarConfig.parseColor(config?.selected_color.toString() ?? "") ?? UIColor(hexString: TabBarConfig.DEFAULT_SELECTED_COLOR) ?? UIColor.systemBlue
+        let normalColor = TabBarConfig.parseColor(config?.color.toString() ?? "") ?? UIColor(hexString: TabBarConfig.DEFAULT_UNSELECTED_COLOR) ?? UIColor.gray
 
         let color = isSelected ? selectedColor : normalColor
         iconView.tintColor = color
@@ -196,7 +196,7 @@ public class iOSLingXiaTabBar: UIView, EnhancedTabBarProtocol, TabBarUIDelegate 
         }
 
         // Load appropriate icon
-        let iconPath = isSelected ? item.selectedIconPath : item.iconPath
+        let iconPath = isSelected ? item.selected_icon_path.toString() : item.icon_path.toString()
         loadIcon(for: iconView, iconPath: iconPath)
     }
 
@@ -235,7 +235,7 @@ public class iOSTabBarSupport {
         } else {
             // Use the configured background color or default
             let config = tabBar.config
-            if let bgColor = config.parseColor(config.backgroundColor) {
+            if let bgColor = TabBarConfig.parseColor(config?.background_color.toString() ?? "") {
                 tabBar.backgroundColor = bgColor
                 tabBar.layer.backgroundColor = bgColor.cgColor
             } else {
@@ -248,7 +248,7 @@ public class iOSTabBarSupport {
     /// Applies tab bar layout parameters
     public static func applyTabBarLayoutParams(tabBar: iOSLingXiaTabBar, config: TabBarConfig) {
         let position = config.position
-        let isVertical = position == .left || position == .right
+        let isVertical = position == 2 || position == 3 // 2=left, 3=right
 
         // Configure orientation
         if isVertical {
@@ -257,13 +257,15 @@ public class iOSTabBarSupport {
             tabBar.transform = CGAffineTransform.identity
         }
 
-        // Apply height if specified
-        if let height = config.height {
-            tabBar.frame.size.height = height
+        // Apply dimension (height/width)
+        if isVertical {
+            tabBar.frame.size.width = CGFloat(config.dimension)
+        } else {
+            tabBar.frame.size.height = CGFloat(config.dimension)
         }
 
         // Configure background - CRITICAL: Don't override transparent backgrounds!
-        if TabBarConfig.isTransparent(config.backgroundColor) {
+        if TabBarConfig.isTransparent(config.background_color.toString()) {
             // For transparent backgrounds, force transparency mode instead of using resolved color
             tabBar.forceTransparencyMode()
         } else {
@@ -275,50 +277,59 @@ public class iOSTabBarSupport {
     }
 
     /// Gets the appropriate content area frame considering tab bar position
-    public static func getContentAreaFrame(containerFrame: CGRect, tabBarPosition: TabBarConfig.Position, tabBarHeight: CGFloat, hasTabBar: Bool) -> CGRect {
+    public static func getContentAreaFrame(containerFrame: CGRect, tabBarPosition: Int32, tabBarHeight: CGFloat, hasTabBar: Bool) -> CGRect {
         guard hasTabBar else { return containerFrame }
 
         switch tabBarPosition {
-        case .bottom:
+        case 0: // bottom
             return CGRect(x: 0, y: 0, width: containerFrame.width, height: containerFrame.height - tabBarHeight)
-        case .top:
+        case 1: // top
             return CGRect(x: 0, y: tabBarHeight, width: containerFrame.width, height: containerFrame.height - tabBarHeight)
-        case .left:
+        case 2: // left
             return CGRect(x: tabBarHeight, y: 0, width: containerFrame.width - tabBarHeight, height: containerFrame.height)
-        case .right:
+        case 3: // right
             return CGRect(x: 0, y: 0, width: containerFrame.width - tabBarHeight, height: containerFrame.height)
+        default:
+            return containerFrame
         }
     }
 
     /// Calculates the appropriate anchor points for tab bar positioning
-    public static func calculateTabBarAnchors(for position: TabBarConfig.Position, in containerView: UIView, safeArea: UILayoutGuide) -> (top: NSLayoutYAxisAnchor, bottom: NSLayoutYAxisAnchor, leading: NSLayoutXAxisAnchor, trailing: NSLayoutXAxisAnchor) {
+    public static func calculateTabBarAnchors(for position: Int32, in containerView: UIView, safeArea: UILayoutGuide) -> (top: NSLayoutYAxisAnchor, bottom: NSLayoutYAxisAnchor, leading: NSLayoutXAxisAnchor, trailing: NSLayoutXAxisAnchor) {
         switch position {
-        case .bottom:
+        case 0: // bottom
             return (
                 top: containerView.bottomAnchor,
                 bottom: safeArea.bottomAnchor,
                 leading: safeArea.leadingAnchor,
                 trailing: safeArea.trailingAnchor
             )
-        case .top:
+        case 1: // top
             return (
                 top: safeArea.topAnchor,
                 bottom: containerView.topAnchor,
                 leading: safeArea.leadingAnchor,
                 trailing: safeArea.trailingAnchor
             )
-        case .left:
+        case 2: // left
             return (
                 top: safeArea.topAnchor,
                 bottom: safeArea.bottomAnchor,
                 leading: safeArea.leadingAnchor,
                 trailing: containerView.leadingAnchor
             )
-        case .right:
+        case 3: // right
             return (
                 top: safeArea.topAnchor,
                 bottom: safeArea.bottomAnchor,
                 leading: containerView.trailingAnchor,
+                trailing: safeArea.trailingAnchor
+            )
+        default:
+            return (
+                top: containerView.bottomAnchor,
+                bottom: safeArea.bottomAnchor,
+                leading: safeArea.leadingAnchor,
                 trailing: safeArea.trailingAnchor
             )
         }

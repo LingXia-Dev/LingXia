@@ -4,6 +4,19 @@ import Foundation
 @MainActor
 public struct PageNavigationCore {
 
+    /// Cache for initial routes of each app
+    private static var initialRouteCache: [String: String] = [:]
+
+    /// Cache initial route for an app (called explicitly when app opens)
+    public static func cacheInitialRoute(appId: String, initialRoute: String) {
+        initialRouteCache[appId] = initialRoute
+    }
+
+    /// Check if a path is the initial route using cached data
+    public static func isInitialRoute(appId: String, path: String) -> Bool {
+        return initialRouteCache[appId] == path
+    }
+
     /// Parses navigation parameters from target path
     public static func parseNavigationParams(from targetPath: String) -> NavigationParams {
         let isReplace = targetPath.contains("?replace=true")
@@ -15,12 +28,14 @@ public struct PageNavigationCore {
         )
     }
 
-    /// Gets page configuration from Rust layer
-    public static func getPageConfig(appId: String, path: String) -> NavigationBarConfig? {
-        guard let pageConfigJson = lingxia.getPageConfig(appId, path)?.toString() else {
+    /// Gets page configuration from Rust layer using typed API
+    /// Returns nil if this is an initial route (should hide navbar)
+    public static func getNavigationBarConfig(appId: String, path: String) -> NavigationBarConfig? {
+        // Check if this is the initial route - if so, return nil to hide navbar
+        if isInitialRoute(appId: appId, path: path) {
             return nil
         }
-        return NavigationBarConfig.fromJson(pageConfigJson)
+        return lingxia.getNavigationBarConfig(appId, path)
     }
 
     /// Determines if back button should be shown
@@ -31,17 +46,17 @@ public struct PageNavigationCore {
     }
 
     /// Finds tab index by path in tab bar configuration
-    public static func findTabIndexByPath(_ targetPath: String, in config: TabBarConfig) -> Int {
-        return config.list.firstIndex { $0.pagePath == targetPath } ?? -1
+    public static func findTabIndexByPath(_ targetPath: String, in config: TabBarConfig, appId: String) -> Int {
+        let items = config.getItems(appId: appId)
+        return items.firstIndex { $0.page_path.toString() == targetPath } ?? -1
     }
 
     /// Determines navigation bar visibility from page config
     public static func shouldShowNavigationBar(pageConfig: NavigationBarConfig?) -> Bool {
-        if let config = pageConfig {
-            return !config.hidden
-        }
-        // Default behavior: show navigation bar
-        return true
+        // If pageConfig is nil, it means this is an initial route - hide navbar
+        // If pageConfig exists, check navigation_style (1 = hidden)
+        guard let config = pageConfig else { return false }
+        return config.navigation_style != 1
     }
 
     /// Gets text color from navigation bar text style
@@ -63,13 +78,13 @@ public struct PageNavigationCore {
 
     /// Extracts page title from configuration
     public static func getPageTitle(from pageConfig: NavigationBarConfig?, defaultTitle: String = "") -> String {
-        return pageConfig?.navigationBarTitleText ?? defaultTitle
+        return pageConfig?.title_text.toString() ?? defaultTitle
     }
 
     /// Determines if this is a tab navigation
-    public static func isTabNavigation(targetPath: String, tabBarConfig: TabBarConfig?) -> Bool {
+    public static func isTabNavigation(targetPath: String, tabBarConfig: TabBarConfig?, appId: String) -> Bool {
         guard let config = tabBarConfig else { return false }
-        return findTabIndexByPath(targetPath, in: config) >= 0
+        return findTabIndexByPath(targetPath, in: config, appId: appId) >= 0
     }
 }
 

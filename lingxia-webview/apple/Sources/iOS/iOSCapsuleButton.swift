@@ -12,7 +12,7 @@ public class iOSCapsuleButton {
     public static func addCapsuleButton(to viewController: UIViewController, appId: String) {
         guard viewController.view.viewWithTag(CAPSULE_BUTTON_TAG) == nil else { return }
 
-        let isHomeLxApp = appId == "homelxapp"
+        let isHomeLxApp = appId == LxAppCore.getHomeLxAppId()
         guard !isHomeLxApp else { return }
 
         let capsuleWidth: CGFloat = 87

@@ -223,36 +223,22 @@ public class LxAppCore {
         let initResult = lxappInit(directoryConfig.dataPath, directoryConfig.cachesPath)
         let initResultString = initResult?.toString()
 
-        if let initResult = initResultString {
-            let parts = initResult.components(separatedBy: ":")
-            if parts.count >= 2 {
-                homeLxAppId = parts[0]
-                homeLxAppInitialRoute = Array(parts[1...]).joined(separator: ":")
-                os_log("Initialized with home app: %@ at %@", log: log, type: .info, homeLxAppId!, homeLxAppInitialRoute!)
-            } else {
-                os_log("Failed to parse home LxApp details: %@", log: log, type: .error, initResult)
-            }
+        if let homeAppId = initResultString {
+            homeLxAppId = homeAppId
+
+            // Get initial route using new typed API
+            let lxappInfo = getLxAppInfo(homeAppId)
+            homeLxAppInitialRoute = lxappInfo.initial_route.toString()
+            os_log("Initialized with home app: %@ at %@", log: log, type: .info, homeLxAppId!, homeLxAppInitialRoute!)
         } else {
-            os_log("Failed to get home LxApp details from native init", log: log, type: .error)
+            os_log("Failed to get home LxApp ID from native init", log: log, type: .error)
         }
-
-
     }
 
     /// Set home LxApp configuration
     public static func setHomeLxApp(appId: String, initialRoute: String = "/") {
         homeLxAppId = appId
         homeLxAppInitialRoute = initialRoute
-    }
-
-    /// Set home LxApp ID
-    public static func setHomeLxAppId(_ appId: String) {
-        homeLxAppId = appId
-    }
-
-    /// Set home LxApp initial route
-    public static func setHomeLxAppInitialRoute(_ route: String) {
-        homeLxAppInitialRoute = route
     }
 
     /// Get last active path for app

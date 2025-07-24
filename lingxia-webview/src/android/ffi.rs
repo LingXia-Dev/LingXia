@@ -5,7 +5,7 @@ use http;
 use http::header::{HeaderMap, HeaderName, HeaderValue};
 use http::{Method, Request, Response};
 use jni::objects::{GlobalRef, JClass, JObject, JString};
-use jni::sys::jint;
+use jni::sys::{jboolean, jint};
 use jni::{JNIEnv, JavaVM};
 use log::{error, info};
 use miniapp::AppUiDelegate;
@@ -63,7 +63,7 @@ pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> j
     // Create global reference to LxApp class for worker threads
     if let Some(jvm) = JAVA_VM.get() {
         if let Ok(mut env) = jvm.attach_current_thread() {
-            if let Ok(local_class) = env.find_class("com/lingxia/miniapp/LxApp") {
+            if let Ok(local_class) = env.find_class("com/lingxia/lxapp/LxApp") {
                 if let Ok(global_class) = env.new_global_ref(local_class) {
                     let _ = MINIAPP_CLASS.set(global_class);
                 }
@@ -113,7 +113,7 @@ pub(crate) fn get_env() -> Result<JNIEnv<'static>, Box<dyn std::error::Error>> {
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_miniapp_LxApp_nativeOnLxAppInited(
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppInited(
     mut env: JNIEnv,
     _class: JClass,
     data_dir: JString,
@@ -138,17 +138,14 @@ pub extern "system" fn Java_com_lingxia_miniapp_LxApp_nativeOnLxAppInited(
 
     // Initialize SimpleAppRuntime and miniapp
     let runtime = SimpleAppRuntime::init(app);
-    let final_init_details = miniapp::init(runtime);
+    let home_app_id = miniapp::init(runtime);
 
-    // Format and return the result
-    match final_init_details {
-        Some((home_app_id, initial_route)) => {
-            let combined_details = format!("{}:{}", home_app_id, initial_route);
-            match env.new_string(&combined_details) {
-                Ok(java_string) => java_string.into_raw(),
-                Err(_) => JObject::null().into_raw(),
-            }
-        }
+    // Return the home appid
+    match home_app_id {
+        Some(appid) => match env.new_string(&appid) {
+            Ok(java_string) => java_string.into_raw(),
+            Err(_) => JObject::null().into_raw(),
+        },
         None => {
             error!("Failed to obtain LxApp home app details during initialization.");
             JObject::null().into_raw()
@@ -157,7 +154,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_LxApp_nativeOnLxAppInited(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeHandlePostMessage(
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_handlePostMessage(
     mut env: JNIEnv,
     _class: JClass,
     appid: JString,
@@ -174,7 +171,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeHandlePostMessage(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnPageStarted(
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onPageStarted(
     mut env: JNIEnv,
     _class: JClass,
     appid: JString,
@@ -189,7 +186,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnPageStarted(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnPageFinished(
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onPageFinished(
     mut env: JNIEnv,
     _class: JClass,
     appid: JString,
@@ -204,7 +201,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnPageFinished(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_miniapp_LxAppActivity_nativeOnPageShow(
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onPageShow(
     mut env: JNIEnv,
     _class: JClass,
     appid: JString,
@@ -218,7 +215,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_LxAppActivity_nativeOnPageShow(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeShouldOverrideUrlLoading(
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_shouldOverrideUrlLoading(
     mut env: JNIEnv,
     _class: JClass,
     _appid: JString,
@@ -242,7 +239,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeShouldOverrideUrlL
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeFindWebView<'a>(
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_findWebView<'a>(
     mut env: JNIEnv<'a>,
     _class: JClass<'a>,
     appid: JString<'a>,
@@ -274,7 +271,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeFindWebView<'a>(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeHandleRequest<'a>(
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_handleRequest<'a>(
     mut env: JNIEnv<'a>,
     _class: JClass<'a>,
     appid: JString<'a>,
@@ -335,7 +332,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeHandleRequest<'a>(
 
 fn create_java_response<'a>(env: &mut JNIEnv<'a>, response: Response<Vec<u8>>) -> JObject<'a> {
     // Try to find the WebResourceResponseData class
-    let response_class = match env.find_class("com/lingxia/miniapp/WebResourceResponseData") {
+    let response_class = match env.find_class("com/lingxia/lxapp/WebResourceResponseData") {
         Ok(c) => c,
         Err(_) => return JObject::null(),
     };
@@ -423,7 +420,7 @@ fn create_java_response<'a>(env: &mut JNIEnv<'a>, response: Response<Vec<u8>>) -
 
 // Function for LxAppActivity class to handle the mini app close event
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_miniapp_LxAppActivity_nativeOnLxAppClosed(
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppClosed(
     mut env: JNIEnv,
     _class: JClass,
     appid: JString,
@@ -436,7 +433,7 @@ pub extern "system" fn Java_com_lingxia_miniapp_LxAppActivity_nativeOnLxAppClose
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnConsoleMessage(
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onConsoleMessage(
     mut env: JNIEnv,
     _class: JClass,
     appid: JString,
@@ -462,8 +459,13 @@ pub extern "system" fn Java_com_lingxia_miniapp_WebView_nativeOnConsoleMessage(
     1
 }
 
+/// Get navigation bar configuration for a specific page
+///
+/// IMPORTANT: This function returns NavigationBarConfig directly to Kotlin.
+/// Kotlin side should handle visibility logic based on:
+/// - navigationStyle: 0=Default (show), 1=Custom (hide)
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_miniapp_LxApp_nativeGetPageConfig<'a>(
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getNavigationBarConfig<'a>(
     mut env: JNIEnv<'a>,
     _class: JClass<'a>,
     appid: JString<'a>,
@@ -472,19 +474,75 @@ pub extern "system" fn Java_com_lingxia_miniapp_LxApp_nativeGetPageConfig<'a>(
     let appid: String = env.get_string(&appid).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
 
-    // Get the miniapp instance and get page config
-    let miniapp = miniapp::get(appid);
-    if let Ok(json) = miniapp.get_page_config(&path) {
-        // Create Java string from JSON
-        if let Ok(java_string) = env.new_string(&json) {
-            return java_string.into();
-        }
+    // Get the miniapp instance
+    let miniapp = miniapp::get(appid.clone());
+
+    // Get navigation bar config using new API
+    let nav_config = miniapp.get_config().get_nav_bar_config(&miniapp, &path);
+
+    // Debug logging
+    log::info!(
+        "[Android] nativeGetPageConfig: appid={}, path={}, navigationStyle={:?}, bgColor={}, textStyle={}, title={}",
+        appid,
+        path,
+        nav_config.navigationStyle,
+        nav_config.navigationBarBackgroundColor,
+        nav_config.navigationBarTextStyle,
+        nav_config.navigationBarTitleText
+    );
+
+    // Find the NavigationBarConfig class
+    let nav_bar_class = match env.find_class("com/lingxia/lxapp/NavigationBarConfig") {
+        Ok(c) => c,
+        Err(_) => return JObject::null(),
+    };
+
+    // Parse color values from hex strings
+    let bg_color_int = i32::from_str_radix(
+        &nav_config
+            .navigationBarBackgroundColor
+            .trim_start_matches('#'),
+        16,
+    )
+    .unwrap_or(0xFFFFFF)
+        | 0xFF000000u32 as i32; // Add alpha channel for Android
+
+    log::info!(
+        "[Android] Color parsing: original={}, parsed=0x{:08X}",
+        nav_config.navigationBarBackgroundColor,
+        bg_color_int as u32
+    );
+
+    // Create Java strings
+    let title_text = match env.new_string(&nav_config.navigationBarTitleText) {
+        Ok(s) => s,
+        Err(_) => return JObject::null(),
+    };
+    let text_style = match env.new_string(&nav_config.navigationBarTextStyle) {
+        Ok(s) => s,
+        Err(_) => return JObject::null(),
+    };
+    // Use int for navigation style (0=Default, 1=Custom)
+    let navigation_style_int = nav_config.navigationStyle.to_i32();
+
+    // Create NavigationBarConfig object (using int for navigation style)
+    match env.new_object(
+        nav_bar_class,
+        "(ILjava/lang/String;Ljava/lang/String;I)V",
+        &[
+            (bg_color_int as jint).into(),
+            (&text_style).into(),
+            (&title_text).into(),
+            (navigation_style_int as jint).into(),
+        ],
+    ) {
+        Ok(obj) => obj,
+        Err(_) => JObject::null(),
     }
-    JObject::null()
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_lingxia_miniapp_LxAppActivity_nativeOnBackPressed(
+pub extern "C" fn Java_com_lingxia_lxapp_NativeApi_onBackPressed(
     mut env: JNIEnv,
     _class: JClass,
     appid: JString,
@@ -496,7 +554,7 @@ pub extern "C" fn Java_com_lingxia_miniapp_LxAppActivity_nativeOnBackPressed(
 
 // Function to notify the Rust layer that a mini app has been opened
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_miniapp_LxApp_nativeOnLxAppOpened(
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppOpened(
     mut env: JNIEnv,
     _class: JClass,
     appid: JString,
@@ -510,27 +568,304 @@ pub extern "system" fn Java_com_lingxia_miniapp_LxApp_nativeOnLxAppOpened(
     0
 }
 
-// New function to get app configuration
+/// Get LxApp information using new typed API
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_miniapp_LxApp_nativeGetTabBarConfig(
-    mut env: JNIEnv,
-    _class: JClass,
-    appid: JString,
-) -> jni::sys::jobject {
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getLxAppInfo<'a>(
+    mut env: JNIEnv<'a>,
+    _class: JClass<'a>,
+    appid: JString<'a>,
+) -> JObject<'a> {
     let appid: String = env.get_string(&appid).unwrap().into();
+    let miniapp = miniapp::get(appid.clone());
 
-    let miniapp = miniapp::get(appid);
-    if let Ok(config) = miniapp.get_tab_bar_config() {
-        if let Ok(result) = env.new_string(&config) {
-            return result.into_raw();
+    let lxapp_info = miniapp.get_config().get_lxapp_info();
+
+    // Debug logging
+    log::info!(
+        "[Android] nativeGetLxAppInfo: appid={}, initial_route={}, app_name={}, debug={}",
+        appid,
+        lxapp_info.initial_route,
+        lxapp_info.app_name,
+        lxapp_info.debug
+    );
+
+    // Find the LxAppInfo class
+    let lxapp_info_class = match env.find_class("com/lingxia/lxapp/LxAppInfo") {
+        Ok(c) => c,
+        Err(_) => return JObject::null(),
+    };
+
+    // Create Java strings
+    let initial_route_str = match env.new_string(&lxapp_info.initial_route) {
+        Ok(s) => s,
+        Err(_) => return JObject::null(),
+    };
+    let app_name_str = match env.new_string(&lxapp_info.app_name) {
+        Ok(s) => s,
+        Err(_) => return JObject::null(),
+    };
+
+    // Create LxAppInfo object
+    match env.new_object(
+        lxapp_info_class,
+        "(Ljava/lang/String;Ljava/lang/String;Z)V",
+        &[
+            (&initial_route_str).into(),
+            (&app_name_str).into(),
+            (lxapp_info.debug as jboolean).into(),
+        ],
+    ) {
+        Ok(obj) => obj,
+        Err(_) => JObject::null(),
+    }
+}
+
+// Get TabBar configuration using new typed API
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getTabBarConfig<'a>(
+    mut env: JNIEnv<'a>,
+    _class: JClass<'a>,
+    appid: JString<'a>,
+) -> JObject<'a> {
+    let appid: String = env.get_string(&appid).unwrap().into();
+    let miniapp = miniapp::get(appid.clone());
+
+    let tab_bar_config = match miniapp.get_config().get_tab_bar_config(&miniapp) {
+        Some(config) => config,
+        None => {
+            log::info!(
+                "[Android] nativeGetTabBarConfig: No TabBar config found for appid={}",
+                appid
+            );
+            return JObject::null();
+        }
+    };
+
+    // Debug logging
+    log::info!(
+        "[Android] nativeGetTabBarConfig: appid={}, items_count={}",
+        appid,
+        tab_bar_config.list.len()
+    );
+
+    // Find the TabBarConfig class
+    let tab_bar_class = match env.find_class("com/lingxia/lxapp/TabBarConfig") {
+        Ok(c) => c,
+        Err(_) => return JObject::null(),
+    };
+
+    // Convert background color
+    let background_color = match tab_bar_config.backgroundColor.as_str() {
+        "transparent" => 0x00000000i32, // Transparent
+        color_str => {
+            if color_str.starts_with('#') && color_str.len() == 7 {
+                i32::from_str_radix(&color_str[1..], 16).unwrap_or(0xFFFFFFFFu32 as i32)
+            } else {
+                0xFFFFFFFFu32 as i32 // Default white
+            }
+        }
+    };
+
+    // Convert selected color
+    let selected_color = match tab_bar_config.selectedColor.as_str() {
+        color_str if color_str.starts_with('#') && color_str.len() == 7 => {
+            i32::from_str_radix(&color_str[1..], 16).unwrap_or(0xFF1677FFu32 as i32)
+        }
+        _ => 0xFF1677FFu32 as i32, // Default blue
+    };
+
+    // Convert unselected color
+    let color = match tab_bar_config.color.as_str() {
+        color_str if color_str.starts_with('#') && color_str.len() == 7 => {
+            i32::from_str_radix(&color_str[1..], 16).unwrap_or(0xFF666666u32 as i32)
+        }
+        _ => 0xFF666666u32 as i32, // Default gray
+    };
+
+    // Convert border style (color)
+    let border_style = match tab_bar_config.borderStyle.as_str() {
+        color_str if color_str.starts_with('#') && color_str.len() == 7 => {
+            i32::from_str_radix(&color_str[1..], 16).unwrap_or(0xFFF0F0F0u32 as i32)
+        }
+        _ => 0xFFF0F0F0u32 as i32, // Default light gray
+    };
+
+    // Convert dimension (height for top/bottom, width for left/right)
+    let dimension = tab_bar_config.dimension;
+
+    // Use int for position (0=Bottom, 1=Top, 2=Left, 3=Right)
+    let position_int = tab_bar_config.position.to_i32();
+
+    // Create TabBarItem list
+    let array_list_class = match env.find_class("java/util/ArrayList") {
+        Ok(c) => c,
+        Err(_) => return JObject::null(),
+    };
+
+    let tab_items_list = match env.new_object(array_list_class, "()V", &[]) {
+        Ok(list) => list,
+        Err(_) => return JObject::null(),
+    };
+
+    // Add TabBarItems to the list
+    for item in &tab_bar_config.list {
+        if let Some(tab_item) = create_tab_bar_item(&mut env, item) {
+            let _ = env.call_method(
+                &tab_items_list,
+                "add",
+                "(Ljava/lang/Object;)Z",
+                &[(&tab_item).into()],
+            );
         }
     }
 
-    JObject::null().into_raw()
+    // Create Integer objects for nullable fields
+    let bg_color_obj = env
+        .new_object("java/lang/Integer", "(I)V", &[background_color.into()])
+        .unwrap_or(JObject::null());
+    let selected_color_obj = env
+        .new_object("java/lang/Integer", "(I)V", &[selected_color.into()])
+        .unwrap_or(JObject::null());
+    let color_obj = env
+        .new_object("java/lang/Integer", "(I)V", &[color.into()])
+        .unwrap_or(JObject::null());
+    let border_style_obj = env
+        .new_object("java/lang/Integer", "(I)V", &[border_style.into()])
+        .unwrap_or(JObject::null());
+    let dimension_obj = env
+        .new_object("java/lang/Integer", "(I)V", &[dimension.into()])
+        .unwrap_or(JObject::null());
+
+    // Create Position enum
+    let position_class = match env.find_class("com/lingxia/lxapp/TabBarConfig$Position") {
+        Ok(c) => c,
+        Err(_) => return JObject::null(),
+    };
+
+    let position_enum_value = match position_int {
+        1 => "TOP",
+        2 => "LEFT",
+        3 => "RIGHT",
+        _ => "BOTTOM", // default
+    };
+
+    let position_enum = match env.get_static_field(
+        position_class,
+        position_enum_value,
+        "Lcom/lingxia/lxapp/TabBarConfig$Position;",
+    ) {
+        Ok(pos) => pos,
+        Err(_) => return JObject::null(),
+    };
+
+    // Create TabBarConfig object (using Position enum for backward compatibility)
+    match env.new_object(
+        tab_bar_class,
+        "(Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;Lcom/lingxia/lxapp/TabBarConfig$Position;Ljava/util/List;Z)V",
+        &[
+            (&bg_color_obj).into(),
+            (&selected_color_obj).into(),
+            (&color_obj).into(),
+            (&border_style_obj).into(),
+            (&dimension_obj).into(),
+            (&position_enum).into(),
+            (&tab_items_list).into(),
+            true.into(), // visible
+        ],
+    ) {
+        Ok(obj) => obj,
+        Err(_) => JObject::null(),
+    }
+}
+
+// Helper function to create TabBarItem
+fn create_tab_bar_item<'a>(
+    env: &mut JNIEnv<'a>,
+    item: &miniapp::config::TabItem,
+) -> Option<JObject<'a>> {
+    let tab_bar_item_class = env.find_class("com/lingxia/lxapp/TabBarItem").ok()?;
+
+    let page_path = env.new_string(&item.pagePath).ok()?;
+    let text = if let Some(ref text_str) = item.text {
+        env.new_string(text_str).ok()
+    } else {
+        None
+    };
+    let icon_path = if let Some(ref icon_str) = item.iconPath {
+        env.new_string(icon_str).ok()
+    } else {
+        env.new_string("").ok()
+    }?;
+    let selected_icon_path = if let Some(ref selected_icon_str) = item.selectedIconPath {
+        env.new_string(selected_icon_str).ok()
+    } else {
+        env.new_string("").ok()
+    }?;
+
+    let text_obj = text.map(|t| t.into()).unwrap_or_else(|| JObject::null());
+
+    env.new_object(
+        tab_bar_item_class,
+        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZZ)V",
+        &[
+            (&page_path).into(),
+            (&text_obj).into(),
+            (&icon_path).into(),
+            (&selected_icon_path).into(),
+            item.selected.into(),
+            true.into(), // visible - TabItem doesn't have visible field, default to true
+        ],
+    )
+    .ok()
+}
+
+/// Get TabBar item by index
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getTabBarItem<'a>(
+    mut env: JNIEnv<'a>,
+    _class: JClass<'a>,
+    appid: JString<'a>,
+    index: jint,
+) -> JObject<'a> {
+    let appid: String = env.get_string(&appid).unwrap().into();
+    let miniapp = miniapp::get(appid.clone());
+
+    let tab_bar_config = match miniapp.get_config().get_tab_bar_config(&miniapp) {
+        Some(config) => config,
+        None => {
+            log::info!(
+                "[Android] nativeGetTabBarItem: No TabBar config found for appid={}",
+                appid
+            );
+            return JObject::null();
+        }
+    };
+
+    let item = match tab_bar_config.list.get(index as usize) {
+        Some(item) => item,
+        None => {
+            log::info!(
+                "[Android] nativeGetTabBarItem: Index {} out of bounds for appid={}",
+                index,
+                appid
+            );
+            return JObject::null();
+        }
+    };
+
+    // Debug logging
+    log::info!(
+        "[Android] nativeGetTabBarItem: appid={}, index={}, page_path={}",
+        appid,
+        index,
+        item.pagePath
+    );
+
+    create_tab_bar_item(&mut env, item).unwrap_or(JObject::null())
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_lingxia_miniapp_WebView_nativeOnScrollChanged(
+pub extern "C" fn Java_com_lingxia_lxapp_NativeApi_onScrollChanged(
     mut env: JNIEnv,
     _class: JClass,
     appid: JString,

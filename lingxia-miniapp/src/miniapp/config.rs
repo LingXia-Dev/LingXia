@@ -1,20 +1,47 @@
-use crate::miniapp::tabbar::TabBar;
+pub use navbar::{NavigationBarConfig, NavigationStyle};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+pub use tabbar::{TabBarConfig, TabBarPosition, TabItem};
+
+mod navbar;
+mod tabbar;
+
+/// LxApp basic information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LxAppInfo {
+    /// Initial route (first page in the pages array)
+    pub initial_route: String,
+    /// LxApp name
+    pub app_name: String,
+    /// Debug mode enabled
+    pub debug: bool,
+}
 
 /// App config from app.json
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[allow(non_snake_case)]
-pub(crate) struct LxAppConfig {
+pub struct LxAppConfig {
+    /// LingXia App ID
+    #[serde(default)]
+    pub lxAppId: String,
+
+    /// LingXia App name
+    #[serde(default)]
+    pub lxAppName: String,
+
+    /// LingXia App version
+    #[serde(default)]
+    pub version: String,
+
     /// List of page paths (relative to app root)
-    pub pages: Vec<String>,
+    pub(crate) pages: Vec<String>,
 
     /// Tab bar configuration
-    pub tabBar: Option<TabBar>,
+    pub(crate) tabBar: Option<TabBarConfig>,
 
     /// Debug mode - when true, developer tools will be enabled for all pages
     #[serde(default)]
-    debug: bool,
+    pub debug: bool,
 }
 
 impl LxAppConfig {
@@ -29,6 +56,15 @@ impl LxAppConfig {
             .first()
             .cloned()
             .unwrap_or("PagesEmpty".to_string())
+    }
+
+    /// Get LxApp basic information for FFI
+    pub fn get_lxapp_info(&self) -> LxAppInfo {
+        LxAppInfo {
+            initial_route: self.get_initial_route(),
+            app_name: self.lxAppName.clone(),
+            debug: self.debug,
+        }
     }
 
     /// Check if debug mode is enabled
@@ -71,54 +107,49 @@ impl LxAppConfig {
             .is_some_and(|tab_bar| tab_bar.is_valid())
     }
 
-    /// Get the tabBar configuration as JSON string with absolute paths
-    ///
-    /// # Arguments
-    /// * `base_path` - Base path for resolving relative paths
-    ///
-    /// # Returns
-    /// TabBar JSON string with icon paths converted to absolute paths
-    pub fn get_tabbar_json_with_base_path(&self, base_path: &std::path::Path) -> Option<String> {
-        // Only return tabbar JSON if it's valid (has enough items)
+    /// Get NavigationBar configuration for a specific page
+    #[allow(dead_code)]
+    pub fn get_nav_bar_config(
+        &self,
+        lxapp: &crate::miniapp::LxApp,
+        path: &str,
+    ) -> NavigationBarConfig {
+        // Convert path to JSON file path
+        let json_path = path_to_json_path(path);
+
+        // Try to read page-specific configuration
+        match lxapp.read_json(&json_path) {
+            Ok(json_value) => NavigationBarConfig::from_value(json_value).unwrap_or_default(),
+            Err(_) => {
+                // Fallback to default configuration
+                NavigationBarConfig::default()
+            }
+        }
+    }
+
+    /// Get TabBar configuration with absolute paths
+    #[allow(dead_code)]
+    pub fn get_tab_bar_config(&self, lxapp: &crate::miniapp::LxApp) -> Option<TabBarConfig> {
         self.tabBar
             .as_ref()
             .filter(|tab_bar| tab_bar.is_valid())
-            .and_then(|tab_bar| {
-                // Convert paths to absolute
-                let tab_bar_with_abs_paths = tab_bar.with_absolute_paths(base_path);
-                serde_json::to_string(&tab_bar_with_abs_paths).ok()
-            })
+            .map(|tab_bar| tab_bar.with_absolute_paths(&lxapp.lxapp_dir))
     }
 }
 
-// Page configuration for a specific page
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[allow(non_snake_case)]
-pub struct PageConfig {
-    /// Navigation bar background color
-    #[serde(default)]
-    pub navigationBarBackgroundColor: String,
-
-    /// Navigation bar text color, can be "black" or "white"
-    #[serde(default)]
-    pub navigationBarTextStyle: String,
-
-    /// Navigation bar title
-    #[serde(default)]
-    pub navigationBarTitleText: String,
-
-    /// Whether the navigation bar is transparent/custom
-    #[serde(default)]
-    pub navigationStyle: String,
-
-    /// Whether to hide the navigation bar
-    #[serde(default)]
-    pub hidden: bool,
-}
-
-impl PageConfig {
-    /// Create PageConfig from serde_json::Value
-    pub fn from_value(value: Value) -> Result<Self, serde_json::Error> {
-        serde_json::from_value(value)
+/// Convert page path to JSON configuration path
+#[allow(dead_code)]
+fn path_to_json_path(path: &str) -> String {
+    // Handle different possible path formats:
+    // 1. "pages/home/index.html" -> "pages/home/index.json"
+    // 2. "pages/home/index" -> "pages/home/index.json"
+    // 3. "pages/home" -> "pages/home.json"
+    if path.contains('.') {
+        // Has extension: replace it with .json
+        let pos = path.rfind('.').unwrap();
+        format!("{}.json", &path[0..pos])
+    } else {
+        // No extension: append .json
+        format!("{}.json", path)
     }
 }

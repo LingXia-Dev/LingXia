@@ -40,8 +40,6 @@ public class macOSLxApp {
         macOSLxAppWindowController.setWindowSize(width: widthPoints, height: heightPoints)
     }
 
-
-
     /// Set window style for all LxApp windows
     /// - Parameter style: Window style to use
     public static func setWindowStyle(_ style: LxAppWindowStyle) {
@@ -61,6 +59,11 @@ public class macOSLxApp {
 
     /// Open specific LxApp
     public static func openLxApp(appId: String, path: String) {
+        // Get app info and cache initial route for navigation logic
+        let lxappInfo = getLxAppInfo(appId)
+        let initialRoute = lxappInfo.initial_route.toString()
+        PageNavigationCore.cacheInitialRoute(appId: appId, initialRoute: initialRoute)
+
         // Check if window already exists for this app
         if let existingController = activeWindowControllers.first(where: { $0.appId == appId }) {
             let _ = onLxappOpened(appId, path)
@@ -107,8 +110,6 @@ public class macOSLxApp {
             )
         }
     }
-
-
 
     internal static func removeWindowController(_ controller: macOSLxAppWindowController) {
         activeWindowControllers.removeAll { $0 === controller }

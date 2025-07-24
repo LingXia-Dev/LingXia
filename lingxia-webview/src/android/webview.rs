@@ -30,7 +30,7 @@ impl WebViewInner {
             .call_static_method(
                 miniapp_class,
                 "createWebView",
-                "(Ljava/lang/String;Ljava/lang/String;)Lcom/lingxia/miniapp/WebView;",
+                "(Ljava/lang/String;Ljava/lang/String;)Lcom/lingxia/lxapp/WebView;",
                 &[
                     JValue::Object(&appid_jstring),
                     JValue::Object(&path_jstring),

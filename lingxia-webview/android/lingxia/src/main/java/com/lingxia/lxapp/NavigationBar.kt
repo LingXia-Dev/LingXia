@@ -1,4 +1,4 @@
-package com.lingxia.miniapp
+package com.lingxia.lxapp
 
 import android.content.Context
 import android.graphics.Canvas
@@ -25,56 +25,25 @@ import kotlin.math.min
  * Configuration data class for the NavigationBar
  */
 data class NavigationBarConfig(
-    val hidden: Boolean = false,                   // Whether the navigation bar is hidden
-    val navigationBarBackgroundColor: Int? = null, // Background color (e.g., #FFFFFF)
-    val navigationBarTextStyle: String? = null,    // Text style ("black" or "white")
-    val navigationBarTitleText: String? = null,    // Navigation bar title text
-    val navigationStyle: String? = null            // "default" or "custom"
+    val navigationBarBackgroundColor: Int,         // Background color (e.g., #FFFFFF)
+    val navigationBarTextStyle: String,            // Text style ("black" or "white")
+    val navigationBarTitleText: String,            // Navigation bar title text
+    val navigationStyle: Int                       // 0=Default, 1=Custom
 ) {
     companion object {
+        // ⚠️  CRITICAL: FFI Alignment Required ⚠️
+        // These values MUST match exactly with Rust NavigationStyle enum!
+
+        /** Default navigation style (show navigation bar) - MUST match Rust Default = 0 */
+        const val NAVIGATION_STYLE_DEFAULT = 0
+
+        /** Custom navigation style (hide navigation bar) - MUST match Rust Custom = 1 */
+        const val NAVIGATION_STYLE_CUSTOM = 1
+
         // Default values
         val DEFAULT_BACKGROUND_COLOR = Color.WHITE
         val DEFAULT_TEXT_COLOR = Color.BLACK
         const val DEFAULT_HEIGHT_DP = LxAppActivity.DEFAULT_NAV_BAR_HEIGHT_DP
-
-        fun fromJson(json: String?): NavigationBarConfig? {
-            if (json.isNullOrEmpty()) {
-                // Return default config if JSON is missing/empty, assuming NavBar should exist but be hidden
-                return NavigationBarConfig(hidden = true)
-            }
-
-            return try {
-                val jsonObject = JSONObject(json)
-
-                // Handle navigation style - if "custom", we should hide the standard nav bar
-                val navStyle = jsonObject.optString("navigationStyle", "default")
-                val isHidden = jsonObject.optBoolean("hidden", false) || navStyle == "custom"
-
-                // Parse text style (black or white)
-                val textStyle = jsonObject.optString("navigationBarTextStyle", "black")
-
-                NavigationBarConfig(
-                    hidden = isHidden,
-                    navigationBarBackgroundColor = parseColor(jsonObject.optString("navigationBarBackgroundColor"), DEFAULT_BACKGROUND_COLOR),
-                    navigationBarTextStyle = textStyle,
-                    navigationBarTitleText = jsonObject.optString("navigationBarTitleText", ""),
-                    navigationStyle = navStyle
-                )
-            } catch (e: Exception) {
-                Log.e("NavBarConfig", "Error parsing NavigationBar config: ${e.message}")
-                NavigationBarConfig(hidden = true) // Fallback to hidden on parse error
-            }
-        }
-
-        private fun parseColor(colorString: String?, defaultColor: Int): Int {
-            if (colorString.isNullOrEmpty()) return defaultColor
-            return try {
-                Color.parseColor(colorString)
-            } catch (e: Exception) {
-                Log.w("NavBarConfig", "Invalid color string '$colorString'. Using default.")
-                defaultColor
-            }
-        }
     }
 }
 
@@ -102,7 +71,12 @@ class NavigationBar @JvmOverloads constructor(
     private val loadingIndicator: ProgressBar
     private val backButton: ImageView
     private val homeButton: ImageView? = null
-    private var currentConfig: NavigationBarConfig = NavigationBarConfig()
+    private var currentConfig: NavigationBarConfig = NavigationBarConfig(
+        navigationBarBackgroundColor = Color.WHITE,
+        navigationBarTextStyle = "black",
+        navigationBarTitleText = "",
+        navigationStyle = NavigationBarConfig.NAVIGATION_STYLE_DEFAULT
+    )
     private var knownStatusBarHeight: Int = 0
 
     // Store current colors
@@ -312,10 +286,36 @@ class NavigationBar @JvmOverloads constructor(
     }
 
     /**
+     * Shows the navigation bar.
+     */
+    fun show() {
+        visibility = View.VISIBLE
+    }
+
+    /**
      * Hides the navigation bar.
      */
     fun hide() {
         visibility = View.GONE
+    }
+
+    /**
+     * Updates the navigation bar configuration.
+     */
+    fun updateConfig(config: NavigationBarConfig) {
+        currentConfig = config
+
+        // Update title
+        setTitle(config.navigationBarTitleText)
+
+        // Parse text style and set colors
+        val textColor = when (config.navigationBarTextStyle.lowercase()) {
+            "white" -> Color.WHITE
+            "black" -> Color.BLACK
+            else -> Color.BLACK
+        }
+
+        setColor(config.navigationBarBackgroundColor, textColor)
     }
 
     /**
