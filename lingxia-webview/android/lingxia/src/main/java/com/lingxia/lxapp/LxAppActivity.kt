@@ -212,11 +212,11 @@ class LxAppActivity : AppCompatActivity() {
         setContentView(rootContainer)
 
         // Get TabBar config and setup UI in parallel
-        val tabBarJson = LxApp.nativeGetTabBarConfig(appId)
-        val tabBarConfig = TabBarConfig.fromJson(tabBarJson)
+        val tabBarConfig = LxApp.nativeGetTabBarConfig(appId)
 
         // Configure system UI early but efficiently
-        configureTransparentSystemBars(this)
+        // Use dark status bar icons since we have white navbar background
+        configureTransparentSystemBars(this, lightStatusBarIcons = false)
         updateNavigationBarTransparency(this, false, Color.WHITE)
         window.setBackgroundDrawableResource(android.R.color.transparent)
 
@@ -491,7 +491,7 @@ class LxAppActivity : AppCompatActivity() {
         }
 
         // Get page config - Nav bar configuration is now handled by the caller
-        val pageConfig = LxApp.getPageConfig(appId, path)
+        val pageConfig = LxApp.getNavigationBarConfig(appId, path)
 
         return Pair(webView, pageConfig)
     }
@@ -1032,9 +1032,22 @@ class LxAppActivity : AppCompatActivity() {
         Log.d(TAG, "updateNavigationBar called: isBackNavigation=$isBackNavigation, disableAnimation=$disableAnimation")
 
         try {
+            Log.d(TAG, "updateNavigationBar called with config: $config")
+
             // Determine if Nav Bar should be shown at all
-            if (config != null && config.hidden) {
-                Log.d(TAG, "NavigationBar hidden by configuration")
+            if (config == null) {
+                // If config is null, it means this is initial route - hide navbar
+                Log.d(TAG, "NavigationBar hidden (initial route)")
+                navigationBar?.hide()
+                updateLayoutMargins() // Still need to update layout when hidden
+                return
+            }
+
+            // Check if navbar should be hidden based on navigationStyle
+            Log.d(TAG, "Config details: backgroundColor=${config.navigationBarBackgroundColor}, textStyle=${config.navigationBarTextStyle}, title=${config.navigationBarTitleText}, style=${config.navigationStyle}")
+
+            if (config.navigationStyle == NavigationBarConfig.NAVIGATION_STYLE_CUSTOM) {
+                Log.d(TAG, "NavigationBar hidden (custom style)")
                 navigationBar?.hide()
                 updateLayoutMargins() // Still need to update layout when hidden
                 return
@@ -1092,9 +1105,12 @@ class LxAppActivity : AppCompatActivity() {
                 Log.e(TAG, "Unable to add NavigationBar: rootContainer not initialized")
             }
 
-            val titleText = config?.navigationBarTitleText ?: ""
-            val backgroundColor = config?.navigationBarBackgroundColor ?: NavigationBarConfig.DEFAULT_BACKGROUND_COLOR
-            val textStyle = config?.navigationBarTextStyle ?: "black"
+            // Update navbar with config
+            navigationBar?.updateConfig(config)
+
+            val titleText = config.navigationBarTitleText
+            val backgroundColor = config.navigationBarBackgroundColor
+            val textStyle = config.navigationBarTextStyle
             val textColor = if (textStyle == "white") Color.WHITE else Color.BLACK
 
             // Initial back button visibility depends only on whether animation is disabled (i.e., is it a tab switch?)
@@ -1178,7 +1194,7 @@ class LxAppActivity : AppCompatActivity() {
         updateLayoutMargins()
 
         // Reconfigure navigation bar if needed
-        val pageConfig = LxApp.getPageConfig(appId, currentWebView?.currentPath ?: "")
+        val pageConfig = LxApp.getNavigationBarConfig(appId, currentWebView?.currentPath ?: "")
         updateNavigationBar(pageConfig, false, true)
     }
 }

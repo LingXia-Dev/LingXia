@@ -9,6 +9,15 @@ import android.util.Log
 import com.lingxia.miniapp.ACTION_SWITCH_PAGE
 import com.lingxia.miniapp.ACTION_CLOSE_MINIAPP
 
+/**
+ * Data class representing LxApp information from the native layer
+ */
+data class LxAppInfo(
+    val initialRoute: String,
+    val appName: String,
+    val debug: Boolean
+)
+
 class LxApp private constructor(private val context: Context) {
     companion object {
         private const val TAG = "LingXia.LxApp"
@@ -20,9 +29,28 @@ class LxApp private constructor(private val context: Context) {
 
         private val pageConfigCache = mutableMapOf<String, NavigationBarConfig>()
 
+        // Cache for initial routes of each app
+        private val initialRouteCache = mutableMapOf<String, String>()
+
         // Clear cache when app is closed to prevent memory leaks
         fun clearPageConfigCache() {
             pageConfigCache.clear()
+        }
+
+        // Clear initial route cache
+        fun clearInitialRouteCache() {
+            initialRouteCache.clear()
+        }
+
+        // Cache initial route for an app
+        fun cacheInitialRoute(appId: String) {
+            if (!initialRouteCache.containsKey(appId)) {
+                val appInfo = nativeGetLxAppInfo(appId)
+                if (appInfo != null) {
+                    initialRouteCache[appId] = appInfo.initialRoute
+                    Log.d(TAG, "Cached initial route for $appId: ${appInfo.initialRoute}")
+                }
+            }
         }
 
         init {
@@ -48,15 +76,15 @@ class LxApp private constructor(private val context: Context) {
             )
 
             if (initResultString != null) {
-                // Use a robust way to split, ensuring the delimiter is not misinterpreted if path contains it.
-                // For a simple case like "appId:path/to/page", limit = 2 is good.
-                val parts = initResultString.split(":", limit = 2)
-                if (parts.size == 2) {
-                    HomeLxAppId = parts[0]
-                    HomeLxAppInitialRoute = parts[1]
+                HomeLxAppId = initResultString
+                // Get initial route and other app info using new API
+                val appInfo = nativeGetLxAppInfo(initResultString)
+                if (appInfo != null) {
+                    HomeLxAppInitialRoute = appInfo.initialRoute
                     Log.i(TAG, "Native init success. Home App ID: $HomeLxAppId, Initial Route: $HomeLxAppInitialRoute")
                 } else {
-                    Log.e(TAG, "Failed to parse home MiniAapp details from native (expected 2 parts): '$initResultString'")
+                    Log.e(TAG, "Failed to get LxApp info from new API")
+                    HomeLxAppInitialRoute = "/"
                 }
             } else {
                 Log.e(TAG, "Failed to get home LxApp details from native init.")
@@ -74,13 +102,22 @@ class LxApp private constructor(private val context: Context) {
         private external fun nativeOnLxAppOpened(appId: String, path: String): Int
 
         /**
-         * Get the TabBar configuration for a mini app from the native layer
-         *
-         * @param appId The ID of the mini app to get TabBar configuration for
-         * @return The TabBar configuration as a JSON string, or null if not available
+         * Get LxApp information using new typed API
          */
         @JvmStatic
-        external fun nativeGetTabBarConfig(appId: String): String?
+        external fun nativeGetLxAppInfo(appId: String): LxAppInfo?
+
+        /**
+         * Get the TabBar configuration for a mini app using new typed API
+         */
+        @JvmStatic
+        external fun nativeGetTabBarConfig(appId: String): TabBarConfig?
+
+        /**
+         * Get a specific TabBar item by index using new typed API
+         */
+        @JvmStatic
+        external fun nativeGetTabBarItem(appId: String, index: Int): TabBarItem?
 
         @JvmStatic
         fun getInstance(): LxApp {
@@ -99,6 +136,9 @@ class LxApp private constructor(private val context: Context) {
          */
         @JvmStatic
         fun openLxApp(appId: String, path: String) {
+            // Cache the initial route for this app when opening
+            cacheInitialRoute(appId)
+
             val instance = getInstance()
             instance.openInNewActivity(appId, path)
         }
@@ -197,18 +237,28 @@ class LxApp private constructor(private val context: Context) {
         }
 
         @JvmStatic
-        fun getPageConfig(appId: String, path: String): NavigationBarConfig? {
+        fun getNavigationBarConfig(appId: String, path: String): NavigationBarConfig? {
+            // Check if this is the initial route of ANY app using cached data
+            // Initial route should never show navbar
+            val cachedInitialRoute = initialRouteCache[appId]
+            if (cachedInitialRoute != null && path == cachedInitialRoute) {
+                Log.d(TAG, "Page is initial route ($appId, $path), navbar should be hidden")
+                return null
+            }
+
             val key = "$appId|$path"
             return pageConfigCache[key] ?: run {
-                val configJson = nativeGetPageConfig(appId, path)
-                val config = configJson?.let { NavigationBarConfig.fromJson(it) }
+                val config = nativeGetNavigationBarConfig(appId, path)
                 if (config != null) pageConfigCache[key] = config
                 config
             }
         }
 
+        /**
+         * Get the navigation bar configuration for a specific page/path
+         */
         @JvmStatic
-        external fun nativeGetPageConfig(appId: String, path: String): String?
+        external fun nativeGetNavigationBarConfig(appId: String, path: String): NavigationBarConfig?
     }
 
     private fun openInNewActivity(appId: String, path: String) {
