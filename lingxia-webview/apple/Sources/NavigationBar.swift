@@ -4,12 +4,15 @@ import Foundation
 extension NavigationBarConfig {
     /// Check if navbar should be hidden based on style and route
     public func shouldBeHidden(appId: String, path: String) -> Bool {
-        // Get initial route to determine if navbar should be hidden
+        #if os(macOS)
+        // macOS always shows NavigationBar, never hide
+        return false
+        #else
+        // iOS platform: hide for custom style OR initial route
         let lxappInfo = getLxAppInfo(appId)
         let initialRoute = lxappInfo.initial_route.toString()
-
-        // Hide navbar if it's custom style OR if it's the initial route
-        return navigation_style == 1 || path == initialRoute // 1 = NAVIGATION_STYLE_CUSTOM
+        return navigation_style == 1 || path == initialRoute
+        #endif
     }
 
     // Helper constants

@@ -29,13 +29,18 @@ public struct PageNavigationCore {
     }
 
     /// Gets page configuration from Rust layer using typed API
-    /// Returns nil if this is an initial route (should hide navbar)
+    /// Returns nil if this is an initial route (should hide navbar) - except on macOS
     public static func getNavigationBarConfig(appId: String, path: String) -> NavigationBarConfig? {
-        // Check if this is the initial route - if so, return nil to hide navbar
+        #if os(macOS)
+        // macOS always returns config, even for initial route
+        return lingxia.getNavigationBarConfig(appId, path)
+        #else
+        // iOS: return nil for initial route to hide navbar
         if isInitialRoute(appId: appId, path: path) {
             return nil
         }
         return lingxia.getNavigationBarConfig(appId, path)
+        #endif
     }
 
     /// Determines if back button should be shown
