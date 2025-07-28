@@ -17,7 +17,7 @@ pub static JAVA_VM: OnceLock<Arc<JavaVM>> = OnceLock::new();
 static MAIN_THREAD_ID: OnceLock<std::thread::ThreadId> = OnceLock::new();
 
 /// Global reference to LxApp class for worker threads
-pub(crate) static MINIAPP_CLASS: OnceLock<GlobalRef> = OnceLock::new();
+pub(crate) static LXAPP_CLASS: OnceLock<GlobalRef> = OnceLock::new();
 
 #[unsafe(no_mangle)]
 pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> jint {
@@ -65,7 +65,7 @@ pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> j
         if let Ok(mut env) = jvm.attach_current_thread() {
             if let Ok(local_class) = env.find_class("com/lingxia/lxapp/LxApp") {
                 if let Ok(global_class) = env.new_global_ref(local_class) {
-                    let _ = MINIAPP_CLASS.set(global_class);
+                    let _ = LXAPP_CLASS.set(global_class);
                 }
             }
         }

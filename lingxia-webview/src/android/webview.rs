@@ -1,4 +1,4 @@
-use crate::android::{MINIAPP_CLASS, get_env};
+use crate::android::{LXAPP_CLASS, get_env};
 use jni::objects::{GlobalRef, JClass, JObject, JValue};
 use miniapp::{LxAppError, WebViewController};
 
@@ -14,7 +14,7 @@ impl WebViewInner {
 
         let mut env = get_env().unwrap();
 
-        let miniapp_class: &JClass = MINIAPP_CLASS
+        let lxapp_class: &JClass = LXAPP_CLASS
             .get()
             .ok_or_else(|| {
                 LxAppError::WebView("Global LxApp class reference not available".to_string())
@@ -28,7 +28,7 @@ impl WebViewInner {
         // Call Kotlin createWebView method
         let webview_result = env
             .call_static_method(
-                miniapp_class,
+                lxapp_class,
                 "createWebView",
                 "(Ljava/lang/String;Ljava/lang/String;)Lcom/lingxia/lxapp/WebView;",
                 &[
@@ -242,9 +242,7 @@ impl WebViewController for WebViewInner {
         if result.is_ok() {
             Ok(())
         } else {
-            Err(LxAppError::WebView(
-                "Failed to set user agent".to_string(),
-            ))
+            Err(LxAppError::WebView("Failed to set user agent".to_string()))
         }
     }
 

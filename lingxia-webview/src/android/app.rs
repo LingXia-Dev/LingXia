@@ -1,4 +1,4 @@
-use crate::android::{MINIAPP_CLASS, get_env};
+use crate::android::{LXAPP_CLASS, get_env};
 use jni::objects::{GlobalRef, JClass, JObject, JValue};
 use jni::sys::jobject;
 use miniapp::{AssetFileEntry, DeviceInfo, LxAppError};
@@ -320,7 +320,7 @@ impl App {
         match || -> Result<(), Box<dyn std::error::Error>> {
             let mut env = get_env()?;
 
-            let miniapp_class: &JClass = MINIAPP_CLASS
+            let lxapp_class: &JClass = LXAPP_CLASS
                 .get()
                 .ok_or("Global LxApp class reference not available")?
                 .as_obj()
@@ -329,7 +329,7 @@ impl App {
             let path_jstring = env.new_string(path)?;
 
             env.call_static_method(
-                miniapp_class,
+                lxapp_class,
                 "openLxApp",
                 "(Ljava/lang/String;Ljava/lang/String;)V",
                 &[
@@ -351,7 +351,7 @@ impl App {
         match || -> Result<(), Box<dyn std::error::Error>> {
             let mut env = get_env()?;
 
-            let miniapp_class: &JClass = MINIAPP_CLASS
+            let lxapp_class: &JClass = LXAPP_CLASS
                 .get()
                 .ok_or("Global LxApp class reference not available")?
                 .as_obj()
@@ -360,7 +360,7 @@ impl App {
             let appid_jstring = env.new_string(appid)?;
 
             env.call_static_method(
-                miniapp_class,
+                lxapp_class,
                 "closeLxApp",
                 "(Ljava/lang/String;)V",
                 &[JValue::Object(&appid_jstring)],
@@ -379,7 +379,7 @@ impl App {
         match || -> Result<(), Box<dyn std::error::Error>> {
             let mut env = get_env()?;
 
-            let miniapp_class: &JClass = MINIAPP_CLASS
+            let lxapp_class: &JClass = LXAPP_CLASS
                 .get()
                 .ok_or("Global LxApp class reference not available")?
                 .as_obj()
@@ -389,7 +389,7 @@ impl App {
             let path_jstring = env.new_string(path)?;
 
             env.call_static_method(
-                miniapp_class,
+                lxapp_class,
                 "switchPage",
                 "(Ljava/lang/String;Ljava/lang/String;)V",
                 &[
@@ -400,10 +400,7 @@ impl App {
             Ok(())
         }() {
             Ok(_) => Ok(()),
-            Err(e) => Err(LxAppError::WebView(format!(
-                "Failed to switch page: {}",
-                e
-            ))),
+            Err(e) => Err(LxAppError::WebView(format!("Failed to switch page: {}", e))),
         }
     }
 }
