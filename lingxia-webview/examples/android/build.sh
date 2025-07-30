@@ -3,6 +3,22 @@
 # Exit on error
 set -e
 
+# Parse command line arguments
+SKIP_RUST=false
+for arg in "$@"; do
+    case $arg in
+        skip-rust)
+            SKIP_RUST=true
+            echo "🚀 Skipping Rust compilation"
+            ;;
+        *)
+            echo "Unknown argument: $arg"
+            echo "Usage: $0 [skip-rust]"
+            exit 1
+            ;;
+    esac
+done
+
 # Get the absolute path of the script directory
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$SCRIPT_DIR/../.."
@@ -28,20 +44,34 @@ cleanup() {
 # Set trap for cleanup
 trap cleanup EXIT
 
-echo "Building Rust library..."
-cd "$WORKSPACE_ROOT"
-env \
-CMAKE_CONFIGURE_ARGS="-DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK/build/cmake/android.toolchain.cmake -DCMAKE_SYSTEM_PROCESSOR=aarch64"  \
-AR_aarch64_linux_android="$ANDROID_NDK/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-ar" \
-CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$ANDROID_NDK/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android33-clang" \
-CC_aarch64_linux_android="$ANDROID_NDK/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android33-clang" \
-CXX_aarch64_linux_android="$ANDROID_NDK/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android33-clang++" \
-cargo build --target aarch64-linux-android --release -p lingxia
+# Build Rust library (unless skipped)
+if [ "$SKIP_RUST" = false ]; then
+    echo "Building Rust library..."
 
-echo "Copying Rust library to jniLibs..."
-JNILIBS_DIR="$PROJECT_ROOT/android/lingxia/src/main/jniLibs/arm64-v8a"
-mkdir -p "$JNILIBS_DIR"
-cp "$WORKSPACE_ROOT/target/aarch64-linux-android/release/liblingxia.so" "$JNILIBS_DIR/"
+    # Set JAR output directory to Gradle build directory
+    GRADLE_BUILD_DIR="$PROJECT_ROOT/android/lingxia/build/generated/lingxia-webview"
+    mkdir -p "$GRADLE_BUILD_DIR"
+    export LINGXIA_JAR_OUTPUT_DIR="$GRADLE_BUILD_DIR"
+
+    # First build lingxia-webview to generate JAR
+    echo "Building lingxia-webview to generate JAR..."
+    cd "$WORKSPACE_ROOT"
+
+    env \
+    CMAKE_CONFIGURE_ARGS="-DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake -DCMAKE_SYSTEM_PROCESSOR=aarch64"  \
+    AR_aarch64_linux_android="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-ar" \
+    CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android33-clang" \
+    CC_aarch64_linux_android="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android33-clang" \
+    CXX_aarch64_linux_android="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android33-clang++" \
+    cargo build --target aarch64-linux-android --release -p lingxia
+
+    echo "Copying Rust library to jniLibs..."
+    JNILIBS_DIR="$PROJECT_ROOT/android/lingxia/src/main/jniLibs/arm64-v8a"
+    mkdir -p "$JNILIBS_DIR"
+    cp "$WORKSPACE_ROOT/target/aarch64-linux-android/release/liblingxia.so" "$JNILIBS_DIR/"
+else
+    echo "⏭️  Skipping Rust compilation (using existing library)"
+fi
 
 # Create assets directory if it doesn't exist
 mkdir -p "$ASSETS_DIR"
