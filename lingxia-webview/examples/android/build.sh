@@ -63,7 +63,7 @@ if [ "$SKIP_RUST" = false ]; then
     CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android33-clang" \
     CC_aarch64_linux_android="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android33-clang" \
     CXX_aarch64_linux_android="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android33-clang++" \
-    cargo build --target aarch64-linux-android --release -p lingxia
+    cargo build --target aarch64-linux-android --release -p lingxia-lib
 
     echo "Copying Rust library to jniLibs..."
     JNILIBS_DIR="$PROJECT_ROOT/android/lingxia/src/main/jniLibs/arm64-v8a"
