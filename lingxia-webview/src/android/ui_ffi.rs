@@ -1,4 +1,5 @@
 use super::app::App;
+use super::jni_env;
 use crate::runtime::SimpleAppRuntime;
 use android_logger::Config;
 use jni::objects::{GlobalRef, JClass, JObject, JString};
@@ -7,10 +8,7 @@ use jni::{JNIEnv, JavaVM};
 use log::{error, info};
 use miniapp::AppUiDelegate;
 use miniapp::log::LogLevel;
-use std::sync::{Arc, OnceLock};
-
-pub static JAVA_VM: OnceLock<Arc<JavaVM>> = OnceLock::new();
-static MAIN_THREAD_ID: OnceLock<std::thread::ThreadId> = OnceLock::new();
+use std::sync::OnceLock;
 
 /// Global reference to LxApp class for worker threads
 pub(crate) static LXAPP_CLASS: OnceLock<GlobalRef> = OnceLock::new();
@@ -50,14 +48,11 @@ pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> j
         }
     });
 
-    // Store JavaVM globally
-    let _ = JAVA_VM.set(Arc::new(vm));
-
-    // Store the main thread ID
-    let _ = MAIN_THREAD_ID.set(std::thread::current().id());
+    // Initialize shared JNI environment
+    jni_env::initialize_jni(vm);
 
     // Create global reference to LxApp class for worker threads
-    if let Some(jvm) = JAVA_VM.get() {
+    if let Some(jvm) = jni_env::JAVA_VM.get() {
         if let Ok(mut env) = jvm.attach_current_thread() {
             if let Ok(local_class) = env.find_class("com/lingxia/lxapp/LxApp") {
                 if let Ok(global_class) = env.new_global_ref(local_class) {
@@ -69,43 +64,6 @@ pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> j
 
     info!("Rust library loaded successfully");
     jni::sys::JNI_VERSION_1_6
-}
-
-// Helper function to get JNIEnv for current thread
-pub(crate) fn get_env() -> Result<JNIEnv<'static>, Box<dyn std::error::Error>> {
-    let vm = JAVA_VM.get().ok_or("JavaVM not initialized")?;
-
-    // Check if we're on the main thread
-    let current_thread = std::thread::current().id();
-    let is_main_thread = MAIN_THREAD_ID
-        .get()
-        .map(|main_id| *main_id == current_thread)
-        .unwrap_or(false);
-
-    if is_main_thread {
-        // If we're on the main thread, get the env
-        match vm.get_env() {
-            Ok(env) => unsafe {
-                JNIEnv::from_raw(env.get_raw()).map_err(|e| {
-                    error!("JNI error: {:?}", e);
-                    e.into()
-                })
-            },
-            Err(e) => {
-                error!("Failed to get JNI env for main thread: {:?}", e);
-                Err(e.into())
-            }
-        }
-    } else {
-        // If we're not on the main thread, attach as daemon to avoid lifecycle issues
-        match vm.attach_current_thread_as_daemon() {
-            Ok(env) => Ok(env),
-            Err(e) => {
-                error!("Failed to attach thread as daemon: {:?}", e);
-                Err(e.into())
-            }
-        }
-    }
 }
 
 #[unsafe(no_mangle)]

@@ -1,6 +1,8 @@
-use crate::android::get_env;
 use jni::objects::{GlobalRef, JObject, JValue};
 use miniapp::{LxAppError, WebViewController};
+
+// Import JNI environment access from shared utils
+use super::jni_env::get_env;
 
 #[derive(Debug)]
 pub struct WebViewInner {
