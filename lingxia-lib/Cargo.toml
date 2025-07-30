@@ -17,3 +17,5 @@ log = "0.4.27"
 jni = "0.21.1"
 android_logger = "0.15.0"
 serde_json = { workspace = true }
+ndk-sys = "0.6.0"
+ndk = "0.9.0"

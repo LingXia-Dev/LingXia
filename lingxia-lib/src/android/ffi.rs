@@ -1,8 +1,9 @@
+use crate::{App, runtime::PlatformAppRuntime};
 use android_logger::Config;
 use jni::objects::{JClass, JObject, JString};
 use jni::sys::{jboolean, jint};
 use jni::{JNIEnv, JavaVM};
-use lingxia_webview::{App, SimpleAppRuntime, initialize_jni};
+use lingxia_webview::init_webview_manager;
 use log::{error, info};
 use lxapp::{LxAppDelegate, log::LogLevel};
 
@@ -41,8 +42,17 @@ pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> j
         }
     });
 
+    // Create global reference to LxApp class for worker threads first
+    if let Ok(mut env) = vm.get_env() {
+        if let Ok(local_class) = env.find_class("com/lingxia/lxapp/LxApp") {
+            if let Ok(global_class) = env.new_global_ref(local_class) {
+                super::app::init_lxapp_class(global_class);
+            }
+        }
+    }
+
     // Initialize JNI environment
-    initialize_jni(vm);
+    lingxia_webview::initialize_jni(vm);
 
     info!("Rust library loaded successfully");
     jni::sys::JNI_VERSION_1_6
@@ -56,8 +66,8 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppInited(
     cache_dir: JString,
     asset_manager: JObject,
 ) -> jni::sys::jstring {
-    let data_dir = env.get_string(&data_dir).unwrap().into();
-    let cache_dir = env.get_string(&cache_dir).unwrap().into();
+    let data_dir: String = env.get_string(&data_dir).unwrap().into();
+    let cache_dir: String = env.get_string(&cache_dir).unwrap().into();
 
     log::info!(
         "Initializing LxApp with data_dir: {}, cache_dir: {}",
@@ -72,8 +82,11 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppInited(
         }
     };
 
-    // Initialize SimpleAppRuntime and miniapp
-    let runtime = SimpleAppRuntime::init(app);
+    // Initialize WebView manager
+    init_webview_manager();
+
+    // Initialize platform runtime and miniapp
+    let runtime = PlatformAppRuntime::init(app);
     let home_app_id = lxapp::init(runtime);
 
     // Return the home appid
@@ -113,24 +126,18 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_findWebView<'a>(
     let appid: String = env.get_string(&appid).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
 
-    // Get the runtime and try to find the WebView
-    if let Some(runtime) = SimpleAppRuntime::get() {
-        if let Some(webview) = runtime.get_webview(&appid, &path) {
-            // Get direct access to the WebView and create a new local reference to the Java WebView object
-            match env.new_local_ref(webview.get_java_webview()) {
-                Ok(local_ref) => unsafe { JObject::from_raw(local_ref.into_raw()) },
-                Err(e) => {
-                    error!("Failed to create local reference to WebView: {:?}", e);
-                    JObject::null()
-                }
+    if let Some(webview) = lingxia_webview::find_webview(&appid, &path) {
+        // Get direct access to the WebView and create a new local reference to the Java WebView object
+        match env.new_local_ref(webview.get_java_webview()) {
+            Ok(local_ref) => unsafe { JObject::from_raw(local_ref.into_raw()) },
+            Err(e) => {
+                error!("Failed to create local reference to WebView: {:?}", e);
+                JObject::null()
             }
-        } else {
-            // No WebView found for this appid/path
-            error!("💥 Not found webview for {}-{}", appid, path);
-            JObject::null()
         }
     } else {
-        error!("Runtime not initialized");
+        // No WebView found for this appid/path
+        error!("💥 Not found webview for {}-{}", appid, path);
         JObject::null()
     }
 }

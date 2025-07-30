@@ -15,8 +15,6 @@ http = { workspace = true }
 [target.'cfg(target_os = "android")'.dependencies]
 jni = "0.21.1"
 android_logger = "0.15.0"
-ndk-sys = "0.6.0"
-ndk = "0.9.0"
 
 # iOS/macOS-specific dependencies for proper os_log integration
 [target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]

@@ -1,35 +1,19 @@
-use crate::android::get_env;
 use jni::objects::{GlobalRef, JClass, JObject, JValue};
 use jni::sys::jobject;
-use miniapp::{AssetFileEntry, DeviceInfo, LxAppError};
+use lingxia_webview::get_env;
+use lxapp::{AssetFileEntry, DeviceInfo, LxAppError};
 use ndk_sys;
 use std::ffi::CString;
 use std::io::{Read, Result as IoResult};
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
-/// Global reference to LxApp class for worker threads (internal to app.rs)
+/// Global reference to LxApp class for worker threads
 static LXAPP_CLASS: OnceLock<GlobalRef> = OnceLock::new();
 
-/// Get LXAPP_CLASS, initializing it lazily if needed
-fn get_lxapp_class() -> Result<&'static GlobalRef, Box<dyn std::error::Error>> {
-    // Check if already initialized
-    if let Some(class_ref) = LXAPP_CLASS.get() {
-        return Ok(class_ref);
-    }
-
-    // Initialize if not already done
-    let mut env = get_env()?;
-    let local_class = env.find_class("com/lingxia/lxapp/LxApp")?;
-    let global_class = env.new_global_ref(local_class)?;
-
-    // Try to set it (might fail if another thread already set it, which is fine)
-    let _ = LXAPP_CLASS.set(global_class);
-
-    // Return the value (either what we just set or what another thread set)
-    LXAPP_CLASS
-        .get()
-        .ok_or("Failed to get LXAPP_CLASS after initialization".into())
+/// Initialize LxApp class global reference (called from JNI_OnLoad)
+pub(super) fn init_lxapp_class(global_ref: GlobalRef) {
+    let _ = LXAPP_CLASS.set(global_ref);
 }
 
 // App for Android
@@ -101,13 +85,16 @@ impl<'a> RecursiveAssetIterator<'a> {
         path: &str,
     ) -> Result<T, LxAppError> {
         result.map_err(|e| {
-            LxAppError::IoError(format!("JNI operation failed for path '{}': {:?}", path, e))
+            LxAppError::InvalidParameter(format!(
+                "JNI operation failed for path '{}': {:?}",
+                path, e
+            ))
         })
     }
 
     fn list_via_jni(&self, path_to_list: &str) -> Result<Option<Vec<String>>, LxAppError> {
-        let mut jni_env =
-            get_env().map_err(|e| LxAppError::IoError(format!("Failed to get JNIEnv: {}", e)))?;
+        let mut jni_env = get_env()
+            .map_err(|e| LxAppError::InvalidParameter(format!("Failed to get JNIEnv: {}", e)))?;
         let path_jstring = Self::handle_jni_error(jni_env.new_string(path_to_list), path_to_list)?;
 
         let java_am_obj = self.app.java_asset_manager.as_obj();
@@ -166,7 +153,7 @@ impl<'a> Iterator for RecursiveAssetIterator<'a> {
                 let c_path = match CString::new(file_path_to_yield.clone()) {
                     Ok(c) => c,
                     Err(e) => {
-                        return Some(Err(LxAppError::IoError(format!(
+                        return Some(Err(LxAppError::InvalidParameter(format!(
                             "Invalid CString for asset path '{}': {}",
                             file_path_to_yield, e
                         ))));
@@ -179,7 +166,7 @@ impl<'a> Iterator for RecursiveAssetIterator<'a> {
                         ndk_sys::AASSET_MODE_STREAMING as i32,
                     );
                     if asset_ptr.is_null() {
-                        return Some(Err(LxAppError::IoError(format!(
+                        return Some(Err(LxAppError::InvalidParameter(format!(
                             "Asset '{}' was in file_queue, but NDK AAssetManager_open failed.",
                             file_path_to_yield
                         ))));
@@ -237,7 +224,7 @@ impl<'a> Iterator for RecursiveAssetIterator<'a> {
 }
 
 impl App {
-    pub fn from_java(
+    pub(crate) fn from_java(
         jni_env: &mut jni::JNIEnv,
         java_asset_manager_obj: jobject,
         data_dir: String,
@@ -294,11 +281,11 @@ impl App {
     }
 
     /// Read asset file from platform-specific location as a streaming reader
-    pub fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, LxAppError> {
+    pub(crate) fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, LxAppError> {
         unsafe {
             // Convert path to CString to ensure proper null-termination
             let c_path = std::ffi::CString::new(path)
-                .map_err(|e| LxAppError::IoError(format!("Invalid path: {}", e)))?;
+                .map_err(|e| LxAppError::InvalidParameter(format!("Invalid path: {}", e)))?;
 
             let asset = ndk_sys::AAssetManager_open(
                 self.asset_manager,
@@ -307,7 +294,7 @@ impl App {
             );
 
             if asset.is_null() {
-                return Err(LxAppError::IoError(format!(
+                return Err(LxAppError::ResourceNotFound(format!(
                     "Failed to open asset: {}",
                     path
                 )));
@@ -319,7 +306,7 @@ impl App {
     }
 
     /// Iterate over files in an asset directory
-    pub fn asset_dir_iter<'a>(
+    pub(crate) fn asset_dir_iter<'a>(
         &'a self,
         asset_dir: &str,
     ) -> Box<dyn Iterator<Item = Result<AssetFileEntry<'a>, LxAppError>> + 'a> {
@@ -327,25 +314,29 @@ impl App {
     }
 
     /// Get data directory path
-    pub fn app_data_dir(&self) -> PathBuf {
+    pub(crate) fn app_data_dir(&self) -> PathBuf {
         PathBuf::from(&self.data_dir)
     }
 
     /// Get cache directory path
-    pub fn app_cache_dir(&self) -> PathBuf {
+    pub(crate) fn app_cache_dir(&self) -> PathBuf {
         PathBuf::from(&self.cache_dir)
     }
 
     /// Get device information
-    pub fn device_info(&self) -> DeviceInfo {
+    pub(crate) fn device_info(&self) -> DeviceInfo {
         self.device_info.clone()
     }
 
-    pub fn open_lxapp(&self, appid: &str, path: &str) -> Result<(), LxAppError> {
+    pub(crate) fn open_lxapp(&self, appid: &str, path: &str) -> Result<(), LxAppError> {
         match || -> Result<(), Box<dyn std::error::Error>> {
             let mut env = get_env()?;
 
-            let lxapp_class: &JClass = get_lxapp_class()?.as_obj().into();
+            let lxapp_class: &JClass = LXAPP_CLASS
+                .get()
+                .ok_or("Global LxApp class reference not available")?
+                .as_obj()
+                .into();
             let appid_jstring = env.new_string(appid)?;
             let path_jstring = env.new_string(path)?;
 
@@ -368,11 +359,15 @@ impl App {
         }
     }
 
-    pub fn close_lxapp(&self, appid: &str) -> Result<(), LxAppError> {
+    pub(crate) fn close_lxapp(&self, appid: &str) -> Result<(), LxAppError> {
         match || -> Result<(), Box<dyn std::error::Error>> {
             let mut env = get_env()?;
 
-            let lxapp_class: &JClass = get_lxapp_class()?.as_obj().into();
+            let lxapp_class: &JClass = LXAPP_CLASS
+                .get()
+                .ok_or("Global LxApp class reference not available")?
+                .as_obj()
+                .into();
 
             let appid_jstring = env.new_string(appid)?;
 
@@ -392,11 +387,15 @@ impl App {
         }
     }
 
-    pub fn switch_page(&self, appid: &str, path: &str) -> Result<(), LxAppError> {
+    pub(crate) fn switch_page(&self, appid: &str, path: &str) -> Result<(), LxAppError> {
         match || -> Result<(), Box<dyn std::error::Error>> {
             let mut env = get_env()?;
 
-            let lxapp_class: &JClass = get_lxapp_class()?.as_obj().into();
+            let lxapp_class: &JClass = LXAPP_CLASS
+                .get()
+                .ok_or("Global LxApp class reference not available")?
+                .as_obj()
+                .into();
 
             let appid_jstring = env.new_string(appid)?;
             let path_jstring = env.new_string(path)?;
