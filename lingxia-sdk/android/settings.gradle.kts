@@ -19,5 +19,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "miniapp"
+rootProject.name = "lingxia-sdk"
 include(":lingxia")
