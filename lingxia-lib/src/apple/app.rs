@@ -1,5 +1,5 @@
 use super::ffi;
-use miniapp::{AssetFileEntry, DeviceInfo, LxAppError};
+use lxapp::{AssetFileEntry, DeviceInfo, LxAppError};
 use std::ffi::CStr;
 use std::io::{Cursor, Read};
 use std::mem;

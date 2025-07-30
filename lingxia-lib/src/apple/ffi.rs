@@ -1,8 +1,8 @@
 use super::app::App;
-use crate::runtime::SimpleAppRuntime;
-use miniapp::LxAppDelegate;
-use miniapp::config::LxAppInfo as CoreLxAppInfo;
-use miniapp::log::LogLevel;
+use crate::runtime::PlatformAppRuntime;
+use lxapp::LxAppDelegate;
+use lxapp::config::LxAppInfo as CoreLxAppInfo;
+use lxapp::log::LogLevel;
 
 #[swift_bridge::bridge]
 mod bridge {
@@ -112,7 +112,7 @@ pub fn lxapp_init(data_dir: &str, cache_dir: &str) -> Option<String> {
         .unwrap();
 
     // Initialize the new logging system
-    miniapp::log::LogManager::init(|log_msg| {
+    lxapp::log::LogManager::init(|log_msg| {
         let formatted_message = format!(
             "[{}{}{}] {}",
             log_msg.tag.as_str(),
@@ -160,33 +160,33 @@ pub fn lxapp_init(data_dir: &str, cache_dir: &str) -> Option<String> {
         }
     };
 
-    // Initialize SimpleAppRuntime and miniapp
-    let runtime = SimpleAppRuntime::init(app);
-    miniapp::init(runtime)
+    // Initialize PlatformAppRuntime and miniapp
+    let runtime = PlatformAppRuntime::init(app);
+    lxapp::init(runtime)
 }
 
 /// Notify that a page is being shown
 pub fn on_page_show(appid: &str, path: &str) {
-    let miniapp = miniapp::get(appid.to_string());
+    let miniapp = lxapp::get(appid.to_string());
     miniapp.on_page_show(path.to_string());
 }
 
 /// Notify that LxApp was closed
 pub fn on_lxapp_closed(appid: &str) -> i32 {
-    let miniapp = miniapp::get(appid.to_string());
+    let miniapp = lxapp::get(appid.to_string());
     miniapp.on_lxapp_closed();
     0
 }
 
 /// Handle back button press
 pub fn on_back_pressed(appid: &str) -> bool {
-    let miniapp = miniapp::get(appid.to_string());
+    let miniapp = lxapp::get(appid.to_string());
     miniapp.on_back_pressed()
 }
 
 /// Notify that LxApp was opened
 pub fn on_lxapp_opened(appid: &str, path: &str) -> i32 {
-    let miniapp = miniapp::get(appid.to_string());
+    let miniapp = lxapp::get(appid.to_string());
     miniapp.on_lxapp_opened(path.to_string());
     0
 }
@@ -195,29 +195,19 @@ pub fn on_lxapp_opened(appid: &str, path: &str) -> i32 {
 /// This is called from Swift to get a WebView instance pointer managed by Rust
 /// Returns the usize pointer to the WebView, or 0 if not found
 pub fn find_webview(appid: &str, path: &str) -> usize {
-    // Get the runtime and try to find the WebView
-    if let Some(runtime) = SimpleAppRuntime::get() {
-        if let Some(webview) = runtime.get_webview(appid, path) {
-            // WebView exists, return its pointer
-            webview.get_swift_webview_ptr()
-        } else {
-            log::error!(
-                "💥 WebView NOT FOUND in runtime for appid={}, path={}",
-                appid,
-                path
-            );
-            // No WebView found
-            0
-        }
+    // Use lingxia-webview's find_webview function
+    if let Some(webview) = lingxia_webview::find_webview(appid, path) {
+        // WebView exists, return its pointer
+        webview.get_swift_webview_ptr()
     } else {
-        log::error!("Runtime not initialized");
+        log::error!("💥 WebView not found for appid: {}, path: {}", appid, path);
         0
     }
 }
 
 /// Get LxApp information
 pub fn get_lxapp_info(appid: &str) -> bridge::LxAppInfo {
-    let miniapp = miniapp::get(appid.to_string());
+    let miniapp = lxapp::get(appid.to_string());
     let lxapp_info = miniapp.get_config().get_lxapp_info();
 
     // Convert from core LxAppInfo to FFI LxAppInfo
@@ -226,7 +216,7 @@ pub fn get_lxapp_info(appid: &str) -> bridge::LxAppInfo {
 
 /// Get NavigationBar configuration
 pub fn get_navigation_bar_config(appid: &str, path: &str) -> bridge::NavigationBarConfig {
-    let miniapp = miniapp::get(appid.to_string());
+    let miniapp = lxapp::get(appid.to_string());
     let nav_config = miniapp.get_config().get_nav_bar_config(&miniapp, path);
 
     // Convert to FFI struct
@@ -240,7 +230,7 @@ pub fn get_navigation_bar_config(appid: &str, path: &str) -> bridge::NavigationB
 
 /// Get TabBar configuration
 pub fn get_tab_bar_config(appid: &str) -> Option<bridge::TabBarConfig> {
-    let miniapp = miniapp::get(appid.to_string());
+    let miniapp = lxapp::get(appid.to_string());
 
     miniapp
         .get_config()
@@ -258,7 +248,7 @@ pub fn get_tab_bar_config(appid: &str) -> Option<bridge::TabBarConfig> {
 
 /// Get TabBar item by index
 pub fn get_tab_bar_item(appid: &str, index: i32) -> Option<bridge::TabBarItem> {
-    let miniapp = miniapp::get(appid.to_string());
+    let miniapp = lxapp::get(appid.to_string());
 
     miniapp
         .get_config()

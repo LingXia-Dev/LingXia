@@ -90,10 +90,10 @@ private struct AssociatedKeys {
 
 /// Simple WebView manager - Rust handles creation/lifecycle
 @MainActor
-class WebViewManager {
+public class WebViewManager {
 
     /// Find WebView from Rust layer
-    static func findWebView(appId: String, path: String) -> WKWebView? {
+    public static func findWebView(appId: String, path: String) -> WKWebView? {
         let webViewPtr = lingxia.findWebView(appId, path)
         guard webViewPtr != 0 else { return nil }
 

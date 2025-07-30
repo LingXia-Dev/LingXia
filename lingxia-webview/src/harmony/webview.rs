@@ -1,6 +1,6 @@
 use crate::harmony::schemehandler::set_webview_scheme_handler;
 use crate::harmony::tsfn::{call_arkts, call_arkts_with_callback};
-use crate::runtime::WebTag;
+use crate::webview::WebTag;
 use miniapp::log::LogLevel;
 use miniapp::{LxAppDelegate, LxAppError, WebViewController};
 use ohos_web_sys::*;

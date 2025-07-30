@@ -9,7 +9,7 @@ use objc2::{
 use objc2_foundation::{NSObjectProtocol, NSPoint, NSRect, NSSize, NSString, NSURL, NSURLRequest};
 use objc2_web_kit::{WKNavigation, WKNavigationDelegate, WKWebViewConfiguration};
 
-use crate::runtime::WebTag;
+use crate::webview::WebTag;
 
 // Custom Navigation Delegate for handling page lifecycle events
 pub struct LingXiaNavigationDelegateIvars {
@@ -446,7 +446,7 @@ impl WebViewInner {
     }
 
     /// Get the raw pointer to the WebView for Swift interop
-    pub(crate) fn get_swift_webview_ptr(&self) -> usize {
+    pub fn get_swift_webview_ptr(&self) -> usize {
         self.webview as usize
     }
 

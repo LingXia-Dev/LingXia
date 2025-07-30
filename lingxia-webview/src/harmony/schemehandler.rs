@@ -1,4 +1,4 @@
-use crate::runtime::WebTag;
+use crate::webview::WebTag;
 use miniapp::{self, LxAppDelegate};
 use napi_ohos::Result as NapiResult;
 use ohos_web_sys::*;

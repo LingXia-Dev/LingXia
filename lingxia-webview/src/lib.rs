@@ -11,10 +11,10 @@ mod harmony;
 pub use android::{WebViewInner, get_env, initialize_jni};
 
 #[cfg(any(target_os = "ios", target_os = "macos"))]
-pub use apple::{App, WebViewInner};
+pub use apple::WebViewInner;
 
 #[cfg(all(target_os = "linux", target_env = "ohos"))]
-pub use harmony::{App, WebViewInner};
+pub use harmony::WebViewInner;
 
 mod webview;
-pub use webview::{init_webview_manager, create_webview, find_webview};
+pub use webview::{create_webview, find_webview, init_webview_manager};

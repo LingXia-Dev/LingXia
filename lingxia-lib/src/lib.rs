@@ -6,8 +6,8 @@
 #[cfg(target_os = "android")]
 mod android;
 
-#[cfg(target_os = "ios")]
-mod ios;
+#[cfg(any(target_os = "ios", target_os = "macos"))]
+mod apple;
 
 #[cfg(target_env = "ohos")]
 mod harmony;
@@ -17,8 +17,8 @@ mod runtime;
 #[cfg(target_os = "android")]
 pub(crate) use android::App;
 
-#[cfg(target_os = "ios")]
-pub(crate) use ios::App;
+#[cfg(any(target_os = "ios", target_os = "macos"))]
+pub(crate) use apple::App;
 
 #[cfg(target_env = "ohos")]
 pub(crate) use harmony::App;

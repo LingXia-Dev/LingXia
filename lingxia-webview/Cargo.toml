@@ -19,7 +19,6 @@ android_logger = "0.15.0"
 # iOS/macOS-specific dependencies for proper os_log integration
 [target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
 oslog = "0.2.0"
-swift-bridge = "0.1"
 # objc2 dependencies for direct WebView management
 objc2 = "0.6"
 objc2-web-kit = "0.3"
@@ -37,5 +36,4 @@ ohos-raw-sys="0.0.1"
 ohos-web-sys="0.0.1"
 
 [build-dependencies]
-swift-bridge-build = "0.1"
 napi-build-ohos = "1.0"
