@@ -8,7 +8,7 @@ mod apple;
 mod harmony;
 
 #[cfg(target_os = "android")]
-pub use android::{App, WebViewInner};
+pub use android::{App, WebViewInner, get_env, initialize_jni};
 
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 pub use apple::{App, WebViewInner};

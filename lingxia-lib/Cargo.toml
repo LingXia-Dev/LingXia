@@ -1,0 +1,19 @@
+[package]
+name = "lingxia-lib"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "lingxia"
+crate-type = ["staticlib", "cdylib"]
+
+[dependencies]
+lingxia-webview = { path = "../lingxia-webview" }
+lxapp = { package = "lingxia-miniapp", path = "../lingxia-miniapp" }
+log = "0.4.27"
+
+# Android-specific dependencies (only what's needed for FFI)
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21.1"
+android_logger = "0.15.0"
+serde_json = { workspace = true }

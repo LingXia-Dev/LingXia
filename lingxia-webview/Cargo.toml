@@ -1,11 +1,7 @@
 [package]
-name = "lingxia"
+name = "lingxia-webview"
 version = "0.1.0"
 edition = "2024"
-
-[lib]
-name = "lingxia"
-crate-type = ["staticlib", "cdylib"]
 
 [dependencies]
 miniapp = { package = "lingxia-miniapp", path = "../lingxia-miniapp" }

@@ -2,6 +2,7 @@
 members = [
     "lingxia-miniapp",
     "lingxia-webview",
+    "lingxia-lib",
 ]
 resolver = "2"
 

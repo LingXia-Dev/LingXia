@@ -55,7 +55,7 @@ impl WebViewInner {
         Ok(WebViewInner { java_webview })
     }
 
-    pub(crate) fn get_java_webview(&self) -> &GlobalRef {
+    pub fn get_java_webview(&self) -> &GlobalRef {
         &self.java_webview
     }
 }

@@ -1,4 +1,4 @@
-use crate::android::{LXAPP_CLASS, get_env};
+use crate::android::get_env;
 use jni::objects::{GlobalRef, JClass, JObject, JValue};
 use jni::sys::jobject;
 use miniapp::{AssetFileEntry, DeviceInfo, LxAppError};
@@ -6,6 +6,31 @@ use ndk_sys;
 use std::ffi::CString;
 use std::io::{Read, Result as IoResult};
 use std::path::PathBuf;
+use std::sync::OnceLock;
+
+/// Global reference to LxApp class for worker threads (internal to app.rs)
+static LXAPP_CLASS: OnceLock<GlobalRef> = OnceLock::new();
+
+/// Get LXAPP_CLASS, initializing it lazily if needed
+fn get_lxapp_class() -> Result<&'static GlobalRef, Box<dyn std::error::Error>> {
+    // Check if already initialized
+    if let Some(class_ref) = LXAPP_CLASS.get() {
+        return Ok(class_ref);
+    }
+
+    // Initialize if not already done
+    let mut env = get_env()?;
+    let local_class = env.find_class("com/lingxia/lxapp/LxApp")?;
+    let global_class = env.new_global_ref(local_class)?;
+
+    // Try to set it (might fail if another thread already set it, which is fine)
+    let _ = LXAPP_CLASS.set(global_class);
+
+    // Return the value (either what we just set or what another thread set)
+    LXAPP_CLASS
+        .get()
+        .ok_or("Failed to get LXAPP_CLASS after initialization".into())
+}
 
 // App for Android
 #[derive(Clone)]
@@ -212,7 +237,7 @@ impl<'a> Iterator for RecursiveAssetIterator<'a> {
 }
 
 impl App {
-    pub(crate) fn from_java(
+    pub fn from_java(
         jni_env: &mut jni::JNIEnv,
         java_asset_manager_obj: jobject,
         data_dir: String,
@@ -320,11 +345,7 @@ impl App {
         match || -> Result<(), Box<dyn std::error::Error>> {
             let mut env = get_env()?;
 
-            let lxapp_class: &JClass = LXAPP_CLASS
-                .get()
-                .ok_or("Global LxApp class reference not available")?
-                .as_obj()
-                .into();
+            let lxapp_class: &JClass = get_lxapp_class()?.as_obj().into();
             let appid_jstring = env.new_string(appid)?;
             let path_jstring = env.new_string(path)?;
 
@@ -351,11 +372,7 @@ impl App {
         match || -> Result<(), Box<dyn std::error::Error>> {
             let mut env = get_env()?;
 
-            let lxapp_class: &JClass = LXAPP_CLASS
-                .get()
-                .ok_or("Global LxApp class reference not available")?
-                .as_obj()
-                .into();
+            let lxapp_class: &JClass = get_lxapp_class()?.as_obj().into();
 
             let appid_jstring = env.new_string(appid)?;
 
@@ -379,11 +396,7 @@ impl App {
         match || -> Result<(), Box<dyn std::error::Error>> {
             let mut env = get_env()?;
 
-            let lxapp_class: &JClass = LXAPP_CLASS
-                .get()
-                .ok_or("Global LxApp class reference not available")?
-                .as_obj()
-                .into();
+            let lxapp_class: &JClass = get_lxapp_class()?.as_obj().into();
 
             let appid_jstring = env.new_string(appid)?;
             let path_jstring = env.new_string(path)?;
