@@ -1,6 +1,6 @@
 use super::app::App;
 use crate::runtime::SimpleAppRuntime;
-use miniapp::AppUiDelegate;
+use miniapp::LxAppDelegate;
 use miniapp::config::LxAppInfo as CoreLxAppInfo;
 use miniapp::log::LogLevel;
 

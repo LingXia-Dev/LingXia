@@ -595,7 +595,7 @@ fn prepare_directory_structure<T: AppRuntime + ?Sized>(runtime: &T) -> Result<()
     Ok(())
 }
 
-pub trait AppUiDelegate {
+pub trait LxAppDelegate {
     /// Called when mini app is opened
     fn on_lxapp_opened(self: Arc<Self>, path: String);
 
@@ -638,7 +638,7 @@ pub trait AppUiDelegate {
     fn log(self: &Arc<Self>, path: &str, level: LogLevel, message: &str);
 }
 
-impl AppUiDelegate for LxApp {
+impl LxAppDelegate for LxApp {
     fn on_lxapp_opened(self: Arc<Self>, path: String) {
         info!("Mini app opened")
             .with_appid(self.appid.clone())

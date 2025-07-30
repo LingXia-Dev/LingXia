@@ -2,7 +2,7 @@ use crate::harmony::app::App;
 use crate::harmony::schemehandler::register_custom_schemes;
 use crate::runtime::SimpleAppRuntime;
 use log::LevelFilter;
-use miniapp::AppUiDelegate;
+use miniapp::LxAppDelegate;
 use miniapp::log::LogLevel;
 use napi_derive_ohos::napi;
 use napi_ohos::bindgen_prelude::Object;

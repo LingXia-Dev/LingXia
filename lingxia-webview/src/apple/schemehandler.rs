@@ -1,4 +1,4 @@
-use miniapp::{self, AppUiDelegate};
+use miniapp::{self, LxAppDelegate};
 use objc2::runtime::{AnyObject, NSObject};
 use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send, rc::Retained};
 use objc2_foundation::{NSData, NSMutableDictionary, NSObjectProtocol, NSString};

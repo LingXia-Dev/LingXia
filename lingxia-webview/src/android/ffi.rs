@@ -4,7 +4,7 @@ use http::{Method, Request, Response};
 use jni::JNIEnv;
 use jni::objects::{JObject, JString};
 use jni::sys::jint;
-use miniapp::AppUiDelegate;
+use miniapp::LxAppDelegate;
 use miniapp::log::LogLevel;
 use serde_json;
 

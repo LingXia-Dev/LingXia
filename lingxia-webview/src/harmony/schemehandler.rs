@@ -1,5 +1,5 @@
 use crate::runtime::WebTag;
-use miniapp::{self, AppUiDelegate};
+use miniapp::{self, LxAppDelegate};
 use napi_ohos::Result as NapiResult;
 use ohos_web_sys::*;
 use std::ffi::{CStr, CString};

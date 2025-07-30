@@ -4,7 +4,7 @@ use jni::sys::{jboolean, jint};
 use jni::{JNIEnv, JavaVM};
 use lingxia_webview::{App, SimpleAppRuntime, initialize_jni};
 use log::{error, info};
-use lxapp::{AppUiDelegate, log::LogLevel};
+use lxapp::{LxAppDelegate, log::LogLevel};
 
 #[unsafe(no_mangle)]
 pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> jint {

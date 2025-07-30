@@ -1,7 +1,7 @@
 use block2::Block;
 use dispatch2::DispatchQueue;
 use miniapp::log::LogLevel;
-use miniapp::{AppUiDelegate, LxAppError, WebViewController};
+use miniapp::{LxAppDelegate, LxAppError, WebViewController};
 use objc2::runtime::{AnyObject, NSObject, ProtocolObject};
 use objc2::{
     DefinedClass, MainThreadMarker, MainThreadOnly, class, define_class, msg_send, rc::Retained,
