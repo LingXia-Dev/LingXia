@@ -16,7 +16,7 @@ let package = Package(
         ),
     ],
     dependencies: [
-        .package(name: "lingxia", path: "../../../apple"),
+        .package(name: "lingxia", path: "../../../../lingxia-sdk/apple"),
     ],
     targets: [
         .target(

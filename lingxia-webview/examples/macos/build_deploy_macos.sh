@@ -33,10 +33,10 @@ if [ "$SKIP_RUST" = false ]; then
     # Build for macOS (static library for linking)
     if [ "$(uname -m)" = "arm64" ]; then
         echo "Building for Apple Silicon (arm64)..."
-        cargo rustc --crate-type=staticlib --release --target aarch64-apple-darwin -p lingxia --manifest-path lingxia-webview/Cargo.toml
+        cargo rustc --crate-type=staticlib --release --target aarch64-apple-darwin -p lingxia-lib
     else
         echo "Building for Intel (x86_64)..."
-        cargo rustc --crate-type=staticlib --release --target x86_64-apple-darwin -p lingxia --manifest-path lingxia-webview/Cargo.toml
+        cargo rustc --crate-type=staticlib --release --target x86_64-apple-darwin -p lingxia-lib
     fi
 else
     echo "Skipping Rust compilation (--skip-rust flag provided)"

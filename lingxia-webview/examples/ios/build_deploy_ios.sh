@@ -15,7 +15,7 @@ RESOURCES_DIR="$SCRIPT_DIR/miniapp/Sources/miniapp/Resources"
 echo "Building Rust library for iOS with Swift bridge headers..."
 cd "$WORKSPACE_ROOT"
 
-cargo rustc --crate-type=staticlib --release  --target aarch64-apple-ios -p lingxia
+cargo rustc --crate-type=staticlib --release  --target aarch64-apple-ios -p lingxia-lib
 
 mkdir -p "$RESOURCES_DIR"
 
