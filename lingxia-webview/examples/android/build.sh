@@ -24,6 +24,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$SCRIPT_DIR/../.."
 LINGXIA_ROOT="$PROJECT_ROOT/../" # LingXia project root directory
 WORKSPACE_ROOT="$LINGXIA_ROOT" # Workspace root is the same as LingXia root
+LINGXIA_SDK_ANDROID="$LINGXIA_ROOT/lingxia-sdk/android" # LingXia SDK Android directory
 
 # Package name of the app
 APP_PACKAGE="com.lingxia.example.miniapp"
@@ -48,8 +49,8 @@ trap cleanup EXIT
 if [ "$SKIP_RUST" = false ]; then
     echo "Building Rust library..."
 
-    # Set JAR output directory to Gradle build directory
-    GRADLE_BUILD_DIR="$PROJECT_ROOT/android/lingxia/build/generated/lingxia-webview"
+    # Set JAR output directory to LingXia SDK Gradle build directory
+    GRADLE_BUILD_DIR="$LINGXIA_SDK_ANDROID/lingxia/build/generated/lingxia-webview"
     mkdir -p "$GRADLE_BUILD_DIR"
     export LINGXIA_JAR_OUTPUT_DIR="$GRADLE_BUILD_DIR"
 
@@ -66,7 +67,7 @@ if [ "$SKIP_RUST" = false ]; then
     cargo build --target aarch64-linux-android --release -p lingxia-lib
 
     echo "Copying Rust library to jniLibs..."
-    JNILIBS_DIR="$PROJECT_ROOT/android/lingxia/src/main/jniLibs/arm64-v8a"
+    JNILIBS_DIR="$LINGXIA_SDK_ANDROID/lingxia/src/main/jniLibs/arm64-v8a"
     mkdir -p "$JNILIBS_DIR"
     cp "$WORKSPACE_ROOT/target/aarch64-linux-android/release/liblingxia.so" "$JNILIBS_DIR/"
 else
@@ -106,7 +107,7 @@ else
 fi
 
 echo "Building Android library..."
-cd "$PROJECT_ROOT/android"
+cd "$LINGXIA_SDK_ANDROID"
 # ./gradlew :lingxia:clean
 ./gradlew :lingxia:assembleDebug
 

@@ -19,9 +19,9 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "lingxia"
+rootProject.name = "lingxia-example"
 include(":app")
-includeBuild("../../android") {
+includeBuild("../../../lingxia-sdk/android") {
     dependencySubstitution {
         substitute(module("com.lingxia:lingxia")).using(project(":lingxia"))
     }
