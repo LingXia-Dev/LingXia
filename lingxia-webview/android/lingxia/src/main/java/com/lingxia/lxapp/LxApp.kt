@@ -61,6 +61,9 @@ class LxApp private constructor(private val context: Context) {
             }
             val appContext = context.applicationContext
 
+            // Set application context for WebView creation
+            com.lingxia.webview.LingXiaWebView.setApplicationContext(appContext)
+
             val initResultString = NativeApi.onLxAppInited(
                 appContext.filesDir.absolutePath,
                 appContext.cacheDir.absolutePath,
@@ -82,8 +85,6 @@ class LxApp private constructor(private val context: Context) {
                 Log.e(TAG, "Failed to get home LxApp details from native init.")
             }
         }
-
-
 
         @JvmStatic
         fun getInstance(): LxApp {
@@ -173,33 +174,6 @@ class LxApp private constructor(private val context: Context) {
                 putExtra("path", path)
             }
             instance.context.sendBroadcast(intent)
-        }
-
-        /**
-         * Creates a WebView for the specified appId and path.
-         * This method is called from the Rust layer to create WebViews.
-         * The WebView crate handles thread switching, so no need for Looper checks here.
-         *
-         * @param appId The miniapp ID
-         * @param path The page path
-         */
-        @JvmStatic
-        fun createWebView(appId: String, path: String): com.lingxia.lxapp.WebView? {
-
-            return try {
-                val context = getInstance().context
-
-                val webView = com.lingxia.lxapp.WebView.createWebView(
-                    context = context,
-                    appId = appId,
-                    path = path
-                )
-                Log.d(TAG, "Successfully created WebView for appId=$appId, path=$path")
-                webView
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to create WebView for appId=$appId, path=$path: ${e.message}", e)
-                null
-            }
         }
 
         @JvmStatic

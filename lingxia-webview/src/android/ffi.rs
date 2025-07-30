@@ -154,9 +154,9 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppInited(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_handlePostMessage(
+pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handlePostMessage(
     mut env: JNIEnv,
-    _class: JClass,
+    _this: JObject,
     appid: JString,
     path: JString,
     message: JString,
@@ -171,9 +171,9 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_handlePostMessage(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onPageStarted(
+pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onPageStarted(
     mut env: JNIEnv,
-    _class: JClass,
+    _this: JObject,
     appid: JString,
     path: JString,
 ) -> jint {
@@ -186,9 +186,9 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onPageStarted(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onPageFinished(
+pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onPageFinished(
     mut env: JNIEnv,
-    _class: JClass,
+    _this: JObject,
     appid: JString,
     path: JString,
 ) -> jint {
@@ -212,30 +212,6 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onPageShow(
 
     let miniapp = miniapp::get(appid);
     miniapp.on_page_show(path);
-}
-
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_shouldOverrideUrlLoading(
-    mut env: JNIEnv,
-    _class: JClass,
-    _appid: JString,
-    url: JString,
-) -> jint {
-    let url: String = env.get_string(&url).unwrap().into();
-
-    // Extract scheme from URL
-    let scheme = if let Some(scheme_end) = url.find("://") {
-        &url[..scheme_end]
-    } else {
-        return 0; // Invalid URL, don't override
-    };
-
-    // Handle lingxia scheme or block non-https schemes
-    match scheme {
-        "lx" => 1,    // Always intercept lingxia scheme
-        "https" => 0, // Allow https URLs (they'll be checked in handle_request)
-        _ => 1,       // Block all other schemes
-    }
 }
 
 #[unsafe(no_mangle)]
@@ -271,9 +247,9 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_findWebView<'a>(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_handleRequest<'a>(
+pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handleRequest<'a>(
     mut env: JNIEnv<'a>,
-    _class: JClass<'a>,
+    _this: JObject<'a>,
     appid: JString<'a>,
     url: JString<'a>,
     method: JString<'a>,
@@ -331,11 +307,12 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_handleRequest<'a>(
 }
 
 fn create_java_response<'a>(env: &mut JNIEnv<'a>, response: Response<Vec<u8>>) -> JObject<'a> {
-    // Try to find the WebResourceResponseData class
-    let response_class = match env.find_class("com/lingxia/lxapp/WebResourceResponseData") {
-        Ok(c) => c,
-        Err(_) => return JObject::null(),
-    };
+    // Try to find the WebResourceResponseData inner class with package
+    let response_class =
+        match env.find_class("com/lingxia/webview/LingXiaWebView$WebResourceResponseData") {
+            Ok(c) => c,
+            Err(_) => return JObject::null(),
+        };
 
     // Extract response components
     let status = response.status().as_u16() as i32;
@@ -433,9 +410,9 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppClosed(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onConsoleMessage(
+pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onConsoleMessage(
     mut env: JNIEnv,
-    _class: JClass,
+    _this: JObject,
     appid: JString,
     path: JString,
     level: jint,
@@ -865,9 +842,9 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getTabBarItem<'a>(
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_lingxia_lxapp_NativeApi_onScrollChanged(
+pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onScrollChanged(
     mut env: JNIEnv,
-    _class: JClass,
+    _this: JObject,
     appid: JString,
     path: JString,
     scroll_x: jint,

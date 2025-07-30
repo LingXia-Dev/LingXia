@@ -1,5 +1,5 @@
-use crate::android::{LXAPP_CLASS, get_env};
-use jni::objects::{GlobalRef, JClass, JObject, JValue};
+use crate::android::get_env;
+use jni::objects::{GlobalRef, JObject, JValue};
 use miniapp::{LxAppError, WebViewController};
 
 #[derive(Debug)]
@@ -8,35 +8,33 @@ pub struct WebViewInner {
 }
 
 impl WebViewInner {
-    /// Create a new WebView by calling Kotlin createWebView
+    /// Create a new WebView by calling Java core createWebView
     pub(crate) fn create(appid: &str, path: &str) -> Result<Self, LxAppError> {
         use jni::objects::JValue;
 
         let mut env = get_env().unwrap();
 
-        let lxapp_class: &JClass = LXAPP_CLASS
-            .get()
-            .ok_or_else(|| {
-                LxAppError::WebView("Global LxApp class reference not available".to_string())
-            })?
-            .as_obj()
-            .into();
+        // Call the ONLY Java static method - it handles everything
+        let webview_class = env
+            .find_class("com/lingxia/webview/LingXiaWebView")
+            .map_err(|e| {
+                LxAppError::WebView(format!("Failed to find LingXiaWebView class: {:?}", e))
+            })?;
 
         let appid_jstring = env.new_string(appid).unwrap();
         let path_jstring = env.new_string(path).unwrap();
 
-        // Call Kotlin createWebView method
         let webview_result = env
             .call_static_method(
-                lxapp_class,
+                &webview_class,
                 "createWebView",
-                "(Ljava/lang/String;Ljava/lang/String;)Lcom/lingxia/lxapp/WebView;",
+                "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/Object;",
                 &[
                     JValue::Object(&appid_jstring),
                     JValue::Object(&path_jstring),
                 ],
             )
-            .map_err(|e| LxAppError::WebView(format!("Failed to call createWebView: {:?}", e)))?;
+            .map_err(|e| LxAppError::WebView(format!("Failed to create WebView: {:?}", e)))?;
 
         let java_webview = webview_result
             .l()

@@ -470,7 +470,7 @@ class LxAppActivity : AppCompatActivity() {
 
     // Helper function to find existing WebView instance for a given path/page
     private fun findWebViewForPage(appId: String, path: String): Pair<com.lingxia.lxapp.WebView?, NavigationBarConfig?> {
-        var webView = NativeApi.findWebView(appId, path)
+        var webView = com.lingxia.lxapp.WebView.findWebView(appId, path)
 
         if (webView == null) {
             Log.w(TAG, "WebView not found for appId=$appId, path=$path. WebView should be created by Rust layer.")
@@ -492,7 +492,7 @@ class LxAppActivity : AppCompatActivity() {
             return
         }
         if (!isDestroyed) {
-            Log.d(TAG, "Attaching and resuming WebView for path: ${view.currentPath}")
+            Log.d(TAG, "Attaching and resuming WebView for path: ${view.getCurrentPath()}")
 
             // Ensure view is visible
             view.visibility = View.VISIBLE
@@ -516,9 +516,9 @@ class LxAppActivity : AppCompatActivity() {
             view.resume()
 
             // Unified onPageShow trigger - called for all WebViews when attached to UI
-            if (view.appId != null && view.currentPath != null) {
+            if (view.getAppId() != null && view.getCurrentPath() != null) {
                 try {
-                    NativeApi.onPageShow(view.appId!!, view.currentPath!!)
+                    NativeApi.onPageShow(view.getAppId()!!, view.getCurrentPath()!!)
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to call nativeOnPageShow: ${e.message}")
                 }
@@ -797,7 +797,7 @@ class LxAppActivity : AppCompatActivity() {
         }
 
         // Bail early if trying to switch to the current path
-        if (currentWebView?.currentPath == targetPath) {
+        if (currentWebView?.getCurrentPath() == targetPath) {
             Log.d(TAG, "Already on this tab, no need to switch")
             return
         }
@@ -852,10 +852,10 @@ class LxAppActivity : AppCompatActivity() {
             targetWebView.resume()
 
             // Always trigger onPageShow when WebView becomes visible to user (tab switching)
-            if (targetWebView.appId != null && targetWebView.currentPath != null) {
+            if (targetWebView.getAppId() != null && targetWebView.getCurrentPath() != null) {
                 try {
-                    NativeApi.onPageShow(targetWebView.appId!!, targetWebView.currentPath!!)
-                    Log.d(TAG, "Tab switching triggered onPageShow for: ${targetWebView.currentPath}")
+                    NativeApi.onPageShow(targetWebView.getAppId()!!, targetWebView.getCurrentPath()!!)
+                    Log.d(TAG, "Tab switching triggered onPageShow for: ${targetWebView.getCurrentPath()}")
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to call nativeOnPageShow during tab switch: ${e.message}")
                 }
@@ -885,7 +885,7 @@ class LxAppActivity : AppCompatActivity() {
 
         try {
             // Check if trying to navigate to current page
-            if (currentWebView?.currentPath == targetPath) {
+            if (currentWebView?.getCurrentPath() == targetPath) {
                 return
             }
 
@@ -899,7 +899,7 @@ class LxAppActivity : AppCompatActivity() {
                 Log.d(TAG, "Navigating to non-tab page: $targetPath")
 
                 // Determine if this is back navigation (simplistically by path length)
-                val currentPath = currentWebView?.currentPath
+                val currentPath = currentWebView?.getCurrentPath()
                 val isBackNavigation = currentPath != null && currentPath.length > targetPath.length
 
                 navigateToPage(targetPath, isReplace = false, isBackNavigation = isBackNavigation)
@@ -986,10 +986,10 @@ class LxAppActivity : AppCompatActivity() {
                 .setInterpolator(interpolator)
                 .withEndAction {
                     // Trigger nativeOnPageShow after animation completes
-                    if (newWebView.appId != null && newWebView.currentPath != null) {
+                    if (newWebView.getAppId() != null && newWebView.getCurrentPath() != null) {
                         try {
-                            NativeApi.onPageShow(newWebView.appId!!, newWebView.currentPath!!)
-                            Log.d(TAG, "navigateToPage: Triggered onPageShow for appId=${newWebView.appId} path=${newWebView.currentPath}")
+                            NativeApi.onPageShow(newWebView.getAppId()!!, newWebView.getCurrentPath()!!)
+                            Log.d(TAG, "navigateToPage: Triggered onPageShow for appId=${newWebView.getAppId()} path=${newWebView.getCurrentPath()}")
                         } catch (e: Exception) {
                             Log.e(TAG, "Failed to call nativeOnPageShow in navigateToPage: ${e.message}")
                         }
@@ -1136,7 +1136,7 @@ class LxAppActivity : AppCompatActivity() {
             val onAnimationEnd = Runnable {
                  // If navigating back to a tab root, hide the back button.
                  if (isBackNavigation) {
-                     val currentPath = currentWebView?.currentPath ?: ""
+                     val currentPath = currentWebView?.getCurrentPath() ?: ""
                      val isNowOnTabRoot = tabBar?.findTabIndexByPath(currentPath) != -1
                      if (isNowOnTabRoot) {
                          Log.d(TAG, "Back nav to Tab Root ($currentPath) finished, hiding back button.")
@@ -1209,7 +1209,7 @@ class LxAppActivity : AppCompatActivity() {
         updateLayoutMargins()
 
         // Reconfigure navigation bar if needed
-        val pageConfig = LxApp.getNavigationBarConfig(appId, currentWebView?.currentPath ?: "")
+        val pageConfig = LxApp.getNavigationBarConfig(appId, currentWebView?.getCurrentPath() ?: "")
         updateNavigationBar(pageConfig, false, true)
     }
 }

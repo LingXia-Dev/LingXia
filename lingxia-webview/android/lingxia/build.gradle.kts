@@ -33,6 +33,8 @@ android {
 }
 
 dependencies {
+    // LingXia WebView JAR (built by Rust build.rs and placed in Gradle build directory)
+    api(files("${layout.buildDirectory.get()}/generated/lingxia-webview/lingxia-webview.jar"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
