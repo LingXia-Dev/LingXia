@@ -1,8 +1,8 @@
 use crate::harmony::schemehandler::set_webview_scheme_handler;
 use crate::harmony::tsfn::{call_arkts, call_arkts_with_callback};
-use crate::runtime::WebTag;
-use miniapp::log::LogLevel;
-use miniapp::{AppUiDelegate, LxAppError, WebViewController};
+use crate::webview::{WebTag, find_webview_by_tag};
+use lxapp::log::LogLevel;
+use lxapp::{LxAppDelegate, LxAppError, WebViewController};
 use ohos_web_sys::*;
 
 use std::cell::RefCell;
@@ -107,8 +107,7 @@ fn register_proxy_for_webtag(webtag: &WebTag) -> Result<(), LxAppError> {
         let proxy_data_ptr = Box::into_raw(proxy_data) as *mut std::ffi::c_void;
 
         // Track this allocation for cleanup in the WebView
-        let runtime = crate::runtime::SimpleAppRuntime::get().unwrap();
-        if let Some(webview) = runtime.get_webview_by_tag(webtag) {
+        if let Some(webview) = find_webview_by_tag(webtag) {
             webview.track_user_data(proxy_data_ptr);
         }
 
@@ -195,10 +194,7 @@ pub fn send_port_to_webview_for_webtag(
     webtag: &WebTag,
     port_type: PortType,
 ) -> Result<(), LxAppError> {
-    let runtime = crate::runtime::SimpleAppRuntime::get()
-        .ok_or_else(|| LxAppError::WebView("Runtime not initialized".to_string()))?;
-
-    let webview = runtime.get_webview_by_tag(webtag).ok_or_else(|| {
+    let webview = find_webview_by_tag(webtag).ok_or_else(|| {
         LxAppError::WebView(format!("WebView not found for webtag: {}", webtag.as_str()))
     })?;
 
@@ -248,7 +244,7 @@ impl WebViewInner {
             }
 
             // why call here ?
-            // for init route page of home miniapp, it has no change to trigger onControllerAttached
+            // for init route page of home lxapp, it has no change to trigger onControllerAttached
             // and it only be workable for init route page.
             if let Err(e) = register_proxy_for_webtag(&webtag_for_callback) {
                 log::error!(
@@ -584,8 +580,7 @@ fn register_webview_callbacks(webtag: &WebTag) -> Result<(), LxAppError> {
         let user_data = Box::into_raw(Box::new(webtag_string)) as *mut c_void;
 
         // Track this user_data for cleanup (but don't double-cleanup in on_destroy_callback)
-        let runtime = crate::runtime::SimpleAppRuntime::get().unwrap();
-        if let Some(webview) = runtime.get_webview_by_tag(webtag) {
+        if let Some(webview) = find_webview_by_tag(webtag) {
             webview.track_user_data(user_data);
         }
 
@@ -684,8 +679,8 @@ extern "C" fn on_page_begin_callback(web_tag: *const c_char, user_data: *mut c_v
         }
 
         let (appid, path) = webtag.extract_parts();
-        let miniapp = miniapp::get(appid);
-        miniapp.on_page_started(path);
+        let lxapp = lxapp::get(appid);
+        lxapp.on_page_started(path);
     }
 }
 
@@ -696,8 +691,8 @@ extern "C" fn on_page_end_callback(web_tag: *const c_char, _user_data: *mut c_vo
         // Extract app_id and path from webtag
         let webtag = WebTag::from(webtag);
         let (appid, path) = webtag.extract_parts();
-        let miniapp = miniapp::get(appid);
-        miniapp.on_page_finished(path);
+        let lxapp = lxapp::get(appid);
+        lxapp.on_page_finished(path);
     }
 }
 
@@ -755,11 +750,8 @@ fn setup_webmessage_port_for_webtag(
         let port1 = *ports.offset(0); // Native side port
         let port2 = *ports.offset(1); // WebView side port
 
-        // Store both ports in WebViewInner through runtime
-        let runtime = crate::runtime::SimpleAppRuntime::get()
-            .ok_or_else(|| LxAppError::WebView("Runtime not initialized".to_string()))?;
-        let webview = runtime
-            .get_webview_by_tag(webtag)
+        // Store both ports in WebViewInner
+        let webview = crate::find_webview_by_tag(webtag)
             .ok_or_else(|| LxAppError::WebView("WebView not found".to_string()))?;
 
         match port_type {
@@ -916,9 +908,9 @@ extern "C" fn on_web_message_received(
 
         //log::info!("WebMessage received from {}: {}", webtag, msg_str);
 
-        // Forward to miniapp logic layer
-        let miniapp = miniapp::get(appid.to_string());
-        miniapp.handle_post_message(path.to_string(), msg_str.to_string());
+        // Forward to lxapp logic layer
+        let lxapp = lxapp::get(appid.to_string());
+        lxapp.handle_post_message(path.to_string(), msg_str.to_string());
     }
 }
 
@@ -967,7 +959,7 @@ extern "C" fn on_console_message_received(
                 // Extract appid and path from webtag
                 let webtag = WebTag::from(webtag);
                 let (appid, path) = webtag.extract_parts();
-                // Convert log level for miniapp crate
+                // Convert log level for lxapp crate
                 let log_level = match level {
                     "error" => LogLevel::Error,
                     "warn" => LogLevel::Warn,
@@ -976,9 +968,9 @@ extern "C" fn on_console_message_received(
                     _ => LogLevel::Info,
                 };
 
-                // Forward to miniapp crate for logging only
-                let miniapp = miniapp::get(appid);
-                miniapp.log(&path, log_level, console_message);
+                // Forward to lxapp crate for logging only
+                let lxapp = lxapp::get(appid);
+                lxapp.log(&path, log_level, console_message);
             }
         }
     }

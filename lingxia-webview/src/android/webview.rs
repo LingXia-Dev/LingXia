@@ -1,6 +1,8 @@
-use crate::android::{MINIAPP_CLASS, get_env};
-use jni::objects::{GlobalRef, JClass, JObject, JValue};
-use miniapp::{LxAppError, WebViewController};
+use jni::objects::{GlobalRef, JObject, JValue};
+use lxapp::{LxAppError, WebViewController};
+
+// Import JNI environment access from shared utils
+use super::jni_env::get_env;
 
 #[derive(Debug)]
 pub struct WebViewInner {
@@ -8,35 +10,33 @@ pub struct WebViewInner {
 }
 
 impl WebViewInner {
-    /// Create a new WebView by calling Kotlin createWebView
+    /// Create a new WebView by calling Java core createWebView
     pub(crate) fn create(appid: &str, path: &str) -> Result<Self, LxAppError> {
         use jni::objects::JValue;
 
         let mut env = get_env().unwrap();
 
-        let miniapp_class: &JClass = MINIAPP_CLASS
-            .get()
-            .ok_or_else(|| {
-                LxAppError::WebView("Global LxApp class reference not available".to_string())
-            })?
-            .as_obj()
-            .into();
+        // Call the ONLY Java static method - it handles everything
+        let webview_class = env
+            .find_class("com/lingxia/webview/LingXiaWebView")
+            .map_err(|e| {
+                LxAppError::WebView(format!("Failed to find LingXiaWebView class: {:?}", e))
+            })?;
 
         let appid_jstring = env.new_string(appid).unwrap();
         let path_jstring = env.new_string(path).unwrap();
 
-        // Call Kotlin createWebView method
         let webview_result = env
             .call_static_method(
-                miniapp_class,
+                &webview_class,
                 "createWebView",
-                "(Ljava/lang/String;Ljava/lang/String;)Lcom/lingxia/lxapp/WebView;",
+                "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/Object;",
                 &[
                     JValue::Object(&appid_jstring),
                     JValue::Object(&path_jstring),
                 ],
             )
-            .map_err(|e| LxAppError::WebView(format!("Failed to call createWebView: {:?}", e)))?;
+            .map_err(|e| LxAppError::WebView(format!("Failed to create WebView: {:?}", e)))?;
 
         let java_webview = webview_result
             .l()
@@ -55,7 +55,7 @@ impl WebViewInner {
         Ok(WebViewInner { java_webview })
     }
 
-    pub(crate) fn get_java_webview(&self) -> &GlobalRef {
+    pub fn get_java_webview(&self) -> &GlobalRef {
         &self.java_webview
     }
 }
@@ -242,9 +242,7 @@ impl WebViewController for WebViewInner {
         if result.is_ok() {
             Ok(())
         } else {
-            Err(LxAppError::WebView(
-                "Failed to set user agent".to_string(),
-            ))
+            Err(LxAppError::WebView("Failed to set user agent".to_string()))
         }
     }
 

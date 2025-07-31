@@ -1,14 +1,10 @@
 [package]
-name = "lingxia"
+name = "lingxia-webview"
 version = "0.1.0"
 edition = "2024"
 
-[lib]
-name = "lingxia"
-crate-type = ["staticlib", "cdylib"]
-
 [dependencies]
-miniapp = { package = "lingxia-miniapp", path = "../lingxia-miniapp" }
+lxapp = { package = "lingxia-lxapp", path = "../lingxia-lxapp" }
 log = "0.4.27"
 
 # Use workspace dependencies
@@ -19,13 +15,10 @@ http = { workspace = true }
 [target.'cfg(target_os = "android")'.dependencies]
 jni = "0.21.1"
 android_logger = "0.15.0"
-ndk-sys = "0.6.0"
-ndk = "0.9.0"
 
 # iOS/macOS-specific dependencies for proper os_log integration
 [target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
 oslog = "0.2.0"
-swift-bridge = "0.1"
 # objc2 dependencies for direct WebView management
 objc2 = "0.6"
 objc2-web-kit = "0.3"
@@ -37,11 +30,7 @@ dispatch2 = "0.3"
 
 [target.'cfg(all(target_os = "linux", target_env = "ohos"))'.dependencies]
 ohos_hilog = "0.1"
-napi-ohos = "1.0.4"
+napi-ohos = "1.1.0"
 napi-derive-ohos = "1.0.4"
-ohos-raw-sys="0.0.1"
+ohos-raw-sys="0.1.0"
 ohos-web-sys="0.0.1"
-
-[build-dependencies]
-swift-bridge-build = "0.1"
-napi-build-ohos = "1.0"

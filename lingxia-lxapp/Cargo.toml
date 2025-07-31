@@ -1,0 +1,25 @@
+[package]
+name = "lingxia-lxapp"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+# Use workspace dependencies
+http = { workspace = true }
+dashmap = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+tokio = { workspace = true }
+
+# Local dependencies
+rong_modules = { workspace = true }
+
+# Target-specific JavaScript engine selection
+# iOS/macOS automatically use JavaScriptCore
+[target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
+rong = { workspace = true, features = ["jscore"] }
+
+# Other platforms automatically use QuickJS
+[target.'cfg(not(any(target_os = "ios", target_os = "macos")))'.dependencies]
+rong = { workspace = true, features = ["quickjs"] }

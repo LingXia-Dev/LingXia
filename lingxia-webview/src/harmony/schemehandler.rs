@@ -1,5 +1,5 @@
-use crate::runtime::WebTag;
-use miniapp::{self, AppUiDelegate};
+use crate::webview::{WebTag, find_webview_by_tag};
+use lxapp::{self, LxAppDelegate};
 use napi_ohos::Result as NapiResult;
 use ohos_web_sys::*;
 use std::ffi::{CStr, CString};
@@ -75,7 +75,7 @@ pub unsafe extern "C" fn on_lx_request_start(
         app_id
     );
 
-    // Build HTTP request to check if miniapp wants to handle it
+    // Build HTTP request to check if lxapp wants to handle it
     let http_request = match http::Request::builder()
         .method(method.as_str())
         .uri(&url)
@@ -88,9 +88,9 @@ pub unsafe extern "C" fn on_lx_request_start(
         }
     };
 
-    // Ask miniapp if it wants to handle this request
-    let miniapp = miniapp::get(app_id.to_string());
-    if let Some(http_response) = miniapp.handle_request(http_request) {
+    // Ask lxapp if it wants to handle this request
+    let lxapp = lxapp::get(app_id.to_string());
+    if let Some(http_response) = lxapp.handle_request(http_request) {
         unsafe {
             *intercept = true;
             send_response(resource_handler, http_response);
@@ -218,8 +218,7 @@ pub fn set_webview_scheme_handler(webtag: &WebTag) -> NapiResult<()> {
     let app_id = webtag.extract_appid();
 
     // Get the WebView instance to track scheme handlers
-    let runtime = crate::runtime::SimpleAppRuntime::get().unwrap();
-    let webview = runtime.get_webview_by_tag(webtag).ok_or_else(|| {
+    let webview = find_webview_by_tag(webtag).ok_or_else(|| {
         napi_ohos::Error::new(
             napi_ohos::Status::GenericFailure,
             format!("WebView not found for tag: {}", webtag),

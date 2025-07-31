@@ -1,4 +1,4 @@
-use miniapp::LxAppError;
+use lxapp::LxAppError;
 use napi_ohos::Status;
 use napi_ohos::bindgen_prelude::Function;
 use napi_ohos::threadsafe_function::{ThreadsafeCallContext, ThreadsafeFunctionCallMode};

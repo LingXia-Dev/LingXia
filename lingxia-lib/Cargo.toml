@@ -1,0 +1,39 @@
+[package]
+name = "lingxia-lib"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "lingxia"
+crate-type = ["staticlib", "cdylib"]
+
+[dependencies]
+lingxia-webview = { path = "../lingxia-webview" }
+lxapp = { package = "lingxia-lxapp", path = "../lingxia-lxapp" }
+log = "0.4.27"
+
+# Android-specific dependencies (only what's needed for FFI)
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21.1"
+android_logger = "0.15.0"
+serde_json = { workspace = true }
+ndk-sys = "0.6.0"
+
+# Apple-specific dependencies (iOS and macOS)
+[target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
+objc2 = "0.6"
+objc2-foundation = "0.3"
+swift-bridge = "0.1.57"
+log = "0.4.27"
+oslog = "0.2.0"
+
+# HarmonyOS-specific dependencies
+[target.'cfg(target_env = "ohos")'.dependencies]
+ohos_hilog = "0.1.3"
+napi-ohos = "1.1.0"
+napi-derive-ohos = "1.1.0"
+ohos-raw-sys = "0.1.0"
+
+[build-dependencies]
+swift-bridge-build = "0.1.57"
+napi-build-ohos = "1.1.0"
