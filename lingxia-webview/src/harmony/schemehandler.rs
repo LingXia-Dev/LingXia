@@ -1,4 +1,4 @@
-use crate::webview::WebTag;
+use crate::webview::{WebTag, find_webview_by_tag};
 use miniapp::{self, LxAppDelegate};
 use napi_ohos::Result as NapiResult;
 use ohos_web_sys::*;
@@ -218,8 +218,7 @@ pub fn set_webview_scheme_handler(webtag: &WebTag) -> NapiResult<()> {
     let app_id = webtag.extract_appid();
 
     // Get the WebView instance to track scheme handlers
-    let runtime = crate::runtime::SimpleAppRuntime::get().unwrap();
-    let webview = runtime.get_webview_by_tag(webtag).ok_or_else(|| {
+    let webview = find_webview_by_tag(webtag).ok_or_else(|| {
         napi_ohos::Error::new(
             napi_ohos::Status::GenericFailure,
             format!("WebView not found for tag: {}", webtag),

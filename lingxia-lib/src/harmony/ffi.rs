@@ -1,9 +1,9 @@
 use crate::harmony::app::App;
-use crate::harmony::schemehandler::register_custom_schemes;
-use crate::runtime::SimpleAppRuntime;
+use crate::runtime::PlatformAppRuntime;
+use lingxia_webview::schemehandler::register_custom_schemes;
 use log::LevelFilter;
-use miniapp::LxAppDelegate;
-use miniapp::log::LogLevel;
+use lxapp::LxAppDelegate;
+use lxapp::log::LogLevel;
 use napi_derive_ohos::napi;
 use napi_ohos::bindgen_prelude::Object;
 use napi_ohos::bindgen_prelude::*;
@@ -81,7 +81,7 @@ pub fn lxapp_init(
     );
 
     // Initialize the new logging system
-    miniapp::log::LogManager::init(|log_msg| {
+    lxapp::log::LogManager::init(|log_msg| {
         let formatted_message = format!(
             "[{}{}{}] {}",
             log_msg.tag.as_str(),
@@ -129,7 +129,7 @@ pub fn lxapp_init(
     }
 
     // Initialize TSFN
-    if let Err(e) = crate::harmony::tsfn::init(callback_function) {
+    if let Err(e) = lingxia_webview::tsfn::init(callback_function) {
         log::error!("Failed to initialize TSFN: {}", e);
         return None;
     }
@@ -154,18 +154,18 @@ pub fn lxapp_init(
         }
     };
 
-    // Initialize global runtime and pass to miniapp::init
-    let runtime = SimpleAppRuntime::init(app);
+    // Initialize global runtime and pass to lxapp::init
+    let runtime = PlatformAppRuntime::init(app);
 
     // Return only the home app ID
-    let home_app_id = miniapp::init(runtime)?;
+    let home_app_id = lxapp::init(runtime)?;
     Some(home_app_id)
 }
 
 /// Get LxApp information
 #[napi]
 fn get_lx_app_info(appid: String) -> Option<LxAppInfo> {
-    let miniapp = miniapp::get(appid);
+    let miniapp = lxapp::get(appid);
     let app_config = miniapp.get_config();
     let rust_app_info = app_config.get_lxapp_info();
 
@@ -179,15 +179,15 @@ fn get_lx_app_info(appid: String) -> Option<LxAppInfo> {
 /// Get tab bar configuration
 #[napi]
 fn get_tab_bar_config(appid: String) -> Option<TabBarConfig> {
-    let miniapp = miniapp::get(appid);
+    let miniapp = lxapp::get(appid);
     let app_config = miniapp.get_config();
     let rust_config = app_config.get_tab_bar_config(&miniapp)?;
 
     let position = match rust_config.position {
-        miniapp::config::TabBarPosition::Bottom => TabBarPosition::Bottom,
-        miniapp::config::TabBarPosition::Top => TabBarPosition::Top,
-        miniapp::config::TabBarPosition::Left => TabBarPosition::Left,
-        miniapp::config::TabBarPosition::Right => TabBarPosition::Right,
+        lxapp::config::TabBarPosition::Bottom => TabBarPosition::Bottom,
+        lxapp::config::TabBarPosition::Top => TabBarPosition::Top,
+        lxapp::config::TabBarPosition::Left => TabBarPosition::Left,
+        lxapp::config::TabBarPosition::Right => TabBarPosition::Right,
     };
 
     let list = rust_config
@@ -216,13 +216,13 @@ fn get_tab_bar_config(appid: String) -> Option<TabBarConfig> {
 /// Get page navigation bar configuration
 #[napi]
 pub fn get_navigation_bar_config(appid: String, path: String) -> NavigationBarConfig {
-    let miniapp = miniapp::get(appid);
+    let miniapp = lxapp::get(appid);
     let app_config = miniapp.get_config();
     let rust_config = app_config.get_nav_bar_config(&miniapp, &path);
 
     let navigation_style = match rust_config.navigationStyle {
-        miniapp::config::NavigationStyle::Default => NavigationStyle::Default,
-        miniapp::config::NavigationStyle::Custom => NavigationStyle::Custom,
+        lxapp::config::NavigationStyle::Default => NavigationStyle::Default,
+        lxapp::config::NavigationStyle::Custom => NavigationStyle::Custom,
     };
 
     NavigationBarConfig {
@@ -236,7 +236,7 @@ pub fn get_navigation_bar_config(appid: String, path: String) -> NavigationBarCo
 /// Notify that LxApp was opened
 #[napi]
 pub fn on_lxapp_opened(appid: String, path: String) -> i32 {
-    let miniapp = miniapp::get(appid);
+    let miniapp = lxapp::get(appid);
     miniapp.on_lxapp_opened(path);
     0
 }
@@ -244,7 +244,7 @@ pub fn on_lxapp_opened(appid: String, path: String) -> i32 {
 /// Notify that LxApp was closed
 #[napi]
 pub fn on_lxapp_closed(appid: String) -> i32 {
-    let miniapp = miniapp::get(appid);
+    let miniapp = lxapp::get(appid);
     miniapp.on_lxapp_closed();
     0
 }
@@ -252,7 +252,7 @@ pub fn on_lxapp_closed(appid: String) -> i32 {
 /// Notify that a page is being shown
 #[napi]
 pub fn on_page_show(appid: String, path: String) -> i32 {
-    let miniapp = miniapp::get(appid);
+    let miniapp = lxapp::get(appid);
     miniapp.on_page_show(path);
     0
 }
@@ -266,7 +266,7 @@ pub fn on_scroll_changed(
     max_scroll_x: i32,
     max_scroll_y: i32,
 ) -> i32 {
-    let miniapp = miniapp::get(appid);
+    let miniapp = lxapp::get(appid);
     miniapp.on_page_scroll_changed(path, scroll_x, scroll_y, max_scroll_x, max_scroll_y);
     0
 }

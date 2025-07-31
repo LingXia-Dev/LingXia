@@ -13,6 +13,12 @@ static WEBVIEW_INSTANCES: OnceLock<Arc<Mutex<HashMap<String, Arc<WebViewInner>>>
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct WebTag(String);
 
+impl std::fmt::Display for WebTag {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 impl WebTag {
     pub fn new(appid: &str, path: &str) -> Self {
         Self(format!("{}-{}", appid, path))
@@ -34,6 +40,12 @@ impl WebTag {
             .split_once('-')
             .map(|(appid, path)| (appid.to_string(), path.to_string()))
             .unwrap()
+    }
+}
+
+impl From<&str> for WebTag {
+    fn from(webtag_str: &str) -> Self {
+        Self(webtag_str.to_string())
     }
 }
 
@@ -81,7 +93,11 @@ pub fn create_webview(
 /// Find WebView by appid and path
 pub fn find_webview(appid: &str, path: &str) -> Option<Arc<WebViewInner>> {
     let webtag = WebTag::new(appid, path);
+    find_webview_by_tag(&webtag)
+}
 
+/// Find WebView by WebTag
+pub fn find_webview_by_tag(webtag: &WebTag) -> Option<Arc<WebViewInner>> {
     if let Some(instances) = WEBVIEW_INSTANCES.get() {
         if let Ok(webviews) = instances.lock() {
             webviews.get(webtag.as_str()).cloned()

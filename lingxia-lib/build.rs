@@ -7,6 +7,11 @@ fn main() {
 
     let target = env::var("TARGET").unwrap_or_default();
 
+    let env = env::var("CARGO_CFG_TARGET_ENV").unwrap_or_default();
+    if target.contains("linux") && env.eq("ohos") {
+        napi_build_ohos::setup();
+    }
+
     if target.contains("apple") {
         let package_name = "LingXiaFFI";
         let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());

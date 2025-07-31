@@ -1,5 +1,4 @@
-use crate::harmony::tsfn;
-use miniapp::{AssetFileEntry, DeviceInfo, LxAppError};
+use lxapp::{AssetFileEntry, DeviceInfo, LxAppError};
 use napi_ohos::JsValue;
 use napi_ohos::bindgen_prelude::{Env, Object};
 use ohos_raw_sys::*;
@@ -305,15 +304,18 @@ impl App {
         self.device_info.clone()
     }
 
+    /// Open LxApp through ArkTS
     pub fn open_lxapp(&self, appid: &str, path: &str) -> Result<(), LxAppError> {
-        tsfn::call_arkts("openLxApp", &[appid, path])
+        lingxia_webview::tsfn::call_arkts("openLxApp", &[appid, path])
     }
 
+    /// Close LxApp through ArkTS
     pub fn close_lxapp(&self, appid: &str) -> Result<(), LxAppError> {
-        tsfn::call_arkts("closeLxApp", &[appid])
+        lingxia_webview::tsfn::call_arkts("closeLxApp", &[appid])
     }
 
+    /// Switch to a specific page through ArkTS
     pub fn switch_page(&self, appid: &str, path: &str) -> Result<(), LxAppError> {
-        tsfn::call_arkts("switchPage", &[appid, path])
+        lingxia_webview::tsfn::call_arkts("switchPage", &[appid, path])
     }
 }

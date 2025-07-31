@@ -1,5 +1,4 @@
 use std::env;
-use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -11,11 +10,6 @@ fn main() {
 
     if target.contains("android") {
         compile_android_java();
-    }
-
-    let env = env::var("CARGO_CFG_TARGET_ENV").unwrap_or_default();
-    if target.contains("linux") && env.eq("ohos") {
-        napi_build_ohos::setup();
     }
 }
 
