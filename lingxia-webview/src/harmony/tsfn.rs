@@ -9,18 +9,20 @@ use std::sync::OnceLock;
 // Node-API ThreadSafe Function limitation: napi_call_threadsafe_function() can only
 // pass a single void* data pointer. To pass multiple parameters, we pack them into
 // a single string with colon separator: "function_name:arg1:arg2:..."
-type CallbackTsfn = napi_ohos::threadsafe_function::ThreadsafeFunction<
+// Store the actual ThreadsafeFunction type with correct parameters
+type TsfnType = napi_ohos::threadsafe_function::ThreadsafeFunction<
     String,
-    napi_ohos::JsUnknown,
-    napi_ohos::JsString,
+    napi_ohos::Unknown<'static>,
+    String,
+    napi_ohos::Status,
     false,
     false,
     200,
 >;
-static CALLBACK_TSFN: OnceLock<CallbackTsfn> = OnceLock::new();
+static CALLBACK_TSFN: OnceLock<TsfnType> = OnceLock::new();
 
 /// Initialize the ThreadSafe Function for TSFN calls
-pub fn init(callback_function: Function) -> Result<(), String> {
+pub fn init(callback_function: Function<'static>) -> Result<(), String> {
     // Create ThreadSafe Function for callback - pass colon-separated string with function name and args
     let tsfn = callback_function
         .build_threadsafe_function::<String>()
@@ -30,9 +32,8 @@ pub fn init(callback_function: Function) -> Result<(), String> {
             let data = ctx.value;
             log::info!("ThreadSafe callback called with data: {}", data);
 
-            // Return the data string to JavaScript
-            let js_string = ctx.env.create_string(&data)?;
-            Ok(js_string)
+            // Return the data string to ArkTS
+            Ok(data)
         });
 
     let tsfn = match tsfn {
@@ -57,28 +58,32 @@ pub fn init(callback_function: Function) -> Result<(), String> {
 
 /// Helper function for TSFN calls
 pub fn call_arkts(name: &str, args: &[&str]) -> Result<(), LxAppError> {
-    let tsfn = CALLBACK_TSFN
-        .get()
-        .ok_or_else(|| LxAppError::WebView("No callback".to_string()))?;
+    let tsfn = CALLBACK_TSFN.get().ok_or_else(|| {
+        log::error!("TSFN not initialized");
+        LxAppError::WebView("No callback".to_string())
+    })?;
+
     let data = format!("{}|{}", name, args.join("|"));
+    // log::info!("Calling TSFN with data: {}", data);
+
     match tsfn.call(data, ThreadsafeFunctionCallMode::Blocking) {
         Status::Ok => Ok(()),
-        _ => Err(LxAppError::WebView("TSFN call failed".to_string())),
+        status => {
+            log::error!("TSFN call failed for {}: {:?}", name, status);
+            Err(LxAppError::WebView("TSFN call failed".to_string()))
+        }
     }
 }
 
 /// Helper function for TSFN calls with callback
-pub fn call_arkts_with_callback<F>(
-    name: &str,
-    args: &[&str],
-    callback: F,
-) -> Result<(), LxAppError>
+pub fn call_arkts_with_callback<F>(name: &str, args: &[&str], callback: F) -> Result<(), LxAppError>
 where
     F: FnOnce() + Send + 'static,
 {
     let tsfn = CALLBACK_TSFN
         .get()
         .ok_or_else(|| LxAppError::WebView("No callback".to_string()))?;
+
     let data = format!("{}|{}", name, args.join("|"));
 
     // Call ArkTS with return value and wait for completion
