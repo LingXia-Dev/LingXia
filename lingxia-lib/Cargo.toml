@@ -18,7 +18,6 @@ jni = "0.21.1"
 android_logger = "0.15.0"
 serde_json = { workspace = true }
 ndk-sys = "0.6.0"
-ndk = "0.9.0"
 
 # Apple-specific dependencies (iOS and macOS)
 [target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
