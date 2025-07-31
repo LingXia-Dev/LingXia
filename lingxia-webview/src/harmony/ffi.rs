@@ -67,7 +67,7 @@ pub struct NavigationBarConfig {
 #[napi]
 pub fn lxapp_init(
     env: Env,
-    callback_function: Function,
+    callback_function: Function<'static>,
     data_dir: String,
     cache_dir: String,
     #[napi(ts_arg_type = "resourceManager.ResourceManager | null")] resource_manager: Option<

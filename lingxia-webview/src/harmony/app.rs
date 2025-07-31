@@ -1,6 +1,6 @@
 use crate::harmony::tsfn;
 use miniapp::{AssetFileEntry, DeviceInfo, LxAppError};
-use napi_ohos::NapiRaw;
+use napi_ohos::JsValue;
 use napi_ohos::bindgen_prelude::{Env, Object};
 use ohos_raw_sys::*;
 use std::ffi::{CString, c_void};
@@ -78,7 +78,7 @@ impl App {
         let (resource_manager_ptr, env_raw, js_rm_raw) =
             if let Some(resource_manager) = resource_manager {
                 let env_raw = env.raw();
-                let js_rm_raw = unsafe { resource_manager.raw() };
+                let js_rm_raw = resource_manager.raw();
 
                 // Extract the native ResourceManager pointer from the JS object
                 let native_mgr =
