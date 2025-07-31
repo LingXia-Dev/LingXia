@@ -27,7 +27,7 @@ WORKSPACE_ROOT="$LINGXIA_ROOT" # Workspace root is the same as LingXia root
 LINGXIA_SDK_ANDROID="$LINGXIA_ROOT/lingxia-sdk/android" # LingXia SDK Android directory
 
 # Package name of the app
-APP_PACKAGE="com.lingxia.example.miniapp"
+APP_PACKAGE="com.lingxia.example.lxapp"
 MAIN_ACTIVITY="$APP_PACKAGE.MainActivity"
 
 # Define the assets directory

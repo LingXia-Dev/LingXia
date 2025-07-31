@@ -1,4 +1,4 @@
-package com.lingxia.example.miniapp
+package com.lingxia.example.lxapp
 
 import android.os.Bundle
 import android.util.Log

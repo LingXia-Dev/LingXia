@@ -10,7 +10,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-APP_PACKAGE="app.lingxia.miniapp.example"
+APP_PACKAGE="app.lingxia.lxapp.example"
 APP_ABILITY="EntryAbility"
 HAP_PATH="entry/build/default/outputs/default/entry-default-signed.hap"
 SCREENSHOT_DEVICE_PATH="/data/local/tmp/lingxia_screenshot.jpeg"
@@ -73,7 +73,7 @@ build_rust() {
 }
 
 # Function to build and copy LxApp assets
-build_miniapp_assets() {
+build_lxapp_assets() {
     print_step "2" "Building LxApp Assets"
 
     ASSETS_DIR="$SCRIPT_DIR/entry/src/main/resources/rawfile"
@@ -173,7 +173,7 @@ main() {
 
     check_hdc
     build_rust
-    build_miniapp_assets
+    build_lxapp_assets
     build_har
     build_hap
     uninstall_app
@@ -218,7 +218,7 @@ else
     echo -e "${YELLOW}⏭️  Skipping Rust compilation${NC}"
 fi
 
-build_miniapp_assets
+build_lxapp_assets
 build_hap
 
 # Deploy phase

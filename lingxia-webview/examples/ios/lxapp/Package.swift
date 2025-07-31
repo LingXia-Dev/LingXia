@@ -3,7 +3,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "miniapp",
+    name: "lxapp",
     platforms: [
         .iOS(.v17),
     ],
@@ -11,8 +11,8 @@ let package = Package(
         // An xtool project should contain exactly one library product,
         // representing the main app.
         .library(
-            name: "miniapp",
-            targets: ["miniapp"]
+            name: "lxapp",
+            targets: ["lxapp"]
         ),
     ],
     dependencies: [
@@ -20,7 +20,7 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "miniapp",
+            name: "lxapp",
             dependencies: [
                 .product(name: "lingxia", package: "lingxia"),
             ],

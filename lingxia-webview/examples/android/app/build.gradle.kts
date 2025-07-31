@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "com.lingxia.example.miniapp"
+    namespace = "com.lingxia.example.lxapp"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.lingxia.example.miniapp"
+        applicationId = "com.lingxia.example.lxapp"
         minSdk = 29
         targetSdk = 35
         versionCode = 1

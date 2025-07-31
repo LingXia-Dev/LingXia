@@ -10,7 +10,7 @@ LINGXIA_ROOT="$PROJECT_ROOT/../" # LingXia project root directory
 WORKSPACE_ROOT="$LINGXIA_ROOT" # Workspace root is the same as LingXia root
 
 # Define the resources directory for iOS
-RESOURCES_DIR="$SCRIPT_DIR/miniapp/Sources/miniapp/Resources"
+RESOURCES_DIR="$SCRIPT_DIR/lxapp/Sources/lxapp/Resources"
 
 echo "Building Rust library for iOS with Swift bridge headers..."
 cd "$WORKSPACE_ROOT"
@@ -48,5 +48,5 @@ else
 fi
 
 echo "Building and deploying iOS app..."
-cd "$SCRIPT_DIR/miniapp"
+cd "$SCRIPT_DIR/lxapp"
 env LINGXIA_PROJECT_ROOT=$LINGXIA_ROOT xtool dev
