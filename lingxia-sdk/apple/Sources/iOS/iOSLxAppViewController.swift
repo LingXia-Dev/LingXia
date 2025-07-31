@@ -801,7 +801,7 @@ public class iOSLxAppViewController: UIViewController {
     }
 
     internal func performLxAppClose() {
-        // Notify Rust layer that miniapp is being closed
+        // Notify Rust layer that lxapp is being closed
         let _ = onLxappClosed(appId)
         os_log("performLxAppClose: onLxappClosed called for appId=%@", log: Self.log, type: .info, appId)
 

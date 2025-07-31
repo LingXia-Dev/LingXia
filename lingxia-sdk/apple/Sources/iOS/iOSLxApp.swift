@@ -144,7 +144,7 @@ public class iOSLxApp {
         }
     }
 
-    /// Sets up navigation stack for miniapp management
+    /// Sets up navigation stack for lxapp management
     private func setupNavigationStack(window: UIWindow, newController: iOSLxAppViewController) {
         if let currentRootVC = window.rootViewController {
             if let navController = currentRootVC as? UINavigationController {
@@ -181,7 +181,7 @@ public class iOSLxApp {
 }
 
 /// Simple controller stack to simulate Android's Activity stack behavior
-/// This helps maintain state when switching between miniapps
+/// This helps maintain state when switching between lxapps
 @MainActor
 class LxAppControllerStack {
     private static let log = OSLog(subsystem: "LingXia", category: "ControllerStack")
@@ -196,7 +196,7 @@ class LxAppControllerStack {
     /// Stack to store previous controller states
     private static var controllerStack: [ControllerState] = []
 
-    /// Push current controller state to stack before opening new miniapp
+    /// Push current controller state to stack before opening new lxapp
     static func pushCurrentController(appId: String, path: String, webView: WKWebView?) {
         let state = ControllerState(appId: appId, path: path, webView: webView)
         controllerStack.append(state)
@@ -204,7 +204,7 @@ class LxAppControllerStack {
                log: log, type: .info, appId, path, controllerStack.count)
     }
 
-    /// Pop previous controller state when closing current miniapp
+    /// Pop previous controller state when closing current lxapp
     static func popPreviousController() -> ControllerState? {
         guard !controllerStack.isEmpty else {
             os_log("popPreviousController: Stack is empty", log: log, type: .info)

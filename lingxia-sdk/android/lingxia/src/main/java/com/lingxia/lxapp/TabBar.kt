@@ -29,7 +29,7 @@ data class TabBarConfig(
     companion object {
         // ⚠️  CRITICAL: FFI Alignment Required ⚠️
         // These values MUST match exactly with Rust TabBarPosition enum!
-        // See: lingxia-miniapp/src/miniapp/config/tabbar.rs
+        // See: lingxia-lxapp/src/lxapp/config/tabbar.rs
 
         /** Tab bar at the bottom (default) - MUST match Rust Bottom = 0 */
         const val POSITION_BOTTOM = 0

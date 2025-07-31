@@ -62,7 +62,7 @@ export struct LxAppContainer {
   // Watch for external path changes from LxApp.switchPage API
   @Watch('onExternalPathChange') @Prop externalPath: string = ''
 
-  // Manual animation control for new miniapps
+  // Manual animation control for new lxapps
   @State animationOffsetY: number = 0 // 0 = final position, positive = off-screen bottom
 
   aboutToAppear() {
@@ -354,7 +354,7 @@ export struct LxAppContainer {
 
   /**
    * Check if should show capsule button
-   * homeminiapp doesn't show capsule button, other miniapps do
+   * homelxapp doesn't show capsule button, other lxapps do
    */
   private shouldShowCapsuleButton(): boolean {
     const isHome = this.isHomeLxApp();
@@ -550,7 +550,7 @@ export struct LxAppContainer {
 
 
 
-    // Update manager state if this is home miniapp
+    // Update manager state if this is home lxapp
     if (this.isHomeLxApp()) {
       const manager = LxApp.managerInstance;
       if (manager) {
@@ -605,7 +605,7 @@ export struct LxAppContainer {
   }
 
   private handleCapsuleClose(): void {
-    // Close second miniapp if this is not home miniapp
+    // Close second lxapp if this is not home lxapp
     if (!this.isHomeLxApp()) {
         LxApp.closeLxApp(this.appId);
     }

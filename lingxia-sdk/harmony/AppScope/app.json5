@@ -1,6 +1,6 @@
 {
   "app": {
-    "bundleName": "com.lingxia.miniapp",
+    "bundleName": "com.lingxia.lxapp",
     "vendor": "LingXia Team",
     "versionCode": 1000000,
     "versionName": "1.0.0",

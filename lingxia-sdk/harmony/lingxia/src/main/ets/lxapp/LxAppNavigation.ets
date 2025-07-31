@@ -70,7 +70,7 @@ export struct LxAppNavigation {
   }
 
   public openLxApp(appId: string, path: string): void {
-    hilog.info(DOMAIN, TAG, `Opening miniapp: ${appId}:${path}`);
+    hilog.info(DOMAIN, TAG, `Opening lxapp: ${appId}:${path}`);
 
     try {
       const result: number = onLxappOpened(appId, path);
@@ -90,7 +90,7 @@ export struct LxAppNavigation {
   }
 
   public closeLxApp(appId: string): void {
-    hilog.info(DOMAIN, TAG, `Hiding miniapp (preserving WebViews): ${appId}`);
+    hilog.info(DOMAIN, TAG, `Hiding lxapp (preserving WebViews): ${appId}`);
 
     try {
       const stackIndex = this.miniAppStack.findIndex(item => item.appId === appId);

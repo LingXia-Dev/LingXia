@@ -30,12 +30,12 @@ export class LxApp {
   public static context: Context | null = null;
   public static windowStage: window.WindowStage | null = null;
 
-  // Modal miniapp state (for non-home miniapps)
+  // Modal lxapp state (for non-home lxapps)
   public static modalLxAppId: string | null = null;
   public static modalLxAppPath: string | null = null;
   public static modalLxAppVisible: boolean = false;
 
-  // Control home miniapp visibility when modal is open
+  // Control home lxapp visibility when modal is open
   public static hideHomeLxApp: boolean = false;
 
   // Store navigation instance for Navigation-based architecture
@@ -146,7 +146,7 @@ export class LxApp {
         hilog.warn(DOMAIN, TAG, ' No manager instance available!');
       }
     } else {
-      hilog.warn(DOMAIN, TAG, `Cannot close miniapp ${appId} - not currently displayed modal miniapp (current: ${LxApp.modalLxAppId})`);
+      hilog.warn(DOMAIN, TAG, `Cannot close lxapp ${appId} - not currently displayed modal lxapp (current: ${LxApp.modalLxAppId})`);
     }
   }
 
@@ -324,7 +324,7 @@ struct LxAppManager {
   build() {
     Stack() {
       if (this.isReady && this.homeAppId && this.homeAppPath && !this.hideHomeLxApp) {
-        // Display Home LxApp (hidden when modal miniapp is open)
+        // Display Home LxApp (hidden when modal lxapp is open)
         // Use current path if available, otherwise use initial path
         LxAppContainer({
           appId: this.homeAppId,
@@ -357,7 +357,7 @@ struct LxAppManager {
       .height('100%')
     }
 
-    // Display modal miniapp on top if visible
+    // Display modal lxapp on top if visible
     if (this.modalLxAppVisible && this.modalLxAppId && this.modalLxAppPath) {
       LxAppContainer({
         appId: this.modalLxAppId,
@@ -373,7 +373,7 @@ struct LxAppManager {
   }
 
   /**
-   * Open LxApp (unified method for both home and other miniapps)
+   * Open LxApp (unified method for both home and other lxapps)
    */
   public doOpenLxApp(appId: string, path: string, isHomeLxApp: boolean = false): void {
     hilog.info(DOMAIN, TAG, `Opening LxApp: ${appId}:${path}, isHome: ${isHomeLxApp}`);
@@ -397,18 +397,18 @@ struct LxAppManager {
         this.isReady = true;
         hilog.info(DOMAIN, TAG, 'Home LxApp loaded successfully');
       } else {
-        // Modal miniapp: create new LxAppContainer and display it
-        hilog.info(DOMAIN, TAG, `Opening modal miniapp: ${appId}:${path}`);
+        // Modal lxapp: create new LxAppContainer and display it
+        hilog.info(DOMAIN, TAG, `Opening modal lxapp: ${appId}:${path}`);
 
-        // Store modal miniapp info in both static and instance state
+        // Store modal lxapp info in both static and instance state
         LxApp.modalLxAppId = appId;
         LxApp.modalLxAppPath = path;
         LxApp.modalLxAppVisible = true;
 
-        // Hide home miniapp when modal is open
+        // Hide home lxapp when modal is open
         LxApp.hideHomeLxApp = true;
         this.hideHomeLxApp = true;
-        hilog.info(DOMAIN, TAG, `HIDING home miniapp - set to: ${this.hideHomeLxApp}`);
+        hilog.info(DOMAIN, TAG, `HIDING home lxapp - set to: ${this.hideHomeLxApp}`);
 
         // Update UI state immediately with priority
         this.modalLxAppId = appId;
@@ -428,12 +428,12 @@ struct LxAppManager {
    */
   private shouldExpandSafeArea(): boolean {
     // Always expand safe area for status bar transparency
-    // This applies to both home miniapp and modal miniapp
+    // This applies to both home lxapp and modal lxapp
     return true;
   }
 
   /**
-   * Update home miniapp current path (called when user switches tabs)
+   * Update home lxapp current path (called when user switches tabs)
    */
   public updateHomeLxAppCurrentPath(path: string): void {
     if (this.homeAppId) {
@@ -442,17 +442,17 @@ struct LxAppManager {
   }
 
   /**
-   * Close modal miniapp
+   * Close modal lxapp
    */
   public closeModalLxApp(): void {
-    hilog.info(DOMAIN, TAG, `Closing modal miniapp: visible=${this.modalLxAppVisible}, id=${this.modalLxAppId}`);
+    hilog.info(DOMAIN, TAG, `Closing modal lxapp: visible=${this.modalLxAppVisible}, id=${this.modalLxAppId}`);
 
     // Update UI state immediately (onLxappClosed already called in static closeLxApp)
     this.modalLxAppVisible = false;
     this.modalLxAppId = '';
     this.modalLxAppPath = '';
 
-    // Show home miniapp when modal is closed
+    // Show home lxapp when modal is closed
     LxApp.hideHomeLxApp = false;
     this.hideHomeLxApp = false;
   }
@@ -466,16 +466,16 @@ struct LxAppManager {
   public switchToPage(appId: string, path: string): boolean {
     hilog.info(DOMAIN, TAG, `switchToPage API called: ${appId}:${path}`);
 
-    // Handle home miniapp
+    // Handle home lxapp
     if (appId === this.homeAppId) {
-      hilog.info(DOMAIN, TAG, `Switching home miniapp page to: ${path}`);
+      hilog.info(DOMAIN, TAG, `Switching home lxapp page to: ${path}`);
       this.homeAppCurrentPath = path;
       return true;
     }
 
-    // Handle modal miniapp
+    // Handle modal lxapp
     if (appId === this.modalLxAppId) {
-      hilog.info(DOMAIN, TAG, `Switching modal miniapp page to: ${path}`);
+      hilog.info(DOMAIN, TAG, `Switching modal lxapp page to: ${path}`);
       this.modalLxAppPath = path;
       return true;
     }
