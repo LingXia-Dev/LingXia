@@ -19,8 +19,8 @@ done
 
 # Get the absolute path of the script directory
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-PROJECT_ROOT="$SCRIPT_DIR/../.."  # lingxia-webview directory
-LINGXIA_ROOT="$SCRIPT_DIR/../../../" # LingXia project root directory
+LINGXIA_ROOT="$SCRIPT_DIR/../.."  # lingxia-webview directory
+echo LINGXIA_ROOT: $LINGXIA_ROOT
 WORKSPACE_ROOT="$LINGXIA_ROOT" # Workspace root is the same as LingXia root
 
 # Define the resources directory for macOS

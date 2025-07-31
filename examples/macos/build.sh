@@ -12,8 +12,7 @@ trap 'handle_error $LINENO' ERR
 
 # Get script directory and project paths
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-PROJECT_ROOT="$SCRIPT_DIR/../.."
-LINGXIA_ROOT="$PROJECT_ROOT/../" # LingXia project root directory
+LINGXIA_ROOT="$SCRIPT_DIR/../.."
 WORKSPACE_ROOT="$LINGXIA_ROOT" # Workspace root is the same as LingXia root
 
 cd "$SCRIPT_DIR"
@@ -21,7 +20,7 @@ cd "$SCRIPT_DIR"
 echo "Building Swift project for debugging..."
 
 # Set the project root environment variable for Package.swift
-export LINGXIA_PROJECT_ROOT="$(cd ../../../ && pwd)"
+export LINGXIA_PROJECT_ROOT="$(cd ../../ && pwd)"
 
 if [ "$(uname -m)" = "arm64" ]; then
     # For Apple Silicon Macs

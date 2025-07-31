@@ -25,7 +25,7 @@ echo "=================================================="
 # Get the absolute path of the script directory
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 # Navigate to LingXia root (3 levels up from examples/harmony)
-LINGXIA_ROOT="$SCRIPT_DIR/../../.."
+LINGXIA_ROOT="$SCRIPT_DIR/../.."
 
 # Function to print step headers
 print_step() {
@@ -118,9 +118,29 @@ build_har() {
     cd "$SCRIPT_DIR"
 }
 
+# Function to install dependencies
+install_dependencies() {
+    print_step "4" "Installing Dependencies"
+
+    echo "Installing HarmonyOS dependencies..."
+    echo "This creates symbolic links from oh_modules/lingxia to lingxia-sdk/harmony/lingxia"
+    cd "$SCRIPT_DIR/entry"
+    ohpm install
+    cd "$SCRIPT_DIR"
+
+    # Verify the symbolic link was created
+    if [ -L "$SCRIPT_DIR/entry/oh_modules/lingxia" ]; then
+        echo -e "${GREEN}✅ Dependencies installed successfully${NC}"
+        echo "📁 Symbolic link created: entry/oh_modules/lingxia -> $(readlink "$SCRIPT_DIR/entry/oh_modules/lingxia")"
+    else
+        echo -e "${RED}❌ Error: lingxia dependency not properly linked${NC}"
+        exit 1
+    fi
+}
+
 # Function to build HAP application
 build_hap() {
-    print_step "4" "Building HAP Application"
+    print_step "5" "Building HAP Application"
 
     echo "Building HAP application..."
     hvigorw assembleHap
@@ -129,7 +149,7 @@ build_hap() {
 
 # Function to uninstall existing app
 uninstall_app() {
-    print_step "5" "Uninstalling App"
+    print_step "6" "Uninstalling App"
 
     hdc uninstall $APP_PACKAGE > /dev/null 2>&1 || true
     echo -e "${GREEN}✅ App uninstalled${NC}"
@@ -137,7 +157,7 @@ uninstall_app() {
 
 # Function to install HAP
 install_hap() {
-    print_step "6" "Installing HAP Application"
+    print_step "7" "Installing HAP Application"
 
     hdc install "$HAP_PATH" > /dev/null 2>&1
     echo -e "${GREEN}✅ HAP installed${NC}"
@@ -145,7 +165,7 @@ install_hap() {
 
 # Function to start app
 start_app() {
-    print_step "7" "Starting Application"
+    print_step "8" "Starting Application"
 
     hdc shell aa start -a $APP_ABILITY -b $APP_PACKAGE > /dev/null 2>&1
     echo -e "${GREEN}✅ Application started${NC}"
@@ -154,7 +174,7 @@ start_app() {
 
 # Function to capture logs
 capture_logs() {
-    print_step "8" "Capturing Application Logs"
+    print_step "9" "Capturing Application Logs"
 
     echo "Clearing existing logs..."
     hdc hilog -r
@@ -219,6 +239,12 @@ else
 fi
 
 build_lxapp_assets
+build_har
+
+# Install dependencies after HAR is built to ensure lingxia module is available
+# This creates the necessary symbolic links in oh_modules/
+install_dependencies
+
 build_hap
 
 # Deploy phase

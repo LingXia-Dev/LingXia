@@ -21,8 +21,7 @@ done
 
 # Get the absolute path of the script directory
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-PROJECT_ROOT="$SCRIPT_DIR/../.."
-LINGXIA_ROOT="$PROJECT_ROOT/../" # LingXia project root directory
+LINGXIA_ROOT="$SCRIPT_DIR/../.."
 WORKSPACE_ROOT="$LINGXIA_ROOT" # Workspace root is the same as LingXia root
 LINGXIA_SDK_ANDROID="$LINGXIA_ROOT/lingxia-sdk/android" # LingXia SDK Android directory
 

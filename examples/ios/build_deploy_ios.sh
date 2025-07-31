@@ -5,12 +5,12 @@ set -e
 
 # Get the absolute path of the script directory
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-PROJECT_ROOT="$SCRIPT_DIR/../.."
-LINGXIA_ROOT="$PROJECT_ROOT/../" # LingXia project root directory
+LINGXIA_ROOT="$SCRIPT_DIR/../.."
 WORKSPACE_ROOT="$LINGXIA_ROOT" # Workspace root is the same as LingXia root
 
 # Define the resources directory for iOS
 RESOURCES_DIR="$SCRIPT_DIR/lxapp/Sources/lxapp/Resources"
+echo RESOURCES_DIR: $RESOURCES_DIR
 
 echo "Building Rust library for iOS with Swift bridge headers..."
 cd "$WORKSPACE_ROOT"
