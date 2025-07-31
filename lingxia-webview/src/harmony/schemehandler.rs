@@ -1,5 +1,5 @@
 use crate::webview::{WebTag, find_webview_by_tag};
-use miniapp::{self, LxAppDelegate};
+use lxapp::{self, LxAppDelegate};
 use napi_ohos::Result as NapiResult;
 use ohos_web_sys::*;
 use std::ffi::{CStr, CString};
@@ -75,7 +75,7 @@ pub unsafe extern "C" fn on_lx_request_start(
         app_id
     );
 
-    // Build HTTP request to check if miniapp wants to handle it
+    // Build HTTP request to check if lxapp wants to handle it
     let http_request = match http::Request::builder()
         .method(method.as_str())
         .uri(&url)
@@ -88,9 +88,9 @@ pub unsafe extern "C" fn on_lx_request_start(
         }
     };
 
-    // Ask miniapp if it wants to handle this request
-    let miniapp = miniapp::get(app_id.to_string());
-    if let Some(http_response) = miniapp.handle_request(http_request) {
+    // Ask lxapp if it wants to handle this request
+    let lxapp = lxapp::get(app_id.to_string());
+    if let Some(http_response) = lxapp.handle_request(http_request) {
         unsafe {
             *intercept = true;
             send_response(resource_handler, http_response);

@@ -353,7 +353,7 @@ impl App {
         }() {
             Ok(_) => Ok(()),
             Err(e) => Err(LxAppError::WebView(format!(
-                "Failed to open miniapp: {}",
+                "Failed to open lxapp: {}",
                 e
             ))),
         }
@@ -381,7 +381,7 @@ impl App {
         }() {
             Ok(_) => Ok(()),
             Err(e) => Err(LxAppError::WebView(format!(
-                "Failed to close miniapp: {}",
+                "Failed to close lxapp: {}",
                 e
             ))),
         }

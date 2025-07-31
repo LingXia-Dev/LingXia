@@ -4,8 +4,8 @@ use http::{Method, Request, Response};
 use jni::JNIEnv;
 use jni::objects::{JObject, JString};
 use jni::sys::jint;
-use miniapp::LxAppDelegate;
-use miniapp::log::LogLevel;
+use lxapp::LxAppDelegate;
+use lxapp::log::LogLevel;
 use serde_json;
 
 #[unsafe(no_mangle)]
@@ -20,8 +20,8 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handlePostMessage
     let path: String = env.get_string(&path).unwrap().into();
     let message: String = env.get_string(&message).unwrap().into();
 
-    let miniapp = miniapp::get(appid.clone());
-    miniapp.handle_post_message(path, message);
+    let lxapp = lxapp::get(appid.clone());
+    lxapp.handle_post_message(path, message);
     0
 }
 
@@ -35,8 +35,8 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onPageStarted(
     let appid: String = env.get_string(&appid).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
 
-    let miniapp = miniapp::get(appid);
-    miniapp.on_page_started(path);
+    let lxapp = lxapp::get(appid);
+    lxapp.on_page_started(path);
     0
 }
 
@@ -50,8 +50,8 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onPageFinished(
     let appid: String = env.get_string(&appid).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
 
-    let miniapp = miniapp::get(appid);
-    miniapp.on_page_finished(path);
+    let lxapp = lxapp::get(appid);
+    lxapp.on_page_finished(path);
     0
 }
 
@@ -107,8 +107,8 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handleRequest<'a>
     };
 
     // Handle request and convert response
-    let miniapp = miniapp::get(appid.clone());
-    if let Some(response) = miniapp.handle_request(request) {
+    let lxapp = lxapp::get(appid.clone());
+    if let Some(response) = lxapp.handle_request(request) {
         create_java_response(&mut env, response)
     } else {
         JObject::null()
@@ -217,7 +217,7 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onConsoleMessage(
     let path: String = env.get_string(&path).unwrap().into();
     let message: String = env.get_string(&message).unwrap().into();
 
-    let miniapp = miniapp::get(appid.clone());
+    let lxapp = lxapp::get(appid.clone());
     let log_level = match level {
         2 => LogLevel::Verbose, // VERBOSE
         3 => LogLevel::Debug,   // DEBUG
@@ -227,7 +227,7 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onConsoleMessage(
         _ => LogLevel::Info,    // Default to INFO
     };
 
-    miniapp.log(&path, log_level, &message);
+    lxapp.log(&path, log_level, &message);
     1
 }
 
@@ -245,7 +245,7 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onScrollChanged(
     let appid: String = env.get_string(&appid).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
 
-    let miniapp = miniapp::get(appid.clone());
-    miniapp.on_page_scroll_changed(path, scroll_x, scroll_y, max_scroll_x, max_scroll_y);
+    let lxapp = lxapp::get(appid.clone());
+    lxapp.on_page_scroll_changed(path, scroll_x, scroll_y, max_scroll_x, max_scroll_y);
     0
 }

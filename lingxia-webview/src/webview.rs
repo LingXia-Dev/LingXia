@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
-use miniapp::{LxAppError, WebViewController};
+use lxapp::{LxAppError, WebViewController};
 
 use crate::WebViewInner;
 

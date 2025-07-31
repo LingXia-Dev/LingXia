@@ -1,6 +1,6 @@
 use crate::error::LxAppError;
 use crate::log::{LogBuilder, LogLevel, LogTag};
-use crate::miniapp::LxApp;
+use crate::lxapp::LxApp;
 use crate::{error, info};
 
 use rong::{
@@ -101,7 +101,7 @@ impl LxAppServiceManager {
     }
 
     /// Create a new mini app service
-    pub fn create_app_svc(&mut self, lxapp: Arc<crate::miniapp::LxApp>) -> Result<(), LxAppError> {
+    pub fn create_app_svc(&mut self, lxapp: Arc<crate::lxapp::LxApp>) -> Result<(), LxAppError> {
         let appid = &lxapp.appid;
 
         // Check if app already exists

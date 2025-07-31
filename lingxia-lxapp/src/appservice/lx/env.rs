@@ -1,4 +1,4 @@
-use crate::miniapp::LxApp;
+use crate::lxapp::LxApp;
 use rong::{JSContext, JSObject, JSResult};
 use std::sync::Arc;
 

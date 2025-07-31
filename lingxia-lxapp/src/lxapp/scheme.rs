@@ -1,7 +1,7 @@
 use http::{Request, Response, StatusCode};
 
 use crate::error;
-use crate::miniapp::LxApp;
+use crate::lxapp::LxApp;
 
 impl LxApp {
     /// Handler for lx:// scheme requests to access static app assets (images, CSS, JS, etc.)

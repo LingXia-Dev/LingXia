@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-miniapp = { package = "lingxia-miniapp", path = "../lingxia-miniapp" }
+lxapp = { package = "lingxia-lxapp", path = "../lingxia-lxapp" }
 log = "0.4.27"
 
 # Use workspace dependencies

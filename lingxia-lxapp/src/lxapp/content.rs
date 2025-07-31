@@ -1,5 +1,5 @@
 use crate::error::LxAppError;
-use crate::miniapp::LxApp;
+use crate::lxapp::LxApp;
 use crate::{error, info};
 use std::io::Read;
 

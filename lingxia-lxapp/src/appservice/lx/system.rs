@@ -4,7 +4,7 @@ use std::sync::Arc;
 use crate::app::DeviceInfo;
 use crate::error::LxAppError;
 use crate::fast_api;
-use crate::miniapp::LxApp;
+use crate::lxapp::LxApp;
 
 pub(crate) fn device_info(ctx: JSContext) -> JSResult<DeviceInfo> {
     let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();

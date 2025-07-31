@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "lingxia-miniapp",
+    "lingxia-lxapp",
     "lingxia-webview",
     "lingxia-lib",
 ]

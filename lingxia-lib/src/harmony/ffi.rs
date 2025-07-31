@@ -165,8 +165,8 @@ pub fn lxapp_init(
 /// Get LxApp information
 #[napi]
 fn get_lx_app_info(appid: String) -> Option<LxAppInfo> {
-    let miniapp = lxapp::get(appid);
-    let app_config = miniapp.get_config();
+    let lxapp = lxapp::get(appid);
+    let app_config = lxapp.get_config();
     let rust_app_info = app_config.get_lxapp_info();
 
     Some(LxAppInfo {
@@ -179,9 +179,9 @@ fn get_lx_app_info(appid: String) -> Option<LxAppInfo> {
 /// Get tab bar configuration
 #[napi]
 fn get_tab_bar_config(appid: String) -> Option<TabBarConfig> {
-    let miniapp = lxapp::get(appid);
-    let app_config = miniapp.get_config();
-    let rust_config = app_config.get_tab_bar_config(&miniapp)?;
+    let lxapp = lxapp::get(appid);
+    let app_config = lxapp.get_config();
+    let rust_config = app_config.get_tab_bar_config(&lxapp)?;
 
     let position = match rust_config.position {
         lxapp::config::TabBarPosition::Bottom => TabBarPosition::Bottom,
@@ -216,9 +216,9 @@ fn get_tab_bar_config(appid: String) -> Option<TabBarConfig> {
 /// Get page navigation bar configuration
 #[napi]
 pub fn get_navigation_bar_config(appid: String, path: String) -> NavigationBarConfig {
-    let miniapp = lxapp::get(appid);
-    let app_config = miniapp.get_config();
-    let rust_config = app_config.get_nav_bar_config(&miniapp, &path);
+    let lxapp = lxapp::get(appid);
+    let app_config = lxapp.get_config();
+    let rust_config = app_config.get_nav_bar_config(&lxapp, &path);
 
     let navigation_style = match rust_config.navigationStyle {
         lxapp::config::NavigationStyle::Default => NavigationStyle::Default,
@@ -236,24 +236,24 @@ pub fn get_navigation_bar_config(appid: String, path: String) -> NavigationBarCo
 /// Notify that LxApp was opened
 #[napi]
 pub fn on_lxapp_opened(appid: String, path: String) -> i32 {
-    let miniapp = lxapp::get(appid);
-    miniapp.on_lxapp_opened(path);
+    let lxapp = lxapp::get(appid);
+    lxapp.on_lxapp_opened(path);
     0
 }
 
 /// Notify that LxApp was closed
 #[napi]
 pub fn on_lxapp_closed(appid: String) -> i32 {
-    let miniapp = lxapp::get(appid);
-    miniapp.on_lxapp_closed();
+    let lxapp = lxapp::get(appid);
+    lxapp.on_lxapp_closed();
     0
 }
 
 /// Notify that a page is being shown
 #[napi]
 pub fn on_page_show(appid: String, path: String) -> i32 {
-    let miniapp = lxapp::get(appid);
-    miniapp.on_page_show(path);
+    let lxapp = lxapp::get(appid);
+    lxapp.on_page_show(path);
     0
 }
 
@@ -266,7 +266,7 @@ pub fn on_scroll_changed(
     max_scroll_x: i32,
     max_scroll_y: i32,
 ) -> i32 {
-    let miniapp = lxapp::get(appid);
-    miniapp.on_page_scroll_changed(path, scroll_x, scroll_y, max_scroll_x, max_scroll_y);
+    let lxapp = lxapp::get(appid);
+    lxapp.on_page_scroll_changed(path, scroll_x, scroll_y, max_scroll_x, max_scroll_y);
     0
 }

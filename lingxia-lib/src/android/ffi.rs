@@ -85,7 +85,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppInited(
     // Initialize WebView manager
     init_webview_manager();
 
-    // Initialize platform runtime and miniapp
+    // Initialize platform runtime and lxapp
     let runtime = PlatformAppRuntime::init(app);
     let home_app_id = lxapp::init(runtime);
 
@@ -112,8 +112,8 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onPageShow(
     let appid: String = env.get_string(&appid).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
 
-    let miniapp = lxapp::get(appid);
-    miniapp.on_page_show(path);
+    let lxapp = lxapp::get(appid);
+    lxapp.on_page_show(path);
 }
 
 #[unsafe(no_mangle)]
@@ -151,8 +151,8 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppClosed(
 ) -> jint {
     let appid: String = env.get_string(&appid).unwrap().into();
 
-    let miniapp = lxapp::get(appid.clone());
-    miniapp.on_lxapp_closed();
+    let lxapp = lxapp::get(appid.clone());
+    lxapp.on_lxapp_closed();
     0
 }
 
@@ -171,11 +171,11 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getNavigationBarConfig<'
     let appid: String = env.get_string(&appid).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
 
-    // Get the miniapp instance
-    let miniapp = lxapp::get(appid.clone());
+    // Get the lxapp instance
+    let lxapp = lxapp::get(appid.clone());
 
     // Get navigation bar config using new API
-    let nav_config = miniapp.get_config().get_nav_bar_config(&miniapp, &path);
+    let nav_config = lxapp.get_config().get_nav_bar_config(&lxapp, &path);
 
     // Debug logging
     log::info!(
@@ -245,8 +245,8 @@ pub extern "C" fn Java_com_lingxia_lxapp_NativeApi_onBackPressed(
     appid: JString,
 ) -> jint {
     let appid: String = env.get_string(&appid).unwrap().into();
-    let miniapp = lxapp::get(appid);
-    if miniapp.on_back_pressed() { 1 } else { 0 }
+    let lxapp = lxapp::get(appid);
+    if lxapp.on_back_pressed() { 1 } else { 0 }
 }
 
 // Function to notify the Rust layer that a mini app has been opened
@@ -260,8 +260,8 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppOpened(
     let appid: String = env.get_string(&appid).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
 
-    let miniapp = lxapp::get(appid.clone());
-    miniapp.on_lxapp_opened(path);
+    let lxapp = lxapp::get(appid.clone());
+    lxapp.on_lxapp_opened(path);
     0
 }
 
@@ -273,9 +273,9 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getLxAppInfo<'a>(
     appid: JString<'a>,
 ) -> JObject<'a> {
     let appid: String = env.get_string(&appid).unwrap().into();
-    let miniapp = lxapp::get(appid.clone());
+    let lxapp = lxapp::get(appid.clone());
 
-    let lxapp_info = miniapp.get_config().get_lxapp_info();
+    let lxapp_info = lxapp.get_config().get_lxapp_info();
 
     // Debug logging
     log::info!(
@@ -325,9 +325,9 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getTabBarConfig<'a>(
     appid: JString<'a>,
 ) -> JObject<'a> {
     let appid: String = env.get_string(&appid).unwrap().into();
-    let miniapp = lxapp::get(appid.clone());
+    let lxapp = lxapp::get(appid.clone());
 
-    let tab_bar_config = match miniapp.get_config().get_tab_bar_config(&miniapp) {
+    let tab_bar_config = match lxapp.get_config().get_tab_bar_config(&lxapp) {
         Some(config) => config,
         None => {
             log::info!(
@@ -525,9 +525,9 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getTabBarItem<'a>(
     index: jint,
 ) -> JObject<'a> {
     let appid: String = env.get_string(&appid).unwrap().into();
-    let miniapp = lxapp::get(appid.clone());
+    let lxapp = lxapp::get(appid.clone());
 
-    let tab_bar_config = match miniapp.get_config().get_tab_bar_config(&miniapp) {
+    let tab_bar_config = match lxapp.get_config().get_tab_bar_config(&lxapp) {
         Some(config) => config,
         None => {
             log::info!(

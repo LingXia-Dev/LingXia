@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::sync::{Mutex, OnceLock};
 
 use crate::error::LxAppError;
-use crate::miniapp::LxApp;
+use crate::lxapp::LxApp;
 
 /// FastAPI handler trait
 pub trait FastApiHandler: Send + Sync + 'static {
@@ -57,7 +57,7 @@ macro_rules! fast_api {
         impl $crate::appservice::lx::fastapi::FastApiHandler for $name {
             fn call(
                 &self,
-                lxapp: std::sync::Arc<$crate::miniapp::LxApp>,
+                lxapp: std::sync::Arc<$crate::lxapp::LxApp>,
                 _input: Option<&str>,
             ) -> Result<String, $crate::error::LxAppError> {
                 let result: $output = $body(lxapp)?;
@@ -74,7 +74,7 @@ macro_rules! fast_api {
         impl $crate::appservice::lx::fastapi::FastApiHandler for $name {
             fn call(
                 &self,
-                lxapp: std::sync::Arc<$crate::miniapp::LxApp>,
+                lxapp: std::sync::Arc<$crate::lxapp::LxApp>,
                 input: Option<&str>,
             ) -> Result<String, $crate::error::LxAppError> {
                 let input_data: $input = match input {

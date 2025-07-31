@@ -160,34 +160,34 @@ pub fn lxapp_init(data_dir: &str, cache_dir: &str) -> Option<String> {
         }
     };
 
-    // Initialize PlatformAppRuntime and miniapp
+    // Initialize PlatformAppRuntime and lxapp
     let runtime = PlatformAppRuntime::init(app);
     lxapp::init(runtime)
 }
 
 /// Notify that a page is being shown
 pub fn on_page_show(appid: &str, path: &str) {
-    let miniapp = lxapp::get(appid.to_string());
-    miniapp.on_page_show(path.to_string());
+    let lxapp = lxapp::get(appid.to_string());
+    lxapp.on_page_show(path.to_string());
 }
 
 /// Notify that LxApp was closed
 pub fn on_lxapp_closed(appid: &str) -> i32 {
-    let miniapp = lxapp::get(appid.to_string());
-    miniapp.on_lxapp_closed();
+    let lxapp = lxapp::get(appid.to_string());
+    lxapp.on_lxapp_closed();
     0
 }
 
 /// Handle back button press
 pub fn on_back_pressed(appid: &str) -> bool {
-    let miniapp = lxapp::get(appid.to_string());
-    miniapp.on_back_pressed()
+    let lxapp = lxapp::get(appid.to_string());
+    lxapp.on_back_pressed()
 }
 
 /// Notify that LxApp was opened
 pub fn on_lxapp_opened(appid: &str, path: &str) -> i32 {
-    let miniapp = lxapp::get(appid.to_string());
-    miniapp.on_lxapp_opened(path.to_string());
+    let lxapp = lxapp::get(appid.to_string());
+    lxapp.on_lxapp_opened(path.to_string());
     0
 }
 
@@ -207,8 +207,8 @@ pub fn find_webview(appid: &str, path: &str) -> usize {
 
 /// Get LxApp information
 pub fn get_lxapp_info(appid: &str) -> bridge::LxAppInfo {
-    let miniapp = lxapp::get(appid.to_string());
-    let lxapp_info = miniapp.get_config().get_lxapp_info();
+    let lxapp = lxapp::get(appid.to_string());
+    let lxapp_info = lxapp.get_config().get_lxapp_info();
 
     // Convert from core LxAppInfo to FFI LxAppInfo
     lxapp_info.into()
@@ -216,8 +216,8 @@ pub fn get_lxapp_info(appid: &str) -> bridge::LxAppInfo {
 
 /// Get NavigationBar configuration
 pub fn get_navigation_bar_config(appid: &str, path: &str) -> bridge::NavigationBarConfig {
-    let miniapp = lxapp::get(appid.to_string());
-    let nav_config = miniapp.get_config().get_nav_bar_config(&miniapp, path);
+    let lxapp = lxapp::get(appid.to_string());
+    let nav_config = lxapp.get_config().get_nav_bar_config(&lxapp, path);
 
     // Convert to FFI struct
     bridge::NavigationBarConfig {
@@ -230,11 +230,11 @@ pub fn get_navigation_bar_config(appid: &str, path: &str) -> bridge::NavigationB
 
 /// Get TabBar configuration
 pub fn get_tab_bar_config(appid: &str) -> Option<bridge::TabBarConfig> {
-    let miniapp = lxapp::get(appid.to_string());
+    let lxapp = lxapp::get(appid.to_string());
 
-    miniapp
+    lxapp
         .get_config()
-        .get_tab_bar_config(&miniapp)
+        .get_tab_bar_config(&lxapp)
         .map(|config| bridge::TabBarConfig {
             color: config.color,
             selected_color: config.selectedColor,
@@ -248,11 +248,11 @@ pub fn get_tab_bar_config(appid: &str) -> Option<bridge::TabBarConfig> {
 
 /// Get TabBar item by index
 pub fn get_tab_bar_item(appid: &str, index: i32) -> Option<bridge::TabBarItem> {
-    let miniapp = lxapp::get(appid.to_string());
+    let lxapp = lxapp::get(appid.to_string());
 
-    miniapp
+    lxapp
         .get_config()
-        .get_tab_bar_config(&miniapp)
+        .get_tab_bar_config(&lxapp)
         .and_then(|config| {
             config
                 .list

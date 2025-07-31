@@ -111,7 +111,7 @@ impl LxAppConfig {
     #[allow(dead_code)]
     pub fn get_nav_bar_config(
         &self,
-        lxapp: &crate::miniapp::LxApp,
+        lxapp: &crate::lxapp::LxApp,
         path: &str,
     ) -> NavigationBarConfig {
         // Convert path to JSON file path
@@ -129,7 +129,7 @@ impl LxAppConfig {
 
     /// Get TabBar configuration with absolute paths
     #[allow(dead_code)]
-    pub fn get_tab_bar_config(&self, lxapp: &crate::miniapp::LxApp) -> Option<TabBarConfig> {
+    pub fn get_tab_bar_config(&self, lxapp: &crate::lxapp::LxApp) -> Option<TabBarConfig> {
         self.tabBar
             .as_ref()
             .filter(|tab_bar| tab_bar.is_valid())

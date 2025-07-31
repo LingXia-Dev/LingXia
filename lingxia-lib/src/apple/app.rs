@@ -147,7 +147,7 @@ impl App {
             Ok(())
         } else {
             Err(LxAppError::WebView(format!(
-                "Failed to open miniapp: appid={}, path={}",
+                "Failed to open lxapp: appid={}, path={}",
                 appid, path
             )))
         }
@@ -159,7 +159,7 @@ impl App {
             Ok(())
         } else {
             Err(LxAppError::WebView(format!(
-                "Failed to close miniapp: appid={}",
+                "Failed to close lxapp: appid={}",
                 appid
             )))
         }

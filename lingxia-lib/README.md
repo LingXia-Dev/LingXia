@@ -5,6 +5,6 @@ Rust crate that generates the native library (liblingxia.so/.a) for all platform
 ## Purpose
 
 This crate serves as the main entry point that:
-- Integrates `lingxia-webview` and `lingxia-miniapp`
+- Integrates `lingxia-webview` and `lingxia-lxapp`
 - Provides FFI interfaces for Android, iOS/macOS, and HarmonyOS
 - Generates the final native library used by platform SDKs

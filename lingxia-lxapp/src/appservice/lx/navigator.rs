@@ -1,7 +1,7 @@
 use rong::{JSContext, JSResult, RongJSError};
 use std::sync::Arc;
 
-use crate::miniapp::{LxApp, LxAppNavigator};
+use crate::lxapp::{LxApp, LxAppNavigator};
 
 pub(crate) fn navigator_to_lxapp(ctx: JSContext, app: LxAppNavigator) -> JSResult<()> {
     let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();

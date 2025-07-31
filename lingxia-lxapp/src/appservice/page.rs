@@ -4,7 +4,7 @@ use super::bridge::{
 use super::lx;
 use crate::error;
 use crate::error::LxAppError;
-use crate::miniapp::LxApp;
+use crate::lxapp::LxApp;
 use crate::page::Page;
 use rong::{
     Class, JSContext, JSFunc, JSObject, JSResult, JSValue, RongJSError, Source, function::Optional,

@@ -1,4 +1,4 @@
-use miniapp::{self, LxAppDelegate};
+use lxapp::{self, LxAppDelegate};
 use objc2::runtime::{AnyObject, NSObject};
 use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send, rc::Retained};
 use objc2_foundation::{NSData, NSMutableDictionary, NSObjectProtocol, NSString};
@@ -153,8 +153,8 @@ define_class!(
                     }
                 };
 
-                let miniapp = miniapp::get(self.ivars().appid.clone());
-                match miniapp.handle_request(http_request) {
+                let lxapp = lxapp::get(self.ivars().appid.clone());
+                match lxapp.handle_request(http_request) {
                     Some(http_response) => {
                         log::debug!(
                             "Got response from handle_request, status: {}, body length: {}",

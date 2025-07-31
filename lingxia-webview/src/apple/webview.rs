@@ -1,7 +1,7 @@
 use block2::Block;
 use dispatch2::DispatchQueue;
-use miniapp::log::LogLevel;
-use miniapp::{LxAppDelegate, LxAppError, WebViewController};
+use lxapp::log::LogLevel;
+use lxapp::{LxAppDelegate, LxAppError, WebViewController};
 use objc2::runtime::{AnyObject, NSObject, ProtocolObject};
 use objc2::{
     DefinedClass, MainThreadMarker, MainThreadOnly, class, define_class, msg_send, rc::Retained,
@@ -35,9 +35,9 @@ define_class!(
             let webtag = &self.ivars().webtag;
             let (appid, path) = webtag.extract_parts();
 
-            // Call miniapp's on_page_started
-            let miniapp = miniapp::get(appid.clone());
-            miniapp.on_page_started(path.clone());
+            // Call lxapp's on_page_started
+            let lxapp = lxapp::get(appid.clone());
+            lxapp.on_page_started(path.clone());
             log::info!("WebView page started: {} at {}", appid, path);
         }
 
@@ -46,9 +46,9 @@ define_class!(
             let webtag = &self.ivars().webtag;
             let (appid, path) = webtag.extract_parts();
 
-            // Call miniapp's on_page_finished
-            let miniapp = miniapp::get(appid.clone());
-            miniapp.on_page_finished(path.clone());
+            // Call lxapp's on_page_finished
+            let lxapp = lxapp::get(appid.clone());
+            lxapp.on_page_finished(path.clone());
             log::info!("WebView page finished: {} at {}", appid, path);
         }
 
@@ -88,7 +88,7 @@ define_class!(
             let webtag = &self.ivars().webtag;
             let (appid, _) = webtag.extract_parts();
 
-            // Build HTTP request for miniapp to check
+            // Build HTTP request for lxapp to check
             let http_request = match http::Request::builder()
                 .method("GET")
                 .uri(&url)
@@ -102,9 +102,9 @@ define_class!(
                 }
             };
 
-            // Ask miniapp if it wants to handle this HTTPS navigation request
-            let miniapp = miniapp::get(appid.clone());
-            match miniapp.handle_request(http_request) {
+            // Ask lxapp if it wants to handle this HTTPS navigation request
+            let lxapp = lxapp::get(appid.clone());
+            match lxapp.handle_request(http_request) {
                 Some(_) => {
                     // log::info!("Miniapp handling HTTPS navigation, canceling: {}", url);
                     cancel_navigation();
@@ -923,8 +923,8 @@ impl LingXiaMessageHandler {
     fn handle_bridge_message(&self, message: String) {
         let ivars = self.ivars();
 
-        let miniapp = miniapp::get(ivars.appid.clone());
-        miniapp.handle_post_message(ivars.path.clone(), message);
+        let lxapp = lxapp::get(ivars.appid.clone());
+        lxapp.handle_post_message(ivars.path.clone(), message);
     }
 
     /// Handle console messages
@@ -944,8 +944,8 @@ impl LingXiaMessageHandler {
                     _ => LogLevel::Info,
                 };
 
-                let miniapp = miniapp::get(ivars.appid.clone());
-                miniapp.log(&ivars.path, log_level, console_message);
+                let lxapp = lxapp::get(ivars.appid.clone());
+                lxapp.log(&ivars.path, log_level, console_message);
             } else {
                 log::error!("Failed to parse console message fields: {}", message);
             }
@@ -1001,9 +1001,9 @@ define_class!(
                 let max_scroll_x = (content_size.width - frame_size.width).max(0.0) as i32;
                 let max_scroll_y = (content_size.height - frame_size.height).max(0.0) as i32;
 
-                // Call miniapp's on_page_scroll_changed
-                let miniapp = miniapp::get(self.ivars().appid.clone());
-                miniapp.on_page_scroll_changed(
+                // Call lxapp's on_page_scroll_changed
+                let lxapp = lxapp::get(self.ivars().appid.clone());
+                lxapp.on_page_scroll_changed(
                     self.ivars().path.clone(),
                     scroll_x,
                     scroll_y,
