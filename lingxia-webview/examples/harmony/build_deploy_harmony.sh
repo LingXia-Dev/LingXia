@@ -59,7 +59,7 @@ build_rust() {
     # Build Rust library with HarmonyOS target
     echo "Building Rust library for HarmonyOS..."
      env CARGO_TARGET_AARCH64_UNKNOWN_LINUX_OHOS_LINKER="$OHOS_NDK_HOME/native/llvm/bin/aarch64-unknown-linux-ohos-clang" \
-         cargo build --release --target=aarch64-unknown-linux-ohos
+         cargo build --release --target=aarch64-unknown-linux-ohos -p lingxia-lib
 
     # Copy the SO file to the example project
     SO_SOURCE="$LINGXIA_ROOT/target/aarch64-unknown-linux-ohos/release/liblingxia.so"
@@ -111,7 +111,7 @@ build_miniapp_assets() {
 build_har() {
     print_step "3" "Building HAR Library"
 
-    cd "$LINGXIA_ROOT/lingxia-webview/harmony"
+    cd "$LINGXIA_ROOT/lingxia-sdk/harmony"
     echo "Building HAR library..."
     hvigorw assembleHar
     echo -e "${GREEN}✅ HAR library built${NC}"
