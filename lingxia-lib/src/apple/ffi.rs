@@ -43,6 +43,7 @@ mod bridge {
         pub icon_path: String,
         pub selected_icon_path: String,
         pub selected: bool,
+        pub group: i32, // 0=middle/center (default), 1=start (top/left), 2=end (bottom/right)
     }
 
     extern "Rust" {
@@ -263,6 +264,11 @@ pub fn get_tab_bar_item(appid: &str, index: i32) -> Option<bridge::TabBarItem> {
                     icon_path: item.iconPath.clone().unwrap_or_default(),
                     selected_icon_path: item.selectedIconPath.clone().unwrap_or_default(),
                     selected: item.selected,
+                    group: match &item.group {
+                        Some(lxapp::config::TabItemGroup::Start) => 1i32,
+                        Some(lxapp::config::TabItemGroup::End) => 2i32,
+                        None => 0i32,
+                    },
                 })
         })
 }
