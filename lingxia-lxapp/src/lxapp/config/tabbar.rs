@@ -135,7 +135,7 @@ pub struct TabItem {
     /// Group positioning: "start", "end", or null
     /// - No group fields → centered mode (small screens)
     /// - Any group field → grouped mode (large screens)
-    /// - null/unspecified treated as "start" in grouped mode
+    /// - null/unspecified treated as "center" in grouped mode
     #[serde(default)]
     pub group: Option<TabItemGroup>,
 }
