@@ -20,6 +20,7 @@ export interface TabBarItem {
   badge?: string;           // Badge text (e.g., "99+", "NEW")
   redDot?: boolean;         // Show red dot indicator
   badgeStyle?: BadgeStyle;  // Badge styling options
+  group?: number;           // Group positioning: 0=center (default), 1=start, 2=end
 }
 
 export interface BadgeStyle {
@@ -57,42 +58,56 @@ export struct TabBar {
 
   aboutToAppear() {
     hilog.info(DOMAIN, TAG, `TabBar aboutToAppear: ${this.config.list.length} items`);
-    this.config.list.forEach((item, index) => {
-      hilog.info(DOMAIN, TAG, `Tab ${index}: path=${item.pagePath}, text=${item.text || 'none'}`);
-    });
   }
 
   build() {
     if (this.isVertical()) {
       // Vertical layout for left/right position
       Column() {
-        ForEach(this.config.list, (item: TabBarItem, index: number) => {
-          this.buildTabItem(item, index)
-        })
+        if (this.hasGroupField()) {
+          this.buildGroupedVerticalLayout()
+        } else {
+          this.buildCenteredVerticalLayout()
+        }
       }
       .width(this.getTabBarSize())
       .height('100%')
       .backgroundColor(this.getBackgroundColor())
-      .justifyContent(FlexAlign.SpaceEvenly)
+      .justifyContent(this.hasGroupField() ? FlexAlign.Start : FlexAlign.SpaceEvenly)
       .alignItems(HorizontalAlign.Center)
       .padding(this.getVerticalPadding())
       .border(this.getVerticalBorder())
       .linearGradient(this.getVerticalGradient())
+      .zIndex(this.isTransparent() ? 1 : 0)
+      .position(this.isTransparent() ? {
+        top: 0,
+        bottom: 0,
+        left: this.config.position === TabBarPosition.LEFT ? 0 : undefined,
+        right: this.config.position === TabBarPosition.RIGHT ? 0 : undefined
+      } : {})
     } else {
       // Horizontal layout for bottom/top position
       Row() {
-        ForEach(this.config.list, (item: TabBarItem, index: number) => {
-          this.buildTabItem(item, index)
-        })
+        if (this.hasGroupField()) {
+          this.buildGroupedHorizontalLayout()
+        } else {
+          this.buildCenteredHorizontalLayout()
+        }
       }
       .width('100%')
       .height(this.getTabBarSize())
       .backgroundColor(this.getBackgroundColor())
-      .justifyContent(FlexAlign.SpaceEvenly)
+      .justifyContent(this.hasGroupField() ? FlexAlign.Start : FlexAlign.SpaceEvenly)
       .alignItems(VerticalAlign.Center)
       .padding(this.getHorizontalPadding())
       .border(this.getHorizontalBorder())
       .linearGradient(this.getHorizontalGradient())
+      .position(this.isTransparent() ? {
+        bottom: this.config.position === TabBarPosition.BOTTOM ? 0 : undefined,
+        top: this.config.position === TabBarPosition.TOP ? 0 : undefined,
+        left: 0,
+        right: 0
+      } : {})
     }
   }
 
@@ -163,11 +178,14 @@ export struct TabBar {
           } : undefined)
       }
     }
-    .layoutWeight(1)
+    // In grouped mode, layoutWeight is handled by the Blank spacer
+    // In centered mode, each item gets equal weight to distribute space
+    .layoutWeight(this.hasGroupField() ? 0 : 1)
     .width(this.isVertical() ? '100%' : undefined)
     .height(this.isVertical() ? undefined : '100%')
     .justifyContent(FlexAlign.Center)
     .alignItems(HorizontalAlign.Center)
+    .margin({ top: 4, bottom: 4 })
     .onClick(() => {
       hilog.info(DOMAIN, TAG, `Tab clicked: ${index}, current: ${this.selectedIndex}, appId: ${this.appId}, path: ${item.pagePath}`);
 
@@ -176,6 +194,105 @@ export struct TabBar {
         this.onTabSelected(this.appId, index, item);
       }
     })
+  }
+
+  /**
+   * Build centered vertical layout (original behavior)
+   */
+  @Builder
+  buildCenteredVerticalLayout() {
+    ForEach(this.config.list, (item: TabBarItem, index: number) => {
+      this.buildTabItem(item, index)
+    })
+  }
+
+  /**
+   * Build centered horizontal layout (original behavior)
+   */
+  @Builder
+  buildCenteredHorizontalLayout() {
+    ForEach(this.config.list, (item: TabBarItem, index: number) => {
+      this.buildTabItem(item, index)
+    })
+  }
+
+  /**
+   * Build grouped vertical layout: distribute items to start/end positions
+   */
+  @Builder
+  buildGroupedVerticalLayout() {
+    // Start items
+    ForEach(this.getStartItems(), (item: TabBarItem, index: number) => {
+      this.buildTabItem(item, this.config.list.indexOf(item))
+      if (index < this.getStartItems().length - 1) {
+        Blank().height(16) // Adaptive spacer
+      }
+    })
+
+    // Flexible spacer to push end items to the bottom
+    Blank()
+      .layoutWeight(1)
+
+    // End items
+    ForEach(this.getEndItems(), (item: TabBarItem, index: number) => {
+      this.buildTabItem(item, this.config.list.indexOf(item))
+      if (index < this.getEndItems().length - 1) {
+        Blank().height(16) // Adaptive spacer
+      }
+    })
+  }
+
+  /**
+   * Build grouped horizontal layout: distribute items to start/end positions
+   */
+  @Builder
+  buildGroupedHorizontalLayout() {
+    // Start items
+    ForEach(this.getStartItems(), (item: TabBarItem, index: number) => {
+      this.buildTabItem(item, this.config.list.indexOf(item))
+      if (index < this.getStartItems().length - 1) {
+        Blank().width(24) // Adaptive spacer
+      }
+    })
+
+    // Flexible spacer to push end items to the right
+    Blank()
+      .layoutWeight(1)
+
+    // End items
+    ForEach(this.getEndItems(), (item: TabBarItem, index: number) => {
+      this.buildTabItem(item, this.config.list.indexOf(item))
+      if (index < this.getEndItems().length - 1) {
+        Blank().width(24) // Adaptive spacer
+      }
+    })
+  }
+
+  /**
+   * Check if any item has group field (grouped mode vs centered mode)
+   */
+  private hasGroupField(): boolean {
+    return this.config.list.some(item => (item.group ?? 0) !== 0);
+  }
+
+  /**
+   * Get start items (group 0 or 1)
+   */
+  private getStartItems(): TabBarItem[] {
+    return this.config.list.filter(item => {
+      const group = item.group ?? 0;
+      return group !== 2; // 0 (no group) or 1 (start) → all treated as start
+    });
+  }
+
+  /**
+   * Get end items (group 2)
+   */
+  private getEndItems(): TabBarItem[] {
+    return this.config.list.filter(item => {
+      const group = item.group ?? 0;
+      return group === 2; // end
+    });
   }
 
   /**
@@ -264,14 +381,29 @@ export struct TabBar {
    * Get padding for horizontal layout
    */
   private getHorizontalPadding(): Padding {
-    return { top: 8, bottom: 12 };
+    // Add extra bottom padding for safe area when transparent
+    const safeAreaBottom = this.isTransparent() ? 24 : 0; // Increased safe area
+    const horizontalPadding = 16; // Add horizontal padding
+    return {
+      top: 8,
+      bottom: 12 + safeAreaBottom,
+      left: horizontalPadding,
+      right: horizontalPadding
+    };
   }
 
   /**
    * Get padding for vertical layout
    */
   private getVerticalPadding(): Padding {
-    return { left: 8, right: 8, top: 12, bottom: 12 };
+    // Add minimal top padding for system status bar when TabBar is on left/right
+    const statusBarHeight = 12; // Minimal status bar height in vp
+    return {
+      left: 8,
+      right: 8,
+      top: 8 + statusBarHeight, // Reduced padding + minimal status bar space
+      bottom: 8
+    };
   }
 
   /**
@@ -309,14 +441,7 @@ export struct TabBar {
   private getHorizontalGradient(): LinearGradient | undefined {
     if (!this.isTransparent()) return undefined;
 
-    return {
-      angle: 180, // Top to bottom
-      colors: [
-        ['rgba(255,255,255,0.0)', 0.0],
-        ['rgba(255,255,255,0.4)', 0.4],
-        ['rgba(255,255,255,0.85)', 1.0]
-      ]
-    };
+    return undefined;
   }
 
   /**
@@ -325,26 +450,6 @@ export struct TabBar {
   private getVerticalGradient(): LinearGradient | undefined {
     if (!this.isTransparent()) return undefined;
 
-    const position = this.config.position;
-    if (position === TabBarPosition.LEFT) {
-      return {
-        angle: 90, // Left to right
-        colors: [
-          ['rgba(255,255,255,0.0)', 0.0],
-          ['rgba(255,255,255,0.4)', 0.4],
-          ['rgba(255,255,255,0.85)', 1.0]
-        ]
-      };
-    } else if (position === TabBarPosition.RIGHT) {
-      return {
-        angle: 270, // Right to left
-        colors: [
-          ['rgba(255,255,255,0.0)', 0.0],
-          ['rgba(255,255,255,0.4)', 0.4],
-          ['rgba(255,255,255,0.85)', 1.0]
-        ]
-      };
-    }
     return undefined;
   }
 }

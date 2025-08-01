@@ -46,6 +46,7 @@ pub struct TabItem {
     pub icon_path: Option<String>,
     pub selected_icon_path: Option<String>,
     pub selected: bool,
+    pub group: i32, // 0=middle/center (default), 1=start (top/left), 2=end (bottom/right)
 }
 
 /// NAPI-compatible Navigation style enum
@@ -199,6 +200,11 @@ fn get_tab_bar_config(appid: String) -> Option<TabBarConfig> {
             icon_path: item.iconPath,
             selected_icon_path: item.selectedIconPath,
             selected: item.selected,
+            group: match &item.group {
+                Some(lxapp::config::TabItemGroup::Start) => 1,
+                Some(lxapp::config::TabItemGroup::End) => 2,
+                None => 0,
+            },
         })
         .collect();
 
