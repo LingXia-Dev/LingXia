@@ -26,8 +26,16 @@ data class TabBarConfig(
     val list: List<TabBarItem> = emptyList(),   // List of tab items
     val visible: Boolean = true                  // TabBar visibility, default true
 ) {
+    // Helper properties that ensure colors have proper alpha channel
+    val effectiveSelectedColor: Int get() = selectedColor?.let {
+        if (Color.alpha(it) == 0) it or 0xFF000000.toInt() else it
+    } ?: DEFAULT_SELECTED_COLOR
+
+    val effectiveUnselectedColor: Int get() = color?.let {
+        if (Color.alpha(it) == 0) it or 0xFF000000.toInt() else it
+    } ?: DEFAULT_UNSELECTED_COLOR
+
     companion object {
-        // ⚠️  CRITICAL: FFI Alignment Required ⚠️
         // These values MUST match exactly with Rust TabBarPosition enum!
         // See: lingxia-lxapp/src/lxapp/config/tabbar.rs
 
@@ -74,7 +82,8 @@ data class TabBarItem(
     val iconPath: String,                 // Absolute path to the icon file
     val selectedIconPath: String,         // Absolute path to the selected state icon file
     val selected: Boolean = false,        // Whether this tab is selected
-    val visible: Boolean = true           // Whether this tab is visible
+    val visible: Boolean = true,          // Whether this tab is visible
+    val group: Int = 0                    // Group positioning: 0=center (default), 1=start, 2=end
 )
 
 // Unique view IDs for dot notification
@@ -102,10 +111,10 @@ class TabBar(context: Context) : LinearLayout(context) {
         private const val VERTICAL_ITEM_ICON_SIZE_DP = 22
         private const val HORIZONTAL_ITEM_ICON_SIZE_DP = 24
         private const val VERTICAL_ITEM_TEXT_SIZE_SP = 12f
-        private const val HORIZONTAL_ITEM_TEXT_SIZE_SP = 12f
+        private const val HORIZONTAL_ITEM_TEXT_SIZE_SP = 11f  // Slightly smaller for horizontal
         private const val ITEM_ICON_TOP_MARGIN_DP = 1
-        private const val ITEM_TEXT_TOP_MARGIN_DP = 1
-        private const val ITEM_TEXT_BOTTOM_MARGIN_DP = 1
+        private const val ITEM_TEXT_TOP_MARGIN_DP = 2  // More space between icon and text
+        private const val ITEM_TEXT_BOTTOM_MARGIN_DP = 2  // More bottom margin
         private const val ITEM_BORDER_THICKNESS_DP = 1f
 
         // Padding for individual TabBarItems when TabBar is horizontal
@@ -313,32 +322,135 @@ class TabBar(context: Context) : LinearLayout(context) {
             tabViews.clear()
 
             if (items.isNotEmpty()) {
-                val isVertical = config.position.value == TabBarConfig.POSITION_LEFT || config.position.value == TabBarConfig.POSITION_RIGHT
-
-                // Get the size of the space for each item
-                val itemSize = if (isVertical) {
-                    // For vertical layout, use more compact spacing
-                    (resources.displayMetrics.heightPixels / Math.max(items.size, 4)).coerceAtMost(
-                        (VERTICAL_ITEM_MAX_HEIGHT_DP * resources.displayMetrics.density).toInt()
-                    ).coerceAtLeast(
-                        (VERTICAL_ITEM_MIN_HEIGHT_DP * resources.displayMetrics.density).toInt()
-                    )
-                } else {
-                    resources.displayMetrics.widthPixels / items.size
-                }
-
                 // Find selected item index (default to 0 if none specified)
                 val initialSelectedIdx = items.indexOfFirst { it.selected }.takeIf { it >= 0 } ?: 0
                 selectedPosition = initialSelectedIdx
 
-                items.forEachIndexed { index, item ->
-                    createTabView(item, config, index == selectedPosition).also { view ->
-                        tabViews.add(view)
-                        container.addView(view)
-                    }
+                // Check if ANY item has group field (grouped mode vs centered mode)
+                val hasAnyGroupField = items.any { it.group != 0 }
+
+                if (hasAnyGroupField) {
+                    // Grouped Mode: Distribute items to start/end
+                    setupGroupedLayout(container)
+                } else {
+                    // Centered Mode: All items centered (original behavior)
+                    setupCenteredLayout(container)
                 }
             }
         }
+    }
+
+    /**
+     * Setup grouped layout: distribute items to start/end positions
+     */
+    private fun setupGroupedLayout(container: LinearLayout) {
+        val isVertical = config.position.value == TabBarConfig.POSITION_LEFT || config.position.value == TabBarConfig.POSITION_RIGHT
+
+        // Group items by their group value
+        val startItems = mutableListOf<TabBarItem>()
+        val endItems = mutableListOf<TabBarItem>()
+
+        items.forEachIndexed { index, item ->
+            when (item.group) {
+                2 -> endItems.add(item) // end
+                else -> startItems.add(item) // 0 (no group) or 1 (start) → all treated as start
+            }
+        }
+
+        // Create start container
+        if (startItems.isNotEmpty()) {
+            val startContainer = createGroupContainer(startItems, isVertical)
+            container.addView(startContainer)
+        }
+
+        // Add flexible spacer to push end items to bottom/right
+        val spacer = View(context).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                if (isVertical) LinearLayout.LayoutParams.MATCH_PARENT else 0,
+                if (isVertical) 0 else LinearLayout.LayoutParams.MATCH_PARENT,
+                1f
+            )
+        }
+        container.addView(spacer)
+
+        // Create end container
+        if (endItems.isNotEmpty()) {
+            val endContainer = createGroupContainer(endItems, isVertical)
+            container.addView(endContainer)
+        }
+    }
+
+    /**
+     * Setup centered layout: all items centered (original behavior)
+     */
+    private fun setupCenteredLayout(container: LinearLayout) {
+        val isVertical = config.position.value == TabBarConfig.POSITION_LEFT || config.position.value == TabBarConfig.POSITION_RIGHT
+
+        // Get the size of the space for each item (original logic)
+        val itemSize = if (isVertical) {
+            // For vertical layout, use more compact spacing
+            (resources.displayMetrics.heightPixels / Math.max(items.size, 4)).coerceAtMost(
+                (VERTICAL_ITEM_MAX_HEIGHT_DP * resources.displayMetrics.density).toInt()
+            ).coerceAtLeast(
+                (VERTICAL_ITEM_MIN_HEIGHT_DP * resources.displayMetrics.density).toInt()
+            )
+        } else {
+            resources.displayMetrics.widthPixels / items.size
+        }
+
+        items.forEachIndexed { index, item ->
+            createTabView(item, config, index == selectedPosition, index).also { view ->
+                tabViews.add(view)
+                container.addView(view)
+            }
+        }
+    }
+
+    /**
+     * Create a container for a group of tab items
+     */
+    private fun createGroupContainer(groupItems: List<TabBarItem>, isVertical: Boolean): LinearLayout {
+        val container = LinearLayout(context).apply {
+            orientation = if (isVertical) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(
+                if (isVertical) LinearLayout.LayoutParams.MATCH_PARENT else LinearLayout.LayoutParams.WRAP_CONTENT,
+                if (isVertical) LinearLayout.LayoutParams.WRAP_CONTENT else LinearLayout.LayoutParams.MATCH_PARENT
+            )
+
+            // Add spacing between items in the group
+            val spacing = (4 * resources.displayMetrics.density).toInt()
+            setPadding(
+                if (isVertical) 0 else spacing,
+                if (isVertical) spacing else 0,
+                if (isVertical) 0 else spacing,
+                if (isVertical) spacing else 0
+            )
+        }
+
+        groupItems.forEachIndexed { index, item ->
+            // Find the global index of this item
+            val globalIndex = items.indexOf(item)
+            if (globalIndex >= 0) {
+                val tabView = createTabView(item, config, globalIndex == selectedPosition, globalIndex)
+
+                // Add margin between items (except for the first item)
+                if (index > 0) {
+                    val marginPx = (12 * resources.displayMetrics.density).toInt() // Increased spacing
+                    (tabView.layoutParams as? LinearLayout.LayoutParams)?.apply {
+                        if (isVertical) {
+                            topMargin = marginPx
+                        } else {
+                            leftMargin = marginPx
+                        }
+                    }
+                }
+
+                tabViews.add(tabView)
+                container.addView(tabView)
+            }
+        }
+
+        return container
     }
 
     /**
@@ -379,7 +491,7 @@ class TabBar(context: Context) : LinearLayout(context) {
     }
 
     fun setSelectedIndex(index: Int, notifyListener: Boolean = true) {
-        if (index < 0 || index >= items.size || index >= tabViews.size) {
+        if (index < 0 || index >= items.size) {
             return
         }
 
@@ -387,15 +499,28 @@ class TabBar(context: Context) : LinearLayout(context) {
             val previousIndex = selectedPosition
             selectedPosition = index
 
-            // Update UI state
-            if (previousIndex >= 0 && previousIndex < tabViews.size) {
-                updateTabState(tabViews[previousIndex], items[previousIndex], false)
+            // Update UI state for all tab views
+            tabViews.forEachIndexed { viewIndex, tabView ->
+                // Find which item this view represents by checking the tag or by position
+                val itemIndex = findItemIndexForTabView(tabView, viewIndex)
+                if (itemIndex >= 0 && itemIndex < items.size) {
+                    val isSelected = itemIndex == index
+                    updateTabState(tabView, items[itemIndex], isSelected)
+                }
             }
-            updateTabState(tabViews[index], items[index], true)
 
             // Notify listener
-            onTabSelectedListener?.invoke(index, items[index].pagePath)
+            if (notifyListener) {
+                onTabSelectedListener?.invoke(index, items[index].pagePath)
+            }
         }
+    }
+
+    /**
+     * Find the item index for a given tab view using its tag
+     */
+    private fun findItemIndexForTabView(tabView: LinearLayout, viewIndex: Int): Int {
+        return (tabView.tag as? Int) ?: viewIndex.takeIf { it < items.size } ?: -1
     }
 
     fun setOnTabSelectedListener(listener: (Int, String) -> Unit) {
@@ -413,12 +538,17 @@ class TabBar(context: Context) : LinearLayout(context) {
         }
     }
 
-    private fun createTabView(item: TabBarItem, config: TabBarConfig, isSelected: Boolean): LinearLayout {
+    private fun createTabView(item: TabBarItem, config: TabBarConfig, isSelected: Boolean, itemIndex: Int = -1): LinearLayout {
         val isVertical = config.position.value == TabBarConfig.POSITION_LEFT || config.position.value == TabBarConfig.POSITION_RIGHT
 
         return LinearLayout(context).apply {
             orientation = VERTICAL
             gravity = Gravity.CENTER
+
+            // Set tag to store the item index for grouped layout
+            if (itemIndex >= 0) {
+                tag = itemIndex
+            }
 
             layoutParams = if (isVertical) {
                 LayoutParams(
@@ -434,7 +564,11 @@ class TabBar(context: Context) : LinearLayout(context) {
                     0,
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     1f
-                )
+                ).apply {
+                    // Add padding for better spacing in horizontal layout
+                    val padding = (2 * resources.displayMetrics.density).toInt()
+                    setMargins(padding, padding, padding, padding)
+                }
             }
 
             // Add icon
@@ -461,10 +595,11 @@ class TabBar(context: Context) : LinearLayout(context) {
             if (!item.text.isNullOrBlank()) {
                 val textView = TextView(context).apply {
                     text = item.text
-                    setTextColor(if (isSelected)
-                        config.selectedColor ?: TabBarConfig.DEFAULT_SELECTED_COLOR
-                        else config.color ?: TabBarConfig.DEFAULT_UNSELECTED_COLOR)
-                    textSize = if (isVertical) VERTICAL_ITEM_TEXT_SIZE_SP else HORIZONTAL_ITEM_TEXT_SIZE_SP
+
+                    // Use config colors with proper alpha handling
+                    setTextColor(if (isSelected) config.effectiveSelectedColor else config.effectiveUnselectedColor)
+                    setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP,
+                        if (isVertical) VERTICAL_ITEM_TEXT_SIZE_SP else HORIZONTAL_ITEM_TEXT_SIZE_SP)
                     layoutParams = LayoutParams(
                         ViewGroup.LayoutParams.WRAP_CONTENT,
                         ViewGroup.LayoutParams.WRAP_CONTENT
@@ -475,6 +610,9 @@ class TabBar(context: Context) : LinearLayout(context) {
                     gravity = Gravity.CENTER
                     isSingleLine = true
                     ellipsize = android.text.TextUtils.TruncateAt.END
+                    // Ensure text has enough space
+                    minWidth = (40 * resources.displayMetrics.density).toInt()
+
                 }
                 addView(textView)
             }
@@ -508,9 +646,7 @@ class TabBar(context: Context) : LinearLayout(context) {
 
         if (tabView.childCount > 1) {
             (tabView.getChildAt(1) as? TextView)?.setTextColor(
-                if (selected)
-                    config.selectedColor ?: TabBarConfig.DEFAULT_SELECTED_COLOR
-                    else config.color ?: TabBarConfig.DEFAULT_UNSELECTED_COLOR
+                if (selected) config.effectiveSelectedColor else config.effectiveUnselectedColor
             )
         }
     }

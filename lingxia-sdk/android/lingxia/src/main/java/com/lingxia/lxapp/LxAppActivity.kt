@@ -371,6 +371,8 @@ class LxAppActivity : AppCompatActivity() {
                     TabBarConfig.Position.RIGHT -> Gravity.END
                     else -> Gravity.START
                 }
+                // Add top margin to avoid status bar for vertical TabBars
+                topMargin = getStatusBarHeight(this@LxAppActivity)
             } else {
                 width = ViewGroup.LayoutParams.MATCH_PARENT
                 height = tabBarSizePx
@@ -397,6 +399,8 @@ class LxAppActivity : AppCompatActivity() {
                     TabBarConfig.Position.RIGHT -> Gravity.END
                     else -> Gravity.START
                 }
+                // Add top margin to avoid status bar for vertical TabBars
+                newLayoutParams.topMargin = getStatusBarHeight(this@LxAppActivity)
             } else {
                 newLayoutParams.width = ViewGroup.LayoutParams.MATCH_PARENT
                 newLayoutParams.height = tabBarSizePx
