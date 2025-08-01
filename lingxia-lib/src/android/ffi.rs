@@ -499,11 +499,18 @@ fn create_tab_bar_item<'a>(
         env.new_string("").ok()
     }?;
 
+    // Group positioning: 0=middle/center (default), 1=start (top/left), 2=end (bottom/right)
+    let group = match &item.group {
+        Some(lxapp::config::TabItemGroup::Start) => 1i32,
+        Some(lxapp::config::TabItemGroup::End) => 2i32,
+        None => 0i32,
+    };
+
     let text_obj = text.map(|t| t.into()).unwrap_or_else(|| JObject::null());
 
     env.new_object(
         tab_bar_item_class,
-        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZZ)V",
+        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZZI)V",
         &[
             (&page_path).into(),
             (&text_obj).into(),
@@ -511,6 +518,7 @@ fn create_tab_bar_item<'a>(
             (&selected_icon_path).into(),
             item.selected.into(),
             true.into(), // visible - TabItem doesn't have visible field, default to true
+            group.into(),
         ],
     )
     .ok()
