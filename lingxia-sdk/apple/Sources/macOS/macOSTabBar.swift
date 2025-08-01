@@ -11,6 +11,57 @@ public class macOSTabBar: NSView, EnhancedTabBarProtocol, TabBarUIDelegate {
     private var itemsContainer: NSStackView?
     private var tabIndexMap = [NSView: Int]()
 
+    /// Creates a TabBar for macOS
+    public static func createTabBar(frame: CGRect) -> macOSTabBar {
+        return macOSTabBar(frame: NSRect(x: frame.origin.x, y: frame.origin.y, width: frame.width, height: frame.height))
+    }
+
+    /// Gets the tab bar height for macOS
+    public static func getTabBarHeight() -> CGFloat {
+        return TabBarConstants.TAB_HEIGHT
+    }
+
+    /// Configures tab bar positioning for macOS layout
+    public static func configureTabBarLayout(_ tabBar: macOSTabBar, position: Int32, containerFrame: CGRect) {
+        let tabBarHeight = getTabBarHeight()
+        var tabBarFrame: NSRect
+
+        switch position {
+        case 0: // bottom
+            tabBarFrame = NSRect(x: 0, y: 0, width: containerFrame.width, height: tabBarHeight)
+        case 1: // top
+            tabBarFrame = NSRect(x: 0, y: containerFrame.height - tabBarHeight, width: containerFrame.width, height: tabBarHeight)
+        case 2: // left
+            tabBarFrame = NSRect(x: 0, y: 0, width: tabBarHeight, height: containerFrame.height)
+        case 3: // right
+            tabBarFrame = NSRect(x: containerFrame.width - tabBarHeight, y: 0, width: tabBarHeight, height: containerFrame.height)
+        default:
+            tabBarFrame = NSRect(x: 0, y: 0, width: containerFrame.width, height: tabBarHeight)
+        }
+
+        tabBar.frame = tabBarFrame
+    }
+
+    /// Gets the appropriate content area frame considering tab bar position
+    public static func getContentAreaFrame(containerFrame: CGRect, tabBarPosition: Int32, hasTabBar: Bool) -> CGRect {
+        guard hasTabBar else { return containerFrame }
+
+        let tabBarHeight = getTabBarHeight()
+
+        switch tabBarPosition {
+        case 0: // bottom
+            return CGRect(x: 0, y: tabBarHeight, width: containerFrame.width, height: containerFrame.height - tabBarHeight)
+        case 1: // top
+            return CGRect(x: 0, y: 0, width: containerFrame.width, height: containerFrame.height - tabBarHeight)
+        case 2: // left
+            return CGRect(x: tabBarHeight, y: 0, width: containerFrame.width - tabBarHeight, height: containerFrame.height)
+        case 3: // right
+            return CGRect(x: 0, y: 0, width: containerFrame.width - tabBarHeight, height: containerFrame.height)
+        default:
+            return CGRect(x: 0, y: tabBarHeight, width: containerFrame.width, height: containerFrame.height - tabBarHeight)
+        }
+    }
+
     public override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         setupUI()
@@ -253,7 +304,7 @@ public class macOSTabBar: NSView, EnhancedTabBarProtocol, TabBarUIDelegate {
             container.alignment = .leading
         } else {
             container.orientation = .horizontal
-            container.distribution = .fill
+            container.distribution = .fillEqually
             container.alignment = .centerY
         }
 
@@ -296,8 +347,7 @@ public class macOSTabBar: NSView, EnhancedTabBarProtocol, TabBarUIDelegate {
             }
 
         } else {
-            // Simple centered layout (no grouping or horizontal TabBar)
-
+            // Simple centered layout for vertical without grouping
             if isVertical {
                 // Add top spacing for borderless windows to avoid window controls
                 let topSpacer = createTopSpacer()
@@ -308,20 +358,102 @@ public class macOSTabBar: NSView, EnhancedTabBarProtocol, TabBarUIDelegate {
                 spacer.setContentHuggingPriority(.defaultLow, for: .vertical)
                 spacer.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
                 container.addArrangedSubview(spacer)
-            }
 
-            // Create center container with all items (should be centerItems only when no grouping)
-            if !centerItems.isEmpty {
-                let centerContainer = createGroupContainer(items: centerItems, spacing: TabBarConstants.CENTER_SPACING, isVertical: isVertical)
-                container.addArrangedSubview(centerContainer)
-            }
+                // Create center container with all items
+                if !centerItems.isEmpty {
+                    let centerContainer = createGroupContainer(items: centerItems, spacing: TabBarConstants.CENTER_SPACING, isVertical: isVertical)
+                    container.addArrangedSubview(centerContainer)
+                }
 
-            if isVertical {
                 // Add flexible spacer after center items to keep them centered
                 let spacer2 = NSView()
                 spacer2.setContentHuggingPriority(.defaultLow, for: .vertical)
                 spacer2.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
                 container.addArrangedSubview(spacer2)
+            } else {
+                // Horizontal TabBar (bottom/top) - PROPER GROUPED LAYOUT
+
+                // Clear container
+                container.arrangedSubviews.forEach { $0.removeFromSuperview() }
+
+                // Create main horizontal stack
+                let mainStack = NSStackView()
+                mainStack.orientation = .horizontal
+                mainStack.distribution = .fill
+                mainStack.alignment = .centerY
+                mainStack.spacing = 0
+
+                // Create containers for each group
+                let startContainer = createGroupContainer(items: startItems, spacing: TabBarConstants.DEFAULT_SPACING, isVertical: isVertical)
+                let centerContainer = createGroupContainer(items: centerItems, spacing: TabBarConstants.CENTER_SPACING, isVertical: isVertical)
+                let endContainer = createGroupContainer(items: endItems, spacing: TabBarConstants.DEFAULT_SPACING, isVertical: isVertical)
+
+                // Create flexible spacers
+                let leftSpacer = NSView()
+                let centerSpacer = NSView()
+                let rightSpacer = NSView()
+
+                // Configure spacers
+                leftSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+                centerSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+                rightSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+
+                leftSpacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+                centerSpacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+                rightSpacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+                // Configure containers to maintain their size
+                startContainer.setContentHuggingPriority(.required, for: .horizontal)
+                centerContainer.setContentHuggingPriority(.required, for: .horizontal)
+                endContainer.setContentHuggingPriority(.required, for: .horizontal)
+
+                // Add padding views for edges
+                let leftPadding = NSView()
+                let rightPadding = NSView()
+                leftPadding.widthAnchor.constraint(equalToConstant: 8).isActive = true
+                rightPadding.widthAnchor.constraint(equalToConstant: 8).isActive = true
+
+                // Build the layout based on which groups exist
+                if !startItems.isEmpty && !centerItems.isEmpty && !endItems.isEmpty {
+                    // All three groups: [start][spacer][center][spacer][end]
+                    mainStack.addArrangedSubview(startContainer)
+                    mainStack.addArrangedSubview(leftSpacer)
+                    mainStack.addArrangedSubview(centerContainer)
+                    mainStack.addArrangedSubview(rightSpacer)
+                    mainStack.addArrangedSubview(endContainer)
+                } else if !startItems.isEmpty && !centerItems.isEmpty {
+                    // Start and center: [start][spacer][center]
+                    mainStack.addArrangedSubview(startContainer)
+                    mainStack.addArrangedSubview(leftSpacer)
+                    mainStack.addArrangedSubview(centerContainer)
+                } else if !startItems.isEmpty && !endItems.isEmpty {
+                    // Start and end: [start][spacer][end]
+                    mainStack.addArrangedSubview(startContainer)
+                    mainStack.addArrangedSubview(leftSpacer)
+                    mainStack.addArrangedSubview(endContainer)
+                } else if !centerItems.isEmpty && !endItems.isEmpty {
+                    // Center and end: [center][spacer][end]
+                    mainStack.addArrangedSubview(centerContainer)
+                    mainStack.addArrangedSubview(leftSpacer)
+                    mainStack.addArrangedSubview(endContainer)
+                } else if !startItems.isEmpty {
+                    // Only start: [start]
+                    mainStack.addArrangedSubview(leftPadding)
+                    mainStack.addArrangedSubview(startContainer)
+                    mainStack.addArrangedSubview(rightPadding)
+                } else if !centerItems.isEmpty {
+                    // Only center: [spacer][center][spacer]
+                    mainStack.addArrangedSubview(leftSpacer)
+                    mainStack.addArrangedSubview(centerContainer)
+                    mainStack.addArrangedSubview(rightSpacer)
+                } else if !endItems.isEmpty {
+                    // Only end: [end]
+                    mainStack.addArrangedSubview(leftPadding)
+                    mainStack.addArrangedSubview(endContainer)
+                    mainStack.addArrangedSubview(rightPadding)
+                }
+
+                container.addArrangedSubview(mainStack)
             }
         }
     }
