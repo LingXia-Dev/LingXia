@@ -11,10 +11,6 @@ private let lxAppViewControllerLog = OSLog(subsystem: "LingXia", category: "LxAp
 public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     nonisolated private static let log = lxAppViewControllerLog
 
-    //  - Constants
-    private static let TAB_BAR_HEIGHT: CGFloat = 40
-    internal static let DEFAULT_NAV_BAR_HEIGHT: CGFloat = 32 // This constant is no longer used for layout, but kept for reference if needed elsewhere
-
     // Helper method to get top margin based on window style
     private func getTopMargin() -> CGFloat {
         return macOSLxAppWindowController.getTopMarginForCurrentStyle()
@@ -100,8 +96,8 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
             // Check if TabBar is transparent using platform extension
             let isTabBarTransparent = TabBarHelper.isTransparent(tabBarConfig.background_color.toString())
 
-            // Get TabBar height from constants
-            let tabBarHeight: CGFloat = Self.TAB_BAR_HEIGHT
+            // Get TabBar height from config dimension
+            let tabBarHeight: CGFloat = CGFloat(tabBarConfig.dimension)
 
             // Set TabBar position based on config - support all four positions
             var tabBarConstraints: [NSLayoutConstraint] = []
@@ -128,7 +124,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
                     tabBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
                     tabBar.topAnchor.constraint(equalTo: view.topAnchor),
                     tabBar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-                    tabBar.widthAnchor.constraint(equalToConstant: 80) // Same width as independent implementation
+                    tabBar.widthAnchor.constraint(equalToConstant: tabBarHeight) // Use configured dimension
                 ]
 
             case 3: // right
@@ -136,7 +132,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
                     tabBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
                     tabBar.topAnchor.constraint(equalTo: view.topAnchor),
                     tabBar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-                    tabBar.widthAnchor.constraint(equalToConstant: 80) // Same width as independent implementation
+                    tabBar.widthAnchor.constraint(equalToConstant: tabBarHeight) // Use configured dimension
                 ]
 
             default: // fallback to bottom
@@ -240,116 +236,166 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         // Store config as instance property
         self.tabBarConfig = tabBarConfig
 
-        // Create macOS TabBar
+        // Create simple TabBar first - get it working, then add grouping
         let tabBar = NSView()
         tabBar.wantsLayer = true
 
         // Set background color using platform extension
-        let resolvedColor = TabBarHelper.resolvedBackgroundColor(tabBarConfig.background_color.toString(), isVertical: false)
+        let resolvedColor = TabBarHelper.resolvedBackgroundColor(tabBarConfig.background_color.toString(), isVertical: true)
         tabBar.layer?.backgroundColor = resolvedColor.cgColor
 
         tabBar.translatesAutoresizingMaskIntoConstraints = false
 
-        // Add tab buttons with orientation based on position
-        let stackView = NSStackView()
-
-        // Set orientation and spacing based on TabBar position
-        switch tabBarConfig.position {
-        case 2, 3: // left, right
-            stackView.orientation = .vertical
-            stackView.distribution = .equalSpacing  // Same as independent implementation
-            stackView.spacing = 10  // Same spacing as independent implementation
-        case 0, 1: // bottom, top
-            stackView.orientation = .horizontal
-            stackView.distribution = .fillEqually
-            stackView.spacing = 8  // Standard spacing for horizontal layout
-        default: // fallback to horizontal
-            stackView.orientation = .horizontal
-            stackView.distribution = .fillEqually
-            stackView.spacing = 8
+        // Set minimum size constraints based on position using configured dimension
+        let isVertical = tabBarConfig.position == 2 || tabBarConfig.position == 3 // left, right
+        let configuredDimension = CGFloat(tabBarConfig.dimension)
+        if isVertical {
+            // Vertical TabBar: minimum width
+            tabBar.widthAnchor.constraint(greaterThanOrEqualToConstant: configuredDimension).isActive = true
+        } else {
+            // Horizontal TabBar: minimum height for proper icon-text layout
+            tabBar.heightAnchor.constraint(greaterThanOrEqualToConstant: configuredDimension).isActive = true
         }
 
+        // Create stack view with correct orientation based on TabBar position
+        // isVertical already defined above
+        let stackView = NSStackView()
+        stackView.orientation = isVertical ? .vertical : .horizontal
+        stackView.distribution = .fill
+        stackView.spacing = 0  // Let spacers handle spacing
         stackView.translatesAutoresizingMaskIntoConstraints = false
 
-        let items = tabBarConfig.getItems(appId: appId)
-        for (index, item) in items.enumerated() {
-            let button = NSButton()
-            button.title = item.text.toString()
-            button.font = NSFont.systemFont(ofSize: 10, weight: .medium)
-            button.isBordered = false
-            button.wantsLayer = true
-            button.layer?.backgroundColor = NSColor.clear.cgColor
-            button.tag = index
-            button.target = self
-            button.action = #selector(tabButtonTapped(_:))
-            button.translatesAutoresizingMaskIntoConstraints = false
+        // Set alignment for centering
+        if isVertical {
+            stackView.alignment = .centerX
+        } else {
+            stackView.alignment = .centerY
+        }
 
-            // Set colors from config using the same method as independent implementation
-            let isSelected = item.page_path.toString() == initialPath
-            button.contentTintColor = getTabColor(selected: isSelected)
+        // Use the config method for consistent grouping logic
+        let (startItems, centerItems, endItems) = tabBarConfig.getGroupedItems(appId: appId)
+        let hasAnyGroupField = !startItems.isEmpty || !endItems.isEmpty
 
-            // Set icon if available
-            let iconPath = item.icon_path.toString()
-            if !iconPath.isEmpty {
-                setButtonIcon(button: button, iconPath: iconPath, isSelected: isSelected, item: item)
+        if hasAnyGroupField {
+
+            // Create start container
+            if !startItems.isEmpty {
+                let startContainer = createGroupContainer(items: startItems, spacing: TabBarConstants.DEFAULT_SPACING, isVertical: isVertical)
+                stackView.addArrangedSubview(startContainer)
             }
 
-            // Configure button layout based on TabBar position
-            switch tabBarConfig.position {
-            case 2, 3: // left, right
-                // For vertical TabBar, use same layout as independent implementation
-                button.imagePosition = .imageAbove
-                button.imageScaling = .scaleProportionallyDown
-                button.font = NSFont.systemFont(ofSize: 10, weight: .medium)
-                // Set fixed height for vertical buttons (same as independent implementation)
-                button.heightAnchor.constraint(equalToConstant: 50).isActive = true
+            // Add flexible spacer
+            let spacer = createFlexibleSpacer(isVertical: isVertical)
+            stackView.addArrangedSubview(spacer)
 
-            case 0, 1: // bottom, top
-                // For horizontal TabBar, use standard layout
-                button.imagePosition = .imageAbove
-                button.imageScaling = .scaleProportionallyDown
-                button.font = NSFont.systemFont(ofSize: 10, weight: .medium)
-
-            default: // fallback to horizontal layout
-                button.imagePosition = .imageAbove
-                button.imageScaling = .scaleProportionallyDown
-                button.font = NSFont.systemFont(ofSize: 10, weight: .medium)
+            // Create end container
+            if !endItems.isEmpty {
+                let endContainer = createGroupContainer(items: endItems, spacing: TabBarConstants.DEFAULT_SPACING, isVertical: isVertical)
+                stackView.addArrangedSubview(endContainer)
             }
 
-            stackView.addArrangedSubview(button)
+        } else {
+            // Centered layout for non-grouped items
+            let centerContainer = createGroupContainer(items: centerItems, spacing: TabBarConstants.CENTER_SPACING, isVertical: isVertical)
+            stackView.addArrangedSubview(centerContainer)
         }
 
         tabBar.addSubview(stackView)
 
-        // Set StackView constraints based on TabBar position
-        switch tabBarConfig.position {
-        case 2, 3: // left, right
-            // For vertical TabBar, use centerY constraint (same as independent implementation)
-            NSLayoutConstraint.activate([
-                stackView.leadingAnchor.constraint(equalTo: tabBar.leadingAnchor, constant: 4), // Reduced inset like independent implementation
-                stackView.trailingAnchor.constraint(equalTo: tabBar.trailingAnchor, constant: -4),
-                stackView.centerYAnchor.constraint(equalTo: tabBar.centerYAnchor)
-            ])
-
-        case 0, 1: // bottom, top
-            // For horizontal TabBar, fill the entire area
-            NSLayoutConstraint.activate([
-                stackView.leadingAnchor.constraint(equalTo: tabBar.leadingAnchor, constant: 16),
-                stackView.trailingAnchor.constraint(equalTo: tabBar.trailingAnchor, constant: -16),
-                stackView.topAnchor.constraint(equalTo: tabBar.topAnchor),
-                stackView.bottomAnchor.constraint(equalTo: tabBar.bottomAnchor)
-            ])
-
-        default: // fallback to horizontal layout
-            NSLayoutConstraint.activate([
-                stackView.leadingAnchor.constraint(equalTo: tabBar.leadingAnchor, constant: 16),
-                stackView.trailingAnchor.constraint(equalTo: tabBar.trailingAnchor, constant: -16),
-                stackView.topAnchor.constraint(equalTo: tabBar.topAnchor),
-                stackView.bottomAnchor.constraint(equalTo: tabBar.bottomAnchor)
-            ])
-        }
+        // Set stack view constraints to fill the TabBar (let internal spacers handle positioning)
+        NSLayoutConstraint.activate([
+            stackView.leadingAnchor.constraint(equalTo: tabBar.leadingAnchor, constant: 4),
+            stackView.trailingAnchor.constraint(equalTo: tabBar.trailingAnchor, constant: -4),
+            stackView.topAnchor.constraint(equalTo: tabBar.topAnchor, constant: 8),
+            stackView.bottomAnchor.constraint(equalTo: tabBar.bottomAnchor, constant: -8)
+        ])
 
         self.tabBarView = tabBar
+    }
+
+    /// Create a container for a group of tab items
+    private func createGroupContainer(items: [TabBarItem], spacing: CGFloat, isVertical: Bool) -> NSStackView {
+        let container = NSStackView()
+        container.orientation = isVertical ? .vertical : .horizontal
+        container.distribution = isVertical ? .fill : .equalSpacing  // equalSpacing for horizontal to give more space
+        container.spacing = spacing
+        container.translatesAutoresizingMaskIntoConstraints = false
+
+        // Set content hugging priority to prevent expansion
+        if isVertical {
+            container.setContentHuggingPriority(.defaultHigh, for: .vertical)
+        } else {
+            container.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+            // For horizontal, ensure minimum height
+            container.heightAnchor.constraint(greaterThanOrEqualToConstant: 60).isActive = true
+        }
+
+        for (index, item) in items.enumerated() {
+            // Find the global index of this item
+            let allItems = tabBarConfig?.getItems(appId: appId) ?? []
+            let globalIndex = allItems.firstIndex { $0.page_path.toString() == item.page_path.toString() } ?? index
+            let button = createTabButton(item: item, index: globalIndex)
+            container.addArrangedSubview(button)
+        }
+
+        return container
+    }
+
+    /// Create a flexible spacer for layout
+    private func createFlexibleSpacer(isVertical: Bool) -> NSView {
+        let spacer = NSView()
+        if isVertical {
+            spacer.setContentHuggingPriority(.defaultLow, for: .vertical)
+            spacer.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+            spacer.heightAnchor.constraint(greaterThanOrEqualToConstant: TabBarConstants.MINIMAL_SPACER_SIZE).isActive = true
+        } else {
+            spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            spacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            spacer.widthAnchor.constraint(greaterThanOrEqualToConstant: TabBarConstants.MINIMAL_SPACER_SIZE).isActive = true
+        }
+        return spacer
+    }
+
+    /// Create a tab button with better layout for bottom tabbar
+    private func createTabButton(item: TabBarItem, index: Int) -> NSButton {
+        let button = NSButton()
+        button.title = item.text.toString()
+        button.isBordered = false
+        button.wantsLayer = true
+        button.layer?.backgroundColor = NSColor.clear.cgColor
+        button.tag = index
+        button.target = self
+        button.action = #selector(tabButtonTapped(_:))
+        button.translatesAutoresizingMaskIntoConstraints = false
+
+        let isVertical = tabBarConfig?.position == 2 || tabBarConfig?.position == 3 // left, right
+        let isSelected = item.page_path.toString() == initialPath
+
+        // Configure image position and scaling
+        button.imagePosition = .imageAbove
+        button.imageScaling = .scaleProportionallyDown
+
+        // Configure size and font based on orientation
+        let fontSize: CGFloat = isVertical ? 10 : 11
+        let buttonHeight: CGFloat = isVertical ? 50 : 56
+
+        button.font = NSFont.systemFont(ofSize: fontSize, weight: .medium)
+        button.heightAnchor.constraint(equalToConstant: buttonHeight).isActive = true
+
+        if !isVertical {
+            button.widthAnchor.constraint(greaterThanOrEqualToConstant: 80).isActive = true
+        }
+
+        // Set colors from config
+        button.contentTintColor = getTabColor(selected: isSelected)
+
+        // Set icon if available
+        let iconPath = item.icon_path.toString()
+        if !iconPath.isEmpty {
+            setButtonIcon(button: button, iconPath: iconPath, isSelected: isSelected, item: item)
+        }
+
+        return button
     }
 
     private func loadWebViewContent() {
@@ -360,8 +406,6 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         webViewContainer.needsLayout = true
         webViewContainer.layoutSubtreeIfNeeded()
     }
-
-
 
     private func attachWebViewToContainer(_ webView: WKWebView) {
         currentWebView?.removeFromSuperview()
@@ -531,23 +575,38 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     }
 
     private func updateTabBarSelection(selectedIndex: Int) {
-        guard let stackView = tabBarView?.subviews.first as? NSStackView else { return }
+        guard let tabBarView = tabBarView,
+              let stackView = tabBarView.subviews.first as? NSStackView else { return }
 
-        for (buttonIndex, arrangedSubview) in stackView.arrangedSubviews.enumerated() {
-            if let button = arrangedSubview as? NSButton {
-                let isSelected = buttonIndex == selectedIndex
+        let items = tabBarConfig?.getItems(appId: appId) ?? []
 
-                // Update button color using the same method as independent implementation
-                button.contentTintColor = getTabColor(selected: isSelected)
+        // Recursively find all buttons in the stack view hierarchy
+        func findAllButtons(in view: NSView) -> [NSButton] {
+            var buttons: [NSButton] = []
 
-                // Update icon if needed
-                let items = tabBarConfig!.getItems(appId: appId)
-                if buttonIndex < items.count {
-                    let configItem = items[buttonIndex]
-                    let iconPath = configItem.icon_path.toString()
-                    if !iconPath.isEmpty {
-                        setButtonIcon(button: button, iconPath: iconPath, isSelected: isSelected, item: configItem)
-                    }
+            if let button = view as? NSButton {
+                buttons.append(button)
+            } else if let stackView = view as? NSStackView {
+                for arrangedSubview in stackView.arrangedSubviews {
+                    buttons.append(contentsOf: findAllButtons(in: arrangedSubview))
+                }
+            }
+
+            return buttons
+        }
+
+        let allButtons = findAllButtons(in: stackView)
+
+        // Update all buttons
+        for button in allButtons {
+            let isSelected = button.tag == selectedIndex
+            button.contentTintColor = getTabColor(selected: isSelected)
+
+            if button.tag < items.count {
+                let configItem = items[button.tag]
+                let iconPath = configItem.icon_path.toString()
+                if !iconPath.isEmpty {
+                    setButtonIcon(button: button, iconPath: iconPath, isSelected: isSelected, item: configItem)
                 }
             }
         }
@@ -618,11 +677,26 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         }
 
         if let image = image {
-            let iconSize: CGFloat = 24
-            let resizedImage = resizeImage(image, to: NSSize(width: iconSize, height: iconSize))
-            button.image = resizedImage
+            // Set icon size based on TabBar position
+            let isVertical = tabBarConfig?.position == 2 || tabBarConfig?.position == 3
+            let iconSize: CGFloat = isVertical ? 20 : 24
+            button.image = resizeImage(image, to: NSSize(width: iconSize, height: iconSize))
+            button.imageScaling = .scaleNone
+
+            // Add spacing between image and title for horizontal TabBar
+            if !isVertical {
+                // Create space between icon and text
+                button.imagePosition = .imageAbove
+                button.imageHugsTitle = false
+
+                // Add padding between image and title
+                if let cell = button.cell as? NSButtonCell {
+                    cell.imageDimsWhenDisabled = false
+                }
+            }
         }
     }
+
 
     private func resizeImage(_ image: NSImage, to size: NSSize) -> NSImage {
         let resizedImage = NSImage(size: size)

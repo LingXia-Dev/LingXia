@@ -116,13 +116,8 @@ public class macOSTabBar: NSView, EnhancedTabBarProtocol, TabBarUIDelegate {
         tabViews.removeAll()
         tabIndexMap.removeAll()
 
-        // Create new tab views
-        for (index, item) in newItems.enumerated() {
-            let tabView = createTabView(for: item, at: index)
-            tabViews.append(tabView)
-            tabIndexMap[tabView] = index
-            itemsContainer.addArrangedSubview(tabView)
-        }
+        // Always use grouped layout - items without group go to center
+        setupGroupedLayout(items: newItems, container: itemsContainer)
 
         // Set initial selection
         let selectedPosition = controller.getSelectedPosition()
@@ -229,6 +224,133 @@ public class macOSTabBar: NSView, EnhancedTabBarProtocol, TabBarUIDelegate {
 
         // Apply tint color
         imageView.contentTintColor = tintColor
+    }
+
+    /// Setup universal grouped layout with separate containers for start/center/end items
+    /// Works for all TabBar orientations - group property is independent of position
+    private func setupGroupedLayout(items: [TabBarItem], container: NSStackView) {
+        // Group items directly here to avoid any issues with the config method
+        var startItems: [TabBarItem] = []
+        var centerItems: [TabBarItem] = []
+        var endItems: [TabBarItem] = []
+
+        for item in items {
+            switch item.group {
+            case 1: // start (top for vertical, left for horizontal)
+                startItems.append(item)
+            case 2: // end (bottom for vertical, right for horizontal) - recommended for settings
+                endItems.append(item)
+            default: // 0 or any other value = middle/center (default)
+                centerItems.append(item)
+            }
+        }
+        let isVertical = controller.isVertical()
+
+        // Configure container based on orientation
+        if isVertical {
+            container.orientation = .vertical
+            container.distribution = .fill
+            container.alignment = .leading
+        } else {
+            container.orientation = .horizontal
+            container.distribution = .fill
+            container.alignment = .centerY
+        }
+
+        // Check if we have any grouped items (start or end)
+        let hasGroupedItems = !startItems.isEmpty || !endItems.isEmpty
+
+        if isVertical && hasGroupedItems {
+            // Grouped layout for vertical TabBar
+
+            // Add top spacing for borderless windows to avoid window controls
+            let topSpacer = createTopSpacer()
+            container.addArrangedSubview(topSpacer)
+
+            // Create start container
+            if !startItems.isEmpty {
+                let startContainer = createGroupContainer(items: startItems, spacing: TabBarConstants.DEFAULT_SPACING, isVertical: isVertical)
+                container.addArrangedSubview(startContainer)
+            }
+
+            // Create spacer for center items or empty space
+            let spacer = NSView()
+            spacer.setContentHuggingPriority(.defaultLow, for: .vertical)
+            container.addArrangedSubview(spacer)
+
+            // Create center container (middle)
+            if !centerItems.isEmpty {
+                let centerContainer = createGroupContainer(items: centerItems, spacing: TabBarConstants.CENTER_SPACING, isVertical: isVertical)
+                container.addArrangedSubview(centerContainer)
+            }
+
+            // Create another spacer
+            let spacer2 = NSView()
+            spacer2.setContentHuggingPriority(.defaultLow, for: .vertical)
+            container.addArrangedSubview(spacer2)
+
+            // Create end container
+            if !endItems.isEmpty {
+                let endContainer = createGroupContainer(items: endItems, spacing: TabBarConstants.DEFAULT_SPACING, isVertical: isVertical)
+                container.addArrangedSubview(endContainer)
+            }
+
+        } else {
+            // Simple centered layout (no grouping or horizontal TabBar)
+
+            if isVertical {
+                // Add top spacing for borderless windows to avoid window controls
+                let topSpacer = createTopSpacer()
+                container.addArrangedSubview(topSpacer)
+
+                // Add flexible spacer before center items to push them to center
+                let spacer = NSView()
+                spacer.setContentHuggingPriority(.defaultLow, for: .vertical)
+                spacer.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+                container.addArrangedSubview(spacer)
+            }
+
+            // Create center container with all items (should be centerItems only when no grouping)
+            if !centerItems.isEmpty {
+                let centerContainer = createGroupContainer(items: centerItems, spacing: TabBarConstants.CENTER_SPACING, isVertical: isVertical)
+                container.addArrangedSubview(centerContainer)
+            }
+
+            if isVertical {
+                // Add flexible spacer after center items to keep them centered
+                let spacer2 = NSView()
+                spacer2.setContentHuggingPriority(.defaultLow, for: .vertical)
+                spacer2.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+                container.addArrangedSubview(spacer2)
+            }
+        }
+    }
+
+    /// Create a container for a group of tab items
+    private func createGroupContainer(items: [TabBarItem], spacing: CGFloat, isVertical: Bool) -> NSStackView {
+        let groupContainer = NSStackView()
+        groupContainer.orientation = isVertical ? .vertical : .horizontal
+        groupContainer.distribution = isVertical ? .equalSpacing : .fillEqually
+        groupContainer.spacing = spacing
+        groupContainer.translatesAutoresizingMaskIntoConstraints = false
+
+        for (index, item) in items.enumerated() {
+            // Find the global index of this item
+            let globalIndex = controller.getItems().firstIndex { $0.page_path.toString() == item.page_path.toString() } ?? index
+            let tabView = createTabView(for: item, at: globalIndex)
+            tabViews.append(tabView)
+            tabIndexMap[tabView] = globalIndex
+            groupContainer.addArrangedSubview(tabView)
+        }
+
+        return groupContainer
+    }
+
+    /// Create top spacer for window controls avoidance
+    private func createTopSpacer() -> NSView {
+        let spacer = NSView()
+        spacer.heightAnchor.constraint(equalToConstant: TabBarConstants.WINDOW_CONTROLS_HEIGHT).isActive = true
+        return spacer
     }
 }
 
