@@ -370,6 +370,13 @@ impl LxApp {
 
     /// Load and parse lxapp.json configuration
     pub fn load_config(&mut self) -> Result<(), LxAppError> {
+        let lxapp_json_path = self.lxapp_dir.join("lxapp.json");
+        info!(
+            " [{}] Loading lxapp.json from: {}",
+            self.appid,
+            lxapp_json_path.display()
+        );
+
         // Load app configuration if it exists
         self.read_json("lxapp.json")
             .map(|app_json| {

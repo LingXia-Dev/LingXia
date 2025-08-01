@@ -1,7 +1,7 @@
 pub use navbar::{NavigationBarConfig, NavigationStyle};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-pub use tabbar::{TabBarConfig, TabBarPosition, TabItem};
+pub use tabbar::{TabBarConfig, TabBarPosition, TabItem, TabItemGroup};
 
 mod navbar;
 mod tabbar;

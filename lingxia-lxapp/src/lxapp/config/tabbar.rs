@@ -63,6 +63,23 @@ pub enum TabBarPosition {
     Right,
 }
 
+/// Group positioning for tab items
+///
+/// Groups items into start, middle, and end positions regardless of TabBar orientation:
+/// - Vertical TabBar (left/right): start=top, middle=center, end=bottom
+/// - Horizontal TabBar (top/bottom): start=left, middle=center, end=right
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum TabItemGroup {
+    /// Position items at the start (top for vertical, left for horizontal)
+    #[serde(rename = "start")]
+    Start,
+
+    /// Position items at the end (bottom for vertical, right for horizontal)
+    #[serde(rename = "end")]
+    End,
+}
+
 impl TabBarPosition {
     /// Convert to i32 for FFI
     pub fn to_i32(&self) -> i32 {
@@ -84,6 +101,12 @@ impl TabBarPosition {
 ///
 /// - All paths are relative to the lxapp's own directory
 /// - The framework will automatically convert these to absolute paths when needed
+///
+/// ## Group Positioning
+/// When TabBar position is "left" or "right" on large screens, items can be grouped:
+/// - `group: "start"` - Items appear at the top (left side when vertical)
+/// - `group: "end"` - Items appear at the bottom (right side when vertical)
+/// - `group: null` or unspecified - Items use default center positioning
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[allow(non_snake_case)]
 pub struct TabItem {
@@ -105,6 +128,13 @@ pub struct TabItem {
     /// Whether this tab is selected by default
     #[serde(default)]
     pub selected: bool,
+
+    /// Group positioning for TabBar items (universal grouping system)
+    /// - "start": Position at start (top for vertical, left for horizontal)
+    /// - "end": Position at end (bottom for vertical, right for horizontal)
+    /// - null/unspecified: Use default middle/center positioning
+    #[serde(default)]
+    pub group: Option<TabItemGroup>,
 }
 
 impl TabBarConfig {
