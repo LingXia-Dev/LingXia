@@ -1,6 +1,6 @@
 # LingXia Builder
 
-A modern, framework-agnostic build tool for LingXia Application development. Supports HTML, Vue, and React pages with automatic function bridging and optimized builds.
+A modern, framework-agnostic build tool for LingXia LxApp development. Supports HTML, Vue, and React pages with automatic function bridging and optimized builds.
 
 ## Features
 
@@ -29,9 +29,6 @@ lingxia build
 
 # Production build (with minification and optimization)
 lingxia build --prod
-
-# Create new project
-lingxia create my-app
 
 # Show help
 lingxia --help

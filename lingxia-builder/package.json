@@ -1,7 +1,7 @@
 {
   "name": "lingxia-builder",
   "version": "0.2.0",
-  "description": "Modern build tool for LingXia MiniApp development. Supports HTML, Vue, and React with automatic function bridging and production optimization.",
+  "description": "Modern build tool for LingXia LxApp development. Supports HTML, Vue, and React with automatic function bridging and production optimization.",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
@@ -25,15 +25,13 @@
   },
   "keywords": [
     "lingxia",
-    "miniapp",
-    "cli",
+    "lxapp",
     "build-tool",
     "vue",
     "react",
     "html",
     "typescript",
-    "vite",
-    "mobile-app"
+    "vite"
   ],
   "author": "LingXia Team",
   "license": "MIT",

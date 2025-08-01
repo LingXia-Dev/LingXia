@@ -2,9 +2,7 @@
 
 /**
  * LingXia CLI Tool
- * Independent CLI tool providing two core functions:
- * 1. create lxapp - Create new project (future implementation)
- * 2. build - Build project with smart dependency resolution and TypeScript support
+ * Build tool for LingXia LxApp development with smart dependency resolution and TypeScript support
  */
 
 import { program } from 'commander';
@@ -21,18 +19,8 @@ const packageInfo = JSON.parse(readFileSync(packagePath, 'utf-8'));
 
 program
   .name('lingxia')
-  .description('LingXia CLI Tool - Build tool for LingXia LxApp development')
+  .description('LingXia Build Tool - Build tool for LingXia LxApp development')
   .version(packageInfo.version);
-
-// create command
-program
-  .command('create')
-  .argument('<app-name>', 'Name of the app to create')
-  .description('Create a new LxApp project (coming soon)')
-  .action(async (appName) => {
-    const { createCommand } = await import('../dist/commands/create.js');
-    await createCommand(appName);
-  });
 
 // build command
 program
