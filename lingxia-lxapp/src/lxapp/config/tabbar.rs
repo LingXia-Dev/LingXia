@@ -63,11 +63,13 @@ pub enum TabBarPosition {
     Right,
 }
 
-/// Group positioning for tab items
+/// Group positioning for tab items - two-mode system
 ///
-/// Groups items into start, middle, and end positions regardless of TabBar orientation:
-/// - Vertical TabBar (left/right): start=top, middle=center, end=bottom
-/// - Horizontal TabBar (top/bottom): start=left, middle=center, end=right
+/// **Centered Mode (Default)**: No group fields → all items centered (best for small screens)
+/// **Grouped Mode**: Any group field present → start/end distribution (best for large screens)
+///
+/// Group values: start=top/left, end=bottom/right
+/// Items without group field are treated as "start" in grouped mode
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum TabItemGroup {
@@ -76,6 +78,7 @@ pub enum TabItemGroup {
     Start,
 
     /// Position items at the end (bottom for vertical, right for horizontal)
+    /// Recommended for: Settings, logout, secondary actions
     #[serde(rename = "end")]
     End,
 }
@@ -129,10 +132,10 @@ pub struct TabItem {
     #[serde(default)]
     pub selected: bool,
 
-    /// Group positioning for TabBar items (universal grouping system)
-    /// - "start": Position at start (top for vertical, left for horizontal)
-    /// - "end": Position at end (bottom for vertical, right for horizontal)
-    /// - null/unspecified: Use default middle/center positioning
+    /// Group positioning: "start", "end", or null
+    /// - No group fields → centered mode (small screens)
+    /// - Any group field → grouped mode (large screens)
+    /// - null/unspecified treated as "start" in grouped mode
     #[serde(default)]
     pub group: Option<TabItemGroup>,
 }
