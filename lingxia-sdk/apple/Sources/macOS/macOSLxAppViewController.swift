@@ -121,14 +121,14 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
                 tabBarConstraints = [
                     tabBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
                     tabBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-                    tabBar.topAnchor.constraint(equalTo: view.topAnchor),
+                    tabBar.topAnchor.constraint(equalTo: view.topAnchor, constant: getTopMargin()),
                     tabBar.heightAnchor.constraint(equalToConstant: tabBarHeight)
                 ]
 
             case 2: // left
                 tabBarConstraints = [
                     tabBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-                    tabBar.topAnchor.constraint(equalTo: view.topAnchor),
+                    tabBar.topAnchor.constraint(equalTo: view.topAnchor, constant: getTopMargin()),
                     tabBar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
                     tabBar.widthAnchor.constraint(equalToConstant: tabBarHeight) // Use configured dimension
                 ]
@@ -136,7 +136,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
             case 3: // right
                 tabBarConstraints = [
                     tabBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-                    tabBar.topAnchor.constraint(equalTo: view.topAnchor),
+                    tabBar.topAnchor.constraint(equalTo: view.topAnchor, constant: getTopMargin()),
                     tabBar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
                     tabBar.widthAnchor.constraint(equalToConstant: tabBarHeight) // Use configured dimension
                 ]
@@ -682,27 +682,30 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
             }
         }
 
+        // Set icon size based on TabBar position
+        let isVertical = tabBarConfig?.position == 2 || tabBarConfig?.position == 3
+
         if let image = image {
-            // Set icon size based on TabBar position
-            let isVertical = tabBarConfig?.position == 2 || tabBarConfig?.position == 3
             let iconSize: CGFloat = isVertical ? 20 : 24
             button.image = resizeImage(image, to: NSSize(width: iconSize, height: iconSize))
             button.imageScaling = .scaleNone
+            os_log(" Icon loaded successfully: size=%@x%@", log: Self.log, type: .debug, "\(iconSize)", "\(iconSize)")
+        } else {
+            os_log(" Failed to load icon: path=%@", log: Self.log, type: .error, actualIconPath)
+        }
 
-            // Add spacing between image and title for horizontal TabBar
-            if !isVertical {
-                // Create space between icon and text
-                button.imagePosition = .imageAbove
-                button.imageHugsTitle = false
+        // Add spacing between image and title for horizontal TabBar
+        if !isVertical {
+            // Create space between icon and text
+            button.imagePosition = .imageAbove
+            button.imageHugsTitle = false
 
-                // Add padding between image and title
-                if let cell = button.cell as? NSButtonCell {
-                    cell.imageDimsWhenDisabled = false
-                }
+            // Add padding between image and title
+            if let cell = button.cell as? NSButtonCell {
+                cell.imageDimsWhenDisabled = false
             }
         }
     }
-
 
     private func resizeImage(_ image: NSImage, to size: NSSize) -> NSImage {
         let resizedImage = NSImage(size: size)
