@@ -4,7 +4,7 @@ import Foundation
 
 /// Custom NSWindow class for LxApp with style configuration
 class macOSLxAppWindow: NSWindow {
-    private var windowStyle: LxAppWindowStyle = .customCapsule
+    private var windowStyle: LxAppWindowStyle = .capsuleStyle
 
     override init(contentRect: NSRect, styleMask style: NSWindow.StyleMask, backing backingStoreType: NSWindow.BackingStoreType, defer flag: Bool) {
         super.init(contentRect: contentRect, styleMask: style, backing: backingStoreType, defer: flag)
@@ -31,7 +31,7 @@ public class macOSWindowSupport {
     /// Configures window for the specified style
     public static func configureWindow(_ window: NSWindow, style: LxAppWindowStyle) {
         switch style {
-        case .customCapsule:
+        case .capsuleStyle:
             // Custom capsule style with full-size content view
             window.styleMask.insert(.fullSizeContentView)
             window.titlebarAppearsTransparent = true
@@ -51,7 +51,7 @@ public class macOSWindowSupport {
     /// Gets the top margin for content based on window style
     public static func getTopMarginForStyle(_ style: LxAppWindowStyle) -> CGFloat {
         switch style {
-        case .customCapsule:
+        case .capsuleStyle:
             return 32  // Custom capsule style needs space for title bar
         case .tabStyle:
             return 32

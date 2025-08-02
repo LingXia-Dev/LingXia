@@ -21,7 +21,7 @@ public class macOSViewControllerSupport {
     /// Gets the appropriate top margin for content positioning
     public static func getTopMargin(for windowStyle: LxAppWindowStyle) -> CGFloat {
         switch windowStyle {
-        case .customCapsule:
+        case .capsuleStyle:
             return 32  // Custom capsule style needs space for title bar
         case .tabStyle:
             return 32

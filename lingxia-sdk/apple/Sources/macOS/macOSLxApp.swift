@@ -5,7 +5,7 @@ import os.log
 import CLingXiaFFI
 
 public enum LxAppWindowStyle {
-    case customCapsule
+    case capsuleStyle
     case tabStyle
 }
 

@@ -9,7 +9,7 @@ class macOSWindowController: NSWindowController, NSWindowDelegate {
     // Static Configuration
     private static var windowWidth: CGFloat = 800
     private static var windowHeight: CGFloat = 600
-    private static var windowStyle: LxAppWindowStyle = .customCapsule
+    private static var windowStyle: LxAppWindowStyle = .capsuleStyle
 
     /// Sets the window size for all new windows
     public static func setWindowSize(width: CGFloat, height: CGFloat) {
@@ -79,7 +79,7 @@ class macOSWindowController: NSWindowController, NSWindowDelegate {
 
         let styleMask: NSWindow.StyleMask
         switch finalStyle {
-        case .customCapsule:
+        case .capsuleStyle:
             styleMask = [.titled, .closable, .miniaturizable]
         case .tabStyle:
             styleMask = [.titled, .closable, .miniaturizable, .resizable]
@@ -109,7 +109,7 @@ class macOSWindowController: NSWindowController, NSWindowDelegate {
 
         setupNotificationObservers()
 
-        if Self.windowStyle == .customCapsule {
+        if Self.windowStyle == .capsuleStyle {
             DispatchQueue.main.async { [weak self] in
                 self?.setupTitleBar()
             }
@@ -153,7 +153,7 @@ class macOSWindowController: NSWindowController, NSWindowDelegate {
         window.setContentSize(newSize)
 
         switch Self.windowStyle {
-        case .customCapsule:
+        case .capsuleStyle:
             window.styleMask.remove(.resizable)
         case .tabStyle:
             window.styleMask.update(with: .resizable)
@@ -217,7 +217,7 @@ class macOSWindowController: NSWindowController, NSWindowDelegate {
             updateWindowTitle(for: path)
         }
 
-        if Self.windowStyle == .customCapsule {
+        if Self.windowStyle == .capsuleStyle {
             setupCapsuleButtons(on: navBar)
         }
     }
