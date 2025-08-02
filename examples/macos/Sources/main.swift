@@ -18,12 +18,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        // iPhone 11 physical size: 6.1cm x 13.2cm (2.4" x 5.2")
-        LxApp.setWindowSize(widthCm: 6.1, heightCm: 13.2)
-
-        LxApp.setWindowStyle(.customCapsule)
-        //LxApp.setWindowStyle(.systemDefault)
-
+        LxApp.simulateDevice(.iPhoneSE)
         LxApp.openHomeLxApp()
     }
 
