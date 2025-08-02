@@ -643,12 +643,12 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
             if let selectedColor = TabBarHelper.parseColor(tabBarConfig.selected_color.toString()) {
                 return selectedColor
             }
-            return NSColor(hexString: TabBarHelper.DEFAULT_SELECTED_COLOR) ?? NSColor.controlAccentColor
+            return NSColor.controlAccentColor
         } else {
             if let color = TabBarHelper.parseColor(tabBarConfig.color.toString()) {
                 return color
             }
-            return NSColor(hexString: TabBarHelper.DEFAULT_UNSELECTED_COLOR) ?? NSColor.secondaryLabelColor
+            return NSColor.secondaryLabelColor
         }
     }
 

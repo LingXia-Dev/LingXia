@@ -53,11 +53,6 @@ extension TabBarConfig {
         return TabBarHelper.isTransparent(colorString)
     }
 
-    /// Default color constants
-    public static let DEFAULT_SELECTED_COLOR = TabBarHelper.DEFAULT_SELECTED_COLOR
-    public static let DEFAULT_UNSELECTED_COLOR = TabBarHelper.DEFAULT_UNSELECTED_COLOR
-    public static let DEFAULT_BACKGROUND_COLOR = TabBarHelper.DEFAULT_BACKGROUND_COLOR
-
     /// Get resolved background color for this configuration
     public func resolvedBackgroundColor(isVertical: Bool) -> PlatformColor {
         return TabBarHelper.resolvedBackgroundColor(background_color.toString(), isVertical: isVertical)
@@ -92,12 +87,6 @@ extension TabBarItem {
 
 /// Helper methods for TabBar styling and color management
 public struct TabBarHelper {
-    // MARK: - Default Colors
-    public static let DEFAULT_SELECTED_COLOR = "#1677FF"
-    public static let DEFAULT_UNSELECTED_COLOR = "#666666"
-    public static let DEFAULT_BACKGROUND_COLOR = "#ffffff"
-    public static let DEFAULT_BORDER_COLOR = "#F0F0F0"
-
     /// Parse color string to platform color
     public static func parseColor(_ colorString: String) -> PlatformColor? {
         // Handle special "transparent" case
@@ -142,7 +131,7 @@ public struct TabBarHelper {
             return PlatformColor(hexString: "#F8F8F8") ?? PlatformColor.systemGray6
             #endif
         } else {
-            return PlatformColor(hexString: DEFAULT_BACKGROUND_COLOR) ?? PlatformColor.white
+            return PlatformColor(hexString: "#ffffff") ?? PlatformColor.white
         }
     }
 }

@@ -22,7 +22,7 @@ public class iOSLingXiaTabBar: UIView, EnhancedTabBarProtocol, TabBarUIDelegate 
 
     private func setupUI() {
         isHidden = true
-        backgroundColor = UIColor(hexString: TabBarHelper.DEFAULT_BACKGROUND_COLOR) ?? UIColor.white
+        backgroundColor = UIColor.white
         uiDelegate = self
 
         itemsContainer = UIStackView()
@@ -393,9 +393,9 @@ public class iOSLingXiaTabBar: UIView, EnhancedTabBarProtocol, TabBarUIDelegate 
         guard let stackView = tabView.subviews.first as? UIStackView,
               let iconView = stackView.arrangedSubviews.first as? UIImageView else { return }
 
-        // Update colors
-        let selectedColor = TabBarConfig.parseColor(config?.selected_color.toString() ?? "") ?? UIColor(hexString: TabBarConfig.DEFAULT_SELECTED_COLOR) ?? UIColor.systemBlue
-        let normalColor = TabBarConfig.parseColor(config?.color.toString() ?? "") ?? UIColor(hexString: TabBarConfig.DEFAULT_UNSELECTED_COLOR) ?? UIColor.gray
+        // Update colors - config should always have values due to Rust defaults
+        let selectedColor = TabBarHelper.parseColor(config?.selected_color.toString() ?? "") ?? UIColor.systemBlue
+        let normalColor = TabBarHelper.parseColor(config?.color.toString() ?? "") ?? UIColor.gray
 
         let color = isSelected ? selectedColor : normalColor
         iconView.tintColor = color
