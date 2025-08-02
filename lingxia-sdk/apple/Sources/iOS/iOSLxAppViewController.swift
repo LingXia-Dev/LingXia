@@ -38,11 +38,37 @@ public class iOSLxAppViewController: UIViewController {
     nonisolated(unsafe) private var closeAppObserver: NSObjectProtocol?
     nonisolated(unsafe) private var switchPageObserver: NSObjectProtocol?
 
-    public static func configureTransparentSystemBars(viewController: UIViewController, lightStatusBarIcons: Bool = false) {
-        if #available(iOS 13.0, *) {
-            viewController.overrideUserInterfaceStyle = lightStatusBarIcons ? .light : .dark
-        }
+    /// Check if current page should use transparent mode
+    private var shouldUseTransparentMode: Bool {
+        let isInitialRoute = PageNavigationCore.isInitialRoute(appId: appId, path: initialPath)
+        let isTabBarTransparent = tabBar != nil && TabBarConfig.isTransparent(tabBar!.config?.background_color.toString() ?? "")
+        return isInitialRoute || isTabBarTransparent
+    }
 
+    /// Configure WebView appearance and behavior
+    private func configureWebView(_ webView: WKWebView, transparent: Bool) {
+        let backgroundColor = transparent ? UIColor.clear : UIColor.white
+        let isOpaque = !transparent
+
+        // Configure WebView
+        webView.backgroundColor = backgroundColor
+        webView.isOpaque = isOpaque
+        webView.layer.backgroundColor = backgroundColor.cgColor
+
+        // Configure ScrollView
+        webView.scrollView.backgroundColor = backgroundColor
+        webView.scrollView.isOpaque = isOpaque
+        webView.scrollView.layer.backgroundColor = backgroundColor.cgColor
+        webView.scrollView.layer.isOpaque = isOpaque
+
+        // Configure scroll behavior
+        webView.scrollView.contentInsetAdjustmentBehavior = .never
+        webView.scrollView.indicatorStyle = .default
+        webView.scrollView.showsVerticalScrollIndicator = true
+        webView.scrollView.showsHorizontalScrollIndicator = true
+    }
+
+    public static func configureTransparentSystemBars(viewController: UIViewController, lightStatusBarIcons: Bool = false) {
         if let navController = viewController.navigationController {
             navController.navigationBar.setBackgroundImage(UIImage(), for: .default)
             navController.navigationBar.shadowImage = UIImage()
@@ -51,16 +77,8 @@ public class iOSLxAppViewController: UIViewController {
     }
 
     private func configureEdgeToEdgeDisplay() {
-        // Configure status bar style
-        if #available(iOS 13.0, *) {
-            overrideUserInterfaceStyle = .light
-        }
-
-        // Ensure modal presentation style allows edge-to-edge
         modalPresentationStyle = .fullScreen
-
-        // Configure view controller for edge-to-edge
-        edgesForExtendedLayout = [.top, .bottom]
+        edgesForExtendedLayout = [.top, .bottom, .left, .right]
         extendedLayoutIncludesOpaqueBars = true
 
         if #available(iOS 11.0, *) {
@@ -111,9 +129,6 @@ public class iOSLxAppViewController: UIViewController {
     public override func viewDidLoad() {
         super.viewDidLoad()
 
-        os_log("ViewDidLoad started for appId: %@", log: Self.log, type: .info, self.appId)
-
-        // Configure for true edge-to-edge display
         configureEdgeToEdgeDisplay()
 
         if let navController = navigationController {
@@ -134,7 +149,6 @@ public class iOSLxAppViewController: UIViewController {
         let tabBarConfig = getTabBarConfig(self.appId)
 
         setupRootContainer()
-        setupNavigationBar()
         setupWebViewContainer()
 
         // Ensure transparent navigation area after containers are set up (without layout forcing)
@@ -142,11 +156,6 @@ public class iOSLxAppViewController: UIViewController {
 
         if let tabBarConfig = tabBarConfig {
             setupTabBar(config: tabBarConfig)
-
-            let isTabBarTransparent = TabBarConfig.isTransparent(tabBarConfig.background_color.toString())
-            os_log("iOSLxAppViewController.viewDidLoad: isTabBarTransparent=%{public}@ backgroundColor=%{public}@",
-                   log: Self.log, type: .info,
-                   String(isTabBarTransparent), tabBarConfig.background_color.toString())
         }
 
         // Sync TabBar selected state with current path BEFORE setting up WebView
@@ -157,9 +166,6 @@ public class iOSLxAppViewController: UIViewController {
         if currentWebView == nil {
             setupInitialContent(path: initialPath)
         } else {
-            os_log("Using existing WebView for appId=%@ path=%@",
-                   log: Self.log, type: .info, appId, initialPath)
-
             attachWebViewToUI(webView: currentWebView!)
             updateNavigationBar(appId: appId, path: initialPath, isBackNavigation: false, disableAnimation: true)
         }
@@ -168,8 +174,44 @@ public class iOSLxAppViewController: UIViewController {
     public override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
 
-        // Apply transparent background once when view appears
         forceTransparentBackground()
+
+        if let currentWebView = currentWebView {
+            forceWebViewTransparency(webView: currentWebView)
+        }
+
+        if shouldUseTransparentMode {
+            setCompleteTransparency()
+
+            view.backgroundColor = UIColor.clear
+            view.isOpaque = false
+            view.layer.backgroundColor = UIColor.clear.cgColor
+
+            if let window = view.window {
+                window.backgroundColor = UIColor.clear
+                window.isOpaque = false
+
+                if let rootVC = window.rootViewController {
+                    rootVC.view.backgroundColor = UIColor.clear
+                    rootVC.view.isOpaque = false
+                    rootVC.view.layer.backgroundColor = UIColor.clear.cgColor
+                }
+
+                if let windowScene = window.windowScene {
+                    for sceneWindow in windowScene.windows {
+                        sceneWindow.backgroundColor = UIColor.clear
+                        sceneWindow.isOpaque = false
+                        if let sceneRootVC = sceneWindow.rootViewController {
+                            sceneRootVC.view.backgroundColor = UIColor.clear
+                            sceneRootVC.view.isOpaque = false
+                            sceneRootVC.view.layer.backgroundColor = UIColor.clear.cgColor
+                        }
+                    }
+                }
+            }
+
+            setNeedsStatusBarAppearanceUpdate()
+        }
 
         // Apply transparency effects for TabBar if needed
         if let tabBar = tabBar, TabBarConfig.isTransparent(tabBar.config?.background_color.toString() ?? "") {
@@ -179,6 +221,18 @@ public class iOSLxAppViewController: UIViewController {
 
         // Create capsule button after view appears to minimize startup operations
         addCapsuleButton()
+    }
+
+    public override var preferredStatusBarStyle: UIStatusBarStyle {
+        if shouldUseTransparentMode {
+            if #available(iOS 13.0, *) {
+                return .darkContent
+            } else {
+                return .default
+            }
+        } else {
+            return .default
+        }
     }
 
     public override func viewDidLayoutSubviews() {
@@ -226,8 +280,6 @@ public class iOSLxAppViewController: UIViewController {
             Task { @MainActor in
                 guard targetAppId == self.appId else { return }
 
-                os_log("Received close request for appId: %@", log: Self.log, type: .info, self.appId)
-
                 if self.presentingViewController != nil {
                     self.dismiss(animated: false)
                 } else if !self.isDisplayingHomeLxApp {
@@ -248,8 +300,6 @@ public class iOSLxAppViewController: UIViewController {
 
             Task { @MainActor in
                 guard targetAppId == self.appId else { return }
-
-                os_log("Received switch page notification - appId: %@ path: %@", log: Self.log, type: .info, self.appId, targetPath)
                 self.switchPage(targetPath: targetPath)
             }
         }
@@ -277,30 +327,8 @@ public class iOSLxAppViewController: UIViewController {
         return 20 // Default fallback height
     }
 
-    private func setupStatusBarBackground() {
-        statusBarBackground = UIView()
-        statusBarBackground.backgroundColor = UIColor.clear
-        statusBarBackground.isOpaque = false
-        statusBarBackground.translatesAutoresizingMaskIntoConstraints = false
-        rootContainer.addSubview(statusBarBackground)
-
-        NSLayoutConstraint.activate([
-            statusBarBackground.topAnchor.constraint(equalTo: rootContainer.topAnchor),
-            statusBarBackground.leadingAnchor.constraint(equalTo: rootContainer.leadingAnchor),
-            statusBarBackground.trailingAnchor.constraint(equalTo: rootContainer.trailingAnchor),
-            statusBarBackground.heightAnchor.constraint(equalToConstant: PLATFORM_STATUS_BAR_HEIGHT)
-        ])
-    }
-
-    private func setupNavigationBar() {
-        // NavigationBar will be created on-demand in ensureNavigationBarExists()
-        // This matches the independent implementation approach
-    }
-
     private func setupWebViewContainer() {
         webViewContainer = UIView()
-        // CRITICAL: Use transparent background to allow WebView transparency to show through
-        // WebView transparency is now managed by Rust layer
         webViewContainer.backgroundColor = UIColor.clear
         webViewContainer.isOpaque = false
         webViewContainer.translatesAutoresizingMaskIntoConstraints = false
@@ -325,7 +353,7 @@ public class iOSLxAppViewController: UIViewController {
             if let currentWebView = currentWebView, currentWebView != webView {
                 currentWebView.pauseWebView()
                 currentWebView.isHidden = true
-                os_log("setupWebViewIfReady: Paused current WebView for path=%{public}@", log: Self.log, type: .info, currentWebView.currentPath ?? "nil")
+
             }
 
             attachWebViewToUI(webView: webView)
@@ -360,7 +388,7 @@ public class iOSLxAppViewController: UIViewController {
             if let currentWebView = currentWebView, currentWebView != webView {
                 currentWebView.pauseWebView()
                 currentWebView.isHidden = true
-                os_log("setupWebViewWithoutNavBarUpdate: Paused current WebView for path=%{public}@", log: Self.log, type: .info, currentWebView.currentPath ?? "nil")
+
             }
 
             attachWebViewToUI(webView: webView)
@@ -442,36 +470,23 @@ public class iOSLxAppViewController: UIViewController {
 
         rootContainer.addSubview(webView)
 
-        // Use simple frame-based layout like Android to avoid constraint system overhead
-        webView.translatesAutoresizingMaskIntoConstraints = true
-        webView.frame = rootContainer.bounds
-        webView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        webView.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            webView.topAnchor.constraint(equalTo: view.topAnchor),
+            webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            webView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
 
-        // Adjust frame for NavigationBar and TabBar without using constraints
-        var adjustedFrame = rootContainer.bounds
+        configureWebView(webView, transparent: shouldUseTransparentMode)
 
-        // Adjust for NavigationBar
-        if let navigationBar = navigationBar {
-            let navBarHeight = navigationBar.view.frame.height
-            adjustedFrame.origin.y += navBarHeight
-            adjustedFrame.size.height -= navBarHeight
-        }
+        // Set content inset based on UI layout
+        let topInset: CGFloat = (shouldUseTransparentMode && navigationBar == nil) ? 0 :
+                               (navigationBar != nil) ? 0 : PLATFORM_STATUS_BAR_HEIGHT
 
-        // Adjust for TabBar
-        if let tabBar = tabBar {
-            let tabBarHeight = tabBar.frame.height
-            if tabBar.config?.position == 1 { // top
-                adjustedFrame.origin.y += tabBarHeight
-                adjustedFrame.size.height -= tabBarHeight
-            } else if tabBar.config?.position == 0 { // bottom
-                let isTabBarTransparent = TabBarConfig.isTransparent(tabBar.config?.background_color.toString() ?? "")
-                if !isTabBarTransparent {
-                    adjustedFrame.size.height -= tabBarHeight
-                }
-            }
-        }
+        webView.scrollView.contentInset = UIEdgeInsets(top: topInset, left: 0, bottom: 0, right: 0)
+        webView.scrollView.scrollIndicatorInsets = webView.scrollView.contentInset
 
-        webView.frame = adjustedFrame
         webView.isHidden = false
 
         // Apply transparency effects after WebView is positioned
@@ -543,22 +558,14 @@ public class iOSLxAppViewController: UIViewController {
             if let tabBar = tabBar {
                 rootContainer.addSubview(tabBar)
                 applyTabBarLayoutParams(tabBar: tabBar, config: config)
-
-                // TabBar transparency will be configured in viewDidAppear when window is available
-                os_log("setupTabBar: TabBar created, transparency will be configured when window is available", log: Self.log, type: .info)
             }
         } else {
             tabBar?.setConfig(config: config, appId: self.appId)
             if let tabBar = tabBar {
                 // TabBar is already added to view hierarchy, just update layout
                 applyTabBarLayoutParams(tabBar: tabBar, config: config)
-
-                // TabBar transparency will be re-configured in viewDidAppear when window is available
-                os_log("setupTabBar: TabBar config updated, transparency will be re-configured when window is available", log: Self.log, type: .info)
             }
         }
-
-        os_log("setupTabBar: TabBar setup complete, transparency will be configured when window is available", log: Self.log, type: .info)
     }
 
     private func configureTabBarTransparencyMode(_ isTransparent: Bool) {
@@ -753,15 +760,18 @@ public class iOSLxAppViewController: UIViewController {
             parentVC.view.isOpaque = false
         }
 
-        // Force TabBar transparency if it exists
+        // Force TabBar transparency only if it's configured to be transparent
         if let tabBar = tabBar {
-            tabBar.backgroundColor = UIColor.clear
-            tabBar.layer.backgroundColor = UIColor.clear.cgColor
-            tabBar.isOpaque = false
-            tabBar.layer.isOpaque = false
-            tabBar.layer.shadowOpacity = 0
-            tabBar.layer.borderWidth = 0
-            tabBar.forceTransparencyMode()
+            if TabBarConfig.isTransparent(tabBar.config?.background_color.toString() ?? "") {
+                tabBar.forceTransparencyMode()
+            } else {
+                // If TabBar is not transparent, restore its original background color
+                let resolvedColor = tabBar.controller.getResolvedBackgroundColor()
+                tabBar.backgroundColor = resolvedColor
+                tabBar.layer.backgroundColor = resolvedColor.cgColor
+                tabBar.isOpaque = true
+                tabBar.layer.isOpaque = true
+            }
         }
 
         // Ensure NavigationBar remains visible (don't make it transparent)
@@ -770,32 +780,13 @@ public class iOSLxAppViewController: UIViewController {
             navigationBar.view.backgroundColor = UIColor.white
             navigationBar.view.isOpaque = true
             navigationBar.view.layer.backgroundColor = UIColor.white.cgColor
-            os_log("setCompleteTransparency: NavigationBar kept opaque with white background", log: Self.log, type: .info)
-        }
 
-        os_log("iOSLxAppViewController.setCompleteTransparency: Complete transparency applied",
-               log: Self.log, type: .info)
+        }
     }
 
     /// Forces transparency on a specific WebView after it's added to view hierarchy
-    /// This is critical because addSubview and constraint operations may reset WebView properties
     private func forceWebViewTransparency(webView: WKWebView) {
-        // Force WebView transparency (same as Rust configuration)
-        webView.backgroundColor = UIColor.clear
-        webView.isOpaque = false
-        webView.layer.backgroundColor = UIColor.clear.cgColor
-
-        // Force ScrollView transparency
-        webView.scrollView.backgroundColor = UIColor.clear
-        webView.scrollView.isOpaque = false
-        webView.scrollView.layer.backgroundColor = UIColor.clear.cgColor
-        webView.scrollView.layer.isOpaque = false
-
-        // Configure scroll indicators and behavior
-        webView.scrollView.indicatorStyle = .default
-        webView.scrollView.showsVerticalScrollIndicator = true
-        webView.scrollView.showsHorizontalScrollIndicator = true
-        webView.scrollView.contentInsetAdjustmentBehavior = .never
+        configureWebView(webView, transparent: true)
     }
 
     internal func performLxAppClose() {
@@ -975,7 +966,6 @@ public class iOSLxAppViewController: UIViewController {
             }
         }
 
-        // CRITICAL: Find capsule button by tag and bring to front
         if let capsuleButton = rootContainer.viewWithTag(Self.CAPSULE_BUTTON_TAG) {
             rootContainer.bringSubviewToFront(capsuleButton)
         }
@@ -1008,8 +998,8 @@ public class iOSLxAppViewController: UIViewController {
         capsule.layer.shadowOffset = CGSize(width: 0, height: 1)
         capsule.layer.shadowOpacity = 0.1
         capsule.layer.shadowRadius = 2
-        capsule.layer.zPosition = 1000 // CRITICAL: Set highest z-position to ensure always on top
-        capsule.tag = Self.CAPSULE_BUTTON_TAG // Special tag for identification and management
+        capsule.layer.zPosition = 1000
+        capsule.tag = Self.CAPSULE_BUTTON_TAG
         capsule.translatesAutoresizingMaskIntoConstraints = false
 
         // Create more button with custom dots

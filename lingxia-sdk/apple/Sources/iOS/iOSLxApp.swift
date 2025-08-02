@@ -41,12 +41,8 @@ public class iOSLxApp {
         configureGlobalSystemBars()
     }
 
-    /// Configure transparent system bars (iOS only)
+    /// Configure transparent system bars
     public static func configureTransparentSystemBars(viewController: UIViewController, lightStatusBarIcons: Bool = false) {
-        if #available(iOS 13.0, *) {
-            viewController.overrideUserInterfaceStyle = lightStatusBarIcons ? .light : .dark
-        }
-
         if let navController = viewController.navigationController {
             navController.navigationBar.setBackgroundImage(UIImage(), for: .default)
             navController.navigationBar.shadowImage = UIImage()
@@ -161,7 +157,16 @@ public class iOSLxApp {
                 window.makeKeyAndVisible()
             }
         } else {
-            window.rootViewController = newController
+            // Always wrap in UINavigationController to enable transparent system bars
+            let navController = UINavigationController(rootViewController: newController)
+            navController.setNavigationBarHidden(true, animated: false)
+            window.rootViewController = navController
+
+            // Try to make window cover status bar
+            window.windowLevel = UIWindow.Level.statusBar - 1
+            window.backgroundColor = UIColor.clear
+            window.isOpaque = false
+
             window.makeKeyAndVisible()
         }
     }

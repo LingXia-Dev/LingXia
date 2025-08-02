@@ -251,12 +251,6 @@ public class iOSNavigationBarSupport {
         if #available(iOS 13.0, *) {
             let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene
             let _ = windowScene?.statusBarManager
-
-            if lightStatusBarIcons {
-                viewController.overrideUserInterfaceStyle = .dark
-            } else {
-                viewController.overrideUserInterfaceStyle = .light
-            }
         }
     }
 
