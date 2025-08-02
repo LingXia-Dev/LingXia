@@ -23,10 +23,6 @@ public class macOSViewControllerSupport {
         switch windowStyle {
         case .customCapsule:
             return 32  // Custom capsule style needs space for title bar
-        case .systemDefault:
-            return 0   // System default style uses system title bar
-        case .borderless:
-            return 0   // Content fills entire window, system buttons float on top
         case .tabStyle:
             return 32
         }

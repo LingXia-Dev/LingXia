@@ -9,7 +9,7 @@ class macOSLxAppWindowController: NSWindowController, NSWindowDelegate {
 
     private static var windowWidth: CGFloat = 800
     private static var windowHeight: CGFloat = 600
-    private static var windowStyle: LxAppWindowStyle = .systemDefault
+    private static var windowStyle: LxAppWindowStyle = .customCapsule
 
     // Capsule button constants
     private static let CAPSULE_BUTTON_WIDTH: CGFloat = 87
@@ -23,12 +23,8 @@ class macOSLxAppWindowController: NSWindowController, NSWindowDelegate {
         // Configure window based on style
         let styleMask: NSWindow.StyleMask
         switch macOSLxAppWindowController.windowStyle {
-        case .systemDefault:
-            styleMask = [.titled, .closable, .miniaturizable, .resizable]
         case .customCapsule:
             styleMask = [.titled, .closable, .miniaturizable] // No .resizable for custom style
-        case .borderless:
-            styleMask = [.titled, .closable, .miniaturizable, .resizable] // Keep .titled to show system buttons
         case .tabStyle:
             styleMask = [.titled, .closable, .miniaturizable, .resizable] // Tab-style with custom controls
         }
@@ -85,10 +81,6 @@ class macOSLxAppWindowController: NSWindowController, NSWindowDelegate {
         switch windowStyle {
         case .customCapsule:
             return 32  // Custom capsule style needs space for title bar
-        case .systemDefault:
-            return 0   // System default style uses system title bar
-        case .borderless:
-            return 0   // Content fills entire window, system buttons float on top
         case .tabStyle:
             return 32
         }
@@ -102,12 +94,8 @@ class macOSLxAppWindowController: NSWindowController, NSWindowDelegate {
 
         // Configure resizability based on window style
         switch macOSLxAppWindowController.windowStyle {
-        case .systemDefault:
-            window.styleMask.update(with: .resizable)
         case .customCapsule:
             window.styleMask.remove(.resizable)
-        case .borderless:
-            window.styleMask.update(with: .resizable)
         case .tabStyle:
             window.styleMask.update(with: .resizable)
         }

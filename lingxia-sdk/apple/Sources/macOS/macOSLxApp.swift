@@ -5,8 +5,6 @@ import os.log
 import CLingXiaFFI
 
 public enum LxAppWindowStyle {
-    case systemDefault
-    case borderless  // System default but without title bar, content fills entire window
     case customCapsule
     case tabStyle
 }
