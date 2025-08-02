@@ -416,23 +416,6 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getTabBarConfig<'a>(
         }
     }
 
-    // Create Integer objects for nullable fields
-    let bg_color_obj = env
-        .new_object("java/lang/Integer", "(I)V", &[background_color.into()])
-        .unwrap_or(JObject::null());
-    let selected_color_obj = env
-        .new_object("java/lang/Integer", "(I)V", &[selected_color.into()])
-        .unwrap_or(JObject::null());
-    let color_obj = env
-        .new_object("java/lang/Integer", "(I)V", &[color.into()])
-        .unwrap_or(JObject::null());
-    let border_style_obj = env
-        .new_object("java/lang/Integer", "(I)V", &[border_style.into()])
-        .unwrap_or(JObject::null());
-    let dimension_obj = env
-        .new_object("java/lang/Integer", "(I)V", &[dimension.into()])
-        .unwrap_or(JObject::null());
-
     // Create Position enum
     let position_class = match env.find_class("com/lingxia/lxapp/TabBarConfig$Position") {
         Ok(c) => c,
@@ -455,15 +438,22 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getTabBarConfig<'a>(
         Err(_) => return JObject::null(),
     };
 
-    // Create TabBarConfig object (using Position enum for backward compatibility)
+    // Create TabBarConfig object (using non-nullable Int for colors, nullable Integer for dimension)
+    let dimension_obj = if dimension > 0 {
+        env.new_object("java/lang/Integer", "(I)V", &[dimension.into()])
+            .unwrap_or(JObject::null())
+    } else {
+        JObject::null()
+    };
+
     match env.new_object(
         tab_bar_class,
-        "(Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Integer;Lcom/lingxia/lxapp/TabBarConfig$Position;Ljava/util/List;Z)V",
+        "(IIIILjava/lang/Integer;Lcom/lingxia/lxapp/TabBarConfig$Position;Ljava/util/List;Z)V",
         &[
-            (&bg_color_obj).into(),
-            (&selected_color_obj).into(),
-            (&color_obj).into(),
-            (&border_style_obj).into(),
+            background_color.into(),
+            selected_color.into(),
+            color.into(),
+            border_style.into(),
             (&dimension_obj).into(),
             (&position_enum).into(),
             (&tab_items_list).into(),
