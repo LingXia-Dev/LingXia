@@ -37,18 +37,18 @@ public class LxApp {
         LxAppPlatform.configureTransparentSystemBars(viewController: viewController, lightStatusBarIcons: lightStatusBarIcons)
     }
     #elseif os(macOS)
-    /// Set window size using physical dimensions (macOS only)
+    /// Simulate a mobile device (macOS only) - automatically uses capsule window style
     /// - Parameters:
-    ///   - widthCm: Window width in centimeters
-    ///   - heightCm: Window height in centimeters
-    public static func setWindowSize(widthCm: CGFloat, heightCm: CGFloat) {
-        LxAppPlatform.setWindowSize(widthCm: widthCm, heightCm: heightCm)
+    ///   - width: Device width in points
+    ///   - height: Device height in points
+    public static func simulateMobileDevice(width: CGFloat, height: CGFloat) {
+        LxAppPlatform.simulateMobileDevice(width: width, height: height)
     }
 
-    /// Set window style (macOS only)
-    /// - Parameter style: Window style to use
-    public static func setWindowStyle(_ style: LxAppWindowStyle) {
-        LxAppPlatform.setWindowStyle(style)
+    /// Simulate a specific mobile device (macOS only) - automatically uses capsule window style
+    /// - Parameter device: Predefined device to simulate
+    public static func simulateDevice(_ device: MobileDevice) {
+        LxAppPlatform.simulateDevice(device)
     }
     #endif
 

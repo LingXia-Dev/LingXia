@@ -187,9 +187,6 @@ public class LxAppCore {
     /// Launch mode for iOS
     private static var launchMode: LxAppLaunchMode = .replaceRoot
 
-    /// Window size for macOS
-    private static var windowSize: (width: CGFloat, height: CGFloat) = (414, 896)
-
     /// Platform directory provider
     private static var directoryProvider: LxAppPlatformDirectoryProvider.Type?
 
@@ -259,16 +256,6 @@ public class LxAppCore {
     /// Get launch mode for iOS
     public static func getLaunchMode() -> LxAppLaunchMode {
         return launchMode
-    }
-
-    /// Set window size for macOS
-    public static func setWindowSize(width: CGFloat, height: CGFloat) {
-        windowSize = (width, height)
-    }
-
-    /// Get window size for macOS
-    internal static func getWindowSize() -> (width: CGFloat, height: CGFloat) {
-        return windowSize
     }
 
     /// Check if app is home LxApp

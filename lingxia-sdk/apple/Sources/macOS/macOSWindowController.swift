@@ -9,7 +9,7 @@ class macOSWindowController: NSWindowController, NSWindowDelegate {
     // Static Configuration
     private static var windowWidth: CGFloat = 800
     private static var windowHeight: CGFloat = 600
-    private static var windowStyle: LxAppWindowStyle = .capsuleStyle
+    private static var windowStyle: LxAppWindowStyle = .tabStyle
 
     /// Sets the window size for all new windows
     public static func setWindowSize(width: CGFloat, height: CGFloat) {

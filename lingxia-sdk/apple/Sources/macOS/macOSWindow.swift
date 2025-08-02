@@ -4,9 +4,11 @@ import Foundation
 
 /// Custom NSWindow class for LxApp with style configuration
 class macOSLxAppWindow: NSWindow {
-    private var windowStyle: LxAppWindowStyle = .capsuleStyle
+    private var windowStyle: LxAppWindowStyle
 
     override init(contentRect: NSRect, styleMask style: NSWindow.StyleMask, backing backingStoreType: NSWindow.BackingStoreType, defer flag: Bool) {
+        // Initialize with a default value, will be set properly by configureForStyle()
+        self.windowStyle = .tabStyle
         super.init(contentRect: contentRect, styleMask: style, backing: backingStoreType, defer: flag)
     }
 

@@ -9,6 +9,37 @@ public enum LxAppWindowStyle {
     case tabStyle
 }
 
+/// Predefined mobile devices for simulation
+public enum MobileDevice {
+    case iPhone11           // 414 x 896
+    case iPhone13Mini       // 375 x 812
+    case iPhone13Pro        // 390 x 844
+    case iPhone15Pro        // 393 x 852
+    case iPhoneSE           // 375 x 667
+    case custom(width: CGFloat, height: CGFloat)
+
+    var width: CGFloat {
+        switch self {
+        case .iPhone11: return 414
+        case .iPhone13Mini, .iPhoneSE: return 375
+        case .iPhone13Pro: return 390
+        case .iPhone15Pro: return 393
+        case .custom(let width, _): return width
+        }
+    }
+
+    var height: CGFloat {
+        switch self {
+        case .iPhone11: return 896
+        case .iPhone13Mini: return 812
+        case .iPhone13Pro: return 844
+        case .iPhone15Pro: return 852
+        case .iPhoneSE: return 667
+        case .custom(_, let height): return height
+        }
+    }
+}
+
 // Directory provider is now in shared LxAppDirectoryProvider.swift
 
 @MainActor
@@ -19,11 +50,11 @@ public class macOSLxApp {
     private static var tabWindowController: macOSWindowController?
     private static var isInitialized = false
 
-    /// Set window size for all LxApp windows using physical dimensions
+    /// Set window size using physical dimensions (internal use)
     /// - Parameters:
     ///   - widthCm: Window width in centimeters
     ///   - heightCm: Window height in centimeters
-    public static func setWindowSize(widthCm: CGFloat, heightCm: CGFloat) {
+    private static func setWindowSize(widthCm: CGFloat, heightCm: CGFloat) {
         let widthInches = widthCm / 2.54
         let heightInches = heightCm / 2.54
 
@@ -40,9 +71,25 @@ public class macOSLxApp {
         macOSWindowController.setWindowSize(width: widthPoints, height: heightPoints)
     }
 
-    /// Set window style for all LxApp windows
+    /// Simulates a mobile device with specified dimensions
+    /// This creates a phone-like experience with custom title bar and capsule buttons
+    /// - Parameters:
+    ///   - width: Device width in points
+    ///   - height: Device height in points
+    public static func simulateMobileDevice(width: CGFloat, height: CGFloat) {
+        macOSWindowController.setWindowSize(width: width, height: height)
+        macOSWindowController.setWindowStyle(.capsuleStyle)
+    }
+
+    /// Simulates a specific mobile device
+    /// - Parameter device: Predefined device to simulate
+    public static func simulateDevice(_ device: MobileDevice) {
+        simulateMobileDevice(width: device.width, height: device.height)
+    }
+
+    /// Set window style for all LxApp windows (internal use)
     /// - Parameter style: Window style to use
-    public static func setWindowStyle(_ style: LxAppWindowStyle) {
+    private static func setWindowStyle(_ style: LxAppWindowStyle) {
         macOSWindowController.setWindowStyle(style)
     }
 
