@@ -29,6 +29,8 @@ class macOSLxAppWindowController: NSWindowController, NSWindowDelegate {
             styleMask = [.titled, .closable, .miniaturizable] // No .resizable for custom style
         case .borderless:
             styleMask = [.titled, .closable, .miniaturizable, .resizable] // Keep .titled to show system buttons
+        case .tabStyle:
+            styleMask = [.titled, .closable, .miniaturizable, .resizable] // Tab-style with custom controls
         }
 
         let window = macOSLxAppWindow(
@@ -75,6 +77,10 @@ class macOSLxAppWindowController: NSWindowController, NSWindowDelegate {
         windowStyle = style
     }
 
+    static func getWindowStyle() -> LxAppWindowStyle {
+        return windowStyle
+    }
+
     static func getTopMarginForCurrentStyle() -> CGFloat {
         switch windowStyle {
         case .customCapsule:
@@ -83,6 +89,8 @@ class macOSLxAppWindowController: NSWindowController, NSWindowDelegate {
             return 0   // System default style uses system title bar
         case .borderless:
             return 0   // Content fills entire window, system buttons float on top
+        case .tabStyle:
+            return 32
         }
     }
 
@@ -99,6 +107,8 @@ class macOSLxAppWindowController: NSWindowController, NSWindowDelegate {
         case .customCapsule:
             window.styleMask.remove(.resizable)
         case .borderless:
+            window.styleMask.update(with: .resizable)
+        case .tabStyle:
             window.styleMask.update(with: .resizable)
         }
     }

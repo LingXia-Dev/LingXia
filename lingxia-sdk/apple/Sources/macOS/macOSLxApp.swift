@@ -8,6 +8,7 @@ public enum LxAppWindowStyle {
     case systemDefault
     case borderless  // System default but without title bar, content fills entire window
     case customCapsule
+    case tabStyle
 }
 
 // Directory provider is now in shared LxAppDirectoryProvider.swift
@@ -17,6 +18,7 @@ public class macOSLxApp {
     private static let log = OSLog(subsystem: "LingXia", category: "macOSLxApp")
 
     private static var activeWindowControllers: [macOSLxAppWindowController] = []
+    private static var tabWindowController: macOSTabWindowController?
     private static var isInitialized = false
 
     /// Set window size for all LxApp windows using physical dimensions
@@ -54,11 +56,29 @@ public class macOSLxApp {
         }
 
         let initialRoute = LxAppCore.getHomeLxAppInitialRoute()
-        openLxApp(appId: homeLxAppId, path: initialRoute)
+
+        // Check if using tab style
+        if macOSLxAppWindowController.getWindowStyle() == .tabStyle {
+            openTabStyleWindow()
+        } else {
+            openLxApp(appId: homeLxAppId, path: initialRoute)
+        }
     }
 
     /// Open specific LxApp
     public static func openLxApp(appId: String, path: String) {
+        // Check if using tab style
+        if macOSLxAppWindowController.getWindowStyle() == .tabStyle {
+            if let tabController = tabWindowController {
+                tabController.openLxApp(appId: appId, path: path)
+                tabController.window?.makeKeyAndOrderFront(nil)
+            } else {
+                openTabStyleWindow()
+                tabWindowController?.openLxApp(appId: appId, path: path)
+            }
+            return
+        }
+
         // Get app info and cache initial route for navigation logic
         let lxappInfo = getLxAppInfo(appId)
         let initialRoute = lxappInfo.initial_route.toString()
@@ -113,6 +133,23 @@ public class macOSLxApp {
 
     internal static func removeWindowController(_ controller: macOSLxAppWindowController) {
         activeWindowControllers.removeAll { $0 === controller }
+    }
+
+    internal static func removeTabWindowController(_ controller: macOSTabWindowController) {
+        if tabWindowController === controller {
+            tabWindowController = nil
+        }
+    }
+
+    /// Open tab-style window
+    private static func openTabStyleWindow() {
+        if tabWindowController == nil {
+            tabWindowController = macOSTabWindowController()
+            tabWindowController?.showWindow(nil)
+            NSApp.activate(ignoringOtherApps: true)
+        } else {
+            tabWindowController?.window?.makeKeyAndOrderFront(nil)
+        }
     }
 
     /// Get active window controllers

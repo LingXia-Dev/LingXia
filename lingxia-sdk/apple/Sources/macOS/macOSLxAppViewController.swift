@@ -13,6 +13,12 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
 
     // Helper method to get top margin based on window style
     private func getTopMargin() -> CGFloat {
+        // In tab style, the window controller handles the tab bar space
+        // so we don't need additional top margin
+        let currentStyle = macOSLxAppWindowController.getWindowStyle()
+        if currentStyle == .tabStyle {
+            return 0
+        }
         return macOSLxAppWindowController.getTopMarginForCurrentStyle()
     }
 

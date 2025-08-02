@@ -403,9 +403,9 @@ public class macOSTabBar: NSView, EnhancedTabBarProtocol, TabBarUIDelegate {
                 rightSpacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
                 // Configure containers to maintain their size
-                startContainer.setContentHuggingPriority(.required, for: .horizontal)
-                centerContainer.setContentHuggingPriority(.required, for: .horizontal)
-                endContainer.setContentHuggingPriority(.required, for: .horizontal)
+                startContainer.setContentHuggingPriority(NSLayoutConstraint.Priority.required, for: NSLayoutConstraint.Orientation.horizontal)
+                centerContainer.setContentHuggingPriority(NSLayoutConstraint.Priority.required, for: NSLayoutConstraint.Orientation.horizontal)
+                endContainer.setContentHuggingPriority(NSLayoutConstraint.Priority.required, for: NSLayoutConstraint.Orientation.horizontal)
 
                 // Add padding views for edges
                 let leftPadding = NSView()
@@ -481,7 +481,7 @@ public class macOSTabBar: NSView, EnhancedTabBarProtocol, TabBarUIDelegate {
     /// Create top spacer for window controls avoidance
     private func createTopSpacer() -> NSView {
         let spacer = NSView()
-        spacer.heightAnchor.constraint(equalToConstant: TabBarConstants.WINDOW_CONTROLS_HEIGHT).isActive = true
+        spacer.heightAnchor.constraint(equalToConstant: 28).isActive = true // Standard macOS title bar height
         return spacer
     }
 }

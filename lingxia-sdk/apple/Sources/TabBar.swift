@@ -23,6 +23,26 @@ extension TabBarConfig {
         return items
     }
 
+    public func getGroupedItems(appId: String) -> (start: [TabBarItem], center: [TabBarItem], end: [TabBarItem]) {
+        let allItems = getItems(appId: appId)
+        var startItems: [TabBarItem] = []
+        var centerItems: [TabBarItem] = []
+        var endItems: [TabBarItem] = []
+
+        for item in allItems {
+            switch item.group {
+            case 1:
+                startItems.append(item)
+            case 2:
+                endItems.append(item)
+            default:
+                centerItems.append(item)
+            }
+        }
+
+        return (startItems, centerItems, endItems)
+    }
+
     /// Parse color string to platform color
     public static func parseColor(_ colorString: String) -> PlatformColor? {
         return TabBarHelper.parseColor(colorString)
@@ -58,6 +78,11 @@ public struct TabBarConstants {
     public static let TAB_HEIGHT: CGFloat = 64
     public static let ICON_TOP_MARGIN: CGFloat = 4
     public static let LABEL_BOTTOM_MARGIN: CGFloat = 4
+
+    // Group layout spacing constants (for TabBar group feature)
+    public static let DEFAULT_SPACING: CGFloat = 12  // Spacing between items in start/end groups
+    public static let CENTER_SPACING: CGFloat = 8    // Spacing between items in center group
+    public static let MINIMAL_SPACER_SIZE: CGFloat = 4  // Minimum size for flexible spacers
 }
 
 /// Extension to add helper methods to swift-bridge generated TabBarItem
@@ -175,11 +200,11 @@ public protocol TabBarProtocol: AnyObject {
 @MainActor
 public class TabBarController {
 
-    private var config: TabBarConfig?
-    private var items: [TabBarItem] = []
-    private var selectedPosition = -1
-    private var onTabSelectedListener: ((Int, String) -> Void)?
-    private var appId: String = ""
+    var config: TabBarConfig?
+    var items: [TabBarItem] = []
+    var selectedPosition = -1
+    var onTabSelectedListener: ((Int, String) -> Void)?
+    var appId: String = ""
 
     /// Set TabBar configuration and return filtered visible items
     public func setConfig(_ config: TabBarConfig, appId: String) -> [TabBarItem] {

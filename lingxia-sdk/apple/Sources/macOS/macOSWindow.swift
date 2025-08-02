@@ -42,6 +42,14 @@ public class macOSWindowSupport {
             window.titlebarAppearsTransparent = true
             window.titleVisibility = .hidden
             window.isMovableByWindowBackground = true
+        case .tabStyle:
+            // Tab-style with native window controls and custom tab bar
+            window.styleMask.insert(.fullSizeContentView)
+            window.titlebarAppearsTransparent = true
+            window.titleVisibility = .hidden
+            window.isMovableByWindowBackground = false // Tabs handle dragging
+            window.backgroundColor = NSColor.windowBackgroundColor
+            // Keep native window controls visible
         }
     }
 
@@ -54,6 +62,8 @@ public class macOSWindowSupport {
             return 0   // System default style uses system title bar
         case .borderless:
             return 0   // Content fills entire window, system buttons float on top
+        case .tabStyle:
+            return 32
         }
     }
 
