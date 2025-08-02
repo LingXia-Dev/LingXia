@@ -56,21 +56,6 @@ public class LxApp {
     public static func openHomeLxApp() {
         LxAppPlatform.openHomeLxApp()
     }
-
-    /// Open specific LxApp
-    public static func openLxApp(appId: String, path: String = "") {
-        LxAppPlatform.openLxApp(appId: appId, path: path)
-    }
-
-    /// Close LxApp
-    public static func closeLxApp(appId: String) {
-        LxAppPlatform.closeLxApp(appId: appId)
-    }
-
-    /// Switch to page in LxApp
-    public static func switchPage(appId: String, path: String) {
-        LxAppPlatform.switchPage(appId: appId, path: path)
-    }
 }
 
 /// FFI interface for LxApp
