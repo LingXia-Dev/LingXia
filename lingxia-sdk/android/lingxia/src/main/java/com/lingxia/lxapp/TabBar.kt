@@ -17,23 +17,21 @@ import com.google.android.material.badge.BadgeDrawable
 import com.google.android.material.badge.BadgeUtils
 
 data class TabBarConfig(
-    val backgroundColor: Int? = null,            // Background color, default white
-    val selectedColor: Int? = null,              // Selected item color, default tech blue
-    val color: Int? = null,                      // Unselected item color, default gray
-    val borderStyle: Int? = null,                // Top border color, default light gray
-    val dimension: Int? = null,                  // Dimension in dp: height for top/bottom, width for left/right
-    val position: Position = Position.BOTTOM,    // Position: 0=Bottom, 1=Top, 2=Left, 3=Right
-    val list: List<TabBarItem> = emptyList(),   // List of tab items
-    val visible: Boolean = true                  // TabBar visibility, default true
+    val backgroundColor: Int = Color.WHITE,                    // Background color, default white
+    val selectedColor: Int = Color.parseColor("#1677FF"),     // Selected item color, default tech blue
+    val color: Int = Color.parseColor("#666666"),             // Unselected item color, default gray
+    val borderStyle: Int = Color.parseColor("#F0F0F0"),       // Top border color, default light gray
+    val dimension: Int = 64,                                  // Dimension in dp: height for top/bottom, width for left/right
+    val position: Position = Position.BOTTOM,                 // Position: 0=Bottom, 1=Top, 2=Left, 3=Right
+    val list: List<TabBarItem> = emptyList(),                // List of tab items
+    val visible: Boolean = true                               // TabBar visibility, default true
 ) {
     // Helper properties that ensure colors have proper alpha channel
-    val effectiveSelectedColor: Int get() = selectedColor?.let {
-        if (Color.alpha(it) == 0) it or 0xFF000000.toInt() else it
-    } ?: DEFAULT_SELECTED_COLOR
+    val effectiveSelectedColor: Int get() =
+        if (Color.alpha(selectedColor) == 0) selectedColor or 0xFF000000.toInt() else selectedColor
 
-    val effectiveUnselectedColor: Int get() = color?.let {
-        if (Color.alpha(it) == 0) it or 0xFF000000.toInt() else it
-    } ?: DEFAULT_UNSELECTED_COLOR
+    val effectiveUnselectedColor: Int get() =
+        if (Color.alpha(color) == 0) color or 0xFF000000.toInt() else color
 
     companion object {
         // These values MUST match exactly with Rust TabBarPosition enum!
@@ -51,11 +49,7 @@ data class TabBarConfig(
         /** Tab bar at the right - MUST match Rust Right = 3 */
         const val POSITION_RIGHT = 3
 
-        // Modern UI color scheme
-        val DEFAULT_SELECTED_COLOR = Color.parseColor("#1677FF")    // Primary blue
-        val DEFAULT_UNSELECTED_COLOR = Color.parseColor("#666666")  // Dark gray
-        val DEFAULT_BORDER_COLOR = Color.parseColor("#F0F0F0")      // Light gray
-        val DEFAULT_BACKGROUND_COLOR = Color.WHITE                   // White
+
     }
 
     // Position enum for backward compatibility, with int values matching constants
@@ -158,7 +152,7 @@ class TabBar(context: Context) : LinearLayout(context) {
             val isVerticalTabBar = currentConfig.position.value == TabBarConfig.POSITION_LEFT || currentConfig.position.value == TabBarConfig.POSITION_RIGHT
 
             // Use configured dimension (Rust provides default value, but Android FFI might be nullable)
-            val tabBarDimension = currentConfig.dimension ?: 64 // Fallback to default
+            val tabBarDimension = currentConfig.dimension
 
             if (isVerticalTabBar) {
                 // For vertical TabBar, itemsContainer has fixed width and wraps content height
@@ -184,9 +178,8 @@ class TabBar(context: Context) : LinearLayout(context) {
             // Set background for itemsContainer to match TabBar background
             val backgroundColor = when {
                 currentConfig.backgroundColor == Color.TRANSPARENT -> Color.TRANSPARENT
-                currentConfig.backgroundColor != null -> currentConfig.backgroundColor!!
                 isVerticalTabBar -> VERTICAL_TABBAR_BACKGROUND_COLOR
-                else -> TabBarConfig.DEFAULT_BACKGROUND_COLOR
+                else -> currentConfig.backgroundColor
             }
             setBackgroundColor(backgroundColor)
         }
@@ -202,7 +195,7 @@ class TabBar(context: Context) : LinearLayout(context) {
             val isVerticalTabBar = currentConfig.position.value == TabBarConfig.POSITION_LEFT || currentConfig.position.value == TabBarConfig.POSITION_RIGHT
 
             // Use configured dimension (Rust provides default value, but Android FFI might be nullable)
-            val tabBarDimension = currentConfig.dimension ?: 64 // Fallback to default
+            val tabBarDimension = currentConfig.dimension
 
             if (isVerticalTabBar) {
                 // For vertical TabBar, itemsContainer has fixed width and wraps content height
@@ -238,7 +231,7 @@ class TabBar(context: Context) : LinearLayout(context) {
                 addView(itemsContainer)
                 if (!isBackgroundTransparent) {
                     addView(View(context).apply {
-                        setBackgroundColor(config.borderStyle ?: TabBarConfig.DEFAULT_BORDER_COLOR)
+                        setBackgroundColor(config.borderStyle)
                         layoutParams = LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT,
                             (ITEM_BORDER_THICKNESS_DP * resources.displayMetrics.density).toInt()
@@ -249,7 +242,7 @@ class TabBar(context: Context) : LinearLayout(context) {
             TabBarConfig.POSITION_BOTTOM -> {
                 if (!isBackgroundTransparent) {
                     addView(View(context).apply {
-                        setBackgroundColor(config.borderStyle ?: TabBarConfig.DEFAULT_BORDER_COLOR)
+                        setBackgroundColor(config.borderStyle)
                         layoutParams = LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT,
                             (ITEM_BORDER_THICKNESS_DP * resources.displayMetrics.density).toInt()
@@ -300,9 +293,8 @@ class TabBar(context: Context) : LinearLayout(context) {
 
         val tabBarBackgroundColor = when {
             config.backgroundColor == Color.TRANSPARENT -> Color.TRANSPARENT
-            config.backgroundColor != null -> config.backgroundColor!!
             config.position.value == TabBarConfig.POSITION_LEFT || config.position.value == TabBarConfig.POSITION_RIGHT -> VERTICAL_TABBAR_BACKGROUND_COLOR
-            else -> TabBarConfig.DEFAULT_BACKGROUND_COLOR
+            else -> config.backgroundColor
         }
 
         setBackgroundColor(tabBarBackgroundColor)
@@ -675,9 +667,7 @@ class TabBar(context: Context) : LinearLayout(context) {
     private fun createDefaultIcon(selected: Boolean): android.graphics.drawable.Drawable {
         return GradientDrawable().apply {
             shape = GradientDrawable.OVAL
-            setColor(if (selected)
-                config.selectedColor ?: TabBarConfig.DEFAULT_SELECTED_COLOR
-                else config.color ?: TabBarConfig.DEFAULT_UNSELECTED_COLOR)
+            setColor(if (selected) config.selectedColor else config.color)
             val size = (24 * resources.displayMetrics.density).toInt()
             setSize(size, size)
         }
@@ -820,7 +810,7 @@ class TabBar(context: Context) : LinearLayout(context) {
             val borderColor = when(it.lowercase()) {
                 "black" -> Color.BLACK
                 "white" -> Color.WHITE
-                else -> TabBarConfig.DEFAULT_BORDER_COLOR
+                else -> Color.parseColor("#F0F0F0") // Use Rust default directly
             }
             updatedConfig = updatedConfig.copy(borderStyle = borderColor)
         }
