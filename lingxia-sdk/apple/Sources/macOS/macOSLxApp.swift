@@ -15,8 +15,8 @@ public enum LxAppWindowStyle {
 public class macOSLxApp {
     private static let log = OSLog(subsystem: "LingXia", category: "macOSLxApp")
 
-    private static var activeWindowControllers: [macOSLxAppWindowController] = []
-    private static var tabWindowController: macOSTabWindowController?
+    private static var activeWindowControllers: [macOSWindowController] = []
+    private static var tabWindowController: macOSWindowController?
     private static var isInitialized = false
 
     /// Set window size for all LxApp windows using physical dimensions
@@ -29,7 +29,7 @@ public class macOSLxApp {
 
         guard let screen = NSScreen.main else {
             let defaultDPI: CGFloat = 72.0
-            macOSLxAppWindowController.setWindowSize(width: widthInches * defaultDPI, height: heightInches * defaultDPI)
+            macOSWindowController.setWindowSize(width: widthInches * defaultDPI, height: heightInches * defaultDPI)
             return
         }
 
@@ -37,13 +37,13 @@ public class macOSLxApp {
         let widthPoints = widthInches * dpi.width
         let heightPoints = heightInches * dpi.height
 
-        macOSLxAppWindowController.setWindowSize(width: widthPoints, height: heightPoints)
+        macOSWindowController.setWindowSize(width: widthPoints, height: heightPoints)
     }
 
     /// Set window style for all LxApp windows
     /// - Parameter style: Window style to use
     public static func setWindowStyle(_ style: LxAppWindowStyle) {
-        macOSLxAppWindowController.setWindowStyle(style)
+        macOSWindowController.setWindowStyle(style)
     }
 
     /// Open home LxApp
@@ -56,7 +56,7 @@ public class macOSLxApp {
         let initialRoute = LxAppCore.getHomeLxAppInitialRoute()
 
         // Check if using tab style
-        if macOSLxAppWindowController.getWindowStyle() == .tabStyle {
+        if macOSWindowController.getWindowStyle() == .tabStyle {
             openTabStyleWindow()
         } else {
             openLxApp(appId: homeLxAppId, path: initialRoute)
@@ -66,7 +66,7 @@ public class macOSLxApp {
     /// Open specific LxApp
     public static func openLxApp(appId: String, path: String) {
         // Check if using tab style
-        if macOSLxAppWindowController.getWindowStyle() == .tabStyle {
+        if macOSWindowController.getWindowStyle() == .tabStyle {
             if let tabController = tabWindowController {
                 tabController.openLxApp(appId: appId, path: path)
                 tabController.window?.makeKeyAndOrderFront(nil)
@@ -95,7 +95,7 @@ public class macOSLxApp {
 
         let _ = onLxappOpened(appId, actualPath)
 
-        let windowController = macOSLxAppWindowController(appId: appId, path: actualPath)
+        let windowController = macOSWindowController(appId: appId, path: actualPath)
         windowController.showWindow(nil as Any?)
         windowController.reapplyWindowSize()
         windowController.window?.makeKeyAndOrderFront(nil as Any?)
@@ -129,11 +129,11 @@ public class macOSLxApp {
         }
     }
 
-    internal static func removeWindowController(_ controller: macOSLxAppWindowController) {
+    internal static func removeWindowController(_ controller: macOSWindowController) {
         activeWindowControllers.removeAll { $0 === controller }
     }
 
-    internal static func removeTabWindowController(_ controller: macOSTabWindowController) {
+    internal static func removeTabWindowController(_ controller: macOSWindowController) {
         if tabWindowController === controller {
             tabWindowController = nil
         }
@@ -142,7 +142,7 @@ public class macOSLxApp {
     /// Open tab-style window
     private static func openTabStyleWindow() {
         if tabWindowController == nil {
-            tabWindowController = macOSTabWindowController()
+            tabWindowController = macOSWindowController()
             tabWindowController?.showWindow(nil)
             NSApp.activate(ignoringOtherApps: true)
         } else {
@@ -151,7 +151,7 @@ public class macOSLxApp {
     }
 
     /// Get active window controllers
-    internal static func getActiveWindowControllers() -> [macOSLxAppWindowController] {
+    internal static func getActiveWindowControllers() -> [macOSWindowController] {
         return activeWindowControllers
     }
 

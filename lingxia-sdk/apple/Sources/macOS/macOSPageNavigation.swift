@@ -29,7 +29,7 @@ public class macOSPageNavigation {
         in viewController: macOSLxAppViewController
     ) {
         // Update window title through window controller
-        if let windowController = viewController.view.window?.windowController as? macOSLxAppWindowController {
+        if let windowController = viewController.view.window?.windowController as? macOSWindowController {
             windowController.updateWindowTitle(for: targetPath)
         }
     }
@@ -41,7 +41,7 @@ public class macOSPageNavigation {
         in viewController: macOSLxAppViewController
     ) {
         // For macOS, navigation bar is handled by the window controller
-        if let windowController = viewController.view.window?.windowController as? macOSLxAppWindowController {
+        if let windowController = viewController.view.window?.windowController as? macOSWindowController {
             windowController.updateWindowTitle(for: path)
         }
     }
