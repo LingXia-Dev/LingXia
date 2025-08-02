@@ -511,9 +511,8 @@ impl LxApp {
 
         if let Some(manager) = LXAPPS_MANAGER.get() {
             let app = manager.get_or_init_lxapp(to.appid.clone());
-            if !app.is_opened() {
-                app.runtime.open_lxapp(to.appid, to.path)?;
-            }
+            // Always call open_lxapp to allow SDK/UI layer to handle switching
+            app.runtime.open_lxapp(to.appid, to.path)?;
         }
         Ok(())
     }
@@ -647,9 +646,15 @@ pub trait LxAppDelegate {
 
 impl LxAppDelegate for LxApp {
     fn on_lxapp_opened(self: Arc<Self>, path: String) {
-        info!("Mini app opened")
+        let was_already_opened = self.is_opened();
+
+        info!("Mini app opened (already_opened: {})", was_already_opened)
             .with_appid(self.appid.clone())
             .with_path(path.clone());
+
+        if was_already_opened {
+            return;
+        }
 
         // Use the Arc<Self> directly instead of looking it up in the global manager
         if let Ok(mut svc_manager) = self.svc_manager.lock() {
