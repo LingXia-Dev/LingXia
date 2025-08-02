@@ -57,9 +57,10 @@ public class iOSLingXiaTabBar: UIView, EnhancedTabBarProtocol, TabBarUIDelegate 
 
         let isVerticalTabBar = controller.isVertical()
 
+        // Basic container setup - detailed layout will be handled in setupGroupedLayout
         itemsContainer.axis = isVerticalTabBar ? .vertical : .horizontal
-        itemsContainer.distribution = .fillEqually
-        itemsContainer.alignment = .fill
+        itemsContainer.distribution = .fill
+        itemsContainer.alignment = .center  // Always center items
 
         if controller.shouldUseTransparentBackground() {
             itemsContainer.backgroundColor = UIColor.clear
@@ -87,6 +88,10 @@ public class iOSLingXiaTabBar: UIView, EnhancedTabBarProtocol, TabBarUIDelegate 
 
         itemsContainer.translatesAutoresizingMaskIntoConstraints = false
 
+        // Remove any default margins/insets
+        itemsContainer.layoutMargins = UIEdgeInsets.zero
+        itemsContainer.isLayoutMarginsRelativeArrangement = false
+
         NSLayoutConstraint.activate([
             itemsContainer.topAnchor.constraint(equalTo: topAnchor),
             itemsContainer.leadingAnchor.constraint(equalTo: leadingAnchor),
@@ -102,12 +107,8 @@ public class iOSLingXiaTabBar: UIView, EnhancedTabBarProtocol, TabBarUIDelegate 
         itemsContainer.arrangedSubviews.forEach { $0.removeFromSuperview() }
         tabViews.removeAll()
 
-        // Create new tab views
-        for (index, item) in newItems.enumerated() {
-            let tabView = createTabView(for: item, at: index)
-            tabViews.append(tabView)
-            itemsContainer.addArrangedSubview(tabView)
-        }
+        // Always use grouped layout - items without group go to center
+        setupGroupedLayout(items: newItems, container: itemsContainer)
 
         // Set initial selection
         let selectedPosition = controller.getSelectedPosition()
@@ -116,9 +117,206 @@ public class iOSLingXiaTabBar: UIView, EnhancedTabBarProtocol, TabBarUIDelegate 
         }
     }
 
+    /// Setup universal grouped layout with separate containers for start/center/end items
+    /// Works for all TabBar orientations - group property is independent of position
+    private func setupGroupedLayout(items: [TabBarItem], container: UIStackView) {
+        // Group items directly here to avoid any issues with the config method
+        var startItems: [TabBarItem] = []
+        var centerItems: [TabBarItem] = []
+        var endItems: [TabBarItem] = []
+
+        for item in items {
+            switch item.group {
+            case 1: // start (top for vertical, left for horizontal)
+                startItems.append(item)
+            case 2: // end (bottom for vertical, right for horizontal) - recommended for settings
+                endItems.append(item)
+            default: // 0 or any other value = middle/center (default)
+                centerItems.append(item)
+            }
+        }
+
+        let isVertical = controller.isVertical()
+        let hasGroupedItems = !startItems.isEmpty || !endItems.isEmpty
+
+        // Configure container based on orientation
+        if isVertical {
+            container.axis = .vertical
+            container.distribution = .fill
+            container.alignment = .center  // Center items horizontally in vertical TabBar
+        } else {
+            container.axis = .horizontal
+            container.distribution = .fill  // This is the problem! Should not use .fill for grouped layout
+            container.alignment = .center
+        }
+
+        if isVertical && hasGroupedItems {
+            // Grouped layout for vertical TabBar
+
+            // Add small top spacing to avoid being too close to status bar/clock (only for vertical)
+            let topSpacer = UIView()
+            topSpacer.heightAnchor.constraint(equalToConstant: 4).isActive = true
+            container.addArrangedSubview(topSpacer)
+
+            // Create start container - should be at top
+            if !startItems.isEmpty {
+                let startContainer = createGroupContainer(items: startItems, spacing: TabBarConstants.DEFAULT_SPACING, isVertical: isVertical)
+                container.addArrangedSubview(startContainer)
+            }
+
+            // Create flexible spacer to push end items to bottom
+            let flexibleSpacer = UIView()
+            flexibleSpacer.setContentHuggingPriority(.defaultLow, for: .vertical)
+            flexibleSpacer.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+            container.addArrangedSubview(flexibleSpacer)
+
+            // Create center container (middle) - only if we have center items
+            if !centerItems.isEmpty {
+                let centerContainer = createGroupContainer(items: centerItems, spacing: TabBarConstants.CENTER_SPACING, isVertical: isVertical)
+                container.addArrangedSubview(centerContainer)
+
+                // Add another spacer after center items
+                let spacer2 = UIView()
+                spacer2.setContentHuggingPriority(.defaultLow, for: .vertical)
+                spacer2.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+                container.addArrangedSubview(spacer2)
+            }
+
+            // Create end container - should be at bottom
+            if !endItems.isEmpty {
+                let endContainer = createGroupContainer(items: endItems, spacing: TabBarConstants.DEFAULT_SPACING, isVertical: isVertical)
+                container.addArrangedSubview(endContainer)
+            }
+
+            // Add bottom spacing for safe area (iPhone rounded corners and home indicator)
+            let bottomSpacer = UIView()
+            bottomSpacer.heightAnchor.constraint(equalToConstant: 20).isActive = true
+            container.addArrangedSubview(bottomSpacer)
+
+        } else {
+            // Simple centered layout for vertical without grouping
+            if isVertical {
+                // Add flexible spacer before center items to push them to center
+                let spacer = UIView()
+                spacer.setContentHuggingPriority(.defaultLow, for: .vertical)
+                spacer.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+                container.addArrangedSubview(spacer)
+
+                // Create center container with all items
+                if !centerItems.isEmpty {
+                    let centerContainer = createGroupContainer(items: centerItems, spacing: TabBarConstants.CENTER_SPACING, isVertical: isVertical)
+                    container.addArrangedSubview(centerContainer)
+                }
+
+                // Add flexible spacer after center items
+                let spacer2 = UIView()
+                spacer2.setContentHuggingPriority(.defaultLow, for: .vertical)
+                spacer2.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+                container.addArrangedSubview(spacer2)
+
+                // Add bottom spacing for safe area (iPhone rounded corners and home indicator)
+                let bottomSpacer = UIView()
+                bottomSpacer.heightAnchor.constraint(equalToConstant: 20).isActive = true
+                container.addArrangedSubview(bottomSpacer)
+
+            } else if hasGroupedItems {
+                // Create start container - should be at left
+                if !startItems.isEmpty {
+                    let startContainer = createGroupContainer(items: startItems, spacing: TabBarConstants.DEFAULT_SPACING, isVertical: isVertical)
+
+                    container.addSubview(startContainer)
+
+                    // Pin to left
+                    startContainer.translatesAutoresizingMaskIntoConstraints = false
+                    NSLayoutConstraint.activate([
+                        startContainer.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+                        startContainer.centerYAnchor.constraint(equalTo: container.centerYAnchor)
+                    ])
+                }
+
+                // Create end container - should be at right
+                if !endItems.isEmpty {
+                    // Use smaller spacing for end items to reduce gap
+                    let endContainer = createGroupContainer(items: endItems, spacing: 8, isVertical: isVertical)
+
+                    container.addSubview(endContainer)
+
+                    // Pin to right
+                    endContainer.translatesAutoresizingMaskIntoConstraints = false
+                    NSLayoutConstraint.activate([
+                        endContainer.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+                        endContainer.centerYAnchor.constraint(equalTo: container.centerYAnchor)
+                    ])
+                }
+
+                // Create center container (middle) - only if we have center items
+                if !centerItems.isEmpty {
+                    let centerContainer = createGroupContainer(items: centerItems, spacing: TabBarConstants.CENTER_SPACING, isVertical: isVertical)
+                    container.addSubview(centerContainer)
+
+                    // Pin to center
+                    centerContainer.translatesAutoresizingMaskIntoConstraints = false
+                    NSLayoutConstraint.activate([
+                        centerContainer.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+                        centerContainer.centerYAnchor.constraint(equalTo: container.centerYAnchor)
+                    ])
+                }
+
+            } else {
+                // Simple centered layout for horizontal without grouping
+                // Create center container with all items (should be centerItems only when no grouping)
+                if !centerItems.isEmpty {
+                    let centerContainer = createGroupContainer(items: centerItems, spacing: TabBarConstants.CENTER_SPACING, isVertical: isVertical)
+                    container.addArrangedSubview(centerContainer)
+                }
+            }
+        }
+    }
+
+    /// Create a container for a group of tab items
+    private func createGroupContainer(items: [TabBarItem], spacing: CGFloat, isVertical: Bool) -> UIStackView {
+        let groupContainer = UIStackView()
+        groupContainer.axis = isVertical ? .vertical : .horizontal
+        // Use different distribution for horizontal vs vertical
+        groupContainer.distribution = isVertical ? .fill : .fillProportionally
+        groupContainer.spacing = spacing
+        groupContainer.translatesAutoresizingMaskIntoConstraints = false
+
+        // Remove any default margins/insets
+        groupContainer.layoutMargins = UIEdgeInsets.zero
+        groupContainer.isLayoutMarginsRelativeArrangement = false
+
+        // For vertical TabBar, allow container to expand to give items proper space
+        if isVertical {
+            groupContainer.setContentHuggingPriority(.defaultLow, for: .vertical)
+            // Set minimum height for the container to ensure proper spacing
+            let minHeight = CGFloat(items.count) * 60.0 + CGFloat(items.count - 1) * spacing
+            groupContainer.heightAnchor.constraint(greaterThanOrEqualToConstant: minHeight).isActive = true
+        } else {
+            // For horizontal TabBar, container should hug its content tightly
+            groupContainer.setContentHuggingPriority(.required, for: .horizontal)
+            groupContainer.setContentCompressionResistancePriority(.required, for: .horizontal)
+            // For horizontal, ensure minimum height
+            groupContainer.heightAnchor.constraint(greaterThanOrEqualToConstant: 60).isActive = true
+        }
+
+        for (index, item) in items.enumerated() {
+            // Find the global index of this item
+            let allItems = controller.getItems()
+            let globalIndex = allItems.firstIndex { $0.page_path.toString() == item.page_path.toString() } ?? index
+            let tabView = createTabView(for: item, at: globalIndex)
+            tabViews.append(tabView)
+            groupContainer.addArrangedSubview(tabView)
+        }
+
+        return groupContainer
+    }
+
     private func createTabView(for item: TabBarItem, at index: Int) -> UIView {
         let tabView = UIView()
+        // Use semi-transparent background for debugging click area
         tabView.backgroundColor = UIColor.clear
+        tabView.isUserInteractionEnabled = true  // Ensure tap gestures work
 
         let stackView = UIStackView()
         stackView.axis = .vertical
@@ -145,6 +343,18 @@ public class iOSLingXiaTabBar: UIView, EnhancedTabBarProtocol, TabBarUIDelegate 
 
         tabView.addSubview(stackView)
 
+        // Set fixed dimensions for TabBar items
+        let isVertical = controller.isVertical()
+        if isVertical {
+            tabView.heightAnchor.constraint(equalToConstant: 60).isActive = true
+            // Ensure TabView fills the width of the TabBar for proper click area
+            tabView.widthAnchor.constraint(greaterThanOrEqualToConstant: 40).isActive = true
+        } else {
+            // For horizontal TabBar, set smaller minimum width for tighter spacing
+            tabView.widthAnchor.constraint(greaterThanOrEqualToConstant: 60).isActive = true
+            tabView.heightAnchor.constraint(equalToConstant: 60).isActive = true
+        }
+
         NSLayoutConstraint.activate([
             stackView.centerXAnchor.constraint(equalTo: tabView.centerXAnchor),
             stackView.centerYAnchor.constraint(equalTo: tabView.centerYAnchor),
@@ -163,6 +373,7 @@ public class iOSLingXiaTabBar: UIView, EnhancedTabBarProtocol, TabBarUIDelegate 
     @objc private func tabTapped(_ gesture: UITapGestureRecognizer) {
         guard let tabView = gesture.view else { return }
         let index = tabView.tag
+
         controller.handleTabSelection(at: index)
     }
 
@@ -245,12 +456,8 @@ public class iOSTabBarSupport {
         let position = config.position
         let isVertical = position == 2 || position == 3 // 2=left, 3=right
 
-        // Configure orientation
-        if isVertical {
-            tabBar.transform = CGAffineTransform(rotationAngle: .pi / 2)
-        } else {
-            tabBar.transform = CGAffineTransform.identity
-        }
+        // No transform needed - we handle orientation internally with UIStackView
+        tabBar.transform = CGAffineTransform.identity
 
         // Apply dimension (height/width)
         if isVertical {
