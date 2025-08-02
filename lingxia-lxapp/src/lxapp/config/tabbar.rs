@@ -6,11 +6,11 @@ use std::path::Path;
 #[allow(non_snake_case)]
 pub struct TabBarConfig {
     /// Text color (color value)
-    #[serde(default)]
+    #[serde(default = "default_unselected_color")]
     pub color: String,
 
     /// Text color when selected (color value)
-    #[serde(default)]
+    #[serde(default = "default_selected_color")]
     pub selectedColor: String,
 
     /// Background color (color value)
@@ -18,7 +18,7 @@ pub struct TabBarConfig {
     pub backgroundColor: String,
 
     /// Border color of the top of the tab bar (color value)
-    #[serde(default)]
+    #[serde(default = "default_border_color")]
     pub borderStyle: String,
 
     /// List of tab items
@@ -33,8 +33,20 @@ pub struct TabBarConfig {
     pub dimension: i32,
 }
 
+fn default_selected_color() -> String {
+    "#1677FF".to_string()
+}
+
+fn default_unselected_color() -> String {
+    "#666666".to_string()
+}
+
 fn default_background_color() -> String {
     "#ffffff".to_string()
+}
+
+fn default_border_color() -> String {
+    "#F0F0F0".to_string()
 }
 
 fn default_dimension() -> i32 {
