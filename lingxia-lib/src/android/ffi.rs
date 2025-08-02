@@ -438,23 +438,16 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getTabBarConfig<'a>(
         Err(_) => return JObject::null(),
     };
 
-    // Create TabBarConfig object (using non-nullable Int for colors, nullable Integer for dimension)
-    let dimension_obj = if dimension > 0 {
-        env.new_object("java/lang/Integer", "(I)V", &[dimension.into()])
-            .unwrap_or(JObject::null())
-    } else {
-        JObject::null()
-    };
-
+    // Create TabBarConfig object (all parameters non-nullable)
     match env.new_object(
         tab_bar_class,
-        "(IIIILjava/lang/Integer;Lcom/lingxia/lxapp/TabBarConfig$Position;Ljava/util/List;Z)V",
+        "(IIIIILcom/lingxia/lxapp/TabBarConfig$Position;Ljava/util/List;Z)V",
         &[
             background_color.into(),
             selected_color.into(),
             color.into(),
             border_style.into(),
-            (&dimension_obj).into(),
+            dimension.into(),
             (&position_enum).into(),
             (&tab_items_list).into(),
             true.into(), // visible
