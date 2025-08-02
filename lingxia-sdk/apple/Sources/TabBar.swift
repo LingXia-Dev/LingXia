@@ -75,7 +75,6 @@ public struct TabBarConstants {
     public static let ITEM_FONT_SIZE: CGFloat = 12
     public static let ITEM_SPACING: CGFloat = 8
     public static let BORDER_WIDTH: CGFloat = 1
-    public static let TAB_HEIGHT: CGFloat = 64
     public static let ICON_TOP_MARGIN: CGFloat = 4
     public static let LABEL_BOTTOM_MARGIN: CGFloat = 4
 
@@ -294,7 +293,7 @@ public class TabBarController {
 
     /// Get effective height for TabBar
     public func getEffectiveHeight() -> CGFloat {
-        guard let config = config else { return TabBarConstants.TAB_HEIGHT }
+        guard let config = config else { return 64 } // Default fallback
 
         // Use the configured dimension directly
         return CGFloat(config.dimension)

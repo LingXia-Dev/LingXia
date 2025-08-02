@@ -19,10 +19,7 @@ public typealias PlatformImageView = UIImageView
 public typealias PlatformImage = UIImage
 
 // iOS specific constants
-public let PLATFORM_STATUS_BAR_HEIGHT: CGFloat = 48
-public let PLATFORM_NAV_BAR_HEIGHT: CGFloat = 44
-public let PLATFORM_TAB_BAR_HEIGHT: CGFloat = 64
-public let PLATFORM_NAV_TITLE_VERTICAL_POSITION: CGFloat = 48 + 8
+public let PLATFORM_STATUS_BAR_HEIGHT: CGFloat = 48 // Fallback value, prefer dynamic getActualStatusBarHeight()
 
 #elseif os(macOS)
 import Cocoa
@@ -43,10 +40,7 @@ public typealias PlatformImageView = NSImageView
 public typealias PlatformImage = NSImage
 
 // macOS specific constants
-public let PLATFORM_STATUS_BAR_HEIGHT: CGFloat = 28
-public let PLATFORM_NAV_BAR_HEIGHT: CGFloat = 32
-public let PLATFORM_TAB_BAR_HEIGHT: CGFloat = 40
-public let PLATFORM_NAV_TITLE_VERTICAL_POSITION: CGFloat = 0
+public let PLATFORM_STATUS_BAR_HEIGHT: CGFloat = 28 // macOS menu bar height
 
 #endif
 
@@ -63,7 +57,7 @@ extension PlatformColor {
         return .windowBackgroundColor
         #endif
     }
-    
+
     static var platformLabel: PlatformColor {
         #if os(iOS)
         return .label

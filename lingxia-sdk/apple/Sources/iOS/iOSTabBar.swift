@@ -222,11 +222,6 @@ public class iOSTabBarSupport {
         return iOSLingXiaTabBar(frame: frame)
     }
 
-    /// Gets the tab bar height for iOS
-    public static func getTabBarHeight() -> CGFloat {
-        return TabBarConstants.TAB_HEIGHT
-    }
-
     /// Configures tab bar transparency mode
     public static func configureTabBarTransparencyMode(_ tabBar: iOSLingXiaTabBar, isTransparent: Bool) {
         if isTransparent {

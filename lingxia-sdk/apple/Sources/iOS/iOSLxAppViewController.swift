@@ -13,10 +13,8 @@ public class iOSLxAppViewController: UIViewController {
 
     public static let EXTRA_APP_ID = "appId"
     public static let EXTRA_PATH = "path"
-    internal static let DEFAULT_NAV_BAR_HEIGHT: CGFloat = 44
-    internal static let STATUS_BAR_HEIGHT: CGFloat = 48
     // NavigationBar title and capsule button vertical position (status bar + margin)
-    internal static let NAV_TITLE_VERTICAL_POSITION: CGFloat = 48 + 8
+    internal static let NAV_TITLE_VERTICAL_POSITION: CGFloat = PLATFORM_STATUS_BAR_HEIGHT + 8
 
     // UI Element Tags
     private static let CAPSULE_BUTTON_TAG = 9999
@@ -290,7 +288,7 @@ public class iOSLxAppViewController: UIViewController {
             statusBarBackground.topAnchor.constraint(equalTo: rootContainer.topAnchor),
             statusBarBackground.leadingAnchor.constraint(equalTo: rootContainer.leadingAnchor),
             statusBarBackground.trailingAnchor.constraint(equalTo: rootContainer.trailingAnchor),
-            statusBarBackground.heightAnchor.constraint(equalToConstant: iOSLxAppViewController.STATUS_BAR_HEIGHT)
+            statusBarBackground.heightAnchor.constraint(equalToConstant: PLATFORM_STATUS_BAR_HEIGHT)
         ])
     }
 
@@ -681,7 +679,7 @@ public class iOSLxAppViewController: UIViewController {
         if isVertical {
             NSLayoutConstraint.activate([
                 tabBar.widthAnchor.constraint(equalToConstant: tabBarSize),
-                tabBar.topAnchor.constraint(equalTo: rootContainer.topAnchor, constant: iOSLxAppViewController.STATUS_BAR_HEIGHT),
+                tabBar.topAnchor.constraint(equalTo: rootContainer.topAnchor, constant: PLATFORM_STATUS_BAR_HEIGHT),
                 tabBar.bottomAnchor.constraint(equalTo: rootContainer.bottomAnchor)
             ])
 
@@ -699,7 +697,7 @@ public class iOSLxAppViewController: UIViewController {
 
             if config.position == 1 { // top
                 // For top position, place TabBar right after the fixed status bar area (48pt)
-                tabBar.topAnchor.constraint(equalTo: rootContainer.topAnchor, constant: iOSLxAppViewController.STATUS_BAR_HEIGHT).isActive = true
+                tabBar.topAnchor.constraint(equalTo: rootContainer.topAnchor, constant: PLATFORM_STATUS_BAR_HEIGHT).isActive = true
             } else {
                 // For bottom position, always extend to view.bottomAnchor to cover safe area
                 // Both transparent and opaque TabBars extend to actual screen bottom
@@ -872,7 +870,7 @@ public class iOSLxAppViewController: UIViewController {
             // WebView starts from NavigationBar bottom when NavigationBar exists
             // FORCE correct positioning: NavigationBar is at Y=0 with height=STATUS_BAR_HEIGHT+44
             topAnchor = rootContainer.topAnchor
-            topConstant = iOSLxAppViewController.STATUS_BAR_HEIGHT + 44 // NavigationBar total height
+            topConstant = PLATFORM_STATUS_BAR_HEIGHT + 44 // NavigationBar total height (status bar + nav content)
             os_log("updateLayoutMargins: FORCED WebView below NavigationBar, topConstant=%f, NavigationBar frame=(%f,%f,%f,%f)",
                    log: Self.log, type: .info, topConstant,
                    navigationBar!.view.frame.origin.x, navigationBar!.view.frame.origin.y,
@@ -991,7 +989,7 @@ public class iOSLxAppViewController: UIViewController {
         // Use fixed status bar height
         let navBarContentHeight = navigationBar.getCalculatedContentHeight()
 
-        return iOSLxAppViewController.STATUS_BAR_HEIGHT + navBarContentHeight
+        return PLATFORM_STATUS_BAR_HEIGHT + navBarContentHeight
     }
 
     private func addCapsuleButton() {
@@ -1219,7 +1217,7 @@ public class iOSLxAppViewController: UIViewController {
         }
         // NavigationBar should include status bar area in its total height
         let navBarContentHeight: CGFloat = 44 // Content area height
-        let totalNavBarHeight = navBarContentHeight + iOSLxAppViewController.STATUS_BAR_HEIGHT
+        let totalNavBarHeight = navBarContentHeight + PLATFORM_STATUS_BAR_HEIGHT
         let frame = CGRect(x: 0, y: 0, width: view.bounds.width, height: totalNavBarHeight)
         let newNavBar = NavigationBar(frame: frame)
 

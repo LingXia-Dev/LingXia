@@ -16,14 +16,9 @@ public class macOSTabBar: NSView, EnhancedTabBarProtocol, TabBarUIDelegate {
         return macOSTabBar(frame: NSRect(x: frame.origin.x, y: frame.origin.y, width: frame.width, height: frame.height))
     }
 
-    /// Gets the tab bar height for macOS
-    public static func getTabBarHeight() -> CGFloat {
-        return TabBarConstants.TAB_HEIGHT
-    }
-
     /// Configures tab bar positioning for macOS layout
     public static func configureTabBarLayout(_ tabBar: macOSTabBar, position: Int32, containerFrame: CGRect) {
-        let tabBarHeight = getTabBarHeight()
+        let tabBarHeight = tabBar.controller.getEffectiveHeight()
         var tabBarFrame: NSRect
 
         switch position {
@@ -43,10 +38,8 @@ public class macOSTabBar: NSView, EnhancedTabBarProtocol, TabBarUIDelegate {
     }
 
     /// Gets the appropriate content area frame considering tab bar position
-    public static func getContentAreaFrame(containerFrame: CGRect, tabBarPosition: Int32, hasTabBar: Bool) -> CGRect {
+    public static func getContentAreaFrame(containerFrame: CGRect, tabBarPosition: Int32, hasTabBar: Bool, tabBarHeight: CGFloat = 40) -> CGRect {
         guard hasTabBar else { return containerFrame }
-
-        let tabBarHeight = getTabBarHeight()
 
         switch tabBarPosition {
         case 0: // bottom
