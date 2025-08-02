@@ -345,7 +345,8 @@ export struct TabBar {
     if (this.config.borderStyle === 'white') {
       return '#ffffff';
     }
-    return '#e0e0e0';
+    // Use configured border color, fallback to Rust default if not a special value
+    return this.config.borderStyle || '#F0F0F0';
   }
 
   /**
