@@ -356,9 +356,11 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getTabBarConfig<'a>(
         "transparent" => 0x00000000i32, // Transparent
         color_str => {
             if color_str.starts_with('#') && color_str.len() == 7 {
-                i32::from_str_radix(&color_str[1..], 16).unwrap_or(0xFFFFFFFFu32 as i32)
+                // Parse hex color and add full alpha channel (0xFF000000)
+                let color_value = i32::from_str_radix(&color_str[1..], 16).unwrap_or(0xFFFFFF);
+                (0xFF000000u32 as i32) | color_value
             } else {
-                0xFFFFFFFFu32 as i32 // Default white
+                0xFFFFFFFFu32 as i32 // Default white with full alpha
             }
         }
     };
@@ -366,7 +368,8 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getTabBarConfig<'a>(
     // Convert selected color
     let selected_color = match tab_bar_config.selectedColor.as_str() {
         color_str if color_str.starts_with('#') && color_str.len() == 7 => {
-            i32::from_str_radix(&color_str[1..], 16).unwrap_or(0xFF1677FFu32 as i32)
+            let color_value = i32::from_str_radix(&color_str[1..], 16).unwrap_or(0x1677FF);
+            (0xFF000000u32 as i32) | color_value
         }
         _ => 0xFF1677FFu32 as i32, // Default blue
     };
@@ -374,7 +377,8 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getTabBarConfig<'a>(
     // Convert unselected color
     let color = match tab_bar_config.color.as_str() {
         color_str if color_str.starts_with('#') && color_str.len() == 7 => {
-            i32::from_str_radix(&color_str[1..], 16).unwrap_or(0xFF666666u32 as i32)
+            let color_value = i32::from_str_radix(&color_str[1..], 16).unwrap_or(0x666666);
+            (0xFF000000u32 as i32) | color_value
         }
         _ => 0xFF666666u32 as i32, // Default gray
     };
@@ -382,7 +386,8 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getTabBarConfig<'a>(
     // Convert border style (color)
     let border_style = match tab_bar_config.borderStyle.as_str() {
         color_str if color_str.starts_with('#') && color_str.len() == 7 => {
-            i32::from_str_radix(&color_str[1..], 16).unwrap_or(0xFFF0F0F0u32 as i32)
+            let color_value = i32::from_str_radix(&color_str[1..], 16).unwrap_or(0xF0F0F0);
+            (0xFF000000u32 as i32) | color_value
         }
         _ => 0xFFF0F0F0u32 as i32, // Default light gray
     };
