@@ -6,7 +6,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
  */
 export interface NavigationBarConfig {
   navigationBarTitleText: string;
-  navigationBarBackgroundColor: string;
+  navigationBarBackgroundColor: number;
   navigationBarTextStyle: string;  // "black" | "white"
   navigationStyle: number;         // 0=default, 1=custom
   backgroundColor?: string;        // Page background color (local extension)
@@ -119,10 +119,27 @@ export struct NavigationBar {
   }
 
   private getBackgroundColor(): ResourceColor {
-    if (this.config.navigationBarBackgroundColor) {
-      return this.config.navigationBarBackgroundColor;
+    return this.toResourceColor(this.config.navigationBarBackgroundColor || 0xFFFFFFFF);
+  }
+
+  /**
+   * Convert ARGB color value to ResourceColor
+   */
+  private toResourceColor(colorValue: number): ResourceColor {
+    if (((colorValue >>> 24) & 0xFF) === 0) {
+      return Color.Transparent;
     }
-    return '#0000ff';
+
+    const alpha = (colorValue >>> 24) & 0xFF;
+    const red = (colorValue >>> 16) & 0xFF;
+    const green = (colorValue >>> 8) & 0xFF;
+    const blue = colorValue & 0xFF;
+
+    if (alpha === 255) {
+      return `#${red.toString(16).padStart(2, '0')}${green.toString(16).padStart(2, '0')}${blue.toString(16).padStart(2, '0')}`;
+    } else {
+      return `rgba(${red}, ${green}, ${blue}, ${alpha / 255})`;
+    }
   }
 
   private getTextColor(): ResourceColor {
@@ -249,14 +266,14 @@ export class NavigationBarController {
 
   /**
    * Set navigation bar color - LxApp compatible API
-   * @param backgroundColor Background color
+   * @param backgroundColor Background color (string format like "#FFFFFF" or "transparent")
    * @param textStyle Text style ('black' | 'white')
    */
   public setNavigationBarColor(backgroundColor: string, textStyle?: 'black' | 'white'): void {
     hilog.info(DOMAIN, TAG, `setNavigationBarColor - bg=${backgroundColor}, textStyle=${textStyle}`);
 
     if (this.currentConfig) {
-      this.currentConfig.navigationBarBackgroundColor = backgroundColor;
+      this.currentConfig.navigationBarBackgroundColor = this.parseColorToArgb(backgroundColor);
       if (textStyle) {
         this.currentConfig.navigationBarTextStyle = textStyle;
       }
@@ -292,5 +309,23 @@ export class NavigationBarController {
    */
   public getCurrentPath(): string {
     return this.currentPath;
+  }
+
+  /**
+   * Parse color string to ARGB number
+   */
+  private parseColorToArgb(colorStr: string, defaultColor: number = 0xFFFFFFFF): number {
+    if (colorStr.toLowerCase() === 'transparent') {
+      return 0x00000000;
+    }
+
+    if (colorStr.startsWith('#') && colorStr.length === 7) {
+      const rgb = parseInt(colorStr.substring(1), 16);
+      if (!isNaN(rgb)) {
+        return 0xFF000000 | rgb; // Add full alpha
+      }
+    }
+
+    return defaultColor;
   }
 }

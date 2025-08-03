@@ -31,10 +31,10 @@ export interface BadgeStyle {
 }
 
 export interface TabBarConfig {
-  color?: string;
-  selectedColor?: string;
-  backgroundColor?: string;
-  borderStyle?: string;     // Border style: "black" | "white"
+  color?: number;
+  selectedColor?: number;
+  backgroundColor?: number;
+  borderStyle?: number;     // Border color as ARGB value
   position?: number;        // 0=bottom, 1=top, 2=left, 3=right
   dimension?: number;       // Dimension in dp: height for top/bottom, width for left/right
   list: TabBarItem[];
@@ -316,37 +316,29 @@ export struct TabBar {
    * Get normal text/icon color
    */
   private getNormalColor(): ResourceColor {
-    return this.config.color || '#666666';
+    return this.toResourceColor(this.config.color ?? 0xFF666666);
   }
 
   /**
    * Get selected text/icon color
    */
   private getSelectedColor(): ResourceColor {
-    return this.config.selectedColor || '#1677FF';
+    return this.toResourceColor(this.config.selectedColor ?? 0xFF1677FF);
   }
 
   /**
    * Get background color - supports transparent with better integration
    */
   private getBackgroundColor(): ResourceColor {
-    const bgColor = this.config.backgroundColor || '#ffffff';
-    if (bgColor === 'transparent') {
-      // Use completely transparent base, rely on gradient for visual effect
-      return Color.Transparent;
-    }
-    return bgColor;
+    const bgColor = this.config.backgroundColor ?? 0xFFFFFFFF;
+    return this.toResourceColor(bgColor);
   }
 
   /**
    * Get border color
    */
   private getBorderColor(): ResourceColor {
-    if (this.config.borderStyle === 'white') {
-      return '#ffffff';
-    }
-    // Use configured border color, fallback to Rust default if not a special value
-    return this.config.borderStyle || '#F0F0F0';
+    return this.toResourceColor(this.config.borderStyle ?? 0xFFF0F0F0);
   }
 
   /**
@@ -372,10 +364,31 @@ export struct TabBar {
   }
 
   /**
-   * Check if TabBar is transparent
+   * Check if TabBar is transparent using bit operations
    */
   private isTransparent(): boolean {
-    return this.config.backgroundColor === 'transparent';
+    const bgColor = this.config.backgroundColor ?? 0xFFFFFFFF;
+    return ((bgColor >>> 24) & 0xFF) === 0;
+  }
+
+  /**
+   * Convert ARGB color value to ResourceColor
+   */
+  private toResourceColor(colorValue: number): ResourceColor {
+    if (((colorValue >>> 24) & 0xFF) === 0) {
+      return Color.Transparent;
+    }
+
+    const alpha = (colorValue >>> 24) & 0xFF;
+    const red = (colorValue >>> 16) & 0xFF;
+    const green = (colorValue >>> 8) & 0xFF;
+    const blue = colorValue & 0xFF;
+
+    if (alpha === 255) {
+      return `#${red.toString(16).padStart(2, '0')}${green.toString(16).padStart(2, '0')}${blue.toString(16).padStart(2, '0')}`;
+    } else {
+      return `rgba(${red}, ${green}, ${blue}, ${alpha / 255})`;
+    }
   }
 
   /**

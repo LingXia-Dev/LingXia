@@ -240,11 +240,12 @@ export struct LxAppContainer {
   }
 
   /**
-   * Check if TabBar is transparent
+   * Check if TabBar is transparent using bit operations
    * When transparent, TabBar overlays WebView; when opaque, they are separate
    */
   private isTabBarTransparent(): boolean {
-    return this.tabBarConfig?.backgroundColor === "transparent";
+    const bgColor = this.tabBarConfig?.backgroundColor ?? 0xFFFFFFFF;
+    return ((bgColor >>> 24) & 0xFF) === 0;
   }
 
   /**

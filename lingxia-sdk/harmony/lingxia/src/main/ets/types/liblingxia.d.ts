@@ -30,10 +30,10 @@ declare module 'liblingxia.so' {
    * TabBar configuration structure
    */
   export interface TabBarConfig {
-    color: string;
-    selectedColor: string;
-    backgroundColor: string;
-    borderStyle: string;
+    color: number;
+    selectedColor: number;
+    backgroundColor: number;
+    borderStyle: number;
     position: number;
     dimension: number;
     list: TabBarItem[];
@@ -43,7 +43,7 @@ declare module 'liblingxia.so' {
    * NavigationBar configuration structure
    */
   export interface NavigationBarConfig {
-    navigationBarBackgroundColor: string;
+    navigationBarBackgroundColor: number;
     navigationBarTextStyle: string;
     navigationBarTitleText: string;
     navigationStyle: number;

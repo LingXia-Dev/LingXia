@@ -9,6 +9,21 @@ use napi_ohos::bindgen_prelude::Object;
 use napi_ohos::bindgen_prelude::*;
 use ohos_hilog::Config;
 
+/// Parses a color string (e.g., "#RRGGBB" or "transparent") into a u32 ARGB value for Harmony.
+fn parse_color_to_u32(color_str: &str, default_color: u32) -> u32 {
+    if color_str.eq_ignore_ascii_case("transparent") {
+        return 0x00000000;
+    }
+
+    if color_str.starts_with('#') && color_str.len() == 7 {
+        if let Ok(rgb) = u32::from_str_radix(&color_str[1..], 16) {
+            return 0xFF000000 | rgb; // Add full alpha
+        }
+    }
+
+    default_color
+}
+
 /// NAPI-compatible LxApp information
 #[napi(object)]
 pub struct LxAppInfo {
@@ -20,10 +35,10 @@ pub struct LxAppInfo {
 /// NAPI-compatible TabBar configuration
 #[napi(object)]
 pub struct TabBarConfig {
-    pub color: String,
-    pub selected_color: String,
-    pub background_color: String,
-    pub border_style: String,
+    pub color: u32,
+    pub selected_color: u32,
+    pub background_color: u32,
+    pub border_style: u32,
     pub list: Vec<TabItem>,
     pub position: TabBarPosition,
     pub dimension: i32,
@@ -59,7 +74,7 @@ pub enum NavigationStyle {
 /// NAPI-compatible NavigationBar configuration
 #[napi(object)]
 pub struct NavigationBarConfig {
-    pub navigation_bar_background_color: String,
+    pub navigation_bar_background_color: u32,
     pub navigation_bar_text_style: String,
     pub navigation_bar_title_text: String,
     pub navigation_style: NavigationStyle,
@@ -209,10 +224,10 @@ fn get_tab_bar_config(appid: String) -> Option<TabBarConfig> {
         .collect();
 
     Some(TabBarConfig {
-        color: rust_config.color,
-        selected_color: rust_config.selectedColor,
-        background_color: rust_config.backgroundColor,
-        border_style: rust_config.borderStyle,
+        color: parse_color_to_u32(&rust_config.color, 0xFF666666),
+        selected_color: parse_color_to_u32(&rust_config.selectedColor, 0xFF1677FF),
+        background_color: parse_color_to_u32(&rust_config.backgroundColor, 0xFFFFFFFF),
+        border_style: parse_color_to_u32(&rust_config.borderStyle, 0xFFF0F0F0),
         list,
         position,
         dimension: rust_config.dimension,
@@ -232,7 +247,7 @@ pub fn get_navigation_bar_config(appid: String, path: String) -> NavigationBarCo
     };
 
     NavigationBarConfig {
-        navigation_bar_background_color: rust_config.navigationBarBackgroundColor,
+        navigation_bar_background_color: parse_color_to_u32(&rust_config.navigationBarBackgroundColor, 0xFFFFFFFF),
         navigation_bar_text_style: rust_config.navigationBarTextStyle,
         navigation_bar_title_text: rust_config.navigationBarTitleText,
         navigation_style,
