@@ -18,7 +18,7 @@ public class iOSNavigationBarImpl: UIView {
     private let loadingIndicator: UIActivityIndicatorView
     private let backButton: UIButton
     private var currentConfig: NavigationBarConfig = NavigationBarConfig(
-        background_color: RustString(""),
+        background_color: 0xFFFFFFFF, // Default white
         text_style: RustString(""),
         title_text: RustString(""),
         navigation_style: 0
@@ -115,8 +115,7 @@ public class iOSNavigationBarImpl: UIView {
 
         // Extract configuration values with defaults
         let titleText = pageConfig?.title_text.toString() ?? ""
-        let backgroundColorString = pageConfig?.background_color.toString() ?? NavigationBarConfig.DEFAULT_BACKGROUND_COLOR
-        let backgroundColor = UIColor(hexString: backgroundColorString) ?? UIColor.white
+        let backgroundColor = PlatformColor(argb: pageConfig?.background_color ?? 0xFFFFFFFF)
         let textStyle = pageConfig?.text_style.toString() ?? "black"
         let textColor = textStyle == "white" ? UIColor.white : UIColor.black
         let showBackButton = isBackNavigation && !disableAnimation

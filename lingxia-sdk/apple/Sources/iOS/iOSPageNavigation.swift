@@ -121,8 +121,7 @@ public class iOSPageNavigation {
             }
 
             let title = pageConfig?.title_text.toString() ?? ""
-            let bgColorString = pageConfig?.background_color.toString() ?? NavigationBarConfig.DEFAULT_BACKGROUND_COLOR
-            let bgColor = UIColor(hexString: bgColorString) ?? UIColor.white
+            let bgColor = PlatformColor(argb: pageConfig?.background_color ?? 0xFFFFFFFF)
             let textColor = getTextColor(from: pageConfig?.text_style.toString())
 
             // Get TabBar config to check if this is a tab root page

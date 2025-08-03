@@ -100,7 +100,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
             view.addSubview(tabBar)
 
             // Check if TabBar is transparent using platform extension
-            let isTabBarTransparent = TabBarHelper.isTransparent(tabBarConfig.background_color.toString())
+            let isTabBarTransparent = TabBarConfig.isTransparent(tabBarConfig.background_color)
 
             // Get TabBar height from config dimension
             let tabBarHeight: CGFloat = CGFloat(tabBarConfig.dimension)
@@ -211,6 +211,12 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
 
             NSLayoutConstraint.activate(webViewConstraints)
             os_log("[TabBar] WebView container constrained for position: %@ (transparent: %@)", log: Self.log, type: .info, String(describing: tabBarConfig.position), isTabBarTransparent ? "true" : "false")
+
+            // Apply transparency mode if TabBar is configured as transparent
+            if isTabBarTransparent {
+                tabBar.wantsLayer = true
+                tabBar.layer?.backgroundColor = NSColor.clear.cgColor
+            }
         } else {
             // No TabBar, WebView container takes full height but leaves space for title bar
             NSLayoutConstraint.activate([
@@ -246,9 +252,13 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         let tabBar = NSView()
         tabBar.wantsLayer = true
 
-        // Set background color using platform extension
-        let resolvedColor = TabBarHelper.resolvedBackgroundColor(tabBarConfig.background_color.toString(), isVertical: true)
-        tabBar.layer?.backgroundColor = resolvedColor.cgColor
+        // Set background color based on transparency configuration
+        if TabBarConfig.isTransparent(tabBarConfig.background_color) {
+            tabBar.layer?.backgroundColor = NSColor.clear.cgColor
+        } else {
+            let resolvedColor = TabBarHelper.resolvedBackgroundColor(tabBarConfig.background_color, isVertical: true)
+            tabBar.layer?.backgroundColor = resolvedColor.cgColor
+        }
 
         tabBar.translatesAutoresizingMaskIntoConstraints = false
 
@@ -640,15 +650,9 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         }
 
         if selected {
-            if let selectedColor = TabBarHelper.parseColor(tabBarConfig.selected_color.toString()) {
-                return selectedColor
-            }
-            return NSColor.controlAccentColor
+            return PlatformColor(argb: tabBarConfig.selected_color)
         } else {
-            if let color = TabBarHelper.parseColor(tabBarConfig.color.toString()) {
-                return color
-            }
-            return NSColor.secondaryLabelColor
+            return PlatformColor(argb: tabBarConfig.color)
         }
     }
 

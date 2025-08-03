@@ -43,19 +43,14 @@ extension TabBarConfig {
         return (startItems, centerItems, endItems)
     }
 
-    /// Parse color string to platform color
-    public static func parseColor(_ colorString: String) -> PlatformColor? {
-        return TabBarHelper.parseColor(colorString)
-    }
-
     /// Check if color is transparent
-    public static func isTransparent(_ colorString: String) -> Bool {
-        return TabBarHelper.isTransparent(colorString)
+    public static func isTransparent(_ colorValue: UInt32) -> Bool {
+        return (colorValue >> 24) & 0xFF == 0
     }
 
     /// Get resolved background color for this configuration
     public func resolvedBackgroundColor(isVertical: Bool) -> PlatformColor {
-        return TabBarHelper.resolvedBackgroundColor(background_color.toString(), isVertical: isVertical)
+        return TabBarHelper.resolvedBackgroundColor(background_color, isVertical: isVertical)
     }
 }
 
@@ -87,87 +82,36 @@ extension TabBarItem {
 
 /// Helper methods for TabBar styling and color management
 public struct TabBarHelper {
-    /// Parse color string to platform color
-    public static func parseColor(_ colorString: String) -> PlatformColor? {
-        // Handle special "transparent" case
-        if colorString.lowercased() == "transparent" {
-            return PlatformColor.clear
-        }
-        return PlatformColor(hexString: colorString)
-    }
-
-    /// Check if color is transparent
-    public static func isTransparent(_ colorString: String) -> Bool {
-        // Handle special "transparent" string case
-        if colorString.lowercased() == "transparent" {
-            return true
-        }
-
-        guard let color = parseColor(colorString) else { return false }
-
-        #if os(macOS)
-        return color.alphaComponent < 1.0
-        #else
-        var alpha: CGFloat = 0
-        var red: CGFloat = 0
-        var green: CGFloat = 0
-        var blue: CGFloat = 0
-        color.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
-        return alpha < 1.0
-        #endif
-    }
-
     /// Get resolved background color for TabBar
-    public static func resolvedBackgroundColor(_ colorString: String, isVertical: Bool) -> PlatformColor {
-        if let color = parseColor(colorString) {
-            return color
+    public static func resolvedBackgroundColor(_ colorValue: UInt32, isVertical: Bool) -> PlatformColor {
+        // If the color is transparent (alpha is 0), use a default based on orientation
+        if (colorValue >> 24) & 0xFF == 0 {
+            if isVertical {
+                #if os(macOS)
+                return PlatformColor(argb: 0xFFF8F8F8) // Default light gray for vertical
+                #else
+                return PlatformColor(argb: 0xFFF8F8F8) // Default light gray for vertical
+                #endif
+            } else {
+                return PlatformColor(argb: 0xFFFFFFFF) // Default white for horizontal
+            }
         }
-
-        // Default colors based on orientation
-        if isVertical {
-            #if os(macOS)
-            return PlatformColor(hexString: "#F8F8F8") ?? PlatformColor.controlBackgroundColor
-            #else
-            return PlatformColor(hexString: "#F8F8F8") ?? PlatformColor.systemGray6
-            #endif
-        } else {
-            return PlatformColor(hexString: "#ffffff") ?? PlatformColor.white
-        }
+        return PlatformColor(argb: colorValue)
     }
 }
 
 extension PlatformColor {
-    /// Initialize color from hex string
-    convenience init?(hexString: String) {
-        let hex = hexString.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-        var int: UInt64 = 0
-        Scanner(string: hex).scanHexInt64(&int)
-        let a, r, g, b: UInt64
-        switch hex.count {
-        case 3: // RGB (12-bit)
-            (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
-        case 6: // RGB (24-bit)
-            (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
-        case 8: // ARGB (32-bit)
-            (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
-        default:
-            return nil
-        }
-
+    /// Initialize color from a UInt32 ARGB value
+    convenience init(argb: UInt32) {
+        let alpha = CGFloat((argb >> 24) & 0xFF) / 255.0
+        let red = CGFloat((argb >> 16) & 0xFF) / 255.0
+        let green = CGFloat((argb >> 8) & 0xFF) / 255.0
+        let blue = CGFloat(argb & 0xFF) / 255.0
+        
         #if os(iOS)
-        self.init(
-            red: CGFloat(r) / 255,
-            green: CGFloat(g) / 255,
-            blue: CGFloat(b) / 255,
-            alpha: CGFloat(a) / 255
-        )
+        self.init(red: red, green: green, blue: blue, alpha: alpha)
         #else
-        self.init(
-            red: Double(r) / 255,
-            green: Double(g) / 255,
-            blue: Double(b) / 255,
-            alpha: Double(a) / 255
-        )
+        self.init(red: red, green: green, blue: blue, alpha: alpha)
         #endif
     }
 }
@@ -260,13 +204,13 @@ public class TabBarController {
     /// Get resolved background color for current configuration
     public func getResolvedBackgroundColor() -> PlatformColor {
         guard let config = config else { return PlatformColor.clear }
-        return TabBarHelper.resolvedBackgroundColor(config.background_color.toString(), isVertical: isVertical())
+        return TabBarHelper.resolvedBackgroundColor(config.background_color, isVertical: isVertical())
     }
 
     /// Check if background should be transparent
     public func shouldUseTransparentBackground() -> Bool {
         guard let config = config else { return true }
-        return TabBarHelper.isTransparent(config.background_color.toString())
+        return TabBarConfig.isTransparent(config.background_color)
     }
 
     /// Get tab item at index

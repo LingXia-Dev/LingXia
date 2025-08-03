@@ -239,8 +239,8 @@ public class macOSTabBar: NSView, EnhancedTabBarProtocol, TabBarUIDelegate {
         guard let config = controller.getConfig() else { return }
 
         // Update colors - config should always have values due to Rust defaults
-        let selectedColor = TabBarHelper.parseColor(config.selected_color.toString()) ?? NSColor.systemBlue
-        let normalColor = TabBarHelper.parseColor(config.color.toString()) ?? NSColor.gray
+        let selectedColor = PlatformColor(argb: config.selected_color)
+        let normalColor = PlatformColor(argb: config.color)
 
         let color = isSelected ? selectedColor : normalColor
 

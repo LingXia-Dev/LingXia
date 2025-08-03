@@ -41,7 +41,7 @@ public class iOSLxAppViewController: UIViewController {
     /// Check if current page should use transparent mode
     private var shouldUseTransparentMode: Bool {
         let isInitialRoute = PageNavigationCore.isInitialRoute(appId: appId, path: initialPath)
-        let isTabBarTransparent = tabBar != nil && TabBarConfig.isTransparent(tabBar!.config?.background_color.toString() ?? "")
+        let isTabBarTransparent = tabBar != nil && TabBarConfig.isTransparent(tabBar!.config?.background_color ?? 0)
         return isInitialRoute || isTabBarTransparent
     }
 
@@ -101,13 +101,13 @@ public class iOSLxAppViewController: UIViewController {
         return nil
     }
 
-    public static func updateNavigationBarTransparency(viewController: UIViewController, isTabBarTransparent: Bool, tabBarBackgroundColor: UIColor? = nil) {
+    public static func updateNavigationBarTransparency(viewController: UIViewController, isTabBarTransparent: Bool, tabBarBackgroundColor: UInt32? = nil) {
         if let navController = viewController.navigationController {
             if isTabBarTransparent {
                 navController.navigationBar.setBackgroundImage(UIImage(), for: .default)
                 navController.navigationBar.shadowImage = UIImage()
             } else {
-                let navBarColor = tabBarBackgroundColor ?? UIColor.white
+                let navBarColor = tabBarBackgroundColor != nil ? PlatformColor(argb: tabBarBackgroundColor!) : UIColor.white
                 navController.navigationBar.backgroundColor = navBarColor
             }
         }
@@ -214,7 +214,7 @@ public class iOSLxAppViewController: UIViewController {
         }
 
         // Apply transparency effects for TabBar if needed
-        if let tabBar = tabBar, TabBarConfig.isTransparent(tabBar.config?.background_color.toString() ?? "") {
+        if let tabBar = tabBar, TabBarConfig.isTransparent(tabBar.config?.background_color ?? 0) {
             // Use immediate application without delays to avoid startup flicker
             tabBar.forceTransparencyMode()
         }
@@ -420,7 +420,7 @@ public class iOSLxAppViewController: UIViewController {
         guard let tabBar = tabBar else { return }
 
         // Only apply transparency if TabBar is actually transparent
-        if TabBarConfig.isTransparent(tabBar.config?.background_color.toString() ?? "") {
+        if TabBarConfig.isTransparent(tabBar.config?.background_color ?? 0) {
             // Use immediate transparency application without any delays
             tabBar.forceTransparencyMode()
 
@@ -494,24 +494,11 @@ public class iOSLxAppViewController: UIViewController {
     }
 
     /// Apply transparency effects without triggering layout changes
-    private func applyTransparencyEffectsIfNeeded(for webView: WKWebView) {
+    private func applyTransparencyEffectsIfNeeded(for webView: WKWebView? = nil) {
         // 1. Apply TabBar transparency if needed
-        if let tabBar = tabBar, TabBarConfig.isTransparent(tabBar.config?.background_color.toString() ?? "") {
-            // Use immediate transparency application to avoid delays
-            tabBar.forceTransparencyMode()
-
-            // Apply WebView transparency
-            forceWebViewTransparency(webView: webView)
+        guard let tabBar = tabBar, TabBarConfig.isTransparent(tabBar.config?.background_color ?? 0) else {
+            return
         }
-
-        // 2. Ensure NavigationBar area transparency for pages without NavigationBar
-        // Skip this for TabBar root pages to avoid unnecessary layout updates
-        if navigationBar == nil {
-            ensureTransparentNavigationAreaWithoutLayout()
-        }
-
-        // 3. Bring UI elements to front without triggering layout
-        bringUIElementsToFrontWithoutLayout()
     }
 
     /// Bring UI elements to front without triggering expensive layout operations
@@ -538,13 +525,13 @@ public class iOSLxAppViewController: UIViewController {
             return
         }
 
-        let isTabBarTransparent = TabBarConfig.isTransparent(config.background_color.toString())
+        let isTabBarTransparent = TabBarConfig.isTransparent(config.background_color)
 
         // Update system navigation bar transparency based on TabBar transparency and color
         iOSLxAppViewController.updateNavigationBarTransparency(
             viewController: self,
             isTabBarTransparent: isTabBarTransparent,
-            tabBarBackgroundColor: TabBarConfig.parseColor(config.background_color.toString())
+            tabBarBackgroundColor: config.background_color
         )
 
         if tabBar == nil {
@@ -659,7 +646,7 @@ public class iOSLxAppViewController: UIViewController {
     /// Applies transparency for transparent TabBar scenarios
     /// Combines setCompleteTransparency and forceWebViewTransparency when needed
     private func applyTransparencyIfNeeded(for webView: WKWebView? = nil) {
-        guard let tabBar = tabBar, TabBarConfig.isTransparent(tabBar.config?.background_color.toString() ?? "") else {
+        guard let tabBar = tabBar, TabBarConfig.isTransparent(tabBar.config?.background_color ?? 0) else {
             return
         }
 
@@ -762,7 +749,7 @@ public class iOSLxAppViewController: UIViewController {
 
         // Force TabBar transparency only if it's configured to be transparent
         if let tabBar = tabBar {
-            if TabBarConfig.isTransparent(tabBar.config?.background_color.toString() ?? "") {
+            if TabBarConfig.isTransparent(tabBar.config?.background_color ?? 0) {
                 tabBar.forceTransparencyMode()
             } else {
                 // If TabBar is not transparent, restore its original background color
@@ -877,7 +864,7 @@ public class iOSLxAppViewController: UIViewController {
 
         if isBottomTabBar {
             // Check if TabBar is transparent using the proper method
-            let isTabBarTransparent = TabBarConfig.isTransparent(tabBar?.config?.background_color.toString() ?? "")
+            let isTabBarTransparent = TabBarConfig.isTransparent(tabBar?.config?.background_color ?? 0)
 
             if isTabBarTransparent {
                 // For transparent TabBar, WebView extends to actual screen bottom (including home indicator area)
@@ -898,7 +885,7 @@ public class iOSLxAppViewController: UIViewController {
         let isRightTabBar = tabBar?.config?.position == 3 // 3 = right
 
         if isLeftTabBar {
-            let isTabBarTransparent = TabBarConfig.isTransparent(tabBar?.config?.background_color.toString() ?? "")
+            let isTabBarTransparent = TabBarConfig.isTransparent(tabBar?.config?.background_color ?? 0)
             if isTabBarTransparent {
                 // For transparent left TabBar, WebView extends to screen edge (TabBar overlays)
                 leadingAnchor = rootContainer.leadingAnchor
@@ -908,7 +895,7 @@ public class iOSLxAppViewController: UIViewController {
             }
             trailingAnchor = rootContainer.trailingAnchor
         } else if isRightTabBar {
-            let isTabBarTransparent = TabBarConfig.isTransparent(tabBar?.config?.background_color.toString() ?? "")
+            let isTabBarTransparent = TabBarConfig.isTransparent(tabBar?.config?.background_color ?? 0)
             leadingAnchor = rootContainer.leadingAnchor
             if isTabBarTransparent {
                 // For transparent right TabBar, WebView extends to screen edge (TabBar overlays)
@@ -945,7 +932,7 @@ public class iOSLxAppViewController: UIViewController {
                webViewContainer.frame.size.width, webViewContainer.frame.size.height)
 
         // Force TabBar to be on top with higher z-position for transparent effect
-        if let tabBar = tabBar, TabBarConfig.isTransparent(tabBar.config?.background_color.toString() ?? "") {
+        if let tabBar = tabBar, TabBarConfig.isTransparent(tabBar.config?.background_color ?? 0) {
             tabBar.layer.zPosition = 1000
         }
     }
@@ -961,7 +948,7 @@ public class iOSLxAppViewController: UIViewController {
             rootContainer.bringSubviewToFront(tabBar)
 
             // Re-apply transparency immediately after bringSubviewToFront
-            if TabBarConfig.isTransparent(tabBar.config?.background_color.toString() ?? "") {
+            if TabBarConfig.isTransparent(tabBar.config?.background_color ?? 0) {
                 tabBar.forceTransparencyMode()
             }
         }

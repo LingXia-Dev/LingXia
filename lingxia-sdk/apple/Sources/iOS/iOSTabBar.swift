@@ -394,8 +394,8 @@ public class iOSLingXiaTabBar: UIView, EnhancedTabBarProtocol, TabBarUIDelegate 
               let iconView = stackView.arrangedSubviews.first as? UIImageView else { return }
 
         // Update colors - config should always have values due to Rust defaults
-        let selectedColor = TabBarHelper.parseColor(config?.selected_color.toString() ?? "") ?? UIColor.systemBlue
-        let normalColor = TabBarHelper.parseColor(config?.color.toString() ?? "") ?? UIColor.gray
+        let selectedColor = PlatformColor(argb: config?.selected_color ?? 0xFF1677FF)
+        let normalColor = PlatformColor(argb: config?.color ?? 0xFF666666)
 
         let color = isSelected ? selectedColor : normalColor
         iconView.tintColor = color
@@ -441,9 +441,9 @@ public class iOSTabBarSupport {
         } else {
             // Use the configured background color or default
             let config = tabBar.config
-            if let bgColor = TabBarConfig.parseColor(config?.background_color.toString() ?? "") {
-                tabBar.backgroundColor = bgColor
-                tabBar.layer.backgroundColor = bgColor.cgColor
+            if let bgColor = config?.background_color {
+                tabBar.backgroundColor = PlatformColor(argb: bgColor)
+                tabBar.layer.backgroundColor = PlatformColor(argb: bgColor).cgColor
             } else {
                 tabBar.backgroundColor = UIColor.systemBackground
                 tabBar.layer.backgroundColor = UIColor.systemBackground.cgColor
@@ -467,7 +467,7 @@ public class iOSTabBarSupport {
         }
 
         // Configure background - CRITICAL: Don't override transparent backgrounds!
-        if TabBarConfig.isTransparent(config.background_color.toString()) {
+        if TabBarConfig.isTransparent(config.background_color) {
             // For transparent backgrounds, force transparency mode instead of using resolved color
             tabBar.forceTransparencyMode()
         } else {
