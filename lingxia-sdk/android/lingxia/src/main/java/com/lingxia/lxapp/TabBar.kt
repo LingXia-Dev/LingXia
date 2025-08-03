@@ -26,7 +26,13 @@ data class TabBarConfig(
     val list: List<TabBarItem> = emptyList(),                // List of tab items
     val visible: Boolean = true                               // TabBar visibility, default true
 ) {
-    
+    /**
+     * Check if background color is transparent.
+     * Uses bit operations to check alpha channel
+     */
+    fun isBackgroundTransparent(): Boolean {
+        return (backgroundColor ushr 24) and 0xFF == 0
+    }
 
     companion object {
         // These values MUST match exactly with Rust TabBarPosition enum!
@@ -218,8 +224,7 @@ class TabBar(context: Context) : LinearLayout(context) {
     private fun performLayoutForPosition() {
         removeAllViews()
 
-        val isBackgroundTransparent = config.backgroundColor == Color.TRANSPARENT ||
-                                     (config.backgroundColor != null && Color.alpha(config.backgroundColor!!) < 255)
+        val isBackgroundTransparent = config.isBackgroundTransparent()
 
         when (config.position.value) {
             TabBarConfig.POSITION_TOP -> {
@@ -283,8 +288,7 @@ class TabBar(context: Context) : LinearLayout(context) {
 
         config = newConfig
 
-        val isBackgroundTransparent = config.backgroundColor == Color.TRANSPARENT ||
-                                     (config.backgroundColor != null && Color.alpha(config.backgroundColor!!) < 255)
+        val isBackgroundTransparent = config.isBackgroundTransparent()
 
         val tabBarBackgroundColor = when {
             config.backgroundColor == Color.TRANSPARENT -> Color.TRANSPARENT

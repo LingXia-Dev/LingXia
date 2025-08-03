@@ -7,6 +7,21 @@ use lingxia_webview::init_webview_manager;
 use log::{error, info};
 use lxapp::{LxAppDelegate, log::LogLevel};
 
+/// Parses a color string (e.g., "#RRGGBB" or "transparent") into an i32 ARGB value for Android.
+fn parse_color_to_i32(color_str: &str, default_color: i32) -> i32 {
+    if color_str.eq_ignore_ascii_case("transparent") {
+        return 0x00000000;
+    }
+
+    if color_str.starts_with('#') && color_str.len() == 7 {
+        if let Ok(rgb) = i32::from_str_radix(&color_str[1..], 16) {
+            return (0xFF000000u32 as i32) | rgb; // Add full alpha
+        }
+    }
+
+    default_color
+}
+
 #[unsafe(no_mangle)]
 pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> jint {
     android_logger::init_once(
@@ -194,15 +209,8 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getNavigationBarConfig<'
         Err(_) => return JObject::null(),
     };
 
-    // Parse color values from hex strings
-    let bg_color_int = i32::from_str_radix(
-        &nav_config
-            .navigationBarBackgroundColor
-            .trim_start_matches('#'),
-        16,
-    )
-    .unwrap_or(0xFFFFFF)
-        | 0xFF000000u32 as i32; // Add alpha channel for Android
+    // Parse background color using unified function
+    let bg_color_int = parse_color_to_i32(&nav_config.navigationBarBackgroundColor, 0xFFFFFFFFu32 as i32);
 
     log::info!(
         "[Android] Color parsing: original={}, parsed=0x{:08X}",
@@ -351,46 +359,17 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getTabBarConfig<'a>(
         Err(_) => return JObject::null(),
     };
 
-    // Convert background color
-    let background_color = match tab_bar_config.backgroundColor.as_str() {
-        "transparent" => 0x00000000i32, // Transparent
-        color_str => {
-            if color_str.starts_with('#') && color_str.len() == 7 {
-                // Parse hex color and add full alpha channel (0xFF000000)
-                let color_value = i32::from_str_radix(&color_str[1..], 16).unwrap_or(0xFFFFFF);
-                (0xFF000000u32 as i32) | color_value
-            } else {
-                0xFFFFFFFFu32 as i32 // Default white with full alpha
-            }
-        }
-    };
+    // Convert background color using unified function
+    let background_color = parse_color_to_i32(&tab_bar_config.backgroundColor, 0xFFFFFFFFu32 as i32);
 
-    // Convert selected color
-    let selected_color = match tab_bar_config.selectedColor.as_str() {
-        color_str if color_str.starts_with('#') && color_str.len() == 7 => {
-            let color_value = i32::from_str_radix(&color_str[1..], 16).unwrap_or(0x1677FF);
-            (0xFF000000u32 as i32) | color_value
-        }
-        _ => 0xFF1677FFu32 as i32, // Default blue
-    };
+    // Convert selected color using unified function
+    let selected_color = parse_color_to_i32(&tab_bar_config.selectedColor, 0xFF1677FFu32 as i32);
 
-    // Convert unselected color
-    let color = match tab_bar_config.color.as_str() {
-        color_str if color_str.starts_with('#') && color_str.len() == 7 => {
-            let color_value = i32::from_str_radix(&color_str[1..], 16).unwrap_or(0x666666);
-            (0xFF000000u32 as i32) | color_value
-        }
-        _ => 0xFF666666u32 as i32, // Default gray
-    };
+    // Convert unselected color using unified function
+    let color = parse_color_to_i32(&tab_bar_config.color, 0xFF666666u32 as i32);
 
-    // Convert border style (color)
-    let border_style = match tab_bar_config.borderStyle.as_str() {
-        color_str if color_str.starts_with('#') && color_str.len() == 7 => {
-            let color_value = i32::from_str_radix(&color_str[1..], 16).unwrap_or(0xF0F0F0);
-            (0xFF000000u32 as i32) | color_value
-        }
-        _ => 0xFFF0F0F0u32 as i32, // Default light gray
-    };
+    // Convert border style using unified function
+    let border_style = parse_color_to_i32(&tab_bar_config.borderStyle, 0xFFF0F0F0u32 as i32);
 
     // Convert dimension (height for top/bottom, width for left/right)
     let dimension = tab_bar_config.dimension;
