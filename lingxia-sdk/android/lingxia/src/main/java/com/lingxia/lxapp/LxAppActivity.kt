@@ -313,11 +313,11 @@ class LxAppActivity : AppCompatActivity() {
                                  (tabBarBgColor != null && Color.alpha(tabBarBgColor) < 255)
 
         // Get the actual TabBar background color (considering defaults)
-        val actualTabBarColor = when {
+        val actualTabBarColor: Int = when {
             config.backgroundColor != null -> config.backgroundColor!!
             config.position == TabBarConfig.Position.LEFT || config.position == TabBarConfig.Position.RIGHT -> {
                 // Use vertical TabBar default color from TabBar class
-                Color.parseColor("#F8F8F8") // VERTICAL_TABBAR_BACKGROUND_COLOR
+                0xFFF8F8F8.toInt() // VERTICAL_TABBAR_BACKGROUND_COLOR
             }
             else -> Color.WHITE // DEFAULT_BACKGROUND_COLOR
         }
@@ -659,9 +659,9 @@ class LxAppActivity : AppCompatActivity() {
             // Set capsule background
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
-                setColor(Color.parseColor("#FFFFFF"))
+                setColor(Color.WHITE)
                 cornerRadius = 18f * resources.displayMetrics.density // Half of height (36/2) for perfect rounded corners
-                setStroke((0.5f * resources.displayMetrics.density).toInt(), Color.parseColor("#DDDDDD"))
+                setStroke((0.5f * resources.displayMetrics.density).toInt(), 0xFFDDDDDD.toInt())
             }
 
             // Capsule layout parameters - Position fixed relative to status bar
@@ -701,7 +701,7 @@ class LxAppActivity : AppCompatActivity() {
 
         // Create divider
         val divider = View(this).apply {
-            setBackgroundColor(Color.parseColor("#DDDDDD"))
+            setBackgroundColor(0xFFDDDDDD.toInt())
             layoutParams = LinearLayout.LayoutParams(
                 (0.5f * resources.displayMetrics.density).toInt(),
                 (18 * resources.displayMetrics.density).toInt()

@@ -18,20 +18,15 @@ import com.google.android.material.badge.BadgeUtils
 
 data class TabBarConfig(
     val backgroundColor: Int = Color.WHITE,                    // Background color, default white
-    val selectedColor: Int = Color.parseColor("#1677FF"),     // Selected item color, default tech blue
-    val color: Int = Color.parseColor("#666666"),             // Unselected item color, default gray
-    val borderStyle: Int = Color.parseColor("#F0F0F0"),       // Top border color, default light gray
+    val selectedColor: Int = 0xFF1677FF.toInt(),     // Selected item color, default tech blue
+    val color: Int = 0xFF666666.toInt(),             // Unselected item color, default gray
+    val borderStyle: Int = 0xFFF0F0F0.toInt(),       // Top border color, default light gray
     val dimension: Int = 64,                                  // Dimension in dp: height for top/bottom, width for left/right
     val position: Position = Position.BOTTOM,                 // Position: 0=Bottom, 1=Top, 2=Left, 3=Right
     val list: List<TabBarItem> = emptyList(),                // List of tab items
     val visible: Boolean = true                               // TabBar visibility, default true
 ) {
-    // Helper properties that ensure colors have proper alpha channel
-    val effectiveSelectedColor: Int get() =
-        if (Color.alpha(selectedColor) == 0) selectedColor or 0xFF000000.toInt() else selectedColor
-
-    val effectiveUnselectedColor: Int get() =
-        if (Color.alpha(color) == 0) color or 0xFF000000.toInt() else color
+    
 
     companion object {
         // These values MUST match exactly with Rust TabBarPosition enum!
@@ -115,9 +110,9 @@ class TabBar(context: Context) : LinearLayout(context) {
         private const val HORIZONTAL_ITEM_PADDING_SIDES_DP = 4
         private const val HORIZONTAL_ITEM_PADDING_VERTICAL_DP = 2
 
-        private val VERTICAL_BORDER_COLOR = Color.parseColor("#E0E0E0")
-        private val VERTICAL_TABBAR_BACKGROUND_COLOR = Color.parseColor("#F8F8F8")
-        private val VERTICAL_SELECTED_ITEM_BACKGROUND_COLOR = Color.parseColor("#E6F0FF")
+        private val VERTICAL_BORDER_COLOR = 0xFFE0E0E0.toInt()
+        private val VERTICAL_TABBAR_BACKGROUND_COLOR = 0xFFF8F8F8.toInt()
+        private val VERTICAL_SELECTED_ITEM_BACKGROUND_COLOR = 0xFFE6F0FF.toInt()
         private const val SELECTED_ITEM_CORNER_RADIUS_DP = 12f // Unified corner radius for updateTabState
         private const val INITIAL_SELECTED_ITEM_CORNER_RADIUS_DP = 8f // For createTabItem
     }
@@ -589,7 +584,7 @@ class TabBar(context: Context) : LinearLayout(context) {
                     text = item.text
 
                     // Use config colors with proper alpha handling
-                    setTextColor(if (isSelected) config.effectiveSelectedColor else config.effectiveUnselectedColor)
+                    setTextColor(if (isSelected) config.selectedColor else config.color)
                     setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP,
                         if (isVertical) VERTICAL_ITEM_TEXT_SIZE_SP else HORIZONTAL_ITEM_TEXT_SIZE_SP)
                     layoutParams = LayoutParams(
@@ -638,7 +633,7 @@ class TabBar(context: Context) : LinearLayout(context) {
 
         if (tabView.childCount > 1) {
             (tabView.getChildAt(1) as? TextView)?.setTextColor(
-                if (selected) config.effectiveSelectedColor else config.effectiveUnselectedColor
+                if (selected) config.selectedColor else config.color
             )
         }
     }
@@ -810,7 +805,7 @@ class TabBar(context: Context) : LinearLayout(context) {
             val borderColor = when(it.lowercase()) {
                 "black" -> Color.BLACK
                 "white" -> Color.WHITE
-                else -> Color.parseColor("#F0F0F0") // Use Rust default directly
+                else -> 0xFFF0F0F0.toInt() // Use Rust default directly
             }
             updatedConfig = updatedConfig.copy(borderStyle = borderColor)
         }
