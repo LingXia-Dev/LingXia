@@ -4,6 +4,23 @@ use lxapp::LxAppDelegate;
 use lxapp::config::LxAppInfo as CoreLxAppInfo;
 use lxapp::log::LogLevel;
 
+/// Parses a color string (e.g., "#RRGGBB" or "transparent") into a u32 ARGB value.
+fn parse_color_to_u32(color_str: &str, default_color: u32) -> u32 {
+    if color_str.eq_ignore_ascii_case("transparent") {
+        return 0x00000000;
+    }
+
+    if color_str.starts_with('#') {
+        let hex_part = &color_str[1..];
+        if hex_part.len() == 6 {
+            if let Ok(rgb) = u32::from_str_radix(hex_part, 16) {
+                return 0xFF000000 | rgb; // Add full alpha
+            }
+        }
+    }
+    default_color
+}
+
 #[swift_bridge::bridge]
 mod bridge {
     // LxApp basic information for Swift
@@ -17,7 +34,7 @@ mod bridge {
     // NavigationBar configuration for Swift
     #[swift_bridge(swift_repr = "struct")]
     pub struct NavigationBarConfig {
-        pub background_color: String,
+        pub background_color: u32,
         pub text_style: String,
         pub title_text: String,
         pub navigation_style: i32,
@@ -26,10 +43,10 @@ mod bridge {
     // TabBar configuration for Swift (without items array)
     #[swift_bridge(swift_repr = "struct")]
     pub struct TabBarConfig {
-        pub color: String,
-        pub selected_color: String,
-        pub background_color: String,
-        pub border_style: String,
+        pub color: u32,
+        pub selected_color: u32,
+        pub background_color: u32,
+        pub border_style: u32,
         pub position: i32,
         pub dimension: i32,
         pub items_count: i32,
@@ -222,7 +239,7 @@ pub fn get_navigation_bar_config(appid: &str, path: &str) -> bridge::NavigationB
 
     // Convert to FFI struct
     bridge::NavigationBarConfig {
-        background_color: nav_config.navigationBarBackgroundColor,
+        background_color: parse_color_to_u32(&nav_config.navigationBarBackgroundColor, 0xFFFFFFFF),
         text_style: nav_config.navigationBarTextStyle,
         title_text: nav_config.navigationBarTitleText,
         navigation_style: nav_config.navigationStyle.to_i32(),
@@ -237,10 +254,10 @@ pub fn get_tab_bar_config(appid: &str) -> Option<bridge::TabBarConfig> {
         .get_config()
         .get_tab_bar_config(&lxapp)
         .map(|config| bridge::TabBarConfig {
-            color: config.color,
-            selected_color: config.selectedColor,
-            background_color: config.backgroundColor,
-            border_style: config.borderStyle,
+            color: parse_color_to_u32(&config.color, 0xFF666666),
+            selected_color: parse_color_to_u32(&config.selectedColor, 0xFF1677FF),
+            background_color: parse_color_to_u32(&config.backgroundColor, 0xFFFFFFFF),
+            border_style: parse_color_to_u32(&config.borderStyle, 0xFFF0F0F0),
             position: config.position.to_i32(),
             dimension: config.dimension,
             items_count: config.list.len() as i32,
