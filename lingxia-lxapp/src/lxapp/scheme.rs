@@ -60,16 +60,12 @@ impl LxApp {
             Err(e) => {
                 error!("Static asset not found: {} - {}", path, e).with_appid(self.appid.clone());
 
-                // Return a 404 Not Found response for static assets
-                Response::builder()
-                    .status(StatusCode::NOT_FOUND)
-                    .header("Content-Type", "text/plain")
-                    .body(
-                        format!("Static asset not found: {}", path)
-                            .as_bytes()
-                            .to_vec(),
-                    )
-                    .unwrap()
+                // Return a styled 404 Not Found response for static assets
+                Self::create_error_response(
+                    StatusCode::NOT_FOUND,
+                    "Asset Not Found",
+                    &format!("The requested static asset '{}' could not be found.", path),
+                )
             }
         };
 
@@ -90,33 +86,28 @@ impl LxApp {
                 .network_security
                 .is_domain_allowed(host)
             {
-                return Some(
-                    Response::builder()
-                        .status(StatusCode::FORBIDDEN)
-                        .header("Content-Type", "text/plain")
-                        .body(format!("Access to domain '{}' is not allowed", host).into_bytes())
-                        .unwrap(),
-                );
+                return Some(Self::create_error_response(
+                    StatusCode::FORBIDDEN,
+                    "Domain Access Denied",
+                    &format!(
+                        "Access to domain '{}' is not allowed by the security policy.",
+                        host
+                    ),
+                ));
             }
 
             // Check if this is likely an API request based on request headers
             let is_api_request = self.is_api_request(&req);
             if is_api_request {
-                return Some(
-                    Response::builder()
-                        .status(StatusCode::FORBIDDEN)
-                        .header("Content-Type", "text/plain")
-                        .body(
-                            format!(
-                                "API requests are not allowed. Domain: {}, Path: {}",
-                                host,
-                                uri.path()
-                            )
-                            .as_bytes()
-                            .to_vec(),
-                        )
-                        .unwrap(),
-                );
+                return Some(Self::create_error_response(
+                    StatusCode::FORBIDDEN,
+                    "API Request Blocked",
+                    &format!(
+                        "API requests are not allowed. Domain: {}, Path: {}",
+                        host,
+                        uri.path()
+                    ),
+                ));
             }
 
             // Check if the request is for an allowed resource type based on URL
@@ -129,20 +120,14 @@ impl LxApp {
 
                 if has_extension {
                     // Has extension but not in our allowed list
-                    return Some(
-                        Response::builder()
-                            .status(StatusCode::FORBIDDEN)
-                            .header("Content-Type", "text/plain")
-                            .body(
-                                format!(
-                                    "Resource type not allowed. Domain: {}, Path: {}",
-                                    host, path
-                                )
-                                .as_bytes()
-                                .to_vec(),
-                            )
-                            .unwrap(),
-                    );
+                    return Some(Self::create_error_response(
+                        StatusCode::FORBIDDEN,
+                        "Resource Type Not Allowed",
+                        &format!(
+                            "The requested resource type is not allowed. Domain: {}, Path: {}",
+                            host, path
+                        ),
+                    ));
                 }
             }
 
@@ -151,13 +136,11 @@ impl LxApp {
         }
 
         // URI doesn't have a host component
-        Some(
-            Response::builder()
-                .status(StatusCode::BAD_REQUEST)
-                .header("Content-Type", "text/plain")
-                .body("Invalid URL: missing host".as_bytes().to_vec())
-                .unwrap(),
-        )
+        Some(Self::create_error_response(
+            StatusCode::BAD_REQUEST,
+            "Invalid URL",
+            "The URL is missing a host component and cannot be processed.",
+        ))
     }
 
     /// Check if a request is likely an API request based on headers
@@ -214,5 +197,47 @@ impl LxApp {
             }
             None => false, // No extension - could be anything
         }
+    }
+    /// Create a simple centered error response
+    fn create_error_response(status: StatusCode, title: &str, message: &str) -> Response<Vec<u8>> {
+        let html_content = format!(
+            r#"<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>{}</title>
+    <style>
+        body {{ font-family: system-ui, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; display: flex; justify-content: center; align-items: center; min-height: 100vh; }}
+        .error {{ background: white; border-radius: 8px; padding: 40px; text-align: center; max-width: 500px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
+        .code {{ font-size: 48px; font-weight: bold; color: #e74c3c; margin-bottom: 16px; }}
+        .title {{ font-size: 24px; font-weight: 600; color: #2c3e50; margin-bottom: 16px; }}
+        .message {{ font-size: 16px; color: #7f8c8d; line-height: 1.5; }}
+    </style>
+</head>
+<body>
+    <div class="error">
+        <div class="code">{}</div>
+        <div class="title">{}</div>
+        <div class="message">{}</div>
+    </div>
+</body>
+</html>"#,
+            title,
+            status.as_u16(),
+            title,
+            message
+        );
+
+        Response::builder()
+            .status(status)
+            .header("Content-Type", "text/html; charset=utf-8")
+            .body(html_content.into_bytes())
+            .unwrap_or_else(|_| {
+                Response::builder()
+                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                    .header("Content-Type", "text/plain")
+                    .body("Internal Server Error".as_bytes().to_vec())
+                    .unwrap()
+            })
     }
 }
