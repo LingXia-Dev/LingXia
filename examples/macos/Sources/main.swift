@@ -18,7 +18,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        LxApp.simulateDevice(.iPhoneSE)
+        // Option 1: Use predefined device size (convenient)
+        // LxApp.setWindowSize(.iPhoneSE)
+        // LxApp.setWindowStyle(.capsuleStyle)
+
+        // Option 2
+        LxApp.setWindowStyle(.tabStyle)
+
         LxApp.openHomeLxApp()
     }
 

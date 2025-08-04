@@ -9,8 +9,8 @@ public enum LxAppWindowStyle {
     case tabStyle
 }
 
-/// Predefined mobile devices for simulation
-public enum MobileDevice {
+/// Predefined mobile device sizes for convenience
+public enum MobileDeviceSize {
     case iPhone11           // 414 x 896
     case iPhone13Mini       // 375 x 812
     case iPhone13Pro        // 390 x 844
@@ -50,11 +50,11 @@ public class macOSLxApp {
     private static var tabWindowController: macOSWindowController?
     private static var isInitialized = false
 
-    /// Set window size using physical dimensions (internal use)
+    /// Set window size for all LxApp windows using physical dimensions
     /// - Parameters:
     ///   - widthCm: Window width in centimeters
     ///   - heightCm: Window height in centimeters
-    private static func setWindowSize(widthCm: CGFloat, heightCm: CGFloat) {
+    public static func setWindowSize(widthCm: CGFloat, heightCm: CGFloat) {
         let widthInches = widthCm / 2.54
         let heightInches = heightCm / 2.54
 
@@ -71,25 +71,15 @@ public class macOSLxApp {
         macOSWindowController.setWindowSize(width: widthPoints, height: heightPoints)
     }
 
-    /// Simulates a mobile device with specified dimensions
-    /// This creates a phone-like experience with custom title bar and capsule buttons
-    /// - Parameters:
-    ///   - width: Device width in points
-    ///   - height: Device height in points
-    public static func simulateMobileDevice(width: CGFloat, height: CGFloat) {
-        macOSWindowController.setWindowSize(width: width, height: height)
-        macOSWindowController.setWindowStyle(.capsuleStyle)
+    /// Set window size using predefined device size (convenience method)
+    /// - Parameter deviceSize: Predefined device size to use
+    public static func setWindowSize(_ deviceSize: MobileDeviceSize) {
+        macOSWindowController.setWindowSize(width: deviceSize.width, height: deviceSize.height)
     }
 
-    /// Simulates a specific mobile device
-    /// - Parameter device: Predefined device to simulate
-    public static func simulateDevice(_ device: MobileDevice) {
-        simulateMobileDevice(width: device.width, height: device.height)
-    }
-
-    /// Set window style for all LxApp windows (internal use)
+    /// Set window style for all LxApp windows
     /// - Parameter style: Window style to use
-    private static func setWindowStyle(_ style: LxAppWindowStyle) {
+    public static func setWindowStyle(_ style: LxAppWindowStyle) {
         macOSWindowController.setWindowStyle(style)
     }
 
