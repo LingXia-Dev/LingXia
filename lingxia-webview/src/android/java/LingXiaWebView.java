@@ -158,13 +158,7 @@ public class LingXiaWebView extends WebView {
      * Setup LingXia functionality on a standard Android WebView
      */
     private static void setupLingXiaWebView(android.webkit.WebView webView, String appId, String path) {
-
-        android.webkit.WebSettings settings = webView.getSettings();
-        if (settings != null) {
-            settings.setJavaScriptEnabled(true);
-            settings.setDomStorageEnabled(false);
-            Log.d(TAG, "WebView settings applied: JS enabled, DOM storage disabled");
-        }
+        applyWebViewSettings(webView.getSettings());
 
         webView.setTag(appId.hashCode(), appId);
         webView.setTag(path.hashCode(), path);
@@ -321,27 +315,34 @@ public class LingXiaWebView extends WebView {
         });
     }
 
-    private void applyWebViewSettings() {
+    /**
+     * Unified WebView settings configuration - SINGLE SOURCE OF TRUTH
+     * This method contains all WebView settings and should be the only place
+     * where WebView settings are configured.
+     */
+    private static void applyWebViewSettings(WebSettings settings) {
+        if (settings == null) {
+            return;
+        }
+
         try {
-            Log.d(TAG, "Applying WebView settings...");
-            WebSettings settings = getSettings();
-            if (settings != null) {
-                Log.d(TAG, "Got WebSettings, applying settings");
+            settings.setJavaScriptEnabled(true);
+            settings.setDomStorageEnabled(false);
 
-                // Enable JavaScript for LingXia functionality
-                settings.setJavaScriptEnabled(true);
-
-                // Disable DOM storage for security and performance
-                settings.setDomStorageEnabled(false);
-
-                Log.d(TAG, "WebView settings applied successfully");
-            } else {
-                Log.w(TAG, "WebSettings is null, skipping settings");
-            }
+            // Additional settings can be added here as needed
+            // settings.setAllowFileAccess(false);
+            // settings.setAllowContentAccess(false);
         } catch (Exception e) {
             Log.e(TAG, "Error applying WebView settings", e);
             throw e;
         }
+    }
+
+    /**
+     * Instance method wrapper for unified settings
+     */
+    private void applyWebViewSettings() {
+        applyWebViewSettings(getSettings());
     }
 
     private void setupJavaScriptInterface() {
