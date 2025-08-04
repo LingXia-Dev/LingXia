@@ -117,15 +117,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
                     tabBar.heightAnchor.constraint(equalToConstant: tabBarHeight)
                 ]
 
-            case 1: // top
-                tabBarConstraints = [
-                    tabBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-                    tabBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-                    tabBar.topAnchor.constraint(equalTo: view.topAnchor, constant: getTopMargin()),
-                    tabBar.heightAnchor.constraint(equalToConstant: tabBarHeight)
-                ]
-
-            case 2: // left
+            case 1: // left
                 tabBarConstraints = [
                     tabBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
                     tabBar.topAnchor.constraint(equalTo: view.topAnchor, constant: getTopMargin()),
@@ -133,7 +125,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
                     tabBar.widthAnchor.constraint(equalToConstant: tabBarHeight) // Use configured dimension
                 ]
 
-            case 3: // right
+            case 2: // right
                 tabBarConstraints = [
                     tabBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
                     tabBar.topAnchor.constraint(equalTo: view.topAnchor, constant: getTopMargin()),
@@ -167,15 +159,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
                         webViewContainer.bottomAnchor.constraint(equalTo: tabBar.topAnchor)
                     ]
 
-                case 1: // top
-                    webViewConstraints = [
-                        webViewContainer.topAnchor.constraint(equalTo: tabBar.bottomAnchor),
-                        webViewContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-                        webViewContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-                        webViewContainer.bottomAnchor.constraint(equalTo: view.bottomAnchor)
-                    ]
-
-                case 2: // left
+                case 1: // left
                     webViewConstraints = [
                         webViewContainer.topAnchor.constraint(equalTo: view.topAnchor, constant: getTopMargin()),
                         webViewContainer.leadingAnchor.constraint(equalTo: tabBar.trailingAnchor),
@@ -183,7 +167,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
                         webViewContainer.bottomAnchor.constraint(equalTo: view.bottomAnchor)
                     ]
 
-                case 3: // right
+                case 2: // right
                     webViewConstraints = [
                         webViewContainer.topAnchor.constraint(equalTo: view.topAnchor, constant: getTopMargin()),
                         webViewContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -263,7 +247,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         tabBar.translatesAutoresizingMaskIntoConstraints = false
 
         // Set minimum size constraints based on position using configured dimension
-        let isVertical = tabBarConfig.position == 2 || tabBarConfig.position == 3 // left, right
+        let isVertical = tabBarConfig.position == 1 || tabBarConfig.position == 2 // left, right
         let configuredDimension = CGFloat(tabBarConfig.dimension)
         if isVertical {
             // Vertical TabBar: minimum width
@@ -384,7 +368,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         button.action = #selector(tabButtonTapped(_:))
         button.translatesAutoresizingMaskIntoConstraints = false
 
-        let isVertical = tabBarConfig?.position == 2 || tabBarConfig?.position == 3 // left, right
+        let isVertical = tabBarConfig?.position == 1 || tabBarConfig?.position == 2 // left, right
         let isSelected = item.page_path.toString() == initialPath
 
         // Configure image position and scaling
@@ -687,7 +671,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         }
 
         // Set icon size based on TabBar position
-        let isVertical = tabBarConfig?.position == 2 || tabBarConfig?.position == 3
+        let isVertical = tabBarConfig?.position == 1 || tabBarConfig?.position == 2
 
         if let image = image {
             let iconSize: CGFloat = isVertical ? 20 : 24

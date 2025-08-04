@@ -127,9 +127,9 @@ public class iOSLingXiaTabBar: UIView, EnhancedTabBarProtocol, TabBarUIDelegate 
 
         for item in items {
             switch item.group {
-            case 1: // start (top for vertical, left for horizontal)
+            case 1: // start (left for horizontal)
                 startItems.append(item)
-            case 2: // end (bottom for vertical, right for horizontal) - recommended for settings
+            case 2: // end (right for horizontal) - recommended for settings
                 endItems.append(item)
             default: // 0 or any other value = middle/center (default)
                 centerItems.append(item)
@@ -454,7 +454,7 @@ public class iOSTabBarSupport {
     /// Applies tab bar layout parameters
     public static func applyTabBarLayoutParams(tabBar: iOSLingXiaTabBar, config: TabBarConfig) {
         let position = config.position
-        let isVertical = position == 2 || position == 3 // 2=left, 3=right
+        let isVertical = position == 1 || position == 2 // 1=left, 2=right
 
         // No transform needed - we handle orientation internally with UIStackView
         tabBar.transform = CGAffineTransform.identity
@@ -485,11 +485,9 @@ public class iOSTabBarSupport {
         switch tabBarPosition {
         case 0: // bottom
             return CGRect(x: 0, y: 0, width: containerFrame.width, height: containerFrame.height - tabBarHeight)
-        case 1: // top
-            return CGRect(x: 0, y: tabBarHeight, width: containerFrame.width, height: containerFrame.height - tabBarHeight)
-        case 2: // left
+        case 1: // left
             return CGRect(x: tabBarHeight, y: 0, width: containerFrame.width - tabBarHeight, height: containerFrame.height)
-        case 3: // right
+        case 2: // right
             return CGRect(x: 0, y: 0, width: containerFrame.width - tabBarHeight, height: containerFrame.height)
         default:
             return containerFrame
@@ -506,21 +504,14 @@ public class iOSTabBarSupport {
                 leading: safeArea.leadingAnchor,
                 trailing: safeArea.trailingAnchor
             )
-        case 1: // top
-            return (
-                top: safeArea.topAnchor,
-                bottom: containerView.topAnchor,
-                leading: safeArea.leadingAnchor,
-                trailing: safeArea.trailingAnchor
-            )
-        case 2: // left
+        case 1: // left
             return (
                 top: safeArea.topAnchor,
                 bottom: safeArea.bottomAnchor,
                 leading: safeArea.leadingAnchor,
                 trailing: containerView.leadingAnchor
             )
-        case 3: // right
+        case 2: // right
             return (
                 top: safeArea.topAnchor,
                 bottom: safeArea.bottomAnchor,

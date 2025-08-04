@@ -48,9 +48,8 @@ pub struct TabBarConfig {
 #[napi]
 pub enum TabBarPosition {
     Bottom = 0,
-    Top = 1,
-    Left = 2,
-    Right = 3,
+    Left = 1,
+    Right = 2,
 }
 
 /// NAPI-compatible TabItem
@@ -61,7 +60,7 @@ pub struct TabItem {
     pub icon_path: Option<String>,
     pub selected_icon_path: Option<String>,
     pub selected: bool,
-    pub group: i32, // 0=middle/center (default), 1=start (top/left), 2=end (bottom/right)
+    pub group: i32, // 0=middle/center (default), 1=start (left), 2=end (right)
 }
 
 /// NAPI-compatible Navigation style enum
@@ -201,7 +200,6 @@ fn get_tab_bar_config(appid: String) -> Option<TabBarConfig> {
 
     let position = match rust_config.position {
         lxapp::config::TabBarPosition::Bottom => TabBarPosition::Bottom,
-        lxapp::config::TabBarPosition::Top => TabBarPosition::Top,
         lxapp::config::TabBarPosition::Left => TabBarPosition::Left,
         lxapp::config::TabBarPosition::Right => TabBarPosition::Right,
     };

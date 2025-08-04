@@ -3,9 +3,8 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 // TabBar position constants
 export class TabBarPosition {
   static readonly BOTTOM: number = 0;
-  static readonly TOP: number = 1;
-  static readonly LEFT: number = 2;
-  static readonly RIGHT: number = 3;
+  static readonly LEFT: number = 1;
+  static readonly RIGHT: number = 2;
 }
 
 /**
@@ -35,8 +34,8 @@ export interface TabBarConfig {
   selectedColor?: number;
   backgroundColor?: number;
   borderStyle?: number;     // Border color as ARGB value
-  position?: number;        // 0=bottom, 1=top, 2=left, 3=right
-  dimension?: number;       // Dimension in dp: height for top/bottom, width for left/right
+  position?: number;        // 0=bottom, 1=left, 2=right
+  dimension?: number;       // Dimension in dp: height for bottom, width for left/right
   list: TabBarItem[];
 }
 
@@ -86,7 +85,7 @@ export struct TabBar {
         right: this.config.position === TabBarPosition.RIGHT ? 0 : undefined
       } : {})
     } else {
-      // Horizontal layout for bottom/top position
+      // Horizontal layout for bottom position
       Row() {
         if (this.hasGroupField()) {
           this.buildGroupedHorizontalLayout()
@@ -104,7 +103,6 @@ export struct TabBar {
       .linearGradient(this.getHorizontalGradient())
       .position(this.isTransparent() ? {
         bottom: this.config.position === TabBarPosition.BOTTOM ? 0 : undefined,
-        top: this.config.position === TabBarPosition.TOP ? 0 : undefined,
         left: 0,
         right: 0
       } : {})

@@ -5,9 +5,8 @@ extension TabBarConfig {
     /// Get position as enum
     public var positionEnum: TabBarPosition {
         switch position {
-        case 1: return .top
-        case 2: return .left
-        case 3: return .right
+        case 1: return .left
+        case 2: return .right
         default: return .bottom // 0 or any other value
         }
     }
@@ -56,7 +55,7 @@ extension TabBarConfig {
 
 /// Position enum for TabBar
 public enum TabBarPosition {
-    case top, bottom, left, right
+    case bottom, left, right
 }
 
 /// Constants used across TabBar implementations
@@ -198,7 +197,7 @@ public class TabBarController {
     /// Check if TabBar is vertical (left/right position)
     public func isVertical() -> Bool {
         guard let config = config else { return false }
-        return config.position == 2 || config.position == 3 // left=2, right=3
+        return config.position == 1 || config.position == 2 // left=1, right=2
     }
 
     /// Get resolved background color for current configuration

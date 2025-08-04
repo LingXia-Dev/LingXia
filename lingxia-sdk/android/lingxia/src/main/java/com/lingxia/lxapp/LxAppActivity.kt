@@ -315,11 +315,11 @@ class LxAppActivity : AppCompatActivity() {
         // Get the actual TabBar background color (considering defaults)
         val actualTabBarColor: Int = when {
             config.backgroundColor != null -> config.backgroundColor!!
-            config.position == TabBarConfig.Position.LEFT || config.position == TabBarConfig.Position.RIGHT -> {
-                // Use vertical TabBar default color from TabBar class
+            config.position == TabBarConfig.Position.BOTTOM -> Color.WHITE // DEFAULT_BACKGROUND_COLOR
+            else -> {
+                // Use vertical TabBar default color for LEFT/RIGHT positions
                 0xFFF8F8F8.toInt() // VERTICAL_TABBAR_BACKGROUND_COLOR
             }
-            else -> Color.WHITE // DEFAULT_BACKGROUND_COLOR
         }
 
         // Update system navigation bar transparency based on TabBar transparency and color
@@ -376,11 +376,7 @@ class LxAppActivity : AppCompatActivity() {
             } else {
                 width = ViewGroup.LayoutParams.MATCH_PARENT
                 height = tabBarSizePx
-                gravity = when (config.position) {
-                    TabBarConfig.Position.TOP -> Gravity.TOP
-                    TabBarConfig.Position.BOTTOM -> Gravity.BOTTOM
-                    else -> Gravity.BOTTOM
-                }
+                gravity = Gravity.BOTTOM
 
                 if (isTabBarTransparent && config.position == TabBarConfig.Position.BOTTOM) {
                     // For transparent TabBar, use a small fixed margin to avoid excessive spacing
@@ -404,11 +400,7 @@ class LxAppActivity : AppCompatActivity() {
             } else {
                 newLayoutParams.width = ViewGroup.LayoutParams.MATCH_PARENT
                 newLayoutParams.height = tabBarSizePx
-                newLayoutParams.gravity = when (config.position) {
-                    TabBarConfig.Position.TOP -> Gravity.TOP
-                    TabBarConfig.Position.BOTTOM -> Gravity.BOTTOM
-                    else -> Gravity.BOTTOM
-                }
+                newLayoutParams.gravity = Gravity.BOTTOM
 
                 if (isTabBarTransparent && config.position == TabBarConfig.Position.BOTTOM) {
                     // For transparent TabBar, use a small fixed margin to avoid excessive spacing
@@ -449,9 +441,6 @@ class LxAppActivity : AppCompatActivity() {
                 when (tabBar?.config?.position) {
                     TabBarConfig.Position.BOTTOM -> {
                         if (isTabBarVisible) bottomMargin = tabBarHeight
-                    }
-                    TabBarConfig.Position.TOP -> {
-                        if (isTabBarVisible) topMargin += tabBarHeight
                     }
                     TabBarConfig.Position.LEFT -> {
                         if (isTabBarVisible) leftMargin = tabBarWidth
@@ -1182,12 +1171,8 @@ class LxAppActivity : AppCompatActivity() {
     // Helper to calculate the Y translation based on visible bars
     private fun calculateWebViewTranslationY(): Float {
         // Since topMargin in updateLayoutMargins() already handles NavigationBar positioning,
-        // we only need to handle additional TabBar offset for TOP positioned TabBars
-        val tabBarOffset = if (tabBar?.visibility == View.VISIBLE && tabBar?.config?.position == TabBarConfig.Position.TOP) {
-            tabBar?.height ?: 0
-        } else {
-            0
-        }
+        // and we no longer support TOP positioned TabBars, no additional offset is needed
+        val tabBarOffset = 0
         // Return only TabBar offset, NavigationBar is handled by topMargin
         return tabBarOffset.toFloat()
     }

@@ -24,11 +24,11 @@ pub struct TabBarConfig {
     /// List of tab items
     pub list: Vec<TabItem>,
 
-    /// Position of the tab bar, can be "bottom" or "top"
+    /// Position of the tab bar, can be "bottom", "left", or "right"
     #[serde(default)]
     pub position: TabBarPosition,
 
-    /// Dimension in dp (height for bottom/top, width for left/right)
+    /// Dimension in dp (height for bottom, width for left/right)
     #[serde(default = "default_dimension")]
     pub dimension: i32,
 }
@@ -62,10 +62,6 @@ pub enum TabBarPosition {
     #[default]
     Bottom,
 
-    /// Tab bar at the top
-    #[serde(rename = "top")]
-    Top,
-
     /// Tab bar at the left
     #[serde(rename = "left")]
     Left,
@@ -80,16 +76,16 @@ pub enum TabBarPosition {
 /// **Centered Mode (Default)**: No group fields → all items centered (best for small screens)
 /// **Grouped Mode**: Any group field present → start/end distribution (best for large screens)
 ///
-/// Group values: start=top/left, end=bottom/right
+/// Group values: start=left, end=right
 /// Items without group field are treated as "start" in grouped mode
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum TabItemGroup {
-    /// Position items at the start (top for vertical, left for horizontal)
+    /// Position items at the start (left for horizontal)
     #[serde(rename = "start")]
     Start,
 
-    /// Position items at the end (bottom for vertical, right for horizontal)
+    /// Position items at the end (right for horizontal)
     /// Recommended for: Settings, logout, secondary actions
     #[serde(rename = "end")]
     End,
@@ -100,9 +96,8 @@ impl TabBarPosition {
     pub fn to_i32(&self) -> i32 {
         match self {
             TabBarPosition::Bottom => 0,
-            TabBarPosition::Top => 1,
-            TabBarPosition::Left => 2,
-            TabBarPosition::Right => 3,
+            TabBarPosition::Left => 1,
+            TabBarPosition::Right => 2,
         }
     }
 }
@@ -119,8 +114,8 @@ impl TabBarPosition {
 ///
 /// ## Group Positioning
 /// When TabBar position is "left" or "right" on large screens, items can be grouped:
-/// - `group: "start"` - Items appear at the top (left side when vertical)
-/// - `group: "end"` - Items appear at the bottom (right side when vertical)
+/// - `group: "start"` - Items appear at the left side when vertical
+/// - `group: "end"` - Items appear at the right side when vertical
 /// - `group: null` or unspecified - Items use default center positioning
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[allow(non_snake_case)]

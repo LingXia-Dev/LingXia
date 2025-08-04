@@ -21,8 +21,8 @@ data class TabBarConfig(
     val selectedColor: Int = 0xFF1677FF.toInt(),     // Selected item color, default tech blue
     val color: Int = 0xFF666666.toInt(),             // Unselected item color, default gray
     val borderStyle: Int = 0xFFF0F0F0.toInt(),       // Top border color, default light gray
-    val dimension: Int = 64,                                  // Dimension in dp: height for top/bottom, width for left/right
-    val position: Position = Position.BOTTOM,                 // Position: 0=Bottom, 1=Top, 2=Left, 3=Right
+    val dimension: Int = 64,                                  // Dimension in dp: height for bottom, width for left/right
+    val position: Position = Position.BOTTOM,                 // Position: 0=Bottom, 1=Left, 2=Right
     val list: List<TabBarItem> = emptyList(),                // List of tab items
     val visible: Boolean = true                               // TabBar visibility, default true
 ) {
@@ -41,14 +41,11 @@ data class TabBarConfig(
         /** Tab bar at the bottom (default) - MUST match Rust Bottom = 0 */
         const val POSITION_BOTTOM = 0
 
-        /** Tab bar at the top - MUST match Rust Top = 1 */
-        const val POSITION_TOP = 1
+        /** Tab bar at the left - MUST match Rust Left = 1 */
+        const val POSITION_LEFT = 1
 
-        /** Tab bar at the left - MUST match Rust Left = 2 */
-        const val POSITION_LEFT = 2
-
-        /** Tab bar at the right - MUST match Rust Right = 3 */
-        const val POSITION_RIGHT = 3
+        /** Tab bar at the right - MUST match Rust Right = 2 */
+        const val POSITION_RIGHT = 2
 
 
     }
@@ -56,13 +53,11 @@ data class TabBarConfig(
     // Position enum for backward compatibility, with int values matching constants
     enum class Position(val value: Int) {
         BOTTOM(POSITION_BOTTOM),
-        TOP(POSITION_TOP),
         LEFT(POSITION_LEFT),
         RIGHT(POSITION_RIGHT);
 
         companion object {
             fun fromInt(value: Int): Position = when(value) {
-                POSITION_TOP -> TOP
                 POSITION_LEFT -> LEFT
                 POSITION_RIGHT -> RIGHT
                 else -> BOTTOM // default
@@ -90,7 +85,7 @@ private val badgeDrawables = mutableMapOf<View, BadgeDrawable>()
 /**
  * TabBar component for mini apps, supporting:
  * - Customizable tab items with icons and text
- * - Top/bottom positioning
+ * - Bottom/left/right positioning
  * - Notification badges (red dot and text)
  * - Dynamic styling and content updates
  */
@@ -172,7 +167,7 @@ class TabBar(context: Context) : LinearLayout(context) {
             // Gravity for aligning children (tab items) within itemsContainer
             gravity = if (orientation == VERTICAL) { // itemsContainer is vertical (TabBar is LEFT/RIGHT)
                 Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            } else { // itemsContainer is horizontal (TabBar is TOP/BOTTOM)
+            } else { // itemsContainer is horizontal (TabBar is BOTTOM)
                 Gravity.CENTER
             }
 
@@ -215,7 +210,7 @@ class TabBar(context: Context) : LinearLayout(context) {
             // Gravity for aligning children (tab items) within itemsContainer
             gravity = if (orientation == VERTICAL) { // itemsContainer is vertical (TabBar is LEFT/RIGHT)
                 Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            } else { // itemsContainer is horizontal (TabBar is TOP/BOTTOM)
+            } else { // itemsContainer is horizontal (TabBar is BOTTOM)
                 Gravity.CENTER
             }
         }
@@ -227,18 +222,6 @@ class TabBar(context: Context) : LinearLayout(context) {
         val isBackgroundTransparent = config.isBackgroundTransparent()
 
         when (config.position.value) {
-            TabBarConfig.POSITION_TOP -> {
-                addView(itemsContainer)
-                if (!isBackgroundTransparent) {
-                    addView(View(context).apply {
-                        setBackgroundColor(config.borderStyle)
-                        layoutParams = LayoutParams(
-                            ViewGroup.LayoutParams.MATCH_PARENT,
-                            (ITEM_BORDER_THICKNESS_DP * resources.displayMetrics.density).toInt()
-                        )
-                    })
-                }
-            }
             TabBarConfig.POSITION_BOTTOM -> {
                 if (!isBackgroundTransparent) {
                     addView(View(context).apply {

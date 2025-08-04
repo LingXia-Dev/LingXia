@@ -407,9 +407,8 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getTabBarConfig<'a>(
     };
 
     let position_enum_value = match position_int {
-        1 => "TOP",
-        2 => "LEFT",
-        3 => "RIGHT",
+        1 => "LEFT",
+        2 => "RIGHT",
         _ => "BOTTOM", // default
     };
 

@@ -204,10 +204,6 @@ export struct LxAppContainer {
     } else {
       Stack() {
         Column() {
-          if (this.tabBarConfig && this.tabBarConfig.position === TabBarPosition.TOP) {
-            this.buildTabBar()
-          }
-
           this.buildNavigationBar()
           this.buildWebViewArea()
 
@@ -261,8 +257,6 @@ export struct LxAppContainer {
   private getTabBarAlignment(): Alignment {
     const position = this.tabBarConfig?.position || 'bottom';
     switch (position) {
-      case 'top':
-        return Alignment.Top;
       case 'left':
         return Alignment.Start;
       case 'right':

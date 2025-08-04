@@ -47,13 +47,10 @@ public class macOSViewControllerSupport {
             switch tabBarPosition {
             case 0: // bottom
                 contentFrame.size.height -= tabBarHeight
-            case 1: // top
-                contentFrame.origin.y += tabBarHeight
-                contentFrame.size.height -= tabBarHeight
-            case 2: // left
+            case 1: // left
                 contentFrame.origin.x += tabBarHeight
                 contentFrame.size.width -= tabBarHeight
-            case 3: // right
+            case 2: // right
                 contentFrame.size.width -= tabBarHeight
             default:
                 contentFrame.size.height -= tabBarHeight

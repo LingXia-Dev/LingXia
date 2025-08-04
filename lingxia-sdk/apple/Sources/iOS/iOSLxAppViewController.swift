@@ -610,12 +610,9 @@ public class iOSLxAppViewController: UIViewController {
     }
 
     private func calculateTopAnchor() -> (NSLayoutYAxisAnchor, CGFloat) {
-        let isTopTabBar = tabBar?.config?.position == 1 // 1 = top
         let hasNavigationBar = navigationBar != nil
 
-        if isTopTabBar {
-            return (tabBar?.bottomAnchor ?? rootContainer.topAnchor, 0)
-        } else if hasNavigationBar {
+        if hasNavigationBar {
             return (navigationBar!.bottomAnchor, 0)
         } else {
             return (rootContainer.topAnchor, 0)
@@ -677,7 +674,7 @@ public class iOSLxAppViewController: UIViewController {
                 tabBar.bottomAnchor.constraint(equalTo: rootContainer.bottomAnchor)
             ])
 
-            if config.position == 2 { // left
+            if config.position == 1 { // left
                 tabBar.leadingAnchor.constraint(equalTo: rootContainer.leadingAnchor).isActive = true
             } else {
                 tabBar.trailingAnchor.constraint(equalTo: rootContainer.trailingAnchor).isActive = true
@@ -689,15 +686,10 @@ public class iOSLxAppViewController: UIViewController {
                 tabBar.trailingAnchor.constraint(equalTo: rootContainer.trailingAnchor)
             ])
 
-            if config.position == 1 { // top
-                // For top position, place TabBar right after the fixed status bar area (48pt)
-                tabBar.topAnchor.constraint(equalTo: rootContainer.topAnchor, constant: PLATFORM_STATUS_BAR_HEIGHT).isActive = true
-            } else {
-                // For bottom position, always extend to view.bottomAnchor to cover safe area
-                // Both transparent and opaque TabBars extend to actual screen bottom
-                // The difference is handled internally by the TabBar component
-                tabBar.bottomAnchor.constraint(equalTo: view.bottomAnchor).isActive = true
-            }
+            // For bottom position, always extend to view.bottomAnchor to cover safe area
+            // Both transparent and opaque TabBars extend to actual screen bottom
+            // The difference is handled internally by the TabBar component
+            tabBar.bottomAnchor.constraint(equalTo: view.bottomAnchor).isActive = true
         }
     }
 
@@ -837,14 +829,9 @@ public class iOSLxAppViewController: UIViewController {
         let topAnchor: NSLayoutYAxisAnchor
         let topConstant: CGFloat
 
-        let isTopTabBar = tabBar?.config?.position == 1 // 1 = top
         let hasNavigationBar = navigationBar != nil
 
-        if isTopTabBar {
-            // WebView starts from TabBar bottom when TabBar is at top
-            topAnchor = tabBar?.bottomAnchor ?? rootContainer.topAnchor
-            topConstant = 0
-        } else if hasNavigationBar {
+        if hasNavigationBar {
             // WebView starts from NavigationBar bottom when NavigationBar exists
             // FORCE correct positioning: NavigationBar is at Y=0 with height=STATUS_BAR_HEIGHT+44
             topAnchor = rootContainer.topAnchor
@@ -854,7 +841,7 @@ public class iOSLxAppViewController: UIViewController {
                    navigationBar!.view.frame.origin.x, navigationBar!.view.frame.origin.y,
                    navigationBar!.view.frame.size.width, navigationBar!.view.frame.size.height)
         } else {
-            // WebView fills entire screen when no NavigationBar or top TabBar
+            // WebView fills entire screen when no NavigationBar
             topAnchor = rootContainer.topAnchor
             topConstant = 0
         }
@@ -881,8 +868,8 @@ public class iOSLxAppViewController: UIViewController {
         let leadingAnchor: NSLayoutXAxisAnchor
         let trailingAnchor: NSLayoutXAxisAnchor
 
-        let isLeftTabBar = tabBar?.config?.position == 2 // 2 = left
-        let isRightTabBar = tabBar?.config?.position == 3 // 3 = right
+        let isLeftTabBar = tabBar?.config?.position == 1 // 1 = left
+        let isRightTabBar = tabBar?.config?.position == 2 // 2 = right
 
         if isLeftTabBar {
             let isTabBarTransparent = TabBarConfig.isTransparent(tabBar?.config?.background_color ?? 0)

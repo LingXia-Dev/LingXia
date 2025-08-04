@@ -24,11 +24,9 @@ public class macOSTabBar: NSView, EnhancedTabBarProtocol, TabBarUIDelegate {
         switch position {
         case 0: // bottom
             tabBarFrame = NSRect(x: 0, y: 0, width: containerFrame.width, height: tabBarHeight)
-        case 1: // top
-            tabBarFrame = NSRect(x: 0, y: containerFrame.height - tabBarHeight, width: containerFrame.width, height: tabBarHeight)
-        case 2: // left
+        case 1: // left
             tabBarFrame = NSRect(x: 0, y: 0, width: tabBarHeight, height: containerFrame.height)
-        case 3: // right
+        case 2: // right
             tabBarFrame = NSRect(x: containerFrame.width - tabBarHeight, y: 0, width: tabBarHeight, height: containerFrame.height)
         default:
             tabBarFrame = NSRect(x: 0, y: 0, width: containerFrame.width, height: tabBarHeight)
@@ -44,11 +42,9 @@ public class macOSTabBar: NSView, EnhancedTabBarProtocol, TabBarUIDelegate {
         switch tabBarPosition {
         case 0: // bottom
             return CGRect(x: 0, y: tabBarHeight, width: containerFrame.width, height: containerFrame.height - tabBarHeight)
-        case 1: // top
-            return CGRect(x: 0, y: 0, width: containerFrame.width, height: containerFrame.height - tabBarHeight)
-        case 2: // left
+        case 1: // left
             return CGRect(x: tabBarHeight, y: 0, width: containerFrame.width - tabBarHeight, height: containerFrame.height)
-        case 3: // right
+        case 2: // right
             return CGRect(x: 0, y: 0, width: containerFrame.width - tabBarHeight, height: containerFrame.height)
         default:
             return CGRect(x: 0, y: tabBarHeight, width: containerFrame.width, height: containerFrame.height - tabBarHeight)
@@ -280,9 +276,9 @@ public class macOSTabBar: NSView, EnhancedTabBarProtocol, TabBarUIDelegate {
 
         for item in items {
             switch item.group {
-            case 1: // start (top for vertical, left for horizontal)
+            case 1: // start (left for horizontal)
                 startItems.append(item)
-            case 2: // end (bottom for vertical, right for horizontal) - recommended for settings
+            case 2: // end (right for horizontal) - recommended for settings
                 endItems.append(item)
             default: // 0 or any other value = middle/center (default)
                 centerItems.append(item)
