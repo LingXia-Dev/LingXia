@@ -99,61 +99,54 @@ impl LxApp {
                 );
             }
 
-            // Then check if the request is for an allowed resource type
-            let path = uri.path();
-            let extension = path.rfind('.').map(|pos| path[pos + 1..].to_lowercase());
-
-            // Allow media resources and JavaScript/CSS from trusted domain
-            let is_allowed_resource = match extension.as_ref() {
-                Some(ext) => {
-                    let is_media_resource = matches!(
-                        ext.as_str(),
-                        // Images
-                        "jpg" | "jpeg" | "png" | "gif" | "svg" | "webp" | "ico" |
-                        // Audio
-                        "mp3" | "wav" | "ogg" |
-                        // Video
-                        "mp4" | "webm" | "ogv" |
-                        // multimedia playlist
-                        "m3u" | "m3u8"|
-                        // Fonts
-                        "ttf" | "woff" | "woff2" | "eot"
-                    );
-
-                    let is_script_or_style = matches!(ext.as_str(), "js" | "css");
-
-                    // Allow media resources always, and scripts/styles only from trusted domain
-                    is_media_resource || is_script_or_style
-                }
-                None => false, // No extension, likely not a static resource
-            };
-
-            // Check content type in the Accept header if available
-            let accept_header = req.headers().get("Accept").and_then(|h| h.to_str().ok());
-            let is_api_request = match accept_header {
-                Some(accept) => {
-                    accept.contains("application/json")
-                        || accept.contains("application/xml")
-                        || (accept.contains("application/") && !accept.contains("javascript"))
-                }
-                None => false,
-            };
-
-            // Block API requests or non-allowed resource types
-            if is_api_request || !is_allowed_resource {
+            // Check if this is likely an API request based on request headers
+            let is_api_request = self.is_api_request(&req);
+            if is_api_request {
                 return Some(
                     Response::builder()
                         .status(StatusCode::FORBIDDEN)
                         .header("Content-Type", "text/plain")
                         .body(
-                            format!("Only static resources are allowed. Domain: {}, Path: {}, Extension: {:?}",
-                                   host, path, extension).as_bytes().to_vec(),
+                            format!(
+                                "API requests are not allowed. Domain: {}, Path: {}",
+                                host,
+                                uri.path()
+                            )
+                            .as_bytes()
+                            .to_vec(),
                         )
                         .unwrap(),
                 );
             }
 
-            // Resource type is allowed, let the request proceed
+            // Check if the request is for an allowed resource type based on URL
+            let is_allowed_resource = self.is_allowed_resource_by_url(uri.path());
+
+            if !is_allowed_resource {
+                // Check if this looks like a typical web page request (no extension)
+                let path = uri.path();
+                let has_extension = path.rfind('.').is_some();
+
+                if has_extension {
+                    // Has extension but not in our allowed list
+                    return Some(
+                        Response::builder()
+                            .status(StatusCode::FORBIDDEN)
+                            .header("Content-Type", "text/plain")
+                            .body(
+                                format!(
+                                    "Resource type not allowed. Domain: {}, Path: {}",
+                                    host, path
+                                )
+                                .as_bytes()
+                                .to_vec(),
+                            )
+                            .unwrap(),
+                    );
+                }
+            }
+
+            // Resource type is allowed or undetermined, let the request proceed
             return None;
         }
 
@@ -165,5 +158,61 @@ impl LxApp {
                 .body("Invalid URL: missing host".as_bytes().to_vec())
                 .unwrap(),
         )
+    }
+
+    /// Check if a request is likely an API request based on headers
+    fn is_api_request(&self, req: &Request<Vec<u8>>) -> bool {
+        // Check Content-Type for POST/PUT requests
+        if let Some(content_type) = req
+            .headers()
+            .get("Content-Type")
+            .and_then(|h| h.to_str().ok())
+        {
+            if content_type.contains("application/json") || content_type.contains("application/xml")
+            {
+                return true;
+            }
+        }
+
+        // Check for common API path patterns
+        let path = req.uri().path().to_lowercase();
+        if path.contains("/api/") || path.contains("/rest/") || path.contains("/graphql") {
+            return true;
+        }
+
+        false
+    }
+
+    /// Check if a URL path represents an allowed static resource
+    fn is_allowed_resource_by_url(&self, path: &str) -> bool {
+        let extension = path.rfind('.').map(|pos| path[pos + 1..].to_lowercase());
+
+        match extension.as_ref() {
+            Some(ext) => {
+                matches!(
+                    ext.as_str(),
+                    // Images
+                    "jpg" | "jpeg" | "png" | "gif" | "svg" | "webp" | "ico" | "bmp" | "tiff" |
+                    // Audio
+                    "mp3" | "wav" | "ogg" | "aac" | "flac" | "m4a" |
+                    // Video
+                    "mp4" | "webm" | "ogv" | "avi" | "mov" | "wmv" | "flv" |
+                    // Multimedia playlist
+                    "m3u" | "m3u8" | "pls" |
+                    // Fonts
+                    "ttf" | "woff" | "woff2" | "eot" | "otf" |
+                    // Scripts and styles (from trusted domains)
+                    "js" | "css" | "mjs" |
+                    // Documents and archives (common static files)
+                    "pdf" | "doc" | "docx" | "xls" | "xlsx" | "ppt" | "pptx" |
+                    "zip" | "rar" | "7z" | "tar" | "gz" |
+                    // Text files
+                    "txt" | "md" | "csv" |
+                    // Data files
+                    "json" | "xml" | "yaml" | "yml"
+                )
+            }
+            None => false, // No extension - could be anything
+        }
     }
 }
