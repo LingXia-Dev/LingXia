@@ -3,10 +3,7 @@ use crate::log::{LogBuilder, LogLevel, LogTag};
 use crate::lxapp::LxApp;
 use crate::{error, info};
 
-use rong::{
-    JSContext, JSFunc, JSResult, JSRuntime, Rong, RongJS, RongJSError, Source, Worker,
-    WorkerMessage,
-};
+use rong::{JSContext, JSFunc, JSResult, JSRuntime, RongJSError, Source};
 use rong_modules::{console, fs, http, storage};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -27,7 +24,7 @@ mod lx;
 
 /// Message type for LxApp service system
 #[derive(Clone)]
-enum ServiceMessage {
+pub(crate) enum ServiceMessage {
     // Create a new lxapp service
     CreateLxApp {
         lxapp: Arc<LxApp>,
@@ -75,28 +72,34 @@ pub enum PageSvcSource {
 }
 
 #[derive(Clone)]
-struct WorkerService {
-    svc: ServiceMessage,
+pub(crate) struct WorkerService {
+    pub(crate) svc: ServiceMessage,
 }
 
 /// Manager for LxApp services
 pub(crate) struct LxAppServiceManager {
     sender: Sender<ServiceMessage>,
+    receiver: Arc<Mutex<mpsc::Receiver<ServiceMessage>>>,
     worker_assignments: HashMap<String, usize>, // appid -> worker_id
     free_workers: Vec<usize>,                   // available worker ids
 }
 
 impl LxAppServiceManager {
-    fn new(sender: Sender<ServiceMessage>, worker_count: usize) -> Self {
+    fn new(
+        sender: Sender<ServiceMessage>,
+        receiver: Arc<Mutex<mpsc::Receiver<ServiceMessage>>>,
+        worker_count: usize,
+    ) -> Self {
         Self {
             sender,
+            receiver,
             worker_assignments: HashMap::new(),
             free_workers: Vec::with_capacity(worker_count),
         }
     }
 
     // Initialize the free workers pool with worker IDs
-    fn init_free_workers(&mut self, worker_ids: Vec<usize>) {
+    pub(crate) fn init_free_workers(&mut self, worker_ids: Vec<usize>) {
         self.free_workers = worker_ids;
     }
 
@@ -157,7 +160,7 @@ impl LxAppServiceManager {
         Ok(())
     }
 
-    fn get_worker_id(&self, appid: &str) -> Option<usize> {
+    pub(crate) fn get_worker_id(&self, appid: &str) -> Option<usize> {
         self.worker_assignments.get(appid).copied()
     }
 
@@ -178,6 +181,11 @@ impl LxAppServiceManager {
             return Some(worker_id);
         }
         None
+    }
+
+    /// Get the service message receiver for the executor
+    pub(crate) fn get_service_receiver(&self) -> Arc<Mutex<mpsc::Receiver<ServiceMessage>>> {
+        self.receiver.clone()
     }
 
     /// Call a function on an App service
@@ -291,7 +299,7 @@ async fn handle_native_source(
 
 /// The core logic for a persistent worker task.
 /// This function is a handler for messages received by the worker.
-async fn lxapp_service_handler(
+pub(crate) async fn lxapp_service_handler(
     worker_id: usize,
     manager: Arc<Mutex<LxAppServiceManager>>,
     runtime: JSRuntime,
@@ -474,140 +482,17 @@ pub(crate) fn init(num: usize) -> Arc<Mutex<LxAppServiceManager>> {
     let (service_sender, service_receiver) = mpsc::channel::<ServiceMessage>();
     let service_receiver = Arc::new(Mutex::new(service_receiver));
 
-    let barrier = Arc::new(std::sync::Barrier::new(2));
-    let worker_barrier = barrier.clone();
-
-    // Create the manager with the controller and log sender
+    // Create the manager
     let manager = Arc::new(Mutex::new(LxAppServiceManager::new(
         service_sender.clone(),
+        service_receiver.clone(),
         num,
     )));
 
-    // Clone the manager to return at the end
-    let result_manager = manager.clone();
+    // Initialize the executor with the manager
+    let _executor = crate::executor::LxAppExecutor::init(num, manager.clone());
 
-    // Clone manager for use in thread
-    let manager_clone = manager.clone();
-
-    std::thread::spawn(move || {
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .expect("Failed to create worker runtime");
-
-        // Run the worker setup and central message loop
-        rt.block_on(async {
-            let rong = Rong::<RongJS>::builder().with_num_workers(num).build();
-
-            // Acquire all workers upfront
-            let mut workers = Vec::with_capacity(num);
-            for _i in 0..num {
-                if let Ok(worker) = rong.get_worker().await {
-                    workers.push(worker);
-                }
-            }
-
-            // Create worker map for ID-based lookups
-            let workers_map: HashMap<usize, Worker<RongJS>> =
-                workers.iter().map(|w| (w.id(), w.clone())).collect();
-
-            // Initialize free workers with all worker IDs
-            {
-                let mut manager = manager_clone.lock().unwrap();
-                manager.init_free_workers(workers_map.keys().copied().collect());
-
-                worker_barrier.wait();
-            }
-
-            // Set up tasks for each worker
-            for worker in &workers {
-                let worker_id = worker.id();
-                let manager_c = manager_clone.clone();
-
-                if worker
-                    .spawn_future(async move |runtime, mut receiver| {
-                        // JSContext it's not Sendable, so we don't hold appid-> JSContext map in
-                        // LxAppServiceManager
-                        // a worker either has a current context or it doesn't
-                        let mut current_ctx: Option<JSContext> = None;
-
-                        while let Some(WorkerMessage::Custom(cmd)) = receiver.recv().await {
-                            if let Ok(service) = cmd.downcast::<WorkerService>() {
-                                lxapp_service_handler(
-                                    worker_id,
-                                    manager_c.clone(),
-                                    runtime.clone(),
-                                    service.svc,
-                                    &mut current_ctx,
-                                )
-                                .await;
-                            }
-                        }
-
-                        // Clean up context when worker is shutting down
-                        current_ctx.take();
-
-                        Ok(())
-                    })
-                    .is_err()
-                {
-                    error!("Failed to spawn worker {}", worker_id);
-                }
-            }
-
-            let recv = service_receiver.clone();
-            loop {
-                match recv.lock().unwrap().recv() {
-                    Ok(message) => {
-                        match &message {
-                            ServiceMessage::CreateLxApp { lxapp } => {
-                                let appid = &lxapp.appid;
-                                // Find worker for appid and send message
-                                if let Some(worker_id) =
-                                    manager_clone.lock().unwrap().get_worker_id(appid)
-                                {
-                                    if let Some(worker) = workers_map.get(&worker_id) {
-                                        let _ = worker.post_message(WorkerMessage::Custom(
-                                            Box::new(WorkerService {
-                                                svc: message.clone(),
-                                            }),
-                                        ));
-                                    }
-                                }
-                            }
-                            ServiceMessage::TerminateLxApp { appid }
-                            | ServiceMessage::CallAppSvc { appid, .. }
-                            | ServiceMessage::CallPageSvc { appid, .. }
-                            | ServiceMessage::TerminatePage { appid, .. }
-                            | ServiceMessage::CreatePage { appid, .. } => {
-                                // Find worker for appid and send message
-                                if let Some(worker_id) =
-                                    manager_clone.lock().unwrap().get_worker_id(appid)
-                                {
-                                    if let Some(worker) = workers_map.get(&worker_id) {
-                                        let _ = worker.post_message(WorkerMessage::Custom(
-                                            Box::new(WorkerService {
-                                                svc: message.clone(),
-                                            }),
-                                        ));
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    Err(_) => {
-                        error!("Service message channel closed");
-                        break;
-                    }
-                }
-            }
-
-            let _ = rong.join_all().await;
-        });
-    });
-
-    barrier.wait();
-    result_manager
+    manager
 }
 
 /// Wrapper for LxApp to implement external traits

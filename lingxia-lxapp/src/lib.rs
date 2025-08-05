@@ -1,6 +1,7 @@
 mod app;
 mod appservice;
 mod error;
+mod executor;
 pub mod log;
 mod lxapp;
 mod page;
