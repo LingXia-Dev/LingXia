@@ -662,7 +662,7 @@ public class iOSLxAppViewController: UIViewController {
     }
 
     private func applyTabBarLayoutParams(tabBar: LingXiaTabBar, config: TabBarConfig) {
-        let isVertical = config.position == 2 || config.position == 3 // 2=left, 3=right
+        let isVertical = config.position == 1 || config.position == 2 // 1=left, 2=right
         let tabBarSize = CGFloat(config.dimension) // Use configured dimension instead of default
 
         tabBar.translatesAutoresizingMaskIntoConstraints = false
