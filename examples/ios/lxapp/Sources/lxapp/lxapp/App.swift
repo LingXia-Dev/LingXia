@@ -12,6 +12,9 @@ public struct ContentView: View {
                 if !Self.hasInitialized {
                     Self.hasInitialized = true
                     LxApp.initialize()
+                    // Enable WebView debugging
+                    LxApp.enableWebViewDebugging()
+
                     LxApp.openHomeLxApp()
                 }
             }

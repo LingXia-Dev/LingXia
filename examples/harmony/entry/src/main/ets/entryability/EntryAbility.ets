@@ -21,6 +21,9 @@ export default class EntryAbility extends UIAbility {
     // Initialize LxApp with context and windowStage (includes status bar setup)
     LxApp.initialize(this.context, windowStage);
 
+    // Enable WebView debugging
+    LxApp.enableWebViewDebugging();
+
     windowStage.loadContent('pages/Index', (err) => {
       if (err.code) {
         hilog.error(DOMAIN, 'testTag', 'Failed to load the content. Cause: %{public}s', JSON.stringify(err));
