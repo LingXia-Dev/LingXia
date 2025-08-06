@@ -86,8 +86,7 @@ pub trait WebViewController: Send + Sync {
         self.evaluate_javascript(js_code)
     }
 
-    /// Enable or disable developer tools
-    fn set_devtools(&self, enabled: bool) -> Result<(), LxAppError>;
+
 
     /// Clear browsing data from the WebView
     fn clear_browsing_data(&self) -> Result<(), LxAppError>;

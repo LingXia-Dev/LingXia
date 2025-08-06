@@ -519,19 +519,7 @@ impl WebViewInner {
         }
     }
 
-    /// Helper method to set devtools on main thread
-    fn set_devtools_on_main_thread(&self, enabled: bool) -> Result<(), LxAppError> {
-        unsafe {
-            // Check if isInspectable is available (iOS 16.4+)
-            let responds: bool =
-                msg_send![self.webview, respondsToSelector: objc2::sel!(setInspectable:)];
-            if responds {
-                let _: () = msg_send![self.webview, setInspectable: enabled];
-                log::info!("Devtools {}", if enabled { "enabled" } else { "disabled" });
-            }
-            Ok(())
-        }
-    }
+
 
     /// Helper method to set user agent on main thread
     fn set_user_agent_on_main_thread(&self, ua: String) -> Result<(), LxAppError> {
@@ -696,25 +684,7 @@ impl WebViewController for WebViewInner {
         }
     }
 
-    fn set_devtools(&self, enabled: bool) -> Result<(), LxAppError> {
-        if MainThreadMarker::new().is_some() {
-            // Already on main thread, execute directly
-            self.set_devtools_on_main_thread(enabled)
-        } else {
-            // Not on main thread, dispatch to main thread using GCD
-            let webview_ptr_addr = self.webview as usize;
 
-            DispatchQueue::main().exec_async(move || unsafe {
-                let webview_ptr = webview_ptr_addr as *mut AnyObject;
-                let configuration: *mut AnyObject = msg_send![webview_ptr, configuration];
-                let preferences: *mut AnyObject = msg_send![configuration, preferences];
-                let key_nsstring = NSString::from_str("developerExtrasEnabled");
-                let _: () = msg_send![preferences, setValue: enabled, forKey: &*key_nsstring];
-            });
-
-            Ok(())
-        }
-    }
 
     fn set_user_agent(&self, ua: String) -> Result<(), LxAppError> {
         if MainThreadMarker::new().is_some() {

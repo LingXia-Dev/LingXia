@@ -5,7 +5,6 @@ import {
   createWebViewController,
   destroyWebViewController,
   loadUrl,
-  setWebDebuggingAccess,
   clearBrowsingData,
   setUserAgent,
   setScrollListenerEnabled
@@ -66,10 +65,7 @@ class NativeBridge {
       return loadUrl(webtag, url);
     });
 
-    // WebView debugging access
-    this.register('setDevtools', (webtag: string, enable: boolean) => {
-      return setWebDebuggingAccess(webtag, enable);
-    });
+
 
 
     // WebView data management
@@ -132,10 +128,7 @@ export function getNativeCallbackFunction(): (data: string) => Object | null {
 
       // Convert arguments based on function type
       let args: Object[] = rawArgs;
-      if (functionName === 'setDevtools' && rawArgs.length >= 2) {
-        // Convert the second argument (enable) from string to boolean
-        args = [rawArgs[0], rawArgs[1] === 'true'];
-      } else if (functionName === 'setScrollListenerEnabled' && rawArgs.length >= 2) {
+      if (functionName === 'setScrollListenerEnabled' && rawArgs.length >= 2) {
         // Convert the second argument (enabled) from string to boolean
         args = [rawArgs[0], rawArgs[1] === 'true'];
       }

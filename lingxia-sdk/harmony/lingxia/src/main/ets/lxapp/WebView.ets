@@ -164,27 +164,7 @@ export class WebViewManager {
     }
   }
 
-  /**
-   * Set web debugging access for WebView
-   * @param webtag - WebView tag
-   * @param enable - Whether to enable web debugging
-   * @returns true if setting applied successfully, false if WebView not found or setting failed
-   */
-  static setWebDebuggingAccess(webtag: string, enable: boolean): boolean {
-    if (!WebViewManager.controllers.has(webtag)) {
-      hilog.warn(DOMAIN, TAG, `WebView not found for setWebDebuggingAccess: ${webtag}`);
-      return false;
-    }
 
-    try {
-      webview.WebviewController.setWebDebuggingAccess(enable);
-      hilog.info(DOMAIN, TAG, `Set web debugging access for WebView ${webtag}: ${enable}`);
-      return true;
-    } catch (error) {
-      hilog.error(DOMAIN, TAG, `Failed to set web debugging access for WebView ${webtag}: ${error}`);
-      return false;
-    }
-  }
 
   /**
    * Clear browsing data for WebView
@@ -403,16 +383,7 @@ export function loadUrl(webtag: string, url: string): boolean {
   return WebViewManager.loadUrl(webtag, url);
 }
 
-/**
- * Set web debugging access for WebView
- * @param webtag - WebView tag
- * @param enable - Whether to enable web debugging
- * @returns true if setting applied successfully
- */
-export function setWebDebuggingAccess(webtag: string, enable: boolean): boolean {
-  //return WebViewManager.setWebDebuggingAccess(webtag, enable);
-  return true;
-}
+
 
 /**
  * Clear browsing data for WebView

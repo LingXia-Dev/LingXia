@@ -474,14 +474,7 @@ impl LxApp {
             return;
         }
 
-        // Enable devtools if debug mode is enabled
-        if self.is_debug_enabled() {
-            if let Err(e) = page.webview_controller().set_devtools(true) {
-                error!("Failed to enable devtools: {}", e)
-                    .with_appid(self.appid.clone())
-                    .with_path(path.to_string());
-            }
-        }
+
 
         // Load HTML - this might fail on HarmonyOS if WebView isn't ready yet
         let html_data = self.generate_page_html(path);
