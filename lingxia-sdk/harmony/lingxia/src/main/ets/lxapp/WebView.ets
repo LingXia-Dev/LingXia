@@ -164,8 +164,6 @@ export class WebViewManager {
     }
   }
 
-
-
   /**
    * Clear browsing data for WebView
    * @param webtag - WebView tag
@@ -301,6 +299,15 @@ export class WebViewManager {
   static getAllWebViewInfos(): WebViewInfo[] {
     return Array.from(WebViewManager.webViewInfos.values());
   }
+
+  /**
+   * Enable WebView debugging globally
+   * This affects all WebView instances created after this call
+   */
+  static enableDebugging(): void {
+    webview.WebviewController.setWebDebuggingAccess(true);
+    hilog.info(DOMAIN, TAG, 'WebView debugging enabled globally');
+  }
 }
 
 /**
@@ -382,8 +389,6 @@ export function destroyWebViewController(webtag: string): boolean {
 export function loadUrl(webtag: string, url: string): boolean {
   return WebViewManager.loadUrl(webtag, url);
 }
-
-
 
 /**
  * Clear browsing data for WebView

@@ -103,11 +103,13 @@ export class LxApp {
 
       // Initialize Web component core: initialize the Browser process and create BrowserContext.
       webview.WebviewController.initializeWebEngine();
-
-      webview.WebviewController.setWebDebuggingAccess(true);
     } else {
       hilog.error(DOMAIN, TAG, 'Failed to get home LxApp details from native init.');
     }
+  }
+
+  public static enableWebViewDebugging(): void {
+    WebViewManager.enableDebugging();
   }
 
   public static openHomeLxApp(): void {
