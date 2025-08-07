@@ -9,7 +9,6 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::Path;
 use std::rc::Rc;
-use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, mpsc};
 
 mod app;
@@ -74,165 +73,6 @@ pub enum PageSvcSource {
 #[derive(Clone)]
 pub(crate) struct WorkerService {
     pub(crate) svc: ServiceMessage,
-}
-
-/// Manager for LxApp services
-pub(crate) struct LxAppServiceManager {
-    sender: Sender<ServiceMessage>,
-    receiver: Arc<Mutex<mpsc::Receiver<ServiceMessage>>>,
-    worker_assignments: HashMap<String, usize>, // appid -> worker_id
-    free_workers: Vec<usize>,                   // available worker ids
-}
-
-impl LxAppServiceManager {
-    fn new(
-        sender: Sender<ServiceMessage>,
-        receiver: Arc<Mutex<mpsc::Receiver<ServiceMessage>>>,
-        worker_count: usize,
-    ) -> Self {
-        Self {
-            sender,
-            receiver,
-            worker_assignments: HashMap::new(),
-            free_workers: Vec::with_capacity(worker_count),
-        }
-    }
-
-    // Initialize the free workers pool with worker IDs
-    pub(crate) fn init_free_workers(&mut self, worker_ids: Vec<usize>) {
-        self.free_workers = worker_ids;
-    }
-
-    /// Create a new mini app service
-    pub fn create_app_svc(&mut self, lxapp: Arc<crate::lxapp::LxApp>) -> Result<(), LxAppError> {
-        let appid = &lxapp.appid;
-
-        // Check if app already exists
-        if self.worker_assignments.contains_key(appid) {
-            return Ok(());
-        }
-
-        // Check if we have free workers available
-        if self.free_workers.is_empty() {
-            return Err(LxAppError::ResourceExhausted(
-                "No available workers".to_string(),
-            ));
-        }
-
-        // Get a free worker
-        let worker_id = self.free_workers.pop().unwrap();
-
-        // Update assignment
-        self.worker_assignments.insert(appid.clone(), worker_id);
-
-        // Send message with LxApp reference
-        self.sender
-            .send(ServiceMessage::CreateLxApp { lxapp: lxapp })?;
-
-        Ok(())
-    }
-
-    /// Create a new page service in an existing mini app
-    pub fn create_page_svc(&self, appid: String, path: String) -> Result<(), LxAppError> {
-        self.sender
-            .send(ServiceMessage::CreatePage { appid, path })?;
-        Ok(())
-    }
-
-    /// Terminate a page service in a mini app
-    pub fn terminate_page_svc(&self, appid: String, path: String) -> Result<(), LxAppError> {
-        self.sender
-            .send(ServiceMessage::TerminatePage { appid, path })?;
-
-        Ok(())
-    }
-
-    /// Terminate a mini app service
-    pub fn terminate_app_svc(&mut self, appid: String) -> Result<(), LxAppError> {
-        // If we have this app, get its worker ID
-        if let Some(worker_id) = self.worker_assignments.remove(&appid) {
-            // Return worker to free pool
-            self.free_workers.push(worker_id);
-        }
-
-        self.sender.send(ServiceMessage::TerminateLxApp { appid })?;
-
-        Ok(())
-    }
-
-    pub(crate) fn get_worker_id(&self, appid: &str) -> Option<usize> {
-        self.worker_assignments.get(appid).copied()
-    }
-
-    fn add_lxapp(&mut self, appid: &str, worker_id: usize) {
-        // Update assignment map
-        self.worker_assignments.insert(appid.to_string(), worker_id);
-
-        // Remove from free workers if present
-        if let Some(pos) = self.free_workers.iter().position(|&id| id == worker_id) {
-            self.free_workers.remove(pos);
-        }
-    }
-
-    fn remove_lxapp(&mut self, appid: &str) -> Option<usize> {
-        // If we have this app, get its worker ID and add back to free pool
-        if let Some(worker_id) = self.worker_assignments.remove(appid) {
-            self.free_workers.push(worker_id);
-            return Some(worker_id);
-        }
-        None
-    }
-
-    /// Get the service message receiver for the executor
-    pub(crate) fn get_service_receiver(&self) -> Arc<Mutex<mpsc::Receiver<ServiceMessage>>> {
-        self.receiver.clone()
-    }
-
-    /// Call a function on an App service
-    pub fn app_svc(
-        &self,
-        appid: String,
-        name: String,
-        args: Option<String>,
-    ) -> Result<(), LxAppError> {
-        self.sender
-            .send(ServiceMessage::CallAppSvc { appid, name, args })?;
-
-        Ok(())
-    }
-
-    /// Call a function on a Page service from the view layer
-    pub fn handle_view_message(
-        &self,
-        appid: String,
-        path: String,
-        incoming: Arc<bridge::IncomingMessage>,
-    ) -> Result<(), LxAppError> {
-        self.sender.send(ServiceMessage::CallPageSvc {
-            appid,
-            path,
-            source: PageSvcSource::View { incoming },
-        })?;
-
-        Ok(())
-    }
-
-    /// Call a function on a Page service from native code
-    pub fn invoke_page_function(
-        &self,
-        appid: String,
-        path: String,
-        name: String,
-        args: Option<String>,
-    ) -> Result<(), LxAppError> {
-        self.sender.send(ServiceMessage::CallPageSvc {
-            appid,
-            path,
-            source: PageSvcSource::Native { name, args },
-        })?;
-
-        Ok(())
-    }
 }
 
 // Handles a call to an App service function
@@ -301,7 +141,6 @@ async fn handle_native_source(
 /// This function is a handler for messages received by the worker.
 pub(crate) async fn lxapp_service_handler(
     worker_id: usize,
-    manager: Arc<Mutex<LxAppServiceManager>>,
     runtime: JSRuntime,
     message: ServiceMessage,
     current_ctx: &mut Option<JSContext>,
@@ -366,23 +205,10 @@ pub(crate) async fn lxapp_service_handler(
             }
 
             *current_ctx = Some(ctx.clone());
-
-            // Only lock once to update app info
-            {
-                let mut manager_guard = manager.lock().unwrap();
-                manager_guard.add_lxapp(&lxapp.appid, worker_id);
-            }
         }
         ServiceMessage::TerminateLxApp { appid } => {
             if current_ctx.is_some() {
                 *current_ctx = None;
-
-                // Only lock once to update app info
-                {
-                    let mut manager_guard = manager.lock().unwrap();
-                    manager_guard.remove_lxapp(&appid);
-                }
-
                 info!("[Worker {}] Removed LxApp context ", worker_id).with_appid(appid.clone());
             }
         }
@@ -476,23 +302,61 @@ pub(crate) async fn lxapp_service_handler(
     }
 }
 
-/// Initialize the LxAppService system
-/// Returns the LxAppServiceManager for the caller to manage
-pub(crate) fn init(num: usize) -> Arc<Mutex<LxAppServiceManager>> {
-    let (service_sender, service_receiver) = mpsc::channel::<ServiceMessage>();
-    let service_receiver = Arc::new(Mutex::new(service_receiver));
+/// Create a new mini-app service - enforces 1:1 appid->worker mapping
+pub(crate) fn create_app_svc(
+    lxapp: Arc<crate::lxapp::LxApp>,
+    sender: &mpsc::Sender<ServiceMessage>,
+    worker_assignments: &Arc<Mutex<HashMap<String, usize>>>,
+    free_workers: &Arc<Mutex<Vec<usize>>>,
+) -> Result<(), LxAppError> {
+    let appid = lxapp.appid.clone();
 
-    // Create the manager
-    let manager = Arc::new(Mutex::new(LxAppServiceManager::new(
-        service_sender.clone(),
-        service_receiver.clone(),
-        num,
-    )));
+    // Check if app already has a dedicated worker (enforce 1:1 mapping)
+    if worker_assignments.lock().unwrap().contains_key(&appid) {
+        info!("App {} already has a dedicated worker", appid);
+        return Ok(());
+    }
 
-    // Initialize the executor with the manager
-    let _executor = crate::executor::LxAppExecutor::init(num, manager.clone());
+    // Check if we have free workers available
+    let worker_id = {
+        let mut free_workers_guard = free_workers.lock().unwrap();
+        if free_workers_guard.is_empty() {
+            return Err(LxAppError::ResourceExhausted(
+                "No available workers for new mini-app".to_string(),
+            ));
+        }
+        free_workers_guard.pop().unwrap()
+    };
 
-    manager
+    // Establish the 1:1 mapping: appid -> worker_id
+    worker_assignments
+        .lock()
+        .unwrap()
+        .insert(appid.clone(), worker_id);
+
+    // Send message to create the runtime in the dedicated worker
+    sender.send(ServiceMessage::CreateLxApp { lxapp })?;
+
+    info!("Assigned dedicated worker {} to app {}", worker_id, appid);
+    Ok(())
+}
+
+/// Terminate a mini-app service - breaks 1:1 mapping and returns worker to pool
+pub(crate) fn terminate_app_svc(
+    appid: String,
+    sender: &mpsc::Sender<ServiceMessage>,
+    worker_assignments: &Arc<Mutex<HashMap<String, usize>>>,
+    free_workers: &Arc<Mutex<Vec<usize>>>,
+) -> Result<(), LxAppError> {
+    // Break the 1:1 mapping and release the dedicated worker
+    if let Some(worker_id) = worker_assignments.lock().unwrap().remove(&appid) {
+        // Return the worker to free pool for reuse by other mini-apps
+        free_workers.lock().unwrap().push(worker_id);
+        info!("Released dedicated worker {} from app {}", worker_id, appid);
+    }
+
+    sender.send(ServiceMessage::TerminateLxApp { appid })?;
+    Ok(())
 }
 
 /// Wrapper for LxApp to implement external traits

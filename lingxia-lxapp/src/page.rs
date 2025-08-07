@@ -1,4 +1,4 @@
-use crate::appservice::LxAppServiceManager;
+use crate::executor::LxAppExecutor;
 use crate::{AppRuntime, LxAppError, error};
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
@@ -141,7 +141,7 @@ impl Pages {
         appid: String,
         path: String,
         controller: Arc<dyn AppRuntime>,
-        svc_manager: Arc<Mutex<LxAppServiceManager>>,
+        executor: Arc<LxAppExecutor>,
     ) -> Result<Page, LxAppError> {
         // Check if page already exists
         if self.pages.contains_key(&path) {
@@ -149,9 +149,7 @@ impl Pages {
         }
 
         // Page doesn't exist, create it
-        Ok(self
-            .create_page(appid, path, controller, svc_manager)?
-            .clone())
+        Ok(self.create_page(appid, path, controller, executor)?.clone())
     }
 
     /// Set tab bar items with ordered paths and initialize stacks
@@ -191,7 +189,7 @@ impl Pages {
         appid: String,
         path: String,
         controller: Arc<dyn AppRuntime>,
-        svc_manager: Arc<Mutex<LxAppServiceManager>>,
+        executor: Arc<LxAppExecutor>,
     ) -> Result<Page, LxAppError> {
         if self.pages.len() >= self.max_pages {
             self.destroy_least_active();
@@ -204,7 +202,7 @@ impl Pages {
         let page = Page::new_with_webview(
             appid.clone(),
             path.clone(),
-            svc_manager.clone(),
+            executor.clone(),
             webview_controller,
         );
 
@@ -212,14 +210,8 @@ impl Pages {
         self.pages.insert(path.clone(), page.clone());
 
         // Request to create page service
-        if let Ok(guard) = svc_manager.lock() {
-            if let Err(e) = guard.create_page_svc(appid.clone(), path.clone()) {
-                error!("Failed to request page service creation: {}", e)
-                    .with_appid(appid.clone())
-                    .with_path(path.clone());
-            }
-        } else {
-            error!("Mutex poisoned when trying to create page service")
+        if let Err(e) = executor.create_page_svc(appid.clone(), path.clone()) {
+            error!("Failed to request page service creation: {}", e)
                 .with_appid(appid.clone())
                 .with_path(path.clone());
         }
@@ -373,8 +365,8 @@ pub(crate) struct PageInner {
 
     // Reference to the WebView controller (required)
     webview_controller: Arc<dyn WebViewController>,
-    // Reference to the service manager
-    svc_manager: Arc<Mutex<LxAppServiceManager>>,
+    // Reference to the executor
+    executor: Arc<LxAppExecutor>,
 
     // Time when this page was last active
     last_active_time: Arc<Mutex<Instant>>,
@@ -402,13 +394,13 @@ impl Page {
     fn new_with_webview(
         appid: String,
         path: String,
-        svc_manager: Arc<Mutex<LxAppServiceManager>>,
+        executor: Arc<LxAppExecutor>,
         webview_controller: Arc<dyn WebViewController>,
     ) -> Self {
         let inner = Arc::new(PageInner {
             appid,
             path,
-            svc_manager,
+            executor,
             last_active_time: Arc::new(Mutex::new(Instant::now())),
             state: Arc::new(Mutex::new(PageState::Created)),
             webview_controller,
@@ -466,10 +458,9 @@ impl Page {
     }
 
     fn terminate_page_service(&self) -> Result<(), LxAppError> {
-        if let Ok(guard) = self.inner.svc_manager.lock() {
-            guard.terminate_page_svc(self.inner.appid.clone(), self.inner.path.clone())?;
-        }
-
+        self.inner
+            .executor
+            .terminate_page_svc(self.inner.appid.clone(), self.inner.path.clone())?;
         Ok(())
     }
 }

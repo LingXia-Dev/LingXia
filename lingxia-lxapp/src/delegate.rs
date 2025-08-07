@@ -62,13 +62,14 @@ impl LxAppDelegate for LxApp {
         }
 
         // Use the Arc<Self> directly instead of looking it up in the global manager
-        if let Ok(mut svc_manager) = self.svc_manager.lock() {
-            if let Err(e) = svc_manager.create_app_svc(self.clone()) {
-                error!("Failed to trigger app service: {}", e).with_appid(self.appid.clone());
-            }
-            if let Err(e) = svc_manager.app_svc(self.appid.clone(), "onLaunch".to_string(), None) {
-                error!("Failed to trigger onLaunch service: {}", e).with_appid(self.appid.clone());
-            }
+        if let Err(e) = self.executor.create_app_svc(self.clone()) {
+            error!("Failed to trigger app service: {}", e).with_appid(self.appid.clone());
+        }
+        if let Err(e) =
+            self.executor
+                .call_app_service(self.appid.clone(), "onLaunch".to_string(), None)
+        {
+            error!("Failed to trigger onLaunch service: {}", e).with_appid(self.appid.clone());
         }
 
         // Create the page for the given path if it doesn't exist
@@ -78,7 +79,7 @@ impl LxAppDelegate for LxApp {
             self.appid.clone(),
             path.clone(),
             self.runtime.clone(),
-            self.svc_manager.clone(),
+            self.executor.clone(),
         ) {
             error!("Failed to create page for initial_route: {}", e)
                 .with_appid(self.appid.clone())
@@ -98,25 +99,21 @@ impl LxAppDelegate for LxApp {
     }
 
     fn on_page_started(self: &Arc<Self>, path: String) {
-        if let Ok(manager) = self.svc_manager.lock() {
-            let _ = manager.invoke_page_function(
-                self.appid.clone(),
-                path.clone(),
-                "onLoad".to_string(),
-                None,
-            );
-        }
+        let _ = self.executor.call_page_service(
+            self.appid.clone(),
+            path.clone(),
+            "onLoad".to_string(),
+            None,
+        );
     }
 
     fn on_page_finished(self: &Arc<Self>, path: String) {
-        if let Ok(manager) = self.svc_manager.lock() {
-            let _ = manager.invoke_page_function(
-                self.appid.clone(),
-                path.clone(),
-                "onReady".to_string(),
-                None,
-            );
-        }
+        let _ = self.executor.call_page_service(
+            self.appid.clone(),
+            path.clone(),
+            "onReady".to_string(),
+            None,
+        );
     }
 
     fn on_page_show(self: &Arc<Self>, path: String) {
@@ -151,31 +148,29 @@ impl LxAppDelegate for LxApp {
             .pages
             .navigate_to_page(path.clone());
 
-        if let Ok(manager) = self.svc_manager.lock() {
-            // Call onHide for the previous page if there was a page switch
-            if let Some(prev_path) = previous_page {
-                if let Err(e) = manager.invoke_page_function(
-                    self.appid.clone(),
-                    prev_path.clone(),
-                    "onHide".to_string(),
-                    None,
-                ) {
-                    error!("Failed to call onHide for page {}: {}", prev_path, e)
-                        .with_appid(self.appid.clone());
-                }
-            }
-
-            // Call onShow for the new page
-            if let Err(e) = manager.invoke_page_function(
+        // Call onHide for the previous page if there was a page switch
+        if let Some(prev_path) = previous_page {
+            if let Err(e) = self.executor.call_page_service(
                 self.appid.clone(),
-                path.clone(),
-                "onShow".to_string(),
+                prev_path.clone(),
+                "onHide".to_string(),
                 None,
             ) {
-                error!("Failed to call onShow: {}", e)
-                    .with_appid(self.appid.clone())
-                    .with_path(path.clone());
+                error!("Failed to call onHide for page {}: {}", prev_path, e)
+                    .with_appid(self.appid.clone());
             }
+        }
+
+        // Call onShow for the new page
+        if let Err(e) = self.executor.call_page_service(
+            self.appid.clone(),
+            path.clone(),
+            "onShow".to_string(),
+            None,
+        ) {
+            error!("Failed to call onShow: {}", e)
+                .with_appid(self.appid.clone())
+                .with_path(path.clone());
         }
 
         // precreate webviews for other tab pages
@@ -196,7 +191,7 @@ impl LxAppDelegate for LxApp {
                     self.appid.clone(),
                     p.clone(),
                     self.runtime.clone(),
-                    self.svc_manager.clone(),
+                    self.executor.clone(),
                 ) {
                     drop(state); // Release lock before setup
 
@@ -273,12 +268,11 @@ impl LxAppDelegate for LxApp {
     fn handle_post_message(self: &Arc<Self>, path: String, msg: String) {
         let incoming = appservice::bridge::IncomingMessage::from_json_str(&msg).unwrap();
 
-        if let Ok(manager) = self.svc_manager.lock() {
-            if let Err(e) =
-                manager.handle_view_message(self.appid.clone(), path, Arc::new(incoming))
-            {
-                error!("Failed to create app service: {}", e).with_appid(self.appid.clone());
-            }
+        if let Err(e) =
+            self.executor
+                .handle_view_message(self.appid.clone(), path, Arc::new(incoming))
+        {
+            error!("Failed to create app service: {}", e).with_appid(self.appid.clone());
         }
     }
 

@@ -9,8 +9,8 @@ use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
 
 use crate::app::AppConfig;
-use crate::appservice::{self, LxAppServiceManager};
 use crate::error::LxAppError;
+use crate::executor::LxAppExecutor;
 pub use crate::page::PageState;
 use crate::page::{Page, Pages};
 use crate::{AppRuntime, error, info};
@@ -49,9 +49,9 @@ pub struct LxApps {
     /// When exceeded, least recently used apps are destroyed
     max_apps: usize,
 
-    /// Reference to the app service manager
-    /// Handles background services for mini apps
-    pub(crate) svc_manager: Arc<Mutex<LxAppServiceManager>>,
+    /// Reference to the executor
+    /// Handles async task execution for mini apps
+    pub(crate) executor: Arc<LxAppExecutor>,
 
     /// Current user ID (hashed for privacy)
     /// Used to generate directory names for user-specific storage
@@ -61,7 +61,7 @@ pub struct LxApps {
 impl LxApps {
     fn new<T: AppRuntime + 'static>(
         runtime: T,
-        svc_manager: Arc<Mutex<LxAppServiceManager>>,
+        executor: Arc<LxAppExecutor>,
         max_apps: usize,
     ) -> Self {
         let runtime = Arc::new(runtime);
@@ -73,7 +73,7 @@ impl LxApps {
             lxapps: DashMap::new(),
             runtime,
             max_apps,
-            svc_manager,
+            executor,
             user_id,
         }
     }
@@ -123,7 +123,7 @@ impl LxApps {
         let new_lxapp = Arc::new(LxApp::new(
             appid.clone(),
             self.runtime.clone(),
-            self.svc_manager.clone(),
+            self.executor.clone(),
         ));
 
         // Insert into collection and return
@@ -158,10 +158,8 @@ impl LxApps {
             info!("Destroying least active mini app").with_appid(appid.clone());
 
             // Clean up app service before removing the app
-            if let Ok(mut svc_manager) = self.svc_manager.lock() {
-                if let Err(e) = svc_manager.terminate_app_svc(appid.clone()) {
-                    error!("Failed to terminate app service: {}", e).with_appid(appid.clone());
-                }
+            if let Err(e) = self.executor.terminate_app_svc(appid.clone()) {
+                error!("Failed to terminate app service: {}", e).with_appid(appid.clone());
             }
 
             self.lxapps.remove(&appid);
@@ -235,7 +233,7 @@ pub struct LxApp {
     pub home_lxapp: bool,
     pub version: String,
     pub(crate) config: LxAppConfig,
-    pub(crate) svc_manager: Arc<Mutex<LxAppServiceManager>>,
+    pub(crate) executor: Arc<LxAppExecutor>,
 
     // Mutable state - protected by mutex for fine-grained locking
     pub(crate) state: Mutex<LxAppState>,
@@ -249,11 +247,7 @@ pub struct LxAppNavigator {
 }
 
 impl LxApp {
-    fn _new(
-        appid: String,
-        runtime: Arc<dyn AppRuntime>,
-        svc_manager: Arc<Mutex<LxAppServiceManager>>,
-    ) -> Self {
+    fn _new(appid: String, runtime: Arc<dyn AppRuntime>, executor: Arc<LxAppExecutor>) -> Self {
         Self {
             appid,
             runtime,
@@ -264,18 +258,14 @@ impl LxApp {
             home_lxapp: false,
             version: String::new(),
             config: LxAppConfig::default(),
-            svc_manager,
+            executor,
             state: Mutex::new(LxAppState::new()),
         }
     }
 
     /// Create a new regular mini-app (not home app)
-    fn new(
-        appid: String,
-        runtime: Arc<dyn AppRuntime>,
-        svc_manager: Arc<Mutex<LxAppServiceManager>>,
-    ) -> Self {
-        let mut app = Self::_new(appid, runtime, svc_manager);
+    fn new(appid: String, runtime: Arc<dyn AppRuntime>, executor: Arc<LxAppExecutor>) -> Self {
+        let mut app = Self::_new(appid, runtime, executor);
         if let Err(e) = app.setup() {
             error!("Setup failed: {}", e).with_appid(&app.appid);
         }
@@ -287,9 +277,9 @@ impl LxApp {
     fn new_as_home(
         appid: String,
         runtime: Arc<dyn AppRuntime>,
-        svc_manager: Arc<Mutex<LxAppServiceManager>>,
+        executor: Arc<LxAppExecutor>,
     ) -> Self {
-        let mut app = Self::_new(appid, runtime, svc_manager);
+        let mut app = Self::_new(appid, runtime, executor);
 
         // Mark as home lxapp
         app.home_lxapp = true;
@@ -647,13 +637,13 @@ pub fn init<R: AppRuntime + 'static>(runtime: R) -> Option<String> {
                 }
             }
 
-            let svc_manager = appservice::init(max_apps);
+            let executor = crate::executor::LxAppExecutor::init(max_apps);
 
             // Create the home LxApp instance
             let mut home_lxapp = LxApp::new_as_home(
                 home_lxapp_appid.clone(),
                 runtime_arc.clone(),
-                svc_manager.clone(),
+                executor.clone(),
             );
 
             // Check if home mini app needs updating after loading its configuration
@@ -672,7 +662,7 @@ pub fn init<R: AppRuntime + 'static>(runtime: R) -> Option<String> {
             }
 
             // Create LxApps manager
-            let lxapps_manager = Arc::new(LxApps::new(runtime_arc.clone(), svc_manager, max_apps));
+            let lxapps_manager = Arc::new(LxApps::new(runtime_arc.clone(), executor, max_apps));
 
             // Add home lxapp to the manager
             let home_lxapp_arc = Arc::new(home_lxapp);
