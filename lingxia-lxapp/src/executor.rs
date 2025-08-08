@@ -293,4 +293,14 @@ impl LxAppExecutor {
         })?;
         Ok(())
     }
+
+    /// Spawn a task in a separate thread
+    pub fn spawn_task<F>(closure: F)
+    where
+        F: FnOnce() + Send + 'static,
+    {
+        std::thread::spawn(move || {
+            closure();
+        });
+    }
 }

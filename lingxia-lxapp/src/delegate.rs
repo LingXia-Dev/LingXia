@@ -2,6 +2,7 @@ use http::{Response, StatusCode};
 use std::sync::Arc;
 use std::time::Instant;
 
+use crate::executor::LxAppExecutor;
 use crate::log::{self, LogLevel, LogTag};
 use crate::page::PageState;
 use crate::{LxApp, appservice, error, info};
@@ -179,27 +180,33 @@ impl LxAppDelegate for LxApp {
             self.config.is_initial_route(&path) && current_state == PageState::Loaded;
 
         if should_precreate {
-            let tab_pages = self.config.get_tab_pages();
-            for p in tab_pages {
-                if p == path {
-                    continue;
-                }
+            let self_clone = self.clone();
+            let current_path = path.clone();
 
-                // Create new page and setup content
-                let mut state = self.state.lock().unwrap();
-                if let Ok(page) = state.pages.create_page(
-                    self.appid.clone(),
-                    p.clone(),
-                    self.runtime.clone(),
-                    self.executor.clone(),
-                ) {
-                    drop(state); // Release lock before setup
+            // Offload precreate work to background thread
+            LxAppExecutor::spawn_task(move || {
+                let tab_pages = self_clone.config.get_tab_pages();
+                for p in tab_pages {
+                    if p == current_path {
+                        continue;
+                    }
 
-                    // On HarmonyOS, setup_page might fail if WebView isn't ready yet
-                    // This is OK - the page will be setup when onPageShow is called for that tab
-                    self.setup_page(&page, &p);
+                    // Create new page and setup content
+                    let mut state = self_clone.state.lock().unwrap();
+                    if let Ok(page) = state.pages.create_page(
+                        self_clone.appid.clone(),
+                        p.clone(),
+                        self_clone.runtime.clone(),
+                        self_clone.executor.clone(),
+                    ) {
+                        drop(state); // Release lock before setup
+
+                        // On HarmonyOS, setup_page might fail if WebView isn't ready yet
+                        // This is OK - the page will be setup when onPageShow is called for that tab
+                        self_clone.setup_page(&page, &p);
+                    }
                 }
-            }
+            });
         }
 
         // Mark page as shown (at the end of on_page_show)
