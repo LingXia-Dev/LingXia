@@ -134,24 +134,6 @@ impl Pages {
         self.pages.get(path)
     }
 
-    /// Get an existing page or create a new one if it doesn't exist
-    /// Returns a clone of the page (existing or newly created)
-    pub fn get_or_create_page(
-        &mut self,
-        appid: String,
-        path: String,
-        controller: Arc<dyn AppRuntime>,
-        executor: Arc<LxAppExecutor>,
-    ) -> Result<Page, LxAppError> {
-        // Check if page already exists
-        if self.pages.contains_key(&path) {
-            return Ok(self.pages.get(&path).unwrap().clone());
-        }
-
-        // Page doesn't exist, create it
-        Ok(self.create_page(appid, path, controller, executor)?.clone())
-    }
-
     /// Set tab bar items with ordered paths and initialize stacks
     ///
     /// # Arguments
@@ -182,39 +164,51 @@ impl Pages {
         !self.tab_paths.is_empty()
     }
 
-    /// Creates a new page and adds it to the pages collection
-    /// Returns the newly created page
-    pub fn create_page(
+    /// Creates a new page placeholder and initiates WebView creation asynchronously
+    /// Returns the page immediately, WebView will be attached when ready
+    pub fn create_page<F>(
         &mut self,
         appid: String,
         path: String,
         controller: Arc<dyn AppRuntime>,
         executor: Arc<LxAppExecutor>,
-    ) -> Result<Page, LxAppError> {
+        setup_callback: F,
+    ) -> Result<Page, LxAppError>
+    where
+        F: Fn(&Page, &str) + Send + 'static,
+    {
         if self.pages.len() >= self.max_pages {
             self.destroy_least_active();
         }
 
-        // Create WebView controller for this page (required)
-        let webview_controller = controller.create_webview(appid.clone(), path.clone())?;
-
-        // Create and insert new page with WebView controller
-        let page = Page::new_with_webview(
-            appid.clone(),
-            path.clone(),
-            executor.clone(),
-            webview_controller,
-        );
+        // Create page without WebView first
+        let page = Page::new(appid.clone(), path.clone(), executor.clone());
 
         // Insert the page into the hashmap
         self.pages.insert(path.clone(), page.clone());
 
-        // Request to create page service
-        if let Err(e) = executor.create_page_svc(appid.clone(), path.clone()) {
-            error!("Failed to request page service creation: {}", e)
-                .with_appid(appid.clone())
-                .with_path(path.clone());
-        }
+        // Initiate WebView creation asynchronously
+        let page_clone = page.clone();
+        let appid_clone = appid.clone();
+        let path_clone = path.clone();
+
+        LxAppExecutor::spawn_task(move || {
+            // Create WebView controller asynchronously
+            match controller.create_webview(appid_clone.clone(), path_clone.clone()) {
+                Ok(webview_controller) => {
+                    // Attach WebView to page
+                    page_clone.attach_webview(webview_controller);
+
+                    // Call setup callback - let external code handle the rest
+                    setup_callback(&page_clone, &path_clone);
+                }
+                Err(e) => {
+                    error!("Failed to create WebView: {}", e)
+                        .with_appid(appid_clone)
+                        .with_path(path_clone);
+                }
+            }
+        });
 
         Ok(page)
     }
@@ -363,8 +357,8 @@ pub(crate) struct PageInner {
     appid: String,
     path: String,
 
-    // Reference to the WebView controller (required)
-    webview_controller: Arc<dyn WebViewController>,
+    // Reference to the WebView controller (optional, set when WebView is ready)
+    webview_controller: Arc<Mutex<Option<Arc<dyn WebViewController>>>>,
     // Reference to the executor
     executor: Arc<LxAppExecutor>,
 
@@ -377,7 +371,8 @@ pub(crate) struct PageInner {
 
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub enum PageState {
-    Created, // Page created but no HTML loaded
+    Pending, // Page created, WebView creation in progress
+    Created, // Page created and WebView attached, but no HTML loaded
     Loaded,  // HTML loaded into page
     Showed,  // Page has been shown to user
     Unknown, // Unknown state
@@ -391,22 +386,27 @@ pub struct Page {
 }
 
 impl Page {
-    fn new_with_webview(
-        appid: String,
-        path: String,
-        executor: Arc<LxAppExecutor>,
-        webview_controller: Arc<dyn WebViewController>,
-    ) -> Self {
+    /// Create a new page in pending state (WebView creation in progress)
+    fn new(appid: String, path: String, executor: Arc<LxAppExecutor>) -> Self {
         let inner = Arc::new(PageInner {
             appid,
             path,
             executor,
             last_active_time: Arc::new(Mutex::new(Instant::now())),
-            state: Arc::new(Mutex::new(PageState::Created)),
-            webview_controller,
+            state: Arc::new(Mutex::new(PageState::Pending)),
+            webview_controller: Arc::new(Mutex::new(None)),
         });
 
         Self { inner }
+    }
+
+    /// Attach WebView controller to this page (called when WebView is ready)
+    fn attach_webview(&self, webview_controller: Arc<dyn WebViewController>) {
+        if let Ok(mut controller_guard) = self.inner.webview_controller.lock() {
+            *controller_guard = Some(webview_controller);
+            // Update state to Created when WebView is attached
+            self.set_page_state(PageState::Created);
+        }
     }
 
     // pls proivde one api to set page state ,one api to get
@@ -424,9 +424,13 @@ impl Page {
             .unwrap_or(PageState::Unknown)
     }
 
-    /// Get the WebView controller for this page
-    pub(crate) fn webview_controller(&self) -> Arc<dyn WebViewController> {
-        self.inner.webview_controller.clone()
+    /// Get the WebView controller for this page (returns None if not ready)
+    pub(crate) fn webview_controller(&self) -> Option<Arc<dyn WebViewController>> {
+        self.inner
+            .webview_controller
+            .lock()
+            .ok()
+            .and_then(|guard| guard.clone())
     }
 
     /// Load HTML content into this page's WebView
@@ -435,9 +439,11 @@ impl Page {
     /// * `html_data` - The HTML content to load
     /// * `base_url` - Base URL for resolving relative paths in the HTML
     pub(crate) fn load_html(&self, html_data: String, base_url: String) -> Result<(), LxAppError> {
-        self.inner.webview_controller.load_data(
-            html_data, base_url, None, // Use base_url as history_url
-        )
+        if let Some(controller) = self.webview_controller() {
+            controller.load_data(html_data, base_url, None)
+        } else {
+            Err(LxAppError::WebView("WebView not ready".to_string()))
+        }
     }
 
     /// Returns the appid of this page

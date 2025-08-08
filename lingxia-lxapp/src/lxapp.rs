@@ -466,10 +466,12 @@ impl LxApp {
 
         // Enable devtools if debug mode is enabled
         if self.is_debug_enabled() {
-            if let Err(e) = page.webview_controller().set_devtools(true) {
-                error!("Failed to enable devtools: {}", e)
-                    .with_appid(self.appid.clone())
-                    .with_path(path.to_string());
+            if let Some(controller) = page.webview_controller() {
+                if let Err(e) = controller.set_devtools(true) {
+                    error!("Failed to enable devtools: {}", e)
+                        .with_appid(self.appid.clone())
+                        .with_path(path.to_string());
+                }
             }
         }
 

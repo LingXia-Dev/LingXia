@@ -76,11 +76,23 @@ impl LxAppDelegate for LxApp {
         // Create the page for the given path if it doesn't exist
         // This path is typically the initial_route.
         let mut state = self.state.lock().unwrap();
-        if let Err(e) = state.pages.get_or_create_page(
+        let self_for_setup = self.clone();
+        if let Err(e) = state.pages.create_page(
             self.appid.clone(),
             path.clone(),
             self.runtime.clone(),
             self.executor.clone(),
+            move |_page, path| {
+                // Create page service
+                if let Err(e) = self_for_setup
+                    .executor
+                    .create_page_svc(self_for_setup.appid.clone(), path.to_string())
+                {
+                    error!("Failed to request page service creation: {}", e)
+                        .with_appid(self_for_setup.appid.clone())
+                        .with_path(path.to_string());
+                }
+            },
         ) {
             error!("Failed to create page for initial_route: {}", e)
                 .with_appid(self.appid.clone())
@@ -138,7 +150,6 @@ impl LxAppDelegate for LxApp {
             }
         };
 
-        // Setup page if it hasn't been setup yet
         self.setup_page(&page, &path);
 
         // Navigate to the new page and get the previous page if there was a switch
@@ -193,18 +204,28 @@ impl LxAppDelegate for LxApp {
 
                     // Create new page and setup content
                     let mut state = self_clone.state.lock().unwrap();
-                    if let Ok(page) = state.pages.create_page(
+                    let self_for_setup = self_clone.clone();
+                    let _ = state.pages.create_page(
                         self_clone.appid.clone(),
                         p.clone(),
                         self_clone.runtime.clone(),
                         self_clone.executor.clone(),
-                    ) {
-                        drop(state); // Release lock before setup
+                        move |page, path| {
+                            std::thread::sleep(std::time::Duration::from_millis(1000));
+                            // Setup page content (load HTML)
+                            self_for_setup.setup_page(page, path);
 
-                        // On HarmonyOS, setup_page might fail if WebView isn't ready yet
-                        // This is OK - the page will be setup when onPageShow is called for that tab
-                        self_clone.setup_page(&page, &p);
-                    }
+                            // Create page service
+                            if let Err(e) = self_for_setup
+                                .executor
+                                .create_page_svc(self_for_setup.appid.clone(), path.to_string())
+                            {
+                                error!("Failed to request page service creation: {}", e)
+                                    .with_appid(self_for_setup.appid.clone())
+                                    .with_path(path.to_string());
+                            }
+                        },
+                    );
                 }
             });
         }
