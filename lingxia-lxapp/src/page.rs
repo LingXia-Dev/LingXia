@@ -187,23 +187,33 @@ impl Pages {
         // Insert the page into the hashmap
         self.pages.insert(path.clone(), page.clone());
 
+        // Create channel for WebView creation notification
+        let (sender, receiver) = std::sync::mpsc::channel();
+
         // Initiate WebView creation asynchronously
+        controller.create_webview(appid.clone(), path.clone(), sender);
+
+        // Spawn task to wait for WebView creation completion
         let page_clone = page.clone();
         let appid_clone = appid.clone();
         let path_clone = path.clone();
 
         LxAppExecutor::spawn_task(move || {
-            // Create WebView controller asynchronously
-            match controller.create_webview(appid_clone.clone(), path_clone.clone()) {
-                Ok(webview_controller) => {
+            match receiver.recv() {
+                Ok(Ok(webview_controller)) => {
                     // Attach WebView to page
                     page_clone.attach_webview(webview_controller);
 
                     // Call setup callback - let external code handle the rest
                     setup_callback(&page_clone, &path_clone);
                 }
-                Err(e) => {
+                Ok(Err(e)) => {
                     error!("Failed to create WebView: {}", e)
+                        .with_appid(appid_clone)
+                        .with_path(path_clone);
+                }
+                Err(_) => {
+                    error!("WebView creation channel closed")
                         .with_appid(appid_clone)
                         .with_path(path_clone);
                 }

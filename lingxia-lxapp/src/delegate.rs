@@ -82,7 +82,9 @@ impl LxAppDelegate for LxApp {
             path.clone(),
             self.runtime.clone(),
             self.executor.clone(),
-            move |_page, path| {
+            move |page, path| {
+                self_for_setup.setup_page(page, path);
+
                 // Create page service
                 if let Err(e) = self_for_setup
                     .executor
@@ -150,8 +152,6 @@ impl LxAppDelegate for LxApp {
             }
         };
 
-        self.setup_page(&page, &path);
-
         // Navigate to the new page and get the previous page if there was a switch
         let previous_page = self
             .state
@@ -211,7 +211,6 @@ impl LxAppDelegate for LxApp {
                         self_clone.runtime.clone(),
                         self_clone.executor.clone(),
                         move |page, path| {
-                            std::thread::sleep(std::time::Duration::from_millis(1000));
                             // Setup page content (load HTML)
                             self_for_setup.setup_page(page, path);
 

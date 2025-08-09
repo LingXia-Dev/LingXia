@@ -1,6 +1,7 @@
 use std::io::Read;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::mpsc::Sender;
 
 use crate::error::LxAppError;
 use rong::IntoJSObj;
@@ -181,19 +182,18 @@ pub trait AppRuntime: Send + Sync + 'static {
     /// * `DeviceInfo` - Device information including brand, model, and screen dimensions
     fn device_info(&self) -> DeviceInfo;
 
-    /// Create a WebView instance
+    /// Create a WebView instance asynchronously
     ///
     /// # Arguments
     /// * `appid` - Application identifier
     /// * `path` - Page path within the application
-    ///
-    /// # Returns
-    /// * `Result<Arc<dyn crate::page::WebViewController>, LxAppError>` - WebView controller instance or error
+    /// * `sender` - Channel sender to notify when WebView creation completes
     fn create_webview(
         &self,
         appid: String,
         path: String,
-    ) -> Result<Arc<dyn crate::page::WebViewController>, LxAppError>;
+        sender: Sender<Result<Arc<dyn crate::page::WebViewController>, LxAppError>>,
+    );
 
     /// Open a mini app
     ///
@@ -253,8 +253,9 @@ impl<T: AppRuntime + ?Sized> AppRuntime for Arc<T> {
         &self,
         appid: String,
         path: String,
-    ) -> Result<Arc<dyn crate::page::WebViewController>, LxAppError> {
-        (**self).create_webview(appid, path)
+        sender: Sender<Result<Arc<dyn crate::page::WebViewController>, LxAppError>>,
+    ) {
+        (**self).create_webview(appid, path, sender)
     }
 
     fn open_lxapp(&self, appid: String, path: String) -> Result<(), LxAppError> {

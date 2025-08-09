@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, OnceLock};
 
 use lxapp::{LxAppError, WebViewController};
@@ -54,11 +55,12 @@ pub fn init_webview_manager() {
     let _ = WEBVIEW_INSTANCES.set(Arc::new(Mutex::new(HashMap::new())));
 }
 
-/// Create a WebView instance
+/// Create a WebView instance asynchronously with channel sender
 pub fn create_webview(
     appid: String,
     path: String,
-) -> Result<Arc<dyn WebViewController>, LxAppError> {
+    sender: Sender<Result<Arc<dyn WebViewController>, LxAppError>>,
+) {
     let webtag = WebTag::new(&appid, &path);
 
     // Get or initialize the global instances map
@@ -68,26 +70,22 @@ pub fn create_webview(
     if let Ok(webviews) = instances.lock() {
         if let Some(existing_webview) = webviews.get(webtag.as_str()) {
             log::info!("WebView already exists, reusing: {}-{}", appid, path);
-            return Ok(existing_webview.clone());
+            let _ = sender.send(Ok(existing_webview.clone()));
+            return;
         }
     }
 
-    // Create new WebView only if it doesn't exist
-    let webview_inner = WebViewInner::create(&appid, &path)?;
-    let webview = Arc::new(webview_inner);
+    // Delegate WebView creation to the platform-specific implementation
+    WebViewInner::create(&appid, &path, sender);
+}
 
-    // Store WebView in HashMap
-    if let Ok(mut webviews) = instances.lock() {
-        webviews.insert(webtag.as_str().to_string(), webview.clone());
-        log::info!("WebView created and stored: {}-{}", appid, path);
-    } else {
-        return Err(LxAppError::WebView(
-            "Failed to acquire webviews lock".to_string(),
-        ));
+pub(crate) fn register_webview(webtag: &WebTag, webview: Arc<WebViewInner>) {
+    if let Some(instances) = WEBVIEW_INSTANCES.get() {
+        if let Ok(mut webviews) = instances.lock() {
+            webviews.insert(webtag.as_str().to_string(), webview);
+            log::info!("WebView created and stored: {}", webtag.as_str());
+        }
     }
-
-    // Return the same WebView instance that was stored
-    Ok(webview)
 }
 
 /// Find WebView by appid and path

@@ -1,5 +1,6 @@
 use std::io::Read;
 use std::path::PathBuf;
+use std::sync::mpsc::Sender;
 use std::sync::{Arc, OnceLock};
 
 use lxapp::{AppRuntime, AssetFileEntry, DeviceInfo, LxAppError, WebViewController};
@@ -56,9 +57,10 @@ impl AppRuntime for PlatformAppRuntime {
         &self,
         appid: String,
         path: String,
-    ) -> Result<Arc<dyn WebViewController>, LxAppError> {
-        // Delegate to lingxia-webview's WebViewManager
-        lingxia_webview::create_webview(appid, path)
+        sender: Sender<Result<Arc<dyn WebViewController>, LxAppError>>,
+    ) {
+        // Delegate to lingxia-webview's WebViewManager with channel sender
+        lingxia_webview::create_webview(appid, path, sender)
     }
 
     fn open_lxapp(&self, appid: String, path: String) -> Result<(), LxAppError> {
