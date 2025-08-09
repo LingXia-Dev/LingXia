@@ -1,6 +1,5 @@
 use crate::harmony::app::App;
 use crate::runtime::PlatformAppRuntime;
-use lingxia_webview::schemehandler::register_custom_schemes;
 use log::LevelFilter;
 use lxapp::LxAppDelegate;
 use lxapp::log::LogLevel;
@@ -136,13 +135,6 @@ pub fn lxapp_init(
         cache_dir,
     );
 
-    // Register custom schemes globally
-    // https://developer.huawei.com/consumer/cn/doc/harmonyos-guides/web-scheme-handler
-    if let Err(e) = register_custom_schemes() {
-        log::error!("Failed to register custom schemes: {}", e);
-        return None;
-    }
-
     // Initialize TSFN
     if let Err(e) = lingxia_webview::tsfn::init(callback_function) {
         log::error!("Failed to initialize TSFN: {}", e);
@@ -175,6 +167,17 @@ pub fn lxapp_init(
     // Return only the home app ID
     let home_app_id = lxapp::init(runtime)?;
     Some(home_app_id)
+}
+
+/// Register custom schemes (must be called before WebEngine initialization)
+#[napi]
+pub fn register_custom_schemes() -> bool {
+    if let Err(e) = lingxia_webview::register_custom_schemes() {
+        log::error!("Failed to register custom schemes: {}", e);
+        false
+    } else {
+        true
+    }
 }
 
 /// Get LxApp information
@@ -245,7 +248,10 @@ pub fn get_navigation_bar_config(appid: String, path: String) -> NavigationBarCo
     };
 
     NavigationBarConfig {
-        navigation_bar_background_color: parse_color_to_u32(&rust_config.navigationBarBackgroundColor, 0xFFFFFFFF),
+        navigation_bar_background_color: parse_color_to_u32(
+            &rust_config.navigationBarBackgroundColor,
+            0xFFFFFFFF,
+        ),
         navigation_bar_text_style: rust_config.navigationBarTextStyle,
         navigation_bar_title_text: rust_config.navigationBarTitleText,
         navigation_style,

@@ -1,4 +1,4 @@
-pub mod schemehandler;
+pub(crate) mod schemehandler;
 pub mod tsfn;
 mod webview;
 

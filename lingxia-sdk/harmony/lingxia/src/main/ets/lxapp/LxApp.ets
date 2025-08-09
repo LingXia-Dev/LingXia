@@ -8,7 +8,7 @@ import { initNativeBridge, getNativeCallbackFunction } from './NativeBridge';
 import { WebViewManager, toWebTag } from './WebView';
 
 // Import native functions from Rust
-import { lxappInit, onLxappOpened, onLxappClosed, onPageShow, getLxAppInfo, LxAppInfo } from 'liblingxia.so';
+import { lxappInit, registerCustomSchemes, onLxappOpened, onLxappClosed, onPageShow, getLxAppInfo, LxAppInfo } from 'liblingxia.so';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.LxApp';
@@ -94,17 +94,23 @@ export class LxApp {
 
     const callbackFunction = getNativeCallbackFunction();
 
+    // Register custom schemes BEFORE WebEngine initialization
+    const schemesRegistered: boolean = registerCustomSchemes();
+    if (!schemesRegistered) {
+      hilog.error(DOMAIN, TAG, 'Failed to register custom schemes');
+      return;
+    }
+
+    // Initialize WebEngine after schemes are registered
+    webview.WebviewController.initializeWebEngine();
+    webview.WebviewController.setWebDebuggingAccess(true);
+
     hilog.info(DOMAIN, TAG, `Calling lxappInit with callback and file system paths (FIRST AND ONLY TIME)`);
     const result: string | null = lxappInit(callbackFunction, dataDir, cacheDir, resourceManager);
 
     if (result) {
       hilog.info(DOMAIN, TAG, `LxApp initialized successfully with home app: ${result}`);
       instance.homeLxAppId = result;
-
-      // Initialize Web component core: initialize the Browser process and create BrowserContext.
-      webview.WebviewController.initializeWebEngine();
-
-      webview.WebviewController.setWebDebuggingAccess(true);
     } else {
       hilog.error(DOMAIN, TAG, 'Failed to get home LxApp details from native init.');
     }

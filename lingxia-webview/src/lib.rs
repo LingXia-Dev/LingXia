@@ -14,7 +14,7 @@ pub use android::{WebViewInner, get_env, initialize_jni};
 pub use apple::WebViewInner;
 
 #[cfg(all(target_os = "linux", target_env = "ohos"))]
-pub use harmony::{WebViewInner, tsfn, schemehandler};
+pub use harmony::{WebViewInner, tsfn, schemehandler::register_custom_schemes};
 
 mod webview;
 pub use webview::{create_webview, find_webview, find_webview_by_tag, init_webview_manager};

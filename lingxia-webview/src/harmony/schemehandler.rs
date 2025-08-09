@@ -198,8 +198,6 @@ pub unsafe fn cleanup_scheme_handler(scheme_handler: *mut ArkWeb_SchemeHandler) 
 
 /// Register custom schemes globally (called once during lxapp_init)
 pub fn register_custom_schemes() -> NapiResult<()> {
-    log::info!("Registering custom schemes globally");
-
     unsafe {
         // Register lx:// scheme globally with more comprehensive options
         let lx_scheme_cstr = CString::new("lx").unwrap();

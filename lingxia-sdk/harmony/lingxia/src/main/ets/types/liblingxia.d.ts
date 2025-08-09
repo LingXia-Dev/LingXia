@@ -50,6 +50,12 @@ declare module 'liblingxia.so' {
   }
 
   /**
+   * Register custom schemes (must be called before WebEngine initialization)
+   * @returns true if schemes registered successfully, false otherwise
+   */
+  export function registerCustomSchemes(): boolean;
+
+  /**
    * Initialize LxApp with callback function and system paths
    * @param callbackFunction - Callback function for native-to-JS communication
    * @param dataDir - Data directory path
