@@ -7,7 +7,8 @@ use ohos_web_sys::*;
 
 use std::cell::RefCell;
 use std::ffi::{CStr, CString, c_char, c_void};
-use std::sync::OnceLock;
+use std::sync::mpsc::Sender;
+use std::sync::{Arc, Mutex, OnceLock};
 
 /// Wrapper for API pointers to make them Send + Sync
 #[derive(Debug, Clone, Copy)]
@@ -62,6 +63,7 @@ pub struct WebViewInner {
     console_port: RefCell<Option<*mut ArkWeb_WebMessagePort>>,
     webview_native_port: RefCell<Option<*mut ArkWeb_WebMessagePort>>,
     webview_console_port: RefCell<Option<*mut ArkWeb_WebMessagePort>>,
+    creation_sender: Mutex<Option<Sender<Result<Arc<dyn WebViewController>, LxAppError>>>>,
     // Store user_data pointers for cleanup
     user_data_ptrs: RefCell<Vec<*mut c_void>>,
     // Store scheme handlers for cleanup
@@ -203,24 +205,32 @@ pub fn send_port_to_webview_for_webtag(
 
 impl WebViewInner {
     /// Create a WebView instance
-    pub fn create(appid: &str, path: &str) -> Result<Self, LxAppError> {
+    pub fn create(
+        appid: &str,
+        path: &str,
+        sender: Sender<Result<Arc<dyn WebViewController>, LxAppError>>,
+    ) {
         let webtag = WebTag::new(appid, path);
 
-        // Create WebView instance
-        let webview_inner = WebViewInner {
+        // Create WebView instance, storing the sender
+        let webview_inner = Arc::new(WebViewInner {
             webtag: webtag.clone(),
             native_port: RefCell::new(None),
             console_port: RefCell::new(None),
             webview_native_port: RefCell::new(None),
             webview_console_port: RefCell::new(None),
+            creation_sender: Mutex::new(Some(sender)),
             user_data_ptrs: RefCell::new(Vec::new()),
             scheme_handlers: RefCell::new(Vec::new()),
-        };
+        });
 
-        // Call ArkTS to create WebView controller with callback for proper timing
+        // Register the WebView instance immediately, so it can be found by callbacks
+        crate::webview::register_webview(&webtag, webview_inner.clone());
+
+        // The real notification happens in `on_controller_attached_callback`.
         let webtag_for_callback = webtag.clone();
-        call_arkts_with_callback("createWebViewController", &[webtag.as_str()], move || {
-            // Set scheme handler after WebView is created
+        let callback = move || {
+            // We must register the callbacks here, after the tsfn has been called
             if let Err(e) = set_webview_scheme_handler(&webtag_for_callback) {
                 log::error!(
                     "Failed to set scheme handler for {}: {}",
@@ -228,39 +238,29 @@ impl WebViewInner {
                     e
                 );
             }
-
-            // Register WebView callbacks after WebView is fully created
             if let Err(e) = register_webview_callbacks(&webtag_for_callback) {
                 log::error!(
                     "WebView callback registration failed for {}: {:?}",
                     webtag_for_callback.as_str(),
                     e
                 );
-            } else {
-                log::info!(
-                    "WebView callbacks registered for {}",
-                    webtag_for_callback.as_str()
-                );
             }
+        };
 
-            // why call here ?
-            // for init route page of home lxapp, it has no change to trigger onControllerAttached
-            // and it only be workable for init route page.
-            if let Err(e) = register_proxy_for_webtag(&webtag_for_callback) {
-                log::error!(
-                    "Failed to register LingXiaProxy for home page {}: {}",
-                    webtag_for_callback.as_str(),
-                    e
-                );
+        // Call ArkTS to create the WebView controller.
+        if let Err(e) =
+            call_arkts_with_callback("createWebViewController", &[webtag.as_str()], callback)
+        {
+            log::error!("Failed to call createWebViewController: {}", e);
+            // If the call fails, we need to retrieve the sender and notify the caller
+            if let Some(webview) = find_webview_by_tag(&webtag) {
+                if let Ok(mut sender_opt) = webview.creation_sender.lock() {
+                    if let Some(s) = sender_opt.take() {
+                        let _ = s.send(Err(e));
+                    }
+                }
             }
-
-            log::info!(
-                "Scheme handler and callbacks setup completed for {}",
-                webtag_for_callback.as_str()
-            );
-        })?;
-
-        Ok(webview_inner)
+        }
     }
 
     /// Add a user_data pointer for cleanup
@@ -525,9 +525,10 @@ impl WebViewController for WebViewInner {
                 }
 
                 // Post message using the existing port
-                let result = port_api.postMessage.ok_or_else(|| {
-                    LxAppError::WebView("postMessage not available".to_string())
-                })?(port, webtag_cstr.as_ptr(), web_message);
+                let result =
+                    port_api.postMessage.ok_or_else(|| {
+                        LxAppError::WebView("postMessage not available".to_string())
+                    })?(port, webtag_cstr.as_ptr(), web_message);
 
                 // Clean up the created message
                 if let Some(destroy_message) = message_api.destroyWebMessage {
@@ -625,26 +626,33 @@ fn register_webview_callbacks(webtag: &WebTag) -> Result<(), LxAppError> {
 }
 
 // WebView lifecycle callback functions
-extern "C" fn on_controller_attached_callback(web_tag: *const c_char, user_data: *mut c_void) {
+extern "C" fn on_controller_attached_callback(web_tag: *const c_char, _user_data: *mut c_void) {
     if let Ok(webtag_str) = unsafe { CStr::from_ptr(web_tag).to_str() } {
+        let webtag = WebTag::from(webtag_str);
         log::info!("WebView controller attached: {}", webtag_str);
 
-        // Register LingXiaProxy for all pages in onAttach as test
-        if !user_data.is_null() {
-            let webtag_string = unsafe { &*(user_data as *const String) };
-            let webtag = WebTag::from(webtag_string.as_str());
+        // Find the webview and send the creation notification
+        if let Some(webview) = find_webview_by_tag(&webtag) {
+            if let Ok(mut sender_opt) = webview.creation_sender.lock() {
+                if let Some(sender) = sender_opt.take() {
+                    let _ = sender.send(Ok(webview.clone()));
+                    log::info!("Sent WebView creation notification for {}", webtag_str);
+                }
+            }
+
+            // Register LingXiaProxy now that the controller is attached
             if let Err(e) = register_proxy_for_webtag(&webtag) {
                 log::error!(
                     "Failed to register LingXiaProxy in onAttach for {}: {}",
                     webtag_str,
                     e
                 );
-            } else {
-                log::info!(
-                    "Registered LingXiaProxy in onAttach callback: {}",
-                    webtag_str
-                );
             }
+        } else {
+            log::error!(
+                "Could not find WebView to send creation notification for {}",
+                webtag_str
+            );
         }
     }
 }
