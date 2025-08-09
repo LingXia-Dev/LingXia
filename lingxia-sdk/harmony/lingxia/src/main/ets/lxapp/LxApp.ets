@@ -106,11 +106,24 @@ export class LxApp {
     webview.WebviewController.setWebDebuggingAccess(true);
 
     hilog.info(DOMAIN, TAG, `Calling lxappInit with callback and file system paths (FIRST AND ONLY TIME)`);
-    const result: string | null = lxappInit(callbackFunction, dataDir, cacheDir, resourceManager);
+    const appId: string | null = lxappInit(callbackFunction, dataDir, cacheDir, resourceManager);
 
-    if (result) {
-      hilog.info(DOMAIN, TAG, `LxApp initialized successfully with home app: ${result}`);
-      instance.homeLxAppId = result;
+    if (appId) {
+      hilog.info(DOMAIN, TAG, `LxApp initialized successfully with home app: ${appId}`);
+      instance.homeLxAppId = appId;
+      const appInfo: LxAppInfo | null = getLxAppInfo(appId);
+      if (appInfo) {
+        LxApp.initialRouteCache.set(appId, appInfo.initialRoute);
+
+        // Create webview for initial route
+        const webtag = toWebTag(appId, appInfo.initialRoute);
+        const webviewCreated = WebViewManager.createWebview(webtag);
+        if (webviewCreated) {
+          hilog.info(DOMAIN, TAG, `Created webview for initial route: ${webtag}`);
+        } else {
+          hilog.warn(DOMAIN, TAG, `Failed to create webview for initial route: ${webtag}`);
+        }
+      }
     } else {
       hilog.error(DOMAIN, TAG, 'Failed to get home LxApp details from native init.');
     }

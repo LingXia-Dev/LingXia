@@ -81,37 +81,18 @@ export class WebViewManager {
    * Find WebView by appId and path (only find, don't create)
    * @param appId - LxApp ID
    * @param path - Page path
-   * @returns WebView controller or null if creation fails
+   * @returns WebView controller or null if not found
    */
   static findWebview(appId: string, path: string): webview.WebviewController | null {
     const webtag = toWebTag(appId, path);
-    let controller = WebViewManager.controllers.get(webtag);
+    const controller = WebViewManager.controllers.get(webtag);
 
     if (controller) {
       hilog.info(DOMAIN, TAG, `Found existing WebView: ${webtag}`);
       return controller;
     }
 
-    // Fallback creation: Only create if the entire map is empty
-    // This handles the race condition where Rust has queued creation via TSFN
-    // but the async task hasn't been executed yet
-    if (WebViewManager.controllers.size === 0) {
-      hilog.info(DOMAIN, TAG, `WebView map is empty, creating fallback: ${webtag}`);
-      const created = WebViewManager.createWebview(webtag);
-
-      if (created) {
-        controller = WebViewManager.controllers.get(webtag);
-        if (controller) {
-          hilog.info(DOMAIN, TAG, `Fallback WebView created successfully: ${webtag}`);
-          return controller;
-        }
-      }
-
-      hilog.error(DOMAIN, TAG, `Failed to create fallback WebView: ${webtag}`);
-    } else {
-      hilog.info(DOMAIN, TAG, `WebView not found but map not empty: ${webtag}`);
-    }
-
+    hilog.info(DOMAIN, TAG, `WebView not found: ${webtag}`);
     return null;
   }
 
@@ -378,7 +359,7 @@ export function createWebViewController(webtag: string): boolean {
  * Find WebView controller (only find, don't create)
  * @param appId - LxApp ID
  * @param path - Page path
- * @returns WebView controller or null
+ * @returns WebView controller or null if not found
  */
 export function findWebview(appId: string, path: string): webview.WebviewController | null {
   return WebViewManager.findWebview(appId, path);
