@@ -16,10 +16,6 @@ import android.webkit.WebMessage;
 import android.webkit.WebMessagePort;
 import android.webkit.ValueCallback;
 import java.util.Map;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.Callable;
 
 /**
  * LingXiaWebView provides complete WebView functionality for the LingXia platform.
@@ -75,44 +71,6 @@ public class LingXiaWebView extends WebView {
         this.portsInitialized = false;
     }
 
-    private void ensureMainThread(Runnable action) {
-        if (Looper.myLooper() == Looper.getMainLooper()) {
-            action.run();
-        } else {
-            new Handler(Looper.getMainLooper()).post(action);
-        }
-    }
-
-    private <T> T ensureMainThreadWithResult(java.util.concurrent.Callable<T> action) {
-        if (Looper.myLooper() == Looper.getMainLooper()) {
-            try {
-                return action.call();
-            } catch (Exception e) {
-                throw new RuntimeException(e);
-            }
-        } else {
-            final java.util.concurrent.CompletableFuture<T> result = new java.util.concurrent.CompletableFuture<>();
-
-            new Handler(Looper.getMainLooper()).post(new Runnable() {
-                @Override
-                public void run() {
-                    try {
-                        T value = action.call();
-                        result.complete(value);
-                    } catch (Exception e) {
-                        result.completeExceptionally(e);
-                    }
-                }
-            });
-
-            try {
-                return result.get(1000, java.util.concurrent.TimeUnit.MILLISECONDS);
-            } catch (Exception e) {
-                throw new RuntimeException("Failed to execute on main thread", e);
-            }
-        }
-    }
-
     private static android.content.Context sApplicationContext;
 
     /**
@@ -125,30 +83,49 @@ public class LingXiaWebView extends WebView {
     }
 
     /**
-     * Create WebView for Rust layer - the ONLY method called from native code
-     * Returns standard Android WebView with LingXia functionality
+     * Request WebView creation for Rust layer
+     * Creates WebView asynchronously and notifies Rust via notifyWebViewReady callback
      */
-    public static Object createWebView(final String appId, final String path) {
+    public static void requestWebView(final String appId, final String path) {
 
-        return ensureMainThreadWithResultStatic(new Callable<Object>() {
+        // Start async WebView creation on main thread
+        ensureMainThreadStatic(new Runnable() {
             @Override
-            public Object call() throws Exception {
-
-                if (sApplicationContext == null) {
-                    throw new RuntimeException("Application context not set. Call LingXiaWebView.setApplicationContext() first.");
-                }
+            public void run() {
+                Log.d(TAG, "Creating WebView on main thread for " + appId + ":" + path);
 
                 try {
-                    Class<?> uiWebViewClass = Class.forName("com.lingxia.lxapp.WebView");
-                    Object uiWebView = uiWebViewClass.getConstructor(android.content.Context.class).newInstance(sApplicationContext);
-                    uiWebViewClass.getMethod("initializeWebView", String.class, String.class).invoke(uiWebView, appId, path);
-                    return uiWebView;
-                } catch (Exception e) {
-                    Log.w(TAG, "Failed to create UI WebView, using fallback: " + e.getMessage());
+                    if (sApplicationContext == null) {
+                        throw new RuntimeException("Application context not set. Call LingXiaWebView.setApplicationContext() first.");
+                    }
 
-                    LingXiaWebView webView = new LingXiaWebView(sApplicationContext);
-                    webView.initializeWebView(appId, path);
-                    return webView;
+                    LingXiaWebView webView;
+
+                    try {
+                        // Try to create UI WebView first
+                        Class<?> uiWebViewClass = Class.forName("com.lingxia.lxapp.WebView");
+                        Object uiWebView = uiWebViewClass.getConstructor(android.content.Context.class).newInstance(sApplicationContext);
+                        uiWebViewClass.getMethod("initializeWebView", String.class, String.class).invoke(uiWebView, appId, path);
+
+                        // If UI WebView is created successfully, we need to get the underlying LingXiaWebView
+                        // For now, assume it's a LingXiaWebView or has one
+                        if (uiWebView instanceof LingXiaWebView) {
+                            webView = (LingXiaWebView) uiWebView;
+                        } else {
+                            // Fallback to direct creation
+                            webView = new LingXiaWebView(sApplicationContext);
+                            webView.initializeWebView(appId, path);
+                        }
+                    } catch (Exception e) {
+                        Log.w(TAG, "Failed to create UI WebView, using fallback: " + e.getMessage());
+                        webView = new LingXiaWebView(sApplicationContext);
+                        webView.initializeWebView(appId, path);
+                    }
+
+                    // Notify Rust that WebView is ready, passing the WebView object directly
+                    notifyWebViewReady(appId, path, webView);
+                } catch (Exception e) {
+                    Log.e(TAG, "Failed to create WebView asynchronously", e);
                 }
             }
         });
@@ -224,40 +201,22 @@ public class LingXiaWebView extends WebView {
         }
     }
 
-    /**
-     * Static version of ensureMainThreadWithResult for static methods
-     */
-    private static <T> T ensureMainThreadWithResultStatic(java.util.concurrent.Callable<T> action) {
+    private void ensureMainThread(Runnable action) {
         if (Looper.myLooper() == Looper.getMainLooper()) {
-            try {
-                return action.call();
-            } catch (Exception e) {
-                Log.e(TAG, "Exception in ensureMainThreadWithResultStatic: " + e.getMessage());
-                e.printStackTrace();
-                throw new RuntimeException(e);
-            }
+            action.run();
         } else {
-            final java.util.concurrent.CompletableFuture<T> result = new java.util.concurrent.CompletableFuture<>();
+            new Handler(Looper.getMainLooper()).post(action);
+        }
+    }
 
-            new Handler(Looper.getMainLooper()).post(new Runnable() {
-                @Override
-                public void run() {
-                    try {
-                        T value = action.call();
-                        result.complete(value);
-                    } catch (Exception e) {
-                        Log.e(TAG, "Exception in background thread: " + e.getMessage());
-                        e.printStackTrace();
-                        result.completeExceptionally(e);
-                    }
-                }
-            });
-
-            try {
-                return result.get(1000, java.util.concurrent.TimeUnit.MILLISECONDS);
-            } catch (Exception e) {
-                throw new RuntimeException("Failed to execute on main thread", e);
-            }
+    /**
+     * Static version of ensureMainThread for static methods
+     */
+    private static void ensureMainThreadStatic(Runnable action) {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            action.run();
+        } else {
+            new Handler(Looper.getMainLooper()).post(action);
         }
     }
 
@@ -628,4 +587,5 @@ public class LingXiaWebView extends WebView {
     native WebResourceResponseData handleRequest(String appId, String url, String method, String headers);
     native int handlePostMessage(String appId, String path, String message);
     native void onScrollChanged(String appId, String path, int scrollX, int scrollY, int maxScrollX, int maxScrollY);
+    native static void notifyWebViewReady(String appId, String path, Object webView);
 }

@@ -6,7 +6,13 @@ use jni::objects::{JObject, JString};
 use jni::sys::jint;
 use lxapp::LxAppDelegate;
 use lxapp::log::LogLevel;
+use lxapp::{LxAppError, WebViewController};
 use serde_json;
+use std::sync::Arc;
+
+// Import from webview.rs
+use crate::android::webview::{WEBVIEW_SENDERS, WebViewInner};
+use crate::webview::{WebTag, register_webview};
 
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handlePostMessage(
@@ -248,4 +254,49 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onScrollChanged(
     let lxapp = lxapp::get(appid.clone());
     lxapp.on_page_scroll_changed(path, scroll_x, scroll_y, max_scroll_x, max_scroll_y);
     0
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_notifyWebViewReady(
+    mut env: JNIEnv,
+    _class: JObject,
+    appid: JString,
+    path: JString,
+    webview_obj: JObject,
+) {
+    let appid: String = env.get_string(&appid).unwrap().into();
+    let path: String = env.get_string(&path).unwrap().into();
+
+    // Retrieve the sender from our global map and send the WebView instance
+    if let Some(senders) = WEBVIEW_SENDERS.get() {
+        let webtag = WebTag::new(&appid, &path);
+
+        if let Ok(mut senders_map) = senders.lock() {
+            if let Some(sender) = senders_map.remove(&webtag.to_string()) {
+                // Create global reference to the passed WebView object
+                match env.new_global_ref(webview_obj) {
+                    Ok(global_ref) => {
+                        // Create WebViewInner from the Java object
+                        let webview_inner = WebViewInner::from_java_object(global_ref);
+                        let webview_inner_arc = Arc::new(webview_inner);
+
+                        // Register the WebView instance for future lookups
+                        register_webview(&webtag, webview_inner_arc.clone());
+
+                        // Create WebViewController trait object
+                        let webview_controller: Arc<dyn WebViewController> = webview_inner_arc;
+
+                        // Send the WebView instance through the channel
+                        let _ = sender.send(Ok(webview_controller));
+                    }
+                    Err(e) => {
+                        let _ = sender.send(Err(LxAppError::WebView(format!(
+                            "Failed to create global ref: {:?}",
+                            e
+                        ))));
+                    }
+                }
+            }
+        }
+    }
 }

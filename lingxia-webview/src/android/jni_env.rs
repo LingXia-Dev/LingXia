@@ -1,3 +1,4 @@
+use jni::objects::GlobalRef;
 use jni::{JNIEnv, JavaVM};
 use log::error;
 use std::sync::{Arc, OnceLock};
@@ -5,9 +6,23 @@ use std::sync::{Arc, OnceLock};
 // Static variables for JNI environment access
 pub static JAVA_VM: OnceLock<Arc<JavaVM>> = OnceLock::new();
 static MAIN_THREAD_ID: OnceLock<std::thread::ThreadId> = OnceLock::new();
+static LINGXIA_WEBVIEW_CLASS: OnceLock<GlobalRef> = OnceLock::new();
 
 /// Initialize JNI environment - should be called once from JNI_OnLoad
 pub fn initialize_jni(vm: JavaVM) {
+    // Cache LingXiaWebView class reference before moving vm
+    if let Ok(mut env) = vm.get_env() {
+        if let Ok(class) = env.find_class("com/lingxia/webview/LingXiaWebView") {
+            if let Ok(global_ref) = env.new_global_ref(class) {
+                let _ = LINGXIA_WEBVIEW_CLASS.set(global_ref);
+            } else {
+                log::error!("Failed to create global reference for LingXiaWebView class");
+            }
+        } else {
+            log::error!("Failed to find LingXiaWebView class during initialization");
+        }
+    }
+
     let _ = JAVA_VM.set(Arc::new(vm));
     let _ = MAIN_THREAD_ID.set(std::thread::current().id());
 }
@@ -48,3 +63,8 @@ pub fn get_env() -> Result<JNIEnv<'static>, Box<dyn std::error::Error>> {
         }
     }
 }
+/// Get cached LingXiaWebView class reference
+pub fn get_lingxia_webview_class() -> Option<&'static GlobalRef> {
+    LINGXIA_WEBVIEW_CLASS.get()
+}
+

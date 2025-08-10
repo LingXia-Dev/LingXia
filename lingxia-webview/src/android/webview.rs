@@ -1,8 +1,19 @@
 use jni::objects::{GlobalRef, JObject, JValue};
 use lxapp::{LxAppError, WebViewController};
+use std::collections::HashMap;
+use std::sync::mpsc::Sender;
+use std::sync::{Arc, Mutex, OnceLock};
 
 // Import JNI environment access from shared utils
-use super::jni_env::get_env;
+use super::jni_env::{get_env, get_lingxia_webview_class};
+
+// Import WebTag from the main webview module
+use crate::webview::WebTag;
+
+// Global map to store senders for WebView creation
+pub(crate) static WEBVIEW_SENDERS: OnceLock<
+    Arc<Mutex<HashMap<String, Sender<Result<Arc<dyn WebViewController>, LxAppError>>>>>,
+> = OnceLock::new();
 
 #[derive(Debug)]
 pub struct WebViewInner {
@@ -10,49 +21,78 @@ pub struct WebViewInner {
 }
 
 impl WebViewInner {
-    /// Create a new WebView by calling Java core createWebView
-    pub(crate) fn create(appid: &str, path: &str) -> Result<Self, LxAppError> {
-        use jni::objects::JValue;
+    /// Create a new WebView asynchronously by calling Java static method and storing sender
+    pub(crate) fn create(
+        appid: &str,
+        path: &str,
+        sender: Sender<Result<Arc<dyn WebViewController>, LxAppError>>,
+    ) {
+        // Store sender in global map for callback
+        let webtag = WebTag::new(appid, path);
+        let senders = WEBVIEW_SENDERS.get_or_init(|| Arc::new(Mutex::new(HashMap::new())));
 
-        let mut env = get_env().unwrap();
+        if let Ok(mut senders_map) = senders.lock() {
+            senders_map.insert(webtag.to_string(), sender);
+        }
 
-        // Call the ONLY Java static method - it handles everything
-        let webview_class = env
-            .find_class("com/lingxia/webview/LingXiaWebView")
-            .map_err(|e| {
-                LxAppError::WebView(format!("Failed to find LingXiaWebView class: {:?}", e))
-            })?;
+        // Helper function to remove sender and send error
+        let remove_and_send_error = |error_msg: String| {
+            if let Ok(mut senders_map) = senders.lock() {
+                if let Some(sender) = senders_map.remove(&webtag.to_string()) {
+                    let _ = sender.send(Err(LxAppError::WebView(error_msg)));
+                }
+            }
+        };
 
+        // Get JNI environment
+        let mut env = match get_env() {
+            Ok(env) => env,
+            Err(_) => {
+                log::error!("Failed to get JNI environment");
+                remove_and_send_error("Failed to get JNI environment".to_string());
+                return;
+            }
+        };
+
+        // Get WebView class reference
+        let webview_class = match get_lingxia_webview_class() {
+            Some(class) => class,
+            None => {
+                log::error!("LingXiaWebView class not cached");
+                remove_and_send_error("LingXiaWebView class not cached".to_string());
+                return;
+            }
+        };
+
+        // Create Java strings - these rarely fail
         let appid_jstring = env.new_string(appid).unwrap();
         let path_jstring = env.new_string(path).unwrap();
 
-        let webview_result = env
-            .call_static_method(
-                &webview_class,
-                "createWebView",
-                "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/Object;",
-                &[
-                    JValue::Object(&appid_jstring),
-                    JValue::Object(&path_jstring),
-                ],
-            )
-            .map_err(|e| LxAppError::WebView(format!("Failed to create WebView: {:?}", e)))?;
-
-        let java_webview = webview_result
-            .l()
-            .map_err(|e| LxAppError::WebView(format!("Failed to get WebView object: {:?}", e)))?;
-
-        if java_webview.is_null() {
-            return Err(LxAppError::WebView(
-                "createWebView returned null".to_string(),
-            ));
+        // Call Java static method to request WebView creation
+        match env.call_static_method(
+            webview_class,
+            "requestWebView",
+            "(Ljava/lang/String;Ljava/lang/String;)V",
+            &[
+                JValue::Object(&appid_jstring),
+                JValue::Object(&path_jstring),
+            ],
+        ) {
+            Ok(_) => log::info!(
+                "Successfully requested WebView creation for {}-{}",
+                appid,
+                path
+            ),
+            Err(e) => {
+                log::error!("Failed to call requestWebView: {:?}", e);
+                remove_and_send_error(format!("Failed to call requestWebView: {:?}", e));
+            }
         }
+    }
 
-        let java_webview = env
-            .new_global_ref(java_webview)
-            .map_err(|e| LxAppError::WebView(format!("Failed to create global ref: {:?}", e)))?;
-
-        Ok(WebViewInner { java_webview })
+    /// Create WebViewInner from existing Java WebView object (called from onWebViewReady)
+    pub(crate) fn from_java_object(java_webview: GlobalRef) -> Self {
+        WebViewInner { java_webview }
     }
 
     pub fn get_java_webview(&self) -> &GlobalRef {
