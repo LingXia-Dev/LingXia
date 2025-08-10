@@ -61,6 +61,7 @@ pub fn create_webview(
     path: String,
     sender: Sender<Result<Arc<dyn WebViewController>, LxAppError>>,
 ) {
+    log::info!("Creating WebView for appid: {}, path: {}", appid, path);
     let webtag = WebTag::new(&appid, &path);
 
     // Get or initialize the global instances map
@@ -70,7 +71,8 @@ pub fn create_webview(
     if let Ok(webviews) = instances.lock() {
         if let Some(existing_webview) = webviews.get(webtag.as_str()) {
             log::info!("WebView already exists, reusing: {}-{}", appid, path);
-            let _ = sender.send(Ok(existing_webview.clone()));
+            let webview_controller: Arc<dyn WebViewController> = existing_webview.clone();
+            let _ = sender.send(Ok(webview_controller));
             return;
         }
     }

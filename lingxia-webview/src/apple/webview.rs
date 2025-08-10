@@ -8,8 +8,10 @@ use objc2::{
 };
 use objc2_foundation::{NSObjectProtocol, NSPoint, NSRect, NSSize, NSString, NSURL, NSURLRequest};
 use objc2_web_kit::{WKNavigation, WKNavigationDelegate, WKWebViewConfiguration};
+use std::sync::Arc;
+use std::sync::mpsc::Sender;
 
-use crate::webview::WebTag;
+use crate::webview::{WebTag, register_webview};
 
 // Custom Navigation Delegate for handling page lifecycle events
 pub struct LingXiaNavigationDelegateIvars {
@@ -186,67 +188,52 @@ unsafe impl Send for WebViewInner {}
 unsafe impl Sync for WebViewInner {}
 
 impl WebViewInner {
-    /// Create a new WebView
-    pub(crate) fn create(appid: &str, path: &str) -> Result<Self, LxAppError> {
-        log::info!(
-            "Starting WebView creation for appid={}, path={}",
-            appid,
-            path
-        );
-
-        // Try to get MainThreadMarker, if not available, dispatch to main thread
-        match MainThreadMarker::new() {
-            Some(mtm) => Self::create_with_marker(appid, path, mtm),
-            None => Self::create_on_main_thread(appid, path),
-        }
-    }
-
-    /// Create WebView on main thread using DispatchQueue
-    fn create_on_main_thread(appid: &str, path: &str) -> Result<Self, LxAppError> {
-        use std::sync::{Arc, Condvar, Mutex};
-        use std::time::Duration;
-
-        let result: Arc<Mutex<Option<Result<Self, LxAppError>>>> = Arc::new(Mutex::new(None));
-        let condvar = Arc::new(Condvar::new());
-
-        let result_clone = result.clone();
-        let condvar_clone = condvar.clone();
+    /// Create a new WebView asynchronously with channel sender
+    pub(crate) fn create(
+        appid: &str,
+        path: &str,
+        sender: Sender<Result<Arc<dyn WebViewController>, LxAppError>>,
+    ) {
         let appid_owned = appid.to_string();
         let path_owned = path.to_string();
 
-        // Dispatch to main thread
+        // Always dispatch to main thread for WebView creation
         DispatchQueue::main().exec_async(move || {
-            let creation_result = match MainThreadMarker::new() {
+            let result = match MainThreadMarker::new() {
                 Some(mtm) => Self::create_with_marker(&appid_owned, &path_owned, mtm),
                 None => Err(LxAppError::WebView(
-                    "Still no MainThreadMarker on main thread".to_string(),
+                    "No MainThreadMarker available on main thread".to_string(),
                 )),
             };
 
-            let mut guard = result_clone.lock().unwrap();
-            *guard = Some(creation_result);
-            condvar_clone.notify_one();
+            match result {
+                Ok(webview_inner) => {
+                    let webview_inner_arc = Arc::new(webview_inner);
+
+                    // Register the WebView instance for future lookups
+                    let webtag = WebTag::new(&appid_owned, &path_owned);
+                    register_webview(&webtag, webview_inner_arc.clone());
+
+                    // Create WebViewController trait object
+                    let webview_controller: Arc<dyn WebViewController> = webview_inner_arc;
+                    let _ = sender.send(Ok(webview_controller));
+                    log::info!(
+                        "WebView created successfully for {}-{}",
+                        appid_owned,
+                        path_owned
+                    );
+                }
+                Err(e) => {
+                    log::error!(
+                        "Failed to create WebView for {}-{}: {:?}",
+                        appid_owned,
+                        path_owned,
+                        e
+                    );
+                    let _ = sender.send(Err(e));
+                }
+            }
         });
-
-        // Wait for result with timeout
-        let guard = result.lock().unwrap();
-        let (mut guard, timeout_result) = condvar
-            .wait_timeout(guard, Duration::from_secs(10))
-            .unwrap();
-
-        if timeout_result.timed_out() {
-            return Err(LxAppError::WebView(
-                "WebView creation timed out".to_string(),
-            ));
-        }
-
-        match guard.take() {
-            Some(Ok(webview)) => Ok(webview),
-            Some(Err(e)) => Err(e),
-            None => Err(LxAppError::WebView(
-                "WebView creation not available".to_string(),
-            )),
-        }
     }
 
     /// Create WebView with MainThreadMarker (must be called on main thread)
@@ -327,11 +314,8 @@ impl WebViewInner {
             }
 
             // Create navigation delegate
-            let navigation_delegate = LingXiaNavigationDelegate::new(
-                appid.to_string(),
-                path.to_string(),
-                MainThreadMarker::new().unwrap(),
-            );
+            let navigation_delegate =
+                LingXiaNavigationDelegate::new(appid.to_string(), path.to_string(), mtm);
 
             // Set the navigation delegate on the WebView
             let proto_navigation_delegate: &ProtocolObject<dyn WKNavigationDelegate> =
@@ -350,12 +334,6 @@ impl WebViewInner {
                 _scroll_delegate: std::cell::RefCell::new(None), // Will be set when scroll listener is enabled
                 webtag,
             };
-
-            log::info!(
-                "WebView created successfully for appid={}, path={}",
-                appid,
-                path
-            );
 
             Ok(webview_inner)
         }
@@ -706,10 +684,12 @@ impl WebViewController for WebViewInner {
 
             DispatchQueue::main().exec_async(move || unsafe {
                 let webview_ptr = webview_ptr_addr as *mut AnyObject;
-                let configuration: *mut AnyObject = msg_send![webview_ptr, configuration];
-                let preferences: *mut AnyObject = msg_send![configuration, preferences];
-                let key_nsstring = NSString::from_str("developerExtrasEnabled");
-                let _: () = msg_send![preferences, setValue: enabled, forKey: &*key_nsstring];
+                // Check if isInspectable is available (iOS 16.4+)
+                let responds: bool =
+                    msg_send![webview_ptr, respondsToSelector: objc2::sel!(setInspectable:)];
+                if responds {
+                    let _: () = msg_send![webview_ptr, setInspectable: enabled];
+                }
             });
 
             Ok(())
