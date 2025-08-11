@@ -1,6 +1,7 @@
 use crate::error::LxAppError;
 use crate::log::{LogBuilder, LogLevel, LogTag};
 use crate::lxapp::LxApp;
+use crate::module;
 use crate::{error, info};
 
 use rong::{JSContext, JSFunc, JSResult, JSRuntime, RongJSError, Source};
@@ -178,6 +179,27 @@ pub(crate) async fn lxapp_service_handler(
 
             let _ = rong_modules::init(&ctx);
             let _ = lx::init(&ctx);
+
+            // Execute a closure with access to the list of registered modules.
+            module::with_registered_modules(|user_modules| {
+                info!(
+                    "[Worker {}] Initializing {} user-registered modules",
+                    worker_id,
+                    user_modules.len()
+                )
+                .with_appid(lxapp.appid.clone());
+
+                // Iterate through the list and initialize each module.
+                for (index, user_module) in user_modules.iter().enumerate() {
+                    if let Err(e) = user_module.init(&ctx) {
+                        error!(
+                            "[Worker {}] Failed to initialize user module #{}: {}",
+                            worker_id, index, e
+                        )
+                        .with_appid(lxapp.appid.clone());
+                    }
+                }
+            });
 
             info!("[Worker {}] Created JS context", worker_id).with_appid(lxapp.appid.clone());
 
