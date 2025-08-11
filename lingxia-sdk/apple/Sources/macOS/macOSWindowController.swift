@@ -146,20 +146,6 @@ class macOSWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    func reapplyWindowSize() {
-        guard let window = self.window else { return }
-
-        let newSize = NSSize(width: Self.windowWidth, height: Self.windowHeight)
-        window.setContentSize(newSize)
-
-        switch Self.windowStyle {
-        case .capsuleStyle:
-            window.styleMask.remove(.resizable)
-        case .tabStyle:
-            window.styleMask.update(with: .resizable)
-        }
-    }
-
     private func setupNotificationObservers() {
         guard let appId = appId else { return }
 

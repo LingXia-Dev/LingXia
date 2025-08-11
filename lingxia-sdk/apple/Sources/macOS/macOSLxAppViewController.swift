@@ -61,10 +61,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         view.wantsLayer = true
         view.layer?.backgroundColor = AppKit.NSColor.windowBackgroundColor.cgColor
 
-        // Let the view occupy the full contentView
-        if let window = view.window, let contentView = window.contentView {
-            view.frame = contentView.bounds
-        }
+        
 
         // Setup UI components
         setupLayout()
@@ -84,10 +81,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         view.wantsLayer = true
         view.layer?.backgroundColor = AppKit.NSColor.windowBackgroundColor.cgColor
 
-        // Let the view occupy the full contentView
-        if let window = view.window, let contentView = window.contentView {
-            view.frame = contentView.bounds
-        }
+        
 
         // Create TabBar first
         setupTabBar()
@@ -421,18 +415,10 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
             webView.bottomAnchor.constraint(equalTo: webViewContainer.bottomAnchor)
         ])
 
-        // Force layout update - use macOS compatible method
-        #if os(macOS)
-        webView.needsLayout = true
-        webViewContainer.needsLayout = true
-        webViewContainer.layoutSubtreeIfNeeded()
-        #else
-        // iOS version
-        webView.setNeedsLayout()
-        webView.layoutIfNeeded()
-        webViewContainer.setNeedsLayout()
-        webViewContainer.layoutIfNeeded()
-        #endif
+        // Force layout update of the entire view subtree to ensure all containers
+        // have their final size before we make the webView visible.
+        // This prevents visual glitches without needing to manually set the frame.
+        view.layoutSubtreeIfNeeded()
 
         // Ensure WebView is visible
         webView.isHidden = false

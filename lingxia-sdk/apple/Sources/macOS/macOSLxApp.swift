@@ -134,7 +134,6 @@ public class macOSLxApp {
 
         let windowController = macOSWindowController(appId: appId, path: actualPath)
         windowController.showWindow(nil as Any?)
-        windowController.reapplyWindowSize()
         windowController.window?.makeKeyAndOrderFront(nil as Any?)
 
         NSApp.activate(ignoringOtherApps: true)
