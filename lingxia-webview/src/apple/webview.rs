@@ -297,13 +297,14 @@ impl WebViewInner {
                 ));
             }
 
-            // Create frame (will be set properly when attached to view)
+            // Create frame with zero size and hide the webview initially to prevent flicker due to size change on macOS.
+            // It will be resized and unhidden by the Swift layout code.
             let frame = NSRect {
                 origin: NSPoint { x: 0.0, y: 0.0 },
                 size: NSSize {
-                    width: 320.0,
-                    height: 568.0,
-                }, // Default iPhone size
+                    width: 0.0,
+                    height: 0.0,
+                },
             };
 
             // Get WKWebView class
@@ -327,6 +328,9 @@ impl WebViewInner {
                     "Failed to initialize WKWebView".to_string(),
                 ));
             }
+
+            // Immediately hide the webview. It will be made visible by Swift once it's sized and positioned.
+            let _: () = msg_send![webview, setHidden: true];
 
             // Create navigation delegate
             let navigation_delegate =
