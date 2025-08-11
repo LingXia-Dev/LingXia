@@ -223,6 +223,15 @@ pub trait AppRuntime: Send + Sync + 'static {
     /// # Returns
     /// * `Result<(), LxAppError>` - Success or error
     fn switch_page(&self, appid: String, path: String) -> Result<(), LxAppError>;
+
+    /// Launch external application with URL
+    ///
+    /// # Arguments
+    /// * `url` - Complete URL to open the target app
+    ///
+    /// # Returns
+    /// * `Result<(), LxAppError>` - Success or error
+    fn launch_with_url(&self, url: String) -> Result<(), LxAppError>;
 }
 
 impl<T: AppRuntime + ?Sized> AppRuntime for Arc<T> {
@@ -268,5 +277,9 @@ impl<T: AppRuntime + ?Sized> AppRuntime for Arc<T> {
 
     fn switch_page(&self, appid: String, path: String) -> Result<(), LxAppError> {
         (**self).switch_page(appid, path)
+    }
+
+    fn launch_with_url(&self, url: String) -> Result<(), LxAppError> {
+        (**self).launch_with_url(url)
     }
 }

@@ -318,4 +318,9 @@ impl App {
     pub fn switch_page(&self, appid: &str, path: &str) -> Result<(), LxAppError> {
         lingxia_webview::tsfn::call_arkts("switchPage", &[appid, path])
     }
+
+    /// Launch external application with URL
+    pub fn launch_with_url(&self, url: String) -> Result<(), LxAppError> {
+        todo!()
+    }
 }

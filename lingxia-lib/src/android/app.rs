@@ -352,10 +352,7 @@ impl App {
             Ok(())
         }() {
             Ok(_) => Ok(()),
-            Err(e) => Err(LxAppError::WebView(format!(
-                "Failed to open lxapp: {}",
-                e
-            ))),
+            Err(e) => Err(LxAppError::WebView(format!("Failed to open lxapp: {}", e))),
         }
     }
 
@@ -380,10 +377,7 @@ impl App {
             Ok(())
         }() {
             Ok(_) => Ok(()),
-            Err(e) => Err(LxAppError::WebView(format!(
-                "Failed to close lxapp: {}",
-                e
-            ))),
+            Err(e) => Err(LxAppError::WebView(format!("Failed to close lxapp: {}", e))),
         }
     }
 
@@ -414,5 +408,10 @@ impl App {
             Ok(_) => Ok(()),
             Err(e) => Err(LxAppError::WebView(format!("Failed to switch page: {}", e))),
         }
+    }
+
+    /// Launch external application with URL
+    pub fn launch_with_url(&self, url: String) -> Result<(), LxAppError> {
+        todo!()
     }
 }

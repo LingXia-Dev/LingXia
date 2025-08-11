@@ -74,4 +74,8 @@ impl AppRuntime for PlatformAppRuntime {
     fn switch_page(&self, appid: String, path: String) -> Result<(), LxAppError> {
         self.app.switch_page(&appid, &path)
     }
+
+    fn launch_with_url(&self, url: String) -> Result<(), LxAppError> {
+        self.app.launch_with_url(url)
+    }
 }

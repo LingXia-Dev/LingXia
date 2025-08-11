@@ -176,6 +176,11 @@ impl App {
             )))
         }
     }
+
+    /// Launch external application with URL
+    pub fn launch_with_url(&self, url: String) -> Result<(), LxAppError> {
+        todo!()
+    }
 }
 
 /// Get device model using system calls (like Swift version)
