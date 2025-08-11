@@ -26,6 +26,11 @@ public class LxApp {
         LxAppCore.setHomeLxApp(appId: appId, initialRoute: initialRoute)
     }
 
+    /// Enable WebView debugging
+    public static func enableWebViewDebugging() {
+        LxAppCore.enableWebViewDebugging()
+    }
+
     #if os(iOS)
     /// Set launch mode (iOS only)
     public static func setLaunchMode(_ mode: LxAppLaunchMode) {

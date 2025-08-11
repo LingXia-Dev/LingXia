@@ -92,6 +92,8 @@ private struct AssociatedKeys {
 @MainActor
 public class WebViewManager {
 
+    private static var debuggingEnabled = false
+
     /// Find WebView from Rust layer
     public static func findWebView(appId: String, path: String) -> WKWebView? {
         let webViewPtr = lingxia.findWebView(appId, path)
@@ -99,6 +101,13 @@ public class WebViewManager {
 
         let webView = Unmanaged<WKWebView>.fromOpaque(UnsafeRawPointer(bitPattern: webViewPtr)!).takeUnretainedValue()
         webView.setup(appId: appId, path: path)
+
+        if debuggingEnabled {
+            if #available(iOS 16.4, macOS 13.3, *) {
+                webView.isInspectable = true
+            }
+        }
+
         return webView
     }
 
@@ -106,5 +115,13 @@ public class WebViewManager {
     static func switchWebView(from current: WKWebView?, to new: WKWebView?) {
         current?.pauseWebView()
         new?.resumeWebView()
+    }
+
+    /// Enable WebView debugging globally
+    /// This affects all WKWebView instances created after this call
+    /// Apple platform support turn on debugging for webview instance, but in order
+    /// to align with Android/Harmony, we provide the same mechanism also.
+    public static func enableDebugging() {
+        debuggingEnabled = true
     }
 }

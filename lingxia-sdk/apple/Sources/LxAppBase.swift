@@ -232,6 +232,12 @@ public class LxAppCore {
         }
     }
 
+    /// Enable WebView debugging
+    internal static func enableWebViewDebugging() {
+        WebViewManager.enableDebugging()
+        os_log("WebView debugging enabled", log: log, type: .info)
+    }
+
     /// Set home LxApp configuration
     public static func setHomeLxApp(appId: String, initialRoute: String = "/") {
         homeLxAppId = appId

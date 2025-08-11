@@ -15,6 +15,9 @@ class MainActivity : AppCompatActivity() {
         // Initialize LxApp
         LxApp.initialize(this)
 
+        // Enable WebView debugging
+        LxApp.enableWebViewDebugging()
+
         // Configure transparent status bar using shared method
         LxAppActivity.configureTransparentSystemBars(this)
 

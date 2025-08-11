@@ -87,6 +87,11 @@ class LxApp private constructor(private val context: Context) {
         }
 
         @JvmStatic
+        fun enableWebViewDebugging() {
+            com.lingxia.lxapp.WebView.enableDebugging()
+        }
+
+        @JvmStatic
         fun getInstance(): LxApp {
             return instance ?: throw IllegalStateException("LxApp not initialized")
         }

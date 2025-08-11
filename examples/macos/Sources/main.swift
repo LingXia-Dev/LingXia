@@ -18,6 +18,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        // Enable WebView debugging
+        LxApp.enableWebViewDebugging()
+
         // Option 1: Use predefined device size (convenient)
         // LxApp.setWindowSize(.iPhoneSE)
         // LxApp.setWindowStyle(.capsuleStyle)

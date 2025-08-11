@@ -462,10 +462,6 @@ impl WebViewController for WebViewInner {
         }
     }
 
-    fn set_devtools(&self, enabled: bool) -> Result<(), LxAppError> {
-        call_arkts("setDevtools", &[self.webtag.as_str(), &enabled.to_string()])
-    }
-
     fn clear_browsing_data(&self) -> Result<(), LxAppError> {
         call_arkts("clearBrowsingData", &[self.webtag.as_str()])
     }

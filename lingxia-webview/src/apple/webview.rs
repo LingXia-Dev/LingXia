@@ -497,20 +497,6 @@ impl WebViewInner {
         }
     }
 
-    /// Helper method to set devtools on main thread
-    fn set_devtools_on_main_thread(&self, enabled: bool) -> Result<(), LxAppError> {
-        unsafe {
-            // Check if isInspectable is available (iOS 16.4+)
-            let responds: bool =
-                msg_send![self.webview, respondsToSelector: objc2::sel!(setInspectable:)];
-            if responds {
-                let _: () = msg_send![self.webview, setInspectable: enabled];
-                log::info!("Devtools {}", if enabled { "enabled" } else { "disabled" });
-            }
-            Ok(())
-        }
-    }
-
     /// Helper method to set user agent on main thread
     fn set_user_agent_on_main_thread(&self, ua: String) -> Result<(), LxAppError> {
         unsafe {
@@ -667,28 +653,6 @@ impl WebViewController for WebViewInner {
                     let data_store: *mut AnyObject = msg_send![configuration, websiteDataStore];
                     let data_types: *mut AnyObject = msg_send![class!(WKWebsiteDataStore), allWebsiteDataTypes];
                     let _: () = msg_send![data_store, removeDataOfTypes: data_types, modifiedSince: std::ptr::null::<*const AnyObject>(), completionHandler: std::ptr::null::<*const AnyObject>()];
-                }
-            });
-
-            Ok(())
-        }
-    }
-
-    fn set_devtools(&self, enabled: bool) -> Result<(), LxAppError> {
-        if MainThreadMarker::new().is_some() {
-            // Already on main thread, execute directly
-            self.set_devtools_on_main_thread(enabled)
-        } else {
-            // Not on main thread, dispatch to main thread using GCD
-            let webview_ptr_addr = self.webview as usize;
-
-            DispatchQueue::main().exec_async(move || unsafe {
-                let webview_ptr = webview_ptr_addr as *mut AnyObject;
-                // Check if isInspectable is available (iOS 16.4+)
-                let responds: bool =
-                    msg_send![webview_ptr, respondsToSelector: objc2::sel!(setInspectable:)];
-                if responds {
-                    let _: () = msg_send![webview_ptr, setInspectable: enabled];
                 }
             });
 

@@ -129,6 +129,10 @@ export class LxApp {
     }
   }
 
+  public static enableWebViewDebugging(): void {
+    WebViewManager.enableDebugging();
+  }
+
   public static openHomeLxApp(): void {
     hilog.info(DOMAIN, TAG, 'openHomeLxApp called');
 

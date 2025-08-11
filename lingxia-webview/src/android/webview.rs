@@ -210,29 +210,7 @@ impl WebViewController for WebViewInner {
         }
     }
 
-    fn set_devtools(&self, enabled: bool) -> Result<(), LxAppError> {
-        let mut env = get_env().unwrap();
 
-        match env.find_class("android/webkit/WebView") {
-            Ok(webview_class) => {
-                let result = env.call_static_method(
-                    webview_class,
-                    "setWebContentsDebuggingEnabled",
-                    "(Z)V",
-                    &[JValue::Bool(enabled as u8)],
-                );
-
-                if result.is_ok() {
-                    Ok(())
-                } else {
-                    Err(LxAppError::WebView("Failed to set devtools".to_string()))
-                }
-            }
-            Err(_) => Err(LxAppError::WebView(
-                "Failed to find WebView class".to_string(),
-            )),
-        }
-    }
 
     fn post_message(&self, message: String) -> Result<(), LxAppError> {
         let mut env = get_env().unwrap();

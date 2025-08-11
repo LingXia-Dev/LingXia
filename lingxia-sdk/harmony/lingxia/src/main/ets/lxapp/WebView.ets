@@ -146,28 +146,6 @@ export class WebViewManager {
   }
 
   /**
-   * Set web debugging access for WebView
-   * @param webtag - WebView tag
-   * @param enable - Whether to enable web debugging
-   * @returns true if setting applied successfully, false if WebView not found or setting failed
-   */
-  static setWebDebuggingAccess(webtag: string, enable: boolean): boolean {
-    if (!WebViewManager.controllers.has(webtag)) {
-      hilog.warn(DOMAIN, TAG, `WebView not found for setWebDebuggingAccess: ${webtag}`);
-      return false;
-    }
-
-    try {
-      webview.WebviewController.setWebDebuggingAccess(enable);
-      hilog.info(DOMAIN, TAG, `Set web debugging access for WebView ${webtag}: ${enable}`);
-      return true;
-    } catch (error) {
-      hilog.error(DOMAIN, TAG, `Failed to set web debugging access for WebView ${webtag}: ${error}`);
-      return false;
-    }
-  }
-
-  /**
    * Clear browsing data for WebView
    * @param webtag - WebView tag
    * @returns true if clearing succeeded, false if WebView not found or clearing failed
@@ -302,6 +280,15 @@ export class WebViewManager {
   static getAllWebViewInfos(): WebViewInfo[] {
     return Array.from(WebViewManager.webViewInfos.values());
   }
+
+  /**
+   * Enable WebView debugging globally
+   * This affects all WebView instances created after this call
+   */
+  static enableDebugging(): void {
+    webview.WebviewController.setWebDebuggingAccess(true);
+    hilog.info(DOMAIN, TAG, 'WebView debugging enabled globally');
+  }
 }
 
 /**
@@ -382,17 +369,6 @@ export function destroyWebViewController(webtag: string): boolean {
  */
 export function loadUrl(webtag: string, url: string): boolean {
   return WebViewManager.loadUrl(webtag, url);
-}
-
-/**
- * Set web debugging access for WebView
- * @param webtag - WebView tag
- * @param enable - Whether to enable web debugging
- * @returns true if setting applied successfully
- */
-export function setWebDebuggingAccess(webtag: string, enable: boolean): boolean {
-  //return WebViewManager.setWebDebuggingAccess(webtag, enable);
-  return true;
 }
 
 /**
