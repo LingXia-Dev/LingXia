@@ -222,7 +222,7 @@ class LxAppActivity : AppCompatActivity() {
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             val tabBarBgColor = tabBarConfig?.backgroundColor
             val isTabBarTransparent = tabBarBgColor == Color.TRANSPARENT ||
-                                     (tabBarBgColor != null && Color.alpha(tabBarBgColor) < 255)
+                                     (tabBarBgColor?.let { Color.alpha(it) < 255 } == true)
 
             if (isTabBarTransparent) {
                 view.setPadding(0, 0, 0, 0)
@@ -310,7 +310,7 @@ class LxAppActivity : AppCompatActivity() {
 
         val tabBarBgColor = config.backgroundColor
         val isTabBarTransparent = tabBarBgColor == Color.TRANSPARENT ||
-                                 (tabBarBgColor != null && Color.alpha(tabBarBgColor) < 255)
+                                 (tabBarBgColor?.let { Color.alpha(it) < 255 } == true)
 
         // Get the actual TabBar background color (considering defaults)
         val actualTabBarColor: Int = when {
@@ -360,7 +360,7 @@ class LxAppActivity : AppCompatActivity() {
 
         val tabBarBgColor = config.backgroundColor
         val isTabBarTransparent = tabBarBgColor == Color.TRANSPARENT ||
-                                 (tabBarBgColor != null && Color.alpha(tabBarBgColor) < 255)
+                                 (tabBarBgColor?.let { Color.alpha(it) < 255 } == true)
 
         (tabBar.layoutParams as? FrameLayout.LayoutParams)?.apply {
             if (isVertical) {
@@ -418,7 +418,7 @@ class LxAppActivity : AppCompatActivity() {
         val tabBarWidth = tabBar?.layoutParams?.width ?: 0
         val tabBarBgColor = tabBar?.config?.backgroundColor
         val isTabBarTransparent = tabBarBgColor == Color.TRANSPARENT ||
-                                 (tabBarBgColor != null && Color.alpha(tabBarBgColor) < 255)
+                                 (tabBarBgColor?.let { Color.alpha(it) < 255 } == true)
 
         // Calculate NavigationBar height - use content height plus small padding for better spacing
         val isNavBarVisible = navigationBar?.visibility == View.VISIBLE
