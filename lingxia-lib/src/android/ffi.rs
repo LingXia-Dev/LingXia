@@ -210,7 +210,10 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getNavigationBarConfig<'
     };
 
     // Parse background color using unified function
-    let bg_color_int = parse_color_to_i32(&nav_config.navigationBarBackgroundColor, 0xFFFFFFFFu32 as i32);
+    let bg_color_int = parse_color_to_i32(
+        &nav_config.navigationBarBackgroundColor,
+        0xFFFFFFFFu32 as i32,
+    );
 
     log::info!(
         "[Android] Color parsing: original={}, parsed=0x{:08X}",
@@ -360,7 +363,8 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getTabBarConfig<'a>(
     };
 
     // Convert background color using unified function
-    let background_color = parse_color_to_i32(&tab_bar_config.backgroundColor, 0xFFFFFFFFu32 as i32);
+    let background_color =
+        parse_color_to_i32(&tab_bar_config.backgroundColor, 0xFFFFFFFFu32 as i32);
 
     // Convert selected color using unified function
     let selected_color = parse_color_to_i32(&tab_bar_config.selectedColor, 0xFF1677FFu32 as i32);
@@ -533,4 +537,17 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getTabBarItem<'a>(
     );
 
     create_tab_bar_item(&mut env, item).unwrap_or(JObject::null())
+}
+
+/// Handle DeepLink URL by processing the path without host
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onDeepLinkReceived(
+    mut env: JNIEnv,
+    _class: JClass,
+    deep_link_path: JString,
+) -> jint {
+    let path: String = env.get_string(&deep_link_path).unwrap().into();
+    
+    log::info!("[Android] DeepLink received: {}", path);
+    0
 }

@@ -3,6 +3,7 @@ package com.lingxia.lxapp
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.os.Bundle
 import android.util.Log
 
 /**
@@ -60,6 +61,14 @@ class LxApp private constructor(private val context: Context) {
                 instance = LxApp(context.applicationContext)
             }
             val appContext = context.applicationContext
+
+            // Handle DeepLink for the current activity if it's being initialized from an Activity
+            if (context is android.app.Activity) {
+                handleDeepLink(context.intent)
+            }
+
+            // Register global activity lifecycle callbacks to automatically handle DeepLinks
+            registerActivityLifecycleCallbacks(appContext)
 
             // Set application context for WebView creation
             com.lingxia.webview.LingXiaWebView.setApplicationContext(appContext)
@@ -196,6 +205,47 @@ class LxApp private constructor(private val context: Context) {
                 val config = NativeApi.getNavigationBarConfig(appId, path)
                 if (config != null) pageConfigCache[key] = config
                 config
+            }
+        }
+
+        /**
+         * Register activity lifecycle callbacks to automatically handle DeepLinks
+         */
+        private fun registerActivityLifecycleCallbacks(context: Context) {
+            try {
+                // Get the Application instance from context
+                val application = if (context is android.app.Application) {
+                    context
+                } else {
+                    context.applicationContext as? android.app.Application
+                }
+
+                application?.registerActivityLifecycleCallbacks(object : android.app.Application.ActivityLifecycleCallbacks {
+                    override fun onActivityCreated(activity: android.app.Activity, savedInstanceState: Bundle?) {
+                        handleDeepLink(activity.intent)
+                    }
+
+                    override fun onActivityStarted(activity: android.app.Activity) {}
+                    override fun onActivityResumed(activity: android.app.Activity) {}
+                    override fun onActivityPaused(activity: android.app.Activity) {}
+                    override fun onActivityStopped(activity: android.app.Activity) {}
+                    override fun onActivitySaveInstanceState(activity: android.app.Activity, outState: Bundle) {}
+                    override fun onActivityDestroyed(activity: android.app.Activity) {}
+                }) ?: Log.w(TAG, "Failed to register ActivityLifecycleCallbacks: Application not found")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error registering ActivityLifecycleCallbacks: ${e.message}")
+            }
+        }
+
+        /**
+         * Handle DeepLink from an Activity's intent (internal use)
+         */
+        @JvmStatic
+        internal fun handleDeepLink(intent: Intent) {
+            val data = intent.data
+            if (intent.action == Intent.ACTION_VIEW && data?.scheme == "https") {
+                val path = data.path ?: "/"
+                NativeApi.onDeepLinkReceived(path)
             }
         }
     }

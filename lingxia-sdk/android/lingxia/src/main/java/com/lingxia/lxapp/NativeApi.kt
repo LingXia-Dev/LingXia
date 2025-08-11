@@ -104,4 +104,12 @@ object NativeApi {
      */
     @JvmStatic
     external fun findWebView(appId: String, path: String): com.lingxia.lxapp.WebView?
+
+    /**
+     * Handle DeepLink URL (security link) by passing the path (without host) to native layer
+     * @param deepLinkPath The DeepLink path without host (e.g., "/12/3" from "https://www.lingxia.app/12/3")
+     * @return Status code (0 = success)
+     */
+    @JvmStatic
+    external fun onDeepLinkReceived(deepLinkPath: String): Int
 }
