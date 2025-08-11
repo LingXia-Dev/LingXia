@@ -197,43 +197,59 @@ impl WebViewInner {
         let appid_owned = appid.to_string();
         let path_owned = path.to_string();
 
-        // Always dispatch to main thread for WebView creation
-        DispatchQueue::main().exec_async(move || {
-            let result = match MainThreadMarker::new() {
-                Some(mtm) => Self::create_with_marker(&appid_owned, &path_owned, mtm),
-                None => Err(LxAppError::WebView(
-                    "No MainThreadMarker available on main thread".to_string(),
-                )),
-            };
-
-            match result {
-                Ok(webview_inner) => {
-                    let webview_inner_arc = Arc::new(webview_inner);
-
-                    // Register the WebView instance for future lookups
-                    let webtag = WebTag::new(&appid_owned, &path_owned);
-                    register_webview(&webtag, webview_inner_arc.clone());
-
-                    // Create WebViewController trait object
-                    let webview_controller: Arc<dyn WebViewController> = webview_inner_arc;
-                    let _ = sender.send(Ok(webview_controller));
-                    log::info!(
-                        "WebView created successfully for {}-{}",
-                        appid_owned,
-                        path_owned
-                    );
+        // Check if we're already on the main thread
+        if let Some(mtm) = MainThreadMarker::new() {
+            // Already on main thread, create directly
+            Self::create_and_register_sync(&appid_owned, &path_owned, mtm, sender);
+        } else {
+            // Not on main thread, dispatch to main thread
+            DispatchQueue::main().exec_async(move || match MainThreadMarker::new() {
+                Some(mtm) => {
+                    Self::create_and_register_sync(&appid_owned, &path_owned, mtm, sender);
                 }
-                Err(e) => {
+                None => {
+                    let error = LxAppError::WebView(
+                        "No MainThreadMarker available on main thread".to_string(),
+                    );
                     log::error!(
-                        "Failed to create WebView for {}-{}: {:?}",
+                        "Failed to get MainThreadMarker for {}-{}: {:?}",
                         appid_owned,
                         path_owned,
-                        e
+                        error
                     );
-                    let _ = sender.send(Err(e));
+                    let _ = sender.send(Err(error));
                 }
+            });
+        }
+    }
+
+    /// Helper method to create and register WebView synchronously on main thread
+    fn create_and_register_sync(
+        appid: &str,
+        path: &str,
+        mtm: MainThreadMarker,
+        sender: Sender<Result<Arc<dyn WebViewController>, LxAppError>>,
+    ) {
+        let result = Self::create_with_marker(appid, path, mtm);
+
+        match result {
+            Ok(webview_inner) => {
+                let webview_inner_arc = Arc::new(webview_inner);
+
+                // Register the WebView instance for future lookups
+                let webtag = WebTag::new(appid, path);
+                register_webview(&webtag, webview_inner_arc.clone());
+
+                // Create WebViewController trait object
+                let webview_controller: Arc<dyn WebViewController> = webview_inner_arc;
+                let _ = sender.send(Ok(webview_controller));
+                log::info!("WebView created successfully for {}-{}", appid, path);
             }
-        });
+            Err(e) => {
+                log::error!("Failed to create WebView for {}-{}: {:?}", appid, path, e);
+                let _ = sender.send(Err(e));
+            }
+        }
     }
 
     /// Create WebView with MainThreadMarker (must be called on main thread)
@@ -269,16 +285,15 @@ impl WebViewInner {
             {
                 let lx_scheme = NSString::from_str("lx");
                 let _: () = msg_send![&*config, setURLSchemeHandler: &*scheme_handler, forURLScheme: &*lx_scheme];
+
                 log::info!(
-                    "Successfully registered lx:// scheme handler for appid={}",
+                    "Successfully registered scheme `lx` handler for appid={}",
                     appid
                 );
             } else {
-                log::error!(
-                    "CRITICAL: Failed to create scheme handler - WebView will not handle lx:// URLs!"
-                );
+                log::error!("CRITICAL: Failed to create scheme `lx` handler!");
                 return Err(LxAppError::WebView(
-                    "Failed to create scheme handler".to_string(),
+                    "Failed to create scheme `lx` handler".to_string(),
                 ));
             }
 
@@ -543,7 +558,7 @@ impl WebViewInner {
                         ));
                     }
                 } else {
-                    log::debug!("Scroll listener already enabled");
+                    log::info!("Scroll listener already enabled");
                 }
             } else {
                 // Disable scroll listener by removing delegate
@@ -553,7 +568,7 @@ impl WebViewInner {
                     *self._scroll_delegate.borrow_mut() = None;
                     log::info!("Native scroll listener disabled");
                 } else {
-                    log::debug!("Scroll listener already disabled");
+                    log::info!("Scroll listener already disabled");
                 }
             }
 
