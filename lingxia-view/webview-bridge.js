@@ -5,6 +5,8 @@
   const LOG_PREFIX = "[LX.Bridge]";
   const MESSAGE_PORT_TYPE = "messageport";
 
+  let debugEnabled = false;
+
   let messageCounter = 0;
   const pendingCalls = new Map(); // msgId -> { resolve, reject, timerId }
   let pageData = {};
@@ -159,6 +161,9 @@
 
   // Send message to native layer
   function _sendMessageToNative(message) {
+    if (debugEnabled) {
+      console.log("→", JSON.stringify(message, null, 2));
+    }
     try {
       if (communicationMethod === "webkit") {
         window.webkit.messageHandlers[NATIVE_HANDLER_NAME].postMessage(message);
@@ -197,7 +202,9 @@
 
   // Process incoming messages
   function _handleIncomingMessage(message) {
-    // log( "Message Received:", typeof message === "object" ? JSON.stringify(message) : message,);
+    if (debugEnabled) {
+      console.log("←", JSON.stringify(message, null, 2));
+    }
     if (!message || typeof message !== "object" || !message.type) {
       warn("Invalid message format:", message);
       return;
@@ -409,6 +416,10 @@
       } catch (e) {
         error("Invalid JSON from evaluate_javascript:", e);
       }
+    },
+
+    setDebug: function (enabled) {
+      debugEnabled = !!enabled;
     },
   };
 
