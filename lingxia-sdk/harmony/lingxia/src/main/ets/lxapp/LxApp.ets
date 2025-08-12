@@ -3,9 +3,13 @@ import { webview } from '@kit.ArkWeb';
 import { window } from '@kit.ArkUI';
 import { resourceManager } from '@kit.LocalizationKit';
 import { taskpool } from '@kit.ArkTS';
+import { Want } from '@kit.AbilityKit';
+import common from '@ohos.app.ability.common';
 import { LxAppContainer } from './LxAppContainer';
 import { initNativeBridge, getNativeCallbackFunction } from './NativeBridge';
 import { WebViewManager, toWebTag } from './WebView';
+import promptAction from '@kit.ArkUI';
+
 
 // Import native functions from Rust
 import { lxappInit, registerCustomSchemes, onLxappOpened, onLxappClosed, onPageShow, getLxAppInfo, LxAppInfo } from 'liblingxia.so';
@@ -27,7 +31,7 @@ interface NavigationInstance {
 export class LxApp {
   private static instance: LxApp | null = null;
   public static managerInstance: LxAppManager | null = null;
-  public static context: Context | null = null;
+  public static context: common.UIAbilityContext | null = null;
   public static windowStage: window.WindowStage | null = null;
 
   // Modal lxapp state (for non-home lxapps)
@@ -57,7 +61,7 @@ export class LxApp {
     return LxApp.instance;
   }
 
-  public static initialize(context?: Context, windowStage?: window.WindowStage): void {
+  public static initialize(context?: common.UIAbilityContext, windowStage?: window.WindowStage): void {
     const instance = LxApp.getInstance();
     if (instance.homeLxAppId !== null) {
       hilog.info(DOMAIN, TAG, 'LxApp already successfully initialized');
@@ -311,6 +315,33 @@ export class LxApp {
       hilog.error(DOMAIN, TAG, `Error switching to page ${path}: ${error}`);
       return false;
     }
+  }
+
+  /**
+   * Launch external URL with system default application
+   * @param url The URL to open
+   */
+  public static launchWithUrl(url: string): void {
+    if (!LxApp.context) {
+      hilog.error(DOMAIN, TAG, `Context not available for launching URL: ${url}`);
+      return;
+    }
+
+    // Create a Want object to launch the URL
+    const want: Want = {
+      action: 'ohos.want.action.viewData',
+      entities: ['entity.system.browsable'],
+      uri: url
+    };
+
+    // Start the ability with the URL using the context
+    LxApp.context.startAbility(want)
+      .then(() => {
+        hilog.info(DOMAIN, TAG, `Successfully launched URL: ${url}`);
+      })
+      .catch((err: Error) => {
+        hilog.error(DOMAIN, TAG, `Failed to launch URL: ${url}, error: ${JSON.stringify(err)}`);
+      });
   }
 }
 

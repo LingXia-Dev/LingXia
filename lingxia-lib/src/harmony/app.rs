@@ -321,6 +321,6 @@ impl App {
 
     /// Launch external application with URL
     pub fn launch_with_url(&self, url: String) -> Result<(), LxAppError> {
-        todo!()
+        lingxia_webview::tsfn::call_arkts("launchWithUrl", &[&url])
     }
 }

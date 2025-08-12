@@ -51,6 +51,12 @@ class NativeBridge {
       return LxApp.switchToPage(appId, path);
     });
 
+    // Launch external URL
+    this.register('launchWithUrl', (url: string) => {
+      LxApp.launchWithUrl(url);
+      return true;
+    });
+
     // WebView management
     this.register('createWebViewController', (webtag: string) => {
       return createWebViewController(webtag);
