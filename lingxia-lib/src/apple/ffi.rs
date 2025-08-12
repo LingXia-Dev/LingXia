@@ -105,11 +105,14 @@ mod bridge {
 
         #[swift_bridge(swift_name = "LxApp.switchPage")]
         fn switch_page(appid: &str, path: &str) -> bool;
+
+        #[swift_bridge(swift_name = "LxApp.launchWithUrl")]
+        fn launch_with_url(url: &str);
     }
 }
 
 // Re-export the bridge functions for use in other modules
-pub use bridge::{close_lxapp, open_lxapp, switch_page};
+pub use bridge::{close_lxapp, launch_with_url, open_lxapp, switch_page};
 
 // Conversion from core LxAppInfo to FFI LxAppInfo
 impl From<CoreLxAppInfo> for bridge::LxAppInfo {

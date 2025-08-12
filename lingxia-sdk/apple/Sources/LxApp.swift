@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import CLingXiaFFI
 
 #if os(iOS)
@@ -11,6 +12,8 @@ import Cocoa
 /// This class provides a clean, consistent API that delegates to platform-specific implementations
 @MainActor
 public class LxApp {
+
+    nonisolated(unsafe) fileprivate static let log = OSLog(subsystem: "LingXia", category: "LxApp")
 
     /// Initialize the LxApp system
     public static func initialize() {
@@ -93,6 +96,21 @@ extension LxApp {
             LxAppPlatform.switchPage(appId: appIdString, path: pathString ?? "")
         }
         return true
+    }
+
+    nonisolated public static func launchWithUrl(url: RustStr) {
+        let urlString = url.toString()
+        guard let url = URL(string: urlString) else {
+            os_log(.error, log: Self.log, "Invalid URL for launchWithUrl: %{public}@", urlString)
+            return
+        }
+        #if os(iOS)
+        DispatchQueue.main.async {
+            UIApplication.shared.open(url, options: [:], completionHandler: nil)
+        }
+        #elseif os(macOS)
+        NSWorkspace.shared.open(url)
+        #endif
     }
 }
 

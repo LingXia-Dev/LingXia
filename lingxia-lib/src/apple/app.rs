@@ -179,7 +179,8 @@ impl App {
 
     /// Launch external application with URL
     pub fn launch_with_url(&self, url: String) -> Result<(), LxAppError> {
-        todo!()
+        ffi::launch_with_url(&url);
+        Ok(())
     }
 }
 
