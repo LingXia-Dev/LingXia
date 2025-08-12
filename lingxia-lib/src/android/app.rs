@@ -412,6 +412,29 @@ impl App {
 
     /// Launch external application with URL
     pub fn launch_with_url(&self, url: String) -> Result<(), LxAppError> {
-        todo!()
+        match || -> Result<(), Box<dyn std::error::Error>> {
+            let mut env = get_env()?;
+
+            let lxapp_class: &JClass = LXAPP_CLASS
+                .get()
+                .ok_or("Global LxApp class reference not available")?
+                .as_obj()
+                .into();
+            let url_jstring = env.new_string(url)?;
+
+            env.call_static_method(
+                lxapp_class,
+                "launchWithUrl",
+                "(Ljava/lang/String;)V",
+                &[JValue::Object(&url_jstring)],
+            )?;
+            Ok(())
+        }() {
+            Ok(_) => Ok(()),
+            Err(e) => Err(LxAppError::WebView(format!(
+                "Failed to launch_with_url: {}",
+                e
+            ))),
+        }
     }
 }

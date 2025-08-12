@@ -106,6 +106,23 @@ class LxApp private constructor(private val context: Context) {
         }
 
         /**
+         * Launch external application with URI
+         * @param uri Complete URI to open the target app (e.g., "weixin://dl/scan")
+         */
+        @JvmStatic
+        fun launchWithUrl(uri: String) {
+            Log.d(TAG, "launchWithUrl called with URI: $uri")
+            try {
+                val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(uri)).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                getInstance().context.startActivity(intent)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to launch with URL: $uri", e)
+            }
+        }
+
+        /**
          * Opens a mini app in a new activity
          *
          * This method creates a new LxAppActivity to host the specified mini app.
