@@ -327,15 +327,7 @@ export class LxApp {
       return;
     }
 
-    // Create a Want object to launch the URL
-    const want: Want = {
-      action: 'ohos.want.action.viewData',
-      entities: ['entity.system.browsable'],
-      uri: url
-    };
-
-    // Start the ability with the URL using the context
-    LxApp.context.startAbility(want)
+    LxApp.context.openLink(url)
       .then(() => {
         hilog.info(DOMAIN, TAG, `Successfully launched URL: ${url}`);
       })
