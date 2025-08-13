@@ -12,7 +12,7 @@ import promptAction from '@kit.ArkUI';
 
 
 // Import native functions from Rust
-import { lxappInit, registerCustomSchemes, onLxappOpened, onLxappClosed, onPageShow, getLxAppInfo, LxAppInfo } from 'liblingxia.so';
+import { lxappInit, registerCustomSchemes, onLxappOpened, onLxappClosed, onPageShow, getLxAppInfo, LxAppInfo, onApplinkReceived } from 'liblingxia.so';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.LxApp';
@@ -342,6 +342,38 @@ export class LxApp {
       .catch((err: Error) => {
         hilog.error(DOMAIN, TAG, `Failed to launch URL: ${url}, error: ${JSON.stringify(err)}`);
       });
+  }
+
+  /**
+   * Internal applinkhandler - called by SDK infrastructure
+   * @param url The full applinkURL (e.g., "https://www.lingxia.app/12/3")
+   */
+  /**
+   * Internal applink handler - called by SDK infrastructure
+   * @param url The full applink URL (e.g., "https://www.lingxia.app/12/3")
+   */
+  private static handleAppLink(url: string): void {
+    try {
+      // Call native layer to handle the applink
+      const result: number = onApplinkReceived(url);
+      hilog.info(DOMAIN, TAG, `AppLink processed with result: ${result}`);
+    } catch (error) {
+      hilog.error(DOMAIN, TAG, `Error processing AppLink: ${url}, error: ${JSON.stringify(error)}`);
+    }
+  }
+
+  /**
+   * Handle Want from UIAbility - call this in your UIAbility onCreate/onNewWant methods
+   * This provides a simple one-line integration for applink handling
+   * @param want The Want object containing the applink URI
+   */
+  public static handleWant(want: Want): void {
+    if (want.uri && want.uri.startsWith('https://')) {
+      hilog.info(DOMAIN, TAG, `Processing Want with URI: ${want.uri}`);
+      LxApp.handleAppLink(want.uri);
+    } else if (want.uri) {
+      hilog.info(DOMAIN, TAG, `AppLink ignored - not HTTPS scheme: ${want.uri}`);
+    }
   }
 }
 

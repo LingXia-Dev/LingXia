@@ -31,3 +31,4 @@
 
 export { LxApp } from './src/main/ets/lxapp/LxApp';
 export { LxAppNavigation } from './src/main/ets/lxapp/LxAppNavigation';
+export { LingxiaBaseAbility } from './src/main/ets/lxapp/LingxiaBaseAbility';

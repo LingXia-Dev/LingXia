@@ -295,3 +295,10 @@ pub fn on_scroll_changed(
     lxapp.on_page_scroll_changed(path, scroll_x, scroll_y, max_scroll_x, max_scroll_y);
     0
 }
+
+/// Handle AppLink URL by processing the path without host
+#[napi]
+pub fn on_applink_received(applink_url: String) -> i32 {
+    log::info!("[Harmony] AppLink received: {}", applink_url);
+    0
+}
