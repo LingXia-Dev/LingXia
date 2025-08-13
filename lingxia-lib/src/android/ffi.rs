@@ -544,10 +544,10 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getTabBarItem<'a>(
 pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onAppLinkReceived(
     mut env: JNIEnv,
     _class: JClass,
-    applink_path: JString,
+    applink_url: JString,
 ) -> jint {
-    let path: String = env.get_string(&applink_path).unwrap().into();
+    let url: String = env.get_string(&applink_url).unwrap().into();
 
-    log::info!("[Android] AppLink received: {}", path);
+    log::info!("[Android] AppLink received: {}", url);
     0
 }

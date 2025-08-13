@@ -261,8 +261,8 @@ class LxApp private constructor(private val context: Context) {
         internal fun handleAppLink(intent: Intent) {
             val data = intent.data
             if (intent.action == Intent.ACTION_VIEW && data?.scheme == "https") {
-                val path = data.path ?: "/"
-                NativeApi.onAppLinkReceived(path)
+                val url = data.toString()
+                NativeApi.onAppLinkReceived(url)
             }
         }
     }
