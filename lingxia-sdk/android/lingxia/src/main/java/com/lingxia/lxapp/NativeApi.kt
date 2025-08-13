@@ -4,13 +4,13 @@ import android.content.res.AssetManager
 
 /**
  * Centralized Native API declarations
- * 
+ *
  * This object contains all JNI function declarations that interface with the Rust layer.
  * All native methods are organized by functionality and provide a single point of reference
  * for the FFI interface.
  */
 object NativeApi {
-    
+
     init {
         System.loadLibrary("lingxia")
     }
@@ -18,7 +18,7 @@ object NativeApi {
     /**
      * Initialize the LxApp system with data and cache directories
      * @param dataDir Application data directory path
-     * @param cacheDir Application cache directory path  
+     * @param cacheDir Application cache directory path
      * @param assetManager Android AssetManager for accessing bundled assets
      * @return Home app ID if successful, null otherwise
      */
@@ -106,10 +106,10 @@ object NativeApi {
     external fun findWebView(appId: String, path: String): com.lingxia.lxapp.WebView?
 
     /**
-     * Handle DeepLink URL (security link) by passing the path (without host) to native layer
-     * @param deepLinkPath The DeepLink path without host (e.g., "/12/3" from "https://www.lingxia.app/12/3")
+     * Handle AppLink URL by passing the path (without host) to native layer
+     * @param applinkPath The DeepLink path without host (e.g., "/12/3" from "https://www.lingxia.app/12/3")
      * @return Status code (0 = success)
      */
     @JvmStatic
-    external fun onDeepLinkReceived(deepLinkPath: String): Int
+    external fun onAppLinkReceived(applinkPath: String): Int
 }

@@ -541,13 +541,13 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getTabBarItem<'a>(
 
 /// Handle DeepLink URL by processing the path without host
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onDeepLinkReceived(
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onAppLinkReceived(
     mut env: JNIEnv,
     _class: JClass,
-    deep_link_path: JString,
+    applink_path: JString,
 ) -> jint {
-    let path: String = env.get_string(&deep_link_path).unwrap().into();
-    
-    log::info!("[Android] DeepLink received: {}", path);
+    let path: String = env.get_string(&applink_path).unwrap().into();
+
+    log::info!("[Android] AppLink received: {}", path);
     0
 }

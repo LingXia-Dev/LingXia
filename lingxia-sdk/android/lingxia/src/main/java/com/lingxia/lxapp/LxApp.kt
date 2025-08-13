@@ -64,7 +64,7 @@ class LxApp private constructor(private val context: Context) {
 
             // Handle DeepLink for the current activity if it's being initialized from an Activity
             if (context is android.app.Activity) {
-                handleDeepLink(context.intent)
+                handleAppLink(context.intent)
             }
 
             // Register global activity lifecycle callbacks to automatically handle DeepLinks
@@ -239,7 +239,7 @@ class LxApp private constructor(private val context: Context) {
 
                 application?.registerActivityLifecycleCallbacks(object : android.app.Application.ActivityLifecycleCallbacks {
                     override fun onActivityCreated(activity: android.app.Activity, savedInstanceState: Bundle?) {
-                        handleDeepLink(activity.intent)
+                        handleAppLink(activity.intent)
                     }
 
                     override fun onActivityStarted(activity: android.app.Activity) {}
@@ -258,11 +258,11 @@ class LxApp private constructor(private val context: Context) {
          * Handle DeepLink from an Activity's intent (internal use)
          */
         @JvmStatic
-        internal fun handleDeepLink(intent: Intent) {
+        internal fun handleAppLink(intent: Intent) {
             val data = intent.data
             if (intent.action == Intent.ACTION_VIEW && data?.scheme == "https") {
                 val path = data.path ?: "/"
-                NativeApi.onDeepLinkReceived(path)
+                NativeApi.onAppLinkReceived(path)
             }
         }
     }
