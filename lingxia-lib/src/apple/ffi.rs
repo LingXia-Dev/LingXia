@@ -93,6 +93,9 @@ mod bridge {
 
         #[swift_bridge(swift_name = "findWebView")]
         fn find_webview(appid: &str, path: &str) -> usize;
+
+        #[swift_bridge(swift_name = "onApplinkReceived")]
+        fn on_applink_received(applink_path: &str) -> i32;
     }
 
     extern "Swift" {
@@ -291,4 +294,10 @@ pub fn get_tab_bar_item(appid: &str, index: i32) -> Option<bridge::TabBarItem> {
                     },
                 })
         })
+}
+
+/// Handle AppLink URL by processing the path
+pub fn on_applink_received(url: &str) -> i32 {
+    log::info!("[Apple] AppLink received: {}", url);
+    0
 }

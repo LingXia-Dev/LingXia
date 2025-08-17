@@ -1,33 +1,23 @@
-import Cocoa
+import AppKit
 import lingxia
-import os.log
 
-let appLog = OSLog(subsystem: "LingXia", category: "App")
+class LingXiaAppDelegate: NSObject, NSApplicationDelegate {
 
-@MainActor
-class AppDelegate: NSObject, NSApplicationDelegate {
-    private let log = appLog
-
-    func applicationDidFinishLaunching(_ aNotification: Notification) {
-
-        print("AppDelegate: Initializing LxApps...")
-        // Initialize LxApps - if fails, terminate app
-        guard macOSLxApp.initialize() else {
-            os_log("Failed to initialize LxApps", log: log, type: .error)
-            NSApp.terminate(nil)
-            return
-        }
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // Initialize LingXia system
+        LxApp.initialize()
 
         // Enable WebView debugging
         LxApp.enableWebViewDebugging()
 
         // Option 1: Use predefined device size (convenient)
-        // LxApp.setWindowSize(.iPhoneSE)
-        // LxApp.setWindowStyle(.capsuleStyle)
+        macOSLxApp.setWindowSize(.iPhoneSE)
+        macOSLxApp.setWindowStyle(.capsuleStyle)
 
         // Option 2
-        LxApp.setWindowStyle(.tabStyle)
+        //macOSLxApp.setWindowStyle(.tabStyle)
 
+        // Open home app immediately
         LxApp.openHomeLxApp()
     }
 
@@ -36,8 +26,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
+// Entry point
 let app = NSApplication.shared
-let appDelegate = AppDelegate()
-app.delegate = appDelegate
-
+let delegate = LingXiaAppDelegate()
+app.delegate = delegate
 app.run()

@@ -1,50 +1,39 @@
 import Foundation
 import WebKit
 import CLingXiaFFI
+import OSLog
 @preconcurrency import ObjectiveC
 
 #if os(iOS)
 import UIKit
 #elseif os(macOS)
-import Cocoa
+import AppKit
 #endif
 
 /// WebView extensions for display-related functionality
 extension WKWebView {
 
-    /// App ID (stored in accessibilityIdentifier)
+    /// Associated object keys for WebView properties
+    private static var appIdKey: UInt8 = 0
+    private static var currentPathKey: UInt8 = 0
+
+    /// App ID (stored using Associated Objects)
     var appId: String? {
         get {
-            #if os(iOS)
-            return accessibilityIdentifier
-            #else
-            return accessibilityIdentifier()
-            #endif
+            return objc_getAssociatedObject(self, &Self.appIdKey) as? String
         }
         set {
-            #if os(iOS)
-            accessibilityIdentifier = newValue
-            #else
-            setAccessibilityIdentifier(newValue)
-            #endif
+            objc_setAssociatedObject(self, &Self.appIdKey, newValue, .OBJC_ASSOCIATION_COPY_NONATOMIC)
         }
     }
 
-    /// Current path (stored in accessibilityLabel)
+    /// Current path (stored using Associated Objects)
     var currentPath: String? {
         get {
-            #if os(iOS)
-            return accessibilityLabel
-            #else
-            return accessibilityLabel()
-            #endif
+            return objc_getAssociatedObject(self, &Self.currentPathKey) as? String
         }
         set {
-            #if os(iOS)
-            accessibilityLabel = newValue
-            #else
-            setAccessibilityLabel(newValue)
-            #endif
+            objc_setAssociatedObject(self, &Self.currentPathKey, newValue, .OBJC_ASSOCIATION_COPY_NONATOMIC)
         }
     }
 
@@ -91,7 +80,7 @@ private struct AssociatedKeys {
 /// Simple WebView manager - Rust handles creation/lifecycle
 @MainActor
 public class WebViewManager {
-
+    private static let log = OSLog(subsystem: "LingXia", category: "WebView")
     private static var debuggingEnabled = false
 
     /// Find WebView from Rust layer
@@ -99,7 +88,13 @@ public class WebViewManager {
         let webViewPtr = lingxia.findWebView(appId, path)
         guard webViewPtr != 0 else { return nil }
 
-        let webView = Unmanaged<WKWebView>.fromOpaque(UnsafeRawPointer(bitPattern: webViewPtr)!).takeUnretainedValue()
+        // Safely convert pointer to WebView with error handling
+        guard let rawPointer = UnsafeRawPointer(bitPattern: webViewPtr) else {
+            os_log("Warning: Invalid WebView pointer received from Rust layer", log: log, type: .error)
+            return nil
+        }
+
+        let webView = Unmanaged<WKWebView>.fromOpaque(rawPointer).takeUnretainedValue()
         webView.setup(appId: appId, path: path)
 
         if debuggingEnabled {

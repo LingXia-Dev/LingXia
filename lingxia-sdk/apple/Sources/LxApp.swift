@@ -5,8 +5,136 @@ import CLingXiaFFI
 #if os(iOS)
 import UIKit
 #elseif os(macOS)
-import Cocoa
+import AppKit
 #endif
+
+/// Platform-specific directory configuration
+public struct LxAppDirectoryConfig {
+    public let dataPath: String
+    public let cachesPath: String
+
+    public init(dataPath: String, cachesPath: String) {
+        self.dataPath = dataPath
+        self.cachesPath = cachesPath
+    }
+}
+
+/// Directory provider errors
+public enum LxAppDirectoryError: Error {
+    case bundleIdentifierNotFound
+    case systemDirectoryNotFound(FileManager.SearchPathDirectory)
+}
+
+/// Simplified directory provider for all platforms
+public struct LxAppDirectoryFactory {
+
+    /// Create platform-specific directory configuration
+    public static func createDirectoryConfig() -> LxAppDirectoryConfig {
+        do {
+            guard let bundleId = Bundle.main.bundleIdentifier else {
+                throw LxAppDirectoryError.bundleIdentifierNotFound
+            }
+
+            #if os(iOS)
+            let dataDirectory: FileManager.SearchPathDirectory = .documentDirectory
+            #elseif os(macOS)
+            let dataDirectory: FileManager.SearchPathDirectory = .applicationSupportDirectory
+            #endif
+
+            guard let dataURL = FileManager.default.urls(for: dataDirectory, in: .userDomainMask).first,
+                  let cacheURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else {
+                throw LxAppDirectoryError.systemDirectoryNotFound(dataDirectory)
+            }
+
+            let dataPath = dataURL.appendingPathComponent(bundleId).path
+            let cachePath = cacheURL.appendingPathComponent(bundleId).path
+
+            // Create directories if they don't exist
+            try FileManager.default.createDirectory(atPath: dataPath, withIntermediateDirectories: true, attributes: nil)
+            try FileManager.default.createDirectory(atPath: cachePath, withIntermediateDirectories: true, attributes: nil)
+
+            return LxAppDirectoryConfig(dataPath: dataPath, cachesPath: cachePath)
+        } catch {
+            fatalError("Failed to create directory config: \(error)")
+        }
+    }
+}
+
+/// Notification action identifiers
+public let ACTION_SWITCH_PAGE = "com.lingxia.SWITCH_PAGE_ACTION"
+public let ACTION_CLOSE_LXAPP = "com.lingxia.CLOSE_LXAPP_ACTION"
+
+/// Core LxApp management logic shared between platforms
+@MainActor
+public class LxAppCore {
+    private static let log = OSLog(subsystem: "LingXia", category: "LxAppCore")
+
+    /// Singleton instance
+    private static var instance: LxAppCore?
+
+    /// Home LxApp configuration
+    internal static var homeLxAppId: String?
+
+    /// Active paths tracking
+    private static var lastActivePaths: [String: String] = [:]
+
+    private init() {}
+
+    /// Initialize the LxApp system (internal core initialization)
+    internal static func initializeCore() {
+        if homeLxAppId != nil {
+            return
+        }
+        performInitialization()
+    }
+
+    private static func performInitialization() {
+        instance = LxAppCore()
+
+        // Get platform-specific directory configuration
+        let directoryConfig = LxAppDirectoryFactory.createDirectoryConfig()
+
+        let initResult = lxappInit(directoryConfig.dataPath, directoryConfig.cachesPath)
+        let initResultString = initResult?.toString()
+
+        if let homeAppId = initResultString {
+            homeLxAppId = homeAppId
+        } else {
+            os_log("Failed to get home LxApp ID from native init", log: log, type: .error)
+        }
+    }
+
+    /// Enable WebView debugging
+    internal static func enableWebViewDebugging() {
+        WebViewManager.enableDebugging()
+    }
+
+    /// Set home LxApp configuration
+    public static func setHomeLxApp(appId: String, initialRoute: String = "/") {
+        homeLxAppId = appId
+        // Note: initialRoute parameter is ignored - initial route is always read from app info
+    }
+
+    /// Get last active path for app
+    public static func getLastActivePath(for appId: String, defaultPath: String = "") -> String {
+        return lastActivePaths[appId] ?? defaultPath
+    }
+
+    /// Set last active path for app
+    public static func setLastActivePath(_ path: String, for appId: String) {
+        lastActivePaths[appId] = path
+    }
+
+    /// Check if app is home LxApp
+    public static func isHomeLxApp(_ appId: String) -> Bool {
+        return appId == homeLxAppId
+    }
+
+    /// Get home LxApp ID
+    public static func getHomeLxAppId() -> String? {
+        return homeLxAppId
+    }
+}
 
 /// Main LxApp interface - unified API for both iOS and macOS
 /// This class provides a clean, consistent API that delegates to platform-specific implementations
@@ -15,12 +143,31 @@ public class LxApp {
 
     nonisolated(unsafe) fileprivate static let log = OSLog(subsystem: "LingXia", category: "LxApp")
 
+    /// Execute a closure on the main thread, ensuring MainActor isolation
+    nonisolated private static func executeOnMain<T: Sendable>(_ operation: @MainActor @Sendable () throws -> T) rethrows -> T {
+        if Thread.isMainThread {
+            return try MainActor.assumeIsolated {
+                try operation()
+            }
+        } else {
+            return try DispatchQueue.main.sync {
+                try MainActor.assumeIsolated {
+                    try operation()
+                }
+            }
+        }
+    }
+
     /// Initialize the LxApp system
     public static func initialize() {
+        // Initialize core first
+        LxAppCore.initializeCore()
+
+        // Then initialize platform-specific components
         #if os(iOS)
         iOSLxApp.initialize()
         #elseif os(macOS)
-        let _ = macOSLxApp.initialize()
+        _ = macOSLxApp.initialize()
         #endif
     }
 
@@ -35,34 +182,9 @@ public class LxApp {
     }
 
     #if os(iOS)
-    /// Set launch mode (iOS only)
-    public static func setLaunchMode(_ mode: LxAppLaunchMode) {
-        LxAppCore.setLaunchMode(mode)
-    }
-
     /// Configure transparent system bars (iOS only)
     public static func configureTransparentSystemBars(viewController: UIViewController, lightStatusBarIcons: Bool = false) {
         LxAppPlatform.configureTransparentSystemBars(viewController: viewController, lightStatusBarIcons: lightStatusBarIcons)
-    }
-    #elseif os(macOS)
-    /// Set window size using physical dimensions (macOS only)
-    /// - Parameters:
-    ///   - widthCm: Window width in centimeters
-    ///   - heightCm: Window height in centimeters
-    public static func setWindowSize(widthCm: CGFloat, heightCm: CGFloat) {
-        LxAppPlatform.setWindowSize(widthCm: widthCm, heightCm: heightCm)
-    }
-
-    /// Set window size using predefined device size (macOS only)
-    /// - Parameter deviceSize: Predefined device size to use
-    public static func setWindowSize(_ deviceSize: MobileDeviceSize) {
-        LxAppPlatform.setWindowSize(deviceSize)
-    }
-
-    /// Set window style (macOS only)
-    /// - Parameter style: Window style to use
-    public static func setWindowStyle(_ style: LxAppWindowStyle) {
-        LxAppPlatform.setWindowStyle(style)
     }
     #endif
 
@@ -76,26 +198,34 @@ public class LxApp {
 extension LxApp {
     /// Open specific LxApp
     nonisolated public static func openLxApp(appid: RustStr, path: RustStr) -> Bool {
-        FFIUtils.executeFFICallWithRustStr(appid: appid, path: path) { appIdString, pathString in
-            LxAppPlatform.openLxApp(appId: appIdString, path: pathString ?? "")
+        let appIdString = appid.toString()
+        let pathString = path.toString()
+
+        return executeOnMain {
+            LxAppPlatform.openLxApp(appId: appIdString, path: pathString)
+            return true
         }
-        return true
     }
 
     /// Close LxApp
     nonisolated public static func closeLxApp(appid: RustStr) -> Bool {
-        FFIUtils.executeFFICallWithSingleRustStr(appid: appid) { appIdString in
+        let appIdString = appid.toString()
+
+        return executeOnMain {
             LxAppPlatform.closeLxApp(appId: appIdString)
+            return true
         }
-        return true
     }
 
     /// Switch to page in LxApp
     nonisolated public static func switchPage(appid: RustStr, path: RustStr) -> Bool {
-        FFIUtils.executeFFICallWithRustStr(appid: appid, path: path) { appIdString, pathString in
-            LxAppPlatform.switchPage(appId: appIdString, path: pathString ?? "")
+        let appIdString = appid.toString()
+        let pathString = path.toString()
+
+        return executeOnMain {
+            LxAppPlatform.switchPage(appId: appIdString, path: pathString)
+            return true
         }
-        return true
     }
 
     nonisolated public static func launchWithUrl(url: RustStr) {

@@ -4,7 +4,7 @@ import PackageDescription
 let package = Package(
     name: "LingXiaDemo",
     platforms: [
-        .macOS(.v11)
+        .macOS(.v12)
     ],
     products: [
         .executable(

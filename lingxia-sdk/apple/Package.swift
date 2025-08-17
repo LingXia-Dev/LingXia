@@ -20,7 +20,7 @@ let package = Package(
     name: "lingxia",
     platforms: [
         .iOS(.v17),
-        .macOS(.v11)
+        .macOS(.v12)
     ],
     products: [
         .library(

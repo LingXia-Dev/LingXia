@@ -6,6 +6,7 @@ let package = Package(
     name: "lxapp",
     platforms: [
         .iOS(.v17),
+        .macOS(.v12)
     ],
     products: [
         // An xtool project should contain exactly one library product,

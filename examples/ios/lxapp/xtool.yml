@@ -1,2 +1,4 @@
 version: 1
 bundleID: app.lingxia.example.lxapp
+entitlementsPath: App.entitlements
+infoPath: Info.plist

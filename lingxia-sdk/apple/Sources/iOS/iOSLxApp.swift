@@ -1,15 +1,31 @@
 #if os(iOS)
 import Foundation
 import UIKit
+import SwiftUI
 import WebKit
 import os.log
 import CLingXiaFFI
 
+/// Presentation modes for LxApp in SwiftUI (iOS only)
+internal enum LxAppPresentationMode {
+    case replaceRoot
+    case modal
+    case sheet
+    case fullScreenCover
+}
+
+/// iOS LxApp manager with SwiftUI integration
 @MainActor
-public class iOSLxApp {
+public class iOSLxApp: ObservableObject {
     nonisolated private static let log = OSLog(subsystem: "LingXia", category: "iOSLxApp")
     private static var instance: iOSLxApp?
     private let context: UIApplication
+
+    // SwiftUI state management
+    @Published internal var currentAppId: String?
+    @Published internal var currentPath: String?
+    @Published internal var isLxAppPresented: Bool = false
+    @Published internal var presentationMode: LxAppPresentationMode = .replaceRoot
 
     private init(context: UIApplication) {
         self.context = context
@@ -26,17 +42,13 @@ public class iOSLxApp {
     /// Initialize the iOS LxApp system
     public static func initialize() {
         if instance != nil {
-            os_log("iOSLxApp.initialize() already called, skipping", log: log, type: .info)
             return
         }
 
         instance = iOSLxApp(context: UIApplication.shared)
 
-        // Set platform directory provider
-        LxAppCore.setPlatformDirectoryProvider(iOSDirectoryProvider.self)
-
         // Initialize core system
-        LxAppCore.initialize()
+        LxAppCore.initializeCore()
 
         configureGlobalSystemBars()
     }
@@ -55,10 +67,13 @@ public class iOSLxApp {
         // Get app info and cache initial route for navigation logic
         let lxappInfo = getLxAppInfo(appId)
         let initialRoute = lxappInfo.initial_route.toString()
-        PageNavigationCore.cacheInitialRoute(appId: appId, initialRoute: initialRoute)
+        LxPageNavigation.cacheInitialRoute(appId: appId, initialRoute: initialRoute)
+
+        // Use initial route if path is empty
+        let actualPath = path.isEmpty ? initialRoute : path
 
         let instance = getInstance()
-        instance.openInNewViewController(appId: appId, path: path)
+        instance.openInNewViewController(appId: appId, path: actualPath)
     }
 
     /// Opens the home mini app
@@ -68,8 +83,8 @@ public class iOSLxApp {
             return
         }
 
-        let homeLxAppInitialRoute = LxAppCore.getHomeLxAppInitialRoute()
-        openLxApp(appId: homeLxAppId, path: homeLxAppInitialRoute)
+        // Pass empty path - openLxApp will use initial route
+        openLxApp(appId: homeLxAppId, path: "")
     }
 
     /// Closes a mini app with the specified appId
@@ -101,6 +116,8 @@ public class iOSLxApp {
 
 
 
+
+
     private func openInNewViewController(appId: String, path: String) {
         guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
               let window = windowScene.windows.first else {
@@ -113,31 +130,18 @@ public class iOSLxApp {
 
         if storedPath != path && !LxAppCore.isHomeLxApp(appId) {
             actualPath = storedPath
-            os_log("openInNewViewController: Using stored path for state restoration: %@ (requested: %@)",
-                   log: Self.log, type: .info, actualPath, path)
         } else {
             actualPath = path
-            os_log("openInNewViewController: Using requested path: %@", log: Self.log, type: .info, actualPath)
         }
 
         // Call onLxappOpened FIRST to ensure WebView is created before we try to find it
-        let openResult = onLxappOpened(appId, actualPath)
-        os_log("onLxappOpened completed with result=%d for appId=%@ path=%@", log: Self.log, type: .info, openResult, appId, actualPath)
+        let _ = onLxappOpened(appId, actualPath)
 
         // Create LxAppViewController - it will find and setup WebView in viewDidLoad
         let miniAppVC = iOSLxAppViewController(appId: appId, path: actualPath)
 
-        switch LxAppCore.getLaunchMode() {
-        case .replaceRoot:
-            setupNavigationStack(window: window, newController: miniAppVC)
-        case .modal:
-            if let rootVC = window.rootViewController {
-                rootVC.present(miniAppVC, animated: true)
-            } else {
-                os_log("Failed to get root view controller for modal presentation", log: Self.log, type: .error)
-                return
-            }
-        }
+        // Use replaceRoot mode (only supported mode)
+        setupNavigationStack(window: window, newController: miniAppVC)
     }
 
     /// Sets up navigation stack for lxapp management
@@ -189,7 +193,6 @@ public class iOSLxApp {
 /// This helps maintain state when switching between lxapps
 @MainActor
 class LxAppControllerStack {
-    private static let log = OSLog(subsystem: "LingXia", category: "ControllerStack")
 
     /// Represents the state of a previous controller
     struct ControllerState {
@@ -205,27 +208,22 @@ class LxAppControllerStack {
     static func pushCurrentController(appId: String, path: String, webView: WKWebView?) {
         let state = ControllerState(appId: appId, path: path, webView: webView)
         controllerStack.append(state)
-        os_log("pushCurrentController: Pushed controller for %@ at %@ (stack size: %d)",
-               log: log, type: .info, appId, path, controllerStack.count)
     }
 
     /// Pop previous controller state when closing current lxapp
     static func popPreviousController() -> ControllerState? {
         guard !controllerStack.isEmpty else {
-            os_log("popPreviousController: Stack is empty", log: log, type: .info)
             return nil
         }
 
         let state = controllerStack.removeLast()
-        os_log("popPreviousController: Popped controller for %@ at %@ (stack size: %d)",
-               log: log, type: .info, state.appId, state.path, controllerStack.count)
         return state
     }
 
     /// Clear the entire stack (useful for debugging or reset)
     static func clearStack() {
         controllerStack.removeAll()
-        os_log("clearStack: Cleared controller stack", log: log, type: .info)
     }
 }
+
 #endif

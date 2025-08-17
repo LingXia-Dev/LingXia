@@ -2,7 +2,7 @@
 import Foundation
 import WebKit
 import os.log
-import Cocoa
+import AppKit
 import CLingXiaFFI
 
 private let lxAppViewControllerLog = OSLog(subsystem: "LingXia", category: "LxAppView")
@@ -11,20 +11,43 @@ private let lxAppViewControllerLog = OSLog(subsystem: "LingXia", category: "LxAp
 public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     nonisolated private static let log = lxAppViewControllerLog
 
+    // Current top margin (can be updated dynamically)
+    private var currentTopMargin: CGFloat = 0
+
     // Helper method to get top margin based on window style
     private func getTopMargin() -> CGFloat {
-        // In tab style, the window controller handles the tab bar space
-        // so we don't need additional top margin
-        let currentStyle = macOSWindowController.getWindowStyle()
-        if currentStyle == .tabStyle {
-            return 0
-        }
-        return macOSWindowController.getTopMarginForCurrentStyle()
+        return currentTopMargin
+    }
+
+    // Method to update top margin and refresh layout
+    internal func updateTopMargin(_ newMargin: CGFloat) {
+        currentTopMargin = newMargin
+        refreshWebViewLayout()
+    }
+
+    // Method to refresh WebView layout with current top margin
+    private func refreshWebViewLayout() {
+        guard let webViewContainer = webViewContainer else { return }
+
+        // Remove existing constraints
+        view.removeConstraints(view.constraints.filter { constraint in
+            constraint.firstItem === webViewContainer && constraint.firstAttribute == .top
+        })
+
+        // Add new constraint with updated top margin
+        NSLayoutConstraint.activate([
+            webViewContainer.topAnchor.constraint(equalTo: view.topAnchor, constant: currentTopMargin)
+        ])
+
+        // Force layout update
+        view.needsLayout = true
+        view.layoutSubtreeIfNeeded()
     }
 
     // Properties
     internal var appId: String
     private var initialPath: String
+    internal var currentPath: String
     private var webViewContainer: NSView!
     private var tabBarView: NSView?
     private var currentWebView: WKWebView?
@@ -36,7 +59,31 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     public init(appId: String, path: String) {
         self.appId = appId
         self.initialPath = path
+        self.currentPath = path
         super.init(nibName: nil, bundle: nil)
+
+        // Initialize top margin based on current page
+        self.currentTopMargin = calculateInitialTopMargin()
+    }
+
+    private func calculateInitialTopMargin() -> CGFloat {
+        if LxAppWindowManager.shared.windowStyle == .capsuleStyle {
+            // Check if current page uses custom navigation style
+            let pageConfig = LxPageNavigation.getNavigationBarConfig(appId: appId, path: currentPath)
+            if LxPageNavigation.isInitialRoute(appId: appId, path: currentPath) {
+                // Initial route: WebView covers entire area
+                return 0
+            } else if pageConfig?.style.isTransparent == true {
+                // Custom navigation style: WebView covers navigation bar area
+                return 0
+            } else {
+                // Default navigation style: WebView below navigation bar
+                return 32  // Only navigation bar space
+            }
+        } else {
+            // Tab style: 32pt for tab bar
+            return 32
+        }
     }
 
     required init?(coder: NSCoder) {
@@ -61,8 +108,6 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         view.wantsLayer = true
         view.layer?.backgroundColor = AppKit.NSColor.windowBackgroundColor.cgColor
 
-        
-
         // Setup UI components
         setupLayout()
         setupNotificationObservers()
@@ -80,8 +125,6 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         // Set main view background
         view.wantsLayer = true
         view.layer?.backgroundColor = AppKit.NSColor.windowBackgroundColor.cgColor
-
-        
 
         // Create TabBar first
         setupTabBar()
@@ -274,7 +317,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
 
             // Create start container
             if !startItems.isEmpty {
-                let startContainer = createGroupContainer(items: startItems, spacing: TabBarConstants.DEFAULT_SPACING, isVertical: isVertical)
+                let startContainer = createGroupContainer(items: startItems, spacing: TabBarConstants.DEFAULT_SPACING, isVertical: isVertical, isStartGroup: true)
                 stackView.addArrangedSubview(startContainer)
             }
 
@@ -284,13 +327,13 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
 
             // Create end container
             if !endItems.isEmpty {
-                let endContainer = createGroupContainer(items: endItems, spacing: TabBarConstants.DEFAULT_SPACING, isVertical: isVertical)
+                let endContainer = createGroupContainer(items: endItems, spacing: TabBarConstants.DEFAULT_SPACING, isVertical: isVertical, isStartGroup: false)
                 stackView.addArrangedSubview(endContainer)
             }
 
         } else {
             // Centered layout for non-grouped items
-            let centerContainer = createGroupContainer(items: centerItems, spacing: TabBarConstants.CENTER_SPACING, isVertical: isVertical)
+            let centerContainer = createGroupContainer(items: centerItems, spacing: TabBarConstants.CENTER_SPACING, isVertical: isVertical, isStartGroup: false)
             stackView.addArrangedSubview(centerContainer)
         }
 
@@ -308,7 +351,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     }
 
     /// Create a container for a group of tab items
-    private func createGroupContainer(items: [TabBarItem], spacing: CGFloat, isVertical: Bool) -> NSStackView {
+    private func createGroupContainer(items: [TabBarItem], spacing: CGFloat, isVertical: Bool, isStartGroup: Bool = false) -> NSStackView {
         let container = NSStackView()
         container.orientation = isVertical ? .vertical : .horizontal
         container.distribution = isVertical ? .fill : .equalSpacing  // equalSpacing for horizontal to give more space
@@ -329,7 +372,26 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
             let allItems = tabBarConfig?.getItems(appId: appId) ?? []
             let globalIndex = allItems.firstIndex { $0.page_path.toString() == item.page_path.toString() } ?? index
             let button = createTabButton(item: item, index: globalIndex)
-            container.addArrangedSubview(button)
+
+            // Add top margin for the first item in start group (vertical layout only)
+            if isStartGroup && index == 0 && isVertical {
+                // Create a wrapper view with top margin
+                let wrapperView = NSView()
+                wrapperView.translatesAutoresizingMaskIntoConstraints = false
+                wrapperView.addSubview(button)
+
+                // Add top margin of 20 points for the first start item
+                NSLayoutConstraint.activate([
+                    button.topAnchor.constraint(equalTo: wrapperView.topAnchor, constant: 20),
+                    button.leadingAnchor.constraint(equalTo: wrapperView.leadingAnchor),
+                    button.trailingAnchor.constraint(equalTo: wrapperView.trailingAnchor),
+                    button.bottomAnchor.constraint(equalTo: wrapperView.bottomAnchor)
+                ])
+
+                container.addArrangedSubview(wrapperView)
+            } else {
+                container.addArrangedSubview(button)
+            }
         }
 
         return container
@@ -524,8 +586,6 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         )
     }
 
-
-
     //  - Helper Methods
     private func findTabIndexByPath(_ targetPath: String) -> Int? {
         guard let tabBarConfig = tabBarConfig else { return nil }
@@ -705,6 +765,18 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     // Helper method to check if a color string represents transparency
     private func isTransparentColor(_ colorString: String) -> Bool {
         return colorString.lowercased() == "transparent" || colorString.isEmpty
+    }
+
+    // Method required by WindowController
+    func updateLayoutForNavigationStyle(currentPath: String) {
+        self.currentPath = currentPath
+        // Update TabBar selection if needed
+        if let tabBarConfig = self.tabBarConfig {
+            let items = tabBarConfig.getItems(appId: appId)
+            if let tabIndex = items.firstIndex(where: { $0.page_path.toString() == currentPath }) {
+                updateTabBarSelection(selectedIndex: tabIndex)
+            }
+        }
     }
 }
 
