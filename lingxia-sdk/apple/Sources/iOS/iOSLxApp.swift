@@ -6,26 +6,12 @@ import WebKit
 import os.log
 import CLingXiaFFI
 
-/// Presentation modes for LxApp in SwiftUI (iOS only)
-internal enum LxAppPresentationMode {
-    case replaceRoot
-    case modal
-    case sheet
-    case fullScreenCover
-}
-
-/// iOS LxApp manager with SwiftUI integration
+/// iOS LxApp manager
 @MainActor
-public class iOSLxApp: ObservableObject {
+public class iOSLxApp {
     nonisolated private static let log = OSLog(subsystem: "LingXia", category: "iOSLxApp")
     private static var instance: iOSLxApp?
     private let context: UIApplication
-
-    // SwiftUI state management
-    @Published internal var currentAppId: String?
-    @Published internal var currentPath: String?
-    @Published internal var isLxAppPresented: Bool = false
-    @Published internal var presentationMode: LxAppPresentationMode = .replaceRoot
 
     private init(context: UIApplication) {
         self.context = context
@@ -114,10 +100,6 @@ public class iOSLxApp: ObservableObject {
         return WebViewManager.findWebView(appId: appId, path: path)
     }
 
-
-
-
-
     private func openInNewViewController(appId: String, path: String) {
         guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
               let window = windowScene.windows.first else {
@@ -140,39 +122,56 @@ public class iOSLxApp: ObservableObject {
         // Create LxAppViewController - it will find and setup WebView in viewDidLoad
         let miniAppVC = iOSLxAppViewController(appId: appId, path: actualPath)
 
-        // Use replaceRoot mode (only supported mode)
         setupNavigationStack(window: window, newController: miniAppVC)
     }
 
     /// Sets up navigation stack for lxapp management
     private func setupNavigationStack(window: UIWindow, newController: iOSLxAppViewController) {
-        if let currentRootVC = window.rootViewController {
-            if let navController = currentRootVC as? UINavigationController {
-                navController.pushViewController(newController, animated: false)
-            } else if let currentLxAppVC = currentRootVC as? iOSLxAppViewController {
-                window.rootViewController = nil
-                let navController = UINavigationController(rootViewController: currentLxAppVC)
-                navController.setNavigationBarHidden(true, animated: false)
-                navController.pushViewController(newController, animated: false)
-                window.rootViewController = navController
-                window.makeKeyAndVisible()
-            } else {
-                window.rootViewController = newController
-                window.makeKeyAndVisible()
-            }
-        } else {
-            // Always wrap in UINavigationController to enable transparent system bars
+
+        guard let currentRootVC = window.rootViewController else {
+            // No existing root - set as root
             let navController = UINavigationController(rootViewController: newController)
             navController.setNavigationBarHidden(true, animated: false)
             window.rootViewController = navController
-
-            // Try to make window cover status bar
-            window.windowLevel = UIWindow.Level.statusBar - 1
-            window.backgroundColor = UIColor.clear
-            window.isOpaque = false
-
             window.makeKeyAndVisible()
+            return
         }
+
+        // Find the topmost view controller to present from
+        let topVC = findTopmostViewController(from: currentRootVC)
+
+        if let existingNavController = topVC as? UINavigationController,
+           existingNavController.viewControllers.first is iOSLxAppViewController {
+            // Already in LxApp navigation - push new LxApp
+            os_log(.info, log: Self.log, "Pushing new LxApp onto existing navigation stack")
+            existingNavController.pushViewController(newController, animated: false)
+        } else {
+            // Present modally to preserve SwiftUI URL handling or stack on existing LxApp
+            os_log(.info, log: Self.log, "Presenting LxApp modally from: %{public}@", String(describing: type(of: topVC)))
+            let navController = UINavigationController(rootViewController: newController)
+            navController.setNavigationBarHidden(true, animated: false)
+            navController.modalPresentationStyle = .fullScreen
+            topVC.present(navController, animated: false)
+        }
+    }
+
+    /// Finds the topmost view controller in the hierarchy
+    private func findTopmostViewController(from viewController: UIViewController) -> UIViewController {
+        if let presentedVC = viewController.presentedViewController {
+            return findTopmostViewController(from: presentedVC)
+        }
+
+        if let navController = viewController as? UINavigationController,
+           let topVC = navController.topViewController {
+            return findTopmostViewController(from: topVC)
+        }
+
+        if let tabController = viewController as? UITabBarController,
+           let selectedVC = tabController.selectedViewController {
+            return findTopmostViewController(from: selectedVC)
+        }
+
+        return viewController
     }
 
     /// Configures global system bars for the mini app system
