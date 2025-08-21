@@ -112,7 +112,6 @@ public class LxAppCore {
     /// Set home LxApp configuration
     public static func setHomeLxApp(appId: String, initialRoute: String = "/") {
         homeLxAppId = appId
-        // Note: initialRoute parameter is ignored - initial route is always read from app info
     }
 
     /// Get last active path for app

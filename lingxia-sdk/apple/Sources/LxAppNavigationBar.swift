@@ -43,9 +43,6 @@ extension NavigationBarConfig {
         #endif
     }
 
-    // Helper constants
-    static let DEFAULT_BACKGROUND_COLOR = "#FFFFFF"
-    static let DEFAULT_TEXT_COLOR = "#000000"
     static let DEFAULT_HEIGHT: CGFloat = 44
 }
 
@@ -130,7 +127,6 @@ public struct LxAppNavigationBarView: View {
             }
             .buttonStyle(PlainButtonStyle())
         } else {
-            // Placeholder for consistent spacing
             Color.clear.frame(width: 44, height: 44)
         }
     }
@@ -146,13 +142,12 @@ public struct LxAppNavigationBarView: View {
                 .font(LxAppTheme.Typography.navigationTitle)
                 .foregroundColor(getTextColor(config: config))
                 .lineLimit(1)
-                .offset(y: -8) // Move title up more to align with capsule button
+                .offset(y: -8)
         }
     }
 
     @ViewBuilder
     private func trailingContent(config: NavigationBarConfig) -> some View {
-        // Placeholder for future actions (search, menu, etc.)
         Color.clear.frame(width: 44, height: 44)
     }
 
@@ -354,7 +349,6 @@ public class iOSNavigationBarWrapper: UIView, NavigationBarProtocol {
 public typealias LingXiaNavigationBar = iOSNavigationBarWrapper
 public typealias PlatformNavigationBar = iOSNavigationBarWrapper
 #elseif os(macOS)
-import AppKit
 public typealias LingXiaNavigationBar = LxAppNavigationBarView
 public typealias PlatformNavigationBar = LxAppNavigationBarView
 #endif

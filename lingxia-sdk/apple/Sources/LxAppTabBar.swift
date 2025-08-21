@@ -67,45 +67,34 @@ public enum TabBarPosition {
     case bottom, left, right
 }
 
-/// Constants used across TabBar implementations
+/// Essential constants for TabBar layout
 public struct TabBarConstants {
-    public static let ICON_SIZE: CGFloat = 24
-    public static let ITEM_FONT_SIZE: CGFloat = 12
-    public static let ITEM_SPACING: CGFloat = 8
-    public static let BORDER_WIDTH: CGFloat = 1
-    public static let ICON_TOP_MARGIN: CGFloat = 4
-    public static let ICON_BOTTOM_MARGIN: CGFloat = 2
-    public static let SIDE_PADDING: CGFloat = 8        // Padding on left/right sides
-    public static let GROUP_SPACING: CGFloat = 16      // Spacing between start/center/end groups
-    public static let CENTER_SPACING: CGFloat = 8    // Spacing between items in center group
-    public static let MINIMAL_SPACER_SIZE: CGFloat = 4  // Minimum size for flexible spacers
-    public static let DEFAULT_SPACING: CGFloat = 8     // Default spacing for compatibility
+    public static let DEFAULT_SPACING: CGFloat = 8
+    public static let CENTER_SPACING: CGFloat = 8
+    public static let MINIMAL_SPACER_SIZE: CGFloat = 4
 }
 
 /// Extension to add helper methods to swift-bridge generated TabBarItem
 extension TabBarItem {
-    /// Check if item is visible (always true for now)
+    /// Check if item is visible
     public var visible: Bool { true }
 
-    /// Simple cached string values for performance (using computed properties)
-    /// Since TabBarItem is a struct, we use computed properties instead of caching
-
-    /// Get page path string (cached via computed property)
+    /// Get page path string
     public var cachedPagePath: String {
         return page_path.toString()
     }
 
-    /// Get text string (cached via computed property)
+    /// Get text string
     public var cachedText: String {
         return text.toString()
     }
 
-    /// Get icon path string (cached via computed property)
+    /// Get icon path string
     public var cachedIconPath: String {
         return icon_path.toString()
     }
 
-    /// Get selected icon path string (cached via computed property)
+    /// Get selected icon path string
     public var cachedSelectedIconPath: String {
         return selected_icon_path.toString()
     }
@@ -115,13 +104,10 @@ extension TabBarItem {
 public struct TabBarHelper {
     /// Get resolved background color for TabBar
     public static func resolvedBackgroundColor(_ colorValue: UInt32, isVertical: Bool) -> PlatformColor {
-        // If the color is transparent (alpha is 0), use a default based on orientation
         if (colorValue >> 24) & 0xFF == 0 {
             if isVertical {
-                // For vertical TabBars, use a slightly different default
                 return PlatformColor(red: 0.95, green: 0.95, blue: 0.95, alpha: 1.0)
             } else {
-                // For horizontal TabBars, use standard background
                 return PlatformColor(red: 0.98, green: 0.98, blue: 0.98, alpha: 1.0)
             }
         }
@@ -174,8 +160,6 @@ public struct LxAppTabBar: View {
         }
         .background(getTabBarBackgroundColor())
     }
-
-    // MARK: - Layout Builders
 
     @ViewBuilder
     private func buildHorizontalTabBar(items: [TabBarItem]) -> some View {
@@ -320,28 +304,24 @@ public struct LxAppTabBar: View {
         .buttonStyle(PlainButtonStyle())
     }
 
-    /// Find index of item in the original items array by path (using cached strings for performance)
+    /// Find index of item in the original items array by path
     private func findItemIndex(for item: TabBarItem, in items: [TabBarItem]) -> Int {
-        let targetPath = item.cachedPagePath
-        return items.firstIndex(where: { $0.cachedPagePath == targetPath }) ?? 0
+        return items.firstIndex(where: { $0.cachedPagePath == item.cachedPagePath }) ?? 0
     }
 
-    /// Check if any item has group field (grouped mode vs centered mode)
+    /// Check if any item has group field
     private func hasGroupField(items: [TabBarItem]) -> Bool {
         return items.contains { $0.group != 0 }
     }
 
-    /// Get start items (group 1)
     private func getStartItems(items: [TabBarItem]) -> [TabBarItem] {
         return items.filter { $0.group == 1 }
     }
 
-    /// Get center items (group 0 - default/no group)
     private func getCenterItems(items: [TabBarItem]) -> [TabBarItem] {
         return items.filter { $0.group == 0 }
     }
 
-    /// Get end items (group 2)
     private func getEndItems(items: [TabBarItem]) -> [TabBarItem] {
         return items.filter { $0.group == 2 }
     }

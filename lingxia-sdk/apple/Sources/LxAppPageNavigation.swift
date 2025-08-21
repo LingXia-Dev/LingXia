@@ -32,7 +32,6 @@ public protocol LxAppViewControllerProtocol: AnyObject {
 
 /// Default implementations for LxAppViewControllerProtocol
 extension LxAppViewControllerProtocol {
-    /// Default implementation - does nothing (useful for platforms that don't need transparency effects)
     public func applyTransparencyEffectsAfterTabSwitch() {
         // Default: no transparency effects needed
     }
@@ -53,20 +52,14 @@ public class LxAppPageNavigation {
         let tabIndex = tabBar.findTabIndexByPath(targetPath)
         guard tabIndex >= 0 else { return }
 
-        // Skip if already on this tab
         if getCurrentPath(from: viewController) == targetPath { return }
 
-        // Update TabBar UI first
         tabBar.setSelectedIndex(tabIndex, notifyListener: false)
-
         let appId = viewController.appId
-
-        // Optimized NavigationBar handling for TabBar switches
         let pageConfig = LxPageNavigation.getNavigationBarConfig(appId: appId, path: targetPath)
         let shouldShowNavigationBar = LxPageNavigation.shouldShowNavigationBar(pageConfig: pageConfig)
         let currentHasNavBar = hasNavigationBar(viewController)
 
-        // Only update NavigationBar if state actually changes
         if currentHasNavBar != shouldShowNavigationBar {
             if shouldShowNavigationBar {
                 updateNavigationBar(
@@ -77,11 +70,9 @@ public class LxAppPageNavigation {
                     in: viewController
                 )
             } else {
-                // Remove NavigationBar if not needed
                 viewController.removeNavigationBarForTabSwitch()
             }
         } else if shouldShowNavigationBar {
-            // NavigationBar exists and should stay - just update content without animation
             updateNavigationBar(
                 appId: appId,
                 path: targetPath,
@@ -322,7 +313,7 @@ extension iOSLxAppViewController: LxAppViewControllerProtocol {
         LxAppPageNavigation.updateNavigationBar(appId: appId, path: path, in: self)
     }
 
-    // Removed duplicate getNavigationBarConfig - use LxPageNavigation.getNavigationBarConfig directly
+
 
     /// Handles back button click (public interface)
     public func handleBackButtonClick() {
@@ -381,8 +372,6 @@ public struct LxPageNavigation {
 
     /// Determines if back button should be shown
     public static func shouldShowBackButton(for path: String, appId: String, tabBarConfig: TabBarConfig? = nil) -> Bool {
-        // TODO: Implement proper logic for determining when to show back button
-        // For now, never show back button to avoid navigation issues
         return false
     }
 
@@ -413,7 +402,6 @@ public struct LxPageNavigation {
 
     /// Validates navigation target
     public static func isValidNavigationTarget(_ path: String) -> Bool {
-        // Basic validation - path should not be empty and should be a valid page path
         return !path.isEmpty && !path.hasPrefix("http") && !path.hasPrefix("javascript:")
     }
 

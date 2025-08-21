@@ -13,11 +13,9 @@ import AppKit
 /// WebView extensions for display-related functionality
 extension WKWebView {
 
-    /// Associated object keys for WebView properties
     private static var appIdKey: UInt8 = 0
     private static var currentPathKey: UInt8 = 0
 
-    /// App ID (stored using Associated Objects)
     var appId: String? {
         get {
             return objc_getAssociatedObject(self, &Self.appIdKey) as? String
@@ -27,7 +25,6 @@ extension WKWebView {
         }
     }
 
-    /// Current path (stored using Associated Objects)
     var currentPath: String? {
         get {
             return objc_getAssociatedObject(self, &Self.currentPathKey) as? String
@@ -113,9 +110,6 @@ public class WebViewManager {
     }
 
     /// Enable WebView debugging globally
-    /// This affects all WKWebView instances created after this call
-    /// Apple platform support turn on debugging for webview instance, but in order
-    /// to align with Android/Harmony, we provide the same mechanism also.
     public static func enableDebugging() {
         debuggingEnabled = true
     }

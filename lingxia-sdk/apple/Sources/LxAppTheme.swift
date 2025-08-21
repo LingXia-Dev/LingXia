@@ -76,7 +76,7 @@ public struct LxAppTheme {
         
         private static var platformStatusBarHeight: CGFloat {
             #if os(iOS)
-            return 20 // Use fixed height for theme calculations
+            return 20
             #else
             return 0
             #endif
@@ -360,7 +360,7 @@ extension LxAppPlatformColor {
 }
 
 #if os(iOS)
-public let PLATFORM_STATUS_BAR_HEIGHT: CGFloat = 48 // Fallback value, prefer dynamic getActualStatusBarHeight()
+public let PLATFORM_STATUS_BAR_HEIGHT: CGFloat = 48
 #elseif os(macOS)
-public let PLATFORM_STATUS_BAR_HEIGHT: CGFloat = 28 // macOS menu bar height
+public let PLATFORM_STATUS_BAR_HEIGHT: CGFloat = 28
 #endif

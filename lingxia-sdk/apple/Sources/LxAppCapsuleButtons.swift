@@ -13,7 +13,7 @@ public class LxAppCapsuleButtons {
     private static let CAPSULE_BUTTON_TAG = 9999
 
     #if os(macOS)
-    /// Creates and adds capsule buttons to the title bar view (macOS) - Legacy AppKit support
+    /// Creates and adds capsule buttons to the title bar view (macOS)
     public static func addCapsuleButtons(
         to titleBarView: NSView,
         windowWidth: CGFloat,
@@ -28,7 +28,6 @@ public class LxAppCapsuleButtons {
         let buttonY = metrics.capsuleTopMargin
         let rightMargin = metrics.capsuleTrailingMargin
 
-        // Create buttons with custom icons for consistent styling
         let moreButton = createCapsuleButton(
             image: createThreeDotsImage(),
             target: target,
@@ -60,12 +59,10 @@ public class LxAppCapsuleButtons {
             buttonHeight: buttonHeight
         )
 
-        // Add to view
         titleBarView.addSubview(moreButton)
         titleBarView.addSubview(minimizeButton)
         titleBarView.addSubview(closeButton)
 
-        // Ensure proper layering
         [moreButton, minimizeButton, closeButton].forEach { button in
             button.layer?.zPosition = 1000
         }
@@ -73,12 +70,11 @@ public class LxAppCapsuleButtons {
     #endif
 
     #if os(iOS)
-    /// Adds capsule button to the view controller (iOS) - SwiftUI implementation
+    /// Adds capsule button to the view controller (iOS)
     public static func addCapsuleButton(to viewController: UIViewController, appId: String) {
         guard viewController.view.viewWithTag(CAPSULE_BUTTON_TAG) == nil else { return }
         guard appId != LxAppCore.getHomeLxAppId() else { return }
 
-        // Create SwiftUI capsule buttons using the new unified implementation
         let capsuleButtons = LxAppUnifiedCapsuleView(
             onMoreTapped: {
                 // More options functionality
@@ -90,28 +86,20 @@ public class LxAppCapsuleButtons {
             }
         )
 
-        // Create hosting controller
         let hostingController = UIHostingController(rootView: capsuleButtons)
         hostingController.view.backgroundColor = UIColor.clear
         hostingController.view.tag = CAPSULE_BUTTON_TAG
         hostingController.view.translatesAutoresizingMaskIntoConstraints = false
 
-        // Add to view hierarchy
         viewController.view.addSubview(hostingController.view)
         viewController.addChild(hostingController)
 
-        let capsuleWidth = LxAppTheme.Metrics.capsuleButtonWidth
-        let capsuleHeight = LxAppTheme.Metrics.capsuleButtonHeight
-        let rightMargin = LxAppTheme.Metrics.capsuleTrailingMargin
+        let topMargin: CGFloat = 56 // Status bar height + navigation alignment offset
 
-        // Use the original iOS positioning to align with navigation bar title
-        let topMargin: CGFloat = 56 // Status bar height (~47-48) + navigation alignment offset (8)
-
-        // Set constraints
         NSLayoutConstraint.activate([
-            hostingController.view.widthAnchor.constraint(equalToConstant: capsuleWidth),
-            hostingController.view.heightAnchor.constraint(equalToConstant: capsuleHeight),
-            hostingController.view.trailingAnchor.constraint(equalTo: viewController.view.trailingAnchor, constant: -rightMargin),
+            hostingController.view.widthAnchor.constraint(equalToConstant: LxAppTheme.Metrics.capsuleButtonWidth),
+            hostingController.view.heightAnchor.constraint(equalToConstant: LxAppTheme.Metrics.capsuleButtonHeight),
+            hostingController.view.trailingAnchor.constraint(equalTo: viewController.view.trailingAnchor, constant: -LxAppTheme.Metrics.capsuleTrailingMargin),
             hostingController.view.topAnchor.constraint(equalTo: viewController.view.topAnchor, constant: topMargin)
         ])
 
@@ -122,9 +110,8 @@ public class LxAppCapsuleButtons {
     #if os(macOS)
     /// Removes capsule buttons from the title bar view (macOS)
     public static func removeCapsuleButtons(from titleBarView: NSView) {
-        // Remove buttons and separators - same logic as old implementation
         titleBarView.subviews.forEach { subview in
-            if subview is NSButton || subview.frame.width < 2 { // Separators have small width
+            if subview is NSButton || subview.frame.width < 2 {
                 subview.removeFromSuperview()
             }
         }
