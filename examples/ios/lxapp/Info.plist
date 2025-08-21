@@ -4,5 +4,18 @@
 <dict>
     <key>CFBundleIdentifier</key>
     <string>app.lingxia.example.lxapp</string>
+
+    <!-- Push Notifications Configuration -->
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>remote-notification</string>
+    </array>
+
+    <!-- App Transport Security -->
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsArbitraryLoads</key>
+        <true/>
+    </dict>
 </dict>
 </plist>

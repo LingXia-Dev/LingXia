@@ -120,8 +120,40 @@ private func installTestLxApp() -> Bool {
     }
 }
 
+public class AppDelegate: NSObject, UIApplicationDelegate {
+
+    public func application(_ application: UIApplication,
+                           didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+
+        // Check if app was launched from a notification
+        if let notificationUserInfo = launchOptions?[.remoteNotification] as? [AnyHashable: Any] {
+            iOSPushManager.handleRemoteNotification(notificationUserInfo)
+        }
+
+        return true
+    }
+
+    public func application(_ application: UIApplication,
+                           didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        iOSPushManager.shared.didRegisterForRemoteNotifications(withDeviceToken: deviceToken)
+    }
+
+    public func application(_ application: UIApplication,
+                           didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        iOSPushManager.shared.didFailToRegisterForRemoteNotifications(withError: error)
+    }
+
+    public func application(_ application: UIApplication,
+                           didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+                           fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+        iOSPushManager.didReceiveRemoteNotification(userInfo, fetchCompletionHandler: completionHandler)
+    }
+}
+
 @main
 public struct LxAppApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+
     public init() { }
 
     public var body: some Scene {
