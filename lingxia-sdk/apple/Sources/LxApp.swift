@@ -242,6 +242,19 @@ extension LxApp {
         NSWorkspace.shared.open(url)
         #endif
     }
+
+    /// Handle incoming app link URL
+    public static func handleAppLink(url: URL) {
+        // Only handle HTTPS URLs
+        guard url.scheme == "https" else {
+            os_log(.debug, log: Self.log, "Ignoring non-HTTPS URL: %{public}@", url.absoluteString)
+            return
+        }
+
+        // Call Rust FFI function to process the URL
+        let result = onApplinkReceived(url.absoluteString)
+        os_log(.info, log: Self.log, "AppLink: %{public}@, returned: %d", url.absoluteString, result)
+    }
 }
 
 #if os(iOS)
