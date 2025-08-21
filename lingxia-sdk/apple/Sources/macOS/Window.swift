@@ -193,7 +193,7 @@ public struct LxAppSwiftUITitleBar: View {
     private var titleBarBackground: some View {
         Group {
             if style == .capsuleStyle {
-                Color(NSColor.controlBackgroundColor)
+                Color(NSColor.windowBackgroundColor)
             } else {
                 Color.clear
             }
@@ -415,9 +415,8 @@ public struct LxAppMainContentView: View {
 
             Spacer()
         }
-        .padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(NSColor.controlBackgroundColor))
+        .background(Color(NSColor.windowBackgroundColor))
     }
 }
 

@@ -81,8 +81,8 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
                 return 32  // Only navigation bar space
             }
         } else {
-            // Tab style: 32pt for tab bar
-            return 32
+            // Tab style: 0pt - SwiftUI handles tab layout
+            return 0
         }
     }
 
