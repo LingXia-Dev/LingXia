@@ -96,6 +96,9 @@ mod bridge {
 
         #[swift_bridge(swift_name = "onApplinkReceived")]
         fn on_applink_received(applink_path: &str) -> i32;
+
+        #[swift_bridge(swift_name = "onPushTokenReceived")]
+        fn on_push_token_received(token: &str) -> i32;
     }
 
     extern "Swift" {
@@ -111,6 +114,9 @@ mod bridge {
 
         #[swift_bridge(swift_name = "LxApp.launchWithUrl")]
         fn launch_with_url(url: &str);
+
+        #[swift_bridge(swift_name = "LxApp.isPushEnabled")]
+        fn is_push_enabled() -> bool;
     }
 }
 
@@ -299,5 +305,11 @@ pub fn get_tab_bar_item(appid: &str, index: i32) -> Option<bridge::TabBarItem> {
 /// Handle AppLink URL by processing the path
 pub fn on_applink_received(url: &str) -> i32 {
     log::info!("[Apple] AppLink received: {}", url);
+    0
+}
+
+/// Handle push notification device token
+pub fn on_push_token_received(token: &str) -> i32 {
+    log::info!("[Apple] Push token received: {}", token);
     0
 }

@@ -255,6 +255,17 @@ extension LxApp {
         let result = onApplinkReceived(url.absoluteString)
         os_log(.info, log: Self.log, "AppLink: %{public}@, returned: %d", url.absoluteString, result)
     }
+
+    /// Check if push notifications are enabled
+    /// Returns true if authorized or provisional, false otherwise
+    nonisolated public static func isPushEnabled() -> Bool {
+        #if os(iOS)
+        return iOSPushManager.isPushEnabledSync()
+        #else
+        // macOS doesn't support push notifications yet
+        return false
+        #endif
+    }
 }
 
 #if os(iOS)

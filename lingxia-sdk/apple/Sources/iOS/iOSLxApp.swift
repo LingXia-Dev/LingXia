@@ -5,6 +5,7 @@ import SwiftUI
 import WebKit
 import os.log
 import CLingXiaFFI
+import UserNotifications
 
 /// iOS LxApp manager
 @MainActor
@@ -37,6 +38,9 @@ public class iOSLxApp {
         LxAppCore.initializeCore()
 
         configureGlobalSystemBars()
+
+        // Initialize push notifications
+        iOSPushManager.shared.initialize()
     }
 
     /// Configure transparent system bars
