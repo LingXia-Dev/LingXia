@@ -127,6 +127,9 @@ public struct LxAppApp: App {
     public var body: some Scene {
         WindowGroup {
             ContentView()
+                .onOpenURL { url in
+                    LxApp.handleAppLink(url: url)
+                }
         }
     }
 }

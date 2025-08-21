@@ -9,7 +9,6 @@
     <key>com.apple.developer.associated-domains</key>
     <array>
         <string>applinks:www.lingxia.app</string>
-        <string>applinks:lingxia.app</string>
     </array>
     <key>get-task-allow</key>
     <true/>
