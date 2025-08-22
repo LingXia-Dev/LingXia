@@ -288,7 +288,17 @@ extension LxApp {
         }
     }
 
-    /// Show toast 
+    /// Show modal
+    nonisolated public static func showModal(options: ModalOptions) -> ModalResult {
+        return LxAppModal.showModal(options: options)
+    }
+
+    /// Show modal with dictionary (convenience method)
+    @MainActor public static func showModal(_ options: [String: Any]) -> ModalResult {
+        return LxAppModal.showModal(options)
+    }
+
+    /// Show toast
     public static func showToast(_ options: [String: Any]) {
         LxAppToast.showToast(options)
     }

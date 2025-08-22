@@ -67,11 +67,33 @@ mod bridge {
     #[swift_bridge(swift_repr = "struct")]
     pub struct ToastOptions {
         pub title: String,
-        pub icon: i32,        // 0=Success, 1=Error, 2=Loading, 3=None
+        pub icon: i32, // 0=Success, 1=Error, 2=Loading, 3=None
         pub image: String,
         pub duration: f64,
         pub mask: bool,
         pub position: String,
+    }
+
+    // Modal configuration for Swift
+    #[swift_bridge(swift_repr = "struct")]
+    pub struct ModalOptions {
+        pub title: String,
+        pub content: String,
+        pub show_cancel: bool,
+        pub cancel_text: String,
+        pub cancel_color: String,
+        pub confirm_text: String,
+        pub confirm_color: String,
+        pub editable: bool,
+        pub placeholder_text: String,
+    }
+
+    // Modal result for Swift
+    #[swift_bridge(swift_repr = "struct")]
+    pub struct ModalResult {
+        pub confirm: bool,
+        pub cancel: bool,
+        pub content: String, // User input content
     }
 
     extern "Rust" {
@@ -135,6 +157,10 @@ mod bridge {
 
         #[swift_bridge(swift_name = "LxApp.hideToast")]
         fn hide_toast();
+
+        // Modal functions (synchronous, blocks until user responds)
+        #[swift_bridge(swift_name = "LxApp.showModal")]
+        fn show_modal(options: ModalOptions) -> ModalResult;
     }
 }
 
