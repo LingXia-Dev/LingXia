@@ -265,6 +265,40 @@ extension LxApp {
         return false
         #endif
     }
+
+    /// Show toast
+    nonisolated public static func showToast(options: ToastOptions) {
+        // Extract values to avoid data races
+        let title = options.title.toString()
+        let iconInt = options.icon  // Direct i32 usage
+        let image = options.image.toString()
+        let duration = options.duration
+        let mask = options.mask
+        let position = options.position.toString()
+
+        executeOnMain {
+            LxAppToast.showToast(
+                title: title,
+                icon: ToastIcon.fromInt(Int(iconInt)),
+                image: image.isEmpty ? nil : image,
+                duration: duration,
+                mask: mask,
+                position: ToastPosition.fromString(position)
+            )
+        }
+    }
+
+    /// Show toast 
+    public static func showToast(_ options: [String: Any]) {
+        LxAppToast.showToast(options)
+    }
+
+    /// Hide current toast immediately
+    nonisolated public static func hideToast() {
+        executeOnMain {
+            LxAppToast.hideToast()
+        }
+    }
 }
 
 #if os(iOS)

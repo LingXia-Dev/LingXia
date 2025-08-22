@@ -63,6 +63,17 @@ mod bridge {
         pub group: i32, // 0=middle/center (default), 1=start (top/left), 2=end (bottom/right)
     }
 
+    // Toast configuration for Swift
+    #[swift_bridge(swift_repr = "struct")]
+    pub struct ToastOptions {
+        pub title: String,
+        pub icon: i32,        // 0=Success, 1=Error, 2=Loading, 3=None
+        pub image: String,
+        pub duration: f64,
+        pub mask: bool,
+        pub position: String,
+    }
+
     extern "Rust" {
         #[swift_bridge(swift_name = "lxappInit")]
         fn lxapp_init(data_dir: &str, cache_dir: &str) -> Option<String>;
@@ -117,6 +128,13 @@ mod bridge {
 
         #[swift_bridge(swift_name = "LxApp.isPushEnabled")]
         fn is_push_enabled() -> bool;
+
+        // Toast functions
+        #[swift_bridge(swift_name = "LxApp.showToast")]
+        fn show_toast(options: ToastOptions);
+
+        #[swift_bridge(swift_name = "LxApp.hideToast")]
+        fn hide_toast();
     }
 }
 
