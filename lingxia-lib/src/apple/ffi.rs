@@ -96,6 +96,13 @@ mod bridge {
         pub content: String, // User input content
     }
 
+    // Push notification trigger types
+    pub enum PushTrigger {
+        Background,
+        Tap,
+        Launch,
+    }
+
     extern "Rust" {
         #[swift_bridge(swift_name = "lxappInit")]
         fn lxapp_init(data_dir: &str, cache_dir: &str) -> Option<String>;
@@ -129,6 +136,9 @@ mod bridge {
 
         #[swift_bridge(swift_name = "onApplinkReceived")]
         fn on_applink_received(applink_path: &str) -> i32;
+
+        #[swift_bridge(swift_name = "onPushlinkReceived")]
+        fn on_pushlink_received(url: &str, trigger: PushTrigger) -> i32;
 
         #[swift_bridge(swift_name = "onPushTokenReceived")]
         fn on_push_token_received(token: &str) -> i32;
@@ -346,9 +356,35 @@ pub fn get_tab_bar_item(appid: &str, index: i32) -> Option<bridge::TabBarItem> {
         })
 }
 
-/// Handle AppLink URL by processing the path
+/// Handle AppLink URL by processing the path (Universal Link)
 pub fn on_applink_received(url: &str) -> i32 {
-    log::info!("[Apple] AppLink received: {}", url);
+    log::info!("[Apple] Universal Link received: {}", url);
+    0
+}
+
+/// Handle Push Notification Link with trigger context
+pub fn on_pushlink_received(url: &str, trigger: bridge::PushTrigger) -> i32 {
+    let trigger_name = match trigger {
+        bridge::PushTrigger::Background => "Background",
+        bridge::PushTrigger::Tap => "Tap",
+        bridge::PushTrigger::Launch => "Launch",
+    };
+
+    log::info!(
+        "[Apple] Push Link received: {} (trigger: {})",
+        url,
+        trigger_name
+    );
+
+    match trigger {
+        bridge::PushTrigger::Background => {
+            log::info!("[Apple] Background push link - silent processing");
+        }
+        bridge::PushTrigger::Tap | bridge::PushTrigger::Launch => {
+            log::info!("[Apple] User-initiated push link - navigate to page");
+        }
+    }
+
     0
 }
 

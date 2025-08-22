@@ -167,15 +167,23 @@ extension iOSPushManager: UNUserNotificationCenterDelegate {
 
     /// Process notification data and handle applink if present
     nonisolated private func processNotificationData(userInfo: [AnyHashable: Any], trigger: String) {
-        // Only handle applink on user tap (not foreground or background)
-        guard trigger == "tap" else {
-            os_log("Ignoring notification for trigger: %{public}@", log: Self.log, type: .info, trigger)
+        let pushTrigger: PushTrigger
+        switch trigger {
+        case "background":
+            pushTrigger = .Background
+        case "tap":
+            pushTrigger = .Tap
+        case "launch":
+            pushTrigger = .Launch
+        default:
+            os_log("Unknown trigger type: %{public}@", log: Self.log, type: .error, trigger)
             return
         }
 
-        // Check for applink field
+        // Check for applink field and send to native
         if let applink = userInfo["applink"] as? String {
-        let _ = onApplinkReceived(applink)
+            os_log("Found applink in push notification (trigger: %{public}@): %{public}@", log: Self.log, type: .info, trigger, applink)
+            let _ = onPushlinkReceived(applink, pushTrigger)
         }
     }
 }
