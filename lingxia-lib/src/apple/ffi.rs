@@ -52,6 +52,28 @@ mod bridge {
         pub items_count: i32,
     }
 
+    // Group alignment types
+    pub enum GroupAlignment {
+        Center, // 0=middle/center (default)
+        Start,  // 1=start (top/left)
+        End,    // 2=end (bottom/right)
+    }
+
+    // Toast icon types
+    pub enum ToastIcon {
+        Success,
+        Error,
+        Loading,
+        None,
+    }
+
+    // Toast position types
+    pub enum ToastPosition {
+        Top,
+        Center,
+        Bottom,
+    }
+
     // TabBar item for Swift
     #[swift_bridge(swift_repr = "struct")]
     pub struct TabBarItem {
@@ -60,18 +82,18 @@ mod bridge {
         pub icon_path: String,
         pub selected_icon_path: String,
         pub selected: bool,
-        pub group: i32, // 0=middle/center (default), 1=start (top/left), 2=end (bottom/right)
+        pub group: GroupAlignment,
     }
 
     // Toast configuration for Swift
     #[swift_bridge(swift_repr = "struct")]
     pub struct ToastOptions {
         pub title: String,
-        pub icon: i32, // 0=Success, 1=Error, 2=Loading, 3=None
+        pub icon: ToastIcon,
         pub image: String,
         pub duration: f64,
         pub mask: bool,
-        pub position: String,
+        pub position: ToastPosition,
     }
 
     // Modal configuration for Swift
@@ -348,9 +370,9 @@ pub fn get_tab_bar_item(appid: &str, index: i32) -> Option<bridge::TabBarItem> {
                     selected_icon_path: item.selectedIconPath.clone().unwrap_or_default(),
                     selected: item.selected,
                     group: match &item.group {
-                        Some(lxapp::config::TabItemGroup::Start) => 1i32,
-                        Some(lxapp::config::TabItemGroup::End) => 2i32,
-                        None => 0i32,
+                        Some(lxapp::config::TabItemGroup::Start) => bridge::GroupAlignment::Start,
+                        Some(lxapp::config::TabItemGroup::End) => bridge::GroupAlignment::End,
+                        None => bridge::GroupAlignment::Center,
                     },
                 })
         })

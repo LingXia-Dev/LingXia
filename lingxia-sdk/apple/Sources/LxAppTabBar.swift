@@ -39,11 +39,11 @@ extension TabBarConfig {
 
         for item in allItems {
             switch item.group {
-            case 1:
+            case .Start:
                 startItems.append(item)
-            case 2:
+            case .End:
                 endItems.append(item)
-            default:
+            case .Center:
                 centerItems.append(item)
             }
         }
@@ -311,19 +311,19 @@ public struct LxAppTabBar: View {
 
     /// Check if any item has group field
     private func hasGroupField(items: [TabBarItem]) -> Bool {
-        return items.contains { $0.group != 0 }
+        return items.contains { $0.group != .Center }
     }
 
     private func getStartItems(items: [TabBarItem]) -> [TabBarItem] {
-        return items.filter { $0.group == 1 }
+        return items.filter { $0.group == .Start }
     }
 
     private func getCenterItems(items: [TabBarItem]) -> [TabBarItem] {
-        return items.filter { $0.group == 0 }
+        return items.filter { $0.group == .Center }
     }
 
     private func getEndItems(items: [TabBarItem]) -> [TabBarItem] {
-        return items.filter { $0.group == 2 }
+        return items.filter { $0.group == .End }
     }
 
     @ViewBuilder
@@ -577,7 +577,7 @@ public class iOSTabBarWrapper: UIView {
         addSubview(containerView)
 
         let isVertical = config.position == 1 || config.position == 2
-        let hasGroupField = items.contains { $0.group != 0 }
+        let hasGroupField = items.contains { $0.group != .Center }
 
         if isVertical && hasGroupField {
             setupVerticalGroupedLayout(items: items, config: config, containerView: containerView)
@@ -614,9 +614,9 @@ public class iOSTabBarWrapper: UIView {
         stackView.translatesAutoresizingMaskIntoConstraints = false
         containerView.addSubview(stackView)
 
-        let startItems = items.filter { $0.group == 1 }
-        let centerItems = items.filter { $0.group == 0 }
-        let endItems = items.filter { $0.group == 2 }
+        let startItems = items.filter { $0.group == .Start }
+        let centerItems = items.filter { $0.group == .Center }
+        let endItems = items.filter { $0.group == .End }
 
         // Add start items
         addGroupContainer(items: startItems, allItems: items, config: config, to: stackView, isVertical: isVertical)

@@ -1,14 +1,7 @@
 import SwiftUI
 import Foundation
 import os.log
-
-/// Toast icon types
-public enum ToastIcon {
-    case success
-    case error
-    case loading
-    case none
-}
+import CLingXiaFFI
 
 /// Toast configuration
 public struct ToastConfig {
@@ -20,7 +13,7 @@ public struct ToastConfig {
 
     public init(
         title: String,
-        icon: ToastIcon = .success,
+        icon: ToastIcon = .Success,
         image: String? = nil,
         duration: TimeInterval = 1.5,
         mask: Bool = false
@@ -37,81 +30,53 @@ public struct ToastConfig {
 extension ToastIcon {
     public var systemImageName: String? {
         switch self {
-        case .success:
+        case .Success:
             return "checkmark.circle.fill"
-        case .error:
+        case .Error:
             return "xmark.circle.fill"
-        case .loading:
+        case .Loading:
             return "arrow.2.circlepath"
-        case .none:
+        case .None:
             return nil
         }
     }
 
     public var color: Color {
         switch self {
-        case .success:
+        case .Success:
             return .green
-        case .error:
+        case .Error:
             return .red
-        case .loading:
+        case .Loading:
             return .blue
-        case .none:
+        case .None:
             return .primary
-        }
-    }
-
-    /// Convert from string
-    public static func fromString(_ string: String) -> ToastIcon {
-        switch string.lowercased() {
-        case "success":
-            return .success
-        case "error":
-            return .error
-        case "loading":
-            return .loading
-        default:
-            return .none
-        }
-    }
-
-    /// Convert from int (FFI interface)
-    public static func fromInt(_ value: Int) -> ToastIcon {
-        switch value {
-        case 0: return .success
-        case 1: return .error
-        case 2: return .loading
-        default: return .none
         }
     }
 }
 
-/// Toast position options
-public enum ToastPosition {
-    case top
-    case center
-    case bottom
-
+/// Extension for ToastPosition to add UI properties
+extension ToastPosition {
     public var alignment: Alignment {
         switch self {
-        case .top:
+        case .Top:
             return .top
-        case .center:
+        case .Center:
             return .center
-        case .bottom:
+        case .Bottom:
             return .bottom
         }
     }
 
-    /// Create position from string
+    /// Convert from string
     public static func fromString(_ string: String) -> ToastPosition {
         switch string.lowercased() {
         case "top":
-            return .top
+            return .Top
         case "bottom":
-            return .bottom
+            return .Bottom
         default:
-            return .center
+            return .Center
         }
     }
 }
@@ -136,11 +101,11 @@ public class LxAppToast {
     ///   - position: Toast position (default: center)
     public static func showToast(
         title: String,
-        icon: ToastIcon = .success,
+        icon: ToastIcon = .Success,
         image: String? = nil,
         duration: TimeInterval = 1.5,
         mask: Bool = false,
-        position: ToastPosition = .center
+        position: ToastPosition = .Center
     ) {
         os_log(.info, log: log, "Showing toast: %{public}@", title)
 
@@ -165,27 +130,6 @@ public class LxAppToast {
         currentToastTimer = nil
         toastWindow?.hide()
         toastWindow = nil
-    }
-
-    /// Dictionary-based API for JavaScript compatibility
-    public static func showToast(_ options: [String: Any]) {
-        let title = options["title"] as? String ?? ""
-        let iconString = options["icon"] as? String ?? "success"
-        let icon = ToastIcon.fromString(iconString)
-        let image = options["image"] as? String
-        let duration = options["duration"] as? TimeInterval ?? 1.5
-        let mask = options["mask"] as? Bool ?? false
-        let positionString = options["position"] as? String ?? "center"
-        let position = ToastPosition.fromString(positionString)
-
-        showToast(
-            title: title,
-            icon: icon,
-            image: image,
-            duration: duration,
-            mask: mask,
-            position: position
-        )
     }
 
     /// Show toast window using pure SwiftUI
@@ -301,12 +245,12 @@ struct ToastContentView: View {
                     Image(systemName: systemImageName)
                         .font(.title2)
                         .foregroundColor(config.icon.color)
-                        .rotationEffect(config.icon == .loading ? .degrees(0) : .degrees(0))
+                        .rotationEffect(config.icon == .Loading ? .degrees(0) : .degrees(0))
                         .animation(
-                            config.icon == .loading ?
+                            config.icon == .Loading ?
                             Animation.linear(duration: 1).repeatForever(autoreverses: false) :
                             nil,
-                            value: config.icon == .loading
+                            value: config.icon == .Loading
                         )
                 }
 
@@ -315,7 +259,7 @@ struct ToastContentView: View {
                     .font(.system(size: 16, weight: .medium))
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)
-                    .lineLimit(config.icon == .none ? 2 : 1)
+                    .lineLimit(config.icon == .None ? 2 : 1)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.horizontal, 20)

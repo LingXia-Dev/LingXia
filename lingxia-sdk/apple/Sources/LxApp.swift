@@ -8,6 +8,11 @@ import UIKit
 import AppKit
 #endif
 
+// Sendable Conformance for FFI Types
+extension ToastIcon: @unchecked Sendable {}
+extension ToastPosition: @unchecked Sendable {}
+extension GroupAlignment: @unchecked Sendable {}
+
 /// Platform-specific directory configuration
 public struct LxAppDirectoryConfig {
     public let dataPath: String
@@ -268,22 +273,21 @@ extension LxApp {
 
     /// Show toast
     nonisolated public static func showToast(options: ToastOptions) {
-        // Extract values to avoid data races
         let title = options.title.toString()
-        let iconInt = options.icon  // Direct i32 usage
         let image = options.image.toString()
+        let icon = options.icon
         let duration = options.duration
         let mask = options.mask
-        let position = options.position.toString()
+        let position = options.position
 
         executeOnMain {
             LxAppToast.showToast(
                 title: title,
-                icon: ToastIcon.fromInt(Int(iconInt)),
+                icon: icon,
                 image: image.isEmpty ? nil : image,
                 duration: duration,
                 mask: mask,
-                position: ToastPosition.fromString(position)
+                position: position
             )
         }
     }
@@ -296,11 +300,6 @@ extension LxApp {
     /// Show modal with dictionary (convenience method)
     @MainActor public static func showModal(_ options: [String: Any]) -> ModalResult {
         return LxAppModal.showModal(options)
-    }
-
-    /// Show toast
-    public static func showToast(_ options: [String: Any]) {
-        LxAppToast.showToast(options)
     }
 
     /// Hide current toast immediately
