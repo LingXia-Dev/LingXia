@@ -86,8 +86,6 @@ pub trait WebViewController: Send + Sync {
         self.evaluate_javascript(js_code)
     }
 
-
-
     /// Clear browsing data from the WebView
     fn clear_browsing_data(&self) -> Result<(), LxAppError>;
 
@@ -382,8 +380,8 @@ pub(crate) struct PageInner {
 pub enum PageState {
     Pending, // Page created, WebView creation in progress
     Created, // Page created and WebView attached, but no HTML loaded
+    Loading, // HTML loading into page
     Loaded,  // HTML loaded into page
-    Showed,  // Page has been shown to user
     Unknown, // Unknown state
 }
 

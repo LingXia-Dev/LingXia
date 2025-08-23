@@ -472,7 +472,7 @@ impl LxApp {
         ) {
             Ok(_) => {
                 // HTML loaded successfully
-                page.set_page_state(PageState::Loaded);
+                page.set_page_state(PageState::Loading);
             }
             Err(e) => {
                 error!("Failed to load HTML: {}", e)

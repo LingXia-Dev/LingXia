@@ -77,30 +77,90 @@ impl LxAppDelegate for LxApp {
         // This path is typically the initial_route.
         let mut state = self.state.lock().unwrap();
         let self_for_setup = self.clone();
-        if let Err(e) = state.pages.create_page(
-            self.appid.clone(),
-            path.clone(),
-            self.runtime.clone(),
-            self.executor.clone(),
-            move |page, path| {
-                self_for_setup.setup_page(page, path);
 
-                // Create page service
-                if let Err(e) = self_for_setup
-                    .executor
-                    .create_page_svc(self_for_setup.appid.clone(), path.to_string())
-                {
-                    error!("Failed to request page service creation: {}", e)
-                        .with_appid(self_for_setup.appid.clone())
-                        .with_path(path.to_string());
-                }
-            },
-        ) {
-            error!("Failed to create page for initial_route: {}", e)
-                .with_appid(self.appid.clone())
-                .with_path(path.clone());
+        if state.pages.get_page(&path).is_none() {
+            if let Err(e) = state.pages.create_page(
+                self.appid.clone(),
+                path.clone(),
+                self.runtime.clone(),
+                self.executor.clone(),
+                move |page, path| {
+                    self_for_setup.setup_page(page, path);
+
+                    // Create page service
+                    if let Err(e) = self_for_setup
+                        .executor
+                        .create_page_svc(self_for_setup.appid.clone(), path.to_string())
+                    {
+                        error!("Failed to request page service creation: {}", e)
+                            .with_appid(self_for_setup.appid.clone())
+                            .with_path(path.to_string());
+                    }
+                },
+            ) {
+                error!("Failed to create page for path: {}", e)
+                    .with_appid(self.appid.clone())
+                    .with_path(path.clone());
+            }
         }
         state.opened = true;
+
+        // Precreate tab pages in background (only for first time opening)
+        if self.config.has_tab_bar() {
+            let self_clone = self.clone();
+
+            LxAppExecutor::spawn_task(move || {
+                info!("Starting tab pages precreation").with_appid(self_clone.appid.clone());
+
+                let tab_pages = self_clone.config.get_tab_pages();
+                for tab_path in tab_pages {
+                    if path == tab_path {
+                        continue;
+                    }
+
+                    // Check if page already exists
+                    {
+                        let state = self_clone.state.lock().unwrap();
+                        if state.pages.get_page(&tab_path).is_some() {
+                            info!("Tab page already exists, skipping: {}", tab_path)
+                                .with_appid(self_clone.appid.clone())
+                                .with_path(tab_path.clone());
+                            continue;
+                        }
+                    }
+
+                    info!("Precreating tab page: {}", tab_path)
+                        .with_appid(self_clone.appid.clone())
+                        .with_path(tab_path.clone());
+
+                    // Create page in background
+                    let mut state = self_clone.state.lock().unwrap();
+                    let self_for_setup = self_clone.clone();
+                    let _ = state.pages.create_page(
+                        self_clone.appid.clone(),
+                        tab_path.clone(),
+                        self_clone.runtime.clone(),
+                        self_clone.executor.clone(),
+                        move |page, path| {
+                            // Setup page content (load HTML)
+                            self_for_setup.setup_page(page, path);
+
+                            // Create page service
+                            if let Err(e) = self_for_setup
+                                .executor
+                                .create_page_svc(self_for_setup.appid.clone(), path.to_string())
+                            {
+                                error!("Failed to request page service creation: {}", e)
+                                    .with_appid(self_for_setup.appid.clone())
+                                    .with_path(path.to_string());
+                            }
+                        },
+                    );
+                }
+
+                info!("Tab pages precreation completed").with_appid(self_clone.appid.clone());
+            });
+        }
     }
 
     fn on_lxapp_closed(self: &Arc<Self>) {
@@ -129,28 +189,17 @@ impl LxAppDelegate for LxApp {
             "onReady".to_string(),
             None,
         );
+
+        let state = self.state.lock().unwrap();
+        if let Some(page) = state.pages.get_page(&path) {
+            page.set_page_state(PageState::Loaded);
+        }
     }
 
     fn on_page_show(self: &Arc<Self>, path: String) {
         info!("on_page_show called for path: {}", path)
             .with_appid(self.appid.clone())
             .with_path(path.clone());
-
-        // Get the page (should already exist)
-        let page = {
-            let state = self.state.lock().unwrap();
-            state.pages.get_page(&path).cloned()
-        };
-
-        let page = match page {
-            Some(page) => page,
-            None => {
-                error!("Page not found: {}", path)
-                    .with_appid(self.appid.clone())
-                    .with_path(path.clone());
-                return;
-            }
-        };
 
         // Navigate to the new page and get the previous page if there was a switch
         let previous_page = self
@@ -184,53 +233,6 @@ impl LxAppDelegate for LxApp {
                 .with_appid(self.appid.clone())
                 .with_path(path.clone());
         }
-
-        // precreate webviews for other tab pages
-        let current_state = page.get_page_state();
-        let should_precreate =
-            self.config.is_initial_route(&path) && current_state == PageState::Loaded;
-
-        if should_precreate {
-            let self_clone = self.clone();
-            let current_path = path.clone();
-
-            // Offload precreate work to background thread
-            LxAppExecutor::spawn_task(move || {
-                let tab_pages = self_clone.config.get_tab_pages();
-                for p in tab_pages {
-                    if p == current_path {
-                        continue;
-                    }
-
-                    // Create new page and setup content
-                    let mut state = self_clone.state.lock().unwrap();
-                    let self_for_setup = self_clone.clone();
-                    let _ = state.pages.create_page(
-                        self_clone.appid.clone(),
-                        p.clone(),
-                        self_clone.runtime.clone(),
-                        self_clone.executor.clone(),
-                        move |page, path| {
-                            // Setup page content (load HTML)
-                            self_for_setup.setup_page(page, path);
-
-                            // Create page service
-                            if let Err(e) = self_for_setup
-                                .executor
-                                .create_page_svc(self_for_setup.appid.clone(), path.to_string())
-                            {
-                                error!("Failed to request page service creation: {}", e)
-                                    .with_appid(self_for_setup.appid.clone())
-                                    .with_path(path.to_string());
-                            }
-                        },
-                    );
-                }
-            });
-        }
-
-        // Mark page as shown (at the end of on_page_show)
-        page.set_page_state(PageState::Showed);
     }
 
     fn on_page_scroll_changed(
