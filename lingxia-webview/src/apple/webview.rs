@@ -262,6 +262,19 @@ impl WebViewInner {
             // Create WKWebViewConfiguration
             let config = WKWebViewConfiguration::new(mtm);
 
+            // Use a non-persistent data store to disable DOM Storage (localStorage, etc.)
+            let non_persistent_store: *mut AnyObject = msg_send![class!(WKWebsiteDataStore), nonPersistentDataStore];
+            let _: () = msg_send![&*config, setWebsiteDataStore: non_persistent_store];
+
+            // Access preferences to set security settings
+            let prefs: *mut AnyObject = msg_send![&*config, preferences];
+            let _: () = msg_send![prefs, setJavaScriptCanOpenWindowsAutomatically: false];
+
+            // Disable local file access for security
+            let allow_file_access_key = NSString::from_str("allowFileAccessFromFileURLs");
+            let ns_false: *mut AnyObject = msg_send![class!(NSNumber), numberWithBool: false];
+            let _: () = msg_send![prefs, setValue:ns_false, forKey:&*allow_file_access_key];
+
             // Configure media playback
             let media_types: i32 = 0; // WKAudiovisualMediaTypeNone
             let _: () =

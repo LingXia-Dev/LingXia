@@ -285,12 +285,18 @@ public class LingXiaWebView extends WebView {
         }
 
         try {
+            // Enable JavaScript, but disable other potentially insecure features
             settings.setJavaScriptEnabled(true);
+            
+            // Disable DOM Storage API
             settings.setDomStorageEnabled(false);
+            
+            // Disable all file access by default for security
+            settings.setAllowFileAccess(false);
+            settings.setAllowFileAccessFromFileURLs(false);
+            settings.setAllowUniversalAccessFromFileURLs(false);
+            settings.setAllowContentAccess(false);
 
-            // Additional settings can be added here as needed
-            // settings.setAllowFileAccess(false);
-            // settings.setAllowContentAccess(false);
         } catch (Exception e) {
             Log.e(TAG, "Error applying WebView settings", e);
             throw e;
