@@ -271,6 +271,45 @@ class LxApp private constructor(private val context: Context) {
         internal fun setCurrentActivity(activity: LxAppActivity?) {
             currentActivity = activity
         }
+
+        /**
+         * Show toast
+         * @param title Toast message
+         * @param icon Toast icon type (default: None for simple text toast)
+         * @param image Custom image path (absolute path only)
+         * @param duration Duration in seconds (default: 1.5, use 0.0 for no auto-hide)
+         * @param mask Whether to show mask to prevent touch through
+         * @param position Toast position
+         */
+        @JvmStatic
+        fun show(
+            title: String,
+            icon: ToastIcon = ToastIcon.None,
+            image: String? = null,
+            duration: Double = 1.5,
+            mask: Boolean = false,
+            position: ToastPosition = ToastPosition.Center
+        ) {
+            currentActivity?.let { activity ->
+                LxAppToast.showToast(
+                    context = activity,
+                    title = title,
+                    icon = icon,
+                    image = image,
+                    duration = duration,
+                    mask = mask,
+                    position = position
+                )
+            }
+        }
+
+        /**
+         * Hide toast
+         */
+        @JvmStatic
+        fun hide() {
+            LxAppToast.hideToast()
+        }
     }
 
     private fun openInCurrentActivity(appId: String, path: String) {

@@ -67,18 +67,6 @@ extension ToastPosition {
             return .bottom
         }
     }
-
-    /// Convert from string
-    public static func fromString(_ string: String) -> ToastPosition {
-        switch string.lowercased() {
-        case "top":
-            return .Top
-        case "bottom":
-            return .Bottom
-        default:
-            return .Center
-        }
-    }
 }
 
 /// Main Toast API class
@@ -334,7 +322,7 @@ struct ToastContentView: View {
 /// Simple Loading Icon View with rotation animation
 struct LoadingIconView: View {
     @State private var rotation: Double = 0
-    
+
     var body: some View {
         Image(systemName: "arrow.2.circlepath")
             .font(.system(size: 24, weight: .medium))
