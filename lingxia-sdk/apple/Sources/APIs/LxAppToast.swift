@@ -245,16 +245,13 @@ struct ToastContentView: View {
                 if let imagePath = config.image, !imagePath.isEmpty {
                     buildToastImage(imagePath: imagePath)
                 } else if let systemImageName = config.icon.systemImageName {
-                    Image(systemName: systemImageName)
-                        .font(.system(size: 24, weight: .medium))
-                        .foregroundColor(config.icon.color)
-                        .rotationEffect(config.icon == .Loading ? .degrees(0) : .degrees(0))
-                        .animation(
-                            config.icon == .Loading ?
-                            Animation.linear(duration: 1).repeatForever(autoreverses: false) :
-                            nil,
-                            value: config.icon == .Loading
-                        )
+                    if config.icon == .Loading {
+                        LoadingIconView()
+                    } else {
+                        Image(systemName: systemImageName)
+                            .font(.system(size: 24, weight: .medium))
+                            .foregroundColor(config.icon.color)
+                    }
                 }
 
                 // Title text
@@ -332,6 +329,23 @@ struct ToastContentView: View {
     }
 
 
+}
+
+/// Simple Loading Icon View with rotation animation
+struct LoadingIconView: View {
+    @State private var rotation: Double = 0
+    
+    var body: some View {
+        Image(systemName: "arrow.2.circlepath")
+            .font(.system(size: 24, weight: .medium))
+            .foregroundColor(.blue)
+            .rotationEffect(.degrees(rotation))
+            .onAppear {
+                withAnimation(.linear(duration: 1).repeatForever(autoreverses: false)) {
+                    rotation = 360
+                }
+            }
+    }
 }
 
 /// Toast-related errors
