@@ -6,6 +6,7 @@ import { taskpool } from '@kit.ArkTS';
 import { Want } from '@kit.AbilityKit';
 import common from '@ohos.app.ability.common';
 import { LxAppContainer } from './LxAppContainer';
+import { ToastManager } from './LxAppToast';
 import { initNativeBridge, getNativeCallbackFunction } from './NativeBridge';
 import { WebViewManager, toWebTag } from './WebView';
 import promptAction from '@kit.ArkUI';
@@ -444,6 +445,10 @@ struct LxAppManager {
       })
       .zIndex(999) // Display on top but below system UI
     }
+
+    // Toast manager - always on top
+    ToastManager()
+      .zIndex(10000)
     }
     .width('100%')
     .height('100%')

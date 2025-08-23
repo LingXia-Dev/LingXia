@@ -1,6 +1,7 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { webview } from '@kit.ArkWeb';
 import { LxApp } from './LxApp';
+import { LxAppToast, ToastIcon, ToastPosition } from './LxAppToast';
 import {
   createWebViewController,
   destroyWebViewController,
@@ -87,6 +88,17 @@ class NativeBridge {
     // WebView scroll listener
     this.register('setScrollListenerEnabled', (webtag: string, enabled: boolean) => {
       return setScrollListenerEnabled(webtag, enabled);
+    });
+
+    // Toast APIs
+    this.register('showToast', (title: string, icon: number = 0, image?: string, duration: number = 1.5, mask: boolean = false, position: number = 1) => {
+      LxAppToast.showToast(title, icon as ToastIcon, image, duration, mask, position as ToastPosition);
+      return true;
+    });
+
+    this.register('hideToast', () => {
+      LxAppToast.hideToast();
+      return true;
     });
 
     hilog.info(DOMAIN, TAG, `Registered ${NativeBridge.callbacks.size} default callbacks`);
