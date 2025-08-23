@@ -5,6 +5,9 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
+import android.view.View
+import android.view.ViewGroup
+import androidx.appcompat.app.AppCompatActivity
 
 /**
  * Data class representing LxApp information from the native layer
@@ -28,6 +31,9 @@ class LxApp private constructor(private val context: Context) {
 
         // Cache for initial routes of each app
         private val initialRouteCache = mutableMapOf<String, String>()
+
+        // Reference to the current LxAppActivity instance
+        private var currentActivity: LxAppActivity? = null
 
         // Clear cache when app is closed to prevent memory leaks
         fun clearPageConfigCache() {
@@ -93,6 +99,11 @@ class LxApp private constructor(private val context: Context) {
             } else {
                 Log.e(TAG, "Failed to get home LxApp details from native init.")
             }
+
+            // Configure transparent system bars if we're in an Activity context
+            if (context is AppCompatActivity) {
+                LxAppActivity.configureTransparentSystemBars(context)
+            }
         }
 
         @JvmStatic
@@ -123,9 +134,9 @@ class LxApp private constructor(private val context: Context) {
         }
 
         /**
-         * Opens a mini app in a new activity
+         * Opens a mini app in the current activity
          *
-         * This method creates a new LxAppActivity to host the specified mini app.
+         * This method updates the content of the current LxAppActivity to host the specified lxapp.
          * It notifies the native layer about the mini app being opened for state tracking.
          * The app configuration (including TabBar) will be fetched from the native layer.
          *
@@ -138,7 +149,7 @@ class LxApp private constructor(private val context: Context) {
             cacheInitialRoute(appId)
 
             val instance = getInstance()
-            instance.openInNewActivity(appId, path)
+            instance.openInCurrentActivity(appId, path)
         }
 
         /**
@@ -167,29 +178,16 @@ class LxApp private constructor(private val context: Context) {
         fun closeLxApp(appId: String) {
             Log.d(TAG, "Closing LxApp with appId: $appId")
 
-            // Iterate through all activities, find and close the LxAppActivity with matching appId
-            // On actual devices, one mini app corresponds to one activity, so this implementation is sufficient
-            // Future expansion can be made here if multiple activities are supported
-            val activityManager = instance?.context?.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
-            activityManager?.appTasks?.forEach { task ->
-                task.taskInfo?.topActivity?.let { componentName ->
-                    if (componentName.className == LxAppActivity::class.java.name) {
-                        // Send broadcast to notify activity to close
-                        val intent = Intent(ACTION_CLOSE_MINIAPP)
-                        intent.putExtra("appId", appId)
-                        intent.setPackage(instance?.context?.packageName)
-                        instance?.context?.sendBroadcast(intent)
-                    }
-                }
+            // Notify the current activity to close if it matches the appId
+            if (currentActivity?.getAppId() == appId) {
+                currentActivity?.closeApp()
             }
         }
 
         /**
          * Switches the current page within a running LxAppActivity
          *
-         * This method sends a broadcast intent to the specific LxAppActivity instance
-         * identified by appId, instructing it to navigate to the targetPath.
-         * Unlike switching tabs, this navigation typically implies showing the back button.
+         * This method calls the switchPage method directly on the current activity
          *
          * @param appId The unique identifier of the mini app whose page needs switching
          * @param path The target path to navigate to within the mini app
@@ -197,14 +195,11 @@ class LxApp private constructor(private val context: Context) {
         @JvmStatic
         fun switchPage(appId: String, path: String) {
             Log.d(TAG, "Requesting page switch for appId: $appId to path: $path")
-            val instance = getInstance()
-            val intent = Intent(ACTION_SWITCH_PAGE).apply {
-                // Ensure the intent is targeted only to our app's components
-                `package` = instance.context.packageName
-                putExtra("appId", appId)
-                putExtra("path", path)
+
+            // Switch page in the current activity if it matches the appId
+            if (currentActivity?.getAppId() == appId) {
+                currentActivity?.switchPage(path)
             }
-            instance.context.sendBroadcast(intent)
         }
 
         @JvmStatic
@@ -229,29 +224,32 @@ class LxApp private constructor(private val context: Context) {
          * Register activity lifecycle callbacks to automatically handle DeepLinks
          */
         private fun registerActivityLifecycleCallbacks(context: Context) {
-            try {
-                // Get the Application instance from context
-                val application = if (context is android.app.Application) {
-                    context
-                } else {
-                    context.applicationContext as? android.app.Application
+            val application = context.applicationContext as? android.app.Application
+            application?.registerActivityLifecycleCallbacks(object : android.app.Application.ActivityLifecycleCallbacks {
+                override fun onActivityCreated(activity: android.app.Activity, savedInstanceState: Bundle?) {
+                    handleAppLink(activity.intent)
+                    if (activity is LxAppActivity) {
+                        currentActivity = activity
+                    }
                 }
 
-                application?.registerActivityLifecycleCallbacks(object : android.app.Application.ActivityLifecycleCallbacks {
-                    override fun onActivityCreated(activity: android.app.Activity, savedInstanceState: Bundle?) {
-                        handleAppLink(activity.intent)
+                override fun onActivityResumed(activity: android.app.Activity) {
+                    if (activity is LxAppActivity) {
+                        currentActivity = activity
                     }
+                }
 
-                    override fun onActivityStarted(activity: android.app.Activity) {}
-                    override fun onActivityResumed(activity: android.app.Activity) {}
-                    override fun onActivityPaused(activity: android.app.Activity) {}
-                    override fun onActivityStopped(activity: android.app.Activity) {}
-                    override fun onActivitySaveInstanceState(activity: android.app.Activity, outState: Bundle) {}
-                    override fun onActivityDestroyed(activity: android.app.Activity) {}
-                }) ?: Log.w(TAG, "Failed to register ActivityLifecycleCallbacks: Application not found")
-            } catch (e: Exception) {
-                Log.e(TAG, "Error registering ActivityLifecycleCallbacks: ${e.message}")
-            }
+                override fun onActivityDestroyed(activity: android.app.Activity) {
+                    if (activity is LxAppActivity && currentActivity == activity) {
+                        currentActivity = null
+                    }
+                }
+
+                override fun onActivityStarted(activity: Activity) {}
+                override fun onActivityPaused(activity: Activity) {}
+                override fun onActivityStopped(activity: Activity) {}
+                override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
+            }) ?: Log.w(TAG, "Failed to register ActivityLifecycleCallbacks: Application not found")
         }
 
         /**
@@ -265,28 +263,34 @@ class LxApp private constructor(private val context: Context) {
                 NativeApi.onAppLinkReceived(url)
             }
         }
+
+        /**
+         * Set the current LxAppActivity instance
+         */
+        @JvmStatic
+        internal fun setCurrentActivity(activity: LxAppActivity?) {
+            currentActivity = activity
+        }
     }
 
-    private fun openInNewActivity(appId: String, path: String) {
-        val intent = Intent(context, LxAppActivity::class.java).apply {
-            putExtra(LxAppActivity.EXTRA_APP_ID, appId)
-            putExtra(LxAppActivity.EXTRA_PATH, path)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            // Add flags for faster activity launch
-            addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
-        }
-
+    private fun openInCurrentActivity(appId: String, path: String) {
         try {
-            // Notify native layer BEFORE starting activity
-            // This allows Rust layer to prepare resources while activity is starting
-            val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
-            executor.submit {
-                NativeApi.onLxAppOpened(appId, path)
+            NativeApi.onLxAppOpened(appId, path)
+
+            if (currentActivity != null) {
+                Log.d(TAG, "Opening app in current activity")
+                currentActivity?.openApp(appId, path)
+            } else {
+                Log.d(TAG, "Creating new activity")
+                val intent = Intent(context, LxAppActivity::class.java).apply {
+                    putExtra(LxAppActivity.EXTRA_APP_ID, appId)
+                    putExtra(LxAppActivity.EXTRA_PATH, path)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
             }
-            executor.shutdown()
-            context.startActivity(intent)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to start LxAppActivity: ${e.message}")
+            Log.e(TAG, "Failed to open LxApp: ${e.message}")
         }
     }
 

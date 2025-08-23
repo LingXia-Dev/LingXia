@@ -20,15 +20,9 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import android.content.Intent
-import android.content.BroadcastReceiver
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import android.view.animation.AccelerateDecelerateInterpolator
-
-// Define a constant for the switch page action
-const val ACTION_SWITCH_PAGE = "com.lingxia.SWITCH_PAGE_ACTION"
-// Define a constant for the close mini app action
-const val ACTION_CLOSE_MINIAPP = "com.lingxia.CLOSE_MINIAPP_ACTION"
 
 class LxAppActivity : AppCompatActivity() {
     companion object {
@@ -36,8 +30,6 @@ class LxAppActivity : AppCompatActivity() {
         const val EXTRA_APP_ID = "appId"
         const val EXTRA_PATH = "path"
         internal const val DEFAULT_NAV_BAR_HEIGHT_DP = 44
-
-        private var lastWebView: WeakReference<com.lingxia.lxapp.WebView>? = null
 
         // Helper function to get status bar height
         fun getStatusBarHeight(context: Context): Int {
@@ -116,50 +108,11 @@ class LxAppActivity : AppCompatActivity() {
     // Tracks the currently visible WebView instance
     private var currentWebView: com.lingxia.lxapp.WebView? = null
 
-    // Broadcast receiver for receiving mini app close requests
-    private val closeAppReceiver = object : android.content.BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == ACTION_CLOSE_MINIAPP) {
-                val targetAppId = intent.getStringExtra("appId")
-                if (::appId.isInitialized && targetAppId == appId) {
-                    Log.d(TAG, "Received close request for appId: $appId")
-                    finish()
-                }
-            }
-        }
-    }
-
-    // Broadcast receiver for page switching // Changed comment
-    private val switchPageReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == ACTION_SWITCH_PAGE) {
-                val targetAppId = intent.getStringExtra("appId")
-                val targetPath = intent.getStringExtra("path")
-
-                if (::appId.isInitialized && targetAppId == appId && targetPath != null) {
-                    Log.d(TAG, "Received switch page broadcast - appId: $appId, path: $targetPath") // Changed log
-
-                    // Added try-catch and pre-load logic
-                    try {
-                        // Pre-load existing WebView if available to prevent white screen
-                        val existingWebView = NativeApi.findWebView(appId, targetPath)
-                        if (existingWebView != null) {
-                            existingWebView.visibility = View.VISIBLE
-                            existingWebView.resume()
-                        }
-
-                        // Trigger page switch
-                        switchPage(targetPath)
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error switching page via broadcast: ${e.message}", e)
-                    }
-                }
-            }
-        }
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Set reference to this activity in LxApp
+        LxApp.setCurrentActivity(this)
 
         // Initialize appId from intent FIRST (check for null)
         appId = intent.getStringExtra(EXTRA_APP_ID) ?: run {
@@ -170,7 +123,7 @@ class LxAppActivity : AppCompatActivity() {
         val initialPath = intent.getStringExtra(EXTRA_PATH) ?: ""
 
         // Initialize the new flag
-        isDisplayingHomeLxApp = (this.appId == LxApp.HomeLxAppId)
+        isDisplayingHomeLxApp = (appId == LxApp.HomeLxAppId)
 
         // Start WebView creation in parallel while setting up UI
         var webViewFuture: java.util.concurrent.Future<Pair<com.lingxia.lxapp.WebView?, NavigationBarConfig?>>? = null
@@ -201,12 +154,6 @@ class LxAppActivity : AppCompatActivity() {
 
         // Get TabBar config and setup UI in parallel
         val tabBarConfig = NativeApi.getTabBarConfig(appId)
-
-        // Configure system UI early but efficiently
-        // Use dark status bar icons since we have white navbar background
-        configureTransparentSystemBars(this, lightStatusBarIcons = false)
-        updateNavigationBarTransparency(this, false, Color.WHITE)
-        window.setBackgroundDrawableResource(android.R.color.transparent)
 
         // Setup containers and UI components
         setupWebViewContainer()
@@ -249,10 +196,6 @@ class LxAppActivity : AppCompatActivity() {
 
         // Defer non-critical setup to post-layout
         rootContainer.post {
-            // Register broadcast receivers after UI is ready
-            registerReceiver(closeAppReceiver, android.content.IntentFilter(ACTION_CLOSE_MINIAPP))
-            registerReceiver(switchPageReceiver, android.content.IntentFilter(ACTION_SWITCH_PAGE))
-
             // Setup back press handler
             onBackPressedDispatcher.addCallback(object : OnBackPressedCallback(true) {
                 override fun handleOnBackPressed() {
@@ -262,11 +205,11 @@ class LxAppActivity : AppCompatActivity() {
                         Log.d(TAG, "Back press handled by native: $result")
                         if (result <= 0) {
                             Log.d(TAG, "No back navigation available, finishing")
-                            finish()
+                            closeApp()
                         }
                     } catch (e: Exception) {
                         Log.e(TAG, "Error handling back press: ${e.message}")
-                        finish()
+                        closeApp()
                     }
                 }
             })
@@ -378,7 +321,7 @@ class LxAppActivity : AppCompatActivity() {
                 height = tabBarSizePx
                 gravity = Gravity.BOTTOM
 
-                if (isTabBarTransparent && config.position == TabBarConfig.Position.BOTTOM) {
+                if (isTabBarTransparent) {
                     // For transparent TabBar, use a small fixed margin to avoid excessive spacing
                     // while still providing enough space to avoid overlap with system navigation
                     bottomMargin = (8 * resources.displayMetrics.density).toInt()
@@ -402,7 +345,7 @@ class LxAppActivity : AppCompatActivity() {
                 newLayoutParams.height = tabBarSizePx
                 newLayoutParams.gravity = Gravity.BOTTOM
 
-                if (isTabBarTransparent && config.position == TabBarConfig.Position.BOTTOM) {
+                if (isTabBarTransparent) {
                     // For transparent TabBar, use a small fixed margin to avoid excessive spacing
                     // while still providing enough space to avoid overlap with system navigation
                     newLayoutParams.bottomMargin = (8 * resources.displayMetrics.density).toInt()
@@ -516,6 +459,8 @@ class LxAppActivity : AppCompatActivity() {
                     Log.e(TAG, "Failed to call nativeOnPageShow: ${e.message}")
                 }
             }
+        } else {
+            Log.w(TAG, "attachWebViewToUI: Activity is destroyed, skipping WebView attachment")
         }
     }
 
@@ -523,21 +468,18 @@ class LxAppActivity : AppCompatActivity() {
         val initialWebView = findWebViewForPage(appId, path)
         if (initialWebView.first == null) {
             Log.e(TAG, "Failed to find or create initial WebView for $path")
-            finish(); return
+            closeApp(); return
         }
         setupWebViewContentWithExisting(initialWebView.first!!)
     }
 
     // New method to setup WebView content with an existing WebView
     private fun setupWebViewContentWithExisting(webView: com.lingxia.lxapp.WebView) {
-        // Attach and resume immediately
-        attachWebViewToUI(webView)
-
-        // Set the current WebView
+        // Set the current WebView first
         this.currentWebView = webView
 
-        // Update last used WebView reference
-        lastWebView = WeakReference(webView)
+        // Attach and resume immediately
+        attachWebViewToUI(webView)
     }
 
     // Function to setup the FrameLayout that holds the WebViews
@@ -632,7 +574,6 @@ class LxAppActivity : AppCompatActivity() {
     private fun addCapsuleButton() {
         // Don't show capsule button for the main/home app
         if (isDisplayingHomeLxApp) {
-            Log.d(TAG, "Not adding capsule button because it is the home app.")
             return
         }
 
@@ -711,8 +652,7 @@ class LxAppActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
             setOnClickListener {
-                // Directly close the current activity
-                finish()
+                closeApp()
             }
         }
 
@@ -758,14 +698,6 @@ class LxAppActivity : AppCompatActivity() {
     override fun onDestroy() {
         isDestroyed = true
 
-        // Unregister broadcast receivers // Changed comment
-        try {
-            unregisterReceiver(closeAppReceiver)
-            unregisterReceiver(switchPageReceiver) // Kept comment change
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to unregister receiver: ${e.message}")
-        }
-
         // Pause current WebView but don't destroy it
         // WebView destruction is managed by native
         currentWebView?.let { view ->
@@ -775,6 +707,9 @@ class LxAppActivity : AppCompatActivity() {
 
         // Clear page config cache to prevent memory leaks
         LxApp.clearPageConfigCache()
+
+        // Clear reference to this activity
+        LxApp.setCurrentActivity(null)
 
         super.onDestroy()
     }
@@ -812,8 +747,7 @@ class LxAppActivity : AppCompatActivity() {
             return
         }
 
-        // Update last used WebView reference *before* potentially pausing previous one
-        lastWebView = WeakReference(targetWebView)
+
 
         // Set current WebView to target for tracking *early*
         currentWebView = targetWebView
@@ -870,7 +804,7 @@ class LxAppActivity : AppCompatActivity() {
      *
      * @param targetPath Path of the page to navigate to
      */
-    private fun switchPage(targetPath: String) { // Replaced old public switchPage with this private dispatcher
+    fun switchPage(targetPath: String) { // Changed to public method
         if (!::appId.isInitialized) {
             Log.e(TAG, "Cannot switch page: appId not initialized")
             return
@@ -992,7 +926,6 @@ class LxAppActivity : AppCompatActivity() {
 
             // Update the current WebView reference BEFORE animating old container out
             currentWebView = newWebView
-            lastWebView = WeakReference(newWebView)
 
             // Animate the old container out AFTER new one starts coming in
             if (oldContainer != null && oldWebView != null) {
@@ -1164,7 +1097,7 @@ class LxAppActivity : AppCompatActivity() {
             onBackPressedDispatcher.onBackPressed()
         } catch (e: Exception) {
             Log.e(TAG, "Error during back navigation: ${e.message}")
-            finish() // Finish on error
+            closeApp() // Close app on error
         }
     }
 
@@ -1177,17 +1110,99 @@ class LxAppActivity : AppCompatActivity() {
         return tabBarOffset.toFloat()
     }
 
-    override fun finish() {
-        // Notify Rust before ending the activity
-        Log.d(TAG, "Activity finishing, notifying Rust: appId=$appId")
+    // Close the current app and return to the home app
+    fun closeApp() {
         notifyLxAppClosed()
-
-        // Ensure WebView is paused
         currentWebView?.pause()
-
-        // Call the original finish method
-        super.finish()
+        LxApp.openHomeLxApp()
     }
+
+    // Open a new app in the current activity
+    fun openApp(appId: String, path: String) {
+        Log.d(TAG, "Opening new app: $appId at path: $path. Resetting state.")
+
+        // Ensure all UI operations are on the main thread
+        runOnUiThread {
+            LxApp.clearPageConfigCache()
+
+            // Pause and hide current WebView before clearing
+            currentWebView?.let { webView ->
+                webView.pause()
+                webView.visibility = View.GONE
+            }
+
+            // Clear all WebViews from container
+            webViewContainer.removeAllViews()
+
+            // Remove existing capsule button before setting up new app
+            rootContainer.findViewWithTag<View>("capsule_button")?.let { capsule ->
+                rootContainer.removeView(capsule)
+            }
+
+            // Clean up navigation bar
+            navigationBar?.let { navBar ->
+                navBar.visibility = View.GONE
+                (navBar.parent as? ViewGroup)?.removeView(navBar)
+            }
+            navigationBar = null
+
+            // Clean up tab bar
+            tabBar?.apply {
+                setConfig(TabBarConfig(list = emptyList()))
+                visibility = View.GONE
+            }
+            tabBar = null
+
+            this.appId = appId
+            this.currentWebView = null
+            this.isDisplayingHomeLxApp = (appId == LxApp.HomeLxAppId)
+
+            intent.putExtra(EXTRA_APP_ID, appId)
+            intent.putExtra(EXTRA_PATH, path)
+
+            val tabBarConfig = NativeApi.getTabBarConfig(appId)
+            setupTabBar(tabBarConfig)
+
+            val (webView, pageConfig) = findWebViewForPage(appId, path)
+            updateNavigationBar(pageConfig, isBackNavigation = false, disableAnimation = true)
+
+            if (webView == null) {
+                Log.e(TAG, "Failed to find or create initial WebView for $path")
+                closeApp()
+                return@runOnUiThread
+            }
+
+            webViewContainer.visibility = View.VISIBLE
+            setupWebViewContentWithExisting(webView)
+
+            rootContainer.post {
+                updateCapsuleButton()
+                updateLayoutMargins()
+            }
+        }
+    }
+
+    // Update capsule button visibility
+    private fun updateCapsuleButton() {
+        rootContainer.post {
+            val capsule = rootContainer.findViewWithTag<View>("capsule_button")
+            if (isDisplayingHomeLxApp) {
+                capsule?.visibility = View.GONE
+            } else {
+                if (capsule == null) {
+                    addCapsuleButton()
+                } else {
+                    capsule.visibility = View.VISIBLE
+                }
+            }
+        }
+    }
+
+    // Get current app ID
+    fun getAppId(): String = appId
+
+    // Get current WebView (internal access for LxApp)
+    internal fun getCurrentWebView(): com.lingxia.lxapp.WebView? = currentWebView
 
     // Handle configuration changes to prevent Activity recreation
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
