@@ -2,6 +2,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { webview } from '@kit.ArkWeb';
 import { LxApp } from './LxApp';
 import { LxAppToast, ToastIcon, ToastPosition } from './LxAppToast';
+import { LxAppModal, ModalResult } from './LxAppModal';
 import {
   createWebViewController,
   destroyWebViewController,
@@ -99,6 +100,18 @@ class NativeBridge {
     this.register('hideToast', () => {
       LxAppToast.hideToast();
       return true;
+    });
+
+    // Modal APIs
+    this.register('showModal', (optionsJson: string): ModalResult => {
+      try {
+        const options = JSON.parse(optionsJson) as Record<string, string | boolean | undefined>;
+        return LxAppModal.showModal(options);
+      } catch (error) {
+        hilog.error(DOMAIN, TAG, `Error parsing modal options: ${error}`);
+        const errorResult: ModalResult = { confirm: false, cancel: true, content: "" };
+        return errorResult;
+      }
     });
 
     hilog.info(DOMAIN, TAG, `Registered ${NativeBridge.callbacks.size} default callbacks`);
