@@ -58,8 +58,6 @@ export class LxAppToast {
     mask: boolean = false,
     position: ToastPosition = ToastPosition.Center
   ): void {
-    hilog.info(DOMAIN, TAG, `Showing toast: ${title}`);
-
     // Hide any existing toast first
     LxAppToast.hideToast();
 
@@ -157,7 +155,7 @@ export struct ToastManager {
 
   @Builder
   buildToastContent() {
-    Column({ space: 12 }) {
+    Column({ space: this.config?.icon === ToastIcon.None ? 0 : 12 }) {
       // Icon or custom image
       if (this.config?.image) {
         this.buildToastImage(this.config.image)
@@ -174,38 +172,32 @@ export struct ToastManager {
         .maxLines(this.config?.icon === ToastIcon.None ? 3 : 2)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
         .lineHeight(22)
+        .wordBreak(WordBreak.BREAK_ALL)
     }
     .padding({ left: 24, right: 24, top: 16, bottom: 16 })
     .backgroundColor('#CC000000') // 80% black opacity
     .borderRadius(12)
-    .constraintSize({
-      minWidth: 120,
+    .constraintSize({ 
+      minWidth: 120, 
       maxWidth: 280,
-      minHeight: this.config?.icon === ToastIcon.None ? 60 : 100
+      minHeight: this.config?.icon === ToastIcon.None ? 60 : 80
     })
     .justifyContent(FlexAlign.Center)
     .alignItems(HorizontalAlign.Center)
     .margin(this.getToastMargin())
-  }
-
-  @Builder
+  }  @Builder
   buildToastIcon(icon: ToastIcon) {
     if (icon === ToastIcon.Loading) {
       LoadingProgress()
-        .width(36)
-        .height(36)
+        .width(28)
+        .height(28)
         .color(Color.White)
     } else {
       // Use simple styled icons
-      Stack() {
-        Circle({ width: 36, height: 36 })
-          .fill(this.getIconColor(icon))
-
-        Text(this.getIconSymbol(icon))
-          .fontSize(18)
-          .fontColor(Color.White)
-          .fontWeight(FontWeight.Bold)
-      }
+      Text(this.getIconSymbol(icon))
+        .fontSize(28)
+        .fontColor(this.getIconColor(icon))
+        .fontWeight(FontWeight.Medium)
     }
   }
 

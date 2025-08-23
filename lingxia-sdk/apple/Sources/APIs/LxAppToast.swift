@@ -237,13 +237,13 @@ struct ToastContentView: View {
             }
 
             // Toast content
-            VStack(spacing: 8) {
+            VStack(spacing: config.icon == .None ? 0 : 12) {
                 // Icon or custom image
                 if let imagePath = config.image, !imagePath.isEmpty {
                     buildToastImage(imagePath: imagePath)
                 } else if let systemImageName = config.icon.systemImageName {
                     Image(systemName: systemImageName)
-                        .font(.title2)
+                        .font(.system(size: 24, weight: .medium))
                         .foregroundColor(config.icon.color)
                         .rotationEffect(config.icon == .Loading ? .degrees(0) : .degrees(0))
                         .animation(
@@ -259,16 +259,17 @@ struct ToastContentView: View {
                     .font(.system(size: 16, weight: .medium))
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)
-                    .lineLimit(config.icon == .None ? 2 : 1)
+                    .lineLimit(config.icon == .None ? 3 : 2)
+                    .truncationMode(.tail)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.horizontal, 20)
-            .padding(.vertical, 16)
+            .padding(.vertical, config.icon == .None ? 16 : 20)
             .background(
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: 12)
                     .fill(Color.black.opacity(0.8))
             )
-            .frame(minWidth: 120, maxWidth: 200)
+            .frame(minWidth: 120, maxWidth: 280, minHeight: config.icon == .None ? 60 : 100)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: position.alignment)
         .allowsHitTesting(config.mask)
