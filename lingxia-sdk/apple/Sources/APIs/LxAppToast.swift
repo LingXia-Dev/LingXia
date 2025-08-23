@@ -89,7 +89,7 @@ public class LxAppToast {
 
     /// Current toast state
     @MainActor private static var currentToastTimer: Timer?
-    @MainActor private static var toastWindow: ToastWindow?
+    @MainActor private static var toastOverlay: ToastOverlayManager?
 
     /// Show toast
     /// - Parameters:
@@ -128,14 +128,14 @@ public class LxAppToast {
         os_log(.info, log: log, "Hiding toast")
         currentToastTimer?.invalidate()
         currentToastTimer = nil
-        toastWindow?.hide()
-        toastWindow = nil
+        toastOverlay?.hide()
+        toastOverlay = nil
     }
 
-    /// Show toast window using pure SwiftUI
+    /// Show toast overlay using existing view hierarchy
     private static func showToastWindow(config: ToastConfig, position: ToastPosition) {
-        toastWindow = ToastWindow(config: config, position: position)
-        toastWindow?.show()
+        toastOverlay = ToastOverlayManager(config: config, position: position)
+        toastOverlay?.show()
 
         // Auto-hide after duration
         if config.duration > 0 {
@@ -148,16 +148,16 @@ public class LxAppToast {
     }
 }
 
-/// Pure SwiftUI Toast Window
+/// Toast Overlay Manager - Uses existing view hierarchy instead of new window
 @MainActor
-class ToastWindow {
+class ToastOverlayManager {
     private let config: ToastConfig
     private let position: ToastPosition
 
     #if os(iOS)
-    private var window: UIWindow?
+    private var overlayViewController: UIViewController?
     #elseif os(macOS)
-    private var window: NSWindow?
+    private var overlayView: NSView?
     #endif
 
     init(config: ToastConfig, position: ToastPosition) {
@@ -175,50 +175,52 @@ class ToastWindow {
 
     func hide() {
         #if os(iOS)
-        window?.isHidden = true
-        window = nil
+        overlayViewController?.dismiss(animated: false)
+        overlayViewController = nil
         #elseif os(macOS)
-        window?.orderOut(nil)
-        window = nil
+        overlayView?.removeFromSuperview()
+        overlayView = nil
         #endif
     }
 
     #if os(iOS)
     private func showOnIOS() {
-        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene else { return }
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let window = windowScene.windows.first(where: { $0.isKeyWindow }) ?? windowScene.windows.first,
+              let rootViewController = window.rootViewController else {
+            return
+        }
 
-        window = UIWindow(windowScene: windowScene)
-        window?.windowLevel = UIWindow.Level.alert + 1
-        window?.backgroundColor = UIColor.clear
-        window?.isHidden = false
+        // Find the topmost view controller
+        var topViewController = rootViewController
+        while let presentedViewController = topViewController.presentedViewController {
+            topViewController = presentedViewController
+        }
 
-        let hostingController = UIHostingController(rootView: ToastContentView(config: config, position: position))
+        // Create overlay view controller
+        let toastView = ToastContentView(config: config, position: position)
+        let hostingController = UIHostingController(rootView: toastView)
         hostingController.view.backgroundColor = UIColor.clear
-        window?.rootViewController = hostingController
+        hostingController.modalPresentationStyle = .overFullScreen
+        hostingController.modalTransitionStyle = .crossDissolve
+
+        overlayViewController = hostingController
+        topViewController.present(hostingController, animated: true)
     }
     #endif
 
     #if os(macOS)
     private func showOnMacOS() {
-        guard let mainWindow = NSApplication.shared.mainWindow else { return }
+        guard let mainWindow = NSApplication.shared.mainWindow,
+              let contentView = mainWindow.contentView else { return }
 
-        let contentView = ToastContentView(config: config, position: position)
-        let hostingView = NSHostingView(rootView: contentView)
+        let toastView = ToastContentView(config: config, position: position)
+        let hostingView = NSHostingView(rootView: toastView)
+        hostingView.frame = contentView.bounds
+        hostingView.autoresizingMask = [.width, .height]
 
-        window = NSWindow(
-            contentRect: mainWindow.frame,
-            styleMask: [],
-            backing: .buffered,
-            defer: false
-        )
-
-        window?.level = .floating
-        window?.backgroundColor = NSColor.clear
-        window?.isOpaque = false
-        window?.hasShadow = false
-        window?.ignoresMouseEvents = !config.mask
-        window?.contentView = hostingView
-        window?.orderFront(nil)
+        overlayView = hostingView
+        contentView.addSubview(hostingView)
     }
     #endif
 }
@@ -227,6 +229,7 @@ class ToastWindow {
 struct ToastContentView: View {
     let config: ToastConfig
     let position: ToastPosition
+    @State private var isVisible = false
 
     var body: some View {
         ZStack {
@@ -270,9 +273,15 @@ struct ToastContentView: View {
                     .fill(Color.black.opacity(0.8))
             )
             .frame(minWidth: 120, maxWidth: 280, minHeight: config.icon == .None ? 60 : 100)
+            .scaleEffect(isVisible ? 1.0 : 0.8)
+            .opacity(isVisible ? 1.0 : 0.0)
+            .animation(.easeOut(duration: 0.2), value: isVisible)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: position.alignment)
         .allowsHitTesting(config.mask)
+        .onAppear {
+            isVisible = true
+        }
     }
 
     /// Build toast image with full path support
