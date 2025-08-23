@@ -285,7 +285,7 @@ struct ToastContentView: View {
                 .foregroundColor(.white)
                 .frame(width: 32, height: 32)
         } else if imagePath.hasPrefix("/") {
-            // Absolute path
+            // Absolute path only
             if let image = loadPlatformImage(from: imagePath) {
                 image
                     .resizable()
@@ -299,19 +299,11 @@ struct ToastContentView: View {
                     .frame(width: 32, height: 32)
             }
         } else {
-            // Try bundle first
-            if let bundleImage = loadBundleImage(named: imagePath) {
-                bundleImage
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 32, height: 32)
-            } else {
-                // Fallback to bundle name only
-                Image(imagePath)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 32, height: 32)
-            }
+            // Unsupported path format - show fallback
+            Image(systemName: "photo")
+                .font(.title2)
+                .foregroundColor(.gray)
+                .frame(width: 32, height: 32)
         }
     }
 
@@ -329,19 +321,7 @@ struct ToastContentView: View {
         return nil
     }
 
-    /// Load platform-specific image from bundle
-    private func loadBundleImage(named name: String) -> Image? {
-        #if os(iOS)
-        if let uiImage = UIImage(named: name) {
-            return Image(uiImage: uiImage)
-        }
-        #else
-        if let nsImage = NSImage(named: name) {
-            return Image(nsImage: nsImage)
-        }
-        #endif
-        return nil
-    }
+
 }
 
 /// Toast-related errors
