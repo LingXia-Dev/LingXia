@@ -310,6 +310,44 @@ class LxApp private constructor(private val context: Context) {
         fun hide() {
             LxAppToast.hideToast()
         }
+
+        /**
+         * Show modal dialog
+         * @param title Modal title
+         * @param content Modal content/message
+         * @param showCancel Whether to show cancel button (default: true)
+         * @param cancelText Cancel button text (default: "Cancel")
+         * @param confirmText Confirm button text (default: "OK")
+         * @param editable Whether the modal is editable (input field)
+         * @param placeholderText Placeholder text for input field
+         * @param confirmColor Custom color for confirm button
+         * @return ModalResult (immediate result for FFI compatibility)
+         */
+        @JvmStatic
+        fun showModal(
+            title: String = "Alert",
+            content: String = "",
+            showCancel: Boolean = true,
+            cancelText: String = "Cancel",
+            confirmText: String = "OK",
+            editable: Boolean = false,
+            placeholderText: String = "",
+            confirmColor: String? = null
+        ): ModalResult {
+            return currentActivity?.let { activity ->
+                val options = mapOf(
+                    "title" to title,
+                    "content" to content,
+                    "showCancel" to showCancel,
+                    "cancelText" to cancelText,
+                    "confirmText" to confirmText,
+                    "editable" to editable,
+                    "placeholderText" to placeholderText,
+                    "confirmColor" to confirmColor
+                )
+                LxAppModal.showModal(activity, options)
+            } ?: ModalResult(confirm = false, cancel = true, content = "")
+        }
     }
 
     private fun openInCurrentActivity(appId: String, path: String) {
