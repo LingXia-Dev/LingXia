@@ -2,6 +2,8 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { LxApp } from './LxApp';
 import { LxAppContainer } from './LxAppContainer';
 import { onLxappOpened, onLxappClosed } from 'liblingxia.so';
+import { ToastManager } from './LxAppToast';
+import { ModalManager } from './LxAppModal';
 
 const DOMAIN = 0xA000;
 const TAG = 'LingXia.Navigation';
@@ -227,6 +229,12 @@ export struct LxAppNavigation {
           this.buildModalLxApp(stackItem);
         }
       })
+
+      ToastManager()
+        .zIndex(10000)
+
+      ModalManager()
+        .zIndex(10001)
     }
     .width('100%')
     .height('100%')
