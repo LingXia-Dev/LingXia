@@ -104,6 +104,34 @@ export struct LxAppNavigation {
     }
   }
 
+  /**
+   * Switch to a specific page within an LxApp
+   * @param appId - LxApp ID
+   * @param path - Page path to switch to
+   * @returns boolean - True if page switch was successful, false otherwise
+   */
+  public switchPage(appId: string, path: string): boolean {
+    // For home app, delegate to the LxAppContainer
+    if (appId === this.homeAppId) {
+      hilog.info(DOMAIN, TAG, `Switching page in home app ${appId} to ${path}`);
+      // The LxAppContainer will handle the page switching via externalPath prop
+      return true;
+    }
+
+    // For modal apps in stack, find the container and switch page
+    const stackItem = this.miniAppStack.find(item => item.appId === appId);
+    if (stackItem) {
+      hilog.info(DOMAIN, TAG, `Switching page in modal app ${appId} to ${path}`);
+      stackItem.path = path;
+      // Trigger UI update for the modal container
+      this.miniAppStack = [...this.miniAppStack];
+      return true;
+    }
+
+    hilog.warn(DOMAIN, TAG, `LxApp ${appId} not found for page switching`);
+    return false;
+  }
+
   private showLxApp(appId: string, stackIndex: number): void {
     const newHiddenApps = new Set<string>();
     this.hiddenApps.forEach(id => {
@@ -153,6 +181,30 @@ export struct LxAppNavigation {
     return !this.hiddenApps.has(appId);
   }
 
+  /**
+   * Build modal LxApp container with common styling
+   */
+  @Builder
+  buildModalLxApp(stackItem: LxAppStackItem): void {
+    LxAppContainer({
+      appId: stackItem.appId,
+      initialPath: stackItem.path,
+      navigationMode: true,
+      closeCallback: 'navigation'
+    })
+    .width('100%')
+    .height('100%')
+    .zIndex(this.isLxAppVisible(stackItem.appId) ? stackItem.zIndex : -1)
+    .backgroundColor(Color.White)
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+    .translate({ y: stackItem.offsetY })
+    .visibility(this.isLxAppVisible(stackItem.appId) ? Visibility.Visible : Visibility.Hidden)
+    .enabled(this.isLxAppVisible(stackItem.appId))
+    .onAppear(() => {
+      hilog.info(DOMAIN, TAG, `Modal LxApp appeared: ${stackItem.appId}`);
+    })
+  }
+
   build() {
     Stack() {
       if (this.isReady && this.homeAppId && this.homeAppPath) {
@@ -169,21 +221,11 @@ export struct LxAppNavigation {
         this.buildLoadingPage()
       }
 
+      // Only non-home apps go in the stack to avoid duplication
       ForEach(this.miniAppStack, (stackItem: LxAppStackItem, index: number) => {
-        LxAppContainer({
-          appId: stackItem.appId,
-          initialPath: stackItem.path,
-          navigationMode: true,
-          closeCallback: 'navigation'
-        })
-        .width('100%')
-        .height('100%')
-        .zIndex(this.isLxAppVisible(stackItem.appId) ? stackItem.zIndex : -1)
-        .backgroundColor(Color.White)
-        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
-        .translate({ y: stackItem.offsetY })
-        .visibility(this.isLxAppVisible(stackItem.appId) ? Visibility.Visible : Visibility.Hidden)
-        .enabled(this.isLxAppVisible(stackItem.appId))
+        if (stackItem.appId !== this.homeAppId) {
+          this.buildModalLxApp(stackItem);
+        }
       })
     }
     .width('100%')

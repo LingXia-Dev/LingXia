@@ -3,7 +3,7 @@ import { webview } from '@kit.ArkWeb';
 import { window } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { LxApp } from './LxApp';
-import { findWebview, handleScrollChanged, toWebTag, extractWebTag, WebTagParts, setWebViewUiCallback, WebViewInfo } from './WebView';
+import { findWebview, handleScrollChanged, toWebTag, extractWebTag, WebTagParts, addWebViewUiCallback, removeWebViewUiCallback, WebViewInfo } from './WebView';
 import { NavigationBar, type NavigationBarConfig } from './NavigationBar';
 import { TabBar, TabBarPosition, type TabBarConfig, type TabBarItem } from './TabBar';
 import { getTabBarConfig, getNavigationBarConfig, onPageShow } from 'liblingxia.so';
@@ -26,6 +26,9 @@ export struct LxAppContainer {
   @State currentWebTag: string = '' // Current active WebView tag
   @State webViewKeys: string[] = [] // Array of webView keys for ForEach
   private pageShowTriggered: Set<string> = new Set() // Track which pages have triggered onPageShow
+  private webViewUiCallback = (action: string, info: WebViewInfo) => {
+    this.handleWebViewUiEvent(action, info);
+  }
 
   /**
    * Trigger onPageShow for a WebView if it hasn't been triggered yet
@@ -70,28 +73,33 @@ export struct LxAppContainer {
     this.path = this.initialPath;
     hilog.info(DOMAIN, TAG, `Container creating for ${this.appId}:${this.path}, isHome=${this.isHomeLxApp()}`);
 
-    // Set up WebView UI callback to handle component creation
-    setWebViewUiCallback((action: string, info: WebViewInfo) => {
-      this.handleWebViewUiEvent(action, info);
-    });
+    // Add WebView UI callback to handle component creation (supports multiple containers)
+    addWebViewUiCallback(this.webViewUiCallback);
 
     this.pageConfig = getNavigationBarConfig(this.appId, this.path);
 
     this.tabBarConfig = getTabBarConfig(this.appId);
     this.setInitialSelectedTab();
 
-    // Only find WebView for the initial page when actually needed
+    // Always set currentWebTag for initial page to ensure visibility
     const initialWebTag = toWebTag(this.appId, this.path);
+    this.currentWebTag = initialWebTag;
+    hilog.info(DOMAIN, TAG, `Set initial currentWebTag to: ${initialWebTag} (will be visible when WebView is created)`);
+
+    // Try to find existing WebView for the initial page
     const initialController = findWebview(this.appId, this.path);
     if (initialController) {
       this.storeWebViewComponent(initialWebTag, initialController);
-      // Ensure currentWebTag is set for initial page
-      this.currentWebTag = initialWebTag;
-      hilog.info(DOMAIN, TAG, `Set initial currentWebTag to: ${initialWebTag}`);
-
-      // Don't mark as triggered yet - let onAppear handle the first trigger
-      hilog.info(DOMAIN, TAG, `Initial page setup completed, will trigger onPageShow when WebView appears: ${initialWebTag}`);
+      hilog.info(DOMAIN, TAG, `Found existing WebView for initial page: ${initialWebTag}`);
+    } else {
+      hilog.info(DOMAIN, TAG, `No existing WebView found for initial page: ${initialWebTag}, will create when needed`);
     }
+  }
+
+  aboutToDisappear() {
+    // Remove WebView UI callback when container is destroyed
+    removeWebViewUiCallback(this.webViewUiCallback);
+    hilog.info(DOMAIN, TAG, `Container destroyed for ${this.appId}:${this.path}`);
   }
 
   /**
@@ -108,7 +116,14 @@ export struct LxAppContainer {
    * Handle WebView UI events from WebViewManager
    */
   handleWebViewUiEvent(action: string, info: WebViewInfo) {
-    hilog.info(DOMAIN, TAG, `WebView UI event: ${action} for ${info.webtag}`);
+    // Extract appId from WebView tag to check if this event is for this container
+    const extracted = extractWebTag(info.webtag);
+    if (!extracted || extracted.appId !== this.appId) {
+      // This WebView event is not for this container, ignore it
+      return;
+    }
+
+    hilog.info(DOMAIN, TAG, `WebView UI event: ${action} for ${info.webtag} (container: ${this.appId})`);
 
     switch (action) {
       case 'create':
@@ -141,10 +156,10 @@ export struct LxAppContainer {
     this.webViewComponents.set(webTag, controller);
     this.webViewKeys = Array.from(this.webViewComponents.keys());
 
-    // If this is the current tab, set it as current (onPageShow will be triggered when WebView appears)
+    // If this is the current tab, ensure it's set as current
     if (webTag === toWebTag(this.appId, this.path)) {
       this.currentWebTag = webTag;
-      hilog.info(DOMAIN, TAG, `Set as current WebView: ${webTag}, onPageShow will be triggered when WebView appears`);
+      hilog.info(DOMAIN, TAG, `Confirmed as current WebView: ${webTag}, will be visible immediately`);
     }
   }
 

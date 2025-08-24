@@ -27,6 +27,7 @@ function closeLxAppTask(appId: string): number {
 interface NavigationInstance {
   openLxApp(appId: string, path: string): void;
   closeLxApp(appId: string): void;
+  switchPage(appId: string, path: string): boolean;
 }
 
 export class LxApp {
@@ -34,14 +35,6 @@ export class LxApp {
   public static managerInstance: LxAppManager | null = null;
   public static context: common.UIAbilityContext | null = null;
   public static windowStage: window.WindowStage | null = null;
-
-  // Modal lxapp state (for non-home lxapps)
-  public static modalLxAppId: string | null = null;
-  public static modalLxAppPath: string | null = null;
-  public static modalLxAppVisible: boolean = false;
-
-  // Control home lxapp visibility when modal is open
-  public static hideHomeLxApp: boolean = false;
 
   // Store navigation instance for Navigation-based architecture
   public static navigationInstance: NavigationInstance | null = null;
@@ -119,15 +112,6 @@ export class LxApp {
       const appInfo: LxAppInfo | null = getLxAppInfo(appId);
       if (appInfo) {
         LxApp.initialRouteCache.set(appId, appInfo.initialRoute);
-
-        // Create webview for initial route
-        const webtag = toWebTag(appId, appInfo.initialRoute);
-        const webviewCreated = WebViewManager.createWebview(webtag);
-        if (webviewCreated) {
-          hilog.info(DOMAIN, TAG, `Created webview for initial route: ${webtag}`);
-        } else {
-          hilog.warn(DOMAIN, TAG, `Failed to create webview for initial route: ${webtag}`);
-        }
       }
     } else {
       hilog.error(DOMAIN, TAG, 'Failed to get home LxApp details from native init.');
@@ -152,32 +136,27 @@ export class LxApp {
     }
   }
 
+  /**
+   * Close an LxApp by appId
+   * @param appId - The ID of the LxApp to close
+   */
   public static closeLxApp(appId: string): void {
     // Call native onLxappClosed asynchronously (fire and forget)
     taskpool.execute(new taskpool.Task(closeLxAppTask, appId));
 
     if (LxApp.navigationInstance) {
-      hilog.info(DOMAIN, TAG, 'Using LxAppNavigation for closeLxApp');
       LxApp.navigationInstance.closeLxApp(appId);
       return;
     }
 
-    if (LxApp.modalLxAppId === appId) {
-      LxApp.modalLxAppId = null;
-      LxApp.modalLxAppPath = null;
-      LxApp.modalLxAppVisible = false;
-      LxApp.hideHomeLxApp = false;
-
-      if (LxApp.managerInstance) {
-        LxApp.managerInstance.closeModalLxApp();
-      } else {
-        hilog.warn(DOMAIN, TAG, ' No manager instance available!');
-      }
-    } else {
-      hilog.warn(DOMAIN, TAG, `Cannot close lxapp ${appId} - not currently displayed modal lxapp (current: ${LxApp.modalLxAppId})`);
-    }
+    hilog.error(DOMAIN, TAG, 'LxAppNavigation instance not available for closeLxApp');
   }
 
+  /**
+   * Open an LxApp by appId and path
+   * @param appId - The ID of the LxApp to open
+   * @param path - The path to open within the LxApp
+   */
   public static openLxApp(appId: string, path: string): void {
     hilog.info(DOMAIN, TAG, `openLxApp called: ${appId}:${path}`);
 
@@ -202,30 +181,14 @@ export class LxApp {
       }
     }
 
+    // Use LxAppNavigation for unified architecture
     if (LxApp.navigationInstance) {
       hilog.info(DOMAIN, TAG, 'Using LxAppNavigation for openLxApp');
       LxApp.navigationInstance.openLxApp(appId, actualPath);
       return;
     }
 
-    if (!LxApp.managerInstance) {
-      hilog.info(DOMAIN, TAG, 'No LxApp instance ready, waiting...');
-      setTimeout(() => {
-        LxApp.openLxApp(appId, actualPath);
-      }, 50);
-      return;
-    }
-
-    const instance = LxApp.getInstance();
-    const isHomeLxApp = (appId === instance.getHomeLxAppId());
-
-    if (isHomeLxApp && LxApp.managerInstance.isReady) {
-      hilog.info(DOMAIN, TAG, 'Home LxApp already loaded');
-      return;
-    }
-
-    hilog.info(DOMAIN, TAG, 'Using LxAppManager for openLxApp (legacy)');
-    LxApp.managerInstance.doOpenLxApp(appId, actualPath, isHomeLxApp);
+    hilog.error(DOMAIN, TAG, 'LxAppNavigation instance not available for openLxApp');
   }
 
   /**
@@ -236,12 +199,12 @@ export class LxApp {
   public static switchPage(appId: string, path: string): boolean {
     hilog.info(DOMAIN, TAG, `switchPage API called: ${appId}:${path}`);
 
-    // The manager finds the right container and handles the switch
-    if (LxApp.managerInstance) {
-      return LxApp.managerInstance.switchToPage(appId, path);
+    // Use LxAppNavigation for unified architecture
+    if (LxApp.navigationInstance) {
+      return LxApp.navigationInstance.switchPage(appId, path);
     }
 
-    hilog.warn(DOMAIN, TAG, 'No LxApp manager ready for switchPage');
+    hilog.warn(DOMAIN, TAG, 'LxAppNavigation not available for switchPage');
     return false;
   }
 
@@ -252,10 +215,8 @@ export class LxApp {
     return this.homeLxAppId;
   }
 
-
-
   /**
-   * Set manager instance (called by LxAppManager)
+   * Set manager instance (used for component compatibility only)
    */
   public static setManagerInstance(manager: LxAppManager): void {
     LxApp.managerInstance = manager;
@@ -298,9 +259,9 @@ export class LxApp {
     hilog.info(DOMAIN, TAG, `switchToPageInternal called: appId=${appId}, path=${path}`);
 
     try {
-      // Find the container and switch to the page
-      if (LxApp.managerInstance) {
-        const success: boolean = LxApp.managerInstance.switchToPage(appId, path);
+      // Use LxAppNavigation for page switching
+      if (LxApp.navigationInstance) {
+        const success: boolean = LxApp.navigationInstance.switchPage(appId, path);
         if (success) {
           hilog.info(DOMAIN, TAG, `Successfully switched to page: ${path}`);
           return true;
@@ -309,7 +270,7 @@ export class LxApp {
           return false;
         }
       } else {
-        hilog.error(DOMAIN, TAG, `No LxApp manager instance available for page switch`);
+        hilog.error(DOMAIN, TAG, `No LxApp navigation instance available for page switch`);
         return false;
       }
     } catch (error) {
@@ -393,7 +354,7 @@ struct LxAppManager {
   aboutToAppear() {
     hilog.info(DOMAIN, TAG, 'LxAppManager starting - intelligent initialization');
 
-    // Set static instance in LxApp
+    // Set static instance in LxApp for component compatibility
     LxApp.setManagerInstance(this);
 
     // Manager is ready for openHomeLxApp() calls
@@ -483,13 +444,7 @@ struct LxAppManager {
         // Modal lxapp: create new LxAppContainer and display it
         hilog.info(DOMAIN, TAG, `Opening modal lxapp: ${appId}:${path}`);
 
-        // Store modal lxapp info in both static and instance state
-        LxApp.modalLxAppId = appId;
-        LxApp.modalLxAppPath = path;
-        LxApp.modalLxAppVisible = true;
-
         // Hide home lxapp when modal is open
-        LxApp.hideHomeLxApp = true;
         this.hideHomeLxApp = true;
         hilog.info(DOMAIN, TAG, `HIDING home lxapp - set to: ${this.hideHomeLxApp}`);
 
@@ -536,7 +491,6 @@ struct LxAppManager {
     this.modalLxAppPath = '';
 
     // Show home lxapp when modal is closed
-    LxApp.hideHomeLxApp = false;
     this.hideHomeLxApp = false;
   }
 

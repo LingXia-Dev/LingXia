@@ -26,15 +26,21 @@ export class WebViewManager {
   // Map to store WebView info for UI management
   private static webViewInfos: Map<string, WebViewInfo> = new Map();
 
-  // Callback for UI component creation/destruction (if needed)
-  private static uiCallback: ((action: string, info: WebViewInfo) => void) | null = null;
+  // Multiple callbacks for UI component management
+  private static uiCallbacks: Set<(action: string, info: WebViewInfo) => void> = new Set();
 
   /**
-   * Set UI callback for WebView component management
-   * @param callback - Callback function to handle WebView UI events
+   * Add UI callback for WebView management
    */
-  static setUiCallback(callback: (action: string, info: WebViewInfo) => void) {
-    WebViewManager.uiCallback = callback;
+  static addUiCallback(callback: (action: string, info: WebViewInfo) => void) {
+    WebViewManager.uiCallbacks.add(callback);
+  }
+
+  /**
+   * Remove UI callback for WebView management
+   */
+  static removeUiCallback(callback: (action: string, info: WebViewInfo) => void) {
+    WebViewManager.uiCallbacks.delete(callback);
   }
 
   /**
@@ -64,10 +70,14 @@ export class WebViewManager {
       };
       WebViewManager.webViewInfos.set(webtag, webViewInfo);
 
-      // Notify UI to create component
-      if (WebViewManager.uiCallback) {
-        WebViewManager.uiCallback('create', webViewInfo);
-      }
+      // Notify all UI components to create component
+      WebViewManager.uiCallbacks.forEach(callback => {
+        try {
+          callback('create', webViewInfo);
+        } catch (error) {
+          hilog.error(DOMAIN, TAG, `UI callback error: ${error}`);
+        }
+      });
 
       hilog.info(DOMAIN, TAG, `Created new WebView: ${webtag}`);
       return true;
@@ -114,9 +124,13 @@ export class WebViewManager {
     WebViewManager.controllers.delete(webtag);
     WebViewManager.webViewInfos.delete(webtag);
 
-    if (WebViewManager.uiCallback) {
-      WebViewManager.uiCallback('destroy', webViewInfo);
-    }
+    WebViewManager.uiCallbacks.forEach(callback => {
+      try {
+        callback('destroy', webViewInfo);
+      } catch (error) {
+        hilog.error(DOMAIN, TAG, `UI callback error: ${error}`);
+      }
+    });
 
     hilog.info(DOMAIN, TAG, `Destroyed WebView: ${webtag}`);
     return true;
@@ -266,9 +280,13 @@ export class WebViewManager {
 
     if (webViewInfo) {
       webViewInfo.visible = visible;
-      if (WebViewManager.uiCallback) {
-        WebViewManager.uiCallback('visibility', webViewInfo);
-      }
+      WebViewManager.uiCallbacks.forEach(callback => {
+        try {
+          callback('visibility', webViewInfo);
+        } catch (error) {
+          hilog.error(DOMAIN, TAG, `UI callback error: ${error}`);
+        }
+      });
       hilog.info(DOMAIN, TAG, `Set WebView ${webtag} visibility: ${visible}`);
     }
   }
@@ -326,11 +344,17 @@ export function extractWebTag(webtag: string): WebTagParts | null {
 }
 
 /**
- * Set UI callback for WebView component management
- * @param callback - Callback function to handle WebView UI events
+ * Add UI callback for WebView management
  */
-export function setWebViewUiCallback(callback: (action: string, info: WebViewInfo) => void) {
-  WebViewManager.setUiCallback(callback);
+export function addWebViewUiCallback(callback: (action: string, info: WebViewInfo) => void) {
+  WebViewManager.addUiCallback(callback);
+}
+
+/**
+ * Remove UI callback for WebView management
+ */
+export function removeWebViewUiCallback(callback: (action: string, info: WebViewInfo) => void) {
+  WebViewManager.removeUiCallback(callback);
 }
 
 /**
