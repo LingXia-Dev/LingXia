@@ -129,8 +129,16 @@ export class LxApp {
     const homeAppId = instance.getHomeLxAppId();
 
     if (homeAppId) {
-      // Use the general openLxApp method with initial route
-      LxApp.openLxApp(homeAppId, ''); // Empty path means use initial route
+      // Check if LxAppNavigation is ready
+      if (LxApp.navigationInstance) {
+        LxApp.openLxApp(homeAppId, '');
+      } else {
+        // Defer to next event loop cycle
+        hilog.info(DOMAIN, TAG, 'LxAppNavigation not ready, retrying in next event loop');
+        setTimeout(() => {
+          LxApp.openHomeLxApp();
+        }, 1);
+      }
     } else {
       hilog.error(DOMAIN, TAG, 'Home LxApp ID not available for openHomeLxApp');
     }

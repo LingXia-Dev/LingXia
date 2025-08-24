@@ -29,6 +29,7 @@ export struct LxAppNavigation {
   @State homeAppId: string = ''
   @State homeAppPath: string = ''
   @State errorMessage: string = ''
+  @State isHomeAppVisible: boolean = false // Control Home LxApp visibility
   @Prop autoOpenHome: boolean = true
 
   @State private miniAppStack: LxAppStackItem[] = []
@@ -54,6 +55,7 @@ export struct LxAppNavigation {
 
         if (this.autoOpenHome) {
           hilog.info(DOMAIN, TAG, `Auto-opening home LxApp: ${this.homeAppId}:${this.homeAppPath}`);
+          this.isHomeAppVisible = true;
           LxApp.openHomeLxApp();
         } else {
           hilog.info(DOMAIN, TAG, `LxApp initialized, waiting for manual openHomeLxApp call: ${this.homeAppId}:${this.homeAppPath}`);
@@ -77,6 +79,13 @@ export struct LxAppNavigation {
     try {
       const result: number = onLxappOpened(appId, path);
       hilog.info(DOMAIN, TAG, `onLxappOpened result: ${result}`);
+
+      // Handle Home LxApp specially
+      if (appId === this.homeAppId) {
+        hilog.info(DOMAIN, TAG, `Showing home LxApp: ${appId}`);
+        this.isHomeAppVisible = true;
+        return;
+      }
 
       const existingIndex = this.miniAppStack.findIndex(item => item.appId === appId);
 
@@ -209,7 +218,7 @@ export struct LxAppNavigation {
 
   build() {
     Stack() {
-      if (this.isReady && this.homeAppId && this.homeAppPath) {
+      if (this.isReady && this.homeAppId && this.homeAppPath && this.isHomeAppVisible) {
         LxAppContainer({
           appId: this.homeAppId,
           initialPath: this.homeAppPath,
