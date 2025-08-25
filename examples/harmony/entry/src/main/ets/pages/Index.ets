@@ -103,15 +103,13 @@ struct Index {
     // Install test lxapp for openLxApp testing
     //installTestLxApp();
 
-    LxApp.openHomeLxApp();
   }
 
   build() {
     Column() {
-      LxAppNavigation({ autoOpenHome: false })
+      LxAppNavigation()
     }
     .width('100%')
     .height('100%')
-    .backgroundColor(Color.Transparent)
   }
 }
