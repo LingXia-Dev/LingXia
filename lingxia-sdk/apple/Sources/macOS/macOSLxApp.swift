@@ -196,7 +196,7 @@ public class macOSLxApp: ObservableObject {
     }
 
     /// Open home LxApp
-    public static func openHomeLxApp() {
+    internal static func openHomeLxApp() {
         guard let homeLxAppId = LxAppCore.getHomeLxAppId() else {
             return
         }
@@ -245,6 +245,51 @@ public class macOSLxApp: ObservableObject {
         } else {
             os_log("Failed to initialize LxApps - no home app ID", log: log, type: .error)
             return false
+        }
+    }
+
+    /// Set badge text for a specific tab
+    public static func setTabBarBadge(index: Int, text: String) {
+        // Find the appropriate view controller and delegate to its TabBar
+        if let tabController = tabWindowController,
+           let viewController = tabController.window?.contentViewController as? macOSLxAppViewController {
+            viewController.setTabBarBadge(index: index, text: text)
+        } else if let controller = activeWindowControllers.first,
+                  let viewController = controller.window?.contentViewController as? macOSLxAppViewController {
+            viewController.setTabBarBadge(index: index, text: text)
+        }
+    }
+
+    /// Remove badge from a specific tab
+    public static func removeTabBarBadge(index: Int) {
+        if let tabController = tabWindowController,
+           let viewController = tabController.window?.contentViewController as? macOSLxAppViewController {
+            viewController.removeTabBarBadge(index: index)
+        } else if let controller = activeWindowControllers.first,
+                  let viewController = controller.window?.contentViewController as? macOSLxAppViewController {
+            viewController.removeTabBarBadge(index: index)
+        }
+    }
+
+    /// Show red dot for a specific tab
+    public static func showTabBarRedDot(index: Int) {
+        if let tabController = tabWindowController,
+           let viewController = tabController.window?.contentViewController as? macOSLxAppViewController {
+            viewController.showTabBarRedDot(index: index)
+        } else if let controller = activeWindowControllers.first,
+                  let viewController = controller.window?.contentViewController as? macOSLxAppViewController {
+            viewController.showTabBarRedDot(index: index)
+        }
+    }
+
+    /// Hide red dot for a specific tab
+    public static func hideTabBarRedDot(index: Int) {
+        if let tabController = tabWindowController,
+           let viewController = tabController.window?.contentViewController as? macOSLxAppViewController {
+            viewController.hideTabBarRedDot(index: index)
+        } else if let controller = activeWindowControllers.first,
+                  let viewController = controller.window?.contentViewController as? macOSLxAppViewController {
+            viewController.hideTabBarRedDot(index: index)
         }
     }
 }

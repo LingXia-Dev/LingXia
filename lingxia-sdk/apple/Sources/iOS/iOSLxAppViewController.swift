@@ -976,5 +976,29 @@ public class iOSLxAppViewController: UIViewController, ObservableObject {
 
         os_log("iOSLxAppViewController: iOSLxAppViewController deinitialized", log: miniAppViewControllerLog, type: .debug)
     }
+
+    /// Set badge text for a specific tab
+    public func setTabBarBadge(index: Int, text: String) {
+        guard let tabBar = tabBar else { return }
+        tabBar.setTabBarBadge(index: index, text: text)
+    }
+
+    /// Remove badge from a specific tab
+    public func removeTabBarBadge(index: Int) {
+        guard let tabBar = tabBar else { return }
+        tabBar.removeTabBarBadge(index: index)
+    }
+
+    /// Show red dot for a specific tab
+    public func showTabBarRedDot(index: Int) {
+        guard let tabBar = tabBar else { return }
+        tabBar.showTabBarRedDot(index: index)
+    }
+
+    /// Hide red dot for a specific tab
+    public func hideTabBarRedDot(index: Int) {
+        guard let tabBar = tabBar else { return }
+        tabBar.hideTabBarRedDot(index: index)
+    }
 }
 #endif

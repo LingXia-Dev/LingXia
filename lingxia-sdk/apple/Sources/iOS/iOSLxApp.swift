@@ -190,6 +190,72 @@ public class iOSLxApp {
         UINavigationBar.appearance().scrollEdgeAppearance = appearance
         UINavigationBar.appearance().compactScrollEdgeAppearance = appearance
     }
+
+    /// Set badge text for a specific tab
+    public static func setTabBarBadge(index: Int, text: String) {
+        // Find the current LxAppViewController and delegate to its TabBar
+        DispatchQueue.main.async {
+            if let currentViewController = getCurrentLxAppViewController() {
+                currentViewController.setTabBarBadge(index: index, text: text)
+            }
+        }
+    }
+
+    /// Remove badge from a specific tab
+    public static func removeTabBarBadge(index: Int) {
+        DispatchQueue.main.async {
+            if let currentViewController = getCurrentLxAppViewController() {
+                currentViewController.removeTabBarBadge(index: index)
+            }
+        }
+    }
+
+    /// Show red dot for a specific tab
+    public static func showTabBarRedDot(index: Int) {
+        DispatchQueue.main.async {
+            if let currentViewController = getCurrentLxAppViewController() {
+                currentViewController.showTabBarRedDot(index: index)
+            }
+        }
+    }
+
+    /// Hide red dot for a specific tab
+    public static func hideTabBarRedDot(index: Int) {
+        DispatchQueue.main.async {
+            if let currentViewController = getCurrentLxAppViewController() {
+                currentViewController.hideTabBarRedDot(index: index)
+            }
+        }
+    }
+
+    /// Get the current LxAppViewController from the view hierarchy
+    private static func getCurrentLxAppViewController() -> iOSLxAppViewController? {
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let window = windowScene.windows.first else {
+            return nil
+        }
+
+        return findLxAppViewController(in: window.rootViewController)
+    }
+
+    /// Recursively find iOSLxAppViewController in the view hierarchy
+    private static func findLxAppViewController(in viewController: UIViewController?) -> iOSLxAppViewController? {
+        guard let viewController = viewController else { return nil }
+
+        if let lxAppVC = viewController as? iOSLxAppViewController {
+            return lxAppVC
+        }
+
+        if let navController = viewController as? UINavigationController {
+            return findLxAppViewController(in: navController.topViewController)
+        }
+
+        if let presentedVC = viewController.presentedViewController {
+            return findLxAppViewController(in: presentedVC)
+        }
+
+        return nil
+    }
 }
 
 /// Simple controller stack to simulate Android's Activity stack behavior

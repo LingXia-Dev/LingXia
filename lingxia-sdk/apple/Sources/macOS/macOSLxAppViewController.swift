@@ -3,6 +3,7 @@ import Foundation
 import WebKit
 import os.log
 import AppKit
+import SwiftUI
 import CLingXiaFFI
 
 private let lxAppViewControllerLog = OSLog(subsystem: "LingXia", category: "LxAppView")
@@ -11,35 +12,28 @@ private let lxAppViewControllerLog = OSLog(subsystem: "LingXia", category: "LxAp
 public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     nonisolated private static let log = lxAppViewControllerLog
 
-    // Current top margin (can be updated dynamically)
     private var currentTopMargin: CGFloat = 0
 
-    // Helper method to get top margin based on window style
     private func getTopMargin() -> CGFloat {
         return currentTopMargin
     }
 
-    // Method to update top margin and refresh layout
     internal func updateTopMargin(_ newMargin: CGFloat) {
         currentTopMargin = newMargin
         refreshWebViewLayout()
     }
 
-    // Method to refresh WebView layout with current top margin
     private func refreshWebViewLayout() {
         guard let webViewContainer = webViewContainer else { return }
 
-        // Remove existing constraints
         view.removeConstraints(view.constraints.filter { constraint in
             constraint.firstItem === webViewContainer && constraint.firstAttribute == .top
         })
 
-        // Add new constraint with updated top margin
         NSLayoutConstraint.activate([
             webViewContainer.topAnchor.constraint(equalTo: view.topAnchor, constant: currentTopMargin)
         ])
 
-        // Force layout update
         view.needsLayout = true
         view.layoutSubtreeIfNeeded()
     }
@@ -269,190 +263,23 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         // Store config as instance property
         self.tabBarConfig = tabBarConfig
 
-        // Create simple TabBar first - get it working, then add grouping
-        let tabBar = NSView()
-        tabBar.wantsLayer = true
-
-        // Set background color based on transparency configuration
-        if TabBarConfig.isTransparent(tabBarConfig.background_color) {
-            tabBar.layer?.backgroundColor = NSColor.clear.cgColor
-        } else {
-            let resolvedColor = TabBarHelper.resolvedBackgroundColor(tabBarConfig.background_color, isVertical: true)
-            tabBar.layer?.backgroundColor = resolvedColor.cgColor
-        }
-
-        tabBar.translatesAutoresizingMaskIntoConstraints = false
-
-        // Set minimum size constraints based on position using configured dimension
-        let isVertical = tabBarConfig.position == 1 || tabBarConfig.position == 2 // left, right
-        let configuredDimension = CGFloat(tabBarConfig.dimension)
-        if isVertical {
-            // Vertical TabBar: minimum width
-            tabBar.widthAnchor.constraint(greaterThanOrEqualToConstant: configuredDimension).isActive = true
-        } else {
-            // Horizontal TabBar: minimum height for proper icon-text layout
-            tabBar.heightAnchor.constraint(greaterThanOrEqualToConstant: configuredDimension).isActive = true
-        }
-
-        // Create stack view with correct orientation based on TabBar position
-        // isVertical already defined above
-        let stackView = NSStackView()
-        stackView.orientation = isVertical ? .vertical : .horizontal
-        stackView.distribution = .fill
-        stackView.spacing = 0  // Let spacers handle spacing
-        stackView.translatesAutoresizingMaskIntoConstraints = false
-
-        // Set alignment for centering
-        if isVertical {
-            stackView.alignment = .centerX
-        } else {
-            stackView.alignment = .centerY
-        }
-
-        // Use the config method for consistent grouping logic
-        let (startItems, centerItems, endItems) = tabBarConfig.getGroupedItems(appId: appId)
-        let hasAnyGroupField = !startItems.isEmpty || !endItems.isEmpty
-
-        if hasAnyGroupField {
-
-            // Create start container
-            if !startItems.isEmpty {
-                let startContainer = createGroupContainer(items: startItems, spacing: TabBarConstants.DEFAULT_SPACING, isVertical: isVertical, isStartGroup: true)
-                stackView.addArrangedSubview(startContainer)
+        // Create SwiftUI TabBar with shared state management
+        let tabBarView = NSHostingView(rootView: LxAppTabBar(
+            appId: appId,
+            config: tabBarConfig,
+            selectedIndex: .constant(0),
+            onTabSelected: { index, path in
+                self.switchPage(targetPath: path)
             }
+        ))
 
-            // Add flexible spacer
-            let spacer = createFlexibleSpacer(isVertical: isVertical)
-            stackView.addArrangedSubview(spacer)
+        tabBarView.translatesAutoresizingMaskIntoConstraints = false
 
-            // Create end container
-            if !endItems.isEmpty {
-                let endContainer = createGroupContainer(items: endItems, spacing: TabBarConstants.DEFAULT_SPACING, isVertical: isVertical, isStartGroup: false)
-                stackView.addArrangedSubview(endContainer)
-            }
-
-        } else {
-            // Centered layout for non-grouped items
-            let centerContainer = createGroupContainer(items: centerItems, spacing: TabBarConstants.CENTER_SPACING, isVertical: isVertical, isStartGroup: false)
-            stackView.addArrangedSubview(centerContainer)
-        }
-
-        tabBar.addSubview(stackView)
-
-        // Set stack view constraints to fill the TabBar (let internal spacers handle positioning)
-        NSLayoutConstraint.activate([
-            stackView.leadingAnchor.constraint(equalTo: tabBar.leadingAnchor, constant: 4),
-            stackView.trailingAnchor.constraint(equalTo: tabBar.trailingAnchor, constant: -4),
-            stackView.topAnchor.constraint(equalTo: tabBar.topAnchor, constant: 8),
-            stackView.bottomAnchor.constraint(equalTo: tabBar.bottomAnchor, constant: -8)
-        ])
-
-        self.tabBarView = tabBar
+        // Store the hosting view
+        self.tabBarView = tabBarView
     }
 
-    /// Create a container for a group of tab items
-    private func createGroupContainer(items: [TabBarItem], spacing: CGFloat, isVertical: Bool, isStartGroup: Bool = false) -> NSStackView {
-        let container = NSStackView()
-        container.orientation = isVertical ? .vertical : .horizontal
-        container.distribution = isVertical ? .fill : .equalSpacing  // equalSpacing for horizontal to give more space
-        container.spacing = spacing
-        container.translatesAutoresizingMaskIntoConstraints = false
 
-        // Set content hugging priority to prevent expansion
-        if isVertical {
-            container.setContentHuggingPriority(.defaultHigh, for: .vertical)
-        } else {
-            container.setContentHuggingPriority(.defaultHigh, for: .horizontal)
-            // For horizontal, ensure minimum height
-            container.heightAnchor.constraint(greaterThanOrEqualToConstant: 60).isActive = true
-        }
-
-        for (index, item) in items.enumerated() {
-            // Find the global index of this item
-            let allItems = tabBarConfig?.getItems(appId: appId) ?? []
-            let globalIndex = allItems.firstIndex { $0.page_path.toString() == item.page_path.toString() } ?? index
-            let button = createTabButton(item: item, index: globalIndex)
-
-            // Add top margin for the first item in start group (vertical layout only)
-            if isStartGroup && index == 0 && isVertical {
-                // Create a wrapper view with top margin
-                let wrapperView = NSView()
-                wrapperView.translatesAutoresizingMaskIntoConstraints = false
-                wrapperView.addSubview(button)
-
-                // Add top margin of 20 points for the first start item
-                NSLayoutConstraint.activate([
-                    button.topAnchor.constraint(equalTo: wrapperView.topAnchor, constant: 20),
-                    button.leadingAnchor.constraint(equalTo: wrapperView.leadingAnchor),
-                    button.trailingAnchor.constraint(equalTo: wrapperView.trailingAnchor),
-                    button.bottomAnchor.constraint(equalTo: wrapperView.bottomAnchor)
-                ])
-
-                container.addArrangedSubview(wrapperView)
-            } else {
-                container.addArrangedSubview(button)
-            }
-        }
-
-        return container
-    }
-
-    /// Create a flexible spacer for layout
-    private func createFlexibleSpacer(isVertical: Bool) -> NSView {
-        let spacer = NSView()
-        if isVertical {
-            spacer.setContentHuggingPriority(.defaultLow, for: .vertical)
-            spacer.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
-            spacer.heightAnchor.constraint(greaterThanOrEqualToConstant: TabBarConstants.MINIMAL_SPACER_SIZE).isActive = true
-        } else {
-            spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
-            spacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-            spacer.widthAnchor.constraint(greaterThanOrEqualToConstant: TabBarConstants.MINIMAL_SPACER_SIZE).isActive = true
-        }
-        return spacer
-    }
-
-    /// Create a tab button with better layout for bottom tabbar
-    private func createTabButton(item: TabBarItem, index: Int) -> NSButton {
-        let button = NSButton()
-        button.title = item.text.toString()
-        button.isBordered = false
-        button.wantsLayer = true
-        button.layer?.backgroundColor = NSColor.clear.cgColor
-        button.tag = index
-        button.target = self
-        button.action = #selector(tabButtonTapped(_:))
-        button.translatesAutoresizingMaskIntoConstraints = false
-
-        let isVertical = tabBarConfig?.position == 1 || tabBarConfig?.position == 2 // left, right
-        let isSelected = item.page_path.toString() == initialPath
-
-        // Configure image position and scaling
-        button.imagePosition = .imageAbove
-        button.imageScaling = .scaleProportionallyDown
-
-        // Configure size and font based on orientation
-        let fontSize: CGFloat = isVertical ? 10 : 11
-        let buttonHeight: CGFloat = isVertical ? 50 : 56
-
-        button.font = NSFont.systemFont(ofSize: fontSize, weight: .medium)
-        button.heightAnchor.constraint(equalToConstant: buttonHeight).isActive = true
-
-        if !isVertical {
-            button.widthAnchor.constraint(greaterThanOrEqualToConstant: 80).isActive = true
-        }
-
-        // Set colors from config
-        button.contentTintColor = getTabColor(selected: isSelected)
-
-        // Set icon if available
-        let iconPath = item.icon_path.toString()
-        if !iconPath.isEmpty {
-            setButtonIcon(button: button, iconPath: iconPath, isSelected: isSelected, item: item)
-        }
-
-        return button
-    }
 
     private func loadWebViewContent() {
         if let webView = WebViewManager.findWebView(appId: appId, path: initialPath) {
@@ -777,6 +604,28 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
                 updateTabBarSelection(selectedIndex: tabIndex)
             }
         }
+    }
+
+    /// Set badge text for a specific tab
+    public func setTabBarBadge(index: Int, text: String) {
+        DispatchQueue.main.async {
+            TabBarItemStatesManager.shared.setBadge(at: index, text: text)
+        }
+    }
+
+    /// Remove badge from a specific tab
+    public func removeTabBarBadge(index: Int) {
+        TabBarItemStatesManager.shared.removeBadge(at: index)
+    }
+
+    /// Show red dot for a specific tab
+    public func showTabBarRedDot(index: Int) {
+        TabBarItemStatesManager.shared.showRedDot(at: index)
+    }
+
+    /// Hide red dot for a specific tab
+    public func hideTabBarRedDot(index: Int) {
+        TabBarItemStatesManager.shared.hideRedDot(at: index)
     }
 }
 

@@ -9,18 +9,16 @@ import AppKit
 import UIKit
 #endif
 
-/// Extension to add helper methods to swift-bridge generated TabBarConfig
+/// Extensions for TabBarConfig
 extension TabBarConfig {
-    /// Get position as enum
     public var positionEnum: TabBarPosition {
         switch position {
         case 1: return .left
         case 2: return .right
-        default: return .bottom // 0 or any other value
+        default: return .bottom
         }
     }
 
-    /// Get all tab items for this config
     public func getItems(appId: String) -> [TabBarItem] {
         var items: [TabBarItem] = []
         for i in 0..<items_count {
@@ -51,65 +49,99 @@ extension TabBarConfig {
         return (start: startItems, center: centerItems, end: endItems)
     }
 
-    /// Check if color is transparent
     public static func isTransparent(_ colorValue: UInt32) -> Bool {
         return (colorValue >> 24) & 0xFF == 0
     }
 
-    /// Get resolved background color for this configuration
     public func getResolvedBackgroundColor(isVertical: Bool) -> PlatformColor {
         return TabBarHelper.resolvedBackgroundColor(background_color, isVertical: isVertical)
     }
 }
 
-/// Position enum for TabBar
 public enum TabBarPosition {
     case bottom, left, right
 }
 
-/// Essential constants for TabBar layout
 public struct TabBarConstants {
     public static let DEFAULT_SPACING: CGFloat = 8
     public static let CENTER_SPACING: CGFloat = 8
     public static let MINIMAL_SPACER_SIZE: CGFloat = 4
 }
 
-/// Extension to add helper methods to swift-bridge generated TabBarItem
+/// Extensions for TabBarItem
 extension TabBarItem {
-    /// Check if item is visible
     public var visible: Bool { true }
+    public var cachedPagePath: String { page_path.toString() }
+    public var cachedText: String { text.toString() }
+    public var cachedIconPath: String { icon_path.toString() }
+    public var cachedSelectedIconPath: String { selected_icon_path.toString() }
+}
 
-    /// Get page path string
-    public var cachedPagePath: String {
-        return page_path.toString()
+/// TabBar item state management for badge and red dot
+public class TabBarItemState: ObservableObject {
+    @Published public var badgeText: String? = nil
+    @Published public var showRedDot: Bool = false
+
+    public init() {}
+
+    public func setBadge(_ text: String) {
+        badgeText = text
+        showRedDot = false // Badge and red dot are mutually exclusive
     }
 
-    /// Get text string
-    public var cachedText: String {
-        return text.toString()
+    public func removeBadge() {
+        badgeText = nil
     }
 
-    /// Get icon path string
-    public var cachedIconPath: String {
-        return icon_path.toString()
-    }
-
-    /// Get selected icon path string
-    public var cachedSelectedIconPath: String {
-        return selected_icon_path.toString()
+    public func setRedDotVisible(_ visible: Bool) {
+        showRedDot = visible
+        if visible {
+            badgeText = nil // Badge and red dot are mutually exclusive
+        }
     }
 }
 
-/// Helper methods for TabBar styling and color management
+/// Global state manager for all tab bar items
+@MainActor
+public class TabBarItemStatesManager: ObservableObject {
+    private var itemStates: [Int: TabBarItemState] = [:]
+    @MainActor public static let shared = TabBarItemStatesManager()
+
+    public init() {}
+
+    public func getState(for index: Int) -> TabBarItemState {
+        if itemStates[index] == nil {
+            itemStates[index] = TabBarItemState()
+        }
+        return itemStates[index]!
+    }
+
+    public func setBadge(at index: Int, text: String) {
+        objectWillChange.send() // Force UI update
+        getState(for: index).setBadge(text)
+    }
+
+    public func removeBadge(at index: Int) {
+        getState(for: index).removeBadge()
+    }
+
+    public func showRedDot(at index: Int) {
+        objectWillChange.send() // Force UI update
+        getState(for: index).setRedDotVisible(true)
+    }
+
+    public func hideRedDot(at index: Int) {
+        getState(for: index).setRedDotVisible(false)
+    }
+}
+
+/// TabBar styling helpers
 public struct TabBarHelper {
-    /// Get resolved background color for TabBar
     public static func resolvedBackgroundColor(_ colorValue: UInt32, isVertical: Bool) -> PlatformColor {
         if (colorValue >> 24) & 0xFF == 0 {
-            if isVertical {
-                return PlatformColor(red: 0.95, green: 0.95, blue: 0.95, alpha: 1.0)
-            } else {
-                return PlatformColor(red: 0.98, green: 0.98, blue: 0.98, alpha: 1.0)
-            }
+            return isVertical ?
+                PlatformColor(red: 0.95, green: 0.95, blue: 0.95, alpha: 1.0) :
+                PlatformColor(red: 0.98, green: 0.98, blue: 0.98, alpha: 1.0)
         }
         return PlatformColor(argb: colorValue)
     }
@@ -121,6 +153,7 @@ public struct LxAppTabBar: View {
     let config: TabBarConfig
     @Binding var selectedIndex: Int
     let onTabSelected: (Int, String) -> Void
+    @ObservedObject private var itemStatesManager = TabBarItemStatesManager.shared
 
     public init(
         appId: String,
@@ -277,15 +310,29 @@ public struct LxAppTabBar: View {
     @ViewBuilder
     private func buildTabItem(item: TabBarItem, index: Int) -> some View {
         let isSelected = (index == selectedIndex)
+        let itemState = itemStatesManager.getState(for: index)
 
         Button(action: {
             selectedIndex = index
             onTabSelected(index, item.cachedPagePath)
         }) {
             VStack(spacing: LxAppTheme.Metrics.smallSpacing) {
-                // Tab icon
-                if !item.cachedIconPath.isEmpty {
-                    buildTabIcon(item: item, isSelected: isSelected)
+                // Tab icon with badge and red dot overlay
+                ZStack {
+                    if !item.cachedIconPath.isEmpty {
+                        buildTabIcon(item: item, isSelected: isSelected)
+                    }
+
+                    // Badge overlay
+                    if let badgeText = itemState.badgeText, !badgeText.isEmpty {
+                        buildBadge(text: badgeText)
+                            .offset(x: 12, y: -8)
+                    }
+                    // Red dot overlay (only show if no badge)
+                    else if itemState.showRedDot {
+                        buildRedDot()
+                            .offset(x: 12, y: -8)
+                    }
                 }
 
                 // Tab title
@@ -304,12 +351,10 @@ public struct LxAppTabBar: View {
         .buttonStyle(PlainButtonStyle())
     }
 
-    /// Find index of item in the original items array by path
     private func findItemIndex(for item: TabBarItem, in items: [TabBarItem]) -> Int {
         return items.firstIndex(where: { $0.cachedPagePath == item.cachedPagePath }) ?? 0
     }
 
-    /// Check if any item has group field
     private func hasGroupField(items: [TabBarItem]) -> Bool {
         return items.contains { $0.group != .Center }
     }
@@ -337,13 +382,11 @@ public struct LxAppTabBar: View {
             Color.black  // Use pure black for maximum contrast
 
         if iconPath.hasPrefix("SF:") {
-            // System SF Symbol
             let symbolName = String(iconPath.dropFirst(3))
             Image(systemName: symbolName)
                 .font(.system(size: LxAppTheme.Metrics.tabIconSize))
                 .foregroundColor(iconColor)
         } else if iconPath.hasPrefix("/") {
-            // Absolute path
             if let image = loadPlatformImage(from: iconPath) {
                 image
                     .resizable()
@@ -351,14 +394,12 @@ public struct LxAppTabBar: View {
                     .foregroundColor(iconColor)
             }
         } else {
-            // Try bundle first, then Resources directory
             if let bundleImage = loadBundleImage(named: iconPath) {
                 bundleImage
                     .resizable()
                     .frame(width: LxAppTheme.Metrics.tabIconSize, height: LxAppTheme.Metrics.tabIconSize)
                     .foregroundColor(iconColor)
             } else {
-                // Try Resources directory with appId
                 let resourcesPath = getResourcesPath()
                 let fullPath = "\(resourcesPath)/\(appId)/\(iconPath)"
                 if let resourceImage = loadPlatformImage(from: fullPath) {
@@ -371,11 +412,29 @@ public struct LxAppTabBar: View {
         }
     }
 
+    @ViewBuilder
+    private func buildBadge(text: String) -> some View {
+        Text(text)
+            .font(.system(size: 10, weight: .medium))
+            .foregroundColor(.white)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(Color.red))
+            .zIndex(1)
+    }
+
+    @ViewBuilder
+    private func buildRedDot() -> some View {
+        Circle()
+            .fill(Color.red)
+            .frame(width: 8, height: 8)
+            .zIndex(1)
+    }
+
     private func getResourcesPath() -> String {
         return Bundle.main.resourcePath ?? ""
     }
 
-    /// Load platform-specific image from path
     private func loadPlatformImage(from path: String) -> Image? {
         #if os(iOS)
         if let uiImage = UIImage(contentsOfFile: path) {
@@ -389,7 +448,351 @@ public struct LxAppTabBar: View {
         return nil
     }
 
-    /// Load platform-specific image from bundle
+    private func loadBundleImage(named name: String) -> Image? {
+        #if os(iOS)
+        if let uiImage = UIImage(named: name) {
+            return Image(uiImage: uiImage)
+        }
+        #else
+        if let nsImage = NSImage(named: name) {
+            return Image(nsImage: nsImage)
+        }
+        #endif
+        return nil
+    }
+
+    private func getTabBarBackgroundColor() -> Color {
+        let platformColor = PlatformColor(argb: config.background_color)
+        return Color(platformColor)
+    }
+
+    /// Set badge text for a specific tab
+    public func setTabBarBadge(index: Int, text: String) {
+        itemStatesManager.setBadge(at: index, text: text)
+    }
+
+    /// Remove badge from a specific tab
+    public func removeTabBarBadge(index: Int) {
+        itemStatesManager.removeBadge(at: index)
+    }
+
+    /// Show red dot for a specific tab
+    public func showTabBarRedDot(index: Int) {
+        itemStatesManager.showRedDot(at: index)
+    }
+
+    /// Hide red dot for a specific tab
+    public func hideTabBarRedDot(index: Int) {
+        itemStatesManager.hideRedDot(at: index)
+    }
+}
+
+/// macOS TabBar that accepts external state manager
+public struct MacOSLxAppTabBar: View {
+    let appId: String
+    let config: TabBarConfig
+    @Binding var selectedIndex: Int
+    @ObservedObject var itemStatesManager: TabBarItemStatesManager
+    let onTabSelected: (Int, String) -> Void
+
+    public init(
+        appId: String,
+        config: TabBarConfig,
+        selectedIndex: Binding<Int>,
+        itemStatesManager: TabBarItemStatesManager,
+        onTabSelected: @escaping (Int, String) -> Void
+    ) {
+        self.appId = appId
+        self.config = config
+        self._selectedIndex = selectedIndex
+        self.itemStatesManager = itemStatesManager
+        self.onTabSelected = onTabSelected
+    }
+
+    public var body: some View {
+        let items = config.getItems(appId: appId)
+
+        Group {
+            switch config.positionEnum {
+            case .bottom:
+                if hasGroupField(items: items) {
+                    buildGroupedHorizontalTabBar(items: items)
+                        .frame(height: LxAppTheme.Metrics.tabBarHeight)
+                } else {
+                    buildHorizontalTabBar(items: items)
+                        .frame(height: LxAppTheme.Metrics.tabBarHeight)
+                }
+
+            case .left, .right:
+                if hasGroupField(items: items) {
+                    buildGroupedVerticalTabBar(items: items)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    buildVerticalTabBar(items: items)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+        }
+        .background(getTabBarBackgroundColor())
+    }
+
+    // Copy helper methods from LxAppTabBar
+    @ViewBuilder
+    private func buildTabItem(item: TabBarItem, index: Int) -> some View {
+        let isSelected = (index == selectedIndex)
+        let itemState = itemStatesManager.getState(for: index)
+
+        Button(action: {
+            selectedIndex = index
+            onTabSelected(index, item.cachedPagePath)
+        }) {
+            VStack(spacing: LxAppTheme.Metrics.smallSpacing) {
+                // Tab icon with badge and red dot overlay
+                ZStack {
+                    if !item.cachedIconPath.isEmpty {
+                        buildTabIcon(item: item, isSelected: isSelected)
+                    }
+
+                    // Badge overlay
+                    if let badgeText = itemState.badgeText, !badgeText.isEmpty {
+                        buildBadge(text: badgeText)
+                            .offset(x: 12, y: -8)
+                    }
+                    // Red dot overlay (only show if no badge)
+                    else if itemState.showRedDot {
+                        buildRedDot()
+                            .offset(x: 12, y: -8)
+                    }
+                }
+
+                // Tab title
+                if !item.cachedText.isEmpty {
+                    Text(item.cachedText)
+                        .font(LxAppTheme.Typography.tabTitle)
+                        .foregroundColor(isSelected ?
+                            Color(PlatformColor(argb: config.selected_color)) :
+                            Color(PlatformColor(argb: config.color)))
+                        .lineLimit(1)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, LxAppTheme.Metrics.smallSpacing)
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
+    // Copy helper methods from LxAppTabBar
+    @ViewBuilder
+    private func buildHorizontalTabBar(items: [TabBarItem]) -> some View {
+        HStack(spacing: LxAppTheme.Metrics.standardSpacing) {
+            ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+                buildTabItem(item: item, index: index)
+                    .frame(maxWidth: .infinity)
+            }
+        }
+        .padding(.horizontal, LxAppTheme.Metrics.largeSpacing)
+    }
+
+    @ViewBuilder
+    private func buildVerticalTabBar(items: [TabBarItem]) -> some View {
+        VStack(spacing: LxAppTheme.Metrics.standardSpacing) {
+            ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+                buildTabItem(item: item, index: index)
+            }
+        }
+        .padding(.vertical, LxAppTheme.Metrics.largeSpacing)
+    }
+
+    @ViewBuilder
+    private func buildGroupedHorizontalTabBar(items: [TabBarItem]) -> some View {
+        HStack(spacing: 0) {
+            // Start items (group 1)
+            let startItems = getStartItems(items: items)
+            if !startItems.isEmpty {
+                HStack(spacing: LxAppTheme.Metrics.standardSpacing) {
+                    ForEach(Array(startItems.enumerated()), id: \.offset) { _, item in
+                        let index = findItemIndex(for: item, in: items)
+                        buildTabItem(item: item, index: index)
+                    }
+                }
+                .padding(.leading, LxAppTheme.Metrics.largeSpacing)
+            }
+
+            // Flexible spacer
+            Spacer()
+
+            // Center items (group 0)
+            let centerItems = getCenterItems(items: items)
+            if !centerItems.isEmpty {
+                HStack(spacing: LxAppTheme.Metrics.standardSpacing) {
+                    ForEach(Array(centerItems.enumerated()), id: \.offset) { _, item in
+                        let index = findItemIndex(for: item, in: items)
+                        buildTabItem(item: item, index: index)
+                    }
+                }
+            }
+
+            // Flexible spacer
+            Spacer()
+
+            // End items (group 2)
+            let endItems = getEndItems(items: items)
+            if !endItems.isEmpty {
+                HStack(spacing: LxAppTheme.Metrics.standardSpacing) {
+                    ForEach(Array(endItems.enumerated()), id: \.offset) { _, item in
+                        let index = findItemIndex(for: item, in: items)
+                        buildTabItem(item: item, index: index)
+                    }
+                }
+                .padding(.trailing, LxAppTheme.Metrics.largeSpacing)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func buildGroupedVerticalTabBar(items: [TabBarItem]) -> some View {
+        let startItems = getStartItems(items: items)
+        let centerItems = getCenterItems(items: items)
+        let endItems = getEndItems(items: items)
+
+        VStack(alignment: .center, spacing: 0) {
+            // Start items (group 1)
+            if !startItems.isEmpty {
+                VStack(spacing: LxAppTheme.Metrics.standardSpacing) {
+                    ForEach(Array(startItems.enumerated()), id: \.offset) { _, item in
+                        let index = findItemIndex(for: item, in: items)
+                        buildTabItem(item: item, index: index)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+            }
+
+            Spacer()
+
+            // Center items (group 0)
+            if !centerItems.isEmpty {
+                VStack(spacing: LxAppTheme.Metrics.standardSpacing) {
+                    ForEach(Array(centerItems.enumerated()), id: \.offset) { _, item in
+                        let index = findItemIndex(for: item, in: items)
+                        buildTabItem(item: item, index: index)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                Spacer()
+            }
+
+            // End items (group 2)
+            if !endItems.isEmpty {
+                VStack(spacing: LxAppTheme.Metrics.standardSpacing) {
+                    ForEach(Array(endItems.enumerated()), id: \.offset) { _, item in
+                        let index = findItemIndex(for: item, in: items)
+                        buildTabItem(item: item, index: index)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    // Helper methods copied from LxAppTabBar
+    private func findItemIndex(for item: TabBarItem, in items: [TabBarItem]) -> Int {
+        return items.firstIndex(where: { $0.cachedPagePath == item.cachedPagePath }) ?? 0
+    }
+
+    private func hasGroupField(items: [TabBarItem]) -> Bool {
+        return items.contains { $0.group != .Center }
+    }
+
+    private func getStartItems(items: [TabBarItem]) -> [TabBarItem] {
+        return items.filter { $0.group == .Start }
+    }
+
+    private func getCenterItems(items: [TabBarItem]) -> [TabBarItem] {
+        return items.filter { $0.group == .Center }
+    }
+
+    private func getEndItems(items: [TabBarItem]) -> [TabBarItem] {
+        return items.filter { $0.group == .End }
+    }
+
+    @ViewBuilder
+    private func buildTabIcon(item: TabBarItem, isSelected: Bool) -> some View {
+        let iconPath = isSelected && !item.cachedSelectedIconPath.isEmpty
+            ? item.cachedSelectedIconPath
+            : item.cachedIconPath
+
+        let iconColor = isSelected ?
+            Color(PlatformColor(argb: config.selected_color)) :
+            Color.black
+
+        if iconPath.hasPrefix("SF:") {
+            let symbolName = String(iconPath.dropFirst(3))
+            Image(systemName: symbolName)
+                .font(.system(size: LxAppTheme.Metrics.tabIconSize))
+                .foregroundColor(iconColor)
+        } else if iconPath.hasPrefix("/") {
+            if let image = loadPlatformImage(from: iconPath) {
+                image
+                    .resizable()
+                    .frame(width: LxAppTheme.Metrics.tabIconSize, height: LxAppTheme.Metrics.tabIconSize)
+                    .foregroundColor(iconColor)
+            }
+        } else {
+            if let bundleImage = loadBundleImage(named: iconPath) {
+                bundleImage
+                    .resizable()
+                    .frame(width: LxAppTheme.Metrics.tabIconSize, height: LxAppTheme.Metrics.tabIconSize)
+                    .foregroundColor(iconColor)
+            } else {
+                let resourcesPath = getResourcesPath()
+                let fullPath = "\(resourcesPath)/\(appId)/\(iconPath)"
+                if let resourceImage = loadPlatformImage(from: fullPath) {
+                    resourceImage
+                        .resizable()
+                        .frame(width: LxAppTheme.Metrics.tabIconSize, height: LxAppTheme.Metrics.tabIconSize)
+                        .foregroundColor(iconColor)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func buildBadge(text: String) -> some View {
+        Text(text)
+            .font(.system(size: 10, weight: .medium))
+            .foregroundColor(.white)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(Color.red))
+            .zIndex(1)
+    }
+
+    @ViewBuilder
+    private func buildRedDot() -> some View {
+        Circle()
+            .fill(Color.red)
+            .frame(width: 8, height: 8)
+            .zIndex(1)
+    }
+
+    private func getResourcesPath() -> String {
+        return Bundle.main.resourcePath ?? ""
+    }
+
+    private func loadPlatformImage(from path: String) -> Image? {
+        #if os(iOS)
+        if let uiImage = UIImage(contentsOfFile: path) {
+            return Image(uiImage: uiImage)
+        }
+        #else
+        if let nsImage = NSImage(contentsOfFile: path) {
+            return Image(nsImage: nsImage)
+        }
+        #endif
+        return nil
+    }
+
     private func loadBundleImage(named name: String) -> Image? {
         #if os(iOS)
         if let uiImage = UIImage(named: name) {
@@ -419,6 +822,12 @@ public protocol TabBarProtocol: AnyObject {
     func syncSelectedTabWithCurrentPath(_ currentPath: String)
     func selectTab(index: Int)
     func setSelectedIndex(_ index: Int, notifyListener: Bool)
+
+    // Badge and red dot functionality
+    func setTabBarBadge(index: Int, text: String)
+    func removeTabBarBadge(index: Int)
+    func showTabBarRedDot(index: Int)
+    func hideTabBarRedDot(index: Int)
 }
 
 /// Protocol for TabBar UI implementations
@@ -439,6 +848,11 @@ public class iOSTabBarWrapper: UIView {
     private var appId: String = ""
     private var selectedIndex: Int = 0
     private var onTabSelectedCallback: ((Int, String) -> Void)?
+
+    // Badge and red dot state management
+    private var itemStatesManager = TabBarItemStatesManager()
+    private var badgeViews: [Int: UIView] = [:]
+    private var redDotViews: [Int: UIView] = [:]
 
     // Public accessor for tabBarConfig
     public var config: TabBarConfig? {
@@ -491,9 +905,146 @@ public class iOSTabBarWrapper: UIView {
         }
     }
 
+    public func findTabIndexByPath(_ path: String) -> Int {
+        guard let config = tabBarConfig else { return -1 }
+        let items = config.getItems(appId: appId)
+
+        for (index, item) in items.enumerated() {
+            if item.page_path.toString() == path {
+                return index
+            }
+        }
+
+        return -1
+    }
+
+    public func setSelectedIndex(_ index: Int, notifyListener: Bool) {
+        selectedIndex = index
+        updateLayout()
+
+        if notifyListener, let callback = onTabSelectedCallback, let config = tabBarConfig {
+            let items = config.getItems(appId: appId)
+            if index < items.count {
+                callback(index, items[index].page_path.toString())
+            }
+        }
+    }
+
     public func forceTransparencyMode() {
         backgroundColor = UIColor.clear
         layer.backgroundColor = UIColor.clear.cgColor
+    }
+
+    // MARK: - TabBarProtocol Badge and Red Dot Methods
+
+    public func setTabBarBadge(index: Int, text: String) {
+        itemStatesManager.setBadge(at: index, text: text)
+        updateBadgeAndRedDot(at: index)
+    }
+
+    public func removeTabBarBadge(index: Int) {
+        itemStatesManager.removeBadge(at: index)
+        updateBadgeAndRedDot(at: index)
+    }
+
+    public func showTabBarRedDot(index: Int) {
+        itemStatesManager.showRedDot(at: index)
+        updateBadgeAndRedDot(at: index)
+    }
+
+    public func hideTabBarRedDot(index: Int) {
+        itemStatesManager.hideRedDot(at: index)
+        updateBadgeAndRedDot(at: index)
+    }
+
+    private func updateBadgeAndRedDot(at index: Int) {
+        // Find the button for this index
+        guard let button = findButton(for: index) else { return }
+
+        // Remove existing badge and red dot views
+        badgeViews[index]?.removeFromSuperview()
+        redDotViews[index]?.removeFromSuperview()
+        badgeViews.removeValue(forKey: index)
+        redDotViews.removeValue(forKey: index)
+
+        let itemState = itemStatesManager.getState(for: index)
+
+        // Add badge if needed
+        if let badgeText = itemState.badgeText, !badgeText.isEmpty {
+            let badgeView = createBadgeView(text: badgeText)
+            button.addSubview(badgeView)
+            badgeViews[index] = badgeView
+
+            // Position badge at top-right of the button
+            NSLayoutConstraint.activate([
+                badgeView.topAnchor.constraint(equalTo: button.topAnchor, constant: 4),
+                badgeView.trailingAnchor.constraint(equalTo: button.trailingAnchor, constant: -4)
+            ])
+        }
+        // Add red dot if needed (only if no badge)
+        else if itemState.showRedDot {
+            let redDotView = createRedDotView()
+            button.addSubview(redDotView)
+            redDotViews[index] = redDotView
+
+            // Position red dot at top-right of the button
+            NSLayoutConstraint.activate([
+                redDotView.topAnchor.constraint(equalTo: button.topAnchor, constant: 6),
+                redDotView.trailingAnchor.constraint(equalTo: button.trailingAnchor, constant: -6)
+            ])
+        }
+    }
+
+    private func findButton(for index: Int) -> UIButton? {
+        return findButtonRecursively(in: self, tag: index)
+    }
+
+    private func findButtonRecursively(in view: UIView, tag: Int) -> UIButton? {
+        if let button = view as? UIButton, button.tag == tag {
+            return button
+        }
+
+        for subview in view.subviews {
+            if let foundButton = findButtonRecursively(in: subview, tag: tag) {
+                return foundButton
+            }
+        }
+
+        return nil
+    }
+
+    private func createBadgeView(text: String) -> UIView {
+        let badge = UILabel()
+        badge.text = text
+        badge.font = UIFont.systemFont(ofSize: 10, weight: .medium)
+        badge.textColor = .white
+        badge.backgroundColor = .red
+        badge.textAlignment = .center
+        badge.layer.cornerRadius = 8
+        badge.layer.masksToBounds = true
+        badge.translatesAutoresizingMaskIntoConstraints = false
+
+        // Add padding
+        NSLayoutConstraint.activate([
+            badge.widthAnchor.constraint(greaterThanOrEqualToConstant: 16),
+            badge.heightAnchor.constraint(equalToConstant: 16)
+        ])
+
+        return badge
+    }
+
+    private func createRedDotView() -> UIView {
+        let dot = UIView()
+        dot.backgroundColor = .red
+        dot.layer.cornerRadius = 4
+        dot.translatesAutoresizingMaskIntoConstraints = false
+
+        NSLayoutConstraint.activate([
+            dot.widthAnchor.constraint(equalToConstant: 8),
+            dot.heightAnchor.constraint(equalToConstant: 8)
+        ])
+
+        return dot
     }
 
     private func updateLayout() {
@@ -862,6 +1413,9 @@ public class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
     @Published private var selectedIndex: Int = 0
     private var onTabSelectedCallback: ((Int, String) -> Void)?
 
+    // Badge and red dot state management
+    @Published private var itemStatesManager = TabBarItemStatesManager()
+
     public var config: TabBarConfig? {
         return tabBarConfig
     }
@@ -925,6 +1479,22 @@ public class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
         }
     }
 
+    public func setTabBarBadge(index: Int, text: String) {
+        itemStatesManager.setBadge(at: index, text: text)
+    }
+
+    public func removeTabBarBadge(index: Int) {
+        itemStatesManager.removeBadge(at: index)
+    }
+
+    public func showTabBarRedDot(index: Int) {
+        itemStatesManager.showRedDot(at: index)
+    }
+
+    public func hideTabBarRedDot(index: Int) {
+        itemStatesManager.hideRedDot(at: index)
+    }
+
     private func updateSwiftUIView() {
         guard let config = tabBarConfig else { return }
 
@@ -963,10 +1533,11 @@ public class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
         let config: TabBarConfig
 
         var body: some View {
-            LxAppTabBar(
+            MacOSLxAppTabBar(
                 appId: appId,
                 config: config,
-                selectedIndex: $wrapper.selectedIndex
+                selectedIndex: $wrapper.selectedIndex,
+                itemStatesManager: wrapper.itemStatesManager
             ) { index, path in
                 wrapper.setSelectedIndex(index, notifyListener: true)
             }
