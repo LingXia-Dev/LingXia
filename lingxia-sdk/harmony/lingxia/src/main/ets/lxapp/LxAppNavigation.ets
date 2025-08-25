@@ -30,7 +30,6 @@ export struct LxAppNavigation {
   @State homeAppPath: string = ''
   @State errorMessage: string = ''
   @State isHomeAppVisible: boolean = false // Control Home LxApp visibility
-  @Prop autoOpenHome: boolean = true
 
   @State private miniAppStack: LxAppStackItem[] = []
   @State private hiddenApps: Set<string> = new Set<string>()
@@ -52,17 +51,12 @@ export struct LxAppNavigation {
       if (homeAppId && homeAppPath) {
         this.homeAppId = homeAppId;
         this.homeAppPath = homeAppPath;
-
-        if (this.autoOpenHome) {
-          hilog.info(DOMAIN, TAG, `Auto-opening home LxApp: ${this.homeAppId}:${this.homeAppPath}`);
-          this.isHomeAppVisible = true;
-          LxApp.openHomeLxApp();
-        } else {
-          hilog.info(DOMAIN, TAG, `LxApp initialized, waiting for manual openHomeLxApp call: ${this.homeAppId}:${this.homeAppPath}`);
-        }
-
         this.isReady = true;
         hilog.info(DOMAIN, TAG, `LxApp Navigation ready: ${this.homeAppId}:${this.homeAppPath}`);
+
+        // Auto-open home lxapp now that navigation instance is ready
+        hilog.info(DOMAIN, TAG, 'Auto-opening home lxapp');
+        this.openLxApp(homeAppId, homeAppPath);
       } else {
         this.errorMessage = 'LxApp not initialized. Please call LxApp.initialize() in EntryAbility first.';
         hilog.error(DOMAIN, TAG, 'LxApp not initialized');

@@ -122,25 +122,16 @@ export class LxApp {
     WebViewManager.enableDebugging();
   }
 
-  public static openHomeLxApp(): void {
+  private static openHomeLxApp(): void {
     hilog.info(DOMAIN, TAG, 'openHomeLxApp called');
 
     const instance = LxApp.getInstance();
     const homeAppId = instance.getHomeLxAppId();
 
-    if (homeAppId) {
-      // Check if LxAppNavigation is ready
-      if (LxApp.navigationInstance) {
-        LxApp.openLxApp(homeAppId, '');
-      } else {
-        // Defer to next event loop cycle
-        hilog.info(DOMAIN, TAG, 'LxAppNavigation not ready, retrying in next event loop');
-        setTimeout(() => {
-          LxApp.openHomeLxApp();
-        }, 1);
-      }
+    if (homeAppId && LxApp.navigationInstance) {
+      LxApp.openLxApp(homeAppId, '');
     } else {
-      hilog.error(DOMAIN, TAG, 'Home LxApp ID not available for openHomeLxApp');
+      hilog.error(DOMAIN, TAG, 'openHomeLxApp failed: homeAppId or navigationInstance not available');
     }
   }
 

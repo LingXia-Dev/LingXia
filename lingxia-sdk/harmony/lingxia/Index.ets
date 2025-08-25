@@ -4,28 +4,15 @@
  *
  * PUBLIC API:
  * - LxApp.initialize() - Initialize the LxApp SDK (call in onWindowStageCreate)
- * - LxApp.openHomeLxApp() - Open the home LxApp (call in page component)
- * - LxAppNavigation - Navigation-based architecture
+ * - LxAppNavigation - Navigation-based architecture with automatic home LxApp opening
  *
- * OPTION 1 - Auto Mode (Recommended):
+ * USAGE:
  * ```typescript
  * // In EntryAbility.ets onWindowStageCreate():
  * LxApp.initialize(this.context, windowStage);
  *
  * // In your main page:
- * LxAppNavigation()  // Auto opens home LxApp internally
- * ```
- *
- * OPTION 2 - Manual Mode (More control):
- * ```typescript
- * // In EntryAbility.ets onWindowStageCreate():
- * LxApp.initialize(this.context, windowStage);
- *
- * // In your main page aboutToAppear():
- * LxApp.openHomeLxApp();
- *
- * // In your main page build():
- * LxAppNavigation({ autoOpenHome: false })
+ * LxAppNavigation()  // Automatically opens home LxApp after initialization
  * ```
  */
 
