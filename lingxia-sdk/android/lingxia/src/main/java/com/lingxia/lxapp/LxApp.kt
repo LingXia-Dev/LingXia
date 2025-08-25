@@ -57,7 +57,7 @@ class LxApp private constructor(private val context: Context) {
         }
 
         @JvmStatic
-        fun initialize(context: Context) {
+        internal fun initialize(context: Context) {
             if (instance != null && HomeLxAppId != null && HomeLxAppInitialRoute != null) {
                 Log.d(TAG, "LxApp already successfully initialized, skipping")
                 return
@@ -159,7 +159,7 @@ class LxApp private constructor(private val context: Context) {
          * If these details are not available, an error will be logged, and no app will be opened.
          */
         @JvmStatic
-        fun openHomeLxApp() {
+        internal fun openHomeLxApp() {
             if (HomeLxAppId != null && HomeLxAppInitialRoute != null) {
                 openLxApp(HomeLxAppId!!, HomeLxAppInitialRoute!!)
             } else {

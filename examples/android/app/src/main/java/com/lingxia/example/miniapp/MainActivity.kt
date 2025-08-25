@@ -2,17 +2,18 @@ package com.lingxia.example.lxapp
 
 import android.os.Bundle
 import android.util.Log
-import androidx.appcompat.app.AppCompatActivity
+import com.lingxia.lxapp.LxAppLaunchActivity
 import com.lingxia.lxapp.LxApp
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : LxAppLaunchActivity() {
     private val TAG = "MainActivity"
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        LxApp.initialize(this)
+        // Enable WebView debugging BEFORE calling super.onCreate()
         LxApp.enableWebViewDebugging()
-        LxApp.openHomeLxApp()
-        Log.d(TAG, "MainActivity initiated opening of home LxApp")
+
+        super.onCreate(savedInstanceState)
+
+        Log.d(TAG, "LxApp is ready")
     }
 }
