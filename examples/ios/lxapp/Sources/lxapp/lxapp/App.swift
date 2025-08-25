@@ -23,7 +23,6 @@ public struct ContentView: View {
                     // Install test lxapp from Bundle Resources
                     let _ = installTestLxApp()
 
-                    LxApp.openHomeLxApp()
                 }
             }
     }

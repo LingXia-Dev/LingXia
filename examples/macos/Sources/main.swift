@@ -17,8 +17,6 @@ class LingXiaAppDelegate: NSObject, NSApplicationDelegate {
         // Option 2
         //macOSLxApp.setWindowStyle(.tabStyle)
 
-        // Open home app immediately
-        LxApp.openHomeLxApp()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

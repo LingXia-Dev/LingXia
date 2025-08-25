@@ -87,7 +87,7 @@ public class LxAppCore {
 
     /// Initialize the LxApp system (internal core initialization)
     internal static func initializeCore() {
-        if homeLxAppId != nil {
+        if instance != nil {
             return
         }
         performInitialization()
@@ -104,6 +104,12 @@ public class LxAppCore {
 
         if let homeAppId = initResultString {
             homeLxAppId = homeAppId
+            os_log("LxApp initialized successfully with home app: %{public}@", log: log, type: .info, homeAppId)
+
+            // Auto-open home lxapp after initialization
+            DispatchQueue.main.async {
+                LxAppPlatform.openHomeLxApp()
+            }
         } else {
             os_log("Failed to get home LxApp ID from native init", log: log, type: .error)
         }
@@ -162,7 +168,7 @@ public class LxApp {
         }
     }
 
-    /// Initialize the LxApp system
+    /// Initialize the LxApp system and automatically open Home LxApp
     public static func initialize() {
         // Initialize core first
         LxAppCore.initializeCore()
@@ -192,8 +198,8 @@ public class LxApp {
     }
     #endif
 
-    /// Open home LxApp
-    public static func openHomeLxApp() {
+    /// Open home LxApp (internal use)
+    internal static func openHomeLxApp() {
         LxAppPlatform.openHomeLxApp()
     }
 }
