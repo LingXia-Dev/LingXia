@@ -160,12 +160,12 @@ public class LxAppPageNavigation {
                 let textColor = getTextColor(from: pageConfig?.text_style.toString())
 
                 // Get TabBar config to check if this is a tab root page
-                let tabBarConfig: TabBarConfig?
+                let tabBarConfig: TabBar?
                 if let existingConfig = viewController.getTabBar()?.config {
                     tabBarConfig = existingConfig
                 } else {
                     // Fallback: get TabBar config directly from the app configuration
-                    tabBarConfig = getTabBarConfig(appId)
+                    tabBarConfig = lingxia.getTabBar(appId)
                 }
 
                 let showBackButton = shouldShowBackButton(for: path, appId: appId, tabBarConfig: tabBarConfig)

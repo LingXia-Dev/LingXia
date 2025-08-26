@@ -48,7 +48,7 @@ public class iOSLxAppViewController: UIViewController, ObservableObject {
     /// Check if current page should use transparent mode
     private var shouldUseTransparentMode: Bool {
         let isInitialRoute = LxPageNavigation.isInitialRoute(appId: appId, path: currentPath)
-        let isTabBarTransparent = tabBar != nil && TabBarConfig.isTransparent(tabBar!.config?.background_color ?? 0)
+        let isTabBarTransparent = tabBar != nil && TabBar.isTransparent(tabBar!.config?.background_color ?? 0)
         return isInitialRoute || isTabBarTransparent
     }
 
@@ -185,6 +185,7 @@ public class iOSLxAppViewController: UIViewController, ObservableObject {
         setupWebViewContainer()
         setupTabBarIfNeeded()
         setupNavigationBar()
+        setupNotificationObservers()
 
         // Ensure transparent navigation area after containers are set up
         ensureTransparentNavigationArea(forceLayout: false)
@@ -200,7 +201,7 @@ public class iOSLxAppViewController: UIViewController, ObservableObject {
     }
 
     private func setupTabBarIfNeeded() {
-        let tabBarConfig = getTabBarConfig(self.appId)
+        let tabBarConfig = lingxia.getTabBar(self.appId)
 
         if let tabBarConfig = tabBarConfig {
             setupTabBar(config: tabBarConfig)
@@ -294,7 +295,7 @@ public class iOSLxAppViewController: UIViewController, ObservableObject {
         }
 
         // Apply transparency effects for TabBar if needed
-        if let tabBar = tabBar, TabBarConfig.isTransparent(tabBar.config?.background_color ?? 0) {
+        if let tabBar = tabBar, TabBar.isTransparent(tabBar.config?.background_color ?? 0) {
             // Use immediate application without delays to avoid startup flicker
             tabBar.forceTransparencyMode()
         }
@@ -438,7 +439,7 @@ public class iOSLxAppViewController: UIViewController, ObservableObject {
         guard let tabBar = tabBar else { return }
 
         // Only apply transparency if TabBar is actually transparent
-        if TabBarConfig.isTransparent(tabBar.config?.background_color ?? 0) {
+        if TabBar.isTransparent(tabBar.config?.background_color ?? 0) {
             // Use immediate transparency application without any delays
             tabBar.forceTransparencyMode()
 
@@ -508,13 +509,13 @@ public class iOSLxAppViewController: UIViewController, ObservableObject {
         applyTransparencyIfNeeded(for: webView)
     }
 
-    private func setupTabBar(config: TabBarConfig?) {
+    private func setupTabBar(config: TabBar?) {
         guard let config = config else {
             os_log("Invalid or insufficient TabBar config", log: Self.log, type: .error)
             return
         }
 
-        let isTabBarTransparent = TabBarConfig.isTransparent(config.background_color)
+        let isTabBarTransparent = TabBar.isTransparent(config.background_color)
 
         // Update system navigation bar transparency based on TabBar transparency and color
         iOSLxAppViewController.updateNavigationBarTransparency(
@@ -632,7 +633,7 @@ public class iOSLxAppViewController: UIViewController, ObservableObject {
     /// Applies transparency for transparent TabBar scenarios
     /// Combines setCompleteTransparency and forceWebViewTransparency when needed
     private func applyTransparencyIfNeeded(for webView: WKWebView? = nil) {
-        guard let tabBar = tabBar, TabBarConfig.isTransparent(tabBar.config?.background_color ?? 0) else {
+        guard let tabBar = tabBar, TabBar.isTransparent(tabBar.config?.background_color ?? 0) else {
             return
         }
 
@@ -650,7 +651,7 @@ public class iOSLxAppViewController: UIViewController, ObservableObject {
         }
     }
 
-    private func applyTabBarLayoutParams(tabBar: LingXiaTabBar, config: TabBarConfig) {
+    private func applyTabBarLayoutParams(tabBar: LingXiaTabBar, config: TabBar) {
         let isVertical = config.position == 1 || config.position == 2 // 1=left, 2=right
         let tabBarSize = CGFloat(config.dimension) // Use configured dimension instead of default
 
@@ -730,7 +731,7 @@ public class iOSLxAppViewController: UIViewController, ObservableObject {
 
         // Force TabBar transparency only if it's configured to be transparent
         if let tabBar = tabBar {
-            if TabBarConfig.isTransparent(tabBar.config?.background_color ?? 0) {
+            if TabBar.isTransparent(tabBar.config?.background_color ?? 0) {
                 tabBar.forceTransparencyMode()
             } else {
                 // If TabBar is not transparent, restore its original background color
@@ -795,7 +796,7 @@ public class iOSLxAppViewController: UIViewController, ObservableObject {
             rootContainer.bringSubviewToFront(tabBar)
 
             // Re-apply transparency immediately after bringSubviewToFront
-            if TabBarConfig.isTransparent(tabBar.config?.background_color ?? 0) {
+            if TabBar.isTransparent(tabBar.config?.background_color ?? 0) {
                 tabBar.forceTransparencyMode()
             }
         }
@@ -975,30 +976,6 @@ public class iOSLxAppViewController: UIViewController, ObservableObject {
         }
 
         os_log("iOSLxAppViewController: iOSLxAppViewController deinitialized", log: miniAppViewControllerLog, type: .debug)
-    }
-
-    /// Set badge text for a specific tab
-    public func setTabBarBadge(index: Int, text: String) {
-        guard let tabBar = tabBar else { return }
-        tabBar.setTabBarBadge(index: index, text: text)
-    }
-
-    /// Remove badge from a specific tab
-    public func removeTabBarBadge(index: Int) {
-        guard let tabBar = tabBar else { return }
-        tabBar.removeTabBarBadge(index: index)
-    }
-
-    /// Show red dot for a specific tab
-    public func showTabBarRedDot(index: Int) {
-        guard let tabBar = tabBar else { return }
-        tabBar.showTabBarRedDot(index: index)
-    }
-
-    /// Hide red dot for a specific tab
-    public func hideTabBarRedDot(index: Int) {
-        guard let tabBar = tabBar else { return }
-        tabBar.hideTabBarRedDot(index: index)
     }
 }
 #endif

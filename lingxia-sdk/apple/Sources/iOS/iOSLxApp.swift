@@ -191,43 +191,6 @@ public class iOSLxApp {
         UINavigationBar.appearance().compactScrollEdgeAppearance = appearance
     }
 
-    /// Set badge text for a specific tab
-    public static func setTabBarBadge(index: Int, text: String) {
-        // Find the current LxAppViewController and delegate to its TabBar
-        DispatchQueue.main.async {
-            if let currentViewController = getCurrentLxAppViewController() {
-                currentViewController.setTabBarBadge(index: index, text: text)
-            }
-        }
-    }
-
-    /// Remove badge from a specific tab
-    public static func removeTabBarBadge(index: Int) {
-        DispatchQueue.main.async {
-            if let currentViewController = getCurrentLxAppViewController() {
-                currentViewController.removeTabBarBadge(index: index)
-            }
-        }
-    }
-
-    /// Show red dot for a specific tab
-    public static func showTabBarRedDot(index: Int) {
-        DispatchQueue.main.async {
-            if let currentViewController = getCurrentLxAppViewController() {
-                currentViewController.showTabBarRedDot(index: index)
-            }
-        }
-    }
-
-    /// Hide red dot for a specific tab
-    public static func hideTabBarRedDot(index: Int) {
-        DispatchQueue.main.async {
-            if let currentViewController = getCurrentLxAppViewController() {
-                currentViewController.hideTabBarRedDot(index: index)
-            }
-        }
-    }
-
     /// Get the current LxAppViewController from the view hierarchy
     private static func getCurrentLxAppViewController() -> iOSLxAppViewController? {
         guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,

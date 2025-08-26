@@ -778,6 +778,7 @@ public class iOSTabBarWrapper: UIView {
     private var appId: String = ""
     private var selectedIndex: Int = 0
     private var onTabSelectedCallback: ((Int, String) -> Void)?
+    private var tabBarUpdateObserver: NSObjectProtocol?
 
     // Public accessor for tabBarConfig
     public var config: TabBar? {
@@ -798,9 +799,40 @@ public class iOSTabBarWrapper: UIView {
         backgroundColor = UIColor.clear
     }
 
-    public func setConfig(config: TabBarConfig, appId: String) {
+    private func setupNotificationObserver() {
+        // Remove existing observer if any
+        if let observer = tabBarUpdateObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+
+        // Only setup observer if we have an appId
+        guard !appId.isEmpty else { return }
+
+        // Listen for TabBar update notifications
+        tabBarUpdateObserver = NotificationCenter.default.addObserver(
+            forName: .tabBarDataChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            // Extract notification data outside of Task to avoid data races
+            guard let notificationAppId = notification.object as? String else { return }
+
+            Task { @MainActor in
+                guard let self = self,
+                      notificationAppId == self.appId else { return }
+
+                // Force TabBar to refresh - it will automatically get fresh badge/red dot data from Rust
+                self.updateLayout()
+            }
+        }
+    }
+
+    public func setConfig(config: TabBar, appId: String) {
         self.tabBarConfig = config
         self.appId = appId
+
+        // Setup notification observer now that we have the appId
+        setupNotificationObserver()
         updateLayout()
     }
 
@@ -879,52 +911,13 @@ public class iOSTabBarWrapper: UIView {
         return nil
     }
 
-    private func updateLayout() {
+    public func updateLayout() {
         guard let config = tabBarConfig else { return }
 
         let items = config.getItems(appId: appId)
 
-        // Only recreate layout if items have changed
-        if shouldRecreateLayout(items: items, config: config) {
-            setupUIKitLayout(items: items, config: config)
-        } else {
-            // Just update selection state
-            updateSelectionState()
-        }
-    }
-
-    private var lastItemsHash: Int = 0
-    private var lastConfigHash: Int = 0
-
-    private func shouldRecreateLayout(items: [TabBarItem], config: TabBarConfig) -> Bool {
-        let itemsHash = items.map { "\($0.cachedPagePath)-\($0.group)" }.joined().hashValue
-        let configHash = "\(config.position)-\(config.items_count)".hashValue
-
-        let shouldRecreate = itemsHash != lastItemsHash || configHash != lastConfigHash
-
-        if shouldRecreate {
-            lastItemsHash = itemsHash
-            lastConfigHash = configHash
-        }
-
-        return shouldRecreate
-    }
-
-    private func updateSelectionState() {
-        // Update button states without recreating the entire layout
-        for subview in subviews {
-            updateButtonSelectionState(in: subview)
-        }
-    }
-
-    private func updateButtonSelectionState(in view: UIView) {
-        if let button = view as? UIButton {
-            updateSingleButtonState(button)
-        } else {
-            for subview in view.subviews {
-                updateButtonSelectionState(in: subview)
-            }
-        }
+        // Always recreate layout to ensure fresh badge/red dot data
+        setupUIKitLayout(items: items, config: config)
     }
 
     private func updateSingleButtonState(_ button: UIButton) {
@@ -951,7 +944,7 @@ public class iOSTabBarWrapper: UIView {
         }
     }
 
-    private func setupUIKitLayout(items: [TabBarItem], config: TabBarConfig) {
+    private func setupUIKitLayout(items: [TabBarItem], config: TabBar) {
         subviews.forEach { $0.removeFromSuperview() }
 
         let containerView = UIView()
@@ -980,15 +973,15 @@ public class iOSTabBarWrapper: UIView {
         ])
     }
 
-    private func setupVerticalGroupedLayout(items: [TabBarItem], config: TabBarConfig, containerView: UIView) {
+    private func setupVerticalGroupedLayout(items: [TabBarItem], config: TabBar, containerView: UIView) {
         setupGroupedLayout(items: items, config: config, containerView: containerView, isVertical: true)
     }
 
-    private func setupHorizontalGroupedLayout(items: [TabBarItem], config: TabBarConfig, containerView: UIView) {
+    private func setupHorizontalGroupedLayout(items: [TabBarItem], config: TabBar, containerView: UIView) {
         setupGroupedLayout(items: items, config: config, containerView: containerView, isVertical: false)
     }
 
-    private func setupGroupedLayout(items: [TabBarItem], config: TabBarConfig, containerView: UIView, isVertical: Bool) {
+    private func setupGroupedLayout(items: [TabBarItem], config: TabBar, containerView: UIView, isVertical: Bool) {
         let stackView = UIStackView()
         stackView.axis = isVertical ? .vertical : .horizontal
         stackView.distribution = .fill
@@ -1030,7 +1023,7 @@ public class iOSTabBarWrapper: UIView {
         ])
     }
 
-    private func addGroupContainer(items: [TabBarItem], allItems: [TabBarItem], config: TabBarConfig, to stackView: UIStackView, isVertical: Bool) {
+    private func addGroupContainer(items: [TabBarItem], allItems: [TabBarItem], config: TabBar, to stackView: UIStackView, isVertical: Bool) {
         guard !items.isEmpty else { return }
 
         if isVertical {
@@ -1074,7 +1067,7 @@ public class iOSTabBarWrapper: UIView {
         stackView.addArrangedSubview(spacer)
     }
 
-    private func setupVerticalLayout(items: [TabBarItem], config: TabBarConfig, containerView: UIView) {
+    private func setupVerticalLayout(items: [TabBarItem], config: TabBar, containerView: UIView) {
         let stackView = UIStackView()
         stackView.axis = .vertical
         stackView.distribution = .fillEqually
@@ -1096,7 +1089,7 @@ public class iOSTabBarWrapper: UIView {
         ])
     }
 
-    private func setupHorizontalLayout(items: [TabBarItem], config: TabBarConfig, containerView: UIView) {
+    private func setupHorizontalLayout(items: [TabBarItem], config: TabBar, containerView: UIView) {
         let stackView = UIStackView()
         stackView.axis = .horizontal
         stackView.distribution = .fillEqually
@@ -1118,7 +1111,7 @@ public class iOSTabBarWrapper: UIView {
         ])
     }
 
-    private func createUIKitTabItem(item: TabBarItem, index: Int, config: TabBarConfig) -> UIView {
+    private func createUIKitTabItem(item: TabBarItem, index: Int, config: TabBar) -> UIView {
         let containerView = UIView()
         containerView.translatesAutoresizingMaskIntoConstraints = false
 
@@ -1174,7 +1167,11 @@ public class iOSTabBarWrapper: UIView {
         return containerView
     }
 
-    private func createUIKitIcon(item: TabBarItem, isSelected: Bool) -> UIImageView {
+    private func createUIKitIcon(item: TabBarItem, isSelected: Bool) -> UIView {
+        // Create container view for icon + badge/red dot
+        let iconContainer = UIView()
+        iconContainer.translatesAutoresizingMaskIntoConstraints = false
+
         let iconView = UIImageView()
         iconView.contentMode = .scaleAspectFit
         iconView.translatesAutoresizingMaskIntoConstraints = false
@@ -1199,12 +1196,59 @@ public class iOSTabBarWrapper: UIView {
             }
         }
 
+        iconContainer.addSubview(iconView)
+
+        // Get badge and red dot data from Rust
+        let itemIndex = findItemIndex(item: item)
+        if itemIndex >= 0, let rustItem = getTabBarItem(appId, Int32(itemIndex)) {
+            let badgeText = rustItem.badge.toString()
+            let hasRedDot = rustItem.has_red_dot
+
+            // Add badge if present
+            if !badgeText.isEmpty {
+                let badgeView = createBadgeView(text: badgeText)
+                iconContainer.addSubview(badgeView)
+
+                NSLayoutConstraint.activate([
+                    badgeView.topAnchor.constraint(equalTo: iconContainer.topAnchor, constant: -4),
+                    badgeView.trailingAnchor.constraint(equalTo: iconContainer.trailingAnchor, constant: 4)
+                ])
+            }
+            // Add red dot if no badge and red dot is enabled
+            else if hasRedDot {
+                let redDotView = createRedDotView()
+                iconContainer.addSubview(redDotView)
+
+                NSLayoutConstraint.activate([
+                    redDotView.topAnchor.constraint(equalTo: iconContainer.topAnchor, constant: -2),
+                    redDotView.trailingAnchor.constraint(equalTo: iconContainer.trailingAnchor, constant: 2)
+                ])
+            }
+        }
+
         NSLayoutConstraint.activate([
+            iconContainer.widthAnchor.constraint(equalToConstant: 32),
+            iconContainer.heightAnchor.constraint(equalToConstant: 32),
+
+            iconView.centerXAnchor.constraint(equalTo: iconContainer.centerXAnchor),
+            iconView.centerYAnchor.constraint(equalTo: iconContainer.centerYAnchor),
             iconView.widthAnchor.constraint(equalToConstant: 24),
             iconView.heightAnchor.constraint(equalToConstant: 24)
         ])
 
-        return iconView
+        return iconContainer
+    }
+
+    private func findItemIndex(item: TabBarItem) -> Int {
+        guard let config = tabBarConfig else { return -1 }
+        let items = config.getItems(appId: appId)
+
+        for (index, configItem) in items.enumerated() {
+            if configItem.page_path.toString() == item.page_path.toString() {
+                return index
+            }
+        }
+        return -1
     }
 
     @objc private func uikitTabButtonTapped(_ sender: UIButton) {
@@ -1228,6 +1272,47 @@ public class iOSTabBarWrapper: UIView {
         }
     }
 
+    private func createBadgeView(text: String) -> UIView {
+        let badgeView = UIView()
+        badgeView.backgroundColor = UIColor.red
+        badgeView.layer.cornerRadius = 8
+        badgeView.translatesAutoresizingMaskIntoConstraints = false
+
+        let badgeLabel = UILabel()
+        badgeLabel.text = text
+        badgeLabel.textColor = UIColor.white
+        badgeLabel.font = UIFont.systemFont(ofSize: 10, weight: .medium)
+        badgeLabel.textAlignment = .center
+        badgeLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        badgeView.addSubview(badgeLabel)
+
+        NSLayoutConstraint.activate([
+            badgeLabel.centerXAnchor.constraint(equalTo: badgeView.centerXAnchor),
+            badgeLabel.centerYAnchor.constraint(equalTo: badgeView.centerYAnchor),
+            badgeLabel.leadingAnchor.constraint(greaterThanOrEqualTo: badgeView.leadingAnchor, constant: 4),
+            badgeLabel.trailingAnchor.constraint(lessThanOrEqualTo: badgeView.trailingAnchor, constant: -4),
+
+            badgeView.widthAnchor.constraint(greaterThanOrEqualToConstant: 16),
+            badgeView.heightAnchor.constraint(equalToConstant: 16)
+        ])
+
+        return badgeView
+    }
+
+    private func createRedDotView() -> UIView {
+        let redDotView = UIView()
+        redDotView.backgroundColor = UIColor.red
+        redDotView.layer.cornerRadius = 4
+        redDotView.translatesAutoresizingMaskIntoConstraints = false
+
+        NSLayoutConstraint.activate([
+            redDotView.widthAnchor.constraint(equalToConstant: 8),
+            redDotView.heightAnchor.constraint(equalToConstant: 8)
+        ])
+
+        return redDotView
+    }
 }
 
 public typealias LingXiaTabBar = iOSTabBarWrapper
