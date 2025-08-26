@@ -9,8 +9,12 @@ import AppKit
 import UIKit
 #endif
 
-/// Extensions for TabBarConfig
-extension TabBarConfig {
+extension Notification.Name {
+    static let tabBarDataChanged = Notification.Name("TabBarDataChanged")
+}
+
+/// Extensions for TabBar
+extension TabBar {
     public var positionEnum: TabBarPosition {
         switch position {
         case 1: return .left
@@ -77,64 +81,6 @@ extension TabBarItem {
     public var cachedSelectedIconPath: String { selected_icon_path.toString() }
 }
 
-/// TabBar item state management for badge and red dot
-public class TabBarItemState: ObservableObject {
-    @Published public var badgeText: String? = nil
-    @Published public var showRedDot: Bool = false
-
-    public init() {}
-
-    public func setBadge(_ text: String) {
-        badgeText = text
-        showRedDot = false // Badge and red dot are mutually exclusive
-    }
-
-    public func removeBadge() {
-        badgeText = nil
-    }
-
-    public func setRedDotVisible(_ visible: Bool) {
-        showRedDot = visible
-        if visible {
-            badgeText = nil // Badge and red dot are mutually exclusive
-        }
-    }
-}
-
-/// Global state manager for all tab bar items
-@MainActor
-public class TabBarItemStatesManager: ObservableObject {
-    private var itemStates: [Int: TabBarItemState] = [:]
-    @MainActor public static let shared = TabBarItemStatesManager()
-
-    public init() {}
-
-    public func getState(for index: Int) -> TabBarItemState {
-        if itemStates[index] == nil {
-            itemStates[index] = TabBarItemState()
-        }
-        return itemStates[index]!
-    }
-
-    public func setBadge(at index: Int, text: String) {
-        objectWillChange.send() // Force UI update
-        getState(for: index).setBadge(text)
-    }
-
-    public func removeBadge(at index: Int) {
-        getState(for: index).removeBadge()
-    }
-
-    public func showRedDot(at index: Int) {
-        objectWillChange.send() // Force UI update
-        getState(for: index).setRedDotVisible(true)
-    }
-
-    public func hideRedDot(at index: Int) {
-        getState(for: index).setRedDotVisible(false)
-    }
-}
-
 /// TabBar styling helpers
 public struct TabBarHelper {
     public static func resolvedBackgroundColor(_ colorValue: UInt32, isVertical: Bool) -> PlatformColor {
@@ -150,14 +96,15 @@ public struct TabBarHelper {
 /// Unified SwiftUI TabBar for iOS and macOS
 public struct LxAppTabBar: View {
     let appId: String
-    let config: TabBarConfig
+    let config: TabBar
     @Binding var selectedIndex: Int
     let onTabSelected: (Int, String) -> Void
-    @ObservedObject private var itemStatesManager = TabBarItemStatesManager.shared
+    // Simple refresh trigger for UI updates
+    @State private var refreshTrigger = false
 
     public init(
         appId: String,
-        config: TabBarConfig,
+        config: TabBar,
         selectedIndex: Binding<Int>,
         onTabSelected: @escaping (Int, String) -> Void
     ) {
@@ -168,6 +115,7 @@ public struct LxAppTabBar: View {
     }
 
     public var body: some View {
+        // Get fresh data from Rust every time body is called
         let items = config.getItems(appId: appId)
 
         Group {
@@ -192,6 +140,13 @@ public struct LxAppTabBar: View {
             }
         }
         .background(getTabBarBackgroundColor())
+        .id("tabbar-\(selectedIndex)-\(refreshTrigger)")
+        .onReceive(NotificationCenter.default.publisher(for: .tabBarDataChanged)) { notification in
+            // Trigger UI refresh when updateTabBarUI() is called for this app
+            if let notificationAppId = notification.object as? String, notificationAppId == appId {
+                refreshTrigger.toggle()
+            }
+        }
     }
 
     @ViewBuilder
@@ -310,26 +265,33 @@ public struct LxAppTabBar: View {
     @ViewBuilder
     private func buildTabItem(item: TabBarItem, index: Int) -> some View {
         let isSelected = (index == selectedIndex)
-        let itemState = itemStatesManager.getState(for: index)
+        // Get state directly from Rust
+        let rustItem = getTabBarItem(appId, Int32(index))
+
+        let forceColor = isSelected ?
+            Color(PlatformColor(argb: config.selected_color)) :
+            Color(PlatformColor(argb: config.color))
 
         Button(action: {
+            // Update selection and trigger re-render
             selectedIndex = index
+            refreshTrigger.toggle()
             onTabSelected(index, item.cachedPagePath)
         }) {
             VStack(spacing: LxAppTheme.Metrics.smallSpacing) {
                 // Tab icon with badge and red dot overlay
                 ZStack {
                     if !item.cachedIconPath.isEmpty {
-                        buildTabIcon(item: item, isSelected: isSelected)
+                        buildTabIcon(item: item, isSelected: isSelected, forceColor: forceColor)
                     }
 
-                    // Badge overlay
-                    if let badgeText = itemState.badgeText, !badgeText.isEmpty {
-                        buildBadge(text: badgeText)
+                    // Badge overlay (from Rust state)
+                    if let rustItem = rustItem, !rustItem.badge.toString().isEmpty {
+                        buildBadge(text: rustItem.badge.toString())
                             .offset(x: 12, y: -8)
                     }
                     // Red dot overlay (only show if no badge)
-                    else if itemState.showRedDot {
+                    else if let rustItem = rustItem, rustItem.has_red_dot {
                         buildRedDot()
                             .offset(x: 12, y: -8)
                     }
@@ -339,9 +301,7 @@ public struct LxAppTabBar: View {
                 if !item.cachedText.isEmpty {
                     Text(item.cachedText)
                         .font(LxAppTheme.Typography.tabTitle)
-                        .foregroundColor(isSelected ?
-                            Color(PlatformColor(argb: config.selected_color)) :
-                            Color(PlatformColor(argb: config.color)))
+                        .foregroundColor(forceColor)
                         .lineLimit(1)
                 }
             }
@@ -372,14 +332,12 @@ public struct LxAppTabBar: View {
     }
 
     @ViewBuilder
-    private func buildTabIcon(item: TabBarItem, isSelected: Bool) -> some View {
+    private func buildTabIcon(item: TabBarItem, isSelected: Bool, forceColor: Color) -> some View {
         let iconPath = isSelected && !item.cachedSelectedIconPath.isEmpty
             ? item.cachedSelectedIconPath
             : item.cachedIconPath
 
-        let iconColor = isSelected ?
-            Color(PlatformColor(argb: config.selected_color)) :
-            Color.black  // Use pure black for maximum contrast
+        let iconColor = forceColor
 
         if iconPath.hasPrefix("SF:") {
             let symbolName = String(iconPath.dropFirst(3))
@@ -465,47 +423,24 @@ public struct LxAppTabBar: View {
         let platformColor = PlatformColor(argb: config.background_color)
         return Color(platformColor)
     }
-
-    /// Set badge text for a specific tab
-    public func setTabBarBadge(index: Int, text: String) {
-        itemStatesManager.setBadge(at: index, text: text)
-    }
-
-    /// Remove badge from a specific tab
-    public func removeTabBarBadge(index: Int) {
-        itemStatesManager.removeBadge(at: index)
-    }
-
-    /// Show red dot for a specific tab
-    public func showTabBarRedDot(index: Int) {
-        itemStatesManager.showRedDot(at: index)
-    }
-
-    /// Hide red dot for a specific tab
-    public func hideTabBarRedDot(index: Int) {
-        itemStatesManager.hideRedDot(at: index)
-    }
 }
 
 /// macOS TabBar that accepts external state manager
 public struct MacOSLxAppTabBar: View {
     let appId: String
-    let config: TabBarConfig
+    let config: TabBar
     @Binding var selectedIndex: Int
-    @ObservedObject var itemStatesManager: TabBarItemStatesManager
     let onTabSelected: (Int, String) -> Void
 
     public init(
         appId: String,
-        config: TabBarConfig,
+        config: TabBar,
         selectedIndex: Binding<Int>,
-        itemStatesManager: TabBarItemStatesManager,
         onTabSelected: @escaping (Int, String) -> Void
     ) {
         self.appId = appId
         self.config = config
         self._selectedIndex = selectedIndex
-        self.itemStatesManager = itemStatesManager
         self.onTabSelected = onTabSelected
     }
 
@@ -540,7 +475,8 @@ public struct MacOSLxAppTabBar: View {
     @ViewBuilder
     private func buildTabItem(item: TabBarItem, index: Int) -> some View {
         let isSelected = (index == selectedIndex)
-        let itemState = itemStatesManager.getState(for: index)
+        // Get state directly from Rust
+        let rustItem = getTabBarItem(appId, Int32(index))
 
         Button(action: {
             selectedIndex = index
@@ -553,13 +489,13 @@ public struct MacOSLxAppTabBar: View {
                         buildTabIcon(item: item, isSelected: isSelected)
                     }
 
-                    // Badge overlay
-                    if let badgeText = itemState.badgeText, !badgeText.isEmpty {
-                        buildBadge(text: badgeText)
+                    // Badge overlay (from Rust state)
+                    if let rustItem = rustItem, !rustItem.badge.toString().isEmpty {
+                        buildBadge(text: rustItem.badge.toString())
                             .offset(x: 12, y: -8)
                     }
                     // Red dot overlay (only show if no badge)
-                    else if itemState.showRedDot {
+                    else if let rustItem = rustItem, rustItem.has_red_dot {
                         buildRedDot()
                             .offset(x: 12, y: -8)
                     }
@@ -815,19 +751,13 @@ public struct MacOSLxAppTabBar: View {
 /// Protocol for tab bar implementations
 @MainActor
 public protocol TabBarProtocol: AnyObject {
-    var config: TabBarConfig? { get }
-    func setConfig(config: TabBarConfig, appId: String)
+    var config: TabBar? { get }
+    func setConfig(config: TabBar, appId: String)
     func setOnTabSelectedListener(_ listener: @escaping (Int, String) -> Void)
     func findTabIndexByPath(_ path: String) -> Int
     func syncSelectedTabWithCurrentPath(_ currentPath: String)
     func selectTab(index: Int)
     func setSelectedIndex(_ index: Int, notifyListener: Bool)
-
-    // Badge and red dot functionality
-    func setTabBarBadge(index: Int, text: String)
-    func removeTabBarBadge(index: Int)
-    func showTabBarRedDot(index: Int)
-    func hideTabBarRedDot(index: Int)
 }
 
 /// Protocol for TabBar UI implementations
@@ -844,18 +774,13 @@ import UIKit
 /// UIKit TabBar implementation for iOS
 @MainActor
 public class iOSTabBarWrapper: UIView {
-    private var tabBarConfig: TabBarConfig?
+    private var tabBarConfig: TabBar?
     private var appId: String = ""
     private var selectedIndex: Int = 0
     private var onTabSelectedCallback: ((Int, String) -> Void)?
 
-    // Badge and red dot state management
-    private var itemStatesManager = TabBarItemStatesManager()
-    private var badgeViews: [Int: UIView] = [:]
-    private var redDotViews: [Int: UIView] = [:]
-
     // Public accessor for tabBarConfig
-    public var config: TabBarConfig? {
+    public var config: TabBar? {
         return tabBarConfig
     }
 
@@ -935,65 +860,6 @@ public class iOSTabBarWrapper: UIView {
         layer.backgroundColor = UIColor.clear.cgColor
     }
 
-    // MARK: - TabBarProtocol Badge and Red Dot Methods
-
-    public func setTabBarBadge(index: Int, text: String) {
-        itemStatesManager.setBadge(at: index, text: text)
-        updateBadgeAndRedDot(at: index)
-    }
-
-    public func removeTabBarBadge(index: Int) {
-        itemStatesManager.removeBadge(at: index)
-        updateBadgeAndRedDot(at: index)
-    }
-
-    public func showTabBarRedDot(index: Int) {
-        itemStatesManager.showRedDot(at: index)
-        updateBadgeAndRedDot(at: index)
-    }
-
-    public func hideTabBarRedDot(index: Int) {
-        itemStatesManager.hideRedDot(at: index)
-        updateBadgeAndRedDot(at: index)
-    }
-
-    private func updateBadgeAndRedDot(at index: Int) {
-        // Find the button for this index
-        guard let button = findButton(for: index) else { return }
-
-        // Remove existing badge and red dot views
-        badgeViews[index]?.removeFromSuperview()
-        redDotViews[index]?.removeFromSuperview()
-        badgeViews.removeValue(forKey: index)
-        redDotViews.removeValue(forKey: index)
-
-        let itemState = itemStatesManager.getState(for: index)
-
-        // Add badge if needed
-        if let badgeText = itemState.badgeText, !badgeText.isEmpty {
-            let badgeView = createBadgeView(text: badgeText)
-            button.addSubview(badgeView)
-            badgeViews[index] = badgeView
-
-            // Position badge at top-right of the button
-            NSLayoutConstraint.activate([
-                badgeView.topAnchor.constraint(equalTo: button.topAnchor, constant: 4),
-                badgeView.trailingAnchor.constraint(equalTo: button.trailingAnchor, constant: -4)
-            ])
-        }
-        // Add red dot if needed (only if no badge)
-        else if itemState.showRedDot {
-            let redDotView = createRedDotView()
-            button.addSubview(redDotView)
-            redDotViews[index] = redDotView
-
-            // Position red dot at top-right of the button
-            NSLayoutConstraint.activate([
-                redDotView.topAnchor.constraint(equalTo: button.topAnchor, constant: 6),
-                redDotView.trailingAnchor.constraint(equalTo: button.trailingAnchor, constant: -6)
-            ])
-        }
-    }
 
     private func findButton(for index: Int) -> UIButton? {
         return findButtonRecursively(in: self, tag: index)
@@ -1011,40 +877,6 @@ public class iOSTabBarWrapper: UIView {
         }
 
         return nil
-    }
-
-    private func createBadgeView(text: String) -> UIView {
-        let badge = UILabel()
-        badge.text = text
-        badge.font = UIFont.systemFont(ofSize: 10, weight: .medium)
-        badge.textColor = .white
-        badge.backgroundColor = .red
-        badge.textAlignment = .center
-        badge.layer.cornerRadius = 8
-        badge.layer.masksToBounds = true
-        badge.translatesAutoresizingMaskIntoConstraints = false
-
-        // Add padding
-        NSLayoutConstraint.activate([
-            badge.widthAnchor.constraint(greaterThanOrEqualToConstant: 16),
-            badge.heightAnchor.constraint(equalToConstant: 16)
-        ])
-
-        return badge
-    }
-
-    private func createRedDotView() -> UIView {
-        let dot = UIView()
-        dot.backgroundColor = .red
-        dot.layer.cornerRadius = 4
-        dot.translatesAutoresizingMaskIntoConstraints = false
-
-        NSLayoutConstraint.activate([
-            dot.widthAnchor.constraint(equalToConstant: 8),
-            dot.heightAnchor.constraint(equalToConstant: 8)
-        ])
-
-        return dot
     }
 
     private func updateLayout() {
@@ -1408,15 +1240,12 @@ import SwiftUI
 @MainActor
 public class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
     private var hostingController: NSHostingController<AnyView>?
-    private var tabBarConfig: TabBarConfig?
+    private var tabBarConfig: TabBar?
     private var appId: String = ""
     @Published private var selectedIndex: Int = 0
     private var onTabSelectedCallback: ((Int, String) -> Void)?
 
-    // Badge and red dot state management
-    @Published private var itemStatesManager = TabBarItemStatesManager()
-
-    public var config: TabBarConfig? {
+    public var config: TabBar? {
         return tabBarConfig
     }
 
@@ -1435,7 +1264,7 @@ public class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
         layer?.backgroundColor = NSColor.clear.cgColor
     }
 
-    public func setConfig(config: TabBarConfig, appId: String) {
+    public func setConfig(config: TabBar, appId: String) {
         self.tabBarConfig = config
         self.appId = appId
         updateSwiftUIView()
@@ -1479,22 +1308,6 @@ public class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
         }
     }
 
-    public func setTabBarBadge(index: Int, text: String) {
-        itemStatesManager.setBadge(at: index, text: text)
-    }
-
-    public func removeTabBarBadge(index: Int) {
-        itemStatesManager.removeBadge(at: index)
-    }
-
-    public func showTabBarRedDot(index: Int) {
-        itemStatesManager.showRedDot(at: index)
-    }
-
-    public func hideTabBarRedDot(index: Int) {
-        itemStatesManager.hideRedDot(at: index)
-    }
-
     private func updateSwiftUIView() {
         guard let config = tabBarConfig else { return }
 
@@ -1530,14 +1343,13 @@ public class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
     private struct TabBarWrapperView: View {
         @ObservedObject var wrapper: macOSTabBarWrapper
         let appId: String
-        let config: TabBarConfig
+        let config: TabBar
 
         var body: some View {
             MacOSLxAppTabBar(
                 appId: appId,
                 config: config,
-                selectedIndex: $wrapper.selectedIndex,
-                itemStatesManager: wrapper.itemStatesManager
+                selectedIndex: $wrapper.selectedIndex
             ) { index, path in
                 wrapper.setSelectedIndex(index, notifyListener: true)
             }

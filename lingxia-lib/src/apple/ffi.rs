@@ -40,9 +40,9 @@ mod bridge {
         pub navigation_style: i32,
     }
 
-    // TabBar configuration for Swift (without items array)
+    // TabBar state for Swift (without items array)
     #[swift_bridge(swift_repr = "struct")]
-    pub struct TabBarConfig {
+    pub struct TabBar {
         pub color: u32,
         pub selected_color: u32,
         pub background_color: u32,
@@ -50,6 +50,7 @@ mod bridge {
         pub position: i32,
         pub dimension: i32,
         pub items_count: i32,
+        pub is_visible: bool,
     }
 
     // Group alignment types
@@ -83,6 +84,8 @@ mod bridge {
         pub selected_icon_path: String,
         pub selected: bool,
         pub group: GroupAlignment,
+        pub badge: String,
+        pub has_red_dot: bool,
     }
 
     // Toast configuration for Swift
@@ -141,8 +144,8 @@ mod bridge {
         #[swift_bridge(swift_name = "getNavigationBarConfig")]
         fn get_navigation_bar_config(appid: &str, path: &str) -> NavigationBarConfig;
 
-        #[swift_bridge(swift_name = "getTabBarConfig")]
-        fn get_tab_bar_config(appid: &str) -> Option<TabBarConfig>;
+        #[swift_bridge(swift_name = "getTabBar")]
+        fn get_tab_bar(appid: &str) -> Option<TabBar>;
 
         #[swift_bridge(swift_name = "getTabBarItem")]
         fn get_tab_bar_item(appid: &str, index: i32) -> Option<TabBarItem>;
@@ -176,6 +179,10 @@ mod bridge {
 
         #[swift_bridge(swift_name = "LxApp.switchPage")]
         fn switch_page(appid: &str, path: &str) -> bool;
+
+        // TabBar UI update callback
+        #[swift_bridge(swift_name = "LxApp.updateTabBarUI")]
+        fn update_tabbar_ui(appid: &str) -> bool;
 
         #[swift_bridge(swift_name = "LxApp.launchWithUrl")]
         fn launch_with_url(url: &str);
@@ -334,48 +341,42 @@ pub fn get_navigation_bar_config(appid: &str, path: &str) -> bridge::NavigationB
     }
 }
 
-/// Get TabBar configuration
-pub fn get_tab_bar_config(appid: &str) -> Option<bridge::TabBarConfig> {
+/// Get TabBar state
+pub fn get_tab_bar(appid: &str) -> Option<bridge::TabBar> {
     let lxapp = lxapp::get(appid.to_string());
 
-    lxapp
-        .get_config()
-        .get_tab_bar_config(&lxapp)
-        .map(|config| bridge::TabBarConfig {
-            color: parse_color_to_u32(&config.color, 0xFF666666),
-            selected_color: parse_color_to_u32(&config.selectedColor, 0xFF1677FF),
-            background_color: parse_color_to_u32(&config.backgroundColor, 0xFFFFFFFF),
-            border_style: parse_color_to_u32(&config.borderStyle, 0xFFF0F0F0),
-            position: config.position.to_i32(),
-            dimension: config.dimension,
-            items_count: config.list.len() as i32,
-        })
+    lxapp.get_tabbar().map(|tabbar| bridge::TabBar {
+        color: parse_color_to_u32(&tabbar.color, 0xFF666666),
+        selected_color: parse_color_to_u32(&tabbar.selectedColor, 0xFF1677FF),
+        background_color: parse_color_to_u32(&tabbar.backgroundColor, 0xFFFFFFFF),
+        border_style: parse_color_to_u32(&tabbar.borderStyle, 0xFFF0F0F0),
+        position: tabbar.position.to_i32(),
+        dimension: tabbar.dimension,
+        items_count: tabbar.list.len() as i32,
+        is_visible: tabbar.is_visible,
+    })
 }
 
 /// Get TabBar item by index
 pub fn get_tab_bar_item(appid: &str, index: i32) -> Option<bridge::TabBarItem> {
     let lxapp = lxapp::get(appid.to_string());
 
-    lxapp
-        .get_config()
-        .get_tab_bar_config(&lxapp)
-        .and_then(|config| {
-            config
-                .list
-                .get(index as usize)
-                .map(|item| bridge::TabBarItem {
-                    page_path: item.pagePath.clone(),
-                    text: item.text.clone().unwrap_or_default(),
-                    icon_path: item.iconPath.clone().unwrap_or_default(),
-                    selected_icon_path: item.selectedIconPath.clone().unwrap_or_default(),
-                    selected: item.selected,
-                    group: match &item.group {
-                        Some(lxapp::config::TabItemGroup::Start) => bridge::GroupAlignment::Start,
-                        Some(lxapp::config::TabItemGroup::End) => bridge::GroupAlignment::End,
-                        None => bridge::GroupAlignment::Center,
-                    },
-                })
+    lxapp.get_tabbar().and_then(|tabbar| {
+        tabbar.get_item(index).map(|item| bridge::TabBarItem {
+            page_path: item.pagePath.clone(),
+            text: item.text.clone().unwrap_or_default(),
+            icon_path: item.iconPath.clone().unwrap_or_default(),
+            selected_icon_path: item.selectedIconPath.clone().unwrap_or_default(),
+            selected: item.selected,
+            group: match &item.group {
+                Some(lxapp::tabbar::TabItemGroup::Start) => bridge::GroupAlignment::Start,
+                Some(lxapp::tabbar::TabItemGroup::End) => bridge::GroupAlignment::End,
+                None => bridge::GroupAlignment::Center,
+            },
+            badge: item.badge.clone().unwrap_or_default(),
+            has_red_dot: item.has_red_dot,
         })
+    })
 }
 
 /// Handle AppLink URL by processing the path (Universal Link)

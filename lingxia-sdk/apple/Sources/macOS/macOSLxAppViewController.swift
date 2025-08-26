@@ -39,13 +39,15 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     }
 
     // Properties
-    internal var appId: String
+    public var appId: String
     private var initialPath: String
     internal var currentPath: String
     private var webViewContainer: NSView!
     private var tabBarView: NSView?
     private var currentWebView: WKWebView?
-    public var tabBarConfig: TabBarConfig?
+    public var tabBarConfig: TabBar?
+    internal var selectedTabIndex: Int = 0
+    public var isDestroyed: Bool = false
 
     nonisolated(unsafe) private var closeAppObserver: NSObjectProtocol?
     nonisolated(unsafe) private var switchPageObserver: NSObjectProtocol?
@@ -127,11 +129,11 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         setupWebViewContainer()
 
         // Add TabBar to view hierarchy and set constraints based on position and transparency
-        if let tabBar = tabBarView, let tabBarConfig = getTabBarConfig(appId) {
+        if let tabBar = tabBarView, let tabBarConfig = getTabBar(appId) {
             view.addSubview(tabBar)
 
             // Check if TabBar is transparent using platform extension
-            let isTabBarTransparent = TabBarConfig.isTransparent(tabBarConfig.background_color)
+            let isTabBarTransparent = TabBar.isTransparent(tabBarConfig.background_color)
 
             // Get TabBar height from config dimension
             let tabBarHeight: CGFloat = CGFloat(tabBarConfig.dimension)
@@ -254,8 +256,8 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         view.addSubview(webViewContainer)
     }
 
-    private func setupTabBar(config: TabBarConfig? = nil) {
-        guard let tabBarConfig = getTabBarConfig(appId) else {
+    private func setupTabBar(config: TabBar? = nil) {
+        guard let tabBarConfig = getTabBar(appId) else {
             os_log("Failed to get TabBar config for appId: %@", log: Self.log, type: .error, appId)
             return
         }
@@ -263,12 +265,24 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         // Store config as instance property
         self.tabBarConfig = tabBarConfig
 
-        // Create SwiftUI TabBar with shared state management
+        // Set initial selectedTabIndex based on current path
+        let items = tabBarConfig.getItems(appId: appId)
+        if let tabIndex = items.firstIndex(where: { $0.page_path.toString() == currentPath }) {
+            selectedTabIndex = tabIndex
+        } else {
+            selectedTabIndex = 0
+        }
+
+        // Create SwiftUI TabBar with simple binding
         let tabBarView = NSHostingView(rootView: LxAppTabBar(
             appId: appId,
             config: tabBarConfig,
-            selectedIndex: .constant(0),
+            selectedIndex: Binding(
+                get: { self.selectedTabIndex },
+                set: { self.selectedTabIndex = $0 }
+            ),
             onTabSelected: { index, path in
+                self.selectedTabIndex = index
                 self.switchPage(targetPath: path)
             }
         ))
@@ -278,8 +292,6 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         // Store the hosting view
         self.tabBarView = tabBarView
     }
-
-
 
     private func loadWebViewContent() {
         if let webView = WebViewManager.findWebView(appId: appId, path: initialPath) {
@@ -432,9 +444,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
             return
         }
 
-        // Update TabBar UI (without triggering listener)
-        updateTabBarSelection(selectedIndex: tabIndex)
-
+        selectedTabIndex = tabIndex
         showWebViewToUser(targetWebView, path: targetPath)
     }
 
@@ -447,139 +457,10 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         showWebViewToUser(newWebView, path: targetPath)
     }
 
-    private func updateTabBarSelection(selectedIndex: Int) {
-        guard let tabBarView = tabBarView,
-              let stackView = tabBarView.subviews.first as? NSStackView else { return }
-
-        let items = tabBarConfig?.getItems(appId: appId) ?? []
-
-        // Recursively find all buttons in the stack view hierarchy
-        func findAllButtons(in view: NSView) -> [NSButton] {
-            var buttons: [NSButton] = []
-
-            if let button = view as? NSButton {
-                buttons.append(button)
-            } else if let stackView = view as? NSStackView {
-                for arrangedSubview in stackView.arrangedSubviews {
-                    buttons.append(contentsOf: findAllButtons(in: arrangedSubview))
-                }
-            }
-
-            return buttons
-        }
-
-        let allButtons = findAllButtons(in: stackView)
-
-        // Update all buttons
-        for button in allButtons {
-            let isSelected = button.tag == selectedIndex
-            button.contentTintColor = getTabColor(selected: isSelected)
-
-            if button.tag < items.count {
-                let configItem = items[button.tag]
-                let iconPath = configItem.icon_path.toString()
-                if !iconPath.isEmpty {
-                    setButtonIcon(button: button, iconPath: iconPath, isSelected: isSelected, item: configItem)
-                }
-            }
-        }
-    }
-
-    @objc private func tabButtonTapped(_ sender: NSButton) {
-        let index = sender.tag
-        guard let tabBarConfig = tabBarConfig else { return }
-        let items = tabBarConfig.getItems(appId: appId)
-        guard index >= 0 && index < items.count else { return }
-
-        let item = items[index]
-        switchPage(targetPath: item.page_path.toString())
-    }
-
     private func getResourcesPath() -> String {
         let executablePath = Bundle.main.executablePath ?? ""
         let executableDir = (executablePath as NSString).deletingLastPathComponent
         return "\(executableDir)/Resources"
-    }
-
-    private func getTabColor(selected: Bool) -> NSColor {
-        guard let tabBarConfig = tabBarConfig else {
-            return selected ? NSColor.controlAccentColor : NSColor.secondaryLabelColor
-        }
-
-        if selected {
-            return PlatformColor(argb: tabBarConfig.selected_color)
-        } else {
-            return PlatformColor(argb: tabBarConfig.color)
-        }
-    }
-
-    private func setButtonIcon(button: NSButton, iconPath: String, isSelected: Bool, item: TabBarItem) {
-        var image: NSImage?
-
-        // Use selected icon if available and selected
-        let selectedIconPath = item.selected_icon_path.toString()
-        let actualIconPath = (isSelected && !selectedIconPath.isEmpty) ? selectedIconPath : iconPath
-
-        if actualIconPath.hasPrefix("SF:") {
-            // System SF Symbol
-            let symbolName = String(actualIconPath.dropFirst(3))
-            if #available(macOS 11.0, *) {
-                image = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)
-                image?.isTemplate = true
-            }
-        } else if actualIconPath.hasPrefix("/") {
-            // Absolute path
-            image = NSImage(contentsOfFile: actualIconPath)
-        } else {
-            // Try bundle first
-            image = NSImage(named: actualIconPath)
-
-            // If not found in bundle, try with appId in Resources directory
-            if image == nil && !appId.isEmpty {
-                let resourcesPath = getResourcesPath()
-                let fullPath = "\(resourcesPath)/\(appId)/\(actualIconPath)"
-                image = NSImage(contentsOfFile: fullPath)
-                os_log("Loading icon from: %@", log: Self.log, type: .debug, fullPath)
-            }
-        }
-
-        // Set icon size based on TabBar position
-        let isVertical = tabBarConfig?.position == 1 || tabBarConfig?.position == 2
-
-        if let image = image {
-            let iconSize: CGFloat = isVertical ? 20 : 24
-            button.image = resizeImage(image, to: NSSize(width: iconSize, height: iconSize))
-            button.imageScaling = .scaleNone
-            os_log(" Icon loaded successfully: size=%@x%@", log: Self.log, type: .debug, "\(iconSize)", "\(iconSize)")
-        } else {
-            os_log(" Failed to load icon: path=%@", log: Self.log, type: .error, actualIconPath)
-        }
-
-        // Add spacing between image and title for horizontal TabBar
-        if !isVertical {
-            // Create space between icon and text
-            button.imagePosition = .imageAbove
-            button.imageHugsTitle = false
-
-            // Add padding between image and title
-            if let cell = button.cell as? NSButtonCell {
-                cell.imageDimsWhenDisabled = false
-            }
-        }
-    }
-
-    private func resizeImage(_ image: NSImage, to size: NSSize) -> NSImage {
-        let resizedImage = NSImage(size: size)
-        resizedImage.lockFocus()
-
-        // Draw image to fit size
-        let drawRect = NSRect(origin: .zero, size: size)
-        image.draw(in: drawRect)
-
-        resizedImage.unlockFocus()
-        resizedImage.isTemplate = image.isTemplate
-
-        return resizedImage
     }
 
     // Helper method to check if a color is transparent
@@ -601,31 +482,15 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         if let tabBarConfig = self.tabBarConfig {
             let items = tabBarConfig.getItems(appId: appId)
             if let tabIndex = items.firstIndex(where: { $0.page_path.toString() == currentPath }) {
-                updateTabBarSelection(selectedIndex: tabIndex)
+                selectedTabIndex = tabIndex
             }
         }
     }
 
-    /// Set badge text for a specific tab
-    public func setTabBarBadge(index: Int, text: String) {
-        DispatchQueue.main.async {
-            TabBarItemStatesManager.shared.setBadge(at: index, text: text)
+    public func setupWebViewWithoutNavBarUpdate(appId: String, path: String) {
+        if let webView = WebViewManager.findWebView(appId: appId, path: path) {
+            showWebViewToUser(webView, path: path)
         }
-    }
-
-    /// Remove badge from a specific tab
-    public func removeTabBarBadge(index: Int) {
-        TabBarItemStatesManager.shared.removeBadge(at: index)
-    }
-
-    /// Show red dot for a specific tab
-    public func showTabBarRedDot(index: Int) {
-        TabBarItemStatesManager.shared.showRedDot(at: index)
-    }
-
-    /// Hide red dot for a specific tab
-    public func hideTabBarRedDot(index: Int) {
-        TabBarItemStatesManager.shared.hideRedDot(at: index)
     }
 }
 

@@ -225,7 +225,7 @@ public class LxAppPageNavigation {
     }
 
     /// Finds tab index by path
-    public static func findTabIndexByPath(_ targetPath: String, in config: TabBarConfig, appId: String) -> Int? {
+    public static func findTabIndexByPath(_ targetPath: String, in config: TabBar, appId: String) -> Int? {
         let index = LxPageNavigation.findTabIndexByPath(targetPath, in: config, appId: appId)
         return index >= 0 ? index : nil
     }
@@ -243,7 +243,7 @@ public class LxAppPageNavigation {
         viewController.performLxAppClose()
     }
 
-    private static func shouldShowBackButton(for path: String, appId: String, tabBarConfig: TabBarConfig? = nil) -> Bool {
+    private static func shouldShowBackButton(for path: String, appId: String, tabBarConfig: TabBar? = nil) -> Bool {
         return LxPageNavigation.shouldShowBackButton(for: path, appId: appId, tabBarConfig: tabBarConfig)
     }
 
@@ -371,12 +371,12 @@ public struct LxPageNavigation {
     }
 
     /// Determines if back button should be shown
-    public static func shouldShowBackButton(for path: String, appId: String, tabBarConfig: TabBarConfig? = nil) -> Bool {
+    public static func shouldShowBackButton(for path: String, appId: String, tabBarConfig: TabBar? = nil) -> Bool {
         return false
     }
 
     /// Finds tab index by path in tab bar configuration
-    public static func findTabIndexByPath(_ targetPath: String, in config: TabBarConfig, appId: String) -> Int {
+    public static func findTabIndexByPath(_ targetPath: String, in config: TabBar, appId: String) -> Int {
         let items = config.getItems(appId: appId)
         return items.firstIndex { $0.page_path.toString() == targetPath } ?? -1
     }
@@ -411,7 +411,7 @@ public struct LxPageNavigation {
     }
 
     /// Determines if this is a tab navigation
-    public static func isTabNavigation(targetPath: String, tabBarConfig: TabBarConfig?, appId: String) -> Bool {
+    public static func isTabNavigation(targetPath: String, tabBarConfig: TabBar?, appId: String) -> Bool {
         guard let config = tabBarConfig else { return false }
         return findTabIndexByPath(targetPath, in: config, appId: appId) >= 0
     }

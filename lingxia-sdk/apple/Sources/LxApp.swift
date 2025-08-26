@@ -238,6 +238,23 @@ extension LxApp {
         }
     }
 
+    /// Update TabBar UI to refresh badge and red dot data etc
+    nonisolated public static func updateTabBarUI(appid: RustStr) -> Bool {
+        let appIdString = appid.toString()
+
+        return executeOnMain {
+            os_log("LxApp.updateTabBarUI called for appId: %@", log: log, type: .info, appIdString)
+
+            // Notify all TabBar instances to refresh their data from Rust
+            NotificationCenter.default.post(
+                name: .tabBarDataChanged,
+                object: appIdString
+            )
+
+            return true
+        }
+    }
+
     nonisolated public static func launchWithUrl(url: RustStr) {
         let urlString = url.toString()
         guard let url = URL(string: urlString) else {
