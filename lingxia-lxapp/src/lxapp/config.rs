@@ -1,10 +1,8 @@
 pub use navbar::{NavigationBarConfig, NavigationStyle};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-pub use tabbar::{TabBarConfig, TabBarPosition, TabItem, TabItemGroup};
 
 mod navbar;
-mod tabbar;
 
 /// LxApp basic information
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -37,7 +35,7 @@ pub struct LxAppConfig {
     pub(crate) pages: Vec<String>,
 
     /// Tab bar configuration
-    pub(crate) tabBar: Option<TabBarConfig>,
+    tabBar: Option<crate::lxapp::tabbar::TabBar>,
 
     /// Debug mode - when true, developer tools will be enabled for all pages
     #[serde(default)]
@@ -127,12 +125,11 @@ impl LxAppConfig {
         }
     }
 
-    /// Get TabBar configuration with absolute paths
+    /// Get TabBar with absolute paths
     #[allow(dead_code)]
-    pub fn get_tab_bar_config(&self, lxapp: &crate::lxapp::LxApp) -> Option<TabBarConfig> {
+    pub fn get_tab_bar(&self, lxapp: &crate::lxapp::LxApp) -> Option<crate::lxapp::tabbar::TabBar> {
         self.tabBar
             .as_ref()
-            .filter(|tab_bar| tab_bar.is_valid())
             .map(|tab_bar| tab_bar.with_absolute_paths(&lxapp.lxapp_dir))
     }
 }

@@ -202,12 +202,12 @@ impl LxAppDelegate for LxApp {
             .with_path(path.clone());
 
         // Navigate to the new page and get the previous page if there was a switch
-        let previous_page = self
-            .state
-            .lock()
-            .unwrap()
-            .pages
-            .navigate_to_page(path.clone());
+        let previous_page = {
+            let mut state = self.state.lock().unwrap();
+            // Clone tabbar to avoid borrow checker issues
+            let tabbar = state.tabbar.clone();
+            state.pages.navigate_to_page(path.clone(), tabbar.as_ref())
+        };
 
         // Call onHide for the previous page if there was a page switch
         if let Some(prev_path) = previous_page {
@@ -266,7 +266,14 @@ impl LxAppDelegate for LxApp {
         info!("Backbutton pressed").with_appid(self.appid.clone());
 
         // Try to pop the current page from the stack
-        if let Some(previous_page) = self.state.lock().unwrap().pages.pop_from_current_stack() {
+        let previous_page = {
+            let mut state = self.state.lock().unwrap();
+            // Clone tabbar to avoid borrow checker issues
+            let tabbar = state.tabbar.clone();
+            state.pages.pop_from_current_stack(tabbar.as_ref())
+        };
+
+        if let Some(previous_page) = previous_page {
             // it's at top tab page
             if self.config.is_initial_route(&previous_page)
                 || self.config.is_tab_page(&previous_page)

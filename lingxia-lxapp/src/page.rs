@@ -105,24 +105,21 @@ pub trait WebViewController: Send + Sync {
 pub(crate) struct Pages {
     /// Map of path to Page
     pages: HashMap<String, Page>,
-    /// Tab stacks in the same order as tab_paths
+    /// Tab stacks (number of stacks matches number of tabs, or 1 for non-tabbar apps)
     stacks: Vec<PageStack>,
     /// Index of the currently active tab stack
     current_index: usize,
     /// Maximum number of pages to keep in memory
     max_pages: usize,
-    /// Ordered tab paths for index-based access (empty means no tab bar)
-    tab_paths: Vec<String>,
 }
 
 impl Pages {
     pub(crate) fn new() -> Self {
         Self {
             pages: HashMap::new(),
-            stacks: Vec::new(),
+            stacks: vec![PageStack::new()], // Default: one stack for non-tabbar apps
             current_index: 0,
             max_pages: 5,
-            tab_paths: Vec::new(),
         }
     }
 
@@ -131,34 +128,25 @@ impl Pages {
         self.pages.get(path)
     }
 
-    /// Set tab bar items with ordered paths and initialize stacks
-    ///
-    /// # Arguments
-    /// * `tab_paths` - Ordered list of tab page paths
-    pub fn set_tabbar_items(&mut self, tab_paths: Vec<String>) {
-        self.tab_paths = tab_paths;
+    /// Ensure page stacks match TabBar configuration
+    /// Should be called when TabBar is initialized or changed
+    pub fn ensure_stacks_for_tabbar(&mut self, tabbar: Option<&crate::lxapp::tabbar::TabBar>) {
+        let tab_count = tabbar.map(|tb| tb.list.len()).unwrap_or(1);
 
-        // Reset stacks and preallocate for the known number of tabs
-        self.stacks = Vec::with_capacity(self.tab_paths.len());
-
-        // If we have no tabs, make sure we have at least one default stack
-        if self.tab_paths.is_empty() {
-            // For non-tabbar apps, create one default stack
-            self.stacks.push(PageStack::new());
-        } else {
-            // Create stacks for each tab path
-            for _ in &self.tab_paths {
+        // Adjust stack count to match tabs (or 1 for non-tabbar apps)
+        if self.stacks.len() != tab_count {
+            self.stacks.clear();
+            for _ in 0..tab_count {
                 self.stacks.push(PageStack::new());
             }
+            self.current_index = 0;
         }
-
-        // Reset current index to 0
-        self.current_index = 0;
     }
 
-    /// Check if the app has a tab bar
-    fn has_tabbar(&self) -> bool {
-        !self.tab_paths.is_empty()
+    /// Get tab paths from TabBar
+    fn get_tab_paths(&self, tabbar: Option<&crate::lxapp::tabbar::TabBar>) -> Vec<String> {
+        tabbar.map(|tb| tb.list.iter().map(|item| item.pagePath.clone()).collect())
+              .unwrap_or_default()
     }
 
     /// Creates a new page placeholder and initiates WebView creation asynchronously
@@ -222,12 +210,9 @@ impl Pages {
 
     /// Navigates to a page by updating the current stack and marking the page as active
     /// Returns the previous page path if there was a page switch that should trigger onHide
-    pub fn navigate_to_page(&mut self, path: String) -> Option<String> {
-        // Ensure we have at least one stack initialized
-        if self.stacks.is_empty() {
-            self.stacks.push(PageStack::new());
-            self.current_index = 0;
-        }
+    pub fn navigate_to_page(&mut self, path: String, tabbar: Option<&crate::lxapp::tabbar::TabBar>) -> Option<String> {
+        // Ensure stacks match TabBar configuration
+        self.ensure_stacks_for_tabbar(tabbar);
 
         // Get the current page before navigation
         let previous_page = self.stacks[self.current_index]
@@ -235,8 +220,9 @@ impl Pages {
             .map(String::from);
 
         // Handle tab page navigation
-        if self.has_tabbar() && self.tab_paths.contains(&path) {
-            if let Some(index) = self.tab_paths.iter().position(|p| p == &path) {
+        let tab_paths = self.get_tab_paths(tabbar);
+        if tabbar.is_some() && tab_paths.contains(&path) {
+            if let Some(index) = tab_paths.iter().position(|p| p == &path) {
                 self.current_index = index;
 
                 // If this stack is empty, add the tab page as its first page
@@ -269,7 +255,7 @@ impl Pages {
     /// Returns the path of the page to navigate back *to* if successful.
     /// Also destroys the page that was popped.
     /// Returns None if the current page cannot be popped (e.g., it's the tab root).
-    pub fn pop_from_current_stack(&mut self) -> Option<String> {
+    pub fn pop_from_current_stack(&mut self, tabbar: Option<&crate::lxapp::tabbar::TabBar>) -> Option<String> {
         // Make sure we have stacks and current stack isn't empty
         if self.stacks.is_empty() || self.stacks[self.current_index].is_empty() {
             return None;
@@ -282,7 +268,8 @@ impl Pages {
         };
 
         // Check if the current page is a tab page (if we have tabbar)
-        if self.has_tabbar() && self.tab_paths.contains(&current_page) {
+        let tab_paths = self.get_tab_paths(tabbar);
+        if tabbar.is_some() && tab_paths.contains(&current_page) {
             return None; // Cannot pop a tab root page
         }
 
@@ -311,7 +298,8 @@ impl Pages {
 
     /// Destroys the least recently used page to maintain memory limits
     fn destroy_least_active(&mut self) {
-        if self.has_tabbar() {
+        // Check if we have multiple stacks (indicating TabBar app)
+        if self.stacks.len() > 1 {
             // Try to remove pages from non-current stacks first
             for i in 0..self.stacks.len() {
                 if i == self.current_index {

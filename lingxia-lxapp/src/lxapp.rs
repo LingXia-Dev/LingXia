@@ -22,6 +22,7 @@ mod content;
 mod install;
 mod scheme;
 mod security;
+pub mod tabbar;
 mod version;
 
 /// Constants for lxapp storage layout
@@ -207,6 +208,10 @@ pub(crate) struct LxAppState {
     /// Network security configuration for HTTPS domain filtering
     /// Manages which domains this app is allowed to access
     network_security: NetworkSecurity,
+
+    /// TabBar runtime state
+    /// Contains TabBar configuration and dynamic state (badges, red dots, visibility)
+    pub tabbar: Option<tabbar::TabBar>,
 }
 
 impl LxAppState {
@@ -217,6 +222,7 @@ impl LxAppState {
             debug: false,
             opened: false,
             network_security: NetworkSecurity::new(),
+            tabbar: None,
         }
     }
 }
@@ -371,9 +377,14 @@ impl LxApp {
                 self.config = LxAppConfig::from_value(app_json)
                     .map_err(|e| LxAppError::InvalidJsonFile(format!("lxapp.json: {}", e)))?;
 
-                // Set tabbar items in the state
-                let mut state = self.state.lock().unwrap();
-                state.pages.set_tabbar_items(self.config.get_tab_pages());
+                // Initialize TabBar state if config has TabBar
+                if let Some(tabbar_config) = self.config.get_tab_bar(self) {
+                    let mut state = self.state.lock().unwrap();
+                    state.tabbar = Some(tabbar_config.clone());
+                    // Ensure page stacks match TabBar configuration
+                    state.pages.ensure_stacks_for_tabbar(Some(&tabbar_config));
+                }
+
                 Ok(())
             })
             .inspect_err(|_| {
