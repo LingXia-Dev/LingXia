@@ -247,7 +247,7 @@ extension LxApp {
 
             // Notify all TabBar instances to refresh their data from Rust
             NotificationCenter.default.post(
-                name: .tabBarDataChanged,
+                name: .tabBarStateChanged,
                 object: appIdString
             )
 

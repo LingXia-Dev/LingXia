@@ -10,7 +10,7 @@ import UIKit
 #endif
 
 extension Notification.Name {
-    static let tabBarDataChanged = Notification.Name("TabBarDataChanged")
+    static let tabBarStateChanged = Notification.Name("TabBarDataChanged")
 }
 
 /// Extensions for TabBar
@@ -141,7 +141,7 @@ public struct LxAppTabBar: View {
         }
         .background(getTabBarBackgroundColor())
         .id("tabbar-\(selectedIndex)-\(refreshTrigger)")
-        .onReceive(NotificationCenter.default.publisher(for: .tabBarDataChanged)) { notification in
+        .onReceive(NotificationCenter.default.publisher(for: .tabBarStateChanged)) { notification in
             // Trigger UI refresh when updateTabBarUI() is called for this app
             if let notificationAppId = notification.object as? String, notificationAppId == appId {
                 refreshTrigger.toggle()
@@ -860,7 +860,7 @@ public class iOSTabBarWrapper: UIView {
 
         // Listen for TabBar update notifications
         tabBarUpdateObserver = NotificationCenter.default.addObserver(
-            forName: .tabBarDataChanged,
+            forName: .tabBarStateChanged,
             object: nil,
             queue: .main
         ) { [weak self] notification in
