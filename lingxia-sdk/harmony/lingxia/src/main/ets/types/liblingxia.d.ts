@@ -16,6 +16,15 @@ declare module 'liblingxia.so' {
   }
 
   /**
+   * TabBar position enum
+   */
+  export enum TabBarPosition {
+    Bottom = 0,
+    Left = 1,
+    Right = 2
+  }
+
+  /**
    * TabBar item structure
    */
   export interface TabBarItem {
@@ -24,19 +33,23 @@ declare module 'liblingxia.so' {
     iconPath: string;
     selectedIconPath: string;
     selected: boolean;
+    group: number;          // 0=center (default), 1=start, 2=end
+    badge?: string;         // Badge text (e.g., "99+", "NEW")
+    hasRedDot?: boolean;    // Show red dot indicator
   }
 
   /**
-   * TabBar configuration structure
+   * TabBar state structure with items array
    */
-  export interface TabBarConfig {
+  export interface TabBarState {
     color: number;
     selectedColor: number;
     backgroundColor: number;
     borderStyle: number;
-    position: number;
+    position: TabBarPosition;
     dimension: number;
-    list: TabBarItem[];
+    isVisible: boolean;
+    items: TabBarItem[];
   }
 
   /**
@@ -78,11 +91,13 @@ declare module 'liblingxia.so' {
   export function getLxAppInfo(appid: string): LxAppInfo | null;
 
   /**
-   * Get tab bar configuration for a specific LxApp
+   * Get TabBar state for a specific LxApp with complete items array
    * @param appid - LxApp ID
-   * @returns Tab bar configuration or null if not found
+   * @returns TabBar state or null if not found
    */
-  export function getTabBarConfig(appid: string): TabBarConfig | null;
+  export function getTabBar(appid: string): TabBarState | null;
+
+
 
   /**
    * Get page configuration for a specific LxApp page

@@ -31,16 +31,17 @@ pub struct LxAppInfo {
     pub debug: bool,
 }
 
-/// NAPI-compatible TabBar configuration
+/// NAPI-compatible TabBar state with items array
 #[napi(object)]
-pub struct TabBarConfig {
+pub struct TabBarState {
     pub color: u32,
     pub selected_color: u32,
     pub background_color: u32,
     pub border_style: u32,
-    pub list: Vec<TabItem>,
     pub position: TabBarPosition,
     pub dimension: i32,
+    pub is_visible: bool,
+    pub items: Vec<TabItem>,
 }
 
 /// NAPI-compatible TabBar position enum
@@ -60,6 +61,8 @@ pub struct TabItem {
     pub selected_icon_path: Option<String>,
     pub selected: bool,
     pub group: i32, // 0=middle/center (default), 1=start (left), 2=end (right)
+    pub badge: Option<String>, // Optional - only populated by get_tab_bar_item
+    pub has_red_dot: Option<bool>, // Optional - only populated by get_tab_bar_item
 }
 
 /// NAPI-compatible Navigation style enum
@@ -194,44 +197,45 @@ fn get_lx_app_info(appid: String) -> Option<LxAppInfo> {
     })
 }
 
-/// Get tab bar configuration
+/// Get complete TabBar state with items array
 #[napi]
-fn get_tab_bar_config(appid: String) -> Option<TabBarConfig> {
+fn get_tab_bar(appid: String) -> Option<TabBarState> {
     let lxapp = lxapp::get(appid);
-    let app_config = lxapp.get_config();
-    let rust_config = app_config.get_tab_bar_config(&lxapp)?;
 
-    let position = match rust_config.position {
-        lxapp::config::TabBarPosition::Bottom => TabBarPosition::Bottom,
-        lxapp::config::TabBarPosition::Left => TabBarPosition::Left,
-        lxapp::config::TabBarPosition::Right => TabBarPosition::Right,
-    };
+    lxapp.get_tabbar().map(|tabbar| {
+        let items: Vec<TabItem> = tabbar
+            .list
+            .iter()
+            .map(|item| TabItem {
+                page_path: item.pagePath.clone(),
+                text: item.text.clone(),
+                icon_path: item.iconPath.clone(),
+                selected_icon_path: item.selectedIconPath.clone(),
+                selected: item.selected,
+                group: match &item.group {
+                    Some(lxapp::tabbar::TabItemGroup::Start) => 1,
+                    Some(lxapp::tabbar::TabItemGroup::End) => 2,
+                    None => 0,
+                },
+                badge: item.badge.clone(),
+                has_red_dot: Some(item.has_red_dot),
+            })
+            .collect();
 
-    let list = rust_config
-        .list
-        .into_iter()
-        .map(|item| TabItem {
-            page_path: item.pagePath,
-            text: item.text,
-            icon_path: item.iconPath,
-            selected_icon_path: item.selectedIconPath,
-            selected: item.selected,
-            group: match &item.group {
-                Some(lxapp::config::TabItemGroup::Start) => 1,
-                Some(lxapp::config::TabItemGroup::End) => 2,
-                None => 0,
+        TabBarState {
+            color: parse_color_to_u32(&tabbar.color, 0xFF666666),
+            selected_color: parse_color_to_u32(&tabbar.selectedColor, 0xFF1677FF),
+            background_color: parse_color_to_u32(&tabbar.backgroundColor, 0xFFFFFFFF),
+            border_style: parse_color_to_u32(&tabbar.borderStyle, 0xFFF0F0F0),
+            position: match tabbar.position {
+                lxapp::tabbar::TabBarPosition::Bottom => TabBarPosition::Bottom,
+                lxapp::tabbar::TabBarPosition::Left => TabBarPosition::Left,
+                lxapp::tabbar::TabBarPosition::Right => TabBarPosition::Right,
             },
-        })
-        .collect();
-
-    Some(TabBarConfig {
-        color: parse_color_to_u32(&rust_config.color, 0xFF666666),
-        selected_color: parse_color_to_u32(&rust_config.selectedColor, 0xFF1677FF),
-        background_color: parse_color_to_u32(&rust_config.backgroundColor, 0xFFFFFFFF),
-        border_style: parse_color_to_u32(&rust_config.borderStyle, 0xFFF0F0F0),
-        list,
-        position,
-        dimension: rust_config.dimension,
+            dimension: tabbar.dimension,
+            is_visible: tabbar.is_visible,
+            items,
+        }
     })
 }
 

@@ -5,8 +5,9 @@ import { common } from '@kit.AbilityKit';
 import { LxApp } from './LxApp';
 import { findWebview, handleScrollChanged, toWebTag, extractWebTag, WebTagParts, addWebViewUiCallback, removeWebViewUiCallback, WebViewInfo } from './WebView';
 import { NavigationBar, type NavigationBarConfig } from './NavigationBar';
-import { TabBar, TabBarPosition, type TabBarConfig, type TabBarItem } from './TabBar';
-import { getTabBarConfig, getNavigationBarConfig, onPageShow } from 'liblingxia.so';
+import { TabBar } from './TabBar';
+import { TabBarPosition, type TabBarItem } from 'liblingxia.so';
+import liblingxia, { TabBarState, getNavigationBarConfig, onPageShow } from 'liblingxia.so';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.Container';
@@ -19,13 +20,19 @@ export struct LxAppContainer {
   @Prop closeCallback: string = ''
   @State path: string = ''
 
+  // Static registry for TabBar updates (simple and direct)
+  private static activeContainers: Map<string, LxAppContainer> = new Map()
+
   @State pageConfig: NavigationBarConfig | null = null
-  @State tabBarConfig: TabBarConfig | null = null
+  @State tabBarState: TabBarState | null = null
   @State selectedTabIndex: number = 0
+  @State tabBarRefreshKey: number = 0  // Force TabBar refresh when data changes
   @State webViewComponents: Map<string, webview.WebviewController> = new Map() // Store Web components for each WebView
   @State currentWebTag: string = '' // Current active WebView tag
   @State webViewKeys: string[] = [] // Array of webView keys for ForEach
   private pageShowTriggered: Set<string> = new Set() // Track which pages have triggered onPageShow
+
+
   private webViewUiCallback = (action: string, info: WebViewInfo) => {
     this.handleWebViewUiEvent(action, info);
   }
@@ -73,12 +80,16 @@ export struct LxAppContainer {
     this.path = this.initialPath;
     hilog.info(DOMAIN, TAG, `Container creating for ${this.appId}:${this.path}, isHome=${this.isHomeLxApp()}`);
 
+    // Register this container for TabBar updates
+    LxAppContainer.activeContainers.set(this.appId, this);
+
     // Add WebView UI callback to handle component creation (supports multiple containers)
     addWebViewUiCallback(this.webViewUiCallback);
 
     this.pageConfig = getNavigationBarConfig(this.appId, this.path);
 
-    this.tabBarConfig = getTabBarConfig(this.appId);
+    // Load TabBar data using new data-driven API
+    this.loadTabBarState();
     this.setInitialSelectedTab();
 
     // Always set currentWebTag for initial page to ensure visibility
@@ -97,9 +108,60 @@ export struct LxAppContainer {
   }
 
   aboutToDisappear() {
+    // Unregister this container
+    LxAppContainer.activeContainers.delete(this.appId);
+
     // Remove WebView UI callback when container is destroyed
     removeWebViewUiCallback(this.webViewUiCallback);
     hilog.info(DOMAIN, TAG, `Container destroyed for ${this.appId}:${this.path}`);
+  }
+
+  /**
+   * Load TabBar state from Rust - simplified with complete state
+   */
+  private loadTabBarState() {
+    try {
+      this.tabBarState = liblingxia.getTabBar(this.appId);
+
+      if (this.tabBarState) {
+        hilog.info(DOMAIN, TAG, `TabBar data loaded: ${this.tabBarState.items.length} items, position=${this.tabBarState.position}`);
+      } else {
+        hilog.warn(DOMAIN, TAG, `No TabBar data found for appId: ${this.appId}`);
+      }
+    } catch (error) {
+      hilog.error(DOMAIN, TAG, `Failed to load TabBar data: ${error}`);
+      this.tabBarState = null;
+    }
+  }
+
+  /**
+   * Refresh TabBar data from Rust (called when Rust triggers UI update)
+   * This is the data-driven update mechanism
+   */
+  public refreshTabBarData() {
+
+    this.tabBarState = null;
+    this.loadTabBarState();
+    this.tabBarRefreshKey++;
+
+    hilog.info(DOMAIN, TAG, `TabBar refresh completed, refreshKey: ${this.tabBarRefreshKey}`);
+  }
+
+  /**
+   * Static method to update TabBar UI for a specific appId
+   * Called by NativeBridge when Rust triggers updateTabBarUI
+   */
+  public static updateTabBarUI(appId: string): boolean {
+    hilog.info(DOMAIN, TAG, `updateTabBarUI called for appId: ${appId}`);
+
+    const container = LxAppContainer.activeContainers.get(appId);
+    if (container) {
+      container.refreshTabBarData();
+      return true;
+    } else {
+      hilog.warn(DOMAIN, TAG, `No active container found for appId: ${appId}`);
+      return false;
+    }
   }
 
   /**
@@ -167,7 +229,7 @@ export struct LxAppContainer {
     if (this.isTabBarVertical()) {
 
       Row() {
-        if (this.tabBarConfig && this.tabBarConfig.position === TabBarPosition.LEFT) {
+        if (this.tabBarState && this.tabBarState.position === TabBarPosition.Left) {
           this.buildTabBar()
         }
 
@@ -191,7 +253,7 @@ export struct LxAppContainer {
         .layoutWeight(1)
         .height('100%')
 
-        if (this.tabBarConfig && this.tabBarConfig.position === TabBarPosition.RIGHT) {
+        if (this.tabBarState && this.tabBarState.position === TabBarPosition.Right) {
           this.buildTabBar()
         }
       }
@@ -222,7 +284,7 @@ export struct LxAppContainer {
           this.buildNavigationBar()
           this.buildWebViewArea()
 
-          if (this.tabBarConfig && (this.tabBarConfig.position === TabBarPosition.BOTTOM || !this.tabBarConfig.position)) {
+          if (this.tabBarState && (this.tabBarState.position === TabBarPosition.Bottom || !this.tabBarState.position)) {
             this.buildTabBar()
           }
         }
@@ -255,7 +317,7 @@ export struct LxAppContainer {
    * When transparent, TabBar overlays WebView; when opaque, they are separate
    */
   private isTabBarTransparent(): boolean {
-    const bgColor = this.tabBarConfig?.backgroundColor ?? 0xFFFFFFFF;
+    const bgColor: number = this.tabBarState?.backgroundColor ?? 0xFFFFFFFF;
     return ((bgColor >>> 24) & 0xFF) === 0;
   }
 
@@ -263,20 +325,20 @@ export struct LxAppContainer {
    * Check if TabBar is vertical (left/right position)
    */
   private isTabBarVertical(): boolean {
-    return this.tabBarConfig?.position === TabBarPosition.LEFT || this.tabBarConfig?.position === TabBarPosition.RIGHT;
+    return this.tabBarState?.position === TabBarPosition.Left || this.tabBarState?.position === TabBarPosition.Right;
   }
 
   /**
    * Get TabBar alignment for Stack layout
    */
   private getTabBarAlignment(): Alignment {
-    const position = this.tabBarConfig?.position || 'bottom';
+    const position: number = this.tabBarState?.position ?? TabBarPosition.Bottom;
     switch (position) {
-      case 'left':
+      case TabBarPosition.Left:
         return Alignment.Start;
-      case 'right':
+      case TabBarPosition.Right:
         return Alignment.End;
-      case 'bottom':
+      case TabBarPosition.Bottom:
       default:
         return Alignment.Bottom;
     }
@@ -287,11 +349,12 @@ export struct LxAppContainer {
    */
   @Builder
   buildTabBar(): void {
-    if (this.tabBarConfig && this.tabBarConfig.list.length > 0) {
+    if (this.tabBarState && this.tabBarState.items.length > 0) {
       TabBar({
-        config: this.tabBarConfig,
+        tabbar: this.tabBarState,
         appId: this.appId,
         selectedIndex: this.selectedTabIndex,
+        refreshKey: this.tabBarRefreshKey,
         onTabSelected: (appId: string, index: number, item: TabBarItem): void => this.handleTabSelected(index)
       })
     }
@@ -489,15 +552,15 @@ export struct LxAppContainer {
   }
 
   private setInitialSelectedTab() {
-    if (this.tabBarConfig && this.tabBarConfig.list.length > 0) {
+    if (this.tabBarState && this.tabBarState.items.length > 0) {
       // Find corresponding tab based on current path
-      const currentTabIndex = this.tabBarConfig.list.findIndex((item: TabBarItem) =>
+      const currentTabIndex: number = this.tabBarState.items.findIndex((item: TabBarItem): boolean =>
         this.path.includes(item.pagePath)
       );
       this.selectedTabIndex = currentTabIndex >= 0 ? currentTabIndex : 0;
 
       hilog.info(DOMAIN, TAG, `setInitialSelectedTab: appId=${this.appId}, path=${this.path}, selectedTabIndex=${this.selectedTabIndex}`);
-      this.tabBarConfig.list.forEach((item, index) => {
+      this.tabBarState.items.forEach((item: TabBarItem, index: number): void => {
         hilog.info(DOMAIN, TAG, `Tab ${index}: path=${item.pagePath}, selected=${index === this.selectedTabIndex} (appId: ${this.appId})`);
       });
     }
@@ -505,7 +568,7 @@ export struct LxAppContainer {
 
   private handleTabSelected(index: number) {
     hilog.info(DOMAIN, TAG, `Tab selected: ${index}, current: ${this.selectedTabIndex}`);
-    if (this.tabBarConfig && index < this.tabBarConfig.list.length) {
+    if (this.tabBarState && index < this.tabBarState.items.length) {
       this.switchToTabByIndex(index);
     }
   }
@@ -514,12 +577,12 @@ export struct LxAppContainer {
    * Switch to tab by index
    */
   private switchToTabByIndex(index: number): void {
-    if (!this.tabBarConfig || index < 0 || index >= this.tabBarConfig.list.length) {
+    if (!this.tabBarState || index < 0 || index >= this.tabBarState.items.length) {
       hilog.warn(DOMAIN, TAG, `Invalid tab index: ${index}`);
       return;
     }
 
-    const newPath = this.tabBarConfig.list[index].pagePath;
+    const newPath: string = this.tabBarState.items[index].pagePath;
 
     // Skip if already on this tab
     if (this.selectedTabIndex === index) {
@@ -558,8 +621,6 @@ export struct LxAppContainer {
     // Update page config
     this.pageConfig = getNavigationBarConfig(this.appId, newPath);
 
-
-
     // Update manager state if this is home lxapp
     if (this.isHomeLxApp()) {
       const manager = LxApp.managerInstance;
@@ -578,9 +639,9 @@ export struct LxAppContainer {
   private switchToPageInternal(path: string): void {
     hilog.info(DOMAIN, TAG, `switchToPageInternal called: ${this.appId}:${path}`);
 
-    // Use cached TabBar config to find tab index
-    if (this.tabBarConfig) {
-      const tabIndex = this.tabBarConfig.list.findIndex(item =>
+    // Use TabBar data to find tab index
+    if (this.tabBarState) {
+      const tabIndex: number = this.tabBarState.items.findIndex((item: TabBarItem): boolean =>
         item.pagePath === path || item.pagePath.includes(path)
       );
 
@@ -620,8 +681,6 @@ export struct LxAppContainer {
         LxApp.closeLxApp(this.appId);
     }
   }
-
-
 
   /**
    * Build individual WebView component for a specific webTag

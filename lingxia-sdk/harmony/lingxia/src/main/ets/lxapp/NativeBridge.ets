@@ -3,6 +3,7 @@ import { webview } from '@kit.ArkWeb';
 import { LxApp } from './LxApp';
 import { LxAppToast, ToastIcon, ToastPosition } from './LxAppToast';
 import { LxAppModal, ModalResult } from './LxAppModal';
+import { LxAppContainer } from './LxAppContainer';
 import {
   createWebViewController,
   destroyWebViewController,
@@ -111,6 +112,22 @@ class NativeBridge {
         hilog.error(DOMAIN, TAG, `Error parsing modal options: ${error}`);
         const errorResult: ModalResult = { confirm: false, cancel: true, content: "" };
         return errorResult;
+      }
+    });
+
+    // Update TabBar APIs
+    this.register('updateTabBarUI', (appId: string): boolean => {
+      try {
+        const success = LxAppContainer.updateTabBarUI(appId);
+        if (success) {
+          hilog.info(DOMAIN, TAG, `TabBar UI updated successfully for ${appId}`);
+        } else {
+          hilog.warn(DOMAIN, TAG, `Failed to find active container for TabBar update: ${appId}`);
+        }
+        return success;
+      } catch (error) {
+        hilog.error(DOMAIN, TAG, `Failed to update TabBar UI: ${error}`);
+        return false;
       }
     });
 

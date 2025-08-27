@@ -1,62 +1,25 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
-
-// TabBar position constants
-export class TabBarPosition {
-  static readonly BOTTOM: number = 0;
-  static readonly LEFT: number = 1;
-  static readonly RIGHT: number = 2;
-}
-
-/**
- * TabBar configuration interfaces
- */
-export interface TabBarItem {
-  pagePath: string;
-  text?: string;            // Text is optional - supports icon-only tabs
-  iconPath?: string;
-  selectedIconPath?: string;
-  selected?: boolean;       // Whether this tab is initially selected
-  badge?: string;           // Badge text (e.g., "99+", "NEW")
-  redDot?: boolean;         // Show red dot indicator
-  badgeStyle?: BadgeStyle;  // Badge styling options
-  group?: number;           // Group positioning: 0=center (default), 1=start, 2=end
-}
-
-export interface BadgeStyle {
-  backgroundColor?: string;  // Badge background color
-  color?: string;           // Badge text color
-  fontSize?: number;        // Badge font size
-  borderRadius?: number;    // Badge border radius
-}
-
-export interface TabBarConfig {
-  color?: number;
-  selectedColor?: number;
-  backgroundColor?: number;
-  borderStyle?: number;     // Border color as ARGB value
-  position?: number;        // 0=bottom, 1=left, 2=right
-  dimension?: number;       // Dimension in dp: height for bottom, width for left/right
-  list: TabBarItem[];
-}
+import { TabBarPosition, type TabBarItem, type TabBarState } from 'liblingxia.so';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.TabBar';
 
 /**
  * TabBar component for LxApp
- * Displays bottom tab bar with navigation items
+ * Uses cached static tabbar for performance while supporting dynamic updates
  */
 @Component
 export struct TabBar {
-  @Prop config: TabBarConfig;
+  @Prop tabbar: TabBarState;  // Cached static tabbar for performance
   @Prop appId: string = '';
   @Prop selectedIndex: number = 0;  // Use @Prop instead of @State to sync with parent
+  @Prop refreshKey: number = 0;  // Force refresh when data changes
 
   // Callback functions
   onTabSelected?: (appId: string, index: number, item: TabBarItem) => void;
 
   aboutToAppear() {
-    hilog.info(DOMAIN, TAG, `TabBar aboutToAppear: ${this.config.list.length} items`);
+    hilog.info(DOMAIN, TAG, `TabBar created: ${this.tabbar.items.length} items, refreshKey: ${this.refreshKey}`);
   }
 
   build() {
@@ -81,8 +44,8 @@ export struct TabBar {
       .position(this.isTransparent() ? {
         top: 0,
         bottom: 0,
-        left: this.config.position === TabBarPosition.LEFT ? 0 : undefined,
-        right: this.config.position === TabBarPosition.RIGHT ? 0 : undefined
+        left: this.tabbar.position === TabBarPosition.Left ? 0 : undefined,
+        right: this.tabbar.position === TabBarPosition.Right ? 0 : undefined
       } : {})
     } else {
       // Horizontal layout for bottom position
@@ -102,7 +65,7 @@ export struct TabBar {
       .border(this.getHorizontalBorder())
       .linearGradient(this.getHorizontalGradient())
       .position(this.isTransparent() ? {
-        bottom: this.config.position === TabBarPosition.BOTTOM ? 0 : undefined,
+        bottom: this.tabbar.position === TabBarPosition.Bottom ? 0 : undefined,
         left: 0,
         right: 0
       } : {})
@@ -121,30 +84,29 @@ export struct TabBar {
             .height(24)
             .fillColor(this.selectedIndex === index ? this.getSelectedColor() : this.getNormalColor())
             .objectFit(ImageFit.Contain)
-            .onError((error) => {
-              const currentIconPath = this.selectedIndex === index ?
+            .onError((error: ImageError): void => {
+              const currentIconPath: string | undefined = this.selectedIndex === index ?
                 (item.selectedIconPath || item.iconPath) :
                 item.iconPath;
               hilog.error(DOMAIN, TAG, `Tab ${index} icon load error: ${JSON.stringify(error)}, path: ${currentIconPath}`);
             })
-            .onComplete(() => {
-              const currentIconPath = this.selectedIndex === index ?
-                (item.selectedIconPath || item.iconPath) :
-                item.iconPath;
-            })
+
         }
 
         // Badge or red dot
         if (item.badge) {
-          // Badge with text
           Text(item.badge)
-            .fontSize(item.badgeStyle?.fontSize || 10)
-            .fontColor(item.badgeStyle?.color || '#ffffff')
-            .backgroundColor(item.badgeStyle?.backgroundColor || '#ff0000')
-            .borderRadius(item.badgeStyle?.borderRadius || 8)
-            .padding({ left: 4, right: 4, top: 1, bottom: 1 })
-            .position({ x: 16, y: -4 })
+            .fontSize(10)
+            .fontColor('#ffffff')
+            .backgroundColor('#FA5151')
+            .borderRadius(8)
+            .padding({ left: 6, right: 6, top: 2, bottom: 2 })
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.None })
+            .textAlign(TextAlign.Center)
+            .position({ x: 16, y: -8 })
             .zIndex(1)
+            .height(16)
         } else if (item.redDot) {
           // Red dot indicator
           Circle()
@@ -155,7 +117,7 @@ export struct TabBar {
             .zIndex(1)
         }
       }
-      .width(24)
+      .width(48)
       .height(24)
 
       // Tab text - optional, only show if provided
@@ -199,7 +161,7 @@ export struct TabBar {
    */
   @Builder
   buildCenteredVerticalLayout() {
-    ForEach(this.config.list, (item: TabBarItem, index: number) => {
+    ForEach(this.tabbar.items, (item: TabBarItem, index: number) => {
       this.buildTabItem(item, index)
     })
   }
@@ -209,7 +171,7 @@ export struct TabBar {
    */
   @Builder
   buildCenteredHorizontalLayout() {
-    ForEach(this.config.list, (item: TabBarItem, index: number) => {
+    ForEach(this.tabbar.items, (item: TabBarItem, index: number) => {
       this.buildTabItem(item, index)
     })
   }
@@ -221,7 +183,7 @@ export struct TabBar {
   buildGroupedVerticalLayout() {
     // Start items
     ForEach(this.getStartItems(), (item: TabBarItem, index: number) => {
-      this.buildTabItem(item, this.config.list.indexOf(item))
+      this.buildTabItem(item, this.tabbar.items.indexOf(item))
       if (index < this.getStartItems().length - 1) {
         Blank().height(16) // Adaptive spacer
       }
@@ -233,7 +195,7 @@ export struct TabBar {
 
     // End items
     ForEach(this.getEndItems(), (item: TabBarItem, index: number) => {
-      this.buildTabItem(item, this.config.list.indexOf(item))
+      this.buildTabItem(item, this.tabbar.items.indexOf(item))
       if (index < this.getEndItems().length - 1) {
         Blank().height(16) // Adaptive spacer
       }
@@ -247,7 +209,7 @@ export struct TabBar {
   buildGroupedHorizontalLayout() {
     // Start items
     ForEach(this.getStartItems(), (item: TabBarItem, index: number) => {
-      this.buildTabItem(item, this.config.list.indexOf(item))
+      this.buildTabItem(item, this.tabbar.items.indexOf(item))
       if (index < this.getStartItems().length - 1) {
         Blank().width(24) // Adaptive spacer
       }
@@ -259,7 +221,7 @@ export struct TabBar {
 
     // End items
     ForEach(this.getEndItems(), (item: TabBarItem, index: number) => {
-      this.buildTabItem(item, this.config.list.indexOf(item))
+      this.buildTabItem(item, this.tabbar.items.indexOf(item))
       if (index < this.getEndItems().length - 1) {
         Blank().width(24) // Adaptive spacer
       }
@@ -270,15 +232,15 @@ export struct TabBar {
    * Check if any item has group field (grouped mode vs centered mode)
    */
   private hasGroupField(): boolean {
-    return this.config.list.some(item => (item.group ?? 0) !== 0);
+    return this.tabbar.items.some((item: TabBarItem): boolean => (item.group ?? 0) !== 0);
   }
 
   /**
    * Get start items (group 0 or 1)
    */
   private getStartItems(): TabBarItem[] {
-    return this.config.list.filter(item => {
-      const group = item.group ?? 0;
+    return this.tabbar.items.filter((item: TabBarItem): boolean => {
+      const group: number = item.group ?? 0;
       return group !== 2; // 0 (no group) or 1 (start) → all treated as start
     });
   }
@@ -287,8 +249,8 @@ export struct TabBar {
    * Get end items (group 2)
    */
   private getEndItems(): TabBarItem[] {
-    return this.config.list.filter(item => {
-      const group = item.group ?? 0;
+    return this.tabbar.items.filter((item: TabBarItem): boolean => {
+      const group: number = item.group ?? 0;
       return group === 2; // end
     });
   }
@@ -297,7 +259,7 @@ export struct TabBar {
    * Get icon URL with proper file:// prefix for absolute paths
    */
   private getIconUrl(item: TabBarItem, index: number): string {
-    const iconPath = this.selectedIndex === index ?
+    const iconPath: string | undefined = this.selectedIndex === index ?
       (item.selectedIconPath || item.iconPath) :
       item.iconPath;
 
@@ -306,7 +268,7 @@ export struct TabBar {
     }
 
     // Add file:// prefix for absolute paths
-    const fileUrl = iconPath.startsWith('/') ? `file://${iconPath}` : iconPath;
+    const fileUrl: string = iconPath.startsWith('/') ? `file://${iconPath}` : iconPath;
     return fileUrl;
   }
 
@@ -314,21 +276,21 @@ export struct TabBar {
    * Get normal text/icon color
    */
   private getNormalColor(): ResourceColor {
-    return this.toResourceColor(this.config.color ?? 0xFF666666);
+    return this.toResourceColor(this.tabbar.color ?? 0xFF666666);
   }
 
   /**
    * Get selected text/icon color
    */
   private getSelectedColor(): ResourceColor {
-    return this.toResourceColor(this.config.selectedColor ?? 0xFF1677FF);
+    return this.toResourceColor(this.tabbar.selectedColor ?? 0xFF1677FF);
   }
 
   /**
    * Get background color - supports transparent with better integration
    */
   private getBackgroundColor(): ResourceColor {
-    const bgColor = this.config.backgroundColor ?? 0xFFFFFFFF;
+    const bgColor: number = this.tabbar.backgroundColor ?? 0xFFFFFFFF;
     return this.toResourceColor(bgColor);
   }
 
@@ -336,7 +298,7 @@ export struct TabBar {
    * Get border color
    */
   private getBorderColor(): ResourceColor {
-    return this.toResourceColor(this.config.borderStyle ?? 0xFFF0F0F0);
+    return this.toResourceColor(this.tabbar.borderStyle ?? 0xFFF0F0F0);
   }
 
   /**
@@ -351,21 +313,21 @@ export struct TabBar {
    */
   private getTabBarSize(): number {
     // Use configured dimension (Rust provides default value, but TypeScript interface might be undefined)
-    return this.config.dimension ?? (this.isVertical() ? 64 : 72);
+    return this.tabbar.dimension ?? (this.isVertical() ? 64 : 72);
   }
 
   /**
    * Check if TabBar is vertical (left/right position)
    */
   private isVertical(): boolean {
-    return this.config.position === TabBarPosition.LEFT || this.config.position === TabBarPosition.RIGHT;
+    return this.tabbar.position === TabBarPosition.Left || this.tabbar.position === TabBarPosition.Right;
   }
 
   /**
    * Check if TabBar is transparent using bit operations
    */
   private isTransparent(): boolean {
-    const bgColor = this.config.backgroundColor ?? 0xFFFFFFFF;
+    const bgColor: number = this.tabbar.backgroundColor ?? 0xFFFFFFFF;
     return ((bgColor >>> 24) & 0xFF) === 0;
   }
 
@@ -432,13 +394,13 @@ export struct TabBar {
    * Get border for vertical layout
    */
   private getVerticalBorder(): BorderOptions {
-    const position = this.config.position;
-    if (position === TabBarPosition.LEFT) {
+    const position: number = this.tabbar.position;
+    if (position === TabBarPosition.Left) {
       return {
         width: { right: this.isTransparent() ? 0 : this.getBorderWidth() },
         color: this.getBorderColor()
       };
-    } else if (position === TabBarPosition.RIGHT) {
+    } else if (position === TabBarPosition.Right) {
       return {
         width: { left: this.isTransparent() ? 0 : this.getBorderWidth() },
         color: this.getBorderColor()
@@ -471,7 +433,7 @@ export struct TabBar {
  */
 export class TabBarController {
   private static instance: TabBarController | null = null;
-  private currentConfig: TabBarConfig | null = null;
+  private currenttabbar: TabBarState | null = null;
   private appId: string = '';
   private selectedIndex: number = 0;
 
@@ -490,106 +452,28 @@ export class TabBarController {
   }
 
   /**
-   * Update tab bar configuration
+   * Update tab bar tabbaruration
    */
-  public updateConfig(appId: string, config: TabBarConfig): void {
-    hilog.info(DOMAIN, TAG, `Updating TabBar config for appId: ${appId}`);
+  public updatetabbar(appId: string, tabbar: TabBarState): void {
+    hilog.info(DOMAIN, TAG, `Updating TabBar tabbar for appId: ${appId}`);
     this.appId = appId;
-    this.currentConfig = config;
-  }
-
-  /**
-   * Set tab bar badge
-   * @param index Tab index
-   * @param text Badge text (e.g., "99+", "NEW")
-   */
-  public setTabBarBadge(index: number, text: string): void {
-    if (this.currentConfig && index >= 0 && index < this.currentConfig.list.length) {
-      this.currentConfig.list[index].badge = text;
-      this.currentConfig.list[index].redDot = false; // Clear red dot when setting badge
-      hilog.info(DOMAIN, TAG, `Set tab ${index} badge: ${text}`);
-    }
-  }
-
-  /**
-   * Remove tab bar badge
-   * @param index Tab index
-   */
-  public removeTabBarBadge(index: number): void {
-    if (this.currentConfig && index >= 0 && index < this.currentConfig.list.length) {
-      this.currentConfig.list[index].badge = undefined;
-      hilog.info(DOMAIN, TAG, `Removed tab ${index} badge`);
-    }
-  }
-
-  /**
-   * Show tab bar red dot
-   * @param index Tab index
-   */
-  public showTabBarRedDot(index: number): void {
-    if (this.currentConfig && index >= 0 && index < this.currentConfig.list.length) {
-      this.currentConfig.list[index].redDot = true;
-      this.currentConfig.list[index].badge = undefined; // Clear badge when showing red dot
-      hilog.info(DOMAIN, TAG, `Show tab ${index} red dot`);
-    }
-  }
-
-  /**
-   * Hide tab bar red dot
-   * @param index Tab index
-   */
-  public hideTabBarRedDot(index: number): void {
-    if (this.currentConfig && index >= 0 && index < this.currentConfig.list.length) {
-      this.currentConfig.list[index].redDot = false;
-      hilog.info(DOMAIN, TAG, `Hide tab ${index} red dot`);
-    }
-  }
-
-  /**
-   * Set tab bar style
-   * @param style Style configuration
-   */
-  public setTabBarStyle(style: Partial<TabBarConfig>): void {
-    if (!this.currentConfig) return;
-
-    if (style.color) this.currentConfig.color = style.color;
-    if (style.selectedColor) this.currentConfig.selectedColor = style.selectedColor;
-    if (style.backgroundColor) this.currentConfig.backgroundColor = style.backgroundColor;
-    if (style.borderStyle) this.currentConfig.borderStyle = style.borderStyle;
-
-    hilog.info(DOMAIN, TAG, 'Updated tab bar style');
+    this.currenttabbar = tabbar;
   }
 
   /**
    * Switch to tab by page path
    */
   public switchToTab(pagePath: string): boolean {
-    if (!this.currentConfig) {
+    if (!this.currenttabbar) {
       return false;
     }
 
-    const index = this.currentConfig.list.findIndex(item => item.pagePath === pagePath);
+    const index: number = this.currenttabbar.items.findIndex((item: TabBarItem): boolean => item.pagePath === pagePath);
     if (index >= 0) {
       this.selectedIndex = index;
       hilog.info(DOMAIN, TAG, `Switched to tab ${index} with path: ${pagePath}`);
       return true;
     }
     return false;
-  }
-
-  /**
-   * Show tab bar
-   */
-  public showTabBar(): void {
-    hilog.info(DOMAIN, TAG, 'Show TabBar');
-    // TODO: Implement show logic
-  }
-
-  /**
-   * Hide tab bar
-   */
-  public hideTabBar(): void {
-    hilog.info(DOMAIN, TAG, 'Hide TabBar');
-    // TODO: Implement hide logic
   }
 }
