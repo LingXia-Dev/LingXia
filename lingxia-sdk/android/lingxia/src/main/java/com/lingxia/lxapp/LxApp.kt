@@ -202,6 +202,19 @@ class LxApp private constructor(private val context: Context) {
             }
         }
 
+        /**
+         * Update TabBar UI for a specific LxApp
+         * This triggers a refresh of TabBar data from the native layer
+         *
+         * @param appId The unique identifier of the mini app whose TabBar needs updating
+         * @return true if successful, false otherwise
+         */
+        @JvmStatic
+        fun updateTabBarUI(appId: String): Boolean {
+            Log.d(TAG, "updateTabBarUI called for appId: $appId")
+            return LxAppActivity.updateTabBarUI(appId)
+        }
+
         @JvmStatic
         fun getNavigationBarConfig(appId: String, path: String): NavigationBarConfig? {
             // Check if this is the initial route of ANY app using cached data
@@ -270,6 +283,14 @@ class LxApp private constructor(private val context: Context) {
         @JvmStatic
         internal fun setCurrentActivity(activity: LxAppActivity?) {
             currentActivity = activity
+        }
+
+        /**
+         * Get the current LxAppActivity instance
+         */
+        @JvmStatic
+        internal fun getCurrentActivity(): LxAppActivity? {
+            return currentActivity
         }
 
         /**

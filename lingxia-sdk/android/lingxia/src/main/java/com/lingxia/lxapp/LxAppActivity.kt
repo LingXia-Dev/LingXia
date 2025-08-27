@@ -31,6 +31,40 @@ class LxAppActivity : AppCompatActivity() {
         const val EXTRA_PATH = "path"
         internal const val DEFAULT_NAV_BAR_HEIGHT_DP = 44
 
+        /**
+         * Update TabBar UI for a specific appId
+         * In single-activity architecture, updates the current activity's TabBar
+         */
+        @JvmStatic
+        fun updateTabBarUI(appId: String): Boolean {
+            Log.d(TAG, "updateTabBarUI called for appId: $appId")
+
+            val activity = LxApp.getCurrentActivity()
+            if (activity != null && activity.appId == appId) {
+                // Run on UI thread to update TabBar directly
+                activity.runOnUiThread {
+                    try {
+                        // Get fresh TabBar state from Rust
+                        val newTabBarConfig = NativeApi.getTabBarState(appId)
+                        if (newTabBarConfig != null) {
+                            // Update existing TabBar with new configuration
+                            activity.tabBar?.setConfig(newTabBarConfig)
+                            Log.d(TAG, "TabBar refreshed successfully with ${newTabBarConfig.list.size} items")
+                        } else {
+                            Log.w(TAG, "No TabBar config available for refresh")
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to refresh TabBar from Rust: ${e.message}", e)
+                    }
+                }
+                Log.d(TAG, "TabBar UI update triggered for appId: $appId")
+                return true
+            } else {
+                Log.w(TAG, "No matching activity found for appId: $appId (current: ${activity?.appId})")
+                return false
+            }
+        }
+
         // Helper function to get status bar height
         fun getStatusBarHeight(context: Context): Int {
             var result = 0
@@ -153,7 +187,7 @@ class LxAppActivity : AppCompatActivity() {
         setContentView(rootContainer)
 
         // Get TabBar config and setup UI in parallel
-        val tabBarConfig = NativeApi.getTabBarConfig(appId)
+        val tabBarConfig = NativeApi.getTabBarState(appId)
 
         // Setup containers and UI components
         setupWebViewContainer()
@@ -245,7 +279,7 @@ class LxAppActivity : AppCompatActivity() {
         rootContainer.addView(webViewContainer)
     }
 
-    private fun setupTabBar(config: TabBarConfig?) {
+    private fun setupTabBar(config: TabBarState?) {
         if (config == null) {
             Log.d(TAG, "Invalid or insufficient TabBar config, TabBar not shown.")
             return
@@ -258,7 +292,7 @@ class LxAppActivity : AppCompatActivity() {
         // Get the actual TabBar background color (considering defaults)
         val actualTabBarColor: Int = when {
             config.backgroundColor != null -> config.backgroundColor!!
-            config.position == TabBarConfig.Position.BOTTOM -> Color.WHITE // DEFAULT_BACKGROUND_COLOR
+            config.position == TabBarState.Position.BOTTOM -> Color.WHITE // DEFAULT_BACKGROUND_COLOR
             else -> {
                 // Use vertical TabBar default color for LEFT/RIGHT positions
                 0xFFF8F8F8.toInt() // VERTICAL_TABBAR_BACKGROUND_COLOR
@@ -294,8 +328,8 @@ class LxAppActivity : AppCompatActivity() {
         updateLayoutMargins()
     }
 
-    private fun applyTabBarLayoutParams(tabBar: TabBar, config: TabBarConfig) {
-        val isVertical = config.position == TabBarConfig.Position.LEFT || config.position == TabBarConfig.Position.RIGHT
+    private fun applyTabBarLayoutParams(tabBar: TabBar, config: TabBarState) {
+        val isVertical = config.position == TabBarState.Position.LEFT || config.position == TabBarState.Position.RIGHT
         val density = resources.displayMetrics.density
         // Use configured dimension (Rust provides default value)
         val tabBarDimension = config.dimension ?: 64 // Fallback just in case
@@ -310,8 +344,8 @@ class LxAppActivity : AppCompatActivity() {
                 width = tabBarSizePx
                 height = ViewGroup.LayoutParams.MATCH_PARENT
                 gravity = when (config.position) {
-                    TabBarConfig.Position.LEFT -> Gravity.START
-                    TabBarConfig.Position.RIGHT -> Gravity.END
+                    TabBarState.Position.LEFT -> Gravity.START
+                    TabBarState.Position.RIGHT -> Gravity.END
                     else -> Gravity.START
                 }
                 // Add top margin to avoid status bar for vertical TabBars
@@ -321,34 +355,25 @@ class LxAppActivity : AppCompatActivity() {
                 height = tabBarSizePx
                 gravity = Gravity.BOTTOM
 
-                if (isTabBarTransparent) {
-                    // For transparent TabBar, use a small fixed margin to avoid excessive spacing
-                    // while still providing enough space to avoid overlap with system navigation
-                    bottomMargin = (8 * resources.displayMetrics.density).toInt()
-                }
+                // No bottom margin for transparent TabBar - it should overlay content
             }
             tabBar.layoutParams = this
         } ?: run {
-            val newLayoutParams = FrameLayout.LayoutParams(0,0)
-            if (isVertical) {
-                newLayoutParams.width = tabBarSizePx
-                newLayoutParams.height = ViewGroup.LayoutParams.MATCH_PARENT
-                newLayoutParams.gravity = when (config.position) {
-                    TabBarConfig.Position.LEFT -> Gravity.START
-                    TabBarConfig.Position.RIGHT -> Gravity.END
-                    else -> Gravity.START
+            // Create new LayoutParams with correct initial dimensions
+            val newLayoutParams = if (isVertical) {
+                FrameLayout.LayoutParams(tabBarSizePx, ViewGroup.LayoutParams.MATCH_PARENT).apply {
+                    gravity = when (config.position) {
+                        TabBarState.Position.LEFT -> Gravity.START
+                        TabBarState.Position.RIGHT -> Gravity.END
+                        else -> Gravity.START
+                    }
+                    // Add top margin to avoid status bar for vertical TabBars
+                    topMargin = getStatusBarHeight(this@LxAppActivity)
                 }
-                // Add top margin to avoid status bar for vertical TabBars
-                newLayoutParams.topMargin = getStatusBarHeight(this@LxAppActivity)
             } else {
-                newLayoutParams.width = ViewGroup.LayoutParams.MATCH_PARENT
-                newLayoutParams.height = tabBarSizePx
-                newLayoutParams.gravity = Gravity.BOTTOM
-
-                if (isTabBarTransparent) {
-                    // For transparent TabBar, use a small fixed margin to avoid excessive spacing
-                    // while still providing enough space to avoid overlap with system navigation
-                    newLayoutParams.bottomMargin = (8 * resources.displayMetrics.density).toInt()
+                FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, tabBarSizePx).apply {
+                    gravity = Gravity.BOTTOM
+                    // No bottom margin for transparent TabBar - it should overlay content
                 }
             }
             tabBar.layoutParams = newLayoutParams
@@ -382,13 +407,13 @@ class LxAppActivity : AppCompatActivity() {
 
             if (!isTabBarTransparent) {
                 when (tabBar?.config?.position) {
-                    TabBarConfig.Position.BOTTOM -> {
+                    TabBarState.Position.BOTTOM -> {
                         if (isTabBarVisible) bottomMargin = tabBarHeight
                     }
-                    TabBarConfig.Position.LEFT -> {
+                    TabBarState.Position.LEFT -> {
                         if (isTabBarVisible) leftMargin = tabBarWidth
                     }
-                    TabBarConfig.Position.RIGHT -> {
+                    TabBarState.Position.RIGHT -> {
                         if (isTabBarVisible) rightMargin = tabBarWidth
                     }
                     null -> { }
@@ -746,8 +771,6 @@ class LxAppActivity : AppCompatActivity() {
             Log.e(TAG, "switchToTab failed: findWebViewForPage returned null for $targetPath")
             return
         }
-
-
 
         // Set current WebView to target for tracking *early*
         currentWebView = targetWebView
@@ -1148,7 +1171,7 @@ class LxAppActivity : AppCompatActivity() {
 
             // Clean up tab bar
             tabBar?.apply {
-                setConfig(TabBarConfig(list = emptyList()))
+                setConfig(TabBarState(list = emptyList()))
                 visibility = View.GONE
             }
             tabBar = null
@@ -1160,7 +1183,7 @@ class LxAppActivity : AppCompatActivity() {
             intent.putExtra(EXTRA_APP_ID, appId)
             intent.putExtra(EXTRA_PATH, path)
 
-            val tabBarConfig = NativeApi.getTabBarConfig(appId)
+            val tabBarConfig = NativeApi.getTabBarState(appId)
             setupTabBar(tabBarConfig)
 
             val (webView, pageConfig) = findWebViewForPage(appId, path)

@@ -330,7 +330,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getLxAppInfo<'a>(
 
 // Get TabBar configuration using new typed API
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getTabBarConfig<'a>(
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getTabBarState<'a>(
     mut env: JNIEnv<'a>,
     _class: JClass<'a>,
     appid: JString<'a>,
@@ -338,26 +338,15 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getTabBarConfig<'a>(
     let appid: String = env.get_string(&appid).unwrap().into();
     let lxapp = lxapp::get(appid.clone());
 
-    let tab_bar_config = match lxapp.get_config().get_tab_bar_config(&lxapp) {
+    let tab_bar_config = match lxapp.get_config().get_tab_bar(&lxapp) {
         Some(config) => config,
         None => {
-            log::info!(
-                "[Android] nativeGetTabBarConfig: No TabBar config found for appid={}",
-                appid
-            );
             return JObject::null();
         }
     };
 
-    // Debug logging
-    log::info!(
-        "[Android] nativeGetTabBarConfig: appid={}, items_count={}",
-        appid,
-        tab_bar_config.list.len()
-    );
-
-    // Find the TabBarConfig class
-    let tab_bar_class = match env.find_class("com/lingxia/lxapp/TabBarConfig") {
+    // Find the TabBarState class
+    let tab_bar_class = match env.find_class("com/lingxia/lxapp/TabBarState") {
         Ok(c) => c,
         Err(_) => return JObject::null(),
     };
@@ -392,8 +381,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getTabBarConfig<'a>(
         Err(_) => return JObject::null(),
     };
 
-    // Add TabBarItems to the list
-    for item in &tab_bar_config.list {
+    for item in tab_bar_config.list.iter() {
         if let Some(tab_item) = create_tab_bar_item(&mut env, item) {
             let _ = env.call_method(
                 &tab_items_list,
@@ -401,11 +389,16 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getTabBarConfig<'a>(
                 "(Ljava/lang/Object;)Z",
                 &[(&tab_item).into()],
             );
+        } else {
+            log::warn!(
+                "[Android] Failed to create TabBar item in getTabBarState for {}",
+                &item.pagePath
+            );
         }
     }
 
     // Create Position enum
-    let position_class = match env.find_class("com/lingxia/lxapp/TabBarConfig$Position") {
+    let position_class = match env.find_class("com/lingxia/lxapp/TabBarState$Position") {
         Ok(c) => c,
         Err(_) => return JObject::null(),
     };
@@ -419,16 +412,16 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getTabBarConfig<'a>(
     let position_enum = match env.get_static_field(
         position_class,
         position_enum_value,
-        "Lcom/lingxia/lxapp/TabBarConfig$Position;",
+        "Lcom/lingxia/lxapp/TabBarState$Position;",
     ) {
         Ok(pos) => pos,
         Err(_) => return JObject::null(),
     };
 
-    // Create TabBarConfig object (all parameters non-nullable)
+    // Create TabBarState object (all parameters non-nullable)
     match env.new_object(
         tab_bar_class,
-        "(IIIIILcom/lingxia/lxapp/TabBarConfig$Position;Ljava/util/List;Z)V",
+        "(IIIIILcom/lingxia/lxapp/TabBarState$Position;Ljava/util/List;Z)V",
         &[
             background_color.into(),
             selected_color.into(),
@@ -437,7 +430,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getTabBarConfig<'a>(
             dimension.into(),
             (&position_enum).into(),
             (&tab_items_list).into(),
-            true.into(), // visible
+            tab_bar_config.is_visible.into(),
         ],
     ) {
         Ok(obj) => obj,
@@ -445,98 +438,69 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getTabBarConfig<'a>(
     }
 }
 
-// Helper function to create TabBarItem
+/// Create TabBarItem with actual badge and red dot data from Rust
 fn create_tab_bar_item<'a>(
     env: &mut JNIEnv<'a>,
-    item: &lxapp::config::TabItem,
+    item: &lxapp::tabbar::TabBarItem,
 ) -> Option<JObject<'a>> {
-    let tab_bar_item_class = env.find_class("com/lingxia/lxapp/TabBarItem").ok()?;
-
-    let page_path = env.new_string(&item.pagePath).ok()?;
-    let text = if let Some(ref text_str) = item.text {
-        env.new_string(text_str).ok()
-    } else {
-        None
-    };
-    let icon_path = if let Some(ref icon_str) = item.iconPath {
-        env.new_string(icon_str).ok()
-    } else {
-        env.new_string("").ok()
-    }?;
-    let selected_icon_path = if let Some(ref selected_icon_str) = item.selectedIconPath {
-        env.new_string(selected_icon_str).ok()
-    } else {
-        env.new_string("").ok()
-    }?;
-
-    // Group positioning: 0=middle/center (default), 1=start (top/left), 2=end (bottom/right)
-    let group = match &item.group {
-        Some(lxapp::config::TabItemGroup::Start) => 1i32,
-        Some(lxapp::config::TabItemGroup::End) => 2i32,
-        None => 0i32,
+    // Find TabBarItem class
+    let tab_item_class = match env.find_class("com/lingxia/lxapp/TabBarItem") {
+        Ok(c) => c,
+        Err(_) => return None,
     };
 
-    let text_obj = text.map(|t| t.into()).unwrap_or_else(|| JObject::null());
+    // Convert group enum
+    let group_int = match &item.group {
+        Some(lxapp::tabbar::TabItemGroup::Start) => 1,
+        Some(lxapp::tabbar::TabItemGroup::End) => 2,
+        None => 0,
+    };
 
-    env.new_object(
-        tab_bar_item_class,
-        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZZI)V",
+    // Create strings
+    let page_path = match env.new_string(&item.pagePath) {
+        Ok(s) => s,
+        Err(_) => return None,
+    };
+    let text = match env.new_string(item.text.as_deref().unwrap_or("")) {
+        Ok(s) => s,
+        Err(_) => return None,
+    };
+    let icon_path = match env.new_string(item.iconPath.as_deref().unwrap_or("")) {
+        Ok(s) => s,
+        Err(_) => return None,
+    };
+    let selected_icon_path = match env.new_string(item.selectedIconPath.as_deref().unwrap_or("")) {
+        Ok(s) => s,
+        Err(_) => return None,
+    };
+
+    // Create badge string from actual Rust data (nullable)
+    let badge_jstring = match &item.badge {
+        Some(badge) => match env.new_string(badge) {
+            Ok(s) => s.into(),
+            Err(_) => JObject::null(),
+        },
+        None => JObject::null(),
+    };
+
+    // Create TabBarItem object with actual data
+    match env.new_object(
+        tab_item_class,
+        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZILjava/lang/String;Z)V",
         &[
             (&page_path).into(),
-            (&text_obj).into(),
+            (&text).into(),
             (&icon_path).into(),
             (&selected_icon_path).into(),
             item.selected.into(),
-            true.into(), // visible - TabItem doesn't have visible field, default to true
-            group.into(),
+            group_int.into(),
+            (&badge_jstring).into(),
+            item.has_red_dot.into(),  // Use actual red dot data from Rust
         ],
-    )
-    .ok()
-}
-
-/// Get TabBar item by index
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getTabBarItem<'a>(
-    mut env: JNIEnv<'a>,
-    _class: JClass<'a>,
-    appid: JString<'a>,
-    index: jint,
-) -> JObject<'a> {
-    let appid: String = env.get_string(&appid).unwrap().into();
-    let lxapp = lxapp::get(appid.clone());
-
-    let tab_bar_config = match lxapp.get_config().get_tab_bar_config(&lxapp) {
-        Some(config) => config,
-        None => {
-            log::info!(
-                "[Android] nativeGetTabBarItem: No TabBar config found for appid={}",
-                appid
-            );
-            return JObject::null();
-        }
-    };
-
-    let item = match tab_bar_config.list.get(index as usize) {
-        Some(item) => item,
-        None => {
-            log::info!(
-                "[Android] nativeGetTabBarItem: Index {} out of bounds for appid={}",
-                index,
-                appid
-            );
-            return JObject::null();
-        }
-    };
-
-    // Debug logging
-    log::info!(
-        "[Android] nativeGetTabBarItem: appid={}, index={}, page_path={}",
-        appid,
-        index,
-        item.pagePath
-    );
-
-    create_tab_bar_item(&mut env, item).unwrap_or(JObject::null())
+    ) {
+        Ok(obj) => Some(obj),
+        Err(_) => None,
+    }
 }
 
 /// Handle DeepLink URL by processing the path without host

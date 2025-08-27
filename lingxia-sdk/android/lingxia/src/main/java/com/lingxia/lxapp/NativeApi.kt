@@ -63,21 +63,12 @@ object NativeApi {
     external fun getLxAppInfo(appId: String): LxAppInfo?
 
     /**
-     * Get the TabBar configuration for a mini app
+     * Get complete TabBar state with items array (unified API)
      * @param appId The ID of the app
-     * @return TabBar configuration or null if not available
+     * @return Complete TabBar state or null if not available
      */
     @JvmStatic
-    external fun getTabBarConfig(appId: String): TabBarConfig?
-
-    /**
-     * Get a specific TabBar item by index
-     * @param appId The ID of the app
-     * @param index The index of the tab item
-     * @return TabBar item or null if not found
-     */
-    @JvmStatic
-    external fun getTabBarItem(appId: String, index: Int): TabBarItem?
+    external fun getTabBarState(appId: String): TabBarState?
 
     /**
      * Get the navigation bar configuration for a specific page/path

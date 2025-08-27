@@ -11,20 +11,18 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import java.io.File
 import android.util.Log
+import android.util.TypedValue
 import android.widget.FrameLayout
-import android.view.ContextThemeWrapper
-import com.google.android.material.badge.BadgeDrawable
-import com.google.android.material.badge.BadgeUtils
 
-data class TabBarConfig(
-    val backgroundColor: Int = Color.WHITE,                    // Background color, default white
+data class TabBarState(
+    val backgroundColor: Int = Color.WHITE,          // Background color, default white
     val selectedColor: Int = 0xFF1677FF.toInt(),     // Selected item color, default tech blue
     val color: Int = 0xFF666666.toInt(),             // Unselected item color, default gray
     val borderStyle: Int = 0xFFF0F0F0.toInt(),       // Top border color, default light gray
-    val dimension: Int = 64,                                  // Dimension in dp: height for bottom, width for left/right
-    val position: Position = Position.BOTTOM,                 // Position: 0=Bottom, 1=Left, 2=Right
-    val list: List<TabBarItem> = emptyList(),                // List of tab items
-    val visible: Boolean = true                               // TabBar visibility, default true
+    val dimension: Int = 64,                         // Dimension in dp: height for bottom, width for left/right
+    val position: Position = Position.BOTTOM,        // Position: 0=Bottom, 1=Left, 2=Right
+    val list: List<TabBarItem> = emptyList(),        // List of tab items
+    val visible: Boolean = true                      // TabBar visibility (kept for FFI compatibility)
 ) {
     /**
      * Check if background color is transparent.
@@ -46,8 +44,6 @@ data class TabBarConfig(
 
         /** Tab bar at the right - MUST match Rust Right = 2 */
         const val POSITION_RIGHT = 2
-
-
     }
 
     // Position enum for backward compatibility, with int values matching constants
@@ -72,15 +68,10 @@ data class TabBarItem(
     val iconPath: String,                 // Absolute path to the icon file
     val selectedIconPath: String,         // Absolute path to the selected state icon file
     val selected: Boolean = false,        // Whether this tab is selected
-    val visible: Boolean = true,          // Whether this tab is visible
-    val group: Int = 0                    // Group positioning: 0=center (default), 1=start, 2=end
+    val group: Int = 0,                   // Group positioning: 0=center (default), 1=start, 2=end
+    val badge: String? = null,            // Badge text (optional)
+    val hasRedDot: Boolean = false        // Whether to show red dot indicator
 )
-
-// Unique view IDs for dot notification
-private const val RED_DOT_ID = 1001
-
-// Map to store active BadgeDrawables associated with their anchor views (iconContainers)
-private val badgeDrawables = mutableMapOf<View, BadgeDrawable>()
 
 /**
  * TabBar component for mini apps, supporting:
@@ -118,34 +109,42 @@ class TabBar(context: Context) : LinearLayout(context) {
         private const val INITIAL_SELECTED_ITEM_CORNER_RADIUS_DP = 8f // For createTabItem
     }
 
-    internal var config = TabBarConfig()
+    internal var config = TabBarState()
     private var items = listOf<TabBarItem>()
     private var tabViews = mutableListOf<LinearLayout>()
     private var itemsContainer: LinearLayout? = null
     private var selectedPosition = -1
     private var onTabSelectedListener: ((Int, String) -> Unit)? = null
-    private var onVisibilityChangedListener: ((Boolean) -> Unit)? = null
+
 
     init {
         orientation = when (config.position.value) {
-            TabBarConfig.POSITION_LEFT, TabBarConfig.POSITION_RIGHT -> HORIZONTAL
+            TabBarState.POSITION_LEFT, TabBarState.POSITION_RIGHT -> HORIZONTAL
             else -> VERTICAL
         }
         visibility = View.GONE
 
-        itemsContainer = LinearLayout(context)
+        // Ensure TabBar doesn't clip badge views
+        clipChildren = false
+        clipToPadding = false
+
+        itemsContainer = LinearLayout(context).apply {
+            // Ensure items container also doesn't clip
+            clipChildren = false
+            clipToPadding = false
+        }
         updateItemsContainerLayoutOnly(this.config)
         performLayoutForPosition()
     }
 
-    private fun updateItemsContainerLayout(currentConfig: TabBarConfig) {
+    private fun updateItemsContainerLayout(currentConfig: TabBarState) {
         itemsContainer?.apply {
             orientation = when (currentConfig.position.value) {
-                TabBarConfig.POSITION_LEFT, TabBarConfig.POSITION_RIGHT -> VERTICAL
+                TabBarState.POSITION_LEFT, TabBarState.POSITION_RIGHT -> VERTICAL
                 else -> HORIZONTAL
             }
 
-            val isVerticalTabBar = currentConfig.position.value == TabBarConfig.POSITION_LEFT || currentConfig.position.value == TabBarConfig.POSITION_RIGHT
+            val isVerticalTabBar = currentConfig.position.value == TabBarState.POSITION_LEFT || currentConfig.position.value == TabBarState.POSITION_RIGHT
 
             // Use configured dimension (Rust provides default value, but Android FFI might be nullable)
             val tabBarDimension = currentConfig.dimension
@@ -181,14 +180,14 @@ class TabBar(context: Context) : LinearLayout(context) {
         }
     }
 
-    private fun updateItemsContainerLayoutOnly(currentConfig: TabBarConfig) {
+    private fun updateItemsContainerLayoutOnly(currentConfig: TabBarState) {
         itemsContainer?.apply {
             orientation = when (currentConfig.position.value) {
-                TabBarConfig.POSITION_LEFT, TabBarConfig.POSITION_RIGHT -> VERTICAL
+                TabBarState.POSITION_LEFT, TabBarState.POSITION_RIGHT -> VERTICAL
                 else -> HORIZONTAL
             }
 
-            val isVerticalTabBar = currentConfig.position.value == TabBarConfig.POSITION_LEFT || currentConfig.position.value == TabBarConfig.POSITION_RIGHT
+            val isVerticalTabBar = currentConfig.position.value == TabBarState.POSITION_LEFT || currentConfig.position.value == TabBarState.POSITION_RIGHT
 
             // Use configured dimension (Rust provides default value, but Android FFI might be nullable)
             val tabBarDimension = currentConfig.dimension
@@ -222,7 +221,7 @@ class TabBar(context: Context) : LinearLayout(context) {
         val isBackgroundTransparent = config.isBackgroundTransparent()
 
         when (config.position.value) {
-            TabBarConfig.POSITION_BOTTOM -> {
+            TabBarState.POSITION_BOTTOM -> {
                 if (!isBackgroundTransparent) {
                     addView(View(context).apply {
                         setBackgroundColor(config.borderStyle)
@@ -234,7 +233,7 @@ class TabBar(context: Context) : LinearLayout(context) {
                 }
                 addView(itemsContainer)
             }
-            TabBarConfig.POSITION_LEFT -> {
+            TabBarState.POSITION_LEFT -> {
                 orientation = HORIZONTAL
                 addView(itemsContainer)
                 if (!isBackgroundTransparent) {
@@ -247,7 +246,7 @@ class TabBar(context: Context) : LinearLayout(context) {
                     })
                 }
             }
-            TabBarConfig.POSITION_RIGHT -> {
+            TabBarState.POSITION_RIGHT -> {
                 orientation = HORIZONTAL
                 if (!isBackgroundTransparent) {
                     addView(View(context).apply {
@@ -263,7 +262,7 @@ class TabBar(context: Context) : LinearLayout(context) {
         }
     }
 
-    fun setConfig(newConfig: TabBarConfig) {
+    fun setConfig(newConfig: TabBarState) {
         if (!isValidConfig(newConfig)) {
             Log.w(TAG, "Invalid TabBar config provided")
             return
@@ -275,7 +274,7 @@ class TabBar(context: Context) : LinearLayout(context) {
 
         val tabBarBackgroundColor = when {
             config.backgroundColor == Color.TRANSPARENT -> Color.TRANSPARENT
-            config.position.value == TabBarConfig.POSITION_LEFT || config.position.value == TabBarConfig.POSITION_RIGHT -> VERTICAL_TABBAR_BACKGROUND_COLOR
+            config.position.value == TabBarState.POSITION_LEFT || config.position.value == TabBarState.POSITION_RIGHT -> VERTICAL_TABBAR_BACKGROUND_COLOR
             else -> config.backgroundColor
         }
 
@@ -285,11 +284,17 @@ class TabBar(context: Context) : LinearLayout(context) {
         updateItemsContainerLayout(this.config)
         performLayoutForPosition()
         setItems(newConfig.list)
-        visibility = View.VISIBLE
+
+        // Set visibility based on Rust config
+        visibility = if (newConfig.visible) View.VISIBLE else View.GONE
     }
 
     fun setItems(newItems: List<TabBarItem>) {
-        items = newItems.filter { it.visible }  // Only show items where visible is true
+        Log.d(TAG, "setItems called with ${newItems.size} items")
+        newItems.forEachIndexed { index, item ->
+            Log.d(TAG, "Item $index: text='${item.text}', pagePath='${item.pagePath}'")
+        }
+        items = newItems  // Use all items from configuration
 
         itemsContainer?.let { container ->
             container.removeAllViews()
@@ -318,7 +323,7 @@ class TabBar(context: Context) : LinearLayout(context) {
      * Setup grouped layout: distribute items to start/end positions
      */
     private fun setupGroupedLayout(container: LinearLayout) {
-        val isVertical = config.position.value == TabBarConfig.POSITION_LEFT || config.position.value == TabBarConfig.POSITION_RIGHT
+        val isVertical = config.position.value == TabBarState.POSITION_LEFT || config.position.value == TabBarState.POSITION_RIGHT
 
         // Group items by their group value
         val startItems = mutableListOf<TabBarItem>()
@@ -358,7 +363,7 @@ class TabBar(context: Context) : LinearLayout(context) {
      * Setup centered layout: all items centered (original behavior)
      */
     private fun setupCenteredLayout(container: LinearLayout) {
-        val isVertical = config.position.value == TabBarConfig.POSITION_LEFT || config.position.value == TabBarConfig.POSITION_RIGHT
+        val isVertical = config.position.value == TabBarState.POSITION_LEFT || config.position.value == TabBarState.POSITION_RIGHT
 
         // Get the size of the space for each item (original logic)
         val itemSize = if (isVertical) {
@@ -427,43 +432,6 @@ class TabBar(context: Context) : LinearLayout(context) {
         return container
     }
 
-    /**
-     * Show the tabBar
-     * @param animation Whether to use animation
-     */
-    fun showTabBar(animation: Boolean = false) {
-        setVisible(true, animation)
-    }
-
-    /**
-     * Hide the tabBar
-     * @param animation Whether to use animation
-     */
-    fun hideTabBar(animation: Boolean = false) {
-        setVisible(false, animation)
-    }
-
-    /**
-     * Show or hide the TabBar
-     * @param visible Whether to show the TabBar
-     * @param animation Whether to use animation
-     */
-    fun setVisible(visible: Boolean, animation: Boolean = false) {
-        if (animation) {
-            if (visible) {
-                alpha = 0f
-                visibility = View.VISIBLE
-                animate().alpha(1f).setDuration(200).start()
-            } else {
-                animate().alpha(0f).setDuration(200).withEndAction {
-                    visibility = View.GONE
-                }.start()
-            }
-        } else {
-            visibility = if (visible) View.VISIBLE else View.GONE
-        }
-    }
-
     fun setSelectedIndex(index: Int, notifyListener: Boolean = true) {
         if (index < 0 || index >= items.size) {
             return
@@ -501,19 +469,8 @@ class TabBar(context: Context) : LinearLayout(context) {
         onTabSelectedListener = listener
     }
 
-    fun setOnVisibilityChangedListener(listener: (Boolean) -> Unit) {
-        onVisibilityChangedListener = listener
-    }
-
-    override fun onVisibilityChanged(changedView: View, visibility: Int) {
-        super.onVisibilityChanged(changedView, visibility)
-        if (changedView == this) {
-            onVisibilityChangedListener?.invoke(visibility == View.VISIBLE)
-        }
-    }
-
-    private fun createTabView(item: TabBarItem, config: TabBarConfig, isSelected: Boolean, itemIndex: Int = -1): LinearLayout {
-        val isVertical = config.position.value == TabBarConfig.POSITION_LEFT || config.position.value == TabBarConfig.POSITION_RIGHT
+    private fun createTabView(item: TabBarItem, config: TabBarState, isSelected: Boolean, itemIndex: Int = -1): LinearLayout {
+        val isVertical = config.position.value == TabBarState.POSITION_LEFT || config.position.value == TabBarState.POSITION_RIGHT
 
         return LinearLayout(context).apply {
             orientation = VERTICAL
@@ -545,28 +502,55 @@ class TabBar(context: Context) : LinearLayout(context) {
                 }
             }
 
-            // Add icon
-            val iconContainer = FrameLayout(context).apply {
+            // Create a wrapper container for icon + badge
+            val iconWrapper = FrameLayout(context).apply {
                 val iconSize = if (isVertical) VERTICAL_ITEM_ICON_SIZE_DP else HORIZONTAL_ITEM_ICON_SIZE_DP
                 val iconSizePx = (iconSize * resources.displayMetrics.density).toInt()
-                layoutParams = LayoutParams(iconSizePx, iconSizePx).apply {
+
+                // Minimal extension to accommodate small badge
+                val badgeSpace = (10 * resources.displayMetrics.density).toInt()
+                val wrapperWidth = iconSizePx + badgeSpace
+                val wrapperHeight = iconSizePx + (4 * resources.displayMetrics.density).toInt()  // Minimal vertical extension
+
+                layoutParams = LayoutParams(wrapperWidth, wrapperHeight).apply {
                     gravity = Gravity.CENTER_HORIZONTAL
                 }
+
+                // Ensure container doesn't clip children
+                clipChildren = false
+                clipToPadding = false
             }
 
+            // Create icon with proper centering
+            val iconSize = if (isVertical) VERTICAL_ITEM_ICON_SIZE_DP else HORIZONTAL_ITEM_ICON_SIZE_DP
+            val iconSizePx = (iconSize * resources.displayMetrics.density).toInt()
+
             val icon = ImageView(context).apply {
-                layoutParams = FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT
-                )
+                layoutParams = FrameLayout.LayoutParams(iconSizePx, iconSizePx).apply {
+                    gravity = Gravity.CENTER
+                }
                 scaleType = ImageView.ScaleType.FIT_CENTER
                 setImageDrawable(getIconDrawable(item, isSelected))
             }
 
-            iconContainer.addView(icon)
-            addView(iconContainer)
+            iconWrapper.addView(icon)
+
+            // Add badge if present - positioned outside icon bounds
+            if (!item.badge.isNullOrBlank()) {
+                val badgeView = createBadgeView(item.badge!!)
+                iconWrapper.addView(badgeView)
+            }
+
+            // Add red dot if present - positioned outside icon bounds
+            if (item.hasRedDot) {
+                val redDotView = createRedDotView()
+                iconWrapper.addView(redDotView)
+            }
+
+            addView(iconWrapper)
 
             if (!item.text.isNullOrBlank()) {
+                Log.d(TAG, "Creating TextView for item: text='${item.text}', pagePath='${item.pagePath}'")
                 val textView = TextView(context).apply {
                     text = item.text
 
@@ -589,26 +573,11 @@ class TabBar(context: Context) : LinearLayout(context) {
 
                 }
                 addView(textView)
+                Log.d(TAG, "Added TextView to LinearLayout: text='${textView.text}', textColor=${textView.currentTextColor}, textSize=${textView.textSize}")
             }
 
             setOnClickListener {
                 onTabSelectedListener?.invoke(items.indexOf(item), item.pagePath)
-            }
-        }
-    }
-
-    private fun updateTabStates() {
-        items.forEachIndexed { index, item ->
-            tabViews.getOrNull(index)?.let { view ->
-                updateTabState(view, item, item.selected)
-            }
-        }
-    }
-
-    private fun updateSelection(selectedIndex: Int) {
-        items.forEachIndexed { index, item ->
-            tabViews.getOrNull(index)?.let { view ->
-                updateTabState(view, item, index == selectedIndex)
             }
         }
     }
@@ -655,182 +624,6 @@ class TabBar(context: Context) : LinearLayout(context) {
         }
     }
 
-    /**
-     * Show a red dot notification badge on a specific tab item
-     * @param index The index of the tab item (counting from left)
-     */
-    fun showTabBarRedDot(index: Int) {
-        if (index < 0 || index >= tabViews.size) {
-            Log.d(TAG, "Invalid index for red dot: $index, tabViews size: ${tabViews.size}")
-            return
-        }
-
-        val tabView = tabViews[index]
-        val iconContainer = tabView.getChildAt(0) as? FrameLayout ?: return
-
-        // Remove existing red dot if any
-        iconContainer.findViewById<View>(RED_DOT_ID)?.let {
-            (it.parent as? ViewGroup)?.removeView(it)
-        }
-
-        val dotSize = (8 * resources.displayMetrics.density).toInt()
-        val redDot = View(context).apply {
-            id = RED_DOT_ID
-            layoutParams = FrameLayout.LayoutParams(dotSize, dotSize).apply {
-                gravity = Gravity.TOP or Gravity.END
-            }
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(Color.RED)
-                setSize(dotSize, dotSize)
-            }
-            visibility = View.VISIBLE
-            setLayerType(View.LAYER_TYPE_SOFTWARE, null)
-        }
-
-        iconContainer.addView(redDot)
-    }
-
-    /**
-     * Hide the red dot notification badge on a specific tab item
-     * @param index The index of the tab item (counting from left)
-     */
-    fun hideTabBarRedDot(index: Int) {
-        if (index < 0 || index >= tabViews.size) return
-        tabViews[index].findViewById<View>(RED_DOT_ID)?.visibility = View.GONE
-    }
-
-    /**
-     * Add a text badge to a specific tab item
-     * @param index The index of the tab item (counting from left)
-     * @param text The text to display, must not be empty
-     */
-    fun setTabBarBadge(index: Int, text: String) {
-        if (index < 0 || index >= tabViews.size || text.isEmpty()) {
-            Log.d(TAG, "Invalid index or empty text for badge: $index, text: '$text', tabViews size: ${tabViews.size}")
-            return
-        }
-
-        val tabView = tabViews[index]
-        // The anchor for the badge is the FrameLayout containing the icon
-        val iconContainer = tabView.getChildAt(0) as? FrameLayout ?: return
-
-        // Post the badge creation and attachment to the view's message queue
-        // This ensures it runs after the layout pass
-        iconContainer.post {
-            // Wrap the original context with a Material Components theme
-            val materialContext = ContextThemeWrapper(context, com.google.android.material.R.style.Theme_MaterialComponents_DayNight) // Or Theme_MaterialComponents_Light etc.
-
-            // Create and configure the BadgeDrawable inside the post block using the themed context
-            val badgeDrawable = BadgeDrawable.create(materialContext).apply {
-                backgroundColor = Color.RED
-                badgeTextColor = Color.WHITE
-                // Add a positive vertical offset to shift the badge down
-                verticalOffset = (6 * resources.displayMetrics.density).toInt()
-                // horizontalOffset = (1 * resources.displayMetrics.density).toInt() // Adjust horizontal if needed too
-                badgeGravity = BadgeDrawable.TOP_END // Position at top-end of the anchor
-
-                // Set text or number based on content
-                val number = text.toIntOrNull()
-                if (number != null) {
-                    this.number = number
-                } else {
-                    this.text = text // Use the 'text' property setter for non-numeric strings
-                }
-                isVisible = true
-            }
-
-            // Store the drawable for later removal (also inside post)
-            badgeDrawables[iconContainer] = badgeDrawable
-
-            // Attach the badge to the icon container (inside post)
-            BadgeUtils.attachBadgeDrawable(badgeDrawable, iconContainer)
-        }
-    }
-
-    /**
-     * Remove the text badge (BadgeDrawable) from a specific tab item
-     * @param index The index of the tab item (counting from left)
-     */
-    fun removeTabBarBadge(index: Int) {
-        if (index < 0 || index >= tabViews.size) return
-        val tabView = tabViews[index]
-        val iconContainer = tabView.getChildAt(0) as? FrameLayout ?: return
-
-        // Also post the removal to handle potential race conditions
-        iconContainer.post {
-            // Retrieve the stored BadgeDrawable for this container
-            badgeDrawables.remove(iconContainer)?.let { badgeToRemove ->
-                // Detach the specific BadgeDrawable from the icon container
-                BadgeUtils.detachBadgeDrawable(badgeToRemove, iconContainer)
-            }
-        }
-    }
-
-    /**
-     * Dynamically set the overall style of the TabBar
-     * @param color Default text color for tabs
-     * @param selectedColor Text color for selected tab
-     * @param backgroundColor Background color of the TabBar
-     * @param borderStyle Color of the TabBar's top border, only supports black/white
-     */
-    fun setTabBarStyle(
-        color: String? = null,
-        selectedColor: String? = null,
-        backgroundColor: String? = null,
-        borderStyle: String? = null
-    ) {
-        var updatedConfig = config
-        color?.let { updatedConfig = updatedConfig.copy(color = Color.parseColor(it)) }
-        selectedColor?.let { updatedConfig = updatedConfig.copy(selectedColor = Color.parseColor(it)) }
-        backgroundColor?.let {
-            val bgColor = Color.parseColor(it)
-            updatedConfig = updatedConfig.copy(backgroundColor = bgColor)
-            setBackgroundColor(bgColor)
-        }
-        borderStyle?.let {
-            val borderColor = when(it.lowercase()) {
-                "black" -> Color.BLACK
-                "white" -> Color.WHITE
-                else -> 0xFFF0F0F0.toInt() // Use Rust default directly
-            }
-            updatedConfig = updatedConfig.copy(borderStyle = borderColor)
-        }
-
-        config = updatedConfig
-        updateTabStates()
-    }
-
-    /**
-     * Dynamically set the content of a specific tab item
-     * @param index The index of the tab item (counting from left)
-     * @param text Text label for the tab (null to hide text)
-     * @param iconPath Path to the icon image
-     * @param selectedIconPath Path to the selected state icon image
-     */
-    fun setTabBarItem(
-        index: Int,
-        text: String? = null,
-        iconPath: String? = null,
-        selectedIconPath: String? = null
-    ) {
-        if (index < 0 || index >= items.size) return
-
-        val item = items[index]
-        val newItem = item.copy(
-            text = text ?: item.text,
-            iconPath = iconPath ?: item.iconPath,
-            selectedIconPath = selectedIconPath ?: item.selectedIconPath
-        )
-
-        items = items.toMutableList().apply {
-            set(index, newItem)
-        }
-
-        // Need to recreate the tab items if text visibility changed
-        setItems(items)
-    }
-
     // Gets the index of the currently selected tab item
     fun getSelectedIndex(): Int {
         return selectedPosition
@@ -841,7 +634,70 @@ class TabBar(context: Context) : LinearLayout(context) {
         return items.indexOfFirst { it.pagePath == path }
     }
 
-    private fun isValidConfig(config: TabBarConfig): Boolean {
+    private fun isValidConfig(config: TabBarState): Boolean {
         return config.list.isNotEmpty()
+    }
+
+    /**
+     * Create a badge view with text - compact design
+     */
+    private fun createBadgeView(badgeText: String): TextView {
+        return TextView(context).apply {
+            text = badgeText
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 7f)  // Even smaller text
+            gravity = Gravity.CENTER
+            isSingleLine = true
+            includeFontPadding = false  // Remove extra font padding
+
+            // Create very compact rounded background
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                setColor(0xFFFF4444.toInt())  // Bright red
+                cornerRadius = (6 * resources.displayMetrics.density)  // Smaller radius
+            }
+
+            // Position at top-right within wrapper bounds
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                gravity = Gravity.TOP or Gravity.END
+                // Use small positive margins to keep badge fully visible
+                val margin = (2 * resources.displayMetrics.density).toInt()
+                setMargins(0, margin, margin, 0)
+            }
+
+            // Very minimal padding for ultra-compact appearance
+            val horizontalPadding = (3 * resources.displayMetrics.density).toInt()
+            val verticalPadding = (1 * resources.displayMetrics.density).toInt()
+            setPadding(horizontalPadding, verticalPadding, horizontalPadding, verticalPadding)
+
+            // Very small minimum size
+            minWidth = (12 * resources.displayMetrics.density).toInt()
+            minHeight = (12 * resources.displayMetrics.density).toInt()
+        }
+    }
+
+    /**
+     * Create a red dot indicator - small and positioned outside icon
+     */
+    private fun createRedDotView(): View {
+        return View(context).apply {
+            // Create small red circle
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(0xFFFF4444.toInt())  // Bright red
+            }
+
+            // Position at top-right within wrapper bounds
+            val dotSize = (6 * resources.displayMetrics.density).toInt()
+            layoutParams = FrameLayout.LayoutParams(dotSize, dotSize).apply {
+                gravity = Gravity.TOP or Gravity.END
+                // Use small positive margins to keep dot fully visible
+                val margin = (3 * resources.displayMetrics.density).toInt()
+                setMargins(0, margin, margin, 0)
+            }
+        }
     }
 }
