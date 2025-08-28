@@ -1,4 +1,5 @@
 use crate::executor::LxAppExecutor;
+use crate::lxapp::navbar::NavigationBarState;
 use crate::{AppRuntime, LxAppError, error};
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
@@ -145,8 +146,9 @@ impl Pages {
 
     /// Get tab paths from TabBar
     fn get_tab_paths(&self, tabbar: Option<&crate::lxapp::tabbar::TabBar>) -> Vec<String> {
-        tabbar.map(|tb| tb.list.iter().map(|item| item.pagePath.clone()).collect())
-              .unwrap_or_default()
+        tabbar
+            .map(|tb| tb.list.iter().map(|item| item.pagePath.clone()).collect())
+            .unwrap_or_default()
     }
 
     /// Creates a new page placeholder and initiates WebView creation asynchronously
@@ -210,7 +212,11 @@ impl Pages {
 
     /// Navigates to a page by updating the current stack and marking the page as active
     /// Returns the previous page path if there was a page switch that should trigger onHide
-    pub fn navigate_to_page(&mut self, path: String, tabbar: Option<&crate::lxapp::tabbar::TabBar>) -> Option<String> {
+    pub fn navigate_to_page(
+        &mut self,
+        path: String,
+        tabbar: Option<&crate::lxapp::tabbar::TabBar>,
+    ) -> Option<String> {
         // Ensure stacks match TabBar configuration
         self.ensure_stacks_for_tabbar(tabbar);
 
@@ -255,7 +261,10 @@ impl Pages {
     /// Returns the path of the page to navigate back *to* if successful.
     /// Also destroys the page that was popped.
     /// Returns None if the current page cannot be popped (e.g., it's the tab root).
-    pub fn pop_from_current_stack(&mut self, tabbar: Option<&crate::lxapp::tabbar::TabBar>) -> Option<String> {
+    pub fn pop_from_current_stack(
+        &mut self,
+        tabbar: Option<&crate::lxapp::tabbar::TabBar>,
+    ) -> Option<String> {
         // Make sure we have stacks and current stack isn't empty
         if self.stacks.is_empty() || self.stacks[self.current_index].is_empty() {
             return None;
@@ -364,8 +373,16 @@ pub(crate) struct PageInner {
     state: Arc<Mutex<PageState>>,
 }
 
+#[derive(Clone, Debug)]
+pub struct PageState {
+    // Page loading state
+    pub(crate) load_state: PageLoadState,
+    // Navigation bar state
+    pub navbar_state: NavigationBarState,
+}
+
 #[derive(Copy, Clone, PartialEq, Debug)]
-pub enum PageState {
+pub enum PageLoadState {
     Pending, // Page created, WebView creation in progress
     Created, // Page created and WebView attached, but no HTML loaded
     Loading, // HTML loading into page
@@ -383,12 +400,17 @@ pub struct Page {
 impl Page {
     /// Create a new page in pending state (WebView creation in progress)
     fn new(appid: String, path: String, executor: Arc<LxAppExecutor>) -> Self {
+        let initial_state = PageState {
+            load_state: PageLoadState::Pending,
+            navbar_state: NavigationBarState::default(),
+        };
+
         let inner = Arc::new(PageInner {
             appid,
             path,
             executor,
             last_active_time: Arc::new(Mutex::new(Instant::now())),
-            state: Arc::new(Mutex::new(PageState::Pending)),
+            state: Arc::new(Mutex::new(initial_state)),
             webview_controller: Arc::new(Mutex::new(None)),
         });
 
@@ -399,24 +421,51 @@ impl Page {
     fn attach_webview(&self, webview_controller: Arc<dyn WebViewController>) {
         if let Ok(mut controller_guard) = self.inner.webview_controller.lock() {
             *controller_guard = Some(webview_controller);
-            // Update state to Created when WebView is attached
-            self.set_page_state(PageState::Created);
+            // Update load state to Created when WebView is attached
+            self.set_load_state(PageLoadState::Created);
         }
     }
 
-    // pls proivde one api to set page state ,one api to get
-    pub(crate) fn set_page_state(&self, state: PageState) {
-        if let Ok(mut guard) = self.inner.state.lock() {
-            *guard = state;
-        }
+    /// Get complete page state
+    pub fn get_page_state(&self) -> Option<PageState> {
+        self.inner.state.lock().ok().map(|state| state.clone())
     }
 
-    pub(crate) fn get_page_state(&self) -> PageState {
+    /// Get load state
+    pub fn get_load_state(&self) -> PageLoadState {
         self.inner
             .state
             .lock()
-            .map(|guard| *guard)
-            .unwrap_or(PageState::Unknown)
+            .map(|state| state.load_state)
+            .unwrap_or(PageLoadState::Unknown)
+    }
+
+    /// Set load state
+    pub fn set_load_state(&self, load_state: PageLoadState) {
+        if let Ok(mut state) = self.inner.state.lock() {
+            state.load_state = load_state;
+        }
+    }
+
+    /// Get navbar state (read-only)
+    pub fn get_navbar_state(&self) -> Option<NavigationBarState> {
+        self.inner
+            .state
+            .lock()
+            .ok()
+            .map(|state| state.navbar_state.clone())
+    }
+
+    /// Get navbar state with mutable access (internal use)
+    pub(crate) fn get_navbar_state_mut<F, R>(&self, f: F) -> Option<R>
+    where
+        F: FnOnce(&mut NavigationBarState) -> R,
+    {
+        self.inner
+            .state
+            .lock()
+            .ok()
+            .map(|mut state| f(&mut state.navbar_state))
     }
 
     /// Get the WebView controller for this page (returns None if not ready)

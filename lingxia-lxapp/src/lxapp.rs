@@ -20,6 +20,7 @@ pub mod config;
 use config::LxAppConfig;
 mod content;
 mod install;
+pub mod navbar;
 mod scheme;
 mod security;
 pub mod tabbar;
@@ -438,7 +439,7 @@ impl LxApp {
     }
 
     /// Reads and parses JSON content from the specified relative path
-    fn read_json(&self, relative_path: &str) -> Result<serde_json::Value, LxAppError> {
+    pub(crate) fn read_json(&self, relative_path: &str) -> Result<serde_json::Value, LxAppError> {
         self.read_text(relative_path).and_then(|content| {
             serde_json::from_str(&content)
                 .map_err(|_| LxAppError::InvalidJsonFile(relative_path.to_string()))
@@ -470,8 +471,8 @@ impl LxApp {
 
     /// This method should only be called when page is in Created state
     pub(crate) fn setup_page(&self, page: &Page, path: &str) {
-        let state = page.get_page_state();
-        if state != PageState::Created {
+        let load_state = page.get_load_state();
+        if load_state != crate::page::PageLoadState::Created {
             return;
         }
 
@@ -483,7 +484,7 @@ impl LxApp {
         ) {
             Ok(_) => {
                 // HTML loaded successfully
-                page.set_page_state(PageState::Loading);
+                page.set_load_state(crate::page::PageLoadState::Loading);
             }
             Err(e) => {
                 error!("Failed to load HTML: {}", e)
@@ -550,9 +551,9 @@ impl LxApp {
         Ok(())
     }
 
-    /// Get app configuration
-    pub fn get_config(&self) -> &config::LxAppConfig {
-        &self.config
+    ///  TODO: delete
+    pub fn get_lxapp_info(&self) -> config::LxAppInfo {
+        self.config.get_lxapp_info()
     }
 }
 

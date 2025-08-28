@@ -1,8 +1,5 @@
-pub use navbar::{NavigationBarConfig, NavigationStyle};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-
-mod navbar;
 
 /// LxApp basic information
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -18,7 +15,7 @@ pub struct LxAppInfo {
 /// App config from app.json
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[allow(non_snake_case)]
-pub struct LxAppConfig {
+pub(crate) struct LxAppConfig {
     /// LingXia App ID
     #[serde(default)]
     pub lxAppId: String,
@@ -105,48 +102,11 @@ impl LxAppConfig {
             .is_some_and(|tab_bar| tab_bar.is_valid())
     }
 
-    /// Get NavigationBar configuration for a specific page
-    #[allow(dead_code)]
-    pub fn get_nav_bar_config(
-        &self,
-        lxapp: &crate::lxapp::LxApp,
-        path: &str,
-    ) -> NavigationBarConfig {
-        // Convert path to JSON file path
-        let json_path = path_to_json_path(path);
-
-        // Try to read page-specific configuration
-        match lxapp.read_json(&json_path) {
-            Ok(json_value) => NavigationBarConfig::from_value(json_value).unwrap_or_default(),
-            Err(_) => {
-                // Fallback to default configuration
-                NavigationBarConfig::default()
-            }
-        }
-    }
-
     /// Get TabBar with absolute paths
     #[allow(dead_code)]
     pub fn get_tab_bar(&self, lxapp: &crate::lxapp::LxApp) -> Option<crate::lxapp::tabbar::TabBar> {
         self.tabBar
             .as_ref()
             .map(|tab_bar| tab_bar.with_absolute_paths(&lxapp.lxapp_dir))
-    }
-}
-
-/// Convert page path to JSON configuration path
-#[allow(dead_code)]
-fn path_to_json_path(path: &str) -> String {
-    // Handle different possible path formats:
-    // 1. "pages/home/index.html" -> "pages/home/index.json"
-    // 2. "pages/home/index" -> "pages/home/index.json"
-    // 3. "pages/home" -> "pages/home.json"
-    if path.contains('.') {
-        // Has extension: replace it with .json
-        let pos = path.rfind('.').unwrap();
-        format!("{}.json", &path[0..pos])
-    } else {
-        // No extension: append .json
-        format!("{}.json", path)
     }
 }

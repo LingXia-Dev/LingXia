@@ -11,7 +11,6 @@ mod page;
 pub use app::*;
 pub use delegate::LxAppDelegate;
 pub use error::LxAppError;
-pub use lxapp::config::LxAppConfig;
 pub use lxapp::*;
 pub use module::*;
 pub use page::WebViewController;

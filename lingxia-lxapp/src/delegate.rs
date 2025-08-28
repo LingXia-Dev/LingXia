@@ -4,7 +4,7 @@ use std::time::Instant;
 
 use crate::executor::LxAppExecutor;
 use crate::log::{self, LogLevel, LogTag};
-use crate::page::PageState;
+use crate::page::PageLoadState;
 use crate::{LxApp, appservice, error, info};
 
 pub trait LxAppDelegate {
@@ -192,7 +192,7 @@ impl LxAppDelegate for LxApp {
 
         let state = self.state.lock().unwrap();
         if let Some(page) = state.pages.get_page(&path) {
-            page.set_page_state(PageState::Loaded);
+            page.set_load_state(PageLoadState::Loaded);
         }
     }
 
