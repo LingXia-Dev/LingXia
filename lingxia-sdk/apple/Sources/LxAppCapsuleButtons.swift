@@ -70,15 +70,11 @@ public class LxAppCapsuleButtons {
     #endif
 
     #if os(iOS)
-    /// Adds capsule button to the view controller (iOS)
     public static func addCapsuleButton(to viewController: UIViewController, appId: String) {
         guard viewController.view.viewWithTag(CAPSULE_BUTTON_TAG) == nil else { return }
-        guard appId != LxAppCore.getHomeLxAppId() else { return }
 
         let capsuleButtons = LxAppUnifiedCapsuleView(
-            onMoreTapped: {
-                // More options functionality
-            },
+            onMoreTapped: {},
             onCloseTapped: {
                 if let iOSViewController = viewController as? iOSLxAppViewController {
                     iOSViewController.performLxAppClose()
@@ -93,8 +89,11 @@ public class LxAppCapsuleButtons {
 
         viewController.view.addSubview(hostingController.view)
         viewController.addChild(hostingController)
+        hostingController.didMove(toParent: viewController)
 
-        let topMargin: CGFloat = 56 // Status bar height + navigation alignment offset
+        let statusBarHeight = getActualStatusBarHeight()
+        let navbarCenterY = statusBarHeight + (44 / 2)
+        let topMargin = navbarCenterY - (LxAppTheme.Metrics.capsuleButtonHeight / 2)
 
         NSLayoutConstraint.activate([
             hostingController.view.widthAnchor.constraint(equalToConstant: LxAppTheme.Metrics.capsuleButtonWidth),
@@ -102,8 +101,6 @@ public class LxAppCapsuleButtons {
             hostingController.view.trailingAnchor.constraint(equalTo: viewController.view.trailingAnchor, constant: -LxAppTheme.Metrics.capsuleTrailingMargin),
             hostingController.view.topAnchor.constraint(equalTo: viewController.view.topAnchor, constant: topMargin)
         ])
-
-        hostingController.didMove(toParent: viewController)
     }
     #endif
 
@@ -122,6 +119,14 @@ public class LxAppCapsuleButtons {
     /// Removes capsule button from the view controller (iOS)
     public static func removeCapsuleButton(from viewController: UIViewController) {
         viewController.view.viewWithTag(CAPSULE_BUTTON_TAG)?.removeFromSuperview()
+    }
+
+    /// Get actual status bar height for consistent calculations
+    private static func getActualStatusBarHeight() -> CGFloat {
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+            return windowScene.statusBarManager?.statusBarFrame.height ?? 44
+        }
+        return 44
     }
     #endif
 
@@ -310,10 +315,7 @@ public struct LxAppCapsuleButtonView: View {
     }
 
     public var body: some View {
-        if !isHomeLxApp {
-            capsuleButtonContent
-                .onAppear { checkHomeLxApp() }
-        }
+        capsuleButtonContent
     }
 
     private var capsuleButtonContent: some View {
@@ -430,10 +432,20 @@ public struct LxAppCapsuleButtonModifier: ViewModifier {
     }
 
     private var platformTopPadding: CGFloat {
-        let platform = LxAppTheme.platform
-        let capsuleHeight = LxAppTheme.Metrics.capsuleButtonHeight
-        let titleCenterY = platform.statusBarHeight + (platform.navigationBarHeight / 2)
-        return titleCenterY - (capsuleHeight / 2)
+        #if os(iOS)
+        let statusBarHeight: CGFloat
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+            statusBarHeight = windowScene.statusBarManager?.statusBarFrame.height ?? 44
+        } else {
+            statusBarHeight = 44
+        }
+
+        // Align with navbar center
+        let navbarCenterY = statusBarHeight + (LxAppTheme.Metrics.navigationBarHeight / 2)
+        return navbarCenterY - (LxAppTheme.Metrics.capsuleButtonHeight / 2)
+        #else
+        return 0
+        #endif
     }
 
     private var platformTrailingPadding: CGFloat {
@@ -538,7 +550,7 @@ public struct LxAppUnifiedCapsuleView: View {
         )
         .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
     }
-    
+
     private static func createMoreDotsImageiOS() -> UIImage? {
         let size = CGSize(width: 24, height: 24)
         UIGraphicsBeginImageContextWithOptions(size, false, 0)

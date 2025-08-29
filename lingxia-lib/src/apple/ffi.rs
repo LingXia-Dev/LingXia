@@ -31,13 +31,15 @@ mod bridge {
         pub debug: bool,
     }
 
-    // NavigationBar configuration for Swift
+    // NavigationBar state for Swift
     #[swift_bridge(swift_repr = "struct")]
-    pub struct NavigationBarConfig {
+    pub struct NavigationBarState {
         pub background_color: u32,
         pub text_style: String,
         pub title_text: String,
-        pub navigation_style: i32,
+        pub show_navbar: bool,
+        pub show_back_button: bool,
+        pub show_home_button: bool,
     }
 
     // TabBar state for Swift (without items array)
@@ -141,8 +143,8 @@ mod bridge {
         #[swift_bridge(swift_name = "getLxAppInfo")]
         fn get_lxapp_info(appid: &str) -> LxAppInfo;
 
-        #[swift_bridge(swift_name = "getNavigationBarConfig")]
-        fn get_navigation_bar_config(appid: &str, path: &str) -> NavigationBarConfig;
+        #[swift_bridge(swift_name = "getNavigationBarState")]
+        fn get_navigation_bar_state(appid: &str, path: &str) -> NavigationBarState;
 
         #[swift_bridge(swift_name = "getTabBar")]
         fn get_tab_bar(appid: &str) -> Option<TabBar>;
@@ -184,6 +186,10 @@ mod bridge {
         #[swift_bridge(swift_name = "LxApp.updateTabBarUI")]
         fn update_tabbar_ui(appid: &str) -> bool;
 
+        // NavigationBar UI update callback
+        #[swift_bridge(swift_name = "LxApp.updateNavBarUI")]
+        fn update_navbar_ui(appid: &str) -> bool;
+
         #[swift_bridge(swift_name = "LxApp.launchWithUrl")]
         fn launch_with_url(url: &str);
 
@@ -204,7 +210,9 @@ mod bridge {
 }
 
 // Re-export the bridge functions for use in other modules
-pub use bridge::{close_lxapp, launch_with_url, open_lxapp, switch_page};
+pub use bridge::{
+    close_lxapp, launch_with_url, open_lxapp, switch_page, update_navbar_ui, update_tabbar_ui,
+};
 
 // Conversion from core LxAppInfo to FFI LxAppInfo
 impl From<CoreLxAppInfo> for bridge::LxAppInfo {
@@ -321,23 +329,26 @@ pub fn find_webview(appid: &str, path: &str) -> usize {
 /// Get LxApp information
 pub fn get_lxapp_info(appid: &str) -> bridge::LxAppInfo {
     let lxapp = lxapp::get(appid.to_string());
-    let lxapp_info = lxapp.get_config().get_lxapp_info();
+    let lxapp_info = lxapp.get_lxapp_info();
 
     // Convert from core LxAppInfo to FFI LxAppInfo
     lxapp_info.into()
 }
 
-/// Get NavigationBar configuration
-pub fn get_navigation_bar_config(appid: &str, path: &str) -> bridge::NavigationBarConfig {
+/// Get NavigationBar state
+pub fn get_navigation_bar_state(appid: &str, path: &str) -> bridge::NavigationBarState {
     let lxapp = lxapp::get(appid.to_string());
-    let nav_config = lxapp.get_config().get_nav_bar_config(&lxapp, path);
+    let nav_state = lxapp.get_navbar_state(path);
 
-    // Convert to FFI struct
-    bridge::NavigationBarConfig {
-        background_color: parse_color_to_u32(&nav_config.navigationBarBackgroundColor, 0xFFFFFFFF),
-        text_style: nav_config.navigationBarTextStyle,
-        title_text: nav_config.navigationBarTitleText,
-        navigation_style: nav_config.navigationStyle.to_i32(),
+    let bg_color = parse_color_to_u32(&nav_state.navigationBarBackgroundColor, 0xFFFFFFFF);
+
+    bridge::NavigationBarState {
+        background_color: bg_color,
+        text_style: nav_state.navigationBarTextStyle,
+        title_text: nav_state.navigationBarTitleText,
+        show_navbar: nav_state.show_navbar,
+        show_back_button: nav_state.show_back_button,
+        show_home_button: nav_state.show_home_button,
     }
 }
 

@@ -64,17 +64,12 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
 
     private func calculateInitialTopMargin() -> CGFloat {
         if LxAppWindowManager.shared.windowStyle == .capsuleStyle {
-            // Check if current page uses custom navigation style
-            let pageConfig = LxPageNavigation.getNavigationBarConfig(appId: appId, path: currentPath)
-            if LxPageNavigation.isInitialRoute(appId: appId, path: currentPath) {
-                // Initial route: WebView covers entire area
-                return 0
-            } else if pageConfig?.style.isTransparent == true {
-                // Custom navigation style: WebView covers navigation bar area
-                return 0
+            // Get config from window controller's cache to avoid duplicate calls
+            if let windowController = view.window?.windowController as? LxAppWindowController {
+                return windowController.getTopMarginForCurrentPage() - LxAppWindowController.Layout.dragBarHeight
             } else {
-                // Default navigation style: WebView below navigation bar
-                return 32  // Only navigation bar space
+                // Fallback: assume navbar is shown
+                return LxAppTheme.Metrics.navigationBarHeight
             }
         } else {
             // Tab style: 0pt - SwiftUI handles tab layout
@@ -484,12 +479,6 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
             if let tabIndex = items.firstIndex(where: { $0.page_path.toString() == currentPath }) {
                 selectedTabIndex = tabIndex
             }
-        }
-    }
-
-    public func setupWebViewWithoutNavBarUpdate(appId: String, path: String) {
-        if let webView = WebViewManager.findWebView(appId: appId, path: path) {
-            showWebViewToUser(webView, path: path)
         }
     }
 }

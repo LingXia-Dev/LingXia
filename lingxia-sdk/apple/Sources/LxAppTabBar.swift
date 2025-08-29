@@ -1446,18 +1446,17 @@ public class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
     private func updateSwiftUIView() {
         guard let config = tabBarConfig else { return }
 
-        // Remove existing hosting controller
-        if let existingController = hostingController {
-            existingController.view.removeFromSuperview()
-            existingController.removeFromParent()
-        }
-
-        // Create wrapper view that can observe changes
         let wrapperView = TabBarWrapperView(
             wrapper: self,
             appId: appId,
             config: config
         )
+
+        if let existingController = hostingController {
+            // Update existing controller's root view instead of recreating
+            existingController.rootView = AnyView(wrapperView)
+            return
+        }
 
         // Create hosting controller
         let controller = NSHostingController(rootView: AnyView(wrapperView))

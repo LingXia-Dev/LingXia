@@ -11,7 +11,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     private static var windowWidth: CGFloat = 1200
     private static var windowHeight: CGFloat = 800
 
-    private struct Layout {
+    internal struct Layout {
         static let dragBarHeight: CGFloat = 20
         static let navBarHeight: CGFloat = 32
         static let capsuleContainerWidth: CGFloat = 88
@@ -25,6 +25,9 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     private var navigationBar: NSView?
     private var floatingCapsuleContainer: NSView?
     private var dragBar: NSView?
+
+    // Cache the current page config to avoid repeated Rust calls
+    private var cachedPageConfig: NavigationBarState?
 
     private let tabManager = LxAppTabManager.shared
     private var tabView: LxAppTabView?
@@ -44,12 +47,27 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         LxAppWindowManager.shared.windowStyle
     }
 
+    /// Get or refresh the cached page config
+    private func getPageConfig(forceRefresh: Bool = false) -> NavigationBarState? {
+        guard let appId = appId, let path = path else { return nil }
+
+        if cachedPageConfig == nil || forceRefresh {
+            cachedPageConfig = LxPageNavigation.getNavigationBarState(appId: appId, path: path)
+        }
+        return cachedPageConfig
+    }
+
+    /// Clear cached config when path changes
+    private func clearPageConfigCache() {
+        cachedPageConfig = nil
+    }
+
     public func getTopMarginForCurrentPage() -> CGFloat {
-        guard let appId = appId, let path = path else { return Layout.navBarHeight }
+        guard let _ = appId, let _ = path else { return Layout.navBarHeight }
 
         if LxAppWindowManager.shared.windowStyle == .capsuleStyle {
-            let pageConfig = LxPageNavigation.getNavigationBarConfig(appId: appId, path: path)
-            return pageConfig?.navigation_style == 1 ? 0 : Layout.dragBarHeight + Layout.navBarHeight
+            let pageConfig = getPageConfig()
+            return pageConfig?.show_navbar == false ? 0 : Layout.dragBarHeight + Layout.navBarHeight
         }
         return Layout.navBarHeight
     }
@@ -197,16 +215,16 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     public func updateWindowTitle(for path: String) {
         guard let appId = appId, let navigationBar = self.navigationBar else { return }
 
+        // Clear cache when path changes
+        if self.path != path {
+            clearPageConfigCache()
+        }
         self.path = path
-        let pageConfig = LxPageNavigation.getNavigationBarConfig(appId: appId, path: path)
 
-        // Update navigation bar based on page configuration
-        if LxPageNavigation.isInitialRoute(appId: appId, path: path) {
-            // Initial route: transparent navbar and drag bar, no title
-            navigationBar.layer?.backgroundColor = NSColor.clear.cgColor
-            updateDragBarColor(NSColor.clear)
-            removeTitleLabel(from: navigationBar)
-        } else if let config = pageConfig {
+        let pageConfig = getPageConfig()
+
+        // Update navigation bar based on page configuration from Rust
+        if let config = pageConfig {
             updateNavigationBarWithConfig(config)
         }
 
@@ -239,6 +257,21 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         contentView.addSubview(dragBar)
         contentView.addSubview(navBar)
 
+        // Setup Auto Layout constraints for drag bar and navbar
+        NSLayoutConstraint.activate([
+            // Drag bar at the top of content view
+            dragBar.topAnchor.constraint(equalTo: contentView.topAnchor),
+            dragBar.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            dragBar.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            dragBar.heightAnchor.constraint(equalToConstant: Layout.dragBarHeight),
+
+            // Navbar directly below drag bar
+            navBar.topAnchor.constraint(equalTo: dragBar.bottomAnchor),
+            navBar.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            navBar.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            navBar.heightAnchor.constraint(equalToConstant: Layout.navBarHeight)
+        ])
+
         // Store references
         self.dragBar = dragBar
         self.navigationBar = navBar
@@ -261,24 +294,36 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func createDragBar(in window: NSWindow) -> NSView {
+        guard let contentView = window.contentView else {
+            fatalError("Window must have a content view")
+        }
+
+        // Create drag bar positioned at the top of the content view
         let dragBar = NSView(frame: NSRect(
             x: 0,
-            y: window.frame.height - Layout.dragBarHeight,
-            width: window.frame.width,
+            y: contentView.frame.height - Layout.dragBarHeight,
+            width: contentView.frame.width,
             height: Layout.dragBarHeight
         ))
         dragBar.wantsLayer = true
+        dragBar.translatesAutoresizingMaskIntoConstraints = false
         return dragBar
     }
 
     private func createNavigationBar(in window: NSWindow) -> NSView {
+        guard let contentView = window.contentView else {
+            fatalError("Window must have a content view")
+        }
+
+        // Create navbar positioned at the top of the content view (below drag bar)
         let navBar = NSView(frame: NSRect(
             x: 0,
-            y: window.frame.height - Layout.dragBarHeight - Layout.navBarHeight,
-            width: window.frame.width,
+            y: contentView.frame.height - Layout.navBarHeight, // Position at top of content view
+            width: contentView.frame.width,
             height: Layout.navBarHeight
         ))
         navBar.wantsLayer = true
+        navBar.translatesAutoresizingMaskIntoConstraints = false
         return navBar
     }
 
@@ -297,24 +342,34 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     private func applyInitialNavigationConfiguration() {
         guard let appId = appId, let path = path, let navigationBar = navigationBar else { return }
 
-        if LxPageNavigation.isInitialRoute(appId: appId, path: path) {
-            // Initial route: transparent navbar
-            navigationBar.layer?.backgroundColor = NSColor.clear.cgColor
-            navigationBar.isHidden = false
-            removeTitleLabel(from: navigationBar)
-        } else {
-            // Non-initial route: use page config
-            let pageConfig = LxPageNavigation.getNavigationBarConfig(appId: appId, path: path)
-            if let config = pageConfig {
+        let pageConfig = getPageConfig()
+
+        if let config = pageConfig {
+            if config.show_navbar {
                 updateNavigationBarWithConfig(config)
-            } else {
-                // Default style
-                navigationBar.layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
                 navigationBar.isHidden = false
+            } else {
+                navigationBar.isHidden = true
             }
+        } else {
+            // Fallback: show navbar with default styling if no config provided
+            navigationBar.isHidden = false
+            navigationBar.layer?.backgroundColor = NSColor.systemBlue.cgColor
         }
 
         updateWindowTitle(for: path)
+    }
+
+    /// Clean data-driven navigation bar update
+    public func updateNavigationBarWithState(_ state: NavigationBarState?) {
+        guard let navigationBar = self.navigationBar else { return }
+
+        if let state = state {
+            updateNavigationBarWithConfig(state)
+            navigationBar.isHidden = !state.show_navbar
+        } else {
+            navigationBar.isHidden = true
+        }
     }
 
     private func setupFloatingCapsuleButtons(in contentView: NSView) {
@@ -357,6 +412,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func createCapsuleButtons() -> [NSButton] {
+        // Capsule buttons are fixed floating controls, not related to navbar config
         return [
             createFloatingCapsuleButton(
                 image: LxAppCapsuleButtons.createThreeDotsImage(),
@@ -505,7 +561,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    private func updateWebViewLayoutForNavigationStyle(_ pageConfig: NavigationBarConfig?) {
+    private func updateWebViewLayoutForNavigationStyle(_ pageConfig: NavigationBarState?) {
         guard let window = self.window,
               let contentView = window.contentView else {
             os_log("⚠️ updateWebViewLayoutForNavigationStyle: window or contentView is nil", log: Self.log, type: .info)
@@ -518,17 +574,14 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         }
 
         // Calculate new top offset based on navigation style
-        let dragBarHeight: CGFloat = 20
-        let navBarHeight: CGFloat = 32
+        let dragBarHeight: CGFloat = Layout.dragBarHeight
+        let navBarHeight: CGFloat = Layout.navBarHeight
         let newTopOffset: CGFloat
 
         if LxAppWindowManager.shared.windowStyle == .capsuleStyle {
-            // Check if this is initial route first
-            if let appId = appId, let path = path, LxPageNavigation.isInitialRoute(appId: appId, path: path) {
-                // Initial route: WebView covers entire area for full transparency effect
-                newTopOffset = 0
-            } else if pageConfig?.style.isTransparent == true {
-                // Custom navigation style: WebView covers entire area for full transparency effect
+            // Use the passed pageConfig parameter (already cached)
+            if pageConfig?.show_navbar == false {
+                // Hidden navbar: WebView covers entire area for full transparency effect
                 newTopOffset = 0
             } else {
                 // Default navigation style: WebView below both drag bar and navigation bar
@@ -552,6 +605,14 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     }
 
 
+    @objc private func backButtonClicked() {
+        print("NavigationBar: Back button clicked")
+    }
+
+    @objc private func homeButtonClicked() {
+        print("NavigationBar: Home button clicked")
+    }
+
     @objc private func moreButtonClicked() {
         // More button action
     }
@@ -562,6 +623,74 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
 
     @objc private func closeButtonClicked() {
         window?.close()
+    }
+
+    private func updateNavigationBarButtons(_ config: NavigationBarState) {
+        guard let navigationBar = self.navigationBar else {
+            print("NavigationBar is nil, cannot add buttons")
+            return
+        }
+
+        // Remove existing navbar buttons
+        navigationBar.subviews.filter { $0.tag == 1001 || $0.tag == 1002 }.forEach { $0.removeFromSuperview() }
+
+        let buttonSize: CGFloat = 22
+        let buttonY = (navigationBar.frame.height - buttonSize) / 2 // Center vertically in navbar
+        let buttonX: CGFloat = 16 // Start from left edge with proper margin
+
+        // Priority logic: show back button first, only show home button if no back button
+        if config.show_back_button {
+            let backButton = NSButton(frame: NSRect(x: buttonX, y: buttonY, width: buttonSize, height: buttonSize))
+
+            // Create a smaller symbol configuration for the back arrow
+            let symbolConfig = NSImage.SymbolConfiguration(pointSize: 14, weight: .medium)
+            backButton.image = NSImage(systemSymbolName: "chevron.left", accessibilityDescription: "Back")?.withSymbolConfiguration(symbolConfig)
+
+            backButton.imageScaling = .scaleProportionallyDown
+            backButton.isBordered = false
+            backButton.bezelStyle = .regularSquare
+            backButton.imagePosition = .imageOnly
+            backButton.tag = 1001 // Tag for identification
+            backButton.target = self
+            backButton.action = #selector(backButtonClicked)
+
+            // Style the button to match navbar - use appropriate color based on navbar visibility
+            if config.show_navbar {
+                // Visible navbar: use white for colored backgrounds
+                backButton.contentTintColor = NSColor.white
+            } else {
+                // Transparent navbar: use black for better visibility on light backgrounds
+                backButton.contentTintColor = NSColor.black
+            }
+
+            navigationBar.addSubview(backButton)
+        } else if config.show_home_button {
+            // Only show home button if back button is not shown
+            let homeButton = NSButton(frame: NSRect(x: buttonX, y: buttonY, width: buttonSize, height: buttonSize))
+
+            // Create a smaller symbol configuration for the home icon
+            let symbolConfig = NSImage.SymbolConfiguration(pointSize: 14, weight: .medium)
+            homeButton.image = NSImage(systemSymbolName: "house", accessibilityDescription: "Home")?.withSymbolConfiguration(symbolConfig)
+
+            homeButton.imageScaling = .scaleProportionallyDown
+            homeButton.isBordered = false
+            homeButton.bezelStyle = .regularSquare
+            homeButton.imagePosition = .imageOnly
+            homeButton.tag = 1002 // Tag for identification
+            homeButton.target = self
+            homeButton.action = #selector(homeButtonClicked)
+
+            // Style the button to match navbar - use appropriate color based on navbar visibility
+            if config.show_navbar {
+                // Visible navbar: use white for colored backgrounds
+                homeButton.contentTintColor = NSColor.white
+            } else {
+                // Transparent navbar: use black for better visibility on light backgrounds
+                homeButton.contentTintColor = NSColor.black
+            }
+
+            navigationBar.addSubview(homeButton)
+        }
     }
 
     private func ensureCorrectViewFrame() {
@@ -655,19 +784,14 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         // Calculate top offset based on window style and navigation style
         let topOffset: CGFloat
         if LxAppWindowManager.shared.windowStyle == .capsuleStyle {
-            // Check if current page uses custom navigation style
-            if let appId = appId, let path = path {
-                let pageConfig = LxPageNavigation.getNavigationBarConfig(appId: appId, path: path)
-                if pageConfig?.style.isTransparent == true {
-                    // Custom navigation style: WebView covers navigation bar area
-                    topOffset = 0
-                } else {
-                    // Default navigation style: WebView below navigation bar
-                    topOffset = 32  // Only navigation bar space (title bar is separate)
-                }
-            } else {
-                // Initial route: no navigation bar, WebView starts from title bar bottom
+            // Use cached page config
+            let pageConfig = getPageConfig()
+            if pageConfig?.show_navbar == false {
+                // Hidden navigation bar: WebView covers navigation bar area
                 topOffset = 0
+            } else {
+                // Default navigation style: WebView below navigation bar
+                topOffset = 32  // Only navigation bar space (title bar is separate)
             }
         } else {
             // Tab style: 32pt for tab bar
@@ -696,7 +820,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    private func updateNavigationBarWithConfig(_ config: NavigationBarConfig) {
+    private func updateNavigationBarWithConfig(_ config: NavigationBarState) {
         guard let navigationBar = self.navigationBar else { return }
 
         // Ensure navigation bar has a layer
@@ -704,8 +828,8 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
             navigationBar.wantsLayer = true
         }
 
-        // For custom navigation style, make navbar transparent
-        if config.style.isTransparent {
+        // For hidden navigation bar, make navbar transparent
+        if !config.show_navbar {
             navigationBar.layer?.backgroundColor = NSColor.clear.cgColor
             // Update drag bar to be transparent when navbar is transparent
             updateDragBarColor(NSColor.clear)
@@ -714,17 +838,28 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         } else {
             // Apply background color for default navigation style
             let backgroundColor = PlatformColor(argb: config.background_color)
+
+            // Ensure navigation bar has a layer and is properly configured
+            navigationBar.wantsLayer = true
+
+            // Set background color on the layer
             navigationBar.layer?.backgroundColor = backgroundColor.cgColor
-            // Update drag bar to match navbar color
+
+            // Force immediate display update
+            navigationBar.needsDisplay = true
+            navigationBar.needsLayout = true
+
             updateDragBarColor(backgroundColor)
-            // Add title for visible navbar
             setupNavigationBarTitle(in: navigationBar)
-            // Apply title and text color
             if let titleLabel = findTitleLabel(in: navigationBar) {
                 titleLabel.stringValue = config.title_text.toString()
                 titleLabel.textColor = config.text_style.toString() == "white" ? NSColor.white : NSColor.black
             }
+
         }
+
+        // Always update buttons regardless of navbar visibility
+        updateNavigationBarButtons(config)
     }
 
     private func updateDragBarColor(_ color: NSColor) {

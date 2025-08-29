@@ -17,10 +17,9 @@ public class iOSLxAppViewController: UIViewController, ObservableObject {
     public static let EXTRA_APP_ID = "appId"
     public static let EXTRA_PATH = "path"
     // NavigationBar title and capsule button vertical position (status bar + margin)
-    internal static let NAV_TITLE_VERTICAL_POSITION: CGFloat = PLATFORM_STATUS_BAR_HEIGHT + 8
+    internal static let NAV_TITLE_VERTICAL_POSITION: CGFloat = 44 + 8 // Default fallback
 
-
-    // MARK: - Published Properties for SwiftUI Integration
+    // Published Properties for SwiftUI Integration
     public let appId: String  // Non-@Published to avoid MainActor issues
     @Published public var currentPath: String
     public var isDestroyed = false
@@ -30,10 +29,9 @@ public class iOSLxAppViewController: UIViewController, ObservableObject {
     @Published public var navigationTitle: String = ""
     @Published public var showBackButton: Bool = false
 
-    // MARK: - Private Properties
+    // Private Properties
     private var initialPath: String
-    private var rootContainer: UIView!
-    private var statusBarBackground: UIView!
+    internal var rootContainer: UIView!
     private var webViewContainer: UIView!
     internal var tabBar: LingXiaTabBar?
     internal var navigationBar: LingXiaNavigationBar?
@@ -45,11 +43,24 @@ public class iOSLxAppViewController: UIViewController, ObservableObject {
     nonisolated(unsafe) private var closeAppObserver: NSObjectProtocol?
     nonisolated(unsafe) private var switchPageObserver: NSObjectProtocol?
 
+    /// Computed navigation area height based on global state
+    private var navigationAreaHeight: CGFloat {
+        guard let state = NavigationBarStateManager.shared.currentState, state.show_navbar else {
+            return statusBarHeight
+        }
+        return statusBarHeight + NavigationBarState.DEFAULT_HEIGHT
+    }
+
+    /// Get actual status bar height - single source of truth
+    private var statusBarHeight: CGFloat {
+        return view.window?.windowScene?.statusBarManager?.statusBarFrame.height ?? LxAppTheme.Metrics.statusBarHeight
+    }
+
     /// Check if current page should use transparent mode
     private var shouldUseTransparentMode: Bool {
-        let isInitialRoute = LxPageNavigation.isInitialRoute(appId: appId, path: currentPath)
+        // For now, just check if TabBar is transparent
         let isTabBarTransparent = tabBar != nil && TabBar.isTransparent(tabBar!.config?.background_color ?? 0)
-        return isInitialRoute || isTabBarTransparent
+        return isTabBarTransparent
     }
 
     public init(appId: String, path: String) {
@@ -68,29 +79,36 @@ public class iOSLxAppViewController: UIViewController, ObservableObject {
         fatalError("init(coder:) has not been implemented")
     }
 
-    // MARK: - Reactive Setup
-
     private func setupReactiveBindings() {
-        // Update navigation title when path changes
+        // Path changes automatically update global navigation state
         $currentPath
-            .map { [weak self] path in
-                self?.getNavigationTitle(for: path) ?? ""
+            .sink { [weak self] path in
+                guard let self = self else { return }
+                NavigationBarStateManager.shared.updateState(appId: self.appId, path: path)
             }
-            .assign(to: \.navigationTitle, on: self)
             .store(in: &cancellables)
 
-        // Update back button visibility when path changes
-        $currentPath
-            .map { [weak self] path in
-                guard let self = self else { return false }
-                return LxPageNavigation.shouldShowBackButton(for: path, appId: self.appId, tabBarConfig: self.tabBar?.config)
+        // Global state changes automatically update WebView layout
+        NavigationBarStateManager.shared.$currentState
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.updateWebViewConstraints()
             }
-            .assign(to: \.showBackButton, on: self)
+            .store(in: &cancellables)
+
+        // Global state changes automatically apply transparency
+        NavigationBarStateManager.shared.$currentState
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] state in
+                if state?.show_navbar != true {
+                    self?.applyTransparentBackground(forceLayout: false)
+                }
+            }
             .store(in: &cancellables)
     }
 
     private func getNavigationTitle(for path: String) -> String {
-        if let config = LxPageNavigation.getNavigationBarConfig(appId: appId, path: path) {
+        if let config = LxPageNavigation.getNavigationBarState(appId: appId, path: path) {
             return config.title_text.toString()
         }
         return ""
@@ -179,16 +197,21 @@ public class iOSLxAppViewController: UIViewController, ObservableObject {
         // Mark transparency as initialized early to prevent redundant operations
         hasInitializedTransparency = true
 
-        navigationBar = nil
-
         setupRootContainer()
         setupWebViewContainer()
         setupTabBarIfNeeded()
         setupNavigationBar()
         setupNotificationObservers()
 
-        // Ensure transparent navigation area after containers are set up
-        ensureTransparentNavigationArea(forceLayout: false)
+        // Initialize NavBar state
+        NavigationBarStateManager.shared.updateState(appId: appId, path: currentPath)
+
+        // Apply transparency based on TabBar configuration, not just NavBar state
+        if let tabBar = tabBar, TabBar.isTransparent(tabBar.config?.background_color ?? 0) {
+            setCompleteTransparency()
+        } else if NavigationBarStateManager.shared.currentState?.show_navbar != true {
+            applyTransparentBackground(forceLayout: false)
+        }
     }
 
     private func setupWebView() {
@@ -400,8 +423,8 @@ public class iOSLxAppViewController: UIViewController, ObservableObject {
         }
     }
 
-    /// Setup WebView without NavigationBar update (for TabBar switches where NavBar is already handled)
-    public func setupWebViewWithoutNavBarUpdate(appId: String, path: String) {
+    /// Setup WebView for the specified app and path
+    public func setupWebView(appId: String, path: String) {
         if let webView = iOSLxApp.findWebView(appId: appId, path: path) {
             // Pause current WebView if it exists and is different from target
             if let currentWebView = currentWebView, currentWebView != webView {
@@ -433,8 +456,8 @@ public class iOSLxAppViewController: UIViewController, ObservableObject {
         }
     }
 
-    /// Apply transparency effects specifically after TabBar switches
-    public func applyTransparencyEffectsAfterTabSwitch() {
+    /// Apply transparency effects to the view
+    public func applyTransparencyEffects() {
         // For TabBar root to root switches, minimize operations to avoid any flicker
         guard let tabBar = tabBar else { return }
 
@@ -451,8 +474,6 @@ public class iOSLxAppViewController: UIViewController, ObservableObject {
 
         // Minimal UI layering - only bring TabBar to front for root-to-root switches
         rootContainer.bringSubviewToFront(tabBar)
-
-
     }
 
     private func attachWebViewToUI(webView: WKWebView) {
@@ -472,11 +493,12 @@ public class iOSLxAppViewController: UIViewController, ObservableObject {
         bringUIElementsToFront()
     }
 
+    private var webViewTopConstraint: NSLayoutConstraint?
+
     private func addWebViewToContainer(_ webView: WKWebView) {
-        // Skip complex constraint updates for TabBar switches to avoid screen flicker
         if webView.superview == rootContainer {
-            // WebView already in container, just ensure it's visible
             webView.isHidden = false
+            updateWebViewConstraints()
             return
         }
 
@@ -484,29 +506,56 @@ public class iOSLxAppViewController: UIViewController, ObservableObject {
             webView.removeFromSuperview()
         }
 
-        rootContainer.addSubview(webView)
+        // CRITICAL: Hide WebView first to prevent visual glitches during constraint setup
+        webView.isHidden = true
 
+        rootContainer.addSubview(webView)
         webView.translatesAutoresizingMaskIntoConstraints = false
+
+        updateWebViewTopConstraint(for: webView)
+
         NSLayoutConstraint.activate([
-            webView.topAnchor.constraint(equalTo: view.topAnchor),
             webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             webView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
 
         configureWebView(webView, transparent: shouldUseTransparentMode)
+        webView.scrollView.contentInset = UIEdgeInsets.zero
+        webView.scrollView.scrollIndicatorInsets = UIEdgeInsets.zero
 
-        // Set content inset based on UI layout
-        let topInset: CGFloat = (shouldUseTransparentMode && navigationBar == nil) ? 0 :
-                               (navigationBar != nil) ? 0 : PLATFORM_STATUS_BAR_HEIGHT
+        // Force layout before showing WebView to prevent position jumping
+        rootContainer.setNeedsLayout()
+        rootContainer.layoutIfNeeded()
 
-        webView.scrollView.contentInset = UIEdgeInsets(top: topInset, left: 0, bottom: 0, right: 0)
-        webView.scrollView.scrollIndicatorInsets = webView.scrollView.contentInset
-
+        // Now show WebView with correct position
         webView.isHidden = false
-
-        // Apply transparency effects after WebView is positioned
         applyTransparencyIfNeeded(for: webView)
+    }
+
+    /// Position WebView below the navigation area (status bar + navbar)
+    private func updateWebViewTopConstraint(for webView: WKWebView) {
+        // Remove old constraint
+        if let oldConstraint = webViewTopConstraint {
+            oldConstraint.isActive = false
+            rootContainer.removeConstraint(oldConstraint)
+        }
+
+        // Use clean navigation area height calculation
+        let topOffset = navigationAreaHeight
+
+        webViewTopConstraint = webView.topAnchor.constraint(equalTo: rootContainer.topAnchor, constant: topOffset)
+        webViewTopConstraint?.isActive = true
+
+        // Force layout update
+        rootContainer.setNeedsLayout()
+        rootContainer.layoutIfNeeded()
+    }
+
+    /// Update WebView layout to account for navigation area changes
+    private func updateWebViewConstraints() {
+        guard let currentWebView = currentWebView else { return }
+        updateWebViewTopConstraint(for: currentWebView)
     }
 
     private func setupTabBar(config: TabBar?) {
@@ -641,9 +690,8 @@ public class iOSLxAppViewController: UIViewController, ObservableObject {
         setCompleteTransparency()
 
         // Re-apply navbar configuration after transparency changes
-        // This ensures page-specific navbar colors are preserved
         let currentPath = webView?.currentPath ?? initialPath
-        updateNavigationBar(appId: appId, path: currentPath)
+        NavigationBarStateManager.shared.updateState(appId: appId, path: currentPath)
 
         // Apply specific WebView transparency if provided
         if let webView = webView {
@@ -660,7 +708,7 @@ public class iOSLxAppViewController: UIViewController, ObservableObject {
         if isVertical {
             NSLayoutConstraint.activate([
                 tabBar.widthAnchor.constraint(equalToConstant: tabBarSize),
-                tabBar.topAnchor.constraint(equalTo: rootContainer.topAnchor, constant: PLATFORM_STATUS_BAR_HEIGHT),
+                tabBar.topAnchor.constraint(equalTo: rootContainer.topAnchor, constant: statusBarHeight),
                 tabBar.bottomAnchor.constraint(equalTo: rootContainer.bottomAnchor)
             ])
 
@@ -745,10 +793,10 @@ public class iOSLxAppViewController: UIViewController, ObservableObject {
 
         // Ensure NavigationBar remains visible (don't make it transparent)
         if let navigationBar = navigationBar {
-            // Keep NavigationBar opaque with white background
-            navigationBar.backgroundColor = UIColor.white
-            navigationBar.isOpaque = true
-            navigationBar.layer.backgroundColor = UIColor.white.cgColor
+            // Keep NavigationBar opaque but let SwiftUI handle the background color
+            navigationBar.backgroundColor = UIColor.clear
+            navigationBar.isOpaque = false
+            navigationBar.layer.backgroundColor = UIColor.clear.cgColor
 
         }
     }
@@ -759,28 +807,22 @@ public class iOSLxAppViewController: UIViewController, ObservableObject {
     }
 
     public func performLxAppClose() {
-        // Notify Rust layer that lxapp is being closed
         let _ = onLxappClosed(appId)
-        os_log("performLxAppClose: onLxappClosed called for appId=%@", log: Self.log, type: .info, appId)
 
-        // Use the same approach as independent iOS implementation
-        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let window = windowScene.windows.first else {
-            os_log("performLxAppClose: Could not find window scene or window", log: Self.log, type: .error)
+        guard let navController = navigationController else {
+            dismiss(animated: false)
             return
         }
 
-        if let navController = window.rootViewController as? UINavigationController {
-            navController.popViewController(animated: false)
-            os_log("performLxAppClose: Popped view controller from navigation stack", log: Self.log, type: .info)
+        if navController.viewControllers.count <= 1 {
+            navController.presentingViewController?.dismiss(animated: false)
         } else {
-            os_log("performLxAppClose: No navigation controller found, using fallback", log: Self.log, type: .info)
-            // Fallback: try to dismiss or remove from parent
-            if presentingViewController != nil {
-                dismiss(animated: false)
-            } else if parent != nil {
-                removeFromParent()
-                view.removeFromSuperview()
+            let previousVC = navController.viewControllers[navController.viewControllers.count - 2] as? iOSLxAppViewController
+            navController.popViewController(animated: false)
+            if let previousVC = previousVC {
+                NavigationBarStateManager.shared.updateState(appId: previousVC.appId, path: previousVC.currentPath)
+                // Force NavBar to update with correct state
+                previousVC.navigationBar?.updateWithState(NavigationBarStateManager.shared.currentState)
             }
         }
     }
@@ -803,23 +845,11 @@ public class iOSLxAppViewController: UIViewController, ObservableObject {
     }
 
     private func addCapsuleButton() {
-        // Use the unified SwiftUI implementation
+        if isDisplayingHomeLxApp { return }
         LxAppCapsuleButtons.addCapsuleButton(to: self, appId: appId)
     }
 
-    @objc func moreButtonTapped() {
-        print("More button tapped")
-        // Implement more functionality
-    }
-
-    @objc func closeButtonTapped() {
-        print("Close button tapped")
-        // Close the current app
-        iOSLxApp.closeLxApp(appId: appId)
-    }
-
-    private func ensureTransparentNavigationArea(forceLayout: Bool = true) {
-        // When NavigationBar is hidden, ensure the entire status bar and navigation area is transparent
+    private func applyTransparentBackground(forceLayout: Bool = true) {
         view.backgroundColor = UIColor.clear
         view.isOpaque = false
         view.layer.backgroundColor = UIColor.clear.cgColor
@@ -828,154 +858,45 @@ public class iOSLxAppViewController: UIViewController, ObservableObject {
         rootContainer.isOpaque = false
         rootContainer.layer.backgroundColor = UIColor.clear.cgColor
 
-        // Keep webViewContainer transparent to allow WebView transparency
         webViewContainer?.backgroundColor = UIColor.clear
         webViewContainer?.isOpaque = false
 
-        // Force layout update only if requested
         if forceLayout {
             view.setNeedsLayout()
             view.layoutIfNeeded()
         }
     }
 
-    public func ensureNavigationBarExists() {
-        guard navigationBar == nil else {
-            return
-        }
-        // NavigationBar should include status bar area in its total height
-        let navBarContentHeight: CGFloat = 44 // Content area height
-        let totalNavBarHeight = navBarContentHeight + PLATFORM_STATUS_BAR_HEIGHT
-        let frame = CGRect(x: 0, y: 0, width: view.bounds.width, height: totalNavBarHeight)
-        let newNavBar = LingXiaNavigationBar(frame: frame)
+    /// Hide navigation bar by updating global state
+    public func hideNavigationBar() {
+        NavigationBarStateManager.shared.currentState = nil
+    }
 
-        newNavBar.translatesAutoresizingMaskIntoConstraints = false
-        newNavBar.backgroundColor = UIColor.white
+    /// Create navigation bar if needed
+    public func createNavigationBarIfNeeded() {
+        guard navigationBar == nil else { return }
 
-        // Set back button click handler using the cross-platform API
-        newNavBar.setOnBackButtonClickListener { [weak self] in
-            self?.handleBackButtonClick()
-        }
+        let navBar = LingXiaNavigationBar()
+        navBar.translatesAutoresizingMaskIntoConstraints = false
 
-        navigationBar = newNavBar
-        rootContainer.addSubview(newNavBar)
+        navigationBar = navBar
+        rootContainer.addSubview(navBar)
 
-        // Position NavigationBar from screen top (like independent implementation)
+        // Store height constraint for dynamic updates
+        let heightConstraint = navBar.heightAnchor.constraint(equalToConstant: statusBarHeight + NavigationBarState.DEFAULT_HEIGHT)
+
         NSLayoutConstraint.activate([
-            newNavBar.topAnchor.constraint(equalTo: rootContainer.topAnchor),
-            newNavBar.leadingAnchor.constraint(equalTo: rootContainer.leadingAnchor),
-            newNavBar.trailingAnchor.constraint(equalTo: rootContainer.trailingAnchor),
-            newNavBar.heightAnchor.constraint(equalToConstant: totalNavBarHeight)
+            navBar.topAnchor.constraint(equalTo: rootContainer.topAnchor),
+            navBar.leadingAnchor.constraint(equalTo: rootContainer.leadingAnchor),
+            navBar.trailingAnchor.constraint(equalTo: rootContainer.trailingAnchor),
+            heightConstraint
         ])
 
-        rootContainer.bringSubviewToFront(newNavBar)
+        // Store reference for dynamic updates
+        navigationBar?.heightConstraint = heightConstraint
 
-        // Force WebView container constraints to update after NavigationBar creation
-        if let currentWebView = currentWebView {
-            addWebViewToContainer(currentWebView)
-        }
-    }
-
-    public func removeNavigationBar() {
-        guard let navigationBar = navigationBar else {
-            // Even if no navigation bar exists, ensure transparent area
-            ensureTransparentNavigationArea()
-            return
-        }
-
-        os_log("removeNavigationBar: Removing navigation bar", log: Self.log, type: .info)
-
-        navigationBar.removeFromSuperview()
-        self.navigationBar = nil
-
-        // Ensure transparent area after removal
-        ensureTransparentNavigationArea()
-
-        // Force WebView container constraints to update after NavigationBar removal
-        if let currentWebView = currentWebView {
-            addWebViewToContainer(currentWebView)
-        }
-    }
-
-    /// Optimized NavigationBar removal for TabBar switches to minimize flicker
-    public func removeNavigationBarForTabSwitch() {
-        guard let navigationBar = navigationBar else {
-            return
-        }
-
-        os_log("removeNavigationBarForTabSwitch: Removing navigation bar for tab switch", log: Self.log, type: .info)
-
-        navigationBar.removeFromSuperview()
-        self.navigationBar = nil
-
-        // Use the optimized transparent area method that doesn't force layout
-        ensureTransparentNavigationArea(forceLayout: false)
-
-        // Skip the WebView container constraint update to avoid layout flicker
-        // The frame-based layout will handle positioning automatically
-    }
-
-    public override func viewWillDisappear(_ animated: Bool) {
-        super.viewWillDisappear(animated)
-
-        if isBeingDismissed {
-            cleanupResources()
-        }
-    }
-
-    private func cleanupResources() {
-        // Remove notification observers safely
-        if let observer = closeAppObserver {
-            NotificationCenter.default.removeObserver(observer)
-            closeAppObserver = nil
-        }
-        if let observer = switchPageObserver {
-            NotificationCenter.default.removeObserver(observer)
-            switchPageObserver = nil
-        }
-
-        // Pause current WebView but don't release it - Rust manages lifecycle
-        currentWebView?.pauseWebView()
-
-        // Clear our reference but don't release the WebView
-        currentWebView = nil
-
-        // Mark as destroyed to prevent further operations
-        isDestroyed = true
-    }
-
-    private func performCleanupBeforeReplacement() {
-        os_log("performCleanupBeforeReplacement: Starting UI cleanup for appId=%@", log: Self.log, type: .info, appId)
-
-        // Stop background monitoring
-        isDestroyed = true
-
-        // Remove notification observers
-        cleanupResources()
-
-        // Hide and pause current WebView but don't release it
-        if let currentWebView = currentWebView {
-            currentWebView.isHidden = true
-            currentWebView.pauseWebView()
-            os_log("performCleanupBeforeReplacement: Paused and hidden current WebView", log: Self.log, type: .info)
-        }
-
-        // Clear current WebView reference
-        self.currentWebView = nil
-
-        os_log("performCleanupBeforeReplacement: Completed UI cleanup", log: Self.log, type: .info)
-    }
-
-    deinit {
-        // Cleanup observers to prevent leaks
-        if let closeAppObserver = closeAppObserver {
-            NotificationCenter.default.removeObserver(closeAppObserver)
-        }
-        if let switchPageObserver = switchPageObserver {
-            NotificationCenter.default.removeObserver(switchPageObserver)
-        }
-
-        os_log("iOSLxAppViewController: iOSLxAppViewController deinitialized", log: miniAppViewControllerLog, type: .debug)
+        rootContainer.bringSubviewToFront(navBar)
+        updateWebViewConstraints()
     }
 }
 #endif

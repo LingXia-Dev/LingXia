@@ -15,15 +15,14 @@ public protocol LxAppViewControllerProtocol: AnyObject {
     var isDestroyed: Bool { get }
 
     // Navigation operations
-    func setupWebViewWithoutNavBarUpdate(appId: String, path: String)
+    func setupWebView(appId: String, path: String)
     func setupWebViewIfReady(appId: String, path: String)
     func performLxAppClose()
 
     // Navigation bar operations
-    func ensureNavigationBarExists()
-    func removeNavigationBar()
-    func removeNavigationBarForTabSwitch()
-    func applyTransparencyEffectsAfterTabSwitch()
+    func createNavigationBarIfNeeded()
+    func hideNavigationBar()
+    func applyTransparencyEffects()
 
     // Tab bar operations
     func getTabBar() -> (any TabBarProtocol)?
@@ -56,8 +55,8 @@ public class LxAppPageNavigation {
 
         tabBar.setSelectedIndex(tabIndex, notifyListener: false)
         let appId = viewController.appId
-        let pageConfig = LxPageNavigation.getNavigationBarConfig(appId: appId, path: targetPath)
-        let shouldShowNavigationBar = LxPageNavigation.shouldShowNavigationBar(pageConfig: pageConfig)
+        let pageConfig = LxPageNavigation.getNavigationBarState(appId: appId, path: targetPath)
+        let shouldShowNavigationBar = pageConfig?.show_navbar ?? false
         let currentHasNavBar = hasNavigationBar(viewController)
 
         if currentHasNavBar != shouldShowNavigationBar {
@@ -65,27 +64,30 @@ public class LxAppPageNavigation {
                 updateNavigationBar(
                     appId: appId,
                     path: targetPath,
-                    isBackNavigation: false,
                     disableAnimation: true,
                     in: viewController
                 )
             } else {
-                viewController.removeNavigationBarForTabSwitch()
+                viewController.hideNavigationBar()
             }
         } else if shouldShowNavigationBar {
-            updateNavigationBar(
-                appId: appId,
-                path: targetPath,
-                isBackNavigation: false,
-                disableAnimation: true,
-                in: viewController
-            )
+            // Only update navbar if the path actually changed or navbar config changed
+            let currentPath = getCurrentPath(from: viewController)
+            if currentPath != targetPath {
+                updateNavigationBar(
+                    appId: appId,
+                    path: targetPath,
+                    disableAnimation: true,
+                    in: viewController
+                )
+            }
+            // If same path, skip navbar update to avoid height changes
         }
 
         // Setup WebView
-        viewController.setupWebViewWithoutNavBarUpdate(appId: appId, path: targetPath)
+        viewController.setupWebView(appId: appId, path: targetPath)
         LxAppCore.setLastActivePath(targetPath, for: appId)
-        viewController.applyTransparencyEffectsAfterTabSwitch()
+        viewController.applyTransparencyEffects()
     }
 
     /// Switches to a specific page - unified implementation
@@ -97,7 +99,6 @@ public class LxAppPageNavigation {
         navigateToPage(
             targetPath: params.cleanPath,
             isReplace: params.isReplace,
-            isBackNavigation: false,
             in: viewController
         )
     }
@@ -106,7 +107,6 @@ public class LxAppPageNavigation {
     public static func navigateToPage<T: LxAppViewControllerProtocol>(
         targetPath: String,
         isReplace: Bool = false,
-        isBackNavigation: Bool = false,
         in viewController: T
     ) {
         guard !viewController.isDestroyed else { return }
@@ -117,7 +117,6 @@ public class LxAppPageNavigation {
         updateNavigationBar(
             appId: appId,
             path: targetPath,
-            isBackNavigation: isBackNavigation,
             in: viewController
         )
 
@@ -132,14 +131,13 @@ public class LxAppPageNavigation {
     public static func updateNavigationBar<T: LxAppViewControllerProtocol>(
         appId: String,
         path: String,
-        isBackNavigation: Bool = false,
         disableAnimation: Bool = false,
         in viewController: T
     ) {
-        let pageConfig = LxPageNavigation.getNavigationBarConfig(appId: appId, path: path)
+        let pageConfig = LxPageNavigation.getNavigationBarState(appId: appId, path: path)
 
         // Determine NavigationBar visibility using LxPageNavigation
-        let shouldShowNavigationBar = LxPageNavigation.shouldShowNavigationBar(pageConfig: pageConfig)
+        let shouldShowNavigationBar = pageConfig?.show_navbar ?? false
 
         if shouldShowNavigationBar {
             #if os(macOS)
@@ -149,43 +147,15 @@ public class LxAppPageNavigation {
                 windowController.updateWindowTitle(for: path)
             }
             #elseif os(iOS)
-            // For iOS, use the traditional navigation bar approach
-            viewController.ensureNavigationBarExists()
+            // For iOS, use the new unified navigation bar approach
+            viewController.createNavigationBarIfNeeded()
 
-            if let iOSViewController = viewController as? iOSLxAppViewController,
-               let navigationBar = iOSViewController.navigationBar {
-
-                let title = pageConfig?.title_text.toString() ?? ""
-                let bgColor = PlatformColor(argb: pageConfig?.background_color ?? 0xFFFFFFFF)
-                let textColor = getTextColor(from: pageConfig?.text_style.toString())
-
-                // Get TabBar config to check if this is a tab root page
-                let tabBarConfig: TabBar?
-                if let existingConfig = viewController.getTabBar()?.config {
-                    tabBarConfig = existingConfig
-                } else {
-                    // Fallback: get TabBar config directly from the app configuration
-                    tabBarConfig = lingxia.getTabBar(appId)
-                }
-
-                let showBackButton = shouldShowBackButton(for: path, appId: appId, tabBarConfig: tabBarConfig)
-
-                navigationBar.updateStateAndAnimate(
-                    title: title,
-                    bgColor: bgColor,
-                    textColor: textColor,
-                    showBackButton: showBackButton,
-                    isBackNavigation: isBackNavigation,
-                    disableAnimation: disableAnimation,
-                    onBackClickListener: {
-                        handleBackButtonClick(in: viewController)
-                    }
-                )
+            if let iOSViewController = viewController as? iOSLxAppViewController {
+                NavigationBarStateManager.shared.updateState(appId: appId, path: path)
             }
             #endif
         } else {
-            // NavigationBar should be hidden - remove it completely
-            viewController.removeNavigationBar()
+            viewController.createNavigationBarIfNeeded() // Ensure it exists first
         }
     }
 
@@ -244,7 +214,9 @@ public class LxAppPageNavigation {
     }
 
     private static func shouldShowBackButton(for path: String, appId: String, tabBarConfig: TabBar? = nil) -> Bool {
-        return LxPageNavigation.shouldShowBackButton(for: path, appId: appId, tabBarConfig: tabBarConfig)
+        // Use Rust-provided NavigationBarState instead of hardcoded logic
+        let pageConfig = LxPageNavigation.getNavigationBarState(appId: appId, path: path)
+        return pageConfig?.show_back_button ?? false
     }
 
     #if os(iOS)
@@ -303,7 +275,6 @@ extension iOSLxAppViewController: LxAppViewControllerProtocol {
         LxAppPageNavigation.navigateToPage(
             targetPath: targetPath,
             isReplace: isReplace,
-            isBackNavigation: isBackNavigation,
             in: self
         )
     }
@@ -312,8 +283,6 @@ extension iOSLxAppViewController: LxAppViewControllerProtocol {
     public func updateNavigationBar(appId: String, path: String) {
         LxAppPageNavigation.updateNavigationBar(appId: appId, path: path, in: self)
     }
-
-
 
     /// Handles back button click (public interface)
     public func handleBackButtonClick() {
@@ -339,11 +308,6 @@ public struct LxPageNavigation {
         initialRouteCache[appId] = initialRoute
     }
 
-    /// Check if a path is the initial route using cached data
-    public static func isInitialRoute(appId: String, path: String) -> Bool {
-        return initialRouteCache[appId] == path
-    }
-
     /// Parses navigation parameters from target path
     public static func parseNavigationParams(from targetPath: String) -> LxNavigationParams {
         let isReplace = targetPath.contains("?replace=true")
@@ -356,37 +320,15 @@ public struct LxPageNavigation {
     }
 
     /// Gets page configuration from Rust layer using typed API
-    /// Returns nil if this is an initial route (should hide navbar) - except on macOS
-    public static func getNavigationBarConfig(appId: String, path: String) -> NavigationBarConfig? {
-        #if os(macOS)
-        // macOS always returns config, even for initial route
-        return lingxia.getNavigationBarConfig(appId, path)
-        #else
-        // iOS: return nil for initial route to hide navbar
-        if isInitialRoute(appId: appId, path: path) {
-            return nil
-        }
-        return lingxia.getNavigationBarConfig(appId, path)
-        #endif
-    }
-
-    /// Determines if back button should be shown
-    public static func shouldShowBackButton(for path: String, appId: String, tabBarConfig: TabBar? = nil) -> Bool {
-        return false
+    /// Always returns the Rust-provided configuration
+    public static func getNavigationBarState(appId: String, path: String) -> NavigationBarState? {
+        return lingxia.getNavigationBarState(appId, path)
     }
 
     /// Finds tab index by path in tab bar configuration
     public static func findTabIndexByPath(_ targetPath: String, in config: TabBar, appId: String) -> Int {
         let items = config.getItems(appId: appId)
         return items.firstIndex { $0.page_path.toString() == targetPath } ?? -1
-    }
-
-    /// Determines navigation bar visibility from page config
-    public static func shouldShowNavigationBar(pageConfig: NavigationBarConfig?) -> Bool {
-        // If pageConfig is nil, it means this is an initial route - hide navbar
-        // If pageConfig exists, check if style should hide navbar
-        guard let config = pageConfig else { return false }
-        return !config.style.shouldHide
     }
 
     /// Gets text color from navigation bar text style
@@ -406,14 +348,8 @@ public struct LxPageNavigation {
     }
 
     /// Extracts page title from configuration
-    public static func getPageTitle(from pageConfig: NavigationBarConfig?, defaultTitle: String = "") -> String {
+    public static func getPageTitle(from pageConfig: NavigationBarState?, defaultTitle: String = "") -> String {
         return pageConfig?.title_text.toString() ?? defaultTitle
-    }
-
-    /// Determines if this is a tab navigation
-    public static func isTabNavigation(targetPath: String, tabBarConfig: TabBar?, appId: String) -> Bool {
-        guard let config = tabBarConfig else { return false }
-        return findTabIndexByPath(targetPath, in: config, appId: appId) >= 0
     }
 }
 
@@ -452,9 +388,9 @@ public struct LxNavigationContext {
     public let appId: String
     public let targetPath: String
     public let eventType: LxNavigationEventType
-    public let pageConfig: NavigationBarConfig?
+    public let pageConfig: NavigationBarState?
 
-    public init(appId: String, targetPath: String, eventType: LxNavigationEventType, pageConfig: NavigationBarConfig? = nil) {
+    public init(appId: String, targetPath: String, eventType: LxNavigationEventType, pageConfig: NavigationBarState? = nil) {
         self.appId = appId
         self.targetPath = targetPath
         self.eventType = eventType

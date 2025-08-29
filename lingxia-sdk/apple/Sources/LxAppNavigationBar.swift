@@ -1,5 +1,6 @@
 import SwiftUI
 import Foundation
+import os.log
 
 #if os(macOS)
 import AppKit
@@ -7,184 +8,197 @@ import AppKit
 import UIKit
 #endif
 
-/// Navigation bar style enumeration
-public enum NavigationBarStyle: Int32 {
-    case `default` = 0  // Default navigation bar style
-    case custom = 1     // Custom/transparent navigation bar style
-
-    /// Check if this style should hide the navigation bar
-    public var shouldHide: Bool {
-        return self == .custom
-    }
-
-    /// Check if this style should be transparent
-    public var isTransparent: Bool {
-        return self == .custom
+struct NavigationButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
+            .opacity(configuration.isPressed ? 0.7 : 1.0)
+            .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
     }
 }
 
-/// Extension to add helper methods to swift-bridge generated NavigationBarConfig
-extension NavigationBarConfig {
-    /// Get the navigation bar style as an enum
-    public var style: NavigationBarStyle {
-        return NavigationBarStyle(rawValue: navigation_style) ?? .default
+@MainActor
+public class NavigationBarStateManager: ObservableObject {
+    @Published public var currentState: NavigationBarState? = nil
+    public static let shared = NavigationBarStateManager()
+    private init() {}
+
+    public func updateState(appId: String, path: String) {
+        let newState = LxPageNavigation.getNavigationBarState(appId: appId, path: path)
+        if !statesEqual(currentState, newState) {
+            currentState = newState
+        }
     }
 
-    /// Check if navbar should be hidden based on style and route
-    public func shouldBeHidden(appId: String, path: String) -> Bool {
-        #if os(macOS)
-        // macOS always shows NavigationBar, never hide
-        return false
-        #else
-        // iOS platform: hide for custom style OR initial route
-        let lxappInfo = getLxAppInfo(appId)
-        let initialRoute = lxappInfo.initial_route.toString()
-        return style.shouldHide || path == initialRoute
+    /// Force refresh state for a specific app
+    public func refreshState(for appId: String) {
+        #if os(iOS)
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let window = windowScene.windows.first,
+              let navController = window.rootViewController as? UINavigationController,
+              let currentVC = navController.topViewController as? iOSLxAppViewController,
+              currentVC.appId == appId else { return }
+
+        let newState = LxPageNavigation.getNavigationBarState(appId: appId, path: currentVC.currentPath)
+        currentState = newState
         #endif
     }
 
-    static let DEFAULT_HEIGHT: CGFloat = 44
+    private func statesEqual(_ lhs: NavigationBarState?, _ rhs: NavigationBarState?) -> Bool {
+        guard let lhs = lhs, let rhs = rhs else { return lhs == nil && rhs == nil }
+        return lhs.show_navbar == rhs.show_navbar &&
+               lhs.title_text.toString() == rhs.title_text.toString() &&
+               lhs.background_color == rhs.background_color &&
+               lhs.show_back_button == rhs.show_back_button &&
+               lhs.show_home_button == rhs.show_home_button
+    }
 }
 
-/// Protocol for navigation bar implementations
+/// Extension to add helper methods to swift-bridge generated NavigationBarState
+extension NavigationBarState {
+    static let DEFAULT_HEIGHT: CGFloat = LxAppTheme.Metrics.navigationBarHeight
+}
+
+/// Clean data-driven navigation bar protocol
 @MainActor
 public protocol NavigationBarProtocol: AnyObject {
-    func updateWithConfig(
-        pageConfig: NavigationBarConfig?,
-        isBackNavigation: Bool,
-        disableAnimation: Bool,
-        onBackClickListener: (() -> Void)?,
-        onAnimationEnd: (() -> Void)?
-    ) -> Bool
+    /// Update UI based on NavigationBarState data (single source of truth)
+    func updateWithState(_ state: NavigationBarState?)
 
-    func setTitle(_ title: String?)
-    func setBackButtonVisible(_ visible: Bool)
-    func hide()
+    /// Get calculated height for layout purposes
     func getCalculatedContentHeight() -> CGFloat
 }
 
-/// Unified SwiftUI Navigation Bar
+/// Pure declarative SwiftUI Navigation Bar
+/// Automatically renders based on NavigationBarState - no manual updates needed
 public struct LxAppNavigationBarView: View {
-    let config: NavigationBarConfig?
-    let isBackNavigation: Bool
+    let state: NavigationBarState?
     let onBackTapped: () -> Void
+    let onHomeTapped: () -> Void
     @State private var isLoading: Bool = false
 
     public init(
-        config: NavigationBarConfig?,
-        isBackNavigation: Bool = false,
-        onBackTapped: @escaping () -> Void = {}
+        state: NavigationBarState?,
+        onBackTapped: @escaping () -> Void = {},
+        onHomeTapped: @escaping () -> Void = {}
     ) {
-        self.config = config
-        self.isBackNavigation = isBackNavigation
+        self.state = state
         self.onBackTapped = onBackTapped
+        self.onHomeTapped = onHomeTapped
     }
 
     public var body: some View {
-        if let config = config {
-            navigationContent(config: config)
-                .frame(height: LxAppTheme.Metrics.navigationBarHeight + LxAppTheme.platform.statusBarHeight)
-                .background(getBackgroundColor(config: config))
+        // UI automatically reflects state
+        Group {
+            if let state = state, state.show_navbar {
+                VStack(spacing: 0) {
+                    // Status bar area with background color
+                    Rectangle()
+                        .fill(backgroundColor)
+                        .frame(height: LxAppTheme.Metrics.statusBarHeight)
+
+                    // Navigation bar content
+                    navigationBarContent
+                        .frame(height: NavigationBarState.DEFAULT_HEIGHT)
+                }
+                .background(backgroundColor)
+            } else {
+                // Hidden navbar: transparent status bar area
+                Rectangle()
+                    .fill(Color.clear)
+                    .frame(height: LxAppTheme.Metrics.statusBarHeight)
+            }
         }
     }
 
-    private func navigationContent(config: NavigationBarConfig) -> some View {
-        VStack(spacing: 0) {
-            // Status bar spacer (iOS only)
-            #if os(iOS)
-            Rectangle()
-                .fill(Color.clear)
-                .frame(height: LxAppTheme.platform.statusBarHeight)
-            #endif
+    private var navigationBarContent: some View {
+        HStack(alignment: .center, spacing: 0) {
+            // Leading: Back/Home button
+            leadingButton
+                .frame(width: 52, alignment: .leading)
 
-            // Navigation bar content
-            HStack(spacing: LxAppTheme.Metrics.standardSpacing) {
-                // Leading content
-                leadingContent(config: config)
+            // Center: Title
+            Spacer()
+            titleView
+            Spacer()
 
-                // Center content
-                Spacer()
-                centerContent(config: config)
-                Spacer()
-
-                // Trailing content
-                trailingContent(config: config)
-            }
-            .padding(.horizontal, LxAppTheme.Metrics.largeSpacing)
-            .frame(height: LxAppTheme.Metrics.navigationBarHeight)
+            // Trailing: Space for capsule button
+            Color.clear
+                .frame(width: 52)
         }
+        .frame(height: NavigationBarState.DEFAULT_HEIGHT)
     }
 
     @ViewBuilder
-    private func leadingContent(config: NavigationBarConfig) -> some View {
-        if isBackNavigation {
-            Button(action: onBackTapped) {
-                HStack(spacing: LxAppTheme.Metrics.smallSpacing) {
+    private var leadingButton: some View {
+        if let state = state {
+            if state.show_back_button {
+                Button(action: onBackTapped) {
                     LxAppIcons.back
                         .font(.system(size: 18, weight: .medium))
+                        .foregroundColor(textColor)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
-                .foregroundColor(getTextColor(config: config))
+                .buttonStyle(NavigationButtonStyle())
+            } else if state.show_home_button {
+                Button(action: onHomeTapped) {
+                    Image(systemName: "house")
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundColor(textColor)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(NavigationButtonStyle())
+            } else {
+                Color.clear.frame(width: 44, height: 44)
             }
-            .buttonStyle(PlainButtonStyle())
         } else {
             Color.clear.frame(width: 44, height: 44)
         }
     }
 
     @ViewBuilder
-    private func centerContent(config: NavigationBarConfig) -> some View {
+    private var titleView: some View {
         if isLoading {
             ProgressView()
                 .progressViewStyle(CircularProgressViewStyle())
                 .scaleEffect(0.8)
-        } else {
-            Text(config.title_text.toString())
+        } else if let state = state {
+            Text(state.title_text.toString())
                 .font(LxAppTheme.Typography.navigationTitle)
-                .foregroundColor(getTextColor(config: config))
+                .foregroundColor(textColor)
                 .lineLimit(1)
-                .offset(y: -8)
         }
     }
 
-    @ViewBuilder
-    private func trailingContent(config: NavigationBarConfig) -> some View {
-        Color.clear.frame(width: 44, height: 44)
-    }
-
-    private func getBackgroundColor(config: NavigationBarConfig) -> Color {
-        let platformColor = PlatformColor(argb: config.background_color)
+    // Computed properties for clean data-driven rendering
+    private var backgroundColor: Color {
+        guard let state = state else { return Color.clear }
+        let platformColor = PlatformColor(argb: state.background_color)
         return Color(platformColor)
     }
 
-    private func getTextColor(config: NavigationBarConfig) -> Color {
-        let textStyle = config.text_style.toString()
+    private var textColor: Color {
+        guard let state = state else { return Color.primary }
+        let textStyle = state.text_style.toString()
         return textStyle == "white" ? Color.white : Color.black
     }
 }
 
-/// SwiftUI ViewModifier for adding navigation bar to any view
+/// Clean data-driven ViewModifier for navigation bar
 public struct LxAppNavigationBarModifier: ViewModifier {
-    let config: NavigationBarConfig?
-    let isBackNavigation: Bool
-    let onBackTapped: () -> Void
+    let state: NavigationBarState?
 
-    public init(
-        config: NavigationBarConfig?,
-        isBackNavigation: Bool = false,
-        onBackTapped: @escaping () -> Void = {}
-    ) {
-        self.config = config
-        self.isBackNavigation = isBackNavigation
-        self.onBackTapped = onBackTapped
+    public init(state: NavigationBarState?) {
+        self.state = state
     }
 
     public func body(content: Content) -> some View {
         VStack(spacing: 0) {
-            LxAppNavigationBarView(
-                config: config,
-                isBackNavigation: isBackNavigation,
-                onBackTapped: onBackTapped
-            )
+            if let state = state, state.show_navbar {
+                LxAppNavigationBarView(state: state)
+            }
             content
         }
     }
@@ -193,148 +207,32 @@ public struct LxAppNavigationBarModifier: ViewModifier {
 #if os(iOS)
 import UIKit
 
-/// UIKit wrapper for SwiftUI LxAppNavigationBarView on iOS
 @MainActor
 public class iOSNavigationBarWrapper: UIView, NavigationBarProtocol {
-    private var hostingController: UIHostingController<LxAppNavigationBarView>?
-    private var currentConfig: NavigationBarConfig?
-    private var isBackNavigation: Bool = false
-    private var onBackClickListener: (() -> Void)?
+    private var hostingController: UIHostingController<ReactiveNavigationBarView>?
+    private var currentState: NavigationBarState?
+    public var heightConstraint: NSLayoutConstraint?
 
     public override init(frame: CGRect) {
         super.init(frame: frame)
-        setupWrapper()
+        backgroundColor = UIColor.clear
+        setupReactiveView()
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
-        setupWrapper()
-    }
-
-    private func setupWrapper() {
         backgroundColor = UIColor.clear
+        setupReactiveView()
     }
 
-    public func updateWithConfig(
-        pageConfig: NavigationBarConfig?,
-        isBackNavigation: Bool,
-        disableAnimation: Bool,
-        onBackClickListener: (() -> Void)?,
-        onAnimationEnd: (() -> Void)?
-    ) -> Bool {
-        self.currentConfig = pageConfig
-        self.isBackNavigation = isBackNavigation
-        self.onBackClickListener = onBackClickListener
-
-        // Check if NavigationBar should be hidden
-        let shouldHide = pageConfig?.style.shouldHide ?? false
-        if shouldHide {
-            hide()
-            onAnimationEnd?()
-            return false
-        }
-
-        updateSwiftUINavigationBar()
-        onAnimationEnd?()
-        return true
-    }
-
-    public func setTitle(_ title: String?) {
-        if var config = currentConfig {
-            config.title_text = RustString(title ?? "")
-            currentConfig = config
-            updateSwiftUINavigationBar()
-        }
-    }
-
-    public func setBackButtonVisible(_ visible: Bool) {
-        isBackNavigation = visible
-        updateSwiftUINavigationBar()
-    }
-
-    public func hide() {
-        isHidden = true
-        hostingController?.view.isHidden = true
-    }
-
-    public func getCalculatedContentHeight() -> CGFloat {
-        guard let config = currentConfig else {
-            return NavigationBarConfig.DEFAULT_HEIGHT + PLATFORM_STATUS_BAR_HEIGHT
-        }
-
-        if config.shouldBeHidden(appId: "", path: "") {
-            return 0
-        }
-
-        return NavigationBarConfig.DEFAULT_HEIGHT + PLATFORM_STATUS_BAR_HEIGHT
-    }
-
-    /// Set back button click listener (compatibility method)
-    public func setOnBackButtonClickListener(_ listener: @escaping () -> Void) {
-        self.onBackClickListener = listener
-    }
-
-    /// Update navigation bar state and animate (compatibility method)
-    public func updateStateAndAnimate(
-        title: String,
-        bgColor: PlatformColor,
-        textColor: PlatformColor,
-        showBackButton: Bool,
-        isBackNavigation: Bool,
-        disableAnimation: Bool,
-        onBackClickListener: @escaping () -> Void,
-        onAnimationEnd: (() -> Void)? = nil
-    ) {
-        // Create a temporary config for the update
-        var tempConfig = currentConfig ?? NavigationBarConfig(
-            background_color: 0xFFFFFFFF,
-            text_style: RustString(""),
-            title_text: RustString(title),
-            navigation_style: 0
-        )
-        tempConfig.title_text = RustString(title)
-        // Convert PlatformColor to UInt32 ARGB
-        tempConfig.background_color = bgColor.toARGB()
-
-        let success = updateWithConfig(
-            pageConfig: tempConfig,
-            isBackNavigation: isBackNavigation,
-            disableAnimation: disableAnimation,
-            onBackClickListener: onBackClickListener,
-            onAnimationEnd: onAnimationEnd
-        )
-
-        if !success {
-            onAnimationEnd?()
-        }
-    }
-
-    private func updateSwiftUINavigationBar() {
-        // Remove existing hosting controller
-        if let existingController = hostingController {
-            existingController.view.removeFromSuperview()
-            existingController.removeFromParent()
-        }
-
-        guard let config = currentConfig else { return }
-
-        // Create new SwiftUI view
-        let navigationBarView = LxAppNavigationBarView(
-            config: config,
-            isBackNavigation: isBackNavigation
-        ) { [weak self] in
-            self?.onBackClickListener?()
-        }
-
-        // Create hosting controller
-        let hostingController = UIHostingController(rootView: navigationBarView)
+    /// 🎯 REACTIVE: Setup SwiftUI view that automatically responds to state changes
+    private func setupReactiveView() {
+        let reactiveView = ReactiveNavigationBarView()
+        let hostingController = UIHostingController(rootView: reactiveView)
         hostingController.view.backgroundColor = UIColor.clear
-        self.hostingController = hostingController
-
-        // Add to view hierarchy
-        addSubview(hostingController.view)
         hostingController.view.translatesAutoresizingMaskIntoConstraints = false
 
+        addSubview(hostingController.view)
         NSLayoutConstraint.activate([
             hostingController.view.topAnchor.constraint(equalTo: topAnchor),
             hostingController.view.leadingAnchor.constraint(equalTo: leadingAnchor),
@@ -342,7 +240,55 @@ public class iOSNavigationBarWrapper: UIView, NavigationBarProtocol {
             hostingController.view.bottomAnchor.constraint(equalTo: bottomAnchor)
         ])
 
-        isHidden = false
+        self.hostingController = hostingController
+    }
+
+    public func updateWithState(_ state: NavigationBarState?) {
+        NavigationBarStateManager.shared.currentState = state
+        self.isHidden = !(state?.show_navbar ?? false)
+
+        // Update UIKit container height based on navbar visibility
+        updateContainerHeight(showNavbar: state?.show_navbar ?? false)
+    }
+
+    private func updateContainerHeight(showNavbar: Bool) {
+        guard let heightConstraint = heightConstraint else { return }
+
+        let statusBarHeight = window?.windowScene?.statusBarManager?.statusBarFrame.height ?? LxAppTheme.Metrics.statusBarHeight
+
+        if showNavbar {
+            // Show navbar: status bar + navbar height
+            heightConstraint.constant = statusBarHeight + NavigationBarState.DEFAULT_HEIGHT
+        } else {
+            // Hide navbar: only status bar height
+            heightConstraint.constant = statusBarHeight
+        }
+
+        // Force layout update
+        setNeedsLayout()
+        layoutIfNeeded()
+    }
+
+    public func getCalculatedContentHeight() -> CGFloat {
+        return NavigationBarState.DEFAULT_HEIGHT
+    }
+}
+
+struct ReactiveNavigationBarView: View {
+    @StateObject private var stateManager = NavigationBarStateManager.shared
+
+    var body: some View {
+        LxAppNavigationBarView(
+            state: stateManager.currentState,
+            onBackTapped: handleBackTap,
+            onHomeTapped: handleHomeTap
+        )
+    }
+
+    private func handleBackTap() {
+    }
+
+    private func handleHomeTap() {
     }
 }
 
@@ -354,18 +300,8 @@ public typealias PlatformNavigationBar = LxAppNavigationBarView
 #endif
 
 public extension View {
-    /// Adds navigation bar to the view
-    func lxAppNavigationBar(
-        config: NavigationBarConfig?,
-        isBackNavigation: Bool = false,
-        onBackTapped: @escaping () -> Void = {}
-    ) -> some View {
-        self.modifier(
-            LxAppNavigationBarModifier(
-                config: config,
-                isBackNavigation: isBackNavigation,
-                onBackTapped: onBackTapped
-            )
-        )
+    /// Adds navigation bar to the view using clean data-driven state
+    func lxAppNavigationBar(state: NavigationBarState?) -> some View {
+        self.modifier(LxAppNavigationBarModifier(state: state))
     }
 }

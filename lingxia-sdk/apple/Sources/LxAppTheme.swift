@@ -9,7 +9,7 @@ import UIKit
 
 /// Unified theme system for LxApp components
 public struct LxAppTheme {
-    
+
     public struct Colors {
         public static let background = Color(LxAppPlatformColor.lxSystemBackground)
         public static let secondaryBackground = Color(LxAppPlatformColor.lxSecondarySystemBackground)
@@ -17,17 +17,17 @@ public struct LxAppTheme {
         public static let secondaryText = Color(LxAppPlatformColor.lxSecondaryLabel)
         public static let separator = Color(LxAppPlatformColor.lxSeparator)
         public static let accent = Color(LxAppPlatformColor.lxControlAccentColor)
-        
+
         // Capsule button colors
         public static let capsuleBackground = Color.white.opacity(0.9)
         public static let capsuleBorder = Color(red: 0.867, green: 0.867, blue: 0.867) // #DDDDDD
         public static let capsuleIcon = Color(red: 0.4, green: 0.4, blue: 0.4) // #666666 darker gray
-        
+
         // Navigation bar colors
         public static let navigationBackground = Color(LxAppPlatformColor.lxSystemBackground)
         public static let navigationText = Color(LxAppPlatformColor.lxLabel)
     }
-    
+
     public struct Metrics {
         // Capsule buttons
         public static let capsuleButtonWidth: CGFloat = 87
@@ -35,20 +35,20 @@ public struct LxAppTheme {
         public static let capsuleCornerRadius: CGFloat = platformCapsuleHeight / 2
         public static let capsuleTopMargin: CGFloat = 2
         public static let capsuleTrailingMargin: CGFloat = platformTrailingMargin
-        
+
         // Navigation bar
         public static let navigationBarHeight: CGFloat = platformNavigationHeight
         public static let statusBarHeight: CGFloat = platformStatusBarHeight
-        
+
         // Tab bar
         public static let tabBarHeight: CGFloat = 64
         public static let tabIconSize: CGFloat = 24
-        
+
         // Spacing
         public static let standardSpacing: CGFloat = 8
         public static let largeSpacing: CGFloat = 16
         public static let smallSpacing: CGFloat = 4
-        
+
         // Platform-specific values
         private static var platformCapsuleHeight: CGFloat {
             #if os(iOS)
@@ -57,7 +57,7 @@ public struct LxAppTheme {
             return 28
             #endif
         }
-        
+
         private static var platformTrailingMargin: CGFloat {
             #if os(iOS)
             return 16
@@ -65,7 +65,7 @@ public struct LxAppTheme {
             return 7
             #endif
         }
-        
+
         private static var platformNavigationHeight: CGFloat {
             #if os(iOS)
             return 44
@@ -73,23 +73,23 @@ public struct LxAppTheme {
             return 32
             #endif
         }
-        
+
         private static var platformStatusBarHeight: CGFloat {
             #if os(iOS)
-            return 20
+            return 44
             #else
             return 0
             #endif
         }
     }
-    
+
     public struct Typography {
         public static let navigationTitle = Font.system(size: 17, weight: .medium)
         public static let tabTitle = Font.system(size: 12, weight: .medium)
         public static let body = Font.system(size: 16)
         public static let caption = Font.system(size: 12)
     }
-    
+
     public struct Animations {
         public static let standard = Animation.easeInOut(duration: 0.3)
         public static let quick = Animation.easeInOut(duration: 0.15)
@@ -99,11 +99,7 @@ public struct LxAppTheme {
 
 public extension LxAppTheme {
     static var platform: (statusBarHeight: CGFloat, navigationBarHeight: CGFloat) {
-        #if os(iOS)
-        return (statusBarHeight: 20, navigationBarHeight: 44)
-        #else
-        return (statusBarHeight: 0, navigationBarHeight: 32)
-        #endif
+        return (statusBarHeight: Metrics.statusBarHeight, navigationBarHeight: Metrics.navigationBarHeight)
     }
 }
 
@@ -358,9 +354,3 @@ extension LxAppPlatformColor {
     static var lxLightGray: NSColor { NSColor.lightGray }
     #endif
 }
-
-#if os(iOS)
-public let PLATFORM_STATUS_BAR_HEIGHT: CGFloat = 48
-#elseif os(macOS)
-public let PLATFORM_STATUS_BAR_HEIGHT: CGFloat = 28
-#endif

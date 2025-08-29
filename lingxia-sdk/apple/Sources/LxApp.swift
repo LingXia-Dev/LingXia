@@ -255,6 +255,25 @@ extension LxApp {
         }
     }
 
+    nonisolated public static func updateNavBarUI(appid: RustStr) -> Bool {
+        let appIdString = appid.toString()
+        return executeOnMain {
+            #if os(macOS)
+            let activeControllers = macOSLxApp.getActiveWindowControllers()
+            for windowController in activeControllers {
+                if windowController.appId == appIdString, let path = windowController.path {
+                    let navState = LxPageNavigation.getNavigationBarState(appId: appIdString, path: path)
+                    windowController.updateNavigationBarWithState(navState)
+                    break
+                }
+            }
+            #elseif os(iOS)
+            NavigationBarStateManager.shared.refreshState(for: appIdString)
+            #endif
+            return true
+        }
+    }
+
     nonisolated public static func launchWithUrl(url: RustStr) {
         let urlString = url.toString()
         guard let url = URL(string: urlString) else {
