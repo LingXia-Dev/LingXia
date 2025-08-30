@@ -42,9 +42,6 @@ export class LxApp {
 
   private homeLxAppId: string | null = null;
 
-  // Cache for initial routes of all LxApps
-  public static initialRouteCache: Map<string, string> = new Map();
-
   private constructor() {
     hilog.info(DOMAIN, TAG, 'LxApp instance created');
   }
@@ -110,10 +107,6 @@ export class LxApp {
     if (appId) {
       hilog.info(DOMAIN, TAG, `LxApp initialized successfully with home app: ${appId}`);
       instance.homeLxAppId = appId;
-      const appInfo: LxAppInfo | null = getLxAppInfo(appId);
-      if (appInfo) {
-        LxApp.initialRouteCache.set(appId, appInfo.initialRoute);
-      }
     } else {
       hilog.error(DOMAIN, TAG, 'Failed to get home LxApp details from native init.');
     }
@@ -160,21 +153,13 @@ export class LxApp {
   public static openLxApp(appId: string, path: string): void {
     hilog.info(DOMAIN, TAG, `openLxApp called: ${appId}:${path}`);
 
-    // Ensure initial route is cached for this app (if not already cached)
-    if (!LxApp.initialRouteCache.has(appId)) {
-      const appInfo: LxAppInfo | null = getLxAppInfo(appId);
-      if (appInfo) {
-        LxApp.initialRouteCache.set(appId, appInfo.initialRoute);
-      }
-    }
-
     // If path is empty, get the initial route from native
     let actualPath = path;
     if (!path || path === '') {
-      const cachedInitialRoute = LxApp.initialRouteCache.get(appId);
-      if (cachedInitialRoute) {
-        actualPath = cachedInitialRoute;
-        hilog.info(DOMAIN, TAG, `Using cached initial route for ${appId}: ${actualPath}`);
+      const appInfo: LxAppInfo | null = getLxAppInfo(appId);
+      if (appInfo && appInfo.initialRoute) {
+        actualPath = appInfo.initialRoute;
+        hilog.info(DOMAIN, TAG, `Using initial route for ${appId}: ${actualPath}`);
       } else {
         hilog.error(DOMAIN, TAG, `Could not get initial route for ${appId}`);
         return;
@@ -377,12 +362,10 @@ struct LxAppManager {
     hilog.info(DOMAIN, TAG, `Opening LxApp: ${appId}:${path}, isHome: ${isHomeLxApp}`);
 
     try {
-      // Get and cache LxApp info
+      // Get LxApp info
       const appInfo: LxAppInfo | null = getLxAppInfo(appId);
       if (appInfo) {
         hilog.info(DOMAIN, TAG, `LxApp info: ${appInfo.appName}, initial route: ${appInfo.initialRoute}`);
-        // Cache initial route for later comparison
-        this.cacheInitialRoute(appId, appInfo.initialRoute);
       }
 
       const result: number = onLxappOpened(appId, path);
@@ -459,28 +442,5 @@ struct LxAppManager {
     const typeName = NavigationType[navigationType];
     hilog.info(DOMAIN, TAG, `LxAppManager.navigate called: ${appId}:${path} with type: ${typeName}`);
     return LxApp.navigate(appId, path, navigationType);
-  }
-
-  /**
-   * Cache initial route for a LxApp
-   */
-  private cacheInitialRoute(appId: string, initialRoute: string): void {
-    LxApp.initialRouteCache.set(appId, initialRoute);
-    hilog.info(DOMAIN, TAG, `Cached initial route for ${appId}: ${initialRoute}`);
-  }
-
-  /**
-   * Check if a path is the initial route for a LxApp
-   */
-  public static isInitialRoute(appId: string, path: string): boolean {
-    const initialRoute = LxApp.initialRouteCache.get(appId);
-    return initialRoute === path;
-  }
-
-  /**
-   * Get cached initial route for a LxApp
-   */
-  public static getInitialRoute(appId: string): string | null {
-    return LxApp.initialRouteCache.get(appId) || null;
   }
 }

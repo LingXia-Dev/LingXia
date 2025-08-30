@@ -1,7 +1,7 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { LxApp } from './LxApp';
 import { LxAppContainer } from './LxAppContainer';
-import { onLxappOpened, onLxappClosed, getTabBar, TabBarItem, TabBarState } from 'liblingxia.so';
+import { onLxappOpened, onLxappClosed, getTabBar, TabBarItem, TabBarState, getLxAppInfo, LxAppInfo } from 'liblingxia.so';
 import { ToastManager } from './LxAppToast';
 import { ModalManager } from './LxAppModal';
 
@@ -62,7 +62,12 @@ export struct LxAppNavigation {
     try {
       const instance = LxApp.getInstance();
       const homeAppId = instance.getHomeLxAppId();
-      const homeAppPath: string | null = homeAppId ? LxApp.initialRouteCache.get(homeAppId) || null : null;
+      // Get initial route directly from native
+      let homeAppPath: string | null = null;
+      if (homeAppId) {
+        const appInfo: LxAppInfo | null = getLxAppInfo(homeAppId);
+        homeAppPath = appInfo?.initialRoute || null;
+      }
 
       if (homeAppId && homeAppPath) {
         this.homeAppId = homeAppId;
