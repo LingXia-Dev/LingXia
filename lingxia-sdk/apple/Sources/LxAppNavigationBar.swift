@@ -36,10 +36,11 @@ public class NavigationBarStateManager: ObservableObject {
         guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
               let window = windowScene.windows.first,
               let navController = window.rootViewController as? UINavigationController,
-              let currentVC = navController.topViewController as? iOSLxAppViewController,
-              currentVC.appId == appId else { return }
+              let manager = navController.topViewController as? LxAppViewController,
+              manager.currentAppId == appId,
+              let path = manager.getCurrentPath() else { return }
 
-        let newState = LxPageNavigation.getNavigationBarState(appId: appId, path: currentVC.currentPath)
+        let newState = LxPageNavigation.getNavigationBarState(appId: appId, path: path)
         currentState = newState
         #endif
     }
@@ -92,21 +93,24 @@ public struct LxAppNavigationBarView: View {
         Group {
             if let state = state, state.show_navbar {
                 VStack(spacing: 0) {
-                    // Status bar area with background color
+                    // Status bar area - SAME COLOR as navigation bar for unified appearance
                     Rectangle()
                         .fill(backgroundColor)
-                        .frame(height: LxAppTheme.Metrics.statusBarHeight)
+                        .frame(height: LxAppTheme.getStatusBarHeight())
 
-                    // Navigation bar content
+                    // Navigation bar content - SAME background color as status bar
                     navigationBarContent
                         .frame(height: NavigationBarState.DEFAULT_HEIGHT)
+                        .background(backgroundColor)
                 }
-                .background(backgroundColor)
+                .background(backgroundColor) // Ensure entire container has background
+                .ignoresSafeArea(.container, edges: .top) // Only ignore top safe area
+                .clipped() // Remove any overflow that might cause white lines
             } else {
-                // Hidden navbar: transparent status bar area
-                Rectangle()
-                    .fill(Color.clear)
-                    .frame(height: LxAppTheme.Metrics.statusBarHeight)
+                // Hidden navbar: completely transparent - no visual element at all
+                Color.clear
+                    .frame(height: LxAppTheme.getStatusBarHeight())
+                    .ignoresSafeArea(.container, edges: .top) // Only ignore top safe area
             }
         }
     }
@@ -211,26 +215,30 @@ import UIKit
 public class iOSNavigationBarWrapper: UIView, NavigationBarProtocol {
     private var hostingController: UIHostingController<ReactiveNavigationBarView>?
     private var currentState: NavigationBarState?
+    private var statusBarBackgroundView: UIView?
     public var heightConstraint: NSLayoutConstraint?
 
     public override init(frame: CGRect) {
         super.init(frame: frame)
         backgroundColor = UIColor.clear
+        clipsToBounds = false // Allow content to extend beyond bounds
         setupReactiveView()
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
         backgroundColor = UIColor.clear
+        clipsToBounds = false // Allow content to extend beyond bounds
         setupReactiveView()
     }
 
-    /// 🎯 REACTIVE: Setup SwiftUI view that automatically responds to state changes
+    /// Setup SwiftUI view that automatically responds to state changes
     private func setupReactiveView() {
         let reactiveView = ReactiveNavigationBarView()
         let hostingController = UIHostingController(rootView: reactiveView)
         hostingController.view.backgroundColor = UIColor.clear
         hostingController.view.translatesAutoresizingMaskIntoConstraints = false
+        hostingController.view.clipsToBounds = false // Allow SwiftUI content to extend beyond bounds
 
         addSubview(hostingController.view)
         NSLayoutConstraint.activate([
@@ -241,27 +249,62 @@ public class iOSNavigationBarWrapper: UIView, NavigationBarProtocol {
         ])
 
         self.hostingController = hostingController
+
+        // Setup status bar background view using UIKit
+        setupStatusBarBackground()
+    }
+
+    /// Setup a UIKit view for status bar background that we can control directly
+    private func setupStatusBarBackground() {
+        statusBarBackgroundView = UIView()
+        statusBarBackgroundView?.translatesAutoresizingMaskIntoConstraints = false
+
+        if let statusBarBg = statusBarBackgroundView {
+            addSubview(statusBarBg)
+            NSLayoutConstraint.activate([
+                statusBarBg.topAnchor.constraint(equalTo: topAnchor),
+                statusBarBg.leadingAnchor.constraint(equalTo: leadingAnchor),
+                statusBarBg.trailingAnchor.constraint(equalTo: trailingAnchor),
+                statusBarBg.heightAnchor.constraint(equalToConstant: LxAppTheme.getStatusBarHeight())
+            ])
+        }
     }
 
     public func updateWithState(_ state: NavigationBarState?) {
         NavigationBarStateManager.shared.currentState = state
-        self.isHidden = !(state?.show_navbar ?? false)
+        let showNavbar = state?.show_navbar ?? false
+
+        print("NavigationBar updateWithState - showNavbar: \(showNavbar), backgroundColor: 0x\(String(format: "%08X", state?.background_color ?? 0))")
+
+        // For transparent mode, hide the entire container
+        self.isHidden = !showNavbar
 
         // Update UIKit container height based on navbar visibility
-        updateContainerHeight(showNavbar: state?.show_navbar ?? false)
+        updateContainerHeight(showNavbar: showNavbar)
+
+        // Update status bar background color directly using UIKit
+        if showNavbar, let state = state {
+            let color = UIColor(argb: state.background_color)
+            statusBarBackgroundView?.backgroundColor = color
+        } else {
+            statusBarBackgroundView?.backgroundColor = UIColor.clear
+        }
+
+        // Force SwiftUI view to refresh
+        if let hostingController = hostingController {
+            hostingController.rootView = ReactiveNavigationBarView()
+        }
     }
 
     private func updateContainerHeight(showNavbar: Bool) {
         guard let heightConstraint = heightConstraint else { return }
 
-        let statusBarHeight = window?.windowScene?.statusBarManager?.statusBarFrame.height ?? LxAppTheme.Metrics.statusBarHeight
-
         if showNavbar {
-            // Show navbar: status bar + navbar height
-            heightConstraint.constant = statusBarHeight + NavigationBarState.DEFAULT_HEIGHT
+            // Show navbar: status bar + navbar content height
+            heightConstraint.constant = LxAppTheme.getStatusBarHeight() + NavigationBarState.DEFAULT_HEIGHT
         } else {
-            // Hide navbar: only status bar height
-            heightConstraint.constant = statusBarHeight
+            // Hide navbar: zero height for complete transparency
+            heightConstraint.constant = 0
         }
 
         // Force layout update
@@ -286,9 +329,11 @@ struct ReactiveNavigationBarView: View {
     }
 
     private func handleBackTap() {
+        print("🔙 Navigation back button tapped")
     }
 
     private func handleHomeTap() {
+        print("🏠 Navigation home button tapped")
     }
 }
 

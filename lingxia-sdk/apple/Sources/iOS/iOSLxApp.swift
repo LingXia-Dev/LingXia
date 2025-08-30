@@ -7,12 +7,15 @@ import os.log
 import CLingXiaFFI
 import UserNotifications
 
-/// iOS LxApp manager
+/// iOS LxApp manager - Single Controller Architecture
 @MainActor
 public class iOSLxApp {
     nonisolated private static let log = OSLog(subsystem: "LingXia", category: "iOSLxApp")
     private static var instance: iOSLxApp?
     private let context: UIApplication
+
+    /// Single manager instance for all LxApps
+    private var lxAppManager: LxAppViewController?
 
     private init(context: UIApplication) {
         self.context = context
@@ -43,27 +46,19 @@ public class iOSLxApp {
         iOSPushManager.shared.initialize()
     }
 
-    /// Configure transparent system bars
-    public static func configureTransparentSystemBars(viewController: UIViewController, lightStatusBarIcons: Bool = false) {
-        if let navController = viewController.navigationController {
-            navController.navigationBar.setBackgroundImage(UIImage(), for: .default)
-            navController.navigationBar.shadowImage = UIImage()
-            navController.navigationBar.isTranslucent = true
-        }
-    }
 
-    /// Opens a mini app in a new view controller
+
+    /// Opens a mini app using single controller architecture
     public static func openLxApp(appId: String, path: String) {
-        // Get app info and cache initial route for navigation logic
+        // Get app info for initial route logic
         let lxappInfo = getLxAppInfo(appId)
         let initialRoute = lxappInfo.initial_route.toString()
-        LxPageNavigation.cacheInitialRoute(appId: appId, initialRoute: initialRoute)
 
         // Use initial route if path is empty
         let actualPath = path.isEmpty ? initialRoute : path
 
         let instance = getInstance()
-        instance.openInNewViewController(appId: appId, path: actualPath)
+        instance.openLxAppInManager(appId: appId, path: actualPath)
     }
 
     /// Opens the home mini app
@@ -81,22 +76,24 @@ public class iOSLxApp {
     public static func closeLxApp(appId: String) {
         os_log("Closing LxApp: %@", log: log, type: .info, appId)
 
-        NotificationCenter.default.post(
-            name: NSNotification.Name(ACTION_CLOSE_LXAPP),
-            object: nil,
-            userInfo: ["appId": appId]
-        )
+        let instance = getInstance()
+        instance.lxAppManager?.closeLxApp(appId: appId)
     }
 
-    /// Switches the current page within a running LxAppViewController
-    public static func switchPage(appId: String, path: String) {
-        os_log("Switching page for %@ to %@", log: log, type: .info, appId, path)
+    /// Navigate to a page with specific navigation type
+    public static func navigate(appId: String, path: String, navigationType: NavigationType) {
+        os_log("Navigate for %@ to %@ with type %@", log: log, type: .info, appId, path, String(describing: navigationType))
 
-        NotificationCenter.default.post(
-            name: NSNotification.Name(ACTION_SWITCH_PAGE),
-            object: nil,
-            userInfo: ["appId": appId, "path": path]
-        )
+        let instance = getInstance()
+        instance.lxAppManager?.navigate(appId: appId, to: path, with: navigationType)
+    }
+
+    /// Switches the current page within a running LxApp (deprecated - use navigate instead)
+    public static func switchPage(appId: String, path: String) {
+        os_log("Switching page for %@ to %@ (deprecated)", log: log, type: .info, appId, path)
+
+        let instance = getInstance()
+        instance.lxAppManager?.navigate(appId: appId, to: path, with: NavigationType.forward)
     }
 
     /// Find WebView for the given appId and path
@@ -104,10 +101,10 @@ public class iOSLxApp {
         return WebViewManager.findWebView(appId: appId, path: path)
     }
 
-    private func openInNewViewController(appId: String, path: String) {
+    private func openLxAppInManager(appId: String, path: String) {
         guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
               let window = windowScene.windows.first else {
-            os_log("Failed to get window for presenting LxAppViewController", log: Self.log, type: .error)
+            os_log("Failed to get window for presenting LxAppManager", log: Self.log, type: .error)
             return
         }
 
@@ -120,42 +117,47 @@ public class iOSLxApp {
             actualPath = path
         }
 
-        // Call onLxappOpened FIRST to ensure WebView is created before we try to find it
-        let _ = onLxappOpened(appId, actualPath)
+        // Ensure LxAppManager exists
+        if lxAppManager == nil {
+            setupLxAppManager(window: window)
+        }
 
-        // Create LxAppViewController - it will find and setup WebView in viewDidLoad
-        let miniAppVC = iOSLxAppViewController(appId: appId, path: actualPath)
-
-        setupNavigationStack(window: window, newController: miniAppVC)
+        // Open LxApp in manager
+        lxAppManager?.openLxApp(appId: appId, path: actualPath)
     }
 
-    /// Sets up navigation stack for lxapp management
-    private func setupNavigationStack(window: UIWindow, newController: iOSLxAppViewController) {
-
+    /// Sets up the single LxAppManager for all lxapps
+    private func setupLxAppManager(window: UIWindow) {
         guard let currentRootVC = window.rootViewController else {
-            // No existing root - set as root
-            let navController = UINavigationController(rootViewController: newController)
+            // No existing root - create LxAppManager as root
+            let manager = LxAppViewController()
+            let navController = UINavigationController(rootViewController: manager)
             navController.setNavigationBarHidden(true, animated: false)
             window.rootViewController = navController
             window.makeKeyAndVisible()
+            self.lxAppManager = manager
             return
         }
 
         // Find the topmost view controller to present from
         let topVC = findTopmostViewController(from: currentRootVC)
 
-        if let existingNavController = topVC as? UINavigationController,
-           existingNavController.viewControllers.first is iOSLxAppViewController {
-            // Already in LxApp navigation - push new LxApp
-            os_log(.info, log: Self.log, "Pushing new LxApp onto existing navigation stack")
-            existingNavController.pushViewController(newController, animated: false)
+        if let existingManager = topVC as? LxAppViewController {
+            // Already have LxAppManager - reuse it
+            self.lxAppManager = existingManager
+        } else if let existingNavController = topVC as? UINavigationController,
+                  let existingManager = existingNavController.viewControllers.first as? LxAppViewController {
+            // LxAppManager exists in navigation stack - reuse it
+            self.lxAppManager = existingManager
         } else {
-            // Present modally to preserve SwiftUI URL handling or stack on existing LxApp
-            os_log(.info, log: Self.log, "Presenting LxApp modally from: %{public}@", String(describing: type(of: topVC)))
-            let navController = UINavigationController(rootViewController: newController)
+            // Present new LxAppManager modally
+            os_log(.info, log: Self.log, "Presenting LxAppManager modally from: %{public}@", String(describing: type(of: topVC)))
+            let manager = LxAppViewController()
+            let navController = UINavigationController(rootViewController: manager)
             navController.setNavigationBarHidden(true, animated: false)
-            navController.modalPresentationStyle = .fullScreen
+            navController.modalPresentationStyle = UIModalPresentationStyle.fullScreen
             topVC.present(navController, animated: false)
+            self.lxAppManager = manager
         }
     }
 
@@ -178,6 +180,15 @@ public class iOSLxApp {
         return viewController
     }
 
+    /// Configure transparent system bars for a specific view controller
+    public static func configureTransparentSystemBars(viewController: UIViewController, lightStatusBarIcons: Bool = false) {
+        if let navController = viewController.navigationController {
+            navController.navigationBar.setBackgroundImage(UIImage(), for: .default)
+            navController.navigationBar.shadowImage = UIImage()
+            navController.navigationBar.isTranslucent = true
+        }
+    }
+
     /// Configures global system bars for the mini app system
     private static func configureGlobalSystemBars() {
         let appearance = UINavigationBarAppearance()
@@ -191,71 +202,36 @@ public class iOSLxApp {
         UINavigationBar.appearance().compactScrollEdgeAppearance = appearance
     }
 
-    /// Get the current LxAppViewController from the view hierarchy
-    private static func getCurrentLxAppViewController() -> iOSLxAppViewController? {
+    /// Get the current LxAppManager from the view hierarchy
+    private static func getCurrentLxAppManager() -> LxAppViewController? {
         guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
               let window = windowScene.windows.first else {
             return nil
         }
 
-        return findLxAppViewController(in: window.rootViewController)
+        return findLxAppManager(in: window.rootViewController)
     }
 
-    /// Recursively find iOSLxAppViewController in the view hierarchy
-    private static func findLxAppViewController(in viewController: UIViewController?) -> iOSLxAppViewController? {
+    /// Recursively find iOSLxAppManager in the view hierarchy
+    private static func findLxAppManager(in viewController: UIViewController?) -> LxAppViewController? {
         guard let viewController = viewController else { return nil }
 
-        if let lxAppVC = viewController as? iOSLxAppViewController {
-            return lxAppVC
+        if let lxAppManager = viewController as? LxAppViewController {
+            return lxAppManager
         }
 
         if let navController = viewController as? UINavigationController {
-            return findLxAppViewController(in: navController.topViewController)
+            return findLxAppManager(in: navController.topViewController)
         }
 
         if let presentedVC = viewController.presentedViewController {
-            return findLxAppViewController(in: presentedVC)
+            return findLxAppManager(in: presentedVC)
         }
 
         return nil
     }
 }
 
-/// Simple controller stack to simulate Android's Activity stack behavior
-/// This helps maintain state when switching between lxapps
-@MainActor
-class LxAppControllerStack {
 
-    /// Represents the state of a previous controller
-    struct ControllerState {
-        let appId: String
-        let path: String
-        let webView: WKWebView?
-    }
-
-    /// Stack to store previous controller states
-    private static var controllerStack: [ControllerState] = []
-
-    /// Push current controller state to stack before opening new lxapp
-    static func pushCurrentController(appId: String, path: String, webView: WKWebView?) {
-        let state = ControllerState(appId: appId, path: path, webView: webView)
-        controllerStack.append(state)
-    }
-
-    /// Pop previous controller state when closing current lxapp
-    static func popPreviousController() -> ControllerState? {
-        guard !controllerStack.isEmpty else {
-            return nil
-        }
-
-        let state = controllerStack.removeLast()
-        return state
-    }
-
-    /// Clear the entire stack (useful for debugging or reset)
-    static func clearStack() {
-        controllerStack.removeAll()
-    }
-}
 
 #endif

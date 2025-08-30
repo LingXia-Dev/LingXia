@@ -227,7 +227,18 @@ extension LxApp {
         }
     }
 
-    /// Switch to page in LxApp
+    /// Navigate to page with specific navigation type
+    nonisolated public static func navigate(appid: RustStr, path: RustStr, navigationType: NavigationType) -> Bool {
+        let appIdString = appid.toString()
+        let pathString = path.toString()
+
+        return executeOnMain {
+            LxAppPlatform.navigate(appId: appIdString, path: pathString, navigationType: navigationType)
+            return true
+        }
+    }
+
+    /// Switch to page in LxApp (deprecated - use navigate instead)
     nonisolated public static func switchPage(appid: RustStr, path: RustStr) -> Bool {
         let appIdString = appid.toString()
         let pathString = path.toString()

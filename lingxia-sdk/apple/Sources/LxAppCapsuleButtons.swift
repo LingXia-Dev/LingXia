@@ -76,8 +76,8 @@ public class LxAppCapsuleButtons {
         let capsuleButtons = LxAppUnifiedCapsuleView(
             onMoreTapped: {},
             onCloseTapped: {
-                if let iOSViewController = viewController as? iOSLxAppViewController {
-                    iOSViewController.performLxAppClose()
+                if let iOSManager = viewController as? LxAppViewController {
+                    iOSManager.performLxAppClose()
                 }
             }
         )
@@ -91,8 +91,8 @@ public class LxAppCapsuleButtons {
         viewController.addChild(hostingController)
         hostingController.didMove(toParent: viewController)
 
-        let statusBarHeight = getActualStatusBarHeight()
-        let navbarCenterY = statusBarHeight + (44 / 2)
+        let statusBarHeight = LxAppTheme.getStatusBarHeight()
+        let navbarCenterY = statusBarHeight + (LxAppTheme.Metrics.navigationBarHeight / 2)
         let topMargin = navbarCenterY - (LxAppTheme.Metrics.capsuleButtonHeight / 2)
 
         NSLayoutConstraint.activate([
@@ -121,13 +121,7 @@ public class LxAppCapsuleButtons {
         viewController.view.viewWithTag(CAPSULE_BUTTON_TAG)?.removeFromSuperview()
     }
 
-    /// Get actual status bar height for consistent calculations
-    private static func getActualStatusBarHeight() -> CGFloat {
-        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
-            return windowScene.statusBarManager?.statusBarFrame.height ?? 44
-        }
-        return 44
-    }
+
     #endif
 
     #if os(macOS)

@@ -38,7 +38,6 @@ public struct LxAppTheme {
 
         // Navigation bar
         public static let navigationBarHeight: CGFloat = platformNavigationHeight
-        public static let statusBarHeight: CGFloat = platformStatusBarHeight
 
         // Tab bar
         public static let tabBarHeight: CGFloat = 64
@@ -73,14 +72,21 @@ public struct LxAppTheme {
             return 32
             #endif
         }
+    }
 
-        private static var platformStatusBarHeight: CGFloat {
-            #if os(iOS)
-            return 44
-            #else
-            return 0
-            #endif
+    /// Get the current status bar height dynamically
+    /// This should be called once at app startup and cached
+    @MainActor
+    public static func getStatusBarHeight() -> CGFloat {
+        #if os(iOS)
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+            let height = windowScene.statusBarManager?.statusBarFrame.height ?? 20
+            return height  // Return actual system status bar height
         }
+        return 20  // Standard fallback
+        #else
+        return 0
+        #endif
     }
 
     public struct Typography {
@@ -98,8 +104,9 @@ public struct LxAppTheme {
 }
 
 public extension LxAppTheme {
+    @MainActor
     static var platform: (statusBarHeight: CGFloat, navigationBarHeight: CGFloat) {
-        return (statusBarHeight: Metrics.statusBarHeight, navigationBarHeight: Metrics.navigationBarHeight)
+        return (statusBarHeight: getStatusBarHeight(), navigationBarHeight: Metrics.navigationBarHeight)
     }
 }
 

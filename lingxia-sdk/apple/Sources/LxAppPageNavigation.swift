@@ -2,6 +2,15 @@ import SwiftUI
 import Foundation
 import os.log
 
+/// Navigation type enum shared between iOS and macOS
+public enum NavigationType: Sendable {
+    case launch
+    case forward
+    case backward
+    case replace
+    case switchTab
+}
+
 #if os(macOS)
 import AppKit
 #elseif os(iOS)
@@ -150,7 +159,7 @@ public class LxAppPageNavigation {
             // For iOS, use the new unified navigation bar approach
             viewController.createNavigationBarIfNeeded()
 
-            if let iOSViewController = viewController as? iOSLxAppViewController {
+            if viewController is LxAppViewController {
                 NavigationBarStateManager.shared.updateState(appId: appId, path: path)
             }
             #endif
@@ -169,8 +178,9 @@ public class LxAppPageNavigation {
 
     private static func getCurrentPath<T: LxAppViewControllerProtocol>(from viewController: T) -> String? {
         #if os(iOS)
-        if let iOSViewController = viewController as? iOSLxAppViewController {
-            return iOSViewController.currentWebView?.currentPath
+        if let iOSManager = viewController as? LxAppViewController {
+            // For manager, get current path from current app state
+            return iOSManager.getCurrentPath()
         }
         #elseif os(macOS)
         if let macOSViewController = viewController as? macOSLxAppViewController {
@@ -182,8 +192,8 @@ public class LxAppPageNavigation {
 
     private static func hasNavigationBar<T: LxAppViewControllerProtocol>(_ viewController: T) -> Bool {
         #if os(iOS)
-        if let iOSViewController = viewController as? iOSLxAppViewController {
-            return iOSViewController.navigationBar != nil
+        if let iOSManager = viewController as? LxAppViewController {
+            return iOSManager.hasNavigationBar()
         }
         return false
         #elseif os(macOS)
@@ -246,53 +256,49 @@ public class LxAppPageNavigation {
 
 
 #if os(iOS)
-extension iOSLxAppViewController: LxAppViewControllerProtocol {
-    public func getTabBar() -> (any TabBarProtocol)? {
-        return tabBar as? (any TabBarProtocol)
-    }
-
-    public func syncTabBarWithCurrentPath(_ path: String) {
-        tabBar?.syncSelectedTabWithCurrentPath(path)
-    }
-
+extension LxAppViewController: LxAppViewControllerProtocol {
     /// Switches to tab (public interface)
     public func switchToTab(targetPath: String) {
-        LxAppPageNavigation.switchToTab(targetPath: targetPath, in: self)
+        guard let currentAppId = currentAppId else { return }
+        navigate(appId: currentAppId, to: targetPath, with: .switchTab)
     }
 
-    /// Switches page (public interface)
+    /// Switches page (deprecated - use navigate instead)
     public func switchPage(targetPath: String) {
-        LxAppPageNavigation.switchPage(targetPath: targetPath, in: self)
+        guard let currentAppId = currentAppId else { return }
+        navigate(appId: currentAppId, to: targetPath, with: .forward)
     }
 
-    /// Switches page via navigation (alias for consistency with unified API)
-    public func switchPageViaNavigation(targetPath: String) {
-        LxAppPageNavigation.switchPage(targetPath: targetPath, in: self)
-    }
-
-    /// Navigates to page (public interface)
+    /// Navigates to page (deprecated - use navigate instead)
     public func navigateToPage(targetPath: String, isReplace: Bool = false, isBackNavigation: Bool = false) {
-        LxAppPageNavigation.navigateToPage(
-            targetPath: targetPath,
-            isReplace: isReplace,
-            in: self
-        )
+        guard let currentAppId = currentAppId else { return }
+        let navigationType: NavigationType = isBackNavigation ? .backward : (isReplace ? .replace : .forward)
+        navigate(appId: currentAppId, to: targetPath, with: navigationType)
     }
 
-    /// Updates navigation bar (public interface) - unified signature
+    /// Updates navigation bar (deprecated - handled automatically)
     public func updateNavigationBar(appId: String, path: String) {
-        LxAppPageNavigation.updateNavigationBar(appId: appId, path: path, in: self)
+        // Navigation bar updates are now handled automatically by the state manager
     }
 
-    /// Handles back button click (public interface)
+    /// Handles back button click (deprecated - use navigate with .backward)
     public func handleBackButtonClick() {
-        LxAppPageNavigation.handleBackButtonClick(in: self)
+        guard let currentAppId = currentAppId else { return }
+        // Back navigation should be handled by the specific app logic
+        navigate(appId: currentAppId, to: "/", with: .backward)
     }
 
-    /// Updates tab bar selection for current path (public interface)
-    public func updateTabBarSelection(for path: String) {
-        LxAppPageNavigation.updateTabBarSelection(for: path, in: self)
+    /// Get TabBar (protocol requirement)
+    public func getTabBar() -> (any TabBarProtocol)? {
+        return getTabBarInternal()
     }
+
+    /// Sync TabBar with current path (protocol requirement)
+    public func syncTabBarWithCurrentPath(_ path: String) {
+        syncTabBarWithCurrentPathInternal(path)
+    }
+
+
 }
 #endif
 
