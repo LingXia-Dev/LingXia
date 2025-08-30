@@ -1,4 +1,5 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { NavigationType } from './LxAppNavigation';
 
 /**
  * NavigationBar state interface
@@ -14,6 +15,22 @@ export interface NavigationBarState {
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.NavigationBar';
+
+/**
+ * Helper function to convert integer to NavigationType enum
+ * @param type - Integer navigation type (0=Launch, 1=Forward, 2=Backward, 3=Replace, 4=SwitchTab)
+ * @returns NavigationType enum or null if invalid
+ */
+export function navigationTypeFromInt(type: number): NavigationType | null {
+  switch (type) {
+    case 0: return NavigationType.Launch;
+    case 1: return NavigationType.Forward;
+    case 2: return NavigationType.Backward;
+    case 3: return NavigationType.Replace;
+    case 4: return NavigationType.SwitchTab;
+    default: return null;
+  }
+}
 
 @Component
 export struct NavigationBar {

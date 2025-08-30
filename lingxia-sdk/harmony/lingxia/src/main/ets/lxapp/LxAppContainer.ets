@@ -31,6 +31,7 @@ export struct LxAppContainer {
   @State currentWebTag: string = '' // Current active WebView tag
   @State webViewKeys: string[] = [] // Array of webView keys for ForEach
   private pageShowTriggered: Set<string> = new Set() // Track which pages have triggered onPageShow
+  @State private statusBarHeight: number = 44 // Default status bar height
 
 
   private webViewUiCallback = (action: string, info: WebViewInfo) => {
@@ -69,13 +70,17 @@ export struct LxAppContainer {
     }
   }
 
-  // Watch for external path changes from LxApp.switchPage API
+  // Watch for external path changes from LxApp.navigate API
   @Watch('onExternalPathChange') @Prop externalPath: string = ''
+
+  // Watch for navigation trigger changes (unified approach for all LxApps)
+  @Watch('onNavigationTrigger') @Prop navigationTrigger: number = 0
 
   // Manual animation control for new lxapps
   @State animationOffsetY: number = 0 // 0 = final position, positive = off-screen bottom
 
   aboutToAppear() {
+    this.initStatusBarHeight();
 
     this.path = this.initialPath;
     hilog.info(DOMAIN, TAG, `Container creating for ${this.appId}:${this.path}, isHome=${this.isHomeLxApp()}`);
@@ -114,6 +119,29 @@ export struct LxAppContainer {
     // Remove WebView UI callback when container is destroyed
     removeWebViewUiCallback(this.webViewUiCallback);
     hilog.info(DOMAIN, TAG, `Container destroyed for ${this.appId}:${this.path}`);
+  }
+
+  /**
+   * Initialize status bar height with proper error handling
+   */
+  private async initStatusBarHeight(): Promise<void> {
+    try {
+      const context = getContext();
+      if (!context) {
+        throw new Error('Context not available');
+      }
+
+      const mainWindow = await window.getLastWindow(context);
+      if (!mainWindow) {
+        throw new Error('Main window not available');
+      }
+
+      const safeArea = await mainWindow.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM);
+      this.statusBarHeight = safeArea.topRect.height || 44; // Ensure fallback
+    } catch (error) {
+      hilog.error(DOMAIN, TAG, `Failed to get status bar height: ${error}`);
+      this.statusBarHeight = 44; // Safe fallback for all devices
+    }
   }
 
   /**
@@ -177,12 +205,22 @@ export struct LxAppContainer {
   }
 
   /**
-   * Handle external path changes from LxApp.switchPage API
+   * Handle external path changes from LxApp.navigate API
    */
   onExternalPathChange() {
     if (this.externalPath && this.externalPath !== this.path) {
-      hilog.info(DOMAIN, TAG, `External path change detected: ${this.externalPath}, switching from ${this.path}`);
-      this.switchToPageInternal(this.externalPath);
+      hilog.info(DOMAIN, TAG, `External path change detected: ${this.externalPath}, navigating from ${this.path}`);
+      this.navigateToPageInternal(this.externalPath);
+    }
+  }
+
+  /**
+   * Handle navigation trigger changes (unified approach for all LxApps)
+   */
+  onNavigationTrigger() {
+    if (this.externalPath && this.externalPath !== this.path) {
+      hilog.info(DOMAIN, TAG, `Navigation trigger fired: ${this.externalPath}, navigating from ${this.path}`);
+      this.navigateToPageInternal(this.externalPath);
     }
   }
 
@@ -361,7 +399,7 @@ export struct LxAppContainer {
    */
   @Builder
   buildTabBar(): void {
-    if (this.tabBarState && this.tabBarState.items.length > 0) {
+    if (this.shouldShowTabBar()) {
       TabBar({
         tabbar: this.tabBarState,
         appId: this.appId,
@@ -370,6 +408,48 @@ export struct LxAppContainer {
         onTabSelected: (appId: string, index: number, item: TabBarItem): void => this.handleTabSelected(index)
       })
     }
+  }
+
+  /**
+   * Check if TabBar should be shown
+   * TabBar is shown only if:
+   * 1. TabBar state exists and has items
+   * 2. Current path is one of the tabbar items
+   * 3. App is configured to show TabBar
+   */
+  private shouldShowTabBar(): boolean {
+    // Early return if no TabBar state
+    if (!this.tabBarState?.items?.length) {
+      hilog.debug(DOMAIN, TAG, `TabBar hidden: no items configured for ${this.appId}`);
+      return false;
+    }
+
+    // Check if current path matches any tabbar item
+    const matchingItem: TabBarItem | undefined = this.tabBarState.items.find((item: TabBarItem) =>
+      this.isPathMatch(item.pagePath, this.path)
+    );
+
+    const shouldShow = !!matchingItem;
+    hilog.info(DOMAIN, TAG, `TabBar visibility for ${this.appId}: path=${this.path}, shouldShow=${shouldShow}`);
+
+    return shouldShow;
+  }
+
+  /**
+   * Check if two paths match (exact match or contains relationship)
+   */
+  private isPathMatch(tabPath: string, currentPath: string): boolean {
+    if (!tabPath || !currentPath) {
+      return false;
+    }
+
+    // Exact match
+    if (tabPath === currentPath) {
+      return true;
+    }
+
+    // Check if current path starts with tab path (for nested routes)
+    return currentPath.startsWith(tabPath + '/') || tabPath.includes(currentPath);
   }
 
   /**
@@ -446,7 +526,7 @@ export struct LxAppContainer {
   }
 
   /**
-   * Build capsule button
+   * Build capsule button with proper positioning based on status bar height
    */
   @Builder
   buildCapsuleButton(): void {
@@ -484,12 +564,16 @@ export struct LxAppContainer {
       .backgroundColor('rgba(255,255,255,0.9)')
       .borderRadius(16)
       .border({ width: 0.5, color: '#DDDDDD' })
-      .margin({ top: 8, right: 12 })
+      .margin({
+        top: this.statusBarHeight + 8,
+        right: 12
+      })
     }
     .width('100%')
-    .height(56)
+    .height(32) // Just the button height, not including margin
     .backgroundColor(Color.Transparent)
-    .zIndex(9999)
+    .zIndex(9999) // High zIndex to ensure it's always on top
+    .position({ x: 0, y: 0 }) // Position absolutely
   }
 
   /**
@@ -642,20 +726,20 @@ export struct LxAppContainer {
   }
 
   /**
-   * Switch to page internally (handles both tab and non-tab pages)
+   * Navigate to page internally (handles both tab and non-tab pages)
    * Called by external API or tab clicks
    */
-  private switchToPageInternal(path: string): void {
-    hilog.info(DOMAIN, TAG, `switchToPageInternal called: ${this.appId}:${path}`);
+  private navigateToPageInternal(path: string): void {
+    hilog.info(DOMAIN, TAG, `navigateToPageInternal called: ${this.appId}:${path}`);
 
-    // Use TabBar data to find tab index
-    if (this.tabBarState) {
+    // Use existing TabBar logic to find tab index
+    if (this.tabBarState && this.tabBarState.items) {
       const tabIndex: number = this.tabBarState.items.findIndex((item: TabBarItem): boolean =>
         item.pagePath === path || item.pagePath.includes(path)
       );
 
       if (tabIndex >= 0) {
-        hilog.info(DOMAIN, TAG, `Found tab ${tabIndex} for path ${path}, switching tab`);
+        hilog.info(DOMAIN, TAG, `Found tab ${tabIndex} for path ${path}, navigating to tab`);
         this.switchToTabByIndex(tabIndex);
         return;
       }

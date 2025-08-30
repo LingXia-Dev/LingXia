@@ -12,6 +12,7 @@ import {
   setUserAgent,
   setScrollListenerEnabled
 } from './WebView';
+import { navigationTypeFromInt } from './NavigationBar';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.NativeBridge';
@@ -51,7 +52,21 @@ class NativeBridge {
     });
 
     this.register('switchPage', (appId: string, path: string) => {
-      return LxApp.switchToPage(appId, path);
+      // TODO: delete
+    });
+
+    // Navigate with navigation type
+    // 0=Launch, 1=Forward, 2=Backward, 3=Replace, 4=SwitchTab
+    this.register('navigate', (appId: string, path: string, navigationType: number) => {
+      // Use helper function from NavigationBar to convert int to enum
+      const navType = navigationTypeFromInt(navigationType);
+      if (navType === null) {
+        hilog.error(DOMAIN, TAG, `Invalid navigation type: ${navigationType}`);
+        return false;
+      }
+
+      // Call LxApp.navigate with enum
+      return LxApp.navigate(appId, path, navType);
     });
 
     // Launch external URL

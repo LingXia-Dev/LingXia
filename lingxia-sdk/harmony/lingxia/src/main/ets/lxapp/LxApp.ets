@@ -9,6 +9,7 @@ import { LxAppContainer } from './LxAppContainer';
 import { ToastManager } from './LxAppToast';
 import { initNativeBridge, getNativeCallbackFunction } from './NativeBridge';
 import { WebViewManager, toWebTag } from './WebView';
+import { NavigationType } from './LxAppNavigation';
 import promptAction from '@kit.ArkUI';
 
 
@@ -27,7 +28,7 @@ function closeLxAppTask(appId: string): number {
 interface NavigationInstance {
   openLxApp(appId: string, path: string): void;
   closeLxApp(appId: string): void;
-  switchPage(appId: string, path: string): boolean;
+  navigate(appId: string, path: string, navigationType: NavigationType): boolean;
 }
 
 export class LxApp {
@@ -180,9 +181,9 @@ export class LxApp {
       }
     }
 
-    // Use LxAppNavigation for unified architecture
+    // Use navigate with Launch type for unified architecture
     if (LxApp.navigationInstance) {
-      hilog.info(DOMAIN, TAG, 'Using LxAppNavigation for openLxApp');
+      hilog.info(DOMAIN, TAG, 'Using navigate for openLxApp with Launch type');
       LxApp.navigationInstance.openLxApp(appId, actualPath);
       return;
     }
@@ -191,24 +192,28 @@ export class LxApp {
   }
 
   /**
-   * Switch to a specific page within a LxApp
+   * Navigate to a specific page with navigation type
    * @param appId - LxApp ID
-   * @param path - Page path to switch to
+   * @param path - Page path to navigate to
+   * @param navigationType - NavigationType enum
+   * @returns boolean - True if navigation was successful, false otherwise
    */
-  public static switchPage(appId: string, path: string): boolean {
-    hilog.info(DOMAIN, TAG, `switchPage API called: ${appId}:${path}`);
+  public static navigate(appId: string, path: string, navigationType: NavigationType): boolean {
+    const typeName = NavigationType[navigationType];
+    hilog.info(DOMAIN, TAG, `navigate API called: ${appId}:${path} with type: ${typeName}`);
 
     // Use LxAppNavigation for unified architecture
     if (LxApp.navigationInstance) {
-      return LxApp.navigationInstance.switchPage(appId, path);
+      return LxApp.navigationInstance.navigate(appId, path, navigationType);
     }
 
-    hilog.warn(DOMAIN, TAG, 'LxAppNavigation not available for switchPage');
+    hilog.warn(DOMAIN, TAG, 'LxAppNavigation not available for navigate');
     return false;
   }
 
   /**
    * Get Home LxApp ID
+   * @returns string | null - Home LxApp ID or null if not initialized
    */
   public getHomeLxAppId(): string | null {
     return this.homeLxAppId;
@@ -226,56 +231,6 @@ export class LxApp {
    */
   public static setNavigationInstance(navigation: NavigationInstance): void {
     LxApp.navigationInstance = navigation;
-  }
-
-  /**
-   * Setup system status bar transparency (call after window is created)
-   * Should be called in onWindowStageCreate
-   */
-  public static setupSystemStatusBar(windowStage: window.WindowStage): void {
-    //const instance = LxApp.getInstance();
-    //instance.setSystemStatusBarTransparent(windowStage);
-  }
-
-  /**
-   * Switch to specific page in current LxApp
-   * @param appId LxApp ID
-   * @param path Page path to switch to
-   * @returns Promise<boolean> Success status
-   */
-  public static async switchToPage(appId: string, path: string): Promise<boolean> {
-    const instance = LxApp.getInstance();
-    return await instance.switchToPageInternal(appId, path);
-  }
-
-  /**
-   * Switch to specific page in current LxApp (internal implementation)
-   * @param appId LxApp ID
-   * @param path Page path to switch to
-   * @returns Promise<boolean> Success status
-   */
-  public async switchToPageInternal(appId: string, path: string): Promise<boolean> {
-    hilog.info(DOMAIN, TAG, `switchToPageInternal called: appId=${appId}, path=${path}`);
-
-    try {
-      // Use LxAppNavigation for page switching
-      if (LxApp.navigationInstance) {
-        const success: boolean = LxApp.navigationInstance.switchPage(appId, path);
-        if (success) {
-          hilog.info(DOMAIN, TAG, `Successfully switched to page: ${path}`);
-          return true;
-        } else {
-          hilog.warn(DOMAIN, TAG, `Failed to switch to page: ${path} - page not found in TabBar`);
-          return false;
-        }
-      } else {
-        hilog.error(DOMAIN, TAG, `No LxApp navigation instance available for page switch`);
-        return false;
-      }
-    } catch (error) {
-      hilog.error(DOMAIN, TAG, `Error switching to page ${path}: ${error}`);
-      return false;
-    }
   }
 
   /**
@@ -494,30 +449,16 @@ struct LxAppManager {
   }
 
   /**
-   * Switch to specific page in any LxApp (External API for Rust)
-   * @param appId LxApp ID
-   * @param path Page path to switch to
-   * @returns true if successful, false otherwise
+   * Navigate to specific page in any LxApp (External API for Rust)
+   * @param appId - LxApp ID
+   * @param path - Page path to navigate to
+   * @param navigationType - NavigationType enum
+   * @returns boolean - True if successful, false otherwise
    */
-  public switchToPage(appId: string, path: string): boolean {
-    hilog.info(DOMAIN, TAG, `switchToPage API called: ${appId}:${path}`);
-
-    // Handle home lxapp
-    if (appId === this.homeAppId) {
-      hilog.info(DOMAIN, TAG, `Switching home lxapp page to: ${path}`);
-      this.homeAppCurrentPath = path;
-      return true;
-    }
-
-    // Handle modal lxapp
-    if (appId === this.modalLxAppId) {
-      hilog.info(DOMAIN, TAG, `Switching modal lxapp page to: ${path}`);
-      this.modalLxAppPath = path;
-      return true;
-    }
-
-    hilog.warn(DOMAIN, TAG, `LxApp ${appId} not currently active`);
-    return false;
+  public navigate(appId: string, path: string, navigationType: NavigationType): boolean {
+    const typeName = NavigationType[navigationType];
+    hilog.info(DOMAIN, TAG, `LxAppManager.navigate called: ${appId}:${path} with type: ${typeName}`);
+    return LxApp.navigate(appId, path, navigationType);
   }
 
   /**

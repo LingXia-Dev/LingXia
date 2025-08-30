@@ -1,12 +1,23 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { LxApp } from './LxApp';
 import { LxAppContainer } from './LxAppContainer';
-import { onLxappOpened, onLxappClosed } from 'liblingxia.so';
+import { onLxappOpened, onLxappClosed, getTabBar, TabBarItem, TabBarState } from 'liblingxia.so';
 import { ToastManager } from './LxAppToast';
 import { ModalManager } from './LxAppModal';
 
 const DOMAIN = 0xA000;
 const TAG = 'LingXia.Navigation';
+
+/**
+ * Internal NavigationType enum
+ */
+export enum NavigationType {
+  Launch = 0,
+  Forward = 1,
+  Backward = 2,
+  Replace = 3,
+  SwitchTab = 4
+}
 
 /**
  * LxApp stack item for manual layer management
@@ -16,6 +27,7 @@ interface LxAppStackItem {
   path: string;
   offsetY: number; // For manual animation
   zIndex: number;  // Layer index
+  navigationTrigger: number; // For triggering navigation updates
 }
 
 /**
@@ -28,11 +40,15 @@ export struct LxAppNavigation {
   @State isReady: boolean = false
   @State homeAppId: string = ''
   @State homeAppPath: string = ''
+  @State homeAppExternalPath: string = '' // For triggering navigation changes
   @State errorMessage: string = ''
   @State isHomeAppVisible: boolean = false // Control Home LxApp visibility
 
   @State private miniAppStack: LxAppStackItem[] = []
   @State private hiddenApps: Set<string> = new Set<string>()
+
+  // Navigation state for triggering path changes
+  @State private navigationTrigger: number = 0
 
   @Provide navPageInfos: NavPathStack = new NavPathStack()
 
@@ -110,30 +126,145 @@ export struct LxAppNavigation {
   }
 
   /**
-   * Switch to a specific page within an LxApp
+   * Navigate to a specific page with navigation type
    * @param appId - LxApp ID
-   * @param path - Page path to switch to
-   * @returns boolean - True if page switch was successful, false otherwise
+   * @param path - Page path to navigate to
+   * @param navigationType - Type of navigation
+   * @returns boolean - True if navigation was successful, false otherwise
    */
-  public switchPage(appId: string, path: string): boolean {
-    // For home app, delegate to the LxAppContainer
+  public navigate(appId: string, path: string, navigationType: NavigationType): boolean {
+    // Log with enum name for clarity
+    const typeName = NavigationType[navigationType];
+    hilog.info(DOMAIN, TAG, `navigate called: ${appId}:${path} with type: ${typeName.toLowerCase()}`);
+
+    try {
+      switch (navigationType) {
+        case NavigationType.Launch:
+          return this.handleLaunchNavigation(appId, path);
+        case NavigationType.Forward:
+          return this.handleForwardNavigation(appId, path);
+        case NavigationType.Backward:
+          return this.handleBackwardNavigation(appId, path);
+        case NavigationType.Replace:
+          return this.handleReplaceNavigation(appId, path);
+        case NavigationType.SwitchTab:
+          return this.handleSwitchTabNavigation(appId, path);
+        default:
+          hilog.warn(DOMAIN, TAG, `Unknown navigation type: ${navigationType}`);
+          return false;
+      }
+    } catch (error) {
+      hilog.error(DOMAIN, TAG, `Navigation failed: ${error}`);
+      return false;
+    }
+  }
+
+  /**
+   * Handle Launch navigation - for openLxApp to open entry page
+   */
+  private handleLaunchNavigation(appId: string, path: string): boolean {
+    hilog.info(DOMAIN, TAG, `Launch navigation: ${appId}:${path}`);
+
+    // Check if path is a tabbar item directly
+    const isTabBarItem = this.isTabBarItem(appId, path);
+
+    if (isTabBarItem) {
+      hilog.info(DOMAIN, TAG, `Launch navigation: ${path} is tabbar item, using SwitchTab navigation`);
+      return this.handleSwitchTabNavigation(appId, path);
+    } else {
+      hilog.info(DOMAIN, TAG, `Launch navigation: ${path} is not tabbar item, navigating as regular page`);
+      return this.navigateToPage(appId, path);
+    }
+  }
+
+  /**
+   * Check if a path is a tabbar item
+   */
+  private isTabBarItem(appId: string, path: string): boolean {
+    try {
+      const tabBarState: TabBarState | null = getTabBar(appId);
+      if (!tabBarState || !tabBarState.items || tabBarState.items.length === 0) {
+        return false;
+      }
+
+      const tabIndex: number = tabBarState.items.findIndex((item: TabBarItem): boolean =>
+        item.pagePath === path || item.pagePath.includes(path)
+      );
+
+      return tabIndex >= 0;
+    } catch (error) {
+      hilog.error(DOMAIN, TAG, `Error checking if path is tabbar item: ${error}`);
+      return false;
+    }
+  }
+
+  /**
+   * Handle SwitchTab navigation
+   */
+  private handleSwitchTabNavigation(appId: string, path: string): boolean {
+    return this.navigateToPage(appId, path);
+  }
+
+  /**
+   * Handle Forward navigation (animation-based, navigates to specified page)
+   */
+  private handleForwardNavigation(appId: string, path: string): boolean {
+    hilog.info(DOMAIN, TAG, `Forward navigation with animation: ${appId}:${path}`);
+    // Forward navigation just navigates to the specified page with forward animation
+    return this.navigateToPage(appId, path);
+  }
+
+  /**
+   * Handle Backward navigation (animation-based, navigates to specified page)
+   */
+  private handleBackwardNavigation(appId: string, path: string): boolean {
+    hilog.info(DOMAIN, TAG, `Backward navigation with animation: ${appId}:${path}`);
+    // Backward navigation just navigates to the specified page with backward animation
+    return this.navigateToPage(appId, path);
+  }
+
+  /**
+   * Handle Replace navigation
+   */
+  private handleReplaceNavigation(appId: string, path: string): boolean {
+    hilog.info(DOMAIN, TAG, `Replace navigation: ${appId}:${path}`);
+    return this.navigateToPage(appId, path);
+  }
+
+
+
+  /**
+   * Navigate to a specific page within an LxApp
+   * @param appId - LxApp ID
+   * @param path - Page path to navigate to
+   * @returns boolean - True if navigation was successful, false otherwise
+   */
+  private navigateToPage(appId: string, path: string): boolean {
+    hilog.info(DOMAIN, TAG, `Navigating to page: ${appId}:${path}`);
+
+    // For home app, update the path and trigger navigation
     if (appId === this.homeAppId) {
-      hilog.info(DOMAIN, TAG, `Switching page in home app ${appId} to ${path}`);
-      // The LxAppContainer will handle the page switching via externalPath prop
+      hilog.info(DOMAIN, TAG, `Navigating page in home app ${appId} to ${path}`);
+      this.homeAppPath = path;
+      // Increment trigger to force UI update
+      this.navigationTrigger++;
+      hilog.info(DOMAIN, TAG, `Updated homeAppPath to: ${path}, trigger: ${this.navigationTrigger}`);
       return true;
     }
 
-    // For modal apps in stack, find the container and switch page
+    // For modal apps in stack, find the container and navigate page
     const stackItem = this.miniAppStack.find(item => item.appId === appId);
     if (stackItem) {
-      hilog.info(DOMAIN, TAG, `Switching page in modal app ${appId} to ${path}`);
+      hilog.info(DOMAIN, TAG, `Navigating page in modal app ${appId} to ${path}`);
       stackItem.path = path;
+      stackItem.navigationTrigger++;
       // Trigger UI update for the modal container
       this.miniAppStack = [...this.miniAppStack];
+      hilog.info(DOMAIN, TAG, `Updated modal app ${appId} path to: ${path}, trigger: ${stackItem.navigationTrigger}`);
       return true;
     }
 
-    hilog.warn(DOMAIN, TAG, `LxApp ${appId} not found for page switching`);
+    hilog.warn(DOMAIN, TAG, `LxApp ${appId} not found for page navigation`);
     return false;
   }
 
@@ -155,7 +286,8 @@ export struct LxAppNavigation {
       appId: appId,
       path: path,
       offsetY: 0,
-      zIndex: 1000 + this.miniAppStack.length
+      zIndex: 1000 + this.miniAppStack.length,
+      navigationTrigger: 0
     };
 
     this.miniAppStack.push(newStackItem);
@@ -194,8 +326,10 @@ export struct LxAppNavigation {
     LxAppContainer({
       appId: stackItem.appId,
       initialPath: stackItem.path,
+      externalPath: stackItem.path,
       navigationMode: true,
-      closeCallback: 'navigation'
+      closeCallback: 'navigation',
+      navigationTrigger: stackItem.navigationTrigger
     })
     .width('100%')
     .height('100%')
@@ -216,8 +350,10 @@ export struct LxAppNavigation {
         LxAppContainer({
           appId: this.homeAppId,
           initialPath: this.homeAppPath,
+          externalPath: this.homeAppPath,
           navigationMode: false,
-          closeCallback: undefined
+          closeCallback: undefined,
+          navigationTrigger: this.navigationTrigger
         })
         .zIndex(0)
       } else if (this.errorMessage) {
