@@ -4,7 +4,7 @@ use std::time::Instant;
 
 use crate::executor::LxAppExecutor;
 use crate::log::{self, LogLevel, LogTag};
-use crate::page::PageLoadState;
+use crate::page::{Page, PageLoadState};
 use crate::{LxApp, appservice, error, info};
 
 pub trait LxAppDelegate {
@@ -79,9 +79,13 @@ impl LxAppDelegate for LxApp {
         let self_for_setup = self.clone();
 
         if state.pages.get_page(&path).is_none() {
+            // Build PageState from JSON config
+            let page_state = Page::build_page_state(&*self, &path);
+
             if let Err(e) = state.pages.create_page(
                 self.appid.clone(),
                 path.clone(),
+                page_state,
                 self.runtime.clone(),
                 self.executor.clone(),
                 move |page, path| {
@@ -136,9 +140,14 @@ impl LxAppDelegate for LxApp {
                     // Create page in background
                     let mut state = self_clone.state.lock().unwrap();
                     let self_for_setup = self_clone.clone();
+
+                    // Build PageState from JSON config
+                    let page_state = Page::build_page_state(&*self_clone, &tab_path);
+
                     let _ = state.pages.create_page(
                         self_clone.appid.clone(),
                         tab_path.clone(),
+                        page_state,
                         self_clone.runtime.clone(),
                         self_clone.executor.clone(),
                         move |page, path| {

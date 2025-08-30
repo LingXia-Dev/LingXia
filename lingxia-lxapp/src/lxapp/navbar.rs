@@ -1,6 +1,5 @@
 use crate::lxapp::LxApp;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 /// Navigation style enum
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
@@ -86,14 +85,29 @@ impl NavigationBarState {
 }
 
 impl NavigationBarState {
-    /// Create from serde_json::Value
-    pub fn from_value(value: Value) -> Result<Self, serde_json::Error> {
-        let mut state: NavigationBarState = serde_json::from_value(value)?;
-        // Set default runtime state
-        state.show_navbar = true;
-        state.show_back_button = false;
-        state.show_home_button = false;
-        Ok(state)
+    /// Create NavigationBarState from JSON config file path
+    pub fn from_json(lxapp: &LxApp, path: &str) -> Self {
+        let json_path = path_to_json_path(path);
+        match lxapp.read_json(&json_path) {
+            Ok(json_value) => {
+                match serde_json::from_value::<NavigationBarState>(json_value) {
+                    Ok(mut state) => {
+                        // Set navbar visibility based on navigationStyle
+                        state.show_navbar = match state.navigationStyle {
+                            NavigationStyle::Default => true,
+                            NavigationStyle::Custom => false,
+                        };
+
+                        // Initialize button state (will be updated dynamically)
+                        state.show_back_button = false;
+                        state.show_home_button = false;
+                        state
+                    }
+                    Err(_) => Self::default(),
+                }
+            }
+            Err(_) => Self::default(),
+        }
     }
 }
 
@@ -111,19 +125,16 @@ fn path_to_json_path(path: &str) -> String {
 
 /// Extension methods for LxApp to handle NavigationBar state
 impl LxApp {
-    /// Get NavigationBar state for a specific page from JSON config
-    fn get_nav_bar_state_from_config(&self, path: &str) -> NavigationBarState {
-        let json_path = path_to_json_path(path);
-        match self.read_json(&json_path) {
-            Ok(json_value) => NavigationBarState::from_value(json_value).unwrap_or_default(),
-            Err(_) => NavigationBarState::default(),
-        }
-    }
-
     /// Get NavigationBar state for a specific page
     pub fn get_navbar_state(&self, path: &str) -> NavigationBarState {
-        // Always load from JSON config first (this is the source of truth)
-        self.get_nav_bar_state_from_config(path)
+        let state = self.state.lock().unwrap();
+        if let Some(page) = state.pages.get_page(path) {
+            // Always read from page state (initialized in create_page)
+            page.get_navbar_state().unwrap_or_default()
+        } else {
+            // No page exists - fallback to JSON
+            NavigationBarState::from_json(self, path)
+        }
     }
 
     /// Update navbar state for a specific page

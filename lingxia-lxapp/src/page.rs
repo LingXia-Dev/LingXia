@@ -157,6 +157,7 @@ impl Pages {
         &mut self,
         appid: String,
         path: String,
+        page_state: PageState,
         controller: Arc<dyn AppRuntime>,
         executor: Arc<LxAppExecutor>,
         setup_callback: F,
@@ -169,7 +170,7 @@ impl Pages {
         }
 
         // Create page without WebView first
-        let page = Page::new(appid.clone(), path.clone(), executor.clone());
+        let page = Page::new(appid.clone(), path.clone(), page_state, executor.clone());
 
         // Insert the page into the hashmap
         self.pages.insert(path.clone(), page.clone());
@@ -398,19 +399,27 @@ pub struct Page {
 }
 
 impl Page {
-    /// Create a new page in pending state (WebView creation in progress)
-    fn new(appid: String, path: String, executor: Arc<LxAppExecutor>) -> Self {
-        let initial_state = PageState {
+    /// Build PageState from JSON config
+    pub(crate) fn build_page_state(lxapp: &crate::lxapp::LxApp, path: &str) -> PageState {
+        PageState {
             load_state: PageLoadState::Pending,
-            navbar_state: NavigationBarState::default(),
-        };
+            navbar_state: NavigationBarState::from_json(lxapp, path),
+        }
+    }
 
+    /// Create a new page in pending state (WebView creation in progress)
+    fn new(
+        appid: String,
+        path: String,
+        page_state: PageState,
+        executor: Arc<LxAppExecutor>,
+    ) -> Self {
         let inner = Arc::new(PageInner {
             appid,
             path,
             executor,
             last_active_time: Arc::new(Mutex::new(Instant::now())),
-            state: Arc::new(Mutex::new(initial_state)),
+            state: Arc::new(Mutex::new(page_state)),
             webview_controller: Arc::new(Mutex::new(None)),
         });
 
