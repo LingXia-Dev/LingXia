@@ -27,27 +27,8 @@ class LxApp private constructor(private val context: Context) {
         var HomeLxAppId: String? = null
         var HomeLxAppInitialRoute: String? = null
 
-        // Cache for initial routes of each app
-        private val initialRouteCache = mutableMapOf<String, String>()
-
         // Reference to the current LxAppActivity instance
         private var currentActivity: LxAppActivity? = null
-
-        // Clear initial route cache
-        fun clearInitialRouteCache() {
-            initialRouteCache.clear()
-        }
-
-        // Cache initial route for an app
-        fun cacheInitialRoute(appId: String) {
-            if (!initialRouteCache.containsKey(appId)) {
-                val appInfo = NativeApi.getLxAppInfo(appId)
-                if (appInfo != null) {
-                    initialRouteCache[appId] = appInfo.initialRoute
-                    Log.d(TAG, "Cached initial route for $appId: ${appInfo.initialRoute}")
-                }
-            }
-        }
 
         @JvmStatic
         internal fun initialize(context: Context) {
@@ -138,9 +119,6 @@ class LxApp private constructor(private val context: Context) {
          */
         @JvmStatic
         fun openLxApp(appId: String, path: String) {
-            // Cache the initial route for this app when opening
-            cacheInitialRoute(appId)
-
             val instance = getInstance()
             instance.openInCurrentActivity(appId, path)
         }
