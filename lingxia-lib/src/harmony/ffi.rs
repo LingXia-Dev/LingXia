@@ -65,20 +65,15 @@ pub struct TabItem {
     pub has_red_dot: Option<bool>, // Optional - only populated by get_tab_bar_item
 }
 
-/// NAPI-compatible Navigation style enum
-#[napi]
-pub enum NavigationStyle {
-    Default = 0,
-    Custom = 1,
-}
-
-/// NAPI-compatible NavigationBar configuration
+/// NAPI-compatible NavigationBar state
 #[napi(object)]
-pub struct NavigationBarConfig {
+pub struct NavigationBarState {
     pub navigation_bar_background_color: u32,
     pub navigation_bar_text_style: String,
     pub navigation_bar_title_text: String,
-    pub navigation_style: NavigationStyle,
+    pub show_navbar: bool,
+    pub show_back_button: bool,
+    pub show_home_button: bool,
 }
 
 #[napi]
@@ -187,8 +182,7 @@ pub fn register_custom_schemes() -> bool {
 #[napi]
 fn get_lx_app_info(appid: String) -> Option<LxAppInfo> {
     let lxapp = lxapp::get(appid);
-    let app_config = lxapp.get_config();
-    let rust_app_info = app_config.get_lxapp_info();
+    let rust_app_info = lxapp.get_lxapp_info();
 
     Some(LxAppInfo {
         initial_route: rust_app_info.initial_route,
@@ -239,26 +233,22 @@ fn get_tab_bar(appid: String) -> Option<TabBarState> {
     })
 }
 
-/// Get page navigation bar configuration
+/// Get page navigation bar state with boolean controls
 #[napi]
-pub fn get_navigation_bar_config(appid: String, path: String) -> NavigationBarConfig {
+pub fn get_navigation_bar_state(appid: String, path: String) -> NavigationBarState {
     let lxapp = lxapp::get(appid);
-    let app_config = lxapp.get_config();
-    let rust_config = app_config.get_nav_bar_config(&lxapp, &path);
+    let rust_state = lxapp.get_navbar_state(&path);
 
-    let navigation_style = match rust_config.navigationStyle {
-        lxapp::config::NavigationStyle::Default => NavigationStyle::Default,
-        lxapp::config::NavigationStyle::Custom => NavigationStyle::Custom,
-    };
-
-    NavigationBarConfig {
+    NavigationBarState {
         navigation_bar_background_color: parse_color_to_u32(
-            &rust_config.navigationBarBackgroundColor,
+            &rust_state.navigationBarBackgroundColor,
             0xFFFFFFFF,
         ),
-        navigation_bar_text_style: rust_config.navigationBarTextStyle,
-        navigation_bar_title_text: rust_config.navigationBarTitleText,
-        navigation_style,
+        navigation_bar_text_style: rust_state.navigationBarTextStyle,
+        navigation_bar_title_text: rust_state.navigationBarTitleText,
+        show_navbar: rust_state.show_navbar,
+        show_back_button: rust_state.show_back_button,
+        show_home_button: rust_state.show_home_button,
     }
 }
 

@@ -4,10 +4,10 @@ import { window } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { LxApp } from './LxApp';
 import { findWebview, handleScrollChanged, toWebTag, extractWebTag, WebTagParts, addWebViewUiCallback, removeWebViewUiCallback, WebViewInfo } from './WebView';
-import { NavigationBar, type NavigationBarConfig } from './NavigationBar';
+import { NavigationBar, type NavigationBarState } from './NavigationBar';
 import { TabBar } from './TabBar';
 import { TabBarPosition, type TabBarItem } from 'liblingxia.so';
-import liblingxia, { TabBarState, getNavigationBarConfig, onPageShow } from 'liblingxia.so';
+import liblingxia, { TabBarState, getNavigationBarState, onPageShow } from 'liblingxia.so';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.Container';
@@ -23,7 +23,7 @@ export struct LxAppContainer {
   // Static registry for TabBar updates (simple and direct)
   private static activeContainers: Map<string, LxAppContainer> = new Map()
 
-  @State pageConfig: NavigationBarConfig | null = null
+  @State pageConfig: NavigationBarState | null = null
   @State tabBarState: TabBarState | null = null
   @State selectedTabIndex: number = 0
   @State tabBarRefreshKey: number = 0  // Force TabBar refresh when data changes
@@ -86,7 +86,7 @@ export struct LxAppContainer {
     // Add WebView UI callback to handle component creation (supports multiple containers)
     addWebViewUiCallback(this.webViewUiCallback);
 
-    this.pageConfig = getNavigationBarConfig(this.appId, this.path);
+    this.pageConfig = getNavigationBarState(this.appId, this.path);
 
     // Load TabBar data using new data-driven API
     this.loadTabBarState();
@@ -165,6 +165,18 @@ export struct LxAppContainer {
   }
 
   /**
+   * Static method to refresh NavigationBar for a specific appId and path
+   */
+  public static refreshNavBar(appId: string, path: string): boolean {
+    const container = LxAppContainer.activeContainers.get(appId);
+    if (container) {
+      container.pageConfig = getNavigationBarState(appId, path);
+      return true;
+    }
+    return false;
+  }
+
+  /**
    * Handle external path changes from LxApp.switchPage API
    */
   onExternalPathChange() {
@@ -237,13 +249,13 @@ export struct LxAppContainer {
           if (this.shouldShowCapsuleButton()) {
             this.buildCapsuleButton()
           }
-          if (this.pageConfig && this.pageConfig.navigationStyle === 0 && !this.isInitialRoute()) {
+          if (this.pageConfig && this.pageConfig.showNavbar) {
             NavigationBar({
               config: this.pageConfig,
               appId: this.appId,
               currentPath: this.path,
-              onBackPressed: (appId: string): boolean => {
-                this.handleNavigationBack();
+              onBackPressed: (appId: string, isHomeButton: boolean): boolean => {
+                this.handleNavigationBack(isHomeButton);
                 return true;
               }
             })
@@ -365,18 +377,15 @@ export struct LxAppContainer {
    */
   @Builder
   buildNavigationBar(): void {
-    if (this.pageConfig && this.pageConfig.navigationStyle === 0 && !this.isInitialRoute()) {
+    if (this.pageConfig && this.pageConfig.showNavbar) {
       NavigationBar({
         config: this.pageConfig,
         appId: this.appId,
         currentPath: this.path,
-        showCapsuleButton: false,
-        onBackPressed: (appId: string): boolean => {
-          this.handleNavigationBack();
+        onBackPressed: (appId: string, isHomeButton: boolean): boolean => {
+          this.handleNavigationBack(isHomeButton);
           return true;
-        },
-        onCapsuleMore: () => this.handleCapsuleMore(),
-        onCapsuleClose: () => this.handleCapsuleClose()
+        }
       })
     }
   }
@@ -619,7 +628,7 @@ export struct LxAppContainer {
     }
 
     // Update page config
-    this.pageConfig = getNavigationBarConfig(this.appId, newPath);
+    this.pageConfig = getNavigationBarState(this.appId, newPath);
 
     // Update manager state if this is home lxapp
     if (this.isHomeLxApp()) {
@@ -662,12 +671,17 @@ export struct LxAppContainer {
     }
     hilog.info(DOMAIN, TAG, `WebView for page switch ${path}: ${controller ? 'found' : 'not found'}`);
 
-    this.pageConfig = getNavigationBarConfig(this.appId, path);
+    this.pageConfig = getNavigationBarState(this.appId, path);
   }
 
-  private handleNavigationBack() {
-    hilog.info(DOMAIN, TAG, 'Navigation back pressed');
-    // TODO: Implement navigation back logic
+  private handleNavigationBack(isHomeButton: boolean = false) {
+    if (isHomeButton) {
+      hilog.info(DOMAIN, TAG, 'Navigation home button pressed');
+      // TODO: Implement home navigation logic
+    } else {
+      hilog.info(DOMAIN, TAG, 'Navigation back button pressed');
+      // TODO: Implement back navigation logic
+    }
   }
 
   private handleCapsuleMore(): void {
@@ -707,13 +721,5 @@ export struct LxAppContainer {
       .width('100%')
       .height('100%')
       .backgroundColor(Color.Transparent)
-  }
-
-  /**
-   * Check if current page is the initial route
-   */
-  private isInitialRoute(): boolean {
-    const cachedInitialRoute = LxApp.initialRouteCache.get(this.appId);
-    return cachedInitialRoute === this.path;
   }
 }

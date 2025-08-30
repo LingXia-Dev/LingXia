@@ -1,15 +1,15 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 
 /**
- * NavigationBar configuration interface - synced with native page config
- * Contains all page-level configuration including navigation bar settings
+ * NavigationBar state interface
  */
-export interface NavigationBarConfig {
+export interface NavigationBarState {
   navigationBarTitleText: string;
   navigationBarBackgroundColor: number;
   navigationBarTextStyle: string;  // "black" | "white"
-  navigationStyle: number;         // 0=default, 1=custom
-  backgroundColor?: string;        // Page background color (local extension)
+  showNavbar: boolean;             // Whether to show navbar
+  showBackButton: boolean;         // Whether to show back button
+  showHomeButton: boolean;         // Whether to show home button
 }
 
 const DOMAIN = 0x0000;
@@ -17,36 +17,24 @@ const TAG = 'LingXia.NavigationBar';
 
 @Component
 export struct NavigationBar {
-  @Prop config: NavigationBarConfig;
+  @Prop config: NavigationBarState;
   @Prop appId: string = '';
   @Prop currentPath: string = '';
-  @Prop showCapsuleButton: boolean = false; // Control capsule button display
 
-  onBackPressed?: (appId: string) => boolean;
-  onMenuPressed?: (appId: string) => void;
-  onCapsuleMore?: () => void; // Capsule more button callback
-  onCapsuleClose?: () => void; // Capsule close button callback
+  onBackPressed?: (appId: string, isHomeButton: boolean) => boolean;
 
   build() {
     Stack() {
-      // Background extends to status bar (only if NavigationBar is default style)
-      if (this.config.navigationStyle === 0) {
-        Column()
-          .width('100%')
-          .height('100%')
-          .backgroundColor(this.getBackgroundColor())
-      } else if (this.showCapsuleButton) {
-        // When custom style but showing capsule, create transparent background to cover status bar
-        Column()
-          .width('100%')
-          .height('100%')
-          .backgroundColor(Color.Transparent)
-      }
+      // Background extends to status bar
+      Column()
+        .width('100%')
+        .height('100%')
+        .backgroundColor(this.getBackgroundColor())
 
       // NavigationBar content area (below status bar) - use Stack for absolute positioning
       Stack() {
-        // Left side: Back button (only if NavigationBar is default style)
-        if (this.config.navigationStyle === 0 && this.shouldShowBackButton()) {
+        // Left side: Back button (priority over home button)
+        if (this.config.showBackButton) {
           Row() {
             Button() {
               Text('←')
@@ -59,58 +47,49 @@ export struct NavigationBar {
             .onClick(() => {
               hilog.info(DOMAIN, TAG, `Back button pressed for appId: ${this.appId}`);
               if (this.onBackPressed) {
-                this.onBackPressed(this.appId);
+                this.onBackPressed(this.appId, false); // false = back button, not home
               }
             })
             Blank()
           }
           .width('100%')
           .height('100%')
-        }
-
-        // Center: Title (absolutely centered, only if NavigationBar is default style)
-        if (this.config.navigationStyle === 0) {
-          Text(this.config.navigationBarTitleText || '')
-            .fontSize(18)
-            .fontWeight(FontWeight.Medium)
-            .fontColor(this.getTextColor())
-            .textAlign(TextAlign.Center)
-            .width('100%') // 🚀 FIX: Full width for true center alignment
-        }
-
-        // Right side: Capsule button (absolutely positioned)
-        if (this.showCapsuleButton) {
+        } else if (this.config.showHomeButton) {
+          // Home button in same position as back button
           Row() {
-            Blank()
-            this.buildCapsuleButton()
-          }
-          .width('100%')
-          .height('100%')
-        } else if (this.config.navigationStyle === 0 && this.shouldShowMenuButton()) {
-          Row() {
-            Blank()
             Button() {
-              Text('⋯')
-                .fontSize(20)
+              Text('🏠')
+                .fontSize(18)
                 .fontColor(this.getTextColor())
             }
             .width(40)
             .height(40)
             .backgroundColor(Color.Transparent)
             .onClick(() => {
-              hilog.info(DOMAIN, TAG, `Menu button pressed for appId: ${this.appId}`);
-              if (this.onMenuPressed) {
-                this.onMenuPressed(this.appId);
+              hilog.info(DOMAIN, TAG, `Home button pressed for appId: ${this.appId}`);
+              if (this.onBackPressed) {
+                this.onBackPressed(this.appId, true); // true = home button
               }
             })
+            Blank()
           }
           .width('100%')
           .height('100%')
         }
+
+        // Center: Title
+        Text(this.config.navigationBarTitleText || '')
+          .fontSize(18)
+          .fontWeight(FontWeight.Medium)
+          .fontColor(this.getTextColor())
+          .textAlign(TextAlign.Center)
+          .width('100%') // Full width for true center alignment
+
+
       }
       .width('100%')
       .height(44) // NavigationBar content height
-      .alignContent(Alignment.Center) // 🚀 FIX: Center all content
+      .alignContent(Alignment.Center) // Center all content
       .padding({ left: 12, right: 12 })
     }
     .width('100%')
@@ -149,93 +128,14 @@ export struct NavigationBar {
     return '#000000';
   }
 
-  private shouldShowBackButton(): boolean {
-    return false;
-  }
 
-  private shouldShowMenuButton(): boolean {
-    return false;
-  }
 
-  /**
-   * Build capsule button (integrated into NavigationBar)
-   */
-  @Builder
-  buildCapsuleButton(): void {
-    Row() {
-      // More button with custom drawn three dots
-      Button() {
-        this.buildThreeDots()
-      }
-      .width(44)
-      .height(36)
-      .backgroundColor(Color.Transparent)
-      .onClick(() => {
-        if (this.onCapsuleMore) {
-          this.onCapsuleMore();
-        }
-      })
 
-      Column()
-        .width(0.5)
-        .height(18)
-        .backgroundColor('#DDDDDD')
-
-      // Close button with custom drawn circle and X
-      Button() {
-        this.buildCloseIcon()
-      }
-      .width(44)
-      .height(36)
-      .backgroundColor(Color.Transparent)
-      .onClick(() => {
-        if (this.onCapsuleClose) {
-          this.onCapsuleClose();
-        }
-      })
-    }
-    .backgroundColor('rgba(255,255,255,0.9)')
-    .borderRadius(20)
-    .border({ width: 0.5, color: '#DDDDDD' })
-  }
-
-  /**
-   * Build three dots icon
-   */
-  @Builder
-  buildThreeDots(): void {
-    Row() {
-      Circle().width(3).height(3).fill('#000000')
-      Circle().width(5).height(5).fill('#000000').margin({ left: 4 })
-      Circle().width(3).height(3).fill('#000000').margin({ left: 4 })
-    }
-    .justifyContent(FlexAlign.Center)
-    .alignItems(VerticalAlign.Center)
-  }
-
-  /**
-   * Build close icon
-   */
-  @Builder
-  buildCloseIcon(): void {
-    Stack() {
-      Circle()
-        .width(16)
-        .height(16)
-        .fillOpacity(0)
-        .stroke('#000000')
-        .strokeWidth(2.5)
-      Circle()
-        .width(6.5)
-        .height(6.5)
-        .fill('#000000')
-    }
-  }
 }
 
 export class NavigationBarController {
   private static instance: NavigationBarController | null = null;
-  private currentConfig: NavigationBarConfig | null = null;
+  private currentConfig: NavigationBarState | null = null;
   private appId: string = '';
   private currentPath: string = '';
 
@@ -250,7 +150,7 @@ export class NavigationBarController {
     return NavigationBarController.instance;
   }
 
-  public updateConfig(appId: string, path: string, config: NavigationBarConfig): void {
+  public updateConfig(appId: string, path: string, config: NavigationBarState): void {
     hilog.info(DOMAIN, TAG, `Updating NavigationBar config for appId: ${appId}, path: ${path}`);
     this.appId = appId;
     this.currentPath = path;
@@ -293,7 +193,7 @@ export class NavigationBarController {
   /**
    * Get current configuration
    */
-  public getCurrentConfig(): NavigationBarConfig | null {
+  public getCurrentConfig(): NavigationBarState | null {
     return this.currentConfig;
   }
 

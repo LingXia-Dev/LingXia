@@ -53,13 +53,15 @@ declare module 'liblingxia.so' {
   }
 
   /**
-   * NavigationBar configuration structure
+   * NavigationBar state structure
    */
-  export interface NavigationBarConfig {
+  export interface NavigationBarState {
     navigationBarBackgroundColor: number;
     navigationBarTextStyle: string;
     navigationBarTitleText: string;
-    navigationStyle: number;
+    showNavbar: boolean;
+    showBackButton: boolean;
+    showHomeButton: boolean;
   }
 
   /**
@@ -100,12 +102,12 @@ declare module 'liblingxia.so' {
 
 
   /**
-   * Get page configuration for a specific LxApp page
+   * Get navigation bar state for a specific LxApp page
    * @param appid - LxApp ID
    * @param path - Page path
-   * @returns Page configuration
+   * @returns NavigationBar state with boolean controls
    */
-  export function getNavigationBarConfig(appid: string, path: string): NavigationBarConfig;
+  export function getNavigationBarState(appid: string, path: string): NavigationBarState;
 
   /**
    * Notify that LxApp was opened
