@@ -77,7 +77,7 @@ object NativeApi {
      * @return Navigation bar configuration or null if not available
      */
     @JvmStatic
-    external fun getNavigationBarConfig(appId: String, path: String): NavigationBarConfig?
+    external fun getNavigationBarState(appId: String, path: String): NavigationBarState?
 
     /**
      * Notify native layer that a page is being shown

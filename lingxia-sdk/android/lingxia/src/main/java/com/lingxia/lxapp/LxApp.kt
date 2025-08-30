@@ -27,18 +27,11 @@ class LxApp private constructor(private val context: Context) {
         var HomeLxAppId: String? = null
         var HomeLxAppInitialRoute: String? = null
 
-        private val pageConfigCache = mutableMapOf<String, NavigationBarConfig>()
-
         // Cache for initial routes of each app
         private val initialRouteCache = mutableMapOf<String, String>()
 
         // Reference to the current LxAppActivity instance
         private var currentActivity: LxAppActivity? = null
-
-        // Clear cache when app is closed to prevent memory leaks
-        fun clearPageConfigCache() {
-            pageConfigCache.clear()
-        }
 
         // Clear initial route cache
         fun clearInitialRouteCache() {
@@ -215,24 +208,6 @@ class LxApp private constructor(private val context: Context) {
             return LxAppActivity.updateTabBarUI(appId)
         }
 
-        @JvmStatic
-        fun getNavigationBarConfig(appId: String, path: String): NavigationBarConfig? {
-            // Check if this is the initial route of ANY app using cached data
-            // Initial route should never show navbar
-            val cachedInitialRoute = initialRouteCache[appId]
-            if (cachedInitialRoute != null && path == cachedInitialRoute) {
-                Log.d(TAG, "Page is initial route ($appId, $path), navbar should be hidden")
-                return null
-            }
-
-            val key = "$appId|$path"
-            return pageConfigCache[key] ?: run {
-                val config = NativeApi.getNavigationBarConfig(appId, path)
-                if (config != null) pageConfigCache[key] = config
-                config
-            }
-        }
-
         /**
          * Register activity lifecycle callbacks to automatically handle DeepLinks
          */
@@ -368,6 +343,20 @@ class LxApp private constructor(private val context: Context) {
                 )
                 LxAppModal.showModal(activity, options)
             } ?: ModalResult(confirm = false, cancel = true, content = "")
+        }
+
+        /**
+         * Update NavigationBar UI for a specific LxApp
+         * This is called by the native layer to trigger navbar UI refresh
+         * The NavigationBar will read fresh state from Rust and update itself
+         *
+         * @param appId The unique identifier of the mini app whose NavigationBar needs updating
+         * @return true if successful, false otherwise
+         */
+        @JvmStatic
+        fun updateNavBarUI(appId: String): Boolean {
+            Log.d(TAG, "updateNavBarUI called for appId: $appId")
+            return LxAppActivity.updateNavBarUI(appId)
         }
     }
 

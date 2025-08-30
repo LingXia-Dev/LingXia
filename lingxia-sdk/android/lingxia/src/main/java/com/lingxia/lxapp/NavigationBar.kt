@@ -23,23 +23,17 @@ import kotlin.math.min
 
 /**
  * Configuration data class for the NavigationBar
+ * Updated to use new Rust API with boolean fields
  */
-data class NavigationBarConfig(
+data class NavigationBarState(
     val navigationBarBackgroundColor: Int,         // Background color (e.g., #FFFFFF)
     val navigationBarTextStyle: String,            // Text style ("black" or "white")
     val navigationBarTitleText: String,            // Navigation bar title text
-    val navigationStyle: Int                       // 0=Default, 1=Custom
+    val showNavbar: Boolean,                       // Whether to show the navigation bar
+    val showBackButton: Boolean,                   // Whether to show the back button
+    val showHomeButton: Boolean                    // Whether to show the home button
 ) {
     companion object {
-        // ⚠️  CRITICAL: FFI Alignment Required ⚠️
-        // These values MUST match exactly with Rust NavigationStyle enum!
-
-        /** Default navigation style (show navigation bar) - MUST match Rust Default = 0 */
-        const val NAVIGATION_STYLE_DEFAULT = 0
-
-        /** Custom navigation style (hide navigation bar) - MUST match Rust Custom = 1 */
-        const val NAVIGATION_STYLE_CUSTOM = 1
-
         // Default values
         val DEFAULT_BACKGROUND_COLOR = Color.WHITE
         val DEFAULT_TEXT_COLOR = Color.BLACK
@@ -70,12 +64,14 @@ class NavigationBar @JvmOverloads constructor(
     private val titleTextView: TextView
     private val loadingIndicator: ProgressBar
     private val backButton: ImageView
-    private val homeButton: ImageView? = null
-    private var currentConfig: NavigationBarConfig = NavigationBarConfig(
+    private val homeButton: ImageView
+    private var currentConfig: NavigationBarState = NavigationBarState(
         navigationBarBackgroundColor = Color.WHITE,
         navigationBarTextStyle = "black",
         navigationBarTitleText = "",
-        navigationStyle = NavigationBarConfig.NAVIGATION_STYLE_DEFAULT
+        showNavbar = true,
+        showBackButton = false,
+        showHomeButton = false
     )
     private var knownStatusBarHeight: Int = 0
 
@@ -127,6 +123,59 @@ class NavigationBar @JvmOverloads constructor(
         }
     }
 
+    /**
+     * Custom home button drawable that draws a house shape
+     */
+    private inner class HomeButtonDrawable : Drawable() {
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = currentFrontColor
+            style = Paint.Style.STROKE
+            strokeWidth = 1.8f * resources.displayMetrics.density
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+        }
+
+        override fun draw(canvas: Canvas) {
+            val width = bounds.width()
+            val height = bounds.height()
+            val centerX = width / 2f
+            val centerY = height / 2f
+            val size = minOf(width, height) * 0.4f
+
+            // Draw house outline
+            val left = centerX - size / 2
+            val right = centerX + size / 2
+            val top = centerY - size / 2
+            val bottom = centerY + size / 2
+            val roofTop = top - size * 0.3f
+
+            // Draw roof (triangle)
+            canvas.drawLine(left, top, centerX, roofTop, paint)
+            canvas.drawLine(centerX, roofTop, right, top, paint)
+
+            // Draw house body (rectangle)
+            canvas.drawLine(left, top, left, bottom, paint)
+            canvas.drawLine(right, top, right, bottom, paint)
+            canvas.drawLine(left, bottom, right, bottom, paint)
+        }
+
+        override fun setAlpha(alpha: Int) {
+            paint.alpha = alpha
+        }
+
+        override fun setColorFilter(colorFilter: android.graphics.ColorFilter?) {
+            paint.colorFilter = colorFilter
+        }
+
+        @Deprecated("Deprecated in Java")
+        override fun getOpacity(): Int = android.graphics.PixelFormat.TRANSLUCENT
+
+        fun updateColor(color: Int) {
+            paint.color = color
+            invalidateSelf()
+        }
+    }
+
     init {
         val density = resources.displayMetrics.density
 
@@ -146,12 +195,26 @@ class NavigationBar @JvmOverloads constructor(
             layoutParams = LayoutParams(heightPx, heightPx).apply {
                 gravity = Gravity.START or Gravity.TOP
                 marginStart = (4 * density).toInt()
+                topMargin = (42 * density).toInt() // Same as title alignment
             }
             setImageDrawable(BackButtonDrawable())
             contentDescription = "Back"
             visibility = View.GONE
         }
         addView(backButton)
+
+        // Home Button setup (same position as back button since only one shows at a time)
+        homeButton = ImageView(context).apply {
+            layoutParams = LayoutParams(heightPx, heightPx).apply {
+                gravity = Gravity.START or Gravity.TOP
+                marginStart = (4 * density).toInt() // Same position as back button
+                topMargin = (42 * density).toInt() // Same as title alignment
+            }
+            setImageDrawable(HomeButtonDrawable())
+            contentDescription = "Home"
+            visibility = View.GONE
+        }
+        addView(homeButton)
 
         // Calculate dynamic font size for title
         val targetTitleSp = if (isTablet) 12f else 17f
@@ -162,7 +225,7 @@ class NavigationBar @JvmOverloads constructor(
         titleTextView = TextView(context).apply {
             layoutParams = LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
                 gravity = Gravity.CENTER_HORIZONTAL or Gravity.TOP
-                // Align title with capsule button center: 24dp (status bar) + 18dp (adjustment)
+                // Align title with buttons: same topMargin
                 topMargin = (42 * density).toInt()
             }
             gravity = Gravity.CENTER
@@ -265,6 +328,9 @@ class NavigationBar @JvmOverloads constructor(
 
         // Update back button color
         (backButton.drawable as? BackButtonDrawable)?.updateColor(currentFrontColor)
+
+        // Update home button color
+        (homeButton.drawable as? HomeButtonDrawable)?.updateColor(currentFrontColor)
     }
 
     /**
@@ -277,12 +343,30 @@ class NavigationBar @JvmOverloads constructor(
     }
 
     /**
+     * Sets the visibility of the home button.
+     *
+     * @param visible Whether the home button should be visible.
+     */
+    fun setHomeButtonVisible(visible: Boolean) {
+        homeButton.visibility = if (visible) View.VISIBLE else View.GONE
+    }
+
+    /**
      * Sets a listener for back button clicks
      *
      * @param listener The callback to invoke when the back button is clicked
      */
     fun setOnBackButtonClickListener(listener: OnClickListener) {
         backButton.setOnClickListener(listener)
+    }
+
+    /**
+     * Sets a listener for home button clicks
+     *
+     * @param listener The callback to invoke when the home button is clicked
+     */
+    fun setOnHomeButtonClickListener(listener: OnClickListener) {
+        homeButton.setOnClickListener(listener)
     }
 
     /**
@@ -300,9 +384,9 @@ class NavigationBar @JvmOverloads constructor(
     }
 
     /**
-     * Updates the navigation bar configuration.
+     * Updates the navigation bar configuration using new boolean fields.
      */
-    fun updateConfig(config: NavigationBarConfig) {
+    fun updateConfig(config: NavigationBarState) {
         currentConfig = config
 
         // Update title
@@ -316,6 +400,33 @@ class NavigationBar @JvmOverloads constructor(
         }
 
         setColor(config.navigationBarBackgroundColor, textColor)
+
+        // Update button visibility with priority logic: back button takes precedence over home button
+        val shouldShowBack = config.showBackButton
+        val shouldShowHome = config.showHomeButton && !config.showBackButton // Only show home if back is not shown
+
+        setBackButtonVisible(shouldShowBack)
+        setHomeButtonVisible(shouldShowHome)
+
+        // Update navbar visibility
+        visibility = if (config.showNavbar) View.VISIBLE else View.GONE
+    }
+
+    /**
+     * Refresh navigation bar state from native layer and update UI
+     * This is the unified API that all components should use
+     *
+     * @param appId The app ID to get navbar state for
+     * @param path The current path to get navbar state for
+     */
+    fun refreshState(appId: String, path: String) {
+        val navbarState = NativeApi.getNavigationBarState(appId, path)
+        if (navbarState != null) {
+            updateConfig(navbarState)
+        } else {
+            visibility = View.GONE
+            Log.d(TAG, "NavigationBar hidden - no state available for $appId:$path")
+        }
     }
 
     /**
@@ -325,9 +436,11 @@ class NavigationBar @JvmOverloads constructor(
      * @param bgColor The background color.
      * @param textColor The text color (for title and button icons).
      * @param showBackButton Whether the back button should be initially visible.
+     * @param showHomeButton Whether the home button should be initially visible.
      * @param isBackNavigation Direction hint for animation.
      * @param disableAnimation If true, update instantly; otherwise, animate.
      * @param onBackClickListener Listener for the back button.
+     * @param onHomeClickListener Listener for the home button.
      * @param onAnimationEnd Optional Runnable to execute after animation finishes.
      */
     fun updateStateAndAnimate(
@@ -335,9 +448,11 @@ class NavigationBar @JvmOverloads constructor(
         bgColor: Int,
         textColor: Int,
         showBackButton: Boolean,
+        showHomeButton: Boolean = false,
         isBackNavigation: Boolean,
         disableAnimation: Boolean,
         onBackClickListener: OnClickListener,
+        onHomeClickListener: OnClickListener? = null,
         onAnimationEnd: Runnable? = null
     ) {
         visibility = View.VISIBLE
@@ -346,7 +461,9 @@ class NavigationBar @JvmOverloads constructor(
         setTitle(title)
         setColor(bgColor, textColor)
         setBackButtonVisible(showBackButton)
+        setHomeButtonVisible(showHomeButton)
         setOnBackButtonClickListener(onBackClickListener)
+        onHomeClickListener?.let { setOnHomeButtonClickListener(it) }
 
         // Handle animation
         if (!disableAnimation) {
@@ -379,7 +496,7 @@ class NavigationBar @JvmOverloads constructor(
             knownStatusBarHeight = sbh
 
             // Update layout params of children that depend on status bar height
-            listOf(backButton, loadingIndicator).forEach { view ->
+            listOf(backButton, homeButton, loadingIndicator).forEach { view ->
                 (view.layoutParams as? FrameLayout.LayoutParams)?.let {
                     it.topMargin = knownStatusBarHeight
                     view.layoutParams = it

@@ -65,6 +65,26 @@ class LxAppActivity : AppCompatActivity() {
             }
         }
 
+        /**
+         * Update NavigationBar UI for a specific appId
+         * Triggers the NavigationBar to refresh its state from Rust
+         */
+        @JvmStatic
+        fun updateNavBarUI(appId: String): Boolean {
+            Log.d(TAG, "updateNavBarUI called for appId: $appId")
+
+            val activity = LxApp.getCurrentActivity()
+            if (activity != null && activity.appId == appId) {
+                activity.runOnUiThread {
+                    val currentPath = activity.currentWebView?.getCurrentPath() ?: ""
+                    activity.navigationBar?.refreshState(appId, currentPath)
+                    activity.updateLayoutMargins()
+                }
+                return true
+            }
+            return false
+        }
+
         // Helper function to get status bar height
         fun getStatusBarHeight(context: Context): Int {
             var result = 0
@@ -160,11 +180,11 @@ class LxAppActivity : AppCompatActivity() {
         isDisplayingHomeLxApp = (appId == LxApp.HomeLxAppId)
 
         // Start WebView creation in parallel while setting up UI
-        var webViewFuture: java.util.concurrent.Future<Pair<com.lingxia.lxapp.WebView?, NavigationBarConfig?>>? = null
+        var webViewFuture: java.util.concurrent.Future<Pair<com.lingxia.lxapp.WebView?, NavigationBarState?>>? = null
         val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
 
         try {
-            webViewFuture = executor.submit<Pair<com.lingxia.lxapp.WebView?, NavigationBarConfig?>> {
+            webViewFuture = executor.submit<Pair<com.lingxia.lxapp.WebView?, NavigationBarState?>> {
                 Log.d(TAG, "Starting parallel WebView creation for $appId:$initialPath")
                 findWebViewForPage(appId, initialPath)
             }
@@ -430,7 +450,7 @@ class LxAppActivity : AppCompatActivity() {
     }
 
     // Helper function to find existing WebView instance for a given path/page
-    private fun findWebViewForPage(appId: String, path: String): Pair<com.lingxia.lxapp.WebView?, NavigationBarConfig?> {
+    private fun findWebViewForPage(appId: String, path: String): Pair<com.lingxia.lxapp.WebView?, NavigationBarState?> {
         var webView = com.lingxia.lxapp.WebView.findWebView(appId, path)
 
         if (webView == null) {
@@ -441,8 +461,7 @@ class LxAppActivity : AppCompatActivity() {
         }
 
         // Get page config - Nav bar configuration is now handled by the caller
-        val pageConfig = LxApp.getNavigationBarConfig(appId, path)
-
+        val pageConfig = NativeApi.getNavigationBarState(appId, path)
         return Pair(webView, pageConfig)
     }
 
@@ -730,9 +749,6 @@ class LxAppActivity : AppCompatActivity() {
             view.pause()
         }
 
-        // Clear page config cache to prevent memory leaks
-        LxApp.clearPageConfigCache()
-
         // Clear reference to this activity
         LxApp.setCurrentActivity(null)
 
@@ -992,119 +1008,51 @@ class LxAppActivity : AppCompatActivity() {
      * @param isBackNavigation Whether the navigation event is a 'back' navigation.
      * @param disableAnimation Whether the update should be instant (true) or animated (false).
      */
-    private fun updateNavigationBar(config: NavigationBarConfig?, isBackNavigation: Boolean, disableAnimation: Boolean = false) {
+    private fun updateNavigationBar(config: NavigationBarState?, isBackNavigation: Boolean, disableAnimation: Boolean = false) {
         Log.d(TAG, "updateNavigationBar called: isBackNavigation=$isBackNavigation, disableAnimation=$disableAnimation")
 
         try {
-            Log.d(TAG, "updateNavigationBar called with config: $config")
+            // Instead of using cached config, get fresh state from Rust
+            val currentPath = currentWebView?.getCurrentPath() ?: ""
+            Log.d(TAG, "Getting fresh navbar state for $appId:$currentPath")
 
-            // Determine if Nav Bar should be shown at all
-            if (config == null) {
-                // If config is null, it means this is initial route - hide navbar
-                Log.d(TAG, "NavigationBar hidden (initial route)")
-                navigationBar?.hide()
-                updateLayoutMargins() // Still need to update layout when hidden
-                return
-            }
-
-            // Check if navbar should be hidden based on navigationStyle
-            Log.d(TAG, "Config details: backgroundColor=${config.navigationBarBackgroundColor}, textStyle=${config.navigationBarTextStyle}, title=${config.navigationBarTitleText}, style=${config.navigationStyle}")
-
-            if (config.navigationStyle == NavigationBarConfig.NAVIGATION_STYLE_CUSTOM) {
-                Log.d(TAG, "NavigationBar hidden (custom style)")
-                navigationBar?.hide()
-                updateLayoutMargins() // Still need to update layout when hidden
-                return
-            }
-
-            // Create navigation bar if it doesn't exist
             if (navigationBar == null) {
+                // Create navbar if it doesn't exist
                 Log.d(TAG, "Creating new NavigationBar")
                 val statusBarHeight = getStatusBarHeight(this)
-                Log.d(TAG, "LxAppActivity: statusBarHeight = $statusBarHeight")
                 val newNavBar = NavigationBar(this)
 
-                // 1. Get the content height explicitly from NavigationBar's calculation.
+                // Setup navbar layout and properties
                 val navBarContentHeightPx = newNavBar.getCalculatedContentHeightPx()
-                Log.d(TAG, "LxAppActivity: navBarContentHeightPx from getCalculatedContentHeightPx() = $navBarContentHeightPx")
-
                 val finalNavBarLayoutParams = FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
-                    navBarContentHeightPx + statusBarHeight // Total height includes status bar
+                    navBarContentHeightPx + statusBarHeight
                 ).apply {
                     gravity = Gravity.TOP
                 }
                 newNavBar.layoutParams = finalNavBarLayoutParams
-                Log.d(TAG, "LxAppActivity: finalNavBarLayoutParams.height = ${finalNavBarLayoutParams.height}")
-
-                // IMPORTANT: Set NavigationBar's own top padding to 0.
-                // Status bar offset for children will be handled by newNavBar.setExternalStatusBarHeight()
                 newNavBar.setPadding(newNavBar.paddingLeft, 0, newNavBar.paddingRight, newNavBar.paddingBottom)
-
-                // Inform NavigationBar about the status bar height for its internal child layout
                 newNavBar.setExternalStatusBarHeight(statusBarHeight)
 
+                // Setup button click listeners
                 newNavBar.setOnBackButtonClickListener { handleBackButtonClick() }
-
-                // Ensure any old navigationBar instance is removed from its parent before reassigning
-                if (navigationBar != null && navigationBar?.parent != null) {
-                    (navigationBar?.parent as? ViewGroup)?.removeView(navigationBar)
-                }
+                newNavBar.setOnHomeButtonClickListener { handleHomeButtonClick() }
 
                 navigationBar = newNavBar
             }
 
-            // Always ensure NavigationBar is added to rootContainer (whether new or existing)
+            // Use the unified refreshState API to get fresh state from Rust
+            navigationBar?.refreshState(appId, currentPath)
+
+            // Ensure navbar is added to container
             if (navigationBar != null && ::rootContainer.isInitialized) {
-                // Remove from parent if already added
                 if (navigationBar?.parent != null) {
                     (navigationBar?.parent as? ViewGroup)?.removeView(navigationBar)
                 }
-
-                rootContainer.addView(navigationBar)  // Add to top, not index 0
-                rootContainer.post {
-                    Log.d(TAG, "LxAppActivity: After layout pass, navigationBar.height = ${navigationBar?.height}, navigationBar.measuredHeight = ${navigationBar?.measuredHeight}")
-                }
-            } else if (!::rootContainer.isInitialized) {
-                Log.e(TAG, "Unable to add NavigationBar: rootContainer not initialized")
+                rootContainer.addView(navigationBar)
             }
 
-            // Update navbar with config
-            navigationBar?.updateConfig(config)
-
-            val titleText = config.navigationBarTitleText
-            val backgroundColor = config.navigationBarBackgroundColor
-            val textStyle = config.navigationBarTextStyle
-            val textColor = if (textStyle == "white") Color.WHITE else Color.BLACK
-
-            // Initial back button visibility depends only on whether animation is disabled (i.e., is it a tab switch?)
-            val showBackButton = !disableAnimation
-            Log.d(TAG, "Determined initial showBackButton: $showBackButton")
-
-            // This runs after animation completes OR immediately if animation is disabled.
-            val onAnimationEnd = Runnable {
-                 // If navigating back to a tab root, hide the back button.
-                 if (isBackNavigation) {
-                     val currentPath = currentWebView?.getCurrentPath() ?: ""
-                     val isNowOnTabRoot = tabBar?.findTabIndexByPath(currentPath) != -1
-                     if (isNowOnTabRoot) {
-                         Log.d(TAG, "Back nav to Tab Root ($currentPath) finished, hiding back button.")
-                         navigationBar?.setBackButtonVisible(false)
-                     }
-                 }
-                 updateLayoutMargins()
-            }
-
-            navigationBar?.updateStateAndAnimate(
-                title = titleText,
-                bgColor = backgroundColor,
-                textColor = textColor,
-                showBackButton = showBackButton,
-                isBackNavigation = isBackNavigation,
-                disableAnimation = disableAnimation,
-                onBackClickListener = { handleBackButtonClick() }, // Pass the handler method reference
-                onAnimationEnd = onAnimationEnd
-            )
+            updateLayoutMargins()
 
         } catch (e: Exception) {
             Log.e(TAG, "Error updating navigation bar", e)
@@ -1115,13 +1063,14 @@ class LxAppActivity : AppCompatActivity() {
      * Handles the click event from the NavigationBar's back button.
      */
     private fun handleBackButtonClick() {
-        try {
-            Log.d(TAG, "NavigationBar back button clicked")
-            onBackPressedDispatcher.onBackPressed()
-        } catch (e: Exception) {
-            Log.e(TAG, "Error during back navigation: ${e.message}")
-            closeApp() // Close app on error
-        }
+        Log.d(TAG, "NavigationBar back button clicked")
+    }
+
+    /**
+     * Handles the click event from the NavigationBar's home button.
+     */
+    private fun handleHomeButtonClick() {
+        Log.d(TAG, "NavigationBar home button clicked")
     }
 
     // Helper to calculate the Y translation based on visible bars
@@ -1146,8 +1095,6 @@ class LxAppActivity : AppCompatActivity() {
 
         // Ensure all UI operations are on the main thread
         runOnUiThread {
-            LxApp.clearPageConfigCache()
-
             // Pause and hide current WebView before clearing
             currentWebView?.let { webView ->
                 webView.pause()
@@ -1234,9 +1181,5 @@ class LxAppActivity : AppCompatActivity() {
 
         // Update layout to adapt to screen orientation changes
         updateLayoutMargins()
-
-        // Reconfigure navigation bar if needed
-        val pageConfig = LxApp.getNavigationBarConfig(appId, currentWebView?.getCurrentPath() ?: "")
-        updateNavigationBar(pageConfig, false, true)
     }
 }

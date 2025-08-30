@@ -172,12 +172,8 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppClosed(
 }
 
 /// Get navigation bar configuration for a specific page
-///
-/// IMPORTANT: This function returns NavigationBarConfig directly to Kotlin.
-/// Kotlin side should handle visibility logic based on:
-/// - navigationStyle: 0=Default (show), 1=Custom (hide)
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getNavigationBarConfig<'a>(
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getNavigationBarState<'a>(
     mut env: JNIEnv<'a>,
     _class: JClass<'a>,
     appid: JString<'a>,
@@ -189,59 +185,44 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getNavigationBarConfig<'
     // Get the lxapp instance
     let lxapp = lxapp::get(appid.clone());
 
-    // Get navigation bar config using new API
-    let nav_config = lxapp.get_config().get_nav_bar_config(&lxapp, &path);
+    // Get navigation bar state using new API
+    let nav_state = lxapp.get_navbar_state(&path);
 
-    // Debug logging
-    log::info!(
-        "[Android] nativeGetPageConfig: appid={}, path={}, navigationStyle={:?}, bgColor={}, textStyle={}, title={}",
-        appid,
-        path,
-        nav_config.navigationStyle,
-        nav_config.navigationBarBackgroundColor,
-        nav_config.navigationBarTextStyle,
-        nav_config.navigationBarTitleText
-    );
-
-    // Find the NavigationBarConfig class
-    let nav_bar_class = match env.find_class("com/lingxia/lxapp/NavigationBarConfig") {
+    // Find the NavigationBarState class
+    let nav_bar_class = match env.find_class("com/lingxia/lxapp/NavigationBarState") {
         Ok(c) => c,
         Err(_) => return JObject::null(),
     };
 
     // Parse background color using unified function
     let bg_color_int = parse_color_to_i32(
-        &nav_config.navigationBarBackgroundColor,
+        &nav_state.navigationBarBackgroundColor,
         0xFFFFFFFFu32 as i32,
     );
 
-    log::info!(
-        "[Android] Color parsing: original={}, parsed=0x{:08X}",
-        nav_config.navigationBarBackgroundColor,
-        bg_color_int as u32
-    );
-
     // Create Java strings
-    let title_text = match env.new_string(&nav_config.navigationBarTitleText) {
+    let title_text = match env.new_string(&nav_state.navigationBarTitleText) {
         Ok(s) => s,
         Err(_) => return JObject::null(),
     };
-    let text_style = match env.new_string(&nav_config.navigationBarTextStyle) {
+    let text_style = match env.new_string(&nav_state.navigationBarTextStyle) {
         Ok(s) => s,
         Err(_) => return JObject::null(),
     };
-    // Use int for navigation style (0=Default, 1=Custom)
-    let navigation_style_int = nav_config.navigationStyle.to_i32();
 
-    // Create NavigationBarConfig object (using int for navigation style)
+    // Create NavigationBarState object with new boolean fields
+    // Constructor signature: (ILjava/lang/String;Ljava/lang/String;ZZZ)V
+    // Parameters: backgroundColor, textStyle, titleText, showNavbar, showBackButton, showHomeButton
     match env.new_object(
         nav_bar_class,
-        "(ILjava/lang/String;Ljava/lang/String;I)V",
+        "(ILjava/lang/String;Ljava/lang/String;ZZZ)V",
         &[
             (bg_color_int as jint).into(),
             (&text_style).into(),
             (&title_text).into(),
-            (navigation_style_int as jint).into(),
+            (nav_state.show_navbar as jboolean).into(),
+            (nav_state.show_back_button as jboolean).into(),
+            (nav_state.show_home_button as jboolean).into(),
         ],
     ) {
         Ok(obj) => obj,
@@ -286,7 +267,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getLxAppInfo<'a>(
     let appid: String = env.get_string(&appid).unwrap().into();
     let lxapp = lxapp::get(appid.clone());
 
-    let lxapp_info = lxapp.get_config().get_lxapp_info();
+    let lxapp_info = lxapp.get_lxapp_info();
 
     // Debug logging
     log::info!(
@@ -338,7 +319,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getTabBarState<'a>(
     let appid: String = env.get_string(&appid).unwrap().into();
     let lxapp = lxapp::get(appid.clone());
 
-    let tab_bar_config = match lxapp.get_config().get_tab_bar(&lxapp) {
+    let tab_bar_config = match lxapp.get_tabbar() {
         Some(config) => config,
         None => {
             return JObject::null();
