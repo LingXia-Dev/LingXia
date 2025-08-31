@@ -131,61 +131,85 @@ export struct LxAppNavigation {
   }
 
   /**
-   * Navigate to a specific page with navigation type
+   * Navigate to page with navigation type behavior
    * @param appId - LxApp ID
    * @param path - Page path to navigate to
    * @param navigationType - Type of navigation
    * @returns boolean - True if navigation was successful, false otherwise
    */
   public navigate(appId: string, path: string, navigationType: NavigationType): boolean {
-    // Log with enum name for clarity
     const typeName = NavigationType[navigationType];
-    hilog.info(DOMAIN, TAG, `navigate called: ${appId}:${path} with type: ${typeName.toLowerCase()}`);
+    hilog.info(DOMAIN, TAG, `navigate: ${appId}:${path} (${typeName})`);
 
     try {
-      switch (navigationType) {
-        case NavigationType.Launch:
-          return this.handleLaunchNavigation(appId, path);
-        case NavigationType.Forward:
-          return this.handleForwardNavigation(appId, path);
-        case NavigationType.Backward:
-          return this.handleBackwardNavigation(appId, path);
-        case NavigationType.Replace:
-          return this.handleReplaceNavigation(appId, path);
-        case NavigationType.SwitchTab:
-          return this.handleSwitchTabNavigation(appId, path);
-        default:
-          hilog.warn(DOMAIN, TAG, `Unknown navigation type: ${navigationType}`);
-          return false;
-      }
+      // Resolve type: LAUNCH → SWITCH_TAB for tab pages
+      const actualType = this.resolveNavigationType(navigationType, appId, path);
+
+      // Apply navigation type specific updates
+      this.applyNavigationTypeSpecificUpdates(appId, path, actualType);
+
+      // Execute navigation
+      return this.navigateToPage(appId, path);
     } catch (error) {
       hilog.error(DOMAIN, TAG, `Navigation failed: ${error}`);
       return false;
     }
   }
 
-  /**
-   * Handle Launch navigation - for openLxApp to open entry page
-   */
-  private handleLaunchNavigation(appId: string, path: string): boolean {
-    hilog.info(DOMAIN, TAG, `Launch navigation: ${appId}:${path}`);
-
-    // Check if path is a tabbar item directly
-    const isTabBarItem = this.isTabBarItem(appId, path);
-
-    if (isTabBarItem) {
-      hilog.info(DOMAIN, TAG, `Launch navigation: ${path} is tabbar item, using SwitchTab navigation`);
-      return this.handleSwitchTabNavigation(appId, path);
-    } else {
-      hilog.info(DOMAIN, TAG, `Launch navigation: ${path} is not tabbar item, navigating as regular page`);
-      return this.navigateToPage(appId, path);
+  private resolveNavigationType(navigationType: NavigationType, appId: string, path: string): NavigationType {
+    if (navigationType === NavigationType.Launch) {
+      // Only LAUNCH converts to SWITCH_TAB for tab pages
+      return this.isTabBarItem(appId, path) ? NavigationType.SwitchTab : NavigationType.Launch;
     }
+    // REPLACE, FORWARD, BACKWARD should never convert to SWITCH_TAB
+    return navigationType;
   }
 
   /**
-   * Check if a path is a tabbar item
+   * Apply navigation type specific updates
    */
-  private isTabBarItem(appId: string, path: string): boolean {
+  private applyNavigationTypeSpecificUpdates(appId: string, path: string, navigationType: NavigationType): void {
+    switch (navigationType) {
+      case NavigationType.SwitchTab:
+        // Tab switch: show tabbar and update tab selection
+        this.setTabBarHidden(appId, false);
+        LxAppContainer.updateTabSelection(appId, path);
+        break;
+
+      case NavigationType.Launch:
+        // Launch: show tabbar and update tab selection if it's a tab page
+        this.setTabBarHidden(appId, false);
+        if (this.isTabBarItem(appId, path)) {
+          LxAppContainer.updateTabSelection(appId, path);
+        }
+        break;
+
+      case NavigationType.Forward:
+      case NavigationType.Backward:
+      case NavigationType.Replace:
+        // Hide tabbar for these types - no tab selection update needed
+        this.setTabBarHidden(appId, true);
+        break;
+    }
+  }
+
+  // Track tabbar visibility per app
+  private tabBarHidden: Map<string, boolean> = new Map();
+
+  private setTabBarHidden(appId: string, hidden: boolean): void {
+    this.tabBarHidden.set(appId, hidden);
+  }
+
+  public isTabBarHidden(appId: string): boolean {
+    return this.tabBarHidden.get(appId) || false;
+  }
+
+
+
+  /**
+   * Check if a path is a tabbar item - public for reuse
+   */
+  public isTabBarItem(appId: string, path: string): boolean {
     try {
       const tabBarState: TabBarState | null = getTabBar(appId);
       if (!tabBarState || !tabBarState.items || tabBarState.items.length === 0) {
@@ -202,41 +226,6 @@ export struct LxAppNavigation {
       return false;
     }
   }
-
-  /**
-   * Handle SwitchTab navigation
-   */
-  private handleSwitchTabNavigation(appId: string, path: string): boolean {
-    return this.navigateToPage(appId, path);
-  }
-
-  /**
-   * Handle Forward navigation (animation-based, navigates to specified page)
-   */
-  private handleForwardNavigation(appId: string, path: string): boolean {
-    hilog.info(DOMAIN, TAG, `Forward navigation with animation: ${appId}:${path}`);
-    // Forward navigation just navigates to the specified page with forward animation
-    return this.navigateToPage(appId, path);
-  }
-
-  /**
-   * Handle Backward navigation (animation-based, navigates to specified page)
-   */
-  private handleBackwardNavigation(appId: string, path: string): boolean {
-    hilog.info(DOMAIN, TAG, `Backward navigation with animation: ${appId}:${path}`);
-    // Backward navigation just navigates to the specified page with backward animation
-    return this.navigateToPage(appId, path);
-  }
-
-  /**
-   * Handle Replace navigation
-   */
-  private handleReplaceNavigation(appId: string, path: string): boolean {
-    hilog.info(DOMAIN, TAG, `Replace navigation: ${appId}:${path}`);
-    return this.navigateToPage(appId, path);
-  }
-
-
 
   /**
    * Navigate to a specific page within an LxApp

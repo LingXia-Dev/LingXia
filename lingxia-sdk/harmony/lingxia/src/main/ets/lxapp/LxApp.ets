@@ -29,6 +29,7 @@ interface NavigationInstance {
   openLxApp(appId: string, path: string): void;
   closeLxApp(appId: string): void;
   navigate(appId: string, path: string, navigationType: NavigationType): boolean;
+  isTabBarHidden(appId: string): boolean;
 }
 
 export class LxApp {

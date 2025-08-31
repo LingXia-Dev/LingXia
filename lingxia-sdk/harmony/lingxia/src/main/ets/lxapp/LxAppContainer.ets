@@ -205,12 +205,24 @@ export struct LxAppContainer {
   }
 
   /**
+   * Static method to update tab selection for a specific appId and path
+   */
+  public static updateTabSelection(appId: string, path: string): boolean {
+    const container = LxAppContainer.activeContainers.get(appId);
+    if (container) {
+      container.updateTabSelection(path);
+      return true;
+    }
+    return false;
+  }
+
+  /**
    * Handle external path changes from LxApp.navigate API
    */
   onExternalPathChange() {
     if (this.externalPath && this.externalPath !== this.path) {
       hilog.info(DOMAIN, TAG, `External path change detected: ${this.externalPath}, navigating from ${this.path}`);
-      this.navigateToPageInternal(this.externalPath);
+      this.navigateToPage(this.externalPath);
     }
   }
 
@@ -220,7 +232,7 @@ export struct LxAppContainer {
   onNavigationTrigger() {
     if (this.externalPath && this.externalPath !== this.path) {
       hilog.info(DOMAIN, TAG, `Navigation trigger fired: ${this.externalPath}, navigating from ${this.path}`);
-      this.navigateToPageInternal(this.externalPath);
+      this.navigateToPage(this.externalPath);
     }
   }
 
@@ -411,28 +423,23 @@ export struct LxAppContainer {
   }
 
   /**
-   * Check if TabBar should be shown
-   * TabBar is shown only if:
-   * 1. TabBar state exists and has items
-   * 2. Current path is one of the tabbar items
-   * 3. App is configured to show TabBar
+   * Check if TabBar should be shown - considers navigation type
    */
   private shouldShowTabBar(): boolean {
-    // Early return if no TabBar state
-    if (!this.tabBarState?.items?.length) {
-      hilog.debug(DOMAIN, TAG, `TabBar hidden: no items configured for ${this.appId}`);
+    // Check if navigation type hides tabbar
+    if (LxApp.navigationInstance && LxApp.navigationInstance.isTabBarHidden(this.appId)) {
       return false;
     }
 
-    // Check if current path matches any tabbar item
+    if (!this.tabBarState?.items?.length) {
+      return false;
+    }
+
     const matchingItem: TabBarItem | undefined = this.tabBarState.items.find((item: TabBarItem) =>
       this.isPathMatch(item.pagePath, this.path)
     );
 
-    const shouldShow = !!matchingItem;
-    hilog.info(DOMAIN, TAG, `TabBar visibility for ${this.appId}: path=${this.path}, shouldShow=${shouldShow}`);
-
-    return shouldShow;
+    return !!matchingItem;
   }
 
   /**
@@ -667,7 +674,7 @@ export struct LxAppContainer {
   }
 
   /**
-   * Switch to tab by index
+   * Switch to tab by index (called by TabBar clicks)
    */
   private switchToTabByIndex(index: number): void {
     if (!this.tabBarState || index < 0 || index >= this.tabBarState.items.length) {
@@ -683,79 +690,113 @@ export struct LxAppContainer {
       return;
     }
 
-    hilog.info(DOMAIN, TAG, `Switching from tab ${this.selectedTabIndex} to tab ${index}, path: ${newPath}`);
-
-    // Update selected index to trigger UI visibility change
+    // Update tab selection first
     this.selectedTabIndex = index;
+    hilog.info(DOMAIN, TAG, `Updated tab selection to index: ${index} for path: ${newPath}`);
 
-    // Update current path to the new tab path
-    this.path = newPath;
-
-    // Find WebView for the new tab (only when switching)
-    hilog.info(DOMAIN, TAG, `Finding WebView for tab switch: ${this.appId}:${newPath}`);
-    const newWebTag = toWebTag(this.appId, newPath);
-    const newWebViewController = findWebview(this.appId, newPath);
-    if (newWebViewController) {
-      hilog.info(DOMAIN, TAG, `WebView for tab switch ${newPath}: found`);
-      // Store the Web component for this WebView
-      this.webViewComponents.set(newWebTag, newWebViewController);
-      this.webViewKeys = Array.from(this.webViewComponents.keys()); // Update ForEach keys
-      this.currentWebTag = newWebTag;
-      // Clear the pageShow trigger state for this WebView so it can trigger again
-      this.pageShowTriggered.delete(newWebTag);
-      hilog.info(DOMAIN, TAG, `Updated currentWebTag to: ${newWebTag}`);
-
-      // Trigger onPageShow immediately for tab switches
-      this.triggerOnPageShowIfNeeded(newWebTag);
-    } else {
-      hilog.error(DOMAIN, TAG, `WebView for tab switch ${newPath}: not found`);
-    }
-
-    // Update page config
-    this.pageConfig = getNavigationBarState(this.appId, newPath);
-
-    // Update manager state if this is home lxapp
-    if (this.isHomeLxApp()) {
-      const manager = LxApp.managerInstance;
-      if (manager) {
-        manager.updateHomeLxAppCurrentPath(newPath);
-      }
+    // Navigate to the page
+    const success = this.navigateToPage(newPath);
+    if (!success) {
+      hilog.error(DOMAIN, TAG, `Failed to navigate to tab: ${newPath}`);
+      return;
     }
 
     hilog.info(DOMAIN, TAG, `Tab switched to ${index}, onPageShow will be triggered automatically for path: ${newPath}`);
   }
 
   /**
-   * Navigate to page internally (handles both tab and non-tab pages)
-   * Called by external API or tab clicks
+   * Load navbar state for a page (common for all navigation types)
    */
-  private navigateToPageInternal(path: string): void {
-    hilog.info(DOMAIN, TAG, `navigateToPageInternal called: ${this.appId}:${path}`);
-
-    // Use existing TabBar logic to find tab index
-    if (this.tabBarState && this.tabBarState.items) {
-      const tabIndex: number = this.tabBarState.items.findIndex((item: TabBarItem): boolean =>
-        item.pagePath === path || item.pagePath.includes(path)
-      );
-
-      if (tabIndex >= 0) {
-        hilog.info(DOMAIN, TAG, `Found tab ${tabIndex} for path ${path}, navigating to tab`);
-        this.switchToTabByIndex(tabIndex);
-        return;
-      }
-    }
-
-    // For non-tabbar pages, directly switch
-    hilog.info(DOMAIN, TAG, `Direct page switch for path ${path}`);
-    this.path = path;
-    const webTag = toWebTag(this.appId, path);
-    const controller = findWebview(this.appId, path);
-    if (controller) {
-      this.storeWebViewComponent(webTag, controller);
-    }
-    hilog.info(DOMAIN, TAG, `WebView for page switch ${path}: ${controller ? 'found' : 'not found'}`);
-
+  private loadNavbarState(path: string): void {
     this.pageConfig = getNavigationBarState(this.appId, path);
+    hilog.info(DOMAIN, TAG, `Loaded navbar state for ${path}`);
+  }
+
+  /**
+   * Navigate to any page
+   */
+  private navigateToPage(path: string): boolean {
+    hilog.info(DOMAIN, TAG, `navigate: ${this.appId}:${path}`);
+
+    // Update current path
+    this.path = path;
+
+    // Find WebView for the new page
+    const newWebTag = toWebTag(this.appId, path);
+    const webViewController = findWebview(this.appId, path);
+
+    if (!webViewController) {
+      hilog.warn(DOMAIN, TAG, `WebView not found for page: ${newWebTag}`);
+      return false;
+    }
+
+    // Update current WebView
+    this.currentWebTag = newWebTag;
+    hilog.info(DOMAIN, TAG, `Navigated to page: ${newWebTag}`);
+
+    // Store WebView component and trigger onPageShow
+    this.webViewComponents.set(newWebTag, webViewController);
+    this.webViewKeys = Array.from(this.webViewComponents.keys());
+    this.pageShowTriggered.delete(newWebTag);
+
+    // Trigger onPageShow
+    this.triggerOnPageShowIfNeeded(newWebTag);
+
+    // Load navbar state for the new page
+    this.loadNavbarState(path);
+
+    return true;
+  }
+
+  /**
+   * Check if a path is a tab bar item
+   */
+  private isTabBarItem(path: string): boolean {
+    return this.tabBarState?.items?.some((item: TabBarItem) => item.pagePath === path) || false;
+  }
+
+  /**
+   * Get tab index for a path
+   */
+  private getTabIndex(path: string): number {
+    if (!this.tabBarState?.items) return -1;
+    const index: number = this.tabBarState.items.findIndex((item: TabBarItem) => item.pagePath === path);
+    return index >= 0 ? index : -1;
+  }
+
+  /**
+   * Update tab selection for a path (called by navigation layer)
+   */
+  public updateTabSelection(path: string): void {
+    if (!this.isTabBarItem(path)) {
+      hilog.info(DOMAIN, TAG, `Path ${path} is not a tab item, skipping tab selection update`);
+      return;
+    }
+
+    const tabIndex = this.getTabIndex(path);
+    if (tabIndex >= 0) {
+      this.selectedTabIndex = tabIndex;
+      hilog.info(DOMAIN, TAG, `Updated tab selection to index: ${tabIndex} for path: ${path}`);
+    } else {
+      hilog.warn(DOMAIN, TAG, `Could not find tab index for path: ${path}`);
+    }
+  }
+
+  /**
+   * Trigger onPageShow for direct navigation
+   */
+  private triggerOnPageShow(appId: string, path: string): void {
+    hilog.info(DOMAIN, TAG, `Triggering onPageShow for direct navigation: ${appId}:${path}`);
+
+    // Prevent duplicate onPageShow calls
+    const pageKey = `${appId}:${path}`;
+    if (this.pageShowTriggered.has(pageKey)) {
+      hilog.info(DOMAIN, TAG, `onPageShow already triggered for ${pageKey}, skipping`);
+      return;
+    }
+
+    this.pageShowTriggered.add(pageKey);
+    onPageShow(appId, path);
   }
 
   private handleNavigationBack(isHomeButton: boolean = false) {
