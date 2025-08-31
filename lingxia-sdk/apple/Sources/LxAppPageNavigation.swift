@@ -59,13 +59,7 @@ public class LxAppPageNavigation {
 /// Core page navigation logic shared between iOS and macOS
 @MainActor
 public struct LxPageNavigation {
-    /// Cache for initial routes of each app
-    private static var initialRouteCache: [String: String] = [:]
 
-    /// Cache initial route for an app (called explicitly when app opens)
-    public static func cacheInitialRoute(appId: String, initialRoute: String) {
-        initialRouteCache[appId] = initialRoute
-    }
 
     /// Gets page configuration from Rust layer using typed API
     public static func getNavigationBarState(appId: String, path: String) -> NavigationBarState? {

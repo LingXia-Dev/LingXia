@@ -56,10 +56,9 @@ public class macOSLxApp: ObservableObject {
 
     /// Open specific LxApp
     public static func openLxApp(appId: String, path: String) {
-        // Get app info and cache initial route for navigation logic
+        // Get app info for initial route
         let lxappInfo = getLxAppInfo(appId)
         let initialRoute = lxappInfo.initial_route.toString()
-        LxPageNavigation.cacheInitialRoute(appId: appId, initialRoute: initialRoute)
 
         // Use initial route if path is empty
         let requestedPath = path.isEmpty ? initialRoute : path
