@@ -24,6 +24,62 @@ import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import android.view.animation.AccelerateDecelerateInterpolator
 
+/**
+ * Navigation type enum for LxApp navigation
+ */
+enum class NavigationType(val value: Int) {
+    /**
+     * Launch navigation - for openLxApp to open entry page
+     */
+    LAUNCH(0),
+
+    /**
+     * Forward navigation - navigate to a new page with animation
+     */
+    FORWARD(1),
+
+    /**
+     * Backward navigation - navigate back with animation
+     */
+    BACKWARD(2),
+
+    /**
+     * Replace navigation - replace current page without animation
+     */
+    REPLACE(3),
+
+    /**
+     * Switch tab navigation - switch between tab pages
+     */
+    SWITCH_TAB(4);
+
+    companion object {
+        /**
+         * Convert NavigationType to string for logging
+         */
+        fun toString(type: NavigationType): String {
+            return when (type) {
+                LAUNCH -> "Launch"
+                FORWARD -> "Forward"
+                BACKWARD -> "Backward"
+                REPLACE -> "Replace"
+                SWITCH_TAB -> "SwitchTab"
+            }
+        }
+    }
+}
+
+
+
+/**
+ * Simple navigation state tracker
+ */
+data class NavigationState(
+    val currentPath: String,
+    val previousPath: String? = null,
+    val isNavigating: Boolean = false
+)
+
 class LxAppActivity : AppCompatActivity() {
     companion object {
         private const val TAG = "LingXia.WebView"
@@ -180,13 +236,13 @@ class LxAppActivity : AppCompatActivity() {
         isDisplayingHomeLxApp = (appId == LxApp.HomeLxAppId)
 
         // Start WebView creation in parallel while setting up UI
-        var webViewFuture: java.util.concurrent.Future<Pair<com.lingxia.lxapp.WebView?, NavigationBarState?>>? = null
+        var webViewFuture: java.util.concurrent.Future<com.lingxia.lxapp.WebView?>? = null
         val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
 
         try {
-            webViewFuture = executor.submit<Pair<com.lingxia.lxapp.WebView?, NavigationBarState?>> {
+            webViewFuture = executor.submit<com.lingxia.lxapp.WebView?> {
                 Log.d(TAG, "Starting parallel WebView creation for $appId:$initialPath")
-                findWebViewForPage(appId, initialPath)
+                findWebView(appId, initialPath)
             }
         } catch (e: Exception) {
             Log.w(TAG, "Failed to start parallel WebView creation: ${e.message}")
@@ -236,8 +292,8 @@ class LxAppActivity : AppCompatActivity() {
         // Setup WebView content using parallel result
         try {
             val webViewResult = webViewFuture?.get(500, java.util.concurrent.TimeUnit.MILLISECONDS)
-            if (webViewResult?.first != null) {
-                setupWebViewContentWithExisting(webViewResult.first!!)
+            if (webViewResult != null) {
+                setupWebViewContentWithExisting(webViewResult)
             } else {
                 setupWebViewContent(appId, initialPath)
             }
@@ -257,19 +313,11 @@ class LxAppActivity : AppCompatActivity() {
                         currentWebView?.visibility = View.VISIBLE
                         val result = NativeApi.onBackPressed(appId)
                         Log.d(TAG, "Back press handled by native: $result")
-                        if (result <= 0) {
-                            Log.d(TAG, "No back navigation available, finishing")
-                            closeApp()
-                        }
                     } catch (e: Exception) {
                         Log.e(TAG, "Error handling back press: ${e.message}")
-                        closeApp()
                     }
                 }
             })
-
-            // Final layout update
-            updateLayoutMargins()
         }
 
         Log.d(TAG, "LxAppActivity onCreate completed for appId: $appId, path: $initialPath")
@@ -327,7 +375,7 @@ class LxAppActivity : AppCompatActivity() {
                 setConfig(config)
                 setOnTabSelectedListener { index, path ->
                     Log.d(TAG, "Tab clicked: index=$index, path=$path")
-                    switchToTab(path)
+                    navigate(path, NavigationType.SWITCH_TAB)
                 }
                 applyTabBarLayoutParams(this, config)
             }
@@ -449,20 +497,18 @@ class LxAppActivity : AppCompatActivity() {
         container?.requestLayout()
     }
 
-    // Helper function to find existing WebView instance for a given path/page
-    private fun findWebViewForPage(appId: String, path: String): Pair<com.lingxia.lxapp.WebView?, NavigationBarState?> {
-        var webView = com.lingxia.lxapp.WebView.findWebView(appId, path)
-
+    // Find WebView - ONLY find WebView, nothing else
+    private fun findWebView(appId: String, path: String): com.lingxia.lxapp.WebView? {
+        val webView = com.lingxia.lxapp.WebView.findWebView(appId, path)
         if (webView == null) {
-            Log.w(TAG, "WebView not found for appId=$appId, path=$path. WebView should be created by Rust layer.")
-            return Pair(null, null)
-        } else {
-            Log.d(TAG, "Using existing WebView instance for page: $path")
+            Log.w(TAG, "WebView not found for appId=$appId, path=$path")
         }
+        return webView
+    }
 
-        // Get page config - Nav bar configuration is now handled by the caller
-        val pageConfig = NativeApi.getNavigationBarState(appId, path)
-        return Pair(webView, pageConfig)
+    // Get navbar state
+    private fun getNavBarState(appId: String, path: String): NavigationBarState? {
+        return NativeApi.getNavigationBarState(appId, path)
     }
 
     // Helper function to attach a WebView to the container and resume it
@@ -494,27 +540,18 @@ class LxAppActivity : AppCompatActivity() {
 
             // Resume the WebView's activities
             view.resume()
-
-            // Unified onPageShow trigger - called for all WebViews when attached to UI
-            if (view.getAppId() != null && view.getCurrentPath() != null) {
-                try {
-                    NativeApi.onPageShow(view.getAppId()!!, view.getCurrentPath()!!)
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to call nativeOnPageShow: ${e.message}")
-                }
-            }
         } else {
             Log.w(TAG, "attachWebViewToUI: Activity is destroyed, skipping WebView attachment")
         }
     }
 
     private fun setupWebViewContent(appId: String, path: String) {
-        val initialWebView = findWebViewForPage(appId, path)
-        if (initialWebView.first == null) {
+        val initialWebView = findWebView(appId, path)
+        if (initialWebView == null) {
             Log.e(TAG, "Failed to find or create initial WebView for $path")
-            closeApp(); return
+            closeLxApp(); return
         }
-        setupWebViewContentWithExisting(initialWebView.first!!)
+        setupWebViewContentWithExisting(initialWebView)
     }
 
     // New method to setup WebView content with an existing WebView
@@ -696,7 +733,8 @@ class LxAppActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
             setOnClickListener {
-                closeApp()
+                closeLxApp()
+                LxApp.openHomeLxApp()
             }
         }
 
@@ -755,124 +793,129 @@ class LxAppActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
-    // Handles switching ROOT pages associated with Tabs
-    private fun switchToTab(targetPath: String) {
-        Log.d(TAG, "Switching TAB to path: $targetPath, container children: ${webViewContainer.childCount}")
+    /**
+     * Navigate to any page - super simple
+     */
+    fun navigate(targetPath: String, navigationType: NavigationType): Boolean {
+        if (!::appId.isInitialized) return false
 
-        val appId = intent.getStringExtra(EXTRA_APP_ID)
-        if (appId.isNullOrEmpty()) {
-            Log.e(TAG, "switchToTab failed: Cannot get/create WebView, appId is missing.")
-            return
+        // Allow same path for launch (app initialization)
+        if (currentWebView?.getCurrentPath() == targetPath && navigationType != NavigationType.LAUNCH) {
+            return true
         }
 
-        // Bail early if trying to switch to the current path
-        if (currentWebView?.getCurrentPath() == targetPath) {
-            Log.d(TAG, "Already on this tab, no need to switch")
-            return
+        try {
+            // Resolve actual navigation type (like macOS)
+            val actualType = resolveNavigationType(navigationType, targetPath)
+
+            // Apply type-specific UI updates
+            applyNavigationTypeUpdates(actualType, targetPath)
+
+            // Show WebView with appropriate animation
+            return showWebViewWithNavigation(targetPath, actualType)
+        } catch (e: Exception) {
+            Log.e(TAG, "Navigation failed: ${e.message}", e)
+            return false
         }
+    }
 
-        // Capture reference to previous WebView before changing anything
-        val previousWebView = currentWebView
-
-        // First prep the UI changes before touching WebViews
-        val targetIndex = tabBar?.findTabIndexByPath(targetPath) ?: -1
-        if (targetIndex == -1) {
-            Log.e(TAG, "switchToTab failed: Path '$targetPath' not found in TabBar items.")
-            return
-        }
-
-        // Find or create target WebView
-        val (targetWebView, pageConfig) = findWebViewForPage(appId, targetPath)
-        if (targetWebView == null) {
-            Log.e(TAG, "switchToTab failed: findWebViewForPage returned null for $targetPath")
-            return
-        }
-
-        // Set current WebView to target for tracking *early*
-        currentWebView = targetWebView
-
-        // Update TabBar UI first (without triggering listener)
-        tabBar?.setSelectedIndex(targetIndex, notifyListener = false)
-
-        // Configure navigation bar for the TARGET tab page using the helper (disable animation)
-        updateNavigationBar(pageConfig, isBackNavigation = false, disableAnimation = true)
-
-        // Keep all WebViews in container, manage visibility and lifecycle events properly
-        val allWebViews = mutableListOf<com.lingxia.lxapp.WebView>()
-        for (i in 0 until webViewContainer.childCount) {
-            val child = webViewContainer.getChildAt(i)
-            if (child is com.lingxia.lxapp.WebView) {
-                allWebViews.add(child)
+    /**
+     * Resolve navigation type based on path (like macOS logic)
+     */
+    private fun resolveNavigationType(navigationType: NavigationType, targetPath: String): NavigationType {
+        return when (navigationType) {
+            NavigationType.LAUNCH -> {
+                // Launch: convert to tab switch if it's a tab page
+                if (isTabPage(targetPath)) NavigationType.SWITCH_TAB else NavigationType.LAUNCH
             }
+            else -> navigationType
         }
+    }
 
-        // Check if target WebView is already attached to container
-        val isAlreadyAttached = allWebViews.contains(targetWebView)
-
-        if (!isAlreadyAttached) {
-            // First time showing this WebView - use attachWebViewToUI for proper lifecycle
-            attachWebViewToUI(targetWebView)
-        } else {
-            // WebView already attached, make visible, resume, and trigger onPageShow
-            targetWebView.visibility = View.VISIBLE
-            targetWebView.resume()
-
-            // Always trigger onPageShow when WebView becomes visible to user (tab switching)
-            if (targetWebView.getAppId() != null && targetWebView.getCurrentPath() != null) {
-                try {
-                    NativeApi.onPageShow(targetWebView.getAppId()!!, targetWebView.getCurrentPath()!!)
-                    Log.d(TAG, "Tab switching triggered onPageShow for: ${targetWebView.getCurrentPath()}")
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to call nativeOnPageShow during tab switch: ${e.message}")
+    /**
+     * Apply navigation type specific UI updates
+     */
+    private fun applyNavigationTypeUpdates(navigationType: NavigationType, targetPath: String) {
+        when (navigationType) {
+            NavigationType.SWITCH_TAB -> {
+                tabBar?.visibility = View.VISIBLE
+                tabBar?.findTabIndexByPath(targetPath)?.let { index ->
+                    if (index >= 0) tabBar?.setSelectedIndex(index, notifyListener = false)
                 }
             }
-        }
-
-        // Hide all other WebViews without removing them (prevent flickering)
-        allWebViews.forEach { webView ->
-            if (webView != targetWebView) {
-                webView.pause()
-                webView.visibility = View.GONE
+            NavigationType.LAUNCH -> {
+                tabBar?.visibility = View.GONE  // Non-tab page
+            }
+            NavigationType.REPLACE, NavigationType.FORWARD, NavigationType.BACKWARD -> {
+                tabBar?.visibility = View.GONE
             }
         }
     }
 
-     /**
-     * Switch to a specific page within the mini app.
-     * This is the main entry point for page navigation.
-     *
-     * @param targetPath Path of the page to navigate to
+    /**
+     * Show WebView with appropriate animation and trigger onPageShow
      */
-    fun switchPage(targetPath: String) { // Changed to public method
-        if (!::appId.isInitialized) {
-            Log.e(TAG, "Cannot switch page: appId not initialized")
-            return
+    private fun showWebViewWithNavigation(targetPath: String, navigationType: NavigationType): Boolean {
+        // All navigation types use the same core logic - just like macOS!
+        val success = when (navigationType) {
+            NavigationType.SWITCH_TAB -> {
+                // Tab switch = launch without animation (like macOS)
+                navigateToPage(targetPath, isReplace = true, isBackNavigation = false)
+                true
+            }
+            NavigationType.FORWARD -> {
+                navigateToPage(targetPath, isReplace = false, isBackNavigation = false)
+                true
+            }
+            NavigationType.BACKWARD -> {
+                navigateToPage(targetPath, isReplace = false, isBackNavigation = true)
+                true
+            }
+            NavigationType.LAUNCH, NavigationType.REPLACE -> {
+                navigateToPage(targetPath, isReplace = true, isBackNavigation = false)
+                true
+            }
         }
 
-        try {
-            // Check if trying to navigate to current page
-            if (currentWebView?.getCurrentPath() == targetPath) {
-                return
+        return success
+    }
+
+    /**
+     * Check if path is a tab page
+     */
+    private fun isTabPage(targetPath: String): Boolean {
+        return tabBar?.findTabIndexByPath(targetPath)?.let { it >= 0 } ?: false
+    }
+
+    /**
+     * Animate old container out with cleanup
+     */
+    private fun animateOldContainerOut(
+        oldContainer: ViewGroup,
+        oldWebView: com.lingxia.lxapp.WebView,
+        endX: Float,
+        duration: Long,
+        interpolator: AccelerateDecelerateInterpolator
+    ) {
+        oldContainer.animate()
+            .translationX(endX)
+            .setDuration(duration)
+            .setInterpolator(interpolator)
+            .withEndAction {
+                try {
+                    // Pause and clean up old WebView
+                    oldWebView.pause()
+                    oldWebView.visibility = View.GONE
+
+                    // Remove old container from parent
+                    (oldContainer.parent as? ViewGroup)?.removeView(oldContainer)
+
+                    Log.d(TAG, "Old container animated out and cleaned up")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error cleaning up old container: ${e.message}")
+                }
             }
-
-            // Check if this is a tab page
-            val tabIndex = tabBar?.findTabIndexByPath(targetPath)
-            if (tabIndex != null && tabIndex >= 0) {
-                Log.d(TAG, "Switching to tab page at index: $tabIndex")
-                switchToTab(targetPath)
-            } else {
-                // Handle non-tab page navigation
-                Log.d(TAG, "Navigating to non-tab page: $targetPath")
-
-                // Determine if this is back navigation (simplistically by path length)
-                val currentPath = currentWebView?.getCurrentPath()
-                val isBackNavigation = currentPath != null && currentPath.length > targetPath.length
-
-                navigateToPage(targetPath, isReplace = false, isBackNavigation = isBackNavigation)
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error in switchPage: ${e.message}", e)
-        }
+            .start()
     }
 
     /**
@@ -888,15 +931,18 @@ class LxAppActivity : AppCompatActivity() {
             // Get current WebView before changes
             val oldWebView = currentWebView
 
-            // Find or create WebView for the target page
-            val (newWebView, pageConfig) = findWebViewForPage(appId, targetPath)
+            // Find WebView for the target page
+            val newWebView = findWebView(appId, targetPath)
             if (newWebView == null) {
-                Log.e(TAG, "Failed to create WebView for path: $targetPath")
+                Log.e(TAG, "Failed to find WebView for path: $targetPath")
                 return
             }
 
+            // Get navbar state separately
+            val pageConfig = getNavBarState(appId, targetPath)
+
             // Update navigation bar configuration (pass disableAnimation=false)
-            updateNavigationBar(pageConfig, isBackNavigation, disableAnimation = false)
+            updateNavigationBar(pageConfig, isBackNavigation, disableAnimation = false, targetPath = targetPath)
 
             if (newWebView.parent != null) {
                 (newWebView.parent as? ViewGroup)?.removeView(newWebView)
@@ -1007,14 +1053,15 @@ class LxAppActivity : AppCompatActivity() {
      * @param config The navigation bar configuration for the target page.
      * @param isBackNavigation Whether the navigation event is a 'back' navigation.
      * @param disableAnimation Whether the update should be instant (true) or animated (false).
+     * @param targetPath The target path to update navbar for (optional, uses currentWebView if null).
      */
-    private fun updateNavigationBar(config: NavigationBarState?, isBackNavigation: Boolean, disableAnimation: Boolean = false) {
-        Log.d(TAG, "updateNavigationBar called: isBackNavigation=$isBackNavigation, disableAnimation=$disableAnimation")
+    private fun updateNavigationBar(config: NavigationBarState?, isBackNavigation: Boolean, disableAnimation: Boolean = false, targetPath: String? = null) {
+        Log.d(TAG, "updateNavigationBar called: isBackNavigation=$isBackNavigation, disableAnimation=$disableAnimation, targetPath=$targetPath")
 
         try {
-            // Instead of using cached config, get fresh state from Rust
-            val currentPath = currentWebView?.getCurrentPath() ?: ""
-            Log.d(TAG, "Getting fresh navbar state for $appId:$currentPath")
+            // Use explicit targetPath if provided, otherwise fall back to currentWebView
+            val pathForNavbar = targetPath ?: currentWebView?.getCurrentPath() ?: ""
+            Log.d(TAG, "Getting fresh navbar state for $appId:$pathForNavbar")
 
             if (navigationBar == null) {
                 // Create navbar if it doesn't exist
@@ -1042,7 +1089,7 @@ class LxAppActivity : AppCompatActivity() {
             }
 
             // Use the unified refreshState API to get fresh state from Rust
-            navigationBar?.refreshState(appId, currentPath)
+            navigationBar?.refreshState(appId, pathForNavbar)
 
             // Ensure navbar is added to container
             if (navigationBar != null && ::rootContainer.isInitialized) {
@@ -1082,73 +1129,98 @@ class LxAppActivity : AppCompatActivity() {
         return tabBarOffset.toFloat()
     }
 
-    // Close the current app and return to the home app
-    fun closeApp() {
+    // Close the current LxApp
+    fun closeLxApp() {
+        Log.d(TAG, "Closing current LxApp: $appId")
+
+        // Notify native layer
         notifyLxAppClosed()
-        currentWebView?.pause()
-        LxApp.openHomeLxApp()
+
+        // Pause and clean up current WebView
+        currentWebView?.let { webView ->
+            webView.pause()
+            webView.visibility = View.GONE
+        }
+        webViewContainer.removeAllViews()
+        currentWebView = null
+
+        // Hide tab bar (capsule and navbar remain)
+        tabBar?.visibility = View.GONE
+
+        // Clear app state
+        appId = ""
+        isDisplayingHomeLxApp = false
     }
 
-    // Open a new app in the current activity
-    fun openApp(appId: String, path: String) {
-        Log.d(TAG, "Opening new app: $appId at path: $path. Resetting state.")
+    // Switch to a different LxApp in the current activity (openLxApp/closeLxApp lifecycle)
+    fun openLxApp(appId: String, path: String) {
+        Log.d(TAG, "Opening LxApp: $appId at path: $path")
 
         // Ensure all UI operations are on the main thread
         runOnUiThread {
-            // Pause and hide current WebView before clearing
-            currentWebView?.let { webView ->
-                webView.pause()
-                webView.visibility = View.GONE
-            }
-
-            // Clear all WebViews from container
-            webViewContainer.removeAllViews()
-
-            // Remove existing capsule button before setting up new app
-            rootContainer.findViewWithTag<View>("capsule_button")?.let { capsule ->
-                rootContainer.removeView(capsule)
-            }
-
-            // Clean up navigation bar
-            navigationBar?.let { navBar ->
-                navBar.visibility = View.GONE
-                (navBar.parent as? ViewGroup)?.removeView(navBar)
-            }
-            navigationBar = null
-
-            // Clean up tab bar
-            tabBar?.apply {
-                setConfig(TabBarState(list = emptyList()))
-                visibility = View.GONE
-            }
-            tabBar = null
-
+            // Update app state (no intent extras needed - we're not switching activities)
             this.appId = appId
-            this.currentWebView = null
             this.isDisplayingHomeLxApp = (appId == LxApp.HomeLxAppId)
 
-            intent.putExtra(EXTRA_APP_ID, appId)
-            intent.putExtra(EXTRA_PATH, path)
+            // 1. Necessary preparation (build tabbar, etc.)
+            prepareLxApp(appId)
 
-            val tabBarConfig = NativeApi.getTabBarState(appId)
-            setupTabBar(tabBarConfig)
+            // 2. Check whether to show capsule button (home=hide, others=show)
+            updateCapsuleButtonVisibility(appId)
 
-            val (webView, pageConfig) = findWebViewForPage(appId, path)
-            updateNavigationBar(pageConfig, isBackNavigation = false, disableAnimation = true)
-
-            if (webView == null) {
-                Log.e(TAG, "Failed to find or create initial WebView for $path")
-                closeApp()
-                return@runOnUiThread
+            // 3. Call navigate as entry point
+            val targetPath = if (path.isNotEmpty()) path else getInitialRoute() ?: ""
+            if (targetPath.isNotEmpty()) {
+                navigate(targetPath, NavigationType.LAUNCH)
+            } else {
+                Log.e(TAG, "No valid path to navigate to")
             }
+        }
+    }
 
-            webViewContainer.visibility = View.VISIBLE
-            setupWebViewContentWithExisting(webView)
+    /**
+     * 1. Necessary preparation for LxApp (build tabbar, etc.)
+     */
+    private fun prepareLxApp(appId: String) {
+        Log.d(TAG, "Preparing LxApp: $appId")
 
-            rootContainer.post {
-                updateCapsuleButton()
-                updateLayoutMargins()
-            }
+        // Pause current WebView
+        currentWebView?.let { webView ->
+            webView.pause()
+            webView.visibility = View.GONE
+        }
+
+        // Clear WebView container for new app
+        webViewContainer.removeAllViews()
+        currentWebView = null
+
+        // Build tab bar configuration for new app (tabbar is dynamic)
+        val tabBarConfig = NativeApi.getTabBarState(appId)
+        if (tabBarConfig != null) {
+            tabBar?.setConfig(tabBarConfig)
+            tabBar?.visibility = View.VISIBLE
+            Log.d(TAG, "TabBar configured for app: $appId")
+        } else {
+            tabBar?.visibility = View.GONE
+            Log.d(TAG, "No TabBar for app: $appId")
+        }
+    }
+
+    /**
+     * 2. Check whether to show capsule button (home=hide, others=show)
+     */
+    private fun updateCapsuleButtonVisibility(appId: String) {
+        val isHomeLxApp = (appId == LxApp.HomeLxAppId)
+
+        if (isHomeLxApp) {
+            // Home LxApp: hide capsule button
+            val capsuleButton = rootContainer.findViewWithTag<View>("capsule_button")
+            capsuleButton?.visibility = View.GONE
+            Log.d(TAG, "Capsule button hidden for home LxApp")
+        } else {
+            // Other LxApps: ensure capsule button exists and is visible
+            updateCapsuleButton()
+            Log.d(TAG, "Capsule button shown for LxApp: $appId")
         }
     }
 
@@ -1170,6 +1242,16 @@ class LxAppActivity : AppCompatActivity() {
 
     // Get current app ID
     fun getAppId(): String = appId
+
+    /**
+     * Get initial route for the current app
+     */
+    fun getInitialRoute(): String? {
+        if (!::appId.isInitialized) return null
+
+        val appInfo = NativeApi.getLxAppInfo(appId)
+        return appInfo?.initialRoute
+    }
 
     // Get current WebView (internal access for LxApp)
     internal fun getCurrentWebView(): com.lingxia.lxapp.WebView? = currentWebView

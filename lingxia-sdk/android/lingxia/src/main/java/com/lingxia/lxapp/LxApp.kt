@@ -139,9 +139,8 @@ class LxApp private constructor(private val context: Context) {
         }
 
         /**
-         * Notifies the system to close a mini app with the specified appId
-         *
-         * This method is typically called by the native layer when a mini app needs to be closed
+         * Notifies the system to close a lxapp with the specified appId
+         * This method is typically called by the native layer when a lxapp needs to be closed
          *
          * @param appId The ID of the mini app to close
          */
@@ -149,28 +148,28 @@ class LxApp private constructor(private val context: Context) {
         fun closeLxApp(appId: String) {
             Log.d(TAG, "Closing LxApp with appId: $appId")
 
-            // Notify the current activity to close if it matches the appId
+            // Notify the current activity to close the LxApp
             if (currentActivity?.getAppId() == appId) {
-                currentActivity?.closeApp()
+                currentActivity?.closeLxApp()
             }
         }
 
         /**
-         * Switches the current page within a running LxAppActivity
+         * Navigate to a specific page
          *
-         * This method calls the switchPage method directly on the current activity
-         *
-         * @param appId The unique identifier of the mini app whose page needs switching
-         * @param path The target path to navigate to within the mini app
+         * @param appId The unique identifier of the lxapp
+         * @param path The target path to navigate to within the lxapp
+         * @param navigationType The type of navigation to perform
+         * @return true if navigation was successful, false otherwise
          */
         @JvmStatic
-        fun switchPage(appId: String, path: String) {
-            Log.d(TAG, "Requesting page switch for appId: $appId to path: $path")
-
-            // Switch page in the current activity if it matches the appId
-            if (currentActivity?.getAppId() == appId) {
-                currentActivity?.switchPage(path)
-            }
+        fun navigate(appId: String, path: String, navigationType: NavigationType): Boolean {
+            return currentActivity?.takeIf { it.getAppId() == appId }
+                ?.navigate(path, navigationType)
+                ?: run {
+                    Log.w(TAG, "No matching activity for appId: $appId")
+                    false
+                }
         }
 
         /**
@@ -344,7 +343,7 @@ class LxApp private constructor(private val context: Context) {
 
             if (currentActivity != null) {
                 Log.d(TAG, "Opening app in current activity")
-                currentActivity?.openApp(appId, path)
+                currentActivity?.openLxApp(appId, path)
             } else {
                 Log.d(TAG, "Creating new activity")
                 val intent = Intent(context, LxAppActivity::class.java).apply {
