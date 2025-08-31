@@ -69,8 +69,6 @@ enum class NavigationType(val value: Int) {
     }
 }
 
-
-
 /**
  * Simple navigation state tracker
  */
@@ -358,9 +356,8 @@ class LxAppActivity : AppCompatActivity() {
                                  (tabBarBgColor?.let { Color.alpha(it) < 255 } == true)
 
         // Get the actual TabBar background color (considering defaults)
-        val actualTabBarColor: Int = when {
-            config.backgroundColor != null -> config.backgroundColor!!
-            config.position == TabBarState.Position.BOTTOM -> Color.WHITE // DEFAULT_BACKGROUND_COLOR
+        val actualTabBarColor: Int = when (config.position) {
+            TabBarState.Position.BOTTOM -> config.backgroundColor // Use configured color for bottom
             else -> {
                 // Use vertical TabBar default color for LEFT/RIGHT positions
                 0xFFF8F8F8.toInt() // VERTICAL_TABBAR_BACKGROUND_COLOR
@@ -808,11 +805,8 @@ class LxAppActivity : AppCompatActivity() {
             // Resolve actual navigation type (like macOS)
             val actualType = resolveNavigationType(navigationType, targetPath)
 
-            // Apply type-specific UI updates
-            applyNavigationTypeUpdates(actualType, targetPath)
-
-            // Show WebView with appropriate animation
-            return showWebViewWithNavigation(targetPath, actualType)
+            // Coordinate all UI updates in the same step for consistency
+            return coordinatedNavigationUpdate(targetPath, actualType)
         } catch (e: Exception) {
             Log.e(TAG, "Navigation failed: ${e.message}", e)
             return false
@@ -833,21 +827,96 @@ class LxAppActivity : AppCompatActivity() {
     }
 
     /**
-     * Apply navigation type specific UI updates
+     * Coordinate all UI updates (TabBar, NavBar, WebView) in the same step
+     *
+     * IMPROVEMENT: Ensures WebView, NavBar, and TabBar updates are synchronized
+     * to prevent timing issues and provide smooth, coordinated transitions
+     */
+    private fun coordinatedNavigationUpdate(targetPath: String, navigationType: NavigationType): Boolean {
+        Log.d(TAG, "Coordinated navigation update: $targetPath with type: $navigationType")
+
+        // Step 1: Get navbar state early for coordination
+        val pageConfig = getNavBarState(appId, targetPath)
+
+        // Step 2: Apply tabbar updates with coordination
+        applyNavigationTypeUpdates(navigationType, targetPath)
+
+        // Step 3: Navigate with coordinated timing
+        return navigateToPageWithCoordination(targetPath, navigationType, pageConfig)
+    }
+
+    /**
+     * Apply navigation type specific UI updates with smooth animations
+     *
+     * IMPROVEMENT: Added smooth tabbar transitions to match iOS/macOS/Harmony polish
+     * - SWITCH_TAB: Shows tabbar with fade-in animation
+     * - LAUNCH: Hides tabbar with fade-out animation (non-tab pages)
+     * - REPLACE/FORWARD/BACKWARD: Hides tabbar with fade-out animation
      */
     private fun applyNavigationTypeUpdates(navigationType: NavigationType, targetPath: String) {
         when (navigationType) {
             NavigationType.SWITCH_TAB -> {
-                tabBar?.visibility = View.VISIBLE
+                showTabBarWithAnimation(true)
                 tabBar?.findTabIndexByPath(targetPath)?.let { index ->
                     if (index >= 0) tabBar?.setSelectedIndex(index, notifyListener = false)
                 }
             }
             NavigationType.LAUNCH -> {
-                tabBar?.visibility = View.GONE  // Non-tab page
+                showTabBarWithAnimation(false)  // Non-tab page
             }
             NavigationType.REPLACE, NavigationType.FORWARD, NavigationType.BACKWARD -> {
-                tabBar?.visibility = View.GONE
+                showTabBarWithAnimation(false)
+            }
+        }
+    }
+
+    /**
+     * Show or hide TabBar with smooth fade animation
+     * Provides elegant transitions like iOS/macOS/Harmony platforms
+     */
+    private fun showTabBarWithAnimation(show: Boolean) {
+        tabBar?.let { tabBar ->
+            // Avoid duplicate animations
+            if (show && tabBar.visibility == View.VISIBLE && tabBar.alpha == 1f) {
+                return // Already visible
+            }
+            if (!show && tabBar.visibility == View.GONE) {
+                return // Already hidden
+            }
+
+            // Cancel any existing animation to prevent conflicts
+            tabBar.animate().cancel()
+
+            if (show) {
+                // Fade in animation with slight scale effect for polish
+                Log.d(TAG, "TabBar fade in animation")
+                tabBar.visibility = View.VISIBLE
+                tabBar.alpha = 0f
+                tabBar.scaleY = 0.95f // Subtle scale effect
+                tabBar.animate()
+                    .alpha(1f)
+                    .scaleY(1f)
+                    .setDuration(250) // Slightly longer for smoothness
+                    .setInterpolator(android.view.animation.DecelerateInterpolator(1.5f))
+                    .withStartAction {
+                        // Ensure proper initial state
+                        tabBar.visibility = View.VISIBLE
+                    }
+                    .start()
+            } else {
+                // Fade out animation with subtle scale effect
+                Log.d(TAG, "TabBar fade out animation")
+                tabBar.animate()
+                    .alpha(0f)
+                    .scaleY(0.95f) // Subtle scale effect
+                    .setDuration(200) // Faster fade out
+                    .setInterpolator(android.view.animation.AccelerateInterpolator(1.2f))
+                    .withEndAction {
+                        tabBar.visibility = View.GONE
+                        tabBar.alpha = 1f // Reset for next show
+                        tabBar.scaleY = 1f // Reset scale
+                    }
+                    .start()
             }
         }
     }
@@ -855,24 +924,35 @@ class LxAppActivity : AppCompatActivity() {
     /**
      * Show WebView with appropriate animation and trigger onPageShow
      */
-    private fun showWebViewWithNavigation(targetPath: String, navigationType: NavigationType): Boolean {
-        // All navigation types use the same core logic - just like macOS!
+    /**
+     * Navigate to page with coordinated UI updates
+     *
+     * IMPROVEMENT: Coordinates WebView navigation with navbar updates for smooth transitions
+     */
+    private fun navigateToPageWithCoordination(
+        targetPath: String,
+        navigationType: NavigationType,
+        pageConfig: NavigationBarState?
+    ): Boolean {
+        Log.d(TAG, "Coordinated page navigation: $targetPath")
+
+        // All navigation types use coordinated logic
         val success = when (navigationType) {
             NavigationType.SWITCH_TAB -> {
                 // Tab switch = launch without animation (like macOS)
-                navigateToPage(targetPath, isReplace = true, isBackNavigation = false)
+                navigateToPage(targetPath, pageConfig, isReplace = true, isBackNavigation = false)
                 true
             }
             NavigationType.FORWARD -> {
-                navigateToPage(targetPath, isReplace = false, isBackNavigation = false)
+                navigateToPage(targetPath, pageConfig, isReplace = false, isBackNavigation = false)
                 true
             }
             NavigationType.BACKWARD -> {
-                navigateToPage(targetPath, isReplace = false, isBackNavigation = true)
+                navigateToPage(targetPath, pageConfig, isReplace = false, isBackNavigation = true)
                 true
             }
             NavigationType.LAUNCH, NavigationType.REPLACE -> {
-                navigateToPage(targetPath, isReplace = true, isBackNavigation = false)
+                navigateToPage(targetPath, pageConfig, isReplace = true, isBackNavigation = false)
                 true
             }
         }
@@ -919,13 +999,102 @@ class LxAppActivity : AppCompatActivity() {
     }
 
     /**
-     * Navigate to a non-tab page. This version focuses on correctness over animation.
+     * Perform WebView transition animation
      *
+     * Extracted from navigateToPage for reuse in coordinated navigation
+     */
+    private fun performWebViewTransition(oldWebView: WebView?, newContainer: FrameLayout, isBackNavigation: Boolean) {
+        // Get reference to old container BEFORE adding new one
+        val oldContainer = webViewContainer.findViewWithTag<ViewGroup>("current_webview_container")
+        oldContainer?.tag = "previous_webview_container" // Re-tag old container
+
+        try {
+            // Add the new container to the webview container
+            webViewContainer.addView(newContainer)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error adding new container to webViewContainer: ${e.message}")
+            return
+        }
+
+        // Update layout margins to position the new container vertically
+        updateLayoutMargins()
+
+        // Set up animation based on navigation direction
+        val slideInTranslation = if (isBackNavigation) -webViewContainer.width.toFloat() else webViewContainer.width.toFloat()
+        val slideOutTranslation = if (isBackNavigation) webViewContainer.width.toFloat() else -webViewContainer.width.toFloat()
+
+        // Set initial position for new container
+        newContainer.translationX = slideInTranslation
+
+        // Animate the transition
+        val animationDuration = 300L
+
+        // Animate new container sliding in
+        newContainer.animate()
+            .translationX(0f)
+            .setDuration(animationDuration)
+            .setInterpolator(android.view.animation.DecelerateInterpolator())
+            .withEndAction {
+                // Trigger onPageShow after animation completes
+                triggerOnPageShow(newContainer)
+            }
+            .start()
+
+        // Animate old container sliding out (if exists)
+        oldContainer?.let { container ->
+            container.animate()
+                .translationX(slideOutTranslation)
+                .setDuration(animationDuration)
+                .setInterpolator(android.view.animation.AccelerateInterpolator())
+                .withEndAction {
+                    // Clean up old container
+                    cleanupOldContainer(container)
+                }
+                .start()
+        }
+    }
+
+    /**
+     * Trigger onPageShow for WebView container
+     */
+    private fun triggerOnPageShow(container: FrameLayout) {
+        try {
+            val webView = container.getChildAt(0) as? WebView
+            if (webView?.getAppId() != null && webView.getCurrentPath() != null) {
+                NativeApi.onPageShow(webView.getAppId()!!, webView.getCurrentPath()!!)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to call nativeOnPageShow in performWebViewTransition: ${e.message}")
+        }
+    }
+
+    /**
+     * Clean up old container after animation
+     */
+    private fun cleanupOldContainer(container: ViewGroup) {
+        try {
+            webViewContainer.removeView(container)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error cleaning up old container: ${e.message}")
+        }
+    }
+
+    /**
+     * Navigate to a page with coordinated navbar and webview updates
+     *
+     * IMPROVEMENT: Coordinates navbar and webview updates in the same step
      * @param targetPath Path of the page to navigate to
+     * @param pageConfig Navigation bar configuration (optional, will be fetched if null)
+     * @param isReplace Whether this is a replace navigation
      * @param isBackNavigation Whether this is a back navigation
      */
-    private fun navigateToPage(targetPath: String, isReplace: Boolean = false, isBackNavigation: Boolean = false) { // Reintroducing container animation
-        Log.d(TAG, "navigateToPage (Animated): targetPath=$targetPath, isReplace=$isReplace, isBackNavigation=$isBackNavigation")
+    private fun navigateToPage(
+        targetPath: String,
+        pageConfig: NavigationBarState? = null,
+        isReplace: Boolean = false,
+        isBackNavigation: Boolean = false
+    ) {
+        Log.d(TAG, "navigateToPage (Coordinated): targetPath=$targetPath, isReplace=$isReplace, isBackNavigation=$isBackNavigation")
 
         try {
             // Get current WebView before changes
@@ -938,18 +1107,20 @@ class LxAppActivity : AppCompatActivity() {
                 return
             }
 
-            // Get navbar state separately
-            val pageConfig = getNavBarState(appId, targetPath)
+            // Get navbar state (use provided or fetch)
+            val actualPageConfig = pageConfig ?: getNavBarState(appId, targetPath)
 
-            // Update navigation bar configuration (pass disableAnimation=false)
-            updateNavigationBar(pageConfig, isBackNavigation, disableAnimation = false, targetPath = targetPath)
+            // COORDINATED UPDATE: Update navigation bar and webview together
+            // This prevents timing issues between navbar and webview updates
+            updateNavigationBar(actualPageConfig, isBackNavigation, disableAnimation = false, targetPath = targetPath)
 
+            // Continue with webview setup...
             if (newWebView.parent != null) {
                 (newWebView.parent as? ViewGroup)?.removeView(newWebView)
             }
 
             // IMPORTANT: Make sure the new WebView is fully prepared before animation
-            newWebView.visibility = View.VISIBLE // Should be visible INSIDE its container
+            newWebView.visibility = View.VISIBLE
             newWebView.resume()
 
             // Create a new container for the WebView
@@ -958,90 +1129,24 @@ class LxAppActivity : AppCompatActivity() {
                     FrameLayout.LayoutParams.MATCH_PARENT,
                     FrameLayout.LayoutParams.MATCH_PARENT
                 )
-                tag = "current_webview_container" // Tag the container
+                tag = "current_webview_container"
 
                 try {
                     addView(newWebView)
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error adding WebView to new container: ${e.message}")
+                    Log.e(TAG, "Error adding WebView to container: ${e.message}")
                     return@apply
                 }
             }
 
-            // Get reference to old container BEFORE adding new one
-            val oldContainer = webViewContainer.findViewWithTag<ViewGroup>("current_webview_container")
-            oldContainer?.tag = "previous_webview_container" // Re-tag old container
+            // Use coordinated WebView transition (handles all animation and onPageShow)
+            performWebViewTransition(oldWebView, newContainer, isBackNavigation)
 
-            try {
-                webViewContainer.addView(newContainer)
-            } catch (e: Exception) {
-                Log.e(TAG, "Error adding new container to webViewContainer: ${e.message}")
-                return
-            }
-
-            // Update layout margins NOW to position the new container vertically
-            updateLayoutMargins()
-
-            // Set initial horizontal position for animation (AFTER vertical positioning)
-            val startX = if (isBackNavigation) -webViewContainer.width.toFloat() else webViewContainer.width.toFloat()
-            newContainer.translationX = startX
-
-            // Animation parameters
-            val duration = 250L
-            val interpolator = AccelerateDecelerateInterpolator()
-            val endXOld = if (isBackNavigation) webViewContainer.width.toFloat() else -webViewContainer.width.toFloat()
-
-            // Animate the new container in
-            newContainer.animate()
-                .translationX(0f)
-                .setDuration(duration)
-                .setInterpolator(interpolator)
-                .withEndAction {
-                    // Trigger nativeOnPageShow after animation completes
-                    if (newWebView.getAppId() != null && newWebView.getCurrentPath() != null) {
-                        try {
-                            NativeApi.onPageShow(newWebView.getAppId()!!, newWebView.getCurrentPath()!!)
-                            Log.d(TAG, "navigateToPage: Triggered onPageShow for appId=${newWebView.getAppId()} path=${newWebView.getCurrentPath()}")
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Failed to call nativeOnPageShow in navigateToPage: ${e.message}")
-                        }
-                    }
-                }
-                .start()
-
-            // Update the current WebView reference BEFORE animating old container out
+            // Update the current WebView reference
             currentWebView = newWebView
 
-            // Animate the old container out AFTER new one starts coming in
-            if (oldContainer != null && oldWebView != null) {
-                oldContainer.animate()
-                    .translationX(endXOld)
-                    .setDuration(duration)
-                    .setInterpolator(interpolator)
-                    .withEndAction {
-                        // Only remove old container after animation completes
-                        if (!isDestroyed) {
-                            try {
-                                // Ensure old WebView is paused before removing
-                                oldWebView.pause()
-                                // Remove old container after animation
-                                if (oldContainer.parent == webViewContainer) {
-                                    webViewContainer.removeView(oldContainer)
-                                    Log.d(TAG, "Removed old container after animation")
-                                }
-                            } catch (e: Exception) {
-                                Log.e(TAG, "Error cleaning up old container: ${e.message}")
-                            }
-                        }
-                    }
-                    .start()
-            } else {
-                 Log.d(TAG, "No old container/webview to animate out.")
-            }
-
-            Log.d(TAG, "Navigation animation initiated for page: $targetPath")
         } catch (e: Exception) {
-            Log.e(TAG, "Error navigating to page: ${e.message}")
+            Log.e(TAG, "Error in coordinated navigation: ${e.message}", e)
         }
     }
 
@@ -1144,8 +1249,8 @@ class LxAppActivity : AppCompatActivity() {
         webViewContainer.removeAllViews()
         currentWebView = null
 
-        // Hide tab bar (capsule and navbar remain)
-        tabBar?.visibility = View.GONE
+        // Hide tab bar with animation (capsule and navbar remain)
+        showTabBarWithAnimation(false)
 
         // Clear app state
         appId = ""
@@ -1198,10 +1303,10 @@ class LxAppActivity : AppCompatActivity() {
         val tabBarConfig = NativeApi.getTabBarState(appId)
         if (tabBarConfig != null) {
             tabBar?.setConfig(tabBarConfig)
-            tabBar?.visibility = View.VISIBLE
+            showTabBarWithAnimation(true)
             Log.d(TAG, "TabBar configured for app: $appId")
         } else {
-            tabBar?.visibility = View.GONE
+            showTabBarWithAnimation(false)
             Log.d(TAG, "No TabBar for app: $appId")
         }
     }
