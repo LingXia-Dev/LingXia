@@ -25,9 +25,7 @@ public class NavigationBarStateManager: ObservableObject {
 
     public func updateState(appId: String, path: String) {
         let newState = LxPageNavigation.getNavigationBarState(appId: appId, path: path)
-        if !statesEqual(currentState, newState) {
-            currentState = newState
-        }
+        currentState = newState
     }
 
     /// Force refresh state for a specific app
@@ -106,12 +104,8 @@ public struct LxAppNavigationBarView: View {
                 .background(backgroundColor) // Ensure entire container has background
                 .ignoresSafeArea(.container, edges: .top) // Only ignore top safe area
                 .clipped() // Remove any overflow that might cause white lines
-            } else {
-                // Hidden navbar: completely transparent - no visual element at all
-                Color.clear
-                    .frame(height: LxAppTheme.getStatusBarHeight())
-                    .ignoresSafeArea(.container, edges: .top) // Only ignore top safe area
             }
+            // When navbar is hidden, show nothing at all - no transparent elements
         }
     }
 
@@ -271,28 +265,25 @@ public class iOSNavigationBarWrapper: UIView, NavigationBarProtocol {
     }
 
     public func updateWithState(_ state: NavigationBarState?) {
-        NavigationBarStateManager.shared.currentState = state
-        let showNavbar = state?.show_navbar ?? false
+        // Update state on main thread to ensure @Published triggers properly
+        Task { @MainActor in
+            NavigationBarStateManager.shared.currentState = state
 
-        print("NavigationBar updateWithState - showNavbar: \(showNavbar), backgroundColor: 0x\(String(format: "%08X", state?.background_color ?? 0))")
+            let showNavbar = state?.show_navbar ?? false
+            self.isHidden = !showNavbar
 
-        // For transparent mode, hide the entire container
-        self.isHidden = !showNavbar
-
-        // Update UIKit container height based on navbar visibility
-        updateContainerHeight(showNavbar: showNavbar)
-
-        // Update status bar background color directly using UIKit
-        if showNavbar, let state = state {
-            let color = UIColor(argb: state.background_color)
-            statusBarBackgroundView?.backgroundColor = color
-        } else {
-            statusBarBackgroundView?.backgroundColor = UIColor.clear
-        }
-
-        // Force SwiftUI view to refresh
-        if let hostingController = hostingController {
-            hostingController.rootView = ReactiveNavigationBarView()
+            if showNavbar {
+                updateContainerHeight(showNavbar: true)
+                statusBarBackgroundView?.isHidden = false
+                if let state = state {
+                    let color = UIColor(argb: state.background_color)
+                    statusBarBackgroundView?.backgroundColor = color
+                }
+            } else {
+                updateContainerHeight(showNavbar: false)
+                statusBarBackgroundView?.isHidden = true
+                statusBarBackgroundView?.backgroundColor = UIColor.clear
+            }
         }
     }
 
@@ -318,7 +309,7 @@ public class iOSNavigationBarWrapper: UIView, NavigationBarProtocol {
 }
 
 struct ReactiveNavigationBarView: View {
-    @StateObject private var stateManager = NavigationBarStateManager.shared
+    @ObservedObject private var stateManager = NavigationBarStateManager.shared
 
     var body: some View {
         LxAppNavigationBarView(

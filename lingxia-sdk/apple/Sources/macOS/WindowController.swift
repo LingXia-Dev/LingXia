@@ -250,6 +250,9 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         self.dragBar = dragBar
         self.navigationBar = navBar
 
+        // Apply initial navigation configuration now that navigationBar is set
+        applyInitialNavigationConfiguration()
+
         // Setup capsule buttons for capsule style
         if LxAppWindowManager.shared.windowStyle == .capsuleStyle {
             setupFloatingCapsuleButtons(in: contentView)
@@ -308,13 +311,13 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
 
         dragBar.layer?.backgroundColor = backgroundColor.cgColor
         navBar.layer?.backgroundColor = backgroundColor.cgColor
-
-        // Apply initial navigation configuration
-        applyInitialNavigationConfiguration()
     }
 
     private func applyInitialNavigationConfiguration() {
-        guard let _ = appId, let path = path, let navigationBar = navigationBar else { return }
+        guard let appId = appId, let path = path, let navigationBar = navigationBar else {
+            os_log("applyInitialNavigationConfiguration: missing appId=%@, path=%@, navigationBar=%@", log: Self.log, type: .error, appId ?? "nil", path ?? "nil", navigationBar == nil ? "nil" : "exists")
+            return
+        }
 
         let pageConfig = getPageConfig()
 

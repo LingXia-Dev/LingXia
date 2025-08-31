@@ -42,9 +42,9 @@ public enum MobileDeviceSize {
     }
 }
 
-/// macOS LxApp implementation - exact port of macOSLxApp
+/// macOS LxApp implementation
 @MainActor
-public class macOSLxApp: ObservableObject {
+public class macOSLxApp: ObservableObject, LxAppRenderer {
     public static let shared = macOSLxApp()
     private static var isInitialized = false
     private static let log = OSLog(subsystem: "LingXia", category: "macOSLxApp")
@@ -56,50 +56,10 @@ public class macOSLxApp: ObservableObject {
 
     /// Open specific LxApp
     public static func openLxApp(appId: String, path: String) {
-        // Get app info for initial route
-        let lxappInfo = getLxAppInfo(appId)
-        let initialRoute = lxappInfo.initial_route.toString()
+        os_log("macOS openLxApp: %@ at path: %@", log: log, type: .info, appId, path)
 
-        // Use initial route if path is empty
-        let requestedPath = path.isEmpty ? initialRoute : path
-
-        // Check if using tab style
-        if LxAppWindowController.getWindowStyle() == .tabStyle {
-            // IMPORTANT: Call onLxappOpened before navigation for TabStyle
-            let _ = onLxappOpened(appId, requestedPath)
-
-            if let tabController = tabWindowController {
-                tabController.openLxApp(appId: appId, path: requestedPath)
-                tabController.window?.makeKeyAndOrderFront(nil)
-            } else {
-                openTabStyleWindow()
-                tabWindowController?.openLxApp(appId: appId, path: requestedPath)
-            }
-            return
-        }
-
-        // Check if window already exists for this app
-        if let existingController = activeWindowControllers.first(where: { $0.appId == appId }) {
-            let _ = onLxappOpened(appId, requestedPath)
-            existingController.window?.makeKeyAndOrderFront(nil as Any?)
-            navigate(appId: appId, path: requestedPath, navigationType: .launch)
-            return
-        }
-
-        let storedPath = LxAppCore.getLastActivePath(for: appId)
-        let actualPath = (!storedPath.isEmpty && storedPath != requestedPath && appId != LxAppCore.getHomeLxAppId()) ? storedPath : requestedPath
-
-        // Create window controller but don't initialize content yet
-        let windowController = LxAppWindowController(appId: appId, path: actualPath)
-        windowController.showWindow(nil as Any?)
-        windowController.window?.makeKeyAndOrderFront(nil as Any?)
-        NSApp.activate(ignoringOtherApps: true)
-        activeWindowControllers.append(windowController)
-
-        // IMPORTANT: Call onLxappOpened before creating window and navigation
-        let _ = onLxappOpened(appId, actualPath)
-
-        navigate(appId: appId, path: actualPath, navigationType: .launch)
+        // Use shared core logic
+        LxAppCore.executeOpenLxApp(appId: appId, path: path, renderer: shared)
     }
 
     private static func openTabStyleWindow() {
@@ -125,18 +85,8 @@ public class macOSLxApp: ObservableObject {
 
     /// Navigate to page with specific navigation type
     public static func navigate(appId: String, path: String, navigationType: NavigationType) {
-        // First try CapsuleStyle (individual windows)
-        if let controller = activeWindowControllers.first(where: { $0.appId == appId }),
-           let viewController = controller.window?.contentViewController as? macOSLxAppViewController {
-            viewController.navigate(appId: appId, to: path, with: navigationType)
-            return
-        }
-
-        // Then try TabStyle (tab window controller)
-        if let tabController = tabWindowController,
-           let viewController = tabController.getViewController(for: appId) {
-            viewController.navigate(appId: appId, to: path, with: navigationType)
-        }
+        // Use shared core logic
+        LxAppCore.executeNavigation(appId: appId, path: path, navigationType: navigationType, renderer: shared)
     }
 
     /// Remove window controller from active list
@@ -253,6 +203,153 @@ public class macOSLxApp: ObservableObject {
         } else {
             os_log("Failed to initialize LxApps - no home app ID", log: log, type: .error)
             return false
+        }
+    }
+}
+
+// LxAppRenderer Protocol Implementation
+extension macOSLxApp {
+    /// Handle platform-specific openLxApp setup
+    public func openLxApp(appId: String, path: String) {
+        // Handle macOS-specific window/tab creation logic
+        if LxAppWindowController.getWindowStyle() == .tabStyle {
+            handleTabStyleOpenLxApp(appId: appId, path: path)
+        } else {
+            handleCapsuleStyleOpenLxApp(appId: appId, path: path)
+        }
+    }
+
+    /// Render TabBar based on state
+    public func renderTabBar(_ state: TabBarState, appId: String, path: String) {
+
+        // Find the appropriate view controller
+        if let controller = Self.activeWindowControllers.first(where: { $0.appId == appId }),
+           let viewController = controller.window?.contentViewController as? macOSLxAppViewController {
+            viewController.showTabBar(state.show)
+            if state.updateSelection, let selectedPath = state.selectedPath {
+                viewController.syncTabBarWithPath(selectedPath)
+            }
+        } else if let tabController = Self.tabWindowController,
+                  let viewController = tabController.getViewController(for: appId) {
+            viewController.showTabBar(state.show)
+            if state.updateSelection, let selectedPath = state.selectedPath {
+                viewController.syncTabBarWithPath(selectedPath)
+            }
+        }
+    }
+
+    /// Render NavigationBar based on state
+    public func renderNavigationBar(_ state: NavBarState) {
+        guard state.shouldUpdate else { return }
+
+        // Find the appropriate view controller and update navigation bar
+        if let controller = Self.activeWindowControllers.first(where: { $0.appId == state.appId }),
+           let viewController = controller.window?.contentViewController as? macOSLxAppViewController {
+            viewController.updateNavigationBar(appId: state.appId, path: state.path)
+        } else if let tabController = Self.tabWindowController,
+                  let viewController = tabController.getViewController(for: state.appId) {
+            viewController.updateNavigationBar(appId: state.appId, path: state.path)
+        }
+    }
+
+    /// Render Capsule button - only home app hides it
+    public func renderCapsuleButton(appId: String) {
+        let isHomeApp = LxAppCore.isHomeLxApp(appId)
+
+        if let controller = Self.activeWindowControllers.first(where: { $0.appId == appId }),
+           let viewController = controller.window?.contentViewController as? macOSLxAppViewController {
+            viewController.updateCapsuleButtonVisibility(appId: appId)
+        } else if let tabController = Self.tabWindowController,
+                  let viewController = tabController.getViewController(for: appId) {
+            viewController.updateCapsuleButtonVisibility(appId: appId)
+        }
+    }
+
+    /// Execute lifecycle action
+    public func executeLifecycleAction(_ action: LifecycleAction, appId: String, path: String) {
+
+        switch action {
+        case .openApp:
+            // onLxappOpened already called in prepareOpenLxApp
+            lingxia.onPageShow(appId, path)
+        case .switchTab:
+            // Handle tab switch logic
+            lingxia.onPageShow(appId, path)
+        case .pageShow:
+            lingxia.onPageShow(appId, path)
+        case .backPressed:
+            let handled = lingxia.onBackPressed(appId)
+            if !handled {
+                lingxia.onPageShow(appId, path)
+            }
+        }
+    }
+
+    /// Handle platform-specific navigation logic
+    public func handlePlatformSpecificNavigation(_ plan: NavigationPlan) {
+
+        // Handle macOS-specific window/tab management
+        if plan.navigationType == .launch {
+            // Launch navigation is handled in openLxApp
+            return
+        } else {
+            handleRegularNavigation(plan)
+        }
+    }
+
+    /// Get current path for duplicate navigation check
+    public func getCurrentPath(for appId: String) -> String? {
+        // Check in individual windows first
+        if let controller = Self.activeWindowControllers.first(where: { $0.appId == appId }),
+           let viewController = controller.window?.contentViewController as? macOSLxAppViewController {
+            return viewController.currentWebView?.currentPath
+        }
+
+        // Check in tab window controller
+        if let tabController = Self.tabWindowController,
+           let viewController = tabController.getViewController(for: appId) {
+            return viewController.currentWebView?.currentPath
+        }
+
+        return nil
+    }
+
+    private func handleTabStyleOpenLxApp(appId: String, path: String) {
+        if let tabController = Self.tabWindowController {
+            tabController.openLxApp(appId: appId, path: path)
+            tabController.window?.makeKeyAndOrderFront(nil)
+        } else {
+            Self.openTabStyleWindow()
+            Self.tabWindowController?.openLxApp(appId: appId, path: path)
+        }
+    }
+
+    private func handleCapsuleStyleOpenLxApp(appId: String, path: String) {
+        // Check if window already exists for this app
+        if let existingController = Self.activeWindowControllers.first(where: { $0.appId == appId }) {
+            existingController.window?.makeKeyAndOrderFront(nil as Any?)
+            return
+        }
+
+        // Create new window controller
+        let storedPath = LxAppCore.getLastActivePath(for: appId)
+        let actualPath = (!storedPath.isEmpty && storedPath != path && appId != LxAppCore.getHomeLxAppId()) ? storedPath : path
+
+        let windowController = LxAppWindowController(appId: appId, path: actualPath)
+        windowController.showWindow(nil as Any?)
+        windowController.window?.makeKeyAndOrderFront(nil as Any?)
+        NSApp.activate(ignoringOtherApps: true)
+        Self.activeWindowControllers.append(windowController)
+    }
+
+    private func handleRegularNavigation(_ plan: NavigationPlan) {
+        // Find the appropriate view controller and delegate navigation
+        if let controller = Self.activeWindowControllers.first(where: { $0.appId == plan.appId }),
+           let viewController = controller.window?.contentViewController as? macOSLxAppViewController {
+            viewController.navigate(appId: plan.appId, to: plan.path, with: plan.navigationType)
+        } else if let tabController = Self.tabWindowController,
+                  let viewController = tabController.getViewController(for: plan.appId) {
+            viewController.navigate(appId: plan.appId, to: plan.path, with: plan.navigationType)
         }
     }
 }

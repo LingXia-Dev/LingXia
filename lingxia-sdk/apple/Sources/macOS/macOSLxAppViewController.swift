@@ -44,7 +44,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     internal var currentPath: String
     private var webViewContainer: NSView!
     private var tabBarView: NSView?
-    private var currentWebView: WKWebView?
+    public var currentWebView: WKWebView?
     public var tabBarConfig: TabBar?
     internal var selectedTabIndex: Int = 0
     public var isDestroyed: Bool = false
@@ -328,8 +328,6 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         if let previousWebView = currentWebView, previousWebView != webView {
             previousWebView.isHidden = true
         }
-
-        let _ = onPageShow(appId, path)
     }
 
     private func setupNotificationObservers() {
@@ -535,9 +533,6 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         // Complete the navigation using existing logic
         currentWebView = webView
         webView.currentPath = path
-
-        // Trigger page show event
-        let _ = onPageShow(appId, path)
     }
 
     /// Apply navigation type specific UI updates
@@ -573,7 +568,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     }
 
     /// Show or hide TabBar dynamically
-    private func showTabBar(_ show: Bool) {
+    public func showTabBar(_ show: Bool) {
         guard let tabBar = tabBarView else { return }
         tabBar.isHidden = !show
     }
@@ -626,6 +621,29 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
             let items = tabBarConfig.getItems(appId: appId)
             if let tabIndex = items.firstIndex(where: { $0.page_path.toString() == currentPath }) {
                 selectedTabIndex = tabIndex
+            }
+        }
+    }
+
+    /// Update capsule button visibility
+    public func updateCapsuleButtonVisibility(appId: String) {
+        // capsuleStyle on Mac always show
+    }
+
+    /// Sync TabBar with specific path for unified navigation
+    public func syncTabBarWithPath(_ path: String) {
+        if let tabIndex = findTabIndexByPath(path) {
+            selectedTabIndex = tabIndex
+            triggerTabBarRefresh()
+        }
+    }
+
+    /// Update navigation bar
+    public func updateNavigationBar(appId: String, path: String) {
+        if let navState = LxPageNavigation.getNavigationBarState(appId: appId, path: path) {
+            // Update navigation bar with the state through WindowController
+            if let windowController = view.window?.windowController as? LxAppWindowController {
+                windowController.updateNavigationBarWithState(navState)
             }
         }
     }

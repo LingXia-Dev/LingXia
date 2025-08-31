@@ -14,7 +14,7 @@ private let lxAppViewControllerLog = OSLog(subsystem: "LingXia", category: "LxAp
 public class LxAppViewController: UIViewController, ObservableObject {
     private static let log = lxAppViewControllerLog
 
-    private let stateManager = LxAppStateManager.shared
+    public let stateManager = LxAppStateManager.shared
 
     public var currentAppId: String? {
         get { stateManager.currentAppId }
@@ -30,8 +30,11 @@ public class LxAppViewController: UIViewController, ObservableObject {
     private var globalCapsuleButton: UIView?
     private var globalNavigationBar: LingXiaNavigationBar?
     private var tabBarCache: [String: LingXiaTabBar] = [:]
-    private var currentTabBar: LingXiaTabBar?
+    public var currentTabBar: LingXiaTabBar?
     private var cancellables = Set<AnyCancellable>()
+
+    // Store pending navigation state for deferred NavigationBar initialization
+    private var pendingNavigationState: (appId: String, path: String)?
     nonisolated(unsafe) private var closeAppObserver: NSObjectProtocol?
 
     private var statusBarHeight: CGFloat {
@@ -111,8 +114,8 @@ public class LxAppViewController: UIViewController, ObservableObject {
     }
 
     private func setupGlobalUIComponents() {
-        // Global UI components will be created on-demand
-        // This ensures they're only created when needed
+        // Initialize NavigationBar immediately when rootContainer is ready
+        setupGlobalNavigationBar()
     }
 
     private func setupRootContainer() {
@@ -167,11 +170,15 @@ public class LxAppViewController: UIViewController, ObservableObject {
         // Update app state based on navigation type
         updateAppStateForNavigation(appId: appId, path: path, navigationType: navigationType)
 
+        // CRITICAL: Initialize UI components FIRST before any navigation logic
+        // This ensures NavigationBar is ready when renderNavigationBar is called
+        updateGlobalUIComponents(for: appId, path: path, navigationType: navigationType)
+
         // Setup or switch WebView
         setupOrSwitchWebView(appId: appId, path: path, navigationType: navigationType)
 
-        // Update global UI components
-        updateGlobalUIComponents(for: appId, path: path, navigationType: navigationType)
+        // Update NavigationBar state
+        updateNavigationBarForApp(appId: appId, path: path)
 
         // Apply app styling
         applyAppStyling(for: appId)
@@ -179,8 +186,17 @@ public class LxAppViewController: UIViewController, ObservableObject {
         // Update status bar style
         setNeedsStatusBarAppearanceUpdate()
 
-        // Trigger page lifecycle
-        triggerPageLifecycle(appId: appId, path: path, navigationType: navigationType)
+        // Handle TabBar visibility for launch
+        if navigationType == .launch {
+            if let tabBar = currentTabBar, tabBar.findTabIndexByPath(path) >= 0 {
+                // This is a TabBar item, update TabBar selection
+                syncTabBarWithCurrentPathInternal(path)
+            } else {
+                // Not a TabBar item, hide TabBar and update navigation bar
+                currentTabBar?.isHidden = true
+                updateNavigationBarForApp(appId: appId, path: path)
+            }
+        }
 
         // Update current app tracking
         currentAppId = appId
@@ -234,7 +250,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
         navigate(appId: appId, to: path, with: .forward)
     }
 
-    private func updateAppStateForNavigation(appId: String, path: String, navigationType: NavigationType) {
+    public func updateAppStateForNavigation(appId: String, path: String, navigationType: NavigationType) {
         // Create or update app state using state manager
         let _ = stateManager.createOrUpdateState(appId: appId, path: path)
 
@@ -242,27 +258,28 @@ public class LxAppViewController: UIViewController, ObservableObject {
         stateManager.updateStateForNavigation(appId: appId, path: path, navigationType: navigationType)
     }
 
-    private func setupOrSwitchWebView(appId: String, path: String, navigationType: NavigationType) {
+    public func setupOrSwitchWebView(appId: String, path: String, navigationType: NavigationType) {
         guard let appState = stateManager.getState(for: appId) else { return }
 
-        if appState.webView == nil {
-            os_log("Creating WebView for %@ at %@", log: Self.log, type: .info, appId, path)
-
-            triggerPageLifecycle(appId: appId, path: path, navigationType: .launch)
-
-            if let webView = iOSLxApp.findWebView(appId: appId, path: path) {
-                os_log("WebView found immediately", log: Self.log, type: .info)
-                attachWebViewToUI(webView: webView, for: appId)
-            } else {
-                os_log("WebView not found immediately, will retry", log: Self.log, type: .info)
+        if let targetWebView = iOSLxApp.findWebView(appId: appId, path: path) {
+            // Hide current WebView if different
+            if let currentWebView = appState.webView, currentWebView != targetWebView {
+                os_log("Switching from current WebView to target WebView", log: Self.log, type: .info)
+                currentWebView.isHidden = true
+                currentWebView.pauseWebView()
             }
-        } else {
-            // WebView exists, just show it
-            appState.webView?.isHidden = false
-            appState.webView?.resumeWebView()
 
-            // Trigger appropriate lifecycle based on navigation type
-            triggerPageLifecycle(appId: appId, path: path, navigationType: navigationType)
+            // Show target WebView
+            stateManager.updateWebView(targetWebView, for: appId)
+            attachWebViewToUI(webView: targetWebView, for: appId)
+
+        } else {
+            os_log("WebView not found for %@:%@, will be created by Rust", log: Self.log, type: .info, appId, path)
+        }
+
+        // Update TabBar selection for switchTab
+        if navigationType == .switchTab {
+            syncTabBarWithCurrentPathInternal(path)
         }
 
         // Update WebView constraints if needed
@@ -270,31 +287,30 @@ public class LxAppViewController: UIViewController, ObservableObject {
     }
 
     private func updateGlobalUIComponents(for appId: String, path: String, navigationType: NavigationType) {
-        ensureCapsuleButton(for: appId)
-        ensureNavigationBar(for: appId, path: path)
-        ensureTabBar(for: appId, path: path, navigationType: navigationType)
+        updateCapsuleButton(for: appId)
+        updateNavigationBar(for: appId, path: path)
+        updateTabBar(for: appId, path: path, navigationType: navigationType)
         bringUIElementsToFront()
     }
 
-    private func ensureCapsuleButton(for appId: String) {
+    private func updateCapsuleButton(for appId: String) {
         guard let appState = stateManager.getState(for: appId) else { return }
 
         let shouldShow = !appState.isDisplayingHomeLxApp
-        globalCapsuleButton?.isHidden = !shouldShow
 
         if shouldShow && globalCapsuleButton == nil {
             setupGlobalCapsuleButton()
         }
+
+        globalCapsuleButton?.isHidden = !shouldShow
     }
 
-    private func ensureNavigationBar(for appId: String, path: String) {
-        if globalNavigationBar == nil {
-            setupGlobalNavigationBar()
-        }
+    private func updateNavigationBar(for appId: String, path: String) {
+        // NavigationBar is already initialized in setupGlobalUIComponents()
         globalNavigationBar?.isHidden = false
     }
 
-    private func ensureTabBar(for appId: String, path: String, navigationType: NavigationType) {
+    private func updateTabBar(for appId: String, path: String, navigationType: NavigationType) {
         currentTabBar?.isHidden = true
 
         guard let tabConfig = lingxia.getTabBar(appId) else {
@@ -315,99 +331,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
         }
     }
 
-    private func triggerPageLifecycle(appId: String, path: String, navigationType: NavigationType) {
-        switch navigationType {
-        case .launch:
-            os_log("Launch: Opening LxApp %@ at %@", log: Self.log, type: .info, appId, path)
-            let result = onLxappOpened(appId, path)
-            os_log("onLxappOpened result: %d", log: Self.log, type: .info, result)
 
-            // Check if this path is a TabBar item
-            if let tabBar = currentTabBar, tabBar.findTabIndexByPath(path) >= 0 {
-                os_log("🔧 Launch: Path %@ is a TabBar item, switching to switchTab mode", log: Self.log, type: .info, path)
-                // This is a TabBar item, use switchTab logic instead
-                handleTabSwitch(appId: appId, path: path)
-            } else {
-                os_log("🔧 Launch: Path %@ is not a TabBar item, using regular launch", log: Self.log, type: .info, path)
-                // Not a TabBar item, hide TabBar and update navigation bar
-                currentTabBar?.isHidden = true
-                updateNavigationBarForApp(appId: appId, path: path)
-                lingxia.onPageShow(appId, path)
-            }
-
-        case .forward:
-            os_log("Forward: Navigating to %@ for %@", log: Self.log, type: .info, path, appId)
-            lingxia.onPageShow(appId, path)
-
-        case .backward:
-            os_log("Backward: Going back for %@", log: Self.log, type: .info, appId)
-            let handled = lingxia.onBackPressed(appId)
-            if !handled {
-                os_log("Back not handled by logic, showing page %@", log: Self.log, type: .info, path)
-                lingxia.onPageShow(appId, path)
-            }
-
-        case .replace:
-            os_log("Replace: Replacing with %@ for %@", log: Self.log, type: .info, path, appId)
-            lingxia.onPageShow(appId, path)
-
-        case .switchTab:
-            os_log("SwitchTab: Switching to %@ for %@", log: Self.log, type: .info, path, appId)
-            handleTabSwitch(appId: appId, path: path)
-        }
-    }
-
-    private func handleTabSwitch(appId: String, path: String) {
-        guard let appState = stateManager.getState(for: appId) else { return }
-
-        // Update current path in state
-        stateManager.updateCurrentPath(path, for: appId)
-
-        // Update navigation bar for the new path
-        os_log("🔧 handleTabSwitch: Updating navigation bar for %@:%@", log: Self.log, type: .info, appId, path)
-        updateNavigationBarForApp(appId: appId, path: path)
-
-        // Update TabBar selection to match the target path
-        syncTabBarWithCurrentPathInternal(path)
-
-        // Check if we need to switch to a different WebView for this tab
-        if let currentWebView = appState.webView {
-            if currentWebView.currentPath == path {
-                os_log("Same WebView, triggering page show for tab", log: Self.log, type: .info)
-                lingxia.onPageShow(appId, path)
-                return
-            }
-        }
-
-        if let targetWebView = iOSLxApp.findWebView(appId: appId, path: path) {
-            os_log("Found existing WebView for tab switch", log: Self.log, type: .info)
-
-            appState.webView?.isHidden = true
-            appState.webView?.pauseWebView()
-
-            stateManager.updateWebView(targetWebView, for: appId)
-            attachWebViewToUI(webView: targetWebView, for: appId)
-
-            lingxia.onPageShow(appId, path)
-        } else {
-            os_log("No WebView found for tab, creating new one", log: Self.log, type: .info)
-
-            triggerPageLifecycle(appId: appId, path: path, navigationType: .launch)
-
-            if let newWebView = iOSLxApp.findWebView(appId: appId, path: path) {
-                os_log("New WebView created for tab", log: Self.log, type: .info)
-
-                appState.webView?.isHidden = true
-                appState.webView?.pauseWebView()
-
-                stateManager.updateWebView(newWebView, for: appId)
-                attachWebViewToUI(webView: newWebView, for: appId)
-            } else {
-                os_log("🔄 WebView not found immediately, retrying for tab", log: Self.log, type: .info)
-                retryFindWebView(appId: appId, path: path, attempt: 1, maxAttempts: 5)
-            }
-        }
-    }
 
     private func createNewLxApp(appId: String, path: String) {
         // Create new app state using state manager
@@ -468,17 +392,14 @@ public class LxAppViewController: UIViewController, ObservableObject {
 
         if let tabBar = currentTabBar {
             tabBar.isHidden = false
-            os_log("Showing TabBar for %@", log: Self.log, type: .info, appId)
         } else {
             os_log("No TabBar to show for %@", log: Self.log, type: .info, appId)
         }
 
         globalNavigationBar?.isHidden = false
-        os_log("🔧 showLxApp: About to update navigation state for %@:%@", log: Self.log, type: .info, appId, path)
 
         // Update navigation state
         NavigationBarStateManager.shared.updateState(appId: appId, path: path)
-        os_log("🔧 showLxApp: Navigation state updated, applying styling", log: Self.log, type: .info)
 
         // Apply styling
         applyAppStyling(for: appId)
@@ -491,36 +412,14 @@ public class LxAppViewController: UIViewController, ObservableObject {
         guard let appState = stateManager.getState(for: appId) else { return }
 
         if appState.webView == nil {
-            os_log("🔧 Looking for WebView: %@ at %@", log: Self.log, type: .info, appId, path)
 
             // Try to find existing WebView
             if let webView = iOSLxApp.findWebView(appId: appId, path: path) {
-                os_log("🔧 WebView found on first try", log: Self.log, type: .info)
                 attachWebViewToUI(webView: webView, for: appId)
-            } else {
-                os_log("🔧 WebView not found, starting retry sequence", log: Self.log, type: .info)
-                // Retry with increasing delays
-                retryFindWebView(appId: appId, path: path, attempt: 1, maxAttempts: 10)
             }
         } else {
             // WebView exists, just update its content if needed
             updateCurrentAppUI(for: appId, path: path)
-        }
-    }
-
-    private func retryFindWebView(appId: String, path: String, attempt: Int, maxAttempts: Int) {
-        let delay = Double(attempt) * 0.2 // Increasing delay: 0.2s, 0.4s, 0.6s, etc.
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-            if let webView = iOSLxApp.findWebView(appId: appId, path: path) {
-                os_log("🔧 WebView found on attempt %d", log: Self.log, type: .info, attempt)
-                self?.attachWebViewToUI(webView: webView, for: appId)
-            } else if attempt < maxAttempts {
-                os_log("🔧 WebView not found on attempt %d, retrying...", log: Self.log, type: .info, attempt)
-                self?.retryFindWebView(appId: appId, path: path, attempt: attempt + 1, maxAttempts: maxAttempts)
-            } else {
-                os_log("🔧 ❌ WebView not found after %d attempts", log: Self.log, type: .error, maxAttempts)
-            }
         }
     }
 
@@ -602,7 +501,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
         setupNavigationBarForApp(appId: appId)
     }
 
-    private func setupTabBarForApp(appId: String) {
+    public func setupTabBarForApp(appId: String) {
         guard let appState = stateManager.getState(for: appId),
               rootContainer != nil else {
             os_log("setupTabBarForApp failed: appState or rootContainer is nil for %@", log: Self.log, type: .error, appId)
@@ -641,28 +540,18 @@ public class LxAppViewController: UIViewController, ObservableObject {
         updateNavigationBarForApp(appId: appId, path: appState.currentPath)
     }
 
-    private func updateNavigationBarForApp(appId: String, path: String) {
-        guard let navigationBar = globalNavigationBar else { return }
-
-        NavigationBarStateManager.shared.updateState(appId: appId, path: path)
-
-        // Debug: Print navigation bar state
-        if let state = NavigationBarStateManager.shared.currentState {
-            os_log("🔍 NavBar State for %@:%@ - show_navbar: %@, show_back: %@, show_home: %@, title: %@",
-                   log: Self.log, type: .info,
-                   appId, path,
-                   state.show_navbar ? "true" : "false",
-                   state.show_back_button ? "true" : "false",
-                   state.show_home_button ? "true" : "false",
-                   state.title_text.toString())
-        } else {
-            os_log("🔍 NavBar State for %@:%@ - NO STATE", log: Self.log, type: .info, appId, path)
+    public func updateNavigationBarForApp(appId: String, path: String) {
+        guard let navigationBar = globalNavigationBar else {
+            os_log("❌ updateNavigationBarForApp: NavigationBar not initialized - this should not happen", log: Self.log, type: .error)
+            return
         }
 
-        navigationBar.updateWithState(NavigationBarStateManager.shared.currentState)
-
-        // Update status bar style when navigation state changes
-        setNeedsStatusBarAppearanceUpdate()
+        // Update NavigationBar state on main thread
+        Task { @MainActor in
+            NavigationBarStateManager.shared.updateState(appId: appId, path: path)
+            navigationBar.updateWithState(NavigationBarStateManager.shared.currentState)
+            setNeedsStatusBarAppearanceUpdate()
+        }
     }
 
     private func updateCurrentAppUI(for appId: String, path: String) {
@@ -698,7 +587,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
         guard let appState = stateManager.getState(for: appId) else { return }
 
         let shouldUseTransparent = shouldUseTransparentMode
-        os_log("🎨 applyAppStyling for %@: shouldUseTransparent = %@", log: Self.log, type: .info, appId, shouldUseTransparent ? "true" : "false")
+        os_log("applyAppStyling for %@: shouldUseTransparent = %@", log: Self.log, type: .info, appId, shouldUseTransparent ? "true" : "false")
 
         if shouldUseTransparent {
             setCompleteTransparency()
@@ -1033,6 +922,10 @@ public class LxAppViewController: UIViewController, ObservableObject {
 
     private func setupGlobalNavigationBar() {
         guard globalNavigationBar == nil else { return }
+        guard rootContainer != nil else {
+            os_log("❌ setupGlobalNavigationBar: rootContainer is nil - cannot setup NavigationBar yet", log: Self.log, type: .error)
+            return
+        }
 
         globalNavigationBar = LingXiaNavigationBar()
         globalNavigationBar?.translatesAutoresizingMaskIntoConstraints = false
@@ -1081,6 +974,16 @@ public class LxAppViewController: UIViewController, ObservableObject {
 
         if let capsule = globalCapsuleButton {
             rootContainer.bringSubviewToFront(capsule)
+        }
+    }
+
+    /// Update capsule button visibility - only home app hides it
+    public func updateCapsuleButtonVisibility(appId: String) {
+        let isHomeApp = LxAppCore.isHomeLxApp(appId)
+        if !isHomeApp {
+            updateCapsuleButton(for: appId)
+        } else {
+            globalCapsuleButton?.isHidden = true
         }
     }
 }

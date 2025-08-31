@@ -84,6 +84,40 @@ public class LxAppCore {
 
     private init() {}
 
+    /// Shared openLxApp logic - used by both iOS and macOS platforms
+    internal static func executeOpenLxApp(appId: String, path: String, renderer: LxAppRenderer) {
+
+        // Prepare path (same logic as macOS reference)
+        let lxappInfo = getLxAppInfo(appId)
+        let initialRoute = lxappInfo.initial_route.toString()
+        let finalPath = path.isEmpty ? initialRoute : path
+
+        // Call onLxappOpened (following macOS pattern)
+        let _ = onLxappOpened(appId, finalPath)
+
+        renderer.openLxApp(appId: appId, path: finalPath)
+    }
+
+    /// Shared navigate logic - used by both iOS and macOS platforms
+    internal static func executeNavigation(appId: String, path: String, navigationType: NavigationType, renderer: LxAppRenderer) {
+        os_log("Core executeNavigation: %@ to %@ with type: %@", log: log, type: .info, appId, path, String(describing: navigationType))
+
+        // Use shared navigation logic from LxAppPageNavigation
+        let plan = LxAppSharedNavigation.prepareNavigation(appId: appId, path: path, navigationType: navigationType)
+
+        guard plan.shouldProceed else {
+            os_log("Navigation cancelled by shared logic", log: log, type: .info)
+            return
+        }
+
+        // Execute the navigation plan
+        renderer.handlePlatformSpecificNavigation(plan)
+        renderer.renderTabBar(plan.tabBarState, appId: plan.appId, path: plan.path)
+        renderer.renderNavigationBar(plan.navBarState)
+        renderer.renderCapsuleButton(appId: plan.appId)
+        renderer.executeLifecycleAction(plan.lifecycleAction, appId: plan.appId, path: plan.path)
+    }
+
     /// Initialize the LxApp system (internal core initialization)
     internal static func initializeCore() {
         if instance != nil {
@@ -227,9 +261,20 @@ extension LxApp {
     }
 
     /// Navigate to page with specific navigation type
-    nonisolated public static func navigate(appid: RustStr, path: RustStr, navigationType: NavigationType) -> Bool {
+    nonisolated public static func navigate(appid: RustStr, path: RustStr, navigation_type: Int32) -> Bool {
         let appIdString = appid.toString()
         let pathString = path.toString()
+
+        // Convert Int32 to NavigationType enum
+        let navigationType: NavigationType
+        switch navigation_type {
+        case 0: navigationType = .launch
+        case 1: navigationType = .forward
+        case 2: navigationType = .backward
+        case 3: navigationType = .replace
+        case 4: navigationType = .switchTab
+        default: navigationType = .forward // Default fallback
+        }
 
         return executeOnMain {
             LxAppPlatform.navigate(appId: appIdString, path: pathString, navigationType: navigationType)

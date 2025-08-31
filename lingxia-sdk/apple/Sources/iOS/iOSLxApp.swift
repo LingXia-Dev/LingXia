@@ -7,9 +7,9 @@ import os.log
 import CLingXiaFFI
 import UserNotifications
 
-/// iOS LxApp manager - Single Controller Architecture
+/// iOS LxApp manager
 @MainActor
-public class iOSLxApp {
+public class iOSLxApp: LxAppRenderer {
     nonisolated private static let log = OSLog(subsystem: "LingXia", category: "iOSLxApp")
     private static var instance: iOSLxApp?
     private let context: UIApplication
@@ -46,19 +46,12 @@ public class iOSLxApp {
         iOSPushManager.shared.initialize()
     }
 
-
-
-    /// Opens a mini app using single controller architecture
+    /// Opens a lxapp
     public static func openLxApp(appId: String, path: String) {
-        // Get app info for initial route logic
-        let lxappInfo = getLxAppInfo(appId)
-        let initialRoute = lxappInfo.initial_route.toString()
-
-        // Use initial route if path is empty
-        let actualPath = path.isEmpty ? initialRoute : path
+        os_log("iOS openLxApp: %@ at path: %@", log: log, type: .info, appId, path)
 
         let instance = getInstance()
-        instance.openLxAppInManager(appId: appId, path: actualPath)
+        LxAppCore.executeOpenLxApp(appId: appId, path: path, renderer: instance)
     }
 
     /// Opens the home mini app
@@ -82,18 +75,15 @@ public class iOSLxApp {
 
     /// Navigate to a page with specific navigation type
     public static func navigate(appId: String, path: String, navigationType: NavigationType) {
-        os_log("Navigate for %@ to %@ with type %@", log: log, type: .info, appId, path, String(describing: navigationType))
+        os_log("iOS navigate: %@ to %@ with type: %@", log: log, type: .info, appId, path, String(describing: navigationType))
 
         let instance = getInstance()
-        instance.lxAppManager?.navigate(appId: appId, to: path, with: navigationType)
+        LxAppCore.executeNavigation(appId: appId, path: path, navigationType: navigationType, renderer: instance)
     }
 
     /// Switches the current page within a running LxApp (deprecated - use navigate instead)
     public static func switchPage(appId: String, path: String) {
         os_log("Switching page for %@ to %@ (deprecated)", log: log, type: .info, appId, path)
-
-        let instance = getInstance()
-        instance.lxAppManager?.navigate(appId: appId, to: path, with: NavigationType.forward)
     }
 
     /// Find WebView for the given appId and path
@@ -232,6 +222,97 @@ public class iOSLxApp {
     }
 }
 
+extension iOSLxApp {
+    /// Handle platform-specific openLxApp setup
+    public func openLxApp(appId: String, path: String) {
+        // Ensure LxAppManager exists for iOS
+        setupLxAppManagerIfNeeded()
 
+        // Open LxApp in manager
+        lxAppManager?.openLxApp(appId: appId, path: path)
+    }
+
+    /// Render TabBar based on state
+    public func renderTabBar(_ state: TabBarState, appId: String, path: String) {
+
+        guard let manager = lxAppManager else { return }
+
+        if state.show {
+            manager.setupTabBarForApp(appId: appId)
+            if state.updateSelection, let selectedPath = state.selectedPath {
+                manager.syncTabBarWithCurrentPathInternal(selectedPath)
+            }
+        } else {
+            manager.currentTabBar?.isHidden = true
+        }
+    }
+
+    /// Render NavigationBar based on state
+    public func renderNavigationBar(_ state: NavBarState) {
+        guard state.shouldUpdate else { return }
+        lxAppManager?.updateNavigationBarForApp(appId: state.appId, path: state.path)
+    }
+
+    /// Render Capsule button - only home app hides it
+    public func renderCapsuleButton(appId: String) {
+        lxAppManager?.updateCapsuleButtonVisibility(appId: appId)
+    }
+
+    /// Execute lifecycle action
+    public func executeLifecycleAction(_ action: LifecycleAction, appId: String, path: String) {
+
+        switch action {
+        case .openApp:
+            // onLxappOpened already called in prepareOpenLxApp
+            lingxia.onPageShow(appId, path)
+        case .switchTab:
+            // TabSwitch is just like pageShow, but TabBar selection is handled in renderTabBar
+            lingxia.onPageShow(appId, path)
+        case .pageShow:
+            lingxia.onPageShow(appId, path)
+        case .backPressed:
+            let handled = lingxia.onBackPressed(appId)
+            if !handled {
+                lingxia.onPageShow(appId, path)
+            }
+        }
+    }
+
+    /// Handle platform-specific navigation logic
+    public func handlePlatformSpecificNavigation(_ plan: NavigationPlan) {
+
+        guard let manager = lxAppManager else { return }
+
+        // Handle iOS-specific navigation setup - DO NOT call UI updates here
+        // UI updates are handled by the unified renderer (renderNavigationBar, renderTabBar, etc.)
+        if plan.navigationType != .launch {
+            // Only update app state and WebView, no UI updates
+            manager.updateAppStateForNavigation(appId: plan.appId, path: plan.path, navigationType: plan.navigationType)
+            manager.setupOrSwitchWebView(appId: plan.appId, path: plan.path, navigationType: plan.navigationType)
+        }
+    }
+
+    /// Get current path for duplicate navigation check
+    public func getCurrentPath(for appId: String) -> String? {
+        guard let manager = lxAppManager,
+              let appState = manager.stateManager.getState(for: appId) else {
+            return nil
+        }
+
+        return appState.webView?.currentPath
+    }
+
+    private func setupLxAppManagerIfNeeded() {
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let window = windowScene.windows.first else {
+            os_log("Failed to get window for presenting LxAppManager", log: Self.log, type: .error)
+            return
+        }
+
+        if lxAppManager == nil {
+            setupLxAppManager(window: window)
+        }
+    }
+}
 
 #endif
