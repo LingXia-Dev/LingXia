@@ -66,6 +66,9 @@ public class macOSLxApp: ObservableObject {
 
         // Check if using tab style
         if LxAppWindowController.getWindowStyle() == .tabStyle {
+            // IMPORTANT: Call onLxappOpened before navigation for TabStyle
+            let _ = onLxappOpened(appId, requestedPath)
+
             if let tabController = tabWindowController {
                 tabController.openLxApp(appId: appId, path: requestedPath)
                 tabController.window?.makeKeyAndOrderFront(nil)
@@ -80,20 +83,24 @@ public class macOSLxApp: ObservableObject {
         if let existingController = activeWindowControllers.first(where: { $0.appId == appId }) {
             let _ = onLxappOpened(appId, requestedPath)
             existingController.window?.makeKeyAndOrderFront(nil as Any?)
-            switchPage(appId: appId, path: requestedPath)
+            navigate(appId: appId, path: requestedPath, navigationType: .launch)
             return
         }
 
         let storedPath = LxAppCore.getLastActivePath(for: appId)
         let actualPath = (!storedPath.isEmpty && storedPath != requestedPath && appId != LxAppCore.getHomeLxAppId()) ? storedPath : requestedPath
 
-        let _ = onLxappOpened(appId, actualPath)
-
+        // Create window controller but don't initialize content yet
         let windowController = LxAppWindowController(appId: appId, path: actualPath)
         windowController.showWindow(nil as Any?)
         windowController.window?.makeKeyAndOrderFront(nil as Any?)
         NSApp.activate(ignoringOtherApps: true)
         activeWindowControllers.append(windowController)
+
+        // IMPORTANT: Call onLxappOpened before creating window and navigation
+        let _ = onLxappOpened(appId, actualPath)
+
+        navigate(appId: appId, path: actualPath, navigationType: .launch)
     }
 
     private static func openTabStyleWindow() {
@@ -117,17 +124,19 @@ public class macOSLxApp: ObservableObject {
         let _ = onLxappClosed(appId)
     }
 
-    /// Switch to page in LxApp (String version for convenience)
-    public static func switchPage(appId: String, path: String) {
+    /// Navigate to page with specific navigation type
+    public static func navigate(appId: String, path: String, navigationType: NavigationType) {
+        // First try CapsuleStyle (individual windows)
         if let controller = activeWindowControllers.first(where: { $0.appId == appId }),
            let viewController = controller.window?.contentViewController as? macOSLxAppViewController {
-            viewController.switchPage(targetPath: path)
+            viewController.navigate(appId: appId, to: path, with: navigationType)
+            return
+        }
 
-            NotificationCenter.default.post(
-                name: NSNotification.Name(ACTION_SWITCH_PAGE),
-                object: nil,
-                userInfo: ["appId": appId, "path": path]
-            )
+        // Then try TabStyle (tab window controller)
+        if let tabController = tabWindowController,
+           let viewController = tabController.getViewController(for: appId) {
+            viewController.navigate(appId: appId, to: path, with: navigationType)
         }
     }
 

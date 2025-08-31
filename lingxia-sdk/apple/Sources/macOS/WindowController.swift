@@ -34,6 +34,11 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     private var currentViewController: macOSLxAppViewController?
     private var viewControllers: [String: macOSLxAppViewController] = [:]
 
+    /// Get view controller for specific appId (needed for navigation)
+    public func getViewController(for appId: String) -> macOSLxAppViewController? {
+        return viewControllers[appId]
+    }
+
     public static func setWindowSize(width: CGFloat, height: CGFloat) {
         windowWidth = width
         windowHeight = height
@@ -71,8 +76,6 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         }
         return Layout.navBarHeight
     }
-
-    private var switchPageObserver: NSObjectProtocol?
 
     /// Initialize for single LxApp mode
     init(appId: String, path: String) {
@@ -138,8 +141,6 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
             window.setFrame(savedFrame, display: true)
         }
 
-        setupNotificationObservers()
-
         // Setup UI components
         DispatchQueue.main.async { [weak self] in
             self?.ensureCorrectViewFrame()
@@ -175,7 +176,6 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         if let appId = appId {
             // Single app mode cleanup
             macOSLxApp.handleAppClosing(appId: appId)
-            removeNotificationObservers()
             macOSLxApp.removeWindowController(self)
         } else {
             // Tab mode cleanup
@@ -186,34 +186,8 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    private func setupNotificationObservers() {
-        guard let appId = appId else { return }
-
-        switchPageObserver = NotificationCenter.default.addObserver(
-            forName: NSNotification.Name(ACTION_SWITCH_PAGE),
-            object: nil,
-            queue: .main
-        ) { [weak self] notification in
-            guard let self = self,
-                  let notificationAppId = notification.userInfo?["appId"] as? String,
-                  let path = notification.userInfo?["path"] as? String,
-                  notificationAppId == appId else { return }
-
-            Task { @MainActor in
-                self.updateWindowTitle(for: path)
-            }
-        }
-    }
-
-    private func removeNotificationObservers() {
-        if let observer = switchPageObserver {
-            NotificationCenter.default.removeObserver(observer)
-            switchPageObserver = nil
-        }
-    }
-
     public func updateWindowTitle(for path: String) {
-        guard let appId = appId, let navigationBar = self.navigationBar else { return }
+        guard let _ = appId, let _ = self.navigationBar else { return }
 
         // Clear cache when path changes
         if self.path != path {
@@ -340,7 +314,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func applyInitialNavigationConfiguration() {
-        guard let appId = appId, let path = path, let navigationBar = navigationBar else { return }
+        guard let _ = appId, let path = path, let navigationBar = navigationBar else { return }
 
         let pageConfig = getPageConfig()
 
@@ -450,7 +424,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     private func layoutCapsuleButtons(_ buttons: [NSButton], separators: [NSView], in container: NSView) {
         let buttonWidth: CGFloat = 20
         let buttonHeight: CGFloat = 24
-        let edgeSpacing: CGFloat = 8  // 增加边距
+        let edgeSpacing: CGFloat = 8
         let buttonSpacing: CGFloat = 8
         let separatorWidth: CGFloat = 1
 
@@ -593,11 +567,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         }
 
         // Update the view controller's getTopMargin method instead of trying to modify constraints
-        if let macOSViewController = viewController as? macOSLxAppViewController {
-            macOSViewController.updateTopMargin(newTopOffset)
-        } else {
-            os_log("⚠️ View controller is not macOSLxAppViewController", log: Self.log, type: .info)
-        }
+        viewController.updateTopMargin(newTopOffset)
 
         // Force layout update
         contentView.needsLayout = true
@@ -754,10 +724,10 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     public func openLxApp(appId: String, path: String) {
         LxAppCore.setLastActivePath(path, for: appId)
         tabManager.addTab(appId: appId)
+        macOSLxApp.navigate(appId: appId, path: path, navigationType: .launch)
     }
 
     private func switchToTab(_ appId: String) {
-
         let viewController = viewControllers[appId] ?? {
             let currentPath = LxAppCore.getLastActivePath(for: appId, defaultPath: "/")
             let vc = macOSLxAppViewController(appId: appId, path: currentPath)

@@ -50,7 +50,6 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     public var isDestroyed: Bool = false
 
     nonisolated(unsafe) private var closeAppObserver: NSObjectProtocol?
-    nonisolated(unsafe) private var switchPageObserver: NSObjectProtocol?
 
     public init(appId: String, path: String) {
         self.appId = appId
@@ -83,7 +82,6 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
 
     deinit {
         closeAppObserver.map(NotificationCenter.default.removeObserver)
-        switchPageObserver.map(NotificationCenter.default.removeObserver)
     }
 
     public override func loadView() {
@@ -124,7 +122,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         setupWebViewContainer()
 
         // Add TabBar to view hierarchy and set constraints based on position and transparency
-        if let tabBar = tabBarView, let tabBarConfig = getTabBar(appId) {
+        if let tabBar = tabBarView, let tabBarConfig = lingxia.getTabBar(appId) {
             view.addSubview(tabBar)
 
             // Check if TabBar is transparent using platform extension
@@ -252,7 +250,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     }
 
     private func setupTabBar(config: TabBar? = nil) {
-        guard let tabBarConfig = getTabBar(appId) else {
+        guard let tabBarConfig = lingxia.getTabBar(appId) else {
             os_log("Failed to get TabBar config for appId: %@", log: Self.log, type: .error, appId)
             return
         }
@@ -276,10 +274,8 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
                 get: { self.selectedTabIndex },
                 set: { self.selectedTabIndex = $0 }
             ),
-            onTabSelected: { index, path in
-                self.selectedTabIndex = index
-                self.switchPage(targetPath: path)
-            }
+            // Use universal tab click handler
+            onTabSelected: LxAppPageNavigation.tabClickHandler(appId: appId)
         ))
 
         tabBarView.translatesAutoresizingMaskIntoConstraints = false
@@ -347,19 +343,6 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
                 self.view.window?.close()
             }
         }
-
-        switchPageObserver = NotificationCenter.default.addObserver(
-            forName: NSNotification.Name(ACTION_SWITCH_PAGE), object: nil, queue: .main
-        ) { [weak self] notification in
-            let appId = notification.userInfo?["appId"] as? String
-            let path = notification.userInfo?["path"] as? String
-            Task { @MainActor in
-                guard let self = self, let targetAppId = appId, let targetPath = path, targetAppId == self.appId else { return }
-
-                self.switchPage(targetPath: targetPath)
-            }
-        }
-
     }
 
     private func setupKeyboardShortcuts() {
@@ -392,36 +375,220 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         }
     }
 
-    //  - Page Switching
-    public func switchPage(targetPath: String) {
+    /// Navigate - the single, unified navigation method
+    /// Core job: Update UI based on navigation type
+    /// All types share common process with specific differences
+    public func navigate(appId: String, to path: String, with navigationType: NavigationType) {
         guard !appId.isEmpty else { return }
 
-        if currentWebView?.currentPath == targetPath {
+        // Allow same path navigation for launch type (app initialization)
+        if currentWebView?.currentPath == path && navigationType != .launch {
             return
         }
 
-        self.initialPath = targetPath
+        self.initialPath = path
 
-        if let _ = tabBarView?.subviews.first as? NSStackView,
-           let tabIndex = findTabIndexByPath(targetPath), tabIndex >= 0 {
-            switchToTab(targetPath: targetPath, tabIndex: tabIndex)
-        } else {
-            navigateToPage(targetPath: targetPath)
+        // Resolve actual navigation type based on logic
+        let actualNavigationType = resolveNavigationType(navigationType, for: path)
+
+        // Execute common navigation process with type-specific differences
+        performCommonNavigation(to: path, with: actualNavigationType)
+
+        // Update app state
+        LxAppCore.setLastActivePath(path, for: appId)
+
+        if let windowController = view.window?.windowController as? LxAppWindowController {
+            windowController.updateWindowTitle(for: path)
+        }
+    }
+
+    /// Resolve navigation type based on path and logic
+    private func resolveNavigationType(_ navigationType: NavigationType, for path: String) -> NavigationType {
+        switch navigationType {
+        case .launch:
+            // Launch: check if it's a tab page
+            if isTabPage(path) {
+                return .switchTab  // Convert to tab switch
+            } else {
+                return .launch     // Keep as launch (will hide tabbar)
+            }
+        default:
+            return navigationType  // Keep original type
+        }
+    }
+
+    /// Common navigation process - all types share this flow
+    private func performCommonNavigation(to path: String, with navigationType: NavigationType) {
+        // Find or create WebView (common for all types)
+        guard let targetWebView = WebViewManager.findWebView(appId: appId, path: path) else {
+            return
         }
 
-        LxAppCore.setLastActivePath(targetPath, for: appId)
+        // Apply type-specific UI updates
+        applyNavigationTypeSpecificUpdates(for: navigationType, path: path)
 
-        // Send notification for WindowController to update title (matching iOS/demo behavior)
-        // This covers both TabBar switches and other page navigation
+        // Show WebView with type-specific animation
+        showWebViewWithAnimation(targetWebView, path: path, navigationType: navigationType)
+    }
+
+    /// Show WebView with type-specific animation
+    private func showWebViewWithAnimation(_ webView: WKWebView, path: String, navigationType: NavigationType) {
+        switch navigationType {
+        case .forward:
+            // Forward: slide from left to right
+            showWebViewWithSlideAnimation(webView, path: path, direction: .leftToRight)
+
+        case .backward:
+            // Backward: slide from right to left
+            showWebViewWithSlideAnimation(webView, path: path, direction: .rightToLeft)
+
+        case .switchTab, .launch, .replace:
+            // No animation for these types
+            showWebViewToUser(webView, path: path)
+        }
+    }
+
+    /// Animation direction for slide effects
+    private enum SlideDirection {
+        case leftToRight    // Forward navigation
+        case rightToLeft    // Backward navigation
+    }
+
+    /// Show WebView with slide animation
+    private func showWebViewWithSlideAnimation(_ webView: WKWebView, path: String, direction: SlideDirection) {
+        guard let webViewContainer = webViewContainer else {
+            // Fallback to no animation
+            showWebViewToUser(webView, path: path)
+            return
+        }
+
+        // Get current WebView for animation
+        let previousWebView = currentWebView
+
+        // Ensure WebView is properly attached to container
+        if webView.superview != webViewContainer {
+            webViewContainer.addSubview(webView)
+            webView.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                webView.topAnchor.constraint(equalTo: webViewContainer.topAnchor),
+                webView.bottomAnchor.constraint(equalTo: webViewContainer.bottomAnchor),
+                webView.leadingAnchor.constraint(equalTo: webViewContainer.leadingAnchor),
+                webView.trailingAnchor.constraint(equalTo: webViewContainer.trailingAnchor)
+            ])
+        }
+
+        // Force layout to get correct bounds
+        webViewContainer.layoutSubtreeIfNeeded()
+        let containerWidth = webViewContainer.bounds.width
+
+        // Use frame-based animation for macOS (NSView doesn't have transform)
+        let containerFrame = webViewContainer.bounds
+        let startFrame: CGRect
+        let endFrame = containerFrame
+
+        switch direction {
+        case .leftToRight:
+            // Forward: new view starts from left, slides to center
+            startFrame = CGRect(x: -containerWidth, y: 0, width: containerWidth, height: containerFrame.height)
+        case .rightToLeft:
+            // Backward: new view starts from right, slides to center
+            startFrame = CGRect(x: containerWidth, y: 0, width: containerWidth, height: containerFrame.height)
+        }
+
+        // Set initial frame
+        webView.frame = startFrame
+        webView.isHidden = false
+
+        // Animate the transition with more obvious parameters
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = 0.8  // Longer duration for more visible effect
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            context.allowsImplicitAnimation = true
+
+            // Slide new WebView to center
+            webView.animator().frame = endFrame
+
+            // Slide previous WebView out (opposite direction)
+            if let prevWebView = previousWebView {
+                let prevEndFrame = direction == .leftToRight ?
+                    CGRect(x: containerWidth, y: 0, width: containerWidth, height: containerFrame.height) :
+                    CGRect(x: -containerWidth, y: 0, width: containerWidth, height: containerFrame.height)
+                prevWebView.animator().frame = prevEndFrame
+            }
+
+        }, completionHandler: {
+            // Complete the navigation
+            self.completeWebViewNavigation(webView, path: path, previousWebView: previousWebView)
+        })
+    }
+
+    /// Complete WebView navigation after animation
+    private func completeWebViewNavigation(_ webView: WKWebView, path: String, previousWebView: WKWebView?) {
+        // Reset frame to proper constraints-based layout
+        webView.frame = webViewContainer?.bounds ?? webView.frame
+
+        // Remove previous WebView
+        if let prevWebView = previousWebView, prevWebView != webView {
+            prevWebView.removeFromSuperview()
+        }
+
+        // Complete the navigation using existing logic
+        currentWebView = webView
+        webView.currentPath = path
+
+        // Trigger page show event
+        let _ = onPageShow(appId, path)
+    }
+
+    /// Apply navigation type specific UI updates
+    /// This is where the differences between navigation types are handled
+    private func applyNavigationTypeSpecificUpdates(for navigationType: NavigationType, path: String) {
+        switch navigationType {
+        case .switchTab:
+            // TabSwitch: Set selected TabBar item
+            if let tabIndex = findTabIndexByPath(path) {
+                selectedTabIndex = tabIndex
+                showTabBar(true)  // Ensure TabBar is visible
+                triggerTabBarRefresh()
+            }
+
+        case .launch:
+            // Launch (non-tab page): Hide TabBar
+            showTabBar(false)
+
+        case .replace:
+            // Replace: Hide TabBar, update NavBar
+            showTabBar(false)
+
+        case .forward, .backward:
+            showTabBar(false)
+        }
+    }
+
+    /// Check if a path is a tab page
+    private func isTabPage(_ path: String) -> Bool {
+        guard let tabBarConfig = tabBarConfig else { return false }
+        let items = tabBarConfig.getItems(appId: appId)
+        return items.contains { $0.page_path.toString() == path }
+    }
+
+    /// Show or hide TabBar dynamically
+    private func showTabBar(_ show: Bool) {
+        guard let tabBar = tabBarView else { return }
+        tabBar.isHidden = !show
+    }
+
+    /// Trigger TabBar UI refresh for programmatic navigation
+    private func triggerTabBarRefresh() {
+        // Send notification to trigger TabBar refreshTrigger.toggle()
         NotificationCenter.default.post(
-            name: NSNotification.Name(ACTION_SWITCH_PAGE),
-            object: nil,
-            userInfo: ["appId": appId, "path": targetPath]
+            name: .tabBarStateChanged,
+            object: appId
         )
     }
 
     //  - Helper Methods
-    private func findTabIndexByPath(_ targetPath: String) -> Int? {
+    public func findTabIndexByPath(_ targetPath: String) -> Int? {
         guard let tabBarConfig = tabBarConfig else { return nil }
 
         let items = tabBarConfig.getItems(appId: appId)
@@ -431,25 +598,6 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
             }
         }
         return nil
-    }
-
-    public func switchToTab(targetPath: String, tabIndex: Int) {
-        // Find target WebView (should be created by Rust layer when needed)
-        guard let targetWebView = WebViewManager.findWebView(appId: appId, path: targetPath) else {
-            return
-        }
-
-        selectedTabIndex = tabIndex
-        showWebViewToUser(targetWebView, path: targetPath)
-    }
-
-    private func navigateToPage(targetPath: String) {
-        // Find WebView for the target page
-        guard let newWebView = WebViewManager.findWebView(appId: appId, path: targetPath) else {
-            return
-        }
-
-        showWebViewToUser(newWebView, path: targetPath)
     }
 
     private func getResourcesPath() -> String {

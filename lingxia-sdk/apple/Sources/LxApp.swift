@@ -66,7 +66,6 @@ public struct LxAppDirectoryFactory {
 }
 
 /// Notification action identifiers
-public let ACTION_SWITCH_PAGE = "com.lingxia.SWITCH_PAGE_ACTION"
 public let ACTION_CLOSE_LXAPP = "com.lingxia.CLOSE_LXAPP_ACTION"
 
 /// Core LxApp management logic shared between platforms
@@ -238,15 +237,20 @@ extension LxApp {
         }
     }
 
-    /// Switch to page in LxApp (deprecated - use navigate instead)
-    nonisolated public static func switchPage(appid: RustStr, path: RustStr) -> Bool {
+    /// Navigate to page with specific navigation type
+    nonisolated public static func navigate(appid: RustStr, path: RustStr, navigationType: NavigationType) -> Bool {
         let appIdString = appid.toString()
         let pathString = path.toString()
 
         return executeOnMain {
-            LxAppPlatform.switchPage(appId: appIdString, path: pathString)
+            LxAppPlatform.navigate(appId: appIdString, path: pathString, navigationType: navigationType)
             return true
         }
+    }
+
+    /// Switch to page in LxApp (deprecated - use navigate instead)
+    nonisolated public static func switchPage(appid: RustStr, path: RustStr) -> Bool {
+        return false
     }
 
     /// Update TabBar UI to refresh badge and red dot data etc

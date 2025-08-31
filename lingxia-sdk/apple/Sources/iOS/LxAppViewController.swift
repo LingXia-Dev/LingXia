@@ -1058,9 +1058,10 @@ public class LxAppViewController: UIViewController, ObservableObject {
         tabBar.setConfig(config: config, appId: appId)
         tabBar.translatesAutoresizingMaskIntoConstraints = false
 
-        tabBar.setOnTabSelectedListener { [weak self] index, path in
-            self?.navigate(appId: appId, to: path, with: .switchTab)
-        }
+        // Use universal tab click handler
+        tabBar.setOnTabSelectedListener(
+            LxAppPageNavigation.tabClickHandler(appId: appId)
+        )
 
         rootContainer.addSubview(tabBar)
         applyTabBarLayoutParams(tabBar: tabBar, config: config, for: appId)
