@@ -383,51 +383,9 @@ class NavigationBar @JvmOverloads constructor(
         visibility = View.GONE
     }
 
-    /**
-     * Updates the navigation bar configuration using new boolean fields.
-     */
-    fun updateConfig(config: NavigationBarState) {
-        currentConfig = config
 
-        // Update title
-        setTitle(config.navigationBarTitleText)
 
-        // Parse text style and set colors
-        val textColor = when (config.navigationBarTextStyle.lowercase()) {
-            "white" -> Color.WHITE
-            "black" -> Color.BLACK
-            else -> Color.BLACK
-        }
 
-        setColor(config.navigationBarBackgroundColor, textColor)
-
-        // Update button visibility with priority logic: back button takes precedence over home button
-        val shouldShowBack = config.showBackButton
-        val shouldShowHome = config.showHomeButton && !config.showBackButton // Only show home if back is not shown
-
-        setBackButtonVisible(shouldShowBack)
-        setHomeButtonVisible(shouldShowHome)
-
-        // Update navbar visibility
-        visibility = if (config.showNavbar) View.VISIBLE else View.GONE
-    }
-
-    /**
-     * Refresh navigation bar state from native layer and update UI
-     * This is the unified API that all components should use
-     *
-     * @param appId The app ID to get navbar state for
-     * @param path The current path to get navbar state for
-     */
-    fun refreshState(appId: String, path: String) {
-        val navbarState = NativeApi.getNavigationBarState(appId, path)
-        if (navbarState != null) {
-            updateConfig(navbarState)
-        } else {
-            visibility = View.GONE
-            Log.d(TAG, "NavigationBar hidden - no state available for $appId:$path")
-        }
-    }
 
     /**
      * Updates the state of the NavigationBar and optionally animates the transition.
@@ -465,26 +423,18 @@ class NavigationBar @JvmOverloads constructor(
         setOnBackButtonClickListener(onBackClickListener)
         onHomeClickListener?.let { setOnHomeButtonClickListener(it) }
 
-        // Handle animation
         if (!disableAnimation) {
-            val animStartX = if (isBackNavigation) -width.toFloat() else width.toFloat()
-            val duration = 250L
-
-            translationX = animStartX
-
             animate()
                 .translationX(0f)
-                .setDuration(duration)
-                .setInterpolator(AccelerateDecelerateInterpolator())
-                .withEndAction { // Use the provided end action
-                    translationX = 0f // Ensure final position
-                    onAnimationEnd?.run() // Execute the callback
+                .setDuration(300L)
+                .setInterpolator(android.view.animation.DecelerateInterpolator())
+                .withEndAction {
+                    translationX = 0f
+                    onAnimationEnd?.run()
                 }
                 .start()
         } else {
             translationX = 0f
-            // If no animation, run the end action immediately if it exists,
-            // as it might contain layout updates needed right away.
             onAnimationEnd?.run()
         }
     }

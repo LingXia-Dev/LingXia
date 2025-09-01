@@ -125,14 +125,11 @@ class LxAppActivity : AppCompatActivity() {
          */
         @JvmStatic
         fun updateNavBarUI(appId: String): Boolean {
-            Log.d(TAG, "updateNavBarUI called for appId: $appId")
-
             val activity = LxApp.getCurrentActivity()
             if (activity != null && activity.appId == appId) {
                 activity.runOnUiThread {
                     val currentPath = activity.currentWebView?.getCurrentPath() ?: ""
-                    activity.navigationBar?.refreshState(appId, currentPath)
-                    activity.updateLayoutMargins()
+                    activity.updateNavigationBar(null, false, true, currentPath)
                 }
                 return true
             }
@@ -167,6 +164,7 @@ class LxAppActivity : AppCompatActivity() {
 
             activity.window.apply {
                 addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+                // Set initial status bar to transparent - navbar will override when needed
                 statusBarColor = Color.TRANSPARENT
             }
 
@@ -246,11 +244,7 @@ class LxAppActivity : AppCompatActivity() {
             Log.w(TAG, "Failed to start parallel WebView creation: ${e.message}")
         }
 
-        // Force navigationBar to null for recreations due to screen rotation
-        navigationBar = null
-
-        // Defer broadcast receiver registration to reduce onCreate time
-        // These are not critical for initial display
+        // Create root container first
         rootContainer = FrameLayout(this).apply {
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -258,6 +252,7 @@ class LxAppActivity : AppCompatActivity() {
             )
             setBackgroundColor(Color.TRANSPARENT)
         }
+
         setContentView(rootContainer)
 
         // Get TabBar config and setup UI in parallel
@@ -266,6 +261,9 @@ class LxAppActivity : AppCompatActivity() {
         // Setup containers and UI components
         setupWebViewContainer()
         setupTabBar(tabBarConfig)
+
+        // Create global NavigationBar (always present, controlled by visibility)
+        createNavBar()
 
         // Defer capsule button creation to post-layout
         rootContainer.post {
@@ -453,19 +451,17 @@ class LxAppActivity : AppCompatActivity() {
         val isTabBarTransparent = tabBarBgColor == Color.TRANSPARENT ||
                                  (tabBarBgColor?.let { Color.alpha(it) < 255 } == true)
 
-        // Calculate NavigationBar height - use content height plus small padding for better spacing
+        // Calculate NavigationBar height for webview margin
         val isNavBarVisible = navigationBar?.visibility == View.VISIBLE
-        val navBarContentHeight = if (isNavBarVisible) {
-            // Use NavigationBar's content height plus a small padding for optimal visual spacing
-            val contentHeight = navigationBar?.getCalculatedContentHeightPx()
-                ?: (DEFAULT_NAV_BAR_HEIGHT_DP * resources.displayMetrics.density).toInt()
-
-            // Add 8dp padding for better visual spacing
-            contentHeight + (8 * resources.displayMetrics.density).toInt()
-        } else 0
+        val navBarHeight = if (isNavBarVisible) {
+            // WebView should start right after navbar (navbar total height)
+            navigationBar?.layoutParams?.height ?: 0
+        } else {
+            0
+        }
 
         (webViewContainer.layoutParams as FrameLayout.LayoutParams).apply {
-            topMargin = navBarContentHeight  // Use NavigationBar content height plus padding
+            topMargin = navBarHeight  // Use NavigationBar total height
             bottomMargin = 0
             leftMargin = 0
             rightMargin = 0
@@ -492,6 +488,36 @@ class LxAppActivity : AppCompatActivity() {
         val container = webViewContainer.findViewWithTag<ViewGroup>("current_webview_container")
         container?.translationY = if (!isTabBarTransparent) calculateWebViewTranslationY() else 0f
         container?.requestLayout()
+    }
+
+    /**
+     * Helper function to determine if a color is dark
+     */
+    private fun isColorDark(argbColor: Int): Boolean {
+        // Extract RGB components from ARGB
+        val red = (argbColor shr 16) and 0xFF
+        val green = (argbColor shr 8) and 0xFF
+        val blue = argbColor and 0xFF
+
+        // Calculate luminance using standard formula
+        val luminance = 0.299 * red + 0.587 * green + 0.114 * blue
+
+        // Consider colors with luminance < 128 as dark (0-255 scale)
+        return luminance < 128
+    }
+
+    /**
+     * Update status bar to match navbar background color
+     */
+    private fun updateStatusBarForNavbar(navbarBgColor: Int) {
+        // Set status bar background to match navbar
+        window.statusBarColor = navbarBgColor
+
+        // Set status bar text color based on navbar background brightness
+        val isNavbarDark = isColorDark(navbarBgColor)
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = !isNavbarDark  // Light text on dark bg, dark text on light bg
+        }
     }
 
     // Find WebView - ONLY find WebView, nothing else
@@ -994,11 +1020,11 @@ class LxAppActivity : AppCompatActivity() {
     }
 
     /**
-     * Perform WebView transition animation
+     * Perform WebView transition animation with synchronized navbar animation
      *
      * Extracted from navigateToPage for reuse in coordinated navigation
      */
-    private fun performWebViewTransition(oldWebView: WebView?, newContainer: FrameLayout, isBackNavigation: Boolean, shouldAnimate: Boolean = true) {
+    private fun performWebViewTransition(oldWebView: WebView?, newContainer: FrameLayout, isBackNavigation: Boolean, shouldAnimate: Boolean = true, navbarState: NavigationBarState? = null) {
         // Get reference to old container BEFORE adding new one
         val oldContainer = webViewContainer.findViewWithTag<ViewGroup>("current_webview_container")
         oldContainer?.tag = "previous_webview_container" // Re-tag old container
@@ -1011,9 +1037,6 @@ class LxAppActivity : AppCompatActivity() {
             return
         }
 
-        // Update layout margins to position the new container vertically
-        updateLayoutMargins()
-
         if (shouldAnimate) {
             // Set up animation based on navigation direction
             val slideInTranslation = if (isBackNavigation) -webViewContainer.width.toFloat() else webViewContainer.width.toFloat()
@@ -1025,7 +1048,15 @@ class LxAppActivity : AppCompatActivity() {
             // Animate the transition
             val animationDuration = 300L
 
-            // Animate new container sliding in
+            // Animate navbar and webview together
+            if (navbarState != null && navigationBar != null) {
+                animateNavBar(navbarState, isBackNavigation)
+            }
+
+            // Update layout margins after navbar state change
+            updateLayoutMargins()
+
+            // Animate new container sliding in - SAME TIME AS NAVBAR
             newContainer.animate()
                 .translationX(0f)
                 .setDuration(animationDuration)
@@ -1049,7 +1080,14 @@ class LxAppActivity : AppCompatActivity() {
                     .start()
             }
         } else {
-            // No animation - just set position and trigger callbacks immediately
+            // No animation - update navbar immediately
+            if (navbarState != null && navigationBar != null) {
+                updateNavBar(navbarState)
+            }
+
+            // Update layout margins after navbar state change
+            updateLayoutMargins()
+
             newContainer.translationX = 0f
 
             // Clean up old container immediately
@@ -1118,9 +1156,8 @@ class LxAppActivity : AppCompatActivity() {
             // Get navbar state (use provided or fetch)
             val actualPageConfig = pageConfig ?: getNavBarState(appId, targetPath)
 
-            // COORDINATED UPDATE: Update navigation bar and webview together
-            // This prevents timing issues between navbar and webview updates
-            updateNavigationBar(actualPageConfig, isBackNavigation, disableAnimation = false, targetPath = targetPath)
+            // Get navbar state for synchronized animation
+            val navbarState = NativeApi.getNavigationBarState(appId, targetPath)
 
             // Continue with webview setup...
             if (newWebView.parent != null) {
@@ -1150,7 +1187,7 @@ class LxAppActivity : AppCompatActivity() {
             // Use coordinated WebView transition (handles all animation and onPageShow)
             // Only animate for forward/backward navigation, not for replace operations (tab switch, launch, replace)
             val shouldAnimate = !isReplace
-            performWebViewTransition(oldWebView, newContainer, isBackNavigation, shouldAnimate)
+            performWebViewTransition(oldWebView, newContainer, isBackNavigation, shouldAnimate, navbarState)
 
             // Update the current WebView reference
             currentWebView = newWebView
@@ -1160,65 +1197,137 @@ class LxAppActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Updates the navigation bar based on the page configuration and navigation context.
-     * This method determines the required state and delegates the update and animation
-     * to the NavigationBar instance.
-     *
-     * @param config The navigation bar configuration for the target page.
-     * @param isBackNavigation Whether the navigation event is a 'back' navigation.
-     * @param disableAnimation Whether the update should be instant (true) or animated (false).
-     * @param targetPath The target path to update navbar for (optional, uses currentWebView if null).
-     */
-    private fun updateNavigationBar(config: NavigationBarState?, isBackNavigation: Boolean, disableAnimation: Boolean = false, targetPath: String? = null) {
-        Log.d(TAG, "updateNavigationBar called: isBackNavigation=$isBackNavigation, disableAnimation=$disableAnimation, targetPath=$targetPath")
-
-        try {
-            // Use explicit targetPath if provided, otherwise fall back to currentWebView
-            val pathForNavbar = targetPath ?: currentWebView?.getCurrentPath() ?: ""
-            Log.d(TAG, "Getting fresh navbar state for $appId:$pathForNavbar")
-
-            if (navigationBar == null) {
-                // Create navbar if it doesn't exist
-                Log.d(TAG, "Creating new NavigationBar")
-                val statusBarHeight = getStatusBarHeight(this)
-                val newNavBar = NavigationBar(this)
-
-                // Setup navbar layout and properties
-                val navBarContentHeightPx = newNavBar.getCalculatedContentHeightPx()
-                val finalNavBarLayoutParams = FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    navBarContentHeightPx + statusBarHeight
-                ).apply {
-                    gravity = Gravity.TOP
-                }
-                newNavBar.layoutParams = finalNavBarLayoutParams
-                newNavBar.setPadding(newNavBar.paddingLeft, 0, newNavBar.paddingRight, newNavBar.paddingBottom)
-                newNavBar.setExternalStatusBarHeight(statusBarHeight)
-
-                // Setup button click listeners
-                newNavBar.setOnBackButtonClickListener { handleBackButtonClick() }
-                newNavBar.setOnHomeButtonClickListener { handleHomeButtonClick() }
-
-                navigationBar = newNavBar
-            }
-
-            // Use the unified refreshState API to get fresh state from Rust
-            navigationBar?.refreshState(appId, pathForNavbar)
-
-            // Ensure navbar is added to container
-            if (navigationBar != null && ::rootContainer.isInitialized) {
-                if (navigationBar?.parent != null) {
-                    (navigationBar?.parent as? ViewGroup)?.removeView(navigationBar)
-                }
-                rootContainer.addView(navigationBar)
-            }
-
-            updateLayoutMargins()
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Error updating navigation bar", e)
+    private fun animateNavBar(navbarState: NavigationBarState, isBackNavigation: Boolean) {
+        if (!navbarState.showNavbar) {
+            navigationBar?.visibility = View.GONE
+            return
         }
+
+        navigationBar?.apply {
+            visibility = View.VISIBLE
+            translationX = if (isBackNavigation) -width.toFloat() else width.toFloat()
+
+            val textColor = when (navbarState.navigationBarTextStyle.lowercase()) {
+                "white" -> Color.WHITE
+                "black" -> Color.BLACK
+                else -> if (isColorDark(navbarState.navigationBarBackgroundColor)) Color.WHITE else Color.BLACK
+            }
+
+            updateStateAndAnimate(
+                title = navbarState.navigationBarTitleText,
+                bgColor = navbarState.navigationBarBackgroundColor,
+                textColor = textColor,
+                showBackButton = navbarState.showBackButton,
+                showHomeButton = navbarState.showHomeButton,
+                isBackNavigation = isBackNavigation,
+                disableAnimation = false,
+                onBackClickListener = { handleBackButtonClick() },
+                onHomeClickListener = { handleHomeButtonClick() }
+            )
+
+            // Update status bar to match navbar
+            updateStatusBarForNavbar(navbarState.navigationBarBackgroundColor)
+        }
+    }
+
+    private fun updateNavBar(navbarState: NavigationBarState) {
+        if (!navbarState.showNavbar) {
+            navigationBar?.visibility = View.GONE
+            return
+        }
+
+        navigationBar?.apply {
+            visibility = View.VISIBLE
+            val textColor = when (navbarState.navigationBarTextStyle.lowercase()) {
+                "white" -> Color.WHITE
+                "black" -> Color.BLACK
+                else -> if (isColorDark(navbarState.navigationBarBackgroundColor)) Color.WHITE else Color.BLACK
+            }
+
+            updateStateAndAnimate(
+                title = navbarState.navigationBarTitleText,
+                bgColor = navbarState.navigationBarBackgroundColor,
+                textColor = textColor,
+                showBackButton = navbarState.showBackButton,
+                showHomeButton = navbarState.showHomeButton,
+                isBackNavigation = false,
+                disableAnimation = true,
+                onBackClickListener = { handleBackButtonClick() },
+                onHomeClickListener = { handleHomeButtonClick() }
+            )
+
+            // Update status bar to match navbar
+            updateStatusBarForNavbar(navbarState.navigationBarBackgroundColor)
+        }
+    }
+
+
+
+    private fun createNavBar() {
+        if (navigationBar != null) return
+
+        val statusBarHeight = getStatusBarHeight(this)
+        navigationBar = NavigationBar(this).apply {
+            val navBarContentHeight = getCalculatedContentHeightPx()
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                navBarContentHeight + statusBarHeight  // Include status bar height
+            ).apply {
+                gravity = Gravity.TOP
+                topMargin = 0  // Start from very top
+            }
+
+            setPadding(paddingLeft, statusBarHeight, paddingRight, paddingBottom)  // Add status bar padding
+            setOnBackButtonClickListener { handleBackButtonClick() }
+            setOnHomeButtonClickListener { handleHomeButtonClick() }
+            visibility = View.GONE
+        }
+
+        rootContainer.addView(navigationBar)
+    }
+
+    private fun updateNavigationBar(config: NavigationBarState?, isBackNavigation: Boolean, disableAnimation: Boolean = false, targetPath: String? = null) {
+        val pathForNavbar = targetPath ?: currentWebView?.getCurrentPath() ?: ""
+        val navbarState = NativeApi.getNavigationBarState(appId, pathForNavbar)
+
+        if (navbarState?.showNavbar == true) {
+            // Create navbar if needed
+            if (navigationBar == null) {
+                createNavBar()
+            }
+
+            val textColor = when (navbarState.navigationBarTextStyle.lowercase()) {
+                "white" -> Color.WHITE
+                "black" -> Color.BLACK
+                else -> if (isColorDark(navbarState.navigationBarBackgroundColor)) Color.WHITE else Color.BLACK
+            }
+
+            navigationBar?.updateStateAndAnimate(
+                title = navbarState.navigationBarTitleText,
+                bgColor = navbarState.navigationBarBackgroundColor,
+                textColor = textColor,
+                showBackButton = navbarState.showBackButton,
+                showHomeButton = navbarState.showHomeButton,
+                isBackNavigation = isBackNavigation,
+                disableAnimation = disableAnimation,
+                onBackClickListener = { handleBackButtonClick() },
+                onHomeClickListener = { handleHomeButtonClick() }
+            )
+
+            // Update status bar to match navbar
+            updateStatusBarForNavbar(navbarState.navigationBarBackgroundColor)
+        } else {
+            // Hide navbar completely
+            navigationBar?.visibility = View.GONE
+
+            // Reset status bar to transparent when navbar is hidden
+            window.statusBarColor = Color.TRANSPARENT
+            WindowCompat.getInsetsController(window, window.decorView).apply {
+                isAppearanceLightStatusBars = true  // Default to light status bar
+            }
+        }
+
+        updateLayoutMargins()
     }
 
     /**
