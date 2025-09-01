@@ -288,7 +288,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getLxAppInfo<'a>(
     // Create LxAppInfo object
     match env.new_object(
         lxapp_info_class,
-        "(Ljava/lang/String;Ljava/lang/String;Z)V",
+        "(Ljava/lang/String;Ljava/lang/String;)V",
         &[(&initial_route_str).into(), (&app_name_str).into()],
     ) {
         Ok(obj) => obj,
