@@ -238,7 +238,7 @@ extension iOSLxApp {
         guard let manager = lxAppManager else { return }
 
         if state.show {
-            manager.setupTabBarForApp(appId: appId)
+            manager.setupTabBar(appId: appId)
             if state.updateSelection, let selectedPath = state.selectedPath {
                 manager.syncTabBarWithCurrentPathInternal(selectedPath)
             }
@@ -250,7 +250,7 @@ extension iOSLxApp {
     /// Render NavigationBar based on state
     public func renderNavigationBar(_ state: NavBarState) {
         guard state.shouldUpdate else { return }
-        lxAppManager?.updateNavigationBarForApp(appId: state.appId, path: state.path)
+        lxAppManager?.updateNavigationBar(appId: state.appId, path: state.path)
     }
 
     /// Render Capsule button - only home app hides it

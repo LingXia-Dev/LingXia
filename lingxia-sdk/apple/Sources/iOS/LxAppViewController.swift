@@ -191,7 +191,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
         updateGlobalUIComponents(for: appId, path: path, navigationType: navigationType)
 
         // Update NavigationBar state
-        updateNavigationBarForApp(appId: appId, path: path)
+        updateNavigationBar(appId: appId, path: path)
 
         // Apply app styling to handle transparency changes
         applyAppStyling(for: appId, path: path)
@@ -391,10 +391,10 @@ public class LxAppViewController: UIViewController, ObservableObject {
         }
 
         // Setup WebView if needed
-        setupWebViewForApp(appId: appId, path: path)
+        setupWebView(appId: appId, path: path)
 
         // Setup UI components
-        setupUIComponentsForApp(appId: appId)
+        setupUIComponents(appId: appId)
 
         // Show WebView and UI
         appState.webView?.isHidden = false
@@ -418,7 +418,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
         setNeedsStatusBarAppearanceUpdate()
     }
 
-    private func setupWebViewForApp(appId: String, path: String) {
+    private func setupWebView(appId: String, path: String) {
         guard let appState = stateManager.getState(for: appId) else { return }
 
         if appState.webView == nil {
@@ -505,15 +505,15 @@ public class LxAppViewController: UIViewController, ObservableObject {
         rootContainer.layoutIfNeeded()
     }
 
-    private func setupUIComponentsForApp(appId: String) {
-        setupTabBarForApp(appId: appId)
-        setupNavigationBarForApp(appId: appId)
+    private func setupUIComponents(appId: String) {
+        setupTabBar(appId: appId)
+        setupNavigationBar(appId: appId)
     }
 
-    public func setupTabBarForApp(appId: String) {
+    public func setupTabBar(appId: String) {
         guard let appState = stateManager.getState(for: appId),
               rootContainer != nil else {
-            os_log("setupTabBarForApp failed: appState or rootContainer is nil for %@", log: Self.log, type: .error, appId)
+            os_log("setupTabBar failed: appState or rootContainer is nil for %@", log: Self.log, type: .error, appId)
             return
         }
 
@@ -536,7 +536,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
         }
     }
 
-    private func setupNavigationBarForApp(appId: String) {
+    private func setupNavigationBar(appId: String) {
         guard let appState = stateManager.getState(for: appId),
               rootContainer != nil else { return }
 
@@ -546,12 +546,12 @@ public class LxAppViewController: UIViewController, ObservableObject {
         }
 
         // Update navigation bar with current state
-        updateNavigationBarForApp(appId: appId, path: appState.currentPath)
+        updateNavigationBar(appId: appId, path: appState.currentPath)
     }
 
-    public func updateNavigationBarForApp(appId: String, path: String) {
+    public func updateNavigationBar(appId: String, path: String) {
         guard let navigationBar = globalNavigationBar else {
-            os_log("❌ updateNavigationBarForApp: NavigationBar not initialized - this should not happen", log: Self.log, type: .error)
+            os_log("❌ updateNavigationBar: NavigationBar not initialized - this should not happen", log: Self.log, type: .error)
             return
         }
 
@@ -561,7 +561,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
     }
 
     private func updateCurrentAppUI(for appId: String, path: String) {
-        updateNavigationBarForApp(appId: appId, path: path)
+        updateNavigationBar(appId: appId, path: path)
         // updateWebViewConstraints(for: appId)
 
         // Apply app styling to handle transparency changes with explicit path
@@ -883,17 +883,17 @@ public class LxAppViewController: UIViewController, ObservableObject {
     /// Create navigation bar if needed for current app
     public func createNavigationBarIfNeeded() {
         guard let currentAppId = currentAppId else { return }
-        setupNavigationBarForApp(appId: currentAppId)
+        setupNavigationBar(appId: currentAppId)
     }
 
     /// Setup WebView if ready for specific app and path
     public func setupWebViewIfReady(appId: String, path: String) {
-        setupWebViewForApp(appId: appId, path: path)
+        setupWebView(appId: appId, path: path)
     }
 
     /// Setup WebView for specific app and path (protocol requirement)
-    public func setupWebView(appId: String, path: String) {
-        setupWebViewForApp(appId: appId, path: path)
+    public func setupWebViewForProtocol(appId: String, path: String) {
+        setupWebView(appId: appId, path: path)
     }
 
     /// Hide navigation bar (protocol requirement)
