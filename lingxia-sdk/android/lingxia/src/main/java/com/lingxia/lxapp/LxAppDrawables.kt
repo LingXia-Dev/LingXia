@@ -201,6 +201,105 @@ object LxAppDrawables {
     }
 
     /**
+     * More Dots Drawable for capsule button
+     */
+    class MoreDotsDrawable(
+        private var currentColor: Int = Color.BLACK
+    ) : Drawable() {
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = currentColor
+            style = Paint.Style.FILL
+        }
+
+        override fun draw(canvas: Canvas) {
+            val centerY = bounds.height() / 2f
+            val centerX = bounds.width() / 2f
+
+            // Center dot is larger, side dots are smaller
+            val centerDotRadius = bounds.height() / 7f  // Larger center dot
+            val sideDotRadius = bounds.height() / 10f   // Smaller side dots
+            val spacing = centerDotRadius * 2.8f        // Adjusted spacing
+
+            // Draw side dots
+            canvas.drawCircle(centerX - spacing, centerY, sideDotRadius, paint)
+            canvas.drawCircle(centerX + spacing, centerY, sideDotRadius, paint)
+
+            // Draw center dot (larger)
+            canvas.drawCircle(centerX, centerY, centerDotRadius, paint)
+        }
+
+        override fun setAlpha(alpha: Int) {
+            paint.alpha = alpha
+        }
+
+        override fun setColorFilter(colorFilter: android.graphics.ColorFilter?) {
+            paint.colorFilter = colorFilter
+        }
+
+        @Deprecated("Deprecated in Java")
+        override fun getOpacity(): Int = android.graphics.PixelFormat.TRANSLUCENT
+
+        fun updateColor(color: Int) {
+            currentColor = color
+            paint.color = color
+            invalidateSelf()
+        }
+    }
+
+    /**
+     * Close Button Drawable for capsule button
+     */
+    class CloseButtonDrawable(
+        private val resources: Resources,
+        private var currentColor: Int = Color.BLACK
+    ) : Drawable() {
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = currentColor
+            style = Paint.Style.STROKE
+            strokeWidth = 3f * resources.displayMetrics.density
+        }
+
+        private val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = currentColor
+            style = Paint.Style.FILL
+        }
+
+        override fun draw(canvas: Canvas) {
+            val centerX = bounds.width() / 2f
+            val centerY = bounds.height() / 2f
+            val radius = bounds.width() / 2f
+
+            // Draw circle with thicker stroke
+            paint.style = Paint.Style.STROKE
+            canvas.drawCircle(centerX, centerY, radius, paint)
+
+            // Draw smaller center dot
+            paint.style = Paint.Style.FILL
+            canvas.drawCircle(centerX, centerY, radius / 2.5f, dotPaint)
+        }
+
+        override fun setAlpha(alpha: Int) {
+            paint.alpha = alpha
+            dotPaint.alpha = alpha
+        }
+
+        override fun setColorFilter(colorFilter: android.graphics.ColorFilter?) {
+            paint.colorFilter = colorFilter
+            dotPaint.colorFilter = colorFilter
+        }
+
+        @Deprecated("Deprecated in Java")
+        override fun getOpacity(): Int = android.graphics.PixelFormat.TRANSLUCENT
+
+        fun updateColor(color: Int) {
+            currentColor = color
+            paint.color = color
+            dotPaint.color = color
+            invalidateSelf()
+        }
+    }
+
+    /**
      * Factory methods for creating drawable instances
      */
     fun createHomeButton(resources: Resources, color: Int = Color.BLACK) =
@@ -208,4 +307,10 @@ object LxAppDrawables {
 
     fun createBackButton(resources: Resources, color: Int = Color.BLACK) =
         BackButtonDrawable(resources, color)
+
+    fun createMoreDots(color: Int = Color.BLACK) =
+        MoreDotsDrawable(color)
+
+    fun createCloseButton(resources: Resources, color: Int = Color.BLACK) =
+        CloseButtonDrawable(resources, color)
 }

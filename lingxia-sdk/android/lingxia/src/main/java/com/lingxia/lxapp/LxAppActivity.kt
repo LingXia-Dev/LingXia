@@ -585,81 +585,6 @@ class LxAppActivity : AppCompatActivity() {
         }
     }
 
-    private class MoreDotsDrawable : Drawable() {
-        private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.BLACK
-            style = Paint.Style.FILL
-        }
-
-        override fun draw(canvas: Canvas) {
-            val centerY = bounds.height() / 2f
-            val centerX = bounds.width() / 2f
-
-            // Center dot is larger, side dots are smaller
-            val centerDotRadius = bounds.height() / 7f  // Larger center dot
-            val sideDotRadius = bounds.height() / 10f   // Smaller side dots
-            val spacing = centerDotRadius * 2.8f        // Adjusted spacing
-
-            // Draw side dots
-            canvas.drawCircle(centerX - spacing, centerY, sideDotRadius, paint)
-            canvas.drawCircle(centerX + spacing, centerY, sideDotRadius, paint)
-
-            // Draw center dot (larger)
-            canvas.drawCircle(centerX, centerY, centerDotRadius, paint)
-        }
-
-        override fun setAlpha(alpha: Int) {
-            paint.alpha = alpha
-        }
-
-        override fun setColorFilter(colorFilter: android.graphics.ColorFilter?) {
-            paint.colorFilter = colorFilter
-        }
-
-        @Deprecated("Deprecated in Java")
-        override fun getOpacity(): Int = android.graphics.PixelFormat.TRANSLUCENT
-    }
-
-    private inner class CloseButtonDrawable : Drawable() {
-        private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.BLACK
-            style = Paint.Style.STROKE
-            strokeWidth = 3f * this@LxAppActivity.resources.displayMetrics.density  // Increase circle thickness
-        }
-
-        private val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.BLACK
-            style = Paint.Style.FILL
-        }
-
-        override fun draw(canvas: Canvas) {
-            val centerX = bounds.width() / 2f
-            val centerY = bounds.height() / 2f
-            val radius = bounds.width() / 2f  // Adjust circle size
-
-            // Draw circle with thicker stroke
-            paint.style = Paint.Style.STROKE
-            canvas.drawCircle(centerX, centerY, radius, paint)
-
-            // Draw smaller center dot
-            paint.style = Paint.Style.FILL
-            canvas.drawCircle(centerX, centerY, radius / 2.5f, dotPaint)  // Center dot
-        }
-
-        override fun setAlpha(alpha: Int) {
-            paint.alpha = alpha
-            dotPaint.alpha = alpha
-        }
-
-        override fun setColorFilter(colorFilter: android.graphics.ColorFilter?) {
-            paint.colorFilter = colorFilter
-            dotPaint.colorFilter = colorFilter
-        }
-
-        @Deprecated("Deprecated in Java")
-        override fun getOpacity(): Int = android.graphics.PixelFormat.TRANSLUCENT
-    }
-
     private fun addCapsuleButton() {
         // Don't show capsule button for the main/home app
         if (isDisplayingHomeLxApp) {
@@ -707,7 +632,7 @@ class LxAppActivity : AppCompatActivity() {
         val btnMore = ImageButton(this).apply {
             setBackgroundColor(Color.TRANSPARENT)
             scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setImageDrawable(MoreDotsDrawable())
+            setImageDrawable(LxAppDrawables.createMoreDots())
             layoutParams = LinearLayout.LayoutParams(
                 (44 * resources.displayMetrics.density).toInt(),
                 ViewGroup.LayoutParams.MATCH_PARENT
@@ -734,7 +659,7 @@ class LxAppActivity : AppCompatActivity() {
         val btnClose = ImageButton(this).apply {
             setBackgroundColor(Color.TRANSPARENT)
             scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setImageDrawable(CloseButtonDrawable())
+            setImageDrawable(LxAppDrawables.createCloseButton(resources))
             layoutParams = LinearLayout.LayoutParams(
                 (44 * resources.displayMetrics.density).toInt(),
                 ViewGroup.LayoutParams.MATCH_PARENT
@@ -770,7 +695,6 @@ class LxAppActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
-
         currentWebView?.pause()
     }
 
@@ -788,7 +712,6 @@ class LxAppActivity : AppCompatActivity() {
         // Pause current WebView but don't destroy it
         // WebView destruction is managed by native
         currentWebView?.let { view ->
-
             view.pause()
         }
 
