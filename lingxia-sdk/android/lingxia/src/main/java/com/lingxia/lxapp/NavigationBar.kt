@@ -1,10 +1,7 @@
 package com.lingxia.lxapp
 
 import android.content.Context
-import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.Paint
-import android.graphics.drawable.Drawable
 import android.util.AttributeSet
 import android.util.Log
 import android.util.TypedValue
@@ -16,10 +13,7 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.annotation.AttrRes
 import androidx.annotation.StyleRes
-import org.json.JSONObject
-import android.view.animation.AccelerateDecelerateInterpolator
-import kotlin.math.max
-import kotlin.math.min
+
 
 /**
  * Configuration data class for the NavigationBar
@@ -57,8 +51,40 @@ class NavigationBar @JvmOverloads constructor(
         internal val DEFAULT_BACKGROUND_COLOR = Color.WHITE
         internal val DEFAULT_FRONT_COLOR = Color.BLACK // Default text/icon color
 
-        // Define a specific height for tablets
-        private const val DEFAULT_TABLET_HEIGHT_DP = 12
+        // Define a specific height for tablets - should be same as phone for now
+        private const val DEFAULT_TABLET_HEIGHT_DP = 44 // Same as LxAppActivity.DEFAULT_NAV_BAR_HEIGHT_DP
+    }
+
+    /**
+     * Color utility functions for NavigationBar
+     */
+    object ColorUtils {
+        /**
+         * Helper function to determine if a color is dark
+         */
+        fun isColorDark(argbColor: Int): Boolean {
+            // Extract RGB components from ARGB
+            val red = (argbColor shr 16) and 0xFF
+            val green = (argbColor shr 8) and 0xFF
+            val blue = argbColor and 0xFF
+
+            // Calculate luminance using standard formula
+            val luminance = 0.299 * red + 0.587 * green + 0.114 * blue
+
+            // Consider colors with luminance < 128 as dark (0-255 scale)
+            return luminance < 128
+        }
+
+        /**
+         * Resolve front text/icon color based on navbar text style and background color
+         */
+        fun resolveNavTextColor(navbarState: NavigationBarState): Int {
+            return when (navbarState.navigationBarTextStyle.lowercase()) {
+                "white" -> Color.WHITE
+                "black" -> Color.BLACK
+                else -> if (isColorDark(navbarState.navigationBarBackgroundColor)) Color.WHITE else Color.BLACK
+            }
+        }
     }
 
     private val titleTextView: TextView
@@ -82,99 +108,11 @@ class NavigationBar @JvmOverloads constructor(
     // Callbacks
     private var onBackClickListener: (() -> Unit)? = null
 
-    /**
-     * Custom back button drawable that draws a chevron "<" shape
-     */
-    private inner class BackButtonDrawable : Drawable() {
-        private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = currentFrontColor
-            style = Paint.Style.STROKE
-            strokeWidth = 1.8f * resources.displayMetrics.density
-            strokeCap = Paint.Cap.ROUND
-            strokeJoin = Paint.Join.ROUND
-        }
+    // Use shared drawable from LxAppDrawables
+    private var backButtonDrawable: LxAppDrawables.BackButtonDrawable? = null
 
-        override fun draw(canvas: Canvas) {
-            val width = bounds.width()
-            val height = bounds.height()
-            val centerY = height / 2f
-            val startX = width * 0.55f
-            val endX = width * 0.35f
-
-            // Draw the chevron lines
-            canvas.drawLine(startX, centerY - height * 0.15f, endX, centerY, paint)
-            canvas.drawLine(endX, centerY, startX, centerY + height * 0.15f, paint)
-        }
-
-        override fun setAlpha(alpha: Int) {
-            paint.alpha = alpha
-        }
-
-        override fun setColorFilter(colorFilter: android.graphics.ColorFilter?) {
-            paint.colorFilter = colorFilter
-        }
-
-        @Deprecated("Deprecated in Java")
-        override fun getOpacity(): Int = android.graphics.PixelFormat.TRANSLUCENT
-
-        fun updateColor(color: Int) {
-            paint.color = color
-            invalidateSelf()
-        }
-    }
-
-    /**
-     * Custom home button drawable that draws a house shape
-     */
-    private inner class HomeButtonDrawable : Drawable() {
-        private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = currentFrontColor
-            style = Paint.Style.STROKE
-            strokeWidth = 1.8f * resources.displayMetrics.density
-            strokeCap = Paint.Cap.ROUND
-            strokeJoin = Paint.Join.ROUND
-        }
-
-        override fun draw(canvas: Canvas) {
-            val width = bounds.width()
-            val height = bounds.height()
-            val centerX = width / 2f
-            val centerY = height / 2f
-            val size = minOf(width, height) * 0.4f
-
-            // Draw house outline
-            val left = centerX - size / 2
-            val right = centerX + size / 2
-            val top = centerY - size / 2
-            val bottom = centerY + size / 2
-            val roofTop = top - size * 0.3f
-
-            // Draw roof (triangle)
-            canvas.drawLine(left, top, centerX, roofTop, paint)
-            canvas.drawLine(centerX, roofTop, right, top, paint)
-
-            // Draw house body (rectangle)
-            canvas.drawLine(left, top, left, bottom, paint)
-            canvas.drawLine(right, top, right, bottom, paint)
-            canvas.drawLine(left, bottom, right, bottom, paint)
-        }
-
-        override fun setAlpha(alpha: Int) {
-            paint.alpha = alpha
-        }
-
-        override fun setColorFilter(colorFilter: android.graphics.ColorFilter?) {
-            paint.colorFilter = colorFilter
-        }
-
-        @Deprecated("Deprecated in Java")
-        override fun getOpacity(): Int = android.graphics.PixelFormat.TRANSLUCENT
-
-        fun updateColor(color: Int) {
-            paint.color = color
-            invalidateSelf()
-        }
-    }
+    // Use shared drawable from LxAppDrawables
+    private var homeButtonDrawable: LxAppDrawables.HomeButtonDrawable? = null
 
     init {
         val density = resources.displayMetrics.density
@@ -185,19 +123,23 @@ class NavigationBar @JvmOverloads constructor(
 
         val navBarHeightDp = if (isTablet) DEFAULT_TABLET_HEIGHT_DP else LxAppActivity.DEFAULT_NAV_BAR_HEIGHT_DP
 
-        Log.d(TAG, "smallestScreenWidthDp: $smallestScreenWidthDp, isTablet: $isTablet, navBarHeightDp: $navBarHeightDp")
         val heightPx = (navBarHeightDp * density).toInt()
+        val buttonSizePx = (LxAppDrawables.Constants.BUTTON_SIZE_DP * density).toInt()
+        val topMarginPx = (42 * density).toInt()
 
         setBackgroundColor(currentBackgroundColor)
 
+        // Initialize shared drawables
+        backButtonDrawable = LxAppDrawables.createBackButton(resources, currentFrontColor)
+        homeButtonDrawable = LxAppDrawables.createHomeButton(resources, currentFrontColor)
+
         // Back Button setup
         backButton = ImageView(context).apply {
-            layoutParams = LayoutParams(heightPx, heightPx).apply {
-                gravity = Gravity.START or Gravity.TOP
-                marginStart = (4 * density).toInt()
-                topMargin = (42 * density).toInt() // Same as title alignment
+            layoutParams = LayoutParams(buttonSizePx, buttonSizePx).apply {
+                gravity = Gravity.START or Gravity.CENTER_VERTICAL
+                marginStart = (LxAppDrawables.Constants.MARGIN_START_DP * density).toInt()
             }
-            setImageDrawable(BackButtonDrawable())
+            setImageDrawable(backButtonDrawable)
             contentDescription = "Back"
             visibility = View.GONE
         }
@@ -205,12 +147,12 @@ class NavigationBar @JvmOverloads constructor(
 
         // Home Button setup (same position as back button since only one shows at a time)
         homeButton = ImageView(context).apply {
-            layoutParams = LayoutParams(heightPx, heightPx).apply {
-                gravity = Gravity.START or Gravity.TOP
-                marginStart = (4 * density).toInt() // Same position as back button
-                topMargin = (42 * density).toInt() // Same as title alignment
+            layoutParams = LayoutParams(buttonSizePx, buttonSizePx).apply {
+                gravity = Gravity.START or Gravity.CENTER_VERTICAL
+                marginStart = (LxAppDrawables.Constants.MARGIN_START_DP * density).toInt()
             }
-            setImageDrawable(HomeButtonDrawable())
+            setBackgroundColor(Color.TRANSPARENT)
+            setImageDrawable(homeButtonDrawable)
             contentDescription = "Home"
             visibility = View.GONE
         }
@@ -224,9 +166,8 @@ class NavigationBar @JvmOverloads constructor(
         // Title TextView setup
         titleTextView = TextView(context).apply {
             layoutParams = LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
-                gravity = Gravity.CENTER_HORIZONTAL or Gravity.TOP
-                // Align title with buttons: same topMargin
-                topMargin = (42 * density).toInt()
+                gravity = Gravity.CENTER_HORIZONTAL or Gravity.CENTER_VERTICAL
+                // Remove topMargin to use CENTER_VERTICAL alignment like buttons
             }
             gravity = Gravity.CENTER
             textAlignment = View.TEXT_ALIGNMENT_CENTER
@@ -258,22 +199,6 @@ class NavigationBar @JvmOverloads constructor(
         } else {
             @Suppress("DEPRECATION")
             indeterminateDrawable?.setColorFilter(color, android.graphics.PorterDuff.Mode.SRC_IN)
-        }
-    }
-
-    // Keep these layout debugging overrides only in debug builds
-    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        super.onMeasure(widthMeasureSpec, heightMeasureSpec)
-        Log.d(TAG, "onMeasure: widthSpec=${MeasureSpec.toString(widthMeasureSpec)}, heightSpec=${MeasureSpec.toString(heightMeasureSpec)}")
-        Log.d(TAG, "onMeasure: measuredWidth=$measuredWidth, measuredHeight=$measuredHeight")
-    }
-
-    override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
-        super.onLayout(changed, left, top, right, bottom)
-        Log.d(TAG, "onLayout: changed=$changed, left=$left, top=$top, right=$right, bottom=$bottom")
-        Log.d(TAG, "onLayout: width=$width, height=$height, measuredWidth=$measuredWidth, measuredHeight=$measuredHeight")
-        if (titleTextView.visibility == View.VISIBLE) {
-            Log.d(TAG, "onLayout: titleTextView.top=${titleTextView.top}, titleTextView.bottom=${titleTextView.bottom}, titleTextView.height=${titleTextView.height}, titleTextView.measuredHeight=${titleTextView.measuredHeight}")
         }
     }
 
@@ -326,11 +251,9 @@ class NavigationBar @JvmOverloads constructor(
         // Update loading indicator color
         loadingIndicator.updateProgressColor(currentFrontColor)
 
-        // Update back button color
-        (backButton.drawable as? BackButtonDrawable)?.updateColor(currentFrontColor)
-
-        // Update home button color
-        (homeButton.drawable as? HomeButtonDrawable)?.updateColor(currentFrontColor)
+        // Update shared drawable colors
+        backButtonDrawable?.updateColor(currentFrontColor)
+        homeButtonDrawable?.updateColor(currentFrontColor)
     }
 
     /**
@@ -349,6 +272,13 @@ class NavigationBar @JvmOverloads constructor(
      */
     fun setHomeButtonVisible(visible: Boolean) {
         homeButton.visibility = if (visible) View.VISIBLE else View.GONE
+
+        // Force redraw if needed
+        if (width > 0 && height > 0) {
+            homeButton.invalidate()
+        } else {
+            post { homeButton.invalidate() }
+        }
     }
 
     /**
@@ -383,10 +313,6 @@ class NavigationBar @JvmOverloads constructor(
         visibility = View.GONE
     }
 
-
-
-
-
     /**
      * Updates the state of the NavigationBar and optionally animates the transition.
      *
@@ -418,15 +344,26 @@ class NavigationBar @JvmOverloads constructor(
         // Set state
         setTitle(title)
         setColor(bgColor, textColor)
-        setBackButtonVisible(showBackButton)
-        setHomeButtonVisible(showHomeButton)
+
+        // Only show one button at a time (back button takes priority)
+        if (showBackButton) {
+            setBackButtonVisible(true)
+            setHomeButtonVisible(false)
+        } else if (showHomeButton) {
+            setBackButtonVisible(false)
+            setHomeButtonVisible(true)
+        } else {
+            setBackButtonVisible(false)
+            setHomeButtonVisible(false)
+        }
+
         setOnBackButtonClickListener(onBackClickListener)
         onHomeClickListener?.let { setOnHomeButtonClickListener(it) }
 
         if (!disableAnimation) {
             animate()
                 .translationX(0f)
-                .setDuration(300L)
+                .setDuration(LxAppDrawables.Constants.ANIMATION_DURATION_MS)
                 .setInterpolator(android.view.animation.DecelerateInterpolator())
                 .withEndAction {
                     translationX = 0f
@@ -442,18 +379,112 @@ class NavigationBar @JvmOverloads constructor(
     // Method to receive status bar height
     fun setExternalStatusBarHeight(sbh: Int) {
         if (knownStatusBarHeight != sbh) {
-            Log.d(TAG, "ExternalStatusBarHeight set to: $sbh")
             knownStatusBarHeight = sbh
 
+            val density = resources.displayMetrics.density
+            val baseTopMargin = (8 * density).toInt() // Updated offset from init block
+
             // Update layout params of children that depend on status bar height
-            listOf(backButton, homeButton, loadingIndicator).forEach { view ->
+            // Note: buttons use CENTER_VERTICAL so they don't need topMargin adjustment
+            // Note: title also uses CENTER_VERTICAL so it doesn't need topMargin adjustment
+            // Only update if there are views that actually use topMargin positioning
+            listOf(loadingIndicator).forEach { view ->
                 (view.layoutParams as? FrameLayout.LayoutParams)?.let {
-                    it.topMargin = knownStatusBarHeight
+                    it.topMargin = knownStatusBarHeight + baseTopMargin
                     view.layoutParams = it
                 }
             }
 
             requestLayout() // Request re-layout
         }
+    }
+}
+
+/**
+ * Independent Navigation Button that can be displayed without NavigationBar
+ * Supports both Home and Back button types with WeChat-style frosted glass effect
+ */
+class NavigationButton @JvmOverloads constructor(
+    context: Context,
+    attrs: AttributeSet? = null,
+    defStyleAttr: Int = 0
+) : FrameLayout(context, attrs, defStyleAttr) {
+
+    companion object {
+        private const val TAG = "LingXia.NavigationButton"
+    }
+
+    enum class ButtonType {
+        HOME, BACK
+    }
+
+    private val buttonImageView: ImageView
+    private var buttonType: ButtonType = ButtonType.HOME
+    private var currentFrontColor: Int = Color.BLACK
+    private var onClickListener: (() -> Unit)? = null
+
+    // Use shared drawables instead of duplicating code
+    private var homeDrawable: LxAppDrawables.HomeButtonDrawable? = null
+    private var backDrawable: LxAppDrawables.BackButtonDrawable? = null
+
+    init {
+        val density = resources.displayMetrics.density
+        val buttonSizePx = (LxAppDrawables.Constants.BUTTON_SIZE_DP * density).toInt()
+
+        // Initialize shared drawables
+        homeDrawable = LxAppDrawables.createHomeButton(resources, currentFrontColor)
+        backDrawable = LxAppDrawables.createBackButton(resources, currentFrontColor)
+
+        // Create the button ImageView
+        buttonImageView = ImageView(context).apply {
+            layoutParams = LayoutParams(buttonSizePx, buttonSizePx).apply {
+                gravity = Gravity.CENTER
+            }
+            setBackgroundColor(Color.TRANSPARENT)
+            contentDescription = "Navigation Button"
+            scaleType = ImageView.ScaleType.CENTER
+        }
+        addView(buttonImageView)
+
+        // Set default button type
+        setButtonType(ButtonType.HOME)
+
+        // Set click listener
+        setOnClickListener {
+            onClickListener?.invoke()
+        }
+    }
+
+    /**
+     * Set the button type (HOME or BACK)
+     */
+    fun setButtonType(type: ButtonType) {
+        buttonType = type
+        when (type) {
+            ButtonType.HOME -> {
+                buttonImageView.setImageDrawable(homeDrawable)
+                contentDescription = "Home"
+            }
+            ButtonType.BACK -> {
+                buttonImageView.setImageDrawable(backDrawable)
+                contentDescription = "Back"
+            }
+        }
+    }
+
+    /**
+     * Set the button color
+     */
+    fun setButtonColor(color: Int) {
+        currentFrontColor = color
+        homeDrawable?.updateColor(color)
+        backDrawable?.updateColor(color)
+    }
+
+    /**
+     * Set click listener
+     */
+    fun setOnButtonClickListener(listener: () -> Unit) {
+        onClickListener = listener
     }
 }

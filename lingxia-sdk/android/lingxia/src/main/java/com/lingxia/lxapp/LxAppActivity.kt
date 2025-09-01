@@ -15,7 +15,7 @@ import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
-import java.lang.ref.WeakReference
+
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -91,7 +91,6 @@ class LxAppActivity : AppCompatActivity() {
          */
         @JvmStatic
         fun updateTabBarUI(appId: String): Boolean {
-            Log.d(TAG, "updateTabBarUI called for appId: $appId")
 
             val activity = LxApp.getCurrentActivity()
             if (activity != null && activity.appId == appId) {
@@ -103,7 +102,7 @@ class LxAppActivity : AppCompatActivity() {
                         if (newTabBarConfig != null) {
                             // Update existing TabBar with new configuration
                             activity.tabBar?.setConfig(newTabBarConfig)
-                            Log.d(TAG, "TabBar refreshed successfully with ${newTabBarConfig.list.size} items")
+
                         } else {
                             Log.w(TAG, "No TabBar config available for refresh")
                         }
@@ -111,7 +110,7 @@ class LxAppActivity : AppCompatActivity() {
                         Log.e(TAG, "Failed to refresh TabBar from Rust: ${e.message}", e)
                     }
                 }
-                Log.d(TAG, "TabBar UI update triggered for appId: $appId")
+
                 return true
             } else {
                 Log.w(TAG, "No matching activity found for appId: $appId (current: ${activity?.appId})")
@@ -207,6 +206,7 @@ class LxAppActivity : AppCompatActivity() {
     private lateinit var webViewContainer: FrameLayout
     private var tabBar: TabBar? = null
     private var navigationBar: NavigationBar? = null
+    private var independentNavigationButton: NavigationButton? = null
     private var isDestroyed = false
     private var pendingWebViewSetup = false
     private var isDisplayingHomeLxApp: Boolean = false
@@ -237,7 +237,7 @@ class LxAppActivity : AppCompatActivity() {
 
         try {
             webViewFuture = executor.submit<com.lingxia.lxapp.WebView?> {
-                Log.d(TAG, "Starting parallel WebView creation for $appId:$initialPath")
+
                 findWebView(appId, initialPath)
             }
         } catch (e: Exception) {
@@ -264,6 +264,9 @@ class LxAppActivity : AppCompatActivity() {
 
         // Create global NavigationBar (always present, controlled by visibility)
         createNavBar()
+
+        // Create independent navigation button (for when navbar is hidden but button is needed)
+        createIndependentNavigationButton()
 
         // Defer capsule button creation to post-layout
         rootContainer.post {
@@ -308,15 +311,13 @@ class LxAppActivity : AppCompatActivity() {
                     try {
                         currentWebView?.visibility = View.VISIBLE
                         val result = NativeApi.onBackPressed(appId)
-                        Log.d(TAG, "Back press handled by native: $result")
+
                     } catch (e: Exception) {
                         Log.e(TAG, "Error handling back press: ${e.message}")
                     }
                 }
             })
         }
-
-        Log.d(TAG, "LxAppActivity onCreate completed for appId: $appId, path: $initialPath")
     }
 
     private fun setupContainers() {
@@ -345,7 +346,7 @@ class LxAppActivity : AppCompatActivity() {
 
     private fun setupTabBar(config: TabBarState?) {
         if (config == null) {
-            Log.d(TAG, "Invalid or insufficient TabBar config, TabBar not shown.")
+
             return
         }
 
@@ -369,7 +370,7 @@ class LxAppActivity : AppCompatActivity() {
             tabBar = TabBar(this).apply {
                 setConfig(config)
                 setOnTabSelectedListener { index, path ->
-                    Log.d(TAG, "Tab clicked: index=$index, path=$path")
+
                     navigate(path, NavigationType.SWITCH_TAB)
                 }
                 applyTabBarLayoutParams(this, config)
@@ -491,22 +492,6 @@ class LxAppActivity : AppCompatActivity() {
     }
 
     /**
-     * Helper function to determine if a color is dark
-     */
-    private fun isColorDark(argbColor: Int): Boolean {
-        // Extract RGB components from ARGB
-        val red = (argbColor shr 16) and 0xFF
-        val green = (argbColor shr 8) and 0xFF
-        val blue = argbColor and 0xFF
-
-        // Calculate luminance using standard formula
-        val luminance = 0.299 * red + 0.587 * green + 0.114 * blue
-
-        // Consider colors with luminance < 128 as dark (0-255 scale)
-        return luminance < 128
-    }
-
-    /**
      * Update status bar to match navbar background color
      */
     private fun updateStatusBarForNavbar(navbarBgColor: Int) {
@@ -514,7 +499,7 @@ class LxAppActivity : AppCompatActivity() {
         window.statusBarColor = navbarBgColor
 
         // Set status bar text color based on navbar background brightness
-        val isNavbarDark = isColorDark(navbarBgColor)
+        val isNavbarDark = NavigationBar.ColorUtils.isColorDark(navbarBgColor)
         WindowCompat.getInsetsController(window, window.decorView).apply {
             isAppearanceLightStatusBars = !isNavbarDark  // Light text on dark bg, dark text on light bg
         }
@@ -541,7 +526,7 @@ class LxAppActivity : AppCompatActivity() {
             return
         }
         if (!isDestroyed) {
-            Log.d(TAG, "Attaching and resuming WebView for path: ${view.getCurrentPath()}")
+
 
             // Ensure view is visible
             view.visibility = View.VISIBLE
@@ -729,7 +714,6 @@ class LxAppActivity : AppCompatActivity() {
             )
             setOnClickListener {
                 // Handle more options click
-                Log.d(TAG, "More options clicked")
             }
         }
 
@@ -777,18 +761,16 @@ class LxAppActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         if (!pendingWebViewSetup) {
-            Log.d(TAG, "Resuming current WebView in onResume")
+
             currentWebView?.visibility = View.VISIBLE // Ensure visibility
             webViewContainer.visibility = View.VISIBLE
             currentWebView?.resume()
-        } else {
-            Log.d(TAG, "Skipping WebView resume in onResume because pendingWebViewSetup is true")
-        }
+        } 
     }
 
     override fun onPause() {
         super.onPause()
-        Log.d(TAG, "Pausing current WebView in onPause")
+
         currentWebView?.pause()
     }
 
@@ -806,7 +788,7 @@ class LxAppActivity : AppCompatActivity() {
         // Pause current WebView but don't destroy it
         // WebView destruction is managed by native
         currentWebView?.let { view ->
-            Log.d(TAG, "Pausing current WebView (onDestroy)")
+
             view.pause()
         }
 
@@ -854,15 +836,11 @@ class LxAppActivity : AppCompatActivity() {
      * to prevent timing issues and provide smooth, coordinated transitions
      */
     private fun coordinatedNavigationUpdate(targetPath: String, navigationType: NavigationType): Boolean {
-        Log.d(TAG, "Coordinated navigation update: $targetPath with type: $navigationType")
 
-        // Step 1: Get navbar state early for coordination
         val pageConfig = getNavBarState(appId, targetPath)
 
-        // Step 2: Apply tabbar updates with coordination
         applyNavigationTypeUpdates(navigationType, targetPath)
 
-        // Step 3: Navigate with coordinated timing
         return navigateToPageWithCoordination(targetPath, navigationType, pageConfig)
     }
 
@@ -877,69 +855,22 @@ class LxAppActivity : AppCompatActivity() {
     private fun applyNavigationTypeUpdates(navigationType: NavigationType, targetPath: String) {
         when (navigationType) {
             NavigationType.SWITCH_TAB -> {
-                showTabBarWithAnimation(true)
+                showTabBar(true)
                 tabBar?.findTabIndexByPath(targetPath)?.let { index ->
                     if (index >= 0) tabBar?.setSelectedIndex(index, notifyListener = false)
                 }
             }
             NavigationType.LAUNCH -> {
-                showTabBarWithAnimation(false)  // Non-tab page
+                showTabBar(false)  // Non-tab page
             }
             NavigationType.REPLACE, NavigationType.FORWARD, NavigationType.BACKWARD -> {
-                showTabBarWithAnimation(false)
+                showTabBar(false)
             }
         }
     }
 
-    /**
-     * Show or hide TabBar with smooth fade animation
-     * Provides elegant transitions like iOS/macOS/Harmony platforms
-     */
-    private fun showTabBarWithAnimation(show: Boolean) {
-        tabBar?.let { tabBar ->
-            // Avoid duplicate animations
-            if (show && tabBar.visibility == View.VISIBLE && tabBar.alpha == 1f) {
-                return // Already visible
-            }
-            if (!show && tabBar.visibility == View.GONE) {
-                return // Already hidden
-            }
-
-            // Cancel any existing animation to prevent conflicts
-            tabBar.animate().cancel()
-
-            if (show) {
-                // Fade in animation with slight scale effect for polish
-                Log.d(TAG, "TabBar fade in animation")
-                tabBar.visibility = View.VISIBLE
-                tabBar.alpha = 0f
-                tabBar.scaleY = 0.95f // Subtle scale effect
-                tabBar.animate()
-                    .alpha(1f)
-                    .scaleY(1f)
-                    .setDuration(250) // Slightly longer for smoothness
-                    .setInterpolator(android.view.animation.DecelerateInterpolator(1.5f))
-                    .withStartAction {
-                        // Ensure proper initial state
-                        tabBar.visibility = View.VISIBLE
-                    }
-                    .start()
-            } else {
-                // Fade out animation with subtle scale effect
-                Log.d(TAG, "TabBar fade out animation")
-                tabBar.animate()
-                    .alpha(0f)
-                    .scaleY(0.95f) // Subtle scale effect
-                    .setDuration(200) // Faster fade out
-                    .setInterpolator(android.view.animation.AccelerateInterpolator(1.2f))
-                    .withEndAction {
-                        tabBar.visibility = View.GONE
-                        tabBar.alpha = 1f // Reset for next show
-                        tabBar.scaleY = 1f // Reset scale
-                    }
-                    .start()
-            }
-        }
+    private fun showTabBar(show: Boolean) {
+        tabBar?.visibility = if (show) View.VISIBLE else View.GONE
     }
 
     /**
@@ -955,7 +886,7 @@ class LxAppActivity : AppCompatActivity() {
         navigationType: NavigationType,
         pageConfig: NavigationBarState?
     ): Boolean {
-        Log.d(TAG, "Coordinated page navigation: $targetPath")
+
 
         // All navigation types use coordinated logic
         val success = when (navigationType) {
@@ -1011,7 +942,6 @@ class LxAppActivity : AppCompatActivity() {
                     // Remove old container from parent
                     (oldContainer.parent as? ViewGroup)?.removeView(oldContainer)
 
-                    Log.d(TAG, "Old container animated out and cleaned up")
                 } catch (e: Exception) {
                     Log.e(TAG, "Error cleaning up old container: ${e.message}")
                 }
@@ -1074,7 +1004,6 @@ class LxAppActivity : AppCompatActivity() {
                     .setDuration(animationDuration)
                     .setInterpolator(android.view.animation.AccelerateInterpolator())
                     .withEndAction {
-                        // Clean up old container
                         cleanupOldContainer(container)
                     }
                     .start()
@@ -1140,8 +1069,6 @@ class LxAppActivity : AppCompatActivity() {
         isReplace: Boolean = false,
         isBackNavigation: Boolean = false
     ) {
-        Log.d(TAG, "navigateToPage (Coordinated): targetPath=$targetPath, isReplace=$isReplace, isBackNavigation=$isBackNavigation")
-
         try {
             // Get current WebView before changes
             val oldWebView = currentWebView
@@ -1198,20 +1125,22 @@ class LxAppActivity : AppCompatActivity() {
     }
 
     private fun animateNavBar(navbarState: NavigationBarState, isBackNavigation: Boolean) {
+
         if (!navbarState.showNavbar) {
             navigationBar?.visibility = View.GONE
+            // IMPORTANT: Animate independent home button when navbar is hidden
+            animateIndependentNavigationButton(navbarState, isBackNavigation)
             return
         }
+
+        // IMPORTANT: Hide independent navigation button to avoid duplication
+        independentNavigationButton?.visibility = View.GONE
 
         navigationBar?.apply {
             visibility = View.VISIBLE
             translationX = if (isBackNavigation) -width.toFloat() else width.toFloat()
 
-            val textColor = when (navbarState.navigationBarTextStyle.lowercase()) {
-                "white" -> Color.WHITE
-                "black" -> Color.BLACK
-                else -> if (isColorDark(navbarState.navigationBarBackgroundColor)) Color.WHITE else Color.BLACK
-            }
+            val textColor = NavigationBar.ColorUtils.resolveNavTextColor(navbarState)
 
             updateStateAndAnimate(
                 title = navbarState.navigationBarTitleText,
@@ -1230,19 +1159,43 @@ class LxAppActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Handle independent navigation button when navbar is hidden
+     */
+    private fun animateIndependentNavigationButton(navbarState: NavigationBarState, isBackNavigation: Boolean) {
+        // Hide NavigationBar's buttons to avoid duplication
+        navigationBar?.apply {
+            setHomeButtonVisible(false)
+            setBackButtonVisible(false)
+        }
+
+        // Update button state and animate if visible
+        updateIndependentNavigationButton(navbarState)
+
+        independentNavigationButton?.takeIf { it.visibility == View.VISIBLE }?.let { button ->
+            val slideInTranslation = if (isBackNavigation) -button.width.toFloat() else button.width.toFloat()
+            button.translationX = slideInTranslation
+            button.alpha = 0f
+
+            button.animate()
+                .translationX(0f)
+                .alpha(1f)
+                .setDuration(LxAppDrawables.Constants.ANIMATION_DURATION_MS)
+                .setInterpolator(android.view.animation.DecelerateInterpolator())
+                .start()
+        }
+    }
+
     private fun updateNavBar(navbarState: NavigationBarState) {
         if (!navbarState.showNavbar) {
             navigationBar?.visibility = View.GONE
+            updateIndependentNavigationButton(navbarState)
             return
         }
 
         navigationBar?.apply {
             visibility = View.VISIBLE
-            val textColor = when (navbarState.navigationBarTextStyle.lowercase()) {
-                "white" -> Color.WHITE
-                "black" -> Color.BLACK
-                else -> if (isColorDark(navbarState.navigationBarBackgroundColor)) Color.WHITE else Color.BLACK
-            }
+            val textColor = NavigationBar.ColorUtils.resolveNavTextColor(navbarState)
 
             updateStateAndAnimate(
                 title = navbarState.navigationBarTitleText,
@@ -1261,13 +1214,12 @@ class LxAppActivity : AppCompatActivity() {
         }
     }
 
-
-
     private fun createNavBar() {
         if (navigationBar != null) return
 
-        val statusBarHeight = getStatusBarHeight(this)
-        navigationBar = NavigationBar(this).apply {
+        try {
+            val statusBarHeight = getStatusBarHeight(this)
+            navigationBar = NavigationBar(this).apply {
             val navBarContentHeight = getCalculatedContentHeightPx()
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -1284,6 +1236,9 @@ class LxAppActivity : AppCompatActivity() {
         }
 
         rootContainer.addView(navigationBar)
+        } catch (e: Exception) {
+            navigationBar = null
+        }
     }
 
     private fun updateNavigationBar(config: NavigationBarState?, isBackNavigation: Boolean, disableAnimation: Boolean = false, targetPath: String? = null) {
@@ -1299,7 +1254,7 @@ class LxAppActivity : AppCompatActivity() {
             val textColor = when (navbarState.navigationBarTextStyle.lowercase()) {
                 "white" -> Color.WHITE
                 "black" -> Color.BLACK
-                else -> if (isColorDark(navbarState.navigationBarBackgroundColor)) Color.WHITE else Color.BLACK
+                else -> if (NavigationBar.ColorUtils.isColorDark(navbarState.navigationBarBackgroundColor)) Color.WHITE else Color.BLACK
             }
 
             navigationBar?.updateStateAndAnimate(
@@ -1328,20 +1283,59 @@ class LxAppActivity : AppCompatActivity() {
         }
 
         updateLayoutMargins()
+        updateIndependentNavigationButton(navbarState)
+    }
+
+    private fun updateIndependentNavigationButton(navbarState: NavigationBarState?) {
+        val shouldShow = navbarState != null && !navbarState.showNavbar &&
+                        (navbarState.showBackButton || navbarState.showHomeButton)
+
+        if (shouldShow) {
+            if (independentNavigationButton == null) createIndependentNavigationButton()
+
+            independentNavigationButton?.apply {
+                visibility = View.VISIBLE
+                val isBackButton = navbarState!!.showBackButton
+                setButtonType(if (isBackButton) NavigationButton.ButtonType.BACK else NavigationButton.ButtonType.HOME)
+                setOnButtonClickListener(if (isBackButton) { -> handleBackButtonClick() } else { -> handleHomeButtonClick() })
+                setButtonColor(NavigationBar.ColorUtils.resolveNavTextColor(navbarState))
+            }
+        } else {
+            independentNavigationButton?.visibility = View.GONE
+        }
+    }
+
+    private fun createIndependentNavigationButton() {
+        if (independentNavigationButton != null) return
+
+        val density = resources.displayMetrics.density
+        independentNavigationButton = NavigationButton(this).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                (LxAppDrawables.Constants.BUTTON_SIZE_DP * density).toInt(),
+                (LxAppDrawables.Constants.BUTTON_SIZE_DP * density).toInt()
+            ).apply {
+                gravity = Gravity.TOP or Gravity.START
+                topMargin = getStatusBarHeight(this@LxAppActivity) + (4 * density).toInt()
+                marginStart = (LxAppDrawables.Constants.MARGIN_START_DP * density).toInt()
+            }
+            elevation = 1000f
+            visibility = View.GONE
+        }
+        rootContainer.addView(independentNavigationButton)
     }
 
     /**
      * Handles the click event from the NavigationBar's back button.
      */
     private fun handleBackButtonClick() {
-        Log.d(TAG, "NavigationBar back button clicked")
+
     }
 
     /**
      * Handles the click event from the NavigationBar's home button.
      */
     private fun handleHomeButtonClick() {
-        Log.d(TAG, "NavigationBar home button clicked")
+
     }
 
     // Helper to calculate the Y translation based on visible bars
@@ -1355,7 +1349,7 @@ class LxAppActivity : AppCompatActivity() {
 
     // Close the current LxApp
     fun closeLxApp() {
-        Log.d(TAG, "Closing current LxApp: $appId")
+
 
         // Notify native layer
         notifyLxAppClosed()
@@ -1369,7 +1363,7 @@ class LxAppActivity : AppCompatActivity() {
         currentWebView = null
 
         // Hide tab bar with animation (capsule and navbar remain)
-        showTabBarWithAnimation(false)
+        showTabBar(false)
 
         // Clear app state
         appId = ""
@@ -1378,7 +1372,7 @@ class LxAppActivity : AppCompatActivity() {
 
     // Switch to a different LxApp in the current activity (openLxApp/closeLxApp lifecycle)
     fun openLxApp(appId: String, path: String) {
-        Log.d(TAG, "Opening LxApp: $appId at path: $path")
+
 
         // Ensure all UI operations are on the main thread
         runOnUiThread {
@@ -1403,11 +1397,9 @@ class LxAppActivity : AppCompatActivity() {
     }
 
     /**
-     * 1. Necessary preparation for LxApp (build tabbar, etc.)
+     *  Necessary preparation for LxApp (build tabbar, etc.)
      */
     private fun prepareLxApp(appId: String) {
-        Log.d(TAG, "Preparing LxApp: $appId")
-
         // Pause current WebView
         currentWebView?.let { webView ->
             webView.pause()
@@ -1422,16 +1414,16 @@ class LxAppActivity : AppCompatActivity() {
         val tabBarConfig = NativeApi.getTabBarState(appId)
         if (tabBarConfig != null) {
             tabBar?.setConfig(tabBarConfig)
-            showTabBarWithAnimation(true)
-            Log.d(TAG, "TabBar configured for app: $appId")
+            showTabBar(true)
+
         } else {
-            showTabBarWithAnimation(false)
-            Log.d(TAG, "No TabBar for app: $appId")
+            showTabBar(false)
+
         }
     }
 
     /**
-     * 2. Check whether to show capsule button (home=hide, others=show)
+     * Check whether to show capsule button (home=hide, others=show)
      */
     private fun updateCapsuleButtonVisibility(appId: String) {
         val isHomeLxApp = (appId == LxApp.HomeLxAppId)
@@ -1440,11 +1432,10 @@ class LxAppActivity : AppCompatActivity() {
             // Home LxApp: hide capsule button
             val capsuleButton = rootContainer.findViewWithTag<View>("capsule_button")
             capsuleButton?.visibility = View.GONE
-            Log.d(TAG, "Capsule button hidden for home LxApp")
+
         } else {
             // Other LxApps: ensure capsule button exists and is visible
             updateCapsuleButton()
-            Log.d(TAG, "Capsule button shown for LxApp: $appId")
         }
     }
 
@@ -1483,7 +1474,6 @@ class LxAppActivity : AppCompatActivity() {
     // Handle configuration changes to prevent Activity recreation
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
         super.onConfigurationChanged(newConfig)
-        Log.d(TAG, "Configuration changed, updating layout")
 
         // Update layout to adapt to screen orientation changes
         updateLayoutMargins()
