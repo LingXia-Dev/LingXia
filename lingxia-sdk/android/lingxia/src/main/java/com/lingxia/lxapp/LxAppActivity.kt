@@ -796,11 +796,6 @@ class LxAppActivity : AppCompatActivity() {
     fun navigate(targetPath: String, navigationType: NavigationType): Boolean {
         if (!::appId.isInitialized) return false
 
-        // Allow same path for launch (app initialization)
-        if (currentWebView?.getCurrentPath() == targetPath && navigationType != NavigationType.LAUNCH) {
-            return true
-        }
-
         try {
             // Resolve actual navigation type (like macOS)
             val actualType = resolveNavigationType(navigationType, targetPath)
