@@ -260,7 +260,6 @@ extension iOSLxApp {
 
     /// Execute lifecycle action
     public func executeLifecycleAction(_ action: LifecycleAction, appId: String, path: String) {
-
         switch action {
         case .openApp:
             // onLxappOpened already called in prepareOpenLxApp

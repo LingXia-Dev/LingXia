@@ -126,6 +126,11 @@ public class LxAppCore {
         performInitialization()
     }
 
+    /// Check if LxApp system is initialized and ready for use
+    internal static func isInitialized() -> Bool {
+        return instance != nil && homeLxAppId != nil
+    }
+
     private static func performInitialization() {
         instance = LxAppCore()
 

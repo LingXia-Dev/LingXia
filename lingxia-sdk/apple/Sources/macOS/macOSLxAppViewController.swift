@@ -379,11 +379,6 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     public func navigate(appId: String, to path: String, with navigationType: NavigationType) {
         guard !appId.isEmpty else { return }
 
-        // Allow same path navigation for launch type (app initialization)
-        if currentWebView?.currentPath == path && navigationType != .launch {
-            return
-        }
-
         self.initialPath = path
 
         // Resolve actual navigation type based on logic

@@ -87,25 +87,21 @@ public struct LxAppNavigationBarView: View {
     }
 
     public var body: some View {
-        // UI automatically reflects state
-        Group {
-            if let state = state, state.show_navbar {
-                VStack(spacing: 0) {
-                    // Status bar area - SAME COLOR as navigation bar for unified appearance
-                    Rectangle()
-                        .fill(backgroundColor)
-                        .frame(height: LxAppTheme.getStatusBarHeight())
+        if let state = state {
+            let bgColor = state.show_navbar ? backgroundColor : Color.clear
 
-                    // Navigation bar content - SAME background color as status bar
-                    navigationBarContent
-                        .frame(height: NavigationBarState.DEFAULT_HEIGHT)
-                        .background(backgroundColor)
-                }
-                .background(backgroundColor) // Ensure entire container has background
-                .ignoresSafeArea(.container, edges: .top) // Only ignore top safe area
-                .clipped() // Remove any overflow that might cause white lines
+            VStack(spacing: 0) {
+                Rectangle()
+                    .fill(bgColor)
+                    .frame(height: LxAppTheme.getStatusBarHeight())
+
+                navigationBarContent
+                    .frame(height: NavigationBarState.DEFAULT_HEIGHT)
+                    .background(bgColor)
             }
-            // When navbar is hidden, show nothing at all - no transparent elements
+            .background(bgColor)
+            .ignoresSafeArea(.container, edges: .top)
+            .clipped()
         }
     }
 
@@ -129,7 +125,7 @@ public struct LxAppNavigationBarView: View {
 
     @ViewBuilder
     private var leadingButton: some View {
-        if let state = state {
+        if let state = state, state.show_navbar {
             if state.show_back_button {
                 Button(action: onBackTapped) {
                     LxAppIcons.back
@@ -158,15 +154,17 @@ public struct LxAppNavigationBarView: View {
 
     @ViewBuilder
     private var titleView: some View {
-        if isLoading {
-            ProgressView()
-                .progressViewStyle(CircularProgressViewStyle())
-                .scaleEffect(0.8)
-        } else if let state = state {
-            Text(state.title_text.toString())
-                .font(LxAppTheme.Typography.navigationTitle)
-                .foregroundColor(textColor)
-                .lineLimit(1)
+        if let state = state, state.show_navbar {
+            if isLoading {
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle())
+                    .scaleEffect(0.8)
+            } else {
+                Text(state.title_text.toString())
+                    .font(LxAppTheme.Typography.navigationTitle)
+                    .foregroundColor(textColor)
+                    .lineLimit(1)
+            }
         }
     }
 
@@ -252,6 +250,8 @@ public class iOSNavigationBarWrapper: UIView, NavigationBarProtocol {
     private func setupStatusBarBackground() {
         statusBarBackgroundView = UIView()
         statusBarBackgroundView?.translatesAutoresizingMaskIntoConstraints = false
+        // CRITICAL: Set initial background to clear to prevent black flash
+        statusBarBackgroundView?.backgroundColor = UIColor.clear
 
         if let statusBarBg = statusBarBackgroundView {
             addSubview(statusBarBg)
@@ -265,25 +265,18 @@ public class iOSNavigationBarWrapper: UIView, NavigationBarProtocol {
     }
 
     public func updateWithState(_ state: NavigationBarState?) {
-        // Update state on main thread to ensure @Published triggers properly
-        Task { @MainActor in
-            NavigationBarStateManager.shared.currentState = state
+        NavigationBarStateManager.shared.currentState = state
 
-            let showNavbar = state?.show_navbar ?? false
-            self.isHidden = !showNavbar
+        let showNavbar = state?.show_navbar ?? false
+        updateContainerHeight(showNavbar: showNavbar)
 
-            if showNavbar {
-                updateContainerHeight(showNavbar: true)
-                statusBarBackgroundView?.isHidden = false
-                if let state = state {
-                    let color = UIColor(argb: state.background_color)
-                    statusBarBackgroundView?.backgroundColor = color
-                }
-            } else {
-                updateContainerHeight(showNavbar: false)
-                statusBarBackgroundView?.isHidden = true
-                statusBarBackgroundView?.backgroundColor = UIColor.clear
-            }
+        if let state = state, showNavbar {
+            let color = UIColor(argb: state.background_color)
+            statusBarBackgroundView?.backgroundColor = color
+            statusBarBackgroundView?.isHidden = false
+        } else {
+            statusBarBackgroundView?.backgroundColor = UIColor.clear
+            statusBarBackgroundView?.isHidden = !showNavbar
         }
     }
 
@@ -292,15 +285,16 @@ public class iOSNavigationBarWrapper: UIView, NavigationBarProtocol {
 
         if showNavbar {
             // Show navbar: status bar + navbar content height
-            heightConstraint.constant = LxAppTheme.getStatusBarHeight() + NavigationBarState.DEFAULT_HEIGHT
+            let newHeight = LxAppTheme.getStatusBarHeight() + NavigationBarState.DEFAULT_HEIGHT
+            heightConstraint.constant = newHeight
         } else {
-            // Hide navbar: zero height for complete transparency
+            // CRITICAL FIX: In transparent mode, set height to 0 for complete transparency
+            // This prevents any overlay that might cause black background
             heightConstraint.constant = 0
         }
 
         // Force layout update
-        setNeedsLayout()
-        layoutIfNeeded()
+        superview?.layoutIfNeeded()
     }
 
     public func getCalculatedContentHeight() -> CGFloat {

@@ -21,11 +21,8 @@ import UIKit
 @MainActor
 public class LxAppPageNavigation {
 
-    /// Universal TabBar click handler - the ONLY way to handle tab clicks
-    /// Future: This will be called directly by Rust layer with appId + path
+    /// Universal TabBar click handler
     public static func handleTabClick(appId: String, path: String) {
-        // Direct navigation call - no controller dependency
-        // This is the pattern for future Rust integration
         #if os(iOS)
         iOSLxApp.navigate(appId: appId, path: path, navigationType: .switchTab)
         #elseif os(macOS)
@@ -124,8 +121,12 @@ public class LxAppSharedNavigation {
 /// Core page navigation utilities
 @MainActor
 public struct LxPageNavigation {
-    /// Gets page configuration from Rust layer using typed API
+    /// Gets navigation bar state from Rust layer
     public static func getNavigationBarState(appId: String, path: String) -> NavigationBarState? {
+        guard LxAppCore.isInitialized(), !appId.isEmpty, !path.isEmpty else {
+            return nil
+        }
+
         return lingxia.getNavigationBarState(appId, path)
     }
 
