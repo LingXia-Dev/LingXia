@@ -278,6 +278,40 @@ public typealias LxAppPlatformColor = NSColor
 public typealias PlatformColor = NSColor
 #endif
 
+/// Unified color utilities
+public struct LxAppColorUtils {
+    /// Parse color string to UInt32 ARGB
+    public static func parseColorString(_ colorStr: String, defaultColor: UInt32 = 0xFF000000) -> UInt32 {
+        if colorStr.lowercased() == "transparent" {
+            return 0x00000000
+        }
+
+        if colorStr.hasPrefix("#") {
+            let hex = String(colorStr.dropFirst())
+            if hex.count == 6, let rgb = UInt32(hex, radix: 16) {
+                return 0xFF000000 | rgb // Add full alpha
+            }
+        }
+
+        return defaultColor
+    }
+
+    /// Check if color is transparent
+    public static func isTransparent(_ colorValue: UInt32) -> Bool {
+        return (colorValue >> 24) & 0xFF == 0
+    }
+
+    /// Create platform color from ARGB value
+    public static func platformColor(from argb: UInt32) -> PlatformColor {
+        return PlatformColor(argb: argb)
+    }
+
+    /// Convert platform color to ARGB value
+    public static func argbValue(from color: PlatformColor) -> UInt32 {
+        return color.toARGB()
+    }
+}
+
 extension PlatformColor {
     /// Initialize color from a UInt32 ARGB value
     convenience init(argb: UInt32) {
@@ -289,18 +323,15 @@ extension PlatformColor {
         self.init(red: red, green: green, blue: blue, alpha: alpha)
     }
 
-    /// Convert color to UInt32 ARGB value
+    /// Convert color to UInt32 ARGB value - unified implementation
     func toARGB() -> UInt32 {
         var red: CGFloat = 0
         var green: CGFloat = 0
         var blue: CGFloat = 0
         var alpha: CGFloat = 0
 
-        #if os(iOS)
+        // Both iOS and macOS use the same method
         self.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
-        #else
-        self.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
-        #endif
 
         let a = UInt32(alpha * 255) & 0xFF
         let r = UInt32(red * 255) & 0xFF

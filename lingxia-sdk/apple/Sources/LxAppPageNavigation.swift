@@ -1,6 +1,7 @@
 import SwiftUI
 import Foundation
 import os.log
+import WebKit
 
 /// Navigation type enum shared between iOS and macOS
 public enum NavigationType: Sendable {
@@ -51,10 +52,87 @@ public class LxAppPageNavigation {
     }
 }
 
-/// Shared navigation logic between iOS and macOS - based on macOS reference
+/// Protocol for TabBar control operations
+@MainActor
+public protocol NavigationTabBarController {
+    func findTabIndexByPath(_ path: String) -> Int?
+    func setSelectedTabIndex(_ index: Int)
+}
+
+/// Protocol for UI update operations
+@MainActor
+public protocol NavigationUIUpdater {
+    func showTabBar(_ show: Bool)
+    func triggerTabBarRefresh()
+}
+
+/// Shared navigation logic
 @MainActor
 public class LxAppSharedNavigation {
-    nonisolated(unsafe) private static let log = OSLog(subsystem: "LingXia", category: "SharedNavigation")
+    nonisolated(unsafe) private static let log = OSLog(subsystem: "LingXia", category: "Navigation")
+
+    /// Shared WebView switching logic - used by both platforms
+    public static func switchToWebView(appId: String, path: String, currentWebView: WKWebView?, targetWebView: WKWebView?) -> Bool {
+        guard let target = targetWebView else {
+            os_log("Target WebView not found for %@:%@", log: log, type: .info, appId, path)
+            return false
+        }
+
+        // Hide current WebView if different
+        if let current = currentWebView, current != target {
+            WebViewManager.switchWebView(from: current, to: target)
+        }
+
+        // Setup target WebView
+        target.setup(appId: appId, path: path)
+        return true
+    }
+
+    /// Resolve navigation type based on path and context
+    public static func resolveNavigationType(_ navigationType: NavigationType, for path: String, isTabPage: (String) -> Bool) -> NavigationType {
+        switch navigationType {
+        case .launch:
+            // Launch: check if it's a tab page
+            if isTabPage(path) {
+                return .switchTab  // Convert to tab switch
+            } else {
+                return .launch     // Keep as launch (will hide tabbar)
+            }
+        default:
+            return navigationType  // Keep original type
+        }
+    }
+
+    /// Apply navigation type specific UI updates
+    public static func applyNavigationTypeSpecificUpdates(
+        navigationType: NavigationType,
+        path: String,
+        appId: String,
+        tabBarController: NavigationTabBarController,
+        uiUpdater: NavigationUIUpdater
+    ) {
+        switch navigationType {
+        case .switchTab:
+            // TabSwitch: Set selected TabBar item and ensure visibility
+            if let tabIndex = tabBarController.findTabIndexByPath(path) {
+                tabBarController.setSelectedTabIndex(tabIndex)
+                uiUpdater.showTabBar(true)
+                uiUpdater.triggerTabBarRefresh()
+            }
+
+        case .launch:
+            // Launch (non-tab page): Hide TabBar
+            uiUpdater.showTabBar(false)
+
+        case .replace:
+            // Replace: Hide TabBar, update NavBar
+            uiUpdater.showTabBar(false)
+
+        case .forward, .backward:
+            // Forward/Backward: Hide TabBar
+            uiUpdater.showTabBar(false)
+        }
+    }
 
     /// Shared navigation preparation logic - used by both platforms
     public static func prepareNavigation(appId: String, path: String, navigationType: NavigationType) -> NavigationPlan {

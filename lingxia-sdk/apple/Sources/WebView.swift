@@ -74,7 +74,7 @@ private struct AssociatedKeys {
     nonisolated(unsafe) static var isRegistered: UInt8 = 0
 }
 
-/// Simple WebView manager - Rust handles creation/lifecycle
+/// Shared WebView manager
 @MainActor
 public class WebViewManager {
     private static let log = OSLog(subsystem: "LingXia", category: "WebView")
@@ -104,9 +104,71 @@ public class WebViewManager {
     }
 
     /// Switch between WebViews
-    static func switchWebView(from current: WKWebView?, to new: WKWebView?) {
+    public static func switchWebView(from current: WKWebView?, to new: WKWebView?) {
         current?.pauseWebView()
         new?.resumeWebView()
+    }
+
+    /// Shared WebView attachment logic
+    public static func attachWebViewToContainer(_ webView: WKWebView, container: PlatformView, constraints: [NSLayoutConstraint]? = nil) {
+        // Remove from previous parent if any
+        webView.removeFromSuperview()
+
+        // Add to new container
+        container.addSubview(webView)
+        webView.translatesAutoresizingMaskIntoConstraints = false
+
+        // Apply provided constraints or default full-container constraints
+        if let customConstraints = constraints {
+            NSLayoutConstraint.activate(customConstraints)
+        } else {
+            NSLayoutConstraint.activate([
+                webView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+                webView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+                webView.topAnchor.constraint(equalTo: container.topAnchor),
+                webView.bottomAnchor.constraint(equalTo: container.bottomAnchor)
+            ])
+        }
+
+        // Force layout and show
+        #if os(iOS)
+        container.setNeedsLayout()
+        container.layoutIfNeeded()
+        #else
+        container.needsLayout = true
+        container.layoutSubtreeIfNeeded()
+        #endif
+
+        webView.resumeWebView()
+    }
+
+    /// Configure WebView transparency - shared logic with platform-specific optimizations
+    public static func configureWebViewTransparency(_ webView: WKWebView, transparent: Bool) {
+        #if os(iOS)
+        let backgroundColor = transparent ? PlatformColor.clear : PlatformColor.systemBackground
+        let isOpaque = !transparent
+
+        // Configure WebView
+        webView.backgroundColor = backgroundColor
+        webView.isOpaque = isOpaque
+        webView.layer.backgroundColor = backgroundColor.cgColor
+
+        // Configure ScrollView (iOS-specific)
+        webView.scrollView.backgroundColor = backgroundColor
+        webView.scrollView.isOpaque = isOpaque
+        webView.scrollView.layer.backgroundColor = backgroundColor.cgColor
+        webView.scrollView.layer.isOpaque = isOpaque
+
+        // Configure scroll behavior
+        webView.scrollView.contentInsetAdjustmentBehavior = .never
+        webView.scrollView.indicatorStyle = .default
+        webView.scrollView.showsVerticalScrollIndicator = true
+        webView.scrollView.showsHorizontalScrollIndicator = true
+        #else
+        let backgroundColor = transparent ? PlatformColor.clear : PlatformColor.controlBackgroundColor
+        webView.layer?.backgroundColor = backgroundColor.cgColor
+        webView.setValue(transparent, forKey: "drawsTransparentBackground")
+        #endif
     }
 
     /// Enable WebView debugging globally
@@ -114,3 +176,9 @@ public class WebViewManager {
         debuggingEnabled = true
     }
 }
+
+#if os(iOS)
+public typealias PlatformView = UIView
+#else
+public typealias PlatformView = NSView
+#endif

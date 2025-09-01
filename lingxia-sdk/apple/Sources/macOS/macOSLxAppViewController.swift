@@ -9,7 +9,7 @@ import CLingXiaFFI
 private let lxAppViewControllerLog = OSLog(subsystem: "LingXia", category: "LxAppView")
 
 @MainActor
-public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
+public class macOSLxAppViewController: NSViewController, WKNavigationDelegate, NavigationTabBarController, NavigationUIUpdater {
     nonisolated private static let log = lxAppViewControllerLog
 
     private var currentTopMargin: CGFloat = 0
@@ -297,26 +297,8 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         currentWebView?.removeFromSuperview()
         currentWebView = webView
 
-        webView.translatesAutoresizingMaskIntoConstraints = false
-        webViewContainer.addSubview(webView)
-
-        NSLayoutConstraint.activate([
-            webView.topAnchor.constraint(equalTo: webViewContainer.topAnchor),
-            webView.leadingAnchor.constraint(equalTo: webViewContainer.leadingAnchor),
-            webView.trailingAnchor.constraint(equalTo: webViewContainer.trailingAnchor),
-            webView.bottomAnchor.constraint(equalTo: webViewContainer.bottomAnchor)
-        ])
-
-        // Force layout update of the entire view subtree to ensure all containers
-        // have their final size before we make the webView visible.
-        // This prevents visual glitches without needing to manually set the frame.
-        view.layoutSubtreeIfNeeded()
-
-        // Ensure WebView is visible
-        webView.isHidden = false
-        #if os(iOS)
-        webView.alpha = 1.0
-        #endif
+        // Use shared WebView attachment logic with default full-container constraints
+        WebViewManager.attachWebViewToContainer(webView, container: webViewContainer)
     }
 
     /// Unified method to show a WebView to the user - this is the ONLY place where onPageShow should be called
@@ -395,19 +377,9 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         }
     }
 
-    /// Resolve navigation type based on path and logic
+    /// Resolve navigation type based on path and logic - using shared utility
     private func resolveNavigationType(_ navigationType: NavigationType, for path: String) -> NavigationType {
-        switch navigationType {
-        case .launch:
-            // Launch: check if it's a tab page
-            if isTabPage(path) {
-                return .switchTab  // Convert to tab switch
-            } else {
-                return .launch     // Keep as launch (will hide tabbar)
-            }
-        default:
-            return navigationType  // Keep original type
-        }
+        return LxAppSharedNavigation.resolveNavigationType(navigationType, for: path, isTabPage: isTabPage)
     }
 
     /// Common navigation process - all types share this flow
@@ -530,29 +502,20 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         webView.currentPath = path
     }
 
-    /// Apply navigation type specific UI updates
-    /// This is where the differences between navigation types are handled
+    /// Apply navigation type specific UI updates - using shared logic
     private func applyNavigationTypeSpecificUpdates(for navigationType: NavigationType, path: String) {
-        switch navigationType {
-        case .switchTab:
-            // TabSwitch: Set selected TabBar item
-            if let tabIndex = findTabIndexByPath(path) {
-                selectedTabIndex = tabIndex
-                showTabBar(true)  // Ensure TabBar is visible
-                triggerTabBarRefresh()
-            }
+        // Use shared navigation logic instead of duplicated code
+        LxAppSharedNavigation.applyNavigationTypeSpecificUpdates(
+            navigationType: navigationType,
+            path: path,
+            appId: appId,
+            tabBarController: self,
+            uiUpdater: self
+        )
+    }
 
-        case .launch:
-            // Launch (non-tab page): Hide TabBar
-            showTabBar(false)
-
-        case .replace:
-            // Replace: Hide TabBar, update NavBar
-            showTabBar(false)
-
-        case .forward, .backward:
-            showTabBar(false)
-        }
+    public func setSelectedTabIndex(_ index: Int) {
+        selectedTabIndex = index
     }
 
     /// Check if a path is a tab page
@@ -569,7 +532,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     }
 
     /// Trigger TabBar UI refresh for programmatic navigation
-    private func triggerTabBarRefresh() {
+    public func triggerTabBarRefresh() {
         // Send notification to trigger TabBar refreshTrigger.toggle()
         NotificationCenter.default.post(
             name: .tabBarStateChanged,
