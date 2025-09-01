@@ -294,8 +294,6 @@ public struct LxAppCapsuleButtonView: View {
     let onCloseTapped: () -> Void
     let onMinimizeTapped: (() -> Void)?
 
-    @State private var isHomeLxApp: Bool = false
-
     public init(
         appId: String,
         onMoreTapped: @escaping () -> Void,
@@ -376,11 +374,6 @@ public struct LxAppCapsuleButtonView: View {
 
     private var separatorHeight: CGFloat {
         LxAppTheme.Metrics.capsuleButtonHeight - 12
-    }
-
-    // MARK: - Lifecycle
-    private func checkHomeLxApp() {
-        isHomeLxApp = appId == LxAppCore.getHomeLxAppId()
     }
 }
 

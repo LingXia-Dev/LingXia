@@ -42,15 +42,6 @@ public class NavigationBarStateManager: ObservableObject {
         currentState = newState
         #endif
     }
-
-    private func statesEqual(_ lhs: NavigationBarState?, _ rhs: NavigationBarState?) -> Bool {
-        guard let lhs = lhs, let rhs = rhs else { return lhs == nil && rhs == nil }
-        return lhs.show_navbar == rhs.show_navbar &&
-               lhs.title_text.toString() == rhs.title_text.toString() &&
-               lhs.background_color == rhs.background_color &&
-               lhs.show_back_button == rhs.show_back_button &&
-               lhs.show_home_button == rhs.show_home_button
-    }
 }
 
 /// Extension to add helper methods to swift-bridge generated NavigationBarState

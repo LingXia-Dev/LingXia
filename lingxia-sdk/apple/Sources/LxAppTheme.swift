@@ -12,20 +12,7 @@ public struct LxAppTheme {
 
     public struct Colors {
         public static let background = Color(LxAppPlatformColor.lxSystemBackground)
-        public static let secondaryBackground = Color(LxAppPlatformColor.lxSecondarySystemBackground)
         public static let text = Color(LxAppPlatformColor.lxLabel)
-        public static let secondaryText = Color(LxAppPlatformColor.lxSecondaryLabel)
-        public static let separator = Color(LxAppPlatformColor.lxSeparator)
-        public static let accent = Color(LxAppPlatformColor.lxControlAccentColor)
-
-        // Capsule button colors
-        public static let capsuleBackground = Color.white.opacity(0.9)
-        public static let capsuleBorder = Color(red: 0.867, green: 0.867, blue: 0.867) // #DDDDDD
-        public static let capsuleIcon = Color(red: 0.4, green: 0.4, blue: 0.4) // #666666 darker gray
-
-        // Navigation bar colors
-        public static let navigationBackground = Color(LxAppPlatformColor.lxSystemBackground)
-        public static let navigationText = Color(LxAppPlatformColor.lxLabel)
     }
 
     public struct Metrics {
@@ -92,21 +79,7 @@ public struct LxAppTheme {
     public struct Typography {
         public static let navigationTitle = Font.system(size: 17, weight: .medium)
         public static let tabTitle = Font.system(size: 12, weight: .medium)
-        public static let body = Font.system(size: 16)
-        public static let caption = Font.system(size: 12)
-    }
 
-    public struct Animations {
-        public static let standard = Animation.easeInOut(duration: 0.3)
-        public static let quick = Animation.easeInOut(duration: 0.15)
-        public static let slow = Animation.easeInOut(duration: 0.5)
-    }
-}
-
-public extension LxAppTheme {
-    @MainActor
-    static var platform: (statusBarHeight: CGFloat, navigationBarHeight: CGFloat) {
-        return (statusBarHeight: getStatusBarHeight(), navigationBarHeight: Metrics.navigationBarHeight)
     }
 }
 
@@ -294,10 +267,8 @@ public struct LxAppIcons {
     public static let minimize = Image(systemName: "minus")
     public static let back = Image(systemName: "chevron.left")
     public static let home = Image(systemName: "house.fill")
-    public static let loading = Image(systemName: "arrow.clockwise")
+
 }
-
-
 
 #if os(iOS)
 public typealias LxAppPlatformColor = UIColor
@@ -343,21 +314,10 @@ extension PlatformColor {
 extension LxAppPlatformColor {
     #if os(iOS)
     static var lxSystemBackground: UIColor { UIColor.systemBackground }
-    static var lxSecondarySystemBackground: UIColor { UIColor.secondarySystemBackground }
     static var lxLabel: UIColor { UIColor.label }
-    static var lxSecondaryLabel: UIColor { UIColor.secondaryLabel }
-    static var lxSeparator: UIColor { UIColor.separator }
-    static var lxControlAccentColor: UIColor { UIColor.systemBlue }
-    static var lxDarkGray: UIColor { UIColor.darkGray }
-    static var lxLightGray: UIColor { UIColor.lightGray }
+
     #else
     static var lxSystemBackground: NSColor { NSColor.windowBackgroundColor }
-    static var lxSecondarySystemBackground: NSColor { NSColor.controlBackgroundColor }
     static var lxLabel: NSColor { NSColor.labelColor }
-    static var lxSecondaryLabel: NSColor { NSColor.secondaryLabelColor }
-    static var lxSeparator: NSColor { NSColor.separatorColor }
-    static var lxControlAccentColor: NSColor { NSColor.systemBlue }
-    static var lxDarkGray: NSColor { NSColor.darkGray }
-    static var lxLightGray: NSColor { NSColor.lightGray }
     #endif
 }

@@ -33,6 +33,10 @@ extension TabBar {
         return items
     }
 
+    public static func isTransparent(_ colorValue: UInt32) -> Bool {
+        return (colorValue >> 24) & 0xFF == 0
+    }
+
     public func getGroupedItems(appId: String) -> (start: [TabBarItem], center: [TabBarItem], end: [TabBarItem]) {
         let allItems = getItems(appId: appId)
         var startItems: [TabBarItem] = []
@@ -52,29 +56,14 @@ extension TabBar {
 
         return (start: startItems, center: centerItems, end: endItems)
     }
-
-    public static func isTransparent(_ colorValue: UInt32) -> Bool {
-        return (colorValue >> 24) & 0xFF == 0
-    }
-
-    public func getResolvedBackgroundColor(isVertical: Bool) -> PlatformColor {
-        return TabBarHelper.resolvedBackgroundColor(background_color, isVertical: isVertical)
-    }
 }
 
 public enum TabBarPosition {
     case bottom, left, right
 }
 
-public struct TabBarConstants {
-    public static let DEFAULT_SPACING: CGFloat = 8
-    public static let CENTER_SPACING: CGFloat = 8
-    public static let MINIMAL_SPACER_SIZE: CGFloat = 4
-}
-
 /// Extensions for TabBarItem
 extension TabBarItem {
-    public var visible: Bool { true }
     public var cachedPagePath: String { page_path.toString() }
     public var cachedText: String { text.toString() }
     public var cachedIconPath: String { icon_path.toString() }
@@ -90,6 +79,10 @@ public struct TabBarHelper {
                 PlatformColor(red: 0.98, green: 0.98, blue: 0.98, alpha: 1.0)
         }
         return PlatformColor(argb: colorValue)
+    }
+
+    public static func isTransparent(_ colorValue: UInt32) -> Bool {
+        return (colorValue >> 24) & 0xFF == 0
     }
 }
 
@@ -810,14 +803,6 @@ public protocol TabBarProtocol: AnyObject {
     func setSelectedIndex(_ index: Int, notifyListener: Bool)
 }
 
-/// Protocol for TabBar UI implementations
-@MainActor
-public protocol TabBarUIDelegate: AnyObject {
-    func updateTabSelection(selectedIndex: Int)
-    func updateConfiguration()
-    func updateItems(_ items: [TabBarItem])
-}
-
 #if os(iOS)
 import UIKit
 
@@ -937,30 +922,6 @@ public class iOSTabBarWrapper: UIView {
         }
     }
 
-    public func forceTransparencyMode() {
-        backgroundColor = UIColor.clear
-        layer.backgroundColor = UIColor.clear.cgColor
-    }
-
-
-    private func findButton(for index: Int) -> UIButton? {
-        return findButtonRecursively(in: self, tag: index)
-    }
-
-    private func findButtonRecursively(in view: UIView, tag: Int) -> UIButton? {
-        if let button = view as? UIButton, button.tag == tag {
-            return button
-        }
-
-        for subview in view.subviews {
-            if let foundButton = findButtonRecursively(in: subview, tag: tag) {
-                return foundButton
-            }
-        }
-
-        return nil
-    }
-
     public func updateLayout() {
         guard let config = tabBarConfig else { return }
 
@@ -970,28 +931,9 @@ public class iOSTabBarWrapper: UIView {
         setupUIKitLayout(items: items, config: config)
     }
 
-    private func updateSingleButtonState(_ button: UIButton) {
-        guard let config = tabBarConfig else { return }
-        let items = config.getItems(appId: appId)
-        let index = button.tag
-
-        if index < items.count {
-            let item = items[index]
-            let isSelected = (index == selectedIndex)
-
-            // Update button appearance based on selection state
-            if let stackView = button.subviews.first as? UIStackView {
-                for arrangedSubview in stackView.arrangedSubviews {
-                    if let label = arrangedSubview as? UILabel {
-                        label.textColor = isSelected ?
-                            PlatformColor(argb: config.selected_color) :
-                            PlatformColor(argb: config.color)
-                    } else if let imageView = arrangedSubview as? UIImageView {
-                        imageView.tintColor = isSelected ? UIColor.systemBlue : UIColor.secondaryLabel
-                    }
-                }
-            }
-        }
+    public func forceTransparencyMode() {
+        backgroundColor = UIColor.clear
+        layer.backgroundColor = UIColor.clear.cgColor
     }
 
     private func setupUIKitLayout(items: [TabBarItem], config: TabBar) {
@@ -1310,15 +1252,8 @@ public class iOSTabBarWrapper: UIView {
             if index < items.count {
                 let path = items[index].page_path.toString()
                 onTabSelectedCallback?(index, path)
-                updateUIKitSelection()
+                updateLayout()
             }
-        }
-    }
-
-    private func updateUIKitSelection() {
-        if let config = tabBarConfig {
-            let items = config.getItems(appId: appId)
-            setupUIKitLayout(items: items, config: config)
         }
     }
 
