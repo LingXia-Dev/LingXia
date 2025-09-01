@@ -28,7 +28,6 @@ mod bridge {
     pub struct LxAppInfo {
         pub initial_route: String,
         pub app_name: String,
-        pub debug: bool,
     }
 
     // NavigationBar state for Swift
@@ -220,7 +219,6 @@ impl From<CoreLxAppInfo> for bridge::LxAppInfo {
         Self {
             initial_route: core_info.initial_route,
             app_name: core_info.app_name,
-            debug: core_info.debug,
         }
     }
 }

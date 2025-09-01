@@ -28,7 +28,6 @@ fn parse_color_to_u32(color_str: &str, default_color: u32) -> u32 {
 pub struct LxAppInfo {
     pub initial_route: String,
     pub app_name: String,
-    pub debug: bool,
 }
 
 /// NAPI-compatible TabBar state with items array
@@ -187,7 +186,6 @@ fn get_lx_app_info(appid: String) -> Option<LxAppInfo> {
     Some(LxAppInfo {
         initial_route: rust_app_info.initial_route,
         app_name: rust_app_info.app_name,
-        debug: rust_app_info.debug,
     })
 }
 

@@ -12,7 +12,6 @@ declare module 'liblingxia.so' {
   export interface LxAppInfo {
     initialRoute: string;
     appName: string;
-    debug: boolean;
   }
 
   /**

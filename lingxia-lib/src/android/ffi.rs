@@ -269,15 +269,6 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getLxAppInfo<'a>(
 
     let lxapp_info = lxapp.get_lxapp_info();
 
-    // Debug logging
-    log::info!(
-        "[Android] nativeGetLxAppInfo: appid={}, initial_route={}, app_name={}, debug={}",
-        appid,
-        lxapp_info.initial_route,
-        lxapp_info.app_name,
-        lxapp_info.debug
-    );
-
     // Find the LxAppInfo class
     let lxapp_info_class = match env.find_class("com/lingxia/lxapp/LxAppInfo") {
         Ok(c) => c,
@@ -298,11 +289,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getLxAppInfo<'a>(
     match env.new_object(
         lxapp_info_class,
         "(Ljava/lang/String;Ljava/lang/String;Z)V",
-        &[
-            (&initial_route_str).into(),
-            (&app_name_str).into(),
-            (lxapp_info.debug as jboolean).into(),
-        ],
+        &[(&initial_route_str).into(), (&app_name_str).into()],
     ) {
         Ok(obj) => obj,
         Err(_) => JObject::null(),

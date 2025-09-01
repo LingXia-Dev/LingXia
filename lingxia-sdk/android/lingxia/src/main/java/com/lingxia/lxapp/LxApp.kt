@@ -15,7 +15,6 @@ import androidx.appcompat.app.AppCompatActivity
 data class LxAppInfo(
     val initialRoute: String,
     val appName: String,
-    val debug: Boolean
 )
 
 class LxApp private constructor(private val context: Context) {
