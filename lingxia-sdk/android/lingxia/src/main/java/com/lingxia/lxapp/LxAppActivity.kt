@@ -1003,7 +1003,7 @@ class LxAppActivity : AppCompatActivity() {
      *
      * Extracted from navigateToPage for reuse in coordinated navigation
      */
-    private fun performWebViewTransition(oldWebView: WebView?, newContainer: FrameLayout, isBackNavigation: Boolean) {
+    private fun performWebViewTransition(oldWebView: WebView?, newContainer: FrameLayout, isBackNavigation: Boolean, shouldAnimate: Boolean = true) {
         // Get reference to old container BEFORE adding new one
         val oldContainer = webViewContainer.findViewWithTag<ViewGroup>("current_webview_container")
         oldContainer?.tag = "previous_webview_container" // Re-tag old container
@@ -1019,38 +1019,51 @@ class LxAppActivity : AppCompatActivity() {
         // Update layout margins to position the new container vertically
         updateLayoutMargins()
 
-        // Set up animation based on navigation direction
-        val slideInTranslation = if (isBackNavigation) -webViewContainer.width.toFloat() else webViewContainer.width.toFloat()
-        val slideOutTranslation = if (isBackNavigation) webViewContainer.width.toFloat() else -webViewContainer.width.toFloat()
+        if (shouldAnimate) {
+            // Set up animation based on navigation direction
+            val slideInTranslation = if (isBackNavigation) -webViewContainer.width.toFloat() else webViewContainer.width.toFloat()
+            val slideOutTranslation = if (isBackNavigation) webViewContainer.width.toFloat() else -webViewContainer.width.toFloat()
 
-        // Set initial position for new container
-        newContainer.translationX = slideInTranslation
+            // Set initial position for new container
+            newContainer.translationX = slideInTranslation
 
-        // Animate the transition
-        val animationDuration = 300L
+            // Animate the transition
+            val animationDuration = 300L
 
-        // Animate new container sliding in
-        newContainer.animate()
-            .translationX(0f)
-            .setDuration(animationDuration)
-            .setInterpolator(android.view.animation.DecelerateInterpolator())
-            .withEndAction {
-                // Trigger onPageShow after animation completes
-                triggerOnPageShow(newContainer)
-            }
-            .start()
-
-        // Animate old container sliding out (if exists)
-        oldContainer?.let { container ->
-            container.animate()
-                .translationX(slideOutTranslation)
+            // Animate new container sliding in
+            newContainer.animate()
+                .translationX(0f)
                 .setDuration(animationDuration)
-                .setInterpolator(android.view.animation.AccelerateInterpolator())
+                .setInterpolator(android.view.animation.DecelerateInterpolator())
                 .withEndAction {
-                    // Clean up old container
-                    cleanupOldContainer(container)
+                    // Trigger onPageShow after animation completes
+                    triggerOnPageShow(newContainer)
                 }
                 .start()
+
+            // Animate old container sliding out (if exists)
+            oldContainer?.let { container ->
+                container.animate()
+                    .translationX(slideOutTranslation)
+                    .setDuration(animationDuration)
+                    .setInterpolator(android.view.animation.AccelerateInterpolator())
+                    .withEndAction {
+                        // Clean up old container
+                        cleanupOldContainer(container)
+                    }
+                    .start()
+            }
+        } else {
+            // No animation - just set position and trigger callbacks immediately
+            newContainer.translationX = 0f
+
+            // Clean up old container immediately
+            oldContainer?.let { container ->
+                cleanupOldContainer(container)
+            }
+
+            // Trigger onPageShow immediately
+            triggerOnPageShow(newContainer)
         }
     }
 
@@ -1140,7 +1153,9 @@ class LxAppActivity : AppCompatActivity() {
             }
 
             // Use coordinated WebView transition (handles all animation and onPageShow)
-            performWebViewTransition(oldWebView, newContainer, isBackNavigation)
+            // Only animate for forward/backward navigation, not for replace operations (tab switch, launch, replace)
+            val shouldAnimate = !isReplace
+            performWebViewTransition(oldWebView, newContainer, isBackNavigation, shouldAnimate)
 
             // Update the current WebView reference
             currentWebView = newWebView
