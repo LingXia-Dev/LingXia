@@ -148,8 +148,8 @@ export struct LxAppNavigation {
       // Apply navigation type specific updates
       this.applyNavigationTypeSpecificUpdates(appId, path, actualType);
 
-      // Execute navigation
-      return this.navigateToPage(appId, path);
+      // Execute navigation with type information
+      return this.navigateToPage(appId, path, actualType);
     } catch (error) {
       hilog.error(DOMAIN, TAG, `Navigation failed: ${error}`);
       return false;
@@ -171,40 +171,26 @@ export struct LxAppNavigation {
   private applyNavigationTypeSpecificUpdates(appId: string, path: string, navigationType: NavigationType): void {
     switch (navigationType) {
       case NavigationType.SwitchTab:
-        // Tab switch: show tabbar and update tab selection
-        this.setTabBarHidden(appId, false);
+        // Tab switch: update tab selection
         LxAppContainer.updateTabSelection(appId, path);
         break;
 
       case NavigationType.Launch:
-        // Launch: show tabbar and update tab selection if it's a tab page
-        this.setTabBarHidden(appId, false);
-        if (this.isTabBarItem(appId, path)) {
-          LxAppContainer.updateTabSelection(appId, path);
-        }
-        break;
-
       case NavigationType.Forward:
       case NavigationType.Backward:
       case NavigationType.Replace:
-        // Hide tabbar for these types - no tab selection update needed
-        this.setTabBarHidden(appId, true);
+        // No special updates needed
         break;
     }
   }
 
-  // Track tabbar visibility per app
-  private tabBarHidden: Map<string, boolean> = new Map();
-
-  private setTabBarHidden(appId: string, hidden: boolean): void {
-    this.tabBarHidden.set(appId, hidden);
-  }
-
+  /**
+   * Required by NavigationInstance interface
+   * Tabbar visibility is handled by navigation type in LxAppContainer
+   */
   public isTabBarHidden(appId: string): boolean {
-    return this.tabBarHidden.get(appId) || false;
+    return false;
   }
-
-
 
   /**
    * Check if a path is a tabbar item - public for reuse
@@ -231,15 +217,18 @@ export struct LxAppNavigation {
    * Navigate to a specific page within an LxApp
    * @param appId - LxApp ID
    * @param path - Page path to navigate to
+   * @param navigationType - Navigation type for animation control
    * @returns boolean - True if navigation was successful, false otherwise
    */
-  private navigateToPage(appId: string, path: string): boolean {
+  private navigateToPage(appId: string, path: string, navigationType: NavigationType = NavigationType.Launch): boolean {
     hilog.info(DOMAIN, TAG, `Navigating to page: ${appId}:${path}`);
 
     // For home app, update the path and trigger navigation
     if (appId === this.homeAppId) {
-      hilog.info(DOMAIN, TAG, `Navigating page in home app ${appId} to ${path}`);
+      hilog.info(DOMAIN, TAG, `Navigating page in home app ${appId} to ${path} with type: ${NavigationType[navigationType]}`);
       this.homeAppPath = path;
+      // Pass navigation type to container for animation control
+      LxAppContainer.setNavigationType(appId, navigationType);
       // Increment trigger to force UI update
       this.navigationTrigger++;
       hilog.info(DOMAIN, TAG, `Updated homeAppPath to: ${path}, trigger: ${this.navigationTrigger}`);
@@ -249,8 +238,10 @@ export struct LxAppNavigation {
     // For modal apps in stack, find the container and navigate page
     const stackItem = this.miniAppStack.find(item => item.appId === appId);
     if (stackItem) {
-      hilog.info(DOMAIN, TAG, `Navigating page in modal app ${appId} to ${path}`);
+      hilog.info(DOMAIN, TAG, `Navigating page in modal app ${appId} to ${path} with type: ${NavigationType[navigationType]}`);
       stackItem.path = path;
+      // Pass navigation type to container for animation control
+      LxAppContainer.setNavigationType(appId, navigationType);
       stackItem.navigationTrigger++;
       // Trigger UI update for the modal container
       this.miniAppStack = [...this.miniAppStack];

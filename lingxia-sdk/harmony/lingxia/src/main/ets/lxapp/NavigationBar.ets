@@ -37,6 +37,7 @@ export struct NavigationBar {
   @Prop config: NavigationBarState;
   @Prop appId: string = '';
   @Prop currentPath: string = '';
+  @Prop translateX: number = 0;
 
   onBackPressed?: (appId: string, isHomeButton: boolean) => boolean;
 
@@ -112,6 +113,7 @@ export struct NavigationBar {
     .width('100%')
     .height(88)
     .alignContent(Alignment.Bottom)
+    .translate({ x: `${this.translateX}%`, y: 0 })
   }
 
   private getBackgroundColor(): ResourceColor {

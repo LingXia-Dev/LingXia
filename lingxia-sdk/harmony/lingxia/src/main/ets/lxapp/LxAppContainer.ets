@@ -8,9 +8,18 @@ import { NavigationBar, type NavigationBarState } from './NavigationBar';
 import { TabBar } from './TabBar';
 import { TabBarPosition, type TabBarItem } from 'liblingxia.so';
 import liblingxia, { TabBarState, getNavigationBarState, onPageShow } from 'liblingxia.so';
+import { NavigationType } from './LxAppNavigation';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.Container';
+
+/**
+ * Translation options for WebView animations
+ */
+interface TranslationOptions {
+  x: number | string;
+  y: number | string;
+}
 
 @Component
 export struct LxAppContainer {
@@ -23,6 +32,9 @@ export struct LxAppContainer {
   // Static registry for TabBar updates (simple and direct)
   private static activeContainers: Map<string, LxAppContainer> = new Map()
 
+  // Static registry for navigation type information
+  private static navigationTypes: Map<string, NavigationType> = new Map()
+
   @State pageConfig: NavigationBarState | null = null
   @State tabBarState: TabBarState | null = null
   @State selectedTabIndex: number = 0
@@ -32,6 +44,14 @@ export struct LxAppContainer {
   @State webViewKeys: string[] = [] // Array of webView keys for ForEach
   private pageShowTriggered: Set<string> = new Set() // Track which pages have triggered onPageShow
   @State private statusBarHeight: number = 44 // Default status bar height
+
+  // Animation states for WebView transitions
+  @State private animationInProgress: boolean = false
+  @State private previousWebTag: string = ''
+  @State private currentNavigationType: NavigationType = NavigationType.Launch
+  @State private currentWebViewTranslateX: number = 0
+  @State private previousWebViewTranslateX: number = 0
+  @State private navbarTranslateX: number = 0
 
 
   private webViewUiCallback = (action: string, info: WebViewInfo) => {
@@ -87,6 +107,12 @@ export struct LxAppContainer {
 
     // Register this container for TabBar updates
     LxAppContainer.activeContainers.set(this.appId, this);
+
+    // Initialize navigation type from static registry
+    const storedNavigationType = LxAppContainer.navigationTypes.get(this.appId);
+    if (storedNavigationType !== undefined) {
+      this.currentNavigationType = storedNavigationType;
+    }
 
     // Add WebView UI callback to handle component creation (supports multiple containers)
     addWebViewUiCallback(this.webViewUiCallback);
@@ -217,11 +243,22 @@ export struct LxAppContainer {
   }
 
   /**
+   * Static method to set navigation type for animation control
+   */
+  public static setNavigationType(appId: string, navigationType: NavigationType): void {
+    LxAppContainer.navigationTypes.set(appId, navigationType);
+    const container = LxAppContainer.activeContainers.get(appId);
+    if (container) {
+      container.currentNavigationType = navigationType;
+    }
+  }
+
+  /**
    * Handle external path changes from LxApp.navigate API
    */
   onExternalPathChange() {
-    if (this.externalPath && this.externalPath !== this.path) {
-      hilog.info(DOMAIN, TAG, `External path change detected: ${this.externalPath}, navigating from ${this.path}`);
+    if (this.externalPath) {
+      hilog.info(DOMAIN, TAG, `External path change: ${this.externalPath}`);
       this.navigateToPage(this.externalPath);
     }
   }
@@ -230,8 +267,8 @@ export struct LxAppContainer {
    * Handle navigation trigger changes (unified approach for all LxApps)
    */
   onNavigationTrigger() {
-    if (this.externalPath && this.externalPath !== this.path) {
-      hilog.info(DOMAIN, TAG, `Navigation trigger fired: ${this.externalPath}, navigating from ${this.path}`);
+    if (this.externalPath) {
+      hilog.info(DOMAIN, TAG, `Navigation trigger: ${this.externalPath}`);
       this.navigateToPage(this.externalPath);
     }
   }
@@ -304,6 +341,7 @@ export struct LxAppContainer {
               config: this.pageConfig,
               appId: this.appId,
               currentPath: this.path,
+              translateX: this.navbarTranslateX,
               onBackPressed: (appId: string, isHomeButton: boolean): boolean => {
                 this.handleNavigationBack(isHomeButton);
                 return true;
@@ -423,23 +461,12 @@ export struct LxAppContainer {
   }
 
   /**
-   * Check if TabBar should be shown - considers navigation type
+   * Check if TabBar should be shown
+   * Only SwitchTab navigation type shows tabbar
    */
   private shouldShowTabBar(): boolean {
-    // Check if navigation type hides tabbar
-    if (LxApp.navigationInstance && LxApp.navigationInstance.isTabBarHidden(this.appId)) {
-      return false;
-    }
-
-    if (!this.tabBarState?.items?.length) {
-      return false;
-    }
-
-    const matchingItem: TabBarItem | undefined = this.tabBarState.items.find((item: TabBarItem) =>
-      this.isPathMatch(item.pagePath, this.path)
-    );
-
-    return !!matchingItem;
+    const shouldShow = this.currentNavigationType === NavigationType.SwitchTab;
+    return shouldShow && (this.tabBarState?.items?.length > 0);
   }
 
   /**
@@ -469,6 +496,7 @@ export struct LxAppContainer {
         config: this.pageConfig,
         appId: this.appId,
         currentPath: this.path,
+        translateX: this.navbarTranslateX,
         onBackPressed: (appId: string, isHomeButton: boolean): boolean => {
           this.handleNavigationBack(isHomeButton);
           return true;
@@ -684,11 +712,7 @@ export struct LxAppContainer {
 
     const newPath: string = this.tabBarState.items[index].pagePath;
 
-    // Skip if already on this tab
-    if (this.selectedTabIndex === index) {
-      hilog.info(DOMAIN, TAG, `Already on tab ${index}, skipping switch`);
-      return;
-    }
+    hilog.info(DOMAIN, TAG, `Switching to tab ${index}`);
 
     // Update tab selection first
     this.selectedTabIndex = index;
@@ -713,13 +737,10 @@ export struct LxAppContainer {
   }
 
   /**
-   * Navigate to any page
+   * Navigate to any page with animation support
    */
   private navigateToPage(path: string): boolean {
-    hilog.info(DOMAIN, TAG, `navigate: ${this.appId}:${path}`);
-
-    // Update current path
-    this.path = path;
+    hilog.info(DOMAIN, TAG, `navigate: ${this.appId}:${path} with type: ${NavigationType[this.currentNavigationType]}`);
 
     // Find WebView for the new page
     const newWebTag = toWebTag(this.appId, path);
@@ -730,22 +751,111 @@ export struct LxAppContainer {
       return false;
     }
 
-    // Update current WebView
-    this.currentWebTag = newWebTag;
-    hilog.info(DOMAIN, TAG, `Navigated to page: ${newWebTag}`);
+    // Store previous WebView for animation
+    const oldWebTag = this.currentWebTag;
 
-    // Store WebView component and trigger onPageShow
+    // Store WebView component first
     this.webViewComponents.set(newWebTag, webViewController);
     this.webViewKeys = Array.from(this.webViewComponents.keys());
     this.pageShowTriggered.delete(newWebTag);
 
+    // Determine if animation should be used
+    const shouldAnimate = this.shouldAnimateTransition();
+
+    if (shouldAnimate && oldWebTag) {
+      this.performAnimatedTransition(oldWebTag, newWebTag, path);
+    } else {
+      this.performInstantTransition(newWebTag, path);
+    }
+
+    return true;
+  }
+
+  /**
+   * Determine if transition should be animated based on navigation type
+   */
+  private shouldAnimateTransition(): boolean {
+    return this.currentNavigationType === NavigationType.Forward ||
+           this.currentNavigationType === NavigationType.Backward;
+  }
+
+  /**
+   * Perform animated transition between WebViews
+   */
+  private performAnimatedTransition(oldWebTag: string, newWebTag: string, path: string): void {
+    hilog.info(DOMAIN, TAG, `Performing animated transition from ${oldWebTag} to ${newWebTag}`);
+
+    this.animationInProgress = true;
+    this.previousWebTag = oldWebTag;
+
+    // Determine animation direction
+    const isBackward = this.currentNavigationType === NavigationType.Backward;
+
+    // Set initial positions for slide animation
+    if (isBackward) {
+      this.currentWebViewTranslateX = -100;
+      this.previousWebViewTranslateX = 0;
+      this.navbarTranslateX = -100;
+    } else {
+      this.currentWebViewTranslateX = 100;
+      this.previousWebViewTranslateX = 0;
+      this.navbarTranslateX = 100;
+    }
+
+    // Update current WebView and path before animation
+    this.currentWebTag = newWebTag;
+    this.path = path;
+    this.loadNavbarState(path);
+
+    // Start slide animation
+    animateTo({
+      duration: 300,
+      curve: Curve.EaseInOut,
+      playMode: PlayMode.Normal,
+      onFinish: () => {
+        this.finishTransition(newWebTag, path);
+      }
+    }, () => {
+      // Animate to final positions
+      this.currentWebViewTranslateX = 0;
+      this.navbarTranslateX = 0;
+      this.previousWebViewTranslateX = isBackward ? 100 : -100;
+    });
+  }
+
+  /**
+   * Perform instant transition between WebViews
+   */
+  private performInstantTransition(newWebTag: string, path: string): void {
+    hilog.info(DOMAIN, TAG, `Performing instant transition to ${newWebTag}`);
+
+    // Update current WebView and path immediately
+    this.currentWebTag = newWebTag;
+    this.path = path;
+
+    // Load navbar state for instant transitions
+    this.loadNavbarState(path);
+
+    this.finishTransition(newWebTag, path);
+  }
+
+  /**
+   * Finish transition and trigger necessary callbacks
+   */
+  private finishTransition(newWebTag: string, path: string): void {
+    // Reset animation state
+    this.animationInProgress = false;
+    this.previousWebTag = '';
+
+    // Reset translation values
+    this.currentWebViewTranslateX = 0;
+    this.previousWebViewTranslateX = 0;
+    this.navbarTranslateX = 0;
+
     // Trigger onPageShow
     this.triggerOnPageShowIfNeeded(newWebTag);
 
-    // Load navbar state for the new page
-    this.loadNavbarState(path);
-
-    return true;
+    hilog.info(DOMAIN, TAG, `Transition completed to: ${newWebTag}`);
   }
 
   /**
@@ -822,7 +932,7 @@ export struct LxAppContainer {
   }
 
   /**
-   * Build individual WebView component for a specific webTag
+   * Build individual WebView component for a specific webTag with animation support
    */
   @Builder
   buildWebViewComponent(webTag: string, controller: webview.WebviewController): void {
@@ -830,7 +940,8 @@ export struct LxAppContainer {
       src: '',
       controller: controller
     })
-      .visibility(webTag === this.currentWebTag ? Visibility.Visible : Visibility.Hidden)
+      .visibility(this.getWebViewVisibility(webTag))
+      .translate(this.getWebViewTranslation(webTag))
       .onAppear(() => {
         hilog.info(DOMAIN, TAG, `WebView component appeared for webTag: ${webTag}, visible: ${webTag === this.currentWebTag}`);
 
@@ -846,5 +957,42 @@ export struct LxAppContainer {
       .width('100%')
       .height('100%')
       .backgroundColor(Color.Transparent)
+  }
+
+  /**
+   * Get WebView visibility based on current state and animation
+   */
+  private getWebViewVisibility(webTag: string): Visibility {
+    if (webTag === this.currentWebTag) {
+      return Visibility.Visible;
+    }
+
+    // Show previous WebView during animation
+    if (this.animationInProgress && webTag === this.previousWebTag) {
+      return Visibility.Visible;
+    }
+
+    return Visibility.Hidden;
+  }
+
+  /**
+   * Get WebView translation for slide animation
+   */
+  private getWebViewTranslation(webTag: string): TranslationOptions {
+    if (!this.animationInProgress) {
+      return { x: 0, y: 0 } as TranslationOptions;
+    }
+
+    if (webTag === this.currentWebTag) {
+      // Current WebView uses animated translation value
+      return { x: `${this.currentWebViewTranslateX}%`, y: 0 } as TranslationOptions;
+    }
+
+    if (webTag === this.previousWebTag) {
+      // Previous WebView uses animated translation value
+      return { x: `${this.previousWebViewTranslateX}%`, y: 0 } as TranslationOptions;
+    }
+
+    return { x: 0, y: 0 } as TranslationOptions;
   }
 }
