@@ -120,8 +120,6 @@ public class LxAppCapsuleButtons {
     public static func removeCapsuleButton(from viewController: UIViewController) {
         viewController.view.viewWithTag(CAPSULE_BUTTON_TAG)?.removeFromSuperview()
     }
-
-
     #endif
 
     #if os(macOS)
@@ -175,49 +173,14 @@ public class LxAppCapsuleButtons {
         titleBarView.addSubview(rightSeparator)
     }
 
-    // MARK: - Custom Image Creation for macOS AppKit Buttons
-
     public static func createThreeDotsImage() -> NSImage {
-        let size = CGSize(width: 24, height: 24)
-        let image = NSImage(size: size)
+        let image = NSImage(size: LxAppImageHelper.imageSize)
         image.lockFocus()
 
         if let context = NSGraphicsContext.current?.cgContext {
             context.setShouldAntialias(true)
             context.setFillColor(NSColor.black.cgColor)
-
-            let centerY = size.height / 2
-            let centerX = size.width / 2
-            let centerDotRadius = size.height / 7
-            let sideDotRadius = size.height / 10
-            let spacing = centerDotRadius * 2.8
-
-            // Left dot
-            let leftDotRect = CGRect(
-                x: centerX - spacing - sideDotRadius,
-                y: centerY - sideDotRadius,
-                width: sideDotRadius * 2,
-                height: sideDotRadius * 2
-            )
-            context.fillEllipse(in: leftDotRect)
-
-            // Right dot
-            let rightDotRect = CGRect(
-                x: centerX + spacing - sideDotRadius,
-                y: centerY - sideDotRadius,
-                width: sideDotRadius * 2,
-                height: sideDotRadius * 2
-            )
-            context.fillEllipse(in: rightDotRect)
-
-            // Center dot
-            let centerDotRect = CGRect(
-                x: centerX - centerDotRadius,
-                y: centerY - centerDotRadius,
-                width: centerDotRadius * 2,
-                height: centerDotRadius * 2
-            )
-            context.fillEllipse(in: centerDotRect)
+            LxAppImageHelper.drawThreeDotsPattern(in: context, size: LxAppImageHelper.imageSize)
         }
 
         image.unlockFocus()
@@ -539,23 +502,13 @@ public struct LxAppUnifiedCapsuleView: View {
     }
 
     private static func createMoreDotsImageiOS() -> UIImage? {
-        let size = CGSize(width: 24, height: 24)
-        UIGraphicsBeginImageContextWithOptions(size, false, 0)
+        UIGraphicsBeginImageContextWithOptions(LxAppImageHelper.imageSize, false, 0)
         defer { UIGraphicsEndImageContext() }
 
         guard let context = UIGraphicsGetCurrentContext() else { return nil }
 
         context.setFillColor(UIColor.darkGray.cgColor)
-
-        let centerY = size.height / 2
-        let centerX = size.width / 2
-        let centerDotRadius = size.height / 7
-        let sideDotRadius = size.height / 10
-        let spacing = centerDotRadius * 2.8
-
-        context.fillEllipse(in: CGRect(x: centerX - spacing - sideDotRadius, y: centerY - sideDotRadius, width: sideDotRadius * 2, height: sideDotRadius * 2))
-        context.fillEllipse(in: CGRect(x: centerX + spacing - sideDotRadius, y: centerY - sideDotRadius, width: sideDotRadius * 2, height: sideDotRadius * 2))
-        context.fillEllipse(in: CGRect(x: centerX - centerDotRadius, y: centerY - centerDotRadius, width: centerDotRadius * 2, height: centerDotRadius * 2))
+        LxAppImageHelper.drawThreeDotsPattern(in: context, size: LxAppImageHelper.imageSize)
 
         return UIGraphicsGetImageFromCurrentImageContext()
     }

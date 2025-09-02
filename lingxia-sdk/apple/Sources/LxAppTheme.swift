@@ -7,6 +7,27 @@ import AppKit
 import UIKit
 #endif
 
+// Shared Image Generation Helper
+public struct LxAppImageHelper {
+    public static let imageSize = CGSize(width: 24, height: 24)
+
+    // Shared drawing logic for three dots pattern (used by both iOS and macOS)
+    public static func drawThreeDotsPattern(in context: CGContext, size: CGSize) {
+        let centerY = size.height / 2
+        let centerX = size.width / 2
+        let centerDotRadius = size.height / 7
+        let sideDotRadius = size.height / 10
+        let spacing = centerDotRadius * 2.8
+
+        // Left dot
+        context.fillEllipse(in: CGRect(x: centerX - spacing - sideDotRadius, y: centerY - sideDotRadius, width: sideDotRadius * 2, height: sideDotRadius * 2))
+        // Right dot
+        context.fillEllipse(in: CGRect(x: centerX + spacing - sideDotRadius, y: centerY - sideDotRadius, width: sideDotRadius * 2, height: sideDotRadius * 2))
+        // Center dot
+        context.fillEllipse(in: CGRect(x: centerX - centerDotRadius, y: centerY - centerDotRadius, width: centerDotRadius * 2, height: centerDotRadius * 2))
+    }
+}
+
 /// Unified theme system for LxApp components
 public struct LxAppTheme {
 
@@ -95,45 +116,12 @@ public struct LxAppCustomIcons {
 
     #if os(iOS)
     private static func createThreeDotsUIImage() -> UIImage {
-        let size = CGSize(width: 24, height: 24)
-        let renderer = UIGraphicsImageRenderer(size: size)
+        let renderer = UIGraphicsImageRenderer(size: LxAppImageHelper.imageSize)
         return renderer.image { context in
             let cgContext = context.cgContext
             cgContext.setShouldAntialias(true)
             cgContext.setFillColor(UIColor.label.cgColor)
-
-            let centerY = size.height / 2
-            let centerX = size.width / 2
-            let centerDotRadius = size.height / 7
-            let sideDotRadius = size.height / 10
-            let spacing = centerDotRadius * 2.8
-
-            // Left dot
-            let leftDotRect = CGRect(
-                x: centerX - spacing - sideDotRadius,
-                y: centerY - sideDotRadius,
-                width: sideDotRadius * 2,
-                height: sideDotRadius * 2
-            )
-            cgContext.fillEllipse(in: leftDotRect)
-
-            // Right dot
-            let rightDotRect = CGRect(
-                x: centerX + spacing - sideDotRadius,
-                y: centerY - sideDotRadius,
-                width: sideDotRadius * 2,
-                height: sideDotRadius * 2
-            )
-            cgContext.fillEllipse(in: rightDotRect)
-
-            // Center dot
-            let centerDotRect = CGRect(
-                x: centerX - centerDotRadius,
-                y: centerY - centerDotRadius,
-                width: centerDotRadius * 2,
-                height: centerDotRadius * 2
-            )
-            cgContext.fillEllipse(in: centerDotRect)
+            LxAppImageHelper.drawThreeDotsPattern(in: cgContext, size: LxAppImageHelper.imageSize)
         }
     }
 

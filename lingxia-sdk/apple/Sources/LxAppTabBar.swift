@@ -39,11 +39,23 @@ extension TabBar {
 
     public func getGroupedItems(appId: String) -> (start: [TabBarItem], center: [TabBarItem], end: [TabBarItem]) {
         let allItems = getItems(appId: appId)
+        return TabBarHelpers.groupItems(allItems)
+    }
+}
+
+public enum TabBarPosition {
+    case bottom, left, right
+}
+
+// Shared TabBar Helper Functions 
+fileprivate struct TabBarHelpers {
+    // Group items by their group property - used by all TabBar implementations
+    static func groupItems(_ items: [TabBarItem]) -> (start: [TabBarItem], center: [TabBarItem], end: [TabBarItem]) {
         var startItems: [TabBarItem] = []
         var centerItems: [TabBarItem] = []
         var endItems: [TabBarItem] = []
 
-        for item in allItems {
+        for item in items {
             switch item.group {
             case .Start:
                 startItems.append(item)
@@ -56,10 +68,39 @@ extension TabBar {
 
         return (start: startItems, center: centerItems, end: endItems)
     }
-}
 
-public enum TabBarPosition {
-    case bottom, left, right
+    // Find item index in items array - used by all TabBar implementations
+    static func findItemIndex(for item: TabBarItem, in items: [TabBarItem]) -> Int {
+        return items.firstIndex(where: { $0.cachedPagePath == item.cachedPagePath }) ?? 0
+    }
+
+    // Check if items have grouping - used by all TabBar implementations
+    static func hasGroupField(items: [TabBarItem]) -> Bool {
+        return items.contains { $0.group != .Center }
+    }
+
+    // Filter items by group - used by all TabBar implementations
+    static func getStartItems(items: [TabBarItem]) -> [TabBarItem] {
+        return items.filter { $0.group == .Start }
+    }
+
+    static func getCenterItems(items: [TabBarItem]) -> [TabBarItem] {
+        return items.filter { $0.group == .Center }
+    }
+
+    static func getEndItems(items: [TabBarItem]) -> [TabBarItem] {
+        return items.filter { $0.group == .End }
+    }
+
+    // Find tab index by path - used by wrapper classes
+    static func findTabIndexByPath(_ path: String, in items: [TabBarItem]) -> Int {
+        for (index, item) in items.enumerated() {
+            if item.page_path.toString() == path {
+                return index
+            }
+        }
+        return -1
+    }
 }
 
 /// Extensions for TabBarItem
@@ -114,7 +155,7 @@ public struct LxAppTabBar: View {
         Group {
             switch config.positionEnum {
             case .bottom:
-                if hasGroupField(items: items) {
+                if TabBarHelpers.hasGroupField(items: items) {
                     buildGroupedHorizontalTabBar(items: items)
                         .frame(height: LxAppTheme.Metrics.tabBarHeight)
                 } else {
@@ -123,7 +164,7 @@ public struct LxAppTabBar: View {
                 }
 
             case .left, .right:
-                if hasGroupField(items: items) {
+                if TabBarHelpers.hasGroupField(items: items) {
                     buildGroupedVerticalTabBar(items: items)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
@@ -169,15 +210,15 @@ public struct LxAppTabBar: View {
     @ViewBuilder
     private func buildGroupedHorizontalTabBar(items: [TabBarItem]) -> some View {
         HStack(spacing: 0) {
-            let startItems = getStartItems(items: items)
-            let centerItems = getCenterItems(items: items)
-            let endItems = getEndItems(items: items)
+            let startItems = TabBarHelpers.getStartItems(items: items)
+            let centerItems = TabBarHelpers.getCenterItems(items: items)
+            let endItems = TabBarHelpers.getEndItems(items: items)
 
             // Start items (group 1)
             if !startItems.isEmpty {
                 HStack(spacing: LxAppTheme.Metrics.standardSpacing) {
                     ForEach(Array(startItems.enumerated()), id: \.offset) { _, item in
-                        let index = findItemIndex(for: item, in: items)
+                        let index = TabBarHelpers.findItemIndex(for: item, in: items)
                         buildCompactTabItem(item: item, index: index)
                     }
                 }
@@ -191,7 +232,7 @@ public struct LxAppTabBar: View {
             if !centerItems.isEmpty {
                 HStack(spacing: LxAppTheme.Metrics.standardSpacing) {
                     ForEach(Array(centerItems.enumerated()), id: \.offset) { _, item in
-                        let index = findItemIndex(for: item, in: items)
+                        let index = TabBarHelpers.findItemIndex(for: item, in: items)
                         buildCompactTabItem(item: item, index: index)
                     }
                 }
@@ -204,7 +245,7 @@ public struct LxAppTabBar: View {
             if !endItems.isEmpty {
                 HStack(spacing: 6) { // Comfortable spacing between end items
                     ForEach(Array(endItems.enumerated()), id: \.offset) { _, item in
-                        let index = findItemIndex(for: item, in: items)
+                        let index = TabBarHelpers.findItemIndex(for: item, in: items)
                         buildCompactTabItem(item: item, index: index)
                     }
                 }
@@ -215,16 +256,16 @@ public struct LxAppTabBar: View {
 
     @ViewBuilder
     private func buildGroupedVerticalTabBar(items: [TabBarItem]) -> some View {
-        let startItems = getStartItems(items: items)
-        let centerItems = getCenterItems(items: items)
-        let endItems = getEndItems(items: items)
+        let startItems = TabBarHelpers.getStartItems(items: items)
+        let centerItems = TabBarHelpers.getCenterItems(items: items)
+        let endItems = TabBarHelpers.getEndItems(items: items)
 
         VStack(alignment: .center, spacing: 0) {
             // Start items (group 1)
             if !startItems.isEmpty {
                 VStack(spacing: LxAppTheme.Metrics.standardSpacing) {
                     ForEach(Array(startItems.enumerated()), id: \.offset) { _, item in
-                        let index = findItemIndex(for: item, in: items)
+                        let index = TabBarHelpers.findItemIndex(for: item, in: items)
                         buildTabItem(item: item, index: index)
                     }
                 }
@@ -237,7 +278,7 @@ public struct LxAppTabBar: View {
             if !centerItems.isEmpty {
                 VStack(spacing: LxAppTheme.Metrics.standardSpacing) {
                     ForEach(Array(centerItems.enumerated()), id: \.offset) { _, item in
-                        let index = findItemIndex(for: item, in: items)
+                        let index = TabBarHelpers.findItemIndex(for: item, in: items)
                         buildTabItem(item: item, index: index)
                     }
                 }
@@ -249,7 +290,7 @@ public struct LxAppTabBar: View {
             if !endItems.isEmpty {
                 VStack(spacing: LxAppTheme.Metrics.standardSpacing) {
                     ForEach(Array(endItems.enumerated()), id: \.offset) { _, item in
-                        let index = findItemIndex(for: item, in: items)
+                        let index = TabBarHelpers.findItemIndex(for: item, in: items)
                         buildTabItem(item: item, index: index)
                     }
                 }
@@ -354,25 +395,7 @@ public struct LxAppTabBar: View {
         .buttonStyle(PlainButtonStyle())
     }
 
-    private func findItemIndex(for item: TabBarItem, in items: [TabBarItem]) -> Int {
-        return items.firstIndex(where: { $0.cachedPagePath == item.cachedPagePath }) ?? 0
-    }
 
-    private func hasGroupField(items: [TabBarItem]) -> Bool {
-        return items.contains { $0.group != .Center }
-    }
-
-    private func getStartItems(items: [TabBarItem]) -> [TabBarItem] {
-        return items.filter { $0.group == .Start }
-    }
-
-    private func getCenterItems(items: [TabBarItem]) -> [TabBarItem] {
-        return items.filter { $0.group == .Center }
-    }
-
-    private func getEndItems(items: [TabBarItem]) -> [TabBarItem] {
-        return items.filter { $0.group == .End }
-    }
 
     @ViewBuilder
     private func buildTabIcon(item: TabBarItem, isSelected: Bool, forceColor: Color) -> some View {
@@ -493,7 +516,7 @@ public struct MacOSLxAppTabBar: View {
         Group {
             switch config.positionEnum {
             case .bottom:
-                if hasGroupField(items: items) {
+                if TabBarHelpers.hasGroupField(items: items) {
                     buildGroupedHorizontalTabBar(items: items)
                         .frame(height: LxAppTheme.Metrics.tabBarHeight)
                 } else {
@@ -502,7 +525,7 @@ public struct MacOSLxAppTabBar: View {
                 }
 
             case .left, .right:
-                if hasGroupField(items: items) {
+                if TabBarHelpers.hasGroupField(items: items) {
                     buildGroupedVerticalTabBar(items: items)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
@@ -585,15 +608,15 @@ public struct MacOSLxAppTabBar: View {
     @ViewBuilder
     private func buildGroupedHorizontalTabBar(items: [TabBarItem]) -> some View {
         HStack(spacing: 0) {
-            let startItems = getStartItems(items: items)
-            let centerItems = getCenterItems(items: items)
-            let endItems = getEndItems(items: items)
+            let startItems = TabBarHelpers.getStartItems(items: items)
+            let centerItems = TabBarHelpers.getCenterItems(items: items)
+            let endItems = TabBarHelpers.getEndItems(items: items)
 
             // Start items (group 1) - close to left edge
             if !startItems.isEmpty {
                 HStack(spacing: 4) {
                     ForEach(Array(startItems.enumerated()), id: \.offset) { _, item in
-                        let index = findItemIndex(for: item, in: items)
+                        let index = TabBarHelpers.findItemIndex(for: item, in: items)
                         buildTabItem(item: item, index: index)
                     }
                 }
@@ -606,7 +629,7 @@ public struct MacOSLxAppTabBar: View {
             if !centerItems.isEmpty {
                 HStack(spacing: LxAppTheme.Metrics.standardSpacing) {
                     ForEach(Array(centerItems.enumerated()), id: \.offset) { _, item in
-                        let index = findItemIndex(for: item, in: items)
+                        let index = TabBarHelpers.findItemIndex(for: item, in: items)
                         buildTabItem(item: item, index: index)
                     }
                 }
@@ -618,7 +641,7 @@ public struct MacOSLxAppTabBar: View {
             if !endItems.isEmpty {
                 HStack(spacing: 4) {
                     ForEach(Array(endItems.enumerated()), id: \.offset) { _, item in
-                        let index = findItemIndex(for: item, in: items)
+                        let index = TabBarHelpers.findItemIndex(for: item, in: items)
                         buildTabItem(item: item, index: index)
                     }
                 }
@@ -629,16 +652,16 @@ public struct MacOSLxAppTabBar: View {
 
     @ViewBuilder
     private func buildGroupedVerticalTabBar(items: [TabBarItem]) -> some View {
-        let startItems = getStartItems(items: items)
-        let centerItems = getCenterItems(items: items)
-        let endItems = getEndItems(items: items)
+        let startItems = TabBarHelpers.getStartItems(items: items)
+        let centerItems = TabBarHelpers.getCenterItems(items: items)
+        let endItems = TabBarHelpers.getEndItems(items: items)
 
         VStack(alignment: .center, spacing: 0) {
             // Start items (group 1)
             if !startItems.isEmpty {
                 VStack(spacing: LxAppTheme.Metrics.standardSpacing) {
                     ForEach(Array(startItems.enumerated()), id: \.offset) { _, item in
-                        let index = findItemIndex(for: item, in: items)
+                        let index = TabBarHelpers.findItemIndex(for: item, in: items)
                         buildTabItem(item: item, index: index)
                     }
                 }
@@ -651,7 +674,7 @@ public struct MacOSLxAppTabBar: View {
             if !centerItems.isEmpty {
                 VStack(spacing: LxAppTheme.Metrics.standardSpacing) {
                     ForEach(Array(centerItems.enumerated()), id: \.offset) { _, item in
-                        let index = findItemIndex(for: item, in: items)
+                        let index = TabBarHelpers.findItemIndex(for: item, in: items)
                         buildTabItem(item: item, index: index)
                     }
                 }
@@ -663,7 +686,7 @@ public struct MacOSLxAppTabBar: View {
             if !endItems.isEmpty {
                 VStack(spacing: LxAppTheme.Metrics.standardSpacing) {
                     ForEach(Array(endItems.enumerated()), id: \.offset) { _, item in
-                        let index = findItemIndex(for: item, in: items)
+                        let index = TabBarHelpers.findItemIndex(for: item, in: items)
                         buildTabItem(item: item, index: index)
                     }
                 }
@@ -673,26 +696,7 @@ public struct MacOSLxAppTabBar: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
-    // Helper methods copied from LxAppTabBar
-    private func findItemIndex(for item: TabBarItem, in items: [TabBarItem]) -> Int {
-        return items.firstIndex(where: { $0.cachedPagePath == item.cachedPagePath }) ?? 0
-    }
-
-    private func hasGroupField(items: [TabBarItem]) -> Bool {
-        return items.contains { $0.group != .Center }
-    }
-
-    private func getStartItems(items: [TabBarItem]) -> [TabBarItem] {
-        return items.filter { $0.group == .Start }
-    }
-
-    private func getCenterItems(items: [TabBarItem]) -> [TabBarItem] {
-        return items.filter { $0.group == .Center }
-    }
-
-    private func getEndItems(items: [TabBarItem]) -> [TabBarItem] {
-        return items.filter { $0.group == .End }
-    }
+    // Use shared TabBarHelpers instead of duplicated methods
 
     @ViewBuilder
     private func buildTabIcon(item: TabBarItem, isSelected: Bool) -> some View {
@@ -904,14 +908,7 @@ public class iOSTabBarWrapper: UIView {
     public func findTabIndexByPath(_ path: String) -> Int {
         guard let config = tabBarConfig else { return -1 }
         let items = config.getItems(appId: appId)
-
-        for (index, item) in items.enumerated() {
-            if item.page_path.toString() == path {
-                return index
-            }
-        }
-
-        return -1
+        return TabBarHelpers.findTabIndexByPath(path, in: items)
     }
 
     public func setSelectedIndex(_ index: Int, notifyListener: Bool) {
@@ -945,8 +942,6 @@ public class iOSTabBarWrapper: UIView {
         layer.backgroundColor = UIColor.clear.cgColor
     }
 
-
-
     private func createRedDotView() -> UIView {
         let redDot = UIView()
         redDot.backgroundColor = UIColor.red
@@ -964,7 +959,7 @@ public class iOSTabBarWrapper: UIView {
         addSubview(containerView)
 
         let isVertical = config.position == 1 || config.position == 2
-        let hasGroupField = items.contains { $0.group != .Center }
+        let hasGroupField = TabBarHelpers.hasGroupField(items: items)
 
         if isVertical && hasGroupField {
             setupVerticalGroupedLayout(items: items, config: config, containerView: containerView)
@@ -1255,13 +1250,7 @@ public class iOSTabBarWrapper: UIView {
     private func findItemIndex(item: TabBarItem) -> Int {
         guard let config = tabBarConfig else { return -1 }
         let items = config.getItems(appId: appId)
-
-        for (index, configItem) in items.enumerated() {
-            if configItem.page_path.toString() == item.page_path.toString() {
-                return index
-            }
-        }
-        return -1
+        return TabBarHelpers.findTabIndexByPath(item.page_path.toString(), in: items)
     }
 
     @objc private func uikitTabButtonTapped(_ sender: UIButton) {
@@ -1359,12 +1348,7 @@ public class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
     public func findTabIndexByPath(_ path: String) -> Int {
         guard let config = tabBarConfig else { return -1 }
         let items = config.getItems(appId: appId)
-        for (index, item) in items.enumerated() {
-            if item.page_path.toString() == path {
-                return index
-            }
-        }
-        return -1
+        return TabBarHelpers.findTabIndexByPath(path, in: items)
     }
 
     public func syncSelectedTabWithCurrentPath(_ currentPath: String) {

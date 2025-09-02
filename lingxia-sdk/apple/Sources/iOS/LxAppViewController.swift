@@ -343,18 +343,12 @@ public class LxAppViewController: UIViewController, ObservableObject {
 
         if let cachedTabBar = tabBarCache[appId] {
             currentTabBar = cachedTabBar
+            currentTabBar?.isHidden = false  // Ensure cached TabBar is visible
         } else {
-            // Only hide current TabBar if we need to create a new one
-            if currentTabBar != nil {
-                currentTabBar?.isHidden = true
-            }
+            // Hide current TabBar before creating new one
+            currentTabBar?.isHidden = true
             currentTabBar = createTabBar(config: tabConfig, appId: appId)
             tabBarCache[appId] = currentTabBar!
-        }
-
-        // Show TabBar without flashing
-        if currentTabBar?.isHidden == true {
-            currentTabBar?.isHidden = false
         }
 
         if navigationType == .switchTab {
@@ -716,10 +710,6 @@ public class LxAppViewController: UIViewController, ObservableObject {
         webView.scrollView.indicatorStyle = .default
         webView.scrollView.showsVerticalScrollIndicator = true
         webView.scrollView.showsHorizontalScrollIndicator = true
-    }
-
-    private func forceWebViewTransparency(webView: WKWebView) {
-        configureWebView(webView, transparent: true)
     }
 
     private func applyTabBarLayoutParams(tabBar: LingXiaTabBar, config: TabBar, for appId: String) {
