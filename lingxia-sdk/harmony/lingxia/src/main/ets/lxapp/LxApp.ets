@@ -6,7 +6,7 @@ import { taskpool } from '@kit.ArkTS';
 import { Want } from '@kit.AbilityKit';
 import common from '@ohos.app.ability.common';
 import { LxAppContainer } from './LxAppContainer';
-import { ToastManager } from './LxAppToast';
+import { ToastManager } from './APIs/LxAppToast';
 import { initNativeBridge, getNativeCallbackFunction } from './NativeBridge';
 import { WebViewManager, toWebTag } from './WebView';
 import { NavigationType } from './LxAppNavigation';

@@ -1,8 +1,8 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { webview } from '@kit.ArkWeb';
 import { LxApp } from './LxApp';
-import { LxAppToast, ToastIcon, ToastPosition } from './LxAppToast';
-import { LxAppModal, ModalResult } from './LxAppModal';
+import { LxAppToast, ToastIcon, ToastPosition } from './APIs/LxAppToast';
+import { LxAppModal, ModalResult } from './APIs/LxAppModal';
 import { LxAppContainer } from './LxAppContainer';
 import {
   createWebViewController,

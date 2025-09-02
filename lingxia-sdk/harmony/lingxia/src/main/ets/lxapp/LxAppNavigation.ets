@@ -2,8 +2,8 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { LxApp } from './LxApp';
 import { LxAppContainer } from './LxAppContainer';
 import { onLxappOpened, onLxappClosed, getTabBar, TabBarItem, TabBarState, getLxAppInfo, LxAppInfo } from 'liblingxia.so';
-import { ToastManager } from './LxAppToast';
-import { ModalManager } from './LxAppModal';
+import { ToastManager } from './APIs/LxAppToast';
+import { ModalManager } from './APIs/LxAppModal';
 
 const DOMAIN = 0xA000;
 const TAG = 'LingXia.Navigation';
