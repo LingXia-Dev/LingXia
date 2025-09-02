@@ -80,12 +80,12 @@ public struct LxAppWindowContentView: View {
                 onMinimize: { windowManager.handleMinimizeAction() },
                 onClose: { windowManager.handleCloseAction() }
             )
-            .frame(height: 32)
+            .frame(height: LxAppWindowLayout.titleBarHeight)
 
             // Tab bar (only for tab style)
             if windowManager.windowStyle == .tabStyle {
                 LxAppSwiftUITabBar(tabManager: tabManager)
-                    .frame(height: 32)
+                    .frame(height: LxAppWindowLayout.macOSTabViewHeight)
             }
 
             // Main content area
@@ -137,9 +137,9 @@ public class LxAppWindowManager: ObservableObject {
     public func getTopMarginForStyle() -> CGFloat {
         switch windowStyle {
         case .capsuleStyle:
-            return 32  // Custom capsule style needs space for title bar
+            return LxAppWindowLayout.titleBarHeight  // Custom capsule style needs space for title bar
         case .tabStyle:
-            return 64  // Title bar + tab bar
+            return LxAppWindowLayout.titleBarHeight + LxAppWindowLayout.macOSTabViewHeight  // Title bar + macOS tab view
         }
     }
 }
@@ -184,7 +184,7 @@ public struct LxAppSwiftUITitleBar: View {
                     .padding(.trailing, 7)
                 }
             }
-            .frame(height: 32)
+            .frame(height: LxAppWindowLayout.titleBarHeight)
             .background(titleBarBackground)
             .overlay(
                 // Drag area for capsule style
@@ -266,7 +266,7 @@ public struct LxAppSwiftUITabBar: View {
 
             Spacer()
         }
-        .frame(height: 32)
+        .frame(height: LxAppWindowLayout.macOSTabViewHeight)
         .background(Color.clear)
     }
 

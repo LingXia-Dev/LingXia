@@ -66,9 +66,9 @@ public protocol NavigationUIUpdater {
     func triggerTabBarRefresh()
 }
 
-/// Shared navigation logic
+/// Navigation logic
 @MainActor
-public class LxAppSharedNavigation {
+public class LxAppNavigation {
     private static let log = OSLog(subsystem: "LingXia", category: "Navigation")
 
     /// Shared WebView switching logic - used by both platforms

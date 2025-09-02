@@ -14,6 +14,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     internal struct Layout {
         static let dragBarHeight: CGFloat = 20
         static let navBarHeight: CGFloat = 40  // Increased from 32 to 40
+        static let swiftUITitleBarHeight: CGFloat = LxAppWindowLayout.titleBarHeight
         static let capsuleContainerWidth: CGFloat = 88
         static let capsuleContainerHeight: CGFloat = 26
         static let capsuleTrailingMargin: CGFloat = 12
@@ -341,6 +342,11 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func setupFloatingCapsuleButtons(in contentView: NSView) {
+        // Prevent duplicate creation
+        if floatingCapsuleContainer != nil {
+            return
+        }
+
         let capsuleContainer = NSView()
         capsuleContainer.wantsLayer = true
         capsuleContainer.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.92).cgColor
@@ -482,8 +488,8 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
                 newTopOffset = dragBarHeight + navBarHeight
             }
         } else {
-            // Tab style: drag bar + tab bar
-            newTopOffset = dragBarHeight + navBarHeight
+            // Tab style: only system title bar (no custom drag bar)
+            newTopOffset = 0  // System title bar is handled by macOS
         }
 
         // Update the view controller's getTopMargin method instead of trying to modify constraints
@@ -728,8 +734,8 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
                 topOffset = Layout.navBarHeight  // Use actual navbar height
             }
         } else {
-            // Tab style: use navbar height for tab bar
-            topOffset = Layout.navBarHeight
+            // Tab style: space for SwiftUI custom title bar only
+            topOffset = Layout.swiftUITitleBarHeight
         }
 
         NSLayoutConstraint.activate([

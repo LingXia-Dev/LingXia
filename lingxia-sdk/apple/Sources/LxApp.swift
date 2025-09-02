@@ -103,7 +103,7 @@ public class LxAppCore {
         os_log("Core executeNavigation: %@ to %@ with type: %@", log: log, type: .info, appId, path, String(describing: navigationType))
 
         // Use shared navigation logic from LxAppPageNavigation
-        let plan = LxAppSharedNavigation.prepareNavigation(appId: appId, path: path, navigationType: navigationType)
+        let plan = LxAppNavigation.prepareNavigation(appId: appId, path: path, navigationType: navigationType)
 
         guard plan.shouldProceed else {
             os_log("Navigation cancelled by shared logic", log: log, type: .info)

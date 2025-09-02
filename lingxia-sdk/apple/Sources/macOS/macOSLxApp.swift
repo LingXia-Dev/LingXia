@@ -11,6 +11,12 @@ public enum LxAppWindowStyle {
     case tabStyle
 }
 
+/// Shared UI layout constants for macOS windows
+public struct LxAppWindowLayout {
+    public static let titleBarHeight: CGFloat = 32        // SwiftUI custom title bar height
+    public static let macOSTabViewHeight: CGFloat = 32    // macOS window tab view height (for switching between LxApps)
+}
+
 /// Predefined mobile device sizes for macOS window sizing
 public enum MobileDeviceSize {
     case iPhone11           // 414 x 896
