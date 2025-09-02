@@ -585,7 +585,22 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate, N
 
     /// Update capsule button visibility
     public func updateCapsuleButtonVisibility(appId: String) {
-        // capsuleStyle on Mac always show
+        let isHomeApp = LxAppCore.isHomeLxApp(appId)
+
+        if !isHomeApp {
+            if findCapsuleButtonView() == nil {
+                LxAppCapsuleButtons.addCapsuleButton(to: self, appId: appId)
+            }
+            findCapsuleButtonView()?.isHidden = false
+        } else {
+            findCapsuleButtonView()?.removeFromSuperview()
+        }
+    }
+
+    /// Find capsule button view using identifier
+    public func findCapsuleButtonView() -> NSView? {
+        let identifier = NSUserInterfaceItemIdentifier("CapsuleButton_\(LxAppCapsuleButtons.CAPSULE_BUTTON_TAG)")
+        return view.subviews.first { $0.identifier == identifier }
     }
 
     /// Sync TabBar with specific path for unified navigation
@@ -599,10 +614,10 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate, N
     /// Update navigation bar
     public func updateNavigationBar(appId: String, path: String) {
         if let navState = LxPageNavigation.getNavigationBarState(appId: appId, path: path) {
-            // Update navigation bar with the state through WindowController
             if let windowController = view.window?.windowController as? LxAppWindowController {
                 windowController.updateNavigationBarWithState(navState)
             }
+            NavigationBarStateManager.shared.updateState(appId: appId, path: path)
         }
     }
 }

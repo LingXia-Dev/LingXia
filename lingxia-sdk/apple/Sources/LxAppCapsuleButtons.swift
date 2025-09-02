@@ -10,62 +10,42 @@ import UIKit
 /// Unified SwiftUI Capsule Button management for LxApp - supports both iOS and macOS
 @MainActor
 public class LxAppCapsuleButtons {
-    private static let CAPSULE_BUTTON_TAG = 9999
+    public static let CAPSULE_BUTTON_TAG = 9999
 
     #if os(macOS)
-    /// Creates and adds capsule buttons to the title bar view (macOS)
-    public static func addCapsuleButtons(
-        to titleBarView: NSView,
-        windowWidth: CGFloat,
-        target: AnyObject,
-        moreAction: Selector,
-        minimizeAction: Selector,
-        closeAction: Selector
-    ) {
-        let metrics = LxAppTheme.Metrics.self
-        let buttonWidth = metrics.capsuleButtonWidth / 3
-        let buttonHeight = metrics.capsuleButtonHeight
-        let buttonY = metrics.capsuleTopMargin
-        let rightMargin = metrics.capsuleTrailingMargin
-
-        let moreButton = createCapsuleButton(
-            image: createThreeDotsImage(),
-            target: target,
-            action: moreAction
-        )
-        let minimizeButton = createCapsuleButton(
-            image: createMinimizeButtonImage(),
-            target: target,
-            action: minimizeAction
-        )
-        let closeButton = createCapsuleButton(
-            image: createCloseButtonImage(),
-            target: target,
-            action: closeAction
-        )
-
-        // Position buttons
-        let startX = windowWidth - metrics.capsuleButtonWidth - rightMargin
-        moreButton.frame = NSRect(x: startX, y: buttonY, width: buttonWidth, height: buttonHeight)
-        minimizeButton.frame = NSRect(x: startX + buttonWidth, y: buttonY, width: buttonWidth, height: buttonHeight)
-        closeButton.frame = NSRect(x: startX + buttonWidth * 2, y: buttonY, width: buttonWidth, height: buttonHeight)
-
-        // Add separators
-        addCapsuleButtonSeparators(
-            to: titleBarView,
-            moreButton: moreButton,
-            minimizeButton: minimizeButton,
-            buttonY: buttonY,
-            buttonHeight: buttonHeight
-        )
-
-        titleBarView.addSubview(moreButton)
-        titleBarView.addSubview(minimizeButton)
-        titleBarView.addSubview(closeButton)
-
-        [moreButton, minimizeButton, closeButton].forEach { button in
-            button.layer?.zPosition = 1000
+    /// Add capsule button using SwiftUI
+    public static func addCapsuleButton(to viewController: NSViewController, appId: String) {
+        let identifier = NSUserInterfaceItemIdentifier("CapsuleButton_\(CAPSULE_BUTTON_TAG)")
+        guard viewController.view.subviews.first(where: { $0.identifier == identifier }) == nil else {
+            return
         }
+
+        let capsuleButtons = LxAppUnifiedCapsuleViewMacOS(
+            onMoreTapped: { /* More action */ },
+            onMinimizeTapped: { viewController.view.window?.miniaturize(nil) },
+            onCloseTapped: { viewController.view.window?.close() }
+        )
+
+        let hostingController = NSHostingController(rootView: capsuleButtons)
+        let wrapperView = NSView()
+        wrapperView.identifier = identifier
+        wrapperView.translatesAutoresizingMaskIntoConstraints = false
+        wrapperView.addSubview(hostingController.view)
+        hostingController.view.translatesAutoresizingMaskIntoConstraints = false
+
+        viewController.view.addSubview(wrapperView)
+        viewController.addChild(hostingController)
+
+        NSLayoutConstraint.activate([
+            hostingController.view.topAnchor.constraint(equalTo: wrapperView.topAnchor),
+            hostingController.view.leadingAnchor.constraint(equalTo: wrapperView.leadingAnchor),
+            hostingController.view.trailingAnchor.constraint(equalTo: wrapperView.trailingAnchor),
+            hostingController.view.bottomAnchor.constraint(equalTo: wrapperView.bottomAnchor),
+            wrapperView.topAnchor.constraint(equalTo: viewController.view.topAnchor, constant: LxAppTheme.Metrics.capsuleTopMargin),
+            wrapperView.trailingAnchor.constraint(equalTo: viewController.view.trailingAnchor, constant: -LxAppTheme.Metrics.capsuleTrailingMargin),
+            wrapperView.widthAnchor.constraint(equalToConstant: LxAppTheme.Metrics.capsuleButtonWidth),
+            wrapperView.heightAnchor.constraint(equalToConstant: LxAppTheme.Metrics.capsuleButtonHeight)
+        ])
     }
     #endif
 
@@ -116,61 +96,15 @@ public class LxAppCapsuleButtons {
     #endif
 
     #if os(iOS)
-    /// Removes capsule button from the view controller (iOS)
     public static func removeCapsuleButton(from viewController: UIViewController) {
         viewController.view.viewWithTag(CAPSULE_BUTTON_TAG)?.removeFromSuperview()
     }
     #endif
 
     #if os(macOS)
-    private static func createCapsuleButton(image: NSImage?, target: AnyObject, action: Selector) -> NSButton {
-        let button = NSButton()
-        button.image = image
-        button.target = target
-        button.action = action
-        button.isBordered = false
-        button.bezelStyle = .regularSquare
-        button.translatesAutoresizingMaskIntoConstraints = true
-        button.imageScaling = .scaleProportionallyDown
-        button.imagePosition = .imageOnly
-        button.wantsLayer = true
-        button.layer?.backgroundColor = NSColor.clear.cgColor
-        button.setButtonType(.momentaryPushIn)
-        return button
-    }
-
-    private static func addCapsuleButtonSeparators(
-        to titleBarView: NSView,
-        moreButton: NSButton,
-        minimizeButton: NSButton,
-        buttonY: CGFloat,
-        buttonHeight: CGFloat
-    ) {
-        let separatorWidth: CGFloat = 0.5
-        let separatorAlpha: CGFloat = 0.15
-        let separatorHeight = buttonHeight - 12
-        let separatorY = buttonY + 6
-
-        let leftSeparator = NSView(frame: NSRect(
-            x: moreButton.frame.maxX - separatorWidth/2,
-            y: separatorY,
-            width: separatorWidth,
-            height: separatorHeight
-        ))
-        leftSeparator.wantsLayer = true
-        leftSeparator.layer?.backgroundColor = NSColor.lightGray.withAlphaComponent(separatorAlpha).cgColor
-
-        let rightSeparator = NSView(frame: NSRect(
-            x: minimizeButton.frame.maxX - separatorWidth/2,
-            y: separatorY,
-            width: separatorWidth,
-            height: separatorHeight
-        ))
-        rightSeparator.wantsLayer = true
-        rightSeparator.layer?.backgroundColor = NSColor.lightGray.withAlphaComponent(separatorAlpha).cgColor
-
-        titleBarView.addSubview(leftSeparator)
-        titleBarView.addSubview(rightSeparator)
+    public static func removeCapsuleButton(from viewController: NSViewController) {
+        let identifier = NSUserInterfaceItemIdentifier("CapsuleButton_\(CAPSULE_BUTTON_TAG)")
+        viewController.view.subviews.first { $0.identifier == identifier }?.removeFromSuperview()
     }
 
     public static func createThreeDotsImage() -> NSImage {
@@ -246,8 +180,6 @@ public class LxAppCapsuleButtons {
         return image
     }
     #endif
-
-
 }
 
 /// Pure SwiftUI Capsule Button View - Cross-platform implementation
@@ -446,9 +378,46 @@ public extension View {
     }
 }
 
+#if os(macOS)
+public struct LxAppUnifiedCapsuleViewMacOS: View {
+    let onMoreTapped: () -> Void
+    let onMinimizeTapped: () -> Void
+    let onCloseTapped: () -> Void
+
+    public var body: some View {
+        HStack(spacing: 0) {
+            Button(action: onMoreTapped) {
+                Image(nsImage: LxAppCapsuleButtons.createThreeDotsImage())
+            }
+            .frame(width: 29, height: 32)
+            .buttonStyle(PlainButtonStyle())
+
+            Rectangle().fill(Color.gray.opacity(0.3)).frame(width: 0.5, height: 20)
+
+            Button(action: onMinimizeTapped) {
+                Image(nsImage: LxAppCapsuleButtons.createMinimizeButtonImage())
+            }
+            .frame(width: 29, height: 32)
+            .buttonStyle(PlainButtonStyle())
+
+            Rectangle().fill(Color.gray.opacity(0.3)).frame(width: 0.5, height: 20)
+
+            Button(action: onCloseTapped) {
+                Image(nsImage: LxAppCapsuleButtons.createCloseButtonImage())
+            }
+            .frame(width: 29, height: 32)
+            .buttonStyle(PlainButtonStyle())
+        }
+        .frame(width: 87, height: 32)
+        .background(Capsule().fill(Color.white.opacity(0.9)).background(.ultraThinMaterial))
+        .clipShape(Capsule())
+        .overlay(Capsule().stroke(Color.gray.opacity(0.3), lineWidth: 0.5))
+        .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
+    }
+}
+#endif
+
 #if os(iOS)
-/// Unified, standardized capsule button for LingXia, restoring the original visual style.
-/// This view should be used across the app to ensure visual consistency.
 public struct LxAppUnifiedCapsuleView: View {
     let onMoreTapped: () -> Void
     let onCloseTapped: () -> Void

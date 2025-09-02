@@ -69,7 +69,7 @@ public protocol NavigationUIUpdater {
 /// Shared navigation logic
 @MainActor
 public class LxAppSharedNavigation {
-    nonisolated(unsafe) private static let log = OSLog(subsystem: "LingXia", category: "Navigation")
+    private static let log = OSLog(subsystem: "LingXia", category: "Navigation")
 
     /// Shared WebView switching logic - used by both platforms
     public static func switchToWebView(appId: String, path: String, currentWebView: WKWebView?, targetWebView: WKWebView?) -> Bool {

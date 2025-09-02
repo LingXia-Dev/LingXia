@@ -242,7 +242,6 @@ extension macOSLxApp {
     public func renderNavigationBar(_ state: NavBarState) {
         guard state.shouldUpdate else { return }
 
-        // Find the appropriate view controller and update navigation bar
         if let controller = Self.activeWindowControllers.first(where: { $0.appId == state.appId }),
            let viewController = controller.window?.contentViewController as? macOSLxAppViewController {
             viewController.updateNavigationBar(appId: state.appId, path: state.path)
@@ -252,15 +251,32 @@ extension macOSLxApp {
         }
     }
 
-    /// Render Capsule button - only home app hides it
+    /// Render Capsule button - macOS capsuleStyle always shows capsule buttons
     public func renderCapsuleButton(appId: String) {
-        let isHomeApp = LxAppCore.isHomeLxApp(appId)
+        // In capsule style mode, WindowController handles floating capsule buttons
+        if LxAppWindowManager.shared.windowStyle == .capsuleStyle {
+            if let controller = Self.activeWindowControllers.first(where: { $0.appId == appId }),
+               let floatingContainer = controller.floatingCapsuleContainer {
+                floatingContainer.isHidden = false // Always show in macOS capsuleStyle
+            }
+            return
+        }
 
+        // Tab mode logic - only update when switching apps
+        if LxAppWindowManager.shared.windowStyle == .tabStyle {
+            if let tabController = Self.tabWindowController {
+                let currentActiveAppId = LxAppTabManager.shared.activeTab?.appId
+                if currentActiveAppId != appId,
+                   let viewController = tabController.getViewController(for: appId) {
+                    viewController.updateCapsuleButtonVisibility(appId: appId)
+                }
+            }
+            return
+        }
+
+        // Fallback for other modes
         if let controller = Self.activeWindowControllers.first(where: { $0.appId == appId }),
            let viewController = controller.window?.contentViewController as? macOSLxAppViewController {
-            viewController.updateCapsuleButtonVisibility(appId: appId)
-        } else if let tabController = Self.tabWindowController,
-                  let viewController = tabController.getViewController(for: appId) {
             viewController.updateCapsuleButtonVisibility(appId: appId)
         }
     }

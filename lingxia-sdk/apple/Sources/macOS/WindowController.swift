@@ -13,21 +13,24 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
 
     internal struct Layout {
         static let dragBarHeight: CGFloat = 20
-        static let navBarHeight: CGFloat = 32
+        static let navBarHeight: CGFloat = 40  // Increased from 32 to 40
         static let capsuleContainerWidth: CGFloat = 88
         static let capsuleContainerHeight: CGFloat = 26
         static let capsuleTrailingMargin: CGFloat = 12
         static let capsuleTopOffset: CGFloat = 8
+
+        // Navigation button positioning (must match updateNavigationBarButtons)
+        static let navButtonSize: CGFloat = 24
+        static let navButtonMargin: CGFloat = 16
+        static let navButtonBottomOffset: CGFloat = 12  // From bottom of navbar (macOS coordinates)
     }
 
     var appId: String?
     var path: String?
     private var navigationBar: NSView?
-    private var floatingCapsuleContainer: NSView?
+    var floatingCapsuleContainer: NSView?
     private var dragBar: NSView?
-
-    // Cache the current page config to avoid repeated Rust calls
-    private var cachedPageConfig: NavigationBarState?
+    private var independentNavigationButton: NSView?
 
     private let tabManager = LxAppTabManager.shared
     private var tabView: LxAppTabView?
@@ -52,19 +55,10 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         LxAppWindowManager.shared.windowStyle
     }
 
-    /// Get or refresh the cached page config
-    private func getPageConfig(forceRefresh: Bool = false) -> NavigationBarState? {
+    /// Get page config directly
+    private func getPageConfig() -> NavigationBarState? {
         guard let appId = appId, let path = path else { return nil }
-
-        if cachedPageConfig == nil || forceRefresh {
-            cachedPageConfig = LxPageNavigation.getNavigationBarState(appId: appId, path: path)
-        }
-        return cachedPageConfig
-    }
-
-    /// Clear cached config when path changes
-    private func clearPageConfigCache() {
-        cachedPageConfig = nil
+        return LxPageNavigation.getNavigationBarState(appId: appId, path: path)
     }
 
     public func getTopMarginForCurrentPage() -> CGFloat {
@@ -189,12 +183,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     public func updateWindowTitle(for path: String) {
         guard let _ = appId, let _ = self.navigationBar else { return }
 
-        // Clear cache when path changes
-        if self.path != path {
-            clearPageConfigCache()
-        }
         self.path = path
-
         let pageConfig = getPageConfig()
 
         // Update navigation bar based on page configuration from Rust
@@ -253,8 +242,8 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         // Apply initial navigation configuration now that navigationBar is set
         applyInitialNavigationConfiguration()
 
-        // Setup capsule buttons for capsule style
-        if LxAppWindowManager.shared.windowStyle == .capsuleStyle {
+        // Setup capsule buttons for capsule style (only in single app mode)
+        if LxAppWindowManager.shared.windowStyle == .capsuleStyle && appId != nil {
             setupFloatingCapsuleButtons(in: contentView)
         }
     }
@@ -314,13 +303,12 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func applyInitialNavigationConfiguration() {
-        guard let appId = appId, let path = path, let navigationBar = navigationBar else {
-            os_log("applyInitialNavigationConfiguration: missing appId=%@, path=%@, navigationBar=%@", log: Self.log, type: .error, appId ?? "nil", path ?? "nil", navigationBar == nil ? "nil" : "exists")
+        guard let _ = appId, let path = path, let navigationBar = navigationBar else {
+            os_log("applyInitialNavigationConfiguration: missing required parameters", log: Self.log, type: .error)
             return
         }
 
         let pageConfig = getPageConfig()
-
         if let config = pageConfig {
             if config.show_navbar {
                 updateNavigationBarWithConfig(config)
@@ -328,10 +316,11 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
             } else {
                 navigationBar.isHidden = true
             }
+            updateIndependentNavigationButton(config)
         } else {
-            // Fallback: show navbar with default styling if no config provided
             navigationBar.isHidden = false
             navigationBar.layer?.backgroundColor = NSColor.systemBlue.cgColor
+            independentNavigationButton?.isHidden = true
         }
 
         updateWindowTitle(for: path)
@@ -344,117 +333,56 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         if let state = state {
             updateNavigationBarWithConfig(state)
             navigationBar.isHidden = !state.show_navbar
+            updateIndependentNavigationButton(state)
         } else {
             navigationBar.isHidden = true
+            independentNavigationButton?.isHidden = true
         }
     }
 
     private func setupFloatingCapsuleButtons(in contentView: NSView) {
-        let capsuleContainer = createCapsuleContainer()
+        let capsuleContainer = NSView()
+        capsuleContainer.wantsLayer = true
+        capsuleContainer.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.92).cgColor
+        capsuleContainer.layer?.cornerRadius = Layout.capsuleContainerHeight / 2
+        capsuleContainer.translatesAutoresizingMaskIntoConstraints = false
+        capsuleContainer.shadow = NSShadow()
+        capsuleContainer.layer?.shadowColor = NSColor.black.cgColor
+        capsuleContainer.layer?.shadowOpacity = 0.12
+        capsuleContainer.layer?.shadowOffset = CGSize(width: 0, height: 1)
+        capsuleContainer.layer?.shadowRadius = 4
+
         contentView.addSubview(capsuleContainer)
 
-        // Create buttons
-        let buttons = createCapsuleButtons()
-        let separators = createSeparators()
-
-        // Add buttons and separators to container
-        buttons.forEach { capsuleContainer.addSubview($0) }
-        separators.forEach { capsuleContainer.addSubview($0) }
-
-        // Position container
-        positionCapsuleContainer(capsuleContainer, in: contentView)
-
-        // Layout buttons and separators
-        layoutCapsuleButtons(buttons, separators: separators, in: capsuleContainer)
-
-        // Store reference
-        self.floatingCapsuleContainer = capsuleContainer
-    }
-
-    private func createCapsuleContainer() -> NSView {
-        let container = NSView()
-        container.wantsLayer = true
-        container.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.92).cgColor
-        container.layer?.cornerRadius = Layout.capsuleContainerHeight / 2
-        container.translatesAutoresizingMaskIntoConstraints = false
-
-        // Add shadow
-        container.shadow = NSShadow()
-        container.layer?.shadowColor = NSColor.black.cgColor
-        container.layer?.shadowOpacity = 0.12
-        container.layer?.shadowOffset = CGSize(width: 0, height: 1)
-        container.layer?.shadowRadius = 4
-
-        return container
-    }
-
-    private func createCapsuleButtons() -> [NSButton] {
-        // Capsule buttons are fixed floating controls, not related to navbar config
-        return [
-            createFloatingCapsuleButton(
-                image: LxAppCapsuleButtons.createThreeDotsImage(),
-                target: self,
-                action: #selector(moreButtonClicked)
-            ),
-            createFloatingCapsuleButton(
-                image: LxAppCapsuleButtons.createMinimizeButtonImage(),
-                target: self,
-                action: #selector(minimizeButtonClicked)
-            ),
-            createFloatingCapsuleButton(
-                image: LxAppCapsuleButtons.createCloseButtonImage(),
-                target: self,
-                action: #selector(closeButtonClicked)
-            )
+        let buttons = [
+            createFloatingCapsuleButton(image: LxAppCapsuleButtons.createThreeDotsImage(), target: self, action: #selector(moreButtonClicked)),
+            createFloatingCapsuleButton(image: LxAppCapsuleButtons.createMinimizeButtonImage(), target: self, action: #selector(minimizeButtonClicked)),
+            createFloatingCapsuleButton(image: LxAppCapsuleButtons.createCloseButtonImage(), target: self, action: #selector(closeButtonClicked))
         ]
-    }
 
-    private func createSeparators() -> [NSView] {
-        return [createSeparatorLine(), createSeparatorLine()]
-    }
+        buttons.forEach { capsuleContainer.addSubview($0) }
 
-    private func positionCapsuleContainer(_ container: NSView, in contentView: NSView) {
         let navBarCenterOffset = Layout.dragBarHeight + (Layout.navBarHeight - Layout.capsuleContainerHeight) / 2
-
         NSLayoutConstraint.activate([
-            container.topAnchor.constraint(equalTo: contentView.topAnchor, constant: navBarCenterOffset),
-            container.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Layout.capsuleTrailingMargin),
-            container.widthAnchor.constraint(equalToConstant: Layout.capsuleContainerWidth),
-            container.heightAnchor.constraint(equalToConstant: Layout.capsuleContainerHeight)
+            capsuleContainer.topAnchor.constraint(equalTo: contentView.topAnchor, constant: navBarCenterOffset),
+            capsuleContainer.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Layout.capsuleTrailingMargin),
+            capsuleContainer.widthAnchor.constraint(equalToConstant: Layout.capsuleContainerWidth),
+            capsuleContainer.heightAnchor.constraint(equalToConstant: Layout.capsuleContainerHeight)
         ])
-    }
 
-    private func layoutCapsuleButtons(_ buttons: [NSButton], separators: [NSView], in container: NSView) {
+        // Layout buttons
         let buttonWidth: CGFloat = 20
         let buttonHeight: CGFloat = 24
         let edgeSpacing: CGFloat = 8
         let buttonSpacing: CGFloat = 8
-        let separatorWidth: CGFloat = 1
-
-        // Position buttons with proper spacing
-        let button1X = edgeSpacing
-        let button2X = edgeSpacing + buttonWidth + buttonSpacing
-        let button3X = edgeSpacing + buttonWidth * 2 + buttonSpacing * 2
-
-        // Vertically center the button
         let buttonY = (Layout.capsuleContainerHeight - buttonHeight) / 2
 
-        if buttons.count >= 3 {
-            buttons[0].frame = NSRect(x: button1X, y: buttonY, width: buttonWidth, height: buttonHeight)
-            buttons[1].frame = NSRect(x: button2X, y: buttonY, width: buttonWidth, height: buttonHeight)
-            buttons[2].frame = NSRect(x: button3X, y: buttonY, width: buttonWidth, height: buttonHeight)
+        for (index, button) in buttons.enumerated() {
+            let buttonX = edgeSpacing + CGFloat(index) * (buttonWidth + buttonSpacing)
+            button.frame = NSRect(x: buttonX, y: buttonY, width: buttonWidth, height: buttonHeight)
         }
 
-        // Position separators between buttons
-        let separatorHeight: CGFloat = 18
-        let separatorY = (Layout.capsuleContainerHeight - separatorHeight) / 2
-        let separatorX1 = button1X + buttonWidth + (buttonSpacing - separatorWidth) / 2
-        let separatorX2 = button2X + buttonWidth + (buttonSpacing - separatorWidth) / 2
-
-        if separators.count >= 2 {
-            separators[0].frame = NSRect(x: separatorX1, y: separatorY, width: separatorWidth, height: separatorHeight)
-            separators[1].frame = NSRect(x: separatorX2, y: separatorY, width: separatorWidth, height: separatorHeight)
-        }
+        self.floatingCapsuleContainer = capsuleContainer
     }
 
     private func createFloatingCapsuleButton(image: NSImage?, target: AnyObject, action: Selector) -> NSButton {
@@ -467,18 +395,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         button.action = action
         button.wantsLayer = true
         button.layer?.backgroundColor = NSColor.clear.cgColor
-
-        // Add subtle hover effect
-        button.layer?.cornerRadius = 6
-
         return button
-    }
-
-    private func createSeparatorLine() -> NSView {
-        let separator = NSView()
-        separator.wantsLayer = true
-        separator.layer?.backgroundColor = NSColor(red: 0.867, green: 0.867, blue: 0.867, alpha: 1.0).cgColor
-        return separator
     }
 
     private func setupDragBarBehavior(_ dragBar: NSView) {
@@ -577,7 +494,6 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         contentView.layoutSubtreeIfNeeded()
     }
 
-
     @objc private func backButtonClicked() {
         print("NavigationBar: Back button clicked")
     }
@@ -598,72 +514,110 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         window?.close()
     }
 
+    /// Update independent navigation button visibility and type
+    private func updateIndependentNavigationButton(_ state: NavigationBarState) {
+        let shouldShow = !state.show_navbar && (state.show_back_button || state.show_home_button)
+
+        if shouldShow {
+            if independentNavigationButton == nil {
+                createIndependentNavigationButton(isBackButton: state.show_back_button)
+            }
+            independentNavigationButton?.isHidden = false
+            updateIndependentButtonType(isBackButton: state.show_back_button)
+        } else {
+            independentNavigationButton?.isHidden = true
+        }
+    }
+
+    /// Create independent navigation button
+    private func createIndependentNavigationButton(isBackButton: Bool) {
+        guard let contentView = window?.contentView else { return }
+
+        let hostingView = NSHostingView(rootView:
+            NavigationButton(isBackButton: isBackButton) { [weak self] in
+                self?.handleIndependentNavigationButtonClick()
+            }
+        )
+
+        hostingView.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(hostingView)
+
+        let topPosition = Layout.dragBarHeight + Layout.navBarHeight - Layout.navButtonBottomOffset - Layout.navButtonSize
+
+        NSLayoutConstraint.activate([
+            hostingView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Layout.navButtonMargin),
+            hostingView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: topPosition),
+            hostingView.widthAnchor.constraint(equalToConstant: Layout.navButtonSize),
+            hostingView.heightAnchor.constraint(equalToConstant: Layout.navButtonSize)
+        ])
+
+        independentNavigationButton = hostingView
+    }
+
+    /// Update independent button type (back vs home)
+    private func updateIndependentButtonType(isBackButton: Bool) {
+        guard let hostingView = independentNavigationButton as? NSHostingView<NavigationButton> else { return }
+
+        // Update the SwiftUI view with new button type
+        hostingView.rootView = NavigationButton(isBackButton: isBackButton) { [weak self] in
+            self?.handleIndependentNavigationButtonClick()
+        }
+    }
+
+    /// Handle independent navigation button click
+    @objc private func handleIndependentNavigationButtonClick() {
+        // Get current navigation state to determine button type
+        if let appId = appId, let path = path {
+            let navState = LxPageNavigation.getNavigationBarState(appId: appId, path: path)
+            if navState?.show_back_button == true {
+                backButtonClicked()
+            } else if navState?.show_home_button == true {
+                homeButtonClicked()
+            }
+        }
+    }
+
     private func updateNavigationBarButtons(_ config: NavigationBarState) {
         guard let navigationBar = self.navigationBar else {
             print("NavigationBar is nil, cannot add buttons")
             return
         }
 
-        // Remove existing navbar buttons
-        navigationBar.subviews.filter { $0.tag == 1001 || $0.tag == 1002 }.forEach { $0.removeFromSuperview() }
+        // Remove existing navbar buttons (keep title label)
+        navigationBar.subviews.filter { !($0 is NSTextField) }.forEach { $0.removeFromSuperview() }
 
-        let buttonSize: CGFloat = 22
-        let buttonY = (navigationBar.frame.height - buttonSize) / 2 // Center vertically in navbar
+        // Use iOS-style self-drawn buttons instead of system buttons
+        let buttonSize: CGFloat = 24 // Even smaller size for better fit
+        let buttonY: CGFloat = 12 // Move up more to avoid bottom overlap (AppKit coordinates)
         let buttonX: CGFloat = 16 // Start from left edge with proper margin
 
-        // Priority logic: show back button first, only show home button if no back button
+        // Use iOS-style self-drawn navigation buttons
         if config.show_back_button {
-            let backButton = NSButton(frame: NSRect(x: buttonX, y: buttonY, width: buttonSize, height: buttonSize))
-
-            // Create a smaller symbol configuration for the back arrow
-            let symbolConfig = NSImage.SymbolConfiguration(pointSize: 14, weight: .medium)
-            backButton.image = NSImage(systemSymbolName: "chevron.left", accessibilityDescription: "Back")?.withSymbolConfiguration(symbolConfig)
-
-            backButton.imageScaling = .scaleProportionallyDown
-            backButton.isBordered = false
-            backButton.bezelStyle = .regularSquare
-            backButton.imagePosition = .imageOnly
-            backButton.tag = 1001 // Tag for identification
-            backButton.target = self
-            backButton.action = #selector(backButtonClicked)
-
-            // Style the button to match navbar - use appropriate color based on navbar visibility
-            if config.show_navbar {
-                // Visible navbar: use white for colored backgrounds
-                backButton.contentTintColor = NSColor.white
-            } else {
-                // Transparent navbar: use black for better visibility on light backgrounds
-                backButton.contentTintColor = NSColor.black
-            }
-
-            navigationBar.addSubview(backButton)
+            let backButtonView = createiOSStyleNavigationButton(
+                isBackButton: true,
+                frame: NSRect(x: buttonX, y: buttonY, width: buttonSize, height: buttonSize),
+                action: #selector(backButtonClicked)
+            )
+            navigationBar.addSubview(backButtonView)
         } else if config.show_home_button {
-            // Only show home button if back button is not shown
-            let homeButton = NSButton(frame: NSRect(x: buttonX, y: buttonY, width: buttonSize, height: buttonSize))
-
-            // Create a smaller symbol configuration for the home icon
-            let symbolConfig = NSImage.SymbolConfiguration(pointSize: 14, weight: .medium)
-            homeButton.image = NSImage(systemSymbolName: "house", accessibilityDescription: "Home")?.withSymbolConfiguration(symbolConfig)
-
-            homeButton.imageScaling = .scaleProportionallyDown
-            homeButton.isBordered = false
-            homeButton.bezelStyle = .regularSquare
-            homeButton.imagePosition = .imageOnly
-            homeButton.tag = 1002 // Tag for identification
-            homeButton.target = self
-            homeButton.action = #selector(homeButtonClicked)
-
-            // Style the button to match navbar - use appropriate color based on navbar visibility
-            if config.show_navbar {
-                // Visible navbar: use white for colored backgrounds
-                homeButton.contentTintColor = NSColor.white
-            } else {
-                // Transparent navbar: use black for better visibility on light backgrounds
-                homeButton.contentTintColor = NSColor.black
-            }
-
-            navigationBar.addSubview(homeButton)
+            let homeButtonView = createiOSStyleNavigationButton(
+                isBackButton: false,
+                frame: NSRect(x: buttonX, y: buttonY, width: buttonSize, height: buttonSize),
+                action: #selector(homeButtonClicked)
+            )
+            navigationBar.addSubview(homeButtonView)
         }
+    }
+
+    /// Create iOS-style self-drawn navigation button using SwiftUI
+    private func createiOSStyleNavigationButton(isBackButton: Bool, frame: NSRect, action: Selector) -> NSView {
+        let hostingView = NSHostingView(rootView:
+            NavigationButton(isBackButton: isBackButton) { [weak self] in
+                self?.perform(action)
+            }
+        )
+        hostingView.frame = frame
+        return hostingView
     }
 
     private func ensureCorrectViewFrame() {
@@ -731,13 +685,20 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func switchToTab(_ appId: String) {
+        let isNewViewController = viewControllers[appId] == nil
+
         let viewController = viewControllers[appId] ?? {
             let currentPath = LxAppCore.getLastActivePath(for: appId, defaultPath: "/")
             let vc = macOSLxAppViewController(appId: appId, path: currentPath)
             viewControllers[appId] = vc
-            let _ = onLxappOpened(appId, currentPath)
             return vc
         }()
+
+        // Only call onLxappOpened for newly created view controllers
+        if isNewViewController {
+            let currentPath = LxAppCore.getLastActivePath(for: appId, defaultPath: "/")
+            let _ = onLxappOpened(appId, currentPath)
+        }
 
         updateContentView(with: viewController)
     }
@@ -764,11 +725,11 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
                 topOffset = 0
             } else {
                 // Default navigation style: WebView below navigation bar
-                topOffset = 32  // Only navigation bar space (title bar is separate)
+                topOffset = Layout.navBarHeight  // Use actual navbar height
             }
         } else {
-            // Tab style: 32pt for tab bar
-            topOffset = 32
+            // Tab style: use navbar height for tab bar
+            topOffset = Layout.navBarHeight
         }
 
         NSLayoutConstraint.activate([

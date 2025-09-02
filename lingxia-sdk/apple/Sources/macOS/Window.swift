@@ -1,6 +1,7 @@
 #if os(macOS)
 import SwiftUI
 import Foundation
+import os.log
 
 /// SwiftUI-based window for LxApp 
 @available(macOS 13.0, *)
@@ -149,45 +150,75 @@ public struct LxAppSwiftUITitleBar: View {
     let onMore: () -> Void
     let onMinimize: () -> Void
     let onClose: () -> Void
+    @StateObject private var stateManager = NavigationBarStateManager.shared
 
     public var body: some View {
-        HStack(spacing: 0) {
-            // Left side - window controls for tab style
-            if style == .tabStyle {
-                // Standard macOS window controls area (70pt)
-                Rectangle()
-                    .fill(Color.clear)
-                    .frame(width: 70)
+        ZStack {
+            HStack(spacing: 0) {
+                // Left side - window controls for tab style
+                if style == .tabStyle {
+                    // Standard macOS window controls area (70pt)
+                    Rectangle()
+                        .fill(Color.clear)
+                        .frame(width: 70)
+                }
+
+                // Center - title or content
+                Spacer()
+
+                if style == .capsuleStyle {
+                    Text("LingXia")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(.primary)
+                }
+
+                Spacer()
+
+                // Right side - custom controls for capsule style
+                if style == .capsuleStyle {
+                    LxAppSwiftUICapsuleButtons(
+                        onMoreTapped: onMore,
+                        onMinimizeTapped: onMinimize,
+                        onCloseTapped: onClose
+                    )
+                    .padding(.trailing, 7)
+                }
             }
-
-            // Center - title or content
-            Spacer()
-
+            .frame(height: 32)
+            .background(titleBarBackground)
+            .overlay(
+                // Drag area for capsule style
+                style == .capsuleStyle ?
+                Color.clear.contentShape(Rectangle()) : nil
+            )
+            
+            // Floating navbar buttons for capsule style - shown regardless of navbar visibility
             if style == .capsuleStyle {
-                Text("LingXia")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.primary)
-            }
+                VStack(spacing: 0) {
+                    Spacer()
+                        .frame(height: 6) // Small margin from top
 
-            Spacer()
-
-            // Right side - custom controls for capsule style
-            if style == .capsuleStyle {
-                LxAppSwiftUICapsuleButtons(
-                    onMore: onMore,
-                    onMinimize: onMinimize,
-                    onClose: onClose
-                )
-                .padding(.trailing, 7)
+                    HStack {
+                        floatingNavbarButton
+                            .padding(.leading, 10)
+                        Spacer()
+                    }
+                    .frame(height: 44)
+                }
             }
         }
-        .frame(height: 32)
-        .background(titleBarBackground)
-        .overlay(
-            // Drag area for capsule style
-            style == .capsuleStyle ?
-            Color.clear.contentShape(Rectangle()) : nil
-        )
+        .frame(height: max(32, style == .capsuleStyle ? 50 : 32)) // Allow more height for floating buttons
+    }
+    
+    @ViewBuilder
+    private var floatingNavbarButton: some View {
+        if let state = stateManager.currentState {
+            if state.show_back_button {
+                NavigationButton(isBackButton: true, action: {})
+            } else if state.show_home_button {
+                NavigationButton(isBackButton: false, action: {})
+            }
+        }
     }
 
     private var titleBarBackground: some View {
@@ -201,67 +232,8 @@ public struct LxAppSwiftUITitleBar: View {
     }
 }
 
-/// SwiftUI capsule buttons - replaces NSButton controls
-public struct LxAppSwiftUICapsuleButtons: View {
-    let onMore: () -> Void
-    let onMinimize: () -> Void
-    let onClose: () -> Void
-
-    private let buttonWidth: CGFloat = 87 / 3
-    private let buttonHeight: CGFloat = 28
-
-    public var body: some View {
-        HStack(spacing: 0) {
-            // More button with custom drawn three dots
-            Button(action: onMore) {
-                MacOSThreeDotsView()
-                    .frame(width: buttonWidth, height: buttonHeight)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(PlainButtonStyle())
-            .help("More options")
-
-            // Separator
-            Rectangle()
-                .fill(Color.gray.opacity(0.15))
-                .frame(width: 0.5, height: buttonHeight - 12)
-
-            // Minimize button with custom drawn minimize icon
-            Button(action: onMinimize) {
-                MacOSMinimizeView()
-                    .frame(width: buttonWidth, height: buttonHeight)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(PlainButtonStyle())
-            .help("Minimize")
-
-            // Separator
-            Rectangle()
-                .fill(Color.gray.opacity(0.15))
-                .frame(width: 0.5, height: buttonHeight - 12)
-
-            // Close button with custom drawn close icon
-            Button(action: onClose) {
-                MacOSCloseView()
-                    .frame(width: buttonWidth, height: buttonHeight)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(PlainButtonStyle())
-            .help("Close")
-        }
-        .background(
-            Color.white.opacity(0.9)
-                .background(.ultraThinMaterial)
-        )
-        .clipShape(Capsule())
-        .overlay(
-            Capsule()
-                .stroke(Color.gray.opacity(0.3), lineWidth: 0.5)
-        )
-        .frame(width: 87, height: buttonHeight)
-        .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
-    }
-}
+/// SwiftUI capsule buttons - reuse unified implementation
+public typealias LxAppSwiftUICapsuleButtons = LxAppUnifiedCapsuleViewMacOS
 
 /// SwiftUI tab bar component
 public struct LxAppSwiftUITabBar: View {
@@ -438,99 +410,6 @@ public extension View {
     }
 }
 
-/// Custom three dots view for macOS capsule buttons
-private struct MacOSThreeDotsView: View {
-    var body: some View {
-        Canvas { context, size in
-            let centerY = size.height / 2
-            let centerX = size.width / 2
-            let centerDotRadius = size.height / 7
-            let sideDotRadius = size.height / 10
-            let spacing = centerDotRadius * 2.8
 
-            let dotsPath = Path { path in
-                // Left dot
-                path.addEllipse(in: CGRect(
-                    x: centerX - spacing - sideDotRadius,
-                    y: centerY - sideDotRadius,
-                    width: sideDotRadius * 2,
-                    height: sideDotRadius * 2
-                ))
-
-                // Center dot
-                path.addEllipse(in: CGRect(
-                    x: centerX - centerDotRadius,
-                    y: centerY - centerDotRadius,
-                    width: centerDotRadius * 2,
-                    height: centerDotRadius * 2
-                ))
-
-                // Right dot
-                path.addEllipse(in: CGRect(
-                    x: centerX + spacing - sideDotRadius,
-                    y: centerY - sideDotRadius,
-                    width: sideDotRadius * 2,
-                    height: sideDotRadius * 2
-                ))
-            }
-
-            context.fill(dotsPath, with: .color(.primary))
-        }
-    }
-}
-
-/// Custom minimize view for macOS capsule buttons
-private struct MacOSMinimizeView: View {
-    var body: some View {
-        Canvas { context, size in
-            let centerX = size.width / 2
-            let centerY = size.height / 2
-            let lineLength: CGFloat = size.width * 0.4
-
-            let linePath = Path { path in
-                path.move(to: CGPoint(x: centerX - lineLength/2, y: centerY))
-                path.addLine(to: CGPoint(x: centerX + lineLength/2, y: centerY))
-            }
-
-            context.stroke(linePath, with: .color(.primary), style: StrokeStyle(lineWidth: 2.2, lineCap: .round))
-        }
-    }
-}
-
-/// Custom close view for macOS capsule buttons
-private struct MacOSCloseView: View {
-    var body: some View {
-        Canvas { context, size in
-            let centerX = size.width / 2
-            let centerY = size.height / 2
-            let outerRadius = size.width * 0.35
-            let innerRadius: CGFloat = 2.5
-
-            // Outer circle (stroke)
-            let outerCirclePath = Path { path in
-                path.addEllipse(in: CGRect(
-                    x: centerX - outerRadius,
-                    y: centerY - outerRadius,
-                    width: outerRadius * 2,
-                    height: outerRadius * 2
-                ))
-            }
-
-            context.stroke(outerCirclePath, with: .color(.primary), style: StrokeStyle(lineWidth: 2.2, lineCap: .round))
-
-            // Inner circle (fill)
-            let innerCirclePath = Path { path in
-                path.addEllipse(in: CGRect(
-                    x: centerX - innerRadius,
-                    y: centerY - innerRadius,
-                    width: innerRadius * 2,
-                    height: innerRadius * 2
-                ))
-            }
-
-            context.fill(innerCirclePath, with: .color(.primary))
-        }
-    }
-}
 
 #endif
