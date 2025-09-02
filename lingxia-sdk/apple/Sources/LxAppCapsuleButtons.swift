@@ -56,8 +56,9 @@ public class LxAppCapsuleButtons {
         let capsuleButtons = LxAppUnifiedCapsuleView(
             onMoreTapped: {},
             onCloseTapped: {
-                if let iOSManager = viewController as? LxAppViewController {
-                    iOSManager.performLxAppClose()
+                if let iOSManager = viewController as? LxAppViewController,
+                   let currentAppId = iOSManager.currentAppId {
+                    iOSManager.closeLxApp(appId: currentAppId)
                 }
             }
         )

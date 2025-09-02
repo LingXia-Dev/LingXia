@@ -82,6 +82,9 @@ public class LxAppViewController: UIViewController, ObservableObject {
 
         configureEdgeToEdgeDisplay()
 
+        //  Allow animation to extend beyond main view bounds
+        view.clipsToBounds = false
+
         // Set initial background to prevent black flash
         view.backgroundColor = UIColor.black
 
@@ -132,6 +135,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
         rootContainer = UIView()
         rootContainer.backgroundColor = UIColor.white
         rootContainer.translatesAutoresizingMaskIntoConstraints = false
+        rootContainer.clipsToBounds = false  // 🎬 Allow animation to extend beyond bounds
         view.addSubview(rootContainer)
 
         NSLayoutConstraint.activate([
@@ -242,7 +246,8 @@ public class LxAppViewController: UIViewController, ObservableObject {
             let activeAppIds = stateManager.activeAppIds.filter { $0 != appId }
             if let nextAppId = activeAppIds.first,
                let nextState = stateManager.getState(for: nextAppId) {
-                switchToLxApp(appId: nextAppId, path: nextState.currentPath)
+                currentAppId = nextAppId
+                navigate(appId: nextAppId, to: nextState.currentPath, with: .launch)
             } else {
                 currentAppId = nil
             }
@@ -256,11 +261,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
         let _ = onLxappClosed(appId)
     }
 
-    /// Switches page within the current LxApp (deprecated - use navigate instead)
-    public func switchPage(appId: String, path: String) {
-        // Deprecated: Use navigate(appId:to:with:.forward) instead
-        navigate(appId: appId, to: path, with: .forward)
-    }
+
 
     public func updateAppStateForNavigation(appId: String, path: String, navigationType: NavigationType) {
         // Create or update app state using state manager
@@ -274,20 +275,32 @@ public class LxAppViewController: UIViewController, ObservableObject {
         guard let appState = stateManager.getState(for: appId) else { return }
 
         if let targetWebView = iOSLxApp.findWebView(appId: appId, path: path) {
-            // Hide current WebView if different with smooth transition
-            if let currentWebView = appState.webView, currentWebView != targetWebView {
-                os_log("Switching from current WebView to target WebView", log: Self.log, type: .info)
+            // Handle navigation animations for all cases
+            if let currentWebView = appState.webView {
+                os_log("Navigation to %@:%@ (same WebView: %@)", log: Self.log, type: .info, appId, path, String(currentWebView == targetWebView))
 
-                // For tab switching, use smooth transition
-                if navigationType == .switchTab {
-                    UIView.transition(with: rootContainer, duration: 0.2, options: [.transitionCrossDissolve], animations: {
-                        currentWebView.alpha = 0.0
-                    }, completion: { _ in
-                        currentWebView.isHidden = true
-                        currentWebView.pauseWebView()
-                        currentWebView.alpha = 1.0
-                    })
-                } else {
+                // Choose animation based on navigation type
+                switch navigationType {
+                case .switchTab:
+                    if currentWebView == targetWebView {
+                        // Same WebView - no action needed, stays visible and active
+                        return
+                    } else {
+                        // Different WebView - smooth fade transition to avoid flashing
+                        UIView.transition(with: rootContainer, duration: 0.1, options: [.transitionCrossDissolve], animations: {
+                            currentWebView.alpha = 0.0
+                        }, completion: { _ in
+                            currentWebView.isHidden = true
+                            currentWebView.pauseWebView()
+                            currentWebView.alpha = 1.0
+                        })
+                    }
+                case .forward, .backward:
+                    // Forward/backward use slide animation
+                    performSlideTransition(from: currentWebView, to: targetWebView, navigationType: navigationType, appId: appId, path: path)
+                    return // Early return as performSlideTransition handles the rest
+                default:
+                    // Other types use immediate transition
                     currentWebView.isHidden = true
                     currentWebView.pauseWebView()
                 }
@@ -301,7 +314,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
             os_log("WebView not found for %@:%@, will be created by Rust", log: Self.log, type: .info, appId, path)
         }
 
-        // Update TabBar selection for switchTab
+        // Update TabBar selection only for switchTab navigation
         if navigationType == .switchTab {
             syncTabBarWithCurrentPathInternal(path)
         }
@@ -313,7 +326,18 @@ public class LxAppViewController: UIViewController, ObservableObject {
     private func updateGlobalUIComponents(for appId: String, path: String, navigationType: NavigationType) {
         updateCapsuleButton(for: appId)
         updateNavigationBar(for: appId, path: path)
-        updateTabBar(for: appId, path: path, navigationType: navigationType)
+
+        // Only update TabBar for specific navigation types
+        switch navigationType {
+        case .launch, .switchTab:
+            updateTabBar(for: appId, path: path, navigationType: navigationType)
+        default:
+            if let tabBar = currentTabBar {
+                let shouldShowTabBar = tabBar.findTabIndexByPath(path) >= 0
+                tabBar.isHidden = !shouldShowTabBar
+            }
+        }
+
         bringUIElementsToFront()
     }
 
@@ -354,27 +378,6 @@ public class LxAppViewController: UIViewController, ObservableObject {
         if navigationType == .switchTab {
             currentTabBar?.syncSelectedTabWithCurrentPath(path)
         }
-    }
-
-    private func createNewLxApp(appId: String, path: String) {
-        // Create new app state using state manager
-        let _ = stateManager.createOrUpdateState(appId: appId, path: path)
-    }
-
-    private func switchToLxApp(appId: String, path: String) {
-        // Hide current app if different
-        if let currentAppId = currentAppId, currentAppId != appId {
-            hideCurrentLxApp()
-        }
-
-        // Show target app
-        showLxApp(appId: appId, path: path)
-
-        // Update current app
-        currentAppId = appId
-
-        // Update path using state manager
-        stateManager.updateStateForNavigation(appId: appId, path: path, navigationType: .switchTab)
     }
 
     private func hideCurrentLxApp() {
@@ -454,6 +457,8 @@ public class LxAppViewController: UIViewController, ObservableObject {
         if webView.superview == rootContainer && !webView.isHidden {
             // WebView is already attached and visible, just ensure it's configured
             configureWebView(webView, transparent: shouldUseTransparentMode(for: appId, path: path))
+            // Always ensure WebView is resumed, even if already visible
+            webView.resumeWebView()
             bringUIElementsToFront(for: appId)
             return
         }
@@ -499,7 +504,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
         bringUIElementsToFront(for: appId)
     }
 
-    private func updateWebViewConstraints(for appId: String) {
+    private func updateWebViewConstraints(for appId: String, topOffset: CGFloat? = nil) {
         guard let appState = stateManager.getState(for: appId),
               let webView = appState.webView,
               rootContainer != nil else { return }
@@ -510,9 +515,9 @@ public class LxAppViewController: UIViewController, ObservableObject {
             rootContainer.removeConstraint(oldConstraint)
         }
 
-        // Create new constraint with current navigation area height
-        let topOffset = navigationAreaHeight
-        let newConstraint = webView.topAnchor.constraint(equalTo: rootContainer.topAnchor, constant: topOffset)
+        // Use provided topOffset or calculate from current state
+        let actualTopOffset = topOffset ?? navigationAreaHeight
+        let newConstraint = webView.topAnchor.constraint(equalTo: rootContainer.topAnchor, constant: actualTopOffset)
         newConstraint.isActive = true
 
         // Store constraint reference in state manager
@@ -569,7 +574,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
 
     public func updateNavigationBar(appId: String, path: String) {
         guard let navigationBar = globalNavigationBar else {
-            os_log("❌ updateNavigationBar: NavigationBar not initialized - this should not happen", log: Self.log, type: .error)
+            os_log("updateNavigationBar: NavigationBar not initialized", log: Self.log, type: .error)
             return
         }
 
@@ -772,7 +777,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
 
     private func switchToTab(appId: String, targetPath: String) {
         guard let appState = stateManager.getState(for: appId) else {
-            os_log("❌ switchToTab: No app state for %@", log: Self.log, type: .error, appId)
+            os_log("switchToTab: No app state for %@", log: Self.log, type: .error, appId)
             return
         }
 
@@ -798,6 +803,8 @@ public class LxAppViewController: UIViewController, ObservableObject {
                 }, completion: { _ in
                     currentWebView.pauseWebView()
                 })
+                // Clear the WebView reference since it's being hidden
+                stateManager.updateWebView(nil, for: appId)
             }
         }
 
@@ -898,62 +905,11 @@ public class LxAppViewController: UIViewController, ObservableObject {
         return stateManager.getCurrentPath(for: currentAppId)
     }
 
-    /// Check if current app has navigation bar
-    public func hasNavigationBar() -> Bool {
-        return globalNavigationBar != nil && globalNavigationBar?.isHidden == false
-    }
 
-    /// Create navigation bar if needed for current app
-    public func createNavigationBarIfNeeded() {
-        guard let currentAppId = currentAppId else { return }
-        setupNavigationBar(appId: currentAppId)
-    }
-
-    /// Setup WebView if ready for specific app and path
-    public func setupWebViewIfReady(appId: String, path: String) {
-        setupWebView(appId: appId, path: path)
-    }
-
-    /// Setup WebView for specific app and path (protocol requirement)
-    public func setupWebViewForProtocol(appId: String, path: String) {
-        setupWebView(appId: appId, path: path)
-    }
-
-    /// Hide navigation bar (protocol requirement)
-    public func hideNavigationBar() {
-        NavigationBarStateManager.shared.currentState = nil
-    }
-
-    /// Apply transparency effects (protocol requirement)
-    public func applyTransparencyEffects() {
-        guard let currentAppId = currentAppId else { return }
-        applyAppStyling(for: currentAppId)
-    }
-
-    /// Perform LxApp close (protocol requirement)
-    public func performLxAppClose() {
-        guard let currentAppId = currentAppId else { return }
-        closeLxApp(appId: currentAppId)
-    }
-
-    /// Get TabBar for current app (internal implementation)
-    internal func getTabBarInternal() -> (any TabBarProtocol)? {
-        return currentTabBar as? (any TabBarProtocol)
-    }
 
     /// Sync TabBar with current path (internal implementation)
     internal func syncTabBarWithCurrentPathInternal(_ path: String) {
         currentTabBar?.syncSelectedTabWithCurrentPath(path)
-    }
-
-    /// Get app ID (for protocol compatibility)
-    public var appId: String {
-        return currentAppId ?? ""
-    }
-
-    /// Check if destroyed (always false for manager)
-    public var isDestroyed: Bool {
-        return false
     }
 
     private func setupGlobalCapsuleButton() {
@@ -969,7 +925,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
     private func setupGlobalNavigationBar() {
         guard globalNavigationBar == nil else { return }
         guard rootContainer != nil else {
-            os_log("❌ setupGlobalNavigationBar: rootContainer is nil - cannot setup NavigationBar yet", log: Self.log, type: .error)
+            os_log("setupGlobalNavigationBar: rootContainer is nil", log: Self.log, type: .error)
             return
         }
 
@@ -1031,6 +987,179 @@ public class LxAppViewController: UIViewController, ObservableObject {
         } else {
             globalCapsuleButton?.isHidden = true
         }
+    }
+
+    /// Finalize WebView attachment after animation completes
+    private func finalizeWebViewAttachment(webView: WKWebView, appId: String, path: String) {
+        // Apply proper styling first (this will set transparency if needed)
+        applyAppStyling(for: appId, path: path)
+
+        // Update navigation bar for the current path
+        updateNavigationBar(appId: appId, path: path)
+
+        // Calculate correct navigation area height based on the target state
+        let shouldUseTransparent = shouldUseTransparentMode(for: appId, path: path)
+        let correctTopOffset = shouldUseTransparent ? 0 : (statusBarHeight + NavigationBarState.DEFAULT_HEIGHT)
+
+        // Update constraints with the correct offset immediately
+        updateWebViewConstraints(for: appId, topOffset: correctTopOffset)
+
+        // Bring UI elements to front
+        bringUIElementsToFront(for: appId)
+
+        // Ensure WebView is visible and active
+        webView.isHidden = false
+        webView.resumeWebView()
+    }
+
+    /// Screenshot-based animation for same WebView navigation
+    private func performSameWebViewAnimation(webView: WKWebView, navigationType: NavigationType, appId: String, path: String) {
+        let isBackward = navigationType == .backward
+
+        // Pre-configure backgrounds to eliminate black shadows
+        rootContainer.backgroundColor = UIColor.white
+        view.backgroundColor = UIColor.white
+        webView.backgroundColor = UIColor.white
+        webView.isHidden = false
+        webView.alpha = 1.0
+
+        if let navigationBar = globalNavigationBar {
+            navigationBar.backgroundColor = UIColor.white
+            navigationBar.isHidden = false
+            navigationBar.alpha = 1.0
+        }
+
+        // Force layout update
+        rootContainer.layoutIfNeeded()
+
+        // Create snapshot
+        let containerSnapshot = rootContainer.snapshotView(afterScreenUpdates: true) ?? UIView()
+        containerSnapshot.frame = rootContainer.bounds
+        containerSnapshot.backgroundColor = UIColor.white
+
+        // Set initial position for slide animation
+        let screenWidth = rootContainer.bounds.width
+        let slideDistance: CGFloat = isBackward ? -screenWidth : screenWidth
+
+        webView.transform = CGAffineTransform(translationX: slideDistance, y: 0)
+        globalNavigationBar?.transform = CGAffineTransform(translationX: slideDistance, y: 0)
+
+        rootContainer.addSubview(containerSnapshot)
+
+        // Animate the slide transition
+        UIView.animate(withDuration: 0.35, delay: 0, options: [.curveEaseOut], animations: {
+            webView.transform = .identity
+            self.globalNavigationBar?.transform = .identity
+
+            let snapshotSlide: CGFloat = isBackward ? screenWidth : -screenWidth
+            containerSnapshot.transform = CGAffineTransform(translationX: snapshotSlide, y: 0)
+        }, completion: { _ in
+            containerSnapshot.removeFromSuperview()
+            self.finalizeWebViewAttachment(webView: webView, appId: appId, path: path)
+        })
+    }
+
+    /// Perform slide transition between WebViews for forward/backward navigation
+    private func performSlideTransition(from currentWebView: WKWebView, to targetWebView: WKWebView, navigationType: NavigationType, appId: String, path: String) {
+        let isBackNavigation = navigationType == .backward
+        let animationDuration: TimeInterval = 0.3
+
+        // Set up initial positions - use view bounds as fallback if rootContainer bounds is zero
+        let screenWidth = rootContainer.bounds.width > 0 ? rootContainer.bounds.width : view.bounds.width
+        let slideInTranslation: CGFloat = isBackNavigation ? -screenWidth : screenWidth
+        let slideOutTranslation: CGFloat = isBackNavigation ? screenWidth : -screenWidth
+
+        // Prepare target WebView - but don't attach to UI yet to avoid constraint conflicts
+        stateManager.updateWebView(targetWebView, for: appId)
+
+        // Update navigation bar state first (before animation)
+        updateNavigationBar(appId: appId, path: path)
+
+        // Ensure target WebView is properly configured for animation
+        if targetWebView.superview != rootContainer {
+            rootContainer.addSubview(targetWebView)
+            targetWebView.translatesAutoresizingMaskIntoConstraints = false
+
+            // Set up basic constraints without calling updateWebViewConstraints during animation
+            // Use rootContainer as reference instead of view to ensure proper containment
+            NSLayoutConstraint.activate([
+                targetWebView.leadingAnchor.constraint(equalTo: rootContainer.leadingAnchor),
+                targetWebView.trailingAnchor.constraint(equalTo: rootContainer.trailingAnchor),
+                targetWebView.topAnchor.constraint(equalTo: rootContainer.topAnchor, constant: statusBarHeight + NavigationBarState.DEFAULT_HEIGHT),
+                targetWebView.bottomAnchor.constraint(equalTo: rootContainer.bottomAnchor)
+            ])
+        }
+
+        // Configure WebView appearance
+        configureWebView(targetWebView, transparent: shouldUseTransparentMode(for: appId, path: path))
+        targetWebView.resumeWebView()
+
+        // Handle same WebView case (forward/backward to same page)
+        if currentWebView == targetWebView {
+            performSameWebViewAnimation(webView: currentWebView, navigationType: navigationType, appId: appId, path: path)
+            return
+
+        } else {
+            // Different WebViews - normal slide transition
+            // Ensure target WebView is properly configured and visible
+            targetWebView.isHidden = false
+            targetWebView.alpha = 1.0
+
+            // Force white background during animation to prevent black screen
+            targetWebView.backgroundColor = UIColor.white
+            targetWebView.scrollView.backgroundColor = UIColor.white
+            targetWebView.layer.backgroundColor = UIColor.white.cgColor
+
+            // Set initial position for target WebView
+            targetWebView.transform = CGAffineTransform(translationX: slideInTranslation, y: 0)
+
+            // Set initial position for navbar
+            if let navigationBar = globalNavigationBar {
+                navigationBar.transform = CGAffineTransform(translationX: slideInTranslation, y: 0)
+            }
+
+            // Force layout update to ensure proper frame sizes
+            rootContainer.layoutIfNeeded()
+
+            // Perform slide animation - WebView and navbar together
+            UIView.animate(withDuration: animationDuration, delay: 0, options: [.curveEaseInOut], animations: {
+                // Slide target WebView in
+                targetWebView.transform = .identity
+
+                // Slide current WebView out
+                currentWebView.transform = CGAffineTransform(translationX: slideOutTranslation, y: 0)
+
+                // Animate navbar with WebViews
+                if let navigationBar = self.globalNavigationBar {
+                    navigationBar.transform = .identity
+                }
+            }, completion: { _ in
+                // Clean up after animation
+                currentWebView.isHidden = true
+                currentWebView.pauseWebView()
+                currentWebView.transform = .identity
+
+                // Properly attach WebView to UI after animation
+                self.finalizeWebViewAttachment(webView: targetWebView, appId: appId, path: path)
+            })
+        }
+    }
+
+    /// Perform slide out transition when no target WebView is available
+    private func performSlideOutTransition(from currentWebView: WKWebView, navigationType: NavigationType) {
+        let isBackward = navigationType == .backward
+        let animationDuration: TimeInterval = 0.3
+
+        let screenWidth = rootContainer.bounds.width
+        let slideOutTranslation: CGFloat = isBackward ? screenWidth : -screenWidth
+
+        UIView.animate(withDuration: animationDuration, delay: 0, options: [.curveEaseInOut], animations: {
+            currentWebView.transform = CGAffineTransform(translationX: slideOutTranslation, y: 0)
+        }, completion: { _ in
+            currentWebView.isHidden = true
+            currentWebView.pauseWebView()
+            currentWebView.transform = .identity
+        })
     }
 }
 
