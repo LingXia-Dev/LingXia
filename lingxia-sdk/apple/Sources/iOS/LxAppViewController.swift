@@ -274,11 +274,23 @@ public class LxAppViewController: UIViewController, ObservableObject {
         guard let appState = stateManager.getState(for: appId) else { return }
 
         if let targetWebView = iOSLxApp.findWebView(appId: appId, path: path) {
-            // Hide current WebView if different
+            // Hide current WebView if different with smooth transition
             if let currentWebView = appState.webView, currentWebView != targetWebView {
                 os_log("Switching from current WebView to target WebView", log: Self.log, type: .info)
-                currentWebView.isHidden = true
-                currentWebView.pauseWebView()
+
+                // For tab switching, use smooth transition
+                if navigationType == .switchTab {
+                    UIView.transition(with: rootContainer, duration: 0.2, options: [.transitionCrossDissolve], animations: {
+                        currentWebView.alpha = 0.0
+                    }, completion: { _ in
+                        currentWebView.isHidden = true
+                        currentWebView.pauseWebView()
+                        currentWebView.alpha = 1.0
+                    })
+                } else {
+                    currentWebView.isHidden = true
+                    currentWebView.pauseWebView()
+                }
             }
 
             // Show target WebView
@@ -323,9 +335,8 @@ public class LxAppViewController: UIViewController, ObservableObject {
     }
 
     private func updateTabBar(for appId: String, path: String, navigationType: NavigationType) {
-        currentTabBar?.isHidden = true
-
         guard let tabConfig = lingxia.getTabBar(appId) else {
+            currentTabBar?.isHidden = true
             currentTabBar = nil
             return
         }
@@ -333,11 +344,19 @@ public class LxAppViewController: UIViewController, ObservableObject {
         if let cachedTabBar = tabBarCache[appId] {
             currentTabBar = cachedTabBar
         } else {
+            // Only hide current TabBar if we need to create a new one
+            if currentTabBar != nil {
+                currentTabBar?.isHidden = true
+            }
             currentTabBar = createTabBar(config: tabConfig, appId: appId)
             tabBarCache[appId] = currentTabBar!
         }
 
-        currentTabBar?.isHidden = false
+        // Show TabBar without flashing
+        if currentTabBar?.isHidden == true {
+            currentTabBar?.isHidden = false
+        }
+
         if navigationType == .switchTab {
             currentTabBar?.syncSelectedTabWithCurrentPath(path)
         }
@@ -437,13 +456,18 @@ public class LxAppViewController: UIViewController, ObservableObject {
         // Store WebView reference in state manager
         stateManager.updateWebView(webView, for: appId)
 
-        // Remove from previous parent if any
-        if webView.superview != nil {
-            webView.removeFromSuperview()
+        // Check if WebView is already properly attached
+        if webView.superview == rootContainer && !webView.isHidden {
+            // WebView is already attached and visible, just ensure it's configured
+            configureWebView(webView, transparent: shouldUseTransparentMode(for: appId, path: path))
+            bringUIElementsToFront(for: appId)
+            return
         }
 
-        // Hide WebView during setup to prevent visual glitches
-        webView.isHidden = true
+        // Remove from previous parent if any
+        if webView.superview != nil && webView.superview != rootContainer {
+            webView.removeFromSuperview()
+        }
 
         // Ensure UI is set up before adding WebView
         if rootContainer == nil {
@@ -454,28 +478,28 @@ public class LxAppViewController: UIViewController, ObservableObject {
             return
         }
 
-        // Add to container
-        rootContainer.addSubview(webView)
-        webView.translatesAutoresizingMaskIntoConstraints = false
+        // Add to container if not already added
+        if webView.superview != rootContainer {
+            rootContainer.addSubview(webView)
+            webView.translatesAutoresizingMaskIntoConstraints = false
 
-        // Setup constraints
-        updateWebViewConstraints(for: appId)
+            // Setup constraints
+            updateWebViewConstraints(for: appId)
 
-        NSLayoutConstraint.activate([
-            webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            webView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
-        ])
+            NSLayoutConstraint.activate([
+                webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                webView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+            ])
+        }
 
         configureWebView(webView, transparent: shouldUseTransparentMode(for: appId, path: path))
 
-        // Force layout before showing
-        rootContainer.setNeedsLayout()
-        rootContainer.layoutIfNeeded()
-
-        // Resume WebView and show
+        // Show WebView without hiding first to reduce flashing
         webView.resumeWebView()
-        webView.isHidden = false
+        if webView.isHidden {
+            webView.isHidden = false
+        }
 
         // Bring UI elements to front
         bringUIElementsToFront(for: appId)
@@ -654,7 +678,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
             navController.view.isOpaque = false
         }
 
-        if let navBar = globalNavigationBar as? iOSNavigationBarWrapper {
+        if let navBar = globalNavigationBar {
             navBar.backgroundColor = UIColor.clear
             navBar.isOpaque = false
         }
@@ -767,15 +791,24 @@ public class LxAppViewController: UIViewController, ObservableObject {
 
         if let targetWebView = iOSLxApp.findWebView(appId: appId, path: targetPath) {
             if let currentWebView = appState.webView, currentWebView != targetWebView {
-                currentWebView.isHidden = true
-                currentWebView.pauseWebView()
+                // Use smooth transition instead of immediate hide
+                UIView.transition(with: rootContainer, duration: 0.15, options: [.transitionCrossDissolve], animations: {
+                    currentWebView.isHidden = true
+                }, completion: { _ in
+                    currentWebView.pauseWebView()
+                })
             }
             stateManager.updateWebView(targetWebView, for: appId)
             attachWebViewToUI(webView: targetWebView, for: appId, path: targetPath)
         } else {
-            // WebView not found, hide current one if it exists
-            appState.webView?.isHidden = true
-            appState.webView?.pauseWebView()
+            // WebView not found, hide current one if it exists with smooth transition
+            if let currentWebView = appState.webView {
+                UIView.transition(with: rootContainer, duration: 0.15, options: [.transitionCrossDissolve], animations: {
+                    currentWebView.isHidden = true
+                }, completion: { _ in
+                    currentWebView.pauseWebView()
+                })
+            }
         }
 
         updateCurrentAppUI(for: appId, path: targetPath)
@@ -957,7 +990,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
         // Store height constraint for dynamic updates - include status bar height
         let totalHeight = statusBarHeight + NavigationBarState.DEFAULT_HEIGHT
         let heightConstraint = globalNavigationBar!.heightAnchor.constraint(equalToConstant: totalHeight)
-        (globalNavigationBar as? iOSNavigationBarWrapper)?.heightConstraint = heightConstraint
+        globalNavigationBar?.heightConstraint = heightConstraint
 
         NSLayoutConstraint.activate([
             globalNavigationBar!.topAnchor.constraint(equalTo: rootContainer.topAnchor),

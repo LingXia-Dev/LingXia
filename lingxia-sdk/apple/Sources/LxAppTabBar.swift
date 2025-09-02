@@ -135,9 +135,12 @@ public struct LxAppTabBar: View {
         .background(getTabBarBackgroundColor())
         .id("tabbar-\(selectedIndex)-\(refreshTrigger)")
         .onReceive(NotificationCenter.default.publisher(for: .tabBarStateChanged)) { notification in
-            // Trigger UI refresh when updateTabBarUI() is called for this app
+            // Only trigger UI refresh for badge/red dot updates, not for tab selection
             if let notificationAppId = notification.object as? String, notificationAppId == appId {
-                refreshTrigger.toggle()
+                // Use animation to smooth the refresh
+                withAnimation(.easeInOut(duration: 0.1)) {
+                    refreshTrigger.toggle()
+                }
             }
         }
     }
@@ -267,9 +270,7 @@ public struct LxAppTabBar: View {
             Color(PlatformColor(argb: config.color))
 
         Button(action: {
-            // Update selection and trigger re-render
-            selectedIndex = index
-            refreshTrigger.toggle()
+            // Let the parent handle the selection update
             onTabSelected(index, item.cachedPagePath)
         }) {
             VStack(spacing: LxAppTheme.Metrics.smallSpacing) {
@@ -317,9 +318,7 @@ public struct LxAppTabBar: View {
             Color(PlatformColor(argb: config.color))
 
         Button(action: {
-            // Update selection and trigger re-render
-            selectedIndex = index
-            refreshTrigger.toggle()
+            // Let the parent handle the selection update
             onTabSelected(index, item.cachedPagePath)
         }) {
             VStack(spacing: LxAppTheme.Metrics.smallSpacing) {
@@ -523,7 +522,7 @@ public struct MacOSLxAppTabBar: View {
         let rustItem = getTabBarItem(appId, Int32(index))
 
         Button(action: {
-            selectedIndex = index
+            // Let the parent handle the selection update
             onTabSelected(index, item.cachedPagePath)
         }) {
             VStack(spacing: LxAppTheme.Metrics.smallSpacing) {
@@ -876,8 +875,13 @@ public class iOSTabBarWrapper: UIView {
     }
 
     public func selectTab(index: Int) {
+        let previousIndex = self.selectedIndex
         self.selectedIndex = index
-        updateLayout()
+
+        // Only update layout if selection actually changed
+        if previousIndex != index {
+            updateLayout()
+        }
     }
 
     public func getSelectedIndex() -> Int {
@@ -911,8 +915,13 @@ public class iOSTabBarWrapper: UIView {
     }
 
     public func setSelectedIndex(_ index: Int, notifyListener: Bool) {
+        let previousIndex = selectedIndex
         selectedIndex = index
-        updateLayout()
+
+        // Only update layout if selection actually changed
+        if previousIndex != index {
+            updateLayout()
+        }
 
         if notifyListener, let callback = onTabSelectedCallback, let config = tabBarConfig {
             let items = config.getItems(appId: appId)
@@ -934,6 +943,16 @@ public class iOSTabBarWrapper: UIView {
     public func forceTransparencyMode() {
         backgroundColor = UIColor.clear
         layer.backgroundColor = UIColor.clear.cgColor
+    }
+
+
+
+    private func createRedDotView() -> UIView {
+        let redDot = UIView()
+        redDot.backgroundColor = UIColor.red
+        redDot.layer.cornerRadius = 4
+        redDot.frame = CGRect(x: 0, y: 0, width: 8, height: 8)
+        return redDot
     }
 
     private func setupUIKitLayout(items: [TabBarItem], config: TabBar) {
@@ -1020,8 +1039,9 @@ public class iOSTabBarWrapper: UIView {
 
         if isVertical {
             // For vertical layout, add items directly to the main stack
-            for item in items {
-                let originalIndex = allItems.firstIndex { $0.page_path.toString() == item.page_path.toString() } ?? 0
+            for (groupIndex, item) in items.enumerated() {
+                // Find the correct index in the original allItems array
+                let originalIndex = allItems.firstIndex { $0.page_path.toString() == item.page_path.toString() } ?? groupIndex
                 let tabView = createUIKitTabItem(item: item, index: originalIndex, config: config)
                 stackView.addArrangedSubview(tabView)
             }
@@ -1034,8 +1054,9 @@ public class iOSTabBarWrapper: UIView {
             groupContainer.spacing = 8
             groupContainer.translatesAutoresizingMaskIntoConstraints = false
 
-            for item in items {
-                let originalIndex = allItems.firstIndex { $0.page_path.toString() == item.page_path.toString() } ?? 0
+            for (groupIndex, item) in items.enumerated() {
+                // Find the correct index in the original allItems array
+                let originalIndex = allItems.firstIndex { $0.page_path.toString() == item.page_path.toString() } ?? groupIndex
                 let tabView = createUIKitTabItem(item: item, index: originalIndex, config: config)
                 groupContainer.addArrangedSubview(tabView)
             }
@@ -1245,6 +1266,7 @@ public class iOSTabBarWrapper: UIView {
 
     @objc private func uikitTabButtonTapped(_ sender: UIButton) {
         let index = sender.tag
+        let previousIndex = selectedIndex
         selectedIndex = index
 
         if let config = tabBarConfig {
@@ -1252,7 +1274,11 @@ public class iOSTabBarWrapper: UIView {
             if index < items.count {
                 let path = items[index].page_path.toString()
                 onTabSelectedCallback?(index, path)
-                updateLayout()
+
+                // Only update layout if selection actually changed
+                if previousIndex != index {
+                    updateLayout()
+                }
             }
         }
     }
@@ -1283,20 +1309,6 @@ public class iOSTabBarWrapper: UIView {
         ])
 
         return badgeView
-    }
-
-    private func createRedDotView() -> UIView {
-        let redDotView = UIView()
-        redDotView.backgroundColor = UIColor.red
-        redDotView.layer.cornerRadius = 4
-        redDotView.translatesAutoresizingMaskIntoConstraints = false
-
-        NSLayoutConstraint.activate([
-            redDotView.widthAnchor.constraint(equalToConstant: 8),
-            redDotView.heightAnchor.constraint(equalToConstant: 8)
-        ])
-
-        return redDotView
     }
 }
 
@@ -1367,8 +1379,13 @@ public class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
     }
 
     public func setSelectedIndex(_ index: Int, notifyListener: Bool) {
+        let previousIndex = selectedIndex
         selectedIndex = index
-        updateSwiftUIView()
+
+        // Only update SwiftUI view if selection actually changed
+        if previousIndex != index {
+            updateSwiftUIView()
+        }
 
         if notifyListener, let callback = onTabSelectedCallback, let config = tabBarConfig {
             let items = config.getItems(appId: appId)
