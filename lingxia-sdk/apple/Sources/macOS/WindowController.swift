@@ -11,8 +11,10 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     private static var windowWidth: CGFloat = 1200
     private static var windowHeight: CGFloat = 800
 
-    internal struct Layout {
-        static let dragBarHeight: CGFloat = 20
+    public struct Layout {
+        @MainActor static var systemStatusBarHeight: CGFloat {
+            return currentNotchSpec.statusBarHeight
+        }
         static let navBarHeight: CGFloat = 40  // Increased from 32 to 40
         static let swiftUITitleBarHeight: CGFloat = LxAppWindowLayout.titleBarHeight
         static let capsuleContainerWidth: CGFloat = 88
@@ -24,14 +26,25 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         static let navButtonSize: CGFloat = 24
         static let navButtonMargin: CGFloat = 16
         static let navButtonBottomOffset: CGFloat = 12  // From bottom of navbar (macOS coordinates)
+
+        // System status bar layout
+        static let statusBarSideMargin: CGFloat = 12
+
+        // Current iPhone notch specification - dynamically set based on window size
+        @MainActor static var currentNotchSpec: iPhoneNotchSpec = .iPhoneSE  // Default to iPhone SE
     }
 
     var appId: String?
     var path: String?
     private var navigationBar: NSView?
     var floatingCapsuleContainer: NSView?
-    private var dragBar: NSView?
+    private var systemStatusBar: NSView?
     private var independentNavigationButton: NSView?
+
+    // System status bar components
+    private var timeLabel: NSTextField?
+    private var batteryView: NSView?
+    private var notchView: NSView?
 
     private let tabManager = LxAppTabManager.shared
     private var tabView: LxAppTabView?
@@ -67,7 +80,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
 
         if LxAppWindowManager.shared.windowStyle == .capsuleStyle {
             let pageConfig = getPageConfig()
-            return pageConfig?.show_navbar == false ? 0 : Layout.dragBarHeight + Layout.navBarHeight
+            return pageConfig?.show_navbar == false ? 0 : Layout.systemStatusBarHeight + Layout.navBarHeight
         }
         return Layout.navBarHeight
     }
@@ -209,35 +222,35 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         // Configure window for custom title bar
         configureWindowForCustomTitleBar(window)
 
-        // Create drag bar and navigation bar
-        let dragBar = createDragBar(in: window)
+        // Create system status bar and navigation bar
+        let systemStatusBar = createSystemStatusBar(in: window)
         let navBar = createNavigationBar(in: window)
 
         // Configure colors based on window style
-        configureBarColors(dragBar: dragBar, navBar: navBar)
+        configureBarColors(systemStatusBar: systemStatusBar, navBar: navBar)
 
         // Setup drag behavior and add to content view
-        setupDragBarBehavior(dragBar)
-        contentView.addSubview(dragBar)
+        setupSystemStatusBarBehavior(systemStatusBar)
+        contentView.addSubview(systemStatusBar)
         contentView.addSubview(navBar)
 
-        // Setup Auto Layout constraints for drag bar and navbar
+        // Setup Auto Layout constraints for system status bar and navbar
         NSLayoutConstraint.activate([
-            // Drag bar at the top of content view
-            dragBar.topAnchor.constraint(equalTo: contentView.topAnchor),
-            dragBar.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            dragBar.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            dragBar.heightAnchor.constraint(equalToConstant: Layout.dragBarHeight),
+            // System status bar at the top of content view
+            systemStatusBar.topAnchor.constraint(equalTo: contentView.topAnchor),
+            systemStatusBar.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            systemStatusBar.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            systemStatusBar.heightAnchor.constraint(equalToConstant: Layout.systemStatusBarHeight),
 
-            // Navbar directly below drag bar
-            navBar.topAnchor.constraint(equalTo: dragBar.bottomAnchor),
+            // Navbar directly below system status bar
+            navBar.topAnchor.constraint(equalTo: systemStatusBar.bottomAnchor),
             navBar.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             navBar.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             navBar.heightAnchor.constraint(equalToConstant: Layout.navBarHeight)
         ])
 
         // Store references
-        self.dragBar = dragBar
+        self.systemStatusBar = systemStatusBar
         self.navigationBar = navBar
 
         // Apply initial navigation configuration now that navigationBar is set
@@ -260,21 +273,40 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         window.standardWindowButton(.zoomButton)?.isHidden = true
     }
 
-    private func createDragBar(in window: NSWindow) -> NSView {
+    private func createSystemStatusBar(in window: NSWindow) -> NSView {
         guard let contentView = window.contentView else {
             fatalError("Window must have a content view")
         }
 
-        // Create drag bar positioned at the top of the content view
-        let dragBar = NSView(frame: NSRect(
+        // Create system status bar positioned at the top of the content view
+        let statusBar = NSView(frame: NSRect(
             x: 0,
-            y: contentView.frame.height - Layout.dragBarHeight,
+            y: contentView.frame.height - Layout.systemStatusBarHeight,
             width: contentView.frame.width,
-            height: Layout.dragBarHeight
+            height: Layout.systemStatusBarHeight
         ))
-        dragBar.wantsLayer = true
-        dragBar.translatesAutoresizingMaskIntoConstraints = false
-        return dragBar
+        statusBar.wantsLayer = true
+        statusBar.translatesAutoresizingMaskIntoConstraints = false
+
+        // Create time label on the left
+        let timeLabel = createTimeLabel()
+        statusBar.addSubview(timeLabel)
+        self.timeLabel = timeLabel
+
+        // Create battery view on the right
+        let batteryView = createBatteryView()
+        statusBar.addSubview(batteryView)
+        self.batteryView = batteryView
+
+        // Create notch view in the center
+        let notchView = createNotchView()
+        statusBar.addSubview(notchView)
+        self.notchView = notchView
+
+        // Setup constraints for status bar components
+        setupSystemStatusBarConstraints(statusBar: statusBar, timeLabel: timeLabel, batteryView: batteryView, notchView: notchView)
+
+        return statusBar
     }
 
     private func createNavigationBar(in window: NSWindow) -> NSView {
@@ -294,13 +326,116 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         return navBar
     }
 
-    private func configureBarColors(dragBar: NSView, navBar: NSView) {
+    private func configureBarColors(systemStatusBar: NSView, navBar: NSView) {
         let backgroundColor: NSColor = LxAppWindowManager.shared.windowStyle == .capsuleStyle
             ? .clear
             : .controlBackgroundColor
 
-        dragBar.layer?.backgroundColor = backgroundColor.cgColor
+        systemStatusBar.layer?.backgroundColor = backgroundColor.cgColor
         navBar.layer?.backgroundColor = backgroundColor.cgColor
+    }
+
+    private func createTimeLabel() -> NSTextField {
+        let label = NSTextField()
+        label.isEditable = false
+        label.isBordered = false
+        label.backgroundColor = NSColor.clear
+        label.font = NSFont.systemFont(ofSize: 11, weight: .medium)
+        label.textColor = NSColor.labelColor
+        label.alignment = .left
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.stringValue = "9:41"
+        return label
+    }
+
+    private func createBatteryView() -> NSView {
+        let container = NSView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+
+        let outline = NSView()
+        outline.wantsLayer = true
+        outline.layer?.borderWidth = 1.0
+        outline.layer?.borderColor = NSColor.labelColor.cgColor
+        outline.layer?.cornerRadius = 2.0
+        outline.translatesAutoresizingMaskIntoConstraints = false
+
+        let fill = NSView()
+        fill.wantsLayer = true
+        fill.layer?.backgroundColor = NSColor.systemGreen.cgColor
+        fill.layer?.cornerRadius = 1.0
+        fill.translatesAutoresizingMaskIntoConstraints = false
+
+        let tip = NSView()
+        tip.wantsLayer = true
+        tip.layer?.backgroundColor = NSColor.labelColor.cgColor
+        tip.layer?.cornerRadius = 1.0
+        tip.translatesAutoresizingMaskIntoConstraints = false
+
+        container.addSubview(outline)
+        container.addSubview(fill)
+        container.addSubview(tip)
+
+        NSLayoutConstraint.activate([
+            outline.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            outline.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            outline.widthAnchor.constraint(equalToConstant: 22),
+            outline.heightAnchor.constraint(equalToConstant: 11),
+
+            fill.leadingAnchor.constraint(equalTo: outline.leadingAnchor, constant: 1),
+            fill.trailingAnchor.constraint(equalTo: outline.trailingAnchor, constant: -1),
+            fill.topAnchor.constraint(equalTo: outline.topAnchor, constant: 1),
+            fill.bottomAnchor.constraint(equalTo: outline.bottomAnchor, constant: -1),
+
+            tip.leadingAnchor.constraint(equalTo: outline.trailingAnchor, constant: 1),
+            tip.centerYAnchor.constraint(equalTo: outline.centerYAnchor),
+            tip.widthAnchor.constraint(equalToConstant: 2),
+            tip.heightAnchor.constraint(equalToConstant: 6),
+
+            container.widthAnchor.constraint(equalToConstant: 26),
+            container.heightAnchor.constraint(equalToConstant: 11)
+        ])
+
+        return container
+    }
+
+    private func createNotchView() -> NSView {
+        let container = NSView()
+        container.wantsLayer = true
+        container.translatesAutoresizingMaskIntoConstraints = false
+
+        let spec = Layout.currentNotchSpec
+        if spec.width > 0 && spec.height > 0 {
+            let notch = NSView()
+            notch.wantsLayer = true
+            notch.layer?.backgroundColor = NSColor.black.cgColor
+            notch.layer?.cornerRadius = spec.cornerRadius
+            notch.translatesAutoresizingMaskIntoConstraints = false
+
+            container.addSubview(notch)
+            NSLayoutConstraint.activate([
+                notch.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+                notch.topAnchor.constraint(equalTo: container.topAnchor),
+                notch.widthAnchor.constraint(equalToConstant: spec.width),
+                notch.heightAnchor.constraint(equalToConstant: spec.height)
+            ])
+        }
+
+        return container
+    }
+
+    private func setupSystemStatusBarConstraints(statusBar: NSView, timeLabel: NSTextField, batteryView: NSView, notchView: NSView) {
+        NSLayoutConstraint.activate([
+            timeLabel.leadingAnchor.constraint(equalTo: statusBar.leadingAnchor, constant: Layout.statusBarSideMargin),
+            timeLabel.centerYAnchor.constraint(equalTo: statusBar.centerYAnchor),
+
+            batteryView.trailingAnchor.constraint(equalTo: statusBar.trailingAnchor, constant: -Layout.statusBarSideMargin),
+            batteryView.centerYAnchor.constraint(equalTo: statusBar.centerYAnchor),
+
+            notchView.leadingAnchor.constraint(equalTo: statusBar.leadingAnchor),
+            notchView.trailingAnchor.constraint(equalTo: statusBar.trailingAnchor),
+            notchView.topAnchor.constraint(equalTo: statusBar.topAnchor),
+            notchView.bottomAnchor.constraint(equalTo: statusBar.bottomAnchor)
+        ])
     }
 
     private func applyInitialNavigationConfiguration() {
@@ -368,7 +503,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
 
         buttons.forEach { capsuleContainer.addSubview($0) }
 
-        let navBarCenterOffset = Layout.dragBarHeight + (Layout.navBarHeight - Layout.capsuleContainerHeight) / 2
+        let navBarCenterOffset = Layout.systemStatusBarHeight + (Layout.navBarHeight - Layout.capsuleContainerHeight) / 2
         NSLayoutConstraint.activate([
             capsuleContainer.topAnchor.constraint(equalTo: contentView.topAnchor, constant: navBarCenterOffset),
             capsuleContainer.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -Layout.capsuleTrailingMargin),
@@ -404,14 +539,19 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         return button
     }
 
-    private func setupDragBarBehavior(_ dragBar: NSView) {
-        // Create a custom view that handles mouse events for dragging
+    private func setupSystemStatusBarBehavior(_ systemStatusBar: NSView) {
         let dragView = DraggableView()
         dragView.windowController = self
-        dragView.frame = dragBar.bounds
+        dragView.frame = systemStatusBar.bounds
         dragView.autoresizingMask = [.width, .height]
-        dragBar.addSubview(dragView)
+        systemStatusBar.addSubview(dragView, positioned: .below, relativeTo: nil)
+
+        [timeLabel, batteryView, notchView].compactMap { $0 }.forEach {
+            systemStatusBar.addSubview($0, positioned: .above, relativeTo: dragView)
+        }
     }
+
+
 
     private func setupNavigationBarTitle(in navBar: NSView) {
         // Remove existing title first
@@ -474,7 +614,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         }
 
         // Calculate new top offset based on navigation style
-        let dragBarHeight: CGFloat = Layout.dragBarHeight
+        let systemStatusBarHeight: CGFloat = Layout.systemStatusBarHeight
         let navBarHeight: CGFloat = Layout.navBarHeight
         let newTopOffset: CGFloat
 
@@ -484,11 +624,11 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
                 // Hidden navbar: WebView covers entire area for full transparency effect
                 newTopOffset = 0
             } else {
-                // Default navigation style: WebView below both drag bar and navigation bar
-                newTopOffset = dragBarHeight + navBarHeight
+                // Default navigation style: WebView below both system status bar and navigation bar
+                newTopOffset = systemStatusBarHeight + navBarHeight
             }
         } else {
-            // Tab style: only system title bar (no custom drag bar)
+            // Tab style: only system title bar (no custom system status bar)
             newTopOffset = 0  // System title bar is handled by macOS
         }
 
@@ -548,7 +688,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         hostingView.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(hostingView)
 
-        let topPosition = Layout.dragBarHeight + Layout.navBarHeight - Layout.navButtonBottomOffset - Layout.navButtonSize
+        let topPosition = Layout.systemStatusBarHeight + Layout.navBarHeight - Layout.navButtonBottomOffset - Layout.navButtonSize
 
         NSLayoutConstraint.activate([
             hostingView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Layout.navButtonMargin),
@@ -771,8 +911,8 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         // For hidden navigation bar, make navbar transparent
         if !config.show_navbar {
             navigationBar.layer?.backgroundColor = NSColor.clear.cgColor
-            // Update drag bar to be transparent when navbar is transparent
-            updateDragBarColor(NSColor.clear)
+            // Update system status bar to be transparent when navbar is transparent
+            updateSystemStatusBarColor(NSColor.clear)
             // Remove title for transparent navbar
             removeTitleLabel(from: navigationBar)
         } else {
@@ -789,7 +929,8 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
             navigationBar.needsDisplay = true
             navigationBar.needsLayout = true
 
-            updateDragBarColor(backgroundColor)
+            // Update system status bar to follow navbar color, but ensure time is visible
+            updateSystemStatusBarColor(backgroundColor)
             setupNavigationBarTitle(in: navigationBar)
             if let titleLabel = findTitleLabel(in: navigationBar) {
                 titleLabel.stringValue = config.title_text.toString()
@@ -802,15 +943,40 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         updateNavigationBarButtons(config)
     }
 
-    private func updateDragBarColor(_ color: NSColor) {
-        guard let dragBar = self.dragBar else { return }
+    private func updateSystemStatusBarColor(_ color: NSColor) {
+        guard let systemStatusBar = self.systemStatusBar else { return }
 
-        // Ensure drag bar has a layer
-        if dragBar.layer == nil {
-            dragBar.wantsLayer = true
+        // Ensure system status bar has a layer
+        if systemStatusBar.layer == nil {
+            systemStatusBar.wantsLayer = true
         }
 
-        dragBar.layer?.backgroundColor = color.cgColor
+        systemStatusBar.layer?.backgroundColor = color.cgColor
+
+        let textColor = isColorDark(color) ? NSColor.white : NSColor.black
+
+        timeLabel?.textColor = textColor
+
+        batteryView?.subviews.forEach { subview in
+            if subview.layer?.borderColor != nil {
+                subview.layer?.borderColor = textColor.cgColor
+            }
+            if subview.layer?.backgroundColor == NSColor.labelColor.cgColor {
+                subview.layer?.backgroundColor = textColor.cgColor
+            }
+        }
+
+        if let notchView = self.notchView {
+            let spec = Layout.currentNotchSpec
+            notchView.alphaValue = spec.width > 0 && spec.height > 0 ? 1.0 : 0.0
+            notchView.subviews.first?.layer?.backgroundColor = NSColor.black.cgColor
+        }
+    }
+
+    private func isColorDark(_ color: NSColor) -> Bool {
+        guard let rgbColor = color.usingColorSpace(.deviceRGB) else { return false }
+        let luminance = 0.299 * rgbColor.redComponent + 0.587 * rgbColor.greenComponent + 0.114 * rgbColor.blueComponent
+        return luminance < 0.5
     }
 
     private func findTitleLabel(in view: NSView) -> NSTextField? {

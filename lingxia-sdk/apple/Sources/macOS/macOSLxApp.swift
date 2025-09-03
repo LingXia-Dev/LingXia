@@ -48,6 +48,58 @@ public enum MobileDeviceSize {
     }
 }
 
+/// iPhone notch specifications for accurate system status bar simulation
+public enum iPhoneNotchSpec: Sendable {
+    case iPhone11           // Standard notch
+    case iPhone13Mini       // Standard notch
+    case iPhone13Pro        // Standard notch
+    case iPhone15Pro        // Dynamic Island
+    case iPhoneSE           // No notch
+    case custom(width: CGFloat, height: CGFloat)
+
+    public var width: CGFloat {
+        switch self {
+        case .iPhone11: return 210        // iPhone 11 notch width (actual: ~210pt)
+        case .iPhone13Mini: return 210    // iPhone 13 Mini notch width (actual: ~210pt)
+        case .iPhone13Pro: return 210     // iPhone 13 Pro notch width (actual: ~210pt)
+        case .iPhone15Pro: return 126     // iPhone 15 Pro Dynamic Island width (actual: 126pt)
+        case .iPhoneSE: return 0          // No notch
+        case .custom(let width, _): return width
+        }
+    }
+
+    public var height: CGFloat {
+        switch self {
+        case .iPhone11: return 30         // iPhone 11 notch height (actual: 30pt)
+        case .iPhone13Mini: return 30     // iPhone 13 Mini notch height (actual: 30pt)
+        case .iPhone13Pro: return 30      // iPhone 13 Pro notch height (actual: 30pt)
+        case .iPhone15Pro: return 37      // iPhone 15 Pro Dynamic Island height (actual: 37pt)
+        case .iPhoneSE: return 0          // No notch
+        case .custom(_, let height): return height
+        }
+    }
+
+    public var cornerRadius: CGFloat {
+        switch self {
+        case .iPhone11, .iPhone13Mini, .iPhone13Pro: return 15  // Standard notch corner radius
+        case .iPhone15Pro: return 18.5                          // Dynamic Island corner radius (actual: 18.5pt)
+        case .iPhoneSE: return 0                                 // No notch
+        case .custom: return 15                                  // Default corner radius
+        }
+    }
+
+    public var statusBarHeight: CGFloat {
+        switch self {
+        case .iPhone11: return 44         // iPhone 11 status bar height (actual: 44pt)
+        case .iPhone13Mini: return 44     // iPhone 13 Mini status bar height (actual: 44pt)
+        case .iPhone13Pro: return 47      // iPhone 13 Pro status bar height (actual: 47pt)
+        case .iPhone15Pro: return 54      // iPhone 15 Pro status bar height (actual: 54pt)
+        case .iPhoneSE: return 20         // iPhone SE status bar height (actual: 20pt)
+        case .custom: return 44           // Default status bar height
+        }
+    }
+}
+
 /// macOS LxApp implementation
 @MainActor
 public class macOSLxApp: ObservableObject, LxAppRenderer {
@@ -133,6 +185,32 @@ public class macOSLxApp: ObservableObject, LxAppRenderer {
     /// - Parameter deviceSize: Predefined device size to use
     public static func setWindowSize(_ deviceSize: MobileDeviceSize) {
         LxAppWindowController.setWindowSize(width: deviceSize.width, height: deviceSize.height)
+
+        // Update the system status bar to match the device
+        updateSystemStatusBarForDevice(deviceSize)
+    }
+
+    /// Update the system status bar specification to match the selected device
+    private static func updateSystemStatusBarForDevice(_ deviceSize: MobileDeviceSize) {
+        let notchSpec: iPhoneNotchSpec
+
+        switch deviceSize {
+        case .iPhone11:
+            notchSpec = .iPhone11
+        case .iPhone13Mini:
+            notchSpec = .iPhone13Mini
+        case .iPhone13Pro:
+            notchSpec = .iPhone13Pro
+        case .iPhone15Pro:
+            notchSpec = .iPhone15Pro
+        case .iPhoneSE:
+            notchSpec = .iPhoneSE
+        case .custom:
+            notchSpec = .iPhoneSE  // Default for custom sizes
+        }
+
+        // Update the current notch specification
+        LxAppWindowController.Layout.currentNotchSpec = notchSpec
     }
 
     /// Set window style for all LxApp windows

@@ -359,8 +359,11 @@ public class iOSNavigationBarWrapper: UIView, NavigationBarProtocol {
             statusBarBackgroundView?.backgroundColor = color
             statusBarBackgroundView?.isHidden = false
         } else {
+            // Make navbar completely transparent
             statusBarBackgroundView?.backgroundColor = UIColor.clear
-            statusBarBackgroundView?.isHidden = !showNavbar
+            statusBarBackgroundView?.isHidden = true
+            self.backgroundColor = UIColor.clear
+            self.layer.backgroundColor = UIColor.clear.cgColor
         }
     }
 

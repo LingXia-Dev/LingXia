@@ -65,7 +65,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate, N
         if LxAppWindowManager.shared.windowStyle == .capsuleStyle {
             // Get config from window controller's cache to avoid duplicate calls
             if let windowController = view.window?.windowController as? LxAppWindowController {
-                return windowController.getTopMarginForCurrentPage() - LxAppWindowController.Layout.dragBarHeight
+                return windowController.getTopMarginForCurrentPage() - LxAppWindowController.Layout.systemStatusBarHeight
             } else {
                 // Fallback: assume navbar is shown
                 return LxAppTheme.Metrics.navigationBarHeight
