@@ -23,7 +23,7 @@ object LxAppDrawables {
 
     // Common UI constants
     object Constants {
-        const val BUTTON_SIZE_DP = 36
+        const val BUTTON_SIZE_DP = 32
         const val FROSTED_GLASS_ALPHA = 50
         const val MARGIN_START_DP = 12
         const val ANIMATION_DURATION_MS = 300L
@@ -216,9 +216,9 @@ object LxAppDrawables {
             val centerX = bounds.width() / 2f
 
             // Center dot is larger, side dots are smaller
-            val centerDotRadius = bounds.height() / 7f  // Larger center dot
+            val centerDotRadius = bounds.height() / 5.5f  // Larger center dot
             val sideDotRadius = bounds.height() / 10f   // Smaller side dots
-            val spacing = centerDotRadius * 2.8f        // Adjusted spacing
+            val spacing = centerDotRadius * 2.5f        // Adjusted spacing
 
             // Draw side dots
             canvas.drawCircle(centerX - spacing, centerY, sideDotRadius, paint)
@@ -267,7 +267,7 @@ object LxAppDrawables {
         override fun draw(canvas: Canvas) {
             val centerX = bounds.width() / 2f
             val centerY = bounds.height() / 2f
-            val radius = bounds.width() / 2f
+            val radius = bounds.width() / 2.2f
 
             // Draw circle with thicker stroke
             paint.style = Paint.Style.STROKE
@@ -275,7 +275,7 @@ object LxAppDrawables {
 
             // Draw smaller center dot
             paint.style = Paint.Style.FILL
-            canvas.drawCircle(centerX, centerY, radius / 2.5f, dotPaint)
+            canvas.drawCircle(centerX, centerY, radius / 3f, dotPaint)
         }
 
         override fun setAlpha(alpha: Int) {

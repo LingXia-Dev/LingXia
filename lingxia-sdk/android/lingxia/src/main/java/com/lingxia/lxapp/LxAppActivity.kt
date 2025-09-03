@@ -604,14 +604,14 @@ class LxAppActivity : AppCompatActivity() {
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
                 setColor(Color.WHITE)
-                cornerRadius = 18f * resources.displayMetrics.density // Half of height (36/2) for perfect rounded corners
+                cornerRadius = 16f * resources.displayMetrics.density // Half of height (32/2) for perfect rounded corners
                 setStroke((0.5f * resources.displayMetrics.density).toInt(), 0xFFDDDDDD.toInt())
             }
 
             // Capsule layout parameters - Position fixed relative to status bar
             val capsuleLayoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-                (36 * resources.displayMetrics.density).toInt()
+                (32 * resources.displayMetrics.density).toInt()
             ).apply {
                 gravity = Gravity.TOP or Gravity.END
                 // Position with fixed offset relative to status bar (moved up 4dp to avoid overlap with navbar)
