@@ -162,3 +162,172 @@ export struct NavigationButton {
   }
 }
 
+/**
+ * Three dots icon component for capsule button
+ */
+@Component
+export struct ThreeDotsIcon {
+  build() {
+    Row() {
+      // Three custom drawn dots - center dot larger, side dots smaller (matching Android)
+      Circle()
+        .width(3)
+        .height(3)
+        .fill('#000000')
+
+      Circle()
+        .width(5)
+        .height(5)
+        .fill('#000000')
+        .margin({ left: 4 })
+
+      Circle()
+        .width(3)
+        .height(3)
+        .fill('#000000')
+        .margin({ left: 4 })
+    }
+    .justifyContent(FlexAlign.Center)
+    .alignItems(VerticalAlign.Center)
+  }
+}
+
+/**
+ * Close icon component for capsule button (outer circle LINE with inner dot, transparent middle)
+ */
+@Component
+export struct CloseIcon {
+  build() {
+    Stack() {
+      // Outer circle - use stroke instead of border to ensure circular shape
+      Circle()
+        .width(16)
+        .height(16)
+        .fillOpacity(0) // Transparent fill
+        .stroke('#000000')
+        .strokeWidth(2.5) // Thicker stroke matching Android
+
+      // Inner dot (thick dot in center) - radius should be outer radius / 2.5
+      Circle()
+        .width(6.5)
+        .height(6.5)
+        .fill('#000000')
+    }
+  }
+}
+
+/**
+ * Capsule button component with more and close buttons
+ * Used for non-home LxApps
+ */
+@Component
+export struct CapsuleButton {
+  onMorePressed?: () => void
+  onClosePressed?: () => void
+  @Prop statusBarHeight: number = 44
+  @Prop standalone: boolean = false
+
+  build() {
+    if (this.standalone) {
+      this.buildStandaloneCapsule()
+    } else {
+      this.buildInlineCapsule()
+    }
+  }
+
+  @Builder
+  buildStandaloneCapsule(): void {
+    Stack() {
+      Row() {
+        Button() {
+          ThreeDotsIcon()
+        }
+        .width(44)
+        .height(32)
+        .backgroundColor(Color.Transparent)
+        .onClick(() => {
+          if (this.onMorePressed) {
+            this.onMorePressed()
+          }
+        })
+
+        Column()
+          .width(0.5)
+          .height(16)
+          .backgroundColor('#DDDDDD')
+
+        Button() {
+          CloseIcon()
+        }
+        .width(44)
+        .height(32)
+        .backgroundColor(Color.Transparent)
+        .onClick(() => {
+          if (this.onClosePressed) {
+            this.onClosePressed()
+          }
+        })
+      }
+      .backgroundColor('rgba(255,255,255,0.9)')
+      .borderRadius(16)
+      .border({ width: 0.5, color: '#DDDDDD' })
+    }
+    .position({ x: '100%', y: 44 })
+    .translate({ x: -102, y: 6 })
+    .width(102) // 44+0.5+44+padding
+    .height(32)
+    .zIndex(9999)
+  }
+
+  @Builder
+  buildInlineCapsule(): void {
+    Row() {
+      Blank()
+
+      Row() {
+        Button() {
+          ThreeDotsIcon()
+        }
+        .width(44)
+        .height(32)
+        .backgroundColor(Color.Transparent)
+        .onClick(() => {
+          if (this.onMorePressed) {
+            this.onMorePressed()
+          }
+        })
+
+        Column()
+          .width(0.5)
+          .height(16)
+          .backgroundColor('#DDDDDD')
+
+        Button() {
+          CloseIcon()
+        }
+        .width(44)
+        .height(32)
+        .backgroundColor(Color.Transparent)
+        .enabled(true)
+        .onClick(() => {
+          if (this.onClosePressed) {
+            this.onClosePressed()
+          }
+        })
+      }
+      .backgroundColor('rgba(255,255,255,0.9)')
+      .borderRadius(16)
+      .border({ width: 0.5, color: '#DDDDDD' })
+      .margin({
+        top: this.statusBarHeight + 8,
+        right: 12
+      })
+    }
+    .width('100%')
+    .height(32) // Just the button height, not including margin
+    .backgroundColor(Color.Transparent)
+    .zIndex(9999) // High zIndex to ensure it's always on top
+    .position({ x: 0, y: 0 }) // Position absolutely
+  }
+}
+

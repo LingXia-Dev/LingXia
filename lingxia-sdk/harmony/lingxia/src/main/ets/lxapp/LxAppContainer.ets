@@ -5,7 +5,7 @@ import { common } from '@kit.AbilityKit';
 import { LxApp } from './LxApp';
 import { findWebview, handleScrollChanged, toWebTag, extractWebTag, WebTagParts, addWebViewUiCallback, removeWebViewUiCallback, WebViewInfo } from './WebView';
 import { NavigationBar, type NavigationBarState, NAVIGATION_BUTTON_SIZE, BACK_BUTTON_LEFT_POSITION, HOME_BUTTON_LEFT_POSITION, calculateNavigationButtonYPosition } from './NavigationBar';
-import { NavigationButton } from './LxAppDrawables';
+import { NavigationButton, CapsuleButton } from './LxAppDrawables';
 import { TabBar } from './TabBar';
 import { TabBarPosition, type TabBarItem } from 'liblingxia.so';
 import liblingxia, { TabBarState, getNavigationBarState, onPageShow } from 'liblingxia.so';
@@ -382,7 +382,12 @@ export struct LxAppContainer {
         Stack() {
           Column() {
             if (this.shouldShowCapsuleButton()) {
-              this.buildCapsuleButton()
+              CapsuleButton({
+                statusBarHeight: this.statusBarHeight,
+                standalone: false,
+                onMorePressed: () => this.handleCapsuleMore(),
+                onClosePressed: () => this.handleCapsuleClose()
+              })
             }
             // Show NavigationBar only when needed
             if (this.pageConfig && this.pageConfig.showNavbar) {
@@ -427,7 +432,14 @@ export struct LxAppContainer {
         .height('100%')
 
         this.buildTabBar()
-        this.buildStandaloneCapsuleButton()
+        if (this.shouldShowCapsuleButton()) {
+          CapsuleButton({
+            statusBarHeight: this.statusBarHeight,
+            standalone: true,
+            onMorePressed: () => this.handleCapsuleMore(),
+            onClosePressed: () => this.handleCapsuleClose()
+          })
+        }
         this.buildAbsoluteNavigationButton()
       }
       .width('100%')
@@ -447,7 +459,14 @@ export struct LxAppContainer {
         .width('100%')
         .height('100%')
 
-        this.buildStandaloneCapsuleButton()
+        if (this.shouldShowCapsuleButton()) {
+          CapsuleButton({
+            statusBarHeight: this.statusBarHeight,
+            standalone: true,
+            onMorePressed: () => this.handleCapsuleMore(),
+            onClosePressed: () => this.handleCapsuleClose()
+          })
+        }
         this.buildAbsoluteNavigationButton()
       }
       .width('100%')
@@ -597,52 +616,6 @@ export struct LxAppContainer {
     .zIndex(NAVIGATION_BUTTON_Z_INDEX)
   }
 
-
-
-  @Builder
-  buildStandaloneCapsuleButton(): void {
-    if (this.shouldShowCapsuleButton()) {
-      Stack() {
-        Row() {
-          Button() {
-            this.buildThreeDots()
-          }
-          .width(44)
-          .height(32)
-          .backgroundColor(Color.Transparent)
-          .onClick(() => {
-            hilog.info(DOMAIN, TAG, 'Capsule more button pressed');
-            this.handleCapsuleMore();
-          })
-
-          Column()
-            .width(0.5)
-            .height(16)
-            .backgroundColor('#DDDDDD')
-
-          Button() {
-            this.buildCloseIcon()
-          }
-          .width(44)
-          .height(32)
-          .backgroundColor(Color.Transparent)
-          .onClick(() => {
-            hilog.info(DOMAIN, TAG, `Capsule close button pressed for appId: ${this.appId}`);
-            this.handleCapsuleClose();
-          })
-        }
-        .backgroundColor('rgba(255,255,255,0.9)')
-        .borderRadius(16)
-        .border({ width: 0.5, color: '#DDDDDD' })
-      }
-      .position({ x: '100%', y: 44 })
-      .translate({ x: -102, y: 6 })
-      .width(102) // 44+0.5+44+padding
-      .height(32)
-      .zIndex(9999)
-    }
-  }
-
   /**
    * Check if should show capsule button
    * homelxapp doesn't show capsule button, other lxapps do
@@ -652,107 +625,6 @@ export struct LxAppContainer {
     const shouldShow = !isHome;
     hilog.info(DOMAIN, TAG, `shouldShowCapsuleButton: appId=${this.appId}, isHome=${isHome}, shouldShow=${shouldShow}`);
     return shouldShow;
-  }
-
-  /**
-   * Build capsule button with proper positioning based on status bar height
-   */
-  @Builder
-  buildCapsuleButton(): void {
-    Row() {
-      Blank()
-
-      Row() {
-        Button() {
-          this.buildThreeDots()
-        }
-        .width(44)
-        .height(32)
-        .backgroundColor(Color.Transparent)
-        .onClick(() => this.handleCapsuleMore())
-
-        Column()
-          .width(0.5)
-          .height(16)
-          .backgroundColor('#DDDDDD')
-
-        Button() {
-          this.buildCloseIcon()
-        }
-        .width(44)
-        .height(32)
-        .backgroundColor(Color.Transparent)
-        .enabled(true)
-        .onClick(() => {
-          this.handleCapsuleClose();
-        })
-        .onTouch((event) => {
-          hilog.info(DOMAIN, TAG, `Close button touched: ${event.type}`);
-        })
-      }
-      .backgroundColor('rgba(255,255,255,0.9)')
-      .borderRadius(16)
-      .border({ width: 0.5, color: '#DDDDDD' })
-      .margin({
-        top: this.statusBarHeight + 8,
-        right: 12
-      })
-    }
-    .width('100%')
-    .height(32) // Just the button height, not including margin
-    .backgroundColor(Color.Transparent)
-    .zIndex(9999) // High zIndex to ensure it's always on top
-    .position({ x: 0, y: 0 }) // Position absolutely
-  }
-
-  /**
-   * Build three dots icon
-   */
-  @Builder
-  buildThreeDots(): void {
-    Row() {
-      // Three custom drawn dots - center dot larger, side dots smaller (matching Android)
-      Circle()
-        .width(3)
-        .height(3)
-        .fill('#000000')
-
-      Circle()
-        .width(5)
-        .height(5)
-        .fill('#000000')
-        .margin({ left: 4 })
-
-      Circle()
-        .width(3)
-        .height(3)
-        .fill('#000000')
-        .margin({ left: 4 })
-    }
-    .justifyContent(FlexAlign.Center)
-    .alignItems(VerticalAlign.Center)
-  }
-
-  /**
-   * Build close icon (outer circle LINE with inner dot, transparent middle)
-   */
-  @Builder
-  buildCloseIcon(): void {
-    Stack() {
-      // Outer circle - use stroke instead of border to ensure circular shape
-      Circle()
-        .width(16)
-        .height(16)
-        .fillOpacity(0) // Transparent fill
-        .stroke('#000000')
-        .strokeWidth(2.5) // Thicker stroke matching Android
-
-      // Inner dot (thick dot in center) - radius should be outer radius / 2.5
-      Circle()
-        .width(6.5)
-        .height(6.5)
-        .fill('#000000')
-    }
   }
 
   /**
