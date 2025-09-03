@@ -679,6 +679,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
 
         if let navBar = globalNavigationBar {
             navBar.backgroundColor = UIColor.clear
+            navBar.layer.backgroundColor = UIColor.clear.cgColor
             navBar.isOpaque = false
         }
     }
@@ -929,8 +930,17 @@ public class LxAppViewController: UIViewController, ObservableObject {
         // Update navigation bar for the current path
         updateNavigationBar(appId: appId, path: path)
 
-        // Calculate correct navigation area height based on the target state
+        // Ensure navigation bar transparency after forward/backward navigation
         let shouldUseTransparent = shouldUseTransparentMode(for: appId, path: path)
+        if shouldUseTransparent {
+            if let navigationBar = globalNavigationBar {
+                navigationBar.backgroundColor = UIColor.clear
+                navigationBar.layer.backgroundColor = UIColor.clear.cgColor
+                navigationBar.isOpaque = false
+            }
+        }
+
+        // Calculate correct navigation area height based on the target state
         let correctTopOffset = shouldUseTransparent ? 0 : (statusBarHeight + NavigationBarState.DEFAULT_HEIGHT)
 
         // Update constraints with the correct offset immediately
