@@ -1,18 +1,16 @@
+use crate::webview::{WebTag, get_webview_delegate, register_webview};
+use crate::{LogLevel, WebViewError};
 use http;
 use http::header::{HeaderMap, HeaderName, HeaderValue};
 use http::{Method, Request, Response};
 use jni::JNIEnv;
 use jni::objects::{JObject, JString};
 use jni::sys::jint;
-use lxapp::LxAppDelegate;
-use lxapp::log::LogLevel;
-use lxapp::{LxAppError, WebViewController};
 use serde_json;
 use std::sync::Arc;
 
 // Import from webview.rs
 use crate::android::webview::{WEBVIEW_SENDERS, WebViewInner};
-use crate::webview::{WebTag, register_webview};
 
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handlePostMessage(
@@ -26,8 +24,10 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handlePostMessage
     let path: String = env.get_string(&path).unwrap().into();
     let message: String = env.get_string(&message).unwrap().into();
 
-    let lxapp = lxapp::get(appid.clone());
-    lxapp.handle_post_message(path, message);
+    let webtag = WebTag::new(&appid, &path);
+    if let Some(delegate) = get_webview_delegate(&webtag) {
+        delegate.handle_post_message(path, message);
+    }
     0
 }
 
@@ -41,8 +41,10 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onPageStarted(
     let appid: String = env.get_string(&appid).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
 
-    let lxapp = lxapp::get(appid);
-    lxapp.on_page_started(path);
+    let webtag = WebTag::new(&appid, &path);
+    if let Some(delegate) = get_webview_delegate(&webtag) {
+        delegate.on_page_started(path);
+    }
     0
 }
 
@@ -56,8 +58,10 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onPageFinished(
     let appid: String = env.get_string(&appid).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
 
-    let lxapp = lxapp::get(appid);
-    lxapp.on_page_finished(path);
+    let webtag = WebTag::new(&appid, &path);
+    if let Some(delegate) = get_webview_delegate(&webtag) {
+        delegate.on_page_finished(path);
+    }
     0
 }
 
@@ -66,12 +70,14 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handleRequest<'a>
     mut env: JNIEnv<'a>,
     _this: JObject<'a>,
     appid: JString<'a>,
+    path: JString<'a>,
     url: JString<'a>,
     method: JString<'a>,
     headers: JString<'a>,
 ) -> JObject<'a> {
     // Convert Java strings to Rust strings
     let appid: String = env.get_string(&appid).unwrap().into();
+    let path: String = env.get_string(&path).unwrap().into();
     let url_str: String = env.get_string(&url).unwrap().into();
     let method_str: String = env.get_string(&method).unwrap().into();
     let headers_str: String = env.get_string(&headers).unwrap().into();
@@ -99,6 +105,18 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handleRequest<'a>
     // Parse HTTP method with fallback to GET
     let http_method = method_str.parse::<Method>().unwrap_or(Method::GET);
 
+    // Extract path from URL for webtag first
+    let path = if let Ok(uri) = url_str.parse::<http::Uri>() {
+        uri.path()
+            .trim_start_matches('/')
+            .split('/')
+            .nth(1)
+            .unwrap_or("")
+            .to_string()
+    } else {
+        "".to_string()
+    };
+
     // Build request with proper error handling
     let request = match Request::builder()
         .method(http_method)
@@ -113,8 +131,13 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handleRequest<'a>
     };
 
     // Handle request and convert response
-    let lxapp = lxapp::get(appid.clone());
-    if let Some(response) = lxapp.handle_request(request) {
+    let webtag = WebTag::new(&appid, &path);
+    let response = if let Some(delegate) = get_webview_delegate(&webtag) {
+        delegate.handle_request(request)
+    } else {
+        None
+    };
+    if let Some(response) = response {
         create_java_response(&mut env, response)
     } else {
         JObject::null()
@@ -223,7 +246,7 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onConsoleMessage(
     let path: String = env.get_string(&path).unwrap().into();
     let message: String = env.get_string(&message).unwrap().into();
 
-    let lxapp = lxapp::get(appid.clone());
+    let webtag = WebTag::new(&appid, &path);
     let log_level = match level {
         2 => LogLevel::Verbose, // VERBOSE
         3 => LogLevel::Debug,   // DEBUG
@@ -233,7 +256,9 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onConsoleMessage(
         _ => LogLevel::Info,    // Default to INFO
     };
 
-    lxapp.log(&path, log_level, &message);
+    if let Some(delegate) = get_webview_delegate(&webtag) {
+        delegate.log(&path, log_level, &message);
+    }
     1
 }
 
@@ -251,8 +276,10 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onScrollChanged(
     let appid: String = env.get_string(&appid).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
 
-    let lxapp = lxapp::get(appid.clone());
-    lxapp.on_page_scroll_changed(path, scroll_x, scroll_y, max_scroll_x, max_scroll_y);
+    let webtag = WebTag::new(&appid, &path);
+    if let Some(delegate) = get_webview_delegate(&webtag) {
+        delegate.on_page_scroll_changed(path, scroll_x, scroll_y, max_scroll_x, max_scroll_y);
+    }
     0
 }
 
@@ -278,19 +305,22 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_notifyWebViewRead
                     Ok(global_ref) => {
                         // Create WebViewInner from the Java object
                         let webview_inner = WebViewInner::from_java_object(global_ref);
-                        let webview_inner_arc = Arc::new(webview_inner);
+
+                        // Create WebView wrapper
+                        let webview = Arc::new(crate::WebView::new(
+                            webview_inner,
+                            appid.clone(),
+                            path.clone(),
+                        ));
 
                         // Register the WebView instance for future lookups
-                        register_webview(&webtag, webview_inner_arc.clone());
-
-                        // Create WebViewController trait object
-                        let webview_controller: Arc<dyn WebViewController> = webview_inner_arc;
+                        register_webview(webview.clone());
 
                         // Send the WebView instance through the channel
-                        let _ = sender.send(Ok(webview_controller));
+                        let _ = sender.send(Ok(webview));
                     }
                     Err(e) => {
-                        let _ = sender.send(Err(LxAppError::WebView(format!(
+                        let _ = sender.send(Err(WebViewError::WebView(format!(
                             "Failed to create global ref: {:?}",
                             e
                         ))));

@@ -1,7 +1,7 @@
+use crate::webview::get_webview_delegate;
+use crate::{LogLevel, WebViewController, WebViewError};
 use block2::Block;
 use dispatch2::DispatchQueue;
-use lxapp::log::LogLevel;
-use lxapp::{LxAppDelegate, LxAppError, WebViewController};
 use objc2::runtime::{AnyObject, NSObject, ProtocolObject};
 use objc2::{
     DefinedClass, MainThreadMarker, MainThreadOnly, class, define_class, msg_send, rc::Retained,
@@ -11,7 +11,7 @@ use objc2_web_kit::{WKNavigation, WKNavigationDelegate, WKWebViewConfiguration};
 use std::sync::Arc;
 use std::sync::mpsc::Sender;
 
-use crate::webview::{WebTag, register_webview};
+use crate::webview::WebTag;
 
 // Custom Navigation Delegate for handling page lifecycle events
 pub struct LingXiaNavigationDelegateIvars {
@@ -37,9 +37,10 @@ define_class!(
             let webtag = &self.ivars().webtag;
             let (appid, path) = webtag.extract_parts();
 
-            // Call lxapp's on_page_started
-            let lxapp = lxapp::get(appid.clone());
-            lxapp.on_page_started(path.clone());
+            // Call delegate's on_page_started
+            if let Some(delegate) = get_webview_delegate(&webtag) {
+                delegate.on_page_started(path.clone());
+            }
             log::info!("WebView page started: {} at {}", appid, path);
         }
 
@@ -48,9 +49,10 @@ define_class!(
             let webtag = &self.ivars().webtag;
             let (appid, path) = webtag.extract_parts();
 
-            // Call lxapp's on_page_finished
-            let lxapp = lxapp::get(appid.clone());
-            lxapp.on_page_finished(path.clone());
+            // Call delegate's on_page_finished
+            if let Some(delegate) = get_webview_delegate(&webtag) {
+                delegate.on_page_finished(path.clone());
+            }
             log::info!("WebView page finished: {} at {}", appid, path);
         }
 
@@ -88,7 +90,7 @@ define_class!(
             }
 
             let webtag = &self.ivars().webtag;
-            let (appid, _) = webtag.extract_parts();
+            let (_appid, _) = webtag.extract_parts();
 
             // Build HTTP request for lxapp to check
             let http_request = match http::Request::builder()
@@ -104,9 +106,13 @@ define_class!(
                 }
             };
 
-            // Ask lxapp if it wants to handle this HTTPS navigation request
-            let lxapp = lxapp::get(appid.clone());
-            match lxapp.handle_request(http_request) {
+            // Ask delegate if it wants to handle this HTTPS navigation request
+            let response = if let Some(delegate) = get_webview_delegate(&webtag) {
+                delegate.handle_request(http_request)
+            } else {
+                None
+            };
+            match response {
                 Some(_) => {
                     // log::info!("Miniapp handling HTTPS navigation, canceling: {}", url);
                     cancel_navigation();
@@ -192,7 +198,7 @@ impl WebViewInner {
     pub(crate) fn create(
         appid: &str,
         path: &str,
-        sender: Sender<Result<Arc<dyn WebViewController>, LxAppError>>,
+        sender: Sender<Result<Arc<crate::WebView>, WebViewError>>,
     ) {
         let appid_owned = appid.to_string();
         let path_owned = path.to_string();
@@ -208,7 +214,7 @@ impl WebViewInner {
                     Self::create_and_register_sync(&appid_owned, &path_owned, mtm, sender);
                 }
                 None => {
-                    let error = LxAppError::WebView(
+                    let error = WebViewError::WebView(
                         "No MainThreadMarker available on main thread".to_string(),
                     );
                     log::error!(
@@ -228,21 +234,23 @@ impl WebViewInner {
         appid: &str,
         path: &str,
         mtm: MainThreadMarker,
-        sender: Sender<Result<Arc<dyn WebViewController>, LxAppError>>,
+        sender: Sender<Result<Arc<crate::WebView>, WebViewError>>,
     ) {
         let result = Self::create_with_marker(appid, path, mtm);
 
         match result {
             Ok(webview_inner) => {
-                let webview_inner_arc = Arc::new(webview_inner);
+                // Wrap WebViewInner in WebView
+                let webview = Arc::new(crate::WebView::new(
+                    webview_inner,
+                    appid.to_string(),
+                    path.to_string(),
+                ));
 
                 // Register the WebView instance for future lookups
-                let webtag = WebTag::new(appid, path);
-                register_webview(&webtag, webview_inner_arc.clone());
+                crate::webview::register_webview(webview.clone());
 
-                // Create WebViewController trait object
-                let webview_controller: Arc<dyn WebViewController> = webview_inner_arc;
-                let _ = sender.send(Ok(webview_controller));
+                let _ = sender.send(Ok(webview));
                 log::info!("WebView created successfully for {}-{}", appid, path);
             }
             Err(e) => {
@@ -257,13 +265,14 @@ impl WebViewInner {
         appid: &str,
         path: &str,
         mtm: MainThreadMarker,
-    ) -> Result<Self, LxAppError> {
+    ) -> Result<Self, WebViewError> {
         unsafe {
             // Create WKWebViewConfiguration
             let config = WKWebViewConfiguration::new(mtm);
 
             // Use a non-persistent data store to disable DOM Storage (localStorage, etc.)
-            let non_persistent_store: *mut AnyObject = msg_send![class!(WKWebsiteDataStore), nonPersistentDataStore];
+            let non_persistent_store: *mut AnyObject =
+                msg_send![class!(WKWebsiteDataStore), nonPersistentDataStore];
             let _: () = msg_send![&*config, setWebsiteDataStore: non_persistent_store];
 
             // Access preferences to set security settings
@@ -292,20 +301,21 @@ impl WebViewInner {
                 let _: () = msg_send![&*config, setUpgradeKnownHostsToHTTPS: false];
             }
 
-            // Register custom scheme handler for lx:// URLs
+            // Register custom scheme handler for lx:// URLs bound to this WebView
+            let webtag = WebTag::new(appid, path);
             if let Some(scheme_handler) =
-                super::schemehandler::LingXiaSchemeHandler::new(appid.to_string())
+                super::schemehandler::LingXiaSchemeHandler::new(webtag.clone())
             {
                 let lx_scheme = NSString::from_str("lx");
                 let _: () = msg_send![&*config, setURLSchemeHandler: &*scheme_handler, forURLScheme: &*lx_scheme];
 
                 log::info!(
-                    "Successfully registered scheme `lx` handler for appid={}",
-                    appid
+                    "Successfully registered scheme `lx` handler for webtag={}",
+                    webtag.as_str()
                 );
             } else {
                 log::error!("CRITICAL: Failed to create scheme `lx` handler!");
-                return Err(LxAppError::WebView(
+                return Err(WebViewError::WebView(
                     "Failed to create scheme `lx` handler".to_string(),
                 ));
             }
@@ -327,7 +337,7 @@ impl WebViewInner {
             let webview: *mut AnyObject = msg_send![webview_class, alloc];
             if webview.is_null() {
                 log::error!("Failed to allocate WKWebView");
-                return Err(LxAppError::WebView(
+                return Err(WebViewError::WebView(
                     "Failed to allocate WKWebView".to_string(),
                 ));
             }
@@ -337,7 +347,7 @@ impl WebViewInner {
                 msg_send![webview, initWithFrame: frame, configuration: &*config];
             if webview.is_null() {
                 log::error!("Failed to initialize WKWebView");
-                return Err(LxAppError::WebView(
+                return Err(WebViewError::WebView(
                     "Failed to initialize WKWebView".to_string(),
                 ));
             }
@@ -376,7 +386,7 @@ impl WebViewInner {
         webview: *mut AnyObject,
         appid: &str,
         path: &str,
-    ) -> Result<Retained<LingXiaMessageHandler>, LxAppError> {
+    ) -> Result<Retained<LingXiaMessageHandler>, WebViewError> {
         unsafe {
             // Get the configuration from the WebView
             let config: *mut AnyObject = msg_send![webview, configuration];
@@ -443,7 +453,7 @@ impl WebViewInner {
                 path.to_string(),
                 MainThreadMarker::new().unwrap(),
             )
-            .ok_or_else(|| LxAppError::WebView("Failed to create message handler".to_string()))?;
+            .ok_or_else(|| WebViewError::WebView("Failed to create message handler".to_string()))?;
 
             // Register message handlers with userContentController (like Swift version)
             let lingxia_name = NSString::from_str("LingXia");
@@ -461,7 +471,7 @@ impl WebViewInner {
     }
 
     /// Helper method to load URL on main thread
-    fn load_url_on_main_thread(&self, url: String) -> Result<(), LxAppError> {
+    fn load_url_on_main_thread(&self, url: String) -> Result<(), WebViewError> {
         unsafe {
             let ns_url_string = NSString::from_str(&url);
             if let Some(ns_url) = NSURL::URLWithString(&ns_url_string) {
@@ -469,7 +479,7 @@ impl WebViewInner {
                 let _: () = msg_send![self.webview, loadRequest: &*request];
                 Ok(())
             } else {
-                Err(LxAppError::WebView(format!("Invalid URL: {}", url)))
+                Err(WebViewError::WebView(format!("Invalid URL: {}", url)))
             }
         }
     }
@@ -480,7 +490,7 @@ impl WebViewInner {
         data: String,
         base_url: String,
         _history_url: Option<String>,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), WebViewError> {
         unsafe {
             let data_nsstring = NSString::from_str(&data);
             let base_url_nsstring = NSString::from_str(&base_url);
@@ -489,7 +499,7 @@ impl WebViewInner {
                 log::info!("Loaded HTML data into WebView with base URL: {}", base_url);
                 Ok(())
             } else {
-                Err(LxAppError::WebView(format!(
+                Err(WebViewError::WebView(format!(
                     "Invalid base URL: {}",
                     base_url
                 )))
@@ -498,7 +508,7 @@ impl WebViewInner {
     }
 
     /// Helper method to evaluate JavaScript on main thread
-    fn evaluate_javascript_on_main_thread(&self, js: String) -> Result<(), LxAppError> {
+    fn evaluate_javascript_on_main_thread(&self, js: String) -> Result<(), WebViewError> {
         unsafe {
             let js_string = NSString::from_str(&js);
             // Note: evaluateJavaScript is async, but we're treating it as fire-and-forget
@@ -509,7 +519,7 @@ impl WebViewInner {
     }
 
     /// Helper method to clear browsing data on main thread
-    fn clear_browsing_data_on_main_thread(&self) -> Result<(), LxAppError> {
+    fn clear_browsing_data_on_main_thread(&self) -> Result<(), WebViewError> {
         unsafe {
             // Get the website data store from the configuration
             let config: *mut AnyObject = msg_send![self.webview, configuration];
@@ -530,7 +540,7 @@ impl WebViewInner {
     }
 
     /// Helper method to set user agent on main thread
-    fn set_user_agent_on_main_thread(&self, ua: String) -> Result<(), LxAppError> {
+    fn set_user_agent_on_main_thread(&self, ua: String) -> Result<(), WebViewError> {
         unsafe {
             let ua_string = NSString::from_str(&ua);
             let _: () = msg_send![self.webview, setCustomUserAgent: if ua.is_empty() { std::ptr::null::<NSString>() } else { &*ua_string }];
@@ -543,13 +553,15 @@ impl WebViewInner {
         &self,
         enabled: bool,
         throttle_ms: Option<u64>,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), WebViewError> {
         unsafe {
             // Get the scroll view from the WebView
             let scroll_view: *mut AnyObject = msg_send![self.webview, scrollView];
             if scroll_view.is_null() {
                 log::error!("Failed to get scroll view from WebView");
-                return Err(LxAppError::WebView("Failed to get scroll view".to_string()));
+                return Err(WebViewError::WebView(
+                    "Failed to get scroll view".to_string(),
+                ));
             }
 
             if enabled {
@@ -570,7 +582,7 @@ impl WebViewInner {
                         );
                     } else {
                         log::error!("Failed to create scroll delegate");
-                        return Err(LxAppError::WebView(
+                        return Err(WebViewError::WebView(
                             "Failed to create scroll delegate".to_string(),
                         ));
                     }
@@ -595,7 +607,7 @@ impl WebViewInner {
 }
 
 impl WebViewController for WebViewInner {
-    fn load_url(&self, url: String) -> Result<(), LxAppError> {
+    fn load_url(&self, url: String) -> Result<(), WebViewError> {
         if MainThreadMarker::new().is_some() {
             // Already on main thread, execute directly
             self.load_url_on_main_thread(url)
@@ -623,7 +635,7 @@ impl WebViewController for WebViewInner {
         data: String,
         base_url: String,
         history_url: Option<String>,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), WebViewError> {
         if MainThreadMarker::new().is_some() {
             // Already on main thread, execute directly
             self.load_data_on_main_thread(data, base_url, history_url)
@@ -648,7 +660,7 @@ impl WebViewController for WebViewInner {
         }
     }
 
-    fn evaluate_javascript(&self, js: String) -> Result<(), LxAppError> {
+    fn evaluate_javascript(&self, js: String) -> Result<(), WebViewError> {
         if MainThreadMarker::new().is_some() {
             // Already on main thread, execute directly
             self.evaluate_javascript_on_main_thread(js)
@@ -669,7 +681,7 @@ impl WebViewController for WebViewInner {
         }
     }
 
-    fn clear_browsing_data(&self) -> Result<(), LxAppError> {
+    fn clear_browsing_data(&self) -> Result<(), WebViewError> {
         if MainThreadMarker::new().is_some() {
             // Already on main thread, execute directly
             self.clear_browsing_data_on_main_thread()
@@ -692,7 +704,7 @@ impl WebViewController for WebViewInner {
         }
     }
 
-    fn set_user_agent(&self, ua: String) -> Result<(), LxAppError> {
+    fn set_user_agent(&self, ua: String) -> Result<(), WebViewError> {
         if MainThreadMarker::new().is_some() {
             // Already on main thread, execute directly
             self.set_user_agent_on_main_thread(ua)
@@ -715,14 +727,14 @@ impl WebViewController for WebViewInner {
         &self,
         enabled: bool,
         throttle_ms: Option<u64>,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), WebViewError> {
         if MainThreadMarker::new().is_some() {
             // Already on main thread, execute directly
             self.set_scroll_listener_on_main_thread(enabled, throttle_ms)
         } else {
             // Cross-thread scroll listener setup is complex and requires webtag
             // For now, return error - this should be called on main thread
-            Err(LxAppError::WebView(
+            Err(WebViewError::WebView(
                 "Scroll listener must be set on main thread".to_string(),
             ))
         }
@@ -899,8 +911,10 @@ impl LingXiaMessageHandler {
     fn handle_bridge_message(&self, message: String) {
         let ivars = self.ivars();
 
-        let lxapp = lxapp::get(ivars.appid.clone());
-        lxapp.handle_post_message(ivars.path.clone(), message);
+        let webtag = WebTag::new(&ivars.appid, &ivars.path);
+        if let Some(delegate) = get_webview_delegate(&webtag) {
+            delegate.handle_post_message(ivars.path.clone(), message);
+        }
     }
 
     /// Handle console messages
@@ -920,8 +934,10 @@ impl LingXiaMessageHandler {
                     _ => LogLevel::Info,
                 };
 
-                let lxapp = lxapp::get(ivars.appid.clone());
-                lxapp.log(&ivars.path, log_level, console_message);
+                let webtag = WebTag::new(&ivars.appid, &ivars.path);
+                if let Some(delegate) = get_webview_delegate(&webtag) {
+                    delegate.log(&ivars.path, log_level, console_message);
+                }
             } else {
                 log::error!("Failed to parse console message fields: {}", message);
             }
@@ -974,18 +990,20 @@ define_class!(
 
                 let scroll_x = content_offset.x as i32;
                 let scroll_y = content_offset.y as i32;
-                let max_scroll_x = (content_size.width - frame_size.width).max(0.0) as i32;
-                let max_scroll_y = (content_size.height - frame_size.height).max(0.0) as i32;
+                let _max_scroll_x = (content_size.width - frame_size.width).max(0.0) as i32;
+                let _max_scroll_y = (content_size.height - frame_size.height).max(0.0) as i32;
 
-                // Call lxapp's on_page_scroll_changed
-                let lxapp = lxapp::get(self.ivars().appid.clone());
-                lxapp.on_page_scroll_changed(
-                    self.ivars().path.clone(),
-                    scroll_x,
-                    scroll_y,
-                    max_scroll_x,
-                    max_scroll_y,
-                );
+                // Call delegate's on_page_scroll_changed
+                let webtag = WebTag::new(&self.ivars().appid, &self.ivars().path);
+                if let Some(delegate) = get_webview_delegate(&webtag) {
+                    delegate.on_page_scroll_changed(
+                        self.ivars().path.clone(),
+                        scroll_x,
+                        scroll_y,
+                        _max_scroll_x,
+                        _max_scroll_y,
+                    );
+                }
             }
         }
     }

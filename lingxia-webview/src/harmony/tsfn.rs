@@ -1,4 +1,4 @@
-use lxapp::LxAppError;
+use crate::WebViewError;
 use napi_ohos::Status;
 use napi_ohos::bindgen_prelude::Function;
 use napi_ohos::threadsafe_function::{ThreadsafeCallContext, ThreadsafeFunctionCallMode};
@@ -57,10 +57,10 @@ pub fn init(callback_function: Function<'static>) -> Result<(), String> {
 }
 
 /// Helper function for TSFN calls
-pub fn call_arkts(name: &str, args: &[&str]) -> Result<(), LxAppError> {
+pub fn call_arkts(name: &str, args: &[&str]) -> Result<(), WebViewError> {
     let tsfn = CALLBACK_TSFN.get().ok_or_else(|| {
         log::error!("TSFN not initialized");
-        LxAppError::WebView("No callback".to_string())
+        WebViewError::WebView("No callback".to_string())
     })?;
 
     let data = format!("{}|{}", name, args.join("|"));
@@ -70,19 +70,19 @@ pub fn call_arkts(name: &str, args: &[&str]) -> Result<(), LxAppError> {
         Status::Ok => Ok(()),
         status => {
             log::error!("TSFN call failed for {}: {:?}", name, status);
-            Err(LxAppError::WebView("TSFN call failed".to_string()))
+            Err(WebViewError::WebView("TSFN call failed".to_string()))
         }
     }
 }
 
 /// Helper function for TSFN calls with callback
-pub fn call_arkts_with_callback<F>(name: &str, args: &[&str], callback: F) -> Result<(), LxAppError>
+pub fn call_arkts_with_callback<F>(name: &str, args: &[&str], callback: F) -> Result<(), WebViewError>
 where
     F: FnOnce() + Send + 'static,
 {
     let tsfn = CALLBACK_TSFN
         .get()
-        .ok_or_else(|| LxAppError::WebView("No callback".to_string()))?;
+        .ok_or_else(|| WebViewError::WebView("No callback".to_string()))?;
 
     let data = format!("{}|{}", name, args.join("|"));
 
@@ -96,7 +96,7 @@ where
         },
     ) {
         Status::Ok => Ok(()),
-        _ => Err(LxAppError::WebView(
+        _ => Err(WebViewError::WebView(
             "TSFN call_with_return_value failed".to_string(),
         )),
     }

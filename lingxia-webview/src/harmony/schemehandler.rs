@@ -1,5 +1,4 @@
-use crate::webview::{WebTag, find_webview_by_tag};
-use lxapp::{self, LxAppDelegate};
+use crate::webview::{WebTag, find_webview, get_webview_delegate};
 use napi_ohos::Result as NapiResult;
 use ohos_web_sys::*;
 use std::ffi::{CStr, CString};
@@ -18,21 +17,22 @@ pub unsafe extern "C" fn on_lx_request_start(
         return;
     }
 
-    // Get app_id from user data
+    // Get webtag from user data
     let user_data = unsafe { OH_ArkWebSchemeHandler_GetUserData(scheme_handler) };
     if user_data.is_null() {
         log::error!("No user data found in scheme handler");
         return;
     }
 
-    let app_id_cstr = unsafe { CStr::from_ptr(user_data as *const c_char) };
-    let app_id = match app_id_cstr.to_str() {
-        Ok(s) => s.to_string(),
+    let webtag_cstr = unsafe { CStr::from_ptr(user_data as *const c_char) };
+    let webtag_str = match webtag_cstr.to_str() {
+        Ok(s) => s,
         Err(_) => {
-            log::error!("Invalid app_id in user data");
+            log::error!("Invalid webtag in user data");
             return;
         }
     };
+    let webtag = WebTag::from(webtag_str);
 
     // Get request URL
     let mut url_ptr: *mut c_char = ptr::null_mut();
@@ -69,10 +69,10 @@ pub unsafe extern "C" fn on_lx_request_start(
     };
 
     log::info!(
-        "Processing request: {} {} for app_id: {}",
+        "Processing request: {} {} for webtag: {}",
         method,
         url,
-        app_id
+        webtag.as_str()
     );
 
     // Build HTTP request to check if lxapp wants to handle it
@@ -88,9 +88,13 @@ pub unsafe extern "C" fn on_lx_request_start(
         }
     };
 
-    // Ask lxapp if it wants to handle this request
-    let lxapp = lxapp::get(app_id.to_string());
-    if let Some(http_response) = lxapp.handle_request(http_request) {
+    // Use the bound webtag from this scheme handler
+    let http_response = if let Some(delegate) = get_webview_delegate(&webtag) {
+        delegate.handle_request(http_request)
+    } else {
+        None
+    };
+    if let Some(http_response) = http_response {
         unsafe {
             *intercept = true;
             send_response(resource_handler, http_response);
@@ -183,11 +187,11 @@ pub unsafe fn cleanup_scheme_handler(scheme_handler: *mut ArkWeb_SchemeHandler) 
     }
 
     unsafe {
-        // Get and free the user data (app_id CString)
+        // Get and free the user data (webtag CString)
         let user_data = OH_ArkWebSchemeHandler_GetUserData(scheme_handler);
         if !user_data.is_null() {
             // Reconstruct CString from raw pointer to properly free it
-            let _app_id_cstr = CString::from_raw(user_data as *mut c_char);
+            let _webtag_cstr = CString::from_raw(user_data as *mut c_char);
             // CString will be automatically dropped here, freeing the memory
         }
 
@@ -212,11 +216,8 @@ pub fn register_custom_schemes() -> NapiResult<()> {
 
 /// Set scheme handler for a specific WebView (called in WebViewInner::create)
 pub fn set_webview_scheme_handler(webtag: &WebTag) -> NapiResult<()> {
-    // Extract app_id from webtag
-    let app_id = webtag.extract_appid();
-
     // Get the WebView instance to track scheme handlers
-    let webview = find_webview_by_tag(webtag).ok_or_else(|| {
+    let webview = find_webview(webtag).ok_or_else(|| {
         napi_ohos::Error::new(
             napi_ohos::Status::GenericFailure,
             format!("WebView not found for tag: {}", webtag),
@@ -228,9 +229,10 @@ pub fn set_webview_scheme_handler(webtag: &WebTag) -> NapiResult<()> {
         let mut lx_scheme_handler: *mut ArkWeb_SchemeHandler = std::ptr::null_mut();
         OH_ArkWeb_CreateSchemeHandler(&mut lx_scheme_handler);
 
-        let app_id_cstr = CString::new(app_id.clone()).unwrap();
-        let app_id_ptr = app_id_cstr.into_raw(); // Transfer ownership to raw pointer
-        OH_ArkWebSchemeHandler_SetUserData(lx_scheme_handler, app_id_ptr as *mut std::ffi::c_void);
+        // Store webtag as user data instead of just app_id
+        let webtag_cstr = CString::new(webtag.as_str()).unwrap();
+        let webtag_ptr = webtag_cstr.into_raw(); // Transfer ownership to raw pointer
+        OH_ArkWebSchemeHandler_SetUserData(lx_scheme_handler, webtag_ptr as *mut std::ffi::c_void);
 
         // Set callbacks
         OH_ArkWebSchemeHandler_SetOnRequestStart(lx_scheme_handler, Some(on_lx_request_start));
@@ -255,17 +257,18 @@ pub fn set_webview_scheme_handler(webtag: &WebTag) -> NapiResult<()> {
         }
 
         // Track the lx scheme handler for cleanup
-        webview.track_scheme_handler(lx_scheme_handler);
+        webview.inner.track_scheme_handler(lx_scheme_handler);
 
         // Create scheme handler for https://
         let mut https_scheme_handler: *mut ArkWeb_SchemeHandler = std::ptr::null_mut();
         OH_ArkWeb_CreateSchemeHandler(&mut https_scheme_handler);
 
-        let app_id_cstr2 = CString::new(app_id.clone()).unwrap();
-        let app_id_ptr2 = app_id_cstr2.into_raw(); // Transfer ownership to raw pointer
+        // Store webtag as user data for https handler too
+        let webtag_cstr2 = CString::new(webtag.as_str()).unwrap();
+        let webtag_ptr2 = webtag_cstr2.into_raw(); // Transfer ownership to raw pointer
         OH_ArkWebSchemeHandler_SetUserData(
             https_scheme_handler,
-            app_id_ptr2 as *mut std::ffi::c_void,
+            webtag_ptr2 as *mut std::ffi::c_void,
         );
 
         // Set callbacks (same callbacks as lx://)
@@ -290,7 +293,7 @@ pub fn set_webview_scheme_handler(webtag: &WebTag) -> NapiResult<()> {
             log::warn!("Continuing without https:// scheme handler");
         } else {
             // Track the https scheme handler for cleanup only if successful
-            webview.track_scheme_handler(https_scheme_handler);
+            webview.inner.track_scheme_handler(https_scheme_handler);
         }
 
         log::info!(

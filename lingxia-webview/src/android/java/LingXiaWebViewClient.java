@@ -108,6 +108,7 @@ public class LingXiaWebViewClient extends WebViewClient {
             // Call native to handle request
             LingXiaWebView.WebResourceResponseData response = webView.handleRequest(
                 webView.getAppId() != null ? webView.getAppId() : "",
+                webView.getCurrentPath() != null ? webView.getCurrentPath() : "",
                 url,
                 method,
                 headersJson.toString()

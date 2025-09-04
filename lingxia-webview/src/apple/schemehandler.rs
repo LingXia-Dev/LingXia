@@ -1,4 +1,4 @@
-use lxapp::{self, LxAppDelegate};
+use crate::webview::{WebTag, get_webview_delegate};
 use objc2::runtime::{AnyObject, NSObject};
 use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send, rc::Retained};
 use objc2_foundation::{NSData, NSMutableDictionary, NSObjectProtocol, NSString};
@@ -7,7 +7,7 @@ use objc2_web_kit::WKURLSchemeHandler;
 // Define ivars struct first
 #[derive(Debug)]
 pub(super) struct LingXiaSchemeHandlerIvars {
-    appid: String,
+    webtag: WebTag,
 }
 
 // Define the LingXiaSchemeHandler class
@@ -153,8 +153,14 @@ define_class!(
                     }
                 };
 
-                let lxapp = lxapp::get(self.ivars().appid.clone());
-                match lxapp.handle_request(http_request) {
+                // Use the bound webtag from this scheme handler
+                let webtag = &self.ivars().webtag;
+                let response = if let Some(delegate) = get_webview_delegate(webtag) {
+                    delegate.handle_request(http_request)
+                } else {
+                    None
+                };
+                match response {
                     Some(http_response) => {
                         log::debug!(
                             "Got response from handle_request, status: {}, body length: {}",
@@ -179,9 +185,12 @@ define_class!(
 );
 
 impl LingXiaSchemeHandler {
-    /// Create a new LingXiaSchemeHandler with the given app ID
-    pub(super) fn new(app_id: String) -> Option<Retained<Self>> {
-        log::debug!("Creating LingXiaSchemeHandler for appid: {}", app_id);
+    /// Create a new LingXiaSchemeHandler bound to a specific WebView
+    pub(super) fn new(webtag: WebTag) -> Option<Retained<Self>> {
+        log::debug!(
+            "Creating LingXiaSchemeHandler for webtag: {}",
+            webtag.as_str()
+        );
 
         let mtm = match MainThreadMarker::new() {
             Some(marker) => marker,
@@ -193,7 +202,7 @@ impl LingXiaSchemeHandler {
 
         unsafe {
             let instance = Self::alloc(mtm);
-            let instance = instance.set_ivars(LingXiaSchemeHandlerIvars { appid: app_id });
+            let instance = instance.set_ivars(LingXiaSchemeHandlerIvars { webtag });
             let instance: Retained<Self> = msg_send![super(instance), init];
             log::debug!("Successfully created LingXiaSchemeHandler");
             Some(instance)

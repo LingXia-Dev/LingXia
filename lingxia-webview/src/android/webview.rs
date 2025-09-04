@@ -1,5 +1,5 @@
+use crate::{WebViewController, WebViewError};
 use jni::objects::{GlobalRef, JObject, JValue};
-use lxapp::{LxAppError, WebViewController};
 use std::collections::HashMap;
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -12,7 +12,7 @@ use crate::webview::WebTag;
 
 // Global map to store senders for WebView creation
 pub(crate) static WEBVIEW_SENDERS: OnceLock<
-    Arc<Mutex<HashMap<String, Sender<Result<Arc<dyn WebViewController>, LxAppError>>>>>,
+    Arc<Mutex<HashMap<String, Sender<Result<Arc<crate::WebView>, WebViewError>>>>>,
 > = OnceLock::new();
 
 #[derive(Debug)]
@@ -25,7 +25,7 @@ impl WebViewInner {
     pub(crate) fn create(
         appid: &str,
         path: &str,
-        sender: Sender<Result<Arc<dyn WebViewController>, LxAppError>>,
+        sender: Sender<Result<Arc<crate::WebView>, WebViewError>>,
     ) {
         // Store sender in global map for callback
         let webtag = WebTag::new(appid, path);
@@ -39,7 +39,7 @@ impl WebViewInner {
         let remove_and_send_error = |error_msg: String| {
             if let Ok(mut senders_map) = senders.lock() {
                 if let Some(sender) = senders_map.remove(&webtag.to_string()) {
-                    let _ = sender.send(Err(LxAppError::WebView(error_msg)));
+                    let _ = sender.send(Err(WebViewError::WebView(error_msg)));
                 }
             }
         };
@@ -109,7 +109,7 @@ impl Drop for WebViewInner {
 }
 
 impl WebViewController for WebViewInner {
-    fn load_url(&self, url: String) -> Result<(), LxAppError> {
+    fn load_url(&self, url: String) -> Result<(), WebViewError> {
         let mut env = get_env().unwrap();
 
         match env.new_string(&url) {
@@ -124,10 +124,10 @@ impl WebViewController for WebViewInner {
                 if result.is_ok() {
                     Ok(())
                 } else {
-                    Err(LxAppError::WebView("Failed to load URL".to_string()))
+                    Err(WebViewError::WebView("Failed to load URL".to_string()))
                 }
             }
-            Err(_) => Err(LxAppError::WebView(
+            Err(_) => Err(WebViewError::WebView(
                 "Failed to create Java string".to_string(),
             )),
         }
@@ -138,7 +138,7 @@ impl WebViewController for WebViewInner {
         data: String,
         base_url: String,
         history_url: Option<String>,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), WebViewError> {
         let mut env = get_env().unwrap();
 
         let data_string = env.new_string(&data).unwrap();
@@ -162,17 +162,17 @@ impl WebViewController for WebViewInner {
         if result.is_ok() {
             Ok(())
         } else {
-            Err(LxAppError::WebView("Failed to load data".to_string()))
+            Err(WebViewError::WebView("Failed to load data".to_string()))
         }
     }
 
-    fn evaluate_javascript(&self, js: String) -> Result<(), LxAppError> {
+    fn evaluate_javascript(&self, js: String) -> Result<(), WebViewError> {
         let mut env = get_env().unwrap();
 
         let script_string = match env.new_string(&js) {
             Ok(s) => s,
             Err(_) => {
-                return Err(LxAppError::WebView(
+                return Err(WebViewError::WebView(
                     "Failed to create Java string".to_string(),
                 ));
             }
@@ -191,34 +191,32 @@ impl WebViewController for WebViewInner {
         if result.is_ok() {
             Ok(())
         } else {
-            Err(LxAppError::WebView(
+            Err(WebViewError::WebView(
                 "JavaScript evaluation failed".to_string(),
             ))
         }
     }
 
-    fn clear_browsing_data(&self) -> Result<(), LxAppError> {
+    fn clear_browsing_data(&self) -> Result<(), WebViewError> {
         let mut env = get_env().unwrap();
         let result = env.call_method(self.java_webview.as_obj(), "clearBrowsingData", "()V", &[]);
 
         if result.is_ok() {
             Ok(())
         } else {
-            Err(LxAppError::WebView(
+            Err(WebViewError::WebView(
                 "Failed to clear browsing data".to_string(),
             ))
         }
     }
 
-
-
-    fn post_message(&self, message: String) -> Result<(), LxAppError> {
+    fn post_message(&self, message: String) -> Result<(), WebViewError> {
         let mut env = get_env().unwrap();
 
         let msg_string = match env.new_string(&message) {
             Ok(s) => s,
             Err(_) => {
-                return Err(LxAppError::WebView(
+                return Err(WebViewError::WebView(
                     "Failed to create Java string".to_string(),
                 ));
             }
@@ -234,17 +232,17 @@ impl WebViewController for WebViewInner {
         if result.is_ok() {
             Ok(())
         } else {
-            Err(LxAppError::WebView("Failed to post message".to_string()))
+            Err(WebViewError::WebView("Failed to post message".to_string()))
         }
     }
 
-    fn set_user_agent(&self, ua: String) -> Result<(), LxAppError> {
+    fn set_user_agent(&self, ua: String) -> Result<(), WebViewError> {
         let mut env = get_env().unwrap();
 
         let ua_string = match env.new_string(&ua) {
             Ok(s) => s,
             Err(_) => {
-                return Err(LxAppError::WebView(
+                return Err(WebViewError::WebView(
                     "Failed to create Java string".to_string(),
                 ));
             }
@@ -260,7 +258,9 @@ impl WebViewController for WebViewInner {
         if result.is_ok() {
             Ok(())
         } else {
-            Err(LxAppError::WebView("Failed to set user agent".to_string()))
+            Err(WebViewError::WebView(
+                "Failed to set user agent".to_string(),
+            ))
         }
     }
 
@@ -268,7 +268,7 @@ impl WebViewController for WebViewInner {
         &self,
         enabled: bool,
         throttle_ms: Option<u64>,
-    ) -> Result<(), LxAppError> {
+    ) -> Result<(), WebViewError> {
         let mut env = get_env().unwrap();
 
         let throttle_value = throttle_ms.unwrap_or(100); // Default to 100ms
@@ -286,7 +286,7 @@ impl WebViewController for WebViewInner {
         if result.is_ok() {
             Ok(())
         } else {
-            Err(LxAppError::WebView(
+            Err(WebViewError::WebView(
                 "Failed to set scroll listener enabled".to_string(),
             ))
         }

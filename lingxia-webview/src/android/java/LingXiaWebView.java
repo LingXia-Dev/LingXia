@@ -590,7 +590,7 @@ public class LingXiaWebView extends WebView {
     native void onConsoleMessage(String appId, String path, int level, String message);
     native void onPageStarted(String appId, String path);
     native void onPageFinished(String appId, String path);
-    native WebResourceResponseData handleRequest(String appId, String url, String method, String headers);
+    native WebResourceResponseData handleRequest(String appId, String path, String url, String method, String headers);
     native int handlePostMessage(String appId, String path, String message);
     native void onScrollChanged(String appId, String path, int scrollX, int scrollY, int maxScrollX, int maxScrollY);
     native static void notifyWebViewReady(String appId, String path, Object webView);
