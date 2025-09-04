@@ -93,15 +93,17 @@ public class LingXiaWebViewClient extends WebViewClient {
         String url = request.getUrl().toString();
         String method = request.getMethod();
 
-        // Convert headers to JSON string
-        JSONObject headersJson = new JSONObject();
+        // Convert headers to flat array: [key1, value1, key2, value2, ...]
+        java.util.List<String> headerList = new java.util.ArrayList<>();
         try {
-            for (String key : request.getRequestHeaders().keySet()) {
-                headersJson.put(key, request.getRequestHeaders().get(key));
+            for (java.util.Map.Entry<String, String> entry : request.getRequestHeaders().entrySet()) {
+                headerList.add(entry.getKey());
+                headerList.add(entry.getValue());
             }
         } catch (Exception e) {
-            Log.e(TAG, "Error converting headers to JSON", e);
+            Log.e(TAG, "Error converting headers to array", e);
         }
+        String[] headerArray = headerList.toArray(new String[0]);
 
         LingXiaWebView webView = webViewRef.get();
         if (webView != null) {
@@ -111,7 +113,7 @@ public class LingXiaWebViewClient extends WebViewClient {
                 webView.getCurrentPath() != null ? webView.getCurrentPath() : "",
                 url,
                 method,
-                headersJson.toString()
+                headerArray
             );
 
             if (response == null) {

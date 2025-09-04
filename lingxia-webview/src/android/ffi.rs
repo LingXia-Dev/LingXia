@@ -4,9 +4,8 @@ use http;
 use http::header::{HeaderMap, HeaderName, HeaderValue};
 use http::{Method, Request, Response};
 use jni::JNIEnv;
-use jni::objects::{JObject, JString};
+use jni::objects::{JObject, JObjectArray, JString};
 use jni::sys::jint;
-use serde_json;
 use std::sync::Arc;
 
 // Import from webview.rs
@@ -73,31 +72,57 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handleRequest<'a>
     path: JString<'a>,
     url: JString<'a>,
     method: JString<'a>,
-    headers: JString<'a>,
+    headers_array: jni::sys::jobjectArray,
 ) -> JObject<'a> {
     // Convert Java strings to Rust strings
     let appid: String = env.get_string(&appid).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
     let url_str: String = env.get_string(&url).unwrap().into();
     let method_str: String = env.get_string(&method).unwrap().into();
-    let headers_str: String = env.get_string(&headers).unwrap().into();
 
-    // Parse headers JSON
-    let headers_map: serde_json::Map<String, serde_json::Value> =
-        match serde_json::from_str(&headers_str) {
-            Ok(map) => map,
-            Err(_) => return JObject::null(),
-        };
-
-    // Build headers
+    // Parse headers from array: [key1, value1, key2, value2, ...]
     let mut http_headers = HeaderMap::new();
-    for (key, value) in headers_map {
-        if let Some(value_str) = value.as_str() {
-            if let (Ok(name), Ok(val)) = (
-                HeaderName::from_bytes(key.as_bytes()),
-                HeaderValue::from_str(value_str),
-            ) {
-                http_headers.insert(name, val);
+
+    if !headers_array.is_null() {
+        // Convert raw pointer to JObjectArray
+        let headers_array = unsafe { JObjectArray::from_raw(headers_array) };
+
+        match env.get_array_length(&headers_array) {
+            Ok(array_len) => {
+                // Process pairs of key-value
+                for i in (0..array_len).step_by(2) {
+                    if i + 1 < array_len {
+                        // Get key and value from array
+                        if let (Ok(key_obj), Ok(value_obj)) = (
+                            env.get_object_array_element(&headers_array, i),
+                            env.get_object_array_element(&headers_array, i + 1),
+                        ) {
+                            let key_jstring = JString::try_from(key_obj);
+                            let value_jstring = JString::try_from(value_obj);
+
+                            if let (Ok(key_jstring), Ok(value_jstring)) =
+                                (key_jstring, value_jstring)
+                            {
+                                if let (Ok(key), Ok(value)) =
+                                    (env.get_string(&key_jstring), env.get_string(&value_jstring))
+                                {
+                                    let key_str: String = key.into();
+                                    let value_str: String = value.into();
+
+                                    if let (Ok(name), Ok(val)) = (
+                                        HeaderName::from_bytes(key_str.as_bytes()),
+                                        HeaderValue::from_str(&value_str),
+                                    ) {
+                                        http_headers.insert(name, val);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Err(_) => {
+                // If we can't get array length, continue with empty headers
             }
         }
     }
