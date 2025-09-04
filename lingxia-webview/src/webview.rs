@@ -56,6 +56,12 @@ impl WebView {
             *guard = None;
         }
     }
+
+    /// Get platform-specific pointer for interop (Apple platforms only)
+    #[cfg(any(target_os = "ios", target_os = "macos"))]
+    pub fn get_swift_webview_ptr(&self) -> usize {
+        self.inner.get_swift_webview_ptr()
+    }
 }
 
 impl WebViewController for WebView {
