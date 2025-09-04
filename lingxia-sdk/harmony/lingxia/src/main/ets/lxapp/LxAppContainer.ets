@@ -11,15 +11,29 @@ import { TabBarPosition, type TabBarItem } from 'liblingxia.so';
 import liblingxia, { TabBarState, getNavigationBarState, onPageShow } from 'liblingxia.so';
 import { NavigationType } from './LxAppNavigation';
 
+// Container-specific constants
+const SYSTEM_STATUS_BAR_HEIGHT = 44;     // Default status bar height
+
+const NAVIGATION_BUTTON_Z_INDEX = 1000;           // Navigation button z-index
+const NAVIGATION_BUTTON_Y_POSITION = 45;          // Navigation button vertical position
+
+// Calculated absolute positions
+const NAVIGATION_BUTTON_POSITION_BACK_LEFT = 16;  // Back button left position
+const NAVIGATION_BUTTON_POSITION_HOME_LEFT = 8;   // Home button left position
+
+const COLOR_WHITE = '#ffffff';
+const COLOR_BLACK = '#000000';
+const COLOR_TRANSPARENT = Color.Transparent;
+
+const ANIMATION_DURATION_STANDARD = 300;      // Standard animation duration
+const ANIMATION_CURVE_EASE_IN_OUT = Curve.EaseInOut;  // Smooth ease in/out curve
+
+// Frosted glass effect colors
+const FROSTED_GLASS_LIGHT = 'rgba(255, 255, 255, 0.2)';  // For dark navbar backgrounds
+const FROSTED_GLASS_DARK = 'rgba(0, 0, 0, 0.1)';          // For light navbar backgrounds
+
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.Container';
-
-// Container-specific constants
-const NAVIGATION_BUTTON_Z_INDEX = 1000; // Z-index for navigation buttons
-
-// Navigation button background colors
-const LIGHT_FROSTED_BACKGROUND = 'rgba(255, 255, 255, 0.2)'; // For dark navbar backgrounds
-const DARK_FROSTED_BACKGROUND = 'rgba(0, 0, 0, 0.1)'; // For light navbar backgrounds
 
 /**
  * Translation options for WebView animations
@@ -57,11 +71,11 @@ export struct LxAppContainer {
   @State tabBarRefreshKey: number = 0  // Force TabBar refresh when data changes
   @State webViewComponents: Map<string, webview.WebviewController> = new Map() // Store Web components for each WebView
   @State currentWebTag: string = '' // Current active WebView tag
-  @State webViewKeys: string[] = [] // Array of webView keys for ForEach
+  @State webViewKeys: string[] = [] // Array of WebView keys for ForEach
   private pageShowTriggered: Set<string> = new Set() // Track which pages have triggered onPageShow
-  @State private statusBarHeight: number = 44 // Default status bar height
+  @State private statusBarHeight: number = SYSTEM_STATUS_BAR_HEIGHT // Default status bar height
 
-  // Animation states for WebView transitions
+  // Animation state for WebView transitions
   @State private animationInProgress: boolean = false
   @State private previousWebTag: string = ''
   @State private currentNavigationType: NavigationType = NavigationType.Launch
@@ -75,7 +89,7 @@ export struct LxAppContainer {
   }
 
   /**
-   * Trigger onPageShow for a WebView if it hasn't been triggered yet
+   * Trigger onPageShow if WebView hasn't triggered it yet
    */
   private triggerOnPageShowIfNeeded(webTag: string) {
     if (!this.pageShowTriggered.has(webTag)) {
@@ -85,7 +99,7 @@ export struct LxAppContainer {
         const path = extracted.path;
         const actualPath = path.replace(/-/g, '/');
 
-        // Check if this is the first page (LxApp runtime might not be ready)
+        // Check if this is the first page (LxApp runtime might not be ready yet)
         const isFirstPage = this.pageShowTriggered.size === 0;
         this.pageShowTriggered.add(webTag);
 
@@ -96,7 +110,7 @@ export struct LxAppContainer {
             onPageShow(appId, actualPath);
           }, 100);
         } else {
-          // No delay for subsequent pages
+          // Subsequent pages without delay
           hilog.info(DOMAIN, TAG, `Triggering onPageShow for: ${appId}:${actualPath}`);
           onPageShow(appId, actualPath);
         }
@@ -106,10 +120,10 @@ export struct LxAppContainer {
     }
   }
 
-  // Watch for external path changes from LxApp.navigate API
+  // Listen for external path changes from LxApp.navigate API
   @Watch('onExternalPathChange') @Prop externalPath: string = ''
 
-  // Watch for navigation trigger changes (unified approach for all LxApps)
+  // Listen for navigation trigger changes (unified method for all LxApps)
   @Watch('onNavigationTrigger') @Prop navigationTrigger: number = 0
 
   // Manual animation control for new lxapps
@@ -172,25 +186,26 @@ export struct LxAppContainer {
   }
 
   /**
-   * Get navigation button position for absolute positioning
+   * Get absolute positioning for navigation buttons
    */
   private getNavigationButtonPosition(isBackButton: boolean): Position {
     return {
-      x: isBackButton ? BACK_BUTTON_LEFT_POSITION : HOME_BUTTON_LEFT_POSITION,
-      y: calculateNavigationButtonYPosition(this.statusBarHeight)
+      x: isBackButton ? NAVIGATION_BUTTON_POSITION_BACK_LEFT : NAVIGATION_BUTTON_POSITION_HOME_LEFT,
+      y: NAVIGATION_BUTTON_Y_POSITION
     };
   }
 
   /**
-   * Get navigation button styling based on navbar state
+   * Get navigation button style based on navigation bar state
    */
   private getNavigationButtonStyle(isBackButton: boolean): NavigationButtonStyle {
     const hasNavbar = this.pageConfig?.showNavbar;
     const isWhiteText = this.pageConfig?.navigationBarTextStyle === 'white';
+    const shouldUseWhiteStyle = hasNavbar === true && isWhiteText === true;
 
     return {
-      color: hasNavbar && isWhiteText ? Color.White : Color.Black,
-      bgColor: hasNavbar && isWhiteText ? LIGHT_FROSTED_BACKGROUND : DARK_FROSTED_BACKGROUND
+      color: shouldUseWhiteStyle ? COLOR_WHITE : COLOR_BLACK,
+      bgColor: shouldUseWhiteStyle ? FROSTED_GLASS_LIGHT : FROSTED_GLASS_DARK
     };
   }
 
@@ -210,10 +225,10 @@ export struct LxAppContainer {
       }
 
       const safeArea = await mainWindow.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM);
-      this.statusBarHeight = safeArea.topRect.height || 44; // Ensure fallback
+      this.statusBarHeight = safeArea.topRect.height || SYSTEM_STATUS_BAR_HEIGHT; // Ensure fallback value
     } catch (error) {
       hilog.error(DOMAIN, TAG, `Failed to get status bar height: ${error}`);
-      this.statusBarHeight = 44; // Safe fallback for all devices
+      this.statusBarHeight = SYSTEM_STATUS_BAR_HEIGHT; // Safe fallback value for all devices
     }
   }
 
@@ -482,10 +497,13 @@ export struct LxAppContainer {
     return this.appId === homeAppId;
   }
 
+  /**
+   * Check if container should expand safe area
+   */
   private shouldExpandSafeAreaForContainer(): boolean {
-    const shouldExpand = true;
-    hilog.info(DOMAIN, TAG, `Always expand safe area for full screen coverage: ${this.appId}`);
-    return shouldExpand;
+    // Always expand for full screen coverage
+    hilog.info(DOMAIN, TAG, `Safe area expansion for ${this.appId}: true`);
+    return true;
   }
 
   /**
@@ -617,13 +635,12 @@ export struct LxAppContainer {
   }
 
   /**
-   * Check if should show capsule button
-   * homelxapp doesn't show capsule button, other lxapps do
+   * Check if capsule button should be shown
+   * Home app doesn't show capsule button, other apps do
    */
   private shouldShowCapsuleButton(): boolean {
-    const isHome = this.isHomeLxApp();
-    const shouldShow = !isHome;
-    hilog.info(DOMAIN, TAG, `shouldShowCapsuleButton: appId=${this.appId}, isHome=${isHome}, shouldShow=${shouldShow}`);
+    const shouldShow = !this.isHomeLxApp();
+    hilog.info(DOMAIN, TAG, `shouldShowCapsuleButton: appId=${this.appId}, shouldShow=${shouldShow}`);
     return shouldShow;
   }
 
@@ -641,7 +658,7 @@ export struct LxAppContainer {
     .width('100%')
     .height('100%')
     .layoutWeight(this.isTabBarTransparent() ? 0 : 1)
-    .backgroundColor(this.navigationMode ? Color.White : Color.Transparent)
+    .backgroundColor(this.navigationMode ? COLOR_WHITE : COLOR_TRANSPARENT)
     .clip(this.navigationMode)
   }
 
@@ -775,14 +792,14 @@ export struct LxAppContainer {
 
     // Start slide animation
     animateTo({
-      duration: 300,
-      curve: Curve.EaseInOut,
+      duration: ANIMATION_DURATION_STANDARD,
+      curve: ANIMATION_CURVE_EASE_IN_OUT,
       playMode: PlayMode.Normal,
       onFinish: () => {
         this.finishTransition(newWebTag, path);
       }
     }, () => {
-      // Animate to final positions
+      // Animate to final position
       this.currentWebViewTranslateX = 0;
       this.navbarTranslateX = 0;
       this.previousWebViewTranslateX = isBackward ? 100 : -100;
@@ -922,7 +939,7 @@ export struct LxAppContainer {
       })
       .width('100%')
       .height('100%')
-      .backgroundColor(Color.Transparent)
+      .backgroundColor(COLOR_TRANSPARENT)
   }
 
   /**

@@ -1,6 +1,70 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { TabBarPosition, type TabBarItem, type TabBarState } from 'liblingxia.so';
 
+// TabBar layout constants
+const TAB_BAR_HORIZONTAL_HEIGHT = 72;    // Horizontal TabBar default height
+const TAB_BAR_VERTICAL_WIDTH = 64;       // Vertical TabBar default width
+const TAB_BAR_BORDER_WIDTH = 0.5;        // TabBar border width
+const TAB_BAR_ITEM_SPACING = 16;         // TabBar item spacing
+const TAB_BAR_ITEM_PADDING = 4;          // TabBar item internal padding
+
+// TabBar padding configuration
+const TAB_BAR_PADDING_HORIZONTAL_TOP = 8;
+const TAB_BAR_PADDING_HORIZONTAL_BOTTOM = 12;
+const TAB_BAR_PADDING_HORIZONTAL_LEFT = 16;
+const TAB_BAR_PADDING_HORIZONTAL_RIGHT = 16;
+const TAB_BAR_PADDING_VERTICAL_TOP = 20;     // includes status bar space
+const TAB_BAR_PADDING_VERTICAL_BOTTOM = 8;
+const TAB_BAR_PADDING_VERTICAL_LEFT = 8;
+const TAB_BAR_PADDING_VERTICAL_RIGHT = 8;
+
+// TabBar grouping constants
+const TAB_BAR_GROUP_DEFAULT = 0;  // Default group (no grouping)
+const TAB_BAR_GROUP_START = 1;    // Start group
+const TAB_BAR_GROUP_END = 2;      // End group
+
+// TabBar icon and text constants
+const TAB_BAR_ITEM_ICON_SIZE = 24;                    // Tab icon size
+const TAB_BAR_ITEM_ICON_CONTAINER_SIZE = 48;          // Tab icon container size
+const TAB_BAR_ITEM_TEXT_SIZE_HORIZONTAL = 12;         // Tab text font size - horizontal layout
+const TAB_BAR_ITEM_TEXT_SIZE_VERTICAL = 10;           // Tab text font size - vertical layout
+const TAB_BAR_ITEM_ICON_TEXT_SPACING = 4;             // Icon to text spacing
+
+// Badge configuration
+const TAB_BAR_ITEM_BADGE_FONT_SIZE = 10;
+const TAB_BAR_ITEM_BADGE_BORDER_RADIUS = 8;
+const TAB_BAR_ITEM_BADGE_PADDING = 6;
+const TAB_BAR_ITEM_BADGE_HEIGHT = 16;
+const TAB_BAR_ITEM_BADGE_VERTICAL_PADDING = 2;
+const TAB_BAR_ITEM_BADGE_POSITION_X = 16;
+const TAB_BAR_ITEM_BADGE_POSITION_Y = -8;
+
+// Red dot configuration
+const TAB_BAR_ITEM_RED_DOT_SIZE = 8;
+const TAB_BAR_ITEM_RED_DOT_POSITION_X = 16;
+const TAB_BAR_ITEM_RED_DOT_POSITION_Y = -2;
+
+// Text max lines
+const TAB_BAR_ITEM_TEXT_MAX_LINES_VERTICAL = 2;
+const TAB_BAR_ITEM_TEXT_MAX_LINES_HORIZONTAL = 1;
+
+// Common colors
+const COLOR_WHITE = '#ffffff';
+const COLOR_BLACK = '#000000';
+const COLOR_TRANSPARENT = Color.Transparent;
+const COLOR_LIGHT_BORDER = '#DDDDDD';
+const COLOR_BADGE_RED = '#FA5151';
+const COLOR_RED_DOT = '#ff0000';
+const COLOR_TEXT_SHADOW = 'rgba(255,255,255,0.8)';
+
+// Text shadow configuration
+const TEXT_SHADOW_RADIUS = 1;
+const TEXT_SHADOW_OFFSET_X = 0;
+const TEXT_SHADOW_OFFSET_Y = 1;
+
+// System constants
+const SYSTEM_SAFE_AREA_BOTTOM = 24;  // Safe area bottom extra spacing
+
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.TabBar';
 
@@ -19,12 +83,12 @@ export struct TabBar {
   onTabSelected?: (appId: string, index: number, item: TabBarItem) => void;
 
   aboutToAppear() {
-    hilog.info(DOMAIN, TAG, `TabBar created: ${this.tabbar.items.length} items, refreshKey: ${this.refreshKey}`);
+    hilog.info(DOMAIN, TAG, `TabBar created: ${this.tabbar.items.length} items, vertical: ${this.isVertical()}, transparent: ${this.isTransparent()}, refreshKey: ${this.refreshKey}`);
   }
 
   build() {
     if (this.isVertical()) {
-      // Vertical layout for left/right position
+      // Vertical layout (left/right position)
       Column() {
         if (this.hasGroupField()) {
           this.buildGroupedVerticalLayout()
@@ -37,7 +101,12 @@ export struct TabBar {
       .backgroundColor(this.getBackgroundColor())
       .justifyContent(this.hasGroupField() ? FlexAlign.Start : FlexAlign.SpaceEvenly)
       .alignItems(HorizontalAlign.Center)
-      .padding(this.getVerticalPadding())
+      .padding({
+        top: TAB_BAR_PADDING_VERTICAL_TOP,
+        bottom: TAB_BAR_PADDING_VERTICAL_BOTTOM,
+        left: TAB_BAR_PADDING_VERTICAL_LEFT,
+        right: TAB_BAR_PADDING_VERTICAL_RIGHT
+      })
       .border(this.getVerticalBorder())
       .linearGradient(this.getVerticalGradient())
       .zIndex(this.isTransparent() ? 1 : 0)
@@ -48,7 +117,7 @@ export struct TabBar {
         right: this.tabbar.position === TabBarPosition.Right ? 0 : undefined
       } : {})
     } else {
-      // Horizontal layout for bottom position
+      // Horizontal layout (bottom position)
       Row() {
         if (this.hasGroupField()) {
           this.buildGroupedHorizontalLayout()
@@ -80,8 +149,8 @@ export struct TabBar {
         // Tab icon - support full path icons from native
         if (item.iconPath || item.selectedIconPath) {
           Image(this.getIconUrl(item, index))
-            .width(24)
-            .height(24)
+            .width(TAB_BAR_ITEM_ICON_SIZE)
+            .height(TAB_BAR_ITEM_ICON_SIZE)
             .fillColor(this.selectedIndex === index ? this.getSelectedColor() : this.getNormalColor())
             .objectFit(ImageFit.Contain)
             .onError((error: ImageError): void => {
@@ -90,62 +159,66 @@ export struct TabBar {
                 item.iconPath;
               hilog.error(DOMAIN, TAG, `Tab ${index} icon load error: ${JSON.stringify(error)}, path: ${currentIconPath}`);
             })
-
         }
 
         // Badge or red dot
         if (item.badge) {
           Text(item.badge)
-            .fontSize(10)
-            .fontColor('#ffffff')
-            .backgroundColor('#FA5151')
-            .borderRadius(8)
-            .padding({ left: 6, right: 6, top: 2, bottom: 2 })
+            .fontSize(TAB_BAR_ITEM_BADGE_FONT_SIZE)
+            .fontColor(COLOR_WHITE)
+            .backgroundColor(COLOR_BADGE_RED)
+            .borderRadius(TAB_BAR_ITEM_BADGE_BORDER_RADIUS)
+            .padding({
+              left: TAB_BAR_ITEM_BADGE_PADDING,
+              right: TAB_BAR_ITEM_BADGE_PADDING,
+              top: TAB_BAR_ITEM_BADGE_VERTICAL_PADDING,
+              bottom: TAB_BAR_ITEM_BADGE_VERTICAL_PADDING
+            })
             .maxLines(1)
             .textOverflow({ overflow: TextOverflow.None })
             .textAlign(TextAlign.Center)
-            .position({ x: 16, y: -8 })
+            .position({ x: TAB_BAR_ITEM_BADGE_POSITION_X, y: TAB_BAR_ITEM_BADGE_POSITION_Y })
             .zIndex(1)
-            .height(16)
+            .height(TAB_BAR_ITEM_BADGE_HEIGHT)
         } else if (item.redDot) {
           // Red dot indicator
           Circle()
-            .width(8)
-            .height(8)
-            .fill('#ff0000')
-            .position({ x: 16, y: -2 })
+            .width(TAB_BAR_ITEM_RED_DOT_SIZE)
+            .height(TAB_BAR_ITEM_RED_DOT_SIZE)
+            .fill(COLOR_RED_DOT)
+            .position({ x: TAB_BAR_ITEM_RED_DOT_POSITION_X, y: TAB_BAR_ITEM_RED_DOT_POSITION_Y })
             .zIndex(1)
         }
       }
-      .width(48)
-      .height(24)
+      .width(TAB_BAR_ITEM_ICON_CONTAINER_SIZE)
+      .height(TAB_BAR_ITEM_ICON_SIZE)
 
       // Tab text - optional, only show if provided
       if (item.text) {
         Text(item.text)
-          .fontSize(this.isVertical() ? 10 : 12)
+          .fontSize(this.isVertical() ? TAB_BAR_ITEM_TEXT_SIZE_VERTICAL : TAB_BAR_ITEM_TEXT_SIZE_HORIZONTAL)
           .fontColor(this.selectedIndex === index ? this.getSelectedColor() : this.getNormalColor())
-          .margin({ top: 4 })
+          .margin({ top: TAB_BAR_ITEM_ICON_TEXT_SPACING })
           .fontWeight(this.isTransparent() ? FontWeight.Medium : FontWeight.Normal)
-          .maxLines(this.isVertical() ? 2 : 1)
+          .maxLines(this.isVertical() ? TAB_BAR_ITEM_TEXT_MAX_LINES_VERTICAL : TAB_BAR_ITEM_TEXT_MAX_LINES_HORIZONTAL)
           .textAlign(TextAlign.Center)
           // Add text shadow for better readability on transparent background
           .textShadow(this.isTransparent() ? {
-            radius: 1,
-            color: 'rgba(255,255,255,0.8)',
-            offsetX: 0,
-            offsetY: 1
+            radius: TEXT_SHADOW_RADIUS,
+            color: COLOR_TEXT_SHADOW,
+            offsetX: TEXT_SHADOW_OFFSET_X,
+            offsetY: TEXT_SHADOW_OFFSET_Y
           } : undefined)
       }
     }
-    // In grouped mode, layoutWeight is handled by the Blank spacer
+    // In grouped mode, layoutWeight is handled by Blank spacer
     // In centered mode, each item gets equal weight to distribute space
     .layoutWeight(this.hasGroupField() ? 0 : 1)
     .width(this.isVertical() ? '100%' : undefined)
     .height(this.isVertical() ? undefined : '100%')
     .justifyContent(FlexAlign.Center)
     .alignItems(HorizontalAlign.Center)
-    .margin({ top: 4, bottom: 4 })
+    .margin({ top: TAB_BAR_ITEM_PADDING, bottom: TAB_BAR_ITEM_PADDING })
     .onClick(() => {
       hilog.info(DOMAIN, TAG, `Tab clicked: ${index}, current: ${this.selectedIndex}, appId: ${this.appId}, path: ${item.pagePath}`);
 
@@ -185,7 +258,7 @@ export struct TabBar {
     ForEach(this.getStartItems(), (item: TabBarItem, index: number) => {
       this.buildTabItem(item, this.tabbar.items.indexOf(item))
       if (index < this.getStartItems().length - 1) {
-        Blank().height(16) // Adaptive spacer
+        Blank().height(TAB_BAR_ITEM_SPACING) // Adaptive spacer
       }
     })
 
@@ -197,7 +270,7 @@ export struct TabBar {
     ForEach(this.getEndItems(), (item: TabBarItem, index: number) => {
       this.buildTabItem(item, this.tabbar.items.indexOf(item))
       if (index < this.getEndItems().length - 1) {
-        Blank().height(16) // Adaptive spacer
+        Blank().height(TAB_BAR_ITEM_SPACING) // Adaptive spacer
       }
     })
   }
@@ -211,7 +284,7 @@ export struct TabBar {
     ForEach(this.getStartItems(), (item: TabBarItem, index: number) => {
       this.buildTabItem(item, this.tabbar.items.indexOf(item))
       if (index < this.getStartItems().length - 1) {
-        Blank().width(24) // Adaptive spacer
+        Blank().width(TAB_BAR_ITEM_SPACING) // Adaptive spacer
       }
     })
 
@@ -223,7 +296,7 @@ export struct TabBar {
     ForEach(this.getEndItems(), (item: TabBarItem, index: number) => {
       this.buildTabItem(item, this.tabbar.items.indexOf(item))
       if (index < this.getEndItems().length - 1) {
-        Blank().width(24) // Adaptive spacer
+        Blank().width(TAB_BAR_ITEM_SPACING) // Adaptive spacer
       }
     })
   }
@@ -241,7 +314,7 @@ export struct TabBar {
   private getStartItems(): TabBarItem[] {
     return this.tabbar.items.filter((item: TabBarItem): boolean => {
       const group: number = item.group ?? 0;
-      return group !== 2; // 0 (no group) or 1 (start) → all treated as start
+      return group !== TAB_BAR_GROUP_END; // 0 (no group) or 1 (start) → all treated as start
     });
   }
 
@@ -251,7 +324,7 @@ export struct TabBar {
   private getEndItems(): TabBarItem[] {
     return this.tabbar.items.filter((item: TabBarItem): boolean => {
       const group: number = item.group ?? 0;
-      return group === 2; // end
+      return group === TAB_BAR_GROUP_END; // end
     });
   }
 
@@ -287,7 +360,7 @@ export struct TabBar {
   }
 
   /**
-   * Get background color - supports transparent with better integration
+   * Get background color - supports transparent for better integration
    */
   private getBackgroundColor(): ResourceColor {
     const bgColor: number = this.tabbar.backgroundColor ?? 0xFFFFFFFF;
@@ -302,22 +375,15 @@ export struct TabBar {
   }
 
   /**
-   * Get border width
-   */
-  private getBorderWidth(): number {
-    return 0.5;
-  }
-
-  /**
-   * Get tab bar size (height for horizontal, width for vertical)
+   * Get TabBar size (height for horizontal, width for vertical)
    */
   private getTabBarSize(): number {
     // Use configured dimension (Rust provides default value, but TypeScript interface might be undefined)
-    return this.tabbar.dimension ?? (this.isVertical() ? 64 : 72);
+    return this.tabbar.dimension ?? (this.isVertical() ? TAB_BAR_VERTICAL_WIDTH : TAB_BAR_HORIZONTAL_HEIGHT);
   }
 
   /**
-   * Check if TabBar is vertical (left/right position)
+   * Check if TabBar is vertical layout (left/right position)
    */
   private isVertical(): boolean {
     return this.tabbar.position === TabBarPosition.Left || this.tabbar.position === TabBarPosition.Right;
@@ -332,11 +398,24 @@ export struct TabBar {
   }
 
   /**
+   * Get padding for horizontal layout
+   */
+  private getHorizontalPadding(): Padding {
+    const safeAreaBottom = this.isTransparent() ? SYSTEM_SAFE_AREA_BOTTOM : 0;
+    return {
+      top: TAB_BAR_PADDING_HORIZONTAL_TOP,
+      bottom: TAB_BAR_PADDING_HORIZONTAL_BOTTOM + safeAreaBottom,
+      left: TAB_BAR_PADDING_HORIZONTAL_LEFT,
+      right: TAB_BAR_PADDING_HORIZONTAL_RIGHT
+    };
+  }
+
+  /**
    * Convert ARGB color value to ResourceColor
    */
   private toResourceColor(colorValue: number): ResourceColor {
     if (((colorValue >>> 24) & 0xFF) === 0) {
-      return Color.Transparent;
+      return COLOR_TRANSPARENT;
     }
 
     const alpha = (colorValue >>> 24) & 0xFF;
@@ -352,40 +431,11 @@ export struct TabBar {
   }
 
   /**
-   * Get padding for horizontal layout
-   */
-  private getHorizontalPadding(): Padding {
-    // Add extra bottom padding for safe area when transparent
-    const safeAreaBottom = this.isTransparent() ? 24 : 0; // Increased safe area
-    const horizontalPadding = 16; // Add horizontal padding
-    return {
-      top: 8,
-      bottom: 12 + safeAreaBottom,
-      left: horizontalPadding,
-      right: horizontalPadding
-    };
-  }
-
-  /**
-   * Get padding for vertical layout
-   */
-  private getVerticalPadding(): Padding {
-    // Add minimal top padding for system status bar when TabBar is on left/right
-    const statusBarHeight = 12; // Minimal status bar height in vp
-    return {
-      left: 8,
-      right: 8,
-      top: 8 + statusBarHeight, // Reduced padding + minimal status bar space
-      bottom: 8
-    };
-  }
-
-  /**
    * Get border for horizontal layout
    */
   private getHorizontalBorder(): BorderOptions {
     return {
-      width: { top: this.isTransparent() ? 0 : this.getBorderWidth() },
+      width: { top: this.isTransparent() ? 0 : TAB_BAR_BORDER_WIDTH },
       color: this.getBorderColor()
     };
   }
@@ -397,12 +447,12 @@ export struct TabBar {
     const position: number = this.tabbar.position;
     if (position === TabBarPosition.Left) {
       return {
-        width: { right: this.isTransparent() ? 0 : this.getBorderWidth() },
+        width: { right: this.isTransparent() ? 0 : TAB_BAR_BORDER_WIDTH },
         color: this.getBorderColor()
       };
     } else if (position === TabBarPosition.Right) {
       return {
-        width: { left: this.isTransparent() ? 0 : this.getBorderWidth() },
+        width: { left: this.isTransparent() ? 0 : TAB_BAR_BORDER_WIDTH },
         color: this.getBorderColor()
       };
     }

@@ -2,18 +2,47 @@
  * Custom drawable components for LingXia navigation buttons
  */
 
+// Custom icon drawing constants
+const CUSTOM_ICON_CANVAS_SIZE = 36;
+const CUSTOM_ICON_STROKE_WIDTH = 2.5;
+const CUSTOM_ICON_BACK_ARROW_SIZE = 8;
+const CUSTOM_ICON_HOME_ICON_SIZE = 18;
+
+// Capsule button constants
+const CAPSULE_BUTTON_TOTAL_WIDTH = 102;
+const CAPSULE_BUTTON_HEIGHT = 32;
+const CAPSULE_BUTTON_BUTTON_WIDTH = 44;
+const CAPSULE_BUTTON_BORDER_RADIUS = 16;
+const CAPSULE_BUTTON_BORDER_WIDTH = 0.5;
+const CAPSULE_BUTTON_Z_INDEX = 9999;
+
+// Common colors
+const COLOR_WHITE = '#ffffff';
+const COLOR_BLACK = '#000000';
+const COLOR_TRANSPARENT = Color.Transparent;
+const COLOR_LIGHT_BORDER = '#DDDDDD';
+const COLOR_ICON_STROKE = 'rgba(0, 0, 0, 0.8)';
+
+// Animation constants
+const ANIMATION_DURATION_FAST = 100;
+const ANIMATION_BUTTON_PRESS_SCALE = 0.95;
+const ANIMATION_CURVE_EASE_IN_OUT = Curve.EaseInOut;  // Smooth ease in/out curve
+
+// System constants
+const SYSTEM_STATUS_BAR_HEIGHT = 44;
+
 /**
  * Custom back arrow component using Canvas for precise drawing
  */
 @Component
 export struct BackArrowIcon {
-  @Prop color: ResourceColor = Color.Black
-  @Prop iconSize: number = 20
+  @Prop color: ResourceColor = COLOR_BLACK
+  @Prop iconSize: number = CUSTOM_ICON_BACK_ARROW_SIZE
 
   build() {
     Canvas(this.canvasContext)
-      .width(36)
-      .height(36)
+      .width(CUSTOM_ICON_CANVAS_SIZE)
+      .height(CUSTOM_ICON_CANVAS_SIZE)
       .onReady(() => {
         this.drawBackArrow()
       })
@@ -25,18 +54,18 @@ export struct BackArrowIcon {
     const ctx = this.canvasContext
 
     // Clear canvas
-    ctx.clearRect(0, 0, 36, 36)
+    ctx.clearRect(0, 0, CUSTOM_ICON_CANVAS_SIZE, CUSTOM_ICON_CANVAS_SIZE)
 
     // Set arrow style
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)' // Black arrow
-    ctx.lineWidth = 2.5
+    ctx.strokeStyle = COLOR_ICON_STROKE // Black arrow
+    ctx.lineWidth = CUSTOM_ICON_STROKE_WIDTH
     ctx.lineCap = 'round'
     ctx.lineJoin = 'round'
 
     // Draw back arrow centered in canvas
-    const centerX = 18
-    const centerY = 18
-    const arrowSize = 8 // Larger arrow for better visibility
+    const centerX = CUSTOM_ICON_CANVAS_SIZE / 2
+    const centerY = CUSTOM_ICON_CANVAS_SIZE / 2
+    const arrowSize = CUSTOM_ICON_BACK_ARROW_SIZE // Larger arrow for better visibility
 
     ctx.beginPath()
     // Arrow pointing left: >
@@ -54,15 +83,14 @@ export struct BackArrowIcon {
  */
 @Component
 export struct HomeIcon {
-  @Prop color: ResourceColor = Color.Black
-  @Prop iconSize: number = 18
-  private readonly strokeWidth: number = 1.5
+  @Prop color: ResourceColor = COLOR_BLACK
+  @Prop iconSize: number = CUSTOM_ICON_HOME_ICON_SIZE
 
   build() {
     // Use Canvas for precise home icon drawing with larger size for clarity
     Canvas(this.canvasContext)
-      .width(36)
-      .height(36)
+      .width(CUSTOM_ICON_CANVAS_SIZE)
+      .height(CUSTOM_ICON_CANVAS_SIZE)
       .onReady(() => {
         this.drawHomeIcon()
       })
@@ -74,15 +102,15 @@ export struct HomeIcon {
     const ctx = this.canvasContext
 
     // Clear canvas
-    ctx.clearRect(0, 0, 36, 36)
+    ctx.clearRect(0, 0, CUSTOM_ICON_CANVAS_SIZE, CUSTOM_ICON_CANVAS_SIZE)
 
     // Draw house outline only (no background circle)
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)' // Black outline
-    ctx.lineWidth = 2.5
+    ctx.strokeStyle = COLOR_ICON_STROKE // Black outline
+    ctx.lineWidth = CUSTOM_ICON_STROKE_WIDTH
     ctx.lineCap = 'round'
     ctx.lineJoin = 'round'
 
-    // Draw house outline centered in canvas
+    // Draw house outline centered in 36x36 canvas
     ctx.beginPath()
     // Start from roof peak
     ctx.moveTo(18, 6)    // peak (centered)
@@ -118,8 +146,8 @@ export struct HomeIcon {
 @Component
 export struct NavigationButton {
   @Prop isBackButton: boolean = true
-  @Prop color: ResourceColor = Color.Black
-  @Prop bgColor: ResourceColor = Color.Transparent
+  @Prop color: ResourceColor = COLOR_BLACK
+  @Prop bgColor: ResourceColor = COLOR_TRANSPARENT
   onPressed?: () => void
   @State isPressed: boolean = false
 
@@ -127,11 +155,14 @@ export struct NavigationButton {
     Button() {
       Stack() {
         if (this.isBackButton) {
-          BackArrowIcon({ color: this.color, iconSize: 24 })
+          BackArrowIcon({
+            color: this.color,
+            iconSize: CUSTOM_ICON_BACK_ARROW_SIZE
+          })
         } else {
           HomeIcon({
             color: this.color,
-            iconSize: 24
+            iconSize: CUSTOM_ICON_HOME_ICON_SIZE
          })
         }
       }
@@ -142,10 +173,13 @@ export struct NavigationButton {
     .backgroundColor(this.bgColor)
     .borderRadius('50%') // Use percentage for perfect circle
     .padding(0) // Remove default button padding
-    .scale({ x: this.isPressed ? 0.95 : 1.0, y: this.isPressed ? 0.95 : 1.0 })
+    .scale({
+      x: this.isPressed ? ANIMATION_BUTTON_PRESS_SCALE : 1.0,
+      y: this.isPressed ? ANIMATION_BUTTON_PRESS_SCALE : 1.0
+    })
     .animation({
-      duration: 100,
-      curve: Curve.EaseInOut
+      duration: ANIMATION_DURATION_FAST,
+      curve: ANIMATION_CURVE_EASE_IN_OUT
     })
     .onTouch((event: TouchEvent) => {
       if (event.type === TouchType.Down) {
@@ -173,18 +207,18 @@ export struct ThreeDotsIcon {
       Circle()
         .width(3)
         .height(3)
-        .fill('#000000')
+        .fill(COLOR_BLACK)
 
       Circle()
         .width(5)
         .height(5)
-        .fill('#000000')
+        .fill(COLOR_BLACK)
         .margin({ left: 4 })
 
       Circle()
         .width(3)
         .height(3)
-        .fill('#000000')
+        .fill(COLOR_BLACK)
         .margin({ left: 4 })
     }
     .justifyContent(FlexAlign.Center)
@@ -204,14 +238,14 @@ export struct CloseIcon {
         .width(16)
         .height(16)
         .fillOpacity(0) // Transparent fill
-        .stroke('#000000')
-        .strokeWidth(2.5) // Thicker stroke matching Android
+        .stroke(COLOR_BLACK)
+        .strokeWidth(CUSTOM_ICON_STROKE_WIDTH) // Thicker stroke matching Android
 
       // Inner dot (thick dot in center) - radius should be outer radius / 2.5
       Circle()
         .width(6.5)
         .height(6.5)
-        .fill('#000000')
+        .fill(COLOR_BLACK)
     }
   }
 }
@@ -224,7 +258,7 @@ export struct CloseIcon {
 export struct CapsuleButton {
   onMorePressed?: () => void
   onClosePressed?: () => void
-  @Prop statusBarHeight: number = 44
+  @Prop statusBarHeight: number = SYSTEM_STATUS_BAR_HEIGHT
   @Prop standalone: boolean = false
 
   build() {
@@ -242,9 +276,9 @@ export struct CapsuleButton {
         Button() {
           ThreeDotsIcon()
         }
-        .width(44)
-        .height(32)
-        .backgroundColor(Color.Transparent)
+        .width(CAPSULE_BUTTON_BUTTON_WIDTH)
+        .height(CAPSULE_BUTTON_HEIGHT)
+        .backgroundColor(COLOR_TRANSPARENT)
         .onClick(() => {
           if (this.onMorePressed) {
             this.onMorePressed()
@@ -254,14 +288,14 @@ export struct CapsuleButton {
         Column()
           .width(0.5)
           .height(16)
-          .backgroundColor('#DDDDDD')
+          .backgroundColor(COLOR_LIGHT_BORDER)
 
         Button() {
           CloseIcon()
         }
-        .width(44)
-        .height(32)
-        .backgroundColor(Color.Transparent)
+        .width(CAPSULE_BUTTON_BUTTON_WIDTH)
+        .height(CAPSULE_BUTTON_HEIGHT)
+        .backgroundColor(COLOR_TRANSPARENT)
         .onClick(() => {
           if (this.onClosePressed) {
             this.onClosePressed()
@@ -269,14 +303,17 @@ export struct CapsuleButton {
         })
       }
       .backgroundColor('rgba(255,255,255,0.9)')
-      .borderRadius(16)
-      .border({ width: 0.5, color: '#DDDDDD' })
+      .borderRadius(CAPSULE_BUTTON_BORDER_RADIUS)
+      .border({
+        width: CAPSULE_BUTTON_BORDER_WIDTH,
+        color: COLOR_LIGHT_BORDER
+      })
     }
-    .position({ x: '100%', y: 44 })
-    .translate({ x: -102, y: 6 })
-    .width(102) // 44+0.5+44+padding
-    .height(32)
-    .zIndex(9999)
+    .position({ x: '100%', y: SYSTEM_STATUS_BAR_HEIGHT })
+    .translate({ x: -CAPSULE_BUTTON_TOTAL_WIDTH, y: 8 })
+    .width(CAPSULE_BUTTON_TOTAL_WIDTH)
+    .height(CAPSULE_BUTTON_HEIGHT)
+    .zIndex(CAPSULE_BUTTON_Z_INDEX)
   }
 
   @Builder
@@ -288,9 +325,9 @@ export struct CapsuleButton {
         Button() {
           ThreeDotsIcon()
         }
-        .width(44)
-        .height(32)
-        .backgroundColor(Color.Transparent)
+        .width(CAPSULE_BUTTON_BUTTON_WIDTH)
+        .height(CAPSULE_BUTTON_HEIGHT)
+        .backgroundColor(COLOR_TRANSPARENT)
         .onClick(() => {
           if (this.onMorePressed) {
             this.onMorePressed()
@@ -300,14 +337,14 @@ export struct CapsuleButton {
         Column()
           .width(0.5)
           .height(16)
-          .backgroundColor('#DDDDDD')
+          .backgroundColor(COLOR_LIGHT_BORDER)
 
         Button() {
           CloseIcon()
         }
-        .width(44)
-        .height(32)
-        .backgroundColor(Color.Transparent)
+        .width(CAPSULE_BUTTON_BUTTON_WIDTH)
+        .height(CAPSULE_BUTTON_HEIGHT)
+        .backgroundColor(COLOR_TRANSPARENT)
         .enabled(true)
         .onClick(() => {
           if (this.onClosePressed) {
@@ -316,17 +353,20 @@ export struct CapsuleButton {
         })
       }
       .backgroundColor('rgba(255,255,255,0.9)')
-      .borderRadius(16)
-      .border({ width: 0.5, color: '#DDDDDD' })
+      .borderRadius(CAPSULE_BUTTON_BORDER_RADIUS)
+      .border({
+        width: CAPSULE_BUTTON_BORDER_WIDTH,
+        color: COLOR_LIGHT_BORDER
+      })
       .margin({
         top: this.statusBarHeight + 8,
         right: 12
       })
     }
     .width('100%')
-    .height(32) // Just the button height, not including margin
-    .backgroundColor(Color.Transparent)
-    .zIndex(9999) // High zIndex to ensure it's always on top
+    .height(CAPSULE_BUTTON_HEIGHT) // Just the button height, not including margin
+    .backgroundColor(COLOR_TRANSPARENT)
+    .zIndex(CAPSULE_BUTTON_Z_INDEX) // High zIndex to ensure it's always on top
     .position({ x: 0, y: 0 }) // Position absolutely
   }
 }

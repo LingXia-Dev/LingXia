@@ -2,6 +2,33 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { NavigationType } from './LxAppNavigation';
 import { NavigationButton } from './LxAppDrawables';
 
+// NavigationBar layout constants
+const NAVIGATION_BAR_TOTAL_HEIGHT = 88;        // Status bar + content area
+const NAVIGATION_BAR_CONTENT_HEIGHT = 44;      // Navigation content area height
+const NAVIGATION_BAR_LEFT_PADDING = 4;         // Left padding of NavigationBar content
+const NAVIGATION_BAR_RIGHT_PADDING = 12;       // Right padding of NavigationBar content
+const NAVIGATION_BAR_TITLE_FONT_SIZE = 18;     // Navigation bar title font size
+
+// Navigation button constants
+const NAVIGATION_BUTTON_SIZE = 36;                // Navigation button width/height
+const NAVIGATION_BUTTON_BACK_MARGIN_LEFT = 12;    // Back button left margin
+const NAVIGATION_BUTTON_HOME_MARGIN_LEFT = 4;     // Home button left margin
+const NAVIGATION_BUTTON_Z_INDEX = 1000;           // Navigation button z-index
+const NAVIGATION_BUTTON_Y_POSITION = 45;          // Navigation button vertical position (empirical value)
+
+// Calculated absolute positions
+const NAVIGATION_BUTTON_POSITION_BACK_LEFT = 16;  // LEFT_PADDING(4) + BACK_MARGIN_LEFT(12)
+const NAVIGATION_BUTTON_POSITION_HOME_LEFT = 8;   // LEFT_PADDING(4) + HOME_MARGIN_LEFT(4)
+
+// Common colors
+const COLOR_WHITE = '#ffffff';
+const COLOR_BLACK = '#000000';
+const COLOR_TRANSPARENT = Color.Transparent;
+
+// Frosted glass effect colors
+const FROSTED_GLASS_LIGHT = 'rgba(255, 255, 255, 0.2)';  // For dark navbar backgrounds
+const FROSTED_GLASS_DARK = 'rgba(0, 0, 0, 0.1)';          // For light navbar backgrounds
+
 /**
  * NavigationBar state interface
  */
@@ -17,31 +44,49 @@ export interface NavigationBarState {
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.NavigationBar';
 
-// NavigationBar layout constants
-export const NAVBAR_TOTAL_HEIGHT = 88; // Status bar + content area
-export const NAVBAR_CONTENT_HEIGHT = 44; // Navigation content area height
-export const NAVIGATION_BUTTON_SIZE = 36; // Navigation button width/height
-
-// NavigationBar internal positioning (matches implementation below)
-export const NAVBAR_LEFT_PADDING = 4; // Left padding of NavigationBar content
-export const BACK_BUTTON_MARGIN = 12; // Back button left margin
-export const HOME_BUTTON_MARGIN = 4; // Home button left margin
-
-// Calculated absolute positions for external use
-export const BACK_BUTTON_LEFT_POSITION = NAVBAR_LEFT_PADDING + BACK_BUTTON_MARGIN; // = 16
-export const HOME_BUTTON_LEFT_POSITION = NAVBAR_LEFT_PADDING + HOME_BUTTON_MARGIN; // = 8
+// Export layout constants for external use (backward compatibility)
+export const NAVBAR_TOTAL_HEIGHT = NAVIGATION_BAR_TOTAL_HEIGHT;
+export const NAVBAR_CONTENT_HEIGHT = NAVIGATION_BAR_CONTENT_HEIGHT;
+export const NAVBAR_LEFT_PADDING = NAVIGATION_BAR_LEFT_PADDING;
+export { NAVIGATION_BUTTON_SIZE };
+export const BACK_BUTTON_MARGIN = NAVIGATION_BUTTON_BACK_MARGIN_LEFT;
+export const HOME_BUTTON_MARGIN = NAVIGATION_BUTTON_HOME_MARGIN_LEFT;
+export const BACK_BUTTON_LEFT_POSITION = NAVIGATION_BUTTON_POSITION_BACK_LEFT;
+export const HOME_BUTTON_LEFT_POSITION = NAVIGATION_BUTTON_POSITION_HOME_LEFT;
 
 /**
  * Calculate the Y position for navigation buttons in absolute positioning
- *
  * Empirically determined: 45px is the correct position that aligns buttons with navbar content
- * Theory: statusBarHeight + (content_height - button_height) / 2 = 44 + 4 = 48px
- * Reality: 45px works perfectly, suggesting navbar content area starts ~3px higher than expected
- * This could be due to padding, margins, or coordinate system differences in the Stack layout
  */
 export function calculateNavigationButtonYPosition(statusBarHeight: number): number {
-  // Empirically verified correct position - aligns perfectly with navbar text
-  return 45; // Works for statusBarHeight=44, may need adjustment for other devices
+  return NAVIGATION_BUTTON_Y_POSITION;
+}
+
+/**
+ * Convert ARGB color value to ResourceColor
+ */
+function toResourceColor(colorValue: number): ResourceColor {
+  if (((colorValue >>> 24) & 0xFF) === 0) {
+    return COLOR_TRANSPARENT;
+  }
+
+  const alpha = (colorValue >>> 24) & 0xFF;
+  const red = (colorValue >>> 16) & 0xFF;
+  const green = (colorValue >>> 8) & 0xFF;
+  const blue = colorValue & 0xFF;
+
+  if (alpha === 255) {
+    return `#${red.toString(16).padStart(2, '0')}${green.toString(16).padStart(2, '0')}${blue.toString(16).padStart(2, '0')}`;
+  } else {
+    return `rgba(${red}, ${green}, ${blue}, ${alpha / 255})`;
+  }
+}
+
+/**
+ * Get frosted glass background color for navigation buttons
+ */
+function getFrostedGlassColor(isWhiteText: boolean): ResourceColor {
+  return isWhiteText ? FROSTED_GLASS_LIGHT : FROSTED_GLASS_DARK;
 }
 
 /**
@@ -73,7 +118,7 @@ export struct NavigationBar {
 
   build() {
     Stack() {
-      // Background extends to status bar - only show if not transparent
+      // Background layer - only show when not transparent
       if (this.shouldShowBackground()) {
         Column()
           .width('100%')
@@ -81,30 +126,31 @@ export struct NavigationBar {
           .backgroundColor(this.getBackgroundColor())
       }
 
-      // NavigationBar content area (below status bar) - use Stack for absolute positioning
+      // Navigation bar content area (below status bar) - use Stack for absolute positioning
       Stack() {
-        // Left side: Navigation button (back takes priority over home)
+        // Left side: Navigation button (back button takes priority over home button)
         if (this.showNavigationButtons && (this.config.showBackButton || this.config.showHomeButton)) {
           this.buildNavigationButton()
         }
 
         // Center: Title
         Text(this.config.navigationBarTitleText || '')
-          .fontSize(18)
+          .fontSize(NAVIGATION_BAR_TITLE_FONT_SIZE)
           .fontWeight(FontWeight.Medium)
           .fontColor(this.getTextColor())
           .textAlign(TextAlign.Center)
           .width('100%') // Full width for true center alignment
-
-
       }
       .width('100%')
-      .height(44) // NavigationBar content height
+      .height(NAVIGATION_BAR_CONTENT_HEIGHT)
       .alignContent(Alignment.Center) // Center all content
-      .padding({ left: 4, right: 12 }) // Reduce left padding to match home icon position
+      .padding({
+        left: NAVIGATION_BAR_LEFT_PADDING,
+        right: NAVIGATION_BAR_RIGHT_PADDING
+      })
     }
     .width('100%')
-    .height(88) // Fixed height: status bar + navbar content
+    .height(NAVIGATION_BAR_TOTAL_HEIGHT)
     .alignContent(Alignment.Bottom)
     .translate({ x: `${this.translateX}%`, y: 0 })
   }
@@ -124,9 +170,13 @@ export struct NavigationBar {
           }
         }
       })
-      .width(36)
-      .height(36)
-      .margin({ left: this.config.showBackButton ? 12 : 4 })
+      .width(NAVIGATION_BUTTON_SIZE)
+      .height(NAVIGATION_BUTTON_SIZE)
+      .margin({
+        left: this.config.showBackButton ?
+          NAVIGATION_BUTTON_BACK_MARGIN_LEFT :
+          NAVIGATION_BUTTON_HOME_MARGIN_LEFT
+      })
       Blank()
     }
     .width('100%')
@@ -134,58 +184,36 @@ export struct NavigationBar {
     .alignItems(VerticalAlign.Center)
   }
 
+  /**
+   * Check if background should be shown
+   */
   private shouldShowBackground(): boolean {
     const bgColor = this.config.navigationBarBackgroundColor || 0xFFFFFFFF;
     const alpha = (bgColor >>> 24) & 0xFF;
     return alpha > 0; // Only show background if alpha > 0
   }
 
+  /**
+   * Get background color
+   */
   private getBackgroundColor(): ResourceColor {
-    return this.toResourceColor(this.config.navigationBarBackgroundColor || 0xFFFFFFFF);
+    return toResourceColor(this.config.navigationBarBackgroundColor || 0xFFFFFFFF);
   }
 
   /**
-   * Convert ARGB color value to ResourceColor
+   * Get text color
    */
-  private toResourceColor(colorValue: number): ResourceColor {
-    if (((colorValue >>> 24) & 0xFF) === 0) {
-      return Color.Transparent;
-    }
-
-    const alpha = (colorValue >>> 24) & 0xFF;
-    const red = (colorValue >>> 16) & 0xFF;
-    const green = (colorValue >>> 8) & 0xFF;
-    const blue = colorValue & 0xFF;
-
-    if (alpha === 255) {
-      return `#${red.toString(16).padStart(2, '0')}${green.toString(16).padStart(2, '0')}${blue.toString(16).padStart(2, '0')}`;
-    } else {
-      return `rgba(${red}, ${green}, ${blue}, ${alpha / 255})`;
-    }
-  }
-
   private getTextColor(): ResourceColor {
-    if (this.config.navigationBarTextStyle === 'white') {
-      return '#ffffff';
-    }
-    return '#000000';
+    return this.config.navigationBarTextStyle === 'white' ? COLOR_WHITE : COLOR_BLACK;
   }
 
+  /**
+   * Get button background color (frosted glass effect)
+   */
   private getButtonBackgroundColor(): ResourceColor {
-    // Create a semi-transparent background for the button similar to iOS frosted glass effect
-    const textColor = this.getTextColor();
-    if (textColor === '#ffffff') {
-      // Dark background, use light frosted effect
-      return 'rgba(255, 255, 255, 0.2)';
-    } else {
-      // Light background, use dark frosted effect
-      return 'rgba(0, 0, 0, 0.1)';
-    }
+    const isWhiteText = this.config.navigationBarTextStyle === 'white';
+    return getFrostedGlassColor(isWhiteText);
   }
-
-
-
-
 }
 
 export class NavigationBarController {
@@ -268,6 +296,9 @@ export class NavigationBarController {
 
   /**
    * Parse color string to ARGB number
+   * @param colorStr Color string
+   * @param defaultColor Default color value
+   * @returns ARGB color value
    */
   private parseColorToArgb(colorStr: string, defaultColor: number = 0xFFFFFFFF): number {
     if (colorStr.toLowerCase() === 'transparent') {
@@ -277,7 +308,7 @@ export class NavigationBarController {
     if (colorStr.startsWith('#') && colorStr.length === 7) {
       const rgb = parseInt(colorStr.substring(1), 16);
       if (!isNaN(rgb)) {
-        return 0xFF000000 | rgb; // Add full alpha
+        return 0xFF000000 | rgb; // Add full alpha channel
       }
     }
 
