@@ -141,7 +141,8 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_findWebView<'a>(
     let appid: String = env.get_string(&appid).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
 
-    if let Some(webview) = lingxia_webview::find_webview(&appid, &path) {
+    let webtag = lingxia_webview::WebTag::new(&appid, &path);
+    if let Some(webview) = lingxia_webview::find_webview(&webtag) {
         // Get direct access to the WebView and create a new local reference to the Java WebView object
         match env.new_local_ref(webview.get_java_webview()) {
             Ok(local_ref) => unsafe { JObject::from_raw(local_ref.into_raw()) },

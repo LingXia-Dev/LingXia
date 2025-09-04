@@ -13,6 +13,7 @@ jni = "0.21.1"
 android_logger = "0.15.0"
 serde_json = { workspace = true }
 ndk-sys = "0.6.0"
+lingxia-webview = { path = "../lingxia-webview" }
 
 # Apple-specific dependencies (iOS and macOS)
 [target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
@@ -21,6 +22,7 @@ objc2-foundation = "0.3"
 swift-bridge = "0.1.57"
 log = "0.4.27"
 oslog = "0.2.0"
+lingxia-webview = { path = "../lingxia-webview" }
 
 # HarmonyOS-specific dependencies
 [target.'cfg(target_env = "ohos")'.dependencies]
@@ -28,7 +30,6 @@ ohos_hilog = "0.1.3"
 napi-ohos = "1.1.0"
 napi-derive-ohos = "1.1.0"
 ohos-raw-sys = "0.1.0"
-lingxia-webview = { path = "../lingxia-webview" }
 
 [build-dependencies]
 swift-bridge-build = "0.1.57"

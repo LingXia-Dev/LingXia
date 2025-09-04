@@ -314,8 +314,9 @@ pub fn on_lxapp_opened(appid: &str, path: &str) -> i32 {
 /// This is called from Swift to get a WebView instance pointer managed by Rust
 /// Returns the usize pointer to the WebView, or 0 if not found
 pub fn find_webview(appid: &str, path: &str) -> usize {
-    // Use lingxia-webview's find_webview function
-    if let Some(webview) = lingxia_webview::find_webview(appid, path) {
+    // Create WebTag and use lingxia-webview's find_webview function
+    let webtag = lingxia_webview::WebTag::new(appid, path);
+    if let Some(webview) = lingxia_webview::find_webview(&webtag) {
         // WebView exists, return its pointer
         webview.get_swift_webview_ptr()
     } else {
