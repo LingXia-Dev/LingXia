@@ -1,5 +1,3 @@
-use super::app::App;
-use crate::runtime::PlatformAppRuntime;
 use lxapp::LxAppDelegate;
 use lxapp::config::LxAppInfo as CoreLxAppInfo;
 use lxapp::log::LogLevel;
@@ -61,21 +59,6 @@ mod bridge {
         End,    // 2=end (bottom/right)
     }
 
-    // Toast icon types
-    pub enum ToastIcon {
-        Success,
-        Error,
-        Loading,
-        None,
-    }
-
-    // Toast position types
-    pub enum ToastPosition {
-        Top,
-        Center,
-        Bottom,
-    }
-
     // TabBar item for Swift
     #[swift_bridge(swift_repr = "struct")]
     pub struct TabBarItem {
@@ -87,39 +70,6 @@ mod bridge {
         pub group: GroupAlignment,
         pub badge: String,
         pub has_red_dot: bool,
-    }
-
-    // Toast configuration for Swift
-    #[swift_bridge(swift_repr = "struct")]
-    pub struct ToastOptions {
-        pub title: String,
-        pub icon: ToastIcon,
-        pub image: String,
-        pub duration: f64,
-        pub mask: bool,
-        pub position: ToastPosition,
-    }
-
-    // Modal configuration for Swift
-    #[swift_bridge(swift_repr = "struct")]
-    pub struct ModalOptions {
-        pub title: String,
-        pub content: String,
-        pub show_cancel: bool,
-        pub cancel_text: String,
-        pub cancel_color: String,
-        pub confirm_text: String,
-        pub confirm_color: String,
-        pub editable: bool,
-        pub placeholder_text: String,
-    }
-
-    // Modal result for Swift
-    #[swift_bridge(swift_repr = "struct")]
-    pub struct ModalResult {
-        pub confirm: bool,
-        pub cancel: bool,
-        pub content: String, // User input content
     }
 
     // Push notification trigger types
@@ -169,49 +119,7 @@ mod bridge {
         #[swift_bridge(swift_name = "onPushTokenReceived")]
         fn on_push_token_received(token: &str) -> i32;
     }
-
-    extern "Swift" {
-        // LxApp navigation functions
-        #[swift_bridge(swift_name = "LxApp.openLxApp")]
-        fn open_lxapp(appid: &str, path: &str) -> bool;
-
-        #[swift_bridge(swift_name = "LxApp.closeLxApp")]
-        fn close_lxapp(appid: &str) -> bool;
-
-        #[swift_bridge(swift_name = "LxApp.switchPage")]
-        fn switch_page(appid: &str, path: &str) -> bool;
-
-        // TabBar UI update callback
-        #[swift_bridge(swift_name = "LxApp.updateTabBarUI")]
-        fn update_tabbar_ui(appid: &str) -> bool;
-
-        // NavigationBar UI update callback
-        #[swift_bridge(swift_name = "LxApp.updateNavBarUI")]
-        fn update_navbar_ui(appid: &str) -> bool;
-
-        #[swift_bridge(swift_name = "LxApp.launchWithUrl")]
-        fn launch_with_url(url: &str);
-
-        #[swift_bridge(swift_name = "LxApp.isPushEnabled")]
-        fn is_push_enabled() -> bool;
-
-        // Toast functions
-        #[swift_bridge(swift_name = "LxApp.showToast")]
-        fn show_toast(options: ToastOptions);
-
-        #[swift_bridge(swift_name = "LxApp.hideToast")]
-        fn hide_toast();
-
-        // Modal functions (synchronous, blocks until user responds)
-        #[swift_bridge(swift_name = "LxApp.showModal")]
-        fn show_modal(options: ModalOptions) -> ModalResult;
-    }
 }
-
-// Re-export the bridge functions for use in other modules
-pub use bridge::{
-    close_lxapp, launch_with_url, open_lxapp, switch_page, update_navbar_ui, update_tabbar_ui,
-};
 
 // Conversion from core LxAppInfo to FFI LxAppInfo
 impl From<CoreLxAppInfo> for bridge::LxAppInfo {
@@ -271,17 +179,16 @@ pub fn lxapp_init(data_dir: &str, cache_dir: &str) -> Option<String> {
         cache_dir
     );
 
-    let app = match App::new(data_dir.to_string(), cache_dir.to_string()) {
-        Ok(app) => app,
-        Err(e) => {
-            log::error!("Failed to create App: {}", e);
-            return None;
-        }
-    };
+    let platform =
+        match lingxia_platform::Platform::new(data_dir.to_string(), cache_dir.to_string()) {
+            Ok(platform) => platform,
+            Err(e) => {
+                log::error!("Failed to create Platform: {}", e);
+                return None;
+            }
+        };
 
-    // Initialize PlatformAppRuntime and lxapp
-    let runtime = PlatformAppRuntime::init(app);
-    lxapp::init(runtime)
+    lxapp::init(platform)
 }
 
 /// Notify that a page is being shown
@@ -314,8 +221,9 @@ pub fn on_lxapp_opened(appid: &str, path: &str) -> i32 {
 /// This is called from Swift to get a WebView instance pointer managed by Rust
 /// Returns the usize pointer to the WebView, or 0 if not found
 pub fn find_webview(appid: &str, path: &str) -> usize {
-    // Use lingxia-webview's find_webview function
-    if let Some(webview) = lingxia_webview::find_webview(appid, path) {
+    // Create WebTag and use lingxia-webview's find_webview function
+    let webtag = lingxia_webview::WebTag::new(appid, path);
+    if let Some(webview) = lingxia_webview::find_webview(&webtag) {
         // WebView exists, return its pointer
         webview.get_swift_webview_ptr()
     } else {

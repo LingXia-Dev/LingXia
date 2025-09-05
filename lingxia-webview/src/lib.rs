@@ -1,3 +1,25 @@
+use thiserror::Error;
+
+/// WebView-specific error types
+#[derive(Error, Debug)]
+pub enum WebViewError {
+    #[error("WebView error: {0}")]
+    WebView(String),
+}
+
+/// Log levels for WebView logging
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogLevel {
+    Verbose,
+    Debug,
+    Info,
+    Warn,
+    Error,
+}
+
+mod traits;
+mod webview;
+
 #[cfg(target_os = "android")]
 mod android;
 
@@ -7,14 +29,16 @@ mod apple;
 #[cfg(all(target_os = "linux", target_env = "ohos"))]
 mod harmony;
 
-#[cfg(target_os = "android")]
-pub use android::{WebViewInner, get_env, initialize_jni};
+// Public exports
+// WebViewError and LogLevel are defined above
+pub use traits::{WebViewController, WebViewDelegate};
+pub use webview::{
+    WebTag, WebView, create_webview, destroy_webview, find_webview, get_webview_delegate,
+    init_webview_manager, set_webview_delegate,
+};
 
-#[cfg(any(target_os = "ios", target_os = "macos"))]
-pub use apple::WebViewInner;
+#[cfg(target_os = "android")]
+pub use android::{get_env, initialize_jni};
 
 #[cfg(all(target_os = "linux", target_env = "ohos"))]
-pub use harmony::{WebViewInner, tsfn, schemehandler::register_custom_schemes};
-
-mod webview;
-pub use webview::{create_webview, find_webview, find_webview_by_tag, init_webview_manager};
+pub use harmony::{schemehandler::register_custom_schemes, tsfn};

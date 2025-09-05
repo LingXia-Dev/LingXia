@@ -2,6 +2,7 @@ use crate::error::LxAppError;
 use crate::lxapp::LxApp;
 use crate::{error, info};
 use std::io::Read;
+use lingxia_platform::AppRuntime;
 
 impl LxApp {
     /// Generate processed HTML content for a page with script and CSS injection
@@ -49,25 +50,31 @@ impl LxApp {
 
     /// Get 404 page content with path injection
     fn get_404_page(&self, failed_path: &str) -> Vec<u8> {
-        self.runtime
-            .read_asset("404.html")
-            .and_then(|mut r| {
+        match self.runtime.read_asset("404.html") {
+            Ok(mut r) => {
                 let mut data = Vec::new();
-                r.read_to_end(&mut data)
-                    .map_err(|e| LxAppError::IoError(e.to_string()))
-                    .map(|_| {
+                match r.read_to_end(&mut data) {
+                    Ok(_) => {
                         // Replace placeholder with actual failed path
                         let html_str = String::from_utf8_lossy(&data);
                         let updated_html = html_str.replace("{{FAILED_PATH}}", failed_path);
                         updated_html.into_bytes()
-                    })
-            })
-            .unwrap_or_else(|_| {
+                    }
+                    Err(_) => {
+                        format!(
+                            "<!DOCTYPE html><html><head><title>404</title></head><body><h1>404 - Page Not Found</h1><p>Path: {}</p></body></html>",
+                            failed_path
+                        ).as_bytes().to_vec()
+                    }
+                }
+            }
+            Err(_) => {
                 format!(
                     "<!DOCTYPE html><html><head><title>404</title></head><body><h1>404 - Page Not Found</h1><p>Path: {}</p></body></html>",
                     failed_path
                 ).as_bytes().to_vec()
-            })
+            }
+        }
     }
 
     /// Inject WebView bridge script and framework integration into HTML content

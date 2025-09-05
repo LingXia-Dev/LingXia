@@ -1,6 +1,8 @@
 use super::version::Version;
 use super::{LINGXIA_DIR, LXAPPS_DIR, VERSIONS_DIR};
-use crate::{AppRuntime, LxApp, LxAppError};
+use crate::{LxApp, LxAppError};
+use lingxia_platform::{Platform, AppRuntime};
+use std::sync::Arc;
 
 /// Check if a mini app is installed
 ///
@@ -11,7 +13,7 @@ use crate::{AppRuntime, LxApp, LxAppError};
 /// # Returns
 /// * `true` - If the app is installed (version file exists)
 /// * `false` - If the app is not installed
-pub(crate) fn is_installed<T: AppRuntime + ?Sized>(controller: &T, appid: &str) -> bool {
+pub(crate) fn is_installed(controller: Arc<Platform>, appid: &str) -> bool {
     let version_path = controller
         .app_data_dir()
         .join(LINGXIA_DIR)
@@ -50,7 +52,7 @@ impl LxApp {
 
 // Copy files from assets to destination directory and update version
 pub(crate) fn install_home_lxapp(
-    controller: &dyn AppRuntime,
+    controller: Arc<Platform>,
     appid: &str,
     version: &str,
 ) -> Result<(), LxAppError> {
@@ -117,16 +119,12 @@ pub(crate) fn install_home_lxapp(
     }
 
     // Update version file AFTER successful file copy
-    update_version(controller, appid, version)?;
+    update_version(controller.clone(), appid, version)?;
 
     Ok(())
 }
 
-fn update_version(
-    controller: &dyn AppRuntime,
-    appid: &str,
-    new_version: &str,
-) -> Result<(), LxAppError> {
+fn update_version(controller: Arc<Platform>, appid: &str, new_version: &str) -> Result<(), LxAppError> {
     let version_dir = controller
         .app_data_dir()
         .join(LINGXIA_DIR)

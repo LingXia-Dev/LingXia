@@ -1,4 +1,5 @@
-use lxapp::{AssetFileEntry, DeviceInfo, LxAppError};
+use crate::error::PlatformError;
+use crate::{AppRuntime, AssetFileEntry, DeviceInfo};
 use napi_ohos::JsValue;
 use napi_ohos::bindgen_prelude::{Env, Object};
 use ohos_raw_sys::*;
@@ -7,7 +8,7 @@ use std::io::{Cursor, Read};
 use std::path::PathBuf;
 use std::process::Command;
 
-pub struct App {
+pub struct Platform {
     pub data_dir: String,
     pub cache_dir: String,
     resource_manager: Option<*mut NativeResourceManager>,
@@ -17,7 +18,7 @@ pub struct App {
     js_resource_manager: Option<napi_ohos::sys::napi_value>,
 }
 
-impl Clone for App {
+impl Clone for Platform {
     fn clone(&self) -> Self {
         // For cloning, we can recreate the ResourceManager if we have the original values
         let resource_manager = if let (Some(env), Some(js_rm)) =
@@ -33,7 +34,7 @@ impl Clone for App {
             None
         };
 
-        App {
+        Platform {
             data_dir: self.data_dir.clone(),
             cache_dir: self.cache_dir.clone(),
             resource_manager,
@@ -44,8 +45,8 @@ impl Clone for App {
     }
 }
 
-unsafe impl Send for App {}
-unsafe impl Sync for App {}
+unsafe impl Send for Platform {}
+unsafe impl Sync for Platform {}
 
 /// Get system parameter using param command
 fn get_system_param(param_name: &str) -> Option<String> {
@@ -66,14 +67,14 @@ fn get_system_param(param_name: &str) -> Option<String> {
     }
 }
 
-impl App {
-    /// Create a new App instance
+impl Platform {
+    /// Create a new Platform instance
     pub fn new(
         data_dir: String,
         cache_dir: String,
         env: Env,
         resource_manager: Option<Object>,
-    ) -> Result<Self, LxAppError> {
+    ) -> Result<Self, PlatformError> {
         let (resource_manager_ptr, env_raw, js_rm_raw) =
             if let Some(resource_manager) = resource_manager {
                 let env_raw = env.raw();
@@ -84,7 +85,7 @@ impl App {
                     unsafe { OH_ResourceManager_InitNativeResourceManager(env_raw, js_rm_raw) };
 
                 if native_mgr.is_null() {
-                    return Err(LxAppError::ResourceNotFound(
+                    return Err(PlatformError::Platform(
                         "Failed to initialize NativeResourceManager".to_string(),
                     ));
                 }
@@ -112,7 +113,7 @@ impl App {
             system,
         };
 
-        Ok(App {
+        Ok(Platform {
             data_dir,
             cache_dir,
             resource_manager: resource_manager_ptr,
@@ -122,98 +123,18 @@ impl App {
         })
     }
 
-    /// Open a raw file using the ResourceManager
-    fn open_raw_file(&self, path: &str) -> Option<*mut RawFile> {
-        if let Some(resource_manager) = self.resource_manager {
-            let c_path = CString::new(path).ok()?;
-            let raw_file =
-                unsafe { OH_ResourceManager_OpenRawFile(resource_manager, c_path.as_ptr()) };
-            if raw_file.is_null() {
-                None
-            } else {
-                Some(raw_file)
-            }
-        } else {
-            None
-        }
-    }
-
-    /// Get the data directory path
-    pub fn app_data_dir(&self) -> PathBuf {
-        PathBuf::from(&self.data_dir)
-    }
-
-    /// Get the cache directory path
-    pub fn app_cache_dir(&self) -> PathBuf {
-        PathBuf::from(&self.cache_dir)
-    }
-
-    /// Read an asset file from the rawfile resources
-    pub fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, LxAppError> {
-        if let Some(raw_file) = self.open_raw_file(path) {
-            let file_size = unsafe { OH_ResourceManager_GetRawFileSize(raw_file) };
-
-            if file_size <= 0 {
-                unsafe { OH_ResourceManager_CloseRawFile(raw_file) };
-                return Err(LxAppError::ResourceNotFound(format!(
-                    "Asset '{}' is empty or not found",
-                    path
-                )));
-            }
-
-            // Read the entire file content as bytes
-            let mut buffer = vec![0u8; file_size as usize];
-            let bytes_read = unsafe {
-                OH_ResourceManager_ReadRawFile(
-                    raw_file,
-                    buffer.as_mut_ptr() as *mut c_void,
-                    file_size as usize,
-                )
-            };
-
-            // Close the file
-            unsafe { OH_ResourceManager_CloseRawFile(raw_file) };
-
-            if bytes_read != file_size as i32 {
-                return Err(LxAppError::ResourceNotFound(format!(
-                    "Failed to read complete asset '{}': expected {} bytes, got {} bytes",
-                    path, file_size, bytes_read
-                )));
-            }
-
-            // Truncate buffer to actual bytes read
-            buffer.truncate(bytes_read as usize);
-            Ok(Box::new(Cursor::new(buffer)))
-        } else {
-            Err(LxAppError::ResourceNotFound(format!(
-                "Asset '{}' not found or ResourceManager not available",
-                path
-            )))
-        }
-    }
-
-    /// Iterate over files in an asset directory
-    pub fn asset_dir_iter<'a>(
-        &'a self,
-        asset_dir: &str,
-    ) -> Box<dyn Iterator<Item = Result<AssetFileEntry<'a>, LxAppError>> + 'a> {
-        // Collect all files recursively from the directory
-        let files = self.collect_files_recursively(asset_dir);
-        Box::new(files.into_iter())
-    }
-
     /// Recursively collect all files from a directory
     fn collect_files_recursively<'a>(
         &'a self,
         dir_path: &str,
-    ) -> Vec<Result<AssetFileEntry<'a>, LxAppError>> {
+    ) -> Vec<Result<AssetFileEntry<'a>, PlatformError>> {
         let mut all_files = Vec::new();
 
         if let Some(resource_manager) = self.resource_manager {
             // Use ResourceManager to list rawfile directory
             self.collect_files_from_rawfile(resource_manager, dir_path, &mut all_files);
         } else {
-            all_files.push(Err(LxAppError::ResourceNotFound(
+            all_files.push(Err(PlatformError::AssetNotFound(
                 "ResourceManager not available".to_string(),
             )));
         }
@@ -226,7 +147,7 @@ impl App {
         &'a self,
         resource_manager: *mut NativeResourceManager,
         dir_path: &str,
-        all_files: &mut Vec<Result<AssetFileEntry<'a>, LxAppError>>,
+        all_files: &mut Vec<Result<AssetFileEntry<'a>, PlatformError>>,
     ) {
         let mut dirs_to_process = vec![dir_path.to_string()];
 
@@ -299,28 +220,105 @@ impl App {
             unsafe { OH_ResourceManager_CloseRawDir(raw_dir) };
         }
     }
+    /// Open a raw file using the ResourceManager
+    fn open_raw_file(&self, path: &str) -> Option<*mut RawFile> {
+        if let Some(resource_manager) = self.resource_manager {
+            let c_path = CString::new(path).ok()?;
+            let raw_file =
+                unsafe { OH_ResourceManager_OpenRawFile(resource_manager, c_path.as_ptr()) };
+            if raw_file.is_null() {
+                None
+            } else {
+                Some(raw_file)
+            }
+        } else {
+            None
+        }
+    }
+}
 
-    pub fn device_info(&self) -> DeviceInfo {
+impl AppRuntime for Platform {
+    fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, PlatformError> {
+        if let Some(raw_file) = self.open_raw_file(path) {
+            let file_size = unsafe { OH_ResourceManager_GetRawFileSize(raw_file) };
+
+            if file_size <= 0 {
+                unsafe { OH_ResourceManager_CloseRawFile(raw_file) };
+                return Err(PlatformError::AssetNotFound(format!(
+                    "Asset '{}' is empty or not found",
+                    path
+                )));
+            }
+
+            // Read the entire file content as bytes
+            let mut buffer = vec![0u8; file_size as usize];
+            let bytes_read = unsafe {
+                OH_ResourceManager_ReadRawFile(
+                    raw_file,
+                    buffer.as_mut_ptr() as *mut c_void,
+                    file_size as usize,
+                )
+            };
+
+            // Close the file
+            unsafe { OH_ResourceManager_CloseRawFile(raw_file) };
+
+            if bytes_read != file_size as i32 {
+                return Err(PlatformError::AssetNotFound(format!(
+                    "Failed to read complete asset '{}': expected {} bytes, got {} bytes",
+                    path, file_size, bytes_read
+                )));
+            }
+
+            // Truncate buffer to actual bytes read
+            buffer.truncate(bytes_read as usize);
+            Ok(Box::new(Cursor::new(buffer)))
+        } else {
+            Err(PlatformError::AssetNotFound(format!(
+                "Asset '{}' not found or ResourceManager not available",
+                path
+            )))
+        }
+    }
+
+    fn asset_dir_iter<'a>(
+        &'a self,
+        asset_dir: &str,
+    ) -> Box<dyn Iterator<Item = Result<AssetFileEntry<'a>, PlatformError>> + 'a> {
+        // Collect all files recursively from the directory
+        let files = self.collect_files_recursively(asset_dir);
+        Box::new(files.into_iter())
+    }
+
+    fn app_data_dir(&self) -> PathBuf {
+        PathBuf::from(&self.data_dir)
+    }
+
+    fn app_cache_dir(&self) -> PathBuf {
+        PathBuf::from(&self.cache_dir)
+    }
+
+    fn device_info(&self) -> DeviceInfo {
         self.device_info.clone()
     }
 
-    /// Open LxApp through ArkTS
-    pub fn open_lxapp(&self, appid: &str, path: &str) -> Result<(), LxAppError> {
-        lingxia_webview::tsfn::call_arkts("openLxApp", &[appid, path])
+    fn open_lxapp(&self, appid: String, path: String) -> Result<(), PlatformError> {
+        lingxia_webview::tsfn::call_arkts("openLxApp", &[&appid, &path])
+            .map_err(|e| PlatformError::Platform(format!("Failed to open lxapp: {}", e)))
     }
 
-    /// Close LxApp through ArkTS
-    pub fn close_lxapp(&self, appid: &str) -> Result<(), LxAppError> {
-        lingxia_webview::tsfn::call_arkts("closeLxApp", &[appid])
+    fn close_lxapp(&self, appid: String) -> Result<(), PlatformError> {
+        lingxia_webview::tsfn::call_arkts("closeLxApp", &[&appid])
+            .map_err(|e| PlatformError::Platform(format!("Failed to close lxapp: {}", e)))
     }
 
-    /// Switch to a specific page through ArkTS
-    pub fn switch_page(&self, appid: &str, path: &str) -> Result<(), LxAppError> {
-        lingxia_webview::tsfn::call_arkts("switchPage", &[appid, path])
+    fn switch_page(&self, appid: String, path: String) -> Result<(), PlatformError> {
+        lingxia_webview::tsfn::call_arkts("switchPage", &[&appid, &path])
+            .map_err(|e| PlatformError::Platform(format!("Failed to switch page: {}", e)))
     }
 
-    /// Launch external application with URL
-    pub fn launch_with_url(&self, url: String) -> Result<(), LxAppError> {
+    fn launch_with_url(&self, url: String) -> Result<(), PlatformError> {
         lingxia_webview::tsfn::call_arkts("launchWithUrl", &[&url])
+            .map_err(|e| PlatformError::Platform(format!("Failed to launch with url: {}", e)))
     }
 }

@@ -1,6 +1,6 @@
 import SwiftUI
 import Foundation
-import CLingXiaFFI
+import CLingXiaRustAPI
 import os.log
 
 #if os(macOS)

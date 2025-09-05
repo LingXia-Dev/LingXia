@@ -1,11 +1,9 @@
-use rong::{JSContext, JSResult};
-use std::sync::Arc;
-
-use crate::app::DeviceInfo;
 use crate::error::LxAppError;
 use crate::fast_api;
 use crate::lxapp::LxApp;
+use rong::{JSContext, JSResult};
 
+/*
 pub(crate) fn device_info(ctx: JSContext) -> JSResult<DeviceInfo> {
     let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
     let device_info = lxapp.runtime.device_info();
@@ -29,3 +27,10 @@ pub fn init(ctx: &JSContext) -> JSResult<()> {
 
     Ok(())
 }
+*/
+
+pub fn init(ctx: &JSContext) -> JSResult<()> {
+    // TODO: move to new crate
+    Ok(())
+}
+

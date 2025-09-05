@@ -30,18 +30,22 @@ let package = Package(
     ],
     targets: [
         .systemLibrary(
-            name: "CLingXiaFFI",
-            path: "Sources/generated",
-            pkgConfig: nil,
-            providers: nil
+            name: "CLingXiaRustAPI",
+            path: "Sources/generated/LingXiaRustAPI"
+        ),
+        .systemLibrary(
+            name: "CLingXiaSwiftAPI",
+            path: "Sources/generated/LingXiaSwiftAPI"
         ),
         .target(
             name: "lingxia",
-            dependencies: ["CLingXiaFFI"],
+            dependencies: ["CLingXiaRustAPI", "CLingXiaSwiftAPI"],
             path: "Sources",
             publicHeadersPath: nil,
             cSettings: [
                 .headerSearchPath("generated"),
+                .headerSearchPath("generated/LingXiaRustAPI"),
+                .headerSearchPath("generated/LingXiaSwiftAPI"),
             ],
             linkerSettings: [
                 .unsafeFlags([iosLibraryPath], .when(platforms: [.iOS])),

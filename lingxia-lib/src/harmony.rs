@@ -1,5 +1,4 @@
-use crate::harmony::app::App;
-use crate::runtime::PlatformAppRuntime;
+use lingxia_webview::{WebTag, get_webview_delegate, tsfn};
 use log::LevelFilter;
 use lxapp::LxAppDelegate;
 use lxapp::log::LogLevel;
@@ -133,7 +132,7 @@ pub fn lxapp_init(
     );
 
     // Initialize TSFN
-    if let Err(e) = lingxia_webview::tsfn::init(callback_function) {
+    if let Err(e) = tsfn::init(callback_function) {
         log::error!("Failed to initialize TSFN: {}", e);
         return None;
     }
@@ -145,7 +144,7 @@ pub fn lxapp_init(
     }
 
     // Create App instance
-    let app = match App::new(
+    let app = match lingxia_platform::Platform::new(
         data_dir.to_string(),
         cache_dir.to_string(),
         env,
@@ -158,12 +157,7 @@ pub fn lxapp_init(
         }
     };
 
-    // Initialize global runtime and pass to lxapp::init
-    let runtime = PlatformAppRuntime::init(app);
-
-    // Return only the home app ID
-    let home_app_id = lxapp::init(runtime)?;
-    Some(home_app_id)
+    lxapp::init(app)
 }
 
 /// Register custom schemes (must be called before WebEngine initialization)
@@ -283,9 +277,12 @@ pub fn on_scroll_changed(
     max_scroll_x: i32,
     max_scroll_y: i32,
 ) -> i32 {
-    let lxapp = lxapp::get(appid);
-    lxapp.on_page_scroll_changed(path, scroll_x, scroll_y, max_scroll_x, max_scroll_y);
-    0
+    let webtag = WebTag::new(&appid, &path);
+    if let Some(delegate) = get_webview_delegate(&webtag) {
+        delegate.on_page_scroll_changed(scroll_x, scroll_y, max_scroll_x, max_scroll_y);
+        return 0;
+    }
+    -1
 }
 
 /// Handle AppLink URL by processing the path without host

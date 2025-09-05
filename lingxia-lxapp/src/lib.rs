@@ -13,4 +13,4 @@ pub use delegate::LxAppDelegate;
 pub use error::LxAppError;
 pub use lxapp::*;
 pub use module::*;
-pub use page::WebViewController;
+pub use lingxia_webview::WebViewController;

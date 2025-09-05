@@ -1,4 +1,5 @@
 use dashmap::DashMap;
+use lingxia_platform::{AppRuntime, Platform};
 use rong::FromJSObj;
 use std::collections::hash_map::DefaultHasher;
 use std::fs;
@@ -13,7 +14,7 @@ use crate::error::LxAppError;
 use crate::executor::LxAppExecutor;
 pub use crate::page::PageState;
 use crate::page::{Page, Pages};
-use crate::{AppRuntime, error, info};
+use crate::{error, info};
 use security::NetworkSecurity; // Import the new logging macros
 
 pub mod config;
@@ -37,7 +38,7 @@ const USER_CACHE_DIR: &str = "usercache";
 const DEFAULT_USER_ID: &str = "default";
 const DEFAULT_VERSION: &str = "0.0.1";
 
-/// Manages a collection of mini applications
+/// Manages a collection of lxapp applications
 pub struct LxApps {
     /// Collection of mini apps, keyed by app ID
     /// Uses DashMap for thread-safe concurrent access
@@ -45,14 +46,14 @@ pub struct LxApps {
 
     /// Reference to the platform-specific app runtime
     /// Provides file system access, UI callbacks, etc.
-    runtime: Arc<dyn AppRuntime>,
+    runtime: Arc<Platform>,
 
     /// Maximum number of apps allowed in memory simultaneously
     /// When exceeded, least recently used apps are destroyed
     max_apps: usize,
 
     /// Reference to the executor
-    /// Handles async task execution for mini apps
+    /// Handles async task execution for lxapp apps
     pub(crate) executor: Arc<LxAppExecutor>,
 
     /// Current user ID (hashed for privacy)
@@ -61,11 +62,7 @@ pub struct LxApps {
 }
 
 impl LxApps {
-    fn new<T: AppRuntime + 'static>(
-        runtime: T,
-        executor: Arc<LxAppExecutor>,
-        max_apps: usize,
-    ) -> Self {
+    fn new(runtime: Platform, executor: Arc<LxAppExecutor>, max_apps: usize) -> Self {
         let runtime = Arc::new(runtime);
 
         // Initialize with default user ID
@@ -232,7 +229,7 @@ impl LxAppState {
 pub struct LxApp {
     // Immutable data - initialized once and never changed
     pub appid: String,
-    pub runtime: Arc<dyn AppRuntime>,
+    pub runtime: Arc<Platform>,
     pub lxapp_dir: PathBuf,
     pub storage_dir: PathBuf,
     pub user_data_dir: PathBuf,
@@ -254,7 +251,7 @@ pub struct LxAppNavigator {
 }
 
 impl LxApp {
-    fn _new(appid: String, runtime: Arc<dyn AppRuntime>, executor: Arc<LxAppExecutor>) -> Self {
+    fn _new(appid: String, runtime: Arc<Platform>, executor: Arc<LxAppExecutor>) -> Self {
         Self {
             appid,
             runtime,
@@ -271,7 +268,7 @@ impl LxApp {
     }
 
     /// Create a new regular mini-app (not home app)
-    fn new(appid: String, runtime: Arc<dyn AppRuntime>, executor: Arc<LxAppExecutor>) -> Self {
+    fn new(appid: String, runtime: Arc<Platform>, executor: Arc<LxAppExecutor>) -> Self {
         let mut app = Self::_new(appid, runtime, executor);
         if let Err(e) = app.setup() {
             error!("Setup failed: {}", e).with_appid(&app.appid);
@@ -281,11 +278,7 @@ impl LxApp {
     }
 
     /// Create a new LxApp instance marked as the home mini app
-    fn new_as_home(
-        appid: String,
-        runtime: Arc<dyn AppRuntime>,
-        executor: Arc<LxAppExecutor>,
-    ) -> Self {
+    fn new_as_home(appid: String, runtime: Arc<Platform>, executor: Arc<LxAppExecutor>) -> Self {
         let mut app = Self::_new(appid, runtime, executor);
 
         // Mark as home lxapp
@@ -551,7 +544,6 @@ impl LxApp {
         Ok(())
     }
 
-    ///  TODO: delete
     pub fn get_lxapp_info(&self) -> config::LxAppInfo {
         self.config.get_lxapp_info()
     }
@@ -572,7 +564,7 @@ fn generate_app_hash(app_id: &str, user_id: &str) -> String {
 }
 
 /// Prepares the base directory structure for mini apps
-fn prepare_directory_structure<T: AppRuntime + ?Sized>(runtime: &T) -> Result<(), LxAppError> {
+fn prepare_directory_structure(runtime: Arc<Platform>) -> Result<(), LxAppError> {
     let data_dir = runtime.app_data_dir();
     let cache_dir = runtime.app_cache_dir();
 
@@ -597,7 +589,7 @@ static LXAPPS_MANAGER: OnceLock<Arc<LxApps>> = OnceLock::new();
 
 /// Initialize the LxApps singleton
 /// Returns an Option of home_app_id on success.
-pub fn init<R: AppRuntime + 'static>(runtime: R) -> Option<String> {
+pub fn init(runtime: Platform) -> Option<String> {
     // Set up panic hook to capture panic information
     std::panic::set_hook(Box::new(|panic_info| {
         let location = panic_info
@@ -615,23 +607,26 @@ pub fn init<R: AppRuntime + 'static>(runtime: R) -> Option<String> {
         error!("RUST PANIC: {} at {}", message, location);
     }));
 
-    let runtime_arc = Arc::new(runtime);
+    // Initialize WebView manager
+    lingxia_webview::init_webview_manager();
+
+    let runtime_arc = Arc::new(runtime.clone());
 
     // Prepare the directory structure
-    if let Err(e) = prepare_directory_structure(runtime_arc.as_ref()) {
+    if let Err(e) = prepare_directory_structure(runtime_arc.clone()) {
         error!("Failed to prepare directory structure: {}", e);
         return None;
     }
 
-    match AppConfig::load(runtime_arc.as_ref()) {
+    match AppConfig::load(runtime_arc.clone()) {
         Ok(config) => {
             let home_lxapp_appid = config.home_lxapp_appid.clone();
             let home_lxapp_version = &config.home_lxapp_version;
             let max_apps = config.max_allowed_lxapps;
 
-            if !install::is_installed(runtime_arc.as_ref(), &home_lxapp_appid) {
+            if !install::is_installed(runtime_arc.clone(), &home_lxapp_appid) {
                 if let Err(e) = install::install_home_lxapp(
-                    runtime_arc.as_ref(),
+                    runtime_arc.clone(),
                     &home_lxapp_appid,
                     home_lxapp_version,
                 ) {
@@ -652,7 +647,7 @@ pub fn init<R: AppRuntime + 'static>(runtime: R) -> Option<String> {
             // Check if home mini app needs updating after loading its configuration
             if home_lxapp.is_debug_enabled() || home_lxapp.should_update(home_lxapp_version) {
                 if let Err(e) = install::install_home_lxapp(
-                    runtime_arc.as_ref(),
+                    runtime_arc.clone(),
                     &home_lxapp_appid,
                     home_lxapp_version,
                 ) {
@@ -665,7 +660,7 @@ pub fn init<R: AppRuntime + 'static>(runtime: R) -> Option<String> {
             }
 
             // Create LxApps manager
-            let lxapps_manager = Arc::new(LxApps::new(runtime_arc.clone(), executor, max_apps));
+            let lxapps_manager = Arc::new(LxApps::new(runtime, executor, max_apps));
 
             // Add home lxapp to the manager
             let home_lxapp_arc = Arc::new(home_lxapp);

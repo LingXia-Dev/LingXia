@@ -1,9 +1,7 @@
-use crate::{App, runtime::PlatformAppRuntime};
 use android_logger::Config;
 use jni::objects::{JClass, JObject, JString};
 use jni::sys::{jboolean, jint};
 use jni::{JNIEnv, JavaVM};
-use lingxia_webview::init_webview_manager;
 use log::{error, info};
 use lxapp::{LxAppDelegate, log::LogLevel};
 
@@ -61,7 +59,7 @@ pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> j
     if let Ok(mut env) = vm.get_env() {
         if let Ok(local_class) = env.find_class("com/lingxia/lxapp/LxApp") {
             if let Ok(global_class) = env.new_global_ref(local_class) {
-                super::app::init_lxapp_class(global_class);
+                lingxia_platform::init_lxapp_class(global_class);
             }
         }
     }
@@ -90,19 +88,19 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppInited(
         cache_dir,
     );
 
-    let app = match App::from_java(&mut env, asset_manager.as_raw(), data_dir, cache_dir) {
+    let app = match lingxia_platform::Platform::from_java(
+        &mut env,
+        asset_manager.as_raw(),
+        data_dir,
+        cache_dir,
+    ) {
         Ok(app) => app,
         Err(_) => {
             return JObject::null().into_raw();
         }
     };
 
-    // Initialize WebView manager
-    init_webview_manager();
-
-    // Initialize platform runtime and lxapp
-    let runtime = PlatformAppRuntime::init(app);
-    let home_app_id = lxapp::init(runtime);
+    let home_app_id = lxapp::init(app);
 
     // Return the home appid
     match home_app_id {
@@ -141,7 +139,8 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_findWebView<'a>(
     let appid: String = env.get_string(&appid).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
 
-    if let Some(webview) = lingxia_webview::find_webview(&appid, &path) {
+    let webtag = lingxia_webview::WebTag::new(&appid, &path);
+    if let Some(webview) = lingxia_webview::find_webview(&webtag) {
         // Get direct access to the WebView and create a new local reference to the Java WebView object
         match env.new_local_ref(webview.get_java_webview()) {
             Ok(local_ref) => unsafe { JObject::from_raw(local_ref.into_raw()) },

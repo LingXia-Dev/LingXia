@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-lxapp = { package = "lingxia-lxapp", path = "../lingxia-lxapp" }
 log = "0.4.27"
+thiserror =  { workspace = true }
 
 # Use workspace dependencies
 serde_json = { workspace = true }

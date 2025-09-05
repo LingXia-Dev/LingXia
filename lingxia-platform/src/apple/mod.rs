@@ -7,4 +7,4 @@ mod ffi;
 mod resources;
 
 // Re-export App
-pub use app::App;
+pub use app::Platform;

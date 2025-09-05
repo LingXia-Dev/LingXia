@@ -1,6 +1,6 @@
 import Foundation
 import WebKit
-import CLingXiaFFI
+import CLingXiaRustAPI
 import OSLog
 @preconcurrency import ObjectiveC
 

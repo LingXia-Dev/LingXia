@@ -1,7 +1,7 @@
 import SwiftUI
 import Foundation
 import os.log
-import CLingXiaFFI
+import CLingXiaSwiftAPI
 
 /// Toast configuration
 public struct ToastConfig {

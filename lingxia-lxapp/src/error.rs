@@ -1,6 +1,7 @@
 use rong::RongJSError;
 use std::io;
 use thiserror::Error;
+use lingxia_platform::PlatformError;
 
 #[derive(Debug, Clone, Error)]
 pub enum LxAppError {
@@ -68,5 +69,11 @@ impl From<serde_json::Error> for LxAppError {
 impl From<RongJSError> for LxAppError {
     fn from(error: RongJSError) -> Self {
         LxAppError::RongJS(error.to_string())
+    }
+}
+
+impl From<PlatformError> for LxAppError {
+    fn from(error: PlatformError) -> Self {
+        LxAppError::Runtime(error.to_string())
     }
 }

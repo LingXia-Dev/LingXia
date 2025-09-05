@@ -40,7 +40,7 @@ struct PageSvcState {
 impl MessageTransport for PageSvc {
     fn post_message_to_view(&self, message_json: String) -> Result<(), LxAppError> {
         if let Some(controller) = self.page.webview_controller() {
-            controller.post_message(message_json)
+            controller.post_message(message_json).map_err(|e| LxAppError::WebView(e.to_string()))
         } else {
             Err(LxAppError::WebView("WebView not ready for message posting".to_string()))
         }
