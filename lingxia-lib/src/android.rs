@@ -60,7 +60,7 @@ pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> j
     if let Ok(mut env) = vm.get_env() {
         if let Ok(local_class) = env.find_class("com/lingxia/lxapp/LxApp") {
             if let Ok(global_class) = env.new_global_ref(local_class) {
-                super::app::init_lxapp_class(global_class);
+                lingxia_platform::init_lxapp_class(global_class);
             }
         }
     }
@@ -89,7 +89,12 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppInited(
         cache_dir,
     );
 
-    let app = match App::from_java(&mut env, asset_manager.as_raw(), data_dir, cache_dir) {
+    let app = match lingxia_platform::platform::from_java(
+        &mut env,
+        asset_manager.as_raw(),
+        data_dir,
+        cache_dir,
+    ) {
         Ok(app) => app,
         Err(_) => {
             return JObject::null().into_raw();
@@ -99,10 +104,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppInited(
     // Initialize WebView manager
     init_webview_manager();
 
-    // Initialize platform runtime and lxapp
-    // let home_app_id = lxapp::init(runtime);
-    // TODO: fix,
-    let home_app_id = Some("homelxapp".to_string());
+    let home_app_id = lxapp::init(app);
 
     // Return the home appid
     match home_app_id {

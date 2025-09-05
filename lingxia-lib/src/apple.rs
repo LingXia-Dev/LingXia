@@ -179,17 +179,16 @@ pub fn lxapp_init(data_dir: &str, cache_dir: &str) -> Option<String> {
         cache_dir
     );
 
-    let app = match App::new(data_dir.to_string(), cache_dir.to_string()) {
-        Ok(app) => app,
-        Err(e) => {
-            log::error!("Failed to create App: {}", e);
-            return None;
-        }
-    };
+    let platform =
+        match lingxia_platform::Platform::new(data_dir.to_string(), cache_dir.to_string()) {
+            Ok(platform) => platform,
+            Err(e) => {
+                log::error!("Failed to create Platform: {}", e);
+                return None;
+            }
+        };
 
-    // Initialize PlatformAppRuntime and lxapp
-    // TODO: fix, lxapp::init(runtime)
-    Some("homelxapp".to_string())
+    lxapp::init(platform)
 }
 
 /// Notify that a page is being shown

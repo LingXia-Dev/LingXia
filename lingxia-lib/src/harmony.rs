@@ -143,7 +143,7 @@ pub fn lxapp_init(
     }
 
     // Create App instance
-    let app = match App::new(
+    let app = match lingxia_platform::Platform::new(
         data_dir.to_string(),
         cache_dir.to_string(),
         env,
@@ -156,10 +156,7 @@ pub fn lxapp_init(
         }
     };
 
-    // TODO: fix, lxapp::init
-    let home_app_id = Some("homelxapp".to_string());
-
-    Some(home_app_id)
+    lxapp::init(app)
 }
 
 /// Register custom schemes (must be called before WebEngine initialization)
