@@ -1,8 +1,9 @@
 [workspace]
 members = [
+    "lingxia-lib",
     "lingxia-lxapp",
     "lingxia-webview",
-    "lingxia-lib",
+    "lingxia-platform",
 ]
 resolver = "2"
 

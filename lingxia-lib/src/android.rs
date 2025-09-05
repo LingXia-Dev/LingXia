@@ -1,4 +1,3 @@
-use crate::{App, runtime::PlatformAppRuntime};
 use android_logger::Config;
 use jni::objects::{JClass, JObject, JString};
 use jni::sys::{jboolean, jint};
@@ -101,8 +100,9 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppInited(
     init_webview_manager();
 
     // Initialize platform runtime and lxapp
-    let runtime = PlatformAppRuntime::init(app);
-    let home_app_id = lxapp::init(runtime);
+    // let home_app_id = lxapp::init(runtime);
+    // TODO: fix,
+    let home_app_id = Some("homelxapp".to_string());
 
     // Return the home appid
     match home_app_id {

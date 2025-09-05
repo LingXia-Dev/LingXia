@@ -1,5 +1,3 @@
-use crate::harmony::app::App;
-use crate::runtime::PlatformAppRuntime;
 use log::LevelFilter;
 use lxapp::LxAppDelegate;
 use lxapp::log::LogLevel;
@@ -158,11 +156,9 @@ pub fn lxapp_init(
         }
     };
 
-    // Initialize global runtime and pass to lxapp::init
-    let runtime = PlatformAppRuntime::init(app);
+    // TODO: fix, lxapp::init
+    let home_app_id = Some("homelxapp".to_string());
 
-    // Return only the home app ID
-    let home_app_id = lxapp::init(runtime)?;
     Some(home_app_id)
 }
 
