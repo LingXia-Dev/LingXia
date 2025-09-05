@@ -13,7 +13,7 @@ use std::sync::OnceLock;
 static LXAPP_CLASS: OnceLock<GlobalRef> = OnceLock::new();
 
 /// Initialize LxApp class global reference (called from JNI_OnLoad)
-pub(super) fn init_lxapp_class(global_ref: GlobalRef) {
+pub fn init_lxapp_class(global_ref: GlobalRef) {
     let _ = LXAPP_CLASS.set(global_ref);
 }
 

@@ -1,2 +1,2 @@
 mod app;
-pub use app::Platform;
+pub use app::{Platform, init_lxapp_class};
