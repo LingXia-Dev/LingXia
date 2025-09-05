@@ -88,7 +88,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppInited(
         cache_dir,
     );
 
-    let app = match lingxia_platform::platform::from_java(
+    let app = match lingxia_platform::Platform::from_java(
         &mut env,
         asset_manager.as_raw(),
         data_dir,

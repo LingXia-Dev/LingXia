@@ -10,20 +10,19 @@ crate-type = ["staticlib", "cdylib"]
 [dependencies]
 lxapp = { package = "lingxia-lxapp", path = "../lingxia-lxapp" }
 lingxia-platform = { path = "../lingxia-platform" }
+lingxia-webview = { path = "../lingxia-webview" }
 log = "0.4.27"
 
 # Android-specific dependencies (only what's needed for FFI)
 [target.'cfg(target_os = "android")'.dependencies]
 jni = "0.21.1"
 android_logger = "0.15.0"
-lingxia-webview = { path = "../lingxia-webview" }
 
 # Apple-specific dependencies (iOS and macOS)
 [target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
 swift-bridge = "0.1.57"
 log = "0.4.27"
 oslog = "0.2.0"
-lingxia-webview = { path = "../lingxia-webview" }
 
 # HarmonyOS-specific dependencies
 [target.'cfg(target_env = "ohos")'.dependencies]
