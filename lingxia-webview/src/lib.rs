@@ -34,6 +34,7 @@ mod harmony;
 pub use traits::{WebViewController, WebViewDelegate};
 pub use webview::{
     WebTag, WebView, create_webview, destroy_webview, find_webview, init_webview_manager,
+    set_webview_delegate,
 };
 
 #[cfg(target_os = "android")]

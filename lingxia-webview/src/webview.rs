@@ -203,6 +203,16 @@ pub fn find_webview(webtag: &WebTag) -> Option<Arc<WebView>> {
     }
 }
 
+/// Set delegate for a WebView by WebTag
+pub fn set_webview_delegate(webtag: &WebTag, delegate: Arc<dyn WebViewDelegate>) -> bool {
+    if let Some(webview) = find_webview(webtag) {
+        webview.set_delegate(delegate);
+        true
+    } else {
+        false
+    }
+}
+
 /// Get delegate from WebView by webtag (for internal use by platform implementations)
 pub(crate) fn get_webview_delegate(webtag: &WebTag) -> Option<Arc<dyn WebViewDelegate>> {
     if let Some(webview) = find_webview(webtag) {
