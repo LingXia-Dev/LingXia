@@ -1,7 +1,8 @@
+use crate::error::PlatformError;
+use crate::{AppRuntime, AssetFileEntry, DeviceInfo};
 use jni::objects::{GlobalRef, JClass, JObject, JValue};
 use jni::sys::jobject;
 use lingxia_webview::get_env;
-use lxapp::{AssetFileEntry, DeviceInfo, LxAppError};
 use ndk_sys;
 use std::ffi::CString;
 use std::io::{Read, Result as IoResult};
@@ -16,9 +17,9 @@ pub(super) fn init_lxapp_class(global_ref: GlobalRef) {
     let _ = LXAPP_CLASS.set(global_ref);
 }
 
-// App for Android
+// Platform for Android
 #[derive(Clone)]
-pub struct App {
+pub struct Platform {
     asset_manager: *mut ndk_sys::AAssetManager,
     java_asset_manager: GlobalRef,
     data_dir: String,
@@ -26,8 +27,8 @@ pub struct App {
     device_info: DeviceInfo,
 }
 
-unsafe impl Send for App {}
-unsafe impl Sync for App {}
+unsafe impl Send for Platform {}
+unsafe impl Sync for Platform {}
 
 /// Reader for a single asset file
 struct AssetReader {
@@ -61,7 +62,7 @@ impl Drop for AssetReader {
 // all scenarios in this project. The Java API is generally more robust for listing.
 // NDK AAssetManager_open() is still used for reading files once paths are known.
 struct RecursiveAssetIterator<'a> {
-    app: &'a App,
+    app: &'a Platform,
     // Stack of directory paths (relative to asset root) to visit.
     dir_stack: Vec<String>,
     // Queue of discovered file paths (full paths) ready to be yielded.
@@ -70,7 +71,7 @@ struct RecursiveAssetIterator<'a> {
 }
 
 impl<'a> RecursiveAssetIterator<'a> {
-    fn new(app: &'a App, initial_path: &str) -> Self {
+    fn new(app: &'a Platform, initial_path: &str) -> Self {
         RecursiveAssetIterator {
             app,
             dir_stack: vec![initial_path.to_string()],
@@ -83,18 +84,18 @@ impl<'a> RecursiveAssetIterator<'a> {
     fn handle_jni_error<T>(
         result: Result<T, jni::errors::Error>,
         path: &str,
-    ) -> Result<T, LxAppError> {
+    ) -> Result<T, PlatformError> {
         result.map_err(|e| {
-            LxAppError::InvalidParameter(format!(
+            PlatformError::Platform(format!(
                 "JNI operation failed for path '{}': {:?}",
                 path, e
             ))
         })
     }
 
-    fn list_via_jni(&self, path_to_list: &str) -> Result<Option<Vec<String>>, LxAppError> {
+    fn list_via_jni(&self, path_to_list: &str) -> Result<Option<Vec<String>>, PlatformError> {
         let mut jni_env = get_env()
-            .map_err(|e| LxAppError::InvalidParameter(format!("Failed to get JNIEnv: {}", e)))?;
+            .map_err(|e| PlatformError::Platform(format!("Failed to get JNIEnv: {}", e)))?;
         let path_jstring = Self::handle_jni_error(jni_env.new_string(path_to_list), path_to_list)?;
 
         let java_am_obj = self.app.java_asset_manager.as_obj();
@@ -145,7 +146,7 @@ impl<'a> RecursiveAssetIterator<'a> {
 }
 
 impl<'a> Iterator for RecursiveAssetIterator<'a> {
-    type Item = Result<AssetFileEntry<'a>, LxAppError>;
+    type Item = Result<AssetFileEntry<'a>, PlatformError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
@@ -153,7 +154,7 @@ impl<'a> Iterator for RecursiveAssetIterator<'a> {
                 let c_path = match CString::new(file_path_to_yield.clone()) {
                     Ok(c) => c,
                     Err(e) => {
-                        return Some(Err(LxAppError::InvalidParameter(format!(
+                        return Some(Err(PlatformError::Platform(format!(
                             "Invalid CString for asset path '{}': {}",
                             file_path_to_yield, e
                         ))));
@@ -166,7 +167,7 @@ impl<'a> Iterator for RecursiveAssetIterator<'a> {
                         ndk_sys::AASSET_MODE_STREAMING as i32,
                     );
                     if asset_ptr.is_null() {
-                        return Some(Err(LxAppError::InvalidParameter(format!(
+                        return Some(Err(PlatformError::Platform(format!(
                             "Asset '{}' was in file_queue, but NDK AAssetManager_open failed.",
                             file_path_to_yield
                         ))));
@@ -223,8 +224,8 @@ impl<'a> Iterator for RecursiveAssetIterator<'a> {
     }
 }
 
-impl App {
-    pub(crate) fn from_java(
+impl Platform {
+    pub fn from_java(
         jni_env: &mut jni::JNIEnv,
         java_asset_manager_obj: jobject,
         data_dir: String,
@@ -271,7 +272,7 @@ impl App {
             system,
         };
 
-        Ok(App {
+        Ok(Platform {
             asset_manager: asset_manager_ptr,
             java_asset_manager,
             data_dir,
@@ -279,13 +280,15 @@ impl App {
             device_info,
         })
     }
+}
 
+impl AppRuntime for Platform {
     /// Read asset file from platform-specific location as a streaming reader
-    pub(crate) fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, LxAppError> {
+    fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, PlatformError> {
         unsafe {
             // Convert path to CString to ensure proper null-termination
             let c_path = std::ffi::CString::new(path)
-                .map_err(|e| LxAppError::InvalidParameter(format!("Invalid path: {}", e)))?;
+                .map_err(|e| PlatformError::Platform(format!("Invalid path: {}", e)))?;
 
             let asset = ndk_sys::AAssetManager_open(
                 self.asset_manager,
@@ -294,7 +297,7 @@ impl App {
             );
 
             if asset.is_null() {
-                return Err(LxAppError::ResourceNotFound(format!(
+                return Err(PlatformError::AssetNotFound(format!(
                     "Failed to open asset: {}",
                     path
                 )));
@@ -306,29 +309,29 @@ impl App {
     }
 
     /// Iterate over files in an asset directory
-    pub(crate) fn asset_dir_iter<'a>(
+    fn asset_dir_iter<'a>(
         &'a self,
         asset_dir: &str,
-    ) -> Box<dyn Iterator<Item = Result<AssetFileEntry<'a>, LxAppError>> + 'a> {
+    ) -> Box<dyn Iterator<Item = Result<AssetFileEntry<'a>, PlatformError>> + 'a> {
         Box::new(RecursiveAssetIterator::new(self, asset_dir))
     }
 
     /// Get data directory path
-    pub(crate) fn app_data_dir(&self) -> PathBuf {
+    fn app_data_dir(&self) -> PathBuf {
         PathBuf::from(&self.data_dir)
     }
 
     /// Get cache directory path
-    pub(crate) fn app_cache_dir(&self) -> PathBuf {
+    fn app_cache_dir(&self) -> PathBuf {
         PathBuf::from(&self.cache_dir)
     }
 
     /// Get device information
-    pub(crate) fn device_info(&self) -> DeviceInfo {
+    fn device_info(&self) -> DeviceInfo {
         self.device_info.clone()
     }
 
-    pub(crate) fn open_lxapp(&self, appid: &str, path: &str) -> Result<(), LxAppError> {
+    fn open_lxapp(&self, appid: String, path: String) -> Result<(), PlatformError> {
         match || -> Result<(), Box<dyn std::error::Error>> {
             let mut env = get_env()?;
 
@@ -337,8 +340,8 @@ impl App {
                 .ok_or("Global LxApp class reference not available")?
                 .as_obj()
                 .into();
-            let appid_jstring = env.new_string(appid)?;
-            let path_jstring = env.new_string(path)?;
+            let appid_jstring = env.new_string(&appid)?;
+            let path_jstring = env.new_string(&path)?;
 
             env.call_static_method(
                 lxapp_class,
@@ -352,11 +355,14 @@ impl App {
             Ok(())
         }() {
             Ok(_) => Ok(()),
-            Err(e) => Err(LxAppError::WebView(format!("Failed to open lxapp: {}", e))),
+            Err(e) => Err(PlatformError::Platform(format!(
+                "Failed to open lxapp: {}",
+                e
+            ))),
         }
     }
 
-    pub(crate) fn close_lxapp(&self, appid: &str) -> Result<(), LxAppError> {
+    fn close_lxapp(&self, appid: String) -> Result<(), PlatformError> {
         match || -> Result<(), Box<dyn std::error::Error>> {
             let mut env = get_env()?;
 
@@ -366,7 +372,7 @@ impl App {
                 .as_obj()
                 .into();
 
-            let appid_jstring = env.new_string(appid)?;
+            let appid_jstring = env.new_string(&appid)?;
 
             env.call_static_method(
                 lxapp_class,
@@ -377,11 +383,14 @@ impl App {
             Ok(())
         }() {
             Ok(_) => Ok(()),
-            Err(e) => Err(LxAppError::WebView(format!("Failed to close lxapp: {}", e))),
+            Err(e) => Err(PlatformError::Platform(format!(
+                "Failed to close lxapp: {}",
+                e
+            ))),
         }
     }
 
-    pub(crate) fn switch_page(&self, appid: &str, path: &str) -> Result<(), LxAppError> {
+    fn switch_page(&self, appid: String, path: String) -> Result<(), PlatformError> {
         match || -> Result<(), Box<dyn std::error::Error>> {
             let mut env = get_env()?;
 
@@ -391,8 +400,8 @@ impl App {
                 .as_obj()
                 .into();
 
-            let appid_jstring = env.new_string(appid)?;
-            let path_jstring = env.new_string(path)?;
+            let appid_jstring = env.new_string(&appid)?;
+            let path_jstring = env.new_string(&path)?;
 
             env.call_static_method(
                 lxapp_class,
@@ -406,12 +415,15 @@ impl App {
             Ok(())
         }() {
             Ok(_) => Ok(()),
-            Err(e) => Err(LxAppError::WebView(format!("Failed to switch page: {}", e))),
+            Err(e) => Err(PlatformError::Platform(format!(
+                "Failed to switch page: {}",
+                e
+            ))),
         }
     }
 
     /// Launch external application with URL
-    pub fn launch_with_url(&self, url: String) -> Result<(), LxAppError> {
+    fn launch_with_url(&self, url: String) -> Result<(), PlatformError> {
         match || -> Result<(), Box<dyn std::error::Error>> {
             let mut env = get_env()?;
 
@@ -431,7 +443,7 @@ impl App {
             Ok(())
         }() {
             Ok(_) => Ok(()),
-            Err(e) => Err(LxAppError::WebView(format!(
+            Err(e) => Err(PlatformError::Platform(format!(
                 "Failed to launch_with_url: {}",
                 e
             ))),

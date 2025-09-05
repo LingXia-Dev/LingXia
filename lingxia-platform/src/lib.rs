@@ -1,7 +1,24 @@
-//! LingXia Library - Cross-platform MiniApp Runtime
+//! LingXia Platform
 //!
-//! This is the main library crate that provides FFI interfaces for different platforms.
-//! It generates the native library (liblingxia.so on Android, liblingxia.a on iOS, etc.)
+//! This crate provides the platform-specific implementation for LingXia.
+
+use std::io::Read;
+
+/// Asset file entry with reader for streaming content
+pub struct AssetFileEntry<'a> {
+    pub path: String,
+    pub reader: Box<dyn Read + 'a>,
+}
+
+/// Device information
+#[derive(Debug, Clone)]
+pub struct DeviceInfo {
+    pub brand: String,
+    pub model: String,
+    pub system: String,
+}
+
+mod traits;
 
 #[cfg(target_os = "android")]
 mod android;
@@ -12,13 +29,19 @@ mod apple;
 #[cfg(target_env = "ohos")]
 mod harmony;
 
-mod runtime;
-
+// Export Platform type for each platform
 #[cfg(target_os = "android")]
-pub(crate) use android::App;
+pub use android::Platform;
 
 #[cfg(any(target_os = "ios", target_os = "macos"))]
-pub(crate) use apple::App;
+pub use apple::Platform;
 
 #[cfg(target_env = "ohos")]
-pub(crate) use harmony::App;
+pub use harmony::Platform;
+
+pub mod error;
+// Re-export error types
+pub use error::*;
+
+// Re-export traits
+pub use traits::*;

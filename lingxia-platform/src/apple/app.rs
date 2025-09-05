@@ -1,5 +1,6 @@
 use super::ffi;
-use lxapp::{AssetFileEntry, DeviceInfo, LxAppError};
+use crate::error::PlatformError;
+use crate::{AppRuntime, AssetFileEntry, DeviceInfo};
 use std::ffi::CStr;
 use std::io::{Cursor, Read};
 use std::mem;
@@ -37,60 +38,110 @@ impl UIDevice {
     }
 }
 
-/// Shared App structure between Rust and Swift
+/// Platform implementation for Apple platforms (iOS/macOS)
 #[derive(Clone)]
-pub struct App {
+pub struct Platform {
     pub data_dir: String,
     pub cache_dir: String,
 }
 
-unsafe impl Send for App {}
-unsafe impl Sync for App {}
+unsafe impl Send for Platform {}
+unsafe impl Sync for Platform {}
 
-impl App {
-    /// Create a new App instance
-    pub fn new(data_dir: String, cache_dir: String) -> Result<Self, LxAppError> {
-        Ok(App {
+impl Platform {
+    /// Create a new Platform instance
+    pub fn new(data_dir: String, cache_dir: String) -> Result<Self, PlatformError> {
+        Ok(Platform {
             data_dir,
             cache_dir,
         })
     }
+}
 
-    /// Get the data directory path
-    pub fn app_data_dir(&self) -> PathBuf {
+impl AppRuntime for Platform {
+    fn app_data_dir(&self) -> PathBuf {
         PathBuf::from(&self.data_dir)
     }
 
-    /// Get the cache directory path
-    pub fn app_cache_dir(&self) -> PathBuf {
+    fn app_cache_dir(&self) -> PathBuf {
         PathBuf::from(&self.cache_dir)
     }
 
-    /// Read an asset file from the SPM bundle resources
-    pub fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, LxAppError> {
+    fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, PlatformError> {
         let data = super::resources::read_asset_data(path);
 
         if data.is_empty() {
-            Err(LxAppError::ResourceNotFound(path.to_string()))
+            Err(PlatformError::AssetNotFound(path.to_string()))
         } else {
             Ok(Box::new(Cursor::new(data)))
         }
     }
 
-    /// Iterate over files in an asset directory
-    pub fn asset_dir_iter<'a>(
+    fn asset_dir_iter<'a>(
         &'a self,
         asset_dir: &str,
-    ) -> Box<dyn Iterator<Item = Result<AssetFileEntry<'a>, LxAppError>> + 'a> {
+    ) -> Box<dyn Iterator<Item = Result<AssetFileEntry<'a>, PlatformError>> + 'a> {
         let entries = self.collect_files_recursively(asset_dir);
         Box::new(entries.into_iter())
     }
 
+    fn device_info(&self) -> DeviceInfo {
+        let brand = "Apple".to_string(); // Fixed for Apple devices
+        let model = get_device_model();
+        let system = get_system_version();
+
+        DeviceInfo {
+            brand,
+            model,
+            system,
+        }
+    }
+
+    fn open_lxapp(&self, appid: String, path: String) -> Result<(), PlatformError> {
+        if ffi::open_lxapp(&appid, &path) {
+            Ok(())
+        } else {
+            Err(PlatformError::Platform(format!(
+                "Failed to open lxapp: appid={}, path={}",
+                appid, path
+            )))
+        }
+    }
+
+    fn close_lxapp(&self, appid: String) -> Result<(), PlatformError> {
+        if ffi::close_lxapp(&appid) {
+            Ok(())
+        } else {
+            Err(PlatformError::Platform(format!(
+                "Failed to close lxapp: appid={}",
+                appid
+            )))
+        }
+    }
+
+    fn switch_page(&self, appid: String, path: String) -> Result<(), PlatformError> {
+        if ffi::switch_page(&appid, &path) {
+            Ok(())
+        } else {
+            Err(PlatformError::Platform(format!(
+                "Failed to switch page: appid={}, path={}",
+                appid, path
+            )))
+        }
+    }
+
+    fn launch_with_url(&self, url: String) -> Result<(), PlatformError> {
+        ffi::launch_with_url(&url);
+        Ok(())
+    }
+}
+
+impl Platform {
     /// Recursively collect all files from a directory
     fn collect_files_recursively<'a>(
         &'a self,
         dir_path: &str,
-    ) -> Vec<Result<AssetFileEntry<'a>, LxAppError>> {
+    ) -> Vec<Result<AssetFileEntry<'a>, PlatformError>> {
         let mut all_files = Vec::new();
         let mut dirs_to_process = vec![dir_path.to_string()];
 
@@ -126,61 +177,6 @@ impl App {
         }
 
         all_files
-    }
-
-    /// Get device information
-    pub fn device_info(&self) -> DeviceInfo {
-        let brand = "Apple".to_string(); // Fixed for Apple devices
-        let model = get_device_model();
-        let system = get_system_version();
-
-        DeviceInfo {
-            brand,
-            model,
-            system,
-        }
-    }
-
-    /// Open a mini app
-    pub fn open_lxapp(&self, appid: &str, path: &str) -> Result<(), LxAppError> {
-        if ffi::open_lxapp(appid, path) {
-            Ok(())
-        } else {
-            Err(LxAppError::WebView(format!(
-                "Failed to open lxapp: appid={}, path={}",
-                appid, path
-            )))
-        }
-    }
-
-    /// Close a mini app
-    pub fn close_lxapp(&self, appid: &str) -> Result<(), LxAppError> {
-        if ffi::close_lxapp(appid) {
-            Ok(())
-        } else {
-            Err(LxAppError::WebView(format!(
-                "Failed to close lxapp: appid={}",
-                appid
-            )))
-        }
-    }
-
-    /// Switch to a page in a mini app
-    pub fn switch_page(&self, appid: &str, path: &str) -> Result<(), LxAppError> {
-        if ffi::switch_page(appid, path) {
-            Ok(())
-        } else {
-            Err(LxAppError::WebView(format!(
-                "Failed to switch page: appid={}, path={}",
-                appid, path
-            )))
-        }
-    }
-
-    /// Launch external application with URL
-    pub fn launch_with_url(&self, url: String) -> Result<(), LxAppError> {
-        ffi::launch_with_url(&url);
-        Ok(())
     }
 }
 
