@@ -6,6 +6,7 @@ use crate::executor::LxAppExecutor;
 use crate::log::{self, LogLevel, LogTag};
 use crate::page::{Page, PageLoadState};
 use crate::{LxApp, appservice, error, info};
+use lingxia_platform::AppRuntime;
 
 pub trait LxAppDelegate {
     /// Called when mini app is opened
@@ -86,7 +87,6 @@ impl LxAppDelegate for LxApp {
                 self.appid.clone(),
                 path.clone(),
                 page_state,
-                self.runtime.clone(),
                 self.executor.clone(),
                 move |page, path| {
                     self_for_setup.setup_page(page, path);
@@ -148,7 +148,6 @@ impl LxAppDelegate for LxApp {
                         self_clone.appid.clone(),
                         tab_path.clone(),
                         page_state,
-                        self_clone.runtime.clone(),
                         self_clone.executor.clone(),
                         move |page, path| {
                             // Setup page content (load HTML)

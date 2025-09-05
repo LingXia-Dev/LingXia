@@ -14,6 +14,8 @@ tokio = { workspace = true }
 
 # Local dependencies
 rong_modules = { workspace = true }
+lingxia-platform = { path = "../lingxia-platform" }
+lingxia-webview = { path = "../lingxia-webview" }
 
 # Target-specific JavaScript engine selection
 # iOS/macOS automatically use JavaScriptCore

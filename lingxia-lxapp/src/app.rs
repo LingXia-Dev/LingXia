@@ -1,25 +1,9 @@
 use std::io::Read;
-use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::mpsc::Sender;
 
 use crate::error::LxAppError;
-use rong::IntoJSObj;
+use lingxia_platform::{Platform, AppRuntime};
 use serde::{Deserialize, Serialize};
-
-/// Device information
-#[derive(Debug, Clone, IntoJSObj, Serialize)]
-pub struct DeviceInfo {
-    pub brand: String,
-    pub model: String,
-    pub system: String, // Operating system version
-}
-
-/// Asset file entry for iterator-based asset access
-pub struct AssetFileEntry<'a> {
-    pub path: String,
-    pub reader: Box<dyn Read + 'a>,
-}
 
 /// Configuration loaded from app.json
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -59,7 +43,7 @@ impl AppConfig {
     }
 
     /// Read, parse and validate app.json from the assets directory.
-    pub(crate) fn load<T: AppRuntime + ?Sized>(controller: &T) -> Result<Self, LxAppError> {
+    pub(crate) fn load(controller: Arc<Platform>) -> Result<Self, LxAppError> {
         // Read app.json as a string
         let mut reader = controller.read_asset("app.json")?;
         let mut content = String::new();
@@ -132,154 +116,5 @@ impl AppConfig {
         }
 
         Ok(())
-    }
-}
-
-/// Base platform runtime capabilities
-///
-/// This trait defines the core capabilities required for the mini app platform,
-/// including resource access, directory management
-pub trait AppRuntime: Send + Sync + 'static {
-    /// Read asset file from platform-specific location as a streaming reader
-    ///
-    /// # Arguments
-    /// * `path` - Path to the asset file to read
-    ///
-    /// # Returns
-    /// * `Result<Box<dyn Read + '_>, LxAppError>` - A reader for streaming the asset content, or an error
-    fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, LxAppError>;
-
-    /// Iterate over files in an asset directory.
-    ///
-    /// Returns an iterator of AssetFileEntry, each containing the file path and a reader implementing `Read`.
-    ///
-    /// # Arguments
-    /// * `asset_dir` - Directory path in assets to iterate
-    ///
-    /// # Returns
-    /// * `Box<dyn Iterator<Item = Result<AssetFileEntry, LxAppError>>>` - Iterator over files in the directory
-    ///   (If directory cannot be opened, the iterator's first element will be an error)
-    fn asset_dir_iter<'a>(
-        &'a self,
-        asset_dir: &str,
-    ) -> Box<dyn Iterator<Item = Result<AssetFileEntry<'a>, LxAppError>> + 'a>;
-
-    /// Get data directory path
-    ///
-    /// # Returns
-    /// * `PathBuf` - Path to the application's data directory
-    fn app_data_dir(&self) -> PathBuf;
-
-    /// Get cache directory path
-    ///
-    /// # Returns
-    /// * `PathBuf` - Path to the application's cache directory
-    fn app_cache_dir(&self) -> PathBuf;
-
-    /// Get device information
-    ///
-    /// # Returns
-    /// * `DeviceInfo` - Device information including brand, model, and screen dimensions
-    fn device_info(&self) -> DeviceInfo;
-
-    /// Create a WebView instance asynchronously
-    ///
-    /// # Arguments
-    /// * `appid` - Application identifier
-    /// * `path` - Page path within the application
-    /// * `sender` - Channel sender to notify when WebView creation completes
-    fn create_webview(
-        &self,
-        appid: String,
-        path: String,
-        sender: Sender<Result<Arc<dyn crate::page::WebViewController>, LxAppError>>,
-    );
-
-    /// Open a mini app
-    ///
-    /// # Arguments
-    /// * `appid` - The ID of the mini app to open
-    /// * `path` - The initial path to navigate to within the mini app
-    ///
-    /// # Returns
-    /// * `Result<(), LxAppError>` - Success or error
-    fn open_lxapp(&self, appid: String, path: String) -> Result<(), LxAppError>;
-
-    /// Close a mini app
-    ///
-    /// # Arguments
-    /// * `appid` - The ID of the mini app to close
-    ///
-    /// # Returns
-    /// * `Result<(), LxAppError>` - Success or error
-    fn close_lxapp(&self, appid: String) -> Result<(), LxAppError>;
-
-    /// Switch to a different page within the same mini app
-    ///
-    /// # Arguments
-    /// * `appid` - The ID of the mini app to switch pages in
-    /// * `path` - The path of the page to switch to
-    ///
-    /// # Returns
-    /// * `Result<(), LxAppError>` - Success or error
-    fn switch_page(&self, appid: String, path: String) -> Result<(), LxAppError>;
-
-    /// Launch external application with URL
-    ///
-    /// # Arguments
-    /// * `url` - Complete URL to open the target app
-    ///
-    /// # Returns
-    /// * `Result<(), LxAppError>` - Success or error
-    fn launch_with_url(&self, url: String) -> Result<(), LxAppError>;
-}
-
-impl<T: AppRuntime + ?Sized> AppRuntime for Arc<T> {
-    fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, LxAppError> {
-        (**self).read_asset(path)
-    }
-
-    fn asset_dir_iter<'a>(
-        &'a self,
-        asset_dir: &str,
-    ) -> Box<dyn Iterator<Item = Result<AssetFileEntry<'a>, LxAppError>> + 'a> {
-        (**self).asset_dir_iter(asset_dir)
-    }
-
-    fn app_data_dir(&self) -> PathBuf {
-        (**self).app_data_dir()
-    }
-
-    fn app_cache_dir(&self) -> PathBuf {
-        (**self).app_cache_dir()
-    }
-
-    fn device_info(&self) -> DeviceInfo {
-        (**self).device_info()
-    }
-
-    fn create_webview(
-        &self,
-        appid: String,
-        path: String,
-        sender: Sender<Result<Arc<dyn crate::page::WebViewController>, LxAppError>>,
-    ) {
-        (**self).create_webview(appid, path, sender)
-    }
-
-    fn open_lxapp(&self, appid: String, path: String) -> Result<(), LxAppError> {
-        (**self).open_lxapp(appid, path)
-    }
-
-    fn close_lxapp(&self, appid: String) -> Result<(), LxAppError> {
-        (**self).close_lxapp(appid)
-    }
-
-    fn switch_page(&self, appid: String, path: String) -> Result<(), LxAppError> {
-        (**self).switch_page(appid, path)
-    }
-
-    fn launch_with_url(&self, url: String) -> Result<(), LxAppError> {
-        (**self).launch_with_url(url)
     }
 }

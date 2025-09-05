@@ -1,6 +1,9 @@
+use crate::appservice::bridge::IncomingMessage;
 use crate::executor::LxAppExecutor;
 use crate::lxapp::navbar::NavigationBarState;
-use crate::{AppRuntime, LxAppError, error};
+use crate::{LxAppError, error, info};
+use lingxia_webview::{LogLevel, WebTag, WebViewController, WebViewDelegate, create_webview};
+
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -39,67 +42,6 @@ impl PageStack {
     fn is_empty(&self) -> bool {
         self.pages.is_empty()
     }
-}
-
-/// Interface for controlling WebView
-pub trait WebViewController: Send + Sync {
-    /// Load a URL in the WebView
-    fn load_url(&self, url: String) -> Result<(), LxAppError>;
-
-    /// Load HTML data into the WebView
-    ///
-    /// # Arguments
-    /// * `data` - The HTML content to load
-    /// * `base_url` - Base URL for resolving relative paths in the HTML
-    /// * `history_url` - Optional URL to use for history (defaults to base_url if None)
-    fn load_data(
-        &self,
-        data: String,
-        base_url: String,
-        history_url: Option<String>,
-    ) -> Result<(), LxAppError>;
-
-    /// Evaluate JavaScript in the WebView
-    fn evaluate_javascript(&self, js: String) -> Result<(), LxAppError>;
-
-    /// Post a message to the JavaScript context
-    fn post_message(&self, message: String) -> Result<(), LxAppError> {
-        // Escape the JSON message for safe JavaScript injection
-        // Since message is already JSON, we need to escape it properly for JS string literal
-        let escaped_message = message
-            .replace('\\', "\\\\") // Escape backslashes first
-            .replace('"', "\\\"") // Escape double quotes
-            .replace('\n', "\\n") // Escape newlines
-            .replace('\r', "\\r") // Escape carriage returns
-            .replace('\t', "\\t"); // Escape tabs
-
-        // Call the global receiver function defined in webview-bridge.js
-        let js_code = format!(
-            "if (typeof window.__LingXiaRecvMessage === 'function') {{ \
-                window.__LingXiaRecvMessage(\"{}\"); \
-            }} else {{ \
-                console.warn('[LingXia] __LingXiaRecvMessage not available'); \
-            }}",
-            escaped_message
-        );
-
-        // Use evaluateJavaScript to send the message to the WebView
-        self.evaluate_javascript(js_code)
-    }
-
-    /// Clear browsing data from the WebView
-    fn clear_browsing_data(&self) -> Result<(), LxAppError>;
-
-    /// Set the user agent string for the WebView
-    fn set_user_agent(&self, ua: String) -> Result<(), LxAppError>;
-
-    /// Enable or disable scroll event listener with optional throttle time
-    /// When enabled, scroll events will be sent to the native layer
-    fn set_scroll_listener_enabled(
-        &self,
-        enabled: bool,
-        throttle_ms: Option<u64>,
-    ) -> Result<(), LxAppError>;
 }
 
 /// Manages a collection of pages for a single lxapp
@@ -158,7 +100,6 @@ impl Pages {
         appid: String,
         path: String,
         page_state: PageState,
-        controller: Arc<dyn AppRuntime>,
         executor: Arc<LxAppExecutor>,
         setup_callback: F,
     ) -> Result<Page, LxAppError>
@@ -179,7 +120,8 @@ impl Pages {
         let (sender, receiver) = std::sync::mpsc::channel();
 
         // Initiate WebView creation asynchronously
-        controller.create_webview(appid.clone(), path.clone(), sender);
+        let webtag = WebTag::new(&appid, &path);
+        create_webview(&webtag, sender);
 
         // Spawn task to wait for WebView creation completion
         let page_clone = page.clone();
@@ -189,6 +131,9 @@ impl Pages {
         LxAppExecutor::spawn_task(move || {
             match receiver.recv() {
                 Ok(Ok(webview_controller)) => {
+                    // Set the page as the WebView delegate
+                    webview_controller.set_delegate(Arc::new(page_clone.clone()));
+
                     // Attach WebView to page
                     page_clone.attach_webview(webview_controller);
 
@@ -493,7 +438,9 @@ impl Page {
     /// * `base_url` - Base URL for resolving relative paths in the HTML
     pub(crate) fn load_html(&self, html_data: String, base_url: String) -> Result<(), LxAppError> {
         if let Some(controller) = self.webview_controller() {
-            controller.load_data(html_data, base_url, None)
+            controller
+                .load_data(html_data, base_url, None)
+                .map_err(|e| LxAppError::WebView(e.to_string()))
         } else {
             Err(LxAppError::WebView("WebView not ready".to_string()))
         }
@@ -522,4 +469,35 @@ impl Page {
             .terminate_page_svc(self.inner.appid.clone(), self.inner.path.clone())?;
         Ok(())
     }
+}
+
+impl WebViewDelegate for Page {
+    /// Called when the page starts loading
+    fn on_page_started(&self, path: String) {}
+
+    /// Called when the page finishes loading
+    fn on_page_finished(&self, path: String) {}
+
+    /// Called when scroll position changes
+    fn on_page_scroll_changed(
+        &self,
+        _path: String,
+        _scroll_x: i32,
+        _scroll_y: i32,
+        _max_scroll_x: i32,
+        _max_scroll_y: i32,
+    ) {
+        // TODO:  do nothing now
+    }
+
+    /// Handles a postMessage from the WebView
+    fn handle_post_message(&self, path: String, msg: String) {}
+
+    /// Handles an HTTP request from the WebView
+    fn handle_request(&self, _req: http::Request<Vec<u8>>) -> Option<http::Response<Vec<u8>>> {
+        None
+    }
+
+    /// Receive log from WebView
+    fn log(&self, path: &str, level: LogLevel, message: &str) {}
 }
