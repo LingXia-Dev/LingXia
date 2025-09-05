@@ -3,7 +3,7 @@ import Foundation
 import UIKit
 import UserNotifications
 import os.log
-import CLingXiaFFI
+import CLingXiaRustAPI
 
 /// iOS Push Manager
 @MainActor

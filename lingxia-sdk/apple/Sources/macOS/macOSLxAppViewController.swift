@@ -4,7 +4,7 @@ import WebKit
 import os.log
 import AppKit
 import SwiftUI
-import CLingXiaFFI
+import CLingXiaRustAPI
 
 private let lxAppViewControllerLog = OSLog(subsystem: "LingXia", category: "LxAppView")
 

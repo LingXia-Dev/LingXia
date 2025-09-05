@@ -1,6 +1,6 @@
 import Foundation
 import os.log
-import CLingXiaFFI
+import CLingXiaSwiftAPI
 
 #if os(iOS)
 import UIKit

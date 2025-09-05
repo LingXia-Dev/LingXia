@@ -4,7 +4,7 @@ import SwiftUI
 import WebKit
 import os.log
 import Combine
-import CLingXiaFFI
+import CLingXiaRustAPI
 @preconcurrency import ObjectiveC
 
 // Log instance outside of @MainActor to avoid isolation issues

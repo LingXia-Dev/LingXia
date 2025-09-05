@@ -4,7 +4,7 @@ import UIKit
 import SwiftUI
 import WebKit
 import os.log
-import CLingXiaFFI
+import CLingXiaRustAPI
 import UserNotifications
 
 /// iOS LxApp manager
