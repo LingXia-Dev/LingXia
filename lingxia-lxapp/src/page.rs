@@ -1,8 +1,10 @@
 use crate::appservice::bridge::IncomingMessage;
 use crate::executor::LxAppExecutor;
-use crate::lxapp::navbar::NavigationBarState;
+use crate::lxapp::{self, navbar::NavigationBarState};
 use crate::{LxAppError, error, info};
-use lingxia_webview::{LogLevel, WebTag, WebViewController, WebViewDelegate, create_webview};
+use lingxia_webview::{
+    LogLevel, WebTag, WebView, WebViewController, WebViewDelegate, create_webview,
+};
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
@@ -100,7 +102,6 @@ impl Pages {
         appid: String,
         path: String,
         page_state: PageState,
-        executor: Arc<LxAppExecutor>,
         setup_callback: F,
     ) -> Result<Page, LxAppError>
     where
@@ -111,7 +112,7 @@ impl Pages {
         }
 
         // Create page without WebView first
-        let page = Page::new(appid.clone(), path.clone(), page_state, executor.clone());
+        let page = Page::new(appid.clone(), path.clone(), page_state);
 
         // Insert the page into the hashmap
         self.pages.insert(path.clone(), page.clone());
@@ -307,10 +308,8 @@ pub(crate) struct PageInner {
     appid: String,
     path: String,
 
-    // Reference to the WebView controller (optional, set when WebView is ready)
-    webview_controller: Arc<Mutex<Option<Arc<dyn WebViewController>>>>,
-    // Reference to the executor
-    executor: Arc<LxAppExecutor>,
+    // Reference to the WebView (optional, set when WebView is ready)
+    webview: Arc<Mutex<Option<Arc<WebView>>>>,
 
     // Time when this page was last active
     last_active_time: Arc<Mutex<Instant>>,
@@ -353,28 +352,22 @@ impl Page {
     }
 
     /// Create a new page in pending state (WebView creation in progress)
-    fn new(
-        appid: String,
-        path: String,
-        page_state: PageState,
-        executor: Arc<LxAppExecutor>,
-    ) -> Self {
+    fn new(appid: String, path: String, page_state: PageState) -> Self {
         let inner = Arc::new(PageInner {
             appid,
             path,
-            executor,
             last_active_time: Arc::new(Mutex::new(Instant::now())),
             state: Arc::new(Mutex::new(page_state)),
-            webview_controller: Arc::new(Mutex::new(None)),
+            webview: Arc::new(Mutex::new(None)),
         });
 
         Self { inner }
     }
 
-    /// Attach WebView controller to this page (called when WebView is ready)
-    fn attach_webview(&self, webview_controller: Arc<dyn WebViewController>) {
-        if let Ok(mut controller_guard) = self.inner.webview_controller.lock() {
-            *controller_guard = Some(webview_controller);
+    /// Attach WebView to this page (called when WebView is ready)
+    fn attach_webview(&self, webview: Arc<WebView>) {
+        if let Ok(mut webview_guard) = self.inner.webview.lock() {
+            *webview_guard = Some(webview);
             // Update load state to Created when WebView is attached
             self.set_load_state(PageLoadState::Created);
         }
@@ -422,13 +415,22 @@ impl Page {
             .map(|mut state| f(&mut state.navbar_state))
     }
 
+    /// Get WebView if available
+    pub(crate) fn webview(&self) -> Option<Arc<WebView>> {
+        if let Ok(webview_guard) = self.inner.webview.lock() {
+            webview_guard.clone()
+        } else {
+            None
+        }
+    }
+
     /// Get the WebView controller for this page (returns None if not ready)
     pub(crate) fn webview_controller(&self) -> Option<Arc<dyn WebViewController>> {
-        self.inner
-            .webview_controller
-            .lock()
-            .ok()
-            .and_then(|guard| guard.clone())
+        if let Some(webview) = self.webview() {
+            Some(webview as Arc<dyn WebViewController>)
+        } else {
+            None
+        }
     }
 
     /// Load HTML content into this page's WebView
@@ -464,7 +466,8 @@ impl Page {
     }
 
     fn terminate_page_service(&self) -> Result<(), LxAppError> {
-        self.inner
+        let lxapp = crate::lxapp::get(self.inner.appid.clone());
+        lxapp
             .executor
             .terminate_page_svc(self.inner.appid.clone(), self.inner.path.clone())?;
         Ok(())
@@ -473,31 +476,117 @@ impl Page {
 
 impl WebViewDelegate for Page {
     /// Called when the page starts loading
-    fn on_page_started(&self, path: String) {}
+    fn on_page_started(&self, path: String) {
+        // Get LxApp and call page service
+        let lxapp = lxapp::get(self.inner.appid.clone());
+        let _ = lxapp.executor.call_page_service(
+            self.inner.appid.clone(),
+            path.clone(),
+            "onLoad".to_string(),
+            None,
+        );
+    }
 
     /// Called when the page finishes loading
-    fn on_page_finished(&self, path: String) {}
+    fn on_page_finished(&self, path: String) {
+        // Get LxApp and call page service
+        let lxapp = lxapp::get(self.inner.appid.clone());
+        let _ = lxapp.executor.call_page_service(
+            self.inner.appid.clone(),
+            path.clone(),
+            "onReady".to_string(),
+            None,
+        );
+
+        // Update page load state
+        self.set_load_state(PageLoadState::Loaded);
+    }
 
     /// Called when scroll position changes
     fn on_page_scroll_changed(
         &self,
         _path: String,
-        _scroll_x: i32,
-        _scroll_y: i32,
-        _max_scroll_x: i32,
-        _max_scroll_y: i32,
+        scroll_x: i32,
+        scroll_y: i32,
+        max_scroll_x: i32,
+        max_scroll_y: i32,
     ) {
-        // TODO:  do nothing now
+        // Safe division to avoid division by zero
+        let scroll_percent_x = if max_scroll_x > 0 {
+            (scroll_x as f64 / max_scroll_x as f64 * 100.0) as i32
+        } else {
+            0
+        };
+
+        let scroll_percent_y = if max_scroll_y > 0 {
+            (scroll_y as f64 / max_scroll_y as f64 * 100.0) as i32
+        } else {
+            0
+        };
+
+        info!(
+            "Scroll: x={}/{} ({}%), y={}/{} ({}%)",
+            scroll_x, max_scroll_x, scroll_percent_x, scroll_y, max_scroll_y, scroll_percent_y
+        );
     }
 
     /// Handles a postMessage from the WebView
-    fn handle_post_message(&self, path: String, msg: String) {}
+    fn handle_post_message(&self, path: String, msg: String) {
+        // Parse the message and forward to executor
+        let incoming = IncomingMessage::from_json_str(&msg).unwrap();
+        let lxapp = lxapp::get(self.inner.appid.clone());
+
+        if let Err(e) =
+            lxapp
+                .executor
+                .handle_view_message(self.inner.appid.clone(), path, Arc::new(incoming))
+        {
+            error!("Failed to handle view message: {}", e).with_appid(self.inner.appid.clone());
+        }
+    }
 
     /// Handles an HTTP request from the WebView
-    fn handle_request(&self, _req: http::Request<Vec<u8>>) -> Option<http::Response<Vec<u8>>> {
-        None
+    fn handle_request(&self, req: http::Request<Vec<u8>>) -> Option<http::Response<Vec<u8>>> {
+        // Get LxApp and delegate to its request handler
+        let lxapp = lxapp::get(self.inner.appid.clone());
+
+        // Use the LxApp's request handling logic
+        let uri = req.uri();
+        let scheme = uri.scheme_str().unwrap_or("");
+
+        // Use pattern matching for different URI schemes
+        match scheme {
+            // HTTPS requests - check domain whitelist and static resource types
+            "https" => lxapp.https_handler(req),
+
+            // Lingxia scheme for internal app assets
+            "lx" => lxapp.lingxia_handler(req),
+
+            // Reject all other schemes with 400 Bad Request
+            _ => Some(
+                http::Response::builder()
+                    .status(400)
+                    .header("Content-Type", "text/plain")
+                    .body(format!("Unsupported scheme: {}", scheme).into_bytes())
+                    .unwrap(),
+            ),
+        }
     }
 
     /// Receive log from WebView
-    fn log(&self, path: &str, level: LogLevel, message: &str) {}
+    fn log(&self, path: &str, level: LogLevel, message: &str) {
+        // Convert lingxia_webview::LogLevel to crate::log::LogLevel
+        let log_level = match level {
+            LogLevel::Error => crate::log::LogLevel::Error,
+            LogLevel::Warn => crate::log::LogLevel::Warn,
+            LogLevel::Info => crate::log::LogLevel::Info,
+            LogLevel::Debug => crate::log::LogLevel::Debug,
+            LogLevel::Verbose => crate::log::LogLevel::Debug, // Map Verbose to Debug
+        };
+
+        crate::log::LogBuilder::new(crate::log::LogTag::WebViewConsole, message)
+            .with_level(log_level)
+            .with_path(path)
+            .with_appid(self.inner.appid.clone());
+    }
 }
