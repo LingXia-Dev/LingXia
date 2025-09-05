@@ -25,7 +25,7 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handlePostMessage
 
     let webtag = WebTag::new(&appid, &path);
     if let Some(delegate) = get_webview_delegate(&webtag) {
-        delegate.handle_post_message(path, message);
+        delegate.handle_post_message(message);
     }
     0
 }
@@ -42,7 +42,7 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onPageStarted(
 
     let webtag = WebTag::new(&appid, &path);
     if let Some(delegate) = get_webview_delegate(&webtag) {
-        delegate.on_page_started(path);
+        delegate.on_page_started();
     }
     0
 }
@@ -59,7 +59,7 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onPageFinished(
 
     let webtag = WebTag::new(&appid, &path);
     if let Some(delegate) = get_webview_delegate(&webtag) {
-        delegate.on_page_finished(path);
+        delegate.on_page_finished();
     }
     0
 }
@@ -268,7 +268,7 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onConsoleMessage(
     };
 
     if let Some(delegate) = get_webview_delegate(&webtag) {
-        delegate.log(&path, log_level, &message);
+        delegate.log(log_level, &message);
     }
     1
 }
@@ -289,7 +289,7 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onScrollChanged(
 
     let webtag = WebTag::new(&appid, &path);
     if let Some(delegate) = get_webview_delegate(&webtag) {
-        delegate.on_page_scroll_changed(path, scroll_x, scroll_y, max_scroll_x, max_scroll_y);
+        delegate.on_page_scroll_changed(scroll_x, scroll_y, max_scroll_x, max_scroll_y);
     }
     0
 }

@@ -39,7 +39,7 @@ define_class!(
 
             // Call delegate's on_page_started
             if let Some(delegate) = get_webview_delegate(&webtag) {
-                delegate.on_page_started(path.clone());
+                delegate.on_page_started();
             }
             log::info!("WebView page started: {} at {}", appid, path);
         }
@@ -51,7 +51,7 @@ define_class!(
 
             // Call delegate's on_page_finished
             if let Some(delegate) = get_webview_delegate(&webtag) {
-                delegate.on_page_finished(path.clone());
+                delegate.on_page_finished();
             }
             log::info!("WebView page finished: {} at {}", appid, path);
         }
@@ -913,7 +913,7 @@ impl LingXiaMessageHandler {
 
         let webtag = WebTag::new(&ivars.appid, &ivars.path);
         if let Some(delegate) = get_webview_delegate(&webtag) {
-            delegate.handle_post_message(ivars.path.clone(), message);
+            delegate.handle_post_message(message);
         }
     }
 
@@ -936,7 +936,7 @@ impl LingXiaMessageHandler {
 
                 let webtag = WebTag::new(&ivars.appid, &ivars.path);
                 if let Some(delegate) = get_webview_delegate(&webtag) {
-                    delegate.log(&ivars.path, log_level, console_message);
+                    delegate.log(log_level, console_message);
                 }
             } else {
                 log::error!("Failed to parse console message fields: {}", message);
@@ -997,7 +997,6 @@ define_class!(
                 let webtag = WebTag::new(&self.ivars().appid, &self.ivars().path);
                 if let Some(delegate) = get_webview_delegate(&webtag) {
                     delegate.on_page_scroll_changed(
-                        self.ivars().path.clone(),
                         scroll_x,
                         scroll_y,
                         _max_scroll_x,

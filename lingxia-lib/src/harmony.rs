@@ -279,7 +279,7 @@ pub fn on_scroll_changed(
 ) -> i32 {
     let webtag = WebTag::new(&appid, &path);
     if let Some(delegate) = get_webview_delegate(&webtag) {
-        delegate.on_page_scroll_changed(path, scroll_x, scroll_y, max_scroll_x, max_scroll_y);
+        delegate.on_page_scroll_changed(scroll_x, scroll_y, max_scroll_x, max_scroll_y);
         return 0;
     }
     -1

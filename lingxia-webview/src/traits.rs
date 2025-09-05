@@ -1,4 +1,4 @@
-use crate::{WebViewError, LogLevel};
+use crate::{LogLevel, WebViewError};
 
 /// Interface for controlling WebView (100% copy from lxapp)
 pub trait WebViewController: Send + Sync {
@@ -64,15 +64,14 @@ pub trait WebViewController: Send + Sync {
 /// WebView delegate trait - focused on WebView events only
 pub trait WebViewDelegate: Send + Sync {
     /// Called when the page starts loading
-    fn on_page_started(&self, path: String);
+    fn on_page_started(&self);
 
     /// Called when the page finishes loading
-    fn on_page_finished(&self, path: String);
+    fn on_page_finished(&self);
 
     /// Called when Scroll changed
     fn on_page_scroll_changed(
         &self,
-        path: String,
         scroll_x: i32,
         scroll_y: i32,
         max_scroll_x: i32,
@@ -80,11 +79,11 @@ pub trait WebViewDelegate: Send + Sync {
     );
 
     /// Handles a postMessage from the page View(WebView)
-    fn handle_post_message(&self, path: String, msg: String);
+    fn handle_post_message(&self, msg: String);
 
     /// Handles an HTTP request from the page
     fn handle_request(&self, req: http::Request<Vec<u8>>) -> Option<http::Response<Vec<u8>>>;
 
     /// Receive log from WebView
-    fn log(&self, path: &str, level: LogLevel, message: &str);
+    fn log(&self, level: LogLevel, message: &str);
 }

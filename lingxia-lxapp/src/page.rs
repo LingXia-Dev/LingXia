@@ -476,24 +476,24 @@ impl Page {
 
 impl WebViewDelegate for Page {
     /// Called when the page starts loading
-    fn on_page_started(&self, path: String) {
+    fn on_page_started(&self) {
         // Get LxApp and call page service
         let lxapp = lxapp::get(self.inner.appid.clone());
         let _ = lxapp.executor.call_page_service(
             self.inner.appid.clone(),
-            path.clone(),
+            self.inner.path.clone(),
             "onLoad".to_string(),
             None,
         );
     }
 
     /// Called when the page finishes loading
-    fn on_page_finished(&self, path: String) {
+    fn on_page_finished(&self) {
         // Get LxApp and call page service
         let lxapp = lxapp::get(self.inner.appid.clone());
         let _ = lxapp.executor.call_page_service(
             self.inner.appid.clone(),
-            path.clone(),
+            self.inner.path.clone(),
             "onReady".to_string(),
             None,
         );
@@ -505,7 +505,6 @@ impl WebViewDelegate for Page {
     /// Called when scroll position changes
     fn on_page_scroll_changed(
         &self,
-        _path: String,
         scroll_x: i32,
         scroll_y: i32,
         max_scroll_x: i32,
@@ -531,16 +530,16 @@ impl WebViewDelegate for Page {
     }
 
     /// Handles a postMessage from the WebView
-    fn handle_post_message(&self, path: String, msg: String) {
+    fn handle_post_message(&self, msg: String) {
         // Parse the message and forward to executor
         let incoming = IncomingMessage::from_json_str(&msg).unwrap();
         let lxapp = lxapp::get(self.inner.appid.clone());
 
-        if let Err(e) =
-            lxapp
-                .executor
-                .handle_view_message(self.inner.appid.clone(), path, Arc::new(incoming))
-        {
+        if let Err(e) = lxapp.executor.handle_view_message(
+            self.inner.appid.clone(),
+            self.inner.path.clone(),
+            Arc::new(incoming),
+        ) {
             error!("Failed to handle view message: {}", e).with_appid(self.inner.appid.clone());
         }
     }
@@ -574,7 +573,7 @@ impl WebViewDelegate for Page {
     }
 
     /// Receive log from WebView
-    fn log(&self, path: &str, level: LogLevel, message: &str) {
+    fn log(&self, level: LogLevel, message: &str) {
         // Convert lingxia_webview::LogLevel to crate::log::LogLevel
         let log_level = match level {
             LogLevel::Error => crate::log::LogLevel::Error,
@@ -586,7 +585,7 @@ impl WebViewDelegate for Page {
 
         crate::log::LogBuilder::new(crate::log::LogTag::WebViewConsole, message)
             .with_level(log_level)
-            .with_path(path)
+            .with_path(&self.inner.path)
             .with_appid(self.inner.appid.clone());
     }
 }

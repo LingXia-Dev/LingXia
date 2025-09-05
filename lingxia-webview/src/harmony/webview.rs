@@ -687,7 +687,7 @@ extern "C" fn on_page_begin_callback(web_tag: *const c_char, user_data: *mut c_v
 
         let (_appid, path) = webtag.extract_parts();
         if let Some(delegate) = get_webview_delegate(&webtag) {
-            delegate.on_page_started(path);
+            delegate.on_page_started();
         }
     }
 }
@@ -698,9 +698,8 @@ extern "C" fn on_page_end_callback(web_tag: *const c_char, _user_data: *mut c_vo
 
         // Extract app_id and path from webtag
         let webtag = WebTag::from(webtag);
-        let (_appid, path) = webtag.extract_parts();
         if let Some(delegate) = get_webview_delegate(&webtag) {
-            delegate.on_page_finished(path);
+            delegate.on_page_finished();
         }
     }
 }
@@ -922,7 +921,7 @@ extern "C" fn on_web_message_received(
         // Forward to delegate
         let webtag = WebTag::new(&appid, &path);
         if let Some(delegate) = get_webview_delegate(&webtag) {
-            delegate.handle_post_message(path.to_string(), msg_str.to_string());
+            delegate.handle_post_message(msg_str.to_string());
         }
     }
 }
@@ -984,7 +983,7 @@ extern "C" fn on_console_message_received(
                 // Forward to delegate for logging
                 let webtag = WebTag::new(&appid, &path);
                 if let Some(delegate) = get_webview_delegate(&webtag) {
-                    delegate.log(&path, log_level, console_message);
+                    delegate.log(log_level, console_message);
                 }
             }
         }
