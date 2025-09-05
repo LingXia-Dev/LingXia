@@ -1,5 +1,5 @@
 use dashmap::DashMap;
-use lingxia_platform::{Platform, AppRuntime};
+use lingxia_platform::{AppRuntime, Platform};
 use rong::FromJSObj;
 use std::collections::hash_map::DefaultHasher;
 use std::fs;
@@ -607,6 +607,9 @@ pub fn init(runtime: Platform) -> Option<String> {
         error!("RUST PANIC: {} at {}", message, location);
     }));
 
+    // Initialize WebView manager
+    lingxia_webview::init_webview_manager();
+
     let runtime_arc = Arc::new(runtime.clone());
 
     // Prepare the directory structure
@@ -622,9 +625,11 @@ pub fn init(runtime: Platform) -> Option<String> {
             let max_apps = config.max_allowed_lxapps;
 
             if !install::is_installed(runtime_arc.clone(), &home_lxapp_appid) {
-                if let Err(e) =
-                    install::install_home_lxapp(runtime_arc.clone(), &home_lxapp_appid, home_lxapp_version)
-                {
+                if let Err(e) = install::install_home_lxapp(
+                    runtime_arc.clone(),
+                    &home_lxapp_appid,
+                    home_lxapp_version,
+                ) {
                     error!("Failed to install home LxApp: {}", e);
                     return None;
                 }
@@ -633,14 +638,19 @@ pub fn init(runtime: Platform) -> Option<String> {
             let executor = crate::executor::LxAppExecutor::init(max_apps);
 
             // Create the home LxApp instance
-            let mut home_lxapp =
-                LxApp::new_as_home(home_lxapp_appid.clone(), runtime_arc.clone(), executor.clone());
+            let mut home_lxapp = LxApp::new_as_home(
+                home_lxapp_appid.clone(),
+                runtime_arc.clone(),
+                executor.clone(),
+            );
 
             // Check if home mini app needs updating after loading its configuration
             if home_lxapp.is_debug_enabled() || home_lxapp.should_update(home_lxapp_version) {
-                if let Err(e) =
-                    install::install_home_lxapp(runtime_arc.clone(), &home_lxapp_appid, home_lxapp_version)
-                {
+                if let Err(e) = install::install_home_lxapp(
+                    runtime_arc.clone(),
+                    &home_lxapp_appid,
+                    home_lxapp_version,
+                ) {
                     error!("Failed to install home LxApp: {}", e);
                     return None;
                 }

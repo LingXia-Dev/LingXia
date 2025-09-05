@@ -2,7 +2,6 @@ use android_logger::Config;
 use jni::objects::{JClass, JObject, JString};
 use jni::sys::{jboolean, jint};
 use jni::{JNIEnv, JavaVM};
-use lingxia_webview::init_webview_manager;
 use log::{error, info};
 use lxapp::{LxAppDelegate, log::LogLevel};
 
@@ -100,9 +99,6 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppInited(
             return JObject::null().into_raw();
         }
     };
-
-    // Initialize WebView manager
-    init_webview_manager();
 
     let home_app_id = lxapp::init(app);
 
