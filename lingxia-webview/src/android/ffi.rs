@@ -100,21 +100,19 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handleRequest<'a>
                             let key_jstring = JString::try_from(key_obj);
                             let value_jstring = JString::try_from(value_obj);
 
-                            if let (Ok(key_jstring), Ok(value_jstring)) =
-                                (key_jstring, value_jstring)
+                            let (key_jstring, value_jstring) =
+                                (key_jstring.unwrap(), value_jstring.unwrap());
+                            if let (Ok(key), Ok(value)) =
+                                (env.get_string(&key_jstring), env.get_string(&value_jstring))
                             {
-                                if let (Ok(key), Ok(value)) =
-                                    (env.get_string(&key_jstring), env.get_string(&value_jstring))
-                                {
-                                    let key_str: String = key.into();
-                                    let value_str: String = value.into();
+                                let key_str: String = key.into();
+                                let value_str: String = value.into();
 
-                                    if let (Ok(name), Ok(val)) = (
-                                        HeaderName::from_bytes(key_str.as_bytes()),
-                                        HeaderValue::from_str(&value_str),
-                                    ) {
-                                        http_headers.insert(name, val);
-                                    }
+                                if let (Ok(name), Ok(val)) = (
+                                    HeaderName::from_bytes(key_str.as_bytes()),
+                                    HeaderValue::from_str(&value_str),
+                                ) {
+                                    http_headers.insert(name, val);
                                 }
                             }
                         }
@@ -129,18 +127,6 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handleRequest<'a>
 
     // Parse HTTP method with fallback to GET
     let http_method = method_str.parse::<Method>().unwrap_or(Method::GET);
-
-    // Extract path from URL for webtag first
-    let path = if let Ok(uri) = url_str.parse::<http::Uri>() {
-        uri.path()
-            .trim_start_matches('/')
-            .split('/')
-            .nth(1)
-            .unwrap_or("")
-            .to_string()
-    } else {
-        "".to_string()
-    };
 
     // Build request with proper error handling
     let request = match Request::builder()

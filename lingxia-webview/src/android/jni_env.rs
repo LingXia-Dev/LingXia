@@ -64,7 +64,7 @@ pub fn get_env() -> Result<JNIEnv<'static>, Box<dyn std::error::Error>> {
     }
 }
 /// Get cached LingXiaWebView class reference
-pub fn get_lingxia_webview_class() -> Option<&'static GlobalRef> {
+pub(crate) fn get_lingxia_webview_class() -> Option<&'static GlobalRef> {
     LINGXIA_WEBVIEW_CLASS.get()
 }
 

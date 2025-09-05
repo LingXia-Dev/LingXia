@@ -2,4 +2,4 @@ pub(crate) mod schemehandler;
 pub mod tsfn;
 mod webview;
 
-pub use webview::WebViewInner;
+pub(crate) use webview::WebViewInner;

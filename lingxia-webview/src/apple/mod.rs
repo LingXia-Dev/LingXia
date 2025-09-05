@@ -1,4 +1,4 @@
 mod schemehandler;
 mod webview;
 
-pub use webview::WebViewInner;
+pub(crate) use webview::WebViewInner;

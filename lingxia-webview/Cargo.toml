@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 log = "0.4.27"
-thiserror = "2.0.12"
+thiserror =  { workspace = true }
 
 # Use workspace dependencies
 serde_json = { workspace = true }

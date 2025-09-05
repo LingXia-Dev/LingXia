@@ -37,10 +37,7 @@ pub use webview::{
 };
 
 #[cfg(target_os = "android")]
-pub use android::{WebViewInner, get_env, initialize_jni};
-
-#[cfg(any(target_os = "ios", target_os = "macos"))]
-pub use apple::WebViewInner;
+pub use android::{get_env, initialize_jni};
 
 #[cfg(all(target_os = "linux", target_env = "ohos"))]
-pub use harmony::{WebViewInner, schemehandler::register_custom_schemes, tsfn};
+pub use harmony::{schemehandler::register_custom_schemes, tsfn};

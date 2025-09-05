@@ -2,7 +2,15 @@ use std::collections::HashMap;
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
-use crate::WebViewInner;
+#[cfg(target_os = "android")]
+use crate::android::WebViewInner;
+
+#[cfg(any(target_os = "ios", target_os = "macos"))]
+use crate::apple::WebViewInner;
+
+#[cfg(all(target_os = "linux", target_env = "ohos"))]
+use crate::harmony::WebViewInner;
+
 use crate::{WebViewController, WebViewDelegate, WebViewError};
 
 /// WebView type that includes inner implementation and delegate
