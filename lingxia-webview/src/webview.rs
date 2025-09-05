@@ -70,6 +70,12 @@ impl WebView {
     pub fn get_swift_webview_ptr(&self) -> usize {
         self.inner.get_swift_webview_ptr()
     }
+
+    /// Get Java WebView reference (Android only)
+    #[cfg(target_os = "android")]
+    pub fn get_java_webview(&self) -> &jni::objects::GlobalRef {
+        self.inner.get_java_webview()
+    }
 }
 
 impl WebViewController for WebView {
@@ -214,7 +220,7 @@ pub fn set_webview_delegate(webtag: &WebTag, delegate: Arc<dyn WebViewDelegate>)
 }
 
 /// Get delegate from WebView by webtag (for internal use by platform implementations)
-pub(crate) fn get_webview_delegate(webtag: &WebTag) -> Option<Arc<dyn WebViewDelegate>> {
+pub fn get_webview_delegate(webtag: &WebTag) -> Option<Arc<dyn WebViewDelegate>> {
     if let Some(webview) = find_webview(webtag) {
         webview.get_delegate()
     } else {
