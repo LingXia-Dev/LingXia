@@ -37,19 +37,17 @@ const USER_CACHE_DIR: &str = "usercache";
 const DEFAULT_USER_ID: &str = "default";
 const DEFAULT_VERSION: &str = "0.0.1";
 
+const DEFAULT_LXAPP_NAVIGATION_STACKS: usize = 5;
+
 /// Manages a collection of lxapp applications
 pub struct LxApps {
-    /// Collection of mini apps, keyed by app ID
+    /// Collection of lxapps, keyed by app ID
     /// Uses DashMap for thread-safe concurrent access
     lxapps: DashMap<String, Arc<LxApp>>,
 
     /// Reference to the platform-specific app runtime
     /// Provides file system access, UI callbacks, etc.
     runtime: Arc<Platform>,
-
-    /// Maximum number of apps allowed in memory simultaneously
-    /// When exceeded, least recently used apps are destroyed
-    max_apps: usize,
 
     /// Reference to the executor
     /// Handles async task execution for lxapp apps
@@ -61,7 +59,7 @@ pub struct LxApps {
 }
 
 impl LxApps {
-    fn new(runtime: Platform, executor: Arc<LxAppExecutor>, max_apps: usize) -> Self {
+    fn new(runtime: Platform, executor: Arc<LxAppExecutor>) -> Self {
         let runtime = Arc::new(runtime);
 
         // Initialize with default user ID
@@ -70,7 +68,6 @@ impl LxApps {
         Self {
             lxapps: DashMap::new(),
             runtime,
-            max_apps,
             executor,
             user_id,
         }
@@ -111,12 +108,6 @@ impl LxApps {
             return app_arc.clone();
         }
 
-        // Check if we've reached the maximum number of apps
-        if self.lxapps.len() >= self.max_apps {
-            // Find and remove the least active app to make room
-            self.destroy_least_active_lxapp();
-        }
-
         // Create new LxApp
         let new_lxapp = Arc::new(LxApp::new(
             appid.clone(),
@@ -129,42 +120,7 @@ impl LxApps {
         new_lxapp
     }
 
-    /// Destroys the least recently active mini app to free up memory
-    fn destroy_least_active_lxapp(&self) {
-        if self.lxapps.is_empty() {
-            return;
-        }
-
-        // Find the least active app that isn't the home app
-        let least_active = self
-            .lxapps
-            .iter()
-            .filter_map(|entry| {
-                let (appid, app_arc) = entry.pair();
-                let state = app_arc.state.lock().unwrap();
-                // Skip home app from destruction
-                if app_arc.home_lxapp {
-                    None
-                } else {
-                    Some((appid.clone(), state.last_active_time))
-                }
-            })
-            .min_by(|(_, time1), (_, time2)| time1.cmp(time2));
-
-        // If we found a non-home app, remove it
-        if let Some((appid, _)) = least_active {
-            info!("Destroying least active mini app").with_appid(appid.clone());
-
-            // Clean up app service before removing the app
-            if let Err(e) = self.executor.terminate_app_svc(appid.clone()) {
-                error!("Failed to terminate app service: {}", e).with_appid(appid.clone());
-            }
-
-            self.lxapps.remove(&appid);
-        }
-    }
-
-    /// Uninstall a mini app by removing its files and version record
+    /// Uninstall a lxapp by removing its files and version record
     pub fn uninstall_lxapp(&self, appid: &str) -> Result<(), LxAppError> {
         // Log operation
         info!("Uninstalling lxapp").with_appid(appid);
@@ -224,7 +180,7 @@ impl LxAppState {
     }
 }
 
-/// Represents a single mini application
+/// Represents a single lxapplication
 pub struct LxApp {
     // Immutable data - initialized once and never changed
     pub appid: String,
@@ -276,7 +232,7 @@ impl LxApp {
         app
     }
 
-    /// Create a new LxApp instance marked as the home mini app
+    /// Create a new LxApp instance marked as the home lxapp
     fn new_as_home(appid: String, runtime: Arc<Platform>, executor: Arc<LxAppExecutor>) -> Self {
         let mut app = Self::_new(appid, runtime, executor);
 
@@ -297,7 +253,7 @@ impl LxApp {
 
         // Calculate the directory name based on appid, user and whether this is a home app
         let dir_name = if self.home_lxapp {
-            // Home mini app uses appid directly as directory name
+            // Home lxapp uses appid directly as directory name
             self.appid.clone()
         } else {
             let user_id = LXAPPS_MANAGER.get().unwrap().get_user_id();
@@ -500,16 +456,16 @@ impl LxApp {
         Ok(())
     }
 
-    /// Uninstalls the mini app by removing its version record and directories
+    /// Uninstalls the lxapp by removing its version record and directories
     ///
     /// # Returns
-    /// * `Ok(())` - If the mini app was uninstalled successfully
+    /// * `Ok(())` - If the lxapp was uninstalled successfully
     /// * `Err(LxAppError)` - If there was an error during uninstallation
     pub fn uninstall(&self) -> Result<(), LxAppError> {
         // Don't allow uninstalling the home app
         if self.home_lxapp {
             return Err(LxAppError::UnsupportedOperation(
-                "Cannot uninstall the home mini app".to_string(),
+                "Cannot uninstall the home lxapp".to_string(),
             ));
         }
 
@@ -562,7 +518,7 @@ fn generate_app_hash(app_id: &str, user_id: &str) -> String {
     format!("{:x}", result)
 }
 
-/// Prepares the base directory structure for mini apps
+/// Prepares the base directory structure for lxapps
 fn prepare_directory_structure(runtime: Arc<Platform>) -> Result<(), LxAppError> {
     let data_dir = runtime.app_data_dir();
     let cache_dir = runtime.app_cache_dir();
@@ -621,7 +577,6 @@ pub fn init(runtime: Platform) -> Option<String> {
         Ok(config) => {
             let home_lxapp_appid = config.home_lxapp_appid.clone();
             let home_lxapp_version = &config.home_lxapp_version;
-            let max_apps = config.max_allowed_lxapps;
 
             if !install::is_installed(runtime_arc.clone(), &home_lxapp_appid) {
                 if let Err(e) = install::install_home_lxapp(
@@ -634,7 +589,7 @@ pub fn init(runtime: Platform) -> Option<String> {
                 }
             }
 
-            let executor = crate::executor::LxAppExecutor::init(max_apps);
+            let executor = crate::executor::LxAppExecutor::init(DEFAULT_LXAPP_NAVIGATION_STACKS);
 
             // Create the home LxApp instance
             let mut home_lxapp = LxApp::new_as_home(
@@ -643,7 +598,7 @@ pub fn init(runtime: Platform) -> Option<String> {
                 executor.clone(),
             );
 
-            // Check if home mini app needs updating after loading its configuration
+            // Check if home lxapp needs updating after loading its configuration
             if home_lxapp.is_debug_enabled() || home_lxapp.should_update(home_lxapp_version) {
                 if let Err(e) = install::install_home_lxapp(
                     runtime_arc.clone(),
@@ -659,7 +614,7 @@ pub fn init(runtime: Platform) -> Option<String> {
             }
 
             // Create LxApps manager
-            let lxapps_manager = Arc::new(LxApps::new(runtime, executor, max_apps));
+            let lxapps_manager = Arc::new(LxApps::new(runtime, executor));
 
             // Add home lxapp to the manager
             let home_lxapp_arc = Arc::new(home_lxapp);
@@ -703,7 +658,7 @@ pub fn init(runtime: Platform) -> Option<String> {
 /// If the LxApp with the given appid exists, it returns a reference to it.
 ///
 /// # Arguments
-/// * `appid` - The ID of the mini app to get or create
+/// * `appid` - The ID of the lxapp to get or create
 ///
 /// # Returns
 /// A thread-safe reference to the LxApp

@@ -2,7 +2,7 @@ use std::io::Read;
 use std::sync::Arc;
 
 use crate::error::LxAppError;
-use lingxia_platform::{Platform, AppRuntime};
+use lingxia_platform::{AppRuntime, Platform};
 use serde::{Deserialize, Serialize};
 
 /// Configuration loaded from app.json
@@ -27,21 +27,9 @@ pub struct AppConfig {
 
     #[serde(rename = "homeLxAppVersion")]
     pub home_lxapp_version: String, // Version of the home lx application
-
-    // Maximum number of lx applications allowed to run concurrently
-    #[serde(
-        rename = "maxAllowedLxApps",
-        default = "AppConfig::default_max_allowed_lxapps"
-    )]
-    pub max_allowed_lxapps: usize,
 }
 
 impl AppConfig {
-    /// Default value for max_allowed_lxapps
-    fn default_max_allowed_lxapps() -> usize {
-        3
-    }
-
     /// Read, parse and validate app.json from the assets directory.
     pub(crate) fn load(controller: Arc<Platform>) -> Result<Self, LxAppError> {
         // Read app.json as a string
@@ -105,13 +93,6 @@ impl AppConfig {
         if config.home_lxapp_version.is_empty() {
             return Err(LxAppError::InvalidParameter(
                 "homeLxAppVersion is mandatory and cannot be empty".to_string(),
-            ));
-        }
-
-        // Validate maxAllowedLxApps range
-        if config.max_allowed_lxapps < 1 || config.max_allowed_lxapps > 5 {
-            return Err(LxAppError::InvalidParameter(
-                "maxAllowedLxApps must be between 1 and 5".to_string(),
             ));
         }
 
