@@ -1,12 +1,12 @@
 use crate::error::LxAppError;
 use crate::log::{LogBuilder, LogLevel, LogTag};
+use crate::lx;
 use crate::lxapp::LxApp;
-use crate::module;
 use crate::{error, info};
 
-use crate::lx;
 use rong::{JSContext, JSFunc, JSResult, JSRuntime, RongJSError, Source};
 use rong_modules::{console, fs, http, storage};
+
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::Path;
@@ -179,20 +179,20 @@ pub(crate) async fn lxapp_service_handler(
             let _ = rong_modules::init(&ctx);
             let _ = lx::init(&ctx);
 
-            // Execute a closure with access to the list of registered modules.
-            module::with_registered_modules(|user_modules| {
+            // Execute a closure with access to the list of registered extensions.
+            crate::lx::extension::with_registered_extensions(|user_extensions| {
                 info!(
-                    "[Worker {}] Initializing {} user-registered modules",
+                    "[Worker {}] Initializing {} user-registered extensions",
                     worker_id,
-                    user_modules.len()
+                    user_extensions.len()
                 )
                 .with_appid(lxapp.appid.clone());
 
-                // Iterate through the list and initialize each module.
-                for (index, user_module) in user_modules.iter().enumerate() {
-                    if let Err(e) = user_module.init(&ctx) {
+                // Iterate through the list and initialize each extension.
+                for (index, user_extension) in user_extensions.iter().enumerate() {
+                    if let Err(e) = user_extension.init(&ctx) {
                         error!(
-                            "[Worker {}] Failed to initialize user module #{}: {}",
+                            "[Worker {}] Failed to initialize user extension #{}: {}",
                             worker_id, index, e
                         )
                         .with_appid(lxapp.appid.clone());

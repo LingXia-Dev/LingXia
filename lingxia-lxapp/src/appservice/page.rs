@@ -1,9 +1,9 @@
 use super::bridge::{
     Bridge, DispatchMessage, DispatchMessageType, MessageHandler, MessageTransport, ServiceType,
 };
-use super::lx;
 use crate::error;
 use crate::error::LxAppError;
+use crate::lx::fastapi::get_fast_api;
 use crate::lxapp::LxApp;
 use crate::page::Page;
 use rong::{
@@ -40,9 +40,13 @@ struct PageSvcState {
 impl MessageTransport for PageSvc {
     fn post_message_to_view(&self, message_json: String) -> Result<(), LxAppError> {
         if let Some(controller) = self.page.webview_controller() {
-            controller.post_message(message_json).map_err(|e| LxAppError::WebView(e.to_string()))
+            controller
+                .post_message(message_json)
+                .map_err(|e| LxAppError::WebView(e.to_string()))
         } else {
-            Err(LxAppError::WebView("WebView not ready for message posting".to_string()))
+            Err(LxAppError::WebView(
+                "WebView not ready for message posting".to_string(),
+            ))
         }
     }
 }
@@ -51,7 +55,7 @@ impl MessageHandler for PageSvc {
     fn get_service_type(&self, service_name: &str) -> ServiceType {
         // Check if it's a FastAPI call with lx. prefix
         if let Some(api_name) = service_name.strip_prefix("lx.") {
-            if let Some(handler) = lx::get_fast_api(api_name) {
+            if let Some(handler) = get_fast_api(api_name) {
                 return ServiceType::FastAPI(handler);
             }
         }

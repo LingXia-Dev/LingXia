@@ -1,4 +1,4 @@
-//! Module system for extending LxApp JavaScript contexts.
+//! Extension system for extending LxApp JavaScript contexts.
 //!
 //! This module provides a way for external crates to register custom functionality
 //! that will be automatically available in the JavaScript environment of an LxApp.
@@ -6,15 +6,15 @@
 //! ## Example
 //!
 //! ```rust
-//! use lingxia_lxapp::module::{LxAppModule, register_module};
+//! use lingxia_lxapp::lx::extension::{LxLogicExtension, register_logic_extension};
 //! use rong::{JSContext, JSFunc, JSResult};
 //!
-//! struct MyFeatureModule;
+//! struct MyFeatureExtension;
 //!
-//! impl LxAppModule for MyFeatureModule {
+//! impl LxLogicExtension for MyFeatureExtension {
 //!     fn init(&self, ctx: &JSContext) -> JSResult<()> {
 //!         fn greet_from_rust(_ctx: JSContext) -> JSResult<String> {
-//!             Ok("Hello from Rust Module!".to_string())
+//!             Ok("Hello from Rust Extension!".to_string())
 //!         }
 //!
 //!         let js_greet_func = JSFunc::new(greet_from_rust);
@@ -25,9 +25,9 @@
 //!     }
 //! }
 //!
-//! //  Register the module during crate initialization
+//! //  Register the extension during crate initialization
 //! fn init_my_feature() {
-//!     register_module(Box::new(MyFeatureModule));
+//!     register_logic_extension(Box::new(MyFeatureExtension));
 //! }
 //! ```
 //!
@@ -35,15 +35,15 @@
 use rong::{JSContext, JSResult};
 use std::sync::{Mutex, OnceLock};
 
-/// A trait for modules that extend LxApp's JavaScript capabilities.
+/// A trait for extensions that extend LxApp's JavaScript capabilities.
 ///
 /// Implementors define how their functionality is integrated into the JS environment
 /// by interacting with the provided [`JSContext`] in the `init` method.
-pub trait LxAppModule: Send + Sync {
-    /// Initialize the module within the given JavaScript context.
+pub trait LxLogicExtension: Send + Sync {
+    /// Initialize the extension within the given JavaScript context.
     ///
     /// This method is called once per `LxApp` JS context creation, allowing the
-    /// module to register functions, define classes, or perform any necessary setup
+    /// extension to register functions, define classes, or perform any necessary setup
     /// within that specific context.
     ///
     /// # Arguments
@@ -55,17 +55,17 @@ pub trait LxAppModule: Send + Sync {
     /// * `Ok(())` if initialization was successful.
     /// * `Err(JSResult)` if an error occurred during initialization. This will
     ///   typically prevent the LxApp context from being fully usable if a critical
-    ///   module fails.
+    ///   extension fails.
     fn init(&self, ctx: &JSContext) -> JSResult<()>;
 }
 
-// Type alias for convenience when handling boxed modules.
-type BoxedModule = Box<dyn LxAppModule>;
+// Type alias for convenience when handling boxed extensions.
+type BoxedExtension = Box<dyn LxLogicExtension>;
 
-// Global registry for LxApp modules. Initialized only once.
-static MODULES: OnceLock<Mutex<Vec<BoxedModule>>> = OnceLock::new();
+// Global registry for LxApp extensions. Initialized only once.
+static EXTENSIONS: OnceLock<Mutex<Vec<BoxedExtension>>> = OnceLock::new();
 
-/// Registers a module to be initialized for LxApp JavaScript contexts.
+/// Registers an extension to be initialized for LxApp JavaScript contexts.
 ///
 /// This function should be called during the initialization phase of crates
 /// that wish to extend LxApp functionality. The order of registration determines
@@ -73,55 +73,55 @@ static MODULES: OnceLock<Mutex<Vec<BoxedModule>>> = OnceLock::new();
 ///
 /// # Arguments
 ///
-/// * `module`: A boxed instance of a type implementing [`LxAppModule`].
+/// * `extension`: A boxed instance of a type implementing [`LxLogicExtension`].
 ///
 /// # Panics
 ///
-/// Panics if called after the module registry has been read for the first time
+/// Panics if called after the extension registry has been read for the first time
 /// (i.e., after LxApp context creation has started). This is to prevent
 /// modifications during runtime which could lead to inconsistencies.
-pub fn register_module(module: BoxedModule) {
+pub fn register_logic_extension(extension: BoxedExtension) {
     // Get or initialize the Mutex<Vec>. `OnceLock::get_or_init` ensures
     // this happens only once and is thread-safe.
-    let modules_mutex = MODULES.get_or_init(|| Mutex::new(Vec::new()));
+    let extensions_mutex = EXTENSIONS.get_or_init(|| Mutex::new(Vec::new()));
 
     // Acquire the lock to access the Vec. Panics if the mutex is poisoned,
     // which typically indicates a panic occurred in another thread while
     // holding the lock.
-    let mut modules = modules_mutex
+    let mut extensions = extensions_mutex
         .lock()
-        .expect("Module registry mutex is poisoned");
+        .expect("Extension registry mutex is poisoned");
 
-    // Add the new module to the list. This is where the actual registration happens.
-    modules.push(module);
+    // Add the new extension to the list. This is where the actual registration happens.
+    extensions.push(extension);
 }
 
-/// Executes a closure with access to the list of registered modules.
+/// Executes a closure with access to the list of registered extensions.
 ///
-/// This function acquires a lock on the global module registry and passes
-/// a reference to the `Vec<BoxedModule>` to the provided closure `f`.
-/// This is the safe way to iterate over or inspect the registered modules
+/// This function acquires a lock on the global extension registry and passes
+/// a reference to the `Vec<BoxedExtension>` to the provided closure `f`.
+/// This is the safe way to iterate over or inspect the registered extensions
 /// without needing to clone the list or the trait objects.
 ///
-/// If no modules have been registered, the closure `f` is not called and
+/// If no extensions have been registered, the closure `f` is not called and
 /// `None` is returned.
 ///
 /// # Arguments
 ///
-/// * `f`: A closure that takes `&Vec<BoxedModule>` and returns a value of type `R`.
+/// * `f`: A closure that takes `&Vec<BoxedExtension>` and returns a value of type `R`.
 ///
 /// # Returns
 ///
-/// * `Some(R)` if modules were registered and the closure was executed.
-/// * `None` if no modules were registered.
-pub(crate) fn with_registered_modules<F, R>(f: F) -> Option<R>
+/// * `Some(R)` if extensions were registered and the closure was executed.
+/// * `None` if no extensions were registered.
+pub(crate) fn with_registered_extensions<F, R>(f: F) -> Option<R>
 where
-    F: FnOnce(&Vec<BoxedModule>) -> R,
+    F: FnOnce(&Vec<BoxedExtension>) -> R,
 {
-    MODULES.get().map(|modules_mutex| {
-        let modules = modules_mutex
+    EXTENSIONS.get().map(|extensions_mutex| {
+        let extensions = extensions_mutex
             .lock()
-            .expect("Module registry mutex is poisoned");
-        f(&modules)
+            .expect("Extension registry mutex is poisoned");
+        f(&extensions)
     })
 }
