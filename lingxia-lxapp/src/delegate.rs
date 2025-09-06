@@ -7,10 +7,10 @@ use crate::{LxApp, error, info};
 use lingxia_platform::AppRuntime;
 
 pub trait LxAppDelegate {
-    /// Called when mini app is opened
+    /// Called when lxapp is opened
     fn on_lxapp_opened(self: Arc<Self>, path: String);
 
-    /// Called when mini app is closed
+    /// Called when lxapp is closed
     fn on_lxapp_closed(self: &Arc<Self>);
 
     /// Called when the page showed in the view
@@ -29,113 +29,119 @@ impl LxAppDelegate for LxApp {
             .with_appid(self.appid.clone())
             .with_path(path.clone());
 
-        if was_already_opened {
-            return;
-        }
-
-        // Use the Arc<Self> directly instead of looking it up in the global manager
-        if let Err(e) = self.executor.create_app_svc(self.clone()) {
-            error!("Failed to trigger app service: {}", e).with_appid(self.appid.clone());
-        }
-        if let Err(e) =
-            self.executor
-                .call_app_service(self.appid.clone(), "onLaunch".to_string(), None)
-        {
-            error!("Failed to trigger onLaunch service: {}", e).with_appid(self.appid.clone());
-        }
-
-        // Create the page for the given path if it doesn't exist
-        // This path is typically the initial_route.
-        let mut state = self.state.lock().unwrap();
-        let self_for_setup = self.clone();
-
-        if state.pages.get_page(&path).is_none() {
-            // Build PageState from JSON config
-            let page_state = Page::build_page_state(&*self, &path);
-
-            if let Err(e) = state.pages.create_page(
-                self.appid.clone(),
-                path.clone(),
-                page_state,
-                move |page, path| {
-                    self_for_setup.setup_page(page, path);
-
-                    // Create page service
-                    if let Err(e) = self_for_setup
-                        .executor
-                        .create_page_svc(self_for_setup.appid.clone(), path.to_string())
-                    {
-                        error!("Failed to request page service creation: {}", e)
-                            .with_appid(self_for_setup.appid.clone())
-                            .with_path(path.to_string());
-                    }
-                },
-            ) {
-                error!("Failed to create page for path: {}", e)
-                    .with_appid(self.appid.clone())
-                    .with_path(path.clone());
+        if !was_already_opened {
+            // First-time launch logic
+            if let Err(e) = self.executor.create_app_svc(self.clone()) {
+                error!("Failed to trigger app service: {}", e).with_appid(self.appid.clone());
             }
-        }
-        state.opened = true;
+            if let Err(e) =
+                self.executor
+                    .call_app_service(self.appid.clone(), "onLaunch".to_string(), None)
+            {
+                error!("Failed to trigger onLaunch service: {}", e).with_appid(self.appid.clone());
+            }
 
-        // Precreate tab pages in background (only for first time opening)
-        if self.config.has_tab_bar() {
-            let self_clone = self.clone();
+            // Create the page for the given path if it doesn't exist
+            // This path is typically the initial_route.
+            let mut state = self.state.lock().unwrap();
+            let self_for_setup = self.clone();
 
-            LxAppExecutor::spawn_task(move || {
-                info!("Starting tab pages precreation").with_appid(self_clone.appid.clone());
+            if state.pages.get_page(&path).is_none() {
+                // Build PageState from JSON config
+                let page_state = Page::build_page_state(&*self, &path);
 
-                let tab_pages = self_clone.config.get_tab_pages();
-                for tab_path in tab_pages {
-                    if path == tab_path {
-                        continue;
-                    }
+                if let Err(e) = state.pages.create_page(
+                    self.appid.clone(),
+                    path.clone(),
+                    page_state,
+                    move |page, path| {
+                        self_for_setup.setup_page(page, path);
 
-                    // Check if page already exists
-                    {
-                        let state = self_clone.state.lock().unwrap();
-                        if state.pages.get_page(&tab_path).is_some() {
-                            info!("Tab page already exists, skipping: {}", tab_path)
-                                .with_appid(self_clone.appid.clone())
-                                .with_path(tab_path.clone());
+                        // Create page service
+                        if let Err(e) = self_for_setup
+                            .executor
+                            .create_page_svc(self_for_setup.appid.clone(), path.to_string())
+                        {
+                            error!("Failed to request page service creation: {}", e)
+                                .with_appid(self_for_setup.appid.clone())
+                                .with_path(path.to_string());
+                        }
+                    },
+                ) {
+                    error!("Failed to create page for path: {}", e)
+                        .with_appid(self.appid.clone())
+                        .with_path(path.clone());
+                }
+            }
+            state.opened = true;
+
+            // Precreate tab pages in background (only for first time opening)
+            if self.config.has_tab_bar() {
+                let self_clone = self.clone();
+
+                LxAppExecutor::spawn_task(move || {
+                    info!("Starting tab pages precreation").with_appid(self_clone.appid.clone());
+
+                    let tab_pages = self_clone.config.get_tab_pages();
+                    for tab_path in tab_pages {
+                        if path == tab_path {
                             continue;
                         }
+
+                        // Check if page already exists
+                        {
+                            let state = self_clone.state.lock().unwrap();
+                            if state.pages.get_page(&tab_path).is_some() {
+                                info!("Tab page already exists, skipping: {}", tab_path)
+                                    .with_appid(self_clone.appid.clone())
+                                    .with_path(tab_path.clone());
+                                continue;
+                            }
+                        }
+
+                        info!("Precreating tab page: {}", tab_path)
+                            .with_appid(self_clone.appid.clone())
+                            .with_path(tab_path.clone());
+
+                        // Create page in background
+                        let mut state = self_clone.state.lock().unwrap();
+                        let self_for_setup = self_clone.clone();
+
+                        // Build PageState from JSON config
+                        let page_state = Page::build_page_state(&*self_clone, &tab_path);
+
+                        let _ = state.pages.create_page(
+                            self_clone.appid.clone(),
+                            tab_path.clone(),
+                            page_state,
+                            move |page, path| {
+                                // Setup page content (load HTML)
+                                self_for_setup.setup_page(page, path);
+
+                                // Create page service
+                                if let Err(e) = self_for_setup
+                                    .executor
+                                    .create_page_svc(self_for_setup.appid.clone(), path.to_string())
+                                {
+                                    error!("Failed to request page service creation: {}", e)
+                                        .with_appid(self_for_setup.appid.clone())
+                                        .with_path(path.to_string());
+                                }
+                            },
+                        );
                     }
 
-                    info!("Precreating tab page: {}", tab_path)
-                        .with_appid(self_clone.appid.clone())
-                        .with_path(tab_path.clone());
+                    info!("Tab pages precreation completed").with_appid(self_clone.appid.clone());
+                });
+            }
+        }
 
-                    // Create page in background
-                    let mut state = self_clone.state.lock().unwrap();
-                    let self_for_setup = self_clone.clone();
-
-                    // Build PageState from JSON config
-                    let page_state = Page::build_page_state(&*self_clone, &tab_path);
-
-                    let _ = state.pages.create_page(
-                        self_clone.appid.clone(),
-                        tab_path.clone(),
-                        page_state,
-                        move |page, path| {
-                            // Setup page content (load HTML)
-                            self_for_setup.setup_page(page, path);
-
-                            // Create page service
-                            if let Err(e) = self_for_setup
-                                .executor
-                                .create_page_svc(self_for_setup.appid.clone(), path.to_string())
-                            {
-                                error!("Failed to request page service creation: {}", e)
-                                    .with_appid(self_for_setup.appid.clone())
-                                    .with_path(path.to_string());
-                            }
-                        },
-                    );
-                }
-
-                info!("Tab pages precreation completed").with_appid(self_clone.appid.clone());
-            });
+        // Trigger onShow every time the app is opened.
+        if let Err(e) =
+            self.executor
+                .call_app_service(self.appid.clone(), "onShow".to_string(), None)
+        {
+            error!("Failed to trigger onShow service: {}", e).with_appid(self.appid.clone());
         }
     }
 
@@ -144,6 +150,14 @@ impl LxAppDelegate for LxApp {
 
         // Update last active time
         self.state.lock().unwrap().last_active_time = Instant::now();
+
+        // Trigger onHide
+        if let Err(e) =
+            self.executor
+                .call_app_service(self.appid.clone(), "onHide".to_string(), None)
+        {
+            error!("Failed to trigger onHide service: {}", e).with_appid(self.appid.clone());
+        }
 
         // Log the app closing event
         info!("Mini app closed").with_appid(self.appid.clone());
