@@ -157,6 +157,7 @@ pub fn lxapp_init(
         }
     };
 
+    lingxia_logic::register_logic_runtime();
     lxapp::init(app)
 }
 

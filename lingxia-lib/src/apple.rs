@@ -188,6 +188,7 @@ pub fn lxapp_init(data_dir: &str, cache_dir: &str) -> Option<String> {
             }
         };
 
+    lingxia_logic::register_logic_runtime();
     lxapp::init(platform)
 }
 

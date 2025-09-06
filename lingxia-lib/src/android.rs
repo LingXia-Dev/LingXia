@@ -100,6 +100,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppInited(
         }
     };
 
+    lingxia_logic::register_logic_runtime();
     let home_app_id = lxapp::init(app);
 
     // Return the home appid

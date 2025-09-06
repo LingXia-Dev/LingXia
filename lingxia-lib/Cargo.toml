@@ -11,6 +11,7 @@ crate-type = ["staticlib", "cdylib"]
 lxapp = { package = "lingxia-lxapp", path = "../lingxia-lxapp" }
 lingxia-platform = { path = "../lingxia-platform" }
 lingxia-webview = { path = "../lingxia-webview" }
+lingxia-logic = { path = "../lingxia-logic" }
 log = "0.4.27"
 
 # Android-specific dependencies (only what's needed for FFI)
