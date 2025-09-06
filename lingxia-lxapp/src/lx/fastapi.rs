@@ -57,12 +57,12 @@ macro_rules! fast_api {
         impl $crate::lx::fastapi::FastApiHandler for $name {
             fn call(
                 &self,
-                lxapp: std::sync::Arc<$crate::lxapp::LxApp>,
+                lxapp: std::sync::Arc<$crate::LxApp>,
                 _input: Option<&str>,
-            ) -> Result<String, $crate::error::LxAppError> {
+            ) -> Result<String, $crate::LxAppError> {
                 let result: $output = $body(lxapp)?;
                 serde_json::to_string(&result)
-                    .map_err(|e| $crate::error::LxAppError::Bridge(e.to_string()))
+                    .map_err(|e| $crate::LxAppError::Bridge(e.to_string()))
             }
         }
     };
@@ -74,22 +74,19 @@ macro_rules! fast_api {
         impl $crate::lx::fastapi::FastApiHandler for $name {
             fn call(
                 &self,
-                lxapp: std::sync::Arc<$crate::lxapp::LxApp>,
+                lxapp: std::sync::Arc<$crate::LxApp>,
                 input: Option<&str>,
-            ) -> Result<String, $crate::error::LxAppError> {
+            ) -> Result<String, $crate::LxAppError> {
                 let input_data: $input = match input {
-                    Some(json) => serde_json::from_str(json).map_err(|e| {
-                        $crate::error::LxAppError::Bridge(format!("Invalid input: {}", e))
-                    })?,
+                    Some(json) => serde_json::from_str(json)
+                        .map_err(|e| $crate::LxAppError::Bridge(format!("Invalid input: {}", e)))?,
                     None => {
-                        return Err($crate::error::LxAppError::Bridge(
-                            "Missing input".to_string(),
-                        ));
+                        return Err($crate::LxAppError::Bridge("Missing input".to_string()));
                     }
                 };
                 let result: $output = $body(lxapp, input_data)?;
                 serde_json::to_string(&result)
-                    .map_err(|e| $crate::error::LxAppError::Bridge(e.to_string()))
+                    .map_err(|e| $crate::LxAppError::Bridge(e.to_string()))
             }
         }
     };
