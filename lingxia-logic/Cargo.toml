@@ -1,0 +1,12 @@
+[package]
+name = "lingxia-logic"
+version = "0.1.0"
+edition = "2024"
+description = "JavaScript runtime for LingXia lxapps(MiniApp)"
+repository = "https://github.com/LingXia/LingXia"
+keywords = ["javascript", "runtime", "miniapp", "webview"]
+categories = ["web-programming", "api-bindings"]
+
+[dependencies]
+rong = { workspace = true }
+lingxia-lxapp = { path = "../lingxia-lxapp" }
