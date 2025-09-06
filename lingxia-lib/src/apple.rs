@@ -1,5 +1,5 @@
 use lxapp::LxAppDelegate;
-use lxapp::config::LxAppInfo as CoreLxAppInfo;
+use lxapp::LxAppInfo as CoreLxAppInfo;
 use lxapp::log::LogLevel;
 
 /// Parses a color string (e.g., "#RRGGBB" or "transparent") into a u32 ARGB value.

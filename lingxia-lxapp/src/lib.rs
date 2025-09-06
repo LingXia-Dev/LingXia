@@ -8,9 +8,7 @@ mod lxapp;
 mod module;
 mod page;
 
-pub use app::*;
 pub use delegate::LxAppDelegate;
 pub use error::LxAppError;
-pub use lxapp::*;
-pub use module::*;
-pub use lingxia_webview::WebViewController;
+pub use lxapp::{LxApp, config::LxAppInfo, get, init, tabbar};
+pub use module::{LxAppModule, register_module};
