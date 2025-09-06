@@ -9,4 +9,7 @@ categories = ["web-programming", "api-bindings"]
 
 [dependencies]
 rong = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 lingxia-lxapp = { path = "../lingxia-lxapp" }
+lingxia-platform = { path = "../lingxia-platform" }
