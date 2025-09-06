@@ -4,6 +4,7 @@ use crate::lxapp::LxApp;
 use crate::module;
 use crate::{error, info};
 
+use crate::lx;
 use rong::{JSContext, JSFunc, JSResult, JSRuntime, RongJSError, Source};
 use rong_modules::{console, fs, http, storage};
 use std::cell::RefCell;
@@ -19,8 +20,6 @@ pub mod bridge;
 
 mod page;
 use page::PageSvc;
-
-mod lx;
 
 /// Message type for LxApp service system
 #[derive(Clone)]

@@ -42,7 +42,7 @@ pub fn register_fast_api(name: &str, handler: Arc<dyn FastApiHandler>) {
 }
 
 /// Check if FastAPI exists and return the handler if found
-pub fn get_fast_api(name: &str) -> Option<Arc<dyn FastApiHandler>> {
+pub(crate) fn get_fast_api(name: &str) -> Option<Arc<dyn FastApiHandler>> {
     let registry = get_fast_api_registry();
     registry.lock().unwrap().handlers.get(name).cloned()
 }
@@ -54,7 +54,7 @@ macro_rules! fast_api {
     ($name:ident, $output:ty, $body:expr) => {
         pub struct $name;
 
-        impl $crate::appservice::lx::fastapi::FastApiHandler for $name {
+        impl $crate::lx::fastapi::FastApiHandler for $name {
             fn call(
                 &self,
                 lxapp: std::sync::Arc<$crate::lxapp::LxApp>,
@@ -71,7 +71,7 @@ macro_rules! fast_api {
     ($name:ident, $input:ty, $output:ty, $body:expr) => {
         pub struct $name;
 
-        impl $crate::appservice::lx::fastapi::FastApiHandler for $name {
+        impl $crate::lx::fastapi::FastApiHandler for $name {
             fn call(
                 &self,
                 lxapp: std::sync::Arc<$crate::lxapp::LxApp>,

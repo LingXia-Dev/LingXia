@@ -4,6 +4,7 @@ mod delegate;
 mod error;
 mod executor;
 pub mod log;
+pub mod lx;
 mod lxapp;
 mod module;
 mod page;
