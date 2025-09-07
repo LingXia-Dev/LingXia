@@ -81,11 +81,6 @@ public class iOSLxApp: LxAppRenderer {
         LxAppCore.executeNavigation(appId: appId, path: path, navigationType: navigationType, renderer: instance)
     }
 
-    /// Switches the current page within a running LxApp (deprecated - use navigate instead)
-    public static func switchPage(appId: String, path: String) {
-        os_log("Switching page for %@ to %@ (deprecated)", log: log, type: .info, appId, path)
-    }
-
     /// Find WebView for the given appId and path
     internal static func findWebView(appId: String, path: String) -> WKWebView? {
         return WebViewManager.findWebView(appId: appId, path: path)

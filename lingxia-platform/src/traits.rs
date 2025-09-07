@@ -4,6 +4,34 @@ use std::path::PathBuf;
 use crate::error::PlatformError;
 use crate::{AssetFileEntry, DeviceInfo};
 
+/// Navigation type for LxApp navigation
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NavigationType {
+    /// Launch navigation - for openLxApp to open entry page
+    Launch = 0,
+    /// Forward navigation - navigate to a new page with animation
+    Forward = 1,
+    /// Backward navigation - navigate back with animation
+    Backward = 2,
+    /// Replace navigation - replace current page without animation
+    Replace = 3,
+    /// Switch tab navigation - switch between tab pages
+    SwitchTab = 4,
+}
+
+impl From<i32> for NavigationType {
+    fn from(value: i32) -> Self {
+        match value {
+            0 => NavigationType::Launch,
+            1 => NavigationType::Forward,
+            2 => NavigationType::Backward,
+            3 => NavigationType::Replace,
+            4 => NavigationType::SwitchTab,
+            _ => NavigationType::Forward, // Default fallback
+        }
+    }
+}
+
 /// Base platform runtime capabilities
 ///
 /// This trait defines the core capabilities required for the lxapp platform,
@@ -70,15 +98,21 @@ pub trait AppRuntime: Send + Sync + 'static {
     /// * `Result<(), PlatformError>` - Success or error
     fn close_lxapp(&self, appid: String) -> Result<(), PlatformError>;
 
-    /// Switch to a different page within the same lxapp
+    /// Navigate to a different page within the same lxapp with specific navigation type
     ///
     /// # Arguments
-    /// * `appid` - The ID of the lxapp to switch pages in
-    /// * `path` - The path of the page to switch to
+    /// * `appid` - The ID of the lxapp to navigate in
+    /// * `path` - The path of the page to navigate to
+    /// * `navigation_type` - The type of navigation to perform
     ///
     /// # Returns
     /// * `Result<(), PlatformError>` - Success or error
-    fn switch_page(&self, appid: String, path: String) -> Result<(), PlatformError>;
+    fn navigate(
+        &self,
+        appid: String,
+        path: String,
+        navigation_type: NavigationType,
+    ) -> Result<(), PlatformError>;
 
     /// Launch external application with URL
     ///

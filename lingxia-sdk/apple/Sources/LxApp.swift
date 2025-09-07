@@ -299,11 +299,6 @@ extension LxApp {
         }
     }
 
-    /// Switch to page in LxApp (deprecated - use navigate instead)
-    nonisolated public static func switchPage(appid: RustStr, path: RustStr) -> Bool {
-        return false
-    }
-
     /// Update TabBar UI to refresh badge and red dot data etc
     nonisolated public static func updateTabBarUI(appid: RustStr) -> Bool {
         let appIdString = appid.toString()

@@ -51,10 +51,6 @@ class NativeBridge {
       return true;
     });
 
-    this.register('switchPage', (appId: string, path: string) => {
-      // TODO: delete
-    });
-
     // Navigate with navigation type
     // 0=Launch, 1=Forward, 2=Backward, 3=Replace, 4=SwitchTab
     this.register('navigate', (appId: string, path: string, navigationType: number) => {

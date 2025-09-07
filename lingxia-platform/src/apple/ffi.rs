@@ -56,8 +56,8 @@ mod bridge {
         #[swift_bridge(swift_name = "LxApp.closeLxApp")]
         fn close_lxapp(appid: &str) -> bool;
 
-        #[swift_bridge(swift_name = "LxApp.switchPage")]
-        fn switch_page(appid: &str, path: &str) -> bool;
+        #[swift_bridge(swift_name = "LxApp.navigate")]
+        fn navigate(appid: &str, path: &str, navigation_type: i32) -> bool;
 
         // TabBar UI update callback
         #[swift_bridge(swift_name = "LxApp.updateTabBarUI")]
@@ -87,4 +87,4 @@ mod bridge {
 }
 
 // Re-export the bridge functions for use in other modules
-pub use bridge::{close_lxapp, launch_with_url, open_lxapp, switch_page};
+pub use bridge::{close_lxapp, launch_with_url, navigate, open_lxapp};

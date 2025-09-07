@@ -1,6 +1,6 @@
 use super::ffi;
 use crate::error::PlatformError;
-use crate::{AppRuntime, AssetFileEntry, DeviceInfo};
+use crate::{AppRuntime, AssetFileEntry, DeviceInfo, NavigationType};
 use std::ffi::CStr;
 use std::io::{Cursor, Read};
 use std::mem;
@@ -119,13 +119,18 @@ impl AppRuntime for Platform {
         }
     }
 
-    fn switch_page(&self, appid: String, path: String) -> Result<(), PlatformError> {
-        if ffi::switch_page(&appid, &path) {
+    fn navigate(
+        &self,
+        appid: String,
+        path: String,
+        navigation_type: NavigationType,
+    ) -> Result<(), PlatformError> {
+        if ffi::navigate(&appid, &path, navigation_type as i32) {
             Ok(())
         } else {
             Err(PlatformError::Platform(format!(
-                "Failed to switch page: appid={}, path={}",
-                appid, path
+                "Failed to navigate: appid={}, path={}, navigation_type={:?}",
+                appid, path, navigation_type
             )))
         }
     }

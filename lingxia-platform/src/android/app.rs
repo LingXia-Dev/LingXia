@@ -1,5 +1,5 @@
 use crate::error::PlatformError;
-use crate::{AppRuntime, AssetFileEntry, DeviceInfo};
+use crate::{AppRuntime, AssetFileEntry, DeviceInfo, NavigationType};
 use jni::objects::{GlobalRef, JClass, JObject, JValue};
 use jni::sys::jobject;
 use lingxia_webview::get_env;
@@ -86,10 +86,7 @@ impl<'a> RecursiveAssetIterator<'a> {
         path: &str,
     ) -> Result<T, PlatformError> {
         result.map_err(|e| {
-            PlatformError::Platform(format!(
-                "JNI operation failed for path '{}': {:?}",
-                path, e
-            ))
+            PlatformError::Platform(format!("JNI operation failed for path '{}': {:?}", path, e))
         })
     }
 
@@ -390,7 +387,12 @@ impl AppRuntime for Platform {
         }
     }
 
-    fn switch_page(&self, appid: String, path: String) -> Result<(), PlatformError> {
+    fn navigate(
+        &self,
+        appid: String,
+        path: String,
+        navigation_type: NavigationType,
+    ) -> Result<(), PlatformError> {
         match || -> Result<(), Box<dyn std::error::Error>> {
             let mut env = get_env()?;
 
@@ -405,19 +407,20 @@ impl AppRuntime for Platform {
 
             env.call_static_method(
                 lxapp_class,
-                "switchPage",
-                "(Ljava/lang/String;Ljava/lang/String;)V",
+                "navigate",
+                "(Ljava/lang/String;Ljava/lang/String;I)V",
                 &[
                     JValue::Object(&appid_jstring),
                     JValue::Object(&path_jstring),
+                    JValue::Int(navigation_type as i32),
                 ],
             )?;
             Ok(())
         }() {
             Ok(_) => Ok(()),
             Err(e) => Err(PlatformError::Platform(format!(
-                "Failed to switch page: {}",
-                e
+                "Failed to navigate: appid={}, path={}, navigation_type={:?}",
+                appid, path, navigation_type
             ))),
         }
     }

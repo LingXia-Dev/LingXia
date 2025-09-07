@@ -1,5 +1,5 @@
 use crate::error::PlatformError;
-use crate::{AppRuntime, AssetFileEntry, DeviceInfo};
+use crate::{AppRuntime, AssetFileEntry, DeviceInfo, NavigationType};
 use napi_ohos::JsValue;
 use napi_ohos::bindgen_prelude::{Env, Object};
 use ohos_raw_sys::*;
@@ -312,9 +312,20 @@ impl AppRuntime for Platform {
             .map_err(|e| PlatformError::Platform(format!("Failed to close lxapp: {}", e)))
     }
 
-    fn switch_page(&self, appid: String, path: String) -> Result<(), PlatformError> {
-        lingxia_webview::tsfn::call_arkts("switchPage", &[&appid, &path])
-            .map_err(|e| PlatformError::Platform(format!("Failed to switch page: {}", e)))
+    fn navigate(
+        &self,
+        appid: String,
+        path: String,
+        navigation_type: NavigationType,
+    ) -> Result<(), PlatformError> {
+        let nav_type_int = navigation_type as i32;
+        lingxia_webview::tsfn::call_arkts("navigate", &[&appid, &path, &nav_type_int.to_string()])
+            .map_err(|e| {
+                PlatformError::Platform(format!(
+                    "Failed to navigate: appid={}, path={}, navigation_type={:?}",
+                    appid, path, navigation_type
+                ))
+            })
     }
 
     fn launch_with_url(&self, url: String) -> Result<(), PlatformError> {
