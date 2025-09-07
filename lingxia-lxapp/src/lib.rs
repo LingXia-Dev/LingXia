@@ -10,4 +10,4 @@ mod page;
 
 pub use delegate::LxAppDelegate;
 pub use error::LxAppError;
-pub use lxapp::{LxApp, config::LxAppInfo, get, init, tabbar};
+pub use lxapp::{LxApp, config::LxAppInfo, get, init, on_low_memory, tabbar};

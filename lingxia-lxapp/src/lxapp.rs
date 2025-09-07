@@ -144,8 +144,50 @@ impl LxApps {
         result
     }
 
+    /// Destroys an LxApp instance to free up memory.
+    /// This removes the app from the active pool and terminates its associated services.
+    /// The home app cannot be destroyed.
+    fn destroy_lxapp(&self, appid: &str) -> Result<(), LxAppError> {
+        // Retrieve the app to check if it's the home app
+        if let Some(app_arc) = self.lxapps.get(appid) {
+            if app_arc.is_home_lxapp {
+                return Err(LxAppError::UnsupportedOperation(
+                    "Cannot destroy the home lxapp".to_string(),
+                ));
+            }
+        } else {
+            // App not found, nothing to do
+            return Ok(());
+        }
+
+        // Terminate the app's background service
+        self.executor.terminate_app_svc(appid.to_string())?;
+
+        // Remove from the stack and the main map
+        self.remove_from_stack(appid);
+        self.lxapps.remove(appid);
+
+        Ok(())
+    }
+
+    /// Finds and destroys the least recently used LxApp based on the navigation stack.
+    fn evict_lru_lxapp(&self) {
+        let mut stack = self.lxapp_stack.lock().unwrap();
+
+        // Find the oldest entry in the navigation stack to destroy
+        if let Some(appid_to_destroy) = stack.pop_front() {
+            // Drop the lock before calling destroy_lxapp to avoid holding it while destroying
+            drop(stack);
+
+            if let Err(e) = self.destroy_lxapp(&appid_to_destroy) {
+                error!("Failed to destroy least recently used app: {}", e)
+                    .with_appid(appid_to_destroy);
+            }
+        }
+    }
+
     /// Push an app onto the navigation stack. Does nothing if the stack is full.
-    pub fn push_lxapp_stack(&self, appid: String) {
+    pub(crate) fn push_lxapp_stack(&self, appid: String) {
         if let Ok(mut stack) = self.lxapp_stack.lock() {
             if stack.len() < DEFAULT_LXAPP_NAVIGATION_STACKS {
                 stack.push_back(appid);
@@ -158,17 +200,8 @@ impl LxApps {
         }
     }
 
-    /// Pop an app from the navigation stack
-    pub fn pop_lxapp_stack(&self) -> Option<String> {
-        if let Ok(mut stack) = self.lxapp_stack.lock() {
-            stack.pop_back()
-        } else {
-            None
-        }
-    }
-
     /// Peek at the top app on the navigation stack without removing it
-    pub fn peek_lxapp_stack(&self) -> Option<String> {
+    fn peek_lxapp_stack(&self) -> Option<String> {
         if let Ok(stack) = self.lxapp_stack.lock() {
             stack.back().cloned()
         } else {
@@ -177,7 +210,7 @@ impl LxApps {
     }
 
     /// Check if the navigation stack is empty
-    pub fn is_stack_empty(&self) -> bool {
+    pub(crate) fn is_stack_empty(&self) -> bool {
         if let Ok(stack) = self.lxapp_stack.lock() {
             stack.is_empty()
         } else {
@@ -186,14 +219,14 @@ impl LxApps {
     }
 
     /// Remove a specific app from the navigation stack
-    pub fn remove_from_stack(&self, appid: &str) {
+    pub(crate) fn remove_from_stack(&self, appid: &str) {
         if let Ok(mut stack) = self.lxapp_stack.lock() {
             stack.retain(|id| id != appid);
         }
     }
 
     /// Check if the navigation stack is full
-    pub fn is_stack_full(&self) -> bool {
+    fn is_stack_full(&self) -> bool {
         if let Ok(stack) = self.lxapp_stack.lock() {
             stack.len() >= DEFAULT_LXAPP_NAVIGATION_STACKS
         } else {
@@ -765,6 +798,15 @@ pub fn get(appid: String) -> Arc<LxApp> {
 }
 
 /// Get access to the LxApps manager for navigation stack operations
-pub fn get_lxapps_manager() -> Option<Arc<LxApps>> {
+pub(crate) fn get_lxapps_manager() -> Option<Arc<LxApps>> {
     LXAPPS_MANAGER.get().cloned()
+}
+
+/// Triggers memory cleanup for LxApps.
+/// This function should be called by the platform when the system is under memory pressure.
+pub fn on_low_memory() {
+    if let Some(manager) = LXAPPS_MANAGER.get() {
+        info!("on_low_memory triggered, evicting least recently used app.");
+        manager.evict_lru_lxapp();
+    }
 }
