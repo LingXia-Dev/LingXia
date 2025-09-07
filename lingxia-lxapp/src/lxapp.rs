@@ -1,6 +1,7 @@
 use dashmap::DashMap;
 use lingxia_platform::{AppRuntime, Platform};
 use rong::FromJSObj;
+use std::collections::VecDeque;
 use std::collections::hash_map::DefaultHasher;
 use std::fs;
 use std::hash::{Hash, Hasher};
@@ -13,7 +14,7 @@ use crate::app::AppConfig;
 use crate::error::LxAppError;
 use crate::executor::LxAppExecutor;
 use crate::page::{Page, Pages};
-use crate::{error, info};
+use crate::{error, info, warn};
 use security::NetworkSecurity; // Import the new logging macros
 
 pub mod config;
@@ -45,6 +46,10 @@ pub struct LxApps {
     /// Uses DashMap for thread-safe concurrent access
     lxapps: DashMap<String, Arc<LxApp>>,
 
+    /// LxApp navigation stack for tracking app navigation history
+    /// Uses VecDeque for efficient push/pop operations
+    lxapp_stack: Mutex<VecDeque<String>>,
+
     /// Reference to the platform-specific app runtime
     /// Provides file system access, UI callbacks, etc.
     runtime: Arc<Platform>,
@@ -69,6 +74,7 @@ impl LxApps {
             lxapps: DashMap::new(),
             runtime,
             executor,
+            lxapp_stack: Mutex::new(VecDeque::with_capacity(DEFAULT_LXAPP_NAVIGATION_STACKS)),
             user_id,
         }
     }
@@ -138,6 +144,65 @@ impl LxApps {
 
         result
     }
+
+    /// Push an app onto the navigation stack. Does nothing if the stack is full.
+    pub fn push_lxapp_stack(&self, appid: String) {
+        if let Ok(mut stack) = self.lxapp_stack.lock() {
+            if stack.len() < DEFAULT_LXAPP_NAVIGATION_STACKS {
+                stack.push_back(appid);
+            } else {
+                warn!(
+                    "LxApp navigation stack is full (capacity: {}). Cannot push app: {}",
+                    DEFAULT_LXAPP_NAVIGATION_STACKS, appid
+                );
+            }
+        }
+    }
+
+    /// Pop an app from the navigation stack
+    pub fn pop_lxapp_stack(&self) -> Option<String> {
+        if let Ok(mut stack) = self.lxapp_stack.lock() {
+            stack.pop_back()
+        } else {
+            None
+        }
+    }
+
+    /// Peek at the top app on the navigation stack without removing it
+    pub fn peek_lxapp_stack(&self) -> Option<String> {
+        if let Ok(stack) = self.lxapp_stack.lock() {
+            stack.back().cloned()
+        } else {
+            None
+        }
+    }
+
+    /// Check if the navigation stack is empty
+    pub fn is_stack_empty(&self) -> bool {
+        if let Ok(stack) = self.lxapp_stack.lock() {
+            stack.is_empty()
+        } else {
+            true
+        }
+    }
+
+    /// Remove a specific app from the navigation stack
+    pub fn remove_from_stack(&self, appid: &str) {
+        if let Ok(mut stack) = self.lxapp_stack.lock() {
+            stack.retain(|id| id != appid);
+        }
+    }
+
+    /// Check if the navigation stack is full
+    pub fn is_stack_full(&self) -> bool {
+        if let Ok(stack) = self.lxapp_stack.lock() {
+            stack.len() >= DEFAULT_LXAPP_NAVIGATION_STACKS
+        } else {
+            // If the lock is poisoned, it's safer to consider it full
+            // to prevent further pushes.
+            true
+        }
+    }
 }
 
 /// Mutable state of a LxApp that requires synchronization
@@ -189,7 +254,7 @@ pub struct LxApp {
     pub storage_dir: PathBuf,
     pub user_data_dir: PathBuf,
     pub user_cache_dir: PathBuf,
-    pub home_lxapp: bool,
+    pub is_home_lxapp: bool,
     pub version: String,
     pub(crate) config: LxAppConfig,
     pub(crate) executor: Arc<LxAppExecutor>,
@@ -214,7 +279,7 @@ impl LxApp {
             storage_dir: PathBuf::new(),
             user_data_dir: PathBuf::new(),
             user_cache_dir: PathBuf::new(),
-            home_lxapp: false,
+            is_home_lxapp: false,
             version: String::new(),
             config: LxAppConfig::default(),
             executor,
@@ -237,7 +302,7 @@ impl LxApp {
         let mut app = Self::_new(appid, runtime, executor);
 
         // Mark as home lxapp
-        app.home_lxapp = true;
+        app.is_home_lxapp = true;
 
         if let Err(e) = app.setup() {
             error!("Setup failed for home app: {}", e).with_appid(&app.appid);
@@ -252,7 +317,7 @@ impl LxApp {
         self.version = self.read_version();
 
         // Calculate the directory name based on appid, user and whether this is a home app
-        let dir_name = if self.home_lxapp {
+        let dir_name = if self.is_home_lxapp {
             // Home lxapp uses appid directly as directory name
             self.appid.clone()
         } else {
@@ -463,7 +528,7 @@ impl LxApp {
     /// * `Err(LxAppError)` - If there was an error during uninstallation
     pub fn uninstall(&self) -> Result<(), LxAppError> {
         // Don't allow uninstalling the home app
-        if self.home_lxapp {
+        if self.is_home_lxapp {
             return Err(LxAppError::UnsupportedOperation(
                 "Cannot uninstall the home lxapp".to_string(),
             ));
@@ -671,4 +736,9 @@ pub fn get(appid: String) -> Arc<LxApp> {
         return app_arc.clone();
     }
     panic!("Not found lxapp '{}'", appid);
+}
+
+/// Get access to the LxApps manager for navigation stack operations
+pub fn get_lxapps_manager() -> Option<Arc<LxApps>> {
+    LXAPPS_MANAGER.get().cloned()
 }

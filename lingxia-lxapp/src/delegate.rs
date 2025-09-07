@@ -30,6 +30,13 @@ impl LxAppDelegate for LxApp {
             .with_path(path.clone());
 
         if !was_already_opened {
+            // Push to navigation stack if not home app and not already opened
+            if !self.is_home_lxapp {
+                if let Some(manager) = crate::lxapp::get_lxapps_manager() {
+                    manager.push_lxapp_stack(self.appid.clone());
+                }
+            }
+
             // First-time launch logic
             if let Err(e) = self.executor.create_app_svc(self.clone()) {
                 error!("Failed to trigger app service: {}", e).with_appid(self.appid.clone());
@@ -146,6 +153,14 @@ impl LxAppDelegate for LxApp {
     }
 
     fn on_lxapp_closed(self: &Arc<Self>) {
+        // Pop from navigation stack if not home app
+        if !self.is_home_lxapp {
+            if let Some(manager) = crate::lxapp::get_lxapps_manager() {
+                // Remove this app from the stack (it might not be on top due to navigation)
+                manager.remove_from_stack(&self.appid);
+            }
+        }
+
         self.state.lock().unwrap().opened = false;
 
         // Update last active time
