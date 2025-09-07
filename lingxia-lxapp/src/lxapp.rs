@@ -1,6 +1,5 @@
 use dashmap::DashMap;
 use lingxia_platform::{AppRuntime, Platform};
-use rong::FromJSObj;
 use std::collections::VecDeque;
 use std::collections::hash_map::DefaultHasher;
 use std::fs;
@@ -263,13 +262,6 @@ pub struct LxApp {
     pub(crate) state: Mutex<LxAppState>,
 }
 
-#[derive(FromJSObj)]
-pub struct LxAppNavigator {
-    #[rename = "appId"]
-    pub appid: String,
-    pub path: String,
-}
-
 impl LxApp {
     fn _new(appid: String, runtime: Arc<Platform>, executor: Arc<LxAppExecutor>) -> Self {
         Self {
@@ -507,17 +499,51 @@ impl LxApp {
         }
     }
 
-    pub fn navigator_to_lxapp(&self, to: LxAppNavigator) -> Result<(), LxAppError> {
-        // ignore if appid is the same
-        if self.appid == to.appid {
+    /// Navigates to another LxApp (forward navigation).
+    ///
+    /// If the provided path is empty, it will navigate to the target app's initial route.
+    /// If the navigation stack is already full, this operation will be ignored.
+    ///
+    /// # Arguments
+    /// * `appid` - The ID of the target LxApp.
+    /// * `path` - The page path to open in the target app.
+    pub fn navigate_to(&self, appid: String, path: String) -> Result<(), LxAppError> {
+        // Do nothing if navigating to the same app.
+        if self.appid == appid {
             return Ok(());
         }
 
-        if let Some(manager) = LXAPPS_MANAGER.get() {
-            let app = manager.get_or_init_lxapp(to.appid.clone());
-            // Always call open_lxapp to allow SDK/UI layer to handle switching
-            app.runtime.open_lxapp(to.appid, to.path)?;
+        if let Some(manager) = get_lxapps_manager() {
+            // Check if the navigation stack is full before proceeding.
+            if manager.is_stack_full() {
+                warn!(
+                    "LxApp navigation stack is full (capacity: {}). Cannot navigate to app: {}",
+                    DEFAULT_LXAPP_NAVIGATION_STACKS, appid
+                );
+                return Ok(()); // Do nothing if the stack is full.
+            }
+
+            let app = manager.get_or_init_lxapp(appid.clone());
+
+            let target_path = if path.is_empty() {
+                // If path is empty, use the initial route from the app's config.
+                app.config.get_initial_route()
+            } else {
+                path
+            };
+
+            // The runtime is responsible for opening the new app.
+            // The on_lxapp_opened delegate of the new app will then handle pushing it to the navigation stack.
+            app.runtime.open_lxapp(appid, target_path)?;
         }
+        Ok(())
+    }
+
+    /// Navigates back to the previous LxApp in the history stack.
+    pub fn navigate_back(&self) -> Result<(), LxAppError> {
+        // The on_lxapp_closed delegate will then handle removing it from the navigation stack.
+        // The underlying UI framework should detect the app closure and automatically display the new app at the top of the stack.
+        self.runtime.close_lxapp(self.appid.clone())?;
         Ok(())
     }
 
