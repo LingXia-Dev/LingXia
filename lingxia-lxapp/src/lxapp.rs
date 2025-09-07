@@ -14,7 +14,7 @@ use crate::error::LxAppError;
 use crate::executor::LxAppExecutor;
 use crate::page::{Page, Pages};
 use crate::{error, info, warn};
-use security::NetworkSecurity; // Import the new logging macros
+use security::NetworkSecurity;
 
 pub mod config;
 use config::LxAppConfig;
@@ -125,23 +125,64 @@ impl LxApps {
         new_lxapp
     }
 
-    /// Uninstall a lxapp by removing its files and version record
-    pub fn uninstall_lxapp(&self, appid: &str) -> Result<(), LxAppError> {
-        // Log operation
-        info!("Uninstalling lxapp").with_appid(appid);
-
-        // Get or create the lxapp instance
-        let app_arc = self.get_or_init_lxapp(appid.to_string());
-
-        // Call the uninstall method on the LxApp instance
-        let result = app_arc.uninstall();
-
-        // If successful, remove the app from the collection
-        if result.is_ok() {
-            self.lxapps.remove(appid);
+    /// Uninstalls an LxApp.
+    ///
+    /// The currently active (top of stack) app cannot be uninstalled.
+    /// If the app is in the navigation stack but not active, it will be destroyed
+    /// (removed from memory) and then its files will be deleted.
+    /// If the app is not in the stack at all, only its files will be deleted.
+    #[allow(dead_code)]
+    pub fn uninstall(&self, appid: &str) -> Result<(), LxAppError> {
+        // 1. Check if it's the currently active app.
+        if let Some(active_app) = self.peek_lxapp_stack() {
+            if active_app == appid {
+                return Err(LxAppError::UnsupportedOperation(
+                    "Cannot uninstall the currently active application.".to_string(),
+                ));
+            }
         }
 
-        result
+        // 2. Handle the case where the app is currently in memory.
+        if let Some(app_entry) = self.lxapps.get(appid) {
+            let app_to_uninstall = app_entry.value().clone();
+            // Check if it's the home app.
+            if app_to_uninstall.is_home_lxapp {
+                return Err(LxAppError::UnsupportedOperation(
+                    "Cannot uninstall the home lxapp".to_string(),
+                ));
+            }
+
+            // It's in memory and not active, so we can "destroy" and "uninstall".
+            info!("App is in memory; destroying and uninstalling...").with_appid(appid);
+
+            // Destroy (memory part)
+            self.destroy_lxapp(appid)?;
+
+            // Uninstall (disk part)
+            app_to_uninstall.delete_disk_files()?;
+
+            return Ok(());
+        }
+
+        // 3. Handle the case where the app is not in memory (pure disk uninstall).
+        info!("App not in memory; uninstalling from disk...").with_appid(appid);
+
+        // Create a temporary instance just to get path info.
+        let temp_app = LxApp::new(
+            appid.to_string(),
+            self.runtime.clone(),
+            self.executor.clone(),
+        );
+
+        // Check if it's the home app.
+        if temp_app.is_home_lxapp {
+            return Err(LxAppError::UnsupportedOperation(
+                "Cannot uninstall the home lxapp".to_string(),
+            ));
+        }
+
+        // Uninstall (disk part)
+        temp_app.delete_disk_files()
     }
 
     /// Destroys an LxApp instance to free up memory.
@@ -160,6 +201,8 @@ impl LxApps {
             return Ok(());
         }
 
+        info!("Destroying lxapp to free memory").with_appid(appid.to_string());
+
         // Terminate the app's background service
         self.executor.terminate_app_svc(appid.to_string())?;
 
@@ -170,23 +213,29 @@ impl LxApps {
         Ok(())
     }
 
-    /// Finds and destroys the least recently used LxApp based on the navigation stack.
+    /// Finds and evicts the least recently used LxApp to free up memory.
+    /// The least recently used app is determined by the front of the navigation stack.
     fn evict_lru_lxapp(&self) {
-        let mut stack = self.lxapp_stack.lock().unwrap();
-
-        // Find the oldest entry in the navigation stack to destroy
-        if let Some(appid_to_destroy) = stack.pop_front() {
-            // Drop the lock before calling destroy_lxapp to avoid holding it while destroying
-            drop(stack);
-
+        if let Some(appid_to_destroy) = self.pop_front_lxapp_stack() {
             if let Err(e) = self.destroy_lxapp(&appid_to_destroy) {
-                error!("Failed to destroy least recently used app: {}", e)
+                error!("Failed to evict least recently used app: {}", e)
                     .with_appid(appid_to_destroy);
             }
         }
     }
 
-    /// Push an app onto the navigation stack. Does nothing if the stack is full.
+    /// Pops the oldest app from the front of the navigation stack.
+    fn pop_front_lxapp_stack(&self) -> Option<String> {
+        if let Ok(mut stack) = self.lxapp_stack.lock() {
+            stack.pop_front()
+        } else {
+            None
+        }
+    }
+
+    /// Pushes an app onto the back of the navigation stack.
+    /// This signifies that it is the most recently used app.
+    /// If the stack is already at full capacity, the operation is aborted and a warning is logged.
     pub(crate) fn push_lxapp_stack(&self, appid: String) {
         if let Ok(mut stack) = self.lxapp_stack.lock() {
             if stack.len() < DEFAULT_LXAPP_NAVIGATION_STACKS {
@@ -313,7 +362,7 @@ impl LxApp {
     }
 
     /// Create a new regular mini-app (not home app)
-    fn new(appid: String, runtime: Arc<Platform>, executor: Arc<LxAppExecutor>) -> Self {
+    pub(crate) fn new(appid: String, runtime: Arc<Platform>, executor: Arc<LxAppExecutor>) -> Self {
         let mut app = Self::_new(appid, runtime, executor);
         if let Err(e) = app.setup() {
             error!("Setup failed: {}", e).with_appid(&app.appid);
@@ -336,6 +385,31 @@ impl LxApp {
         app
     }
 
+    /// Removes all files and directories associated with this LxApp from disk.
+    pub(crate) fn delete_disk_files(&self) -> Result<(), LxAppError> {
+        let version_path = self
+            .runtime
+            .app_data_dir()
+            .join(LINGXIA_DIR)
+            .join(VERSIONS_DIR)
+            .join(format!("{}.txt", self.appid));
+        if version_path.exists() {
+            fs::remove_file(&version_path)?;
+        }
+
+        if self.lxapp_dir.exists() {
+            fs::remove_dir_all(&self.lxapp_dir)?;
+        }
+        if self.storage_dir.exists() {
+            fs::remove_dir_all(&self.storage_dir)?;
+        }
+        if self.user_cache_dir.exists() {
+            fs::remove_dir_all(&self.user_cache_dir)?;
+        }
+
+        Ok(())
+    }
+
     /// Initialize paths and directories for the lxapp
     fn initialize_paths(&mut self) -> Result<(), LxAppError> {
         // Get the app's version
@@ -346,7 +420,7 @@ impl LxApp {
             // Home lxapp uses appid directly as directory name
             self.appid.clone()
         } else {
-            let user_id = LXAPPS_MANAGER.get().unwrap().get_user_id();
+            let user_id = get_lxapps_manager().unwrap().get_user_id();
             generate_app_hash(&self.appid, &user_id)
         };
 
@@ -577,49 +651,6 @@ impl LxApp {
         // The on_lxapp_closed delegate will then handle removing it from the navigation stack.
         // The underlying UI framework should detect the app closure and automatically display the new app at the top of the stack.
         self.runtime.close_lxapp(self.appid.clone())?;
-        Ok(())
-    }
-
-    /// Uninstalls the lxapp by removing its version record and directories
-    ///
-    /// # Returns
-    /// * `Ok(())` - If the lxapp was uninstalled successfully
-    /// * `Err(LxAppError)` - If there was an error during uninstallation
-    pub fn uninstall(&self) -> Result<(), LxAppError> {
-        // Don't allow uninstalling the home app
-        if self.is_home_lxapp {
-            return Err(LxAppError::UnsupportedOperation(
-                "Cannot uninstall the home lxapp".to_string(),
-            ));
-        }
-
-        //  Remove the version record file
-        let version_path = self
-            .runtime
-            .app_data_dir()
-            .join(LINGXIA_DIR)
-            .join(VERSIONS_DIR)
-            .join(format!("{}.txt", self.appid));
-
-        if version_path.exists() {
-            fs::remove_file(&version_path)?
-        }
-
-        //  Remove the app directory
-        if self.lxapp_dir.exists() {
-            fs::remove_dir_all(&self.lxapp_dir)?;
-        }
-
-        // Remove the storage directory
-        if self.storage_dir.exists() {
-            fs::remove_dir_all(&self.storage_dir)?;
-        }
-
-        //  Remove the cache directory
-        if self.user_cache_dir.exists() {
-            fs::remove_dir_all(&self.user_cache_dir)?;
-        }
-
         Ok(())
     }
 
