@@ -1,18 +1,17 @@
 use dashmap::DashMap;
 use lingxia_platform::{AppRuntime, Platform};
-use std::collections::VecDeque;
 use std::collections::hash_map::DefaultHasher;
+use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
-use std::sync::Arc;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Instant;
 
 use crate::app::AppConfig;
 use crate::error::LxAppError;
 use crate::executor::LxAppExecutor;
-use crate::page::{Page, Pages};
+use crate::page::Page;
 use crate::{error, info, warn};
 use security::NetworkSecurity;
 
@@ -37,7 +36,8 @@ const USER_CACHE_DIR: &str = "usercache";
 const DEFAULT_USER_ID: &str = "default";
 const DEFAULT_VERSION: &str = "0.0.1";
 
-const DEFAULT_LXAPP_NAVIGATION_STACKS: usize = 5;
+const LXAPP_STACK_MAX: usize = 5;
+const PAGE_STACK_MAX: usize = 10;
 
 /// Manages a collection of lxapp applications
 pub struct LxApps {
@@ -73,7 +73,7 @@ impl LxApps {
             lxapps: DashMap::new(),
             runtime,
             executor,
-            lxapp_stack: Mutex::new(VecDeque::with_capacity(DEFAULT_LXAPP_NAVIGATION_STACKS)),
+            lxapp_stack: Mutex::new(VecDeque::with_capacity(LXAPP_STACK_MAX)),
             user_id,
         }
     }
@@ -88,7 +88,6 @@ impl LxApps {
     ///
     /// # Arguments
     /// * `new_user_id` - The new user ID to use (will be hashed for directory names)
-    /// ```
     pub fn set_user_id(&self, new_user_id: String) {
         if let Ok(mut user_id) = self.user_id.lock() {
             *user_id = new_user_id;
@@ -155,8 +154,9 @@ impl LxApps {
             // It's in memory and not active, so we can "destroy" and "uninstall".
             info!("App is in memory; destroying and uninstalling...").with_appid(appid);
 
-            // Destroy (memory part)
-            self.destroy_lxapp(appid)?;
+            // Remove from the stack and the main map (Drop trait will handle cleanup)
+            self.remove_from_stack(appid);
+            self.lxapps.remove(appid);
 
             // Uninstall (disk part)
             app_to_uninstall.delete_disk_files()?;
@@ -185,42 +185,23 @@ impl LxApps {
         temp_app.delete_disk_files()
     }
 
-    /// Destroys an LxApp instance to free up memory.
-    /// This removes the app from the active pool and terminates its associated services.
-    /// The home app cannot be destroyed.
-    fn destroy_lxapp(&self, appid: &str) -> Result<(), LxAppError> {
-        // Retrieve the app to check if it's the home app
-        if let Some(app_arc) = self.lxapps.get(appid) {
-            if app_arc.is_home_lxapp {
-                return Err(LxAppError::UnsupportedOperation(
-                    "Cannot destroy the home lxapp".to_string(),
-                ));
-            }
-        } else {
-            // App not found, nothing to do
-            return Ok(());
-        }
-
-        info!("Destroying lxapp to free memory").with_appid(appid.to_string());
-
-        // Terminate the app's background service
-        self.executor.terminate_app_svc(appid.to_string())?;
-
-        // Remove from the stack and the main map
-        self.remove_from_stack(appid);
-        self.lxapps.remove(appid);
-
-        Ok(())
-    }
-
     /// Finds and evicts the least recently used LxApp to free up memory.
     /// The least recently used app is determined by the front of the navigation stack.
     fn evict_lru_lxapp(&self) {
         if let Some(appid_to_destroy) = self.pop_front_lxapp_stack() {
-            if let Err(e) = self.destroy_lxapp(&appid_to_destroy) {
-                error!("Failed to evict least recently used app: {}", e)
-                    .with_appid(appid_to_destroy);
+            // Check if it's the home app
+            if let Some(app_arc) = self.lxapps.get(&appid_to_destroy) {
+                if app_arc.is_home_lxapp {
+                    warn!("Cannot evict the home lxapp").with_appid(appid_to_destroy);
+                    return;
+                }
             }
+
+            info!("Evicting least recently used lxapp").with_appid(appid_to_destroy.clone());
+
+            // Remove from the stack and the main map (Drop trait will handle cleanup)
+            self.remove_from_stack(&appid_to_destroy);
+            self.lxapps.remove(&appid_to_destroy);
         }
     }
 
@@ -238,12 +219,12 @@ impl LxApps {
     /// If the stack is already at full capacity, the operation is aborted and a warning is logged.
     pub(crate) fn push_lxapp_stack(&self, appid: String) {
         if let Ok(mut stack) = self.lxapp_stack.lock() {
-            if stack.len() < DEFAULT_LXAPP_NAVIGATION_STACKS {
+            if stack.len() < LXAPP_STACK_MAX {
                 stack.push_back(appid);
             } else {
                 warn!(
                     "LxApp navigation stack is full (capacity: {}). Cannot push app: {}",
-                    DEFAULT_LXAPP_NAVIGATION_STACKS, appid
+                    LXAPP_STACK_MAX, appid
                 );
             }
         }
@@ -259,7 +240,7 @@ impl LxApps {
     }
 
     /// Check if the navigation stack is empty
-    pub(crate) fn is_stack_empty(&self) -> bool {
+    pub(crate) fn is_lxapp_stack_empty(&self) -> bool {
         if let Ok(stack) = self.lxapp_stack.lock() {
             stack.is_empty()
         } else {
@@ -275,9 +256,9 @@ impl LxApps {
     }
 
     /// Check if the navigation stack is full
-    fn is_stack_full(&self) -> bool {
+    fn is_lxapp_stack_full(&self) -> bool {
         if let Ok(stack) = self.lxapp_stack.lock() {
-            stack.len() >= DEFAULT_LXAPP_NAVIGATION_STACKS
+            stack.len() >= LXAPP_STACK_MAX
         } else {
             // If the lock is poisoned, it's safer to consider it full
             // to prevent further pushes.
@@ -290,11 +271,15 @@ impl LxApps {
 pub(crate) struct LxAppState {
     /// Collection of pages in this app with their current states
     /// Manages page lifecycle (show/hide/destroy)
-    pub pages: Pages,
+    pub(crate) pages: Mutex<HashMap<String, Page>>,
+
+    /// Page navigation stack for tracking page navigation history within this app
+    /// Stores all pages for navigation history
+    pub(crate) page_stack: Mutex<VecDeque<String>>,
 
     /// Time when this app was last active
     /// Used for LRU (Least Recently Used) eviction when memory is low
-    pub last_active_time: Instant,
+    pub(crate) last_active_time: Instant,
 
     /// Debug mode override (can be enabled at runtime)
     /// When true, enables additional logging and debugging features
@@ -316,7 +301,8 @@ pub(crate) struct LxAppState {
 impl LxAppState {
     fn new() -> Self {
         Self {
-            pages: Pages::new(),
+            pages: Mutex::new(HashMap::new()),
+            page_stack: Mutex::new(VecDeque::with_capacity(PAGE_STACK_MAX)),
             last_active_time: Instant::now(),
             debug: false,
             opened: false,
@@ -494,8 +480,6 @@ impl LxApp {
                 if let Some(tabbar_config) = self.config.get_tab_bar(self) {
                     let mut state = self.state.lock().unwrap();
                     state.tabbar = Some(tabbar_config.clone());
-                    // Ensure page stacks match TabBar configuration
-                    state.pages.ensure_stacks_for_tabbar(Some(&tabbar_config));
                 }
 
                 Ok(())
@@ -577,8 +561,14 @@ impl LxApp {
 
     /// Get a page by path
     pub fn get_page(&self, path: &str) -> Option<Page> {
-        let state = self.state.lock().unwrap();
-        state.pages.get_page(path).cloned()
+        self.state
+            .lock()
+            .unwrap()
+            .pages
+            .lock()
+            .unwrap()
+            .get(path)
+            .cloned()
     }
 
     /// This method should only be called when page is in Created state
@@ -622,10 +612,10 @@ impl LxApp {
 
         if let Some(manager) = get_lxapps_manager() {
             // Check if the navigation stack is full before proceeding.
-            if manager.is_stack_full() {
+            if manager.is_lxapp_stack_full() {
                 warn!(
                     "LxApp navigation stack is full (capacity: {}). Cannot navigate to app: {}",
-                    DEFAULT_LXAPP_NAVIGATION_STACKS, appid
+                    LXAPP_STACK_MAX, appid
                 );
                 return Ok(()); // Do nothing if the stack is full.
             }
@@ -656,6 +646,209 @@ impl LxApp {
 
     pub fn get_lxapp_info(&self) -> config::LxAppInfo {
         self.config.get_lxapp_info()
+    }
+
+    /// Get existing page or create a new one if it doesn't exist
+    /// Returns None if creation fails
+    pub fn get_or_create_page(self: &Arc<Self>, path: &str) -> Option<Page> {
+        // Check if page already exists
+        {
+            let state = self.state.lock().unwrap();
+            if let Some(page) = state.pages.lock().unwrap().get(path) {
+                return Some(page.clone());
+            }
+        }
+
+        // Create new page first
+        let appid = self.appid.clone();
+        let path_clone = path.to_string();
+        let executor = self.executor.clone();
+        let lxapp_for_setup = self.clone();
+        let page = Page::new(
+            appid.clone(),
+            path.to_string(),
+            &**self,
+            move |page, path| {
+                // Setup page HTML content (same as before refactor)
+                lxapp_for_setup.setup_page(page, path);
+
+                // Create page service
+                if let Err(e) = executor.create_page_svc(appid.clone(), path.to_string()) {
+                    error!("Failed to request page service creation: {}", e)
+                        .with_appid(appid.clone())
+                        .with_path(path.to_string());
+                }
+            },
+        );
+
+        // Insert the new page first to ensure it's protected
+        {
+            let state = self.state.lock().unwrap();
+            state.pages.lock().unwrap().insert(path_clone, page.clone());
+        }
+
+        // Check if we need to evict pages after creating new one
+        self.evict_inactive_pages_if_needed();
+
+        Some(page)
+    }
+
+    /// Check if we need to evict pages before creating new ones
+    /// Evict when page count exceeds: tabbar_items + PAGE_STACK_MAX
+    fn should_evict_pages(&self) -> bool {
+        let state = self.state.lock().unwrap();
+        let page_count = state.pages.lock().unwrap().len();
+
+        let max_allowed = if let Some(ref tabbar) = state.tabbar {
+            tabbar.list.len() + PAGE_STACK_MAX
+        } else {
+            PAGE_STACK_MAX
+        };
+
+        page_count > max_allowed
+    }
+
+    /// Evict least recently used pages when memory is full
+    fn evict_inactive_pages_if_needed(&self) {
+        if !self.should_evict_pages() {
+            return;
+        }
+
+        let state = self.state.lock().unwrap();
+        let mut pages = state.pages.lock().unwrap();
+
+        // Find the least recently used page (excluding current page in stack)
+        let current_page = state.page_stack.lock().unwrap().back().cloned();
+
+        let mut oldest_time: Option<Instant> = None;
+        let mut oldest_path: Option<String> = None;
+
+        for (path, page) in pages.iter() {
+            if Some(path) == current_page.as_ref() {
+                continue; // Don't evict current page
+            }
+
+            // Don't evict tabbar pages
+            if page.is_tabbar_page() {
+                info!("Skipping tabbar page for eviction: {}", path).with_appid(self.appid.clone());
+                continue;
+            }
+
+            if let Some(last_active) = page.get_last_active_time() {
+                if oldest_time.is_none() || last_active < oldest_time.unwrap() {
+                    oldest_time = Some(last_active);
+                    oldest_path = Some(path.clone());
+                }
+            }
+        }
+
+        // Remove the oldest page
+        if let Some(path) = oldest_path {
+            if let Some(_removed_page) = pages.remove(&path) {
+                info!("Evicted inactive page: {}", path).with_appid(self.appid.clone());
+            } else {
+                warn!("Failed to evict page (not found): {}", path).with_appid(self.appid.clone());
+            }
+        }
+    }
+
+    /// Check if the page stack is considered full
+    /// Returns true when stack size reaches PAGE_STACK_MAX
+    pub fn is_page_stack_full(&self) -> bool {
+        self.get_page_stack_size() >= PAGE_STACK_MAX
+    }
+
+    /// Clear the page navigation stack
+    /// This removes all pages from the navigation history
+    pub fn clear_page_stack(&self) -> Result<(), LxAppError> {
+        let state = self.state.lock().unwrap();
+        state.page_stack.lock().unwrap().clear();
+        Ok(())
+    }
+
+    /// Add a page to the navigation stack
+    /// Called from delegate on page show
+    pub fn push_to_page_stack(&self, path: &str) -> Result<(), LxAppError> {
+        let state = self.state.lock().unwrap();
+        let mut stack = state.page_stack.lock().unwrap();
+
+        // If stack is full, do nothing
+        if stack.len() >= PAGE_STACK_MAX {
+            return Ok(());
+        }
+
+        // Remove the path if it already exists in the stack to avoid duplicates
+        stack.retain(|p| p != path);
+
+        // Add to the back of the stack (most recent)
+        stack.push_back(path.to_string());
+
+        Ok(())
+    }
+
+    /// Remove the most recent page from the navigation stack
+    /// Returns the path of the removed page, or None if stack is empty
+    pub fn pop_from_page_stack(&self) -> Option<String> {
+        let state = self.state.lock().unwrap();
+        state.page_stack.lock().unwrap().pop_back()
+    }
+
+    /// Get the current page stack size
+    pub fn get_page_stack_size(&self) -> usize {
+        self.state.lock().unwrap().page_stack.lock().unwrap().len()
+    }
+
+    /// Get a copy of the current page stack
+    /// Returns a vector of page paths in stack order (oldest to newest)
+    pub fn get_page_stack(&self) -> Vec<String> {
+        self.state
+            .lock()
+            .unwrap()
+            .page_stack
+            .lock()
+            .unwrap()
+            .iter()
+            .cloned()
+            .collect()
+    }
+
+    /// Peek at the current page path without removing it from the stack
+    /// Returns None if the stack is empty
+    pub fn peek_current_page(&self) -> Option<String> {
+        self.state
+            .lock()
+            .unwrap()
+            .page_stack
+            .lock()
+            .unwrap()
+            .back()
+            .cloned()
+    }
+}
+
+impl Drop for LxApp {
+    fn drop(&mut self) {
+        // Don't destroy home app
+        if self.is_home_lxapp {
+            return;
+        }
+
+        info!("Dropping LxApp, cleaning up resources").with_appid(self.appid.clone());
+
+        // Terminate the app's background service
+        if let Err(e) = self.executor.terminate_app_svc(self.appid.clone()) {
+            error!("Failed to terminate app service during drop: {}", e)
+                .with_appid(self.appid.clone());
+        }
+
+        // Destroy all pages - they will be automatically dropped when the HashMap is dropped
+        // The Page Drop implementation will handle individual page cleanup
+        let state = self.state.lock().unwrap();
+        let page_count = state.pages.lock().unwrap().len();
+        if page_count > 0 {
+            info!("Dropping {} pages", page_count).with_appid(self.appid.clone());
+        }
+        // Pages will be automatically dropped when state.pages HashMap is dropped
     }
 }
 
@@ -744,7 +937,7 @@ pub fn init(runtime: Platform) -> Option<String> {
                 }
             }
 
-            let executor = crate::executor::LxAppExecutor::init(DEFAULT_LXAPP_NAVIGATION_STACKS);
+            let executor = LxAppExecutor::init(LXAPP_STACK_MAX);
 
             // Create the home LxApp instance
             let mut home_lxapp = LxApp::new_as_home(
@@ -840,4 +1033,18 @@ pub fn on_low_memory() {
         info!("on_low_memory triggered, evicting least recently used app.");
         manager.evict_lru_lxapp();
     }
+}
+
+/// Get the current lxapp from the navigation stack and its current page path
+/// Returns (appid, current_page_path) or empty strings if not found
+pub fn get_current_lxapp() -> (String, String) {
+    if let Some(manager) = LXAPPS_MANAGER.get() {
+        if let Some(current_appid) = manager.peek_lxapp_stack() {
+            if let Some(lxapp) = manager.lxapps.get(&current_appid) {
+                let current_path = lxapp.peek_current_page().unwrap_or_default();
+                return (current_appid, current_path);
+            }
+        }
+    }
+    (String::new(), String::new())
 }

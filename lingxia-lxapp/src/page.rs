@@ -1,306 +1,13 @@
 use crate::appservice::bridge::IncomingMessage;
 use crate::executor::LxAppExecutor;
 use crate::lxapp::{self, navbar::NavigationBarState};
-use crate::{LxAppError, error, info};
+use crate::{LxApp, LxAppError, error, info};
 use lingxia_webview::{
     LogLevel, WebTag, WebView, WebViewController, WebViewDelegate, create_webview,
 };
 
-use std::collections::{HashMap, VecDeque};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::Instant;
-
-/// A page stack represents a group of pages starting with a tab page
-struct PageStack {
-    pages: VecDeque<String>,
-}
-
-impl PageStack {
-    fn new() -> Self {
-        Self {
-            pages: VecDeque::new(),
-        }
-    }
-
-    fn push_page(&mut self, path: String) {
-        // Avoid pushing duplicates if already the last page
-        if self.pages.back() != Some(&path) {
-            self.pages.push_back(path);
-        }
-    }
-
-    fn pop_page(&mut self) -> Option<String> {
-        if self.pages.len() > 1 {
-            self.pages.pop_back()
-        } else {
-            None // Preserve at least one page in stack if it exists
-        }
-    }
-
-    fn current_page(&self) -> Option<&str> {
-        self.pages.back().map(|s| s.as_str())
-    }
-
-    fn is_empty(&self) -> bool {
-        self.pages.is_empty()
-    }
-}
-
-/// Manages a collection of pages for a single lxapp
-pub(crate) struct Pages {
-    /// Map of path to Page
-    pages: HashMap<String, Page>,
-    /// Tab stacks (number of stacks matches number of tabs, or 1 for non-tabbar apps)
-    stacks: Vec<PageStack>,
-    /// Index of the currently active tab stack
-    current_index: usize,
-    /// Maximum number of pages to keep in memory
-    max_pages: usize,
-}
-
-impl Pages {
-    pub(crate) fn new() -> Self {
-        Self {
-            pages: HashMap::new(),
-            stacks: vec![PageStack::new()], // Default: one stack for non-tabbar apps
-            current_index: 0,
-            max_pages: 5,
-        }
-    }
-
-    /// Get a reference to a page by path
-    pub fn get_page(&self, path: &str) -> Option<&Page> {
-        self.pages.get(path)
-    }
-
-    /// Ensure page stacks match TabBar configuration
-    /// Should be called when TabBar is initialized or changed
-    pub fn ensure_stacks_for_tabbar(&mut self, tabbar: Option<&crate::lxapp::tabbar::TabBar>) {
-        let tab_count = tabbar.map(|tb| tb.list.len()).unwrap_or(1);
-
-        // Adjust stack count to match tabs (or 1 for non-tabbar apps)
-        if self.stacks.len() != tab_count {
-            self.stacks.clear();
-            for _ in 0..tab_count {
-                self.stacks.push(PageStack::new());
-            }
-            self.current_index = 0;
-        }
-    }
-
-    /// Get tab paths from TabBar
-    fn get_tab_paths(&self, tabbar: Option<&crate::lxapp::tabbar::TabBar>) -> Vec<String> {
-        tabbar
-            .map(|tb| tb.list.iter().map(|item| item.pagePath.clone()).collect())
-            .unwrap_or_default()
-    }
-
-    /// Creates a new page placeholder and initiates WebView creation asynchronously
-    /// Returns the page immediately, WebView will be attached when ready
-    pub fn create_page<F>(
-        &mut self,
-        appid: String,
-        path: String,
-        page_state: PageState,
-        setup_callback: F,
-    ) -> Result<Page, LxAppError>
-    where
-        F: Fn(&Page, &str) + Send + 'static,
-    {
-        if self.pages.len() >= self.max_pages {
-            self.destroy_least_active();
-        }
-
-        // Create page without WebView first
-        let page = Page::new(appid.clone(), path.clone(), page_state);
-
-        // Insert the page into the hashmap
-        self.pages.insert(path.clone(), page.clone());
-
-        // Create channel for WebView creation notification
-        let (sender, receiver) = std::sync::mpsc::channel();
-
-        // Initiate WebView creation asynchronously
-        let webtag = WebTag::new(&appid, &path);
-        create_webview(&webtag, sender);
-
-        // Spawn task to wait for WebView creation completion
-        let page_clone = page.clone();
-        let appid_clone = appid.clone();
-        let path_clone = path.clone();
-
-        LxAppExecutor::spawn_task(move || {
-            match receiver.recv() {
-                Ok(Ok(webview_controller)) => {
-                    // Set the page as the WebView delegate
-                    webview_controller.set_delegate(Arc::new(page_clone.clone()));
-
-                    // Attach WebView to page
-                    page_clone.attach_webview(webview_controller);
-
-                    // Call setup callback - let external code handle the rest
-                    setup_callback(&page_clone, &path_clone);
-                }
-                Ok(Err(e)) => {
-                    error!("Failed to create WebView: {}", e)
-                        .with_appid(appid_clone)
-                        .with_path(path_clone);
-                }
-                Err(_) => {
-                    error!("WebView creation channel closed")
-                        .with_appid(appid_clone)
-                        .with_path(path_clone);
-                }
-            }
-        });
-
-        Ok(page)
-    }
-
-    /// Navigates to a page by updating the current stack and marking the page as active
-    /// Returns the previous page path if there was a page switch that should trigger onHide
-    pub fn navigate_to_page(
-        &mut self,
-        path: String,
-        tabbar: Option<&crate::lxapp::tabbar::TabBar>,
-    ) -> Option<String> {
-        // Ensure stacks match TabBar configuration
-        self.ensure_stacks_for_tabbar(tabbar);
-
-        // Get the current page before navigation
-        let previous_page = self.stacks[self.current_index]
-            .current_page()
-            .map(String::from);
-
-        // Handle tab page navigation
-        let tab_paths = self.get_tab_paths(tabbar);
-        if tabbar.is_some() && tab_paths.contains(&path) {
-            if let Some(index) = tab_paths.iter().position(|p| p == &path) {
-                self.current_index = index;
-
-                // If this stack is empty, add the tab page as its first page
-                if self.stacks[index].is_empty() {
-                    self.stacks[index].push_page(path.clone());
-                }
-            }
-        } else {
-            // Non-tab page or no tabbar - add to current stack
-            let stack = &mut self.stacks[self.current_index];
-            stack.push_page(path.clone());
-        }
-
-        // Update the last active time for this page
-        if let Some(page) = self.pages.get(&path) {
-            page.mark_active();
-        }
-
-        // Return previous page if it's different from the new page
-        if let Some(prev_path) = previous_page {
-            if prev_path != path {
-                return Some(prev_path);
-            }
-        }
-
-        None
-    }
-
-    /// Pops the current page from the current stack if possible.
-    /// Returns the path of the page to navigate back *to* if successful.
-    /// Also destroys the page that was popped.
-    /// Returns None if the current page cannot be popped (e.g., it's the tab root).
-    pub fn pop_from_current_stack(
-        &mut self,
-        tabbar: Option<&crate::lxapp::tabbar::TabBar>,
-    ) -> Option<String> {
-        // Make sure we have stacks and current stack isn't empty
-        if self.stacks.is_empty() || self.stacks[self.current_index].is_empty() {
-            return None;
-        }
-
-        // Get the current page before popping
-        let current_page = match self.stacks[self.current_index].current_page() {
-            Some(p) => p.to_string(),
-            None => return None, // Stack is empty? Error state.
-        };
-
-        // Check if the current page is a tab page (if we have tabbar)
-        let tab_paths = self.get_tab_paths(tabbar);
-        if tabbar.is_some() && tab_paths.contains(&current_page) {
-            return None; // Cannot pop a tab root page
-        }
-
-        // For any app, cannot pop if stack has only one page
-        if self.stacks[self.current_index].pages.len() <= 1 {
-            return None;
-        }
-
-        // Attempt to pop from the stack structure
-        if let Some(popped_page) = self.stacks[self.current_index].pop_page() {
-            // Successfully popped from the stack structure.
-            // Now remove the page and terminate its services
-            if let Some(page) = self.pages.remove(&popped_page) {
-                let _ = page.terminate_page_service();
-            }
-
-            // Return the path of the *new* current page in the stack
-            self.stacks[self.current_index]
-                .current_page()
-                .map(String::from)
-        } else {
-            // pop_page failed (e.g., already at root, though we checked)
-            None
-        }
-    }
-
-    /// Destroys the least recently used page to maintain memory limits
-    fn destroy_least_active(&mut self) {
-        // Check if we have multiple stacks (indicating TabBar app)
-        if self.stacks.len() > 1 {
-            // Try to remove pages from non-current stacks first
-            for i in 0..self.stacks.len() {
-                if i == self.current_index {
-                    continue; // Skip current stack
-                }
-
-                let stack = &mut self.stacks[i];
-                if stack.pages.len() > 1 {
-                    // If this stack has more than one page (besides the root page)
-                    // remove the most recently pushed page (top of stack)
-                    if let Some(last_page) = stack.pop_page() {
-                        if let Some(page) = self.pages.remove(&last_page) {
-                            let _ = page.terminate_page_service();
-                        }
-                        return;
-                    }
-                }
-            }
-
-            // If no pages can be removed from non-current stacks, try the current stack
-            // but preserve the root page and at least one direct child page
-            let current_stack = &mut self.stacks[self.current_index];
-            if current_stack.pages.len() > 2 {
-                // Keep root page and at least one child page
-                // Remove the most recently pushed page (top of stack)
-                if let Some(last_page) = current_stack.pop_page() {
-                    if let Some(page) = self.pages.remove(&last_page) {
-                        let _ = page.terminate_page_service();
-                    }
-                }
-            }
-        } else {
-            // For apps without tabbar - only one stack
-            // Ensure we keep at least one page
-            if self.stacks[0].pages.len() > 1 {
-                // Remove the most recently pushed page (top of stack)
-                if let Some(last_page) = self.stacks[0].pop_page() {
-                    if let Some(page) = self.pages.remove(&last_page) {
-                        let _ = page.terminate_page_service();
-                    }
-                }
-            }
-        }
-    }
-}
 
 /// Inner state of a page that can be shared across threads
 #[derive(Clone)]
@@ -344,7 +51,7 @@ pub struct Page {
 
 impl Page {
     /// Build PageState from JSON config
-    pub(crate) fn build_page_state(lxapp: &crate::lxapp::LxApp, path: &str) -> PageState {
+    fn build_page_state(lxapp: &lxapp::LxApp, path: &str) -> PageState {
         PageState {
             load_state: PageLoadState::Pending,
             navbar_state: NavigationBarState::from_json(lxapp, path),
@@ -352,16 +59,62 @@ impl Page {
     }
 
     /// Create a new page in pending state (WebView creation in progress)
-    fn new(appid: String, path: String, page_state: PageState) -> Self {
+    pub(crate) fn new<F>(appid: String, path: String, lxapp: &LxApp, setup_callback: F) -> Self
+    where
+        F: Fn(&Page, &str) + Send + 'static,
+    {
+        // Build page state from LxApp configuration
+        let page_state = Self::build_page_state(lxapp, &path);
         let inner = Arc::new(PageInner {
-            appid,
-            path,
+            appid: appid.clone(),
+            path: path.clone(),
             last_active_time: Arc::new(Mutex::new(Instant::now())),
             state: Arc::new(Mutex::new(page_state)),
             webview: Arc::new(Mutex::new(None)),
         });
 
-        Self { inner }
+        let page = Self { inner };
+
+        // Create channel for WebView creation notification
+        let (sender, receiver) = mpsc::channel();
+
+        // Initiate WebView creation asynchronously
+        let webtag = WebTag::new(&appid, &path);
+        create_webview(&webtag, sender);
+
+        // Spawn task to wait for WebView creation completion
+        // Keep a strong reference to ensure page stays alive during WebView creation
+        let page_for_task = page.clone();
+        let appid_clone = appid.clone();
+        let path_clone = path.clone();
+
+        LxAppExecutor::spawn_task(move || {
+            match receiver.recv() {
+                Ok(Ok(webview_controller)) => {
+                    // First attach WebView to page
+                    page_for_task.attach_webview(webview_controller.clone());
+
+                    // Then set the page as the WebView delegate
+                    // Create a new Arc to avoid potential circular references
+                    webview_controller.set_delegate(Arc::new(page_for_task.clone()));
+
+                    // Call setup callback - let external code handle the rest
+                    setup_callback(&page_for_task, &path_clone);
+                }
+                Ok(Err(e)) => {
+                    error!("Failed to create WebView: {}", e)
+                        .with_appid(appid_clone)
+                        .with_path(path_clone);
+                }
+                Err(_) => {
+                    error!("WebView creation channel closed")
+                        .with_appid(appid_clone)
+                        .with_path(path_clone);
+                }
+            }
+        });
+
+        page
     }
 
     /// Attach WebView to this page (called when WebView is ready)
@@ -459,18 +212,21 @@ impl Page {
     }
 
     /// Update the last active time to now
-    fn mark_active(&self) {
+    pub(crate) fn mark_active(&self) {
         if let Ok(mut time) = self.inner.last_active_time.lock() {
             *time = Instant::now();
         }
     }
 
-    fn terminate_page_service(&self) -> Result<(), LxAppError> {
+    /// Get the last active time for LRU eviction
+    pub(crate) fn get_last_active_time(&self) -> Option<Instant> {
+        self.inner.last_active_time.lock().ok().map(|time| *time)
+    }
+
+    /// Check if this page is a TabBar page
+    pub fn is_tabbar_page(&self) -> bool {
         let lxapp = crate::lxapp::get(self.inner.appid.clone());
-        lxapp
-            .executor
-            .terminate_page_svc(self.inner.appid.clone(), self.inner.path.clone())?;
-        Ok(())
+        lxapp.config.is_tab_page(&self.inner.path)
     }
 }
 
@@ -587,5 +343,30 @@ impl WebViewDelegate for Page {
             .with_level(log_level)
             .with_path(&self.inner.path)
             .with_appid(self.inner.appid.clone());
+    }
+}
+
+impl Drop for PageInner {
+    fn drop(&mut self) {
+        // Terminate page service
+        let lxapp = crate::lxapp::get(self.appid.clone());
+        if let Err(e) = lxapp
+            .executor
+            .terminate_page_svc(self.appid.clone(), self.path.clone())
+        {
+            error!("Failed to terminate page service during drop: {}", e)
+                .with_appid(self.appid.clone())
+                .with_path(self.path.clone());
+        }
+
+        // Destroy WebView if it exists
+        if let Ok(mut webview) = self.webview.lock() {
+            if let Some(_webview_controller) = webview.take() {
+                // WebView will be automatically destroyed when controller is dropped
+                info!("WebView destroyed for page")
+                    .with_appid(self.appid.clone())
+                    .with_path(self.path.clone());
+            }
+        }
     }
 }

@@ -128,7 +128,7 @@ impl LxApp {
     /// Get NavigationBar state for a specific page
     pub fn get_navbar_state(&self, path: &str) -> NavigationBarState {
         let state = self.state.lock().unwrap();
-        if let Some(page) = state.pages.get_page(path) {
+        if let Some(page) = state.pages.lock().unwrap().get(path) {
             // Always read from page state (initialized in create_page)
             page.get_navbar_state().unwrap_or_default()
         } else {
@@ -143,7 +143,7 @@ impl LxApp {
         F: FnOnce(&mut NavigationBarState),
     {
         let state = self.state.lock().unwrap();
-        if let Some(page) = state.pages.get_page(path) {
+        if let Some(page) = state.pages.lock().unwrap().get(path) {
             page.get_navbar_state_mut(f).is_some()
         } else {
             false
