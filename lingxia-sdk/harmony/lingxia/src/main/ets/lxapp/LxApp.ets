@@ -2,7 +2,6 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { webview } from '@kit.ArkWeb';
 import { window } from '@kit.ArkUI';
 import { resourceManager } from '@kit.LocalizationKit';
-import { taskpool } from '@kit.ArkTS';
 import { Want } from '@kit.AbilityKit';
 import common from '@ohos.app.ability.common';
 import { LxAppContainer } from './LxAppContainer';
@@ -14,16 +13,10 @@ import promptAction from '@kit.ArkUI';
 
 
 // Import native functions from Rust
-import { lxappInit, registerCustomSchemes, onLxappOpened, onLxappClosed, onPageShow, getLxAppInfo, LxAppInfo, onApplinkReceived } from 'liblingxia.so';
+import { lxappInit, registerCustomSchemes, onLxappOpened, onLxappClosed, onPageShow, getLxAppInfo, LxAppInfo, onApplinkReceived, getCurrentLxapp, CurrentLxApp } from 'liblingxia.so';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.LxApp';
-
-// Task function for handling LxApp close operation asynchronously
-@Concurrent
-function closeLxAppTask(appId: string): number {
-  return onLxappClosed(appId);
-}
 
 interface NavigationInstance {
   openLxApp(appId: string, path: string): void;
@@ -135,9 +128,6 @@ export class LxApp {
    * @param appId - The ID of the LxApp to close
    */
   public static closeLxApp(appId: string): void {
-    // Call native onLxappClosed asynchronously (fire and forget)
-    taskpool.execute(new taskpool.Task(closeLxAppTask, appId));
-
     if (LxApp.navigationInstance) {
       LxApp.navigationInstance.closeLxApp(appId);
       return;

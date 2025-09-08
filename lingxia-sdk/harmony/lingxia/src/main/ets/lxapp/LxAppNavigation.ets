@@ -1,7 +1,7 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { LxApp } from './LxApp';
 import { LxAppContainer } from './LxAppContainer';
-import { onLxappOpened, onLxappClosed, getTabBar, TabBarItem, TabBarState, getLxAppInfo, LxAppInfo } from 'liblingxia.so';
+import { onLxappOpened, onLxappClosed, getTabBar, TabBarItem, TabBarState, getLxAppInfo, LxAppInfo, getCurrentLxapp, CurrentLxApp } from 'liblingxia.so';
 import { ToastManager } from './APIs/LxAppToast';
 import { ModalManager } from './APIs/LxAppModal';
 
@@ -20,20 +20,9 @@ export enum NavigationType {
 }
 
 /**
- * LxApp stack item for manual layer management
- */
-interface LxAppStackItem {
-  appId: string;
-  path: string;
-  offsetY: number; // For manual animation
-  zIndex: number;  // Layer index
-  navigationTrigger: number; // For triggering navigation updates
-}
-
-/**
- * LxApp Navigation with WebView preservation
- * - Hides LxApps instead of destroying them to preserve WebViews
- * - Uses independent hiddenApps Set to avoid miniAppStack mutations
+ * LxApp Navigation with pure Rust stack management
+ * - Completely relies on Rust stack for LxApp management
+ * - Only manages UI state for current visible LxApp
  */
 @Component
 export struct LxAppNavigation {
@@ -42,10 +31,11 @@ export struct LxAppNavigation {
   @State homeAppPath: string = ''
   @State homeAppExternalPath: string = '' // For triggering navigation changes
   @State errorMessage: string = ''
-  @State isHomeAppVisible: boolean = false // Control Home LxApp visibility
 
-  @State private miniAppStack: LxAppStackItem[] = []
-  @State private hiddenApps: Set<string> = new Set<string>()
+  // Current modal LxApp state (only one modal app can be shown at a time)
+  @State private currentModalAppId: string = ''
+  @State private currentModalAppPath: string = ''
+  @State private modalAppVisible: boolean = false
 
   // Navigation state for triggering path changes
   @State private navigationTrigger: number = 0
@@ -95,35 +85,48 @@ export struct LxAppNavigation {
       const result: number = onLxappOpened(appId, path);
       hilog.info(DOMAIN, TAG, `onLxappOpened result: ${result}`);
 
-      // Handle Home LxApp specially
+      // UI layer distinction: Home LxApp vs Modal LxApp
       if (appId === this.homeAppId) {
         hilog.info(DOMAIN, TAG, `Showing home LxApp: ${appId}`);
-        this.isHomeAppVisible = true;
+        this.modalAppVisible = false;
         return;
       }
 
-      const existingIndex = this.miniAppStack.findIndex(item => item.appId === appId);
-
-      if (existingIndex >= 0) {
-        hilog.info(DOMAIN, TAG, `LxApp ${appId} already exists, showing and bringing to front`);
-        this.showLxApp(appId, existingIndex);
-      } else {
-        this.createNewLxApp(appId, path);
-      }
+      // For modal apps, show modal over home
+      hilog.info(DOMAIN, TAG, `Showing modal LxApp: ${appId}:${path}`);
+      this.currentModalAppId = appId;
+      this.currentModalAppPath = path;
+      this.modalAppVisible = true;
     } catch (error) {
       hilog.error(DOMAIN, TAG, `Failed to open LxApp ${appId}: ${error}`);
     }
   }
 
   public closeLxApp(appId: string): void {
-    hilog.info(DOMAIN, TAG, `Hiding lxapp (preserving WebViews): ${appId}`);
+    hilog.info(DOMAIN, TAG, `Closing lxapp: ${appId}`);
 
     try {
-      const stackIndex = this.miniAppStack.findIndex(item => item.appId === appId);
-      if (stackIndex >= 0) {
-        this.hideLxAppWithAnimation(appId, stackIndex);
+      // Call native close handler first - this removes the app from Rust stack
+      onLxappClosed(appId);
+
+      // UI cleanup: hide the closed app
+      if (appId === this.homeAppId) {
+        hilog.info(DOMAIN, TAG, `Hiding home LxApp: ${appId}`);
+        // Home app should never be closed, but if it happens, don't hide the container
+      } else if (appId === this.currentModalAppId) {
+        // Don't clear currentModalAppId to preserve the container and WebView
+        hilog.info(DOMAIN, TAG, `Hiding modal LxApp: ${appId}`);
+        this.modalAppVisible = false;
+      }
+
+      // Get next LxApp from Rust stack and open it
+      const currentLxApp: CurrentLxApp = getCurrentLxapp();
+      if (currentLxApp.appid && currentLxApp.appid.length > 0) {
+        this.openLxApp(currentLxApp.appid, currentLxApp.path);
       } else {
-        hilog.warn(DOMAIN, TAG, `LxApp not found in stack: ${appId}`);
+        hilog.info(DOMAIN, TAG, `No more LxApps in Rust stack - showing empty state`);
+        // No apps left in stack - hide modal but keep home visible
+        this.modalAppVisible = false;
       }
     } catch (error) {
       hilog.error(DOMAIN, TAG, `Failed to close LxApp ${appId}: ${error}`);
@@ -235,103 +238,52 @@ export struct LxAppNavigation {
       return true;
     }
 
-    // For modal apps in stack, find the container and navigate page
-    const stackItem = this.miniAppStack.find(item => item.appId === appId);
-    if (stackItem) {
+    // For modal apps, check if it's the current modal app
+    if (appId === this.currentModalAppId && this.modalAppVisible) {
       hilog.info(DOMAIN, TAG, `Navigating page in modal app ${appId} to ${path} with type: ${NavigationType[navigationType]}`);
-      stackItem.path = path;
+      this.currentModalAppPath = path;
       // Pass navigation type to container for animation control
       LxAppContainer.setNavigationType(appId, navigationType);
-      stackItem.navigationTrigger++;
-      // Trigger UI update for the modal container
-      this.miniAppStack = [...this.miniAppStack];
-      hilog.info(DOMAIN, TAG, `Updated modal app ${appId} path to: ${path}, trigger: ${stackItem.navigationTrigger}`);
+      // Trigger UI update by updating the path
+      this.currentModalAppPath = path;
+      hilog.info(DOMAIN, TAG, `Updated modal app ${appId} path to: ${path}`);
       return true;
     }
 
-    hilog.warn(DOMAIN, TAG, `LxApp ${appId} not found for page navigation`);
+    hilog.warn(DOMAIN, TAG, `LxApp ${appId} not found or not currently visible for page navigation`);
     return false;
   }
 
-  private showLxApp(appId: string, stackIndex: number): void {
-    const newHiddenApps = new Set<string>();
-    this.hiddenApps.forEach(id => {
-      if (id !== appId) {
-        newHiddenApps.add(id);
-      }
-    });
-    this.hiddenApps = newHiddenApps;
 
-    this.miniAppStack[stackIndex].offsetY = 0;
-    this.miniAppStack[stackIndex].zIndex = 1000 + this.miniAppStack.length;
-  }
-
-  private createNewLxApp(appId: string, path: string): void {
-    const newStackItem: LxAppStackItem = {
-      appId: appId,
-      path: path,
-      offsetY: 0,
-      zIndex: 1000 + this.miniAppStack.length,
-      navigationTrigger: 0
-    };
-
-    this.miniAppStack.push(newStackItem);
-    hilog.info(DOMAIN, TAG, `LxApp created: ${appId}:${path}, stack size: ${this.miniAppStack.length}`);
-  }
-
-  private hideLxAppWithAnimation(appId: string, stackIndex: number): void {
-    animateTo({
-      duration: 250,
-      curve: Curve.EaseIn,
-      playMode: PlayMode.Normal
-    }, () => {
-      if (stackIndex < this.miniAppStack.length) {
-        this.miniAppStack[stackIndex].offsetY = 800;
-      }
-    });
-
-    setTimeout(() => {
-      if (stackIndex < this.miniAppStack.length) {
-        this.hiddenApps = new Set(this.hiddenApps).add(appId);
-        hilog.info(DOMAIN, TAG, `LxApp ${appId} hidden, WebViews preserved for reuse`);
-      }
-      onLxappClosed(appId);
-    }, 300);
-  }
-
-  private isLxAppVisible(appId: string): boolean {
-    return !this.hiddenApps.has(appId);
-  }
 
   /**
    * Build modal LxApp container with common styling
    */
   @Builder
-  buildModalLxApp(stackItem: LxAppStackItem): void {
+  buildModalLxApp(): void {
     LxAppContainer({
-      appId: stackItem.appId,
-      initialPath: stackItem.path,
-      externalPath: stackItem.path,
+      appId: this.currentModalAppId,
+      initialPath: this.currentModalAppPath,
+      externalPath: this.currentModalAppPath,
       navigationMode: true,
       closeCallback: 'navigation',
-      navigationTrigger: stackItem.navigationTrigger
+      navigationTrigger: 0
     })
     .width('100%')
     .height('100%')
-    .zIndex(this.isLxAppVisible(stackItem.appId) ? stackItem.zIndex : -1)
+    .zIndex(1000)
     .backgroundColor(Color.White)
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
-    .translate({ y: stackItem.offsetY })
-    .visibility(this.isLxAppVisible(stackItem.appId) ? Visibility.Visible : Visibility.Hidden)
-    .enabled(this.isLxAppVisible(stackItem.appId))
+    .visibility(this.modalAppVisible ? Visibility.Visible : Visibility.Hidden)
     .onAppear(() => {
-      hilog.info(DOMAIN, TAG, `Modal LxApp appeared: ${stackItem.appId}`);
+      hilog.info(DOMAIN, TAG, `Modal LxApp appeared: ${this.currentModalAppId}`);
     })
   }
 
   build() {
     Stack() {
-      if (this.isReady && this.homeAppId && this.homeAppPath && this.isHomeAppVisible) {
+      // Always show home LxApp container to preserve WebViews, but hide when modal is visible
+      if (this.isReady && this.homeAppId && this.homeAppPath) {
         LxAppContainer({
           appId: this.homeAppId,
           initialPath: this.homeAppPath,
@@ -341,18 +293,17 @@ export struct LxAppNavigation {
           navigationTrigger: this.navigationTrigger
         })
         .zIndex(0)
+        .visibility(this.modalAppVisible ? Visibility.Hidden : Visibility.Visible)
       } else if (this.errorMessage) {
         this.buildErrorPage()
       } else {
         this.buildLoadingPage()
       }
 
-      // Only non-home apps go in the stack to avoid duplication
-      ForEach(this.miniAppStack, (stackItem: LxAppStackItem, index: number) => {
-        if (stackItem.appId !== this.homeAppId) {
-          this.buildModalLxApp(stackItem);
-        }
-      })
+      // Always show modal LxApp container to preserve WebViews, but hide when not visible
+      if (this.currentModalAppId) {
+        this.buildModalLxApp();
+      }
 
       ToastManager()
         .zIndex(10000)

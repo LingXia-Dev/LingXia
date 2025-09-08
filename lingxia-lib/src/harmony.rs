@@ -83,6 +83,13 @@ pub struct NavigationBarState {
     pub show_home_button: bool,
 }
 
+/// NAPI-compatible current LxApp information
+#[napi(object)]
+pub struct CurrentLxApp {
+    pub appid: String,
+    pub path: String,
+}
+
 #[napi]
 pub fn lxapp_init(
     env: Env,
@@ -314,4 +321,14 @@ pub fn on_scroll_changed(
 pub fn on_applink_received(applink_url: String) -> i32 {
     log::info!("[Harmony] AppLink received: {}", applink_url);
     0
+}
+
+/// Get current active LxApp ID and path from Rust stack
+#[napi]
+fn get_current_lxapp() -> CurrentLxApp {
+    let (current_appid, current_path) = lxapp::get_current_lxapp();
+    CurrentLxApp {
+        appid: current_appid,
+        path: current_path,
+    }
 }

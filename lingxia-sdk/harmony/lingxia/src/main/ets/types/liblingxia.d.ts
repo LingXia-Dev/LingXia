@@ -15,6 +15,14 @@ declare module 'liblingxia.so' {
   }
 
   /**
+   * Current LxApp information structure
+   */
+  export interface CurrentLxApp {
+    appid: string;
+    path: string;
+  }
+
+  /**
    * TabBar position enum
    */
   export enum TabBarPosition {
@@ -159,4 +167,10 @@ declare module 'liblingxia.so' {
    * @returns true if handled successfully, false otherwise
    */
   export function onUiEvent(appid: string, eventType: UiEventType, data: string): boolean;
+
+  /**
+   * Get current active LxApp ID and path from Rust stack
+   * @returns Current LxApp information
+   */
+  export function getCurrentLxapp(): CurrentLxApp;
 }
