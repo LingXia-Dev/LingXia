@@ -441,7 +441,7 @@ impl AppRuntime for Platform {
             Ok(())
         }() {
             Ok(_) => Ok(()),
-            Err(e) => Err(PlatformError::Platform(format!(
+            Err(_) => Err(PlatformError::Platform(format!(
                 "Failed to navigate: appid={}, path={}, navigation_type={:?}",
                 appid, path, navigation_type
             ))),

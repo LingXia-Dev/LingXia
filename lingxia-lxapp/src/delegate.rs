@@ -206,7 +206,7 @@ impl LxApp {
                 }
 
                 // after SDK close it, SDK should call get_current_lxapp to show another lxapp
-                self.runtime.close_lxapp(self.appid.clone());
+                let _ = self.runtime.close_lxapp(self.appid.clone());
                 return true;
             }
             "minimize" => {
@@ -260,9 +260,10 @@ impl LxApp {
     fn handle_back_press(self: &Arc<Self>) -> bool {
         info!("Back button pressed").with_appid(self.appid.clone());
 
-        // Only handle back press if there are pages to go back to
         if self.get_page_stack_size() <= 1 {
-            return false; // Let the system handle it (e.g., close app)
+            // if it's last page, clsoe this lxapp
+            let _ = self.runtime.close_lxapp(self.appid.clone());
+            return true;
         }
 
         // Pop the current page from the stack

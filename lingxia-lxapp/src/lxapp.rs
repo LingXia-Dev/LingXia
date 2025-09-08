@@ -239,15 +239,6 @@ impl LxApps {
         }
     }
 
-    /// Check if the navigation stack is empty
-    pub(crate) fn is_lxapp_stack_empty(&self) -> bool {
-        if let Ok(stack) = self.lxapp_stack.lock() {
-            stack.is_empty()
-        } else {
-            true
-        }
-    }
-
     /// Remove a specific app from the navigation stack
     pub(crate) fn remove_from_stack(&self, appid: &str) {
         if let Ok(mut stack) = self.lxapp_stack.lock() {
