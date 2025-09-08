@@ -59,9 +59,13 @@ impl LxAppDelegate for LxApp {
             self.state.lock().unwrap().opened = true;
         }
 
-        // Create or get the initial page first
-        if self.get_or_create_page(&path).is_none() {
-            error!("Failed to create initial page")
+        // Create or get the page first for launch page
+        if let Some(page) = self.get_or_create_page(&path) {
+            if page.is_tabbar_page() {
+                self.with_tabbar_mut(|t| t.set_visible(true));
+            }
+        } else {
+            error!("Failed to create launch page")
                 .with_appid(self.appid.clone())
                 .with_path(path.clone());
             return;
@@ -178,6 +182,9 @@ impl LxApp {
                 if let Err(e) = self.clear_page_stack() {
                     error!("Failed to clear page stack: {}", e).with_appid(self.appid.clone());
                 }
+
+                // ask UI to show tabbar
+                self.with_tabbar_mut(|t| t.set_visible(true));
 
                 // Navigate to the selected tab page
                 if let Err(e) = self.runtime.navigate(
