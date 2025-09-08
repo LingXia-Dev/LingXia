@@ -118,11 +118,14 @@
   globalThis.__CREATE_PAGE__ = function (pagePath) {
     const pageConfig = __PAGE_REGISTRY__[pagePath];
     if (pageConfig) {
+      pageConfig.route = pagePath;
       return createPageInstance(pageConfig, pagePath);
     } else {
       throw new Error(`Page not found: ${pagePath}`);
     }
   };
+
+  globalThis.__PAGE_REGISTRY__ = __PAGE_REGISTRY__;
 })();
 
 // Sets a value in an object using a path string (e.g., 'a.b[0].c')

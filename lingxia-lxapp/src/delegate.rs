@@ -78,18 +78,6 @@ impl LxAppDelegate for LxApp {
             error!("Failed to trigger onShow service: {}", e).with_appid(self.appid.clone());
         }
 
-        // Call onShow for the page itself
-        if let Err(e) = self.executor.call_page_service(
-            self.appid.clone(),
-            path.clone(),
-            "onShow".to_string(),
-            None,
-        ) {
-            error!("Failed to call onShow: {}", e)
-                .with_appid(self.appid.clone())
-                .with_path(path.clone());
-        }
-
         // Pre-create all tab pages in background (only on first open)
         if !was_already_opened && self.config.has_tab_bar() {
             let tab_pages = self.config.get_tab_pages();
@@ -149,6 +137,18 @@ impl LxAppDelegate for LxApp {
         // Push to page stack - this is where all pages get pushed, regardless of type
         if let Err(e) = self.push_to_page_stack(&path) {
             error!("Failed to push page to stack: {}", e)
+                .with_appid(self.appid.clone())
+                .with_path(path.clone());
+        }
+
+        // Call onShow for the page itself aftr push page to stack
+        if let Err(e) = self.executor.call_page_service(
+            self.appid.clone(),
+            path.clone(),
+            "onShow".to_string(),
+            None,
+        ) {
+            error!("Failed to call onShow: {}", e)
                 .with_appid(self.appid.clone())
                 .with_path(path.clone());
         }

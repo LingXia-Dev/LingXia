@@ -369,11 +369,26 @@ impl PageSvc {
     }
 }
 
+fn get_current_pages(ctx: JSContext) -> JSResult<Vec<JSObject>> {
+    let registry = ctx.global().get::<_, JSObject>("__PAGE_REGISTRY__")?;
+    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let paths = lxapp.get_page_stack();
+    let mut pages = Vec::new();
+    for p in paths {
+        let obj = registry.get::<_, JSObject>(p.as_str())?;
+        pages.push(obj);
+    }
+    Ok(pages)
+}
+
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     ctx.register_class::<PageSvc>()?;
 
     let page_js = Source::from_bytes(include_str!("scripts/Page.js"));
     ctx.eval::<()>(page_js)?;
+
+    let get_current_pages = rong::JSFunc::new(ctx, get_current_pages)?;
+    ctx.global().set("getCurrentPages", get_current_pages)?;
 
     Ok(())
 }
