@@ -290,6 +290,11 @@ impl PageSvc {
         func_name: &str,
         args: Option<&str>,
     ) -> JSResult<()> {
+        if func_name == "onUnload" {
+            let registry = ctx.global().get::<_, JSObject>("__PAGE_REGISTRY__")?;
+            registry.del(self.page.path().as_str());
+        }
+
         if let Some(func) = self.functions.get(func_name) {
             return self.call_js_func_with_args(func.clone(), ctx, args).await;
         }
