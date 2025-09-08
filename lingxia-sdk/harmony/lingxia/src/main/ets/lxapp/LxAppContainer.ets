@@ -7,8 +7,8 @@ import { findWebview, handleScrollChanged, toWebTag, extractWebTag, WebTagParts,
 import { NavigationBar, type NavigationBarState, NAVIGATION_BUTTON_SIZE, BACK_BUTTON_LEFT_POSITION, HOME_BUTTON_LEFT_POSITION, calculateNavigationButtonYPosition } from './NavigationBar';
 import { NavigationButton, CapsuleButton } from './LxAppDrawables';
 import { TabBar } from './TabBar';
-import { TabBarPosition, type TabBarItem } from 'liblingxia.so';
-import liblingxia, { TabBarState, getNavigationBarState, onPageShow } from 'liblingxia.so';
+import { TabBarPosition, type TabBarItem, UiEventType } from 'liblingxia.so';
+import liblingxia, { TabBarState, getNavigationBarState, onPageShow, onUiEvent } from 'liblingxia.so';
 import { NavigationType } from './LxAppNavigation';
 
 // Container-specific constants
@@ -679,36 +679,7 @@ export struct LxAppContainer {
 
   private handleTabSelected(index: number) {
     hilog.info(DOMAIN, TAG, `Tab selected: ${index}, current: ${this.selectedTabIndex}`);
-    if (this.tabBarState && index < this.tabBarState.items.length) {
-      this.switchToTabByIndex(index);
-    }
-  }
-
-  /**
-   * Switch to tab by index (called by TabBar clicks)
-   */
-  private switchToTabByIndex(index: number): void {
-    if (!this.tabBarState || index < 0 || index >= this.tabBarState.items.length) {
-      hilog.warn(DOMAIN, TAG, `Invalid tab index: ${index}`);
-      return;
-    }
-
-    const newPath: string = this.tabBarState.items[index].pagePath;
-
-    hilog.info(DOMAIN, TAG, `Switching to tab ${index}`);
-
-    // Update tab selection first
-    this.selectedTabIndex = index;
-    hilog.info(DOMAIN, TAG, `Updated tab selection to index: ${index} for path: ${newPath}`);
-
-    // Navigate to the page
-    const success = this.navigateToPage(newPath);
-    if (!success) {
-      hilog.error(DOMAIN, TAG, `Failed to navigate to tab: ${newPath}`);
-      return;
-    }
-
-    hilog.info(DOMAIN, TAG, `Tab switched to ${index}, onPageShow will be triggered automatically for path: ${newPath}`);
+    let _: boolean = onUiEvent(this.appId, UiEventType.TabBarClick, index.toString());
   }
 
   /**
@@ -788,6 +759,10 @@ export struct LxAppContainer {
     // Update current WebView and path before animation
     this.currentWebTag = newWebTag;
     this.path = path;
+
+    // Update tab selection if this is a tab page
+    this.updateTabSelection(path);
+
     this.loadNavbarState(path);
 
     // Start slide animation
@@ -815,6 +790,9 @@ export struct LxAppContainer {
     // Update current WebView and path immediately
     this.currentWebTag = newWebTag;
     this.path = path;
+
+    // Update tab selection if this is a tab page
+    this.updateTabSelection(path);
 
     // Load navbar state for instant transitions
     this.loadNavbarState(path);

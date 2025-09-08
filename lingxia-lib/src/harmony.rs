@@ -1,7 +1,7 @@
 use lingxia_webview::{WebTag, get_webview_delegate, tsfn};
 use log::LevelFilter;
-use lxapp::LxAppDelegate;
 use lxapp::log::LogLevel;
+use lxapp::{LxAppDelegate, UiEventType as LxAppUiEventType};
 use napi_derive_ohos::napi;
 use napi_ohos::bindgen_prelude::Object;
 use napi_ohos::bindgen_prelude::*;
@@ -48,6 +48,15 @@ pub enum TabBarPosition {
     Bottom = 0,
     Left = 1,
     Right = 2,
+}
+
+/// NAPI-compatible UI event type enum
+#[napi]
+pub enum UiEventType {
+    TabBarClick = 0,
+    CapsuleClick = 1,
+    NavigationClick = 2,
+    BackPress = 3,
 }
 
 /// NAPI-compatible TabItem
@@ -267,6 +276,20 @@ pub fn on_page_show(appid: String, path: String) -> i32 {
     let lxapp = lxapp::get(appid);
     lxapp.on_page_show(path);
     0
+}
+
+/// Handle UI events from ArkTS
+#[napi]
+pub fn on_ui_event(appid: String, event_type: UiEventType, data: String) -> bool {
+    let ui_event_type = match event_type {
+        UiEventType::TabBarClick => LxAppUiEventType::TabBarClick,
+        UiEventType::CapsuleClick => LxAppUiEventType::CapsuleClick,
+        UiEventType::NavigationClick => LxAppUiEventType::NavigationClick,
+        UiEventType::BackPress => LxAppUiEventType::BackPress,
+    };
+
+    let lxapp = lxapp::get(appid);
+    lxapp.on_ui_event(ui_event_type, data)
 }
 
 #[napi]

@@ -95,7 +95,10 @@ function getFrostedGlassColor(isWhiteText: boolean): ResourceColor {
  * @returns NavigationType enum or null if invalid
  */
 export function navigationTypeFromInt(type: number): NavigationType | null {
-  switch (type) {
+  // Convert to number to handle string parameters from native bridge
+  const numType = Number(type);
+
+  switch (numType) {
     case 0: return NavigationType.Launch;
     case 1: return NavigationType.Forward;
     case 2: return NavigationType.Backward;

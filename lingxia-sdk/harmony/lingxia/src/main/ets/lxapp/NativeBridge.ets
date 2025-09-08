@@ -17,6 +17,18 @@ import { navigationTypeFromInt } from './NavigationBar';
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.NativeBridge';
 
+// UI Event Constants
+export const UI_EVENT_TABBAR_CLICK = 0;
+export const UI_EVENT_CAPSULE_CLICK = 1;
+export const UI_EVENT_NAVIGATION_CLICK = 2;
+export const UI_EVENT_BACK_PRESS = 3;
+
+// UI Event Data Constants
+export const CAPSULE_ACTION_MORE = "more";
+export const CAPSULE_ACTION_CLOSE = "close";
+export const NAVIGATION_ACTION_BACK = "back";
+export const NAVIGATION_ACTION_HOME = "home";
+
 /**
  * Native Bridge - Internal callback manager
  * Handles all native-to-ArkTS communication

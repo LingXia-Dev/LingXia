@@ -24,6 +24,16 @@ declare module 'liblingxia.so' {
   }
 
   /**
+   * UI event type enum
+   */
+  export enum UiEventType {
+    TabBarClick = 0,
+    CapsuleClick = 1,
+    NavigationClick = 2,
+    BackPress = 3
+  }
+
+  /**
    * TabBar item structure
    */
   export interface TabBarItem {
@@ -140,4 +150,13 @@ declare module 'liblingxia.so' {
    * @returns Status code (0 for success, -1 for error)
    */
   export function onScrollChanged(appid: string, path: string, scrollX: number, scrollY: number): number;
+
+  /**
+   * Handle UI events from ArkTS
+   * @param appid - LxApp ID
+   * @param eventType - UI event type enum
+   * @param data - Event data (e.g., tab index, action name)
+   * @returns true if handled successfully, false otherwise
+   */
+  export function onUiEvent(appid: string, eventType: UiEventType, data: string): boolean;
 }
