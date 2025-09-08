@@ -47,7 +47,7 @@ public enum TabBarPosition {
     case bottom, left, right
 }
 
-// Shared TabBar Helper Functions 
+// Shared TabBar Helper Functions
 fileprivate struct TabBarHelpers {
     // Group items by their group property - used by all TabBar implementations
     static func groupItems(_ items: [TabBarItem]) -> (start: [TabBarItem], center: [TabBarItem], end: [TabBarItem]) {
@@ -311,8 +311,11 @@ public struct LxAppTabBar: View {
             Color(PlatformColor(argb: config.color))
 
         Button(action: {
-            // Let the parent handle the selection update
-            onTabSelected(index, item.cachedPagePath)
+            // Prevent double-clicking on the same tabitem
+            if index != selectedIndex {
+                // Let the parent handle the selection update
+                onTabSelected(index, item.cachedPagePath)
+            }
         }) {
             VStack(spacing: LxAppTheme.Metrics.smallSpacing) {
                 // Tab icon with badge and red dot overlay
@@ -359,8 +362,11 @@ public struct LxAppTabBar: View {
             Color(PlatformColor(argb: config.color))
 
         Button(action: {
-            // Let the parent handle the selection update
-            onTabSelected(index, item.cachedPagePath)
+            // Prevent double-clicking on the same tabitem
+            if index != selectedIndex {
+                // Let the parent handle the selection update
+                onTabSelected(index, item.cachedPagePath)
+            }
         }) {
             VStack(spacing: LxAppTheme.Metrics.smallSpacing) {
                 // Tab icon with badge and red dot overlay
@@ -545,8 +551,11 @@ public struct MacOSLxAppTabBar: View {
         let rustItem = getTabBarItem(appId, Int32(index))
 
         Button(action: {
-            // Let the parent handle the selection update
-            onTabSelected(index, item.cachedPagePath)
+            // Prevent double-clicking on the same tabitem
+            if index != selectedIndex {
+                // Let the parent handle the selection update
+                onTabSelected(index, item.cachedPagePath)
+            }
         }) {
             VStack(spacing: LxAppTheme.Metrics.smallSpacing) {
                 // Tab icon with badge and red dot overlay
@@ -1257,7 +1266,8 @@ public class iOSTabBarWrapper: UIView {
         let previousIndex = selectedIndex
         selectedIndex = index
 
-        if let config = tabBarConfig {
+        // Prevent double-clicking on the same tab
+        if index != previousIndex, let config = tabBarConfig {
             let items = config.getItems(appId: appId)
             if index < items.count {
                 let path = items[index].page_path.toString()
