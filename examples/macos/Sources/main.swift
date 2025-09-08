@@ -4,18 +4,17 @@ import lingxia
 class LingXiaAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Initialize LingXia system
-        LxApp.initialize()
-
-        // Enable WebView debugging
+        // Enable WebView debugging BEFORE LxApp.initialize()
+        // This ensures debugging is enabled before the first WebView is created
         LxApp.enableWebViewDebugging()
 
-        // Option 1: Use predefined device size (convenient)
+        LxApp.initialize()
+
+        // Opiton for Desktop
+        //macOSLxApp.setWindowStyle(.tabStyle)
+
         macOSLxApp.setWindowSize(.iPhoneSE)
         macOSLxApp.setWindowStyle(.capsuleStyle)
-
-        // Option 2
-        //macOSLxApp.setWindowStyle(.tabStyle)
 
     }
 

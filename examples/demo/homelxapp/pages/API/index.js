@@ -14,6 +14,6 @@ Page({
 
   openLxApp: function (option) {
     console.log("getDeviceInfo:", JSON.stringify(lx.getDeviceInfo()));
-    lx.navigateToMiniProgram(option);
+    lx.navigateToLxApp(option);
   },
 });

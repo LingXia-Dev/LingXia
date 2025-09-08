@@ -16,9 +16,12 @@ public struct ContentView: View {
             .onAppear {
                 if !Self.hasInitialized {
                     Self.hasInitialized = true
-                    LxApp.initialize()
-                    // Enable WebView debugging
+
+                    // Enable WebView debugging BEFORE LxApp.initialize()
+                    // This ensures debugging is enabled before the first WebView is created
                     LxApp.enableWebViewDebugging()
+
+                    LxApp.initialize()
 
                     // Install test lxapp from Bundle Resources
                     let _ = installTestLxApp()

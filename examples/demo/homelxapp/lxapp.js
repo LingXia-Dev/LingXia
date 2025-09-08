@@ -16,6 +16,14 @@ App({
     }
   },
 
+  onHide: function() {
+    console.log("Lxapp is hidden");
+  },
+
+  onShow: function() {
+    console.log("Lxapp is shown");
+  },
+
   globalData: {
     greeting: "This is from App's globalData.data",
     ipAddr: "loading",
