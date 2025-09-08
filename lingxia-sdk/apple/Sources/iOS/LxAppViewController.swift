@@ -211,9 +211,8 @@ public class LxAppViewController: UIViewController, ObservableObject {
             if let tabBar = currentTabBar {
                 let tabIndex = tabBar.findTabIndexByPath(path)
                 if tabIndex >= 0 {
-                    // This is a TabBar item, ensure visible and update selection
+                    // This is a TabBar item, ensure visible
                     tabBar.isHidden = false
-                    syncTabBarWithCurrentPathInternal(path)
                     bringUIElementsToFront()
                 } else {
                     // Not a TabBar item, hide TabBar
@@ -318,11 +317,6 @@ public class LxAppViewController: UIViewController, ObservableObject {
 
         }
 
-        // Update TabBar selection only for switchTab navigation
-        if navigationType == .switchTab {
-            syncTabBarWithCurrentPathInternal(path)
-        }
-
         // Update WebView constraints if needed
         updateWebViewConstraints(for: appId)
     }
@@ -379,10 +373,6 @@ public class LxAppViewController: UIViewController, ObservableObject {
             currentTabBar?.isHidden = true
             currentTabBar = createTabBar(config: tabConfig, appId: appId)
             tabBarCache[appId] = currentTabBar!
-        }
-
-        if navigationType == .switchTab {
-            currentTabBar?.syncSelectedTabWithCurrentPath(path)
         }
 
         // Ensure TabBar is visible and brought to front after any updates
@@ -841,10 +831,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
 
 
 
-    /// Sync TabBar with current path (internal implementation)
-    internal func syncTabBarWithCurrentPathInternal(_ path: String) {
-        currentTabBar?.syncSelectedTabWithCurrentPath(path)
-    }
+
 
     private func setupGlobalNavigationBar() {
         guard globalNavigationBar == nil else { return }
@@ -880,9 +867,11 @@ public class LxAppViewController: UIViewController, ObservableObject {
         tabBar.alpha = 1.0
 
         // Use universal tab click handler
-        tabBar.setOnTabSelectedListener(
-            LxAppPageNavigation.tabClickHandler(appId: appId)
-        )
+        tabBar.setOnTabSelectedListener { [self] index, path in
+            if let appId = self.currentAppId {
+                LxAppPageNavigation.handleTabBarItemSelected(appId: appId, index: index)
+            }
+        }
 
         rootContainer.addSubview(tabBar)
         applyTabBarLayoutParams(tabBar: tabBar, config: config, for: appId)

@@ -234,9 +234,6 @@ extension iOSLxApp {
 
         if state.show {
             manager.setupTabBar(appId: appId)
-            if state.updateSelection, let selectedPath = state.selectedPath {
-                manager.syncTabBarWithCurrentPathInternal(selectedPath)
-            }
         } else {
             manager.currentTabBar?.isHidden = true
         }
@@ -265,10 +262,7 @@ extension iOSLxApp {
         case .pageShow:
             lingxia.onPageShow(appId, path)
         case .backPressed:
-            let handled = lingxia.onBackPressed(appId)
-            if !handled {
-                lingxia.onPageShow(appId, path)
-            }
+            let _ = onUiEvent(appId, LxAppUIEvent.backPress, "")
         }
     }
 

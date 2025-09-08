@@ -20,11 +20,13 @@ struct NavigationButtonStyle: ButtonStyle {
 @MainActor
 public class NavigationBarStateManager: ObservableObject {
     @Published public var currentState: NavigationBarState? = nil
+    @Published public var currentAppId: String? = nil
     public static let shared = NavigationBarStateManager()
     private init() {}
 
     public func updateState(appId: String, path: String) {
         currentState = LxPageNavigation.getNavigationBarState(appId: appId, path: path)
+        currentAppId = appId
     }
 
     /// Force refresh state for a specific app
@@ -393,11 +395,17 @@ struct ReactiveNavigationBarView: View {
     }
 
     private func handleBackTap() {
-        os_log("🔙 Navigation back button tapped", log: OSLog(subsystem: "LingXia", category: "Navigation"), type: .info)
+        // Get current app ID from state manager
+        if let appId = stateManager.currentAppId {
+            let _ = onUiEvent(appId, LxAppUIEvent.navigationClick, LxAppUIEvent.navigationActionBack)
+        }
     }
 
     private func handleHomeTap() {
-        os_log("🏠 Navigation home button tapped", log: OSLog(subsystem: "LingXia", category: "Navigation"), type: .info)
+        // Get current app ID from state manager
+        if let appId = stateManager.currentAppId {
+            let _ = onUiEvent(appId, LxAppUIEvent.navigationClick, LxAppUIEvent.navigationActionHome)
+        }
     }
 }
 

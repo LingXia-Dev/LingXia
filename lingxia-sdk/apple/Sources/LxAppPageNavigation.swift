@@ -22,33 +22,9 @@ import UIKit
 @MainActor
 public class LxAppPageNavigation {
 
-    /// Universal TabBar click handler
-    public static func handleTabClick(appId: String, path: String) {
-        #if os(iOS)
-        iOSLxApp.navigate(appId: appId, path: path, navigationType: .switchTab)
-        #elseif os(macOS)
-        macOSLxApp.navigate(appId: appId, path: path, navigationType: .switchTab)
-        #endif
-    }
-
-    /// Universal page navigation handler - for all navigation types
-    /// Future: This will be the main entry point from Rust layer
-    public static func handleNavigation(appId: String, path: String, navigationType: NavigationType) {
-        // Direct navigation call - no controller dependency
-        // Key parameters: appId + path (perfect for Rust integration)
-        #if os(iOS)
-        iOSLxApp.navigate(appId: appId, path: path, navigationType: navigationType)
-        #elseif os(macOS)
-        macOSLxApp.navigate(appId: appId, path: path, navigationType: navigationType)
-        #endif
-    }
-
-    /// Create tab click closure for current Swift-based TabBars
-    /// This is temporary - will be removed when Rust takes over
-    public static func tabClickHandler(appId: String) -> (Int, String) -> Void {
-        return { index, path in
-            handleTabClick(appId: appId, path: path)
-        }
+    /// Handle TabBar item selection - unified UI event system
+    public static func handleTabBarItemSelected(appId: String, index: Int) {
+        let _ = onUiEvent(appId, LxAppUIEvent.tabBarClick, String(index))
     }
 }
 

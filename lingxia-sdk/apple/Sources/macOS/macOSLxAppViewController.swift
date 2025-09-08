@@ -232,7 +232,9 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate, N
                 get: { self.selectedTabIndex },
                 set: { self.selectedTabIndex = $0 }
             ),
-            onTabSelected: LxAppPageNavigation.tabClickHandler(appId: appId)
+            onTabSelected: { [self] index, path in
+                LxAppPageNavigation.handleTabBarItemSelected(appId: self.appId, index: index)
+            }
         ))
 
         tabBarView.translatesAutoresizingMaskIntoConstraints = false
@@ -284,18 +286,12 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate, N
     }
 
     @objc private func handleBackKeyPress() {
-        let result = onBackPressed(appId)
-        if result {
-            return
-        }
-
-        // No back navigation available, close window if not home app
-        if appId != LxAppCore.getHomeLxAppId() {
-            view.window?.close()
-        }
+        // Use unified UI event system
+        let _ = onUiEvent(appId, LxAppUIEvent.backPress, "")
     }
 
     /// Navigate - using shared navigation logic
+    @MainActor
     public func navigate(appId: String, to path: String, with navigationType: NavigationType) {
         guard !appId.isEmpty else { return }
 
@@ -359,6 +355,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate, N
     }
 
     /// Update capsule button visibility
+    @MainActor
     public func updateCapsuleButtonVisibility(appId: String) {
         let isHomeApp = LxAppCore.isHomeLxApp(appId)
 
@@ -373,20 +370,16 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate, N
     }
 
     /// Find capsule button view using identifier
+    @MainActor
     public func findCapsuleButtonView() -> NSView? {
         let identifier = NSUserInterfaceItemIdentifier("CapsuleButton_\(LxAppCapsuleButtons.CAPSULE_BUTTON_TAG)")
         return view.subviews.first { $0.identifier == identifier }
     }
 
-    /// Sync TabBar with specific path for unified navigation
-    public func syncTabBarWithPath(_ path: String) {
-        if let tabIndex = findTabIndexByPath(path) {
-            selectedTabIndex = tabIndex
-            triggerTabBarRefresh()
-        }
-    }
+
 
     /// Update navigation bar
+    @MainActor
     public func updateNavigationBar(appId: String, path: String) {
         NavigationBarStateManager.shared.updateState(appId: appId, path: path)
 

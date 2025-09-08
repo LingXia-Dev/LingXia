@@ -21,9 +21,13 @@ public class LxAppCapsuleButtons {
         }
 
         let capsuleButtons = LxAppUnifiedCapsuleViewMacOS(
-            onMoreTapped: { /* More action */ },
+            onMoreTapped: {
+                let _ = onUiEvent(appId, LxAppUIEvent.capsuleClick, LxAppUIEvent.capsuleActionMore)
+            },
             onMinimizeTapped: { viewController.view.window?.miniaturize(nil) },
-            onCloseTapped: { viewController.view.window?.close() }
+            onCloseTapped: {
+                let _ = onUiEvent(appId, LxAppUIEvent.capsuleClick, LxAppUIEvent.capsuleActionClose)
+            }
         )
 
         let hostingController = NSHostingController(rootView: capsuleButtons)
@@ -54,12 +58,11 @@ public class LxAppCapsuleButtons {
         guard viewController.view.viewWithTag(CAPSULE_BUTTON_TAG) == nil else { return }
 
         let capsuleButtons = LxAppUnifiedCapsuleView(
-            onMoreTapped: {},
+            onMoreTapped: {
+                let _ = onUiEvent(appId, LxAppUIEvent.capsuleClick, LxAppUIEvent.capsuleActionMore)
+            },
             onCloseTapped: {
-                if let iOSManager = viewController as? LxAppViewController,
-                   let currentAppId = iOSManager.currentAppId {
-                    iOSManager.closeLxApp(appId: currentAppId)
-                }
+                let _ = onUiEvent(appId, LxAppUIEvent.capsuleClick, LxAppUIEvent.capsuleActionClose)
             }
         )
 
@@ -359,14 +362,10 @@ public extension View {
         self.lxAppCapsuleButtons(
             appId: appId,
             onMoreTapped: {
-                print("More button tapped")
+                let _ = onUiEvent(appId, LxAppUIEvent.capsuleClick, LxAppUIEvent.capsuleActionMore)
             },
             onCloseTapped: {
-                #if os(macOS)
-                macOSLxApp.closeLxApp(appId: appId)
-                #elseif os(iOS)
-                iOSLxApp.closeLxApp(appId: appId)
-                #endif
+                let _ = onUiEvent(appId, LxAppUIEvent.capsuleClick, LxAppUIEvent.capsuleActionClose)
             },
             onMinimizeTapped: {
                 #if os(macOS)

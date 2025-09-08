@@ -9,6 +9,20 @@ import UIKit
 import AppKit
 #endif
 
+public struct LxAppUIEvent {
+    // UI Event Type Constants - using functions to avoid concurrency issues
+    public static var tabBarClick: UiEventType { UiEventType.TabBarClick }
+    public static var capsuleClick: UiEventType { UiEventType.CapsuleClick }
+    public static var navigationClick: UiEventType { UiEventType.NavigationClick }
+    public static var backPress: UiEventType { UiEventType.BackPress }
+
+    // UI Event Data Constants
+    public static let capsuleActionMore = "more"
+    public static let capsuleActionClose = "close"
+    public static let navigationActionBack = "back"
+    public static let navigationActionHome = "home"
+}
+
 // Sendable Conformance for FFI Types
 extension ToastIcon: @unchecked Sendable {}
 extension ToastPosition: @unchecked Sendable {}
@@ -288,16 +302,7 @@ extension LxApp {
         }
     }
 
-    /// Navigate to page with specific navigation type
-    nonisolated public static func navigate(appid: RustStr, path: RustStr, navigationType: NavigationType) -> Bool {
-        let appIdString = appid.toString()
-        let pathString = path.toString()
 
-        return executeOnMain {
-            LxAppPlatform.navigate(appId: appIdString, path: pathString, navigationType: navigationType)
-            return true
-        }
-    }
 
     /// Update TabBar UI to refresh badge and red dot data etc
     nonisolated public static func updateTabBarUI(appid: RustStr) -> Bool {

@@ -1,6 +1,6 @@
-use lxapp::LxAppDelegate;
 use lxapp::LxAppInfo as CoreLxAppInfo;
 use lxapp::log::LogLevel;
+use lxapp::{LxAppDelegate, UiEventType};
 
 /// Parses a color string (e.g., "#RRGGBB" or "transparent") into a u32 ARGB value.
 fn parse_color_to_u32(color_str: &str, default_color: u32) -> u32 {
@@ -79,6 +79,14 @@ mod bridge {
         Launch,
     }
 
+    // UI event types for unified event handling
+    pub enum UiEventType {
+        TabBarClick,
+        CapsuleClick,
+        NavigationClick,
+        BackPress,
+    }
+
     extern "Rust" {
         #[swift_bridge(swift_name = "lxappInit")]
         fn lxapp_init(data_dir: &str, cache_dir: &str) -> Option<String>;
@@ -101,8 +109,8 @@ mod bridge {
         #[swift_bridge(swift_name = "getTabBarItem")]
         fn get_tab_bar_item(appid: &str, index: i32) -> Option<TabBarItem>;
 
-        #[swift_bridge(swift_name = "onBackPressed")]
-        fn on_back_pressed(appid: &str) -> bool;
+        #[swift_bridge(swift_name = "onUiEvent")]
+        fn on_ui_event(appid: &str, event_type: UiEventType, data: &str) -> bool;
 
         #[swift_bridge(swift_name = "onLxappOpened")]
         fn on_lxapp_opened(appid: &str, path: &str) -> i32;
@@ -205,10 +213,17 @@ pub fn on_lxapp_closed(appid: &str) -> i32 {
     0
 }
 
-/// Handle back button press
-pub fn on_back_pressed(appid: &str) -> bool {
+/// Handle UI events from Swift
+pub fn on_ui_event(appid: &str, event_type: bridge::UiEventType, data: &str) -> bool {
+    let ui_event_type = match event_type {
+        bridge::UiEventType::TabBarClick => UiEventType::TabBarClick,
+        bridge::UiEventType::CapsuleClick => UiEventType::CapsuleClick,
+        bridge::UiEventType::NavigationClick => UiEventType::NavigationClick,
+        bridge::UiEventType::BackPress => UiEventType::BackPress,
+    };
+
     let lxapp = lxapp::get(appid.to_string());
-    lxapp.on_back_pressed()
+    lxapp.on_ui_event(ui_event_type, data.to_string())
 }
 
 /// Notify that LxApp was opened

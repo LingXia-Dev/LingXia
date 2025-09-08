@@ -796,10 +796,6 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         guard let tabBar = tabView else { return }
 
         tabBar.translatesAutoresizingMaskIntoConstraints = false
-        tabBar.onTabSelected = { [weak self] appId in
-            os_log("🔄 TabBar onTabSelected triggered: appId=%@", log: Self.log, type: .info, appId)
-            self?.switchToTab(appId)
-        }
         tabBar.onTabClosed = { [weak self] appId in
             self?.closeTab(appId)
         }

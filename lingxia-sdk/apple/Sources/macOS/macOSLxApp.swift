@@ -310,15 +310,9 @@ extension macOSLxApp {
         if let controller = Self.activeWindowControllers.first(where: { $0.appId == appId }),
            let viewController = controller.window?.contentViewController as? macOSLxAppViewController {
             viewController.showTabBar(state.show)
-            if state.updateSelection, let selectedPath = state.selectedPath {
-                viewController.syncTabBarWithPath(selectedPath)
-            }
         } else if let tabController = Self.tabWindowController,
                   let viewController = tabController.getViewController(for: appId) {
             viewController.showTabBar(state.show)
-            if state.updateSelection, let selectedPath = state.selectedPath {
-                viewController.syncTabBarWithPath(selectedPath)
-            }
         }
     }
 
@@ -378,10 +372,8 @@ extension macOSLxApp {
         case .pageShow:
             lingxia.onPageShow(appId, path)
         case .backPressed:
-            let handled = lingxia.onBackPressed(appId)
-            if !handled {
-                lingxia.onPageShow(appId, path)
-            }
+            // Use unified UI event system
+            let _ = lingxia.onUiEvent(appId, LxAppUIEvent.backPress, "")
         }
     }
 
