@@ -41,11 +41,9 @@ impl LxAppDelegate for LxApp {
             .with_path(path.clone());
 
         if !was_already_opened {
-            // Push to navigation stack if not home app and not already opened
-            if !self.is_home_lxapp {
-                if let Some(manager) = lxapp::get_lxapps_manager() {
-                    manager.push_lxapp_stack(self.appid.clone());
-                }
+            // Push to lxapp navigation stack
+            if let Some(manager) = lxapp::get_lxapps_manager() {
+                manager.push_lxapp_stack(self.appid.clone());
             }
 
             // First-time launch logic
@@ -206,7 +204,9 @@ impl LxApp {
                 if let Err(e) = self.clear_page_stack() {
                     error!("Failed to clear page stack: {}", e).with_appid(self.appid.clone());
                 }
-                info!("LxApp close requested").with_appid(self.appid.clone());
+
+                // after SDK close it, SDK should call get_current_lxapp to show another lxapp
+                self.runtime.close_lxapp(self.appid.clone());
                 return true;
             }
             "minimize" => {

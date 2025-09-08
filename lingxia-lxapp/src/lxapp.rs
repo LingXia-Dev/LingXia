@@ -47,7 +47,6 @@ pub struct LxApps {
 
     /// LxApp navigation stack for tracking app navigation history
     /// Uses VecDeque for efficient push/pop operations
-    /// It does not contain home lxapp
     lxapp_stack: Mutex<VecDeque<String>>,
 
     /// Reference to the platform-specific app runtime
