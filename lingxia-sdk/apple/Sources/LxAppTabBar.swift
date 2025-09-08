@@ -879,13 +879,7 @@ public class iOSTabBarWrapper: UIView {
     }
 
     public func selectTab(index: Int) {
-        let previousIndex = self.selectedIndex
-        self.selectedIndex = index
-
-        // Only update layout if selection actually changed
-        if previousIndex != index {
-            updateLayout()
-        }
+        setSelectedIndex(index, notifyListener: false)
     }
 
     public func getSelectedIndex() -> Int {
@@ -917,7 +911,12 @@ public class iOSTabBarWrapper: UIView {
 
         // Only update layout if selection actually changed
         if previousIndex != index {
-            updateLayout()
+            // Update the selection state of the tab bar items without recreating the layout
+            for (i, subview) in subviews.enumerated() {
+                if let button = subview.subviews.first as? UIButton {
+                    button.isSelected = (i == index)
+                }
+            }
         }
 
         if notifyListener, let callback = onTabSelectedCallback, let config = tabBarConfig {
@@ -1363,13 +1362,7 @@ public class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
     }
 
     public func setSelectedIndex(_ index: Int, notifyListener: Bool) {
-        let previousIndex = selectedIndex
         selectedIndex = index
-
-        // Only update SwiftUI view if selection actually changed
-        if previousIndex != index {
-            updateSwiftUIView()
-        }
 
         if notifyListener, let callback = onTabSelectedCallback, let config = tabBarConfig {
             let items = config.getItems(appId: appId)

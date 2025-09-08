@@ -221,20 +221,18 @@ extension iOSLxApp {
         lxAppManager?.openLxApp(appId: appId, path: path)
     }
 
-    /// Render TabBar based on state
+    /// Render TabBar based on Rust state (Swift only reflects)
     public func renderTabBar(_ state: TabBarState, appId: String, path: String) {
-
         guard let manager = lxAppManager else { return }
 
-        if state.show {
-            manager.setupTabBar(appId: appId)
-            manager.currentTabBar?.isHidden = false
+        manager.setupTabBar(appId: appId)
 
-            // Always sync selection with current path (Swift handles selected index)
+        // Read visibility from Rust state
+        let isVisible = lingxia.getTabBar(appId)?.is_visible ?? false
+        if isVisible {
             manager.currentTabBar?.syncSelectedTabWithCurrentPath(path)
-        } else {
-            manager.currentTabBar?.isHidden = true
         }
+        manager.showTabBar(isVisible)
     }
 
     /// Render NavigationBar based on state

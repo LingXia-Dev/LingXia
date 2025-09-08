@@ -352,7 +352,6 @@ public class LxAppViewController: UIViewController, ObservableObject {
 
         if let cachedTabBar = tabBarCache[appId] {
             currentTabBar = cachedTabBar
-            currentTabBar?.isHidden = false
             bringUIElementsToFront()
         } else {
             // Hide current TabBar before creating new one
@@ -363,7 +362,6 @@ public class LxAppViewController: UIViewController, ObservableObject {
 
         // Ensure TabBar is visible and brought to front after any updates
         if let tabBar = currentTabBar {
-            tabBar.isHidden = false
             bringUIElementsToFront()
         }
     }
@@ -844,7 +842,6 @@ public class LxAppViewController: UIViewController, ObservableObject {
         let tabBar = LingXiaTabBar()
         tabBar.setConfig(config: config, appId: appId)
         tabBar.translatesAutoresizingMaskIntoConstraints = false
-        tabBar.isHidden = false
         tabBar.alpha = 1.0
 
         // Use universal tab click handler
@@ -861,6 +858,11 @@ public class LxAppViewController: UIViewController, ObservableObject {
         rootContainer.bringSubviewToFront(tabBar)
 
         return tabBar
+    }
+    
+    func showTabBar(_ show: Bool) {
+        currentTabBar?.isHidden = !show
+        if show { bringUIElementsToFront() }
     }
 
     private func bringUIElementsToFront() {

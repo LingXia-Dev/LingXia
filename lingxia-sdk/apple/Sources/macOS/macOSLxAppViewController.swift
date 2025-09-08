@@ -218,24 +218,21 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate, N
 
     private func setupTabBar(config: TabBar? = nil) {
         guard let tabBarConfig = lingxia.getTabBar(appId) else { return }
-
         self.tabBarConfig = tabBarConfig
-        selectedTabIndex = findTabIndexByPath(currentPath) ?? 0
 
-        let tabBarView = NSHostingView(rootView: LxAppTabBar(
-            appId: appId,
-            config: tabBarConfig,
-            selectedIndex: Binding(
-                get: { self.selectedTabIndex },
-                set: { self.selectedTabIndex = $0 }
-            ),
-            onTabSelected: { [self] index, path in
-                LxAppPageNavigation.handleTabBarItemSelected(appId: self.appId, index: index)
-            }
-        ))
+        // Use native macOS wrapper so selection updates via ObservableObject are reflected in UI
+        let tabBar = LingXiaTabBar()
+        tabBar.setConfig(config: tabBarConfig, appId: appId)
+        tabBar.setOnTabSelectedListener { [weak self] index, _ in
+            guard let self = self else { return }
+            LxAppPageNavigation.handleTabBarItemSelected(appId: self.appId, index: index)
+        }
+        // Initialize selection based on current path
+        let initIndex = findTabIndexByPath(currentPath) ?? 0
+        tabBar.setSelectedIndex(initIndex, notifyListener: false)
 
-        tabBarView.translatesAutoresizingMaskIntoConstraints = false
-        self.tabBarView = tabBarView
+        tabBar.translatesAutoresizingMaskIntoConstraints = false
+        self.tabBarView = tabBar
     }
 
     private func loadWebViewContent() {
@@ -325,6 +322,16 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate, N
     public func showTabBar(_ show: Bool) {
         guard let tabBar = tabBarView else { return }
         tabBar.isHidden = !show
+        if show, let container = view as? NSView {
+            container.addSubview(tabBar)
+            container.layoutSubtreeIfNeeded()
+        }
+    }
+
+    func removeTabBar() {
+        tabBarView?.isHidden = true
+        tabBarView?.removeFromSuperview()
+        tabBarView = nil
     }
 
     /// Trigger TabBar UI refresh for programmatic navigation
@@ -338,7 +345,10 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate, N
 
     /// Sync TabBar selection with current path
     public func syncTabBarSelection(path: String) {
-        if let tabIndex = findTabIndexByPath(path) {
+        if let wrapper = tabBarView as? LingXiaTabBar {
+            let index = wrapper.findTabIndexByPath(path)
+            if index >= 0 { wrapper.setSelectedIndex(index, notifyListener: false) }
+        } else if let tabIndex = findTabIndexByPath(path) {
             selectedTabIndex = tabIndex
         }
     }
@@ -353,7 +363,12 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate, N
     // Method required by WindowController
     func updateLayoutForNavigationStyle(currentPath: String) {
         self.currentPath = currentPath
-        selectedTabIndex = findTabIndexByPath(currentPath) ?? selectedTabIndex
+        if let wrapper = tabBarView as? LingXiaTabBar {
+            let idx = wrapper.findTabIndexByPath(currentPath)
+            if idx >= 0 { wrapper.setSelectedIndex(idx, notifyListener: false) }
+        } else {
+            selectedTabIndex = findTabIndexByPath(currentPath) ?? selectedTabIndex
+        }
     }
 
     /// Update capsule button visibility

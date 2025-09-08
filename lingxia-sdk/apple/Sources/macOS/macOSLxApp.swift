@@ -315,27 +315,24 @@ extension macOSLxApp {
         }
     }
 
-    /// Render TabBar based on state
     public func renderTabBar(_ state: TabBarState, appId: String, path: String) {
-
         // Find the appropriate view controller
-        if let controller = Self.activeWindowControllers.first(where: { $0.appId == appId }),
-           let viewController = controller.window?.contentViewController as? macOSLxAppViewController {
-            viewController.showTabBar(state.show)
-
-            // Always sync selection with current path (Swift handles selected index)
-            if state.show {
-                viewController.syncTabBarSelection(path: path)
+        let viewController: macOSLxAppViewController? = {
+            if let controller = Self.activeWindowControllers.first(where: { $0.appId == appId }) {
+                return controller.window?.contentViewController as? macOSLxAppViewController
+            } else if let tabController = Self.tabWindowController {
+                return tabController.getViewController(for: appId)
             }
-        } else if let tabController = Self.tabWindowController,
-                  let viewController = tabController.getViewController(for: appId) {
-            viewController.showTabBar(state.show)
+            return nil
+        }()
 
-            // Always sync selection with current path (Swift handles selected index)
-            if state.show {
-                viewController.syncTabBarSelection(path: path)
-            }
+        guard let vc = viewController else { return }
+
+        let isVisible = lingxia.getTabBar(appId)?.is_visible ?? false
+        if isVisible {
+            vc.syncTabBarSelection(path: path)
         }
+        vc.showTabBar(isVisible)
     }
 
     /// Render NavigationBar based on state
