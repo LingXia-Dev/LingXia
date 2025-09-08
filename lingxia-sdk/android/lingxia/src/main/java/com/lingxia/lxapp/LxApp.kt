@@ -17,6 +17,28 @@ data class LxAppInfo(
     val appName: String,
 )
 
+/**
+ * Data class representing the current active LxApp from Rust stack
+ */
+data class CurrentLxApp(
+    val appId: String,
+    val path: String
+) {
+    /**
+     * Check if this represents a valid LxApp
+     */
+    fun isValid(): Boolean {
+        return appId.isNotEmpty()
+    }
+
+    /**
+     * Check if this is empty (no active LxApp)
+     */
+    fun isEmpty(): Boolean {
+        return appId.isEmpty()
+    }
+}
+
 class LxApp private constructor(private val context: Context) {
     companion object {
         private const val TAG = "LingXia.LxApp"
