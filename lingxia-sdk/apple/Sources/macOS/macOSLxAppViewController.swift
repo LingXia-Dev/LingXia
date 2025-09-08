@@ -299,7 +299,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate, N
         }
 
         // Update app state
-        LxAppCore.updateCurrentPath(path)
+        LxAppCore.setCurrentPath(path)
 
         // macOS-specific: Update window title
         if let windowController = view.window?.windowController as? LxAppWindowController {

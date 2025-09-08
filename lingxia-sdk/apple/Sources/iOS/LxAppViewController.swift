@@ -266,7 +266,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
     public func updateAppStateForNavigation(appId: String, path: String, navigationType: NavigationType) {
         // Update current app state
         if LxAppCore.currentAppId == appId {
-            LxAppCore.updateCurrentPath(path)
+            LxAppCore.setCurrentPath(path)
         }
     }
 

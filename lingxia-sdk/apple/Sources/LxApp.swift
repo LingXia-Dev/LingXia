@@ -182,11 +182,6 @@ public class LxAppCore {
         WebViewManager.enableDebugging()
     }
 
-    /// Set home LxApp configuration
-    public static func setHomeLxApp(appId: String, initialRoute: String = "/") {
-        homeLxAppId = appId
-    }
-
     /// Check if app is home LxApp
     public static func isHomeLxApp(_ appId: String) -> Bool {
         return appId == homeLxAppId
@@ -208,7 +203,7 @@ public class LxAppCore {
     }
 
     /// Update current path
-    public static func updateCurrentPath(_ path: String) {
+    public static func setCurrentPath(_ path: String) {
         guard let appId = currentAppId else { return }
         currentPath = path
 
@@ -260,11 +255,6 @@ public class LxApp {
         #elseif os(macOS)
         _ = macOSLxApp.initialize()
         #endif
-    }
-
-    /// Set home LxApp configuration
-    public static func setHomeLxApp(appId: String, initialRoute: String = "/") {
-        LxAppCore.setHomeLxApp(appId: appId, initialRoute: initialRoute)
     }
 
     /// Enable WebView debugging
