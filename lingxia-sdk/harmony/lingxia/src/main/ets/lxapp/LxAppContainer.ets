@@ -9,6 +9,7 @@ import { NavigationButton, CapsuleButton } from './LxAppDrawables';
 import { TabBar } from './TabBar';
 import { TabBarPosition, type TabBarItem, UiEventType } from 'liblingxia.so';
 import liblingxia, { TabBarState, getNavigationBarState, onPageShow, onUiEvent } from 'liblingxia.so';
+import { NAVIGATION_ACTION_BACK, NAVIGATION_ACTION_HOME, CAPSULE_ACTION_MORE, CAPSULE_ACTION_CLOSE } from './NativeBridge';
 import { NavigationType } from './LxAppNavigation';
 
 // Container-specific constants
@@ -413,7 +414,7 @@ export struct LxAppContainer {
                 translateX: this.navbarTranslateX,
                 statusBarHeight: this.statusBarHeight,
                 showNavigationButtons: false, // Don't show buttons in navbar
-                onBackPressed: (appId: string, isHomeButton: boolean): boolean => {
+                onNavigationClick: (appId: string, isHomeButton: boolean): boolean => {
                   this.handleNavigationBack(isHomeButton);
                   return true;
                 }
@@ -593,7 +594,7 @@ export struct LxAppContainer {
         translateX: this.navbarTranslateX,
         statusBarHeight: this.statusBarHeight, // Pass status bar height
         showNavigationButtons: false, // Don't show buttons in navbar, use fixed position instead
-        onBackPressed: (appId: string, isHomeButton: boolean): boolean => {
+        onNavigationClick: (appId: string, isHomeButton: boolean): boolean => {
           this.handleNavigationBack(isHomeButton);
           return true;
         }
@@ -873,23 +874,20 @@ export struct LxAppContainer {
   private handleNavigationBack(isHomeButton: boolean = false) {
     if (isHomeButton) {
       hilog.info(DOMAIN, TAG, 'Navigation home button pressed');
-      // TODO: Implement home navigation logic
+      let _: boolean = onUiEvent(this.appId, UiEventType.NavigationClick, NAVIGATION_ACTION_HOME);
     } else {
       hilog.info(DOMAIN, TAG, 'Navigation back button pressed');
-      // TODO: Implement back navigation logic
+      let _: boolean = onUiEvent(this.appId, UiEventType.NavigationClick, NAVIGATION_ACTION_BACK);
     }
   }
 
   private handleCapsuleMore(): void {
     hilog.info(DOMAIN, TAG, 'Capsule more button pressed');
-    // TODO: Implement more menu
+    let _: boolean = onUiEvent(this.appId, UiEventType.CapsuleClick, CAPSULE_ACTION_MORE);
   }
 
   private handleCapsuleClose(): void {
-    // Close second lxapp if this is not home lxapp
-    if (!this.isHomeLxApp()) {
-        LxApp.closeLxApp(this.appId);
-    }
+    let _: boolean = onUiEvent(this.appId, UiEventType.CapsuleClick, CAPSULE_ACTION_CLOSE);
   }
 
   /**

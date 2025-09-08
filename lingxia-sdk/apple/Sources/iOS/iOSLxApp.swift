@@ -261,8 +261,6 @@ extension iOSLxApp {
             lingxia.onPageShow(appId, path)
         case .pageShow:
             lingxia.onPageShow(appId, path)
-        case .backPressed:
-            let _ = onUiEvent(appId, LxAppUIEvent.backPress, "")
         }
     }
 

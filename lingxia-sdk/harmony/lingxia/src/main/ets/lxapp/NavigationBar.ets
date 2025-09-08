@@ -117,7 +117,7 @@ export struct NavigationBar {
   @Prop statusBarHeight: number = 44; // Add status bar height prop
   @Prop showNavigationButtons: boolean = true; // Control whether to show navigation buttons
 
-  onBackPressed?: (appId: string, isHomeButton: boolean) => boolean;
+  onNavigationClick?: (appId: string, isHomeButton: boolean) => boolean;
 
   build() {
     Stack() {
@@ -167,9 +167,10 @@ export struct NavigationBar {
         bgColor: this.getButtonBackgroundColor(),
         onPressed: () => {
           const isBackButton = this.config.showBackButton;
+          const isHomeButton = !isBackButton; // If not back button, then it's home button
           hilog.info(DOMAIN, TAG, `${isBackButton ? 'Back' : 'Home'} button pressed for appId: ${this.appId}`);
-          if (this.onBackPressed) {
-            this.onBackPressed(this.appId, !isBackButton);
+          if (this.onNavigationClick) {
+            this.onNavigationClick(this.appId, isHomeButton);
           }
         }
       })

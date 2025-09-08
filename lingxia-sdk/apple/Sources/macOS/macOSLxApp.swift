@@ -371,9 +371,6 @@ extension macOSLxApp {
             lingxia.onPageShow(appId, path)
         case .pageShow:
             lingxia.onPageShow(appId, path)
-        case .backPressed:
-            // Use unified UI event system
-            let _ = lingxia.onUiEvent(appId, LxAppUIEvent.backPress, "")
         }
     }
 

@@ -159,7 +159,7 @@ public class LxAppNavigation {
         case .launch: return .openApp
         case .switchTab: return .switchTab
         case .forward: return .pageShow
-        case .backward: return .backPressed
+        case .backward: return .pageShow
         case .replace: return .pageShow
         }
     }
@@ -261,5 +261,4 @@ public enum LifecycleAction: Sendable {
     case openApp
     case switchTab
     case pageShow
-    case backPressed
 }

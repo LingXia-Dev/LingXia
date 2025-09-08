@@ -2,6 +2,7 @@
 import SwiftUI
 import Foundation
 import os.log
+import CLingXiaRustAPI
 
 /// SwiftUI-based window for LxApp 
 @available(macOS 13.0, *)
@@ -110,22 +111,27 @@ public class LxAppWindowManager: ObservableObject {
 
     /// Handle more button action
     public func handleMoreAction() {
-        print("More button tapped")
-        // Implement more menu functionality
+        if let appId = NavigationBarStateManager.shared.currentAppId {
+            let _ = onUiEvent(appId, LxAppUIEvent.capsuleClick, LxAppUIEvent.capsuleActionMore)
+        }
     }
 
     /// Handle minimize button action
     public func handleMinimizeAction() {
-        print("Minimize button tapped")
         isMinimized = true
         // SwiftUI will handle the actual minimization
+        if let window = NSApp.keyWindow {
+            window.miniaturize(nil)
+        }
     }
 
     /// Handle close button action
     public func handleCloseAction() {
-        print("Close button tapped")
-        // SwiftUI will handle the actual closing
-        NSApplication.shared.terminate(nil)
+        if let appId = NavigationBarStateManager.shared.currentAppId {
+            let _ = onUiEvent(appId, LxAppUIEvent.capsuleClick, LxAppUIEvent.capsuleActionClose)
+        } else {
+            NSApplication.shared.terminate(nil)
+        }
     }
 
     /// Set window style
@@ -214,9 +220,17 @@ public struct LxAppSwiftUITitleBar: View {
     private var floatingNavbarButton: some View {
         if let state = stateManager.currentState {
             if state.show_back_button {
-                NavigationButton(isBackButton: true, action: {})
+                NavigationButton(isBackButton: true, action: {
+                    if let appId = stateManager.currentAppId {
+                        let _ = onUiEvent(appId, LxAppUIEvent.navigationClick, LxAppUIEvent.navigationActionBack)
+                    }
+                })
             } else if state.show_home_button {
-                NavigationButton(isBackButton: false, action: {})
+                NavigationButton(isBackButton: false, action: {
+                    if let appId = stateManager.currentAppId {
+                        let _ = onUiEvent(appId, LxAppUIEvent.navigationClick, LxAppUIEvent.navigationActionHome)
+                    }
+                })
             }
         }
     }
@@ -310,8 +324,7 @@ public struct LxAppSwiftUITabBar: View {
             // Close button for closable tabs
             if tab.isClosable && isActive {
                 Button(action: {
-                    // Handle tab close
-                    print("Close tab: \(tab.appId)")
+                    tabManager.closeTab(appId: tab.appId)
                 }) {
                     closeButtonImage
                 }

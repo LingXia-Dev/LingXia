@@ -3,6 +3,7 @@ import AppKit
 import SwiftUI
 import WebKit
 import os.log
+import CLingXiaRustAPI
 
 /// Unified window controller for SwiftUI/macOS - supports both capsule and tab modes with SwiftUI integration
 public class LxAppWindowController: NSWindowController, NSWindowDelegate {
@@ -641,15 +642,18 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     }
 
     @objc private func backButtonClicked() {
-        print("NavigationBar: Back button clicked")
+        guard let appId = appId else { return }
+        let _ = onUiEvent(appId, LxAppUIEvent.navigationClick, LxAppUIEvent.navigationActionBack)
     }
 
     @objc private func homeButtonClicked() {
-        print("NavigationBar: Home button clicked")
+        guard let appId = appId else { return }
+        let _ = onUiEvent(appId, LxAppUIEvent.navigationClick, LxAppUIEvent.navigationActionHome)
     }
 
     @objc private func moreButtonClicked() {
-        // More button action
+        guard let appId = appId else { return }
+        let _ = onUiEvent(appId, LxAppUIEvent.capsuleClick, LxAppUIEvent.capsuleActionMore)
     }
 
     @objc private func minimizeButtonClicked() {
@@ -657,7 +661,11 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     }
 
     @objc private func closeButtonClicked() {
-        window?.close()
+        if let appId = appId {
+            let _ = onUiEvent(appId, LxAppUIEvent.capsuleClick, LxAppUIEvent.capsuleActionClose)
+        } else {
+            window?.close()
+        }
     }
 
     /// Update independent navigation button visibility and type

@@ -286,8 +286,8 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate, N
     }
 
     @objc private func handleBackKeyPress() {
-        // Use unified UI event system
-        let _ = onUiEvent(appId, LxAppUIEvent.backPress, "")
+        // macOS keyboard shortcuts trigger navigation back action
+        let _ = onUiEvent(appId, LxAppUIEvent.navigationClick, LxAppUIEvent.navigationActionBack)
     }
 
     /// Navigate - using shared navigation logic
