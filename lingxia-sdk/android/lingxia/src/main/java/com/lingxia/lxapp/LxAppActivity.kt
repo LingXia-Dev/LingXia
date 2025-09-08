@@ -310,8 +310,7 @@ class LxAppActivity : AppCompatActivity() {
                 override fun handleOnBackPressed() {
                     try {
                         currentWebView?.visibility = View.VISIBLE
-                        val result = NativeApi.onBackPressed(appId)
-
+                        NativeApi.onUiEvent(appId, NativeApi.UI_EVENT_BACK_PRESS, "")
                     } catch (e: Exception) {
                         Log.e(TAG, "Error handling back press: ${e.message}")
                     }
@@ -370,8 +369,8 @@ class LxAppActivity : AppCompatActivity() {
             tabBar = TabBar(this).apply {
                 setConfig(config)
                 setOnTabSelectedListener { index, path ->
-
-                    navigate(path, NavigationType.SWITCH_TAB)
+                    // Use new UI event API
+                    NativeApi.onUiEvent(appId, NativeApi.UI_EVENT_TABBAR_CLICK, index.toString())
                 }
                 applyTabBarLayoutParams(this, config)
             }
@@ -638,7 +637,7 @@ class LxAppActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
             setOnClickListener {
-                // Handle more options click
+                NativeApi.onUiEvent(appId, NativeApi.UI_EVENT_CAPSULE_CLICK, NativeApi.CAPSULE_ACTION_MORE)
             }
         }
 
@@ -665,8 +664,7 @@ class LxAppActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
             setOnClickListener {
-                closeLxApp()
-                LxApp.openHomeLxApp()
+                NativeApi.onUiEvent(appId, NativeApi.UI_EVENT_CAPSULE_CLICK, NativeApi.CAPSULE_ACTION_CLOSE)
             }
         }
 
@@ -690,7 +688,7 @@ class LxAppActivity : AppCompatActivity() {
             currentWebView?.visibility = View.VISIBLE // Ensure visibility
             webViewContainer.visibility = View.VISIBLE
             currentWebView?.resume()
-        } 
+        }
     }
 
     override fun onPause() {
@@ -1251,14 +1249,14 @@ class LxAppActivity : AppCompatActivity() {
      * Handles the click event from the NavigationBar's back button.
      */
     private fun handleBackButtonClick() {
-
+        NativeApi.onUiEvent(appId, NativeApi.UI_EVENT_NAVIGATION_CLICK, NativeApi.NAVIGATION_ACTION_BACK)
     }
 
     /**
      * Handles the click event from the NavigationBar's home button.
      */
     private fun handleHomeButtonClick() {
-
+        NativeApi.onUiEvent(appId, NativeApi.UI_EVENT_NAVIGATION_CLICK, NativeApi.NAVIGATION_ACTION_HOME)
     }
 
     // Helper to calculate the Y translation based on visible bars

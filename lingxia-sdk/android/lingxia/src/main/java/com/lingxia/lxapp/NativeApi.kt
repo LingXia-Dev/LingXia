@@ -11,9 +11,28 @@ import android.content.res.AssetManager
  */
 object NativeApi {
 
+    private var isLibraryLoaded = false
+
     init {
-        System.loadLibrary("lingxia")
+        synchronized(this) {
+            if (!isLibraryLoaded) {
+                System.loadLibrary("lingxia")
+                isLibraryLoaded = true
+            }
+        }
     }
+
+    // UI Event Type Constants
+    const val UI_EVENT_TABBAR_CLICK = 0
+    const val UI_EVENT_CAPSULE_CLICK = 1
+    const val UI_EVENT_NAVIGATION_CLICK = 2
+    const val UI_EVENT_BACK_PRESS = 3
+
+    // UI Event Data Constants
+    const val CAPSULE_ACTION_MORE = "more"
+    const val CAPSULE_ACTION_CLOSE = "close"
+    const val NAVIGATION_ACTION_BACK = "back"
+    const val NAVIGATION_ACTION_HOME = "home"
 
     /**
      * Initialize the LxApp system with data and cache directories
@@ -47,12 +66,14 @@ object NativeApi {
     external fun onLxAppClosed(appId: String): Int
 
     /**
-     * Handle back button press for an app
-     * @param appId The ID of the app handling the back press
-     * @return Status code (0 = success)
+     * Handle UI events from the UI layer
+     * @param appId The ID of the app
+     * @param eventType The type of UI event (use UI_EVENT_* constants)
+     * @param data Event-specific data (e.g., tab index, button name)
+     * @return 1 if event was handled, 0 otherwise
      */
     @JvmStatic
-    external fun onBackPressed(appId: String): Int
+    external fun onUiEvent(appId: String, eventType: Int, data: String): Int
 
     /**
      * Get LxApp information using typed API

@@ -405,16 +405,39 @@ impl AppRuntime for Platform {
             let appid_jstring = env.new_string(&appid)?;
             let path_jstring = env.new_string(&path)?;
 
-            env.call_static_method(
+            // Create NavigationType enum object
+            let nav_type_class = env.find_class("com/lingxia/lxapp/NavigationType")?;
+            let nav_type_values = env.call_static_method(
+                nav_type_class,
+                "values",
+                "()[Lcom/lingxia/lxapp/NavigationType;",
+                &[],
+            )?;
+            let nav_type_array = jni::objects::JObjectArray::from(nav_type_values.l()?);
+            let nav_type_obj =
+                env.get_object_array_element(&nav_type_array, navigation_type as i32)?;
+
+            let result = env.call_static_method(
                 lxapp_class,
                 "navigate",
-                "(Ljava/lang/String;Ljava/lang/String;I)V",
+                "(Ljava/lang/String;Ljava/lang/String;Lcom/lingxia/lxapp/NavigationType;)Z",
                 &[
                     JValue::Object(&appid_jstring),
                     JValue::Object(&path_jstring),
-                    JValue::Int(navigation_type as i32),
+                    JValue::Object(&nav_type_obj),
                 ],
             )?;
+
+            // Check if navigation was successful
+            if let Ok(success) = result.z() {
+                if !success {
+                    return Err(format!(
+                        "Navigation returned false: appid={}, path={}, navigation_type={:?}",
+                        appid, path, navigation_type
+                    )
+                    .into());
+                }
+            }
             Ok(())
         }() {
             Ok(_) => Ok(()),

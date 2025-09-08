@@ -3,7 +3,7 @@ use jni::objects::{JClass, JObject, JString};
 use jni::sys::{jboolean, jint};
 use jni::{JNIEnv, JavaVM};
 use log::{error, info};
-use lxapp::{LxAppDelegate, log::LogLevel};
+use lxapp::{LxAppDelegate, UiEventType, log::LogLevel};
 
 /// Parses a color string (e.g., "#RRGGBB" or "transparent") into an i32 ARGB value for Android.
 fn parse_color_to_i32(color_str: &str, default_color: i32) -> i32 {
@@ -231,14 +231,33 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getNavigationBarState<'a
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_lingxia_lxapp_NativeApi_onBackPressed(
+pub extern "C" fn Java_com_lingxia_lxapp_NativeApi_onUiEvent(
     mut env: JNIEnv,
     _class: JClass,
     appid: JString,
+    event_type: jint,
+    data: JString,
 ) -> jint {
     let appid: String = env.get_string(&appid).unwrap().into();
+    let data_str: String = env.get_string(&data).unwrap().into();
+
+    let ui_event_type = match event_type {
+        0 => UiEventType::TabBarClick,
+        1 => UiEventType::CapsuleClick,
+        2 => UiEventType::NavigationClick,
+        3 => UiEventType::BackPress,
+        _ => {
+            error!("Unknown UI event type: {}", event_type);
+            return 0;
+        }
+    };
+
     let lxapp = lxapp::get(appid);
-    if lxapp.on_back_pressed() { 1 } else { 0 }
+    if lxapp.on_ui_event(ui_event_type, data_str) {
+        1
+    } else {
+        0
+    }
 }
 
 // Function to notify the Rust layer that a mini app has been opened
