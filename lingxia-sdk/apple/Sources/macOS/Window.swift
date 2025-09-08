@@ -285,13 +285,11 @@ public struct LxAppSwiftUITabBar: View {
     }
 
     private var homeTabsList: [LxAppTab] {
-        let homeLxAppId = LxAppCore.getHomeLxAppId()
-        return tabManager.tabs.filter { $0.appId == homeLxAppId }
+        return tabManager.tabs.filter { LxAppCore.isHomeLxApp($0.appId) }
     }
 
     private var regularTabsList: [LxAppTab] {
-        let homeLxAppId = LxAppCore.getHomeLxAppId()
-        return tabManager.tabs.filter { $0.appId != homeLxAppId }
+        return tabManager.tabs.filter { !LxAppCore.isHomeLxApp($0.appId) }
     }
 
     private func homeTabView(for tab: LxAppTab) -> some View {

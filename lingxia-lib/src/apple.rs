@@ -87,6 +87,13 @@ mod bridge {
         BackPress,
     }
 
+    // Current LxApp info from Rust stack
+    #[swift_bridge(swift_repr = "struct")]
+    pub struct CurrentLxApp {
+        pub appid: String,
+        pub path: String,
+    }
+
     extern "Rust" {
         #[swift_bridge(swift_name = "lxappInit")]
         fn lxapp_init(data_dir: &str, cache_dir: &str) -> Option<String>;
@@ -120,6 +127,9 @@ mod bridge {
 
         #[swift_bridge(swift_name = "onApplinkReceived")]
         fn on_applink_received(applink_path: &str) -> i32;
+
+        #[swift_bridge(swift_name = "getCurrentLxApp")]
+        fn get_current_lxapp() -> CurrentLxApp;
 
         #[swift_bridge(swift_name = "onPushlinkReceived")]
         fn on_pushlink_received(url: &str, trigger: PushTrigger) -> i32;
@@ -224,6 +234,15 @@ pub fn on_ui_event(appid: &str, event_type: bridge::UiEventType, data: &str) -> 
 
     let lxapp = lxapp::get(appid.to_string());
     lxapp.on_ui_event(ui_event_type, data.to_string())
+}
+
+/// Get current active LxApp ID and path from Rust stack
+pub fn get_current_lxapp() -> bridge::CurrentLxApp {
+    let (current_appid, current_path) = lxapp::get_current_lxapp();
+    bridge::CurrentLxApp {
+        appid: current_appid,
+        path: current_path,
+    }
 }
 
 /// Notify that LxApp was opened

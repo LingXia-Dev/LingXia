@@ -93,14 +93,8 @@ public class iOSLxApp: LxAppRenderer {
             return
         }
 
-        let actualPath: String
-        let storedPath = LxAppCore.getLastActivePath(for: appId, defaultPath: path)
-
-        if storedPath != path && !LxAppCore.isHomeLxApp(appId) {
-            actualPath = storedPath
-        } else {
-            actualPath = path
-        }
+        // Use the provided path directly since we now have centralized state management
+        let actualPath = path
 
         // Ensure LxAppManager exists
         if lxAppManager == nil {
@@ -234,6 +228,10 @@ extension iOSLxApp {
 
         if state.show {
             manager.setupTabBar(appId: appId)
+            manager.currentTabBar?.isHidden = false
+
+            // Always sync selection with current path (Swift handles selected index)
+            manager.currentTabBar?.syncSelectedTabWithCurrentPath(path)
         } else {
             manager.currentTabBar?.isHidden = true
         }
@@ -280,12 +278,8 @@ extension iOSLxApp {
 
     /// Get current path for duplicate navigation check
     public func getCurrentPath(for appId: String) -> String? {
-        guard let manager = lxAppManager,
-              let appState = manager.stateManager.getState(for: appId) else {
-            return nil
-        }
-
-        return appState.webView?.currentPath
+        guard LxAppCore.currentAppId == appId else { return nil }
+        return LxAppCore.getCurrentPath()
     }
 
     private func setupLxAppManagerIfNeeded() {

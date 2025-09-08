@@ -138,7 +138,19 @@ public class macOSLxApp: ObservableObject, LxAppRenderer {
     }
 
     internal static func handleAppClosing(appId: String) {
+        // Call FFI close handler first
         let _ = onLxappClosed(appId)
+
+        // Get next LxApp from Rust stack and open it
+        let currentLxApp = getCurrentLxApp()
+        let appidStr = currentLxApp.appid.toString()
+        let pathStr = currentLxApp.path.toString()
+        if !appidStr.isEmpty {
+            os_log("Opening next LxApp from stack: %@:%@", log: log, type: .info, appidStr, pathStr)
+            openLxApp(appId: appidStr, path: pathStr)
+        } else {
+            os_log("No more LxApps in stack", log: log, type: .info)
+        }
     }
 
     /// Navigate to page with specific navigation type
@@ -310,9 +322,19 @@ extension macOSLxApp {
         if let controller = Self.activeWindowControllers.first(where: { $0.appId == appId }),
            let viewController = controller.window?.contentViewController as? macOSLxAppViewController {
             viewController.showTabBar(state.show)
+
+            // Always sync selection with current path (Swift handles selected index)
+            if state.show {
+                viewController.syncTabBarSelection(path: path)
+            }
         } else if let tabController = Self.tabWindowController,
                   let viewController = tabController.getViewController(for: appId) {
             viewController.showTabBar(state.show)
+
+            // Always sync selection with current path (Swift handles selected index)
+            if state.show {
+                viewController.syncTabBarSelection(path: path)
+            }
         }
     }
 
@@ -388,18 +410,10 @@ extension macOSLxApp {
 
     /// Get current path for duplicate navigation check
     public func getCurrentPath(for appId: String) -> String? {
-        // Check in individual windows first
-        if let controller = Self.activeWindowControllers.first(where: { $0.appId == appId }),
-           let viewController = controller.window?.contentViewController as? macOSLxAppViewController {
-            return viewController.currentWebView?.currentPath
+        // Use centralized state management instead of checking individual controllers
+        if LxAppCore.currentAppId == appId {
+            return LxAppCore.getCurrentPath()
         }
-
-        // Check in tab window controller
-        if let tabController = Self.tabWindowController,
-           let viewController = tabController.getViewController(for: appId) {
-            return viewController.currentWebView?.currentPath
-        }
-
         return nil
     }
 
@@ -421,8 +435,8 @@ extension macOSLxApp {
         }
 
         // Create new window controller
-        let storedPath = LxAppCore.getLastActivePath(for: appId)
-        let actualPath = (!storedPath.isEmpty && storedPath != path && appId != LxAppCore.getHomeLxAppId()) ? storedPath : path
+        // Use the provided path directly since we now have centralized state management
+        let actualPath = path
 
         let windowController = LxAppWindowController(appId: appId, path: actualPath)
         windowController.showWindow(nil as Any?)

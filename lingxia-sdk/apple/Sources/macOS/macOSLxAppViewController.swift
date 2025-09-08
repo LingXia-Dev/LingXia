@@ -40,11 +40,9 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate, N
 
     // Properties
     public var appId: String
-    private var initialPath: String
     internal var currentPath: String
     private var webViewContainer: NSView!
     private var tabBarView: NSView?
-    public var currentWebView: WKWebView?
     public var tabBarConfig: TabBar?
     internal var selectedTabIndex: Int = 0
     public var isDestroyed: Bool = false
@@ -53,7 +51,6 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate, N
 
     public init(appId: String, path: String) {
         self.appId = appId
-        self.initialPath = path
         self.currentPath = path
         super.init(nibName: nil, bundle: nil)
 
@@ -242,15 +239,14 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate, N
     }
 
     private func loadWebViewContent() {
-        if let webView = WebViewManager.findWebView(appId: appId, path: initialPath) {
-            showWebViewToUser(webView, path: initialPath)
+        if let webView = WebViewManager.findWebView(appId: appId, path: currentPath) {
+            showWebViewToUser(webView, path: currentPath)
         }
     }
 
     /// Unified method to show a WebView to the user
     private func showWebViewToUser(_ webView: WKWebView, path: String) {
-        currentWebView?.removeFromSuperview()
-        currentWebView = webView
+        LxAppCore.getCurrentWebView()?.removeFromSuperview()
         WebViewManager.attachWebViewToContainer(webView, container: webViewContainer)
     }
 
@@ -295,7 +291,6 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate, N
     public func navigate(appId: String, to path: String, with navigationType: NavigationType) {
         guard !appId.isEmpty else { return }
 
-        self.initialPath = path
         self.currentPath = path
 
         // Update UI components
@@ -307,7 +302,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate, N
         }
 
         // Update app state
-        LxAppCore.setLastActivePath(path, for: appId)
+        LxAppCore.updateCurrentPath(path)
 
         // macOS-specific: Update window title
         if let windowController = view.window?.windowController as? LxAppWindowController {
@@ -339,6 +334,13 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate, N
             name: .tabBarStateChanged,
             object: appId
         )
+    }
+
+    /// Sync TabBar selection with current path
+    public func syncTabBarSelection(path: String) {
+        if let tabIndex = findTabIndexByPath(path) {
+            selectedTabIndex = tabIndex
+        }
     }
 
     //  - Helper Methods

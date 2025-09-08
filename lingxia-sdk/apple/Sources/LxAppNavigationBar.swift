@@ -36,7 +36,7 @@ public class NavigationBarStateManager: ObservableObject {
               let window = windowScene.windows.first,
               let navController = window.rootViewController as? UINavigationController,
               let manager = navController.topViewController as? LxAppViewController,
-              manager.currentAppId == appId,
+              LxAppCore.currentAppId == appId,
               let path = manager.getCurrentPath() else { return }
 
         let newState = LxPageNavigation.getNavigationBarState(appId: appId, path: path)

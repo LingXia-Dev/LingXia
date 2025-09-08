@@ -68,10 +68,9 @@ public class LxAppTabView: NSView {
         guard !tabs.isEmpty else { return }
 
         var currentX: CGFloat = 70
-        let homeLxAppId = LxAppCore.getHomeLxAppId()
 
-        let homeTabs = tabs.filter { $0.appId == homeLxAppId }
-        let regularTabs = tabs.filter { $0.appId != homeLxAppId }
+        let homeTabs = tabs.filter { LxAppCore.isHomeLxApp($0.appId) }
+        let regularTabs = tabs.filter { !LxAppCore.isHomeLxApp($0.appId) }
 
         // Home tabs
         for tab in homeTabs {
@@ -109,7 +108,7 @@ public class LxAppTabView: NSView {
         let tabView = NSView()
         tabView.wantsLayer = true
 
-        let isHomeLxApp = tab.appId == LxAppCore.getHomeLxAppId()
+        let isHomeLxApp = LxAppCore.isHomeLxApp(tab.appId)
 
         if !isHomeLxApp {
             let isActive = (tabManager.activeTab?.appId == tab.appId)

@@ -1,5 +1,6 @@
 import Foundation
 import OSLog
+import WebKit
 import CLingXiaRustAPI
 import CLingXiaSwiftAPI
 
@@ -94,8 +95,12 @@ public class LxAppCore {
     /// Home LxApp configuration
     internal static var homeLxAppId: String?
 
-    /// Active paths tracking
-    private static var lastActivePaths: [String: String] = [:]
+    /// Global current app state - shared across iOS and macOS
+    public private(set) static var currentAppId: String?
+    private static var currentPath: String = ""
+
+    /// Current WebView - cached to avoid frequent findWebView calls
+    private static var currentWebView: WKWebView?
 
     private init() {}
 
@@ -178,19 +183,38 @@ public class LxAppCore {
         homeLxAppId = appId
     }
 
-    /// Get last active path for app
-    public static func getLastActivePath(for appId: String, defaultPath: String = "") -> String {
-        return lastActivePaths[appId] ?? defaultPath
-    }
-
-    /// Set last active path for app
-    public static func setLastActivePath(_ path: String, for appId: String) {
-        lastActivePaths[appId] = path
-    }
-
     /// Check if app is home LxApp
     public static func isHomeLxApp(_ appId: String) -> Bool {
         return appId == homeLxAppId
+    }
+
+    /// Set current app state - shared across platforms
+    public static func setCurrentApp(appId: String, path: String) {
+        currentAppId = appId
+        currentPath = path
+
+        // Update WebView cache when app/path changes
+        currentWebView = WebViewManager.findWebView(appId: appId, path: path)
+    }
+
+    /// Get current path for active app
+    public static func getCurrentPath() -> String? {
+        guard currentAppId != nil else { return nil }
+        return currentPath.isEmpty ? nil : currentPath
+    }
+
+    /// Update current path
+    public static func updateCurrentPath(_ path: String) {
+        guard let appId = currentAppId else { return }
+        currentPath = path
+
+        // Update WebView cache when path changes
+        currentWebView = WebViewManager.findWebView(appId: appId, path: path)
+    }
+
+    /// Get current WebView - cached for efficiency
+    public static func getCurrentWebView() -> WKWebView? {
+        return currentWebView
     }
 
     /// Get home LxApp ID
@@ -301,8 +325,6 @@ extension LxApp {
             return true
         }
     }
-
-
 
     /// Update TabBar UI to refresh badge and red dot data etc
     nonisolated public static func updateTabBarUI(appid: RustStr) -> Bool {

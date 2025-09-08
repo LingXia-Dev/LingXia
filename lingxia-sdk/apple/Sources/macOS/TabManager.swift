@@ -9,14 +9,15 @@ public struct LxAppTab: Equatable, Identifiable {
 
     public var currentPath: String { "/" }
     public var title: String { appId }
-    public var isClosable: Bool { appId != "homeminiapp" }
+    // Rust decides if tab is closable, Swift doesn't need to judge
+    public var isClosable: Bool { true }
 
     public init(appId: String) {
         self.appId = appId
     }
 }
 
-/// Manages tab-style tabs for LxApps
+/// Manages tab UI state for LxApps
 @MainActor
 public class LxAppTabManager: ObservableObject {
     public static let shared = LxAppTabManager()
@@ -48,9 +49,9 @@ public class LxAppTabManager: ObservableObject {
     }
 
     public func closeTab(appId: String) {
-        guard let index = tabs.firstIndex(where: { $0.appId == appId }),
-              tabs[index].isClosable else { return }
+        guard let index = tabs.firstIndex(where: { $0.appId == appId }) else { return }
 
+        // Rust decides if tab is closable, Swift just removes it
         let wasActive = activeTab?.appId == appId
         tabs.remove(at: index)
 
@@ -60,11 +61,6 @@ public class LxAppTabManager: ObservableObject {
                 onTabChanged?(newActive)
             }
         }
-    }
-
-    public func clearAllTabs() {
-        tabs.removeAll()
-        activeTab = nil
     }
 
     public func hasTab(for appId: String) -> Bool {

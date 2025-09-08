@@ -824,12 +824,12 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         // Get initial route from app info
         let lxappInfo = getLxAppInfo(homeLxAppId)
         let initialRoute = lxappInfo.initial_route.toString()
-        LxAppCore.setLastActivePath(initialRoute, for: homeLxAppId)
+        LxAppCore.setCurrentApp(appId: homeLxAppId, path: initialRoute)
         tabManager.addTab(appId: homeLxAppId)
     }
 
     public func openLxApp(appId: String, path: String) {
-        LxAppCore.setLastActivePath(path, for: appId)
+        LxAppCore.setCurrentApp(appId: appId, path: path)
         tabManager.addTab(appId: appId)
         macOSLxApp.navigate(appId: appId, path: path, navigationType: .launch)
     }
@@ -838,7 +838,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         let isNewViewController = viewControllers[appId] == nil
 
         let viewController = viewControllers[appId] ?? {
-            let currentPath = LxAppCore.getLastActivePath(for: appId, defaultPath: "/")
+            let currentPath = LxAppCore.getCurrentPath() ?? "/"
             let vc = macOSLxAppViewController(appId: appId, path: currentPath)
             viewControllers[appId] = vc
             return vc
@@ -846,7 +846,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
 
         // Only call onLxappOpened for newly created view controllers
         if isNewViewController {
-            let currentPath = LxAppCore.getLastActivePath(for: appId, defaultPath: "/")
+            let currentPath = LxAppCore.getCurrentPath() ?? "/"
             let _ = onLxappOpened(appId, currentPath)
         }
 
@@ -899,7 +899,15 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         tabManager.closeTab(appId: appId)
         let _ = onLxappClosed(appId)
 
-        if !tabManager.hasTabs {
+        // Get next LxApp from Rust stack and open it as a new tab
+        let currentLxApp = getCurrentLxApp()
+        let appidStr = currentLxApp.appid.toString()
+        let pathStr = currentLxApp.path.toString()
+        if !appidStr.isEmpty {
+            os_log("Opening next LxApp from stack as tab: %@:%@", log: Self.log, type: .info, appidStr, pathStr)
+            // Use macOSLxApp.openLxApp instead of local openLxApp to properly handle new LxApp
+            macOSLxApp.openLxApp(appId: appidStr, path: pathStr)
+        } else if !tabManager.hasTabs {
             window?.close()
         }
     }
