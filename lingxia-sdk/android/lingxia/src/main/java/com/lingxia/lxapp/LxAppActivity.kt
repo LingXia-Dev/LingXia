@@ -767,25 +767,16 @@ class LxAppActivity : AppCompatActivity() {
 
     /**
      * Apply navigation type specific UI updates with smooth animations
-     *
-     * IMPROVEMENT: Added smooth tabbar transitions to match iOS/macOS/Harmony polish
-     * - SWITCH_TAB: Shows tabbar with fade-in animation
-     * - LAUNCH: Hides tabbar with fade-out animation (non-tab pages)
-     * - REPLACE/FORWARD/BACKWARD: Hides tabbar with fade-out animation
      */
     private fun applyNavigationTypeUpdates(navigationType: NavigationType, targetPath: String) {
-        when (navigationType) {
-            NavigationType.SWITCH_TAB -> {
-                showTabBar(true)
-                tabBar?.findTabIndexByPath(targetPath)?.let { index ->
-                    if (index >= 0) tabBar?.setSelectedIndex(index, notifyListener = false)
-                }
-            }
-            NavigationType.LAUNCH -> {
-                showTabBar(false)  // Non-tab page
-            }
-            NavigationType.REPLACE, NavigationType.FORWARD, NavigationType.BACKWARD -> {
-                showTabBar(false)
+        // Reflect visibility from Rust TabBarState only
+        val tabBarConfig = NativeApi.getTabBarState(appId)
+        val visible = tabBarConfig?.visible ?: false
+        showTabBar(visible)
+        if (visible) {
+            // Keep selection in sync when tabbar is visible
+            tabBar?.findTabIndexByPath(targetPath)?.let { index ->
+                if (index >= 0) tabBar?.setSelectedIndex(index, notifyListener = false)
             }
         }
     }
@@ -1341,11 +1332,10 @@ class LxAppActivity : AppCompatActivity() {
         val tabBarConfig = NativeApi.getTabBarState(appId)
         if (tabBarConfig != null) {
             tabBar?.setConfig(tabBarConfig)
-            showTabBar(true)
-
+            // Reflect visibility from Rust state, not inferred by presence
+            showTabBar(tabBarConfig.visible)
         } else {
             showTabBar(false)
-
         }
     }
 
