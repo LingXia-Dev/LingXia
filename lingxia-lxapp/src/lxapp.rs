@@ -1033,6 +1033,7 @@ pub fn get_current_lxapp() -> (String, String) {
         if let Some(current_appid) = manager.peek_lxapp_stack() {
             if let Some(lxapp) = manager.lxapps.get(&current_appid) {
                 let current_path = lxapp.peek_current_page().unwrap_or_default();
+                info!("Peek {}:{} from lxapp stack", current_appid, current_path);
                 return (current_appid, current_path);
             }
         }

@@ -113,6 +113,11 @@ impl LxAppDelegate for LxApp {
         // Update last active time
         self.state.lock().unwrap().last_active_time = Instant::now();
 
+        // Remove this LxApp from the navigation stack
+        if let Some(manager) = lxapp::get_lxapps_manager() {
+            manager.remove_from_stack(&self.appid);
+        }
+
         // Trigger onHide
         if let Err(e) =
             self.executor
@@ -258,7 +263,7 @@ impl LxApp {
 
     /// Handle back button press (system or navigation)
     fn handle_back_press(self: &Arc<Self>) -> bool {
-        info!("Back button pressed").with_appid(self.appid.clone());
+        info!("BackPress trigered").with_appid(self.appid.clone());
 
         if self.get_page_stack_size() <= 1 {
             // if it's last page, clsoe this lxapp
