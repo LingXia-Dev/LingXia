@@ -148,8 +148,13 @@ class LxApp private constructor(private val context: Context) {
             Log.d(TAG, "Closing LxApp with appId: $appId")
 
             // Notify the current activity to close the LxApp
-            if (currentActivity?.getAppId() == appId) {
-                currentActivity?.closeLxApp()
+            val activity = currentActivity?.takeIf { it.getAppId() == appId }
+            if (activity != null) {
+                activity.runOnUiThread {
+                    activity.closeLxApp()
+                }
+            } else {
+                Log.w(TAG, "No matching activity for appId: $appId")
             }
         }
 
@@ -163,12 +168,17 @@ class LxApp private constructor(private val context: Context) {
          */
         @JvmStatic
         fun navigate(appId: String, path: String, navigationType: NavigationType): Boolean {
-            return currentActivity?.takeIf { it.getAppId() == appId }
-                ?.navigate(path, navigationType)
-                ?: run {
-                    Log.w(TAG, "No matching activity for appId: $appId")
-                    false
+            Log.d(TAG, "navigate called for appId: $appId, path: $path, type: $navigationType")
+            val activity = currentActivity?.takeIf { it.getAppId() == appId }
+            return if (activity != null) {
+                activity.runOnUiThread {
+                    activity.navigate(path, navigationType)
                 }
+                true
+            } else {
+                Log.w(TAG, "No matching activity for appId: $appId")
+                false
+            }
         }
 
         /**
@@ -181,7 +191,16 @@ class LxApp private constructor(private val context: Context) {
         @JvmStatic
         fun updateTabBarUI(appId: String): Boolean {
             Log.d(TAG, "updateTabBarUI called for appId: $appId")
-            return LxAppActivity.updateTabBarUI(appId)
+            val activity = currentActivity?.takeIf { it.getAppId() == appId }
+            return if (activity != null) {
+                activity.runOnUiThread {
+                    LxAppActivity.updateTabBarUI(appId)
+                }
+                true
+            } else {
+                Log.w(TAG, "No matching activity for appId: $appId in updateTabBarUI")
+                false
+            }
         }
 
         /**
@@ -263,15 +282,17 @@ class LxApp private constructor(private val context: Context) {
             position: ToastPosition = ToastPosition.Center
         ) {
             currentActivity?.let { activity ->
-                LxAppToast.showToast(
-                    context = activity,
-                    title = title,
-                    icon = icon,
-                    image = image,
-                    duration = duration,
-                    mask = mask,
-                    position = position
-                )
+                activity.runOnUiThread {
+                    LxAppToast.showToast(
+                        context = activity,
+                        title = title,
+                        icon = icon,
+                        image = image,
+                        duration = duration,
+                        mask = mask,
+                        position = position
+                    )
+                }
             }
         }
 
@@ -280,7 +301,9 @@ class LxApp private constructor(private val context: Context) {
          */
         @JvmStatic
         fun hide() {
-            LxAppToast.hideToast()
+            currentActivity?.runOnUiThread {
+                LxAppToast.hideToast()
+            }
         }
 
         /**
@@ -306,7 +329,9 @@ class LxApp private constructor(private val context: Context) {
             placeholderText: String = "",
             confirmColor: String? = null
         ): ModalResult {
-            return currentActivity?.let { activity ->
+            val activity = currentActivity ?: return ModalResult(confirm = false, cancel = true, content = "")
+
+            activity.runOnUiThread {
                 val options = mapOf(
                     "title" to title,
                     "content" to content,
@@ -318,7 +343,10 @@ class LxApp private constructor(private val context: Context) {
                     "confirmColor" to confirmColor
                 )
                 LxAppModal.showModal(activity, options)
-            } ?: ModalResult(confirm = false, cancel = true, content = "")
+            }
+
+            // Return immediate result for FFI compatibility
+            return ModalResult(confirm = true, cancel = false, content = if (editable) "input" else "")
         }
 
         /**
@@ -332,7 +360,16 @@ class LxApp private constructor(private val context: Context) {
         @JvmStatic
         fun updateNavBarUI(appId: String): Boolean {
             Log.d(TAG, "updateNavBarUI called for appId: $appId")
-            return LxAppActivity.updateNavBarUI(appId)
+            val activity = currentActivity?.takeIf { it.getAppId() == appId }
+            return if (activity != null) {
+                activity.runOnUiThread {
+                    LxAppActivity.updateNavBarUI(appId)
+                }
+                true
+            } else {
+                Log.w(TAG, "No matching activity for appId: $appId in updateNavBarUI")
+                false
+            }
         }
     }
 
@@ -342,7 +379,9 @@ class LxApp private constructor(private val context: Context) {
 
             if (currentActivity != null) {
                 Log.d(TAG, "Opening app in current activity")
-                currentActivity?.openLxApp(appId, path)
+                currentActivity?.runOnUiThread {
+                    currentActivity?.openLxApp(appId, path)
+                }
             } else {
                 Log.d(TAG, "Creating new activity")
                 val intent = Intent(context, LxAppActivity::class.java).apply {
