@@ -1270,9 +1270,7 @@ class LxAppActivity : AppCompatActivity() {
 
     // Close the current LxApp
     fun closeLxApp() {
-
-
-        // Notify native layer
+        // Notify native layer first
         notifyLxAppClosed()
 
         // Pause and clean up current WebView
@@ -1286,14 +1284,22 @@ class LxAppActivity : AppCompatActivity() {
         // Hide tab bar with animation (capsule and navbar remain)
         showTabBar(false)
 
-        // Clear app state
+        // Clear current app state
         appId = ""
         isDisplayingHomeLxApp = false
+
+        // Get next LxApp from Rust stack and open it
+        val currentLxApp = NativeApi.getCurrentLxApp()
+        if (currentLxApp != null && currentLxApp.isValid()) {
+            Log.i(TAG, "Opening next LxApp from stack: ${currentLxApp.appId}:${currentLxApp.path}")
+            openLxApp(currentLxApp.appId, currentLxApp.path)
+        } else {
+            Log.i(TAG, "No more LxApps in stack, activity will remain empty")
+        }
     }
 
-    // Switch to a different LxApp in the current activity (openLxApp/closeLxApp lifecycle)
+    // Switch to a different LxApp in the current activity
     fun openLxApp(appId: String, path: String) {
-
 
         // Ensure all UI operations are on the main thread
         runOnUiThread {

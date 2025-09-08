@@ -502,3 +502,38 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onAppLinkReceived(
     log::info!("[Android] AppLink received: {}", url);
     0
 }
+
+/// Get current active LxApp ID and path from Rust stack
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getCurrentLxApp<'a>(
+    mut env: JNIEnv<'a>,
+    _class: JClass<'a>,
+) -> JObject<'a> {
+    let (current_appid, current_path) = lxapp::get_current_lxapp();
+
+    // Find the CurrentLxApp class (we'll need to create this)
+    let current_lxapp_class = match env.find_class("com/lingxia/lxapp/CurrentLxApp") {
+        Ok(c) => c,
+        Err(_) => return JObject::null(),
+    };
+
+    // Create Java strings
+    let appid_str = match env.new_string(&current_appid) {
+        Ok(s) => s,
+        Err(_) => return JObject::null(),
+    };
+    let path_str = match env.new_string(&current_path) {
+        Ok(s) => s,
+        Err(_) => return JObject::null(),
+    };
+
+    // Create CurrentLxApp object
+    match env.new_object(
+        current_lxapp_class,
+        "(Ljava/lang/String;Ljava/lang/String;)V",
+        &[(&appid_str).into(), (&path_str).into()],
+    ) {
+        Ok(obj) => obj,
+        Err(_) => JObject::null(),
+    }
+}

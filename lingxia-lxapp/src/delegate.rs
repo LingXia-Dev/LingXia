@@ -267,7 +267,9 @@ impl LxApp {
 
         if self.get_page_stack_size() <= 1 {
             // if it's last page, clsoe this lxapp
-            let _ = self.runtime.close_lxapp(self.appid.clone());
+            if !self.is_home_lxapp {
+                let _ = self.runtime.close_lxapp(self.appid.clone());
+            }
             return true;
         }
 

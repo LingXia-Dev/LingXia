@@ -124,4 +124,11 @@ object NativeApi {
      */
     @JvmStatic
     external fun onAppLinkReceived(applinkUrl: String): Int
+
+    /**
+     * Get current active LxApp ID and path from Rust stack
+     * @return CurrentLxApp with appId and path, or empty if no active LxApp
+     */
+    @JvmStatic
+    external fun getCurrentLxApp(): CurrentLxApp?
 }
