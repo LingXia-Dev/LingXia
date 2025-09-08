@@ -4,6 +4,19 @@ use lingxia_platform::{AppRuntime, NavigationType};
 use std::sync::Arc;
 use std::time::Instant;
 
+/// UI event types for unified event handling
+#[derive(Debug, Clone, PartialEq)]
+pub enum UiEventType {
+    /// TabBar item clicked
+    TabBarClick = 0,
+    /// Capsule button clicked (close, minimize, more)
+    CapsuleClick = 1,
+    /// Navigation bar button clicked (back, home, title)
+    NavigationClick = 2,
+    /// System back button pressed
+    BackPress = 3,
+}
+
 pub trait LxAppDelegate {
     /// Called when lxapp is opened
     fn on_lxapp_opened(self: Arc<Self>, path: String);
@@ -14,9 +27,9 @@ pub trait LxAppDelegate {
     /// Called when the page showed in the view
     fn on_page_show(self: &Arc<Self>, path: String);
 
-    /// Handle back button press
-    /// Return true to indicate the back press had been handled
-    fn on_back_pressed(self: &Arc<Self>) -> bool;
+    /// Handle UI events
+    /// Returns true if the event was handled, false to allow default behavior
+    fn on_ui_event(self: &Arc<Self>, event_type: UiEventType, data: String) -> bool;
 }
 
 impl LxAppDelegate for LxApp {
@@ -137,7 +150,116 @@ impl LxAppDelegate for LxApp {
         page.mark_active();
     }
 
-    fn on_back_pressed(self: &Arc<Self>) -> bool {
+    fn on_ui_event(self: &Arc<Self>, event_type: UiEventType, data: String) -> bool {
+        info!("UI event received: {:?}, data: {}", event_type, data).with_appid(self.appid.clone());
+
+        match event_type {
+            UiEventType::TabBarClick => self.handle_tabbar_click(data),
+            UiEventType::CapsuleClick => self.handle_capsule_click(data),
+            UiEventType::NavigationClick => self.handle_navigation_click(data),
+            UiEventType::BackPress => self.handle_back_press(),
+        }
+    }
+}
+
+impl LxApp {
+    /// Handle TabBar item click
+    fn handle_tabbar_click(self: &Arc<Self>, data: String) -> bool {
+        if let Ok(index) = data.parse::<usize>() {
+            info!("TabBar item {} clicked", index).with_appid(self.appid.clone());
+
+            // Get tab pages from config
+            let tab_pages = self.config.get_tab_pages();
+            if let Some(tab_path) = tab_pages.get(index) {
+                // Clear page stack when switching tabs (tab pages are root pages)
+                if let Err(e) = self.clear_page_stack() {
+                    error!("Failed to clear page stack: {}", e).with_appid(self.appid.clone());
+                }
+
+                // Navigate to the selected tab page
+                if let Err(e) = self.runtime.navigate(
+                    self.appid.clone(),
+                    tab_path.clone(),
+                    NavigationType::SwitchTab,
+                ) {
+                    error!("Failed to switch to tab {}: {}", tab_path, e)
+                        .with_appid(self.appid.clone());
+                    return false;
+                }
+                return true;
+            } else {
+                error!("Invalid tab index: {}", index).with_appid(self.appid.clone());
+            }
+        } else {
+            error!("Invalid tab index format: {}", data).with_appid(self.appid.clone());
+        }
+        false
+    }
+
+    /// Handle capsule button click
+    fn handle_capsule_click(self: &Arc<Self>, data: String) -> bool {
+        info!("Capsule button '{}' clicked", data).with_appid(self.appid.clone());
+
+        match data.as_str() {
+            "close" => {
+                // Clear page stack when closing app
+                if let Err(e) = self.clear_page_stack() {
+                    error!("Failed to clear page stack: {}", e).with_appid(self.appid.clone());
+                }
+                info!("LxApp close requested").with_appid(self.appid.clone());
+                return true;
+            }
+            "minimize" => {
+                // Minimize the app (platform-specific behavior)
+                info!("LxApp minimize requested").with_appid(self.appid.clone());
+                return true;
+            }
+            "more" => {
+                // Show more options menu
+                info!("More options requested").with_appid(self.appid.clone());
+                return true;
+            }
+            _ => {
+                error!("Unknown capsule action: {}", data).with_appid(self.appid.clone());
+            }
+        }
+        false
+    }
+
+    /// Handle navigation bar button click
+    fn handle_navigation_click(self: &Arc<Self>, data: String) -> bool {
+        info!("Navigation button '{}' clicked", data).with_appid(self.appid.clone());
+
+        match data.as_str() {
+            "back" => self.handle_back_press(),
+            "home" => {
+                // Clear page stack when navigating to home
+                if let Err(e) = self.clear_page_stack() {
+                    error!("Failed to clear page stack: {}", e).with_appid(self.appid.clone());
+                }
+
+                // Navigate to home page using Launch
+                let home_route = self.config.get_initial_route();
+                if let Err(e) =
+                    self.runtime
+                        .navigate(self.appid.clone(), home_route, NavigationType::Launch)
+                {
+                    error!("Failed to navigate to home: {}", e).with_appid(self.appid.clone());
+                    return false;
+                }
+                true
+            }
+            _ => {
+                error!("Unknown navigation action: {}", data).with_appid(self.appid.clone());
+                false
+            }
+        }
+    }
+
+    /// Handle back button press (system or navigation)
+    fn handle_back_press(self: &Arc<Self>) -> bool {
+        info!("Back button pressed").with_appid(self.appid.clone());
+
         // Only handle back press if there are pages to go back to
         if self.get_page_stack_size() <= 1 {
             return false; // Let the system handle it (e.g., close app)
