@@ -320,7 +320,7 @@ impl AppRuntime for Platform {
     ) -> Result<(), PlatformError> {
         let nav_type_int = navigation_type as i32;
         lingxia_webview::tsfn::call_arkts("navigate", &[&appid, &path, &nav_type_int.to_string()])
-            .map_err(|e| {
+            .map_err(|_| {
                 PlatformError::Platform(format!(
                     "Failed to navigate: appid={}, path={}, navigation_type={:?}",
                     appid, path, navigation_type

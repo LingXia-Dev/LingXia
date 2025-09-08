@@ -560,8 +560,9 @@ export struct LxAppContainer {
    * Only SwitchTab navigation type shows tabbar
    */
   private shouldShowTabBar(): boolean {
-    const shouldShow = this.currentNavigationType === NavigationType.SwitchTab;
-    return shouldShow && (this.tabBarState?.items?.length > 0);
+    // Reflect visibility from Rust state only
+    const isVisibleFromRust = this.tabBarState?.isVisible === true;
+    return isVisibleFromRust && (this.tabBarState?.items?.length > 0);
   }
 
   /**
