@@ -3,9 +3,6 @@ use rong::{
     js_method,
 };
 use std::collections::HashMap;
-use std::sync::Arc;
-
-use crate::lxapp::LxApp;
 
 #[js_export]
 pub(crate) struct LxAppSvc {
@@ -62,34 +59,17 @@ impl LxAppSvc {
         args: Option<String>,
     ) -> JSResult<()> {
         if let Some(func) = self.functions.get(func_name) {
-            if func_name == "onShow" {
-                let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
-
-                let options = {
-                    let state = lxapp.state.lock().unwrap();
-                    state.startup_options.clone()
-                };
-
-                let options_str =
-                    serde_json::to_string(&options).unwrap_or_else(|_| "{}".to_string());
-                let options_obj = JSObject::from_json_string(ctx, &options_str)?;
-
-                func.call_async::<_, ()>(Some(self.this.clone()), (options_obj,))
-                    .await?;
-            } else {
-                let args =
-                    args.and_then(|json| JSObject::from_json_string(ctx, json.as_ref()).ok());
-                match args {
-                    Some(obj) => {
-                        func.call_async::<_, ()>(Some(self.this.clone()), (obj,))
-                            .await?
-                    }
-                    None => {
-                        func.call_async::<_, ()>(Some(self.this.clone()), ())
-                            .await?
-                    }
-                };
-            }
+            let args = args.and_then(|json| JSObject::from_json_string(ctx, json.as_ref()).ok());
+            match args {
+                Some(obj) => {
+                    func.call_async::<_, ()>(Some(self.this.clone()), (obj,))
+                        .await?
+                }
+                None => {
+                    func.call_async::<_, ()>(Some(self.this.clone()), ())
+                        .await?
+                }
+            };
             return Ok(());
         }
         Err(RongJSError::Error(format!("No service: {}", func_name)))

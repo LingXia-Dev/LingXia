@@ -71,9 +71,12 @@ impl LxAppDelegate for LxApp {
             return;
         }
 
+        let options = self.state.lock().unwrap().startup_options.clone();
+        let options_str = serde_json::to_string(&options).ok();
+
         if let Err(e) =
             self.executor
-                .call_app_service(self.appid.clone(), "onShow".to_string(), None)
+                .call_app_service(self.appid.clone(), "onShow".to_string(), options_str)
         {
             error!("Failed to trigger onShow service: {}", e).with_appid(self.appid.clone());
         }
