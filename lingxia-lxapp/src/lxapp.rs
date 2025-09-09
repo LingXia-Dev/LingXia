@@ -625,13 +625,18 @@ impl LxApp {
 
             let app = manager.get_or_init_lxapp(appid.clone());
 
+            let startup_options = options.clone();
             app.state.lock().unwrap().startup_options = options;
 
-            let target_path = if app.state.lock().unwrap().startup_options.path.is_empty() {
+            let target_path = if startup_options.path.is_empty() {
                 app.config.get_initial_route()
             } else {
-                app.state.lock().unwrap().startup_options.path.clone()
+                startup_options.path.clone()
             };
+
+            if let Some(page) = app.get_or_create_page(&target_path) {
+                page.set_query(startup_options.query);
+            }
 
             app.runtime.open_lxapp(appid, target_path)?;
         }

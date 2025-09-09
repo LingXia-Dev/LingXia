@@ -30,7 +30,9 @@ pub struct PageState {
     // Page loading state
     pub(crate) load_state: PageLoadState,
     // Navigation bar state
-    pub navbar_state: NavigationBarState,
+    pub(crate) navbar_state: NavigationBarState,
+    // Query parameters
+    pub(crate) query: serde_json::Value,
 }
 
 #[derive(Copy, Clone, PartialEq, Debug)]
@@ -55,6 +57,7 @@ impl Page {
         PageState {
             load_state: PageLoadState::Pending,
             navbar_state: NavigationBarState::from_json(lxapp, path),
+            query: serde_json::Value::Null,
         }
     }
 
@@ -228,18 +231,28 @@ impl Page {
         let lxapp = crate::lxapp::get(self.inner.appid.clone());
         lxapp.config.is_tab_page(&self.inner.path)
     }
+
+    fn get_query(&self) -> serde_json::Value {
+        self.inner.state.lock().unwrap().query.clone()
+    }
+
+    pub(crate) fn set_query(&self, query: serde_json::Value) {
+        self.inner.state.lock().unwrap().query = query;
+    }
 }
 
 impl WebViewDelegate for Page {
     /// Called when the page starts loading
     fn on_page_started(&self) {
+        let query_str = serde_json::to_string(&self.get_query()).ok();
+
         // Get LxApp and call page service
         let lxapp = lxapp::get(self.inner.appid.clone());
         let _ = lxapp.executor.call_page_service(
             self.inner.appid.clone(),
             self.inner.path.clone(),
             "onLoad".to_string(),
-            None,
+            query_str,
         );
     }
 
