@@ -685,7 +685,6 @@ extern "C" fn on_page_begin_callback(web_tag: *const c_char, user_data: *mut c_v
             }
         }
 
-        let (_appid, path) = webtag.extract_parts();
         if let Some(delegate) = get_webview_delegate(&webtag) {
             delegate.on_page_started();
         }

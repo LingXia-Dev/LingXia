@@ -33,20 +33,35 @@ export class LxAppModal {
   private static modalManagerRef: ModalManager | null = null;
 
   /**
-   * Show modal with options object (primary interface for TSFN compatibility)
-   * @param options - Modal configuration options
-   * @returns Modal result (immediate for FFI compatibility)
+   * Show modal with individual string parameters (refactored for direct parameter passing)
+   * @param title - Modal title (required)
+   * @param content - Modal content (required)
+   * @param showCancel - Whether to show cancel button (required)
+   * @param cancelText - Cancel button text (required)
+   * @param confirmText - Confirm button text (required)
+   * @param editable - Whether modal is editable (required)
+   * @param placeholderText - Placeholder text for input (required)
+   * @param confirmColor - Confirm button color (required, can be empty string)
    */
-  public static showModal(options: Record<string, string | boolean | undefined>): ModalResult {
+  public static showModal(
+    title: string,
+    content: string,
+    showCancel: string,
+    cancelText: string,
+    confirmText: string,
+    editable: string,
+    placeholderText: string,
+    confirmColor: string
+  ): void {
     const config: ModalConfig = {
-      title: options["title"] as string || "Alert",
-      content: options["content"] as string || "",
-      showCancel: options["showCancel"] as boolean ?? true,
-      cancelText: options["cancelText"] as string || "Cancel",
-      confirmText: options["confirmText"] as string || "Confirm",
-      editable: options["editable"] as boolean ?? false,
-      placeholderText: options["placeholderText"] as string || "",
-      confirmColor: options["confirmColor"] as string
+      title: title,
+      content: content,
+      showCancel: showCancel === "true",
+      cancelText: cancelText,
+      confirmText: confirmText,
+      editable: editable === "true",
+      placeholderText: placeholderText,
+      confirmColor: confirmColor || undefined
     };
 
     if (LxAppModal.modalManagerRef) {
@@ -54,13 +69,6 @@ export class LxAppModal {
     } else {
       hilog.warn(DOMAIN, TAG, 'Modal manager not initialized');
     }
-
-    // Return immediate result for FFI compatibility
-    return {
-      confirm: true,
-      cancel: false,
-      content: config.editable ? "input" : ""
-    };
   }
 
   /**

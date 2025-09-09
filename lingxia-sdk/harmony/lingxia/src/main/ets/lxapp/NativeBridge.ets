@@ -127,14 +127,29 @@ class NativeBridge {
     });
 
     // Modal APIs
-    this.register('showModal', (optionsJson: string): ModalResult => {
+    this.register('showModal', (
+      title: string,
+      content: string,
+      showCancel: string,
+      cancelText: string,
+      confirmText: string,
+      editable: string,
+      placeholderText: string,
+      confirmColor: string
+    ): void => {
       try {
-        const options = JSON.parse(optionsJson) as Record<string, string | boolean | undefined>;
-        return LxAppModal.showModal(options);
+        LxAppModal.showModal(
+          title,
+          content,
+          showCancel,
+          cancelText,
+          confirmText,
+          editable,
+          placeholderText,
+          confirmColor
+        );
       } catch (error) {
-        hilog.error(DOMAIN, TAG, `Error parsing modal options: ${error}`);
-        const errorResult: ModalResult = { confirm: false, cancel: true, content: "" };
-        return errorResult;
+        hilog.error(DOMAIN, TAG, `Error showing modal: ${error}`);
       }
     });
 
