@@ -4,7 +4,7 @@ use crate::lx;
 use crate::lxapp::LxApp;
 use crate::{error, info};
 
-use rong::{JSContext, JSFunc, JSResult, JSRuntime, RongJSError, Source};
+use rong::{JSContext, JSFunc, JSObject, JSResult, JSRuntime, RongJSError, Source};
 use rong_modules::{console, fs, http, storage};
 
 use std::cell::RefCell;
@@ -259,6 +259,10 @@ pub(crate) async fn lxapp_service_handler(
                     let _ = page_svc
                         .call_or_event_from_native(ctx, "onUnload", None)
                         .await;
+
+                    if let Ok(registry) = ctx.global().get::<_, JSObject>("__PAGE_REGISTRY__") {
+                        registry.del(page_svc.page.path().as_str());
+                    }
 
                     info!("[Worker {}] Removed page", worker_id)
                         .with_appid(appid)
