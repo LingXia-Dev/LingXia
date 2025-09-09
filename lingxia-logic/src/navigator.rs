@@ -1,18 +1,26 @@
-use lingxia_lxapp::{LxApp, lx};
+use lingxia_lxapp::{LxApp, LxAppMode, LxAppStartupOptions, lx};
 use rong::{FromJSObj, JSContext, JSFunc, JSResult, RongJSError};
 use std::sync::Arc;
 
 #[derive(FromJSObj)]
-struct LxAppNavigator {
+struct NavigateToOptions {
     #[rename = "appId"]
     appid: String,
     path: String,
+    #[rename = "envVersion"]
+    env_version: Option<String>,
 }
 
-fn navigate_to_lxapp(ctx: JSContext, app: LxAppNavigator) -> JSResult<()> {
+fn navigate_to_lxapp(ctx: JSContext, options: NavigateToOptions) -> JSResult<()> {
+    let mut startup_options = LxAppStartupOptions::new(&options.path);
+
+    if let Some(env) = options.env_version {
+        startup_options = startup_options.set_mode(LxAppMode::from(env.as_str()));
+    }
+
     let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
     lxapp
-        .navigate_to(app.appid, app.path)
+        .navigate_to(options.appid, startup_options)
         .map_err(|e| RongJSError::Error(format!("Failed to navigate to lxapp: {}", e)))?;
     Ok(())
 }
@@ -35,4 +43,3 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 
     Ok(())
 }
-
