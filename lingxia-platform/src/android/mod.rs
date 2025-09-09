@@ -2,6 +2,7 @@ use jni::objects::GlobalRef;
 use std::sync::OnceLock;
 
 mod app;
+mod modal;
 mod toast;
 pub use app::Platform;
 
@@ -15,5 +16,7 @@ pub fn init_lxapp_class(global_ref: GlobalRef) {
 
 /// Get the global LxApp class reference
 pub(crate) fn get_lxapp_class() -> Result<&'static GlobalRef, &'static str> {
-    LXAPP_CLASS.get().ok_or("Global LxApp class reference not available")
+    LXAPP_CLASS
+        .get()
+        .ok_or("Global LxApp class reference not available")
 }

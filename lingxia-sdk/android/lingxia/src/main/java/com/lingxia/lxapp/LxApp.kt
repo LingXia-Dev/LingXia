@@ -11,6 +11,8 @@ import androidx.appcompat.app.AppCompatActivity
 import com.lingxia.lxapp.APIs.LxAppToast
 import com.lingxia.lxapp.APIs.ToastIcon
 import com.lingxia.lxapp.APIs.ToastPosition
+import com.lingxia.lxapp.APIs.ModalResult
+import com.lingxia.lxapp.APIs.LxAppModal
 
 /**
  * Data class representing LxApp information from the native layer
@@ -344,33 +346,15 @@ class LxApp private constructor(private val context: Context) {
          * @return ModalResult (immediate result for FFI compatibility)
          */
         @JvmStatic
-        fun showModal(
-            title: String = "Alert",
-            content: String = "",
-            showCancel: Boolean = true,
-            cancelText: String = "Cancel",
-            confirmText: String = "OK",
-            editable: Boolean = false,
-            placeholderText: String = "",
-            confirmColor: String? = null
-        ): ModalResult {
+        fun showModal(options: Map<String, Any?>): ModalResult {
             val activity = currentActivity ?: return ModalResult(confirm = false, cancel = true, content = "")
 
             activity.runOnUiThread {
-                val options = mapOf(
-                    "title" to title,
-                    "content" to content,
-                    "showCancel" to showCancel,
-                    "cancelText" to cancelText,
-                    "confirmText" to confirmText,
-                    "editable" to editable,
-                    "placeholderText" to placeholderText,
-                    "confirmColor" to confirmColor
-                )
                 LxAppModal.showModal(activity, options)
             }
 
             // Return immediate result for FFI compatibility
+            val editable = options["editable"] as? Boolean ?: false
             return ModalResult(confirm = true, cancel = false, content = if (editable) "input" else "")
         }
 

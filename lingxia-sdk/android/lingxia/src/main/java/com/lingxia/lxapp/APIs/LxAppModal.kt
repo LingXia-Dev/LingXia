@@ -1,4 +1,4 @@
-package com.lingxia.lxapp
+package com.lingxia.lxapp.APIs
 
 import android.app.Activity
 import android.content.Context
