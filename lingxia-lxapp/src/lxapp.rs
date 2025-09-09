@@ -12,6 +12,7 @@ use crate::app::AppConfig;
 use crate::error::LxAppError;
 use crate::executor::LxAppExecutor;
 use crate::page::Page;
+use crate::startup::LxAppStartupOptions;
 use crate::{error, info, warn};
 use security::NetworkSecurity;
 
@@ -287,6 +288,9 @@ pub(crate) struct LxAppState {
     /// TabBar runtime state
     /// Contains TabBar configuration and dynamic state (badges, red dots, visibility)
     pub tabbar: Option<tabbar::TabBar>,
+
+    /// Startup options for the app
+    pub(crate) startup_options: LxAppStartupOptions,
 }
 
 impl LxAppState {
@@ -299,6 +303,7 @@ impl LxAppState {
             opened: false,
             network_security: NetworkSecurity::new(),
             tabbar: None,
+            startup_options: LxAppStartupOptions::default(),
         }
     }
 }
@@ -592,36 +597,42 @@ impl LxApp {
     /// If the provided path is empty, it will navigate to the target app's initial route.
     /// If the navigation stack is already full, this operation will be ignored.
     ///
+    /// This is a forward navigation that will push the target app onto the navigation stack.
+    /// The initial state of the target app is controlled by the `options` parameter.
+    /// If the app navigation stack is full, this operation will be ignored.
+    ///
     /// # Arguments
-    /// * `appid` - The ID of the target LxApp.
-    /// * `path` - The page path to open in the target app.
-    pub fn navigate_to(&self, appid: String, path: String) -> Result<(), LxAppError> {
-        // Do nothing if navigating to the same app.
+    ///
+    /// * `appid` - The ID of the target `LxApp` to navigate to.
+    /// * `options` - The startup options for the target app.
+    pub fn navigate_to(
+        &self,
+        appid: String,
+        options: LxAppStartupOptions,
+    ) -> Result<(), LxAppError> {
         if self.appid == appid {
             return Ok(());
         }
 
         if let Some(manager) = get_lxapps_manager() {
-            // Check if the navigation stack is full before proceeding.
             if manager.is_lxapp_stack_full() {
                 warn!(
                     "LxApp navigation stack is full (capacity: {}). Cannot navigate to app: {}",
                     LXAPP_STACK_MAX, appid
                 );
-                return Ok(()); // Do nothing if the stack is full.
+                return Ok(());
             }
 
             let app = manager.get_or_init_lxapp(appid.clone());
 
-            let target_path = if path.is_empty() {
-                // If path is empty, use the initial route from the app's config.
+            app.state.lock().unwrap().startup_options = options;
+
+            let target_path = if app.state.lock().unwrap().startup_options.path.is_empty() {
                 app.config.get_initial_route()
             } else {
-                path
+                app.state.lock().unwrap().startup_options.path.clone()
             };
 
-            // The runtime is responsible for opening the new app.
-            // The on_lxapp_opened delegate of the new app will then handle pushing it to the navigation stack.
             app.runtime.open_lxapp(appid, target_path)?;
         }
         Ok(())
@@ -936,6 +947,9 @@ pub fn init(runtime: Platform) -> Option<String> {
                 runtime_arc.clone(),
                 executor.clone(),
             );
+
+            let initial_route = home_lxapp.config.get_initial_route();
+            home_lxapp.state.lock().unwrap().startup_options.path = initial_route;
 
             // Check if home lxapp needs updating after loading its configuration
             if home_lxapp.is_debug_enabled() || home_lxapp.should_update(home_lxapp_version) {
