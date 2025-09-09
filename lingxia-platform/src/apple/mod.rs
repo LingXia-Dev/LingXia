@@ -5,6 +5,7 @@
 mod app;
 mod ffi;
 mod resources;
+mod toast;
 
 // Re-export App
 pub use app::Platform;

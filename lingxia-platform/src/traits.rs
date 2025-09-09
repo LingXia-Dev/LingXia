@@ -4,6 +4,34 @@ use std::path::PathBuf;
 use crate::error::PlatformError;
 use crate::{AssetFileEntry, DeviceInfo};
 
+/// Toast icon types
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToastIcon {
+    Success,
+    Error,
+    Loading,
+    None,
+}
+
+/// Toast position types
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToastPosition {
+    Top,
+    Center,
+    Bottom,
+}
+
+/// Toast configuration options
+#[derive(Debug, Clone)]
+pub struct ToastOptions {
+    pub title: String,
+    pub icon: ToastIcon,
+    pub image: Option<String>,
+    pub duration: f64,
+    pub mask: bool,
+    pub position: ToastPosition,
+}
+
 /// Navigation type for LxApp navigation
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NavigationType {
@@ -122,4 +150,24 @@ pub trait AppRuntime: Send + Sync + 'static {
     /// # Returns
     /// * `Result<(), PlatformError>` - Success or error
     fn launch_with_url(&self, url: String) -> Result<(), PlatformError>;
+}
+
+/// Toast functionality trait
+///
+/// This trait defines the toast display capabilities for the platform
+pub trait Toast: Send + Sync + 'static {
+    /// Show a toast with the specified options
+    ///
+    /// # Arguments
+    /// * `options` - Toast configuration options
+    ///
+    /// # Returns
+    /// * `Result<(), PlatformError>` - Success or error
+    fn show_toast(&self, options: ToastOptions) -> Result<(), PlatformError>;
+
+    /// Hide the currently displayed toast
+    ///
+    /// # Returns
+    /// * `Result<(), PlatformError>` - Success or error
+    fn hide_toast(&self) -> Result<(), PlatformError>;
 }
