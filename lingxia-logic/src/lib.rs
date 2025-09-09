@@ -4,6 +4,7 @@ use rong::{JSContext, JSResult};
 mod env;
 mod navigator;
 mod system;
+mod ui;
 
 pub struct LxLogicRuntime;
 
@@ -12,6 +13,7 @@ impl LxLogicExtension for LxLogicRuntime {
         env::init(ctx)?;
         system::init(ctx)?;
         navigator::init(ctx)?;
+        ui::init(ctx)?;
         Ok(())
     }
 }
