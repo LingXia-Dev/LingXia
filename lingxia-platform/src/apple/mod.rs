@@ -4,6 +4,7 @@
 
 mod app;
 mod ffi;
+mod modal;
 mod resources;
 mod toast;
 

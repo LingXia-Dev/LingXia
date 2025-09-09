@@ -32,6 +32,28 @@ pub struct ToastOptions {
     pub position: ToastPosition,
 }
 
+/// Modal configuration options
+#[derive(Debug, Clone)]
+pub struct ModalOptions {
+    pub title: String,
+    pub content: String,
+    pub show_cancel: bool,
+    pub cancel_text: String,
+    pub cancel_color: Option<String>,
+    pub confirm_text: String,
+    pub confirm_color: Option<String>,
+    pub editable: bool,
+    pub placeholder_text: String,
+}
+
+/// Modal result
+#[derive(Debug, Clone)]
+pub struct ModalResult {
+    pub confirm: bool,
+    pub cancel: bool,
+    pub content: String, // User input content if editable
+}
+
 /// Navigation type for LxApp navigation
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NavigationType {
@@ -170,4 +192,18 @@ pub trait Toast: Send + Sync + 'static {
     /// # Returns
     /// * `Result<(), PlatformError>` - Success or error
     fn hide_toast(&self) -> Result<(), PlatformError>;
+}
+
+/// Modal functionality trait
+///
+/// This trait defines the modal dialog capabilities for the platform
+pub trait Modal: Send + Sync + 'static {
+    /// Show a modal dialog with the specified options
+    ///
+    /// # Arguments
+    /// * `options` - Modal configuration options
+    ///
+    /// # Returns
+    /// * `Result<ModalResult, PlatformError>` - Modal result or error
+    fn show_modal(&self, options: ModalOptions) -> Result<ModalResult, PlatformError>;
 }
