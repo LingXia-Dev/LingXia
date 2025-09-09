@@ -2,6 +2,7 @@ use crate::appservice::bridge::IncomingMessage;
 use crate::executor::LxAppExecutor;
 use crate::lxapp::{self, navbar::NavigationBarState};
 use crate::{LxApp, LxAppError, error, info};
+use lingxia_platform::{AppRuntime, NavigationType};
 use lingxia_webview::{
     LogLevel, WebTag, WebView, WebViewController, WebViewDelegate, create_webview,
 };
@@ -230,6 +231,86 @@ impl Page {
     pub fn is_tabbar_page(&self) -> bool {
         let lxapp = crate::lxapp::get(self.inner.appid.clone());
         lxapp.config.is_tab_page(&self.inner.path)
+    }
+
+    pub fn navigate(&self, url: &str, nav_type: NavigationType) -> Result<(), LxAppError> {
+        let lxapp = lxapp::get(self.appid());
+
+        let (path, query) = if nav_type == NavigationType::SwitchTab {
+            (url.to_string(), serde_json::Value::Null)
+        } else {
+            let (p, q_str) = if let Some(idx) = url.find('?') {
+                (url[..idx].to_string(), &url[idx + 1..])
+            } else {
+                (url.to_string(), "")
+            };
+            let q = serde_json::from_str(q_str)
+                .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::new()));
+            (p, q)
+        };
+
+        match nav_type {
+            NavigationType::Launch => {
+                lxapp.clear_page_stack()?;
+            }
+            NavigationType::SwitchTab => {
+                lxapp.clear_page_stack()?;
+                lxapp.with_tabbar_mut(|t| t.set_visible(true));
+            }
+            NavigationType::Replace => {
+                lxapp.pop_from_page_stack();
+            }
+            NavigationType::Forward => {
+                if lxapp.is_page_stack_full() {
+                    info!("Page stack is full, cannot navigate forward.");
+                    return Ok(());
+                }
+            }
+            _ => {}
+        }
+
+        if let Some(page) = lxapp.get_or_create_page(&path) {
+            if query != serde_json::Value::Null {
+                page.set_query(query);
+            }
+        }
+
+        (*lxapp.runtime)
+            .navigate(self.appid(), path, nav_type)
+            .map_err(Into::into)
+    }
+
+    pub fn navigate_back(&self, delta: u32) -> Result<(), LxAppError> {
+        let lxapp = lxapp::get(self.appid());
+        let stack_size = lxapp.get_page_stack_size();
+
+        // Ensure at least one page remains
+        if stack_size <= 1 {
+            return Ok(());
+        }
+
+        let mut pages_to_pop = delta;
+        // Prevent popping all pages
+        if pages_to_pop as usize >= stack_size {
+            pages_to_pop = (stack_size - 1) as u32;
+        }
+
+        if pages_to_pop == 0 {
+            return Ok(());
+        }
+
+        for _ in 0..pages_to_pop {
+            lxapp.pop_from_page_stack();
+        }
+
+        if let Some(path) = lxapp.peek_current_page() {
+            (*lxapp.runtime).navigate(self.appid(), path, NavigationType::Backward)?;
+            Ok(())
+        } else {
+            Err(LxAppError::UnsupportedOperation(
+                "Page stack is empty after pop".to_string(),
+            ))
+        }
     }
 
     fn get_query(&self) -> serde_json::Value {

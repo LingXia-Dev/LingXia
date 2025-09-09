@@ -657,7 +657,7 @@ impl LxApp {
 
     /// Get existing page or create a new one if it doesn't exist
     /// Returns None if creation fails
-    pub fn get_or_create_page(self: &Arc<Self>, path: &str) -> Option<Page> {
+    pub(crate) fn get_or_create_page(self: &Arc<Self>, path: &str) -> Option<Page> {
         // Check if page already exists
         {
             let state = self.state.lock().unwrap();
@@ -761,13 +761,13 @@ impl LxApp {
 
     /// Check if the page stack is considered full
     /// Returns true when stack size reaches PAGE_STACK_MAX
-    pub fn is_page_stack_full(&self) -> bool {
+    pub(crate) fn is_page_stack_full(&self) -> bool {
         self.get_page_stack_size() >= PAGE_STACK_MAX
     }
 
     /// Clear the page navigation stack
     /// This removes all pages from the navigation history
-    pub fn clear_page_stack(&self) -> Result<(), LxAppError> {
+    pub(crate) fn clear_page_stack(&self) -> Result<(), LxAppError> {
         let state = self.state.lock().unwrap();
         state.page_stack.lock().unwrap().clear();
         Ok(())
@@ -775,7 +775,7 @@ impl LxApp {
 
     /// Add a page to the navigation stack
     /// Called from delegate on page show
-    pub fn push_to_page_stack(&self, path: &str) -> Result<(), LxAppError> {
+    pub(crate) fn push_to_page_stack(&self, path: &str) -> Result<(), LxAppError> {
         let state = self.state.lock().unwrap();
         let mut stack = state.page_stack.lock().unwrap();
 
@@ -795,7 +795,7 @@ impl LxApp {
 
     /// Remove the most recent page from the navigation stack
     /// Returns the path of the removed page, or None if stack is empty
-    pub fn pop_from_page_stack(&self) -> Option<String> {
+    pub(crate) fn pop_from_page_stack(&self) -> Option<String> {
         let state = self.state.lock().unwrap();
         state.page_stack.lock().unwrap().pop_back()
     }

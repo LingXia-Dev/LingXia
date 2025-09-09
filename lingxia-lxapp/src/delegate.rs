@@ -178,28 +178,18 @@ impl LxApp {
         if let Ok(index) = data.parse::<usize>() {
             info!("TabBar item {} clicked", index).with_appid(self.appid.clone());
 
-            // Get tab pages from config
             let tab_pages = self.config.get_tab_pages();
             if let Some(tab_path) = tab_pages.get(index) {
-                // Clear page stack when switching tabs (tab pages are root pages)
-                if let Err(e) = self.clear_page_stack() {
-                    error!("Failed to clear page stack: {}", e).with_appid(self.appid.clone());
+                if let Some(current_page_path) = self.peek_current_page() {
+                    if let Some(page) = self.get_page(&current_page_path) {
+                        if page.navigate(tab_path, NavigationType::SwitchTab).is_ok() {
+                            return true;
+                        }
+                    }
                 }
-
-                // ask UI to show tabbar
-                self.with_tabbar_mut(|t| t.set_visible(true));
-
-                // Navigate to the selected tab page
-                if let Err(e) = self.runtime.navigate(
-                    self.appid.clone(),
-                    tab_path.clone(),
-                    NavigationType::SwitchTab,
-                ) {
-                    error!("Failed to switch to tab {}: {}", tab_path, e)
-                        .with_appid(self.appid.clone());
-                    return false;
-                }
-                return true;
+                // Fallback or error handling if no current page
+                error!("Could not get current page to perform navigation")
+                    .with_appid(self.appid.clone());
             } else {
                 error!("Invalid tab index: {}", index).with_appid(self.appid.clone());
             }
