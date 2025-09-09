@@ -1,4 +1,4 @@
-package com.lingxia.lxapp
+package com.lingxia.lxapp.APIs
 
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
@@ -28,7 +28,11 @@ enum class ToastIcon {
     Success,
     Error,
     Loading,
-    None
+    None;
+
+    companion object {
+        fun fromInt(value: Int) = values().firstOrNull { it.ordinal == value } ?: None
+    }
 }
 
 /**
@@ -37,7 +41,11 @@ enum class ToastIcon {
 enum class ToastPosition {
     Top,
     Center,
-    Bottom
+    Bottom;
+
+    companion object {
+        fun fromInt(value: Int) = values().firstOrNull { it.ordinal == value } ?: Center
+    }
 }
 
 /**
@@ -364,6 +372,7 @@ private class CheckmarkDrawable : Drawable() {
         paint.colorFilter = colorFilter
     }
 
+    @Deprecated("Deprecated in Java")
     override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
 }
 
@@ -406,5 +415,6 @@ private class CrossDrawable : Drawable() {
         paint.colorFilter = colorFilter
     }
 
+    @Deprecated("Deprecated in Java")
     override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
 }

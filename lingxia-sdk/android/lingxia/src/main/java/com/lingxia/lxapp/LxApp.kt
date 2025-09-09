@@ -8,6 +8,9 @@ import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import androidx.appcompat.app.AppCompatActivity
+import com.lingxia.lxapp.APIs.LxAppToast
+import com.lingxia.lxapp.APIs.ToastIcon
+import com.lingxia.lxapp.APIs.ToastPosition
 
 /**
  * Data class representing LxApp information from the native layer
@@ -295,24 +298,24 @@ class LxApp private constructor(private val context: Context) {
          * @param position Toast position
          */
         @JvmStatic
-        fun show(
+        fun showToast(
             title: String,
-            icon: ToastIcon = ToastIcon.None,
-            image: String? = null,
-            duration: Double = 1.5,
-            mask: Boolean = false,
-            position: ToastPosition = ToastPosition.Center
+            icon: Int,
+            image: String?,
+            duration: Double,
+            mask: Boolean,
+            position: Int
         ) {
             currentActivity?.let { activity ->
                 activity.runOnUiThread {
                     LxAppToast.showToast(
                         context = activity,
                         title = title,
-                        icon = icon,
+                        icon = ToastIcon.fromInt(icon),
                         image = image,
                         duration = duration,
                         mask = mask,
-                        position = position
+                        position = ToastPosition.fromInt(position)
                     )
                 }
             }
@@ -322,7 +325,7 @@ class LxApp private constructor(private val context: Context) {
          * Hide toast
          */
         @JvmStatic
-        fun hide() {
+        fun hideToast() {
             currentActivity?.runOnUiThread {
                 LxAppToast.hideToast()
             }

@@ -7,15 +7,6 @@ use ndk_sys;
 use std::ffi::CString;
 use std::io::{Read, Result as IoResult};
 use std::path::PathBuf;
-use std::sync::OnceLock;
-
-/// Global reference to LxApp class for worker threads
-static LXAPP_CLASS: OnceLock<GlobalRef> = OnceLock::new();
-
-/// Initialize LxApp class global reference (called from JNI_OnLoad)
-pub fn init_lxapp_class(global_ref: GlobalRef) {
-    let _ = LXAPP_CLASS.set(global_ref);
-}
 
 // Platform for Android
 #[derive(Clone)]
@@ -332,11 +323,7 @@ impl AppRuntime for Platform {
         match || -> Result<(), Box<dyn std::error::Error>> {
             let mut env = get_env()?;
 
-            let lxapp_class: &JClass = LXAPP_CLASS
-                .get()
-                .ok_or("Global LxApp class reference not available")?
-                .as_obj()
-                .into();
+            let lxapp_class: &JClass = super::get_lxapp_class()?.as_obj().into();
             let appid_jstring = env.new_string(&appid)?;
             let path_jstring = env.new_string(&path)?;
 
@@ -363,11 +350,7 @@ impl AppRuntime for Platform {
         match || -> Result<(), Box<dyn std::error::Error>> {
             let mut env = get_env()?;
 
-            let lxapp_class: &JClass = LXAPP_CLASS
-                .get()
-                .ok_or("Global LxApp class reference not available")?
-                .as_obj()
-                .into();
+            let lxapp_class: &JClass = super::get_lxapp_class()?.as_obj().into();
 
             let appid_jstring = env.new_string(&appid)?;
 
@@ -396,11 +379,7 @@ impl AppRuntime for Platform {
         match || -> Result<(), Box<dyn std::error::Error>> {
             let mut env = get_env()?;
 
-            let lxapp_class: &JClass = LXAPP_CLASS
-                .get()
-                .ok_or("Global LxApp class reference not available")?
-                .as_obj()
-                .into();
+            let lxapp_class: &JClass = super::get_lxapp_class()?.as_obj().into();
 
             let appid_jstring = env.new_string(&appid)?;
             let path_jstring = env.new_string(&path)?;
@@ -453,11 +432,7 @@ impl AppRuntime for Platform {
         match || -> Result<(), Box<dyn std::error::Error>> {
             let mut env = get_env()?;
 
-            let lxapp_class: &JClass = LXAPP_CLASS
-                .get()
-                .ok_or("Global LxApp class reference not available")?
-                .as_obj()
-                .into();
+            let lxapp_class: &JClass = super::get_lxapp_class()?.as_obj().into();
             let url_jstring = env.new_string(url)?;
 
             env.call_static_method(
