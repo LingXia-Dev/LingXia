@@ -2,8 +2,7 @@ use jni::objects::GlobalRef;
 use std::sync::OnceLock;
 
 mod app;
-mod modal;
-mod toast;
+mod user_feedback;
 pub use app::Platform;
 
 /// Global reference to LxApp class for worker threads

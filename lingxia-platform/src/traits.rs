@@ -174,10 +174,11 @@ pub trait AppRuntime: Send + Sync + 'static {
     fn launch_with_url(&self, url: String) -> Result<(), PlatformError>;
 }
 
-/// Toast functionality trait
+/// User feedback functionality trait
 ///
-/// This trait defines the toast display capabilities for the platform
-pub trait Toast: Send + Sync + 'static {
+/// This trait defines the user feedback capabilities for the platform,
+/// including toast notifications and modal dialogs
+pub trait UserFeedback: Send + Sync + 'static {
     /// Show a toast with the specified options
     ///
     /// # Arguments
@@ -192,12 +193,7 @@ pub trait Toast: Send + Sync + 'static {
     /// # Returns
     /// * `Result<(), PlatformError>` - Success or error
     fn hide_toast(&self) -> Result<(), PlatformError>;
-}
 
-/// Modal functionality trait
-///
-/// This trait defines the modal dialog capabilities for the platform
-pub trait Modal: Send + Sync + 'static {
     /// Show a modal dialog with the specified options
     ///
     /// # Arguments

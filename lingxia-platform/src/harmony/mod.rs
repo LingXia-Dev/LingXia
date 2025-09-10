@@ -1,4 +1,3 @@
 pub mod app;
-mod modal;
-mod toast;
+mod user_feedback;
 pub use app::Platform;

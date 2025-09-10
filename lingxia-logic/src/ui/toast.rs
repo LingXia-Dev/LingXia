@@ -1,5 +1,5 @@
 use lingxia_lxapp::{LxApp, lx};
-use lingxia_platform::{Toast, ToastIcon, ToastOptions, ToastPosition};
+use lingxia_platform::{ToastIcon, ToastOptions, ToastPosition, UserFeedback};
 use rong::{FromJSObj, JSContext, JSFunc, JSResult, RongJSError};
 use std::sync::Arc;
 
@@ -25,7 +25,9 @@ impl From<JSToastOptions> for ToastOptions {
             image: js_options.image.filter(|s| !s.is_empty()),
             duration: duration_seconds,
             mask: js_options.mask.unwrap_or(false),
-            position: convert_string_to_toast_position(js_options.position.as_deref().unwrap_or("center")),
+            position: convert_string_to_toast_position(
+                js_options.position.as_deref().unwrap_or("center"),
+            ),
         }
     }
 }
@@ -56,7 +58,8 @@ fn show_toast(ctx: JSContext, options: JSToastOptions) -> JSResult<()> {
     let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
     let toast_options: ToastOptions = options.into();
 
-    lxapp.runtime
+    lxapp
+        .runtime
         .show_toast(toast_options)
         .map_err(|e| RongJSError::Error(format!("Failed to show toast: {}", e)))?;
 
@@ -67,7 +70,8 @@ fn show_toast(ctx: JSContext, options: JSToastOptions) -> JSResult<()> {
 fn hide_toast(ctx: JSContext) -> JSResult<()> {
     let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
 
-    lxapp.runtime
+    lxapp
+        .runtime
         .hide_toast()
         .map_err(|e| RongJSError::Error(format!("Failed to hide toast: {}", e)))?;
 
@@ -86,3 +90,4 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 
     Ok(())
 }
+

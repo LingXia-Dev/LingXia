@@ -1,5 +1,5 @@
 use lingxia_lxapp::{LxApp, lx};
-use lingxia_platform::{Modal, ModalOptions, ModalResult};
+use lingxia_platform::{ModalOptions, ModalResult, UserFeedback};
 use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
 use std::sync::Arc;
 

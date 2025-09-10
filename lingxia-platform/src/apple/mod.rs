@@ -4,9 +4,8 @@
 
 mod app;
 mod ffi;
-mod modal;
 mod resources;
-mod toast;
+mod user_feedback;
 
 // Re-export App
 pub use app::Platform;
