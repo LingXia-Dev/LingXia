@@ -871,6 +871,8 @@ public class iOSTabBarWrapper: UIView {
 
         // Setup notification observer now that we have the appId
         setupNotificationObserver()
+        // Initialize local selection from Rust state so UI reflects correct tab on first render
+        self.selectedIndex = Int(config.selected_index)
         updateLayout()
     }
 
@@ -887,15 +889,10 @@ public class iOSTabBarWrapper: UIView {
     }
 
     public func syncSelectedTabWithCurrentPath(_ currentPath: String) {
-        // Find the tab index for the current path
-        guard let config = tabBarConfig else { return }
-        let items = config.getItems(appId: appId)
-
-        for (index, item) in items.enumerated() {
-            if item.page_path.toString() == currentPath {
-                selectTab(index: index)
-                break
-            }
+        // Rust manages selected_index, just sync UI with Rust state
+        if let rustState = lingxia.getTabBar(appId) {
+            self.tabBarConfig = rustState
+            setSelectedIndex(Int(rustState.selected_index), notifyListener: false)
         }
     }
 
@@ -907,17 +904,10 @@ public class iOSTabBarWrapper: UIView {
 
     public func setSelectedIndex(_ index: Int, notifyListener: Bool) {
         let previousIndex = getSelectedIndex()
-        // Update local selectedIndex to reflect Rust state
-        selectedIndex = index
+        self.selectedIndex = index
 
-        // Only update layout if selection actually changed
         if previousIndex != index {
-            // Update the selection state of the tab bar items without recreating the layout
-            for (i, subview) in subviews.enumerated() {
-                if let button = subview.subviews.first as? UIButton {
-                    button.isSelected = (i == index)
-                }
-            }
+            updateLayout()
         }
 
         if notifyListener, let callback = onTabSelectedCallback, let config = tabBarConfig {
@@ -1255,21 +1245,8 @@ public class iOSTabBarWrapper: UIView {
 
     @objc private func uikitTabButtonTapped(_ sender: UIButton) {
         let index = sender.tag
-        let previousIndex = getSelectedIndex()
-
-        // Always trigger callback - let parent decide if action is needed
-        if let config = tabBarConfig {
-            let items = config.getItems(appId: appId)
-            if index < items.count {
-                let path = items[index].page_path.toString()
-                onTabSelectedCallback?(index, path)
-
-                // Only update layout if selection actually changed
-                if previousIndex != index {
-                    updateLayout()
-                }
-            }
-        }
+        // Update local UI selection immediately, and notify listener (which routes to Rust)
+        setSelectedIndex(index, notifyListener: true)
     }
 
     private func createBadgeView(text: String) -> UIView {
@@ -1354,6 +1331,7 @@ public class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
     public func syncSelectedTabWithCurrentPath(_ currentPath: String) {
         // Rust manages selected_index, just sync UI with Rust state
         if let rustState = lingxia.getTabBar(appId) {
+            self.tabBarConfig = rustState
             setSelectedIndex(Int(rustState.selected_index), notifyListener: false)
         }
     }

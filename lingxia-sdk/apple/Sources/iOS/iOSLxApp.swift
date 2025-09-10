@@ -250,12 +250,6 @@ extension iOSLxApp {
     public func handlePlatformSpecificNavigation(_ plan: NavigationPlan) {
 
         guard let manager = lxAppManager else { return }
-
-        // Handle iOS-specific navigation setup - DO NOT call UI updates here
-        // UI updates are handled by the unified renderer (renderNavigationBar, renderTabBar, etc.)
-
-        // Always update app state and WebView for all navigation types including launch
-        manager.updateAppStateForNavigation(appId: plan.appId, path: plan.path, navigationType: plan.navigationType)
         manager.setupOrSwitchWebView(appId: plan.appId, path: plan.path, navigationType: plan.navigationType)
     }
 

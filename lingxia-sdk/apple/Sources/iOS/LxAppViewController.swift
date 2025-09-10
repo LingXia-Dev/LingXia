@@ -181,9 +181,6 @@ public class LxAppViewController: UIViewController, ObservableObject {
         // operates on the correct app context.
         LxAppCore.setCurrentApp(appId: appId, path: "/")
 
-        // Update app state based on navigation type
-        updateAppStateForNavigation(appId: appId, path: path, navigationType: navigationType)
-
         // CRITICAL: Initialize UI components FIRST before any navigation logic
         // This ensures NavigationBar is ready when renderNavigationBar is called
         updateGlobalUIComponents(for: appId, path: path, navigationType: navigationType)
@@ -260,13 +257,6 @@ public class LxAppViewController: UIViewController, ObservableObject {
             iOSLxApp.openLxApp(appId: appidStr, path: pathStr)
         } else {
             os_log("No more LxApps in stack, view controller will remain empty", log: Self.log, type: .info)
-        }
-    }
-
-    public func updateAppStateForNavigation(appId: String, path: String, navigationType: NavigationType) {
-        // Update current app state
-        if LxAppCore.currentAppId == appId {
-            LxAppCore.setCurrentPath(path)
         }
     }
 
@@ -450,6 +440,9 @@ public class LxAppViewController: UIViewController, ObservableObject {
 
             bringUIElementsToFront()
 
+            // Update current app state AFTER successful attach/switch
+            LxAppCore.setCurrentPath(path)
+
             // Still trigger onPageShow for already attached WebView
             lingxia.onPageShow(appId, path)
 
@@ -489,6 +482,9 @@ public class LxAppViewController: UIViewController, ObservableObject {
         }
 
         bringUIElementsToFront()
+
+        // Update current app state AFTER successful attach/switch
+        LxAppCore.setCurrentPath(path)
     }
 
     private func updateWebViewConstraints(for appId: String, topOffset: CGFloat? = nil) {
@@ -842,8 +838,8 @@ public class LxAppViewController: UIViewController, ObservableObject {
         tabBar.translatesAutoresizingMaskIntoConstraints = false
         tabBar.alpha = 1.0
 
-        // Use universal tab click handler
-        tabBar.setOnTabSelectedListener { index, path in
+        // Use universal tab click handler (navigation handled by Rust)
+        tabBar.setOnTabSelectedListener { index, _ in
             if let appId = LxAppCore.currentAppId {
                 LxAppPageNavigation.handleTabBarItemSelected(appId: appId, index: index)
             }
