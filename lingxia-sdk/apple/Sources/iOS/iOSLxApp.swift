@@ -246,20 +246,6 @@ extension iOSLxApp {
         lxAppManager?.updateCapsuleButtonVisibility(appId: appId)
     }
 
-    /// Execute lifecycle action
-    public func executeLifecycleAction(_ action: LifecycleAction, appId: String, path: String) {
-        switch action {
-        case .openApp:
-            // onLxappOpened already called in prepareOpenLxApp
-            lingxia.onPageShow(appId, path)
-        case .switchTab:
-            // TabSwitch is just like pageShow, but TabBar selection is handled in renderTabBar
-            lingxia.onPageShow(appId, path)
-        case .pageShow:
-            lingxia.onPageShow(appId, path)
-        }
-    }
-
     /// Handle platform-specific navigation logic
     public func handlePlatformSpecificNavigation(_ plan: NavigationPlan) {
 
@@ -267,11 +253,10 @@ extension iOSLxApp {
 
         // Handle iOS-specific navigation setup - DO NOT call UI updates here
         // UI updates are handled by the unified renderer (renderNavigationBar, renderTabBar, etc.)
-        if plan.navigationType != .launch {
-            // Only update app state and WebView, no UI updates
-            manager.updateAppStateForNavigation(appId: plan.appId, path: plan.path, navigationType: plan.navigationType)
-            manager.setupOrSwitchWebView(appId: plan.appId, path: plan.path, navigationType: plan.navigationType)
-        }
+
+        // Always update app state and WebView for all navigation types including launch
+        manager.updateAppStateForNavigation(appId: plan.appId, path: plan.path, navigationType: plan.navigationType)
+        manager.setupOrSwitchWebView(appId: plan.appId, path: plan.path, navigationType: plan.navigationType)
     }
 
     /// Get current path for duplicate navigation check

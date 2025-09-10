@@ -378,21 +378,6 @@ extension macOSLxApp {
         }
     }
 
-    /// Execute lifecycle action
-    public func executeLifecycleAction(_ action: LifecycleAction, appId: String, path: String) {
-
-        switch action {
-        case .openApp:
-            // onLxappOpened already called in prepareOpenLxApp
-            lingxia.onPageShow(appId, path)
-        case .switchTab:
-            // Handle tab switch logic
-            lingxia.onPageShow(appId, path)
-        case .pageShow:
-            lingxia.onPageShow(appId, path)
-        }
-    }
-
     /// Handle platform-specific navigation logic
     public func handlePlatformSpecificNavigation(_ plan: NavigationPlan) {
 

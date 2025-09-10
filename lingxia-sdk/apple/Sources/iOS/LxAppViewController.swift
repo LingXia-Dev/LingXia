@@ -306,7 +306,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
                 }
             }
 
-            // Show target WebView
+            // Show target WebView using shared logic
             attachWebViewToUI(webView: targetWebView, for: appId, path: path)
 
         }
@@ -441,8 +441,6 @@ public class LxAppViewController: UIViewController, ObservableObject {
     }
 
     private func attachWebViewToUI(webView: WKWebView, for appId: String, path: String) {
-        // WebView is managed by WebViewManager, no need to store reference
-
         // Check if WebView is already properly attached
         if webView.superview == rootContainer && !webView.isHidden {
             // WebView is already attached and visible, just ensure it's configured
@@ -452,12 +450,10 @@ public class LxAppViewController: UIViewController, ObservableObject {
 
             bringUIElementsToFront()
 
-            return
-        }
+            // Still trigger onPageShow for already attached WebView
+            lingxia.onPageShow(appId, path)
 
-        // Remove from previous parent if any
-        if webView.superview != nil && webView.superview != rootContainer {
-            webView.removeFromSuperview()
+            return
         }
 
         // Ensure UI is set up before adding WebView
@@ -469,28 +465,30 @@ public class LxAppViewController: UIViewController, ObservableObject {
             return
         }
 
-        // Add to container if not already added
-        if webView.superview != rootContainer {
-            rootContainer.addSubview(webView)
-            webView.translatesAutoresizingMaskIntoConstraints = false
+        // Setup WebView with app info before attachment
+        webView.setup(appId: appId, path: path)
 
-            // Setup constraints
-            updateWebViewConstraints(for: appId)
-
-            NSLayoutConstraint.activate([
-                webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-                webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-                webView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
-            ])
-        }
-
+        // Configure WebView appearance
         configureWebView(webView, transparent: shouldUseTransparentMode(for: appId, path: path))
 
-        // Show WebView without hiding first to reduce flashing
-        webView.resumeWebView()
-        if webView.isHidden {
-            webView.isHidden = false
+        // Create custom constraints for iOS-specific layout with proper top offset
+        let topOffset = navigationAreaHeight
+        let constraints = [
+            webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            webView.topAnchor.constraint(equalTo: rootContainer.topAnchor, constant: topOffset),
+            webView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ]
+
+        // Use shared WebViewManager logic which will trigger onPageShow
+        WebViewManager.attachWebViewToContainer(webView, container: rootContainer, constraints: constraints)
+
+        // Store the top constraint reference for future updates
+        if let topConstraint = constraints.first(where: { $0.firstAnchor == webView.topAnchor }) {
+            currentWebViewTopConstraint = topConstraint
         }
+
+        bringUIElementsToFront()
     }
 
     private func updateWebViewConstraints(for appId: String, topOffset: CGFloat? = nil) {
@@ -859,7 +857,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
 
         return tabBar
     }
-    
+
     func showTabBar(_ show: Bool) {
         currentTabBar?.isHidden = !show
         if show { bringUIElementsToFront() }

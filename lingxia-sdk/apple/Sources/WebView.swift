@@ -140,6 +140,11 @@ public class WebViewManager {
         #endif
 
         webView.resumeWebView()
+
+        // Trigger onPageShow when WebView is attached and visible
+        if let appId = webView.appId, let path = webView.currentPath {
+            lingxia.onPageShow(appId, path)
+        }
     }
 
     /// Configure WebView transparency - shared logic with platform-specific optimizations

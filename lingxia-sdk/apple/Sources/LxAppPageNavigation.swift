@@ -209,9 +209,6 @@ public protocol LxAppRenderer {
     /// Render Capsule button - only home app hides it, others show it
     func renderCapsuleButton(appId: String)
 
-    /// Execute lifecycle action
-    func executeLifecycleAction(_ action: LifecycleAction, appId: String, path: String)
-
     /// Get current path for duplicate navigation check
     func getCurrentPath(for appId: String) -> String?
 }

@@ -133,9 +133,6 @@ public class LxAppCore {
         // Platform-specific setup/switch WebView first
         renderer.handlePlatformSpecificNavigation(plan)
 
-        // Trigger lifecycle before reading Rust UI state
-        renderer.executeLifecycleAction(plan.lifecycleAction, appId: plan.appId, path: plan.path)
-
         // Reflect Rust state in UI rendering
         renderer.renderTabBar(plan.tabBarState, appId: plan.appId, path: plan.path)
         renderer.renderNavigationBar(plan.navBarState)
