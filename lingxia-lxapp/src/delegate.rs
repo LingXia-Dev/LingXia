@@ -178,6 +178,12 @@ impl LxApp {
         if let Ok(index) = data.parse::<usize>() {
             info!("TabBar item {} clicked", index).with_appid(self.appid.clone());
 
+            if let Some(tabbar) = self.get_tabbar() {
+                if tabbar.get_selected_index() == index as i32 {
+                    return true; // Already selected, do nothing
+                }
+            }
+
             // Set the selected index in the TabBar state
             self.with_tabbar_mut(|tabbar| {
                 tabbar.set_selected_index(index as i32);

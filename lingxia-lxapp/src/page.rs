@@ -236,6 +236,12 @@ impl Page {
     pub fn navigate(&self, url: &str, nav_type: NavigationType) -> Result<(), LxAppError> {
         let lxapp = lxapp::get(self.appid());
 
+        if nav_type == NavigationType::SwitchTab {
+            lxapp.with_tabbar_mut(|t| t.set_visible(true));
+        } else {
+            lxapp.with_tabbar_mut(|t| t.set_visible(false));
+        }
+
         let (path, query) = if nav_type == NavigationType::SwitchTab {
             (url.to_string(), serde_json::Value::Null)
         } else {
@@ -255,7 +261,6 @@ impl Page {
             }
             NavigationType::SwitchTab => {
                 lxapp.clear_page_stack()?;
-                lxapp.with_tabbar_mut(|t| t.set_visible(true));
             }
             NavigationType::Replace => {
                 lxapp.pop_from_page_stack();
