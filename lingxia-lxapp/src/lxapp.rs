@@ -801,7 +801,7 @@ impl LxApp {
     }
 
     /// Get the current page stack size
-    pub fn get_page_stack_size(&self) -> usize {
+    pub(crate) fn get_page_stack_size(&self) -> usize {
         self.state.lock().unwrap().page_stack.lock().unwrap().len()
     }
 

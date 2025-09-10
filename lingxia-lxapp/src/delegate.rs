@@ -178,6 +178,11 @@ impl LxApp {
         if let Ok(index) = data.parse::<usize>() {
             info!("TabBar item {} clicked", index).with_appid(self.appid.clone());
 
+            // Set the selected index in the TabBar state
+            self.with_tabbar_mut(|tabbar| {
+                tabbar.set_selected_index(index as i32);
+            });
+
             let tab_pages = self.config.get_tab_pages();
             if let Some(tab_path) = tab_pages.get(index) {
                 if let Some(current_page_path) = self.peek_current_page() {

@@ -54,6 +54,8 @@ pub struct TabBar {
     // Runtime state (not from JSON)
     #[serde(skip)]
     pub is_visible: bool,
+    #[serde(skip)]
+    pub selected_index: i32,
 }
 
 /// Tab item (unified config and runtime state)
@@ -95,6 +97,7 @@ impl TabBar {
 
         // Initialize runtime state
         result.is_visible = true;
+        result.selected_index = 0; // Default to first tab
 
         for item in &mut result.list {
             // Process iconPath
@@ -255,6 +258,19 @@ impl TabBar {
     pub fn set_item_red_dot(&mut self, index: i32, show: bool) -> &mut Self {
         if let Some(item) = self.get_item_mut(index) {
             item.has_red_dot = show;
+        }
+        self
+    }
+
+    /// Get selected index
+    pub fn get_selected_index(&self) -> i32 {
+        self.selected_index
+    }
+
+    /// Set selected index (chainable)
+    pub fn set_selected_index(&mut self, index: i32) -> &mut Self {
+        if index >= 0 && (index as usize) < self.list.len() {
+            self.selected_index = index;
         }
         self
     }
