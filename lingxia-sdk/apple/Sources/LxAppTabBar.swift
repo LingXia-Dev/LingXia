@@ -395,8 +395,6 @@ public struct LxAppTabBar: View {
         .buttonStyle(PlainButtonStyle())
     }
 
-
-
     @ViewBuilder
     private func buildTabIcon(item: TabBarItem, isSelected: Bool, forceColor: Color) -> some View {
         let iconPath = isSelected && !item.cachedSelectedIconPath.isEmpty

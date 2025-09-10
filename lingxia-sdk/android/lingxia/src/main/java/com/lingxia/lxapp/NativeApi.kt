@@ -52,10 +52,10 @@ object NativeApi {
      * Notify native layer that an LxApp has been opened
      * @param appId The ID of the opened app
      * @param path The initial path/route of the app
-     * @return Status code (0 = success)
+     * @return The resolved path that should be used
      */
     @JvmStatic
-    external fun onLxAppOpened(appId: String, path: String): Int
+    external fun onLxAppOpened(appId: String, path: String): String
 
     /**
      * Notify native layer that an LxApp has been closed

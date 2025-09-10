@@ -1307,9 +1307,8 @@ class LxAppActivity : AppCompatActivity() {
             updateCapsuleButtonVisibility(appId)
 
             // 3. Call navigate as entry point
-            val targetPath = if (path.isNotEmpty()) path else getInitialRoute() ?: ""
-            if (targetPath.isNotEmpty()) {
-                navigate(targetPath, NavigationType.LAUNCH)
+            if (path.isNotEmpty()) {
+                navigate(path, NavigationType.LAUNCH)
             } else {
                 Log.e(TAG, "No valid path to navigate to")
             }
@@ -1377,15 +1376,7 @@ class LxAppActivity : AppCompatActivity() {
     // Get current app ID
     fun getAppId(): String = appId
 
-    /**
-     * Get initial route for the current app
-     */
-    fun getInitialRoute(): String? {
-        if (!::appId.isInitialized) return null
 
-        val appInfo = NativeApi.getLxAppInfo(appId)
-        return appInfo?.initialRoute
-    }
 
     // Get current WebView (internal access for LxApp)
     internal fun getCurrentWebView(): com.lingxia.lxapp.WebView? = currentWebView

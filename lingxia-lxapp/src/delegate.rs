@@ -19,7 +19,8 @@ pub enum UiEventType {
 
 pub trait LxAppDelegate {
     /// Called when lxapp is opened
-    fn on_lxapp_opened(self: Arc<Self>, path: String);
+    /// Returns the resolved path that should be used
+    fn on_lxapp_opened(self: Arc<Self>, path: String) -> String;
 
     /// Called when lxapp is closed
     fn on_lxapp_closed(self: &Arc<Self>);
@@ -33,12 +34,19 @@ pub trait LxAppDelegate {
 }
 
 impl LxAppDelegate for LxApp {
-    fn on_lxapp_opened(self: Arc<Self>, path: String) {
+    fn on_lxapp_opened(self: Arc<Self>, path: String) -> String {
+        // Resolve the actual path to use - if empty, use initial route
+        let resolved_path = if path.is_empty() {
+            self.config.get_initial_route()
+        } else {
+            path
+        };
+
         let was_already_opened = self.is_opened();
 
         info!("LxApp opened (already_opened: {})", was_already_opened)
             .with_appid(self.appid.clone())
-            .with_path(path.clone());
+            .with_path(resolved_path.clone());
 
         if !was_already_opened {
             // Push to lxapp navigation stack
@@ -60,15 +68,15 @@ impl LxAppDelegate for LxApp {
         }
 
         // Create or get the page first for launch page
-        if let Some(page) = self.get_or_create_page(&path) {
+        if let Some(page) = self.get_or_create_page(&resolved_path) {
             if page.is_tabbar_page() {
                 self.with_tabbar_mut(|t| t.set_visible(true));
             }
         } else {
             error!("Failed to create launch page")
                 .with_appid(self.appid.clone())
-                .with_path(path.clone());
-            return;
+                .with_path(resolved_path.clone());
+            return resolved_path;
         }
 
         let options = self.state.lock().unwrap().startup_options.clone();
@@ -84,7 +92,7 @@ impl LxAppDelegate for LxApp {
         // Pre-create all tab pages in background (only on first open)
         if !was_already_opened && self.config.has_tab_bar() {
             let tab_pages = self.config.get_tab_pages();
-            let initial_path = path.clone();
+            let initial_path = resolved_path.clone();
             let lxapp_clone = self.clone();
 
             LxAppExecutor::spawn_task(move || {
@@ -100,6 +108,8 @@ impl LxAppDelegate for LxApp {
                 }
             });
         }
+
+        resolved_path
     }
 
     fn on_lxapp_closed(self: &Arc<Self>) {

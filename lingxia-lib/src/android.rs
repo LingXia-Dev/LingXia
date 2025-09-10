@@ -262,18 +262,28 @@ pub extern "C" fn Java_com_lingxia_lxapp_NativeApi_onUiEvent(
 
 // Function to notify the Rust layer that a mini app has been opened
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppOpened(
-    mut env: JNIEnv,
-    _class: JClass,
-    appid: JString,
-    path: JString,
-) -> jint {
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppOpened<'a>(
+    mut env: JNIEnv<'a>,
+    _class: JClass<'a>,
+    appid: JString<'a>,
+    path: JString<'a>,
+) -> JString<'a> {
     let appid: String = env.get_string(&appid).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
 
     let lxapp = lxapp::get(appid.clone());
-    lxapp.on_lxapp_opened(path);
-    0
+    let resolved_path = lxapp.on_lxapp_opened(path);
+
+    match env.new_string(&resolved_path) {
+        Ok(jstring) => jstring,
+        Err(_) => {
+            // Return empty string as fallback
+            env.new_string("").unwrap_or_else(|_| {
+                // If even empty string fails, return null
+                JString::from(jni::objects::JObject::null())
+            })
+        }
+    }
 }
 
 /// Get LxApp information using new typed API
@@ -295,10 +305,6 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getLxAppInfo<'a>(
     };
 
     // Create Java strings
-    let initial_route_str = match env.new_string(&lxapp_info.initial_route) {
-        Ok(s) => s,
-        Err(_) => return JObject::null(),
-    };
     let app_name_str = match env.new_string(&lxapp_info.app_name) {
         Ok(s) => s,
         Err(_) => return JObject::null(),
@@ -307,8 +313,8 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getLxAppInfo<'a>(
     // Create LxAppInfo object
     match env.new_object(
         lxapp_info_class,
-        "(Ljava/lang/String;Ljava/lang/String;)V",
-        &[(&initial_route_str).into(), (&app_name_str).into()],
+        "(Ljava/lang/String;)V",
+        &[(&app_name_str).into()],
     ) {
         Ok(obj) => obj,
         Err(_) => JObject::null(),

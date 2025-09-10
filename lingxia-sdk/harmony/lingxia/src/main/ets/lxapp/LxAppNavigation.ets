@@ -1,7 +1,7 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { LxApp } from './LxApp';
 import { LxAppContainer } from './LxAppContainer';
-import { onLxappOpened, onLxappClosed, getTabBar, TabBarItem, TabBarState, getLxAppInfo, LxAppInfo, getCurrentLxapp, CurrentLxApp } from 'liblingxia.so';
+import { onLxappOpened, onLxappClosed, getTabBar, TabBarItem, TabBarState, getCurrentLxapp, CurrentLxApp } from 'liblingxia.so';
 import { ToastManager } from './APIs/LxAppToast';
 import { ModalManager } from './APIs/LxAppModal';
 
@@ -52,22 +52,16 @@ export struct LxAppNavigation {
     try {
       const instance = LxApp.getInstance();
       const homeAppId = instance.getHomeLxAppId();
-      // Get initial route directly from native
-      let homeAppPath: string | null = null;
-      if (homeAppId) {
-        const appInfo: LxAppInfo | null = getLxAppInfo(homeAppId);
-        homeAppPath = appInfo?.initialRoute || null;
-      }
 
-      if (homeAppId && homeAppPath) {
+      if (homeAppId) {
         this.homeAppId = homeAppId;
-        this.homeAppPath = homeAppPath;
         this.isReady = true;
-        hilog.info(DOMAIN, TAG, `LxApp Navigation ready: ${this.homeAppId}:${this.homeAppPath}`);
+        hilog.info(DOMAIN, TAG, `LxApp Navigation ready: ${this.homeAppId}`);
 
         // Auto-open home lxapp now that navigation instance is ready
+        // Pass empty string for path to let on_lxapp_opened resolve the initial route
         hilog.info(DOMAIN, TAG, 'Auto-opening home lxapp');
-        this.openLxApp(homeAppId, homeAppPath);
+        this.openLxApp(homeAppId, "");
       } else {
         this.errorMessage = 'LxApp not initialized. Please call LxApp.initialize() in EntryAbility first.';
         hilog.error(DOMAIN, TAG, 'LxApp not initialized');
@@ -82,20 +76,22 @@ export struct LxAppNavigation {
     hilog.info(DOMAIN, TAG, `Opening lxapp: ${appId}:${path}`);
 
     try {
-      const result: number = onLxappOpened(appId, path);
-      hilog.info(DOMAIN, TAG, `onLxappOpened result: ${result}`);
+      const resolvedPath: string = onLxappOpened(appId, path);
 
       // UI layer distinction: Home LxApp vs Modal LxApp
       if (appId === this.homeAppId) {
-        hilog.info(DOMAIN, TAG, `Showing home LxApp: ${appId}`);
+        hilog.info(DOMAIN, TAG, `Showing home LxApp: ${appId} with path: ${resolvedPath}`);
         this.modalAppVisible = false;
+        this.homeAppPath = resolvedPath;
+        // Trigger navigation to show the home app
+        this.navigationTrigger++;
         return;
       }
 
       // For modal apps, show modal over home
-      hilog.info(DOMAIN, TAG, `Showing modal LxApp: ${appId}:${path}`);
+      hilog.info(DOMAIN, TAG, `Showing modal LxApp: ${appId}:${resolvedPath}`);
       this.currentModalAppId = appId;
-      this.currentModalAppPath = path;
+      this.currentModalAppPath = resolvedPath;
       this.modalAppVisible = true;
     } catch (error) {
       hilog.error(DOMAIN, TAG, `Failed to open LxApp ${appId}: ${error}`);

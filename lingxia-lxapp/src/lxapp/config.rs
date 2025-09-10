@@ -4,8 +4,6 @@ use serde_json::Value;
 /// LxApp basic information
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LxAppInfo {
-    /// Initial route (first page in the pages array)
-    pub initial_route: String,
     /// LxApp name
     pub app_name: String,
     /// Debug mode enabled
@@ -56,7 +54,6 @@ impl LxAppConfig {
     /// Get LxApp basic information for FFI
     pub fn get_lxapp_info(&self) -> LxAppInfo {
         LxAppInfo {
-            initial_route: self.get_initial_route(),
             app_name: self.lxAppName.clone(),
             debug: self.debug,
         }
@@ -110,3 +107,4 @@ impl LxAppConfig {
             .map(|tab_bar| tab_bar.with_absolute_paths(&lxapp.lxapp_dir))
     }
 }
+

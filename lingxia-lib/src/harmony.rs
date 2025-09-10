@@ -25,7 +25,6 @@ fn parse_color_to_u32(color_str: &str, default_color: u32) -> u32 {
 /// NAPI-compatible LxApp information
 #[napi(object)]
 pub struct LxAppInfo {
-    pub initial_route: String,
     pub app_name: String,
 }
 
@@ -196,7 +195,6 @@ fn get_lx_app_info(appid: String) -> Option<LxAppInfo> {
     let rust_app_info = lxapp.get_lxapp_info();
 
     Some(LxAppInfo {
-        initial_route: rust_app_info.initial_route,
         app_name: rust_app_info.app_name,
     })
 }
@@ -265,10 +263,9 @@ pub fn get_navigation_bar_state(appid: String, path: String) -> NavigationBarSta
 
 /// Notify that LxApp was opened
 #[napi]
-pub fn on_lxapp_opened(appid: String, path: String) -> i32 {
+pub fn on_lxapp_opened(appid: String, path: String) -> String {
     let lxapp = lxapp::get(appid);
-    lxapp.on_lxapp_opened(path);
-    0
+    lxapp.on_lxapp_opened(path)
 }
 
 /// Notify that LxApp was closed

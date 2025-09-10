@@ -11,9 +11,8 @@ import { WebViewManager, toWebTag } from './WebView';
 import { NavigationType } from './LxAppNavigation';
 import promptAction from '@kit.ArkUI';
 
-
 // Import native functions from Rust
-import { lxappInit, registerCustomSchemes, onLxappOpened, onLxappClosed, onPageShow, getLxAppInfo, LxAppInfo, onApplinkReceived, getCurrentLxapp, CurrentLxApp } from 'liblingxia.so';
+import { lxappInit, registerCustomSchemes, onLxappOpened, onLxappClosed, onPageShow, onApplinkReceived, getCurrentLxapp, CurrentLxApp } from 'liblingxia.so';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.LxApp';
@@ -139,28 +138,15 @@ export class LxApp {
   /**
    * Open an LxApp by appId and path
    * @param appId - The ID of the LxApp to open
-   * @param path - The path to open within the LxApp
+   * @param path - The path to open within the LxApp (empty string will use initial route)
    */
   public static openLxApp(appId: string, path: string): void {
     hilog.info(DOMAIN, TAG, `openLxApp called: ${appId}:${path}`);
 
-    // If path is empty, get the initial route from native
-    let actualPath = path;
-    if (!path || path === '') {
-      const appInfo: LxAppInfo | null = getLxAppInfo(appId);
-      if (appInfo && appInfo.initialRoute) {
-        actualPath = appInfo.initialRoute;
-        hilog.info(DOMAIN, TAG, `Using initial route for ${appId}: ${actualPath}`);
-      } else {
-        hilog.error(DOMAIN, TAG, `Could not get initial route for ${appId}`);
-        return;
-      }
-    }
-
     // Use navigate with Launch type for unified architecture
     if (LxApp.navigationInstance) {
       hilog.info(DOMAIN, TAG, 'Using navigate for openLxApp with Launch type');
-      LxApp.navigationInstance.openLxApp(appId, actualPath);
+      LxApp.navigationInstance.openLxApp(appId, path);
       return;
     }
 
@@ -353,24 +339,17 @@ struct LxAppManager {
     hilog.info(DOMAIN, TAG, `Opening LxApp: ${appId}:${path}, isHome: ${isHomeLxApp}`);
 
     try {
-      // Get LxApp info
-      const appInfo: LxAppInfo | null = getLxAppInfo(appId);
-      if (appInfo) {
-        hilog.info(DOMAIN, TAG, `LxApp info: ${appInfo.appName}, initial route: ${appInfo.initialRoute}`);
-      }
-
-      const result: number = onLxappOpened(appId, path);
-      hilog.info(DOMAIN, TAG, `Native onLxappOpened result: ${result}`);
+      const resolvedPath: string = onLxappOpened(appId, path);
 
       if (isHomeLxApp) {
         this.homeAppId = appId;
-        this.homeAppPath = path;
-        this.homeAppCurrentPath = path; // Initialize current page
+        this.homeAppPath = resolvedPath;
+        this.homeAppCurrentPath = resolvedPath; // Initialize current page
         this.isReady = true;
         hilog.info(DOMAIN, TAG, 'Home LxApp loaded successfully');
       } else {
         // Modal lxapp: create new LxAppContainer and display it
-        hilog.info(DOMAIN, TAG, `Opening modal lxapp: ${appId}:${path}`);
+        hilog.info(DOMAIN, TAG, `Opening modal lxapp: ${appId}:${resolvedPath}`);
 
         // Hide home lxapp when modal is open
         this.hideHomeLxApp = true;
@@ -378,7 +357,7 @@ struct LxAppManager {
 
         // Update UI state immediately with priority
         this.modalLxAppId = appId;
-        this.modalLxAppPath = path;
+        this.modalLxAppPath = resolvedPath;
         this.modalLxAppVisible = true;
       }
     } catch (error) {

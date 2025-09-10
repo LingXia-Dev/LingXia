@@ -24,7 +24,6 @@ mod bridge {
     // LxApp basic information for Swift
     #[swift_bridge(swift_repr = "struct")]
     pub struct LxAppInfo {
-        pub initial_route: String,
         pub app_name: String,
     }
 
@@ -121,7 +120,7 @@ mod bridge {
         fn on_ui_event(appid: &str, event_type: UiEventType, data: &str) -> bool;
 
         #[swift_bridge(swift_name = "onLxappOpened")]
-        fn on_lxapp_opened(appid: &str, path: &str) -> i32;
+        fn on_lxapp_opened(appid: &str, path: &str) -> String;
 
         #[swift_bridge(swift_name = "findWebView")]
         fn find_webview(appid: &str, path: &str) -> usize;
@@ -144,7 +143,6 @@ mod bridge {
 impl From<CoreLxAppInfo> for bridge::LxAppInfo {
     fn from(core_info: CoreLxAppInfo) -> Self {
         Self {
-            initial_route: core_info.initial_route,
             app_name: core_info.app_name,
         }
     }
@@ -247,10 +245,9 @@ pub fn get_current_lxapp() -> bridge::CurrentLxApp {
 }
 
 /// Notify that LxApp was opened
-pub fn on_lxapp_opened(appid: &str, path: &str) -> i32 {
+pub fn on_lxapp_opened(appid: &str, path: &str) -> String {
     let lxapp = lxapp::get(appid.to_string());
-    lxapp.on_lxapp_opened(path.to_string());
-    0
+    lxapp.on_lxapp_opened(path.to_string())
 }
 
 /// Find a WebView for the specified app and path

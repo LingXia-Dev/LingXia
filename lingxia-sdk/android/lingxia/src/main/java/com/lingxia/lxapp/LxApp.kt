@@ -18,7 +18,6 @@ import com.lingxia.lxapp.APIs.LxAppModal
  * Data class representing LxApp information from the native layer
  */
 data class LxAppInfo(
-    val initialRoute: String,
     val appName: String,
 )
 
@@ -51,14 +50,13 @@ class LxApp private constructor(private val context: Context) {
 
         // Properties to store home app details from native
         var HomeLxAppId: String? = null
-        var HomeLxAppInitialRoute: String? = null
 
         // Reference to the current LxAppActivity instance
         private var currentActivity: LxAppActivity? = null
 
         @JvmStatic
         internal fun initialize(context: Context) {
-            if (instance != null && HomeLxAppId != null && HomeLxAppInitialRoute != null) {
+            if (instance != null && HomeLxAppId != null) {
                 Log.d(TAG, "LxApp already successfully initialized, skipping")
                 return
             }
@@ -87,15 +85,6 @@ class LxApp private constructor(private val context: Context) {
 
             if (initResultString != null) {
                 HomeLxAppId = initResultString
-                // Get initial route and other app info using new API
-                val appInfo = NativeApi.getLxAppInfo(initResultString)
-                if (appInfo != null) {
-                    HomeLxAppInitialRoute = appInfo.initialRoute
-                    Log.i(TAG, "Native init success. Home App ID: $HomeLxAppId, Initial Route: $HomeLxAppInitialRoute")
-                } else {
-                    Log.e(TAG, "Failed to get LxApp info from new API")
-                    HomeLxAppInitialRoute = "/"
-                }
             } else {
                 Log.e(TAG, "Failed to get home LxApp details from native init.")
             }
@@ -151,14 +140,15 @@ class LxApp private constructor(private val context: Context) {
 
         /**
          * Opens the home LxApp
-         * Its appId and initial path are provided by the native layer during initialization.
+         * Its appId is provided by the native layer during initialization.
+         * The initial route will be resolved by on_lxapp_opened.
          *
-         * If these details are not available, an error will be logged, and no app will be opened.
+         * If the appId is not available, an error will be logged, and no app will be opened.
          */
         @JvmStatic
         internal fun openHomeLxApp() {
-            if (HomeLxAppId != null && HomeLxAppInitialRoute != null) {
-                openLxApp(HomeLxAppId!!, HomeLxAppInitialRoute!!)
+            if (HomeLxAppId != null) {
+                openLxApp(HomeLxAppId!!, "")
             } else {
                 Log.e(TAG, "Native home app details not available. Cannot open home mini app.")
             }
@@ -384,18 +374,18 @@ class LxApp private constructor(private val context: Context) {
 
     private fun openInCurrentActivity(appId: String, path: String) {
         try {
-            NativeApi.onLxAppOpened(appId, path)
+            val resolvedPath = NativeApi.onLxAppOpened(appId, path)
 
             if (currentActivity != null) {
                 Log.d(TAG, "Opening app in current activity")
                 currentActivity?.runOnUiThread {
-                    currentActivity?.openLxApp(appId, path)
+                    currentActivity?.openLxApp(appId, resolvedPath)
                 }
             } else {
                 Log.d(TAG, "Creating new activity")
                 val intent = Intent(context, LxAppActivity::class.java).apply {
                     putExtra(LxAppActivity.EXTRA_APP_ID, appId)
-                    putExtra(LxAppActivity.EXTRA_PATH, path)
+                    putExtra(LxAppActivity.EXTRA_PATH, resolvedPath)
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
                 context.startActivity(intent)

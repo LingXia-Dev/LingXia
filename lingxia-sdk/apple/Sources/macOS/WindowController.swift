@@ -821,10 +821,9 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     private func setupInitialTab() {
         guard let homeLxAppId = LxAppCore.getHomeLxAppId() else { return }
 
-        // Get initial route from app info
-        let lxappInfo = getLxAppInfo(homeLxAppId)
-        let initialRoute = lxappInfo.initial_route.toString()
-        LxAppCore.setCurrentApp(appId: homeLxAppId, path: initialRoute)
+        // Get resolved path from onLxappOpened (pass empty string to get initial route)
+        let resolvedPath = onLxappOpened(homeLxAppId, "")
+        LxAppCore.setCurrentApp(appId: homeLxAppId, path: resolvedPath.toString())
         tabManager.addTab(appId: homeLxAppId)
     }
 
@@ -847,7 +846,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         // Only call onLxappOpened for newly created view controllers
         if isNewViewController {
             let currentPath = LxAppCore.getCurrentPath() ?? "/"
-            let _ = onLxappOpened(appId, currentPath)
+            let _ = onLxappOpened(appId, currentPath).toString()
         }
 
         updateContentView(with: viewController)

@@ -107,15 +107,10 @@ public class LxAppCore {
     /// Shared openLxApp logic - used by both iOS and macOS platforms
     internal static func executeOpenLxApp(appId: String, path: String, renderer: LxAppRenderer) {
 
-        // Prepare path (same logic as macOS reference)
-        let lxappInfo = getLxAppInfo(appId)
-        let initialRoute = lxappInfo.initial_route.toString()
-        let finalPath = path.isEmpty ? initialRoute : path
+        // Call onLxappOpened to get the resolved path
+        let resolvedPath = onLxappOpened(appId, path)
 
-        // Call onLxappOpened (following macOS pattern)
-        let _ = onLxappOpened(appId, finalPath)
-
-        renderer.openLxApp(appId: appId, path: finalPath)
+        renderer.openLxApp(appId: appId, path: resolvedPath.toString())
     }
 
     /// Shared navigate logic - used by both iOS and macOS platforms

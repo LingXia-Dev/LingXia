@@ -10,7 +10,6 @@ declare module 'liblingxia.so' {
    * LxApp information structure
    */
   export interface LxAppInfo {
-    initialRoute: string;
     appName: string;
   }
 
