@@ -773,7 +773,7 @@ impl LxApp {
         Ok(())
     }
 
-    /// Add a page to the navigation stack
+    /// Add a page to the navigation stack, allow duplicated page
     /// Called from delegate on page show
     pub(crate) fn push_to_page_stack(&self, path: &str) -> Result<(), LxAppError> {
         let state = self.state.lock().unwrap();
@@ -783,9 +783,6 @@ impl LxApp {
         if stack.len() >= PAGE_STACK_MAX {
             return Ok(());
         }
-
-        // Remove the path if it already exists in the stack to avoid duplicates
-        stack.retain(|p| p != path);
 
         // Add to the back of the stack (most recent)
         stack.push_back(path.to_string());
