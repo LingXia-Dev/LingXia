@@ -154,7 +154,10 @@ export struct LxAppContainer {
 
     // Load TabBar data using new data-driven API
     this.loadTabBarState();
-    this.setInitialSelectedTab();
+    if (this.tabBarState) {
+      this.selectedTabIndex = this.tabBarState.selectedIndex;
+      hilog.info(DOMAIN, TAG, `Initial tab index set from Rust state: ${this.selectedTabIndex}`);
+    }
 
     // If this page has tabs, set navigation type to SwitchTab
     if (this.tabBarState && this.tabBarState.items && this.tabBarState.items.length > 0) {
@@ -665,21 +668,6 @@ export struct LxAppContainer {
     .layoutWeight(this.isTabBarTransparent() ? 0 : 1)
     .backgroundColor(this.navigationMode ? COLOR_WHITE : COLOR_TRANSPARENT)
     .clip(this.navigationMode)
-  }
-
-  private setInitialSelectedTab() {
-    if (this.tabBarState && this.tabBarState.items.length > 0) {
-      // Find corresponding tab based on current path
-      const currentTabIndex: number = this.tabBarState.items.findIndex((item: TabBarItem): boolean =>
-        this.path.includes(item.pagePath)
-      );
-      this.selectedTabIndex = currentTabIndex >= 0 ? currentTabIndex : 0;
-
-      hilog.info(DOMAIN, TAG, `setInitialSelectedTab: appId=${this.appId}, path=${this.path}, selectedTabIndex=${this.selectedTabIndex}`);
-      this.tabBarState.items.forEach((item: TabBarItem, index: number): void => {
-        hilog.info(DOMAIN, TAG, `Tab ${index}: path=${item.pagePath}, selected=${index === this.selectedTabIndex} (appId: ${this.appId})`);
-      });
-    }
   }
 
   private handleTabSelected(index: number) {

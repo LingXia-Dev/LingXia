@@ -800,7 +800,6 @@ public protocol TabBarProtocol: AnyObject {
     func setOnTabSelectedListener(_ listener: @escaping (Int, String) -> Void)
     func findTabIndexByPath(_ path: String) -> Int
     func syncSelectedTabWithCurrentPath(_ currentPath: String)
-    func selectTab(index: Int)
     func setSelectedIndex(_ index: Int, notifyListener: Bool)
 }
 
@@ -876,10 +875,6 @@ public class iOSTabBarWrapper: UIView {
 
     public func setOnTabSelectedListener(_ listener: @escaping (Int, String) -> Void) {
         self.onTabSelectedCallback = listener
-    }
-
-    public func selectTab(index: Int) {
-        setSelectedIndex(index, notifyListener: false)
     }
 
     public func getSelectedIndex() -> Int {
@@ -1125,7 +1120,7 @@ public class iOSTabBarWrapper: UIView {
         let isSelected = (index == selectedIndex)
 
         if !item.icon_path.toString().isEmpty {
-            let iconView = createUIKitIcon(item: item, isSelected: isSelected)
+            let iconView = createUIKitIcon(item: item, index: index, isSelected: isSelected)
             stackView.addArrangedSubview(iconView)
         }
 
@@ -1163,7 +1158,7 @@ public class iOSTabBarWrapper: UIView {
         return containerView
     }
 
-    private func createUIKitIcon(item: TabBarItem, isSelected: Bool) -> UIView {
+    private func createUIKitIcon(item: TabBarItem, index: Int, isSelected: Bool) -> UIView {
         // Create container view for icon + badge/red dot
         let iconContainer = UIView()
         iconContainer.translatesAutoresizingMaskIntoConstraints = false
@@ -1195,8 +1190,7 @@ public class iOSTabBarWrapper: UIView {
         iconContainer.addSubview(iconView)
 
         // Get badge and red dot data from Rust
-        let itemIndex = findItemIndex(item: item)
-        if itemIndex >= 0, let rustItem = getTabBarItem(appId, Int32(itemIndex)) {
+        if let rustItem = getTabBarItem(appId, Int32(index)) {
             let badgeText = rustItem.badge.toString()
             let hasRedDot = rustItem.has_red_dot
 
@@ -1233,12 +1227,6 @@ public class iOSTabBarWrapper: UIView {
         ])
 
         return iconContainer
-    }
-
-    private func findItemIndex(item: TabBarItem) -> Int {
-        guard let config = tabBarConfig else { return -1 }
-        let items = config.getItems(appId: appId)
-        return TabBarHelpers.findTabIndexByPath(item.page_path.toString(), in: items)
     }
 
     @objc private func uikitTabButtonTapped(_ sender: UIButton) {
@@ -1332,10 +1320,6 @@ public class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
             self.tabBarConfig = rustState
             setSelectedIndex(Int(rustState.selected_index), notifyListener: false)
         }
-    }
-
-    public func selectTab(index: Int) {
-        setSelectedIndex(index, notifyListener: false)
     }
 
     public func setSelectedIndex(_ index: Int, notifyListener: Bool) {

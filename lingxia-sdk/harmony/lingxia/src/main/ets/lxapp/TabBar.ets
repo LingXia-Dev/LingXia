@@ -477,37 +477,4 @@ export struct TabBar {
   }
 }
 
-/**
- * TabBar controller for programmatic control
- */
-export class TabBarController {
-  private static instance: TabBarController | null = null;
-  private currenttabbar: TabBarState | null = null;
-  private appId: string = '';
-  private selectedIndex: number = 0;
 
-  private constructor() {
-    hilog.info(DOMAIN, TAG, 'TabBarController instance created');
-  }
-
-  /**
-   * Get TabBarController singleton instance
-   */
-  public static getInstance(): TabBarController {
-    if (!TabBarController.instance) {
-      TabBarController.instance = new TabBarController();
-    }
-    return TabBarController.instance;
-  }
-
-  /**
-   * Update tab bar tabbaruration
-   */
-  public updatetabbar(appId: string, tabbar: TabBarState): void {
-    hilog.info(DOMAIN, TAG, `Updating TabBar tabbar for appId: ${appId}`);
-    this.appId = appId;
-    this.currenttabbar = tabbar;
-  }
-
-
-}
