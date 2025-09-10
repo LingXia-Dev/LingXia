@@ -567,31 +567,6 @@ impl LxApp {
             .cloned()
     }
 
-    /// This method should only be called when page is in Created state
-    pub(crate) fn setup_page(&self, page: &Page, path: &str) {
-        let load_state = page.get_load_state();
-        if load_state != crate::page::PageLoadState::Created {
-            return;
-        }
-
-        // Load HTML - this might fail on HarmonyOS if WebView isn't ready yet
-        let html_data = self.generate_page_html(path);
-        match page.load_html(
-            String::from_utf8_lossy(&html_data).to_string(),
-            format!("lx://{}/{}", self.appid, path),
-        ) {
-            Ok(_) => {
-                // HTML loaded successfully
-                page.set_load_state(crate::page::PageLoadState::Loading);
-            }
-            Err(e) => {
-                error!("Failed to load HTML: {}", e)
-                    .with_appid(self.appid.clone())
-                    .with_path(path.to_string());
-            }
-        }
-    }
-
     /// Navigates to another LxApp (forward navigation).
     ///
     /// If the provided path is empty, it will navigate to the target app's initial route.
@@ -668,30 +643,31 @@ impl LxApp {
 
         // Create new page first
         let appid = self.appid.clone();
-        let path_clone = path.to_string();
         let executor = self.executor.clone();
-        let lxapp_for_setup = self.clone();
-        let page = Page::new(
-            appid.clone(),
-            path.to_string(),
-            &**self,
-            move |page, path| {
-                // Setup page HTML content (same as before refactor)
-                lxapp_for_setup.setup_page(page, path);
+        let page = Page::new(appid.clone(), path.to_string(), &**self, move |page| {
+            // Load HTML content into the page
+            if let Err(e) = page.load_html() {
+                error!("Failed to load HTML for page: {}", e)
+                    .with_appid(page.appid())
+                    .with_path(page.path());
+            }
 
-                // Create page service
-                if let Err(e) = executor.create_page_svc(appid.clone(), path.to_string()) {
-                    error!("Failed to request page service creation: {}", e)
-                        .with_appid(appid.clone())
-                        .with_path(path.to_string());
-                }
-            },
-        );
+            // Create page service
+            if let Err(e) = executor.create_page_svc(page.appid(), page.path()) {
+                error!("Failed to request page service creation: {}", e)
+                    .with_appid(page.appid())
+                    .with_path(page.path());
+            }
+        });
 
         // Insert the new page first to ensure it's protected
         {
             let state = self.state.lock().unwrap();
-            state.pages.lock().unwrap().insert(path_clone, page.clone());
+            state
+                .pages
+                .lock()
+                .unwrap()
+                .insert(path.to_string(), page.clone());
         }
 
         // Check if we need to evict pages after creating new one

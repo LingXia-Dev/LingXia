@@ -65,7 +65,7 @@ impl Page {
     /// Create a new page in pending state (WebView creation in progress)
     pub(crate) fn new<F>(appid: String, path: String, lxapp: &LxApp, setup_callback: F) -> Self
     where
-        F: Fn(&Page, &str) + Send + 'static,
+        F: Fn(&Page) + Send + 'static,
     {
         // Build page state from LxApp configuration
         let page_state = Self::build_page_state(lxapp, &path);
@@ -103,7 +103,7 @@ impl Page {
                     webview_controller.set_delegate(Arc::new(page_for_task.clone()));
 
                     // Call setup callback - let external code handle the rest
-                    setup_callback(&page_for_task, &path_clone);
+                    setup_callback(&page_for_task);
                 }
                 Ok(Err(e)) => {
                     error!("Failed to create WebView: {}", e)
@@ -191,14 +191,19 @@ impl Page {
     }
 
     /// Load HTML content into this page's WebView
-    ///
-    /// # Arguments
-    /// * `html_data` - The HTML content to load
-    /// * `base_url` - Base URL for resolving relative paths in the HTML
-    pub(crate) fn load_html(&self, html_data: String, base_url: String) -> Result<(), LxAppError> {
+    pub(crate) fn load_html(&self) -> Result<(), LxAppError> {
+        let lxapp = lxapp::get(self.appid());
+        let path = self.path();
+        let html_data = lxapp.generate_page_html(&path);
+        let base_url = format!("lx://{}/{}", self.appid(), path);
+
         if let Some(controller) = self.webview_controller() {
             controller
-                .load_data(html_data, base_url, None)
+                .load_data(
+                    String::from_utf8_lossy(&html_data).to_string(),
+                    base_url,
+                    None,
+                )
                 .map_err(|e| LxAppError::WebView(e.to_string()))
         } else {
             Err(LxAppError::WebView("WebView not ready".to_string()))
@@ -229,7 +234,7 @@ impl Page {
 
     /// Check if this page is a TabBar page
     pub fn is_tabbar_page(&self) -> bool {
-        let lxapp = crate::lxapp::get(self.inner.appid.clone());
+        let lxapp = lxapp::get(self.inner.appid.clone());
         lxapp.config.is_tab_page(&self.inner.path)
     }
 
