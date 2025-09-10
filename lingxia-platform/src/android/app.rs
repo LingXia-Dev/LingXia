@@ -384,26 +384,17 @@ impl AppRuntime for Platform {
             let appid_jstring = env.new_string(&appid)?;
             let path_jstring = env.new_string(&path)?;
 
-            // Create NavigationType enum object
-            let nav_type_class = env.find_class("com/lingxia/lxapp/NavigationType")?;
-            let nav_type_values = env.call_static_method(
-                nav_type_class,
-                "values",
-                "()[Lcom/lingxia/lxapp/NavigationType;",
-                &[],
-            )?;
-            let nav_type_array = jni::objects::JObjectArray::from(nav_type_values.l()?);
-            let nav_type_obj =
-                env.get_object_array_element(&nav_type_array, navigation_type as i32)?;
+            // Pass NavigationType as integer instead of enum object
+            let nav_type_int = navigation_type as i32;
 
             let result = env.call_static_method(
                 lxapp_class,
                 "navigate",
-                "(Ljava/lang/String;Ljava/lang/String;Lcom/lingxia/lxapp/NavigationType;)Z",
+                "(Ljava/lang/String;Ljava/lang/String;I)Z",
                 &[
                     JValue::Object(&appid_jstring),
                     JValue::Object(&path_jstring),
-                    JValue::Object(&nav_type_obj),
+                    JValue::Int(nav_type_int),
                 ],
             )?;
 

@@ -176,16 +176,18 @@ class LxApp private constructor(private val context: Context) {
         }
 
         /**
-         * Navigate to a specific page
+         * Navigate to a specific path within the lxapp with navigation type
+         * This method is called from Rust FFI
          *
          * @param appId The unique identifier of the lxapp
          * @param path The target path to navigate to within the lxapp
-         * @param navigationType The type of navigation to perform
+         * @param navigationTypeInt The type of navigation to perform as integer
          * @return true if navigation was successful, false otherwise
          */
         @JvmStatic
-        fun navigate(appId: String, path: String, navigationType: NavigationType): Boolean {
-            Log.d(TAG, "navigate called for appId: $appId, path: $path, type: $navigationType")
+        fun navigate(appId: String, path: String, navigationTypeInt: Int): Boolean {
+            val navigationType = NavigationType.fromInt(navigationTypeInt)
+            Log.d(TAG, "navigate called for appId: $appId, path: $path, type: $navigationType (from int: $navigationTypeInt)")
             val activity = currentActivity?.takeIf { it.getAppId() == appId }
             return if (activity != null) {
                 activity.runOnUiThread {

@@ -66,6 +66,20 @@ enum class NavigationType(val value: Int) {
                 SWITCH_TAB -> "SwitchTab"
             }
         }
+
+        /**
+         * Convert integer to NavigationType
+         */
+        fun fromInt(value: Int): NavigationType {
+            return when (value) {
+                0 -> LAUNCH
+                1 -> FORWARD
+                2 -> BACKWARD
+                3 -> REPLACE
+                4 -> SWITCH_TAB
+                else -> FORWARD // Default fallback
+            }
+        }
     }
 }
 
