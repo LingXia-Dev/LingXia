@@ -67,6 +67,7 @@ declare module 'liblingxia.so' {
     dimension: number;
     isVisible: boolean;
     items: TabBarItem[];
+    selectedIndex: number;
   }
 
   /**

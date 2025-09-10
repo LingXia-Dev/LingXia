@@ -76,7 +76,6 @@ const TAG = 'LingXia.TabBar';
 export struct TabBar {
   @Prop tabbar: TabBarState;  // Cached static tabbar for performance
   @Prop appId: string = '';
-  @Prop selectedIndex: number = 0;  // Use @Prop instead of @State to sync with parent
   @Prop refreshKey: number = 0;  // Force refresh when data changes
 
   // Callback functions
@@ -151,10 +150,10 @@ export struct TabBar {
           Image(this.getIconUrl(item, index))
             .width(TAB_BAR_ITEM_ICON_SIZE)
             .height(TAB_BAR_ITEM_ICON_SIZE)
-            .fillColor(this.selectedIndex === index ? this.getSelectedColor() : this.getNormalColor())
+            .fillColor(this.tabbar.selectedIndex === index ? this.getSelectedColor() : this.getNormalColor())
             .objectFit(ImageFit.Contain)
             .onError((error: ImageError): void => {
-              const currentIconPath: string | undefined = this.selectedIndex === index ?
+              const currentIconPath: string | undefined = this.tabbar.selectedIndex === index ?
                 (item.selectedIconPath || item.iconPath) :
                 item.iconPath;
               hilog.error(DOMAIN, TAG, `Tab ${index} icon load error: ${JSON.stringify(error)}, path: ${currentIconPath}`);
@@ -197,7 +196,7 @@ export struct TabBar {
       if (item.text) {
         Text(item.text)
           .fontSize(this.isVertical() ? TAB_BAR_ITEM_TEXT_SIZE_VERTICAL : TAB_BAR_ITEM_TEXT_SIZE_HORIZONTAL)
-          .fontColor(this.selectedIndex === index ? this.getSelectedColor() : this.getNormalColor())
+          .fontColor(this.tabbar.selectedIndex === index ? this.getSelectedColor() : this.getNormalColor())
           .margin({ top: TAB_BAR_ITEM_ICON_TEXT_SPACING })
           .fontWeight(this.isTransparent() ? FontWeight.Medium : FontWeight.Normal)
           .maxLines(this.isVertical() ? TAB_BAR_ITEM_TEXT_MAX_LINES_VERTICAL : TAB_BAR_ITEM_TEXT_MAX_LINES_HORIZONTAL)
@@ -220,7 +219,7 @@ export struct TabBar {
     .alignItems(HorizontalAlign.Center)
     .margin({ top: TAB_BAR_ITEM_PADDING, bottom: TAB_BAR_ITEM_PADDING })
     .onClick(() => {
-      hilog.info(DOMAIN, TAG, `Tab clicked: ${index}, current: ${this.selectedIndex}, appId: ${this.appId}, path: ${item.pagePath}`);
+      hilog.info(DOMAIN, TAG, `Tab clicked: ${index}, current: ${this.tabbar.selectedIndex}, appId: ${this.appId}, path: ${item.pagePath}`);
 
       // Always trigger callback - let parent decide if action is needed
       if (this.onTabSelected) {
@@ -332,7 +331,7 @@ export struct TabBar {
    * Get icon URL with proper file:// prefix for absolute paths
    */
   private getIconUrl(item: TabBarItem, index: number): string {
-    const iconPath: string | undefined = this.selectedIndex === index ?
+    const iconPath: string | undefined = this.tabbar.selectedIndex === index ?
       (item.selectedIconPath || item.iconPath) :
       item.iconPath;
 
@@ -510,20 +509,5 @@ export class TabBarController {
     this.currenttabbar = tabbar;
   }
 
-  /**
-   * Switch to tab by page path
-   */
-  public switchToTab(pagePath: string): boolean {
-    if (!this.currenttabbar) {
-      return false;
-    }
 
-    const index: number = this.currenttabbar.items.findIndex((item: TabBarItem): boolean => item.pagePath === pagePath);
-    if (index >= 0) {
-      this.selectedIndex = index;
-      hilog.info(DOMAIN, TAG, `Switched to tab ${index} with path: ${pagePath}`);
-      return true;
-    }
-    return false;
-  }
 }

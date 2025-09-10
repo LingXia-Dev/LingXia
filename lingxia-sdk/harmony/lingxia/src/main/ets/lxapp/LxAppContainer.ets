@@ -256,12 +256,16 @@ export struct LxAppContainer {
    * This is the data-driven update mechanism
    */
   public refreshTabBarData() {
-
     this.tabBarState = null;
     this.loadTabBarState();
-    this.tabBarRefreshKey++;
 
-    hilog.info(DOMAIN, TAG, `TabBar refresh completed, refreshKey: ${this.tabBarRefreshKey}`);
+    // Rust manages selected_index, just use it directly
+    if (this.tabBarState) {
+      this.selectedTabIndex = this.tabBarState.selectedIndex;
+    }
+
+    this.tabBarRefreshKey++;
+    hilog.info(DOMAIN, TAG, `TabBar refresh completed, selectedIndex: ${this.selectedTabIndex}`);
   }
 
   /**
@@ -548,7 +552,6 @@ export struct LxAppContainer {
       TabBar({
         tabbar: this.tabBarState,
         appId: this.appId,
-        selectedIndex: this.selectedTabIndex,
         refreshKey: this.tabBarRefreshKey,
         onTabSelected: (appId: string, index: number, item: TabBarItem): void => this.handleTabSelected(index)
       })
@@ -839,20 +842,16 @@ export struct LxAppContainer {
 
   /**
    * Update tab selection for a path (called by navigation layer)
+   * Simply refresh TabBar data from Rust - no local state management needed
    */
   public updateTabSelection(path: string): void {
     if (!this.isTabBarItem(path)) {
-      hilog.info(DOMAIN, TAG, `Path ${path} is not a tab item, skipping tab selection update`);
       return;
     }
 
-    const tabIndex = this.getTabIndex(path);
-    if (tabIndex >= 0) {
-      this.selectedTabIndex = tabIndex;
-      hilog.info(DOMAIN, TAG, `Updated tab selection to index: ${tabIndex} for path: ${path}`);
-    } else {
-      hilog.warn(DOMAIN, TAG, `Could not find tab index for path: ${path}`);
-    }
+    // Just refresh TabBar data from Rust - Rust manages the selected_index
+    this.refreshTabBarData();
+    hilog.info(DOMAIN, TAG, `Updated tab selection for path: ${path}`);
   }
 
   /**

@@ -40,6 +40,7 @@ pub struct TabBarState {
     pub dimension: i32,
     pub is_visible: bool,
     pub items: Vec<TabItem>,
+    pub selected_index: i32,
 }
 
 /// NAPI-compatible TabBar position enum
@@ -238,6 +239,7 @@ fn get_tab_bar(appid: String) -> Option<TabBarState> {
             dimension: tabbar.dimension,
             is_visible: tabbar.is_visible,
             items,
+            selected_index: tabbar.selected_index,
         }
     })
 }
