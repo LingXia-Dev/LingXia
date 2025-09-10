@@ -237,7 +237,17 @@ impl Page {
         let lxapp = lxapp::get(self.appid());
 
         if nav_type == NavigationType::SwitchTab {
-            lxapp.with_tabbar_mut(|t| t.set_visible(true));
+            lxapp.with_tabbar_mut(|t| {
+                t.set_visible(true);
+                // Set the selected index based on the target path
+                if let Some(index) = t.find_tab_index_by_path(url) {
+                    t.set_selected_index(index);
+                }
+            });
+
+            lxapp.with_navbar_mut(url, |navbar| {
+                navbar.set_back_button_visibility(false);
+            });
         } else {
             lxapp.with_tabbar_mut(|t| t.set_visible(false));
         }
@@ -270,6 +280,10 @@ impl Page {
                     info!("Page stack is full, cannot navigate forward.");
                     return Ok(());
                 }
+                // Show back button for Forward navigation
+                lxapp.with_navbar_mut(&path, |navbar| {
+                    navbar.set_back_button_visibility(true);
+                });
             }
             _ => {}
         }
@@ -309,6 +323,15 @@ impl Page {
         }
 
         if let Some(path) = lxapp.peek_current_page() {
+            // Check if we should hide the back button after navigation
+            let new_stack_size = lxapp.get_page_stack_size();
+            if new_stack_size <= 1 {
+                // Hide back button if we're at the root page
+                lxapp.with_navbar_mut(&path, |navbar| {
+                    navbar.set_back_button_visibility(false);
+                });
+            }
+
             (*lxapp.runtime).navigate(self.appid(), path, NavigationType::Backward)?;
             Ok(())
         } else {

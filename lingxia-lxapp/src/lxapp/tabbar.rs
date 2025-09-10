@@ -92,7 +92,7 @@ impl TabBar {
     }
 
     /// Convert all icon paths to absolute paths
-    pub fn with_absolute_paths(&self, base_path: &Path) -> Self {
+    pub(crate) fn with_absolute_paths(&self, base_path: &Path) -> Self {
         let mut result = self.clone();
 
         // Initialize runtime state
@@ -273,6 +273,11 @@ impl TabBar {
             self.selected_index = index;
         }
         self
+    }
+
+    /// Find tab index by page path
+    pub fn find_tab_index_by_path(&self, path: &str) -> Option<i32> {
+        self.list.iter().position(|item| item.pagePath == path).map(|i| i as i32)
     }
 }
 

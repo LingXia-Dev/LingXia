@@ -194,11 +194,7 @@ impl LxApp {
                 }
             }
 
-            // Set the selected index in the TabBar state
-            self.with_tabbar_mut(|tabbar| {
-                tabbar.set_selected_index(index as i32);
-            });
-
+            // Don't set the index here - let page.navigate handle it
             let tab_pages = self.config.get_tab_pages();
             if let Some(tab_path) = tab_pages.get(index) {
                 if let Some(current_page_path) = self.peek_current_page() {

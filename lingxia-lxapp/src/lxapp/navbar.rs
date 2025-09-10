@@ -138,7 +138,7 @@ impl LxApp {
     }
 
     /// Update navbar state for a specific page
-    pub fn update_navbar_state<F>(&self, path: &str, f: F) -> bool
+    pub fn with_navbar_mut<F>(&self, path: &str, f: F) -> bool
     where
         F: FnOnce(&mut NavigationBarState),
     {
