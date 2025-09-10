@@ -568,6 +568,11 @@ class LxAppActivity : AppCompatActivity() {
 
         // Attach and resume immediately
         attachWebViewToUI(webView)
+
+        // Trigger onPageShow for initial WebView (this is the single place for initial page show)
+        if (webView.getAppId() != null && webView.getCurrentPath() != null) {
+            NativeApi.onPageShow(webView.getAppId()!!, webView.getCurrentPath()!!)
+        }
     }
 
     // Function to setup the FrameLayout that holds the WebViews
