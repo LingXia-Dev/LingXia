@@ -28,8 +28,8 @@ pub(crate) struct PageInner {
 
 #[derive(Clone, Debug)]
 pub struct PageState {
-    // Page loading state
-    pub(crate) load_state: PageLoadState,
+    // Page(webview) reander status
+    render_status: PageRenderStatus,
     // Navigation bar state
     pub(crate) navbar_state: NavigationBarState,
     // Query parameters
@@ -37,12 +37,10 @@ pub struct PageState {
 }
 
 #[derive(Copy, Clone, PartialEq, Debug)]
-pub enum PageLoadState {
-    Pending, // Page created, WebView creation in progress
-    Created, // Page created and WebView attached, but no HTML loaded
-    Loading, // HTML loading into page
-    Loaded,  // HTML loaded into page
-    Unknown, // Unknown state
+pub enum PageRenderStatus {
+    Unstarted,
+    Started,
+    Finished,
 }
 
 /// Represents a single page in a mini app
@@ -56,7 +54,7 @@ impl Page {
     /// Build PageState from JSON config
     fn build_page_state(lxapp: &lxapp::LxApp, path: &str) -> PageState {
         PageState {
-            load_state: PageLoadState::Pending,
+            render_status: PageRenderStatus::Unstarted,
             navbar_state: NavigationBarState::from_json(lxapp, path),
             query: serde_json::Value::Null,
         }
@@ -125,8 +123,6 @@ impl Page {
     fn attach_webview(&self, webview: Arc<WebView>) {
         if let Ok(mut webview_guard) = self.inner.webview.lock() {
             *webview_guard = Some(webview);
-            // Update load state to Created when WebView is attached
-            self.set_load_state(PageLoadState::Created);
         }
     }
 
@@ -135,19 +131,19 @@ impl Page {
         self.inner.state.lock().ok().map(|state| state.clone())
     }
 
-    /// Get load state
-    pub fn get_load_state(&self) -> PageLoadState {
+    /// Get page reander status
+    fn get_page_render_status(&self) -> PageRenderStatus {
         self.inner
             .state
             .lock()
-            .map(|state| state.load_state)
-            .unwrap_or(PageLoadState::Unknown)
+            .map(|state| state.render_status)
+            .unwrap_or(PageRenderStatus::Unstarted)
     }
 
-    /// Set load state
-    pub fn set_load_state(&self, load_state: PageLoadState) {
+    /// Set page reander status
+    fn set_page_render_status(&self, status: PageRenderStatus) {
         if let Ok(mut state) = self.inner.state.lock() {
-            state.load_state = load_state;
+            state.render_status = status;
         }
     }
 
@@ -358,6 +354,7 @@ impl Page {
 impl WebViewDelegate for Page {
     /// Called when the page starts loading
     fn on_page_started(&self) {
+        self.set_page_render_status(PageRenderStatus::Started);
         let query_str = serde_json::to_string(&self.get_query()).ok();
 
         // Get LxApp and call page service
@@ -372,6 +369,8 @@ impl WebViewDelegate for Page {
 
     /// Called when the page finishes loading
     fn on_page_finished(&self) {
+        self.set_page_render_status(PageRenderStatus::Finished);
+
         // Get LxApp and call page service
         let lxapp = lxapp::get(self.inner.appid.clone());
         let _ = lxapp.executor.call_page_service(
@@ -380,9 +379,6 @@ impl WebViewDelegate for Page {
             "onReady".to_string(),
             None,
         );
-
-        // Update page load state
-        self.set_load_state(PageLoadState::Loaded);
     }
 
     /// Called when scroll position changes
