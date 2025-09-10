@@ -50,6 +50,7 @@ mod bridge {
         pub dimension: i32,
         pub items_count: i32,
         pub is_visible: bool,
+        pub selected_index: i32,
     }
 
     // Group alignment types
@@ -306,6 +307,7 @@ pub fn get_tab_bar(appid: &str) -> Option<bridge::TabBar> {
         dimension: tabbar.dimension,
         items_count: tabbar.list.len() as i32,
         is_visible: tabbar.is_visible,
+        selected_index: tabbar.selected_index,
     })
 }
 

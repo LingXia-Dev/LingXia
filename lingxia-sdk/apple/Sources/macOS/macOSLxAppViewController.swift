@@ -345,11 +345,11 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate, N
 
     /// Sync TabBar selection with current path
     public func syncTabBarSelection(path: String) {
+        // Rust manages selected_index, just sync UI with Rust state
         if let wrapper = tabBarView as? LingXiaTabBar {
-            let index = wrapper.findTabIndexByPath(path)
-            if index >= 0 { wrapper.setSelectedIndex(index, notifyListener: false) }
-        } else if let tabIndex = findTabIndexByPath(path) {
-            selectedTabIndex = tabIndex
+            wrapper.syncSelectedTabWithCurrentPath(path)
+        } else if let rustState = lingxia.getTabBar(appId) {
+            selectedTabIndex = Int(rustState.selected_index)
         }
     }
 
@@ -363,12 +363,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate, N
     // Method required by WindowController
     func updateLayoutForNavigationStyle(currentPath: String) {
         self.currentPath = currentPath
-        if let wrapper = tabBarView as? LingXiaTabBar {
-            let idx = wrapper.findTabIndexByPath(currentPath)
-            if idx >= 0 { wrapper.setSelectedIndex(idx, notifyListener: false) }
-        } else {
-            selectedTabIndex = findTabIndexByPath(currentPath) ?? selectedTabIndex
-        }
+        syncTabBarSelection(path: currentPath)
     }
 
     /// Update capsule button visibility

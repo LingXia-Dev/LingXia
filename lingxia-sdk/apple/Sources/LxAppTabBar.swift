@@ -311,11 +311,8 @@ public struct LxAppTabBar: View {
             Color(PlatformColor(argb: config.color))
 
         Button(action: {
-            // Prevent double-clicking on the same tabitem
-            if index != selectedIndex {
-                // Let the parent handle the selection update
-                onTabSelected(index, item.cachedPagePath)
-            }
+            // Always trigger callback - let parent decide if action is needed
+            onTabSelected(index, item.cachedPagePath)
         }) {
             VStack(spacing: LxAppTheme.Metrics.smallSpacing) {
                 // Tab icon with badge and red dot overlay
@@ -362,11 +359,8 @@ public struct LxAppTabBar: View {
             Color(PlatformColor(argb: config.color))
 
         Button(action: {
-            // Prevent double-clicking on the same tabitem
-            if index != selectedIndex {
-                // Let the parent handle the selection update
-                onTabSelected(index, item.cachedPagePath)
-            }
+            // Always trigger callback - let parent decide if action is needed
+            onTabSelected(index, item.cachedPagePath)
         }) {
             VStack(spacing: LxAppTheme.Metrics.smallSpacing) {
                 // Tab icon with badge and red dot overlay
@@ -551,11 +545,8 @@ public struct MacOSLxAppTabBar: View {
         let rustItem = getTabBarItem(appId, Int32(index))
 
         Button(action: {
-            // Prevent double-clicking on the same tabitem
-            if index != selectedIndex {
-                // Let the parent handle the selection update
-                onTabSelected(index, item.cachedPagePath)
-            }
+            // Always trigger callback - let parent decide if action is needed
+            onTabSelected(index, item.cachedPagePath)
         }) {
             VStack(spacing: LxAppTheme.Metrics.smallSpacing) {
                 // Tab icon with badge and red dot overlay
@@ -892,7 +883,7 @@ public class iOSTabBarWrapper: UIView {
     }
 
     public func getSelectedIndex() -> Int {
-        return selectedIndex
+        return Int(tabBarConfig?.selected_index ?? 0)
     }
 
     public func syncSelectedTabWithCurrentPath(_ currentPath: String) {
@@ -915,7 +906,8 @@ public class iOSTabBarWrapper: UIView {
     }
 
     public func setSelectedIndex(_ index: Int, notifyListener: Bool) {
-        let previousIndex = selectedIndex
+        let previousIndex = getSelectedIndex()
+        // Update local selectedIndex to reflect Rust state
         selectedIndex = index
 
         // Only update layout if selection actually changed
@@ -1263,11 +1255,10 @@ public class iOSTabBarWrapper: UIView {
 
     @objc private func uikitTabButtonTapped(_ sender: UIButton) {
         let index = sender.tag
-        let previousIndex = selectedIndex
-        selectedIndex = index
+        let previousIndex = getSelectedIndex()
 
-        // Prevent double-clicking on the same tab
-        if index != previousIndex, let config = tabBarConfig {
+        // Always trigger callback - let parent decide if action is needed
+        if let config = tabBarConfig {
             let items = config.getItems(appId: appId)
             if index < items.count {
                 let path = items[index].page_path.toString()
@@ -1361,9 +1352,9 @@ public class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
     }
 
     public func syncSelectedTabWithCurrentPath(_ currentPath: String) {
-        let index = findTabIndexByPath(currentPath)
-        if index >= 0 {
-            selectTab(index: index)
+        // Rust manages selected_index, just sync UI with Rust state
+        if let rustState = lingxia.getTabBar(appId) {
+            setSelectedIndex(Int(rustState.selected_index), notifyListener: false)
         }
     }
 
@@ -1372,6 +1363,7 @@ public class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
     }
 
     public func setSelectedIndex(_ index: Int, notifyListener: Bool) {
+        // Update local selectedIndex to reflect Rust state
         selectedIndex = index
 
         if notifyListener, let callback = onTabSelectedCallback, let config = tabBarConfig {
