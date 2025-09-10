@@ -22,7 +22,8 @@ data class TabBarState(
     val dimension: Int = 64,                         // Dimension in dp: height for bottom, width for left/right
     val position: Position = Position.BOTTOM,        // Position: 0=Bottom, 1=Left, 2=Right
     val list: List<TabBarItem> = emptyList(),        // List of tab items
-    val visible: Boolean = true                      // TabBar visibility (kept for FFI compatibility)
+    val visible: Boolean = true,                     // TabBar visibility (kept for FFI compatibility)
+    val selectedIndex: Int = 0                       // Selected tab index managed by Rust
 ) {
     /**
      * Check if background color is transparent.
@@ -113,7 +114,6 @@ class TabBar(context: Context) : LinearLayout(context) {
     private var items = listOf<TabBarItem>()
     private var tabViews = mutableListOf<LinearLayout>()
     private var itemsContainer: LinearLayout? = null
-    private var selectedPosition = -1
     private var onTabSelectedListener: ((Int, String) -> Unit)? = null
 
 
@@ -301,9 +301,6 @@ class TabBar(context: Context) : LinearLayout(context) {
             tabViews.clear()
 
             if (items.isNotEmpty()) {
-                // Find selected item index (default to 0 if none specified)
-                val initialSelectedIdx = items.indexOfFirst { it.selected }.takeIf { it >= 0 } ?: 0
-                selectedPosition = initialSelectedIdx
 
                 // Check if ANY item has group field (grouped mode vs centered mode)
                 val hasAnyGroupField = items.any { it.group != 0 }
@@ -378,7 +375,7 @@ class TabBar(context: Context) : LinearLayout(context) {
         }
 
         items.forEachIndexed { index, item ->
-            createTabView(item, config, index == selectedPosition, index).also { view ->
+            createTabView(item, config, index == config.selectedIndex, index).also { view ->
                 tabViews.add(view)
                 container.addView(view)
             }
@@ -410,7 +407,7 @@ class TabBar(context: Context) : LinearLayout(context) {
             // Find the global index of this item
             val globalIndex = items.indexOf(item)
             if (globalIndex >= 0) {
-                val tabView = createTabView(item, config, globalIndex == selectedPosition, globalIndex)
+                val tabView = createTabView(item, config, globalIndex == config.selectedIndex, globalIndex)
 
                 // Add margin between items (except for the first item)
                 if (index > 0) {
@@ -437,9 +434,9 @@ class TabBar(context: Context) : LinearLayout(context) {
             return
         }
 
-        if (index != selectedPosition) {
-            val previousIndex = selectedPosition
-            selectedPosition = index
+        if (index != config.selectedIndex) {
+            val previousIndex = config.selectedIndex
+            config = config.copy(selectedIndex = index)
 
             // Update UI state for all tab views
             tabViews.forEachIndexed { viewIndex, tabView ->
@@ -626,7 +623,7 @@ class TabBar(context: Context) : LinearLayout(context) {
 
     // Gets the index of the currently selected tab item
     fun getSelectedIndex(): Int {
-        return selectedPosition
+        return config.selectedIndex
     }
 
     // Finds the index of a tab item by its pagePath

@@ -773,11 +773,8 @@ class LxAppActivity : AppCompatActivity() {
         val tabBarConfig = NativeApi.getTabBarState(appId)
         val visible = tabBarConfig?.visible ?: false
         showTabBar(visible)
-        if (visible) {
-            // Keep selection in sync when tabbar is visible
-            tabBar?.findTabIndexByPath(targetPath)?.let { index ->
-                if (index >= 0) tabBar?.setSelectedIndex(index, notifyListener = false)
-            }
+        if (visible && tabBarConfig != null) {
+            tabBar?.setSelectedIndex(tabBarConfig.selectedIndex, notifyListener = false)
         }
     }
 

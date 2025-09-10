@@ -408,7 +408,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getTabBarState<'a>(
     // Create TabBarState object (all parameters non-nullable)
     match env.new_object(
         tab_bar_class,
-        "(IIIIILcom/lingxia/lxapp/TabBarState$Position;Ljava/util/List;Z)V",
+        "(IIIIILcom/lingxia/lxapp/TabBarState$Position;Ljava/util/List;ZI)V",
         &[
             background_color.into(),
             selected_color.into(),
@@ -418,6 +418,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getTabBarState<'a>(
             (&position_enum).into(),
             (&tab_items_list).into(),
             tab_bar_config.is_visible.into(),
+            tab_bar_config.selected_index.into(),
         ],
     ) {
         Ok(obj) => obj,
