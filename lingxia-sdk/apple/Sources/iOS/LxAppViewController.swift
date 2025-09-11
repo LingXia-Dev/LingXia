@@ -115,12 +115,6 @@ public class LxAppViewController: UIViewController, ObservableObject {
 
         setupRootContainer()
         setupWebViewContainer()
-        setupGlobalUIComponents()
-        setupNotificationObservers()
-    }
-
-    private func setupGlobalUIComponents() {
-        // Initialize NavigationBar immediately when rootContainer is ready
         setupGlobalNavigationBar()
     }
 
