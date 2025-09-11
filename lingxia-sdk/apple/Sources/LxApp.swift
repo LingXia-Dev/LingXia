@@ -84,26 +84,7 @@ public struct LxAppDirectoryFactory {
 /// Notification action identifiers
 public let ACTION_CLOSE_LXAPP = "com.lingxia.CLOSE_LXAPP_ACTION"
 
-/// Shared platform operations
-@MainActor
-public class LxAppPlatformOperations {
-    private static let log = OSLog(subsystem: "LingXia", category: "PlatformOps")
 
-    /// Find WebView for the given appId and path - unified across platforms
-    public static func findWebView(appId: String, path: String) -> WKWebView? {
-        return WebViewManager.findWebView(appId: appId, path: path)
-    }
-
-    /// Shared navigation logic
-    public static func navigate(appId: String, path: String, navigationType: NavigationType, renderer: LxAppRenderer) {
-        LxAppCore.executeNavigation(appId: appId, path: path, navigationType: navigationType, renderer: renderer)
-    }
-
-    /// Shared openLxApp logic
-    public static func openLxApp(appId: String, path: String, renderer: LxAppRenderer) {
-        LxAppCore.executeOpenLxApp(appId: appId, path: path, renderer: renderer)
-    }
-}
 
 #if os(iOS)
 /// iOS-specific view hierarchy helper
@@ -170,16 +151,22 @@ public class LxAppCore {
     private init() {}
 
     /// Shared openLxApp logic - used by both iOS and macOS platforms
-    internal static func executeOpenLxApp(appId: String, path: String, renderer: LxAppRenderer) {
+    internal static func executeOpenLxApp(appId: String, path: String) {
 
         // Call onLxappOpened to get the resolved path
         let resolvedPath = onLxappOpened(appId, path)
+        let finalPath = resolvedPath.toString()
 
-        renderer.openLxApp(appId: appId, path: resolvedPath.toString())
+        // Direct platform calls instead of using renderer protocol
+        #if os(iOS)
+        iOSLxApp.openLxAppDirect(appId: appId, path: finalPath)
+        #elseif os(macOS)
+        macOSLxApp.openLxAppDirect(appId: appId, path: finalPath)
+        #endif
     }
 
     /// Shared navigate logic - used by both iOS and macOS platforms
-    internal static func executeNavigation(appId: String, path: String, navigationType: NavigationType, renderer: LxAppRenderer) {
+    internal static func executeNavigation(appId: String, path: String, navigationType: NavigationType) {
         os_log("Core executeNavigation: %@ to %@ with type: %@", log: log, type: .info, appId, path, String(describing: navigationType))
 
         // Use shared navigation logic from LxAppPageNavigation
@@ -190,13 +177,12 @@ public class LxAppCore {
             return
         }
 
-        // Platform-specific setup/switch WebView first
-        renderer.handlePlatformSpecificNavigation(plan)
-
-        // Reflect Rust state in UI rendering
-        renderer.renderTabBar(plan.tabBarState, appId: plan.appId, path: plan.path)
-        renderer.renderNavigationBar(plan.navBarState)
-        renderer.renderCapsuleButton(appId: plan.appId)
+        // Direct platform calls instead of using renderer protocol
+        #if os(iOS)
+        iOSLxApp.handleNavigationDirect(plan)
+        #elseif os(macOS)
+        macOSLxApp.handleNavigationDirect(plan)
+        #endif
     }
 
     /// Initialize the LxApp system (internal core initialization)

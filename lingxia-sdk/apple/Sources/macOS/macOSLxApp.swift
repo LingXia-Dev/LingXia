@@ -102,7 +102,7 @@ public enum iPhoneNotchSpec: Sendable {
 
 /// macOS LxApp implementation
 @MainActor
-public class macOSLxApp: ObservableObject, LxAppRenderer {
+public class macOSLxApp: ObservableObject {
     public static let shared = macOSLxApp()
     private static var isInitialized = false
     private static let log = OSLog(subsystem: "LingXia", category: "macOSLxApp")
@@ -115,7 +115,7 @@ public class macOSLxApp: ObservableObject, LxAppRenderer {
     /// Open specific LxApp
     public static func openLxApp(appId: String, path: String) {
         os_log("macOS openLxApp: %@ at path: %@", log: log, type: .info, appId, path)
-        LxAppPlatformOperations.openLxApp(appId: appId, path: path, renderer: shared)
+        LxAppCore.executeOpenLxApp(appId: appId, path: path)
     }
 
     private static func openTabStyleWindow() {
@@ -153,7 +153,7 @@ public class macOSLxApp: ObservableObject, LxAppRenderer {
 
     /// Navigate to page with specific navigation type
     public static func navigate(appId: String, path: String, navigationType: NavigationType) {
-        LxAppPlatformOperations.navigate(appId: appId, path: path, navigationType: navigationType, renderer: shared)
+        LxAppCore.executeNavigation(appId: appId, path: path, navigationType: navigationType)
     }
 
     /// Remove window controller from active list
@@ -278,19 +278,42 @@ public class macOSLxApp: ObservableObject, LxAppRenderer {
     }
 }
 
-// LxAppRenderer Protocol Implementation
+// Direct platform implementation (no more LxAppRenderer protocol)
 extension macOSLxApp {
-    /// Handle platform-specific openLxApp setup
-    public func openLxApp(appId: String, path: String) {
+    /// Direct openLxApp implementation (called from LxAppCore)
+    internal static func openLxAppDirect(appId: String, path: String) {
         // Handle macOS-specific window/tab creation logic
         if LxAppWindowController.getWindowStyle() == .tabStyle {
-            handleTabStyleOpenLxApp(appId: appId, path: path)
+            shared.handleTabStyleOpenLxApp(appId: appId, path: path)
         } else {
-            handleCapsuleStyleOpenLxApp(appId: appId, path: path)
+            shared.handleCapsuleStyleOpenLxApp(appId: appId, path: path)
         }
     }
 
-    public func renderTabBar(_ state: TabBarState, appId: String, path: String) {
+    /// Direct navigation implementation (called from LxAppCore)
+    internal static func handleNavigationDirect(_ plan: NavigationPlan) {
+        // Platform-specific setup/switch WebView first
+        handlePlatformSpecificNavigationDirect(plan)
+
+        // Render UI components based on state
+        renderTabBarDirect(plan.tabBarState, appId: plan.appId, path: plan.path)
+        renderNavigationBarDirect(plan.navBarState)
+        renderCapsuleButtonDirect(appId: plan.appId)
+    }
+
+    /// Direct platform-specific navigation logic
+    private static func handlePlatformSpecificNavigationDirect(_ plan: NavigationPlan) {
+        // Handle macOS-specific window/tab management
+        if plan.navigationType == .launch {
+            // Launch navigation is handled in openLxApp
+            return
+        } else {
+            shared.handleRegularNavigation(plan)
+        }
+    }
+
+    /// Direct TabBar rendering
+    private static func renderTabBarDirect(_ state: TabBarState, appId: String, path: String) {
         // Find the appropriate view controller
         let viewController: macOSLxAppViewController? = {
             if let controller = Self.activeWindowControllers.first(where: { $0.appId == appId }) {
@@ -310,8 +333,8 @@ extension macOSLxApp {
         vc.showTabBar(state.show)
     }
 
-    /// Render NavigationBar based on state
-    public func renderNavigationBar(_ state: NavBarState) {
+    /// Direct NavigationBar rendering
+    private static func renderNavigationBarDirect(_ state: NavBarState) {
         guard state.shouldUpdate else { return }
 
         if let controller = Self.activeWindowControllers.first(where: { $0.appId == state.appId }),
@@ -323,8 +346,8 @@ extension macOSLxApp {
         }
     }
 
-    /// Render Capsule button - macOS capsuleStyle always shows capsule buttons
-    public func renderCapsuleButton(appId: String) {
+    /// Direct Capsule button rendering
+    private static func renderCapsuleButtonDirect(appId: String) {
         // In capsule style mode, WindowController handles floating capsule buttons
         if LxAppWindowManager.shared.windowStyle == .capsuleStyle {
             if let controller = Self.activeWindowControllers.first(where: { $0.appId == appId }),
@@ -350,18 +373,6 @@ extension macOSLxApp {
         if let controller = Self.activeWindowControllers.first(where: { $0.appId == appId }),
            let viewController = controller.window?.contentViewController as? macOSLxAppViewController {
             viewController.updateCapsuleButtonVisibility(appId: appId)
-        }
-    }
-
-    /// Handle platform-specific navigation logic
-    public func handlePlatformSpecificNavigation(_ plan: NavigationPlan) {
-
-        // Handle macOS-specific window/tab management
-        if plan.navigationType == .launch {
-            // Launch navigation is handled in openLxApp
-            return
-        } else {
-            handleRegularNavigation(plan)
         }
     }
 
@@ -393,7 +404,7 @@ extension macOSLxApp {
         Self.activeWindowControllers.append(windowController)
     }
 
-    private func handleRegularNavigation(_ plan: NavigationPlan) {
+    fileprivate func handleRegularNavigation(_ plan: NavigationPlan) {
         // Find the appropriate view controller and delegate navigation
         if let controller = Self.activeWindowControllers.first(where: { $0.appId == plan.appId }),
            let viewController = controller.window?.contentViewController as? macOSLxAppViewController {

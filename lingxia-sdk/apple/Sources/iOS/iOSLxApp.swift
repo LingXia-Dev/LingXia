@@ -9,7 +9,7 @@ import UserNotifications
 
 /// iOS LxApp manager
 @MainActor
-public class iOSLxApp: LxAppRenderer {
+public class iOSLxApp {
     nonisolated private static let log = OSLog(subsystem: "LingXia", category: "iOSLxApp")
     private static var instance: iOSLxApp?
     private let context: UIApplication
@@ -42,7 +42,7 @@ public class iOSLxApp: LxAppRenderer {
     /// Opens a lxapp
     public static func openLxApp(appId: String, path: String) {
         os_log("iOS openLxApp: %@ at path: %@", log: log, type: .info, appId, path)
-        LxAppPlatformOperations.openLxApp(appId: appId, path: path, renderer: getInstance())
+        LxAppCore.executeOpenLxApp(appId: appId, path: path)
     }
 
     /// Opens the home mini app
@@ -63,12 +63,12 @@ public class iOSLxApp: LxAppRenderer {
     /// Navigate to a page with specific navigation type
     public static func navigate(appId: String, path: String, navigationType: NavigationType) {
         os_log("iOS navigate: %@ to %@ with type: %@", log: log, type: .info, appId, path, String(describing: navigationType))
-        LxAppPlatformOperations.navigate(appId: appId, path: path, navigationType: navigationType, renderer: getInstance())
+        LxAppCore.executeNavigation(appId: appId, path: path, navigationType: navigationType)
     }
 
     /// Find WebView for the given appId and path
     internal static func findWebView(appId: String, path: String) -> WKWebView? {
-        return LxAppPlatformOperations.findWebView(appId: appId, path: path)
+        return WebViewManager.findWebView(appId: appId, path: path)
     }
 
     private func openLxAppInManager(appId: String, path: String) {
@@ -169,19 +169,33 @@ public class iOSLxApp: LxAppRenderer {
 }
 
 extension iOSLxApp {
-    /// Handle platform-specific openLxApp setup
-    public func openLxApp(appId: String, path: String) {
+    /// Direct openLxApp implementation (called from LxAppCore)
+    internal static func openLxAppDirect(appId: String, path: String) {
+        let instance = getInstance()
+
         // Ensure LxAppManager exists for iOS
-        setupLxAppManagerIfNeeded()
+        instance.setupLxAppManagerIfNeeded()
 
         // Open LxApp in manager
-        lxAppManager?.openLxApp(appId: appId, path: path)
+        instance.lxAppManager?.openLxApp(appId: appId, path: path)
     }
 
-    /// Render TabBar based on state (visibility determined in prepareNavigation)
-    public func renderTabBar(_ state: TabBarState, appId: String, path: String) {
-        guard let manager = lxAppManager else { return }
+    /// Direct navigation implementation (called from LxAppCore)
+    internal static func handleNavigationDirect(_ plan: NavigationPlan) {
+        let instance = getInstance()
+        guard let manager = instance.lxAppManager else { return }
 
+        // Platform-specific setup/switch WebView first
+        manager.setupOrSwitchWebView(appId: plan.appId, path: plan.path, navigationType: plan.navigationType)
+
+        // Render UI components based on state
+        renderTabBarDirect(plan.tabBarState, appId: plan.appId, path: plan.path, manager: manager)
+        renderNavigationBarDirect(plan.navBarState, manager: manager)
+        // Capsule button rendering is handled in navigate() method
+    }
+
+    /// Direct TabBar rendering
+    private static func renderTabBarDirect(_ state: TabBarState, appId: String, path: String, manager: LxAppViewController) {
         manager.setupTabBar(appId: appId)
 
         // Use state visibility (already determined in prepareNavigation)
@@ -191,21 +205,10 @@ extension iOSLxApp {
         manager.showTabBar(state.show)
     }
 
-    /// Render NavigationBar based on state
-    public func renderNavigationBar(_ state: NavBarState) {
+    /// Direct NavigationBar rendering
+    private static func renderNavigationBarDirect(_ state: NavBarState, manager: LxAppViewController) {
         guard state.shouldUpdate else { return }
-        lxAppManager?.updateNavigationBar(appId: state.appId, path: state.path)
-    }
-
-    /// Render Capsule button - only home app hides it
-    public func renderCapsuleButton(appId: String) {
-    }
-
-    /// Handle platform-specific navigation logic
-    public func handlePlatformSpecificNavigation(_ plan: NavigationPlan) {
-
-        guard let manager = lxAppManager else { return }
-        manager.setupOrSwitchWebView(appId: plan.appId, path: plan.path, navigationType: plan.navigationType)
+        manager.updateNavigationBar(appId: state.appId, path: state.path)
     }
 
     private func setupLxAppManagerIfNeeded() {

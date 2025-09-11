@@ -160,25 +160,6 @@ public struct LxPageNavigation {
     }
 }
 
-/// Platform-specific rendering interface
-@MainActor
-public protocol LxAppRenderer {
-    /// Handle platform-specific openLxApp setup (window/view creation)
-    func openLxApp(appId: String, path: String)
-
-    /// Handle platform-specific navigation logic
-    func handlePlatformSpecificNavigation(_ plan: NavigationPlan)
-
-    /// Render TabBar based on state
-    func renderTabBar(_ state: TabBarState, appId: String, path: String)
-
-    /// Render NavigationBar based on state
-    func renderNavigationBar(_ state: NavBarState)
-
-    /// Render Capsule button - only home app hides it, others show it
-    func renderCapsuleButton(appId: String)
-}
-
 /// Plan for navigation execution
 public struct NavigationPlan: Sendable {
     let appId: String
