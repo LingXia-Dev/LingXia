@@ -21,7 +21,6 @@ public class LxAppViewController: UIViewController, ObservableObject {
     private var webViewContainer: UIView!
     private var globalCapsuleButton: UIView?
     private var globalNavigationBar: LingXiaNavigationBar?
-    private var tabBarCache: [String: LingXiaTabBar] = [:]
     public var currentTabBar: LingXiaTabBar?
     private var cancellables = Set<AnyCancellable>()
 
@@ -52,7 +51,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
     private func shouldUseTransparentMode(for appId: String, path: String? = nil) -> Bool {
         guard !appId.isEmpty, isViewLoaded else { return false }
 
-        let currentPath = path ?? getCurrentPath() ?? ""
+        let currentPath = path ?? getCurrentPath()
         guard !currentPath.isEmpty else { return false }
 
         guard let navState = LxPageNavigation.getNavigationBarState(appId: appId, path: currentPath) else {
@@ -92,7 +91,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
         // Apply transparency and styling for current app
         if let currentAppId = LxAppCore.currentAppId {
             // CRITICAL FIX: Ensure NavigationBarStateManager is updated before applying styling
-            let currentPath = LxAppCore.getCurrentPath() ?? ""
+            let currentPath = LxAppCore.getCurrentPath()
             NavigationBarStateManager.shared.updateState(appId: currentAppId, path: currentPath)
             applyAppStyling(for: currentAppId)
         }
@@ -181,14 +180,14 @@ public class LxAppViewController: UIViewController, ObservableObject {
         // operates on the correct app context.
         LxAppCore.setCurrentApp(appId: appId, path: "/")
 
-        // CRITICAL: Initialize UI components FIRST before any navigation logic
-        // This ensures NavigationBar is ready when renderNavigationBar is called
-        updateGlobalUIComponents(for: appId, path: path, navigationType: navigationType)
-
-        // Update NavigationBar state
+        // Update NavigationBar state and UI
         updateNavigationBar(appId: appId, path: path)
 
-        // Apply app styling to handle transparency changes
+        // Update all UI components based on current navigation state
+        updateCapsuleButton(for: appId)
+        updateTabBar(for: appId, path: path)
+
+        // Apply app styling to handle transparency and backgrounds
         applyAppStyling(for: appId, path: path)
 
         // Setup or switch WebView
@@ -197,20 +196,8 @@ public class LxAppViewController: UIViewController, ObservableObject {
         // Update status bar style
         setNeedsStatusBarAppearanceUpdate()
 
-        // Handle TabBar visibility for launch
-        if navigationType == .launch {
-            if let tabBar = currentTabBar {
-                let tabIndex = tabBar.findTabIndexByPath(path)
-                if tabIndex >= 0 {
-                    // This is a TabBar item, ensure visible
-                    tabBar.isHidden = false
-                    bringUIElementsToFront()
-                } else {
-                    // Not a TabBar item, hide TabBar
-                    tabBar.isHidden = true
-                }
-            }
-        }
+        // Ensure UI elements are properly layered
+        bringUIElementsToFront()
     }
 
     /// Opens a LxApp - creates new state if needed, switches if already exists
@@ -271,19 +258,11 @@ public class LxAppViewController: UIViewController, ObservableObject {
                 switch navigationType {
                 case .switchTab:
                     if existingWebView != targetWebView {
-                        // Different WebView - smooth fade transition to avoid flashing
-                        UIView.transition(with: rootContainer, duration: 0.1, options: [.transitionCrossDissolve], animations: {
-                            existingWebView.alpha = 0.0
-                        }, completion: { _ in
-                            existingWebView.isHidden = true
-                            existingWebView.pauseWebView()
-                            existingWebView.alpha = 1.0
-
-                            // For switchTab navigation, ensure TabBar remains visible after WebView transition
-                            if navigationType == .switchTab {
-                                self.bringUIElementsToFront()
-                            }
-                        })
+                        // Different WebView - use immediate switch to avoid complexity
+                        existingWebView.isHidden = true
+                        existingWebView.pauseWebView()
+                    } else {
+                        os_log("switchTab: Same WebView, no switch needed", log: Self.log, type: .info)
                     }
                 case .forward, .backward:
                     // Forward/backward use slide animation
@@ -305,55 +284,36 @@ public class LxAppViewController: UIViewController, ObservableObject {
         updateWebViewConstraints(for: appId)
     }
 
-    private func updateGlobalUIComponents(for appId: String, path: String, navigationType: NavigationType) {
-        updateCapsuleButton(for: appId)
-        updateNavigationBar(for: appId, path: path)
-
-        // Only update TabBar for launch navigation type to ensure TabBar exists
-        if navigationType == .launch {
-            updateTabBar(for: appId, path: path, navigationType: navigationType)
-        }
-
-        bringUIElementsToFront()
-    }
-
     private func updateCapsuleButton(for appId: String) {
         let shouldShow = !LxAppCore.isHomeLxApp(appId)
 
-        if shouldShow && globalCapsuleButton == nil {
-            LxAppCapsuleButtons.addCapsuleButton(to: self, appId: appId)
-            globalCapsuleButton = view.viewWithTag(9999) // CAPSULE_BUTTON_TAG
+        if shouldShow {
+            // Create capsule button if it doesn't exist
+            if globalCapsuleButton == nil {
+                LxAppCapsuleButtons.addCapsuleButton(to: self, appId: appId)
+                globalCapsuleButton = view.viewWithTag(9999) // CAPSULE_BUTTON_TAG
+            }
+            globalCapsuleButton?.isHidden = false
+        } else {
+            // Hide capsule button for home app
+            globalCapsuleButton?.isHidden = true
         }
-
-        globalCapsuleButton?.isHidden = !shouldShow
     }
 
-    private func updateNavigationBar(for appId: String, path: String) {
-        // NavigationBar is already initialized in setupGlobalUIComponents()
-        globalNavigationBar?.isHidden = false
-    }
-
-    private func updateTabBar(for appId: String, path: String, navigationType: NavigationType) {
+    private func updateTabBar(for appId: String, path: String) {
         guard let tabConfig = lingxia.getTabBar(appId) else {
+            // Hide TabBar if no config, but don't destroy it
             currentTabBar?.isHidden = true
-            currentTabBar = nil
             return
         }
 
-        if let cachedTabBar = tabBarCache[appId] {
-            currentTabBar = cachedTabBar
-            bringUIElementsToFront()
-        } else {
-            // Hide current TabBar before creating new one
-            currentTabBar?.isHidden = true
+        // If TabBar doesn't exist, create it once
+        if currentTabBar == nil {
             currentTabBar = createTabBar(config: tabConfig, appId: appId)
-            tabBarCache[appId] = currentTabBar!
         }
 
-        // Ensure TabBar is visible and brought to front after any updates
-        if let tabBar = currentTabBar {
-            bringUIElementsToFront()
-        }
+        currentTabBar?.syncSelectedTabWithCurrentPath(path)
+        currentTabBar?.isHidden = !tabConfig.is_visible
     }
 
     private func hideCurrentLxApp() {
@@ -395,8 +355,6 @@ public class LxAppViewController: UIViewController, ObservableObject {
         if let tabBar = currentTabBar {
             tabBar.isHidden = false
             tabBar.alpha = 1.0
-            // Ensure TabBar is brought to front
-            rootContainer.bringSubviewToFront(tabBar)
         } else {
             os_log("No TabBar to show for %@", log: Self.log, type: .info, appId)
         }
@@ -426,7 +384,6 @@ public class LxAppViewController: UIViewController, ObservableObject {
             updateNavigationBar(appId: appId, path: path)
             applyAppStyling(for: appId, path: path)
             currentTabBar?.syncSelectedTabWithCurrentPath(path)
-            bringUIElementsToFront()
         }
     }
 
@@ -437,8 +394,6 @@ public class LxAppViewController: UIViewController, ObservableObject {
             configureWebView(webView, transparent: shouldUseTransparentMode(for: appId, path: path))
             // Always ensure WebView is resumed, even if already visible
             webView.resumeWebView()
-
-            bringUIElementsToFront()
 
             // Update current app state AFTER successful attach/switch
             LxAppCore.setCurrentPath(path)
@@ -464,8 +419,9 @@ public class LxAppViewController: UIViewController, ObservableObject {
         // Configure WebView appearance
         configureWebView(webView, transparent: shouldUseTransparentMode(for: appId, path: path))
 
-        // Create custom constraints for iOS-specific layout with proper top offset
-        let topOffset = navigationAreaHeight
+        // Calculate correct top offset based on the target page's NavigationBar state
+        // This prevents the timing issue where navigationAreaHeight might not be updated yet
+        let topOffset = calculateTopOffset(for: appId, path: path)
         let constraints = [
             webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
@@ -481,10 +437,24 @@ public class LxAppViewController: UIViewController, ObservableObject {
             currentWebViewTopConstraint = topConstraint
         }
 
-        bringUIElementsToFront()
-
         // Update current app state AFTER successful attach/switch
         LxAppCore.setCurrentPath(path)
+    }
+
+    /// Calculate the correct top offset for a WebView based on the target page's NavigationBar state
+    /// This prevents timing issues where navigationAreaHeight might not be updated yet
+    private func calculateTopOffset(for appId: String, path: String) -> CGFloat {
+        // Get the NavigationBar state for this specific page
+        NavigationBarStateManager.shared.updateState(appId: appId, path: path)
+        let state = NavigationBarStateManager.shared.currentState
+
+        let showNavbar = state?.show_navbar ?? false
+
+        if showNavbar {
+            return statusBarHeight + NavigationBarState.DEFAULT_HEIGHT
+        } else {
+            return 0
+        }
     }
 
     private func updateWebViewConstraints(for appId: String, topOffset: CGFloat? = nil) {
@@ -520,20 +490,13 @@ public class LxAppViewController: UIViewController, ObservableObject {
 
         let tabBarConfig = lingxia.getTabBar(appId)
         if let config = tabBarConfig {
-            // Use global TabBar cache instead of per-app state
-            if tabBarCache[appId] == nil {
-                // Create new TabBar and cache it
-                let tabBar = createTabBar(config: config, appId: appId)
-                tabBarCache[appId] = tabBar
-            }
-
-            // Set as current TabBar
-            currentTabBar = tabBarCache[appId]
+            // Create new TabBar directly
+            let tabBar = createTabBar(config: config, appId: appId)
+            currentTabBar = tabBar
 
             // Sync TabBar with current path
-            if let currentPath = LxAppCore.getCurrentPath() {
-                currentTabBar?.syncSelectedTabWithCurrentPath(currentPath)
-            }
+            let currentPath = LxAppCore.getCurrentPath()
+            currentTabBar?.syncSelectedTabWithCurrentPath(currentPath)
         }
     }
 
@@ -547,7 +510,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
         }
 
         // Update navigation bar with current state
-        let currentPath = LxAppCore.getCurrentPath() ?? "/"
+        let currentPath = LxAppCore.getCurrentPath()
         updateNavigationBar(appId: appId, path: currentPath)
     }
 
@@ -558,7 +521,16 @@ public class LxAppViewController: UIViewController, ObservableObject {
         }
 
         NavigationBarStateManager.shared.updateState(appId: appId, path: path)
-        navigationBar.updateWithState(NavigationBarStateManager.shared.currentState)
+        let state = NavigationBarStateManager.shared.currentState
+
+        navigationBar.updateWithState(state)
+
+        // Update WebView constraints to match NavigationBar state without animation
+        UIView.performWithoutAnimation {
+            updateWebViewConstraints(for: appId)
+            view.layoutIfNeeded()
+        }
+
         setNeedsStatusBarAppearanceUpdate()
     }
 
@@ -569,13 +541,11 @@ public class LxAppViewController: UIViewController, ObservableObject {
         getCurrentWebView()?.removeFromSuperview()
         getCurrentWebView()?.pauseWebView()
 
-        // Remove TabBar from cache if it exists
-        if let tabBar = tabBarCache[appId] {
+        // Remove TabBar
+        if let tabBar = currentTabBar {
             tabBar.removeFromSuperview()
-            tabBarCache.removeValue(forKey: appId)
+            currentTabBar = nil
         }
-
-        // Global navigation bar stays (shared across apps)
 
         // Clean up constraints
         if let constraint = currentWebViewTopConstraint {
@@ -586,7 +556,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
     internal func applyAppStyling(for appId: String, path: String? = nil) {
         guard LxAppCore.currentAppId == appId else { return }
 
-        let currentPath = path ?? (LxAppCore.getCurrentPath() ?? "")
+        let currentPath = path ?? LxAppCore.getCurrentPath()
         let shouldUseTransparent = shouldUseTransparentMode(for: appId, path: currentPath)
 
         if shouldUseTransparent {
@@ -597,11 +567,6 @@ public class LxAppViewController: UIViewController, ObservableObject {
             currentTabBar?.forceTransparencyMode()
         } else {
             setOpaqueBackgrounds()
-        }
-
-        // Add capsule button if not home app
-        if !LxAppCore.isHomeLxApp(appId) {
-            LxAppCapsuleButtons.addCapsuleButton(to: self, appId: appId)
         }
     }
 
@@ -739,7 +704,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
     }
 
     public override var preferredStatusBarStyle: UIStatusBarStyle {
-        let currentPath = LxAppCore.getCurrentPath() ?? ""
+        let currentPath = LxAppCore.getCurrentPath()
         let transparent = shouldUseTransparentMode(for: LxAppCore.currentAppId ?? "", path: currentPath)
         let navState = NavigationBarStateManager.shared.currentState
 
@@ -801,8 +766,8 @@ public class LxAppViewController: UIViewController, ObservableObject {
         return false
     }
 
-    /// Get current path for the active LxApp
-    public func getCurrentPath() -> String? {
+    /// Get current path for the active LxApp - always returns definitive value from Rust
+    public func getCurrentPath() -> String {
         return LxAppCore.getCurrentPath()
     }
 
@@ -848,42 +813,31 @@ public class LxAppViewController: UIViewController, ObservableObject {
         rootContainer.addSubview(tabBar)
         applyTabBarLayoutParams(tabBar: tabBar, config: config, for: appId)
 
-        // Ensure TabBar is brought to front immediately after creation
-        rootContainer.bringSubviewToFront(tabBar)
-
         return tabBar
     }
 
     func showTabBar(_ show: Bool) {
         currentTabBar?.isHidden = !show
-        if show { bringUIElementsToFront() }
-    }
-
-    private func bringUIElementsToFront() {
-        // Bring UI elements to front in correct order
-        if let navBar = globalNavigationBar {
-            rootContainer.bringSubviewToFront(navBar)
-        }
-        if let tabBar = currentTabBar {
-            rootContainer.bringSubviewToFront(tabBar)
-
-            // Re-apply transparency if needed
-            if TabBar.isTransparent(tabBar.config?.background_color ?? 0) {
-                tabBar.forceTransparencyMode()
+        if show {
+            // Ensure TabBar is brought to front when shown
+            if let tabBar = currentTabBar {
+                rootContainer.bringSubviewToFront(tabBar)
             }
         }
-        if let capsule = globalCapsuleButton {
-            rootContainer.bringSubviewToFront(capsule)
-        }
     }
 
-    /// Update capsule button visibility - only home app hides it
-    public func updateCapsuleButtonVisibility(appId: String) {
-        let isHomeApp = LxAppCore.isHomeLxApp(appId)
-        if !isHomeApp {
-            updateCapsuleButton(for: appId)
-        } else {
-            globalCapsuleButton?.isHidden = true
+    /// Ensures UI elements are properly layered above WebView content
+    /// Call this after WebView transitions or when UI elements need to be visible
+    private func bringUIElementsToFront() {
+        // Bring UI elements to front in correct z-order: NavBar -> TabBar -> Capsule
+        if let navBar = globalNavigationBar, !navBar.isHidden {
+            rootContainer.bringSubviewToFront(navBar)
+        }
+        if let tabBar = currentTabBar, !tabBar.isHidden {
+            rootContainer.bringSubviewToFront(tabBar)
+        }
+        if let capsule = globalCapsuleButton, !capsule.isHidden {
+            rootContainer.bringSubviewToFront(capsule)
         }
     }
 
@@ -892,8 +846,9 @@ public class LxAppViewController: UIViewController, ObservableObject {
         // Apply proper styling first (this will set transparency if needed)
         applyAppStyling(for: appId, path: path)
 
-        // Update navigation bar for the current path
+        // Update navigation bar and tabBar for the current path
         updateNavigationBar(appId: appId, path: path)
+        updateTabBar(for: appId, path: path)
 
         // Ensure navigation bar transparency after forward/backward navigation
         let shouldUseTransparent = shouldUseTransparentMode(for: appId, path: path)
@@ -975,8 +930,9 @@ public class LxAppViewController: UIViewController, ObservableObject {
         let slideInTranslation: CGFloat = isBackNavigation ? -screenWidth : screenWidth
         let slideOutTranslation: CGFloat = isBackNavigation ? screenWidth : -screenWidth
 
-        // Update navigation bar state first (before animation)
+        // Update navigation bar and tabBar state first (before animation)
         updateNavigationBar(appId: appId, path: path)
+        updateTabBar(for: appId, path: path)
 
         // Ensure target WebView is properly configured for animation
         if targetWebView.superview != rootContainer {

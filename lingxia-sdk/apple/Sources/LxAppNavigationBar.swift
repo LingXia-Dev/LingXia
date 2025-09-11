@@ -8,15 +8,6 @@ import AppKit
 import UIKit
 #endif
 
-struct NavigationButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
-            .opacity(configuration.isPressed ? 0.7 : 1.0)
-            .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
-    }
-}
-
 @MainActor
 public class NavigationBarStateManager: ObservableObject {
     @Published public var currentState: NavigationBarState? = nil
@@ -36,9 +27,8 @@ public class NavigationBarStateManager: ObservableObject {
               let window = windowScene.windows.first,
               let navController = window.rootViewController as? UINavigationController,
               let manager = navController.topViewController as? LxAppViewController,
-              LxAppCore.currentAppId == appId,
-              let path = manager.getCurrentPath() else { return }
-
+              LxAppCore.currentAppId == appId else { return }
+        let path = manager.getCurrentPath()
         let newState = LxPageNavigation.getNavigationBarState(appId: appId, path: path)
         currentState = newState
         #endif
@@ -355,6 +345,9 @@ public class iOSNavigationBarWrapper: UIView, NavigationBarProtocol {
 
         let showNavbar = state?.show_navbar ?? false
         updateContainerHeight(showNavbar: showNavbar)
+
+        // Set the visibility of the entire NavigationBar
+        self.isHidden = !showNavbar
 
         if let state = state, showNavbar {
             let color = UIColor(argb: state.background_color)

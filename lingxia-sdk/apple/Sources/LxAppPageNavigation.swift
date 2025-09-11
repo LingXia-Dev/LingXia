@@ -42,6 +42,39 @@ public protocol NavigationUIUpdater {
     func triggerTabBarRefresh()
 }
 
+/// Shared navigation operations for view controllers
+@MainActor
+public class LxAppViewControllerBase {
+    private static let log = OSLog(subsystem: "LingXia", category: "ViewControllerBase")
+
+    /// Shared navigation logic
+    public static func handleNavigation(
+        appId: String,
+        path: String,
+        navigationType: NavigationType,
+        tabBarController: NavigationTabBarController,
+        uiUpdater: NavigationUIUpdater,
+        isTabPage: @escaping (String) -> Bool
+    ) {
+        // Swift should only display based on Rust-provided state
+        // TabBar and NavBar state is managed by Rust, Swift just renders
+        if let tabBarState = lingxia.getTabBar(appId) {
+            uiUpdater.showTabBar(tabBarState.is_visible)
+            if tabBarState.is_visible {
+                tabBarController.setSelectedTabIndex(Int(tabBarState.selected_index))
+                uiUpdater.triggerTabBarRefresh()
+            }
+        }
+    }
+
+    /// Shared TabBar sync logic
+    public static func syncTabBarWithPath(_ path: String, appId: String, tabBarController: NavigationTabBarController) {
+        if let tabIndex = tabBarController.findTabIndexByPath(path) {
+            tabBarController.setSelectedTabIndex(tabIndex)
+        }
+    }
+}
+
 /// Navigation logic
 @MainActor
 public class LxAppNavigation {
@@ -64,53 +97,8 @@ public class LxAppNavigation {
         return true
     }
 
-    /// Resolve navigation type based on path and context
-    public static func resolveNavigationType(_ navigationType: NavigationType, for path: String, isTabPage: (String) -> Bool) -> NavigationType {
-        switch navigationType {
-        case .launch:
-            // Launch: check if it's a tab page
-            if isTabPage(path) {
-                return .switchTab  // Convert to tab switch
-            } else {
-                return .launch     // Keep as launch (will hide tabbar)
-            }
-        default:
-            return navigationType  // Keep original type
-        }
-    }
-
-    /// Apply navigation type specific UI updates
-    public static func applyNavigationTypeSpecificUpdates(
-        navigationType: NavigationType,
-        path: String,
-        appId: String,
-        tabBarController: NavigationTabBarController,
-        uiUpdater: NavigationUIUpdater
-    ) {
-        switch navigationType {
-        case .switchTab:
-            // TabSwitch: Set selected TabBar item and ensure visibility
-            if let tabIndex = tabBarController.findTabIndexByPath(path) {
-                tabBarController.setSelectedTabIndex(tabIndex)
-                uiUpdater.showTabBar(true)
-                uiUpdater.triggerTabBarRefresh()
-            }
-
-        case .launch:
-            // Launch (non-tab page): Hide TabBar
-            uiUpdater.showTabBar(false)
-
-        case .replace:
-            // Replace: Hide TabBar, update NavBar
-            uiUpdater.showTabBar(false)
-
-        case .forward, .backward:
-            // Forward/Backward: Hide TabBar
-            uiUpdater.showTabBar(false)
-        }
-    }
-
     /// Shared navigation preparation logic - used by both platforms
+    /// Rust prepares all states before navigate, Swift only reads them once here
     public static func prepareNavigation(appId: String, path: String, navigationType: NavigationType) -> NavigationPlan {
 
         guard !appId.isEmpty else {
@@ -118,10 +106,21 @@ public class LxAppNavigation {
             return NavigationPlan.empty
         }
 
-        // Determine UI component states based on navigation type (macOS reference logic)
-        let tabBarState = determineTabBarState(appId: appId, path: path, navigationType: navigationType)
-        let navBarState = determineNavBarState(appId: appId, path: path, navigationType: navigationType)
-        let lifecycleAction = determineLifecycleAction(navigationType: navigationType)
+        // Get TabBar state from Rust once - Rust has prepared it before navigate
+        let rustTabBarConfig = lingxia.getTabBar(appId)
+        let shouldShowTabBar = rustTabBarConfig?.is_visible ?? false
+
+        let tabBarState = TabBarState(
+            show: shouldShowTabBar,
+            updateSelection: true,
+            selectedPath: path
+        )
+        let navBarState = NavBarState(
+            shouldUpdate: true,
+            appId: appId,
+            path: path
+        )
+        let lifecycleAction = LifecycleAction.pageShow
 
         return NavigationPlan(
             appId: appId,
@@ -132,36 +131,6 @@ public class LxAppNavigation {
             lifecycleAction: lifecycleAction,
             shouldProceed: true
         )
-    }
-
-    /// Determine TabBar visibility and behavior
-    private static func determineTabBarState(appId: String, path: String, navigationType: NavigationType) -> TabBarState {
-        switch navigationType {
-        case .switchTab:
-            return TabBarState(show: true, updateSelection: true, selectedPath: path)
-        case .launch:
-            return isTabBarPage(appId: appId, path: path) ?
-                TabBarState(show: true, updateSelection: true, selectedPath: path) :
-                TabBarState(show: false, updateSelection: false, selectedPath: nil)
-        default:
-            return TabBarState(show: true, updateSelection: false, selectedPath: nil)
-        }
-    }
-
-    /// Determine NavigationBar state
-    private static func determineNavBarState(appId: String, path: String, navigationType: NavigationType) -> NavBarState {
-        return NavBarState(shouldUpdate: true, appId: appId, path: path)
-    }
-
-    /// Determine lifecycle action based on navigation type
-    private static func determineLifecycleAction(navigationType: NavigationType) -> LifecycleAction {
-        switch navigationType {
-        case .launch: return .openApp
-        case .switchTab: return .switchTab
-        case .forward: return .pageShow
-        case .backward: return .pageShow
-        case .replace: return .pageShow
-        }
     }
 
     /// Check if path corresponds to a TabBar item
@@ -208,9 +177,6 @@ public protocol LxAppRenderer {
 
     /// Render Capsule button - only home app hides it, others show it
     func renderCapsuleButton(appId: String)
-
-    /// Get current path for duplicate navigation check
-    func getCurrentPath(for appId: String) -> String?
 }
 
 /// Plan for navigation execution

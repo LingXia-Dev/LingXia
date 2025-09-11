@@ -31,27 +31,18 @@ public class iOSLxApp: LxAppRenderer {
 
     /// Initialize the iOS LxApp system
     public static func initialize() {
-        if instance != nil {
-            return
-        }
+        if instance != nil { return }
 
         instance = iOSLxApp(context: UIApplication.shared)
-
-        // Initialize core system
         LxAppCore.initializeCore()
-
         configureGlobalSystemBars()
-
-        // Initialize push notifications
         iOSPushManager.shared.initialize()
     }
 
     /// Opens a lxapp
     public static func openLxApp(appId: String, path: String) {
         os_log("iOS openLxApp: %@ at path: %@", log: log, type: .info, appId, path)
-
-        let instance = getInstance()
-        LxAppCore.executeOpenLxApp(appId: appId, path: path, renderer: instance)
+        LxAppPlatformOperations.openLxApp(appId: appId, path: path, renderer: getInstance())
     }
 
     /// Opens the home mini app
@@ -60,30 +51,24 @@ public class iOSLxApp: LxAppRenderer {
             os_log("Home app details not available", log: log, type: .error)
             return
         }
-
-        // Pass empty path - openLxApp will use initial route
         openLxApp(appId: homeLxAppId, path: "")
     }
 
     /// Closes a mini app with the specified appId
     public static func closeLxApp(appId: String) {
         os_log("Closing LxApp: %@", log: log, type: .info, appId)
-
-        let instance = getInstance()
-        instance.lxAppManager?.closeLxApp(appId: appId)
+        getInstance().lxAppManager?.closeLxApp(appId: appId)
     }
 
     /// Navigate to a page with specific navigation type
     public static func navigate(appId: String, path: String, navigationType: NavigationType) {
         os_log("iOS navigate: %@ to %@ with type: %@", log: log, type: .info, appId, path, String(describing: navigationType))
-
-        let instance = getInstance()
-        LxAppCore.executeNavigation(appId: appId, path: path, navigationType: navigationType, renderer: instance)
+        LxAppPlatformOperations.navigate(appId: appId, path: path, navigationType: navigationType, renderer: getInstance())
     }
 
     /// Find WebView for the given appId and path
     internal static func findWebView(appId: String, path: String) -> WKWebView? {
-        return WebViewManager.findWebView(appId: appId, path: path)
+        return LxAppPlatformOperations.findWebView(appId: appId, path: path)
     }
 
     private func openLxAppInManager(appId: String, path: String) {
@@ -142,21 +127,7 @@ public class iOSLxApp: LxAppRenderer {
 
     /// Finds the topmost view controller in the hierarchy
     private func findTopmostViewController(from viewController: UIViewController) -> UIViewController {
-        if let presentedVC = viewController.presentedViewController {
-            return findTopmostViewController(from: presentedVC)
-        }
-
-        if let navController = viewController as? UINavigationController,
-           let topVC = navController.topViewController {
-            return findTopmostViewController(from: topVC)
-        }
-
-        if let tabController = viewController as? UITabBarController,
-           let selectedVC = tabController.selectedViewController {
-            return findTopmostViewController(from: selectedVC)
-        }
-
-        return viewController
+        return LxAppViewHierarchyHelper.findTopmostViewController(from: viewController)
     }
 
     /// Configure transparent system bars for a specific view controller
@@ -193,21 +164,7 @@ public class iOSLxApp: LxAppRenderer {
 
     /// Recursively find iOSLxAppManager in the view hierarchy
     private static func findLxAppManager(in viewController: UIViewController?) -> LxAppViewController? {
-        guard let viewController = viewController else { return nil }
-
-        if let lxAppManager = viewController as? LxAppViewController {
-            return lxAppManager
-        }
-
-        if let navController = viewController as? UINavigationController {
-            return findLxAppManager(in: navController.topViewController)
-        }
-
-        if let presentedVC = viewController.presentedViewController {
-            return findLxAppManager(in: presentedVC)
-        }
-
-        return nil
+        return LxAppViewHierarchyHelper.findSpecificViewController(in: viewController)
     }
 }
 
@@ -221,18 +178,17 @@ extension iOSLxApp {
         lxAppManager?.openLxApp(appId: appId, path: path)
     }
 
-    /// Render TabBar based on Rust state (Swift only reflects)
+    /// Render TabBar based on state (visibility determined in prepareNavigation)
     public func renderTabBar(_ state: TabBarState, appId: String, path: String) {
         guard let manager = lxAppManager else { return }
 
         manager.setupTabBar(appId: appId)
 
-        // Read visibility from Rust state
-        let isVisible = lingxia.getTabBar(appId)?.is_visible ?? false
-        if isVisible {
+        // Use state visibility (already determined in prepareNavigation)
+        if state.show {
             manager.currentTabBar?.syncSelectedTabWithCurrentPath(path)
         }
-        manager.showTabBar(isVisible)
+        manager.showTabBar(state.show)
     }
 
     /// Render NavigationBar based on state
@@ -243,7 +199,6 @@ extension iOSLxApp {
 
     /// Render Capsule button - only home app hides it
     public func renderCapsuleButton(appId: String) {
-        lxAppManager?.updateCapsuleButtonVisibility(appId: appId)
     }
 
     /// Handle platform-specific navigation logic
@@ -251,12 +206,6 @@ extension iOSLxApp {
 
         guard let manager = lxAppManager else { return }
         manager.setupOrSwitchWebView(appId: plan.appId, path: plan.path, navigationType: plan.navigationType)
-    }
-
-    /// Get current path for duplicate navigation check
-    public func getCurrentPath(for appId: String) -> String? {
-        guard LxAppCore.currentAppId == appId else { return nil }
-        return LxAppCore.getCurrentPath()
     }
 
     private func setupLxAppManagerIfNeeded() {

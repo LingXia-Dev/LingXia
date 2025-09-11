@@ -837,7 +837,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         let isNewViewController = viewControllers[appId] == nil
 
         let viewController = viewControllers[appId] ?? {
-            let currentPath = LxAppCore.getCurrentPath() ?? "/"
+            let currentPath = LxAppCore.getCurrentPath()
             let vc = macOSLxAppViewController(appId: appId, path: currentPath)
             viewControllers[appId] = vc
             return vc
@@ -845,7 +845,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
 
         // Only call onLxappOpened for newly created view controllers
         if isNewViewController {
-            let currentPath = LxAppCore.getCurrentPath() ?? "/"
+            let currentPath = LxAppCore.getCurrentPath()
             let _ = onLxappOpened(appId, currentPath).toString()
         }
 

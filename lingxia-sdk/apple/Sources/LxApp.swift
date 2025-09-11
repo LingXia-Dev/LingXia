@@ -84,6 +84,71 @@ public struct LxAppDirectoryFactory {
 /// Notification action identifiers
 public let ACTION_CLOSE_LXAPP = "com.lingxia.CLOSE_LXAPP_ACTION"
 
+/// Shared platform operations
+@MainActor
+public class LxAppPlatformOperations {
+    private static let log = OSLog(subsystem: "LingXia", category: "PlatformOps")
+
+    /// Find WebView for the given appId and path - unified across platforms
+    public static func findWebView(appId: String, path: String) -> WKWebView? {
+        return WebViewManager.findWebView(appId: appId, path: path)
+    }
+
+    /// Shared navigation logic
+    public static func navigate(appId: String, path: String, navigationType: NavigationType, renderer: LxAppRenderer) {
+        LxAppCore.executeNavigation(appId: appId, path: path, navigationType: navigationType, renderer: renderer)
+    }
+
+    /// Shared openLxApp logic
+    public static func openLxApp(appId: String, path: String, renderer: LxAppRenderer) {
+        LxAppCore.executeOpenLxApp(appId: appId, path: path, renderer: renderer)
+    }
+}
+
+#if os(iOS)
+/// iOS-specific view hierarchy helper
+@MainActor
+public class LxAppViewHierarchyHelper {
+    /// Finds the topmost view controller in the hierarchy
+    public static func findTopmostViewController(from viewController: UIViewController) -> UIViewController {
+        if let presentedVC = viewController.presentedViewController {
+            return findTopmostViewController(from: presentedVC)
+        }
+
+        if let navController = viewController as? UINavigationController,
+           let topVC = navController.topViewController {
+            return findTopmostViewController(from: topVC)
+        }
+
+        if let tabController = viewController as? UITabBarController,
+           let selectedVC = tabController.selectedViewController {
+            return findTopmostViewController(from: selectedVC)
+        }
+
+        return viewController
+    }
+
+    /// Find specific view controller type in hierarchy
+    public static func findSpecificViewController<T>(in viewController: UIViewController?) -> T? {
+        guard let viewController = viewController else { return nil }
+
+        if let targetVC = viewController as? T {
+            return targetVC
+        }
+
+        if let navController = viewController as? UINavigationController {
+            return findSpecificViewController(in: navController.topViewController)
+        }
+
+        if let presentedVC = viewController.presentedViewController {
+            return findSpecificViewController(in: presentedVC)
+        }
+
+        return nil
+    }
+}
+#endif
+
 /// Core LxApp management logic shared between platforms
 @MainActor
 public class LxAppCore {
@@ -188,10 +253,10 @@ public class LxAppCore {
         currentWebView = WebViewManager.findWebView(appId: appId, path: path)
     }
 
-    /// Get current path for active app
-    public static func getCurrentPath() -> String? {
-        guard currentAppId != nil else { return nil }
-        return currentPath.isEmpty ? nil : currentPath
+    /// Get current path for active app - always returns definitive value, never nil
+    public static func getCurrentPath() -> String {
+        guard currentAppId != nil else { return "/" }
+        return currentPath.isEmpty ? "/" : currentPath
     }
 
     /// Update current path

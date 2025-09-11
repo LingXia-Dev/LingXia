@@ -115,9 +115,7 @@ public class macOSLxApp: ObservableObject, LxAppRenderer {
     /// Open specific LxApp
     public static func openLxApp(appId: String, path: String) {
         os_log("macOS openLxApp: %@ at path: %@", log: log, type: .info, appId, path)
-
-        // Use shared core logic
-        LxAppCore.executeOpenLxApp(appId: appId, path: path, renderer: shared)
+        LxAppPlatformOperations.openLxApp(appId: appId, path: path, renderer: shared)
     }
 
     private static func openTabStyleWindow() {
@@ -155,8 +153,7 @@ public class macOSLxApp: ObservableObject, LxAppRenderer {
 
     /// Navigate to page with specific navigation type
     public static func navigate(appId: String, path: String, navigationType: NavigationType) {
-        // Use shared core logic
-        LxAppCore.executeNavigation(appId: appId, path: path, navigationType: navigationType, renderer: shared)
+        LxAppPlatformOperations.navigate(appId: appId, path: path, navigationType: navigationType, renderer: shared)
     }
 
     /// Remove window controller from active list
@@ -251,28 +248,14 @@ public class macOSLxApp: ObservableObject, LxAppRenderer {
 
     /// Open home LxApp
     internal static func openHomeLxApp() {
-        guard let homeLxAppId = LxAppCore.getHomeLxAppId() else {
-            return
-        }
+        guard let homeLxAppId = LxAppCore.getHomeLxAppId() else { return }
 
-        // Ensure we're on the main thread for UI operations
-        if Thread.isMainThread {
-            performOpenHomeLxApp(homeLxAppId: homeLxAppId)
-        } else {
-            DispatchQueue.main.async {
-                performOpenHomeLxApp(homeLxAppId: homeLxAppId)
+        Task { @MainActor in
+            if LxAppWindowController.getWindowStyle() == .tabStyle {
+                openTabStyleWindow()
+            } else {
+                openLxApp(appId: homeLxAppId, path: "")
             }
-        }
-    }
-
-    private static func performOpenHomeLxApp(homeLxAppId: String) {
-        let currentStyle = LxAppWindowController.getWindowStyle()
-
-        if currentStyle == .tabStyle {
-            openTabStyleWindow()
-        } else {
-            // Pass empty path - openLxApp will use initial route
-            openLxApp(appId: homeLxAppId, path: "")
         }
     }
 
@@ -282,24 +265,16 @@ public class macOSLxApp: ObservableObject, LxAppRenderer {
     }
 
     /// Initialize LxApps system
-    /// - Returns: true if initialization successful, false otherwise
     public static func initialize() -> Bool {
-        // Check if already initialized
-        if isInitialized {
-            return true
-        }
+        if isInitialized { return true }
 
-        // Use LxAppCore.initializeCore() instead of duplicating the logic
         LxAppCore.initializeCore()
+        isInitialized = LxAppCore.getHomeLxAppId() != nil
 
-        // Check if initialization was successful
-        if LxAppCore.getHomeLxAppId() != nil {
-            isInitialized = true
-            return true
-        } else {
+        if !isInitialized {
             os_log("Failed to initialize LxApps - no home app ID", log: log, type: .error)
-            return false
         }
+        return isInitialized
     }
 }
 
@@ -328,11 +303,11 @@ extension macOSLxApp {
 
         guard let vc = viewController else { return }
 
-        let isVisible = lingxia.getTabBar(appId)?.is_visible ?? false
-        if isVisible {
+        // Use state visibility (from prepareNavigation)
+        if state.show {
             vc.syncTabBarSelection(path: path)
         }
-        vc.showTabBar(isVisible)
+        vc.showTabBar(state.show)
     }
 
     /// Render NavigationBar based on state
@@ -388,15 +363,6 @@ extension macOSLxApp {
         } else {
             handleRegularNavigation(plan)
         }
-    }
-
-    /// Get current path for duplicate navigation check
-    public func getCurrentPath(for appId: String) -> String? {
-        // Use centralized state management instead of checking individual controllers
-        if LxAppCore.currentAppId == appId {
-            return LxAppCore.getCurrentPath()
-        }
-        return nil
     }
 
     private func handleTabStyleOpenLxApp(appId: String, path: String) {
