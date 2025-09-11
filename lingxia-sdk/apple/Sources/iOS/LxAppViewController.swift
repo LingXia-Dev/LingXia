@@ -877,38 +877,62 @@ public class LxAppViewController: UIViewController, ObservableObject {
     private func performSameWebViewAnimation(webView: WKWebView, navigationType: NavigationType, appId: String, path: String) {
         let isBackward = navigationType == .backward
 
-        // Pre-configure backgrounds to eliminate black shadows
-        rootContainer.backgroundColor = UIColor.white
-        view.backgroundColor = UIColor.white
-        webView.backgroundColor = UIColor.white
+        // Prepare snapshot early for backward BEFORE any UI updates
+        var preSnapshot: UIView?
+        rootContainer.layoutIfNeeded()
+        if isBackward {
+            preSnapshot = rootContainer.snapshotView(afterScreenUpdates: false)
+            if let s = preSnapshot {
+                s.frame = rootContainer.bounds
+                s.backgroundColor = .white
+            }
+        }
+
+        // Ensure WebView is visible and active, and backgrounds are correct
+        rootContainer.backgroundColor = .white
+        view.backgroundColor = .white
+        webView.backgroundColor = .white
         webView.isHidden = false
         webView.alpha = 1.0
+        webView.resumeWebView()
 
         if let navigationBar = globalNavigationBar {
-            navigationBar.backgroundColor = UIColor.white
+            navigationBar.backgroundColor = .white
             navigationBar.isHidden = false
             navigationBar.alpha = 1.0
         }
 
-        // Force layout update
+        // Update constraints with the correct offset for the TARGET state
+        let shouldUseTransparent = shouldUseTransparentMode(for: appId, path: path)
+        let correctTopOffset = shouldUseTransparent ? 0 : (statusBarHeight + NavigationBarState.DEFAULT_HEIGHT)
+        updateWebViewConstraints(for: appId, topOffset: correctTopOffset)
+        bringUIElementsToFront()
         rootContainer.layoutIfNeeded()
 
-        // Create snapshot
-        let containerSnapshot = rootContainer.snapshotView(afterScreenUpdates: true) ?? UIView()
+        // Use prepared snapshot for backward, otherwise capture after updates for forward
+        let containerSnapshot: UIView = {
+            if let s = preSnapshot { return s }
+            let v = rootContainer.snapshotView(afterScreenUpdates: true) ?? UIView()
+            v.frame = rootContainer.bounds
+            v.backgroundColor = .white
+            return v
+        }()
         containerSnapshot.frame = rootContainer.bounds
-        containerSnapshot.backgroundColor = UIColor.white
+        containerSnapshot.backgroundColor = .white
+        rootContainer.addSubview(containerSnapshot)
+
+        // Robust width fallback to avoid zero-distance animations
+        let screenWidth: CGFloat =
+            rootContainer.bounds.width > 0 ? rootContainer.bounds.width :
+            (view.bounds.width > 0 ? view.bounds.width : UIScreen.main.bounds.width)
 
         // Set initial position for slide animation
-        let screenWidth = rootContainer.bounds.width
         let slideDistance: CGFloat = isBackward ? -screenWidth : screenWidth
-
         webView.transform = CGAffineTransform(translationX: slideDistance, y: 0)
         globalNavigationBar?.transform = CGAffineTransform(translationX: slideDistance, y: 0)
 
-        rootContainer.addSubview(containerSnapshot)
-
         // Animate the slide transition
-        UIView.animate(withDuration: 0.35, delay: 0, options: [.curveEaseOut], animations: {
+        UIView.animate(withDuration: 0.35, delay: 0, options: [.curveEaseInOut], animations: {
             webView.transform = .identity
             self.globalNavigationBar?.transform = .identity
 
@@ -917,6 +941,9 @@ public class LxAppViewController: UIViewController, ObservableObject {
         }, completion: { _ in
             containerSnapshot.removeFromSuperview()
             self.finalizeWebViewAttachment(webView: webView, appId: appId, path: path)
+
+            // Ensure Rust receives PageShow for same-WebView navigations (both forward/backward)
+            lingxia.onPageShow(appId, path)
         })
     }
 
