@@ -370,8 +370,35 @@ impl Page {
             } else {
                 (url.to_string(), "")
             };
-            let q = serde_json::from_str(q_str)
-                .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::new()));
+
+            // Parse query string into JSON object
+            let q = if q_str.is_empty() {
+                serde_json::Value::Null
+            } else {
+                let mut query_map = serde_json::Map::new();
+                for pair in q_str.split('&') {
+                    if let Some(eq_pos) = pair.find('=') {
+                        let key = &pair[..eq_pos];
+                        let value = &pair[eq_pos + 1..];
+                        // URL decode the value if needed
+                        let decoded_value = urlencoding::decode(value)
+                            .unwrap_or_else(|_| std::borrow::Cow::Borrowed(value));
+                        query_map.insert(
+                            key.to_string(),
+                            serde_json::Value::String(decoded_value.to_string()),
+                        );
+                    } else {
+                        // Handle case where there's no '=' (key without value)
+                        query_map
+                            .insert(pair.to_string(), serde_json::Value::String("".to_string()));
+                    }
+                }
+                if query_map.is_empty() {
+                    serde_json::Value::Null
+                } else {
+                    serde_json::Value::Object(query_map)
+                }
+            };
             (p, q)
         };
 

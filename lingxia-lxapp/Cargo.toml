@@ -11,6 +11,7 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 serde = { workspace = true }
 tokio = { workspace = true }
+urlencoding = { workspace = true }
 
 # Local dependencies
 rong_modules = { workspace = true }
