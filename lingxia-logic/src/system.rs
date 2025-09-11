@@ -41,8 +41,5 @@ pub fn init(ctx: &JSContext) -> JSResult<()> {
     let js_func = rong::JSFunc::new(ctx, device_info)?;
     lx::register_js_api(ctx, "getDeviceInfo", js_func)?;
 
-    // Register FastAPI handler
-    lx::register_fast_api("getDeviceInfo", Arc::new(GetDeviceInfo));
-
     Ok(())
 }
