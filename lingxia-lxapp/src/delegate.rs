@@ -1,4 +1,5 @@
 use crate::executor::LxAppExecutor;
+use crate::page::PageStage;
 use crate::{LxApp, error, info, lxapp};
 use lingxia_platform::{AppRuntime, NavigationType};
 use std::sync::Arc;
@@ -154,17 +155,7 @@ impl LxAppDelegate for LxApp {
                 .with_path(path.clone());
         }
 
-        // Call onShow for the page itself aftr push page to stack
-        if let Err(e) = self.executor.call_page_service(
-            self.appid.clone(),
-            path.clone(),
-            "onShow".to_string(),
-            None,
-        ) {
-            error!("Failed to call onShow: {}", e)
-                .with_appid(self.appid.clone())
-                .with_path(path.clone());
-        }
+        page.set_stage(PageStage::OnShow);
 
         // Mark the page as active for LRU tracking
         page.mark_active();

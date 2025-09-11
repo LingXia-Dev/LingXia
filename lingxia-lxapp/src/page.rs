@@ -30,6 +30,8 @@ pub(crate) struct PageInner {
 pub struct PageState {
     // Page(webview) reander status
     render_status: PageRenderStatus,
+    // page stage
+    stage: PageStage,
     // Navigation bar state
     pub(crate) navbar_state: NavigationBarState,
     // Query parameters
@@ -37,10 +39,33 @@ pub struct PageState {
 }
 
 #[derive(Copy, Clone, PartialEq, Debug)]
-pub enum PageRenderStatus {
+enum PageRenderStatus {
     Unstarted,
     Started,
     Finished,
+}
+
+#[derive(Copy, Clone, PartialEq, Debug)]
+pub(crate) enum PageStage {
+    OnLoad,
+    OnReady,
+    OnShow,
+    OnHide,
+    OnUnload,
+    Unknown,
+}
+
+impl From<PageStage> for String {
+    fn from(stage: PageStage) -> Self {
+        match stage {
+            PageStage::OnLoad => "onLoad".to_string(),
+            PageStage::OnReady => "onReady".to_string(),
+            PageStage::OnShow => "onShow".to_string(),
+            PageStage::OnHide => "onHide".to_string(),
+            PageStage::OnUnload => "onUnload".to_string(),
+            PageStage::Unknown => "unknown".to_string(),
+        }
+    }
 }
 
 /// Represents a single page in a mini app
@@ -54,6 +79,7 @@ impl Page {
     /// Build PageState from JSON config
     fn build_page_state(lxapp: &lxapp::LxApp, path: &str) -> PageState {
         PageState {
+            stage: PageStage::Unknown,
             render_status: PageRenderStatus::Unstarted,
             navbar_state: NavigationBarState::from_json(lxapp, path),
             query: serde_json::Value::Null,
@@ -131,19 +157,56 @@ impl Page {
         self.inner.state.lock().ok().map(|state| state.clone())
     }
 
-    /// Get page reander status
-    fn get_page_render_status(&self) -> PageRenderStatus {
-        self.inner
-            .state
-            .lock()
-            .map(|state| state.render_status)
-            .unwrap_or(PageRenderStatus::Unstarted)
-    }
-
     /// Set page reander status
-    fn set_page_render_status(&self, status: PageRenderStatus) {
+    fn set_render_status(&self, status: PageRenderStatus) {
         if let Ok(mut state) = self.inner.state.lock() {
             state.render_status = status;
+        }
+    }
+
+    pub(crate) fn set_stage(&self, stage: PageStage) {
+        // The lock must be released before calling the executor to avoid deadlocks,
+        // in case the JS code calls back into Rust and needs to access page state.
+        let (should_call, query_str) = {
+            let mut state = self.inner.state.lock().unwrap();
+            let render = state.render_status; // Current render status
+
+            let call = match stage {
+                PageStage::OnLoad => render != PageRenderStatus::Unstarted,
+                PageStage::OnReady => render == PageRenderStatus::Finished,
+                PageStage::OnShow | PageStage::OnHide | PageStage::OnUnload => state.stage != stage,
+                _ => false,
+            };
+
+            let query = if call && stage == PageStage::OnLoad {
+                serde_json::to_string(&state.query).ok()
+            } else {
+                None
+            };
+
+            if call {
+                state.stage = stage;
+            }
+
+            (call, query)
+        };
+
+        // Make the call to the executor *after* the lock has been released.
+        if should_call {
+            let lxapp = lxapp::get(self.inner.appid.clone());
+            let appid = self.appid();
+            let path = self.path();
+
+            if let Err(e) = lxapp.executor.call_page_service(
+                appid.clone(),
+                path.clone(),
+                stage.into(),
+                query_str,
+            ) {
+                error!("Failed to call {}: {}", String::from(stage), e)
+                    .with_appid(appid)
+                    .with_path(path);
+            }
         }
     }
 
@@ -293,11 +356,24 @@ impl Page {
             if query != serde_json::Value::Null {
                 page.set_query(query);
             }
-        }
 
-        (*lxapp.runtime)
-            .navigate(self.appid(), path, nav_type)
-            .map_err(Into::into)
+            if nav_type == NavigationType::Replace {
+                self.set_stage(PageStage::OnUnload);
+            } else {
+                self.set_stage(PageStage::OnHide);
+            }
+
+            page.set_stage(PageStage::OnLoad);
+            (*lxapp.runtime)
+                .navigate(self.appid(), path, nav_type)
+                .map_err(LxAppError::from)?;
+            page.set_stage(PageStage::OnReady);
+            Ok(())
+        } else {
+            Err(LxAppError::UnsupportedOperation(
+                "Failed to get or create page".to_string(),
+            ))
+        }
     }
 
     pub fn navigate_back(&self, delta: u32) -> Result<(), LxAppError> {
@@ -320,7 +396,11 @@ impl Page {
         }
 
         for _ in 0..pages_to_pop {
-            lxapp.pop_from_page_stack();
+            if let Some(path) = lxapp.pop_from_page_stack() {
+                if let Some(page) = lxapp.get_page(path.as_str()) {
+                    page.set_stage(PageStage::OnUnload);
+                }
+            }
         }
 
         if let Some(path) = lxapp.peek_current_page() {
@@ -354,31 +434,14 @@ impl Page {
 impl WebViewDelegate for Page {
     /// Called when the page starts loading
     fn on_page_started(&self) {
-        self.set_page_render_status(PageRenderStatus::Started);
-        let query_str = serde_json::to_string(&self.get_query()).ok();
-
-        // Get LxApp and call page service
-        let lxapp = lxapp::get(self.inner.appid.clone());
-        let _ = lxapp.executor.call_page_service(
-            self.inner.appid.clone(),
-            self.inner.path.clone(),
-            "onLoad".to_string(),
-            query_str,
-        );
+        self.set_render_status(PageRenderStatus::Started);
+        self.set_stage(PageStage::OnLoad);
     }
 
     /// Called when the page finishes loading
     fn on_page_finished(&self) {
-        self.set_page_render_status(PageRenderStatus::Finished);
-
-        // Get LxApp and call page service
-        let lxapp = lxapp::get(self.inner.appid.clone());
-        let _ = lxapp.executor.call_page_service(
-            self.inner.appid.clone(),
-            self.inner.path.clone(),
-            "onReady".to_string(),
-            None,
-        );
+        self.set_render_status(PageRenderStatus::Finished);
+        self.set_stage(PageStage::OnReady);
     }
 
     /// Called when scroll position changes
