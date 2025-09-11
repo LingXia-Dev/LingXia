@@ -1,5 +1,5 @@
 use crate::executor::LxAppExecutor;
-use crate::page::PageStage;
+use crate::page::PageLifecycleEvent;
 use crate::{LxApp, error, info, lxapp};
 use lingxia_platform::{AppRuntime, NavigationType};
 use std::sync::Arc;
@@ -155,7 +155,7 @@ impl LxAppDelegate for LxApp {
                 .with_path(path.clone());
         }
 
-        page.set_stage(PageStage::OnShow);
+        page.dispatch_lifecycle_event(PageLifecycleEvent::OnShow);
 
         // Mark the page as active for LRU tracking
         page.mark_active();

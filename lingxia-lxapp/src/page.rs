@@ -30,8 +30,16 @@ pub(crate) struct PageInner {
 pub struct PageState {
     // Page(webview) reander status
     render_status: PageRenderStatus,
-    // page stage
-    stage: PageStage,
+    // page lifecycle event
+    event: PageLifecycleEvent,
+    /// Tracks if the UI has requested to show this page. Handles onShow arriving before onLoad.
+    show_requested: bool,
+    /// Tracks if the onLoad JavaScript event has been fired to prevent duplicates.
+    on_load_fired: bool,
+    /// Tracks if the onShow JavaScript event has been fired. Reset on hide to allow re-entry.
+    on_show_fired: bool,
+    /// Tracks if the onReady JavaScript event has been fired to prevent duplicates.
+    on_ready_fired: bool,
     // Navigation bar state
     pub(crate) navbar_state: NavigationBarState,
     // Query parameters
@@ -46,7 +54,7 @@ enum PageRenderStatus {
 }
 
 #[derive(Copy, Clone, PartialEq, Debug)]
-pub(crate) enum PageStage {
+pub(crate) enum PageLifecycleEvent {
     OnLoad,
     OnReady,
     OnShow,
@@ -55,15 +63,15 @@ pub(crate) enum PageStage {
     Unknown,
 }
 
-impl From<PageStage> for String {
-    fn from(stage: PageStage) -> Self {
-        match stage {
-            PageStage::OnLoad => "onLoad".to_string(),
-            PageStage::OnReady => "onReady".to_string(),
-            PageStage::OnShow => "onShow".to_string(),
-            PageStage::OnHide => "onHide".to_string(),
-            PageStage::OnUnload => "onUnload".to_string(),
-            PageStage::Unknown => "unknown".to_string(),
+impl From<PageLifecycleEvent> for String {
+    fn from(event: PageLifecycleEvent) -> Self {
+        match event {
+            PageLifecycleEvent::OnLoad => "onLoad".to_string(),
+            PageLifecycleEvent::OnReady => "onReady".to_string(),
+            PageLifecycleEvent::OnShow => "onShow".to_string(),
+            PageLifecycleEvent::OnHide => "onHide".to_string(),
+            PageLifecycleEvent::OnUnload => "onUnload".to_string(),
+            PageLifecycleEvent::Unknown => "unknown".to_string(),
         }
     }
 }
@@ -79,8 +87,12 @@ impl Page {
     /// Build PageState from JSON config
     fn build_page_state(lxapp: &lxapp::LxApp, path: &str) -> PageState {
         PageState {
-            stage: PageStage::Unknown,
+            event: PageLifecycleEvent::Unknown,
             render_status: PageRenderStatus::Unstarted,
+            show_requested: false,
+            on_load_fired: false,
+            on_show_fired: false,
+            on_ready_fired: false,
             navbar_state: NavigationBarState::from_json(lxapp, path),
             query: serde_json::Value::Null,
         }
@@ -164,48 +176,82 @@ impl Page {
         }
     }
 
-    pub(crate) fn set_stage(&self, stage: PageStage) {
+    pub(crate) fn dispatch_lifecycle_event(&self, event: PageLifecycleEvent) {
+        // This function acts as a state machine to ensure the JS lifecycle events
+        // fire in the correct order (onLoad -> onShow -> onReady), regardless of
+        // when the underlying events (manual calls, UI visibility, webview delegates) arrive.
+
+        // A collection of events to fire after the lock is released.
+        let mut events_to_fire: Vec<(PageLifecycleEvent, Option<String>)> = Vec::new();
+
+        // acquire lock, update state, determine events to fire
         // The lock must be released before calling the executor to avoid deadlocks,
         // in case the JS code calls back into Rust and needs to access page state.
-        let (should_call, query_str) = {
+        {
             let mut state = self.inner.state.lock().unwrap();
-            let render = state.render_status; // Current render status
 
-            let call = match stage {
-                PageStage::OnLoad => render != PageRenderStatus::Unstarted,
-                PageStage::OnReady => render == PageRenderStatus::Finished,
-                PageStage::OnShow | PageStage::OnHide | PageStage::OnUnload => state.stage != stage,
-                _ => false,
-            };
-
-            let query = if call && stage == PageStage::OnLoad {
-                serde_json::to_string(&state.query).ok()
+            // OnHide and OnUnload are handled exclusively and do not trigger the main event cascade.
+            if event == PageLifecycleEvent::OnHide || event == PageLifecycleEvent::OnUnload {
+                if state.event != event {
+                    events_to_fire.push((event, None));
+                    state.event = event;
+                    // Reset on_show_fired when the page is hidden, to allow onShow to fire again on re-entry.
+                    state.on_show_fired = false;
+                }
             } else {
-                None
-            };
+                // This logic handles the Load -> Show -> Ready cascade.
 
-            if call {
-                state.stage = stage;
+                // Update raw status based on the incoming event.
+                if event == PageLifecycleEvent::OnShow {
+                    state.show_requested = true;
+                }
+
+                // Check for onLoad: Can fire if page has started loading and hasn't been fired.
+                if event == PageLifecycleEvent::OnLoad
+                    && state.render_status != PageRenderStatus::Unstarted
+                {
+                    let query = serde_json::to_string(&state.query).ok();
+                    events_to_fire.push((PageLifecycleEvent::OnLoad, query));
+                    state.on_load_fired = true;
+                    state.on_show_fired = false;
+                    state.on_ready_fired = false;
+                }
+
+                // Check for onShow: Can fire if onLoad has fired, UI has requested show, and it hasn't been fired.
+                if state.on_load_fired && state.show_requested && !state.on_show_fired {
+                    events_to_fire.push((PageLifecycleEvent::OnShow, None));
+                    state.on_show_fired = true;
+                    state.event = PageLifecycleEvent::OnShow;
+                }
+
+                // Check for onReady: Can fire if onShow has fired, page has finished loading, and it hasn't been fired.
+                if state.on_show_fired
+                    && state.render_status == PageRenderStatus::Finished
+                    && !state.on_ready_fired
+                {
+                    events_to_fire.push((PageLifecycleEvent::OnReady, None));
+                    state.on_ready_fired = true;
+                }
             }
+        }
 
-            (call, query)
-        };
-
-        // Make the call to the executor *after* the lock has been released.
-        if should_call {
+        //  Fire the collected events outside of the lock to prevent deadlocks.
+        if !events_to_fire.is_empty() {
             let lxapp = lxapp::get(self.inner.appid.clone());
             let appid = self.appid();
             let path = self.path();
 
-            if let Err(e) = lxapp.executor.call_page_service(
-                appid.clone(),
-                path.clone(),
-                stage.into(),
-                query_str,
-            ) {
-                error!("Failed to call {}: {}", String::from(stage), e)
-                    .with_appid(appid)
-                    .with_path(path);
+            for (event, query) in events_to_fire {
+                if let Err(e) = lxapp.executor.call_page_service(
+                    appid.clone(),
+                    path.clone(),
+                    event.into(),
+                    query,
+                ) {
+                    error!("Failed to call {}: {}", String::from(event), e)
+                        .with_appid(appid.clone())
+                        .with_path(path.clone());
+                }
             }
         }
     }
@@ -358,16 +404,16 @@ impl Page {
             }
 
             if nav_type == NavigationType::Replace {
-                self.set_stage(PageStage::OnUnload);
+                self.dispatch_lifecycle_event(PageLifecycleEvent::OnUnload);
             } else {
-                self.set_stage(PageStage::OnHide);
+                self.dispatch_lifecycle_event(PageLifecycleEvent::OnHide);
             }
 
-            page.set_stage(PageStage::OnLoad);
+            page.dispatch_lifecycle_event(PageLifecycleEvent::OnLoad);
             (*lxapp.runtime)
                 .navigate(self.appid(), path, nav_type)
                 .map_err(LxAppError::from)?;
-            page.set_stage(PageStage::OnReady);
+            page.dispatch_lifecycle_event(PageLifecycleEvent::OnReady);
             Ok(())
         } else {
             Err(LxAppError::UnsupportedOperation(
@@ -398,7 +444,7 @@ impl Page {
         for _ in 0..pages_to_pop {
             if let Some(path) = lxapp.pop_from_page_stack() {
                 if let Some(page) = lxapp.get_page(path.as_str()) {
-                    page.set_stage(PageStage::OnUnload);
+                    page.dispatch_lifecycle_event(PageLifecycleEvent::OnUnload);
                 }
             }
         }
@@ -422,10 +468,6 @@ impl Page {
         }
     }
 
-    fn get_query(&self) -> serde_json::Value {
-        self.inner.state.lock().unwrap().query.clone()
-    }
-
     pub(crate) fn set_query(&self, query: serde_json::Value) {
         self.inner.state.lock().unwrap().query = query;
     }
@@ -435,13 +477,13 @@ impl WebViewDelegate for Page {
     /// Called when the page starts loading
     fn on_page_started(&self) {
         self.set_render_status(PageRenderStatus::Started);
-        self.set_stage(PageStage::OnLoad);
+        self.dispatch_lifecycle_event(PageLifecycleEvent::OnLoad);
     }
 
     /// Called when the page finishes loading
     fn on_page_finished(&self) {
         self.set_render_status(PageRenderStatus::Finished);
-        self.set_stage(PageStage::OnReady);
+        self.dispatch_lifecycle_event(PageLifecycleEvent::OnReady);
     }
 
     /// Called when scroll position changes
