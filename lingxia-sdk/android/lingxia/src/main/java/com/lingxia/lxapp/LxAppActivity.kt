@@ -808,13 +808,6 @@ class LxAppActivity : AppCompatActivity() {
     }
 
     /**
-     * Check if path is a tab page
-     */
-    private fun isTabPage(targetPath: String): Boolean {
-        return tabBar?.findTabIndexByPath(targetPath)?.let { it >= 0 } ?: false
-    }
-
-    /**
      * Animate old container out with cleanup
      */
     private fun animateOldContainerOut(

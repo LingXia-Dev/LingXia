@@ -621,11 +621,6 @@ class TabBar(context: Context) : LinearLayout(context) {
         }
     }
 
-    // Finds the index of a tab item by its pagePath
-    fun findTabIndexByPath(path: String): Int {
-        return items.indexOfFirst { it.pagePath == path }
-    }
-
     private fun isValidConfig(config: TabBarState): Boolean {
         return config.list.isNotEmpty()
     }
