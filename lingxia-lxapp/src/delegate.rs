@@ -282,24 +282,12 @@ impl LxApp {
             return true;
         }
 
-        // Pop the current page from the stack
-        self.pop_from_page_stack();
-
-        // Get the new top page to navigate to
-        let state = self.state.lock().unwrap();
-        if let Some(prev_path) = state.page_stack.lock().unwrap().back() {
-            if let Err(e) = self.runtime.navigate(
-                self.appid.clone(),
-                prev_path.clone(),
-                NavigationType::Backward.to_animation(),
-            ) {
-                error!("Failed to navigate back to page {}: {}", prev_path, e)
-                    .with_appid(self.appid.clone());
-                return true; // We tried to handle it, but failed
+        if let Some(path) = self.peek_current_page() {
+            if let Some(page) = self.get_page(path.as_str()) {
+                let _ = page.navigate_back(1);
+                return true;
             }
-            true // We handled the back press
-        } else {
-            false // Should not happen if stack size > 1, but as safeguard
         }
+        false
     }
 }
