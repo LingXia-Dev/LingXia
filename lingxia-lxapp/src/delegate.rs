@@ -149,7 +149,7 @@ impl LxAppDelegate for LxApp {
         };
 
         // Push to page stack - this is where all pages get pushed, regardless of type
-        if let Err(e) = self.push_to_page_stack(&path) {
+        if let Err(e) = self.push_to_page_stack(&path, false) {
             error!("Failed to push page to stack: {}", e)
                 .with_appid(self.appid.clone())
                 .with_path(path.clone());

@@ -749,15 +749,25 @@ impl LxApp {
         Ok(())
     }
 
-    /// Add a page to the navigation stack, allow duplicated page
-    /// Called from delegate on page show
-    pub(crate) fn push_to_page_stack(&self, path: &str) -> Result<(), LxAppError> {
+    /// Add a page to the navigation stack.
+    /// If `force` is false, it won't push if the path is the same as the top of the stack.
+    /// If `force` is true, it will push unconditionally.
+    pub(crate) fn push_to_page_stack(&self, path: &str, force: bool) -> Result<(), LxAppError> {
         let state = self.state.lock().unwrap();
         let mut stack = state.page_stack.lock().unwrap();
 
         // If stack is full, do nothing
         if stack.len() >= PAGE_STACK_MAX {
             return Ok(());
+        }
+
+        // If not forcing, check for duplicates at the top of the stack
+        if !force {
+            if let Some(top) = stack.back() {
+                if top == path {
+                    return Ok(()); // Don't push duplicate
+                }
+            }
         }
 
         // Add to the back of the stack (most recent)

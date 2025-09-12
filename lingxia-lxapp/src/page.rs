@@ -373,22 +373,7 @@ impl Page {
     pub fn navigate(&self, url: &str, nav_type: NavigationType) -> Result<(), LxAppError> {
         let lxapp = lxapp::get(self.appid());
 
-        if nav_type == NavigationType::SwitchTab {
-            lxapp.with_tabbar_mut(|t| {
-                t.set_visible(true);
-                // Set the selected index based on the target path
-                if let Some(index) = t.find_tab_index_by_path(url) {
-                    t.set_selected_index(index);
-                }
-            });
-
-            lxapp.with_navbar_mut(url, |navbar| {
-                navbar.set_back_button_visibility(false);
-            });
-        } else {
-            lxapp.with_tabbar_mut(|t| t.set_visible(false));
-        }
-
+        // 1. Parse URL to get path and query
         let (path, query) = if nav_type == NavigationType::SwitchTab {
             (url.to_string(), serde_json::Value::Null)
         } else {
@@ -398,7 +383,6 @@ impl Page {
                 (url.to_string(), "")
             };
 
-            // Parse query string into JSON object
             let q = if q_str.is_empty() {
                 serde_json::Value::Null
             } else {
@@ -407,7 +391,6 @@ impl Page {
                     if let Some(eq_pos) = pair.find('=') {
                         let key = &pair[..eq_pos];
                         let value = &pair[eq_pos + 1..];
-                        // URL decode the value if needed
                         let decoded_value = urlencoding::decode(value)
                             .unwrap_or_else(|_| std::borrow::Cow::Borrowed(value));
                         query_map.insert(
@@ -415,25 +398,30 @@ impl Page {
                             serde_json::Value::String(decoded_value.to_string()),
                         );
                     } else {
-                        // Handle case where there's no '=' (key without value)
                         query_map
                             .insert(pair.to_string(), serde_json::Value::String("".to_string()));
                     }
                 }
-                if query_map.is_empty() {
-                    serde_json::Value::Null
-                } else {
-                    serde_json::Value::Object(query_map)
-                }
+                serde_json::Value::Object(query_map)
             };
             (p, q)
         };
 
-        match nav_type {
-            NavigationType::Launch => {
-                lxapp.clear_page_stack()?;
+        // 2. Handle UI state based on navigation type (TabBar, NavBar)
+        let is_tab_switch = nav_type == NavigationType::SwitchTab;
+        lxapp.with_tabbar_mut(|t| t.set_visible(is_tab_switch));
+        if is_tab_switch {
+            if let Some(Some(index)) = lxapp.with_tabbar_mut(|t| t.find_tab_index_by_path(&path)) {
+                lxapp.with_tabbar_mut(|t| {
+                    t.set_selected_index(index as i32);
+                });
             }
-            NavigationType::SwitchTab => {
+            lxapp.with_navbar_mut(&path, |navbar| navbar.set_back_button_visibility(false));
+        }
+
+        // 3. Handle page stack modifications
+        match nav_type {
+            NavigationType::Launch | NavigationType::SwitchTab => {
                 lxapp.clear_page_stack()?;
             }
             NavigationType::Replace => {
@@ -444,36 +432,42 @@ impl Page {
                     info!("Page stack is full, cannot navigate forward.");
                     return Ok(());
                 }
-                // Show back button for Forward navigation
-                lxapp.with_navbar_mut(&path, |navbar| {
-                    navbar.set_back_button_visibility(true);
-                });
+                // Special case: if navigating forward to the same page, force push.
+                if self.path() == path {
+                    lxapp.push_to_page_stack(&path, true)?;
+                }
+                lxapp.with_navbar_mut(&path, |navbar| navbar.set_back_button_visibility(true));
             }
-            _ => {}
+            NavigationType::Backward => {
+                // Backward is handled by navigate_back, so this is a no-op here.
+            }
         }
 
-        if let Some(page) = lxapp.get_or_create_page(&path) {
-            if query != serde_json::Value::Null {
-                page.set_query(query);
-            }
+        // 4. Get or create the target page and set its query
+        let target_page = lxapp.get_or_create_page(&path).ok_or_else(|| {
+            LxAppError::UnsupportedOperation("Failed to get or create page".to_string())
+        })?;
+        if query != serde_json::Value::Null {
+            target_page.set_query(query);
+        }
 
-            if nav_type == NavigationType::Replace {
-                self.dispatch_lifecycle_event(PageLifecycleEvent::OnUnload);
-            } else {
-                self.dispatch_lifecycle_event(PageLifecycleEvent::OnHide);
-            }
-
-            page.dispatch_lifecycle_event(PageLifecycleEvent::OnLoad);
-            (*lxapp.runtime)
-                .navigate(self.appid(), path, nav_type.to_animation())
-                .map_err(LxAppError::from)?;
-            page.dispatch_lifecycle_event(PageLifecycleEvent::OnReady);
-            Ok(())
+        // 5. Dispatch lifecycle events for current and target pages
+        if nav_type == NavigationType::Replace {
+            self.dispatch_lifecycle_event(PageLifecycleEvent::OnUnload);
         } else {
-            Err(LxAppError::UnsupportedOperation(
-                "Failed to get or create page".to_string(),
-            ))
+            self.dispatch_lifecycle_event(PageLifecycleEvent::OnHide);
         }
+        target_page.dispatch_lifecycle_event(PageLifecycleEvent::OnLoad);
+
+        // 6. Perform the native navigation
+        (*lxapp.runtime)
+            .navigate(self.appid(), path, nav_type.to_animation())
+            .map_err(LxAppError::from)?;
+
+        // 7. Dispatch final lifecycle event for the target page
+        target_page.dispatch_lifecycle_event(PageLifecycleEvent::OnReady);
+
+        Ok(())
     }
 
     pub fn navigate_back(&self, delta: u32) -> Result<(), LxAppError> {
@@ -504,14 +498,17 @@ impl Page {
         }
 
         if let Some(path) = lxapp.peek_current_page() {
-            // Check if we should hide the back button after navigation
-            let new_stack_size = lxapp.get_page_stack_size();
-            if new_stack_size <= 1 {
-                // Hide back button if we're at the root page
-                lxapp.with_navbar_mut(&path, |navbar| {
-                    navbar.set_back_button_visibility(false);
-                });
+            // Update UI for the destination page
+            if let Some(dest_page) = lxapp.get_page(&path) {
+                // Update TabBar visibility based on whether the destination is a tab page
+                lxapp.with_tabbar_mut(|t| t.set_visible(dest_page.is_tabbar_page()));
             }
+
+            // Update NavBar back button visibility based on the new stack size
+            let new_stack_size = lxapp.get_page_stack_size();
+            lxapp.with_navbar_mut(&path, |navbar| {
+                navbar.set_back_button_visibility(new_stack_size > 1);
+            });
 
             (*lxapp.runtime).navigate(
                 self.appid(),
@@ -656,3 +653,4 @@ impl Drop for PageInner {
         }
     }
 }
+
