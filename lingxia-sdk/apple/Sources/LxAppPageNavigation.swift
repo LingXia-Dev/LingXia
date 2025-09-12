@@ -3,13 +3,11 @@ import Foundation
 import os.log
 import WebKit
 
-/// Navigation type enum shared between iOS and macOS
-public enum NavigationType: Sendable {
-    case launch
-    case forward
-    case backward
-    case replace
-    case switchTab
+/// Animation type enum for page transitions
+public enum AnimationType: Sendable {
+    case none      // No animation (used for Launch/Replace/SwitchTab semantics)
+    case forward   // Forward animation (push-style)
+    case backward  // Backward animation (pop-style)
 }
 
 #if os(macOS)
@@ -51,10 +49,9 @@ public class LxAppViewControllerBase {
     public static func handleNavigation(
         appId: String,
         path: String,
-        navigationType: NavigationType,
+        animationType: AnimationType,
         tabBarController: NavigationTabBarController,
-        uiUpdater: NavigationUIUpdater,
-        isTabPage: @escaping (String) -> Bool
+        uiUpdater: NavigationUIUpdater
     ) {
         // Swift should only display based on Rust-provided state
         // TabBar and NavBar state is managed by Rust, Swift just renders
@@ -99,7 +96,7 @@ public class LxAppNavigation {
 
     /// Shared navigation preparation logic - used by both platforms
     /// Rust prepares all states before navigate, Swift only reads them once here
-    public static func prepareNavigation(appId: String, path: String, navigationType: NavigationType) -> NavigationPlan {
+    public static func prepareNavigation(appId: String, path: String, animationType: AnimationType) -> NavigationPlan {
 
         guard !appId.isEmpty else {
             os_log("Empty appId provided for navigation", log: log, type: .error)
@@ -125,7 +122,7 @@ public class LxAppNavigation {
         return NavigationPlan(
             appId: appId,
             path: path,
-            navigationType: navigationType,
+            animationType: animationType,
             tabBarState: tabBarState,
             navBarState: navBarState,
             lifecycleAction: lifecycleAction,
@@ -164,7 +161,7 @@ public struct LxPageNavigation {
 public struct NavigationPlan: Sendable {
     let appId: String
     let path: String
-    let navigationType: NavigationType
+    let animationType: AnimationType
     let tabBarState: TabBarState
     let navBarState: NavBarState
     let lifecycleAction: LifecycleAction
@@ -172,7 +169,7 @@ public struct NavigationPlan: Sendable {
 
     @MainActor
     static let empty = NavigationPlan(
-        appId: "", path: "", navigationType: .launch,
+        appId: "", path: "", animationType: .none,
         tabBarState: TabBarState.hidden,
         navBarState: NavBarState.noUpdate,
         lifecycleAction: .pageShow,

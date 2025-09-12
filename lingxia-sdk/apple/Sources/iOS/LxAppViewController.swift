@@ -158,14 +158,14 @@ public class LxAppViewController: UIViewController, ObservableObject {
         }
     }
 
-    /// Unified navigation entry point - handles all navigation types
-    public func navigate(appId: String, to path: String, with navigationType: NavigationType) {
-        os_log("Navigate: %@ to %@ with type: %@", log: Self.log, type: .info, appId, path, String(describing: navigationType))
+    /// Unified navigation entry point - handles all animation types
+    public func navigate(appId: String, to path: String, with animationType: AnimationType) {
+        os_log("Navigate: %@ to %@ with type: %@", log: Self.log, type: .info, appId, path, String(describing: animationType))
 
         // Ensure view is loaded before navigation
         if !isViewLoaded {
             DispatchQueue.main.async { [weak self] in
-                self?.navigate(appId: appId, to: path, with: navigationType)
+                self?.navigate(appId: appId, to: path, with: animationType)
             }
             return
         }
@@ -185,7 +185,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
         applyAppStyling(for: appId, path: path)
 
         // Setup or switch WebView
-        setupOrSwitchWebView(appId: appId, path: path, navigationType: navigationType)
+        setupOrSwitchWebView(appId: appId, path: path, animationType: animationType)
 
         // Update status bar style
         setNeedsStatusBarAppearanceUpdate()
@@ -202,7 +202,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
         LxAppCore.setCurrentApp(appId: appId, path: path)
 
         // Use unified navigation entry point
-        navigate(appId: appId, to: path, with: .launch)
+        navigate(appId: appId, to: path, with: .none)
     }
 
     /// Closes a LxApp and removes its state
@@ -241,29 +241,21 @@ public class LxAppViewController: UIViewController, ObservableObject {
         }
     }
 
-    public func setupOrSwitchWebView(appId: String, path: String, navigationType: NavigationType) {
+    public func setupOrSwitchWebView(appId: String, path: String, animationType: AnimationType) {
         guard LxAppCore.currentAppId == appId else { return }
 
         if let targetWebView = iOSLxApp.findWebView(appId: appId, path: path) {
             // Handle navigation animations for all cases
             if let existingWebView = getCurrentWebView() {
 
-                // Choose animation based on navigation type
-                switch navigationType {
-                case .switchTab:
-                    if existingWebView != targetWebView {
-                        // Different WebView - use immediate switch to avoid complexity
-                        existingWebView.isHidden = true
-                        existingWebView.pauseWebView()
-                    } else {
-                        os_log("switchTab: Same WebView, no switch needed", log: Self.log, type: .info)
-                    }
+                // Choose animation based on animation type
+                switch animationType {
                 case .forward, .backward:
                     // Forward/backward use slide animation
-                    performSlideTransition(from: existingWebView, to: targetWebView, navigationType: navigationType, appId: appId, path: path)
+                    performSlideTransition(from: existingWebView, to: targetWebView, animationType: animationType, appId: appId, path: path)
                     return // Early return as performSlideTransition handles the rest
-                default:
-                    // Other types use immediate transition
+                case .none:
+                    // No animation - immediate transition
                     existingWebView.isHidden = true
                     existingWebView.pauseWebView()
                 }
@@ -868,8 +860,8 @@ public class LxAppViewController: UIViewController, ObservableObject {
     }
 
     /// Screenshot-based animation for same WebView navigation
-    private func performSameWebViewAnimation(webView: WKWebView, navigationType: NavigationType, appId: String, path: String) {
-        let isBackward = navigationType == .backward
+    private func performSameWebViewAnimation(webView: WKWebView, animationType: AnimationType, appId: String, path: String) {
+        let isBackward = animationType == .backward
 
         // Prepare snapshot early for backward BEFORE any UI updates
         var preSnapshot: UIView?
@@ -942,8 +934,8 @@ public class LxAppViewController: UIViewController, ObservableObject {
     }
 
     /// Perform slide transition between WebViews for forward/backward navigation
-    private func performSlideTransition(from currentWebView: WKWebView, to targetWebView: WKWebView, navigationType: NavigationType, appId: String, path: String) {
-        let isBackNavigation = navigationType == .backward
+    private func performSlideTransition(from currentWebView: WKWebView, to targetWebView: WKWebView, animationType: AnimationType, appId: String, path: String) {
+        let isBackNavigation = animationType == .backward
         let animationDuration: TimeInterval = 0.3
 
         // Set up initial positions - use view bounds as fallback if rootContainer bounds is zero
@@ -976,7 +968,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
 
         // Handle same WebView case (forward/backward to same page)
         if currentWebView == targetWebView {
-            performSameWebViewAnimation(webView: currentWebView, navigationType: navigationType, appId: appId, path: path)
+            performSameWebViewAnimation(webView: currentWebView, animationType: animationType, appId: appId, path: path)
             return
 
         } else {
@@ -1026,8 +1018,8 @@ public class LxAppViewController: UIViewController, ObservableObject {
     }
 
     /// Perform slide out transition when no target WebView is available
-    private func performSlideOutTransition(from currentWebView: WKWebView, navigationType: NavigationType) {
-        let isBackward = navigationType == .backward
+    private func performSlideOutTransition(from currentWebView: WKWebView, animationType: AnimationType) {
+        let isBackward = animationType == .backward
         let animationDuration: TimeInterval = 0.3
 
         let screenWidth = rootContainer.bounds.width

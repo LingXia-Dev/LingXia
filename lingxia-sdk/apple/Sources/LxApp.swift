@@ -166,11 +166,11 @@ public class LxAppCore {
     }
 
     /// Shared navigate logic - used by both iOS and macOS platforms
-    internal static func executeNavigation(appId: String, path: String, navigationType: NavigationType) {
-        os_log("Core executeNavigation: %@ to %@ with type: %@", log: log, type: .info, appId, path, String(describing: navigationType))
+    internal static func executeNavigation(appId: String, path: String, animationType: AnimationType) {
+        os_log("Core executeNavigation: %@ to %@ with type: %@", log: log, type: .info, appId, path, String(describing: animationType))
 
         // Use shared navigation logic from LxAppPageNavigation
-        let plan = LxAppNavigation.prepareNavigation(appId: appId, path: path, navigationType: navigationType)
+        let plan = LxAppNavigation.prepareNavigation(appId: appId, path: path, animationType: animationType)
 
         guard plan.shouldProceed else {
             os_log("Navigation cancelled by shared logic", log: log, type: .info)
@@ -341,24 +341,21 @@ extension LxApp {
         }
     }
 
-    /// Navigate to page with specific navigation type
-    nonisolated public static func navigate(appid: RustStr, path: RustStr, navigation_type: Int32) -> Bool {
+    /// Navigate to page with specific animation type
+    nonisolated public static func navigate(appid: RustStr, path: RustStr, animation_type: Int32) -> Bool {
         let appIdString = appid.toString()
         let pathString = path.toString()
 
-        // Convert Int32 to NavigationType enum
-        let navigationType: NavigationType
-        switch navigation_type {
-        case 0: navigationType = .launch
-        case 1: navigationType = .forward
-        case 2: navigationType = .backward
-        case 3: navigationType = .replace
-        case 4: navigationType = .switchTab
-        default: navigationType = .forward // Default fallback
+        // Convert Int32 to AnimationType enum
+        let animationType: AnimationType
+        switch animation_type {
+        case 1: animationType = .forward
+        case 2: animationType = .backward
+        default: animationType = .none // 0 or any other value
         }
 
         return executeOnMain {
-            LxAppPlatform.navigate(appId: appIdString, path: pathString, navigationType: navigationType)
+            LxAppPlatform.navigate(appId: appIdString, path: pathString, animationType: animationType)
             return true
         }
     }

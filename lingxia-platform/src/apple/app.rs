@@ -1,6 +1,6 @@
 use super::ffi;
 use crate::error::PlatformError;
-use crate::{AppRuntime, AssetFileEntry, DeviceInfo, NavigationType};
+use crate::{AppRuntime, AssetFileEntry, DeviceInfo};
 use std::ffi::CStr;
 use std::io::{Cursor, Read};
 use std::mem;
@@ -123,14 +123,14 @@ impl AppRuntime for Platform {
         &self,
         appid: String,
         path: String,
-        navigation_type: NavigationType,
+        animation_type: crate::traits::AnimationType,
     ) -> Result<(), PlatformError> {
-        if ffi::navigate(&appid, &path, navigation_type as i32) {
+        if ffi::navigate(&appid, &path, animation_type as i32) {
             Ok(())
         } else {
             Err(PlatformError::Platform(format!(
-                "Failed to navigate: appid={}, path={}, navigation_type={:?}",
-                appid, path, navigation_type
+                "Failed to navigate: appid={}, path={}, animation_type={:?}",
+                appid, path, animation_type
             )))
         }
     }

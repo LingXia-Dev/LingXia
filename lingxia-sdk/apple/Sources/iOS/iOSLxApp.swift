@@ -60,10 +60,10 @@ public class iOSLxApp {
         getInstance().lxAppManager?.closeLxApp(appId: appId)
     }
 
-    /// Navigate to a page with specific navigation type
-    public static func navigate(appId: String, path: String, navigationType: NavigationType) {
-        os_log("iOS navigate: %@ to %@ with type: %@", log: log, type: .info, appId, path, String(describing: navigationType))
-        LxAppCore.executeNavigation(appId: appId, path: path, navigationType: navigationType)
+    /// Navigate to a page with specific animation type
+    public static func navigate(appId: String, path: String, animationType: AnimationType) {
+        os_log("iOS navigate: %@ to %@ with type: %@", log: log, type: .info, appId, path, String(describing: animationType))
+        LxAppCore.executeNavigation(appId: appId, path: path, animationType: animationType)
     }
 
     /// Find WebView for the given appId and path
@@ -186,7 +186,7 @@ extension iOSLxApp {
         guard let manager = instance.lxAppManager else { return }
 
         // Platform-specific setup/switch WebView first
-        manager.setupOrSwitchWebView(appId: plan.appId, path: plan.path, navigationType: plan.navigationType)
+        manager.setupOrSwitchWebView(appId: plan.appId, path: plan.path, animationType: plan.animationType)
 
         // Render UI components based on state
         renderTabBarDirect(plan.tabBarState, appId: plan.appId, path: plan.path, manager: manager)

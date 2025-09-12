@@ -57,7 +57,7 @@ mod bridge {
         fn close_lxapp(appid: &str) -> bool;
 
         #[swift_bridge(swift_name = "LxApp.navigate")]
-        fn navigate(appid: &str, path: &str, navigation_type: i32) -> bool;
+        fn navigate(appid: &str, path: &str, animation_type: i32) -> bool;
 
         // TabBar UI update callback
         #[swift_bridge(swift_name = "LxApp.updateTabBarUI")]

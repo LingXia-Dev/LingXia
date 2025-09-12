@@ -285,7 +285,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate, N
 
     /// Navigate - using shared navigation logic
     @MainActor
-    public func navigate(appId: String, to path: String, with navigationType: NavigationType) {
+    public func navigate(appId: String, to path: String, with animationType: AnimationType) {
         guard !appId.isEmpty else { return }
 
         self.currentPath = path

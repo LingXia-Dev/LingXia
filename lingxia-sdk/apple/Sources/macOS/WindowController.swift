@@ -830,7 +830,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     public func openLxApp(appId: String, path: String) {
         LxAppCore.setCurrentApp(appId: appId, path: path)
         tabManager.addTab(appId: appId)
-        macOSLxApp.navigate(appId: appId, path: path, navigationType: .launch)
+        macOSLxApp.navigate(appId: appId, path: path, animationType: .none)
     }
 
     private func switchToTab(_ appId: String) {

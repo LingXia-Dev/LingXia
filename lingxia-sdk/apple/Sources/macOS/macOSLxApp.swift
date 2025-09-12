@@ -151,9 +151,9 @@ public class macOSLxApp: ObservableObject {
         }
     }
 
-    /// Navigate to page with specific navigation type
-    public static func navigate(appId: String, path: String, navigationType: NavigationType) {
-        LxAppCore.executeNavigation(appId: appId, path: path, navigationType: navigationType)
+    /// Navigate to page with specific animation type
+    public static func navigate(appId: String, path: String, animationType: AnimationType) {
+        LxAppCore.executeNavigation(appId: appId, path: path, animationType: animationType)
     }
 
     /// Remove window controller from active list
@@ -304,8 +304,8 @@ extension macOSLxApp {
     /// Direct platform-specific navigation logic
     private static func handlePlatformSpecificNavigationDirect(_ plan: NavigationPlan) {
         // Handle macOS-specific window/tab management
-        if plan.navigationType == .launch {
-            // Launch navigation is handled in openLxApp
+        if plan.animationType == .none {
+            // No animation (Launch/Replace/SwitchTab) is handled in openLxApp
             return
         } else {
             shared.handleRegularNavigation(plan)
@@ -408,10 +408,10 @@ extension macOSLxApp {
         // Find the appropriate view controller and delegate navigation
         if let controller = Self.activeWindowControllers.first(where: { $0.appId == plan.appId }),
            let viewController = controller.window?.contentViewController as? macOSLxAppViewController {
-            viewController.navigate(appId: plan.appId, to: plan.path, with: plan.navigationType)
+            viewController.navigate(appId: plan.appId, to: plan.path, with: plan.animationType)
         } else if let tabController = Self.tabWindowController,
                   let viewController = tabController.getViewController(for: plan.appId) {
-            viewController.navigate(appId: plan.appId, to: plan.path, with: plan.navigationType)
+            viewController.navigate(appId: plan.appId, to: plan.path, with: plan.animationType)
         }
     }
 }
