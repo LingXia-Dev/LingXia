@@ -2,7 +2,7 @@ use crate::appservice::bridge::IncomingMessage;
 use crate::executor::LxAppExecutor;
 use crate::lxapp::{self, navbar::NavigationBarState};
 use crate::{LxApp, LxAppError, error, info};
-use lingxia_platform::{AppRuntime, NavigationType};
+use lingxia_platform::{AnimationType, AppRuntime};
 use lingxia_webview::{
     LogLevel, WebTag, WebView, WebViewController, WebViewDelegate, create_webview,
 };
@@ -72,6 +72,33 @@ impl From<PageLifecycleEvent> for String {
             PageLifecycleEvent::OnHide => "onHide".to_string(),
             PageLifecycleEvent::OnUnload => "onUnload".to_string(),
             PageLifecycleEvent::Unknown => "unknown".to_string(),
+        }
+    }
+}
+
+/// Navigation type for page navigation within LxApp
+/// This enum defines the different types of navigation actions that can be performed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NavigationType {
+    /// Launch navigation - open entry page (clear stack)
+    Launch = 0,
+    /// Forward navigation - push new page
+    Forward = 1,
+    /// Backward navigation - pop to previous page
+    Backward = 2,
+    /// Replace navigation - replace current page
+    Replace = 3,
+    /// Switch tab navigation - switch between tab pages
+    SwitchTab = 4,
+}
+
+impl NavigationType {
+    /// Convert navigation type to an appropriate animation type for platform runtimes
+    pub fn to_animation(self) -> AnimationType {
+        match self {
+            NavigationType::Forward => AnimationType::Forward,
+            NavigationType::Backward => AnimationType::Backward,
+            _ => AnimationType::None,
         }
     }
 }
@@ -438,7 +465,7 @@ impl Page {
 
             page.dispatch_lifecycle_event(PageLifecycleEvent::OnLoad);
             (*lxapp.runtime)
-                .navigate(self.appid(), path, nav_type)
+                .navigate(self.appid(), path, nav_type.to_animation())
                 .map_err(LxAppError::from)?;
             page.dispatch_lifecycle_event(PageLifecycleEvent::OnReady);
             Ok(())
@@ -486,7 +513,11 @@ impl Page {
                 });
             }
 
-            (*lxapp.runtime).navigate(self.appid(), path, NavigationType::Backward)?;
+            (*lxapp.runtime).navigate(
+                self.appid(),
+                path,
+                NavigationType::Backward.to_animation(),
+            )?;
             Ok(())
         } else {
             Err(LxAppError::UnsupportedOperation(

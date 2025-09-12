@@ -1,7 +1,7 @@
 use crate::executor::LxAppExecutor;
-use crate::page::PageLifecycleEvent;
+use crate::page::{NavigationType, PageLifecycleEvent};
 use crate::{LxApp, error, info, lxapp};
-use lingxia_platform::{AppRuntime, NavigationType};
+use lingxia_platform::AppRuntime;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -253,10 +253,11 @@ impl LxApp {
 
                 // Navigate to home page using Launch
                 let home_route = self.config.get_initial_route();
-                if let Err(e) =
-                    self.runtime
-                        .navigate(self.appid.clone(), home_route, NavigationType::Launch)
-                {
+                if let Err(e) = self.runtime.navigate(
+                    self.appid.clone(),
+                    home_route,
+                    NavigationType::Launch.to_animation(),
+                ) {
                     error!("Failed to navigate to home: {}", e).with_appid(self.appid.clone());
                     return false;
                 }
@@ -290,7 +291,7 @@ impl LxApp {
             if let Err(e) = self.runtime.navigate(
                 self.appid.clone(),
                 prev_path.clone(),
-                NavigationType::Backward,
+                NavigationType::Backward.to_animation(),
             ) {
                 error!("Failed to navigate back to page {}: {}", prev_path, e)
                     .with_appid(self.appid.clone());

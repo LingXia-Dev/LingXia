@@ -1,5 +1,4 @@
-use lingxia_lxapp::{LxApp, lx};
-use lingxia_platform::NavigationType;
+use lingxia_lxapp::{LxApp, lx, NavigationType};
 use rong::{FromJSObj, JSContext, JSFunc, JSResult, RongJSError};
 use std::sync::Arc;
 

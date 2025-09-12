@@ -54,30 +54,23 @@ pub struct ModalResult {
     pub content: String, // User input content if editable
 }
 
-/// Navigation type for LxApp navigation
+/// Animation type for page transitions
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NavigationType {
-    /// Launch navigation - for openLxApp to open entry page
-    Launch = 0,
-    /// Forward navigation - navigate to a new page with animation
+pub enum AnimationType {
+    /// No animation (used for Launch/Replace/SwitchTab semantics)
+    None = 0,
+    /// Forward animation (push-style)
     Forward = 1,
-    /// Backward navigation - navigate back with animation
+    /// Backward animation (pop-style)
     Backward = 2,
-    /// Replace navigation - replace current page without animation
-    Replace = 3,
-    /// Switch tab navigation - switch between tab pages
-    SwitchTab = 4,
 }
 
-impl From<i32> for NavigationType {
+impl From<i32> for AnimationType {
     fn from(value: i32) -> Self {
         match value {
-            0 => NavigationType::Launch,
-            1 => NavigationType::Forward,
-            2 => NavigationType::Backward,
-            3 => NavigationType::Replace,
-            4 => NavigationType::SwitchTab,
-            _ => NavigationType::Forward, // Default fallback
+            1 => AnimationType::Forward,
+            2 => AnimationType::Backward,
+            _ => AnimationType::None,
         }
     }
 }
@@ -148,12 +141,12 @@ pub trait AppRuntime: Send + Sync + 'static {
     /// * `Result<(), PlatformError>` - Success or error
     fn close_lxapp(&self, appid: String) -> Result<(), PlatformError>;
 
-    /// Navigate to a different page within the same lxapp with specific navigation type
+    /// Navigate to a different page within the same lxapp with specific animation type
     ///
     /// # Arguments
     /// * `appid` - The ID of the lxapp to navigate in
     /// * `path` - The path of the page to navigate to
-    /// * `navigation_type` - The type of navigation to perform
+    /// * `animation_type` - The type of animation to perform
     ///
     /// # Returns
     /// * `Result<(), PlatformError>` - Success or error
@@ -161,7 +154,7 @@ pub trait AppRuntime: Send + Sync + 'static {
         &self,
         appid: String,
         path: String,
-        navigation_type: NavigationType,
+        animation_type: AnimationType,
     ) -> Result<(), PlatformError>;
 
     /// Launch external application with URL
