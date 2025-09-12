@@ -214,7 +214,17 @@ export class TemplateManager {
 // Generate bridge functions
 window.__PAGE_FUNCTIONS.forEach(function(funcName) {
   window[funcName] = function(...args) {
-    return window.LingXiaBridge.call(funcName, args.length === 1 ? args[0] : args);
+    // Filter out React/DOM event objects to prevent circular reference errors
+    const cleanArgs = args.filter(arg => {
+      // Skip React SyntheticEvent objects and DOM Event objects
+      if (arg && typeof arg === 'object') {
+        return !(arg.nativeEvent || arg.target || arg.currentTarget ||
+                 arg instanceof Event || arg.constructor.name.includes('Event'));
+      }
+      return true;
+    });
+
+    return window.LingXiaBridge.call(funcName, cleanArgs.length === 1 ? cleanArgs[0] : cleanArgs);
   };
 });`;
   }

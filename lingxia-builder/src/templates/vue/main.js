@@ -1,7 +1,7 @@
 import { createApp, ref } from "vue";
 import App from "./App.vue";
 
-window.useLingXiaData = function () {
+window.useLingXia = function () {
   const dataInstance = ref({});
 
   if (window.LingXiaBridge && window.LingXiaBridge.subscribe) {

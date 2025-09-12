@@ -2,7 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
 
-window.useLingXiaData = function () {
+window.useLingXia = function () {
   const [data, setData] = React.useState({});
 
   React.useEffect(() => {
@@ -15,7 +15,21 @@ window.useLingXiaData = function () {
     }
   }, []);
 
-  return data;
+  // Create functions object from page functions
+  const functions = React.useMemo(() => {
+    if (!window.__PAGE_FUNCTIONS) return {};
+
+    return window.__PAGE_FUNCTIONS.reduce((acc, funcName) => {
+      acc[funcName] = window[funcName];
+      return acc;
+    }, {});
+  }, []);
+
+  // Return both data and functions
+  return {
+    data,
+    ...functions
+  };
 };
 
 // Page functions injection

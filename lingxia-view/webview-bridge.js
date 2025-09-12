@@ -7,6 +7,24 @@
 
   let debugEnabled = false;
 
+  // Safe JSON stringify that handles circular references
+  function _safeStringify(obj, space) {
+    const seen = new WeakSet();
+    return JSON.stringify(
+      obj,
+      (key, value) => {
+        if (typeof value === "object" && value !== null) {
+          if (seen.has(value)) {
+            return "[Circular Reference]";
+          }
+          seen.add(value);
+        }
+        return value;
+      },
+      space,
+    );
+  }
+
   let messageCounter = 0;
   const pendingCalls = new Map(); // msgId -> { resolve, reject, timerId }
   let pageData = {};
@@ -168,7 +186,7 @@
       if (communicationMethod === "webkit") {
         window.webkit.messageHandlers[NATIVE_HANDLER_NAME].postMessage(message);
       } else if (communicationMethod === MESSAGE_PORT_TYPE && messagePort) {
-        const messageString = JSON.stringify(message);
+        const messageString = _safeStringify(message);
         messagePort.postMessage(messageString);
       } else {
         warn("Bridge not ready for sending");
