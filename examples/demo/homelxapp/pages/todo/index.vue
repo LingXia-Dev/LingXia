@@ -92,7 +92,7 @@ export default {
   name: 'TodoApp',
   setup() {
     const newTodo = ref('')
-    const data = useLingXiaData()
+    const data = useLingXia()
 
     // Debug: log data changes
     console.log('[Todo] Initial data:', data.value)

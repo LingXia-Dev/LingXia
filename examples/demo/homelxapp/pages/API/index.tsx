@@ -1,60 +1,11 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Button } from '../../src/components/button';
 import '../../tailwind.css';
 
 export default function APIPage() {
-  const [navStatus, setNavStatus] = useState('idle');
-  const [deviceStatus, setDeviceStatus] = useState('idle');
-  const [deviceInfo, setDeviceInfo] = useState({
-    brand: '-',
-    model: '-',
-    system: '-'
-  });
-  const [showDeviceInfo, setShowDeviceInfo] = useState(false);
-
-  const navigateToMiniProgram = () => {
-    setNavStatus('loading');
-
-    try {
-      window.openLxApp({
-        appId: 'testminiapp',
-        path: 'pages/home/index.html'
-      });
-
-      setNavStatus('success');
-      setTimeout(() => setNavStatus('idle'), 2000);
-    } catch (error) {
-      setNavStatus('error');
-      setTimeout(() => setNavStatus('idle'), 2000);
-    }
-  };
-
-  const getDeviceInfo = async () => {
-    setDeviceStatus('loading');
-    setShowDeviceInfo(false);
-
-    try {
-      const deviceInfo = await lx.getDeviceInfo();
-
-      setDeviceInfo({
-        brand: deviceInfo.brand || 'Unknown',
-        model: deviceInfo.model || 'Unknown',
-        system: deviceInfo.system || 'Unknown'
-      });
-
-      setDeviceStatus('success');
-      setShowDeviceInfo(true);
-      // Auto hide success status after showing device info
-      setTimeout(() => setDeviceStatus('idle'), 1500);
-      console.log('Device Info:', deviceInfo);
-    } catch (error) {
-      setDeviceStatus('error');
-      setShowDeviceInfo(false);
-      setTimeout(() => setDeviceStatus('idle'), 2000);
-      console.error('Failed to get device info:', error);
-    }
-  };
-
+  // Use LingXia hook to get data and functions
+  const { data, getDeviceInfo, navigateToTestMiniApp } = window.useLingXia();
+  const { deviceInfo = { brand: '-', model: '-', system: '-' }, showDeviceInfo = false } = data;
   return (
     <div className="min-h-screen bg-gray-100">
       <div className="max-w-md mx-auto">
@@ -75,38 +26,11 @@ export default function APIPage() {
             <div className="flex items-center gap-2 ml-3">
               <Button
                 size="sm"
-                disabled={navStatus === 'loading'}
-                onClick={navigateToMiniProgram}
-                className={`h-7 px-3 text-xs font-medium transition-all duration-200 ${
-                  navStatus === 'loading'
-                    ? 'bg-green-400 text-white cursor-not-allowed'
-                    : 'bg-green-500 hover:bg-green-600 text-white border-0 shadow-sm'
-                }`}
+                onClick={navigateToTestMiniApp}
+                className={`h-7 px-3 text-xs font-medium transition-all duration-200 bg-green-500 hover:bg-green-600 text-white border-0 shadow-sm`}
               >
-                {navStatus === 'loading' ? (
-                  <span className="flex items-center">
-                    <span className="animate-spin mr-1">⟳</span>
-                    Loading...
-                  </span>
-                ) : 'Launch'}
+                Launch
               </Button>
-              {navStatus !== 'idle' && (
-                <div className={`flex items-center text-xs px-2 py-1 rounded-md font-medium ${
-                  navStatus === 'success' ? 'bg-green-100 text-green-700 border border-green-200' :
-                  navStatus === 'error' ? 'bg-red-100 text-red-700 border border-red-200' :
-                  navStatus === 'loading' ? 'bg-yellow-100 text-yellow-700 border border-yellow-200' :
-                  'bg-gray-100 text-gray-600 border border-gray-200'
-                }`}>
-                  <span className="mr-1">
-                    {navStatus === 'loading' ? '⟳' :
-                     navStatus === 'success' ? '✓' :
-                     navStatus === 'error' ? '✗' : ''}
-                  </span>
-                  {navStatus === 'loading' ? 'Loading' :
-                   navStatus === 'success' ? 'Success' :
-                   navStatus === 'error' ? 'Failed' : ''}
-                </div>
-              )}
             </div>
           </div>
         </div>
@@ -123,38 +47,11 @@ export default function APIPage() {
             <div className="flex items-center gap-2 ml-3">
               <Button
                 size="sm"
-                disabled={deviceStatus === 'loading'}
                 onClick={getDeviceInfo}
-                className={`h-7 px-3 text-xs font-medium transition-all duration-200 ${
-                  deviceStatus === 'loading'
-                    ? 'bg-blue-400 text-white cursor-not-allowed'
-                    : 'bg-blue-500 hover:bg-blue-600 text-white border-0 shadow-sm'
-                }`}
+                className={`h-7 px-3 text-xs font-medium transition-all duration-200 bg-blue-500 hover:bg-blue-600 text-white border-0 shadow-sm`}
               >
-                {deviceStatus === 'loading' ? (
-                  <span className="flex items-center">
-                    <span className="animate-spin mr-1">⟳</span>
-                    Loading...
-                  </span>
-                ) : 'Get Info'}
+                Get Info
               </Button>
-              {deviceStatus !== 'idle' && (
-                <div className={`flex items-center text-xs px-2 py-1 rounded-md font-medium ${
-                  deviceStatus === 'success' ? 'bg-green-100 text-green-700 border border-green-200' :
-                  deviceStatus === 'error' ? 'bg-red-100 text-red-700 border border-red-200' :
-                  deviceStatus === 'loading' ? 'bg-yellow-100 text-yellow-700 border border-yellow-200' :
-                  'bg-gray-100 text-gray-600 border border-gray-200'
-                }`}>
-                  <span className="mr-1">
-                    {deviceStatus === 'loading' ? '⟳' :
-                     deviceStatus === 'success' ? '✓' :
-                     deviceStatus === 'error' ? '✗' : ''}
-                  </span>
-                  {deviceStatus === 'loading' ? 'Loading' :
-                   deviceStatus === 'success' ? 'Success' :
-                   deviceStatus === 'error' ? 'Failed' : ''}
-                </div>
-              )}
             </div>
           </div>
 

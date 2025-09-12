@@ -9,21 +9,24 @@ Page({
     greetCount: 0,
   },
 
-  onReady: function () {
+  onReady: async function () {
     console.log("[Home] Page ready");
     // Add callback directly to App
-    app.ipReadyCallback = (ip) => {
+    app.ipReadyCallback = async (ip) => {
       console.log("IP received in Page:", ip);
-      this.setData({
+      await this.setData({
         ipAddr: ip,
       });
     };
 
     // Check if IP is already available
     if (app.globalData.ipAddr) {
-      this.setData({
-        ipAddr: app.globalData.ipAddr,
-      });
+      // Use async IIFE for immediate execution
+      (async () => {
+        await this.setData({
+          ipAddr: app.globalData.ipAddr,
+        });
+      })();
     }
   },
 

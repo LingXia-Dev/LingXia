@@ -12,8 +12,19 @@ Page({
     console.log("API page onHide");
   },
 
-  openLxApp: function (option) {
-    console.log("getDeviceInfo:", JSON.stringify(lx.getDeviceInfo()));
-    lx.navigateToLxApp(option);
+  getDeviceInfo: async function () {
+    const deviceInfo = lx.getDeviceInfo();
+
+    await this.setData({
+      deviceInfo: deviceInfo,
+      showDeviceInfo: true,
+    });
+  },
+
+  navigateToTestMiniApp: function () {
+    lx.navigateToLxApp({
+      appId: "testminiapp",
+      path: "/pages/home/index",
+    });
   },
 });
