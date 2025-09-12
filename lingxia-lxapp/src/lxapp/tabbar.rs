@@ -277,7 +277,20 @@ impl TabBar {
 
     /// Find tab index by page path
     pub fn find_tab_index_by_path(&self, path: &str) -> Option<i32> {
-        self.list.iter().position(|item| item.pagePath == path).map(|i| i as i32)
+        self.list
+            .iter()
+            .position(|item| item.pagePath == path)
+            .map(|i| i as i32)
+    }
+
+    /// Check if a path is a tab page
+    pub fn is_tab_page(&self, path: &str) -> bool {
+        self.list.iter().any(|item| item.pagePath == path)
+    }
+
+    /// Get all tab page paths
+    pub fn get_tab_pages(&self) -> Vec<String> {
+        self.list.iter().map(|item| item.pagePath.clone()).collect()
     }
 }
 

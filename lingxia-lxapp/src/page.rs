@@ -367,7 +367,10 @@ impl Page {
     /// Check if this page is a TabBar page
     pub fn is_tabbar_page(&self) -> bool {
         let lxapp = lxapp::get(self.inner.appid.clone());
-        lxapp.config.is_tab_page(&self.inner.path)
+        match lxapp.get_tabbar() {
+            Some(tab_bar) => tab_bar.is_tab_page(&self.inner.path),
+            None => false,
+        }
     }
 
     pub fn navigate(&self, url: &str, nav_type: NavigationType) -> Result<(), LxAppError> {

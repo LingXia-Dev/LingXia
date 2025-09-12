@@ -473,7 +473,7 @@ impl LxApp {
                     .map_err(|e| LxAppError::InvalidJsonFile(format!("lxapp.json: {}", e)))?;
 
                 // Initialize TabBar state if config has TabBar
-                if let Some(tabbar_config) = self.config.get_tab_bar(self) {
+                if let Some(tabbar_config) = &self.config.tabBar {
                     let mut state = self.state.lock().unwrap();
                     state.tabbar = Some(tabbar_config.clone());
                 }
