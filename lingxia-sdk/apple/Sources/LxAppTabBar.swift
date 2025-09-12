@@ -32,11 +32,6 @@ extension TabBar {
         }
         return items
     }
-
-    public func getGroupedItems(appId: String) -> (start: [TabBarItem], center: [TabBarItem], end: [TabBarItem]) {
-        let allItems = getItems(appId: appId)
-        return TabBarHelpers.groupItems(allItems)
-    }
 }
 
 public enum TabBarPosition {
@@ -86,6 +81,181 @@ fileprivate struct TabBarHelpers {
 
     static func getEndItems(items: [TabBarItem]) -> [TabBarItem] {
         return items.filter { $0.group == .End }
+    }
+
+    // Shared group layout builders
+    @MainActor @ViewBuilder
+    static func buildSharedGroupedHorizontalTabBar<TabItemView: View>(
+        items: [TabBarItem],
+        @ViewBuilder buildTabItem: @escaping (TabBarItem, Int) -> TabItemView
+    ) -> some View {
+        HStack(spacing: 0) {
+            let startItems = getStartItems(items: items)
+            let centerItems = getCenterItems(items: items)
+            let endItems = getEndItems(items: items)
+
+            // Start items (group 1)
+            if !startItems.isEmpty {
+                HStack(spacing: LxAppTheme.Metrics.standardSpacing) {
+                    ForEach(Array(startItems.enumerated()), id: \.offset) { _, item in
+                        let index = findItemIndex(for: item, in: items)
+                        buildTabItem(item, index)
+                    }
+                }
+                .padding(.leading, 6) // Slightly more padding from edge
+            }
+
+            // Flexible spacer
+            Spacer()
+
+            // Center items (group 0)
+            if !centerItems.isEmpty {
+                HStack(spacing: LxAppTheme.Metrics.standardSpacing) {
+                    ForEach(Array(centerItems.enumerated()), id: \.offset) { _, item in
+                        let index = findItemIndex(for: item, in: items)
+                        buildTabItem(item, index)
+                    }
+                }
+            }
+
+            // Flexible spacer
+            Spacer()
+
+            // End items (group 2)
+            if !endItems.isEmpty {
+                HStack(spacing: 6) { // Comfortable spacing between end items
+                    ForEach(Array(endItems.enumerated()), id: \.offset) { _, item in
+                        let index = findItemIndex(for: item, in: items)
+                        buildTabItem(item, index)
+                    }
+                }
+                .padding(.trailing, 6) // Slightly more padding from edge
+            }
+        }
+    }
+
+    @MainActor @ViewBuilder
+    static func buildSharedGroupedVerticalTabBar<TabItemView: View>(
+        items: [TabBarItem],
+        @ViewBuilder buildTabItem: @escaping (TabBarItem, Int) -> TabItemView
+    ) -> some View {
+        let startItems = getStartItems(items: items)
+        let centerItems = getCenterItems(items: items)
+        let endItems = getEndItems(items: items)
+
+        VStack(alignment: .center, spacing: 0) {
+            // Start items (group 1)
+            if !startItems.isEmpty {
+                VStack(spacing: LxAppTheme.Metrics.standardSpacing) {
+                    ForEach(Array(startItems.enumerated()), id: \.offset) { _, item in
+                        let index = findItemIndex(for: item, in: items)
+                        buildTabItem(item, index)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+            }
+
+            Spacer()
+
+            // Center items (group 0)
+            if !centerItems.isEmpty {
+                VStack(spacing: LxAppTheme.Metrics.standardSpacing) {
+                    ForEach(Array(centerItems.enumerated()), id: \.offset) { _, item in
+                        let index = findItemIndex(for: item, in: items)
+                        buildTabItem(item, index)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                Spacer()
+            }
+
+            // End items (group 2)
+            if !endItems.isEmpty {
+                VStack(spacing: LxAppTheme.Metrics.standardSpacing) {
+                    ForEach(Array(endItems.enumerated()), id: \.offset) { _, item in
+                        let index = findItemIndex(for: item, in: items)
+                        buildTabItem(item, index)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    // Shared compact tab item builder
+    @MainActor @ViewBuilder
+    static func buildSharedCompactTabItem<IconView: View>(
+        item: TabBarItem,
+        index: Int,
+        selectedIndex: Int,
+        config: TabBar,
+        appId: String,
+        onTabSelected: @escaping (Int, String) -> Void,
+        @ViewBuilder buildTabIcon: @escaping (TabBarItem, Bool, Color) -> IconView
+    ) -> some View {
+        let isSelected = (index == selectedIndex)
+        // Get state directly from Rust
+        let rustItem = getTabBarItem(appId, Int32(index))
+
+        let forceColor = isSelected ?
+            Color(PlatformColor(argb: config.selected_color)) :
+            Color(PlatformColor(argb: config.color))
+
+        Button(action: {
+            // Always trigger callback - let parent decide if action is needed
+            onTabSelected(index, item.cachedPagePath)
+        }) {
+            VStack(spacing: LxAppTheme.Metrics.smallSpacing) {
+                // Tab icon with badge and red dot overlay
+                ZStack {
+                    if !item.cachedIconPath.isEmpty {
+                        buildTabIcon(item, isSelected, forceColor)
+                    }
+
+                    // Badge overlay (from Rust state)
+                    if let rustItem = rustItem, !rustItem.badge.toString().isEmpty {
+                        buildBadge(text: rustItem.badge.toString())
+                            .offset(x: 12, y: -8)
+                    }
+                    // Red dot overlay (only show if no badge)
+                    else if let rustItem = rustItem, rustItem.has_red_dot {
+                        buildRedDot()
+                            .offset(x: 12, y: -8)
+                    }
+                }
+
+                // Tab title
+                if !item.cachedText.isEmpty {
+                    Text(item.cachedText)
+                        .font(LxAppTheme.Typography.tabTitle)
+                        .foregroundColor(forceColor)
+                        .lineLimit(1)
+                }
+            }
+            // Natural content size - no maxWidth expansion for group layouts
+            .padding(.vertical, LxAppTheme.Metrics.smallSpacing)
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
+    @ViewBuilder
+    static func buildBadge(text: String) -> some View {
+        Text(text)
+            .font(.system(size: 10, weight: .medium))
+            .foregroundColor(.white)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(Color.red))
+            .zIndex(1)
+    }
+
+    @ViewBuilder
+    static func buildRedDot() -> some View {
+        Circle()
+            .fill(Color.red)
+            .frame(width: 8, height: 8)
+            .zIndex(1)
     }
 }
 
@@ -186,95 +356,16 @@ public struct LxAppTabBar: View {
 
     @ViewBuilder
     private func buildGroupedHorizontalTabBar(items: [TabBarItem]) -> some View {
-        HStack(spacing: 0) {
-            let startItems = TabBarHelpers.getStartItems(items: items)
-            let centerItems = TabBarHelpers.getCenterItems(items: items)
-            let endItems = TabBarHelpers.getEndItems(items: items)
-
-            // Start items (group 1)
-            if !startItems.isEmpty {
-                HStack(spacing: LxAppTheme.Metrics.standardSpacing) {
-                    ForEach(Array(startItems.enumerated()), id: \.offset) { _, item in
-                        let index = TabBarHelpers.findItemIndex(for: item, in: items)
-                        buildCompactTabItem(item: item, index: index)
-                    }
-                }
-                .padding(.leading, 6) // Slightly more padding from edge
-            }
-
-            // Flexible spacer
-            Spacer()
-
-            // Center items (group 0)
-            if !centerItems.isEmpty {
-                HStack(spacing: LxAppTheme.Metrics.standardSpacing) {
-                    ForEach(Array(centerItems.enumerated()), id: \.offset) { _, item in
-                        let index = TabBarHelpers.findItemIndex(for: item, in: items)
-                        buildCompactTabItem(item: item, index: index)
-                    }
-                }
-            }
-
-            // Flexible spacer
-            Spacer()
-
-            // End items (group 2)
-            if !endItems.isEmpty {
-                HStack(spacing: 6) { // Comfortable spacing between end items
-                    ForEach(Array(endItems.enumerated()), id: \.offset) { _, item in
-                        let index = TabBarHelpers.findItemIndex(for: item, in: items)
-                        buildCompactTabItem(item: item, index: index)
-                    }
-                }
-                .padding(.trailing, 6) // Slightly more padding from edge
-            }
+        TabBarHelpers.buildSharedGroupedHorizontalTabBar(items: items) { item, index in
+            buildCompactTabItem(item: item, index: index)
         }
     }
 
     @ViewBuilder
     private func buildGroupedVerticalTabBar(items: [TabBarItem]) -> some View {
-        let startItems = TabBarHelpers.getStartItems(items: items)
-        let centerItems = TabBarHelpers.getCenterItems(items: items)
-        let endItems = TabBarHelpers.getEndItems(items: items)
-
-        VStack(alignment: .center, spacing: 0) {
-            // Start items (group 1)
-            if !startItems.isEmpty {
-                VStack(spacing: LxAppTheme.Metrics.standardSpacing) {
-                    ForEach(Array(startItems.enumerated()), id: \.offset) { _, item in
-                        let index = TabBarHelpers.findItemIndex(for: item, in: items)
-                        buildTabItem(item: item, index: index)
-                    }
-                }
-                .frame(maxWidth: .infinity)
-            }
-
-            Spacer()
-
-            // Center items (group 0)
-            if !centerItems.isEmpty {
-                VStack(spacing: LxAppTheme.Metrics.standardSpacing) {
-                    ForEach(Array(centerItems.enumerated()), id: \.offset) { _, item in
-                        let index = TabBarHelpers.findItemIndex(for: item, in: items)
-                        buildTabItem(item: item, index: index)
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                Spacer()
-            }
-
-            // End items (group 2)
-            if !endItems.isEmpty {
-                VStack(spacing: LxAppTheme.Metrics.standardSpacing) {
-                    ForEach(Array(endItems.enumerated()), id: \.offset) { _, item in
-                        let index = TabBarHelpers.findItemIndex(for: item, in: items)
-                        buildTabItem(item: item, index: index)
-                    }
-                }
-                .frame(maxWidth: .infinity)
-            }
+        TabBarHelpers.buildSharedGroupedVerticalTabBar(items: items) { item, index in
+            buildTabItem(item: item, index: index)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     @ViewBuilder
@@ -300,12 +391,12 @@ public struct LxAppTabBar: View {
 
                     // Badge overlay (from Rust state)
                     if let rustItem = rustItem, !rustItem.badge.toString().isEmpty {
-                        buildBadge(text: rustItem.badge.toString())
+                        TabBarHelpers.buildBadge(text: rustItem.badge.toString())
                             .offset(x: 12, y: -8)
                     }
                     // Red dot overlay (only show if no badge)
                     else if let rustItem = rustItem, rustItem.has_red_dot {
-                        buildRedDot()
+                        TabBarHelpers.buildRedDot()
                             .offset(x: 12, y: -8)
                     }
                 }
@@ -327,49 +418,16 @@ public struct LxAppTabBar: View {
     // Compact tab item for group layouts - uses natural content size instead of maxWidth: .infinity
     @ViewBuilder
     private func buildCompactTabItem(item: TabBarItem, index: Int) -> some View {
-        let isSelected = (index == selectedIndex)
-        // Get state directly from Rust
-        let rustItem = getTabBarItem(appId, Int32(index))
-
-        let forceColor = isSelected ?
-            Color(PlatformColor(argb: config.selected_color)) :
-            Color(PlatformColor(argb: config.color))
-
-        Button(action: {
-            // Always trigger callback - let parent decide if action is needed
-            onTabSelected(index, item.cachedPagePath)
-        }) {
-            VStack(spacing: LxAppTheme.Metrics.smallSpacing) {
-                // Tab icon with badge and red dot overlay
-                ZStack {
-                    if !item.cachedIconPath.isEmpty {
-                        buildTabIcon(item: item, isSelected: isSelected, forceColor: forceColor)
-                    }
-
-                    // Badge overlay (from Rust state)
-                    if let rustItem = rustItem, !rustItem.badge.toString().isEmpty {
-                        buildBadge(text: rustItem.badge.toString())
-                            .offset(x: 12, y: -8)
-                    }
-                    // Red dot overlay (only show if no badge)
-                    else if let rustItem = rustItem, rustItem.has_red_dot {
-                        buildRedDot()
-                            .offset(x: 12, y: -8)
-                    }
-                }
-
-                // Tab title
-                if !item.cachedText.isEmpty {
-                    Text(item.cachedText)
-                        .font(LxAppTheme.Typography.tabTitle)
-                        .foregroundColor(forceColor)
-                        .lineLimit(1)
-                }
-            }
-            // Natural content size - no maxWidth expansion for group layouts
-            .padding(.vertical, LxAppTheme.Metrics.smallSpacing)
+        TabBarHelpers.buildSharedCompactTabItem(
+            item: item,
+            index: index,
+            selectedIndex: selectedIndex,
+            config: config,
+            appId: appId,
+            onTabSelected: onTabSelected
+        ) { item, isSelected, forceColor in
+            buildTabIcon(item: item, isSelected: isSelected, forceColor: forceColor)
         }
-        .buttonStyle(PlainButtonStyle())
     }
 
     @ViewBuilder
@@ -411,24 +469,7 @@ public struct LxAppTabBar: View {
         }
     }
 
-    @ViewBuilder
-    private func buildBadge(text: String) -> some View {
-        Text(text)
-            .font(.system(size: 10, weight: .medium))
-            .foregroundColor(.white)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(Capsule().fill(Color.red))
-            .zIndex(1)
-    }
 
-    @ViewBuilder
-    private func buildRedDot() -> some View {
-        Circle()
-            .fill(Color.red)
-            .frame(width: 8, height: 8)
-            .zIndex(1)
-    }
 
     private func getResourcesPath() -> String {
         return Bundle.main.resourcePath ?? ""
@@ -519,6 +560,10 @@ public struct MacOSLxAppTabBar: View {
         // Get state directly from Rust
         let rustItem = getTabBarItem(appId, Int32(index))
 
+        let forceColor = isSelected ?
+            Color(PlatformColor(argb: config.selected_color)) :
+            Color(PlatformColor(argb: config.color))
+
         Button(action: {
             // Always trigger callback - let parent decide if action is needed
             onTabSelected(index, item.cachedPagePath)
@@ -527,17 +572,17 @@ public struct MacOSLxAppTabBar: View {
                 // Tab icon with badge and red dot overlay
                 ZStack {
                     if !item.cachedIconPath.isEmpty {
-                        buildTabIcon(item: item, isSelected: isSelected)
+                        buildTabIcon(item: item, isSelected: isSelected, forceColor: forceColor)
                     }
 
                     // Badge overlay (from Rust state)
                     if let rustItem = rustItem, !rustItem.badge.toString().isEmpty {
-                        buildBadge(text: rustItem.badge.toString())
+                        TabBarHelpers.buildBadge(text: rustItem.badge.toString())
                             .offset(x: 12, y: -8)
                     }
                     // Red dot overlay (only show if no badge)
                     else if let rustItem = rustItem, rustItem.has_red_dot {
-                        buildRedDot()
+                        TabBarHelpers.buildRedDot()
                             .offset(x: 12, y: -8)
                     }
                 }
@@ -546,9 +591,7 @@ public struct MacOSLxAppTabBar: View {
                 if !item.cachedText.isEmpty {
                     Text(item.cachedText)
                         .font(LxAppTheme.Typography.tabTitle)
-                        .foregroundColor(isSelected ?
-                            Color(PlatformColor(argb: config.selected_color)) :
-                            Color(PlatformColor(argb: config.color)))
+                        .foregroundColor(forceColor)
                         .lineLimit(1)
                 }
             }
@@ -556,6 +599,21 @@ public struct MacOSLxAppTabBar: View {
             .padding(.vertical, LxAppTheme.Metrics.smallSpacing)
         }
         .buttonStyle(PlainButtonStyle())
+    }
+
+    // Compact tab item for group layouts - uses natural content size instead of maxWidth: .infinity
+    @ViewBuilder
+    private func buildCompactTabItem(item: TabBarItem, index: Int) -> some View {
+        TabBarHelpers.buildSharedCompactTabItem(
+            item: item,
+            index: index,
+            selectedIndex: selectedIndex,
+            config: config,
+            appId: appId,
+            onTabSelected: onTabSelected
+        ) { item, isSelected, forceColor in
+            buildTabIcon(item: item, isSelected: isSelected, forceColor: forceColor)
+        }
     }
 
     // Copy helper methods from LxAppTabBar
@@ -582,106 +640,27 @@ public struct MacOSLxAppTabBar: View {
 
     @ViewBuilder
     private func buildGroupedHorizontalTabBar(items: [TabBarItem]) -> some View {
-        HStack(spacing: 0) {
-            let startItems = TabBarHelpers.getStartItems(items: items)
-            let centerItems = TabBarHelpers.getCenterItems(items: items)
-            let endItems = TabBarHelpers.getEndItems(items: items)
-
-            // Start items (group 1) - close to left edge
-            if !startItems.isEmpty {
-                HStack(spacing: 4) {
-                    ForEach(Array(startItems.enumerated()), id: \.offset) { _, item in
-                        let index = TabBarHelpers.findItemIndex(for: item, in: items)
-                        buildTabItem(item: item, index: index)
-                    }
-                }
-                .padding(.leading, 4)
-            }
-
-            Spacer()
-
-            // Center items (group 0)
-            if !centerItems.isEmpty {
-                HStack(spacing: LxAppTheme.Metrics.standardSpacing) {
-                    ForEach(Array(centerItems.enumerated()), id: \.offset) { _, item in
-                        let index = TabBarHelpers.findItemIndex(for: item, in: items)
-                        buildTabItem(item: item, index: index)
-                    }
-                }
-            }
-
-            Spacer()
-
-            // End items (group 2) - close together, close to right edge
-            if !endItems.isEmpty {
-                HStack(spacing: 4) {
-                    ForEach(Array(endItems.enumerated()), id: \.offset) { _, item in
-                        let index = TabBarHelpers.findItemIndex(for: item, in: items)
-                        buildTabItem(item: item, index: index)
-                    }
-                }
-                .padding(.trailing, 4)
-            }
+        TabBarHelpers.buildSharedGroupedHorizontalTabBar(items: items) { item, index in
+            buildCompactTabItem(item: item, index: index)
         }
     }
 
     @ViewBuilder
     private func buildGroupedVerticalTabBar(items: [TabBarItem]) -> some View {
-        let startItems = TabBarHelpers.getStartItems(items: items)
-        let centerItems = TabBarHelpers.getCenterItems(items: items)
-        let endItems = TabBarHelpers.getEndItems(items: items)
-
-        VStack(alignment: .center, spacing: 0) {
-            // Start items (group 1)
-            if !startItems.isEmpty {
-                VStack(spacing: LxAppTheme.Metrics.standardSpacing) {
-                    ForEach(Array(startItems.enumerated()), id: \.offset) { _, item in
-                        let index = TabBarHelpers.findItemIndex(for: item, in: items)
-                        buildTabItem(item: item, index: index)
-                    }
-                }
-                .frame(maxWidth: .infinity)
-            }
-
-            Spacer()
-
-            // Center items (group 0)
-            if !centerItems.isEmpty {
-                VStack(spacing: LxAppTheme.Metrics.standardSpacing) {
-                    ForEach(Array(centerItems.enumerated()), id: \.offset) { _, item in
-                        let index = TabBarHelpers.findItemIndex(for: item, in: items)
-                        buildTabItem(item: item, index: index)
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                Spacer()
-            }
-
-            // End items (group 2)
-            if !endItems.isEmpty {
-                VStack(spacing: LxAppTheme.Metrics.standardSpacing) {
-                    ForEach(Array(endItems.enumerated()), id: \.offset) { _, item in
-                        let index = TabBarHelpers.findItemIndex(for: item, in: items)
-                        buildTabItem(item: item, index: index)
-                    }
-                }
-                .frame(maxWidth: .infinity)
-            }
+        TabBarHelpers.buildSharedGroupedVerticalTabBar(items: items) { item, index in
+            buildTabItem(item: item, index: index)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     // Use shared TabBarHelpers instead of duplicated methods
 
     @ViewBuilder
-    private func buildTabIcon(item: TabBarItem, isSelected: Bool) -> some View {
+    private func buildTabIcon(item: TabBarItem, isSelected: Bool, forceColor: Color) -> some View {
         let iconPath = isSelected && !item.cachedSelectedIconPath.isEmpty
             ? item.cachedSelectedIconPath
             : item.cachedIconPath
 
-        let iconColor = isSelected ?
-            Color(PlatformColor(argb: config.selected_color)) :
-            Color.black
+        let iconColor = forceColor
 
         if iconPath.hasPrefix("SF:") {
             let symbolName = String(iconPath.dropFirst(3))
@@ -714,24 +693,7 @@ public struct MacOSLxAppTabBar: View {
         }
     }
 
-    @ViewBuilder
-    private func buildBadge(text: String) -> some View {
-        Text(text)
-            .font(.system(size: 10, weight: .medium))
-            .foregroundColor(.white)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(Capsule().fill(Color.red))
-            .zIndex(1)
-    }
 
-    @ViewBuilder
-    private func buildRedDot() -> some View {
-        Circle()
-            .fill(Color.red)
-            .frame(width: 8, height: 8)
-            .zIndex(1)
-    }
 
     private func getResourcesPath() -> String {
         return Bundle.main.resourcePath ?? ""

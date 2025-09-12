@@ -132,7 +132,7 @@ public struct NavigationButton: View {
 
 /// Pure declarative SwiftUI Navigation Bar
 /// Automatically renders based on NavigationBarState - no manual updates needed
-public struct LxAppNavigationBarView: View {
+public struct macOSNavigationBarView: View {
     let state: NavigationBarState?
     let onBackTapped: () -> Void
     let onHomeTapped: () -> Void
@@ -273,7 +273,7 @@ public struct LxAppNavigationBarModifier: ViewModifier {
     public func body(content: Content) -> some View {
         VStack(spacing: 0) {
             if let state = state, state.show_navbar {
-                LxAppNavigationBarView(state: state)
+                macOSNavigationBarView(state: state)
             }
             content
         }
@@ -284,7 +284,7 @@ public struct LxAppNavigationBarModifier: ViewModifier {
 import UIKit
 
 @MainActor
-public class iOSNavigationBarWrapper: UIView, NavigationBarProtocol {
+public class iOSNavigationBarView: UIView, NavigationBarProtocol {
     private var hostingController: UIHostingController<ReactiveNavigationBarView>?
     private var currentState: NavigationBarState?
     private var statusBarBackgroundView: UIView?
@@ -384,7 +384,7 @@ struct ReactiveNavigationBarView: View {
     @ObservedObject private var stateManager = NavigationBarStateManager.shared
 
     var body: some View {
-        LxAppNavigationBarView(
+        macOSNavigationBarView(
             state: stateManager.currentState,
             onBackTapped: handleBackTap,
             onHomeTapped: handleHomeTap
@@ -406,11 +406,9 @@ struct ReactiveNavigationBarView: View {
     }
 }
 
-public typealias LingXiaNavigationBar = iOSNavigationBarWrapper
-public typealias PlatformNavigationBar = iOSNavigationBarWrapper
+public typealias LingXiaNavigationBar = iOSNavigationBarView
 #elseif os(macOS)
-public typealias LingXiaNavigationBar = LxAppNavigationBarView
-public typealias PlatformNavigationBar = LxAppNavigationBarView
+public typealias LingXiaNavigationBar = macOSNavigationBarView
 #endif
 
 public extension View {
