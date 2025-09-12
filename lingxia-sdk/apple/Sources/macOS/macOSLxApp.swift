@@ -292,24 +292,12 @@ extension macOSLxApp {
 
     /// Direct navigation implementation (called from LxAppCore)
     internal static func handleNavigationDirect(_ plan: NavigationPlan) {
-        // Platform-specific setup/switch WebView first
-        handlePlatformSpecificNavigationDirect(plan)
+        shared.handleRegularNavigation(plan)
 
         // Render UI components based on state
         renderTabBarDirect(plan.tabBarState, appId: plan.appId, path: plan.path)
         renderNavigationBarDirect(plan.navBarState)
         renderCapsuleButtonDirect(appId: plan.appId)
-    }
-
-    /// Direct platform-specific navigation logic
-    private static func handlePlatformSpecificNavigationDirect(_ plan: NavigationPlan) {
-        // Handle macOS-specific window/tab management
-        if plan.animationType == .none {
-            // No animation (Launch/Replace/SwitchTab) is handled in openLxApp
-            return
-        } else {
-            shared.handleRegularNavigation(plan)
-        }
     }
 
     /// Direct TabBar rendering
