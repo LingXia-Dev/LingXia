@@ -9,14 +9,12 @@ const DOMAIN = 0xA000;
 const TAG = 'LingXia.Navigation';
 
 /**
- * Internal NavigationType enum
+ * Animation type enum for page transitions
  */
-export enum NavigationType {
-  Launch = 0,
-  Forward = 1,
-  Backward = 2,
-  Replace = 3,
-  SwitchTab = 4
+export enum AnimationType {
+  None = 0,      // No animation (used for Launch/Replace/SwitchTab semantics)
+  Forward = 1,   // Forward animation (push-style)
+  Backward = 2   // Backward animation (pop-style)
 }
 
 /**
@@ -130,58 +128,26 @@ export struct LxAppNavigation {
   }
 
   /**
-   * Navigate to page with navigation type behavior
+   * Navigate to page with animation type behavior
    * @param appId - LxApp ID
    * @param path - Page path to navigate to
-   * @param navigationType - Type of navigation
+   * @param animationType - Type of animation
    * @returns boolean - True if navigation was successful, false otherwise
    */
-  public navigate(appId: string, path: string, navigationType: NavigationType): boolean {
-    const typeName = NavigationType[navigationType];
+  public navigate(appId: string, path: string, animationType: AnimationType): boolean {
+    const typeName = AnimationType[animationType];
     hilog.info(DOMAIN, TAG, `navigate: ${appId}:${path} (${typeName})`);
 
     try {
-      // Resolve type: LAUNCH → SWITCH_TAB for tab pages
-      const actualType = this.resolveNavigationType(navigationType, appId, path);
-
-      // Apply navigation type specific updates
-      this.applyNavigationTypeSpecificUpdates(appId, path, actualType);
-
-      // Execute navigation with type information
-      return this.navigateToPage(appId, path, actualType);
+      // Execute navigation with animation type information
+      return this.navigateToPage(appId, path, animationType);
     } catch (error) {
       hilog.error(DOMAIN, TAG, `Navigation failed: ${error}`);
       return false;
     }
   }
 
-  private resolveNavigationType(navigationType: NavigationType, appId: string, path: string): NavigationType {
-    if (navigationType === NavigationType.Launch) {
-      // Only LAUNCH converts to SWITCH_TAB for tab pages
-      return this.isTabBarItem(appId, path) ? NavigationType.SwitchTab : NavigationType.Launch;
-    }
-    // REPLACE, FORWARD, BACKWARD should never convert to SWITCH_TAB
-    return navigationType;
-  }
 
-  /**
-   * Apply navigation type specific updates
-   */
-  private applyNavigationTypeSpecificUpdates(appId: string, path: string, navigationType: NavigationType): void {
-    switch (navigationType) {
-      case NavigationType.SwitchTab:
-        // Tab switch: update tab selection
-        LxAppContainer.updateTabSelection(appId, path);
-        break;
-
-      case NavigationType.Launch:
-      case NavigationType.Forward:
-      case NavigationType.Backward:
-      case NavigationType.Replace:
-        // No special updates needed
-        break;
-    }
-  }
 
   /**
    * Required by NavigationInstance interface
@@ -216,18 +182,18 @@ export struct LxAppNavigation {
    * Navigate to a specific page within an LxApp
    * @param appId - LxApp ID
    * @param path - Page path to navigate to
-   * @param navigationType - Navigation type for animation control
+   * @param animationType - Animation type for animation control
    * @returns boolean - True if navigation was successful, false otherwise
    */
-  private navigateToPage(appId: string, path: string, navigationType: NavigationType = NavigationType.Launch): boolean {
+  private navigateToPage(appId: string, path: string, animationType: AnimationType = AnimationType.None): boolean {
     hilog.info(DOMAIN, TAG, `Navigating to page: ${appId}:${path}`);
 
     // For home app, update the path and trigger navigation
     if (appId === this.homeAppId) {
-      hilog.info(DOMAIN, TAG, `Navigating page in home app ${appId} to ${path} with type: ${NavigationType[navigationType]}`);
+      hilog.info(DOMAIN, TAG, `Navigating page in home app ${appId} to ${path} with type: ${AnimationType[animationType]}`);
       this.homeAppPath = path;
-      // Pass navigation type to container for animation control
-      LxAppContainer.setNavigationType(appId, navigationType);
+      // Pass animation type to container for animation control
+      LxAppContainer.setAnimationType(appId, animationType);
       // Increment trigger to force UI update
       this.navigationTrigger++;
       hilog.info(DOMAIN, TAG, `Updated homeAppPath to: ${path}, trigger: ${this.navigationTrigger}`);
@@ -236,10 +202,10 @@ export struct LxAppNavigation {
 
     // For modal apps, check if it's the current modal app
     if (appId === this.currentModalAppId && this.modalAppVisible) {
-      hilog.info(DOMAIN, TAG, `Navigating page in modal app ${appId} to ${path} with type: ${NavigationType[navigationType]}`);
+      hilog.info(DOMAIN, TAG, `Navigating page in modal app ${appId} to ${path} with type: ${AnimationType[animationType]}`);
       this.currentModalAppPath = path;
-      // Pass navigation type to container for animation control
-      LxAppContainer.setNavigationType(appId, navigationType);
+      // Pass animation type to container for animation control
+      LxAppContainer.setAnimationType(appId, animationType);
       // Trigger UI update by updating the path
       this.currentModalAppPath = path;
       hilog.info(DOMAIN, TAG, `Updated modal app ${appId} path to: ${path}`);

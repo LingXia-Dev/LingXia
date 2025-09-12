@@ -1,5 +1,5 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { NavigationType } from './LxAppNavigation';
+import { AnimationType } from './LxAppNavigation';
 import { NavigationButton } from './LxAppDrawables';
 
 // NavigationBar layout constants
@@ -90,21 +90,18 @@ function getFrostedGlassColor(isWhiteText: boolean): ResourceColor {
 }
 
 /**
- * Helper function to convert integer to NavigationType enum
- * @param type - Integer navigation type (0=Launch, 1=Forward, 2=Backward, 3=Replace, 4=SwitchTab)
- * @returns NavigationType enum or null if invalid
+ * Helper function to convert integer to AnimationType enum
+ * @param type - Integer animation type (0=None, 1=Forward, 2=Backward)
+ * @returns AnimationType enum or null if invalid
  */
-export function navigationTypeFromInt(type: number): NavigationType | null {
+export function animationTypeFromInt(type: number): AnimationType | null {
   // Convert to number to handle string parameters from native bridge
   const numType = Number(type);
 
   switch (numType) {
-    case 0: return NavigationType.Launch;
-    case 1: return NavigationType.Forward;
-    case 2: return NavigationType.Backward;
-    case 3: return NavigationType.Replace;
-    case 4: return NavigationType.SwitchTab;
-    default: return null;
+    case 1: return AnimationType.Forward;
+    case 2: return AnimationType.Backward;
+    default: return AnimationType.None; // 0 or any other value
   }
 }
 

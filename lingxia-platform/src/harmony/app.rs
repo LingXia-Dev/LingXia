@@ -1,5 +1,5 @@
 use crate::error::PlatformError;
-use crate::{AppRuntime, AssetFileEntry, DeviceInfo, NavigationType};
+use crate::{AppRuntime, AssetFileEntry, DeviceInfo};
 use napi_ohos::JsValue;
 use napi_ohos::bindgen_prelude::{Env, Object};
 use ohos_raw_sys::*;
@@ -316,14 +316,14 @@ impl AppRuntime for Platform {
         &self,
         appid: String,
         path: String,
-        navigation_type: NavigationType,
+        animation_type: crate::traits::AnimationType,
     ) -> Result<(), PlatformError> {
-        let nav_type_int = navigation_type as i32;
-        lingxia_webview::tsfn::call_arkts("navigate", &[&appid, &path, &nav_type_int.to_string()])
+        let anim_type_int = animation_type as i32;
+        lingxia_webview::tsfn::call_arkts("navigate", &[&appid, &path, &anim_type_int.to_string()])
             .map_err(|_| {
                 PlatformError::Platform(format!(
-                    "Failed to navigate: appid={}, path={}, navigation_type={:?}",
-                    appid, path, navigation_type
+                    "Failed to navigate: appid={}, path={}, animation_type={:?}",
+                    appid, path, animation_type
                 ))
             })
     }

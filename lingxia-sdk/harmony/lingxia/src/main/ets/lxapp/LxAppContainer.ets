@@ -10,7 +10,7 @@ import { TabBar } from './TabBar';
 import { TabBarPosition, type TabBarItem, UiEventType } from 'liblingxia.so';
 import liblingxia, { TabBarState, getNavigationBarState, onPageShow, onUiEvent } from 'liblingxia.so';
 import { NAVIGATION_ACTION_BACK, NAVIGATION_ACTION_HOME, CAPSULE_ACTION_MORE, CAPSULE_ACTION_CLOSE } from './NativeBridge';
-import { NavigationType } from './LxAppNavigation';
+import { AnimationType } from './LxAppNavigation';
 
 // Container-specific constants
 const SYSTEM_STATUS_BAR_HEIGHT = 44;     // Default status bar height
@@ -63,8 +63,8 @@ export struct LxAppContainer {
   // Static registry for TabBar updates (simple and direct)
   private static activeContainers: Map<string, LxAppContainer> = new Map()
 
-  // Static registry for navigation type information
-  private static navigationTypes: Map<string, NavigationType> = new Map()
+  // Static registry for animation type information
+  private static animationTypes: Map<string, AnimationType> = new Map()
 
   @State pageConfig: NavigationBarState | null = null
   @State tabBarState: TabBarState | null = null
@@ -79,7 +79,7 @@ export struct LxAppContainer {
   // Animation state for WebView transitions
   @State private animationInProgress: boolean = false
   @State private previousWebTag: string = ''
-  @State private currentNavigationType: NavigationType = NavigationType.Launch
+  @State private currentAnimationType: AnimationType = AnimationType.None
   @State private currentWebViewTranslateX: number = 0
   @State private previousWebViewTranslateX: number = 0
   @State private navbarTranslateX: number = 0
@@ -140,10 +140,10 @@ export struct LxAppContainer {
     // Register this container for TabBar updates
     LxAppContainer.activeContainers.set(this.appId, this);
 
-    // Initialize navigation type from static registry
-    const storedNavigationType = LxAppContainer.navigationTypes.get(this.appId);
-    if (storedNavigationType !== undefined) {
-      this.currentNavigationType = storedNavigationType;
+    // Initialize animation type from static registry
+    const storedAnimationType: AnimationType | undefined = LxAppContainer.animationTypes.get(this.appId);
+    if (storedAnimationType !== undefined) {
+      this.currentAnimationType = storedAnimationType;
     }
 
     // Add WebView UI callback to handle component creation (supports multiple containers)
@@ -159,10 +159,10 @@ export struct LxAppContainer {
       hilog.info(DOMAIN, TAG, `Initial tab index set from Rust state: ${this.selectedTabIndex}`);
     }
 
-    // If this page has tabs, set navigation type to SwitchTab
+    // If this page has tabs, set animation type to None (no animation for tab switches)
     if (this.tabBarState && this.tabBarState.items && this.tabBarState.items.length > 0) {
-      this.currentNavigationType = NavigationType.SwitchTab;
-      hilog.info(DOMAIN, TAG, `Set navigation type to SwitchTab for page with ${this.tabBarState.items.length} tabs`);
+      this.currentAnimationType = AnimationType.None;
+      hilog.info(DOMAIN, TAG, `Set animation type to None for page with ${this.tabBarState.items.length} tabs`);
     }
 
     // Always set currentWebTag for initial page to ensure visibility
@@ -313,13 +313,13 @@ export struct LxAppContainer {
   }
 
   /**
-   * Static method to set navigation type for animation control
+   * Static method to set animation type for animation control
    */
-  public static setNavigationType(appId: string, navigationType: NavigationType): void {
-    LxAppContainer.navigationTypes.set(appId, navigationType);
+  public static setAnimationType(appId: string, animationType: AnimationType): void {
+    LxAppContainer.animationTypes.set(appId, animationType);
     const container = LxAppContainer.activeContainers.get(appId);
     if (container) {
-      container.currentNavigationType = navigationType;
+      container.currentAnimationType = animationType;
     }
   }
 
@@ -687,7 +687,7 @@ export struct LxAppContainer {
    * Navigate to any page with animation support
    */
   private navigateToPage(path: string): boolean {
-    hilog.info(DOMAIN, TAG, `navigate: ${this.appId}:${path} with type: ${NavigationType[this.currentNavigationType]}`);
+    hilog.info(DOMAIN, TAG, `navigate: ${this.appId}:${path} with type: ${AnimationType[this.currentAnimationType]}`);
 
     // Find WebView for the new page
     const newWebTag = toWebTag(this.appId, path);
@@ -719,11 +719,11 @@ export struct LxAppContainer {
   }
 
   /**
-   * Determine if transition should be animated based on navigation type
+   * Determine if transition should be animated based on animation type
    */
   private shouldAnimateTransition(): boolean {
-    return this.currentNavigationType === NavigationType.Forward ||
-           this.currentNavigationType === NavigationType.Backward;
+    return this.currentAnimationType === AnimationType.Forward ||
+           this.currentAnimationType === AnimationType.Backward;
   }
 
   /**
@@ -736,7 +736,7 @@ export struct LxAppContainer {
     this.previousWebTag = oldWebTag;
 
     // Determine animation direction
-    const isBackward = this.currentNavigationType === NavigationType.Backward;
+    const isBackward = this.currentAnimationType === AnimationType.Backward;
 
     // Set initial positions for slide animation
     if (isBackward) {

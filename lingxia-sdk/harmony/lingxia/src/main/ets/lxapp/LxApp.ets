@@ -8,7 +8,7 @@ import { LxAppContainer } from './LxAppContainer';
 import { ToastManager } from './APIs/LxAppToast';
 import { initNativeBridge, getNativeCallbackFunction } from './NativeBridge';
 import { WebViewManager, toWebTag } from './WebView';
-import { NavigationType } from './LxAppNavigation';
+import { AnimationType } from './LxAppNavigation';
 import promptAction from '@kit.ArkUI';
 
 // Import native functions from Rust
@@ -20,7 +20,7 @@ const TAG = 'LingXia.LxApp';
 interface NavigationInstance {
   openLxApp(appId: string, path: string): void;
   closeLxApp(appId: string): void;
-  navigate(appId: string, path: string, navigationType: NavigationType): boolean;
+  navigate(appId: string, path: string, animationType: AnimationType): boolean;
   isTabBarHidden(appId: string): boolean;
 }
 
@@ -154,19 +154,19 @@ export class LxApp {
   }
 
   /**
-   * Navigate to a specific page with navigation type
+   * Navigate to a specific page with animation type
    * @param appId - LxApp ID
    * @param path - Page path to navigate to
-   * @param navigationType - NavigationType enum
+   * @param animationType - AnimationType enum
    * @returns boolean - True if navigation was successful, false otherwise
    */
-  public static navigate(appId: string, path: string, navigationType: NavigationType): boolean {
-    const typeName = NavigationType[navigationType];
+  public static navigate(appId: string, path: string, animationType: AnimationType): boolean {
+    const typeName = AnimationType[animationType];
     hilog.info(DOMAIN, TAG, `navigate API called: ${appId}:${path} with type: ${typeName}`);
 
     // Use LxAppNavigation for unified architecture
     if (LxApp.navigationInstance) {
-      return LxApp.navigationInstance.navigate(appId, path, navigationType);
+      return LxApp.navigationInstance.navigate(appId, path, animationType);
     }
 
     hilog.warn(DOMAIN, TAG, 'LxAppNavigation not available for navigate');
@@ -405,12 +405,12 @@ struct LxAppManager {
    * Navigate to specific page in any LxApp (External API for Rust)
    * @param appId - LxApp ID
    * @param path - Page path to navigate to
-   * @param navigationType - NavigationType enum
+   * @param animationType - AnimationType enum
    * @returns boolean - True if successful, false otherwise
    */
-  public navigate(appId: string, path: string, navigationType: NavigationType): boolean {
-    const typeName = NavigationType[navigationType];
+  public navigate(appId: string, path: string, animationType: AnimationType): boolean {
+    const typeName = AnimationType[animationType];
     hilog.info(DOMAIN, TAG, `LxAppManager.navigate called: ${appId}:${path} with type: ${typeName}`);
-    return LxApp.navigate(appId, path, navigationType);
+    return LxApp.navigate(appId, path, animationType);
   }
 }
