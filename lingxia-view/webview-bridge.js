@@ -5,7 +5,17 @@
   const LOG_PREFIX = "[LX.Bridge]";
   const MESSAGE_PORT_TYPE = "messageport";
 
-  let debugEnabled = false;
+  // Simple debug flags
+  const debugFlags = {
+    data: false, // setData operations
+    proto: false, // protocol messages
+    all: false, // enable all debugging
+  };
+
+  // Check if specific debug flag is enabled
+  function isDebugEnabled(flag) {
+    return debugFlags.all || debugFlags[flag];
+  }
 
   // Safe JSON stringify that handles circular references
   function _safeStringify(obj, space) {
@@ -179,7 +189,7 @@
 
   // Send message to native layer
   function _sendMessageToNative(message) {
-    if (debugEnabled) {
+    if (isDebugEnabled("proto")) {
       console.log("→", JSON.stringify(message, null, 2));
     }
     try {
@@ -220,7 +230,7 @@
 
   // Process incoming messages
   function _handleIncomingMessage(message) {
-    if (debugEnabled) {
+    if (isDebugEnabled("proto")) {
       console.log("←", JSON.stringify(message, null, 2));
     }
     if (!message || typeof message !== "object" || !message.type) {
@@ -286,7 +296,21 @@
         dataToApply = payload;
       }
 
+      // Debug logging before applying patch
+      if (isDebugEnabled("data")) {
+        console.group("[LingXia Debug] setData Update");
+        console.log("Previous data:", JSON.parse(_safeStringify(pageData)));
+        console.log("Applying patch:", dataToApply);
+      }
+
       _applyPatch(pageData, dataToApply);
+
+      // Debug logging after applying patch
+      if (isDebugEnabled("data")) {
+        console.log("Updated data:", JSON.parse(_safeStringify(pageData)));
+        console.log("Active subscribers:", dataSubscribers.size);
+        console.groupEnd();
+      }
 
       // Notify subscribers immediately
       dataSubscribers.forEach((listener) => {
@@ -436,9 +460,22 @@
       }
     },
 
-    setDebug: function (enabled) {
-      debugEnabled = !!enabled;
-    },
+    // Debug control with property setters
+    debug: new Proxy(debugFlags, {
+      get(target, prop) {
+        return target[prop];
+      },
+      set(target, prop, value) {
+        if (prop in target) {
+          target[prop] = !!value;
+          console.log(
+            `[LingXia Debug] ${prop} debugging ${value ? "enabled" : "disabled"}`,
+          );
+          return true;
+        }
+        return false;
+      },
+    }),
   };
 
   // Create lx proxy object for API interception
