@@ -1,5 +1,5 @@
 use crate::error::PlatformError;
-use crate::{AppRuntime, AssetFileEntry, DeviceInfo, NavigationType};
+use crate::{AppRuntime, AssetFileEntry, DeviceInfo};
 use jni::objects::{GlobalRef, JClass, JObject, JValue};
 use jni::sys::jobject;
 use lingxia_webview::get_env;
@@ -374,7 +374,7 @@ impl AppRuntime for Platform {
         &self,
         appid: String,
         path: String,
-        navigation_type: NavigationType,
+        animation_type: crate::traits::AnimationType,
     ) -> Result<(), PlatformError> {
         match || -> Result<(), Box<dyn std::error::Error>> {
             let mut env = get_env()?;
@@ -384,8 +384,8 @@ impl AppRuntime for Platform {
             let appid_jstring = env.new_string(&appid)?;
             let path_jstring = env.new_string(&path)?;
 
-            // Pass NavigationType as integer instead of enum object
-            let nav_type_int = navigation_type as i32;
+            // Pass AnimationType as integer to Android
+            let anim_type_int = animation_type as i32;
 
             let result = env.call_static_method(
                 lxapp_class,
@@ -394,7 +394,7 @@ impl AppRuntime for Platform {
                 &[
                     JValue::Object(&appid_jstring),
                     JValue::Object(&path_jstring),
-                    JValue::Int(nav_type_int),
+                    JValue::Int(anim_type_int),
                 ],
             )?;
 
@@ -402,8 +402,8 @@ impl AppRuntime for Platform {
             if let Ok(success) = result.z() {
                 if !success {
                     return Err(format!(
-                        "Navigation returned false: appid={}, path={}, navigation_type={:?}",
-                        appid, path, navigation_type
+                        "Navigation returned false: appid={}, path={}, animation_type={:?}",
+                        appid, path, animation_type
                     )
                     .into());
                 }
@@ -412,8 +412,8 @@ impl AppRuntime for Platform {
         }() {
             Ok(_) => Ok(()),
             Err(_) => Err(PlatformError::Platform(format!(
-                "Failed to navigate: appid={}, path={}, navigation_type={:?}",
-                appid, path, navigation_type
+                "Failed to navigate: appid={}, path={}, animation_type={:?}",
+                appid, path, animation_type
             ))),
         }
     }

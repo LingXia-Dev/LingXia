@@ -25,59 +25,44 @@ import androidx.appcompat.app.AppCompatActivity
 import android.view.animation.AccelerateDecelerateInterpolator
 
 /**
- * Navigation type enum for LxApp navigation
+ * Animation type enum for page transitions
  */
-enum class NavigationType(val value: Int) {
+enum class AnimationType(val value: Int) {
     /**
-     * Launch navigation - for openLxApp to open entry page
+     * No animation - used for Launch/Replace/SwitchTab semantics
      */
-    LAUNCH(0),
+    NONE(0),
 
     /**
-     * Forward navigation - navigate to a new page with animation
+     * Forward animation - push-style animation
      */
     FORWARD(1),
 
     /**
-     * Backward navigation - navigate back with animation
+     * Backward animation - pop-style animation
      */
-    BACKWARD(2),
-
-    /**
-     * Replace navigation - replace current page without animation
-     */
-    REPLACE(3),
-
-    /**
-     * Switch tab navigation - switch between tab pages
-     */
-    SWITCH_TAB(4);
+    BACKWARD(2);
 
     companion object {
         /**
-         * Convert NavigationType to string for logging
+         * Convert AnimationType to string for logging
          */
-        fun toString(type: NavigationType): String {
+        fun toString(type: AnimationType): String {
             return when (type) {
-                LAUNCH -> "Launch"
+                NONE -> "None"
                 FORWARD -> "Forward"
                 BACKWARD -> "Backward"
-                REPLACE -> "Replace"
-                SWITCH_TAB -> "SwitchTab"
             }
         }
 
         /**
-         * Convert integer to NavigationType
+         * Convert integer to AnimationType
          */
-        fun fromInt(value: Int): NavigationType {
+        fun fromInt(value: Int): AnimationType {
             return when (value) {
-                0 -> LAUNCH
                 1 -> FORWARD
                 2 -> BACKWARD
-                3 -> REPLACE
-                4 -> SWITCH_TAB
-                else -> FORWARD // Default fallback
+                else -> NONE // 0 or any other value
             }
         }
     }
@@ -741,33 +726,19 @@ class LxAppActivity : AppCompatActivity() {
     /**
      * Navigate to any page - super simple
      */
-    fun navigate(targetPath: String, navigationType: NavigationType): Boolean {
+    fun navigate(targetPath: String, animationType: AnimationType): Boolean {
         if (!::appId.isInitialized) return false
 
         try {
-            // Resolve actual navigation type (like macOS)
-            val actualType = resolveNavigationType(navigationType, targetPath)
-
             // Coordinate all UI updates in the same step for consistency
-            return coordinatedNavigationUpdate(targetPath, actualType)
+            return coordinatedNavigationUpdate(targetPath, animationType)
         } catch (e: Exception) {
             Log.e(TAG, "Navigation failed: ${e.message}", e)
             return false
         }
     }
 
-    /**
-     * Resolve navigation type based on path (like macOS logic)
-     */
-    private fun resolveNavigationType(navigationType: NavigationType, targetPath: String): NavigationType {
-        return when (navigationType) {
-            NavigationType.LAUNCH -> {
-                // Launch: convert to tab switch if it's a tab page
-                if (isTabPage(targetPath)) NavigationType.SWITCH_TAB else NavigationType.LAUNCH
-            }
-            else -> navigationType
-        }
-    }
+
 
     /**
      * Coordinate all UI updates (TabBar, NavBar, WebView) in the same step
@@ -775,19 +746,19 @@ class LxAppActivity : AppCompatActivity() {
      * IMPROVEMENT: Ensures WebView, NavBar, and TabBar updates are synchronized
      * to prevent timing issues and provide smooth, coordinated transitions
      */
-    private fun coordinatedNavigationUpdate(targetPath: String, navigationType: NavigationType): Boolean {
+    private fun coordinatedNavigationUpdate(targetPath: String, animationType: AnimationType): Boolean {
 
         val pageConfig = getNavBarState(appId, targetPath)
 
-        applyNavigationTypeUpdates(navigationType, targetPath)
+        applyAnimationTypeUpdates(animationType, targetPath)
 
-        return navigateToPageWithCoordination(targetPath, navigationType, pageConfig)
+        return navigateToPageWithCoordination(targetPath, animationType, pageConfig)
     }
 
     /**
-     * Apply navigation type specific UI updates with smooth animations
+     * Apply animation type specific UI updates with smooth animations
      */
-    private fun applyNavigationTypeUpdates(navigationType: NavigationType, targetPath: String) {
+    private fun applyAnimationTypeUpdates(animationType: AnimationType, targetPath: String) {
         // Reflect visibility from Rust TabBarState only
         val tabBarConfig = NativeApi.getTabBarState(appId)
         val visible = tabBarConfig?.visible ?: false
@@ -811,27 +782,23 @@ class LxAppActivity : AppCompatActivity() {
      */
     private fun navigateToPageWithCoordination(
         targetPath: String,
-        navigationType: NavigationType,
+        animationType: AnimationType,
         pageConfig: NavigationBarState?
     ): Boolean {
 
 
-        // All navigation types use coordinated logic
-        val success = when (navigationType) {
-            NavigationType.SWITCH_TAB -> {
-                // Tab switch = launch without animation (like macOS)
-                navigateToPage(targetPath, pageConfig, isReplace = true, isBackNavigation = false)
-                true
-            }
-            NavigationType.FORWARD -> {
+        // All animation types use coordinated logic
+        val success = when (animationType) {
+            AnimationType.FORWARD -> {
                 navigateToPage(targetPath, pageConfig, isReplace = false, isBackNavigation = false)
                 true
             }
-            NavigationType.BACKWARD -> {
+            AnimationType.BACKWARD -> {
                 navigateToPage(targetPath, pageConfig, isReplace = false, isBackNavigation = true)
                 true
             }
-            NavigationType.LAUNCH, NavigationType.REPLACE -> {
+            AnimationType.NONE -> {
+                // No animation - used for Launch/Replace/SwitchTab semantics
                 navigateToPage(targetPath, pageConfig, isReplace = true, isBackNavigation = false)
                 true
             }
@@ -1322,7 +1289,7 @@ class LxAppActivity : AppCompatActivity() {
 
             // 3. Call navigate as entry point
             if (path.isNotEmpty()) {
-                navigate(path, NavigationType.LAUNCH)
+                navigate(path, AnimationType.NONE)
             } else {
                 Log.e(TAG, "No valid path to navigate to")
             }
