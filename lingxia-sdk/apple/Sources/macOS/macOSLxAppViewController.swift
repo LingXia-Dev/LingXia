@@ -9,7 +9,7 @@ import CLingXiaRustAPI
 private let lxAppViewControllerLog = OSLog(subsystem: "LingXia", category: "LxAppView")
 
 @MainActor
-public class macOSLxAppViewController: NSViewController, WKNavigationDelegate, NavigationTabBarController, NavigationUIUpdater {
+public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     nonisolated private static let log = lxAppViewControllerLog
 
     private var currentTopMargin: CGFloat = 0
@@ -42,7 +42,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate, N
     public var appId: String
     internal var currentPath: String
     private var webViewContainer: NSView!
-    private var tabBarView: NSView?
+    internal var tabBarView: NSView?
     public var tabBarConfig: TabBar?
     internal var selectedTabIndex: Int = 0
     public var isDestroyed: Bool = false
@@ -116,7 +116,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate, N
     }
 
     private func setupTabBarConstraints(tabBar: NSView, config: TabBar) {
-        let isTransparent = TabBar.isTransparent(config.background_color)
+        let isTransparent = TabBarHelper.isTransparent(config.background_color)
         let dimension = CGFloat(config.dimension)
 
         // TabBar constraints
@@ -222,13 +222,13 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate, N
 
         // Use native macOS wrapper so selection updates via ObservableObject are reflected in UI
         let tabBar = LingXiaTabBar()
-        tabBar.setConfig(config: tabBarConfig, appId: appId)
+        tabBar.initialize(config: tabBarConfig, appId: appId)
         tabBar.setOnTabSelectedListener { [weak self] index, _ in
             guard let self = self else { return }
-            LxAppPageNavigation.handleTabBarItemSelected(appId: self.appId, index: index)
+            let _ = onUiEvent(self.appId, LxAppUIEvent.tabBarClick, String(index))
         }
-        // Initialize selection based on current path
-        let initIndex = findTabIndexByPath(currentPath) ?? 0
+        // Initialize selection based on Rust state
+        let initIndex = Int(tabBarConfig.selected_index)
         tabBar.setSelectedIndex(initIndex, notifyListener: false)
 
         tabBar.translatesAutoresizingMaskIntoConstraints = false
@@ -311,27 +311,17 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate, N
         selectedTabIndex = index
     }
 
-    /// Check if a path is a tab page
-    private func isTabPage(_ path: String) -> Bool {
-        guard let tabBarConfig = tabBarConfig else { return false }
-        let items = tabBarConfig.getItems(appId: appId)
-        return items.contains { $0.page_path.toString() == path }
-    }
-
-    /// Show or hide TabBar dynamically
-    public func showTabBar(_ show: Bool) {
-        guard let tabBar = tabBarView else { return }
-        tabBar.isHidden = !show
-        if show, let container = view as? NSView {
-            container.addSubview(tabBar)
-            container.layoutSubtreeIfNeeded()
-        }
-    }
-
     func removeTabBar() {
         tabBarView?.isHidden = true
         tabBarView?.removeFromSuperview()
         tabBarView = nil
+    }
+
+    /// Update TabBar visibility based on Rust state
+    public func updateTabBarVisibility() {
+        if let tabBarState = lingxia.getTabBar(appId) {
+            tabBarView?.isHidden = !tabBarState.is_visible
+        }
     }
 
     /// Trigger TabBar UI refresh for programmatic navigation
@@ -343,27 +333,16 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate, N
         )
     }
 
-    /// Sync TabBar selection with current path
-    public func syncTabBarSelection(path: String) {
-        // Rust manages selected_index, just sync UI with Rust state
-        if let wrapper = tabBarView as? LingXiaTabBar {
-            wrapper.syncSelectedTabWithCurrentPath(path)
-        } else if let rustState = lingxia.getTabBar(appId) {
-            selectedTabIndex = Int(rustState.selected_index)
-        }
-    }
-
-    //  - Helper Methods
-    public func findTabIndexByPath(_ targetPath: String) -> Int? {
-        guard let tabBarConfig = tabBarConfig else { return nil }
-        let items = tabBarConfig.getItems(appId: appId)
-        return items.firstIndex { $0.page_path.toString() == targetPath }
-    }
-
     // Method required by WindowController
     func updateLayoutForNavigationStyle(currentPath: String) {
         self.currentPath = currentPath
-        syncTabBarSelection(path: currentPath)
+
+        // Sync TabBar selection with current path - Rust manages selected_index, just sync UI with Rust state
+        if let wrapper = tabBarView as? LingXiaTabBar, let rustState = lingxia.getTabBar(appId) {
+            wrapper.setSelectedIndex(Int(rustState.selected_index), notifyListener: false)
+        } else if let rustState = lingxia.getTabBar(appId) {
+            selectedTabIndex = Int(rustState.selected_index)
+        }
     }
 
     /// Update capsule button visibility
@@ -388,15 +367,14 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate, N
         return view.subviews.first { $0.identifier == identifier }
     }
 
-
-
     /// Update navigation bar
     @MainActor
     public func updateNavigationBar(appId: String, path: String) {
         NavigationBarStateManager.shared.updateState(appId: appId, path: path)
 
-        if let navState = LxPageNavigation.getNavigationBarState(appId: appId, path: path),
+        if LxAppCore.isInitialized(), !appId.isEmpty, !path.isEmpty,
            let windowController = view.window?.windowController as? LxAppWindowController {
+            let navState = lingxia.getNavigationBarState(appId, path)
             windowController.updateNavigationBarWithState(navState)
         }
     }

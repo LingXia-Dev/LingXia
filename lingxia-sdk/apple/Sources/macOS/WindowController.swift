@@ -73,7 +73,8 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     /// Get page config directly
     private func getPageConfig() -> NavigationBarState? {
         guard let appId = appId, let path = path else { return nil }
-        return LxPageNavigation.getNavigationBarState(appId: appId, path: path)
+        guard LxAppCore.isInitialized(), !appId.isEmpty, !path.isEmpty else { return nil }
+        return lingxia.getNavigationBarState(appId, path)
     }
 
     public func getTopMarginForCurrentPage() -> CGFloat {
@@ -722,10 +723,10 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     @objc private func handleIndependentNavigationButtonClick() {
         // Get current navigation state to determine button type
         if let appId = appId, let path = path {
-            let navState = LxPageNavigation.getNavigationBarState(appId: appId, path: path)
-            if navState?.show_back_button == true {
+            let navState = lingxia.getNavigationBarState(appId, path)
+            if navState.show_back_button == true {
                 backButtonClicked()
-            } else if navState?.show_home_button == true {
+            } else if navState.show_home_button == true {
                 homeButtonClicked()
             }
         }

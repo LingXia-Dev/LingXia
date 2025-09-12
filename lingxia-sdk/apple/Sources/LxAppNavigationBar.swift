@@ -16,7 +16,11 @@ public class NavigationBarStateManager: ObservableObject {
     private init() {}
 
     public func updateState(appId: String, path: String) {
-        currentState = LxPageNavigation.getNavigationBarState(appId: appId, path: path)
+        guard LxAppCore.isInitialized(), !appId.isEmpty, !path.isEmpty else {
+            currentState = nil
+            return
+        }
+        currentState = lingxia.getNavigationBarState(appId, path)
         currentAppId = appId
     }
 
@@ -29,7 +33,7 @@ public class NavigationBarStateManager: ObservableObject {
               let manager = navController.topViewController as? LxAppViewController,
               LxAppCore.currentAppId == appId else { return }
         let path = manager.getCurrentPath()
-        let newState = LxPageNavigation.getNavigationBarState(appId: appId, path: path)
+        let newState = lingxia.getNavigationBarState(appId, path)
         currentState = newState
         #endif
     }

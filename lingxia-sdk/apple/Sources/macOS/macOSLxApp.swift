@@ -291,17 +291,17 @@ extension macOSLxApp {
     }
 
     /// Direct navigation implementation (called from LxAppCore)
-    internal static func handleNavigationDirect(_ plan: NavigationPlan) {
-        shared.handleRegularNavigation(plan)
+    internal static func handleNavigationDirect(appId: String, path: String, animationType: AnimationType) {
+        shared.handleRegularNavigation(appId: appId, path: path, animationType: animationType)
 
-        // Render UI components based on state
-        renderTabBarDirect(plan.tabBarState, appId: plan.appId, path: plan.path)
-        renderNavigationBarDirect(plan.navBarState)
-        renderCapsuleButtonDirect(appId: plan.appId)
+        // Update UI components based on Rust state
+        updateTabBarDirect(appId: appId, path: path)
+        updateNavigationBarDirect(appId: appId, path: path)
+        renderCapsuleButtonDirect(appId: appId)
     }
 
-    /// Direct TabBar rendering
-    private static func renderTabBarDirect(_ state: TabBarState, appId: String, path: String) {
+    /// Update TabBar based on Rust state
+    private static func updateTabBarDirect(appId: String, path: String) {
         // Find the appropriate view controller
         let viewController: macOSLxAppViewController? = {
             if let controller = Self.activeWindowControllers.first(where: { $0.appId == appId }) {
@@ -314,23 +314,28 @@ extension macOSLxApp {
 
         guard let vc = viewController else { return }
 
-        // Use state visibility (from prepareNavigation)
-        if state.show {
-            vc.syncTabBarSelection(path: path)
+        // Get TabBar state from Rust and update UI
+        if let tabBarState = lingxia.getTabBar(appId) {
+            if tabBarState.is_visible {
+                // Sync TabBar selection with current path - Rust manages selected_index, just sync UI with Rust state
+                if let wrapper = vc.tabBarView as? LingXiaTabBar, let rustState = lingxia.getTabBar(appId) {
+                    wrapper.setSelectedIndex(Int(rustState.selected_index), notifyListener: false)
+                } else if let rustState = lingxia.getTabBar(appId) {
+                    vc.selectedTabIndex = Int(rustState.selected_index)
+                }
+            }
+            vc.updateTabBarVisibility()
         }
-        vc.showTabBar(state.show)
     }
 
-    /// Direct NavigationBar rendering
-    private static func renderNavigationBarDirect(_ state: NavBarState) {
-        guard state.shouldUpdate else { return }
-
-        if let controller = Self.activeWindowControllers.first(where: { $0.appId == state.appId }),
+    /// Update NavigationBar based on Rust state
+    private static func updateNavigationBarDirect(appId: String, path: String) {
+        if let controller = Self.activeWindowControllers.first(where: { $0.appId == appId }),
            let viewController = controller.window?.contentViewController as? macOSLxAppViewController {
-            viewController.updateNavigationBar(appId: state.appId, path: state.path)
+            viewController.updateNavigationBar(appId: appId, path: path)
         } else if let tabController = Self.tabWindowController,
-                  let viewController = tabController.getViewController(for: state.appId) {
-            viewController.updateNavigationBar(appId: state.appId, path: state.path)
+                  let viewController = tabController.getViewController(for: appId) {
+            viewController.updateNavigationBar(appId: appId, path: path)
         }
     }
 
@@ -392,14 +397,14 @@ extension macOSLxApp {
         Self.activeWindowControllers.append(windowController)
     }
 
-    fileprivate func handleRegularNavigation(_ plan: NavigationPlan) {
+    fileprivate func handleRegularNavigation(appId: String, path: String, animationType: AnimationType) {
         // Find the appropriate view controller and delegate navigation
-        if let controller = Self.activeWindowControllers.first(where: { $0.appId == plan.appId }),
+        if let controller = Self.activeWindowControllers.first(where: { $0.appId == appId }),
            let viewController = controller.window?.contentViewController as? macOSLxAppViewController {
-            viewController.navigate(appId: plan.appId, to: plan.path, with: plan.animationType)
+            viewController.navigate(appId: appId, to: path, with: animationType)
         } else if let tabController = Self.tabWindowController,
-                  let viewController = tabController.getViewController(for: plan.appId) {
-            viewController.navigate(appId: plan.appId, to: plan.path, with: plan.animationType)
+                  let viewController = tabController.getViewController(for: appId) {
+            viewController.navigate(appId: appId, to: path, with: animationType)
         }
     }
 }

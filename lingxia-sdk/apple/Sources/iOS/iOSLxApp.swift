@@ -181,34 +181,38 @@ extension iOSLxApp {
     }
 
     /// Direct navigation implementation (called from LxAppCore)
-    internal static func handleNavigationDirect(_ plan: NavigationPlan) {
+    internal static func handleNavigationDirect(appId: String, path: String, animationType: AnimationType) {
         let instance = getInstance()
         guard let manager = instance.lxAppManager else { return }
 
         // Platform-specific setup/switch WebView first
-        manager.setupOrSwitchWebView(appId: plan.appId, path: plan.path, animationType: plan.animationType)
+        manager.setupOrSwitchWebView(appId: appId, path: path, animationType: animationType)
 
-        // Render UI components based on state
-        renderTabBarDirect(plan.tabBarState, appId: plan.appId, path: plan.path, manager: manager)
-        renderNavigationBarDirect(plan.navBarState, manager: manager)
+        // Update UI components based on Rust state
+        updateTabBarDirect(appId: appId, path: path, manager: manager)
+        updateNavigationBarDirect(appId: appId, path: path, manager: manager)
         // Capsule button rendering is handled in navigate() method
     }
 
-    /// Direct TabBar rendering
-    private static func renderTabBarDirect(_ state: TabBarState, appId: String, path: String, manager: LxAppViewController) {
+    /// Update TabBar based on Rust state
+    private static func updateTabBarDirect(appId: String, path: String, manager: LxAppViewController) {
         manager.setupTabBar(appId: appId)
 
-        // Use state visibility (already determined in prepareNavigation)
-        if state.show {
-            manager.currentTabBar?.syncSelectedTabWithCurrentPath(path)
+        // Get TabBar state from Rust and update UI
+        if let tabBarState = lingxia.getTabBar(appId) {
+            if tabBarState.is_visible {
+                // Sync TabBar selection with current path - Rust manages selected_index, just sync UI with Rust state
+                if let rustState = lingxia.getTabBar(appId) {
+                    manager.currentTabBar?.setSelectedIndex(Int(rustState.selected_index), notifyListener: false)
+                }
+            }
+            manager.showTabBar(tabBarState.is_visible)
         }
-        manager.showTabBar(state.show)
     }
 
-    /// Direct NavigationBar rendering
-    private static func renderNavigationBarDirect(_ state: NavBarState, manager: LxAppViewController) {
-        guard state.shouldUpdate else { return }
-        manager.updateNavigationBar(appId: state.appId, path: state.path)
+    /// Update NavigationBar based on Rust state
+    private static func updateNavigationBarDirect(appId: String, path: String, manager: LxAppViewController) {
+        manager.updateNavigationBar(appId: appId, path: path)
     }
 
     private func setupLxAppManagerIfNeeded() {

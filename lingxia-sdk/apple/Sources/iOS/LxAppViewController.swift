@@ -54,10 +54,11 @@ public class LxAppViewController: UIViewController, ObservableObject {
         let currentPath = path ?? getCurrentPath()
         guard !currentPath.isEmpty else { return false }
 
-        guard let navState = LxPageNavigation.getNavigationBarState(appId: appId, path: currentPath) else {
+        guard LxAppCore.isInitialized(), !appId.isEmpty, !currentPath.isEmpty else {
             return false
         }
 
+        let navState = lingxia.getNavigationBarState(appId, currentPath)
         return !navState.show_navbar
     }
 
@@ -298,7 +299,10 @@ public class LxAppViewController: UIViewController, ObservableObject {
             currentTabBar = createTabBar(config: tabConfig, appId: appId)
         }
 
-        currentTabBar?.syncSelectedTabWithCurrentPath(path)
+        // Sync TabBar selection with current path - Rust manages selected_index, just sync UI with Rust state
+        if let rustState = lingxia.getTabBar(appId) {
+            currentTabBar?.setSelectedIndex(Int(rustState.selected_index), notifyListener: false)
+        }
         currentTabBar?.isHidden = !tabConfig.is_visible
     }
 
@@ -309,7 +313,8 @@ public class LxAppViewController: UIViewController, ObservableObject {
         getCurrentWebView()?.isHidden = true
         getCurrentWebView()?.pauseWebView()
 
-        // Hide global UI components
+        // Stop TabBar observing and hide UI components
+        currentTabBar?.stopObserving()
         currentTabBar?.isHidden = true
         globalNavigationBar?.isHidden = true
         globalCapsuleButton?.isHidden = true
@@ -369,7 +374,10 @@ public class LxAppViewController: UIViewController, ObservableObject {
             // WebView exists, just update its content if needed
             updateNavigationBar(appId: appId, path: path)
             applyAppStyling(for: appId, path: path)
-            currentTabBar?.syncSelectedTabWithCurrentPath(path)
+            // Sync TabBar selection with current path - Rust manages selected_index, just sync UI with Rust state
+            if let rustState = lingxia.getTabBar(appId) {
+                currentTabBar?.setSelectedIndex(Int(rustState.selected_index), notifyListener: false)
+            }
         }
     }
 
@@ -480,9 +488,10 @@ public class LxAppViewController: UIViewController, ObservableObject {
             let tabBar = createTabBar(config: config, appId: appId)
             currentTabBar = tabBar
 
-            // Sync TabBar with current path
-            let currentPath = LxAppCore.getCurrentPath()
-            currentTabBar?.syncSelectedTabWithCurrentPath(currentPath)
+            // Sync TabBar with current path - Rust manages selected_index, just sync UI with Rust state
+            if let rustState = lingxia.getTabBar(appId) {
+                currentTabBar?.setSelectedIndex(Int(rustState.selected_index), notifyListener: false)
+            }
         }
     }
 
@@ -550,7 +559,6 @@ public class LxAppViewController: UIViewController, ObservableObject {
             if let webView = getCurrentWebView() {
                 configureWebView(webView, transparent: true)
             }
-            currentTabBar?.forceTransparencyMode()
         } else {
             setOpaqueBackgrounds()
         }
@@ -687,6 +695,9 @@ public class LxAppViewController: UIViewController, ObservableObject {
         if let closeAppObserver = closeAppObserver {
             NotificationCenter.default.removeObserver(closeAppObserver)
         }
+
+        // Ensure TabBar stops observing when view controller is deallocated
+        currentTabBar?.stopObservingInternal()
     }
 
     public override var preferredStatusBarStyle: UIStatusBarStyle {
@@ -785,16 +796,19 @@ public class LxAppViewController: UIViewController, ObservableObject {
 
     private func createTabBar(config: TabBar, appId: String) -> LingXiaTabBar {
         let tabBar = LingXiaTabBar()
-        tabBar.setConfig(config: config, appId: appId)
+        tabBar.initialize(config: config, appId: appId)
         tabBar.translatesAutoresizingMaskIntoConstraints = false
         tabBar.alpha = 1.0
 
         // Use universal tab click handler (navigation handled by Rust)
         tabBar.setOnTabSelectedListener { index, _ in
             if let appId = LxAppCore.currentAppId {
-                LxAppPageNavigation.handleTabBarItemSelected(appId: appId, index: index)
+                let _ = onUiEvent(appId, LxAppUIEvent.tabBarClick, String(index))
             }
         }
+
+        // Start observing TabBar state changes
+        tabBar.startObserving()
 
         rootContainer.addSubview(tabBar)
         applyTabBarLayoutParams(tabBar: tabBar, config: config, for: appId)

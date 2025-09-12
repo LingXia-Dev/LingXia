@@ -24,6 +24,13 @@ public struct LxAppUIEvent {
     public static let navigationActionHome = "home"
 }
 
+/// Animation type enum for page transitions
+public enum AnimationType: Sendable {
+    case none      // No animation
+    case forward   // Forward animation (push-style)
+    case backward  // Backward animation (pop-style)
+}
+
 // Sendable Conformance for FFI Types
 extension ToastIcon: @unchecked Sendable {}
 extension ToastPosition: @unchecked Sendable {}
@@ -169,19 +176,16 @@ public class LxAppCore {
     internal static func executeNavigation(appId: String, path: String, animationType: AnimationType) {
         os_log("Core executeNavigation: %@ to %@ with type: %@", log: log, type: .info, appId, path, String(describing: animationType))
 
-        // Use shared navigation logic from LxAppPageNavigation
-        let plan = LxAppNavigation.prepareNavigation(appId: appId, path: path, animationType: animationType)
-
-        guard plan.shouldProceed else {
-            os_log("Navigation cancelled by shared logic", log: log, type: .info)
+        guard !appId.isEmpty else {
+            os_log("Empty appId provided for navigation", log: log, type: .error)
             return
         }
 
-        // Direct platform calls instead of using renderer protocol
+        // Direct platform calls - no need for complex preparation logic
         #if os(iOS)
-        iOSLxApp.handleNavigationDirect(plan)
+        iOSLxApp.handleNavigationDirect(appId: appId, path: path, animationType: animationType)
         #elseif os(macOS)
-        macOSLxApp.handleNavigationDirect(plan)
+        macOSLxApp.handleNavigationDirect(appId: appId, path: path, animationType: animationType)
         #endif
     }
 
@@ -384,7 +388,7 @@ extension LxApp {
             let activeControllers = macOSLxApp.getActiveWindowControllers()
             for windowController in activeControllers {
                 if windowController.appId == appIdString, let path = windowController.path {
-                    let navState = LxPageNavigation.getNavigationBarState(appId: appIdString, path: path)
+                    let navState = lingxia.getNavigationBarState(appIdString, path)
                     windowController.updateNavigationBarWithState(navState)
                     break
                 }

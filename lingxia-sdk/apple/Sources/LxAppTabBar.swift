@@ -33,10 +33,6 @@ extension TabBar {
         return items
     }
 
-    public static func isTransparent(_ colorValue: UInt32) -> Bool {
-        return (colorValue >> 24) & 0xFF == 0
-    }
-
     public func getGroupedItems(appId: String) -> (start: [TabBarItem], center: [TabBarItem], end: [TabBarItem]) {
         let allItems = getItems(appId: appId)
         return TabBarHelpers.groupItems(allItems)
@@ -91,16 +87,6 @@ fileprivate struct TabBarHelpers {
     static func getEndItems(items: [TabBarItem]) -> [TabBarItem] {
         return items.filter { $0.group == .End }
     }
-
-    // Find tab index by path - used by wrapper classes
-    static func findTabIndexByPath(_ path: String, in items: [TabBarItem]) -> Int {
-        for (index, item) in items.enumerated() {
-            if item.page_path.toString() == path {
-                return index
-            }
-        }
-        return -1
-    }
 }
 
 /// Extensions for TabBarItem
@@ -113,15 +99,6 @@ extension TabBarItem {
 
 /// TabBar styling helpers
 public struct TabBarHelper {
-    public static func resolvedBackgroundColor(_ colorValue: UInt32, isVertical: Bool) -> PlatformColor {
-        if (colorValue >> 24) & 0xFF == 0 {
-            return isVertical ?
-                PlatformColor(red: 0.95, green: 0.95, blue: 0.95, alpha: 1.0) :
-                PlatformColor(red: 0.98, green: 0.98, blue: 0.98, alpha: 1.0)
-        }
-        return PlatformColor(argb: colorValue)
-    }
-
     public static func isTransparent(_ colorValue: UInt32) -> Bool {
         return (colorValue >> 24) & 0xFF == 0
     }
@@ -796,10 +773,8 @@ public struct MacOSLxAppTabBar: View {
 @MainActor
 public protocol TabBarProtocol: AnyObject {
     var config: TabBar? { get }
-    func setConfig(config: TabBar, appId: String)
+    var appId: String { get set }
     func setOnTabSelectedListener(_ listener: @escaping (Int, String) -> Void)
-    func findTabIndexByPath(_ path: String) -> Int
-    func syncSelectedTabWithCurrentPath(_ currentPath: String)
     func setSelectedIndex(_ index: Int, notifyListener: Bool)
 }
 
@@ -810,10 +785,10 @@ import UIKit
 @MainActor
 public class iOSTabBarWrapper: UIView {
     private var tabBarConfig: TabBar?
-    private var appId: String = ""
+    public var appId: String = ""
     private var selectedIndex: Int = 0
     private var onTabSelectedCallback: ((Int, String) -> Void)?
-    private var tabBarUpdateObserver: NSObjectProtocol?
+    nonisolated(unsafe) private var tabBarUpdateObserver: NSObjectProtocol?
 
     // Public accessor for tabBarConfig
     public var config: TabBar? {
@@ -862,41 +837,45 @@ public class iOSTabBarWrapper: UIView {
         }
     }
 
-    public func setConfig(config: TabBar, appId: String) {
+    public func setOnTabSelectedListener(_ listener: @escaping (Int, String) -> Void) {
+        self.onTabSelectedCallback = listener
+    }
+
+
+
+    /// Initialize TabBar with config and appId
+    public func initialize(config: TabBar, appId: String) {
         self.tabBarConfig = config
         self.appId = appId
 
-        // Setup notification observer now that we have the appId
-        setupNotificationObserver()
         // Initialize local selection from Rust state so UI reflects correct tab on first render
         self.selectedIndex = Int(config.selected_index)
         updateLayout()
     }
 
-    public func setOnTabSelectedListener(_ listener: @escaping (Int, String) -> Void) {
-        self.onTabSelectedCallback = listener
+    /// Start observing TabBar state changes - should be called when TabBar becomes active
+    public func startObserving() {
+        setupNotificationObserver()
     }
 
-    public func getSelectedIndex() -> Int {
-        return Int(tabBarConfig?.selected_index ?? 0)
-    }
-
-    public func syncSelectedTabWithCurrentPath(_ currentPath: String) {
-        // Rust manages selected_index, just sync UI with Rust state
-        if let rustState = lingxia.getTabBar(appId) {
-            self.tabBarConfig = rustState
-            setSelectedIndex(Int(rustState.selected_index), notifyListener: false)
+    /// Stop observing TabBar state changes - should be called when TabBar becomes inactive
+    public func stopObserving() {
+        if let observer = tabBarUpdateObserver {
+            NotificationCenter.default.removeObserver(observer)
+            tabBarUpdateObserver = nil
         }
     }
 
-    public func findTabIndexByPath(_ path: String) -> Int {
-        guard let config = tabBarConfig else { return -1 }
-        let items = config.getItems(appId: appId)
-        return TabBarHelpers.findTabIndexByPath(path, in: items)
+    /// Internal method for stopping observation without MainActor isolation - used in deinit
+    nonisolated internal func stopObservingInternal() {
+        if let observer = tabBarUpdateObserver {
+            NotificationCenter.default.removeObserver(observer)
+            tabBarUpdateObserver = nil
+        }
     }
 
     public func setSelectedIndex(_ index: Int, notifyListener: Bool) {
-        let previousIndex = getSelectedIndex()
+        let previousIndex = Int(tabBarConfig?.selected_index ?? 0)
         self.selectedIndex = index
 
         if previousIndex != index {
@@ -918,11 +897,6 @@ public class iOSTabBarWrapper: UIView {
 
         // Always recreate layout to ensure fresh badge/red dot data
         setupUIKitLayout(items: items, config: config)
-    }
-
-    public func forceTransparencyMode() {
-        backgroundColor = UIColor.clear
-        layer.backgroundColor = UIColor.clear.cgColor
     }
 
     private func createRedDotView() -> UIView {
@@ -1265,7 +1239,6 @@ public class iOSTabBarWrapper: UIView {
 }
 
 public typealias LingXiaTabBar = iOSTabBarWrapper
-public typealias PlatformTabBar = iOSTabBarWrapper
 #elseif os(macOS)
 import AppKit
 import SwiftUI
@@ -1275,7 +1248,7 @@ import SwiftUI
 public class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
     private var hostingController: NSHostingController<AnyView>?
     private var tabBarConfig: TabBar?
-    private var appId: String = ""
+    public var appId: String = ""
     @Published private var selectedIndex: Int = 0
     private var onTabSelectedCallback: ((Int, String) -> Void)?
 
@@ -1298,28 +1271,15 @@ public class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
         layer?.backgroundColor = NSColor.clear.cgColor
     }
 
-    public func setConfig(config: TabBar, appId: String) {
-        self.tabBarConfig = config
-        self.appId = appId
-        updateSwiftUIView()
-    }
-
     public func setOnTabSelectedListener(_ listener: @escaping (Int, String) -> Void) {
         self.onTabSelectedCallback = listener
     }
 
-    public func findTabIndexByPath(_ path: String) -> Int {
-        guard let config = tabBarConfig else { return -1 }
-        let items = config.getItems(appId: appId)
-        return TabBarHelpers.findTabIndexByPath(path, in: items)
-    }
-
-    public func syncSelectedTabWithCurrentPath(_ currentPath: String) {
-        // Rust manages selected_index, just sync UI with Rust state
-        if let rustState = lingxia.getTabBar(appId) {
-            self.tabBarConfig = rustState
-            setSelectedIndex(Int(rustState.selected_index), notifyListener: false)
-        }
+    /// Initialize TabBar with config and appId
+    public func initialize(config: TabBar, appId: String) {
+        self.tabBarConfig = config
+        self.appId = appId
+        updateSwiftUIView()
     }
 
     public func setSelectedIndex(_ index: Int, notifyListener: Bool) {
@@ -1383,6 +1343,5 @@ public class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
 }
 
 public typealias LingXiaTabBar = macOSTabBarWrapper
-public typealias PlatformTabBar = macOSTabBarWrapper
 #endif
 
