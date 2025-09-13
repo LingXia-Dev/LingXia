@@ -16,12 +16,12 @@ App({
     }
   },
 
-  onHide: function() {
+  onHide: function () {
     console.log("Lxapp is hidden");
   },
 
-  onShow: function() {
-    console.log("Lxapp is shown");
+  onShow: function (options) {
+    console.log("Options in App's onShow: ", options);
   },
 
   globalData: {

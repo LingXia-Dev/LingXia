@@ -1,9 +1,11 @@
 const app = getApp();
 
 Page({
-  onLoad: function () {},
+  onLoad: function (options) {
+    console.log("Options in onLoad: ", options);
+  },
 
-  onShow: function () {
+  onShow: function (options) {
     console.log("API page onShow");
     console.log("App data:", app.globalData);
   },
@@ -24,7 +26,7 @@ Page({
   navigateToTestMiniApp: function () {
     lx.navigateToLxApp({
       appId: "testminiapp",
-      path: "/pages/home/index",
+      path: "/pages/home/index.html?a=100&X=bcd",
     });
   },
 });
