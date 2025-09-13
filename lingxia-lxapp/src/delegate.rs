@@ -250,22 +250,32 @@ impl LxApp {
         info!("Navigation button '{}' clicked", data).with_appid(self.appid.clone());
 
         match data.as_str() {
-            "back" => self.handle_back_press(),
-            "home" => {
-                // Clear page stack when navigating to home
-                if let Err(e) = self.clear_page_stack() {
-                    error!("Failed to clear page stack: {}", e).with_appid(self.appid.clone());
+            "back" => {
+                if let Some(path) = self.peek_current_page() {
+                    if let Some(page) = self.get_page(path.as_str()) {
+                        let _ = page.navigate_back(1);
+                        return true;
+                    }
                 }
-
+                false
+            }
+            "home" => {
                 // Navigate to home page using Launch
                 let home_route = self.config.get_initial_route();
-                if let Err(e) = self.runtime.navigate(
-                    self.appid.clone(),
-                    home_route,
-                    NavigationType::Launch.to_animation(),
-                ) {
-                    error!("Failed to navigate to home: {}", e).with_appid(self.appid.clone());
-                    return false;
+                let navigate_type = if let Some(tabbar) = self.get_tabbar() {
+                    if tabbar.is_tabbar_page(&home_route) {
+                        NavigationType::SwitchTab
+                    } else {
+                        NavigationType::Launch
+                    }
+                } else {
+                    NavigationType::Launch
+                };
+
+                if let Some(path) = self.peek_current_page() {
+                    if let Some(page) = self.get_page(&path) {
+                        let _ = page.navigate(&home_route, navigate_type);
+                    }
                 }
                 true
             }
@@ -278,9 +288,10 @@ impl LxApp {
 
     /// Handle back button press (system or navigation)
     fn handle_back_press(self: &Arc<Self>) -> bool {
-        info!("BackPress trigered").with_appid(self.appid.clone());
+        let stack_size = self.get_page_stack_size();
+        info!("BackPress trigered, page stack size: {}", stack_size).with_appid(self.appid.clone());
 
-        if self.get_page_stack_size() <= 1 {
+        if stack_size <= 1 {
             // if it's last page, clsoe this lxapp
             if !self.is_home_lxapp {
                 let _ = self.runtime.close_lxapp(self.appid.clone());
