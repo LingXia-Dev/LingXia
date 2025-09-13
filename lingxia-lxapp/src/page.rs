@@ -481,10 +481,11 @@ impl Page {
 
         if let Some(path) = lxapp.peek_current_page() {
             // Update UI for the destination page
-            if let Some(dest_page) = lxapp.get_page(&path) {
-                // Update TabBar visibility based on whether the destination is a tab page
-                lxapp.with_tabbar_mut(|t| t.set_visible(dest_page.is_tabbar_page()));
-            }
+            // Check if destination is a tabbar page without holding any locks
+            let is_tabbar_page = lxapp
+                .get_tabbar()
+                .map_or(false, |tabbar| tabbar.is_tab_page(&path));
+            lxapp.with_tabbar_mut(|t| t.set_visible(is_tabbar_page));
 
             // Update NavBar back button visibility based on the new stack size
             let new_stack_size = lxapp.get_page_stack_size();
