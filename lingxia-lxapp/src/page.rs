@@ -1,6 +1,7 @@
 use crate::appservice::bridge::IncomingMessage;
 use crate::executor::LxAppExecutor;
 use crate::lxapp::{self, navbar::NavigationBarState};
+use crate::startup::parse_query_string;
 use crate::{LxApp, LxAppError, error, info};
 use lingxia_platform::{AnimationType, AppRuntime};
 use lingxia_webview::{
@@ -376,38 +377,16 @@ impl Page {
     pub fn navigate(&self, url: &str, nav_type: NavigationType) -> Result<(), LxAppError> {
         let lxapp = lxapp::get(self.appid());
 
-        // 1. Parse URL to get path and query
-        let (path, query) = if nav_type == NavigationType::SwitchTab {
-            (url.to_string(), serde_json::Value::Null)
+        // 1. Parse URL to get path and query string
+        let (path, query_str) = if nav_type == NavigationType::SwitchTab {
+            (url.to_string(), String::new())
         } else {
             let (p, q_str) = if let Some(idx) = url.find('?') {
                 (url[..idx].to_string(), &url[idx + 1..])
             } else {
                 (url.to_string(), "")
             };
-
-            let q = if q_str.is_empty() {
-                serde_json::Value::Null
-            } else {
-                let mut query_map = serde_json::Map::new();
-                for pair in q_str.split('&') {
-                    if let Some(eq_pos) = pair.find('=') {
-                        let key = &pair[..eq_pos];
-                        let value = &pair[eq_pos + 1..];
-                        let decoded_value = urlencoding::decode(value)
-                            .unwrap_or_else(|_| std::borrow::Cow::Borrowed(value));
-                        query_map.insert(
-                            key.to_string(),
-                            serde_json::Value::String(decoded_value.to_string()),
-                        );
-                    } else {
-                        query_map
-                            .insert(pair.to_string(), serde_json::Value::String("".to_string()));
-                    }
-                }
-                serde_json::Value::Object(query_map)
-            };
-            (p, q)
+            (p, q_str.to_string())
         };
 
         // 2. Handle UI state based on navigation type (TabBar, NavBar)
@@ -450,8 +429,8 @@ impl Page {
         let target_page = lxapp.get_or_create_page(&path).ok_or_else(|| {
             LxAppError::UnsupportedOperation("Failed to get or create page".to_string())
         })?;
-        if query != serde_json::Value::Null {
-            target_page.set_query(query);
+        if !query_str.is_empty() {
+            target_page.set_query(query_str);
         }
 
         // 5. Dispatch lifecycle events for current and target pages
@@ -526,8 +505,10 @@ impl Page {
         }
     }
 
-    pub(crate) fn set_query(&self, query: serde_json::Value) {
-        self.inner.state.lock().unwrap().query = query;
+    pub(crate) fn set_query(&self, query_str: String) {
+        if let Ok(query_value) = parse_query_string(&query_str) {
+            self.inner.state.lock().unwrap().query = query_value;
+        }
     }
 }
 
@@ -656,4 +637,3 @@ impl Drop for PageInner {
         }
     }
 }
-

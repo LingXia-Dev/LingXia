@@ -52,7 +52,7 @@ impl From<i32> for Scene {
 #[derive(Deserialize, Debug, Default, Clone)]
 pub struct LxAppStartupOptions {
     pub path: String,
-    pub query: serde_json::Value,
+    pub query: String,
     pub mode: LxAppMode,
     pub scene: Scene,
 }
@@ -67,14 +67,41 @@ impl serde::Serialize for LxAppStartupOptions {
         map.serialize_entry("path", &self.path)?;
         map.serialize_entry("scene", &(self.scene as u32))?;
 
-        if let Some(query_map) = self.query.as_object() {
-            for (k, v) in query_map {
-                map.serialize_entry(k, v)?;
+        if let Ok(query_value) = parse_query_string(&self.query) {
+            if let Some(query_map) = query_value.as_object() {
+                for (k, v) in query_map {
+                    map.serialize_entry(k, v)?;
+                }
             }
         }
 
         map.end()
     }
+}
+
+/// Parse query string into serde_json::Value
+/// This is the centralized query parsing function used by both startup options and page navigation
+pub fn parse_query_string(query_str: &str) -> Result<serde_json::Value, serde_json::Error> {
+    if query_str.is_empty() {
+        return Ok(serde_json::Value::Null);
+    }
+
+    let mut query_map = serde_json::Map::new();
+    for pair in query_str.split('&') {
+        if let Some(eq_pos) = pair.find('=') {
+            let key = &pair[..eq_pos];
+            let value = &pair[eq_pos + 1..];
+            let decoded_value =
+                urlencoding::decode(value).unwrap_or_else(|_| std::borrow::Cow::Borrowed(value));
+            query_map.insert(
+                key.to_string(),
+                serde_json::Value::String(decoded_value.to_string()),
+            );
+        } else {
+            query_map.insert(pair.to_string(), serde_json::Value::String("".to_string()));
+        }
+    }
+    Ok(serde_json::Value::Object(query_map))
 }
 
 impl LxAppStartupOptions {
@@ -87,12 +114,9 @@ impl LxAppStartupOptions {
             (path_with_query, "")
         };
 
-        let query = serde_json::from_str(query_str)
-            .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::new()));
-
         Self {
             path: path.to_string(),
-            query,
+            query: query_str.to_string(),
             ..Default::default()
         }
     }
@@ -110,7 +134,7 @@ impl LxAppStartupOptions {
     }
 
     /// Sets the `query` for the startup options.
-    pub fn set_query(mut self, query: serde_json::Value) -> Self {
+    pub fn set_query(mut self, query: String) -> Self {
         self.query = query;
         self
     }
