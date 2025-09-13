@@ -369,7 +369,7 @@ impl Page {
     pub fn is_tabbar_page(&self) -> bool {
         let lxapp = lxapp::get(self.inner.appid.clone());
         match lxapp.get_tabbar() {
-            Some(tab_bar) => tab_bar.is_tab_page(&self.inner.path),
+            Some(tab_bar) => tab_bar.is_tabbar_page(&self.inner.path),
             None => false,
         }
     }
@@ -393,7 +393,7 @@ impl Page {
         let is_tab_switch = nav_type == NavigationType::SwitchTab;
         lxapp.with_tabbar_mut(|t| t.set_visible(is_tab_switch));
         if is_tab_switch {
-            if let Some(Some(index)) = lxapp.with_tabbar_mut(|t| t.find_tab_index_by_path(&path)) {
+            if let Some(Some(index)) = lxapp.with_tabbar_mut(|t| t.find_index_by_path(&path)) {
                 lxapp.with_tabbar_mut(|t| {
                     t.set_selected_index(index as i32);
                 });
@@ -484,7 +484,7 @@ impl Page {
             // Check if destination is a tabbar page without holding any locks
             let is_tabbar_page = lxapp
                 .get_tabbar()
-                .map_or(false, |tabbar| tabbar.is_tab_page(&path));
+                .map_or(false, |tabbar| tabbar.is_tabbar_page(&path));
             lxapp.with_tabbar_mut(|t| t.set_visible(is_tabbar_page));
 
             // Update NavBar back button visibility based on the new stack size

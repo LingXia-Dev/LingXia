@@ -93,7 +93,7 @@ impl LxAppDelegate for LxApp {
         // Pre-create all tab pages in background (only on first open)
         let tab_pages = self
             .get_tabbar()
-            .map(|t| t.get_tab_pages())
+            .map(|t| t.get_tabbar_pages())
             .unwrap_or_else(Vec::new);
         if !was_already_opened && !tab_pages.is_empty() {
             let initial_path = resolved_path.clone();
@@ -191,7 +191,7 @@ impl LxApp {
             // Don't set the index here - let page.navigate handle it
             let tab_pages = self
                 .get_tabbar()
-                .map(|t| t.get_tab_pages())
+                .map(|t| t.get_tabbar_pages())
                 .unwrap_or_else(Vec::new);
             if let Some(tab_path) = tab_pages.get(index) {
                 if let Some(current_page_path) = self.peek_current_page() {

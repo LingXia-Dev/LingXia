@@ -475,7 +475,8 @@ impl LxApp {
                 // Initialize TabBar state if config has TabBar
                 if let Some(tabbar_config) = &self.config.tabBar {
                     let mut state = self.state.lock().unwrap();
-                    state.tabbar = Some(tabbar_config.clone());
+                    // Convert icon paths to absolute paths using the lxapp directory as base
+                    state.tabbar = Some(tabbar_config.with_absolute_paths(&self.lxapp_dir));
                 }
 
                 Ok(())
