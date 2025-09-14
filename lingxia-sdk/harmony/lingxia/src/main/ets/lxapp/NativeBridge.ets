@@ -97,9 +97,6 @@ class NativeBridge {
       return loadUrl(webtag, url);
     });
 
-
-
-
     // WebView data management
     this.register('clearBrowsingData', (webtag: string) => {
       return clearBrowsingData(webtag);
@@ -222,6 +219,25 @@ export function getNativeCallbackFunction(): (data: string) => Object | null {
       if (functionName === 'setScrollListenerEnabled' && rawArgs.length >= 2) {
         // Convert the second argument (enabled) from string to boolean
         args = [rawArgs[0], rawArgs[1] === 'true'];
+      } else if (functionName === 'showToast' && rawArgs.length >= 6) {
+        // Convert showToast arguments: title, icon, image, duration, mask, position
+        // title: string (keep as is)
+        // icon: string -> number (success=0, error=1, loading=2, none=3)
+        // image: string (keep as is)
+        // duration: string -> number
+        // mask: string -> boolean
+        // position: string -> number (top=0, center=1, bottom=2)
+        const iconMap: Record<string, number> = { 'success': 0, 'error': 1, 'loading': 2, 'none': 3 };
+        const positionMap: Record<string, number> = { 'top': 0, 'center': 1, 'bottom': 2 };
+
+        args = [
+          rawArgs[0], // title (string)
+          iconMap[rawArgs[1]] ?? 3, // icon (string -> number, default to none)
+          rawArgs[2], // image (string)
+          parseFloat(rawArgs[3]) || 1.5, // duration (string -> number)
+          rawArgs[4] === 'true', // mask (string -> boolean)
+          positionMap[rawArgs[5]] ?? 1 // position (string -> number, default to center)
+        ];
       }
 
       return NativeBridge.call(functionName, ...args);
