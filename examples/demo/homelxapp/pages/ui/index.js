@@ -68,5 +68,20 @@ Page({
     lx.redirectTo({
       url: "pages/ui/index.tsx?type=navigation"
     });
+  },
+
+  // Show toast with custom parameters
+  showToastWithParams: function (params) {
+    lx.showToast({
+      title: params.title || 'Hello Toast!',
+      icon: params.icon || 'success',
+      duration: params.duration || 2000,
+      position: params.position || 'center',
+      mask: params.mask || false
+    });
+  },
+
+  hideToast: function () {
+    lx.hideToast();
   }
 });
