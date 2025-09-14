@@ -1,80 +1,154 @@
 import React from 'react';
-import { Button } from '../../src/components/button';
 import '../../tailwind.css';
 
 export default function APIPage() {
   // Use LingXia hook to get data and functions
-  const { data, getDeviceInfo, navigateToTestMiniApp } = window.useLingXia();
-  const { deviceInfo = { brand: '-', model: '-', system: '-' }, showDeviceInfo = false } = data;
+  const { data, toggleSection, navigateToUIPage, navigateToDevicePage, navigateToTestMiniApp } = window.useLingXia();
+  const { expandedSections = { interface: false, device: false, navigation: false } } = data;
+
+  React.useEffect(() => {
+    document.body.className = 'api-page';
+    return () => {
+      document.body.className = '';
+    };
+  }, []);
+
   return (
     <div className="min-h-screen bg-gray-100">
-      <div className="max-w-md mx-auto">
-        <div className="bg-white px-5 py-6 text-center border-b border-gray-200 shadow-sm">
-          <h1 className="text-xl font-medium text-black mb-1">API Capabilities</h1>
-          <p className="text-sm text-gray-500">LingXia Platform API Demonstrations</p>
+      <div className="px-3 py-2 space-y-2">
+
+        {/* Header Card - Description */}
+        <div className="bg-white rounded-lg shadow-sm">
+          <div className="px-4 py-6 text-center">
+            <div className="w-12 h-12 mx-auto mb-3 text-blue-500">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+              </svg>
+            </div>
+            <div className="text-base text-gray-900 font-medium">
+              The following demonstrates the capabilities provided by LingXia.
+            </div>
+          </div>
         </div>
 
-        {/* Navigation APIs Section */}
-        <div className="mt-8 mb-3 px-5 text-sm text-gray-500 font-medium uppercase tracking-wide">Navigation APIs</div>
-        <div className="mx-3 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="flex items-center px-4 py-4">
-            <div className="text-xl mr-4">🧭</div>
-            <div className="flex-1">
-              <div className="text-base text-black mb-0.5 font-medium">Navigate to another LxApp</div>
-              <div className="text-xs text-gray-400 leading-tight">Launch TestMiniApp</div>
+        {/* Navigation - Dropdown */}
+        <div className="bg-white rounded-lg shadow-sm">
+          <div
+            className="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
+            onClick={() => toggleSection({ section: 'navigation' })}
+          >
+            <div className="text-base text-gray-900">Navigation</div>
+            <div className="w-6 h-6 text-gray-400">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M13 7l5 5-5 5M6 7l5 5-5 5"/>
+              </svg>
             </div>
-            <div className="flex items-center gap-2 ml-3">
-              <Button
-                size="sm"
+          </div>
+
+          {expandedSections.navigation && (
+            <div className="border-t border-gray-100 bg-gray-50">
+              <div
+                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between"
                 onClick={navigateToTestMiniApp}
-                className={`h-7 px-3 text-xs font-medium transition-all duration-200 bg-green-500 hover:bg-green-600 text-white border-0 shadow-sm`}
               >
-                Launch
-              </Button>
-            </div>
-          </div>
-        </div>
-
-        {/* Device APIs Section */}
-        <div className="mt-8 mb-3 px-5 text-sm text-gray-500 font-medium uppercase tracking-wide">Device APIs</div>
-        <div className="mx-3 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="flex items-center px-4 py-4">
-            <div className="text-xl mr-4">📱</div>
-            <div className="flex-1">
-              <div className="text-base text-black mb-0.5 font-medium">Get Device Information</div>
-              <div className="text-xs text-gray-400 leading-tight">Retrieve current device details</div>
-            </div>
-            <div className="flex items-center gap-2 ml-3">
-              <Button
-                size="sm"
-                onClick={getDeviceInfo}
-                className={`h-7 px-3 text-xs font-medium transition-all duration-200 bg-blue-500 hover:bg-blue-600 text-white border-0 shadow-sm`}
-              >
-                Get Info
-              </Button>
-            </div>
-          </div>
-
-          {/* Device Information Display */}
-          {showDeviceInfo && (
-            <div className="mx-4 mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200 animate-in slide-in-from-top-2 duration-300">
-              <h4 className="text-sm font-medium text-gray-700 mb-3">Device Information</h4>
-              <div className="space-y-2">
-                <div className="flex justify-between items-center py-2 border-b border-gray-100 last:border-b-0">
-                  <span className="text-sm text-gray-600">Brand</span>
-                  <span className="text-sm font-medium text-gray-900">{deviceInfo.brand}</span>
-                </div>
-                <div className="flex justify-between items-center py-2 border-b border-gray-100 last:border-b-0">
-                  <span className="text-sm text-gray-600">Model</span>
-                  <span className="text-sm font-medium text-gray-900">{deviceInfo.model}</span>
-                </div>
-                <div className="flex justify-between items-center py-2 border-b border-gray-100 last:border-b-0">
-                  <span className="text-sm text-gray-600">System</span>
-                  <span className="text-sm font-medium text-gray-900">{deviceInfo.system}</span>
+                <div className="text-sm text-gray-700">Open Another LxApp</div>
+                <div className="w-4 h-4 text-gray-400">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M9 18l6-6-6-6"/>
+                  </svg>
                 </div>
               </div>
             </div>
           )}
+        </div>
+
+        {/* User Interface - Dropdown */}
+        <div className="bg-white rounded-lg shadow-sm">
+          <div
+            className="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
+            onClick={() => toggleSection({ section: 'interface' })}
+          >
+            <div className="text-base text-gray-900">User Interface</div>
+            <div className="w-6 h-6 text-gray-400">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                <polyline points="9,22 9,12 15,12 15,22"/>
+              </svg>
+            </div>
+          </div>
+
+          {expandedSections.interface && (
+            <div className="border-t border-gray-100 bg-gray-50">
+              <div
+                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between"
+                onClick={() => navigateToUIPage({ type: 'navigation' })}
+              >
+                <div className="text-sm text-gray-700">Page Navigation</div>
+                <div className="w-4 h-4 text-gray-400">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M9 18l6-6-6-6"/>
+                  </svg>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Device - Dropdown */}
+        <div className="bg-white rounded-lg shadow-sm">
+          <div
+            className="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
+            onClick={() => toggleSection({ section: 'device' })}
+          >
+            <div className="text-base text-gray-900">Device</div>
+            <div className="w-6 h-6 text-gray-400">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <rect x="5" y="2" width="14" height="20" rx="2"/>
+                <path d="M12 18h.01"/>
+              </svg>
+            </div>
+          </div>
+
+          {expandedSections.device && (
+            <div className="border-t border-gray-100 bg-gray-50">
+              <div
+                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between"
+                onClick={() => navigateToDevicePage({ type: 'device' })}
+              >
+                <div className="text-sm text-gray-700">Get Device Info</div>
+                <div className="w-4 h-4 text-gray-400">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M9 18l6-6-6-6"/>
+                  </svg>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Media - Empty */}
+        <div className="bg-white rounded-lg shadow-sm">
+          <div className="px-4 py-4 flex items-center justify-between">
+            <div className="text-base text-gray-900">Media</div>
+            <div className="w-6 h-6 text-gray-400">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <polygon points="5,3 19,12 5,21"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        {/* Location - Empty */}
+        <div className="bg-white rounded-lg shadow-sm">
+          <div className="px-4 py-4 flex items-center justify-between">
+            <div className="text-base text-gray-900">Location</div>
+            <div className="w-6 h-6 text-gray-400">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                <circle cx="12" cy="10" r="3"/>
+              </svg>
+            </div>
+          </div>
         </div>
       </div>
     </div>

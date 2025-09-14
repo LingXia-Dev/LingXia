@@ -5,6 +5,8 @@
   "pages": [
     "pages/home/index.html",
     "pages/API/index.tsx",
+    "pages/ui/index.tsx",
+    "pages/device/index.tsx",
     "pages/todo/index.vue"
   ],
   "debug": true,

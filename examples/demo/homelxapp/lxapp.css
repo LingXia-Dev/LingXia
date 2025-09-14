@@ -16,3 +16,12 @@ body {
   justify-content: center;
   align-items: center;
 }
+
+body.api-page {
+  align-items: stretch;
+  justify-content: flex-start;
+}
+
+body.api-page #root {
+  width: 100%;
+}
