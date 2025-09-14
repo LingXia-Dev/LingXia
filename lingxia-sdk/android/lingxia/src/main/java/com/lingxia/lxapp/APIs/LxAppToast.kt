@@ -112,15 +112,15 @@ internal object LxAppToast {
         hideHandler = null
         hideRunnable = null
 
-        // Hide toast with animation
+        // Hide toast immediately without animation to prevent conflicts
         currentToastView?.let { toastView ->
-            animateOut(toastView) {
-                removeToastFromParent(toastView)
-                currentToastView = null
-            }
+            // Cancel any ongoing animations
+            toastView.animate().cancel()
+            removeToastFromParent(toastView)
+            currentToastView = null
         }
 
-        // Hide mask
+        // Hide mask immediately
         currentMaskView?.let { maskView ->
             removeToastFromParent(maskView)
             currentMaskView = null
