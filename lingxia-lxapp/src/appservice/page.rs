@@ -325,6 +325,10 @@ impl PageSvc {
 
     // post init data to view
     async fn handle_lxport_ready(&mut self) -> JSResult<()> {
+        // Dispatch the OnLoad event here to allow user to use setData in onLoad of Page
+        self.page
+            .dispatch_lifecycle_event(crate::page::PageLifecycleEvent::OnLoad);
+
         let mut state = self.state.lock().await;
 
         // only post one time

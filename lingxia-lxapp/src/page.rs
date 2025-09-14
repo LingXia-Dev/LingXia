@@ -517,7 +517,6 @@ impl WebViewDelegate for Page {
     /// Called when the page starts loading
     fn on_page_started(&self) {
         self.set_render_status(PageRenderStatus::Started);
-        self.dispatch_lifecycle_event(PageLifecycleEvent::OnLoad);
     }
 
     /// Called when the page finishes loading
