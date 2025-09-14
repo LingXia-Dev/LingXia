@@ -418,7 +418,6 @@ impl Page {
                 if self.path() == path {
                     lxapp.push_to_page_stack(&path, true)?;
                 }
-                lxapp.with_navbar_mut(&path, |navbar| navbar.set_back_button_visibility(true));
             }
             NavigationType::Backward => {
                 // Backward is handled by navigate_back, so this is a no-op here.
@@ -431,6 +430,11 @@ impl Page {
         })?;
         if !query_str.is_empty() {
             target_page.set_query(query_str);
+        }
+
+        // Set navbar state AFTER page creation to avoid being overwritten
+        if nav_type == NavigationType::Forward {
+            target_page.get_navbar_state_mut(|navbar| navbar.set_back_button_visibility(true));
         }
 
         // 5. Dispatch lifecycle events for current and target pages
