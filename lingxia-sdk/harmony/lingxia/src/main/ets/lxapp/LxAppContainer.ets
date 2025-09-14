@@ -757,6 +757,7 @@ export struct LxAppContainer {
     this.updateTabSelection(path);
 
     this.loadNavbarState(path);
+    this.loadTabBarState();
 
     // Start slide animation
     animateTo({
@@ -789,6 +790,7 @@ export struct LxAppContainer {
 
     // Load navbar state for instant transitions
     this.loadNavbarState(path);
+    this.loadTabBarState();
 
     this.finishTransition(newWebTag, path);
   }
