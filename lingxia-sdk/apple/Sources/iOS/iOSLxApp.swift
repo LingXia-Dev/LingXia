@@ -185,34 +185,8 @@ extension iOSLxApp {
         let instance = getInstance()
         guard let manager = instance.lxAppManager else { return }
 
-        // Platform-specific setup/switch WebView first
-        manager.setupOrSwitchWebView(appId: appId, path: path, animationType: animationType)
-
-        // Update UI components based on Rust state
-        updateTabBarDirect(appId: appId, path: path, manager: manager)
-        updateNavigationBarDirect(appId: appId, path: path, manager: manager)
-        // Capsule button rendering is handled in navigate() method
-    }
-
-    /// Update TabBar based on Rust state
-    private static func updateTabBarDirect(appId: String, path: String, manager: LxAppViewController) {
-        manager.setupTabBar(appId: appId)
-
-        // Get TabBar state from Rust and update UI
-        if let tabBarState = lingxia.getTabBar(appId) {
-            if tabBarState.is_visible {
-                // Sync TabBar selection with current path - Rust manages selected_index, just sync UI with Rust state
-                if let rustState = lingxia.getTabBar(appId) {
-                    manager.currentTabBar?.setSelectedIndex(Int(rustState.selected_index), notifyListener: false)
-                }
-            }
-            manager.showTabBar(tabBarState.is_visible)
-        }
-    }
-
-    /// Update NavigationBar based on Rust state
-    private static func updateNavigationBarDirect(appId: String, path: String, manager: LxAppViewController) {
-        manager.updateNavigationBar(appId: appId, path: path)
+        // Platform-specific setup/switch WebView - this will handle all UI updates internally
+        manager.handleNavigation(appId: appId, path: path, animationType: animationType)
     }
 
     private func setupLxAppManagerIfNeeded() {

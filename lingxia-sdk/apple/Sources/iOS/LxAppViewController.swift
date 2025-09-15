@@ -186,7 +186,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
         applyAppStyling(for: appId, path: path)
 
         // Setup or switch WebView
-        setupOrSwitchWebView(appId: appId, path: path, animationType: animationType)
+        handleNavigation(appId: appId, path: path, animationType: animationType)
 
         // Update status bar style
         setNeedsStatusBarAppearanceUpdate()
@@ -242,7 +242,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
         }
     }
 
-    public func setupOrSwitchWebView(appId: String, path: String, animationType: AnimationType) {
+    public func handleNavigation(appId: String, path: String, animationType: AnimationType) {
         guard LxAppCore.currentAppId == appId else { return }
 
         if let targetWebView = iOSLxApp.findWebView(appId: appId, path: path) {
@@ -269,6 +269,9 @@ public class LxAppViewController: UIViewController, ObservableObject {
 
         // Update WebView constraints if needed
         updateWebViewConstraints(for: appId)
+
+        // Ensure UI elements are properly layered above WebView content
+        bringUIElementsToFront()
     }
 
     private func updateCapsuleButton(for appId: String) {
@@ -320,67 +323,6 @@ public class LxAppViewController: UIViewController, ObservableObject {
         globalCapsuleButton?.isHidden = true
     }
 
-    private func showLxApp(appId: String, path: String) {
-        guard LxAppCore.currentAppId == appId else { return }
-
-        // Ensure view is loaded before setting up UI components
-        if !isViewLoaded {
-            // Defer UI setup until view is loaded
-            DispatchQueue.main.async { [weak self] in
-                self?.showLxApp(appId: appId, path: path)
-            }
-            return
-        }
-
-        // Setup WebView if needed
-        setupWebView(appId: appId, path: path)
-
-        // Setup UI components
-        setupTabBar(appId: appId)
-        setupNavigationBar(appId: appId)
-
-        // Show WebView and UI
-        getCurrentWebView()?.isHidden = false
-        getCurrentWebView()?.resumeWebView()
-
-        if let tabBar = currentTabBar {
-            tabBar.isHidden = false
-            tabBar.alpha = 1.0
-        } else {
-            os_log("No TabBar to show for %@", log: Self.log, type: .info, appId)
-        }
-
-        globalNavigationBar?.isHidden = false
-
-        // Update navigation state
-        NavigationBarStateManager.shared.updateState(appId: appId, path: path)
-
-        // Apply styling with explicit path
-        applyAppStyling(for: appId, path: path)
-
-        // Update status bar style
-        setNeedsStatusBarAppearanceUpdate()
-    }
-
-    private func setupWebView(appId: String, path: String) {
-        guard LxAppCore.currentAppId == appId else { return }
-
-        if getCurrentWebView() == nil {
-            // Try to find existing WebView
-            if let webView = iOSLxApp.findWebView(appId: appId, path: path) {
-                attachWebViewToUI(webView: webView, for: appId, path: path)
-            }
-        } else {
-            // WebView exists, just update its content if needed
-            updateNavigationBar(appId: appId, path: path)
-            applyAppStyling(for: appId, path: path)
-            // Sync TabBar selection with current path - Rust manages selected_index, just sync UI with Rust state
-            if let rustState = lingxia.getTabBar(appId) {
-                currentTabBar?.setSelectedIndex(Int(rustState.selected_index), notifyListener: false)
-            }
-        }
-    }
-
     private func attachWebViewToUI(webView: WKWebView, for appId: String, path: String) {
         // Check if WebView is already properly attached
         if webView.superview == rootContainer && !webView.isHidden {
@@ -392,8 +334,12 @@ public class LxAppViewController: UIViewController, ObservableObject {
             // Update current app state AFTER successful attach/switch
             LxAppCore.setCurrentPath(path)
 
-            // Still trigger onPageShow for already attached WebView
+            // Always trigger onPageShow for page content changes, even if same WebView
             lingxia.onPageShow(appId, path)
+
+            // Update UI components after onPageShow
+            updateNavigationBar(appId: appId, path: path)
+            updateTabBar(for: appId, path: path)
 
             return
         }
@@ -433,6 +379,10 @@ public class LxAppViewController: UIViewController, ObservableObject {
 
         // Update current app state AFTER successful attach/switch
         LxAppCore.setCurrentPath(path)
+
+        // Update UI components after WebView attachment and onPageShow
+        updateNavigationBar(appId: appId, path: path)
+        updateTabBar(for: appId, path: path)
     }
 
     /// Calculate the correct top offset for a WebView based on the target page's NavigationBar state
@@ -478,26 +428,6 @@ public class LxAppViewController: UIViewController, ObservableObject {
         // Force layout update
         rootContainer.setNeedsLayout()
         rootContainer.layoutIfNeeded()
-    }
-
-    public func setupTabBar(appId: String) {
-        guard LxAppCore.currentAppId == appId,
-              rootContainer != nil else {
-            os_log("setupTabBar failed: not current app or rootContainer is nil for %@", log: Self.log, type: .error, appId)
-            return
-        }
-
-        let tabBarConfig = lingxia.getTabBar(appId)
-        if let config = tabBarConfig {
-            // Create new TabBar directly
-            let tabBar = createTabBar(config: config, appId: appId)
-            currentTabBar = tabBar
-
-            // Sync TabBar with current path - Rust manages selected_index, just sync UI with Rust state
-            if let rustState = lingxia.getTabBar(appId) {
-                currentTabBar?.setSelectedIndex(Int(rustState.selected_index), notifyListener: false)
-            }
-        }
     }
 
     private func setupNavigationBar(appId: String) {
@@ -821,16 +751,6 @@ public class LxAppViewController: UIViewController, ObservableObject {
         return tabBar
     }
 
-    func showTabBar(_ show: Bool) {
-        currentTabBar?.isHidden = !show
-        if show {
-            // Ensure TabBar is brought to front when shown
-            if let tabBar = currentTabBar {
-                rootContainer.bringSubviewToFront(tabBar)
-            }
-        }
-    }
-
     /// Ensures UI elements are properly layered above WebView content
     /// Call this after WebView transitions or when UI elements need to be visible
     private func bringUIElementsToFront() {
@@ -848,10 +768,16 @@ public class LxAppViewController: UIViewController, ObservableObject {
 
     /// Finalize WebView attachment after animation completes
     private func finalizeWebViewAttachment(webView: WKWebView, appId: String, path: String) {
+        // Update current app state first
+        LxAppCore.setCurrentPath(path)
+
+        // Always trigger onPageShow for navigation transitions
+        lingxia.onPageShow(appId, path)
+
         // Apply proper styling first (this will set transparency if needed)
         applyAppStyling(for: appId, path: path)
 
-        // Update navigation bar and tabBar for the current path
+        // Update navigation bar and tabBar for the current path after onPageShow
         updateNavigationBar(appId: appId, path: path)
         updateTabBar(for: appId, path: path)
 
@@ -946,9 +872,6 @@ public class LxAppViewController: UIViewController, ObservableObject {
         }, completion: { _ in
             containerSnapshot.removeFromSuperview()
             self.finalizeWebViewAttachment(webView: webView, appId: appId, path: path)
-
-            // Ensure Rust receives PageShow for same-WebView navigations (both forward/backward)
-            lingxia.onPageShow(appId, path)
         })
     }
 
