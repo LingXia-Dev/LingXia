@@ -173,7 +173,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
 
         // Set current app ID immediately to ensure all subsequent logic
         // operates on the correct app context.
-        LxAppCore.setCurrentApp(appId: appId, path: "/")
+        LxAppCore.setCurrentApp(appId: appId, path: path)
 
         // Update NavigationBar state and UI
         updateNavigationBar(appId: appId, path: path)
@@ -455,6 +455,11 @@ public class LxAppViewController: UIViewController, ObservableObject {
         guard LxAppCore.currentAppId == appId,
               let webView = getCurrentWebView(),
               rootContainer != nil else { return }
+
+        // Only update constraints if WebView is properly attached to the view hierarchy
+        guard webView.superview == rootContainer else {
+            return
+        }
 
         // Remove old constraint
         if let oldConstraint = currentWebViewTopConstraint {
