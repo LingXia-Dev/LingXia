@@ -40,7 +40,6 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     private var navigationBar: NSView?
     var floatingCapsuleContainer: NSView?
     private var systemStatusBar: NSView?
-    private var independentNavigationButton: NSView?
 
     // System status bar components
     private var timeLabel: NSTextField?
@@ -454,11 +453,9 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
             } else {
                 navigationBar.isHidden = true
             }
-            updateIndependentNavigationButton(config)
         } else {
             navigationBar.isHidden = false
             navigationBar.layer?.backgroundColor = NSColor.systemBlue.cgColor
-            independentNavigationButton?.isHidden = true
         }
 
         updateWindowTitle(for: path)
@@ -471,10 +468,8 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         if let state = state {
             updateNavigationBarWithConfig(state)
             navigationBar.isHidden = !state.show_navbar
-            updateIndependentNavigationButton(state)
         } else {
             navigationBar.isHidden = true
-            independentNavigationButton?.isHidden = true
         }
     }
 
@@ -669,68 +664,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    /// Update independent navigation button visibility and type
-    private func updateIndependentNavigationButton(_ state: NavigationBarState) {
-        let shouldShow = !state.show_navbar && (state.show_back_button || state.show_home_button)
 
-        if shouldShow {
-            if independentNavigationButton == nil {
-                createIndependentNavigationButton(isBackButton: state.show_back_button)
-            }
-            independentNavigationButton?.isHidden = false
-            updateIndependentButtonType(isBackButton: state.show_back_button)
-        } else {
-            independentNavigationButton?.isHidden = true
-        }
-    }
-
-    /// Create independent navigation button
-    private func createIndependentNavigationButton(isBackButton: Bool) {
-        guard let contentView = window?.contentView else { return }
-
-        let hostingView = NSHostingView(rootView:
-            NavigationButton(isBackButton: isBackButton) { [weak self] in
-                self?.handleIndependentNavigationButtonClick()
-            }
-        )
-
-        hostingView.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(hostingView)
-
-        let topPosition = Layout.systemStatusBarHeight + Layout.navBarHeight - Layout.navButtonBottomOffset - Layout.navButtonSize
-
-        NSLayoutConstraint.activate([
-            hostingView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Layout.navButtonMargin),
-            hostingView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: topPosition),
-            hostingView.widthAnchor.constraint(equalToConstant: Layout.navButtonSize),
-            hostingView.heightAnchor.constraint(equalToConstant: Layout.navButtonSize)
-        ])
-
-        independentNavigationButton = hostingView
-    }
-
-    /// Update independent button type (back vs home)
-    private func updateIndependentButtonType(isBackButton: Bool) {
-        guard let hostingView = independentNavigationButton as? NSHostingView<NavigationButton> else { return }
-
-        // Update the SwiftUI view with new button type
-        hostingView.rootView = NavigationButton(isBackButton: isBackButton) { [weak self] in
-            self?.handleIndependentNavigationButtonClick()
-        }
-    }
-
-    /// Handle independent navigation button click
-    @objc private func handleIndependentNavigationButtonClick() {
-        // Get current navigation state to determine button type
-        if let appId = appId, let path = path {
-            let navState = lingxia.getNavigationBarState(appId, path)
-            if navState.show_back_button == true {
-                backButtonClicked()
-            } else if navState.show_home_button == true {
-                homeButtonClicked()
-            }
-        }
-    }
 
     private func updateNavigationBarButtons(_ config: NavigationBarState) {
         guard let navigationBar = self.navigationBar else {

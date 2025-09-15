@@ -4,7 +4,7 @@ import Foundation
 import os.log
 import CLingXiaRustAPI
 
-/// SwiftUI-based window for LxApp 
+/// SwiftUI-based window for LxApp
 @available(macOS 13.0, *)
 @MainActor
 public struct LxAppSwiftUIWindow: Scene {
@@ -197,42 +197,8 @@ public struct LxAppSwiftUITitleBar: View {
                 style == .capsuleStyle ?
                 Color.clear.contentShape(Rectangle()) : nil
             )
-            
-            // Floating navbar buttons for capsule style - shown regardless of navbar visibility
-            if style == .capsuleStyle {
-                VStack(spacing: 0) {
-                    Spacer()
-                        .frame(height: 6) // Small margin from top
-
-                    HStack {
-                        floatingNavbarButton
-                            .padding(.leading, 10)
-                        Spacer()
-                    }
-                    .frame(height: 44)
-                }
-            }
         }
-        .frame(height: max(32, style == .capsuleStyle ? 50 : 32)) // Allow more height for floating buttons
-    }
-    
-    @ViewBuilder
-    private var floatingNavbarButton: some View {
-        if let state = stateManager.currentState {
-            if state.show_back_button {
-                NavigationButton(isBackButton: true, action: {
-                    if let appId = stateManager.currentAppId {
-                        let _ = onUiEvent(appId, LxAppUIEvent.navigationClick, LxAppUIEvent.navigationActionBack)
-                    }
-                })
-            } else if state.show_home_button {
-                NavigationButton(isBackButton: false, action: {
-                    if let appId = stateManager.currentAppId {
-                        let _ = onUiEvent(appId, LxAppUIEvent.navigationClick, LxAppUIEvent.navigationActionHome)
-                    }
-                })
-            }
-        }
+        .frame(height: 32)
     }
 
     private var titleBarBackground: some View {

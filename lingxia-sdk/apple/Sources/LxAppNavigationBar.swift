@@ -54,29 +54,22 @@ public protocol NavigationBarProtocol: AnyObject {
     func getCalculatedContentHeight() -> CGFloat
 }
 
-/// Floating navigation button with glassmorphism effect
+/// Embedded navigation button for navbar
 public struct NavigationButton: View {
     let isBackButton: Bool
     let action: () -> Void
 
     public var body: some View {
         Button(action: action) {
-            ZStack {
-                Circle()
-                    .fill(backgroundMaterial)
-                    .frame(width: 36, height: 36)
-                    .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
-
-                // Direct SwiftUI drawing - no image generation needed
-                Canvas { context, size in
-                    if isBackButton {
-                        drawBackArrow(context: context, size: size)
-                    } else {
-                        drawHomeIcon(context: context, size: size)
-                    }
+            // Direct SwiftUI drawing - no background, fully integrated with navbar
+            Canvas { context, size in
+                if isBackButton {
+                    drawBackArrow(context: context, size: size)
+                } else {
+                    drawHomeIcon(context: context, size: size)
                 }
-                .frame(width: 20, height: 20)
             }
+            .frame(width: 20, height: 20)
         }
         .frame(width: 44, height: 44)
         .buttonStyle(.plain)
@@ -85,15 +78,6 @@ public struct NavigationButton: View {
         .onLongPressGesture(minimumDuration: 0, maximumDistance: .infinity, pressing: { pressing in
             isPressed = pressing
         }, perform: {})
-    }
-
-    // Platform-specific background material
-    private var backgroundMaterial: some ShapeStyle {
-        #if os(iOS)
-        .ultraThinMaterial
-        #else
-        Color.black.opacity(0.2)
-        #endif
     }
 
     @State private var isPressed = false
@@ -108,7 +92,7 @@ public struct NavigationButton: View {
         path.addLine(to: CGPoint(x: centerX - arrowSize/3, y: centerY))
         path.addLine(to: CGPoint(x: centerX + arrowSize/3, y: centerY + arrowSize/2))
 
-        context.stroke(path, with: .color(.primary), style: StrokeStyle(lineWidth: 2.0, lineCap: .round, lineJoin: .round))
+        context.stroke(path, with: .color(.gray), style: StrokeStyle(lineWidth: 2.0, lineCap: .round, lineJoin: .round))
     }
 
     private func drawHomeIcon(context: GraphicsContext, size: CGSize) {
@@ -122,11 +106,11 @@ public struct NavigationButton: View {
         roofPath.addLine(to: CGPoint(x: centerX - houseSize/2, y: centerY))
         roofPath.addLine(to: CGPoint(x: centerX + houseSize/2, y: centerY))
         roofPath.closeSubpath()
-        context.fill(roofPath, with: .color(.primary))
+        context.fill(roofPath, with: .color(.gray))
 
         // House base
         let baseRect = CGRect(x: centerX - houseSize/3, y: centerY, width: houseSize * 2/3, height: houseSize/2)
-        context.fill(Path(baseRect), with: .color(.primary))
+        context.fill(Path(baseRect), with: .color(.gray))
     }
 }
 
@@ -152,38 +136,19 @@ public struct macOSNavigationBarView: View {
         if let state = state {
             let bgColor = state.show_navbar ? backgroundColor : Color.clear
 
-            ZStack {
-                // Main NavigationBar content
-                VStack(spacing: 0) {
-                    Rectangle()
-                        .fill(bgColor)
-                        .frame(height: LxAppTheme.getStatusBarHeight())
+            // Main NavigationBar content - always show the structure
+            VStack(spacing: 0) {
+                Rectangle()
+                    .fill(bgColor)
+                    .frame(height: LxAppTheme.getStatusBarHeight())
 
-                    navigationBarContent
-                        .frame(height: NavigationBarState.DEFAULT_HEIGHT)
-                        .background(bgColor)
-                }
-                .background(bgColor)
-                .ignoresSafeArea(.container, edges: .top)
-                .clipped()
-
-                // Floating button, shown only when navbar is hidden but a button is needed
-                if !state.show_navbar {
-                    VStack(spacing: 0) {
-                        // This spacer pushes the content down, past the status bar area
-                        Spacer()
-                            .frame(height: LxAppTheme.getStatusBarHeight())
-
-                        // This HStack holds the button and is the same size as the visible navbar's content area
-                        HStack {
-                            floatingNavigationButton
-                                .padding(.leading, 10)
-                            Spacer()
-                        }
-                        .frame(height: NavigationBarState.DEFAULT_HEIGHT)
-                    }
-                }
+                navigationBarContent
+                    .frame(height: NavigationBarState.DEFAULT_HEIGHT)
+                    .background(bgColor)
             }
+            .background(bgColor)
+            .ignoresSafeArea(.container, edges: .top)
+            .clipped()
         }
     }
 
@@ -191,7 +156,7 @@ public struct macOSNavigationBarView: View {
         HStack(alignment: .center, spacing: 0) {
             // Leading: Back/Home button
             leadingButton
-                .padding(.leading, 10)
+                .padding(.leading, 4)
 
             // Center: Title
             Spacer()
@@ -207,28 +172,19 @@ public struct macOSNavigationBarView: View {
 
     @ViewBuilder
     private var leadingButton: some View {
-        if let state = state, state.show_navbar {
-            // Only show button in navbar when navbar is visible
-            if state.show_back_button {
-                NavigationButton(isBackButton: true, action: onBackTapped)
-            } else if state.show_home_button {
-                NavigationButton(isBackButton: false, action: onHomeTapped)
+        if let state = state {
+            // Show button when navbar is visible AND button is needed
+            if state.show_navbar && (state.show_back_button || state.show_home_button) {
+                if state.show_back_button {
+                    NavigationButton(isBackButton: true, action: onBackTapped)
+                } else if state.show_home_button {
+                    NavigationButton(isBackButton: false, action: onHomeTapped)
+                }
             } else {
                 Color.clear.frame(width: 44, height: 44)
             }
         } else {
             Color.clear.frame(width: 44, height: 44)
-        }
-    }
-
-    @ViewBuilder
-    private var floatingNavigationButton: some View {
-        if let state = state {
-            if state.show_back_button {
-                NavigationButton(isBackButton: true, action: onBackTapped)
-            } else if state.show_home_button {
-                NavigationButton(isBackButton: false, action: onHomeTapped)
-            }
         }
     }
 
