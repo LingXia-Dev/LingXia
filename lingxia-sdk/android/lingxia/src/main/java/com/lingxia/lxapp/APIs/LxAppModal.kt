@@ -4,13 +4,15 @@ import android.app.Activity
 import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
-import android.text.InputType
+
 import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
 import androidx.core.view.setPadding
+import com.lingxia.lxapp.NativeApi
+import org.json.JSONObject
 
 /**
  * Modal configuration data class
@@ -21,8 +23,6 @@ data class ModalConfig(
     val showCancel: Boolean = true,
     val cancelText: String = "Cancel",
     val confirmText: String = "OK",
-    val editable: Boolean = false,
-    val placeholderText: String = "",
     val confirmColor: String? = null
 )
 
@@ -31,8 +31,7 @@ data class ModalConfig(
  */
 data class ModalResult(
     val confirm: Boolean,
-    val cancel: Boolean,
-    val content: String
+    val cancel: Boolean
 )
 
 /**
@@ -45,31 +44,22 @@ internal object LxAppModal {
     private var currentMaskView: View? = null
 
     /**
-     * Show modal with options map
+     * Show modal with options map and callback
      */
-    fun showModal(context: Context, options: Map<String, Any?>): ModalResult {
+    fun showModal(context: Context, options: Map<String, Any?>, callbackId: Long) {
         val config = ModalConfig(
-            title = options["title"] as? String ?: "Alert",
+            title = options["title"] as? String ?: "",
             content = options["content"] as? String ?: "",
             showCancel = options["showCancel"] as? Boolean ?: true,
             cancelText = options["cancelText"] as? String ?: "Cancel",
             confirmText = options["confirmText"] as? String ?: "OK",
-            editable = options["editable"] as? Boolean ?: false,
-            placeholderText = options["placeholderText"] as? String ?: "",
             confirmColor = options["confirmColor"] as? String
         )
 
-        showModalInternal(context, config)
-
-        // Return immediate result for FFI compatibility
-        return ModalResult(
-            confirm = true,
-            cancel = false,
-            content = if (config.editable) "input" else ""
-        )
+        showModalInternal(context, config, callbackId)
     }
 
-    private fun showModalInternal(context: Context, config: ModalConfig) {
+    private fun showModalInternal(context: Context, config: ModalConfig, callbackId: Long) {
         val activity = context as? Activity ?: return
         val rootView = activity.findViewById<ViewGroup>(android.R.id.content) ?: return
 
@@ -81,7 +71,7 @@ internal object LxAppModal {
         rootView.addView(currentMaskView)
 
         // Create modal view
-        currentModalView = createModalView(activity, config)
+        currentModalView = createModalView(activity, config, callbackId)
         rootView.addView(currentModalView)
     }
 
@@ -98,6 +88,7 @@ internal object LxAppModal {
                 setOnClickListener {
                     if (allowCancel) {
                         Log.i(TAG, "Modal cancelled by mask click")
+                        // TODO: Add callback for mask click cancel
                         hideModalInternal()
                     }
                 }
@@ -105,7 +96,7 @@ internal object LxAppModal {
         }
     }
 
-    private fun createModalView(context: Context, config: ModalConfig): View {
+    private fun createModalView(context: Context, config: ModalConfig, callbackId: Long): View {
         val container = FrameLayout(context).apply {
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
@@ -166,34 +157,8 @@ internal object LxAppModal {
             modalContent.addView(contentView)
         }
 
-        // Add input field if editable
-        var inputField: EditText? = null
-        if (config.editable) {
-            inputField = EditText(context).apply {
-                hint = config.placeholderText.ifEmpty { "Please enter content" }
-                textSize = 16f
-                inputType = InputType.TYPE_CLASS_TEXT
-                val paddingPx = (12 * context.resources.displayMetrics.density).toInt()
-                setPadding(paddingPx, paddingPx, paddingPx, paddingPx)
-
-                background = GradientDrawable().apply {
-                    setColor(Color.parseColor("#F5F5F5"))
-                    cornerRadius = 8f * context.resources.displayMetrics.density
-                }
-
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    (44 * context.resources.displayMetrics.density).toInt()
-                ).apply {
-                    val bottomMarginPx = (20 * context.resources.displayMetrics.density).toInt()
-                    bottomMargin = bottomMarginPx
-                }
-            }
-            modalContent.addView(inputField)
-        }
-
         // Add buttons
-        val buttonsContainer = createButtonsContainer(context, config, inputField)
+        val buttonsContainer = createButtonsContainer(context, config, callbackId)
         modalContent.addView(buttonsContainer)
 
         container.addView(modalContent)
@@ -203,7 +168,7 @@ internal object LxAppModal {
     private fun createButtonsContainer(
         context: Context,
         config: ModalConfig,
-        inputField: EditText?
+        callbackId: Long
     ): LinearLayout {
         return LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -221,7 +186,12 @@ internal object LxAppModal {
                     text = config.cancelText,
                     isPrimary = false,
                     onClick = {
-                        Log.i(TAG, "Modal cancelled")
+                        // Call callback with cancel result
+                        val result = JSONObject().apply {
+                            put("confirm", false)
+                            put("cancel", true)
+                        }
+                        NativeApi.onCallback(callbackId, true, result.toString())
                         hideModalInternal()
                     }
                 )
@@ -240,8 +210,12 @@ internal object LxAppModal {
                     isPrimary = true,
                     color = config.confirmColor,
                     onClick = {
-                        val inputText = inputField?.text?.toString() ?: ""
-                        Log.i(TAG, "Modal confirmed: content='$inputText'")
+                        // Call callback with confirm result
+                        val result = JSONObject().apply {
+                            put("confirm", true)
+                            put("cancel", false)
+                        }
+                        NativeApi.onCallback(callbackId, true, result.toString())
                         hideModalInternal()
                     }
                 )
@@ -254,8 +228,12 @@ internal object LxAppModal {
                     isPrimary = true,
                     color = config.confirmColor,
                     onClick = {
-                        val inputText = inputField?.text?.toString() ?: ""
-                        Log.i(TAG, "Modal confirmed: content='$inputText'")
+                        // Call callback with confirm result
+                        val result = JSONObject().apply {
+                            put("confirm", true)
+                            put("cancel", false)
+                        }
+                        NativeApi.onCallback(callbackId, true, result.toString())
                         hideModalInternal()
                     }
                 )

@@ -131,4 +131,14 @@ object NativeApi {
      */
     @JvmStatic
     external fun getCurrentLxApp(): CurrentLxApp?
+
+    /**
+     * Callback function for async operations
+     * @param id Callback ID
+     * @param success Whether the operation was successful
+     * @param data Result data as JSON string
+     * @return true if callback was handled, false otherwise
+     */
+    @JvmStatic
+    external fun onCallback(id: Long, success: Boolean, data: String): Boolean
 }

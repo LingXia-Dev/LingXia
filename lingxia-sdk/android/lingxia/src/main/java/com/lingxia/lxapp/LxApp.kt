@@ -332,22 +332,17 @@ class LxApp private constructor(private val context: Context) {
          * @param showCancel Whether to show cancel button (default: true)
          * @param cancelText Cancel button text (default: "Cancel")
          * @param confirmText Confirm button text (default: "OK")
-         * @param editable Whether the modal is editable (input field)
-         * @param placeholderText Placeholder text for input field
          * @param confirmColor Custom color for confirm button
-         * @return ModalResult (immediate result for FFI compatibility)
+         * @param callbackId for async result
          */
         @JvmStatic
-        fun showModal(options: Map<String, Any?>): ModalResult {
-            val activity = currentActivity ?: return ModalResult(confirm = false, cancel = true, content = "")
+        fun showModal(options: Map<String, Any?>) {
+            val activity = currentActivity ?: return
+            val callbackId = options["callbackId"] as? Long ?: 0L
 
             activity.runOnUiThread {
-                LxAppModal.showModal(activity, options)
+                LxAppModal.showModal(activity, options, callbackId)
             }
-
-            // Return immediate result for FFI compatibility
-            val editable = options["editable"] as? Boolean ?: false
-            return ModalResult(confirm = true, cancel = false, content = if (editable) "input" else "")
         }
 
         /**

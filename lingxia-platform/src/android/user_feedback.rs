@@ -1,6 +1,6 @@
 use super::app::Platform;
 use crate::error::PlatformError;
-use crate::traits::{ModalOptions, ModalResult, ToastOptions, UserFeedback};
+use crate::traits::{ModalOptions, ToastOptions, UserFeedback};
 use jni::objects::{JClass, JObject, JValue};
 use std::collections::HashMap;
 
@@ -65,8 +65,8 @@ impl UserFeedback for Platform {
         }
     }
 
-    fn show_modal(&self, options: ModalOptions) -> Result<ModalResult, PlatformError> {
-        match || -> Result<ModalResult, Box<dyn std::error::Error>> {
+    fn show_modal(&self, options: ModalOptions, callback_id: u64) -> Result<(), PlatformError> {
+        match || -> Result<(), Box<dyn std::error::Error>> {
             let mut env = lingxia_webview::get_env()?;
 
             // Get the LxApp class
@@ -78,7 +78,6 @@ impl UserFeedback for Platform {
             params.insert("content", options.content.as_str());
             params.insert("cancelText", options.cancel_text.as_str());
             params.insert("confirmText", options.confirm_text.as_str());
-            params.insert("placeholderText", options.placeholder_text.as_str());
 
             if let Some(ref cancel_color) = options.cancel_color {
                 params.insert("cancelColor", cancel_color.as_str());
@@ -124,54 +123,37 @@ impl UserFeedback for Platform {
                 ],
             )?;
 
-            let editable_key = env.new_string("editable")?;
-            let editable_value = env.call_static_method(
-                "java/lang/Boolean",
+
+
+            // Add callback_id to the parameters
+            let callback_id_key = env.new_string("callbackId")?;
+            let callback_id_value = env.call_static_method(
+                "java/lang/Long",
                 "valueOf",
-                "(Z)Ljava/lang/Boolean;",
-                &[JValue::Bool(options.editable as u8)],
+                "(J)Ljava/lang/Long;",
+                &[JValue::Long(callback_id as i64)],
             )?;
             env.call_method(
                 &hashmap,
                 "put",
                 "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;",
                 &[
-                    JValue::Object(&editable_key.into()),
-                    editable_value.borrow(),
+                    JValue::Object(&callback_id_key.into()),
+                    callback_id_value.borrow(),
                 ],
             )?;
 
             // Call the static showModal method on LxApp
-            let result = env.call_static_method(
+            env.call_static_method(
                 lxapp_class,
                 "showModal",
-                "(Ljava/util/Map;)Lcom/lingxia/lxapp/APIs/ModalResult;",
+                "(Ljava/util/Map;)V",
                 &[JValue::Object(&hashmap)],
             )?;
 
-            // Extract result fields
-            let result_obj = result.l()?;
-
-            let confirm_field = env.get_field(&result_obj, "confirm", "Z")?;
-            let cancel_field = env.get_field(&result_obj, "cancel", "Z")?;
-            let content_field = env.get_field(&result_obj, "content", "Ljava/lang/String;")?;
-
-            let confirm = confirm_field.z()?;
-            let cancel = cancel_field.z()?;
-            let content_jstring = content_field.l()?;
-            let content = if content_jstring.is_null() {
-                String::new()
-            } else {
-                env.get_string(&content_jstring.into())?.into()
-            };
-
-            Ok(ModalResult {
-                confirm,
-                cancel,
-                content,
-            })
+            Ok(())
         }() {
-            Ok(result) => Ok(result),
+            Ok(()) => Ok(()),
             Err(e) => Err(PlatformError::Platform(format!(
                 "Failed to show modal: {}",
                 e

@@ -1,7 +1,8 @@
 use android_logger::Config;
 use jni::objects::{JClass, JObject, JString};
-use jni::sys::{jboolean, jint};
+use jni::sys::{jboolean, jint, jlong};
 use jni::{JNIEnv, JavaVM};
+use lingxia_callback::invoke_callback;
 use log::{error, info};
 use lxapp::{LxAppDelegate, UiEventType, log::LogLevel};
 
@@ -542,5 +543,32 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getCurrentLxApp<'a>(
     ) {
         Ok(obj) => obj,
         Err(_) => JObject::null(),
+    }
+}
+
+/// Callback from platform (called from Kotlin via NativeAPI)
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onCallback(
+    mut env: JNIEnv,
+    _class: JClass,
+    id: jlong,
+    success: jboolean,
+    data: JString,
+) -> jboolean {
+    let id = id as u64;
+    let success = success != 0;
+
+    let data_str = match env.get_string(&data) {
+        Ok(s) => s.into(),
+        Err(e) => {
+            error!("[Android] Failed to get data string: {}", e);
+            return 0;
+        }
+    };
+
+    if invoke_callback(id, success, data_str) {
+        1
+    } else {
+        0
     }
 }
