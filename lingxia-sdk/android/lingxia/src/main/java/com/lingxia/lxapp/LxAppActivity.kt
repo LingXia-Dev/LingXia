@@ -1009,11 +1009,8 @@ class LxAppActivity : AppCompatActivity() {
     }
 
     private fun animateNavBar(navbarState: NavigationBarState, isBackNavigation: Boolean) {
-
         if (!navbarState.showNavbar) {
             navigationBar?.visibility = View.GONE
-            // IMPORTANT: Animate independent home button when navbar is hidden
-            animateIndependentNavigationButton(navbarState, isBackNavigation)
             return
         }
 
@@ -1030,21 +1027,6 @@ class LxAppActivity : AppCompatActivity() {
 
             // Update status bar to match navbar
             updateStatusBarForNavbar(navbarState.navigationBarBackgroundColor)
-        }
-    }
-
-    /**
-     * Handle navigation when navbar is hidden
-     */
-    private fun animateIndependentNavigationButton(navbarState: NavigationBarState, isBackNavigation: Boolean) {
-        navigationBar?.apply {
-            visibility = View.VISIBLE
-            configure(
-                navbarState = navbarState,
-                onBackClickListener = { handleBackButtonClick() },
-                onHomeClickListener = { handleHomeButtonClick() },
-                disableAnimation = false
-            )
         }
     }
 
