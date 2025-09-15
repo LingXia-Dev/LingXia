@@ -1,9 +1,7 @@
 use super::app::Platform;
 use super::ffi;
 use crate::error::PlatformError;
-use crate::traits::{
-    ModalOptions, ModalResult, ToastIcon, ToastOptions, ToastPosition, UserFeedback,
-};
+use crate::traits::{ModalOptions, ToastIcon, ToastOptions, ToastPosition, UserFeedback};
 
 impl UserFeedback for Platform {
     fn show_toast(&self, options: ToastOptions) -> Result<(), PlatformError> {
@@ -28,7 +26,7 @@ impl UserFeedback for Platform {
         Ok(())
     }
 
-    fn show_modal(&self, options: ModalOptions) -> Result<ModalResult, PlatformError> {
+    fn show_modal(&self, options: ModalOptions, callback_id: u64) -> Result<(), PlatformError> {
         // Convert our ModalOptions to the FFI ModalOptions
         let ffi_options = ffi::ModalOptions {
             title: options.title,
@@ -38,19 +36,12 @@ impl UserFeedback for Platform {
             cancel_color: options.cancel_color.unwrap_or_default(),
             confirm_text: options.confirm_text,
             confirm_color: options.confirm_color.unwrap_or_default(),
-            editable: options.editable,
-            placeholder_text: options.placeholder_text,
         };
 
-        // Call the Swift FFI function
-        let ffi_result = ffi::show_modal(ffi_options);
+        // Call the Swift FFI function with callback ID
+        ffi::show_modal(ffi_options, callback_id);
 
-        // Convert FFI result to our ModalResult
-        Ok(ModalResult {
-            confirm: ffi_result.confirm,
-            cancel: ffi_result.cancel,
-            content: ffi_result.content,
-        })
+        Ok(())
     }
 }
 

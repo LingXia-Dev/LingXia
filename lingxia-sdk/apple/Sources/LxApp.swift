@@ -461,13 +461,13 @@ extension LxApp {
     }
 
     /// Show modal
-    nonisolated public static func showModal(options: ModalOptions) -> ModalResult {
-        return LxAppModal.showModal(options: options)
+    nonisolated public static func showModal(options: ModalOptions, callback_id: UInt64) {
+        LxAppModal.showModal(options: options, callback_id: callback_id)
     }
 
     /// Show modal with dictionary (convenience method)
-    @MainActor public static func showModal(_ options: [String: Any]) -> ModalResult {
-        return LxAppModal.showModal(options)
+    @MainActor public static func showModal(_ options: [String: Any], callback_id: UInt64) {
+        LxAppModal.showModal(options, callback_id: callback_id)
     }
 
     /// Hide current toast immediately

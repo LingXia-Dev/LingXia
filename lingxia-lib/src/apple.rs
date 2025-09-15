@@ -1,3 +1,4 @@
+use lingxia_callback::invoke_callback;
 use lxapp::LxAppInfo as CoreLxAppInfo;
 use lxapp::log::LogLevel;
 use lxapp::{LxAppDelegate, UiEventType};
@@ -136,6 +137,9 @@ mod bridge {
 
         #[swift_bridge(swift_name = "onPushTokenReceived")]
         fn on_push_token_received(token: &str) -> i32;
+
+        #[swift_bridge(swift_name = "onCallback")]
+        fn on_callback(id: u64, success: bool, data: &str) -> bool;
     }
 }
 
@@ -366,4 +370,9 @@ pub fn on_pushlink_received(url: &str, trigger: bridge::PushTrigger) -> i32 {
 pub fn on_push_token_received(token: &str) -> i32 {
     log::info!("[Apple] Push token received: {}", token);
     0
+}
+
+/// Callback from platform (called from Swift/Objective-C)
+pub fn on_callback(id: u64, success: bool, data: &str) -> bool {
+    invoke_callback(id, success, data.to_string())
 }

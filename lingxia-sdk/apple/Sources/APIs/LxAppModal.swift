@@ -1,6 +1,7 @@
 import Foundation
 import os.log
 import CLingXiaSwiftAPI
+import CLingXiaRustAPI
 
 #if os(iOS)
 import UIKit
@@ -15,31 +16,27 @@ public class LxAppModal {
     private static let log = OSLog(subsystem: "LingXia", category: "Modal")
 
     /// Show modal with ModalOptions (FFI interface)
-    public static func showModal(options: ModalOptions) -> ModalResult {
-        return showModal([
+    public static func showModal(options: ModalOptions, callback_id: UInt64) {
+        showModal([
             "title": options.title.toString(),
             "content": options.content.toString(),
             "showCancel": options.show_cancel,
             "cancelText": options.cancel_text.toString(),
-            "confirmText": options.confirm_text.toString(),
-            "editable": options.editable,
-            "placeholderText": options.placeholder_text.toString()
-        ])
+            "confirmText": options.confirm_text.toString()
+        ], callback_id: callback_id)
     }
 
-    /// Show modal synchronously (main interface)
-    public static func showModal(_ options: [String: Any]) -> ModalResult {
+    /// Show modal with callback (main interface)
+    public static func showModal(_ options: [String: Any], callback_id: UInt64) {
         // Extract options
-        let title = options["title"] as? String ?? "Alert"
+        let title = options["title"] as? String ?? ""
         let content = options["content"] as? String ?? ""
         let showCancel = options["showCancel"] as? Bool ?? true
         let cancelText = options["cancelText"] as? String ?? "Cancel"
         let confirmText = options["confirmText"] as? String ?? "OK"
-        let editable = options["editable"] as? Bool ?? false
-        let placeholderText = options["placeholderText"] as? String ?? ""
 
         #if os(macOS)
-        // Show macOS modal asynchronously and return immediate result
+        // Show macOS modal asynchronously with callback
         DispatchQueue.main.async {
             showMacOSModal(
                 title: title,
@@ -47,20 +44,12 @@ public class LxAppModal {
                 showCancel: showCancel,
                 cancelText: cancelText,
                 confirmText: confirmText,
-                editable: editable,
-                placeholderText: placeholderText
+                callback_id: callback_id
             )
         }
 
-        // Return immediate result for FFI compatibility
-        return ModalResult(
-            confirm: true,
-            cancel: false,
-            content: RustString(editable ? "input" : "")
-        )
-
         #else
-        // Show iOS modal asynchronously and return immediate result
+        // Show iOS modal asynchronously with callback
         DispatchQueue.main.async {
             showIOSModal(
                 title: title,
@@ -68,17 +57,9 @@ public class LxAppModal {
                 showCancel: showCancel,
                 cancelText: cancelText,
                 confirmText: confirmText,
-                editable: editable,
-                placeholderText: placeholderText
+                callback_id: callback_id
             )
         }
-
-        // Return immediate result for FFI compatibility
-        return ModalResult(
-            confirm: true,
-            cancel: false,
-            content: RustString(editable ? "input" : "")
-        )
         #endif
     }
 
@@ -91,30 +72,40 @@ public class LxAppModal {
     showCancel: Bool,
     cancelText: String,
     confirmText: String,
-    editable: Bool,
-    placeholderText: String
+    callback_id: UInt64
 ) {
     let alert = NSAlert()
-    alert.messageText = title
-    alert.informativeText = content
+    if !title.isEmpty && title.trimmingCharacters(in: .whitespacesAndNewlines) != "" {
+        alert.messageText = title
+    } else {
+        // When title is empty, set messageText to content and clear informativeText
+        alert.messageText = content
+        alert.informativeText = ""
+    }
+
+    // Only set informativeText if we have a title
+    if !title.isEmpty && title.trimmingCharacters(in: .whitespacesAndNewlines) != "" {
+        alert.informativeText = content
+    }
     alert.addButton(withTitle: confirmText)
 
     if showCancel {
         alert.addButton(withTitle: cancelText)
     }
 
-    var inputField: NSTextField?
-    if editable {
-        inputField = NSTextField(frame: NSRect(x: 0, y: 0, width: 300, height: 24))
-        inputField?.placeholderString = placeholderText
-        alert.accessoryView = inputField
-    }
-
     let response = alert.runModal()
     let confirmed = response == .alertFirstButtonReturn
-    let inputText = inputField?.stringValue ?? ""
 
-    os_log("macOS modal result: confirm=%{public}@, content='%{public}@'", log: LxAppModal.log, type: .info, String(confirmed), inputText)
+    // Call callback with result
+    let result: [String: Any] = [
+        "confirm": confirmed,
+        "cancel": !confirmed
+    ]
+
+    if let jsonData = try? JSONSerialization.data(withJSONObject: result),
+       let jsonString = String(data: jsonData, encoding: .utf8) {
+        _ = onCallback(callback_id, true, jsonString)
+    }
     }
     #endif
 
@@ -127,8 +118,7 @@ public class LxAppModal {
     showCancel: Bool,
     cancelText: String,
     confirmText: String,
-    editable: Bool,
-    placeholderText: String
+    callback_id: UInt64
 ) {
     guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
           let window = windowScene.windows.first(where: { $0.isKeyWindow }) ?? windowScene.windows.first,
@@ -143,27 +133,38 @@ public class LxAppModal {
         topViewController = presentedViewController
     }
 
-    let alert = UIAlertController(title: title, message: content, preferredStyle: .alert)
-
-    var inputTextField: UITextField?
-    if editable {
-        alert.addTextField { textField in
-            textField.placeholder = placeholderText
-            inputTextField = textField
-        }
-    }
+    let alertTitle = title.isEmpty ? nil : title
+    let alert = UIAlertController(title: alertTitle, message: content, preferredStyle: .alert)
 
     // Add confirm action
     let confirmAction = UIAlertAction(title: confirmText, style: .default) { _ in
-        let inputText = inputTextField?.text ?? ""
-        os_log("iOS modal confirmed: content='%{public}@'", log: LxAppModal.log, type: .info, inputText)
+        // Call callback with confirm result
+        let result: [String: Any] = [
+            "confirm": true,
+            "cancel": false
+        ]
+
+        if let jsonData = try? JSONSerialization.data(withJSONObject: result),
+           let jsonString = String(data: jsonData, encoding: .utf8) {
+            _ = onCallback(callback_id, true, jsonString)
+        }
     }
     alert.addAction(confirmAction)
 
     // Add cancel action if needed
     if showCancel {
         let cancelAction = UIAlertAction(title: cancelText, style: .cancel) { _ in
-            os_log("iOS modal cancelled", log: LxAppModal.log, type: .info)
+
+            // Call callback with cancel result
+            let result: [String: Any] = [
+                "confirm": false,
+                "cancel": true
+            ]
+
+            if let jsonData = try? JSONSerialization.data(withJSONObject: result),
+               let jsonString = String(data: jsonData, encoding: .utf8) {
+                _ = onCallback(callback_id, true, jsonString)
+            }
         }
         alert.addAction(cancelAction)
     }

@@ -36,8 +36,6 @@ mod bridge {
         pub cancel_color: String,
         pub confirm_text: String,
         pub confirm_color: String,
-        pub editable: bool,
-        pub placeholder_text: String,
     }
 
     // Modal result for Swift
@@ -45,7 +43,6 @@ mod bridge {
     pub struct ModalResult {
         pub confirm: bool,
         pub cancel: bool,
-        pub content: String, // User input content
     }
 
     extern "Swift" {
@@ -80,9 +77,9 @@ mod bridge {
         #[swift_bridge(swift_name = "LxApp.hideToast")]
         fn hide_toast();
 
-        // Modal functions (synchronous, blocks until user responds)
+        // Modal functions (synchronous with callback)
         #[swift_bridge(swift_name = "LxApp.showModal")]
-        fn show_modal(options: ModalOptions) -> ModalResult;
+        fn show_modal(options: ModalOptions, callback_id: u64);
     }
 }
 
