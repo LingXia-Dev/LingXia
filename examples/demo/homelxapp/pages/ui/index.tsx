@@ -4,8 +4,8 @@ import '../../tailwind.css';
 export default function UIPage() {
   // Use LingXia hook to get data and functions
   const { data, demoNavigateTo, demoNavigateBack, demoSwitchTab, demoRedirectTo,
-          showToastWithParams, hideToast } = window.useLingXia();
-  const { currentType = 'navigation', pageStack = [] } = data;
+          showToastWithParams, hideToast, showModalWithParams, clearModalResult } = useLingXia();
+  const { currentType = 'navigation', pageStack = [], modalResult = null } = data;
 
   // Local state for toast parameters
   const [toastTitle, setToastTitle] = React.useState('Hello Toast!');
@@ -13,6 +13,14 @@ export default function UIPage() {
   const [toastDuration, setToastDuration] = React.useState(2000);
   const [toastPosition, setToastPosition] = React.useState('center');
   const [toastMask, setToastMask] = React.useState(false);
+
+  // Local state for modal parameters
+  const [modalTitle, setModalTitle] = React.useState('Alert');
+  const [modalContent, setModalContent] = React.useState('This is a modal dialog');
+  const [modalShowCancel, setModalShowCancel] = React.useState(true);
+  const [modalCancelText, setModalCancelText] = React.useState('Cancel');
+  const [modalConfirmText, setModalConfirmText] = React.useState('OK');
+
 
   return (
     <div className="min-h-screen bg-gray-100 overflow-y-auto">
@@ -153,6 +161,121 @@ export default function UIPage() {
                 <div className="text-base text-red-600 font-medium">Hide Toast</div>
               </div>
             </div>
+          </>
+        )}
+
+        {/* Modal Demo Section */}
+        {currentType === 'modal' && (
+          <>
+            <div className="mt-4 mb-3 px-4 text-sm text-gray-500 font-medium">Modal Parameters</div>
+
+            {/* Modal Parameters */}
+            <div className="mx-3 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="px-4 py-4 space-y-4">
+
+                {/* Title Input */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Title (optional)</label>
+                  <input
+                    type="text"
+                    value={modalTitle}
+                    onChange={(e) => setModalTitle(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Leave empty for no title"
+                  />
+                </div>
+
+
+
+                {/* Content Input */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Content</label>
+                  <textarea
+                    value={modalContent}
+                    onChange={(e) => setModalContent(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Enter modal content"
+                    rows={3}
+                  />
+                </div>
+
+                {/* Show Cancel Checkbox */}
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="modalShowCancel"
+                    checked={modalShowCancel}
+                    onChange={(e) => setModalShowCancel(e.target.checked)}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  />
+                  <label htmlFor="modalShowCancel" className="ml-2 block text-sm text-gray-700">
+                    Show cancel button
+                  </label>
+                </div>
+
+                {/* Cancel Text Input */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Cancel Button Text</label>
+                  <input
+                    type="text"
+                    value={modalCancelText}
+                    onChange={(e) => setModalCancelText(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Cancel button text"
+                  />
+                </div>
+
+                {/* Confirm Text Input */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Confirm Button Text</label>
+                  <input
+                    type="text"
+                    value={modalConfirmText}
+                    onChange={(e) => setModalConfirmText(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Confirm button text"
+                  />
+                </div>
+
+
+              </div>
+            </div>
+
+            {/* Action Button */}
+            <div className="mx-3 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              <div
+                className="flex items-center justify-center px-4 py-4 hover:bg-gray-50 cursor-pointer"
+                onClick={() => showModalWithParams({
+                  title: modalTitle,
+                  content: modalContent,
+                  showCancel: modalShowCancel,
+                  cancelText: modalCancelText,
+                  confirmText: modalConfirmText
+                })}
+              >
+                <div className="text-base text-blue-600 font-medium">Show Modal</div>
+              </div>
+            </div>
+
+            {/* Result Display */}
+            {modalResult && (
+              <div className="mx-3 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div className="px-4 py-4">
+                  <div className="text-sm font-medium text-gray-700 mb-3">Modal Result</div>
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <pre className="text-xs text-gray-600 whitespace-pre-wrap">
+                      {JSON.stringify(modalResult, null, 2)}
+                    </pre>
+                  </div>
+                  <div
+                    className="mt-3 text-center text-sm text-red-600 cursor-pointer hover:text-red-800"
+                    onClick={clearModalResult}
+                  >
+                    Clear Result
+                  </div>
+                </div>
+              </div>
+            )}
           </>
         )}
 

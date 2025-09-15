@@ -3,7 +3,7 @@ import '../../tailwind.css';
 
 export default function DevicePage() {
   // Use LingXia hook to get data and functions
-  const { data, getDeviceInfo } = window.useLingXia();
+  const { data, getDeviceInfo } = useLingXia();
   const {
     deviceInfo = null
   } = data;

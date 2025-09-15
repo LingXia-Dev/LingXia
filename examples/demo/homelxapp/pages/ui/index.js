@@ -3,7 +3,8 @@ const app = getApp();
 Page({
   data: {
     currentType: '',
-    pageStack: []
+    pageStack: [],
+    modalResult: null
   },
 
   onLoad: async function (options) {
@@ -83,5 +84,48 @@ Page({
 
   hideToast: function () {
     lx.hideToast();
+  },
+
+  // Show modal with custom parameters
+  showModalWithParams: async function (params) {
+    try {
+      const result = await lx.showModal({
+        title: params.title !== undefined ? params.title : 'Alert',
+        content: params.content || 'This is a modal dialog',
+        show_cancel: params.showCancel !== undefined ? params.showCancel : true,
+        cancel_text: params.cancelText || 'Cancel',
+        confirm_text: params.confirmText || 'OK'
+      });
+
+      // Filter out content field from result
+      const filteredResult = {
+        confirm: result.confirm,
+        cancel: result.cancel
+      };
+
+      // Update page data with filtered result
+      await this.setData({
+        modalResult: filteredResult
+      });
+
+      return result;
+    } catch (error) {
+      console.error('Modal error:', error);
+      const errorResult = { error: error.message };
+
+      // Update page data with error
+      await this.setData({
+        modalResult: errorResult
+      });
+
+      throw error;
+    }
+  },
+
+  // Clear modal result
+  clearModalResult: async function () {
+    await this.setData({
+      modalResult: null
+    });
   }
 });
