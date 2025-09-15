@@ -42,16 +42,6 @@ pub struct ModalOptions {
     pub cancel_color: Option<String>,
     pub confirm_text: String,
     pub confirm_color: Option<String>,
-    pub editable: bool,
-    pub placeholder_text: String,
-}
-
-/// Modal result
-#[derive(Debug, Clone)]
-pub struct ModalResult {
-    pub confirm: bool,
-    pub cancel: bool,
-    pub content: String, // User input content if editable
 }
 
 /// Animation type for page transitions
@@ -191,8 +181,9 @@ pub trait UserFeedback: Send + Sync + 'static {
     ///
     /// # Arguments
     /// * `options` - Modal configuration options
+    /// * `callback_id` - Callback ID for async result handling
     ///
     /// # Returns
-    /// * `Result<ModalResult, PlatformError>` - Modal result or error
-    fn show_modal(&self, options: ModalOptions) -> Result<ModalResult, PlatformError>;
+    /// * `Result<(), PlatformError>` - Success or error (result comes via callback)
+    fn show_modal(&self, options: ModalOptions, callback_id: u64) -> Result<(), PlatformError>;
 }

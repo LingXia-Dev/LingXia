@@ -1,5 +1,6 @@
+use lingxia_callback::{CallbackResult, get_callback};
 use lingxia_lxapp::{LxApp, lx};
-use lingxia_platform::{ModalOptions, ModalResult, UserFeedback};
+use lingxia_platform::{ModalOptions, UserFeedback};
 use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
 use std::sync::Arc;
 
@@ -13,24 +14,22 @@ struct JSModalOptions {
     cancel_color: Option<String>,
     confirm_text: Option<String>,
     confirm_color: Option<String>,
-    editable: Option<bool>,
-    placeholder_text: Option<String>,
 }
 
 impl From<JSModalOptions> for ModalOptions {
     fn from(js_options: JSModalOptions) -> Self {
         ModalOptions {
-            title: js_options.title.unwrap_or_else(|| "提示".to_string()),
+            title: js_options.title.unwrap_or_else(|| "Title".to_string()),
             content: js_options.content.unwrap_or_default(),
             show_cancel: js_options.show_cancel.unwrap_or(true),
-            cancel_text: js_options.cancel_text.unwrap_or_else(|| "取消".to_string()),
+            cancel_text: js_options
+                .cancel_text
+                .unwrap_or_else(|| "Cancel".to_string()),
             cancel_color: js_options.cancel_color,
             confirm_text: js_options
                 .confirm_text
-                .unwrap_or_else(|| "确定".to_string()),
+                .unwrap_or_else(|| "Confirm".to_string()),
             confirm_color: js_options.confirm_color,
-            editable: js_options.editable.unwrap_or(false),
-            placeholder_text: js_options.placeholder_text.unwrap_or_default(),
         }
     }
 }
@@ -40,26 +39,59 @@ impl From<JSModalOptions> for ModalOptions {
 struct JSModalResult {
     confirm: bool,
     cancel: bool,
-    content: String,
 }
 
-impl From<ModalResult> for JSModalResult {
-    fn from(result: ModalResult) -> Self {
-        JSModalResult {
-            confirm: result.confirm,
-            cancel: result.cancel,
-            content: result.content,
+impl From<CallbackResult> for JSModalResult {
+    fn from(result: CallbackResult) -> Self {
+        if result.success {
+            // Parse JSON data for modal result
+            if let Ok(modal_data) = serde_json::from_str::<serde_json::Value>(&result.data) {
+                JSModalResult {
+                    confirm: modal_data
+                        .get("confirm")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false),
+                    cancel: modal_data
+                        .get("cancel")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false),
+                }
+            } else {
+                // Fallback: assume confirm if success
+                JSModalResult {
+                    confirm: true,
+                    cancel: false,
+                }
+            }
+        } else {
+            // Error or cancel
+            JSModalResult {
+                confirm: false,
+                cancel: true,
+            }
         }
     }
 }
 
-/// Show modal function
-fn show_modal(ctx: JSContext, options: JSModalOptions) -> JSResult<JSModalResult> {
+/// Show modal function (async)
+async fn show_modal(ctx: JSContext, options: JSModalOptions) -> JSResult<JSModalResult> {
     let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
     let modal_options: ModalOptions = options.into();
 
-    match lxapp.runtime.show_modal(modal_options) {
-        Ok(result) => Ok(result.into()),
+    // Get callback ID and receiver
+    let (callback_id, receiver) = get_callback();
+
+    // Call runtime interface with callback ID
+    match lxapp.runtime.show_modal(modal_options, callback_id) {
+        Ok(()) => {
+            // Wait for result from callback
+            match receiver.await {
+                Ok(result) => Ok(result.into()),
+                Err(_) => Err(RongJSError::Error(
+                    "Modal callback timeout or cancelled".to_string(),
+                )),
+            }
+        }
         Err(e) => Err(RongJSError::Error(format!("Failed to show modal: {}", e))),
     }
 }
