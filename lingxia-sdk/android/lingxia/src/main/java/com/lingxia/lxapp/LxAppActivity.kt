@@ -205,7 +205,6 @@ class LxAppActivity : AppCompatActivity() {
     private lateinit var webViewContainer: FrameLayout
     private var tabBar: TabBar? = null
     private var navigationBar: NavigationBar? = null
-    private var independentNavigationButton: NavigationButton? = null
     private var isDestroyed = false
     private var pendingWebViewSetup = false
     private var isDisplayingHomeLxApp: Boolean = false
@@ -263,9 +262,6 @@ class LxAppActivity : AppCompatActivity() {
 
         // Create global NavigationBar (always present, controlled by visibility)
         createNavBar()
-
-        // Create independent navigation button (for when navbar is hidden but button is needed)
-        createIndependentNavigationButton()
 
         // Defer capsule button creation to post-layout
         rootContainer.post {
@@ -1021,25 +1017,15 @@ class LxAppActivity : AppCompatActivity() {
             return
         }
 
-        // IMPORTANT: Hide independent navigation button to avoid duplication
-        independentNavigationButton?.visibility = View.GONE
-
         navigationBar?.apply {
             visibility = View.VISIBLE
             translationX = if (isBackNavigation) -width.toFloat() else width.toFloat()
 
-            val textColor = NavigationBar.ColorUtils.resolveNavTextColor(navbarState)
-
-            updateStateAndAnimate(
-                title = navbarState.navigationBarTitleText,
-                bgColor = navbarState.navigationBarBackgroundColor,
-                textColor = textColor,
-                showBackButton = navbarState.showBackButton,
-                showHomeButton = navbarState.showHomeButton,
-                isBackNavigation = isBackNavigation,
-                disableAnimation = false,
+            configure(
+                navbarState = navbarState,
                 onBackClickListener = { handleBackButtonClick() },
-                onHomeClickListener = { handleHomeButtonClick() }
+                onHomeClickListener = { handleHomeButtonClick() },
+                disableAnimation = false
             )
 
             // Update status bar to match navbar
@@ -1048,53 +1034,33 @@ class LxAppActivity : AppCompatActivity() {
     }
 
     /**
-     * Handle independent navigation button when navbar is hidden
+     * Handle navigation when navbar is hidden
      */
     private fun animateIndependentNavigationButton(navbarState: NavigationBarState, isBackNavigation: Boolean) {
-        // Hide NavigationBar's buttons to avoid duplication
         navigationBar?.apply {
-            setHomeButtonVisible(false)
-            setBackButtonVisible(false)
-        }
-
-        // Update button state and animate if visible
-        updateIndependentNavigationButton(navbarState)
-
-        independentNavigationButton?.takeIf { it.visibility == View.VISIBLE }?.let { button ->
-            val slideInTranslation = if (isBackNavigation) -button.width.toFloat() else button.width.toFloat()
-            button.translationX = slideInTranslation
-            button.alpha = 0f
-
-            button.animate()
-                .translationX(0f)
-                .alpha(1f)
-                .setDuration(LxAppDrawables.Constants.ANIMATION_DURATION_MS)
-                .setInterpolator(android.view.animation.DecelerateInterpolator())
-                .start()
+            visibility = View.VISIBLE
+            configure(
+                navbarState = navbarState,
+                onBackClickListener = { handleBackButtonClick() },
+                onHomeClickListener = { handleHomeButtonClick() },
+                disableAnimation = false
+            )
         }
     }
 
     private fun updateNavBar(navbarState: NavigationBarState) {
         if (!navbarState.showNavbar) {
             navigationBar?.visibility = View.GONE
-            updateIndependentNavigationButton(navbarState)
             return
         }
 
         navigationBar?.apply {
             visibility = View.VISIBLE
-            val textColor = NavigationBar.ColorUtils.resolveNavTextColor(navbarState)
-
-            updateStateAndAnimate(
-                title = navbarState.navigationBarTitleText,
-                bgColor = navbarState.navigationBarBackgroundColor,
-                textColor = textColor,
-                showBackButton = navbarState.showBackButton,
-                showHomeButton = navbarState.showHomeButton,
-                isBackNavigation = false,
-                disableAnimation = true,
+            configure(
+                navbarState = navbarState,
                 onBackClickListener = { handleBackButtonClick() },
-                onHomeClickListener = { handleHomeButtonClick() }
+                onHomeClickListener = { handleHomeButtonClick() },
+                disableAnimation = true
             )
 
             // Update status bar to match navbar
@@ -1133,37 +1099,34 @@ class LxAppActivity : AppCompatActivity() {
         val pathForNavbar = targetPath ?: currentWebView?.getCurrentPath() ?: ""
         val navbarState = NativeApi.getNavigationBarState(appId, pathForNavbar)
 
-        if (navbarState?.showNavbar == true) {
+        if (navbarState != null) {
             // Create navbar if needed
             if (navigationBar == null) {
                 createNavBar()
             }
 
-            val textColor = when (navbarState.navigationBarTextStyle.lowercase()) {
-                "white" -> Color.WHITE
-                "black" -> Color.BLACK
-                else -> if (NavigationBar.ColorUtils.isColorDark(navbarState.navigationBarBackgroundColor)) Color.WHITE else Color.BLACK
-            }
-
-            navigationBar?.updateStateAndAnimate(
-                title = navbarState.navigationBarTitleText,
-                bgColor = navbarState.navigationBarBackgroundColor,
-                textColor = textColor,
-                showBackButton = navbarState.showBackButton,
-                showHomeButton = navbarState.showHomeButton,
-                isBackNavigation = isBackNavigation,
-                disableAnimation = disableAnimation,
+            navigationBar?.configure(
+                navbarState = navbarState,
                 onBackClickListener = { handleBackButtonClick() },
-                onHomeClickListener = { handleHomeButtonClick() }
+                onHomeClickListener = { handleHomeButtonClick() },
+                disableAnimation = disableAnimation
             )
 
-            // Update status bar to match navbar
-            updateStatusBarForNavbar(navbarState.navigationBarBackgroundColor)
+            // Update status bar based on navbar state
+            if (navbarState.showNavbar) {
+                updateStatusBarForNavbar(navbarState.navigationBarBackgroundColor)
+            } else {
+                // Reset status bar to transparent when navbar is hidden
+                window.statusBarColor = Color.TRANSPARENT
+                WindowCompat.getInsetsController(window, window.decorView).apply {
+                    isAppearanceLightStatusBars = true  // Default to light status bar
+                }
+            }
         } else {
             // Hide navbar completely
             navigationBar?.visibility = View.GONE
 
-            // Reset status bar to transparent when navbar is hidden
+            // Reset status bar to transparent
             window.statusBarColor = Color.TRANSPARENT
             WindowCompat.getInsetsController(window, window.decorView).apply {
                 isAppearanceLightStatusBars = true  // Default to light status bar
@@ -1171,45 +1134,6 @@ class LxAppActivity : AppCompatActivity() {
         }
 
         updateLayoutMargins()
-        updateIndependentNavigationButton(navbarState)
-    }
-
-    private fun updateIndependentNavigationButton(navbarState: NavigationBarState?) {
-        val shouldShow = navbarState != null && !navbarState.showNavbar &&
-                        (navbarState.showBackButton || navbarState.showHomeButton)
-
-        if (shouldShow) {
-            if (independentNavigationButton == null) createIndependentNavigationButton()
-
-            independentNavigationButton?.apply {
-                visibility = View.VISIBLE
-                val isBackButton = navbarState!!.showBackButton
-                setButtonType(if (isBackButton) NavigationButton.ButtonType.BACK else NavigationButton.ButtonType.HOME)
-                setOnButtonClickListener(if (isBackButton) { -> handleBackButtonClick() } else { -> handleHomeButtonClick() })
-                setButtonColor(NavigationBar.ColorUtils.resolveNavTextColor(navbarState))
-            }
-        } else {
-            independentNavigationButton?.visibility = View.GONE
-        }
-    }
-
-    private fun createIndependentNavigationButton() {
-        if (independentNavigationButton != null) return
-
-        val density = resources.displayMetrics.density
-        independentNavigationButton = NavigationButton(this).apply {
-            layoutParams = FrameLayout.LayoutParams(
-                (LxAppDrawables.Constants.BUTTON_SIZE_DP * density).toInt(),
-                (LxAppDrawables.Constants.BUTTON_SIZE_DP * density).toInt()
-            ).apply {
-                gravity = Gravity.TOP or Gravity.START
-                topMargin = getStatusBarHeight(this@LxAppActivity) + (4 * density).toInt()
-                marginStart = (LxAppDrawables.Constants.MARGIN_START_DP * density).toInt()
-            }
-            elevation = 1000f
-            visibility = View.GONE
-        }
-        rootContainer.addView(independentNavigationButton)
     }
 
     /**
@@ -1349,8 +1273,6 @@ class LxAppActivity : AppCompatActivity() {
 
     // Get current app ID
     fun getAppId(): String = appId
-
-
 
     // Get current WebView (internal access for LxApp)
     internal fun getCurrentWebView(): com.lingxia.lxapp.WebView? = currentWebView

@@ -137,8 +137,10 @@ class NavigationBar @JvmOverloads constructor(
         backButton = ImageView(context).apply {
             layoutParams = LayoutParams(buttonSizePx, buttonSizePx).apply {
                 gravity = Gravity.START or Gravity.CENTER_VERTICAL
-                marginStart = (LxAppDrawables.Constants.MARGIN_START_DP * density).toInt()
+                marginStart = (4 * density).toInt()
             }
+            scaleType = ImageView.ScaleType.CENTER // Center the drawable but don't scale
+            adjustViewBounds = false
             setImageDrawable(backButtonDrawable)
             contentDescription = "Back"
             visibility = View.GONE
@@ -149,7 +151,7 @@ class NavigationBar @JvmOverloads constructor(
         homeButton = ImageView(context).apply {
             layoutParams = LayoutParams(buttonSizePx, buttonSizePx).apply {
                 gravity = Gravity.START or Gravity.CENTER_VERTICAL
-                marginStart = (LxAppDrawables.Constants.MARGIN_START_DP * density).toInt()
+                marginStart = (8 * density).toInt()
             }
             setBackgroundColor(Color.TRANSPARENT)
             setImageDrawable(homeButtonDrawable)
@@ -376,6 +378,50 @@ class NavigationBar @JvmOverloads constructor(
         }
     }
 
+    /**
+     * Configures the NavigationBar based on NavigationBarState.
+     * Handles both full navbar display and button-only mode when navbar is hidden.
+     */
+    fun configure(
+        navbarState: NavigationBarState,
+        onBackClickListener: OnClickListener,
+        onHomeClickListener: OnClickListener? = null,
+        disableAnimation: Boolean = false
+    ) {
+        val textColor = ColorUtils.resolveNavTextColor(navbarState)
+        
+        if (navbarState.showNavbar) {
+            // Show full navbar
+            updateStateAndAnimate(
+                title = navbarState.navigationBarTitleText,
+                bgColor = navbarState.navigationBarBackgroundColor,
+                textColor = textColor,
+                showBackButton = navbarState.showBackButton,
+                showHomeButton = navbarState.showHomeButton,
+                isBackNavigation = false,
+                disableAnimation = disableAnimation,
+                onBackClickListener = onBackClickListener,
+                onHomeClickListener = onHomeClickListener
+            )
+        } else if (navbarState.showBackButton || navbarState.showHomeButton) {
+            // Show button-only mode (transparent background, no title)
+            updateStateAndAnimate(
+                title = "",
+                bgColor = Color.TRANSPARENT,
+                textColor = textColor,
+                showBackButton = navbarState.showBackButton,
+                showHomeButton = navbarState.showHomeButton,
+                isBackNavigation = false,
+                disableAnimation = disableAnimation,
+                onBackClickListener = onBackClickListener,
+                onHomeClickListener = onHomeClickListener
+            )
+        } else {
+            // Hide completely
+            hide()
+        }
+    }
+
     // Method to receive status bar height
     fun setExternalStatusBarHeight(sbh: Int) {
         if (knownStatusBarHeight != sbh) {
@@ -397,94 +443,5 @@ class NavigationBar @JvmOverloads constructor(
 
             requestLayout() // Request re-layout
         }
-    }
-}
-
-/**
- * Independent Navigation Button that can be displayed without NavigationBar
- * Supports both Home and Back button types with WeChat-style frosted glass effect
- */
-class NavigationButton @JvmOverloads constructor(
-    context: Context,
-    attrs: AttributeSet? = null,
-    defStyleAttr: Int = 0
-) : FrameLayout(context, attrs, defStyleAttr) {
-
-    companion object {
-        private const val TAG = "LingXia.NavigationButton"
-    }
-
-    enum class ButtonType {
-        HOME, BACK
-    }
-
-    private val buttonImageView: ImageView
-    private var buttonType: ButtonType = ButtonType.HOME
-    private var currentFrontColor: Int = Color.BLACK
-    private var onClickListener: (() -> Unit)? = null
-
-    // Use shared drawables instead of duplicating code
-    private var homeDrawable: LxAppDrawables.HomeButtonDrawable? = null
-    private var backDrawable: LxAppDrawables.BackButtonDrawable? = null
-
-    init {
-        val density = resources.displayMetrics.density
-        val buttonSizePx = (LxAppDrawables.Constants.BUTTON_SIZE_DP * density).toInt()
-
-        // Initialize shared drawables
-        homeDrawable = LxAppDrawables.createHomeButton(resources, currentFrontColor)
-        backDrawable = LxAppDrawables.createBackButton(resources, currentFrontColor)
-
-        // Create the button ImageView
-        buttonImageView = ImageView(context).apply {
-            layoutParams = LayoutParams(buttonSizePx, buttonSizePx).apply {
-                gravity = Gravity.CENTER
-            }
-            setBackgroundColor(Color.TRANSPARENT)
-            contentDescription = "Navigation Button"
-            scaleType = ImageView.ScaleType.CENTER
-        }
-        addView(buttonImageView)
-
-        // Set default button type
-        setButtonType(ButtonType.HOME)
-
-        // Set click listener
-        setOnClickListener {
-            onClickListener?.invoke()
-        }
-    }
-
-    /**
-     * Set the button type (HOME or BACK)
-     */
-    fun setButtonType(type: ButtonType) {
-        buttonType = type
-        when (type) {
-            ButtonType.HOME -> {
-                buttonImageView.setImageDrawable(homeDrawable)
-                contentDescription = "Home"
-            }
-            ButtonType.BACK -> {
-                buttonImageView.setImageDrawable(backDrawable)
-                contentDescription = "Back"
-            }
-        }
-    }
-
-    /**
-     * Set the button color
-     */
-    fun setButtonColor(color: Int) {
-        currentFrontColor = color
-        homeDrawable?.updateColor(color)
-        backDrawable?.updateColor(color)
-    }
-
-    /**
-     * Set click listener
-     */
-    fun setOnButtonClickListener(listener: () -> Unit) {
-        onClickListener = listener
     }
 }

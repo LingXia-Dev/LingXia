@@ -136,7 +136,7 @@ object LxAppDrawables {
     }
 
     /**
-     * Back Button Drawable with frosted glass effect
+     * Back Button Drawable
      */
     class BackButtonDrawable(
         private val resources: Resources,
@@ -152,32 +152,22 @@ object LxAppDrawables {
         override fun draw(canvas: Canvas) {
             val width = bounds.width()
             val height = bounds.height()
-            val centerX = width / 2f
             val centerY = height / 2f
 
-            // Draw perfect circle background (frosted glass effect)
-            val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.argb(Constants.FROSTED_GLASS_ALPHA, 255, 255, 255) // Semi-transparent white
-                style = Paint.Style.FILL
-            }
-
-            val radius = (minOf(width, height) / 2f) - (2f * resources.displayMetrics.density)
-            canvas.drawCircle(centerX, centerY, radius, backgroundPaint)
-
-            // Update paint color for the chevron
-            paint.color = currentFrontColor
-            paint.strokeWidth = Constants.BACK_STROKE_WIDTH_FACTOR * resources.displayMetrics.density
+            val wechatGray = Color.rgb(102, 102, 102)
+            paint.color = wechatGray
+            paint.strokeWidth = 2.0f * resources.displayMetrics.density // Thinner line
             paint.strokeCap = Paint.Cap.ROUND
 
-            // Clean chevron arrow
-            val chevronSize = minOf(width, height) * 0.35f
-            val startX = centerX + chevronSize * 0.25f
-            val endX = centerX - chevronSize * 0.25f
-            val offsetY = chevronSize * 0.25f
+            val chevronSize = minOf(width, height) * 0.4f // Arrow size - slightly larger
+            val centerX = width / 2f
+            val tipX = centerX - chevronSize * 0.3f // Arrow tip position
+            val baseX = centerX + chevronSize * 0.2f // Arrow base position
+            val offsetY = chevronSize * 0.45f // Vertical offset for opening - slightly larger
 
-            // Draw clean chevron lines
-            canvas.drawLine(startX, centerY - offsetY, endX, centerY, paint)
-            canvas.drawLine(endX, centerY, startX, centerY + offsetY, paint)
+            // Draw chevron lines (< shape)
+            canvas.drawLine(baseX, centerY - offsetY, tipX, centerY, paint) // Top arm
+            canvas.drawLine(tipX, centerY, baseX, centerY + offsetY, paint) // Bottom arm
         }
 
         override fun setAlpha(alpha: Int) {
