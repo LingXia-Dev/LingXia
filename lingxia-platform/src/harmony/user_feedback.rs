@@ -1,8 +1,6 @@
 use super::app::Platform;
 use crate::error::PlatformError;
-use crate::traits::{
-    ModalOptions, ModalResult, ToastIcon, ToastOptions, ToastPosition, UserFeedback,
-};
+use crate::traits::{ModalOptions, ToastIcon, ToastOptions, ToastPosition, UserFeedback};
 
 impl UserFeedback for Platform {
     fn show_toast(&self, options: ToastOptions) -> Result<(), PlatformError> {
@@ -33,16 +31,15 @@ impl UserFeedback for Platform {
             .map_err(|e| PlatformError::Platform(format!("Failed to hide toast: {}", e)))
     }
 
-    fn show_modal(&self, options: ModalOptions) -> Result<ModalResult, PlatformError> {
+    fn show_modal(&self, options: ModalOptions, callback_id: u64) -> Result<(), PlatformError> {
         // Convert ModalOptions to individual string parameters for TSFN call
         let title = &options.title;
         let content = &options.content;
         let show_cancel = if options.show_cancel { "true" } else { "false" };
         let cancel_text = &options.cancel_text;
         let confirm_text = &options.confirm_text;
-        let editable = if options.editable { "true" } else { "false" };
-        let placeholder_text = &options.placeholder_text;
         let confirm_color = options.confirm_color.as_deref().unwrap_or("");
+        let callback_id_str = callback_id.to_string();
 
         // Call ArkTS showModal function via TSFN with individual parameters
         lingxia_webview::tsfn::call_arkts(
@@ -53,19 +50,13 @@ impl UserFeedback for Platform {
                 show_cancel,
                 cancel_text,
                 confirm_text,
-                editable,
-                placeholder_text,
                 confirm_color,
+                &callback_id_str,
             ],
         )
         .map_err(|e| PlatformError::Platform(format!("Failed to show modal: {}", e)))?;
 
-        // Return placeholder result - async implementation will be added later
-        Ok(ModalResult {
-            content: String::new(),
-            cancel: true,
-            confirm: false,
-        })
+        Ok(())
     }
 }
 

@@ -1,3 +1,4 @@
+use lingxia_callback::invoke_callback;
 use lingxia_webview::{WebTag, get_webview_delegate, tsfn};
 use log::LevelFilter;
 use lxapp::log::LogLevel;
@@ -330,4 +331,17 @@ fn get_current_lxapp() -> CurrentLxApp {
         appid: current_appid,
         path: current_path,
     }
+}
+
+/// Callback from platform (called from ArkTS)
+#[napi]
+fn on_callback(id: String, success: bool, data: String) -> bool {
+    let id = match id.parse::<u64>() {
+        Ok(parsed_id) => parsed_id,
+        Err(_) => {
+            log::error!("[HarmonyOS] Failed to parse callback ID: {}", id);
+            return false;
+        }
+    };
+    invoke_callback(id, success, data)
 }

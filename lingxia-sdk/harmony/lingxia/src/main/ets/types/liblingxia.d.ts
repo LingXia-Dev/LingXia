@@ -173,4 +173,13 @@ declare module 'liblingxia.so' {
    * @returns Current LxApp information
    */
   export function getCurrentLxapp(): CurrentLxApp;
+
+  /**
+   * Callback function for async operations (modal, etc.)
+   * @param id - Callback ID as string
+   * @param success - Whether the operation was successful
+   * @param data - Result data as JSON string
+   * @returns true if callback was handled successfully, false otherwise
+   */
+  export function onCallback(id: string, success: boolean, data: string): boolean;
 }

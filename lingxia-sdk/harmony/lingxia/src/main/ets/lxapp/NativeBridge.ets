@@ -130,9 +130,8 @@ class NativeBridge {
       showCancel: string,
       cancelText: string,
       confirmText: string,
-      editable: string,
-      placeholderText: string,
-      confirmColor: string
+      confirmColor: string,
+      callbackId: string
     ): void => {
       try {
         LxAppModal.showModal(
@@ -141,9 +140,8 @@ class NativeBridge {
           showCancel,
           cancelText,
           confirmText,
-          editable,
-          placeholderText,
-          confirmColor
+          confirmColor,
+          callbackId
         );
       } catch (error) {
         hilog.error(DOMAIN, TAG, `Error showing modal: ${error}`);
@@ -238,6 +236,25 @@ export function getNativeCallbackFunction(): (data: string) => Object | null {
           rawArgs[4] === 'true', // mask (string -> boolean)
           positionMap[rawArgs[5]] ?? 1 // position (string -> number, default to center)
         ];
+      } else if (functionName === 'showModal' && rawArgs.length >= 7) {
+        // Handle showModal arguments - skip legacy editable/placeholder parameters if present
+        // Expected: title, content, showCancel, cancelText, confirmText, confirmColor, callbackId
+        // Legacy format may have 9 args: title, content, showCancel, cancelText, confirmText, editable, placeholder, confirmColor, callbackId
+        if (rawArgs.length === 9) {
+          // Legacy format with editable and placeholder - skip them
+          args = [
+            rawArgs[0], // title
+            rawArgs[1], // content
+            rawArgs[2], // showCancel
+            rawArgs[3], // cancelText
+            rawArgs[4], // confirmText
+            rawArgs[7], // confirmColor (skip editable and placeholder)
+            rawArgs[8]  // callbackId
+          ];
+        } else {
+          // New format with 7 args
+          args = rawArgs;
+        }
       }
 
       return NativeBridge.call(functionName, ...args);

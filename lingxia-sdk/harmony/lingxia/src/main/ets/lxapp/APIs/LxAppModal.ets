@@ -1,4 +1,5 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { onCallback } from 'liblingxia.so';
 
 /**
  * Modal configuration structure
@@ -9,8 +10,6 @@ export interface ModalConfig {
   showCancel: boolean;
   cancelText: string;
   confirmText: string;
-  editable: boolean;
-  placeholderText: string;
   confirmColor?: string;
 }
 
@@ -20,7 +19,6 @@ export interface ModalConfig {
 export interface ModalResult {
   confirm: boolean;
   cancel: boolean;
-  content: string;
 }
 
 const DOMAIN = 0x0000;
@@ -39,9 +37,8 @@ export class LxAppModal {
    * @param showCancel - Whether to show cancel button (required)
    * @param cancelText - Cancel button text (required)
    * @param confirmText - Confirm button text (required)
-   * @param editable - Whether modal is editable (required)
-   * @param placeholderText - Placeholder text for input (required)
    * @param confirmColor - Confirm button color (required, can be empty string)
+   * @param callbackId - Callback ID for result handling (required)
    */
   public static showModal(
     title: string,
@@ -49,9 +46,8 @@ export class LxAppModal {
     showCancel: string,
     cancelText: string,
     confirmText: string,
-    editable: string,
-    placeholderText: string,
-    confirmColor: string
+    confirmColor: string,
+    callbackId: string
   ): void {
     const config: ModalConfig = {
       title: title,
@@ -59,15 +55,15 @@ export class LxAppModal {
       showCancel: showCancel === "true",
       cancelText: cancelText,
       confirmText: confirmText,
-      editable: editable === "true",
-      placeholderText: placeholderText,
       confirmColor: confirmColor || undefined
     };
 
     if (LxAppModal.modalManagerRef) {
-      LxAppModal.modalManagerRef.showModal(config);
+      LxAppModal.modalManagerRef.showModal(config, callbackId);
     } else {
       hilog.warn(DOMAIN, TAG, 'Modal manager not initialized');
+      // Call callback with error
+      onCallback(callbackId, false, 'Modal manager not initialized');
     }
   }
 
@@ -93,7 +89,7 @@ export class LxAppModal {
 export struct ModalManager {
   @State isVisible: boolean = false;
   @State config: ModalConfig | null = null;
-  @State inputText: string = "";
+  private callbackId: string = "";
 
   aboutToAppear() {
     LxAppModal.setManagerRef(this);
@@ -131,8 +127,8 @@ export struct ModalManager {
   @Builder
   buildModalContent() {
     Column({ space: 20 }) {
-      // Title
-      if (this.config?.title) {
+      // Title (only show if not empty)
+      if (this.config?.title && this.config.title.trim() !== '') {
         Text(this.config.title)
           .fontSize(18)
           .fontWeight(FontWeight.Bold)
@@ -151,23 +147,6 @@ export struct ModalManager {
           .maxLines(4)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .lineHeight(24)
-      }
-
-      // Input field (if editable)
-      if (this.config?.editable) {
-        TextInput({
-          placeholder: this.config.placeholderText || "Please enter content",
-          text: this.inputText
-        })
-          .width('100%')
-          .height(40)
-          .fontSize(16)
-          .borderRadius(8)
-          .backgroundColor('#F5F5F5')
-          .padding({ left: 12, right: 12 })
-          .onChange((value: string) => {
-            this.inputText = value;
-          })
       }
 
       // Buttons
@@ -229,28 +208,49 @@ export struct ModalManager {
   }
 
   private handleConfirm(): void {
-    const inputContent = this.config?.editable ? this.inputText : "";
-    hilog.info(DOMAIN, TAG, `Modal confirmed: content='${inputContent}'`);
+    hilog.info(DOMAIN, TAG, 'Modal confirmed');
+
+    // Call callback with success result
+    const result = JSON.stringify({
+      confirm: true,
+      cancel: false
+    });
+    onCallback(this.callbackId, true, result);
+
     this.hideModal();
   }
 
   private handleCancel(): void {
     hilog.info(DOMAIN, TAG, 'Modal cancelled');
+
+    // Call callback with cancel result
+    const result = JSON.stringify({
+      confirm: false,
+      cancel: true
+    });
+    onCallback(this.callbackId, true, result);
+
     this.hideModal();
   }
 
   private hideModal(): void {
     this.isVisible = false;
     this.config = null;
-    this.inputText = "";
+    this.callbackId = "";
   }
 
   /**
    * Show modal (called by LxAppModal)
    */
-  public showModal(config: ModalConfig): void {
+  public showModal(config: ModalConfig, callbackId: string): void {
+    // Force reset state first to ensure clean state
+    this.isVisible = false;
+    this.config = null;
+    this.callbackId = "";
+
+    // Then set new state
     this.config = config;
-    this.inputText = "";
+    this.callbackId = callbackId;
     this.isVisible = true;
   }
 }
