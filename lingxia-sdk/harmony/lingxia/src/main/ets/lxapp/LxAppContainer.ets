@@ -4,7 +4,7 @@ import { window } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { LxApp } from './LxApp';
 import { findWebview, handleScrollChanged, toWebTag, extractWebTag, WebTagParts, addWebViewUiCallback, removeWebViewUiCallback, WebViewInfo } from './WebView';
-import { NavigationBar, type NavigationBarState, NAVIGATION_BUTTON_SIZE, BACK_BUTTON_LEFT_POSITION, HOME_BUTTON_LEFT_POSITION, calculateNavigationButtonYPosition } from './NavigationBar';
+import { NavigationBar, type NavigationBarState } from './NavigationBar';
 import { NavigationButton, CapsuleButton } from './LxAppDrawables';
 import { TabBar } from './TabBar';
 import { TabBarPosition, type TabBarItem, UiEventType } from 'liblingxia.so';
@@ -15,23 +15,12 @@ import { AnimationType } from './LxAppNavigation';
 // Container-specific constants
 const SYSTEM_STATUS_BAR_HEIGHT = 44;     // Default status bar height
 
-const NAVIGATION_BUTTON_Z_INDEX = 1000;           // Navigation button z-index
-const NAVIGATION_BUTTON_Y_POSITION = 45;          // Navigation button vertical position
-
-// Calculated absolute positions
-const NAVIGATION_BUTTON_POSITION_BACK_LEFT = 16;  // Back button left position
-const NAVIGATION_BUTTON_POSITION_HOME_LEFT = 8;   // Home button left position
-
 const COLOR_WHITE = '#ffffff';
 const COLOR_BLACK = '#000000';
 const COLOR_TRANSPARENT = Color.Transparent;
 
 const ANIMATION_DURATION_STANDARD = 300;      // Standard animation duration
 const ANIMATION_CURVE_EASE_IN_OUT = Curve.EaseInOut;  // Smooth ease in/out curve
-
-// Frosted glass effect colors
-const FROSTED_GLASS_LIGHT = 'rgba(255, 255, 255, 0.2)';  // For dark navbar backgrounds
-const FROSTED_GLASS_DARK = 'rgba(0, 0, 0, 0.1)';          // For light navbar backgrounds
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.Container';
@@ -42,14 +31,6 @@ const TAG = 'LingXia.Container';
 interface TranslationOptions {
   x: number | string;
   y: number | string;
-}
-
-/**
- * Navigation button style configuration
- */
-interface NavigationButtonStyle {
-  color: ResourceColor;
-  bgColor: ResourceColor;
 }
 
 @Component
@@ -187,30 +168,6 @@ export struct LxAppContainer {
     // Remove WebView UI callback when container is destroyed
     removeWebViewUiCallback(this.webViewUiCallback);
     hilog.info(DOMAIN, TAG, `Container destroyed for ${this.appId}:${this.path}`);
-  }
-
-  /**
-   * Get absolute positioning for navigation buttons
-   */
-  private getNavigationButtonPosition(isBackButton: boolean): Position {
-    return {
-      x: isBackButton ? NAVIGATION_BUTTON_POSITION_BACK_LEFT : NAVIGATION_BUTTON_POSITION_HOME_LEFT,
-      y: NAVIGATION_BUTTON_Y_POSITION
-    };
-  }
-
-  /**
-   * Get navigation button style based on navigation bar state
-   */
-  private getNavigationButtonStyle(isBackButton: boolean): NavigationButtonStyle {
-    const hasNavbar = this.pageConfig?.showNavbar;
-    const isWhiteText = this.pageConfig?.navigationBarTextStyle === 'white';
-    const shouldUseWhiteStyle = hasNavbar === true && isWhiteText === true;
-
-    return {
-      color: shouldUseWhiteStyle ? COLOR_WHITE : COLOR_BLACK,
-      bgColor: shouldUseWhiteStyle ? FROSTED_GLASS_LIGHT : FROSTED_GLASS_DARK
-    };
   }
 
   /**
@@ -420,7 +377,7 @@ export struct LxAppContainer {
                 currentPath: this.path,
                 translateX: this.navbarTranslateX,
                 statusBarHeight: this.statusBarHeight,
-                showNavigationButtons: false, // Don't show buttons in navbar
+                forceShowButtons: true, // Always show buttons when needed
                 onNavigationClick: (appId: string, isHomeButton: boolean): boolean => {
                   this.handleNavigationBack(isHomeButton);
                   return true;
@@ -431,9 +388,6 @@ export struct LxAppContainer {
           }
           .layoutWeight(1)
           .height('100%')
-
-          // Always show navigation button at absolute position
-          this.buildAbsoluteNavigationButton()
         }
 
         if (this.tabBarState && this.tabBarState.position === TabBarPosition.Right) {
@@ -463,7 +417,6 @@ export struct LxAppContainer {
             onClosePressed: () => this.handleCapsuleClose()
           })
         }
-        this.buildAbsoluteNavigationButton()
       }
       .width('100%')
       .height('100%')
@@ -490,7 +443,6 @@ export struct LxAppContainer {
             onClosePressed: () => this.handleCapsuleClose()
           })
         }
-        this.buildAbsoluteNavigationButton()
       }
       .width('100%')
       .height('100%')
@@ -600,46 +552,13 @@ export struct LxAppContainer {
         currentPath: this.path,
         translateX: this.navbarTranslateX,
         statusBarHeight: this.statusBarHeight, // Pass status bar height
-        showNavigationButtons: false, // Don't show buttons in navbar, use fixed position instead
+        forceShowButtons: true, // Always show buttons when needed, integrated into navbar
         onNavigationClick: (appId: string, isHomeButton: boolean): boolean => {
           this.handleNavigationBack(isHomeButton);
           return true;
         }
       })
     }
-  }
-
-  /**
-   * Build absolute positioned navigation button with consistent styling
-   * Priority: Back button takes precedence over home button when both are true
-   */
-  @Builder
-  buildAbsoluteNavigationButton(): void {
-    if (this.pageConfig && this.pageConfig.showBackButton) {
-      this.buildNavigationButtonInternal(true);
-    } else if (this.pageConfig && this.pageConfig.showHomeButton) {
-      this.buildNavigationButtonInternal(false);
-    }
-  }
-
-  /**
-   * Internal method to build navigation button with proper styling
-   */
-  @Builder
-  buildNavigationButtonInternal(isBackButton: boolean): void {
-    NavigationButton({
-      isBackButton: isBackButton,
-      color: this.getNavigationButtonStyle(isBackButton).color,
-      bgColor: this.getNavigationButtonStyle(isBackButton).bgColor,
-      onPressed: () => {
-        hilog.info(DOMAIN, TAG, `Navigation ${isBackButton ? 'back' : 'home'} button pressed for appId: ${this.appId}`);
-        this.handleNavigationBack(!isBackButton);
-      }
-    })
-    .width(NAVIGATION_BUTTON_SIZE)
-    .height(NAVIGATION_BUTTON_SIZE)
-    .position(this.getNavigationButtonPosition(isBackButton))
-    .zIndex(NAVIGATION_BUTTON_Z_INDEX)
   }
 
   /**

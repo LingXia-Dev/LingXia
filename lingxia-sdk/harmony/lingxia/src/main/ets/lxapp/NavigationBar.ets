@@ -5,29 +5,18 @@ import { NavigationButton } from './LxAppDrawables';
 // NavigationBar layout constants
 const NAVIGATION_BAR_TOTAL_HEIGHT = 88;        // Status bar + content area
 const NAVIGATION_BAR_CONTENT_HEIGHT = 44;      // Navigation content area height
-const NAVIGATION_BAR_LEFT_PADDING = 4;         // Left padding of NavigationBar content
+const NAVIGATION_BAR_LEFT_PADDING = 0;         // Left padding of NavigationBar content
 const NAVIGATION_BAR_RIGHT_PADDING = 12;       // Right padding of NavigationBar content
 const NAVIGATION_BAR_TITLE_FONT_SIZE = 18;     // Navigation bar title font size
 
 // Navigation button constants
-const NAVIGATION_BUTTON_SIZE = 36;                // Navigation button width/height
-const NAVIGATION_BUTTON_BACK_MARGIN_LEFT = 12;    // Back button left margin
-const NAVIGATION_BUTTON_HOME_MARGIN_LEFT = 4;     // Home button left margin
-const NAVIGATION_BUTTON_Z_INDEX = 1000;           // Navigation button z-index
-const NAVIGATION_BUTTON_Y_POSITION = 45;          // Navigation button vertical position (empirical value)
-
-// Calculated absolute positions
-const NAVIGATION_BUTTON_POSITION_BACK_LEFT = 16;  // LEFT_PADDING(4) + BACK_MARGIN_LEFT(12)
-const NAVIGATION_BUTTON_POSITION_HOME_LEFT = 8;   // LEFT_PADDING(4) + HOME_MARGIN_LEFT(4)
+const NAVIGATION_BUTTON_SIZE = 44;                // Navigation button width/height - large touch target
 
 // Common colors
 const COLOR_WHITE = '#ffffff';
 const COLOR_BLACK = '#000000';
 const COLOR_TRANSPARENT = Color.Transparent;
 
-// Frosted glass effect colors
-const FROSTED_GLASS_LIGHT = 'rgba(255, 255, 255, 0.2)';  // For dark navbar backgrounds
-const FROSTED_GLASS_DARK = 'rgba(0, 0, 0, 0.1)';          // For light navbar backgrounds
 
 /**
  * NavigationBar state interface
@@ -49,18 +38,6 @@ export const NAVBAR_TOTAL_HEIGHT = NAVIGATION_BAR_TOTAL_HEIGHT;
 export const NAVBAR_CONTENT_HEIGHT = NAVIGATION_BAR_CONTENT_HEIGHT;
 export const NAVBAR_LEFT_PADDING = NAVIGATION_BAR_LEFT_PADDING;
 export { NAVIGATION_BUTTON_SIZE };
-export const BACK_BUTTON_MARGIN = NAVIGATION_BUTTON_BACK_MARGIN_LEFT;
-export const HOME_BUTTON_MARGIN = NAVIGATION_BUTTON_HOME_MARGIN_LEFT;
-export const BACK_BUTTON_LEFT_POSITION = NAVIGATION_BUTTON_POSITION_BACK_LEFT;
-export const HOME_BUTTON_LEFT_POSITION = NAVIGATION_BUTTON_POSITION_HOME_LEFT;
-
-/**
- * Calculate the Y position for navigation buttons in absolute positioning
- * Empirically determined: 45px is the correct position that aligns buttons with navbar content
- */
-export function calculateNavigationButtonYPosition(statusBarHeight: number): number {
-  return NAVIGATION_BUTTON_Y_POSITION;
-}
 
 /**
  * Convert ARGB color value to ResourceColor
@@ -80,13 +57,6 @@ function toResourceColor(colorValue: number): ResourceColor {
   } else {
     return `rgba(${red}, ${green}, ${blue}, ${alpha / 255})`;
   }
-}
-
-/**
- * Get frosted glass background color for navigation buttons
- */
-function getFrostedGlassColor(isWhiteText: boolean): ResourceColor {
-  return isWhiteText ? FROSTED_GLASS_LIGHT : FROSTED_GLASS_DARK;
 }
 
 /**
@@ -112,13 +82,13 @@ export struct NavigationBar {
   @Prop currentPath: string = '';
   @Prop translateX: number = 0;
   @Prop statusBarHeight: number = 44; // Add status bar height prop
-  @Prop showNavigationButtons: boolean = true; // Control whether to show navigation buttons
+  @Prop forceShowButtons: boolean = false; // Force show buttons even when navbar is hidden
 
   onNavigationClick?: (appId: string, isHomeButton: boolean) => boolean;
 
   build() {
     Stack() {
-      // Background layer - only show when not transparent
+      // Background layer - only show when navbar should be visible and not transparent
       if (this.shouldShowBackground()) {
         Column()
           .width('100%')
@@ -126,24 +96,52 @@ export struct NavigationBar {
           .backgroundColor(this.getBackgroundColor())
       }
 
-      // Navigation bar content area (below status bar) - use Stack for absolute positioning
-      Stack() {
+      // Navigation bar content area (below status bar) - use Row layout
+      Row() {
         // Left side: Navigation button (back button takes priority over home button)
-        if (this.showNavigationButtons && (this.config.showBackButton || this.config.showHomeButton)) {
-          this.buildNavigationButton()
+        if (this.shouldShowButtons()) {
+          NavigationButton({
+            isBackButton: this.config.showBackButton,
+            onPressed: () => {
+              const isBackButton = this.config.showBackButton;
+              const isHomeButton = !isBackButton;
+              if (this.onNavigationClick) {
+                this.onNavigationClick(this.appId, isHomeButton);
+              }
+            }
+          })
+          .width(NAVIGATION_BUTTON_SIZE) // Large touch target
+          .height(NAVIGATION_BUTTON_SIZE) // Large touch target
+          .margin({ left: 4 }) // Button margin for optimal positioning
+        } else {
+          // Placeholder to maintain layout balance
+          Blank()
+            .width(NAVIGATION_BUTTON_SIZE)
+            .height(NAVIGATION_BUTTON_SIZE)
+            .margin({ left: 4 })
         }
 
-        // Center: Title
-        Text(this.config.navigationBarTitleText || '')
-          .fontSize(NAVIGATION_BAR_TITLE_FONT_SIZE)
-          .fontWeight(FontWeight.Medium)
-          .fontColor(this.getTextColor())
-          .textAlign(TextAlign.Center)
-          .width('100%') // Full width for true center alignment
+        // Center: Title - only show when navbar is visible
+        if (this.config.showNavbar) {
+          Text(this.config.navigationBarTitleText || '')
+            .fontSize(NAVIGATION_BAR_TITLE_FONT_SIZE)
+            .fontWeight(FontWeight.Medium)
+            .fontColor(this.getTextColor())
+            .textAlign(TextAlign.Center)
+            .layoutWeight(1) // Take remaining space for center alignment
+        } else {
+          Blank().layoutWeight(1) // Take space even when no title
+        }
+
+        // Right side: Placeholder for balance
+        Blank()
+          .width(NAVIGATION_BUTTON_SIZE + 10) // Match left side effective width
+          .height(NAVIGATION_BUTTON_SIZE)
       }
       .width('100%')
       .height(NAVIGATION_BAR_CONTENT_HEIGHT)
-      .alignContent(Alignment.Center) // Center all content
+      .justifyContent(FlexAlign.SpaceBetween) // Distribute space evenly
+      .alignItems(VerticalAlign.Center) // Center vertically
       .padding({
         left: NAVIGATION_BAR_LEFT_PADDING,
         right: NAVIGATION_BAR_RIGHT_PADDING
@@ -153,42 +151,32 @@ export struct NavigationBar {
     .height(NAVIGATION_BAR_TOTAL_HEIGHT)
     .alignContent(Alignment.Bottom)
     .translate({ x: `${this.translateX}%`, y: 0 })
+    .visibility(this.shouldShowNavBar() ? Visibility.Visible : Visibility.Hidden)
   }
 
-  @Builder
-  buildNavigationButton(): void {
-    Row() {
-      NavigationButton({
-        isBackButton: this.config.showBackButton,
-        color: this.getTextColor(),
-        bgColor: this.getButtonBackgroundColor(),
-        onPressed: () => {
-          const isBackButton = this.config.showBackButton;
-          const isHomeButton = !isBackButton; // If not back button, then it's home button
-          hilog.info(DOMAIN, TAG, `${isBackButton ? 'Back' : 'Home'} button pressed for appId: ${this.appId}`);
-          if (this.onNavigationClick) {
-            this.onNavigationClick(this.appId, isHomeButton);
-          }
-        }
-      })
-      .width(NAVIGATION_BUTTON_SIZE)
-      .height(NAVIGATION_BUTTON_SIZE)
-      .margin({
-        left: this.config.showBackButton ?
-          NAVIGATION_BUTTON_BACK_MARGIN_LEFT :
-          NAVIGATION_BUTTON_HOME_MARGIN_LEFT
-      })
-      Blank()
-    }
-    .width('100%')
-    .height('100%')
-    .alignItems(VerticalAlign.Center)
+  /**
+   * Check if navbar should be shown at all
+   */
+  private shouldShowNavBar(): boolean {
+    return this.config.showNavbar || this.forceShowButtons ||
+           (this.config.showBackButton || this.config.showHomeButton);
+  }
+
+  /**
+   * Check if buttons should be shown
+   */
+  private shouldShowButtons(): boolean {
+    return this.config.showBackButton || this.config.showHomeButton;
   }
 
   /**
    * Check if background should be shown
    */
   private shouldShowBackground(): boolean {
+    // Only show background when navbar is visible (not in button-only mode)
+    if (!this.config.showNavbar) {
+      return false;
+    }
     const bgColor = this.config.navigationBarBackgroundColor || 0xFFFFFFFF;
     const alpha = (bgColor >>> 24) & 0xFF;
     return alpha > 0; // Only show background if alpha > 0
@@ -206,14 +194,6 @@ export struct NavigationBar {
    */
   private getTextColor(): ResourceColor {
     return this.config.navigationBarTextStyle === 'white' ? COLOR_WHITE : COLOR_BLACK;
-  }
-
-  /**
-   * Get button background color (frosted glass effect)
-   */
-  private getButtonBackgroundColor(): ResourceColor {
-    const isWhiteText = this.config.navigationBarTextStyle === 'white';
-    return getFrostedGlassColor(isWhiteText);
   }
 }
 

@@ -4,9 +4,9 @@
 
 // Custom icon drawing constants
 const CUSTOM_ICON_CANVAS_SIZE = 36;
-const CUSTOM_ICON_STROKE_WIDTH = 2.5;
-const CUSTOM_ICON_BACK_ARROW_SIZE = 8;
-const CUSTOM_ICON_HOME_ICON_SIZE = 18;
+const CUSTOM_ICON_STROKE_WIDTH = 1.8; // Thinner
+const CUSTOM_ICON_BACK_ARROW_SIZE = 6; // Much smaller arrow opening
+const CUSTOM_ICON_HOME_ICON_SIZE = 16; // Smaller home icon
 
 // Capsule button constants
 const CAPSULE_BUTTON_TOTAL_WIDTH = 102;
@@ -21,7 +21,7 @@ const COLOR_WHITE = '#ffffff';
 const COLOR_BLACK = '#000000';
 const COLOR_TRANSPARENT = Color.Transparent;
 const COLOR_LIGHT_BORDER = '#DDDDDD';
-const COLOR_ICON_STROKE = 'rgba(0, 0, 0, 0.8)';
+const COLOR_ICON_STROKE = '#666666';
 
 // Animation constants
 const ANIMATION_DURATION_FAST = 100;
@@ -38,12 +38,18 @@ const SYSTEM_STATUS_BAR_HEIGHT = 44;
 export struct BackArrowIcon {
   @Prop color: ResourceColor = COLOR_BLACK
   @Prop iconSize: number = CUSTOM_ICON_BACK_ARROW_SIZE
+  @State private refreshKey: number = 0
 
   build() {
     Canvas(this.canvasContext)
       .width(CUSTOM_ICON_CANVAS_SIZE)
       .height(CUSTOM_ICON_CANVAS_SIZE)
       .onReady(() => {
+        this.drawBackArrow()
+      })
+      .onAreaChange(() => {
+        // Force redraw when area changes
+        this.refreshKey++
         this.drawBackArrow()
       })
   }
@@ -57,21 +63,24 @@ export struct BackArrowIcon {
     ctx.clearRect(0, 0, CUSTOM_ICON_CANVAS_SIZE, CUSTOM_ICON_CANVAS_SIZE)
 
     // Set arrow style
-    ctx.strokeStyle = COLOR_ICON_STROKE // Black arrow
+    ctx.strokeStyle = COLOR_ICON_STROKE
     ctx.lineWidth = CUSTOM_ICON_STROKE_WIDTH
     ctx.lineCap = 'round'
     ctx.lineJoin = 'round'
 
-    // Draw back arrow centered in canvas
-    const centerX = CUSTOM_ICON_CANVAS_SIZE / 2
+    const centerX = CUSTOM_ICON_CANVAS_SIZE / 2 - 4 // Move more to the left
     const centerY = CUSTOM_ICON_CANVAS_SIZE / 2
-    const arrowSize = CUSTOM_ICON_BACK_ARROW_SIZE // Larger arrow for better visibility
+    const chevronSize = CUSTOM_ICON_CANVAS_SIZE * 0.4
+    const tipX = centerX - chevronSize * 0.3 //  tip position
+    const baseX = centerX + chevronSize * 0.2 // base position
+    const offsetY = chevronSize * 0.45 // vertical offset
 
     ctx.beginPath()
-    // Arrow pointing left: >
-    ctx.moveTo(centerX + arrowSize/2, centerY - arrowSize)  // Top right
-    ctx.lineTo(centerX - arrowSize/2, centerY)             // Center left (tip)
-    ctx.lineTo(centerX + arrowSize/2, centerY + arrowSize)  // Bottom right
+    // Arrow pointing left: <
+    ctx.moveTo(baseX, centerY - offsetY)  // Top arm start
+    ctx.lineTo(tipX, centerY)             // To tip
+    ctx.moveTo(tipX, centerY)             // From tip
+    ctx.lineTo(baseX, centerY + offsetY)  // Bottom arm end
 
     ctx.stroke()
   }
@@ -140,46 +149,40 @@ export struct HomeIcon {
 }
 
 /**
- * Navigation button component with frosted glass effect
- * Matches the styling from iOS and Android implementations
+ * Navigation button component
  */
 @Component
 export struct NavigationButton {
   @Prop isBackButton: boolean = true
-  @Prop color: ResourceColor = COLOR_BLACK
-  @Prop bgColor: ResourceColor = COLOR_TRANSPARENT
   onPressed?: () => void
   @State isPressed: boolean = false
 
   build() {
-    Button() {
-      Stack() {
-        if (this.isBackButton) {
-          BackArrowIcon({
-            color: this.color,
-            iconSize: CUSTOM_ICON_BACK_ARROW_SIZE
-          })
-        } else {
-          HomeIcon({
-            color: this.color,
-            iconSize: CUSTOM_ICON_HOME_ICON_SIZE
-         })
-        }
+    Column() {
+      if (this.isBackButton) {
+        BackArrowIcon({
+          color: COLOR_BLACK, // Fixed color
+          iconSize: CUSTOM_ICON_BACK_ARROW_SIZE
+        })
+      } else {
+        HomeIcon({
+          color: COLOR_BLACK, // Fixed color
+          iconSize: CUSTOM_ICON_HOME_ICON_SIZE
+       })
       }
-      .width('100%')
-      .height('100%')
-      .alignContent(Alignment.Center)
     }
-    .backgroundColor(this.bgColor)
-    .borderRadius('50%') // Use percentage for perfect circle
-    .padding(0) // Remove default button padding
+    .width('100%')
+    .height('100%')
+    .backgroundColor(Color.Transparent)
+    .justifyContent(FlexAlign.Center)
+    .alignItems(HorizontalAlign.Center)
     .scale({
-      x: this.isPressed ? ANIMATION_BUTTON_PRESS_SCALE : 1.0,
-      y: this.isPressed ? ANIMATION_BUTTON_PRESS_SCALE : 1.0
+      x: this.isPressed ? 0.95 : 1.0,
+      y: this.isPressed ? 0.95 : 1.0
     })
     .animation({
-      duration: ANIMATION_DURATION_FAST,
-      curve: ANIMATION_CURVE_EASE_IN_OUT
+      duration: 100,
+      curve: Curve.EaseInOut
     })
     .onTouch((event: TouchEvent) => {
       if (event.type === TouchType.Down) {
@@ -193,6 +196,7 @@ export struct NavigationButton {
         this.onPressed()
       }
     })
+    .hitTestBehavior(HitTestMode.Block) // Ensure this component blocks and handles clicks
   }
 }
 
