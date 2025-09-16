@@ -515,6 +515,21 @@ impl Page {
             self.inner.state.lock().unwrap().query = query_value;
         }
     }
+
+    /// Call a JavaScript function in the page's logic service
+    ///
+    /// # Arguments
+    /// * `name` - Function name to call
+    /// * `arg` - JSON string containing function arguments
+    ///
+    /// # Returns
+    /// `Ok(())` if successful, `Err(LxAppError)` if execution fails
+    pub fn call_js(&self, name: String, arg: String) -> Result<(), LxAppError> {
+        let lxapp = lxapp::get(self.appid());
+        lxapp
+            .executor
+            .call_page_service(self.appid(), self.path(), name, Some(arg))
+    }
 }
 
 impl WebViewDelegate for Page {
