@@ -1,4 +1,4 @@
-use lingxia_callback::invoke_callback;
+use lingxia_messaging::invoke_callback;
 use lingxia_webview::{WebTag, get_webview_delegate, tsfn};
 use log::LevelFilter;
 use lxapp::log::LogLevel;

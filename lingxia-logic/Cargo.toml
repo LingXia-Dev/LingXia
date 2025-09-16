@@ -13,4 +13,4 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 lingxia-lxapp = { path = "../lingxia-lxapp" }
 lingxia-platform = { path = "../lingxia-platform" }
-lingxia-callback = { path = "../lingxia-callback" }
+lingxia-messaging = { path = "../lingxia-messaging" }

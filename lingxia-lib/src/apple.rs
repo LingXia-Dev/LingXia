@@ -1,4 +1,4 @@
-use lingxia_callback::invoke_callback;
+use lingxia_messaging::invoke_callback;
 use lxapp::LxAppInfo as CoreLxAppInfo;
 use lxapp::log::LogLevel;
 use lxapp::{LxAppDelegate, UiEventType};

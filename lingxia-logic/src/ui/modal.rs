@@ -1,5 +1,5 @@
-use lingxia_callback::{CallbackResult, get_callback};
 use lingxia_lxapp::{LxApp, lx};
+use lingxia_messaging::{CallbackResult, get_callback};
 use lingxia_platform::{ModalOptions, UserFeedback};
 use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
 use std::sync::Arc;

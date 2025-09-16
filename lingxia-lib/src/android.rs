@@ -2,7 +2,7 @@ use android_logger::Config;
 use jni::objects::{JClass, JObject, JString};
 use jni::sys::{jboolean, jint, jlong};
 use jni::{JNIEnv, JavaVM};
-use lingxia_callback::invoke_callback;
+use lingxia_messaging::invoke_callback;
 use log::{error, info};
 use lxapp::{LxAppDelegate, UiEventType, log::LogLevel};
 
