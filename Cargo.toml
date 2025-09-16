@@ -5,7 +5,7 @@ members = [
     "lingxia-webview",
     "lingxia-platform",
     "lingxia-logic",
-    "lingxia-callback",
+    "lingxia-messaging",
 ]
 resolver = "2"
 
