@@ -86,5 +86,5 @@ mod bridge {
 // Re-export the bridge functions for use in other modules
 pub use bridge::{
     ModalOptions, ToastIcon, ToastOptions, ToastPosition, close_lxapp, hide_toast, launch_with_url,
-    navigate, open_lxapp, show_modal, show_toast,
+    navigate, open_lxapp, show_modal, show_toast, update_navbar_ui, update_tabbar_ui,
 };

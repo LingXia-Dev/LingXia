@@ -20,7 +20,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
     internal var rootContainer: UIView!
     private var webViewContainer: UIView!
     private var globalCapsuleButton: UIView?
-    private var globalNavigationBar: LingXiaNavigationBar?
+    public var globalNavigationBar: LingXiaNavigationBar?
     public var currentTabBar: LingXiaTabBar?
     private var cancellables = Set<AnyCancellable>()
 

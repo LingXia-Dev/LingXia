@@ -1,6 +1,5 @@
 import SwiftUI
 import Foundation
-import os.log
 
 #if os(macOS)
 import AppKit
@@ -13,6 +12,7 @@ public class NavigationBarStateManager: ObservableObject {
     @Published public var currentState: NavigationBarState? = nil
     @Published public var currentAppId: String? = nil
     public static let shared = NavigationBarStateManager()
+
     private init() {}
 
     public func updateState(appId: String, path: String) {
@@ -20,21 +20,37 @@ public class NavigationBarStateManager: ObservableObject {
             currentState = nil
             return
         }
-        currentState = lingxia.getNavigationBarState(appId, path)
+        let newState = lingxia.getNavigationBarState(appId, path)
+        currentState = newState
         currentAppId = appId
     }
 
     /// Force refresh state for a specific app
     public func refreshState(for appId: String) {
         #if os(iOS)
-        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let window = windowScene.windows.first,
-              let navController = window.rootViewController as? UINavigationController,
-              let manager = navController.topViewController as? LxAppViewController,
-              LxAppCore.currentAppId == appId else { return }
-        let path = manager.getCurrentPath()
+        // Get the current LxAppViewController from iOSLxApp
+        guard let lxAppManager = iOSLxApp.getInstance().currentLxAppManager else {
+            return
+        }
+
+        let currentAppId = LxAppCore.currentAppId
+        guard currentAppId == appId else {
+            return
+        }
+
+        let path = lxAppManager.getCurrentPath()
         let newState = lingxia.getNavigationBarState(appId, path)
         currentState = newState
+
+        // Force immediate UI update on main thread
+        DispatchQueue.main.async {
+            lxAppManager.updateNavigationBar(appId: appId, path: path)
+            if let navigationBar = lxAppManager.globalNavigationBar {
+                navigationBar.updateWithState(newState)
+                navigationBar.setNeedsLayout()
+                navigationBar.layoutIfNeeded()
+            }
+        }
         #endif
     }
 }

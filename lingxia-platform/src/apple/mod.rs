@@ -5,6 +5,7 @@
 mod app;
 mod ffi;
 mod resources;
+mod ui_update;
 mod user_feedback;
 
 // Re-export App

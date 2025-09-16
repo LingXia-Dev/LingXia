@@ -29,6 +29,11 @@ public class iOSLxApp {
         return instance
     }
 
+    /// Gets the current LxAppViewController (for internal use)
+    internal var currentLxAppManager: LxAppViewController? {
+        return lxAppManager
+    }
+
     /// Initialize the iOS LxApp system
     public static func initialize() {
         if instance != nil { return }
