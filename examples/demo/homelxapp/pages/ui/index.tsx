@@ -4,7 +4,8 @@ import '../../tailwind.css';
 export default function UIPage() {
   // Use LingXia hook to get data and functions
   const { data, demoNavigateTo, demoNavigateBack, demoSwitchTab, demoRedirectTo,
-          showToastWithParams, hideToast, showModalWithParams, clearModalResult } = useLingXia();
+          showToastWithParams, hideToast, showModalWithParams, clearModalResult,
+          setNavigationBarTitle, setNavigationBarColor } = useLingXia();
   const { currentType = 'navigation', pageStack = [], modalResult = null } = data;
 
   // Local state for toast parameters
@@ -24,14 +25,14 @@ export default function UIPage() {
 
   return (
     <div className="min-h-screen bg-gray-100 overflow-y-auto">
-      <div className="max-w-md mx-auto pb-6">
+      <div className="max-w-md mx-auto pb-6 px-2 pt-2">
 
         {/* Navigation Demo Section */}
         {currentType === 'navigation' && (
           <>
             <div className="mt-4 mb-3 px-4 text-sm text-gray-500 font-medium">navigateTo/Back, redirectTo</div>
 
-        <div className="mx-3 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="mx-1 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
           <div
             className="flex items-center px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100"
             onClick={demoNavigateTo}
@@ -66,8 +67,8 @@ export default function UIPage() {
             <div className="mt-4 mb-3 px-4 text-sm text-gray-500 font-medium">Toast Parameters</div>
 
             {/* Toast Parameters */}
-            <div className="mx-3 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              <div className="px-4 py-4 space-y-4">
+            <div className="mx-1 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="px-3 py-3 space-y-3">
 
                 {/* Title Input */}
                 <div>
@@ -141,7 +142,7 @@ export default function UIPage() {
             </div>
 
             {/* Action Buttons */}
-            <div className="mx-3 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="mx-1 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
               <div
                 className="flex items-center justify-center px-4 py-4 hover:bg-gray-50 cursor-pointer border-b border-gray-100"
                 onClick={() => showToastWithParams({
@@ -170,8 +171,8 @@ export default function UIPage() {
             <div className="mt-4 mb-3 px-4 text-sm text-gray-500 font-medium">Modal Parameters</div>
 
             {/* Modal Parameters */}
-            <div className="mx-3 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              <div className="px-4 py-4 space-y-4">
+            <div className="mx-1 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="px-3 py-3 space-y-3">
 
                 {/* Title Input */}
                 <div>
@@ -242,7 +243,7 @@ export default function UIPage() {
             </div>
 
             {/* Action Button */}
-            <div className="mx-3 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="mx-1 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
               <div
                 className="flex items-center justify-center px-4 py-4 hover:bg-gray-50 cursor-pointer"
                 onClick={() => showModalWithParams({
@@ -259,8 +260,8 @@ export default function UIPage() {
 
             {/* Result Display */}
             {modalResult && (
-              <div className="mx-3 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                <div className="px-4 py-4">
+              <div className="mx-1 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div className="px-3 py-3">
                   <div className="text-sm font-medium text-gray-700 mb-3">Modal Result</div>
                   <div className="bg-gray-50 rounded-lg p-3">
                     <pre className="text-xs text-gray-600 whitespace-pre-wrap">
@@ -281,8 +282,8 @@ export default function UIPage() {
 
         {/* Page Stack Info - Only show for navigation */}
         {currentType === 'navigation' && (
-          <div className="mx-3 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="px-4 py-4">
+          <div className="mx-1 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="px-3 py-3">
               <div className="text-sm font-medium text-gray-700 mb-3">Current Page Stack</div>
               <div className="max-h-64 overflow-y-auto space-y-2">
                 {pageStack.map((page, index) => (
@@ -304,6 +305,125 @@ export default function UIPage() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* NavigationBar Demo Section */}
+        {currentType === 'navbar' && (
+          <>
+            <div className="mt-4 mb-3 px-4 text-sm text-gray-500 font-medium">NavigationBar APIs</div>
+
+            {/* NavigationBar Controls */}
+            <div className="mx-1 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="p-4 space-y-4">
+
+                {/* Set Title */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+                  <div className="flex space-x-2">
+                    <input
+                      type="text"
+                      id="navbarTitle"
+                      placeholder="Enter title"
+                      className="flex-1 px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                    <button
+                      onClick={() => {
+                        const title = document.getElementById('navbarTitle').value;
+                        if (title) {
+                          setNavigationBarTitle({ title });
+                        }
+                      }}
+                      className="px-3 py-1.5 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    >
+                      Set
+                    </button>
+                  </div>
+                </div>
+
+                {/* Set Colors */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Colors</label>
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <input
+                        type="text"
+                        id="navbarBgColor"
+                        placeholder="Background #ffffff"
+                        className="px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      />
+                      <input
+                        type="text"
+                        id="navbarTextColor"
+                        placeholder="Text #000000"
+                        className="px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+                    <button
+                      onClick={() => {
+                        const bgColor = document.getElementById('navbarBgColor').value || '#ffffff';
+                        const textColor = document.getElementById('navbarTextColor').value || '#000000';
+                        setNavigationBarColor({
+                          background_color: bgColor,
+                          front_color: textColor
+                        });
+                      }}
+                      className="w-full px-3 py-1.5 text-sm bg-green-500 text-white rounded hover:bg-green-600 focus:outline-none focus:ring-1 focus:ring-green-500"
+                    >
+                      Set Colors
+                    </button>
+                  </div>
+                </div>
+
+
+
+                {/* Preset Examples */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Presets</label>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <button
+                      onClick={() => {
+                        setNavigationBarTitle({ title: "Dark Theme" });
+                        setNavigationBarColor({ background_color: "#1f2937", front_color: "#ffffff" });
+                      }}
+                      className="px-2 py-1.5 bg-gray-800 text-white rounded hover:bg-gray-900 text-xs"
+                    >
+                      Dark
+                    </button>
+                    <button
+                      onClick={() => {
+                        setNavigationBarTitle({ title: "Blue Theme" });
+                        setNavigationBarColor({ background_color: "#3b82f6", front_color: "#ffffff" });
+                      }}
+                      className="px-2 py-1.5 bg-blue-500 text-white rounded hover:bg-blue-600 text-xs"
+                    >
+                      Blue
+                    </button>
+                    <button
+                      onClick={() => {
+                        setNavigationBarTitle({ title: "Light Theme" });
+                        setNavigationBarColor({ background_color: "#ffffff", front_color: "#000000" });
+                      }}
+                      className="px-2 py-1.5 bg-white text-black border border-gray-300 rounded hover:bg-gray-50 text-xs"
+                    >
+                      Light
+                    </button>
+                    <button
+                      onClick={() => {
+                        setNavigationBarTitle({ title: "Green Theme" });
+                        setNavigationBarColor({ background_color: "#10b981", front_color: "#ffffff" });
+                      }}
+                      className="px-2 py-1.5 bg-green-500 text-white rounded hover:bg-green-600 text-xs"
+                    >
+                      Green
+                    </button>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+
+          </>
         )}
 
 

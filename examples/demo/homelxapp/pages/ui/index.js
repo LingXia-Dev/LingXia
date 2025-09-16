@@ -127,5 +127,20 @@ Page({
     await this.setData({
       modalResult: null
     });
+  },
+
+  // NavigationBar API functions
+  setNavigationBarTitle: function (options) {
+    console.log('setNavigationBarTitle called with:', options);
+    const result = lx.setNavigationBarTitle(options);
+    console.log('setNavigationBarTitle result:', result);
+    return result;
+  },
+
+  setNavigationBarColor: function (options) {
+    console.log('setNavigationBarColor called with:', options);
+    const result = lx.setNavigationBarColor(options);
+    console.log('setNavigationBarColor result:', result);
+    return result;
   }
 });
