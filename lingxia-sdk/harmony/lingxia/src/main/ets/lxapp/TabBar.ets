@@ -179,7 +179,7 @@ export struct TabBar {
             .position({ x: TAB_BAR_ITEM_BADGE_POSITION_X, y: TAB_BAR_ITEM_BADGE_POSITION_Y })
             .zIndex(1)
             .height(TAB_BAR_ITEM_BADGE_HEIGHT)
-        } else if (item.redDot) {
+        } else if (item.hasRedDot) {
           // Red dot indicator
           Circle()
             .width(TAB_BAR_ITEM_RED_DOT_SIZE)
