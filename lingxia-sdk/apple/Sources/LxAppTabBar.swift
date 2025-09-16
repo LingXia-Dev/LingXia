@@ -469,8 +469,6 @@ public struct LxAppTabBar: View {
         }
     }
 
-
-
     private func getResourcesPath() -> String {
         return Bundle.main.resourcePath ?? ""
     }
@@ -693,8 +691,6 @@ public struct MacOSLxAppTabBar: View {
         }
     }
 
-
-
     private func getResourcesPath() -> String {
         return Bundle.main.resourcePath ?? ""
     }
@@ -738,6 +734,7 @@ public protocol TabBarProtocol: AnyObject {
     var appId: String { get set }
     func setOnTabSelectedListener(_ listener: @escaping (Int, String) -> Void)
     func setSelectedIndex(_ index: Int, notifyListener: Bool)
+    func refreshLayout()
 }
 
 #if os(iOS)
@@ -745,12 +742,11 @@ import UIKit
 
 /// UIKit TabBar implementation for iOS
 @MainActor
-public class iOSTabBarWrapper: UIView {
+public class iOSTabBarWrapper: UIView, TabBarProtocol {
     private var tabBarConfig: TabBar?
     public var appId: String = ""
     private var selectedIndex: Int = 0
     private var onTabSelectedCallback: ((Int, String) -> Void)?
-    nonisolated(unsafe) private var tabBarUpdateObserver: NSObjectProtocol?
 
     // Public accessor for tabBarConfig
     public var config: TabBar? {
@@ -771,39 +767,9 @@ public class iOSTabBarWrapper: UIView {
         backgroundColor = UIColor.clear
     }
 
-    private func setupNotificationObserver() {
-        // Remove existing observer if any
-        if let observer = tabBarUpdateObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
-
-        // Only setup observer if we have an appId
-        guard !appId.isEmpty else { return }
-
-        // Listen for TabBar update notifications
-        tabBarUpdateObserver = NotificationCenter.default.addObserver(
-            forName: .tabBarStateChanged,
-            object: nil,
-            queue: .main
-        ) { [weak self] notification in
-            // Extract notification data outside of Task to avoid data races
-            guard let notificationAppId = notification.object as? String else { return }
-
-            Task { @MainActor in
-                guard let self = self,
-                      notificationAppId == self.appId else { return }
-
-                // Force TabBar to refresh - it will automatically get fresh badge/red dot data from Rust
-                self.updateLayout()
-            }
-        }
-    }
-
     public func setOnTabSelectedListener(_ listener: @escaping (Int, String) -> Void) {
         self.onTabSelectedCallback = listener
     }
-
-
 
     /// Initialize TabBar with config and appId
     public func initialize(config: TabBar, appId: String) {
@@ -812,28 +778,7 @@ public class iOSTabBarWrapper: UIView {
 
         // Initialize local selection from Rust state so UI reflects correct tab on first render
         self.selectedIndex = Int(config.selected_index)
-        updateLayout()
-    }
-
-    /// Start observing TabBar state changes - should be called when TabBar becomes active
-    public func startObserving() {
-        setupNotificationObserver()
-    }
-
-    /// Stop observing TabBar state changes - should be called when TabBar becomes inactive
-    public func stopObserving() {
-        if let observer = tabBarUpdateObserver {
-            NotificationCenter.default.removeObserver(observer)
-            tabBarUpdateObserver = nil
-        }
-    }
-
-    /// Internal method for stopping observation without MainActor isolation - used in deinit
-    nonisolated internal func stopObservingInternal() {
-        if let observer = tabBarUpdateObserver {
-            NotificationCenter.default.removeObserver(observer)
-            tabBarUpdateObserver = nil
-        }
+        refreshLayout()
     }
 
     public func setSelectedIndex(_ index: Int, notifyListener: Bool) {
@@ -841,7 +786,7 @@ public class iOSTabBarWrapper: UIView {
         self.selectedIndex = index
 
         if previousIndex != index {
-            updateLayout()
+            refreshLayout()
         }
 
         if notifyListener, let callback = onTabSelectedCallback, let config = tabBarConfig {
@@ -852,13 +797,28 @@ public class iOSTabBarWrapper: UIView {
         }
     }
 
-    public func updateLayout() {
-        guard let config = tabBarConfig else { return }
+    public func refreshLayout() {
+        // Get fresh config from Rust instead of using cached tabBarConfig
+        guard let freshConfig = getTabBar(appId) else {
+            // If no config exists, hide the view.
+            self.isHidden = true
+            return
+        }
 
-        let items = config.getItems(appId: appId)
+        // Update cached config with fresh data
+        self.tabBarConfig = freshConfig
+
+        // Update selected index from fresh config
+        self.selectedIndex = Int(freshConfig.selected_index)
+
+        let items = freshConfig.getItems(appId: appId)
 
         // Always recreate layout to ensure fresh badge/red dot data
-        setupUIKitLayout(items: items, config: config)
+        setupUIKitLayout(items: items, config: freshConfig)
+
+        // Apply visibility state
+        self.isHidden = !freshConfig.is_visible
+        self.alpha = freshConfig.is_visible ? 1.0 : 0.0
     }
 
     private func createRedDotView() -> UIView {
@@ -1306,4 +1266,3 @@ public class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
 
 public typealias LingXiaTabBar = macOSTabBarWrapper
 #endif
-

@@ -27,6 +27,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
     // Store pending navigation state for deferred NavigationBar initialization
     private var pendingNavigationState: (appId: String, path: String)?
     nonisolated(unsafe) private var closeAppObserver: NSObjectProtocol?
+    nonisolated(unsafe) private var tabBarObserver: NSObjectProtocol?
 
     private func getCurrentWebView() -> WKWebView? {
         return LxAppCore.getCurrentWebView()
@@ -291,22 +292,21 @@ public class LxAppViewController: UIViewController, ObservableObject {
     }
 
     private func updateTabBar(for appId: String, path: String) {
-        guard let tabConfig = lingxia.getTabBar(appId) else {
-            // Hide TabBar if no config, but don't destroy it
-            currentTabBar?.isHidden = true
-            return
-        }
-
-        // If TabBar doesn't exist, create it once
+        // If TabBar doesn't exist, create it.
+        // The `initialize` function will call `refreshLayout` and set the initial state.
         if currentTabBar == nil {
+            // We need a config to create the tab bar, but if it's not available,
+            // we can't do anything. The tab bar will be created on a subsequent
+            // navigation when the config is ready.
+            guard let tabConfig = lingxia.getTabBar(appId) else {
+                return
+            }
             currentTabBar = createTabBar(config: tabConfig, appId: appId)
+        } else {
+            // If TabBar exists, tell it to refresh its state from Rust.
+            // This will handle visibility and content for the new page.
+            currentTabBar?.refreshLayout()
         }
-
-        // Sync TabBar selection with current path - Rust manages selected_index, just sync UI with Rust state
-        if let rustState = lingxia.getTabBar(appId) {
-            currentTabBar?.setSelectedIndex(Int(rustState.selected_index), notifyListener: false)
-        }
-        currentTabBar?.isHidden = !tabConfig.is_visible
     }
 
     private func hideCurrentLxApp() {
@@ -316,8 +316,6 @@ public class LxAppViewController: UIViewController, ObservableObject {
         getCurrentWebView()?.isHidden = true
         getCurrentWebView()?.pauseWebView()
 
-        // Stop TabBar observing and hide UI components
-        currentTabBar?.stopObserving()
         currentTabBar?.isHidden = true
         globalNavigationBar?.isHidden = true
         globalCapsuleButton?.isHidden = true
@@ -624,6 +622,24 @@ public class LxAppViewController: UIViewController, ObservableObject {
                 self.closeLxApp(appId: appId)
             }
         }
+
+        // Add TabBar state change observer
+        tabBarObserver = NotificationCenter.default.addObserver(
+            forName: .tabBarStateChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self = self else { return }
+
+            Task { @MainActor in
+                // The tab bar state has changed, tell the current tab bar to refresh itself.
+                self.currentTabBar?.refreshLayout()
+
+                // After refreshing, the bar might have become visible, so we must ensure
+                // it's correctly layered in front of the webview.
+                self.bringUIElementsToFront()
+            }
+        }
     }
 
     deinit {
@@ -631,8 +647,9 @@ public class LxAppViewController: UIViewController, ObservableObject {
             NotificationCenter.default.removeObserver(closeAppObserver)
         }
 
-        // Ensure TabBar stops observing when view controller is deallocated
-        currentTabBar?.stopObservingInternal()
+        if let tabBarObserver = tabBarObserver {
+            NotificationCenter.default.removeObserver(tabBarObserver)
+        }
     }
 
     public override var preferredStatusBarStyle: UIStatusBarStyle {
@@ -741,9 +758,6 @@ public class LxAppViewController: UIViewController, ObservableObject {
                 let _ = onUiEvent(appId, LxAppUIEvent.tabBarClick, String(index))
             }
         }
-
-        // Start observing TabBar state changes
-        tabBar.startObserving()
 
         rootContainer.addSubview(tabBar)
         applyTabBarLayoutParams(tabBar: tabBar, config: config, for: appId)
