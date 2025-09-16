@@ -1,6 +1,7 @@
 use rong::{JSContext, JSResult};
 
 mod modal;
+mod navbar;
 mod router;
 mod toast;
 
@@ -8,6 +9,7 @@ mod toast;
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     toast::init(ctx)?;
     modal::init(ctx)?;
+    navbar::init(ctx)?;
     router::init(ctx)?;
     Ok(())
 }

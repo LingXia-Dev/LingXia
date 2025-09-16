@@ -187,3 +187,27 @@ pub trait UserFeedback: Send + Sync + 'static {
     /// * `Result<(), PlatformError>` - Success or error (result comes via callback)
     fn show_modal(&self, options: ModalOptions, callback_id: u64) -> Result<(), PlatformError>;
 }
+
+/// UI update functionality trait
+///
+/// This trait defines the UI update capabilities for the platform,
+/// including NavigationBar and TabBar updates
+pub trait UIUpdate: Send + Sync + 'static {
+    /// Update NavigationBar UI to refresh state of current path
+    ///
+    /// # Arguments
+    /// * `appid` - The ID of the lxapp whose NavigationBar needs updating
+    ///
+    /// # Returns
+    /// * `Result<(), PlatformError>` - Success or error
+    fn update_navbar_ui(&self, appid: String) -> Result<(), PlatformError>;
+
+    /// Update TabBar UI to refresh state
+    ///
+    /// # Arguments
+    /// * `appid` - The ID of the lxapp whose TabBar needs updating
+    ///
+    /// # Returns
+    /// * `Result<(), PlatformError>` - Success or error
+    fn update_tabbar_ui(&self, appid: String) -> Result<(), PlatformError>;
+}
