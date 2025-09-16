@@ -322,15 +322,6 @@ public struct LxAppTabBar: View {
         }
         .background(getTabBarBackgroundColor())
         .id("tabbar-\(selectedIndex)-\(refreshTrigger)")
-        .onReceive(NotificationCenter.default.publisher(for: .tabBarStateChanged)) { notification in
-            // Only trigger UI refresh for badge/red dot updates, not for tab selection
-            if let notificationAppId = notification.object as? String, notificationAppId == appId {
-                // Use animation to smooth the refresh
-                withAnimation(.easeInOut(duration: 0.1)) {
-                    refreshTrigger.toggle()
-                }
-            }
-        }
     }
 
     @ViewBuilder
@@ -1201,12 +1192,20 @@ public class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
     public func initialize(config: TabBar, appId: String) {
         self.tabBarConfig = config
         self.appId = appId
-        updateSwiftUIView()
+
+        // Initialize local selection from Rust state so UI reflects correct tab on first render
+        self.selectedIndex = Int(config.selected_index)
+        refreshLayout()
     }
 
     public func setSelectedIndex(_ index: Int, notifyListener: Bool) {
+        let previousIndex = self.selectedIndex
         // Update local selectedIndex to reflect Rust state
         selectedIndex = index
+
+        if previousIndex != index {
+            refreshLayout()
+        }
 
         if notifyListener, let callback = onTabSelectedCallback, let config = tabBarConfig {
             let items = config.getItems(appId: appId)
@@ -1214,6 +1213,28 @@ public class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
                 callback(index, items[index].page_path.toString())
             }
         }
+    }
+
+    public func refreshLayout() {
+        // Get fresh config from Rust instead of using cached tabBarConfig
+        guard let freshConfig = getTabBar(appId) else {
+            // If no config exists, hide the view.
+            self.isHidden = true
+            return
+        }
+
+        // Update cached config with fresh data
+        self.tabBarConfig = freshConfig
+
+        // Update selected index from fresh config
+        self.selectedIndex = Int(freshConfig.selected_index)
+
+        // Always recreate layout to ensure fresh badge/red dot data
+        updateSwiftUIView()
+
+        // Apply visibility state
+        self.isHidden = !freshConfig.is_visible
+        self.alphaValue = freshConfig.is_visible ? 1.0 : 0.0
     }
 
     private func updateSwiftUIView() {

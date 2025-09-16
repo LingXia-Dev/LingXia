@@ -48,6 +48,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     public var isDestroyed: Bool = false
 
     nonisolated(unsafe) private var closeAppObserver: NSObjectProtocol?
+    nonisolated(unsafe) private var tabBarObserver: NSObjectProtocol?
 
     public init(appId: String, path: String) {
         self.appId = appId
@@ -79,6 +80,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
 
     deinit {
         closeAppObserver.map(NotificationCenter.default.removeObserver)
+        tabBarObserver.map(NotificationCenter.default.removeObserver)
     }
 
     public override func loadView() {
@@ -258,6 +260,22 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
                 self.view.window?.close()
             }
         }
+
+        // Add TabBar state change observer
+        tabBarObserver = NotificationCenter.default.addObserver(
+            forName: .tabBarStateChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self = self else { return }
+
+            Task { @MainActor in
+                // The tab bar state has changed, tell the current tab bar to refresh itself.
+                if let wrapper = self.tabBarView as? LingXiaTabBar {
+                    wrapper.refreshLayout()
+                }
+            }
+        }
     }
 
     private func setupKeyboardShortcuts() {
@@ -311,37 +329,15 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         selectedTabIndex = index
     }
 
-    func removeTabBar() {
-        tabBarView?.isHidden = true
-        tabBarView?.removeFromSuperview()
-        tabBarView = nil
-    }
 
-    /// Update TabBar visibility based on Rust state
-    public func updateTabBarVisibility() {
-        if let tabBarState = lingxia.getTabBar(appId) {
-            tabBarView?.isHidden = !tabBarState.is_visible
-        }
-    }
-
-    /// Trigger TabBar UI refresh for programmatic navigation
-    public func triggerTabBarRefresh() {
-        // Send notification to trigger TabBar refreshTrigger.toggle()
-        NotificationCenter.default.post(
-            name: .tabBarStateChanged,
-            object: appId
-        )
-    }
 
     // Method required by WindowController
     func updateLayoutForNavigationStyle(currentPath: String) {
         self.currentPath = currentPath
 
-        // Sync TabBar selection with current path - Rust manages selected_index, just sync UI with Rust state
-        if let wrapper = tabBarView as? LingXiaTabBar, let rustState = lingxia.getTabBar(appId) {
-            wrapper.setSelectedIndex(Int(rustState.selected_index), notifyListener: false)
-        } else if let rustState = lingxia.getTabBar(appId) {
-            selectedTabIndex = Int(rustState.selected_index)
+        // Tell TabBar to refresh its state from Rust - this will handle visibility and content for the new page
+        if let wrapper = tabBarView as? LingXiaTabBar {
+            wrapper.refreshLayout()
         }
     }
 

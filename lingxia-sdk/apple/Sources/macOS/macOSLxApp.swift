@@ -314,17 +314,9 @@ extension macOSLxApp {
 
         guard let vc = viewController else { return }
 
-        // Get TabBar state from Rust and update UI
-        if let tabBarState = lingxia.getTabBar(appId) {
-            if tabBarState.is_visible {
-                // Sync TabBar selection with current path - Rust manages selected_index, just sync UI with Rust state
-                if let wrapper = vc.tabBarView as? LingXiaTabBar, let rustState = lingxia.getTabBar(appId) {
-                    wrapper.setSelectedIndex(Int(rustState.selected_index), notifyListener: false)
-                } else if let rustState = lingxia.getTabBar(appId) {
-                    vc.selectedTabIndex = Int(rustState.selected_index)
-                }
-            }
-            vc.updateTabBarVisibility()
+        // Tell TabBar to refresh its state from Rust - this will handle visibility and content
+        if let wrapper = vc.tabBarView as? LingXiaTabBar {
+            wrapper.refreshLayout()
         }
     }
 
