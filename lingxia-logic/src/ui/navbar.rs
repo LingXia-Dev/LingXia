@@ -3,6 +3,11 @@ use lingxia_platform::UIUpdate;
 use rong::{FromJSObj, JSContext, JSFunc, JSResult, RongJSError};
 use std::sync::Arc;
 
+/// Check if NavigationBar is currently visible for the current page
+fn is_navbar_visible(lxapp: &Arc<LxApp>, path: &str) -> bool {
+    lxapp.get_navbar_state(path).show_navbar
+}
+
 /// Options for setNavigationBarTitle
 #[derive(FromJSObj)]
 struct SetNavigationBarTitleOptions {
@@ -33,15 +38,15 @@ fn set_navigation_bar_title(
         navbar.set_title(options.title);
     });
 
-    if updated {
-        // Notify UI to update
+    if updated && is_navbar_visible(&lxapp, &current_path) {
+        // Notify UI to update only if navbar is visible
         if let Err(e) = lxapp.runtime.update_navbar_ui(lxapp.appid.clone()) {
             eprintln!("Failed to update navbar UI: {}", e);
             return Ok(false);
         }
         Ok(true)
     } else {
-        Ok(false)
+        Ok(updated)
     }
 }
 
@@ -70,15 +75,15 @@ fn set_navigation_bar_color(
         navbar.set_text_style(style);
     });
 
-    if updated {
-        // Notify UI to update
+    if updated && is_navbar_visible(&lxapp, &current_path) {
+        // Notify UI to update only if navbar is visible
         if let Err(e) = lxapp.runtime.update_navbar_ui(lxapp.appid.clone()) {
             eprintln!("Failed to update navbar UI: {}", e);
             return Ok(false);
         }
         Ok(true)
     } else {
-        Ok(false)
+        Ok(updated)
     }
 }
 
@@ -96,15 +101,15 @@ fn hide_home_button(ctx: JSContext) -> JSResult<bool> {
         navbar.set_home_button_visibility(false);
     });
 
-    if updated {
-        // Notify UI to update using existing platform API
+    if updated && is_navbar_visible(&lxapp, &current_path) {
+        // Notify UI to update only if navbar is visible
         if let Err(e) = lxapp.runtime.update_navbar_ui(lxapp.appid.clone()) {
             eprintln!("Failed to update navbar UI: {}", e);
             return Ok(false);
         }
         Ok(true)
     } else {
-        Ok(false)
+        Ok(updated)
     }
 }
 

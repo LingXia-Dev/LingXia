@@ -51,6 +51,14 @@ struct SetTabBarItemOptions {
     selected_icon_path: Option<String>,
 }
 
+/// Check if TabBar is currently visible
+fn is_tabbar_visible(lxapp: &Arc<LxApp>) -> bool {
+    lxapp
+        .get_tabbar()
+        .map(|tabbar| tabbar.is_visible)
+        .unwrap_or(false)
+}
+
 /// Show TabBar red dot
 fn show_tabbar_red_dot(ctx: JSContext, options: ShowTabBarRedDotOptions) -> JSResult<bool> {
     let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
@@ -60,15 +68,15 @@ fn show_tabbar_red_dot(ctx: JSContext, options: ShowTabBarRedDotOptions) -> JSRe
         .with_tabbar_mut(|tabbar| tabbar.set_red_dot(options.index, true))
         .unwrap_or(false);
 
-    if updated {
-        // Notify UI to update
+    if updated && is_tabbar_visible(&lxapp) {
+        // Notify UI to update only if TabBar is visible
         if let Err(e) = lxapp.runtime.update_tabbar_ui(lxapp.appid.clone()) {
             eprintln!("Failed to update TabBar UI: {}", e);
             return Ok(false);
         }
         Ok(true)
     } else {
-        Ok(false)
+        Ok(updated)
     }
 }
 
@@ -81,15 +89,15 @@ fn hide_tabbar_red_dot(ctx: JSContext, options: HideTabBarRedDotOptions) -> JSRe
         .with_tabbar_mut(|tabbar| tabbar.set_red_dot(options.index, false))
         .unwrap_or(false);
 
-    if updated {
-        // Notify UI to update
+    if updated && is_tabbar_visible(&lxapp) {
+        // Notify UI to update only if TabBar is visible
         if let Err(e) = lxapp.runtime.update_tabbar_ui(lxapp.appid.clone()) {
             eprintln!("Failed to update TabBar UI: {}", e);
             return Ok(false);
         }
         Ok(true)
     } else {
-        Ok(false)
+        Ok(updated)
     }
 }
 
@@ -102,15 +110,15 @@ fn set_tabbar_badge(ctx: JSContext, options: SetTabBarBadgeOptions) -> JSResult<
         .with_tabbar_mut(|tabbar| tabbar.set_badge(options.index, &options.text))
         .unwrap_or(false);
 
-    if updated {
-        // Notify UI to update
+    if updated && is_tabbar_visible(&lxapp) {
+        // Notify UI to update only if TabBar is visible
         if let Err(e) = lxapp.runtime.update_tabbar_ui(lxapp.appid.clone()) {
             eprintln!("Failed to update TabBar UI: {}", e);
             return Ok(false);
         }
         Ok(true)
     } else {
-        Ok(false)
+        Ok(updated)
     }
 }
 
@@ -123,15 +131,15 @@ fn remove_tabbar_badge(ctx: JSContext, options: RemoveTabBarBadgeOptions) -> JSR
         .with_tabbar_mut(|tabbar| tabbar.remove_badge(options.index))
         .unwrap_or(false);
 
-    if updated {
-        // Notify UI to update
+    if updated && is_tabbar_visible(&lxapp) {
+        // Notify UI to update only if TabBar is visible
         if let Err(e) = lxapp.runtime.update_tabbar_ui(lxapp.appid.clone()) {
             eprintln!("Failed to update TabBar UI: {}", e);
             return Ok(false);
         }
         Ok(true)
     } else {
-        Ok(false)
+        Ok(updated)
     }
 }
 
@@ -148,7 +156,7 @@ fn show_tabbar(ctx: JSContext) -> JSResult<bool> {
         .unwrap_or(false);
 
     if updated {
-        // Notify UI to update
+        // Always update UI for show/hide operations
         if let Err(e) = lxapp.runtime.update_tabbar_ui(lxapp.appid.clone()) {
             eprintln!("Failed to update TabBar UI: {}", e);
             return Ok(false);
@@ -172,7 +180,7 @@ fn hide_tabbar(ctx: JSContext) -> JSResult<bool> {
         .unwrap_or(false);
 
     if updated {
-        // Notify UI to update
+        // Always update UI for show/hide operations
         if let Err(e) = lxapp.runtime.update_tabbar_ui(lxapp.appid.clone()) {
             eprintln!("Failed to update TabBar UI: {}", e);
             return Ok(false);
@@ -206,15 +214,15 @@ fn set_tabbar_style(ctx: JSContext, options: SetTabBarStyleOptions) -> JSResult<
         })
         .unwrap_or(false);
 
-    if updated {
-        // Notify UI to update
+    if updated && is_tabbar_visible(&lxapp) {
+        // Notify UI to update only if TabBar is visible
         if let Err(e) = lxapp.runtime.update_tabbar_ui(lxapp.appid.clone()) {
             eprintln!("Failed to update TabBar UI: {}", e);
             return Ok(false);
         }
         Ok(true)
     } else {
-        Ok(false)
+        Ok(updated)
     }
 }
 
@@ -242,15 +250,15 @@ fn set_tabbar_item(ctx: JSContext, options: SetTabBarItemOptions) -> JSResult<bo
         })
         .unwrap_or(false);
 
-    if updated {
-        // Notify UI to update
+    if updated && is_tabbar_visible(&lxapp) {
+        // Notify UI to update only if TabBar is visible
         if let Err(e) = lxapp.runtime.update_tabbar_ui(lxapp.appid.clone()) {
             eprintln!("Failed to update TabBar UI: {}", e);
             return Ok(false);
         }
         Ok(true)
     } else {
-        Ok(false)
+        Ok(updated)
     }
 }
 
