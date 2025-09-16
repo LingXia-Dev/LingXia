@@ -216,12 +216,12 @@ fileprivate struct TabBarHelpers {
                     // Badge overlay (from Rust state)
                     if let rustItem = rustItem, !rustItem.badge.toString().isEmpty {
                         buildBadge(text: rustItem.badge.toString())
-                            .offset(x: 12, y: -8)
+                            .offset(x: 16, y: -6)
                     }
                     // Red dot overlay (only show if no badge)
                     else if let rustItem = rustItem, rustItem.has_red_dot {
                         buildRedDot()
-                            .offset(x: 12, y: -8)
+                            .offset(x: 16, y: -4)
                     }
                 }
 
@@ -383,12 +383,12 @@ public struct LxAppTabBar: View {
                     // Badge overlay (from Rust state)
                     if let rustItem = rustItem, !rustItem.badge.toString().isEmpty {
                         TabBarHelpers.buildBadge(text: rustItem.badge.toString())
-                            .offset(x: 12, y: -8)
+                            .offset(x: 16, y: -6)
                     }
                     // Red dot overlay (only show if no badge)
                     else if let rustItem = rustItem, rustItem.has_red_dot {
                         TabBarHelpers.buildRedDot()
-                            .offset(x: 12, y: -8)
+                            .offset(x: 16, y: -4)
                     }
                 }
 
@@ -567,12 +567,12 @@ public struct MacOSLxAppTabBar: View {
                     // Badge overlay (from Rust state)
                     if let rustItem = rustItem, !rustItem.badge.toString().isEmpty {
                         TabBarHelpers.buildBadge(text: rustItem.badge.toString())
-                            .offset(x: 12, y: -8)
+                            .offset(x: 16, y: -6)
                     }
                     // Red dot overlay (only show if no badge)
                     else if let rustItem = rustItem, rustItem.has_red_dot {
                         TabBarHelpers.buildRedDot()
-                            .offset(x: 12, y: -8)
+                            .offset(x: 16, y: -4)
                     }
                 }
 
@@ -816,7 +816,7 @@ public class iOSTabBarWrapper: UIView, TabBarProtocol {
         let redDot = UIView()
         redDot.backgroundColor = UIColor.red
         redDot.layer.cornerRadius = 4
-        redDot.frame = CGRect(x: 0, y: 0, width: 8, height: 8)
+        redDot.translatesAutoresizingMaskIntoConstraints = false
         return redDot
     }
 
@@ -1087,7 +1087,7 @@ public class iOSTabBarWrapper: UIView, TabBarProtocol {
                 iconContainer.addSubview(badgeView)
 
                 NSLayoutConstraint.activate([
-                    badgeView.topAnchor.constraint(equalTo: iconContainer.topAnchor, constant: -4),
+                    badgeView.topAnchor.constraint(equalTo: iconContainer.topAnchor, constant: -6),
                     badgeView.trailingAnchor.constraint(equalTo: iconContainer.trailingAnchor, constant: 4)
                 ])
             }
@@ -1097,8 +1097,10 @@ public class iOSTabBarWrapper: UIView, TabBarProtocol {
                 iconContainer.addSubview(redDotView)
 
                 NSLayoutConstraint.activate([
-                    redDotView.topAnchor.constraint(equalTo: iconContainer.topAnchor, constant: -2),
-                    redDotView.trailingAnchor.constraint(equalTo: iconContainer.trailingAnchor, constant: 2)
+                    redDotView.topAnchor.constraint(equalTo: iconContainer.topAnchor, constant: -4),
+                    redDotView.trailingAnchor.constraint(equalTo: iconContainer.trailingAnchor, constant: 4),
+                    redDotView.widthAnchor.constraint(equalToConstant: 8),
+                    redDotView.heightAnchor.constraint(equalToConstant: 8)
                 ])
             }
         }
