@@ -5,7 +5,9 @@ export default function UIPage() {
   // Use LingXia hook to get data and functions
   const { data, demoNavigateTo, demoNavigateBack, demoSwitchTab, demoRedirectTo,
           showToastWithParams, hideToast, showModalWithParams, clearModalResult,
-          setNavigationBarTitle, setNavigationBarColor } = useLingXia();
+          setNavigationBarTitle, setNavigationBarColor,
+          showTabBarRedDot, hideTabBarRedDot, setTabBarBadge, removeTabBarBadge,
+          showTabBar, hideTabBar, setTabBarStyle, setTabBarItem } = useLingXia();
   const { currentType = 'navigation', pageStack = [], modalResult = null } = data;
 
   // Local state for toast parameters
@@ -22,10 +24,21 @@ export default function UIPage() {
   const [modalCancelText, setModalCancelText] = React.useState('Cancel');
   const [modalConfirmText, setModalConfirmText] = React.useState('OK');
 
+  // Local state for TabBar parameters - fixed to tab 1
+  const [badgeText, setBadgeText] = React.useState('99');
+  const [itemText, setItemText] = React.useState('New Tab');
+  const [itemIcon, setItemIcon] = React.useState('');
+  const [selectedIcon, setSelectedIcon] = React.useState('');
+  const [color, setColor] = React.useState('#666666');
+  const [selectedColor, setSelectedColor] = React.useState('#007AFF');
+  const [backgroundColor, setBackgroundColor] = React.useState('#FFFFFF');
+  const [borderStyle, setBorderStyle] = React.useState('#EEEEEE');
+
 
   return (
-    <div className="min-h-screen bg-gray-100 overflow-y-auto">
-      <div className="max-w-md mx-auto pb-6 px-2 pt-2">
+    <div className="h-screen bg-gray-100 flex flex-col">
+      <div className="flex-1 overflow-y-auto">
+        <div className="max-w-md mx-auto pb-6 px-2 pt-2">
 
         {/* Navigation Demo Section */}
         {currentType === 'navigation' && (
@@ -426,7 +439,302 @@ export default function UIPage() {
           </>
         )}
 
+        {/* TabBar Demo Section */}
+        {currentType === 'tabbar' && (
+          <>
+            <div className="mt-4 mb-3 px-4 text-sm text-gray-500 font-medium">TabBar APIs</div>
 
+            {/* Visibility Controls */}
+            <div className="mx-1 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-100">
+                <h3 className="text-base font-medium text-gray-900">Visibility Controls</h3>
+                <p className="text-sm text-gray-500 mt-1">Show/hide TabBar and update item text</p>
+              </div>
+              <div className="p-4 space-y-4">
+                <div className="flex space-x-3">
+                  <button
+                    onClick={() => {
+                      const result = showTabBar();
+                      console.log('Show TabBar:', result);
+                    }}
+                    className="flex-1 bg-green-500 hover:bg-green-600 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
+                  >
+                    Show TabBar
+                  </button>
+                  <button
+                    onClick={() => {
+                      const result = hideTabBar();
+                      console.log('Hide TabBar:', result);
+                    }}
+                    className="flex-1 bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
+                  >
+                    Hide TabBar
+                  </button>
+                </div>
+
+                {/* Item Text Control */}
+                <div className="pt-2 border-t border-gray-100">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Update Tab 1 Text
+                  </label>
+                  <div className="flex space-x-2">
+                    <input
+                      type="text"
+                      value={itemText}
+                      onChange={(e) => setItemText(e.target.value)}
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Enter new text"
+                    />
+                    <button
+                      onClick={() => {
+                        const result = setTabBarItem({ index: 1, text: itemText });
+                        console.log(`Update tab 1 text to "${itemText}":`, result);
+                      }}
+                      className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                    >
+                      Update
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+
+
+            {/* Red Dot Controls */}
+            <div className="mx-1 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-100">
+                <h3 className="text-base font-medium text-gray-900">Red Dot Controls</h3>
+                <p className="text-sm text-gray-500 mt-1">Show/hide red dot on tab 1</p>
+              </div>
+              <div className="p-4">
+                <div className="flex space-x-3">
+                  <button
+                    onClick={() => {
+                      const result = showTabBarRedDot({ index: 1 });
+                      console.log('Show red dot on tab 1:', result);
+                    }}
+                    className="flex-1 bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
+                  >
+                    Show Red Dot
+                  </button>
+                  <button
+                    onClick={() => {
+                      const result = hideTabBarRedDot({ index: 1 });
+                      console.log('Hide red dot on tab 1:', result);
+                    }}
+                    className="flex-1 bg-gray-500 hover:bg-gray-600 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
+                  >
+                    Hide Red Dot
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Badge Controls */}
+            <div className="mx-1 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-100">
+                <h3 className="text-base font-medium text-gray-900">Badge Controls</h3>
+                <p className="text-sm text-gray-500 mt-1">Set/remove badge on tab 1</p>
+              </div>
+              <div className="p-4 space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Badge Text</label>
+                  <input
+                    type="text"
+                    value={badgeText}
+                    onChange={(e) => setBadgeText(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Enter badge text"
+                  />
+                </div>
+                <div className="flex space-x-3">
+                  <button
+                    onClick={() => {
+                      const result = setTabBarBadge({ index: 1, text: badgeText });
+                      console.log(`Set badge "${badgeText}" on tab 1:`, result);
+                    }}
+                    className="flex-1 bg-orange-500 hover:bg-orange-600 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
+                  >
+                    Set Badge
+                  </button>
+                  <button
+                    onClick={() => {
+                      const result = removeTabBarBadge({ index: 1 });
+                      console.log('Remove badge on tab 1:', result);
+                    }}
+                    className="flex-1 bg-gray-500 hover:bg-gray-600 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
+                  >
+                    Remove Badge
+                  </button>
+                </div>
+              </div>
+            </div>
+
+
+
+            {/* Style Controls */}
+            <div className="mx-1 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-100">
+                <h3 className="text-base font-medium text-gray-900">Style Controls</h3>
+                <p className="text-sm text-gray-500 mt-1">Customize TabBar appearance</p>
+              </div>
+              <div className="p-4 space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Text Color</label>
+                    <div className="flex items-center space-x-2">
+                      <div
+                        className="w-8 h-8 border border-gray-300 rounded cursor-pointer"
+                        style={{ backgroundColor: color }}
+                      ></div>
+                      <input
+                        type="text"
+                        value={color}
+                        onChange={(e) => setColor(e.target.value)}
+                        className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm"
+                        placeholder="#666666"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Selected Color</label>
+                    <div className="flex items-center space-x-2">
+                      <div
+                        className="w-8 h-8 border border-gray-300 rounded cursor-pointer"
+                        style={{ backgroundColor: selectedColor }}
+                      ></div>
+                      <input
+                        type="text"
+                        value={selectedColor}
+                        onChange={(e) => setSelectedColor(e.target.value)}
+                        className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm"
+                        placeholder="#007AFF"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Background</label>
+                    <div className="flex items-center space-x-2">
+                      <div
+                        className="w-8 h-8 border border-gray-300 rounded cursor-pointer"
+                        style={{ backgroundColor: backgroundColor }}
+                      ></div>
+                      <input
+                        type="text"
+                        value={backgroundColor}
+                        onChange={(e) => setBackgroundColor(e.target.value)}
+                        className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm"
+                        placeholder="#FFFFFF"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Border</label>
+                    <div className="flex items-center space-x-2">
+                      <div
+                        className="w-8 h-8 border border-gray-300 rounded cursor-pointer"
+                        style={{ backgroundColor: borderStyle }}
+                      ></div>
+                      <input
+                        type="text"
+                        value={borderStyle}
+                        onChange={(e) => setBorderStyle(e.target.value)}
+                        className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm"
+                        placeholder="#EEEEEE"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => {
+                    const result = setTabBarStyle({
+                      color,
+                      selectedColor,
+                      backgroundColor,
+                      borderStyle
+                    });
+                    console.log('Set TabBar style:', result);
+                  }}
+                  className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
+                >
+                  Apply Custom Style
+                </button>
+
+                {/* Preset Themes */}
+                <div className="mt-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Preset Themes</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => {
+                        const theme = { color: '#666666', selectedColor: '#007AFF', backgroundColor: '#FFFFFF', borderStyle: '#EEEEEE' };
+                        setColor(theme.color);
+                        setSelectedColor(theme.selectedColor);
+                        setBackgroundColor(theme.backgroundColor);
+                        setBorderStyle(theme.borderStyle);
+                        const result = setTabBarStyle(theme);
+                        console.log('Applied Default theme:', result);
+                      }}
+                      className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors"
+                    >
+                      Default
+                    </button>
+                    <button
+                      onClick={() => {
+                        const theme = { color: '#CCCCCC', selectedColor: '#0A84FF', backgroundColor: '#1C1C1E', borderStyle: '#38383A' };
+                        setColor(theme.color);
+                        setSelectedColor(theme.selectedColor);
+                        setBackgroundColor(theme.backgroundColor);
+                        setBorderStyle(theme.borderStyle);
+                        const result = setTabBarStyle(theme);
+                        console.log('Applied Dark theme:', result);
+                      }}
+                      className="px-3 py-2 bg-gray-800 hover:bg-gray-900 text-white rounded-lg text-sm font-medium transition-colors"
+                    >
+                      Dark
+                    </button>
+                    <button
+                      onClick={() => {
+                        const theme = { color: '#8E8E93', selectedColor: '#34C759', backgroundColor: '#F2F2F7', borderStyle: '#C6C6C8' };
+                        setColor(theme.color);
+                        setSelectedColor(theme.selectedColor);
+                        setBackgroundColor(theme.backgroundColor);
+                        setBorderStyle(theme.borderStyle);
+                        const result = setTabBarStyle(theme);
+                        console.log('Applied Green theme:', result);
+                      }}
+                      className="px-3 py-2 bg-green-100 hover:bg-green-200 text-green-700 rounded-lg text-sm font-medium transition-colors"
+                    >
+                      Green
+                    </button>
+                    <button
+                      onClick={() => {
+                        const theme = { color: '#8E8E93', selectedColor: '#AF52DE', backgroundColor: '#F2F2F7', borderStyle: '#C6C6C8' };
+                        setColor(theme.color);
+                        setSelectedColor(theme.selectedColor);
+                        setBackgroundColor(theme.backgroundColor);
+                        setBorderStyle(theme.borderStyle);
+                        const result = setTabBarStyle(theme);
+                        console.log('Applied Purple theme:', result);
+                      }}
+                      className="px-3 py-2 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-lg text-sm font-medium transition-colors"
+                    >
+                      Purple
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+
+
+
+
+          </>
+        )}
+
+        </div>
       </div>
     </div>
   );

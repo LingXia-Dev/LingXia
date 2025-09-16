@@ -142,5 +142,62 @@ Page({
     const result = lx.setNavigationBarColor(options);
     console.log('setNavigationBarColor result:', result);
     return result;
+  },
+
+  // TabBar API functions
+  showTabBarRedDot: function (options) {
+    console.log('showTabBarRedDot called with:', options);
+    const result = lx.showTabBarRedDot(options);
+    console.log('showTabBarRedDot result:', result);
+    return result;
+  },
+
+  hideTabBarRedDot: function (options) {
+    console.log('hideTabBarRedDot called with:', options);
+    const result = lx.hideTabBarRedDot(options);
+    console.log('hideTabBarRedDot result:', result);
+    return result;
+  },
+
+  setTabBarBadge: function (options) {
+    console.log('setTabBarBadge called with:', options);
+    const result = lx.setTabBarBadge(options);
+    console.log('setTabBarBadge result:', result);
+    return result;
+  },
+
+  removeTabBarBadge: function (options) {
+    console.log('removeTabBarBadge called with:', options);
+    const result = lx.removeTabBarBadge(options);
+    console.log('removeTabBarBadge result:', result);
+    return result;
+  },
+
+  showTabBar: function () {
+    console.log('showTabBar called');
+    const result = lx.showTabBar();
+    console.log('showTabBar result:', result);
+    return result;
+  },
+
+  hideTabBar: function () {
+    console.log('hideTabBar called');
+    const result = lx.hideTabBar();
+    console.log('hideTabBar result:', result);
+    return result;
+  },
+
+  setTabBarStyle: function (options) {
+    console.log('setTabBarStyle called with:', options);
+    const result = lx.setTabBarStyle(options);
+    console.log('setTabBarStyle result:', result);
+    return result;
+  },
+
+  setTabBarItem: function (options) {
+    console.log('setTabBarItem called with:', options);
+    const result = lx.setTabBarItem(options);
+    console.log('setTabBarItem result:', result);
+    return result;
   }
 });
