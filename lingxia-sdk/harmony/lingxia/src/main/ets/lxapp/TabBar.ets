@@ -36,12 +36,12 @@ const TAB_BAR_ITEM_BADGE_BORDER_RADIUS = 8;
 const TAB_BAR_ITEM_BADGE_PADDING = 6;
 const TAB_BAR_ITEM_BADGE_HEIGHT = 16;
 const TAB_BAR_ITEM_BADGE_VERTICAL_PADDING = 2;
-const TAB_BAR_ITEM_BADGE_POSITION_X = 16;
+const TAB_BAR_ITEM_BADGE_POSITION_X = 32;  // Position at right of icon (icon center + icon_size/2 + offset)
 const TAB_BAR_ITEM_BADGE_POSITION_Y = -8;
 
 // Red dot configuration
 const TAB_BAR_ITEM_RED_DOT_SIZE = 8;
-const TAB_BAR_ITEM_RED_DOT_POSITION_X = 16;
+const TAB_BAR_ITEM_RED_DOT_POSITION_X = 32;  // Position at right of icon (icon center + icon_size/2 + offset)
 const TAB_BAR_ITEM_RED_DOT_POSITION_Y = -2;
 
 // Text max lines
