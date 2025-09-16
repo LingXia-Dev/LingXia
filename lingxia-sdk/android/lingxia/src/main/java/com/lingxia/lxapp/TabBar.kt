@@ -138,39 +138,9 @@ class TabBar(context: Context) : LinearLayout(context) {
     }
 
     private fun updateItemsContainerLayout(currentConfig: TabBarState) {
+        updateItemsContainerLayoutOnly(currentConfig)
         itemsContainer?.apply {
-            orientation = when (currentConfig.position.value) {
-                TabBarState.POSITION_LEFT, TabBarState.POSITION_RIGHT -> VERTICAL
-                else -> HORIZONTAL
-            }
-
             val isVerticalTabBar = currentConfig.position.value == TabBarState.POSITION_LEFT || currentConfig.position.value == TabBarState.POSITION_RIGHT
-
-            // Use configured dimension (Rust provides default value, but Android FFI might be nullable)
-            val tabBarDimension = currentConfig.dimension
-
-            if (isVerticalTabBar) {
-                // For vertical TabBar, itemsContainer has fixed width and wraps content height
-                layoutParams = LayoutParams(
-                    (tabBarDimension * VERTICAL_TAB_BAR_WIDTH_MULTIPLIER * resources.displayMetrics.density).toInt(),
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                )
-            } else {
-                // For horizontal TabBar, itemsContainer matches parent width and has fixed height
-                layoutParams = LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    (tabBarDimension * resources.displayMetrics.density).toInt()
-                )
-            }
-
-            // Gravity for aligning children (tab items) within itemsContainer
-            gravity = if (orientation == VERTICAL) { // itemsContainer is vertical (TabBar is LEFT/RIGHT)
-                Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            } else { // itemsContainer is horizontal (TabBar is BOTTOM)
-                Gravity.CENTER
-            }
-
-            // Set background for itemsContainer to match TabBar background
             val backgroundColor = when {
                 currentConfig.backgroundColor == Color.TRANSPARENT -> Color.TRANSPARENT
                 isVerticalTabBar -> VERTICAL_TABBAR_BACKGROUND_COLOR
