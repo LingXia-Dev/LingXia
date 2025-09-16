@@ -4,7 +4,7 @@ import { window } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { LxApp } from './LxApp';
 import { findWebview, handleScrollChanged, toWebTag, extractWebTag, WebTagParts, addWebViewUiCallback, removeWebViewUiCallback, WebViewInfo } from './WebView';
-import { NavigationBar, type NavigationBarState } from './NavigationBar';
+import { NavigationBar, type NavigationBarState, NAVBAR_TOTAL_HEIGHT } from './NavigationBar';
 import { NavigationButton, CapsuleButton } from './LxAppDrawables';
 import { TabBar } from './TabBar';
 import { TabBarPosition, type TabBarItem, UiEventType } from 'liblingxia.so';
@@ -107,7 +107,7 @@ export struct LxAppContainer {
   @Watch('onExternalPathChange') @Prop externalPath: string = ''
 
   // Listen for navigation trigger changes (unified method for all LxApps)
-  @Watch('onNavigationTrigger') @Prop navigationTrigger: number = 0
+  @Prop navigationTrigger: number = 0
 
   // Manual animation control for new lxapps
   @State animationOffsetY: number = 0 // 0 = final position, positive = off-screen bottom
@@ -296,16 +296,6 @@ export struct LxAppContainer {
   }
 
   /**
-   * Handle navigation trigger changes (unified approach for all LxApps)
-   */
-  onNavigationTrigger() {
-    if (this.externalPath) {
-      hilog.info(DOMAIN, TAG, `Navigation trigger: ${this.externalPath}`);
-      this.navigateToPage(this.externalPath);
-    }
-  }
-
-  /**
    * Handle WebView UI events from WebViewManager
    */
   handleWebViewUiEvent(action: string, info: WebViewInfo) {
@@ -388,7 +378,6 @@ export struct LxAppContainer {
                   return true;
                 }
               })
-              .key(`navbar-${this.navbarRefreshKey}`)
             }
             this.buildWebViewArea()
           }
@@ -404,42 +393,11 @@ export struct LxAppContainer {
       .height('100%')
       .backgroundColor(Color.Transparent)
       .expandSafeArea(this.shouldExpandSafeAreaForContainer() ? [SafeAreaType.SYSTEM] : [], this.shouldExpandSafeAreaForContainer() ? [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM] : [])
-    } else if (this.isTabBarTransparent()) {
-
-      Stack({ alignContent: this.getTabBarAlignment() }) {
-        Column() {
-          this.buildNavigationBar()
-          this.buildWebViewArea()
-        }
-        .width('100%')
-        .height('100%')
-
-        this.buildTabBar()
-        if (this.shouldShowCapsuleButton()) {
-          CapsuleButton({
-            statusBarHeight: this.statusBarHeight,
-            standalone: true,
-            onMorePressed: () => this.handleCapsuleMore(),
-            onClosePressed: () => this.handleCapsuleClose()
-          })
-        }
-      }
-      .width('100%')
-      .height('100%')
-      .backgroundColor(Color.Transparent)
-      .expandSafeArea(this.shouldExpandSafeAreaForContainer() ? [SafeAreaType.SYSTEM] : [], this.shouldExpandSafeAreaForContainer() ? [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM] : [])
     } else {
-      Stack() {
-        Column() {
-          this.buildNavigationBar()
-          this.buildWebViewArea()
-
-          if (this.tabBarState && (this.tabBarState.position === TabBarPosition.Bottom || !this.tabBarState.position)) {
-            this.buildTabBar()
-          }
-        }
-        .width('100%')
-        .height('100%')
+      Stack({ alignContent: this.getTabBarAlignment() }) {
+        this.buildWebViewArea()
+        this.buildNavigationBar()
+        this.buildTabBar()
 
         if (this.shouldShowCapsuleButton()) {
           CapsuleButton({
@@ -546,26 +504,29 @@ export struct LxAppContainer {
     return currentPath.startsWith(tabPath + '/') || tabPath.includes(currentPath);
   }
 
-  /**
-   * Build NavigationBar component (shared by both branches)
-   */
   @Builder
   buildNavigationBar(): void {
-    if (this.pageConfig && this.pageConfig.showNavbar) {
-      NavigationBar({
-        config: this.pageConfig,
-        appId: this.appId,
-        currentPath: this.path,
-        translateX: this.navbarTranslateX,
-        statusBarHeight: this.statusBarHeight, // Pass status bar height
-        forceShowButtons: true, // Always show buttons when needed, integrated into navbar
-        onNavigationClick: (appId: string, isHomeButton: boolean): boolean => {
-          this.handleNavigationBack(isHomeButton);
-          return true;
-        }
-      })
-      .key(`navbar-builder-${this.navbarRefreshKey}`)
+    Column() {
+      if (this.pageConfig && this.pageConfig.showNavbar) {
+        NavigationBar({
+          config: this.pageConfig,
+          appId: this.appId,
+          currentPath: this.path,
+          translateX: this.navbarTranslateX,
+          statusBarHeight: this.statusBarHeight,
+          forceShowButtons: true,
+          onNavigationClick: (appId: string, isHomeButton: boolean): boolean => {
+            this.handleNavigationBack(isHomeButton);
+            return true;
+          }
+        })
+      }
     }
+    .width('100%')
+    .height(NAVBAR_TOTAL_HEIGHT)
+    .backgroundColor(COLOR_TRANSPARENT)
+    .position({ x: 0, y: 0 })
+    .zIndex(10)
   }
 
   /**
@@ -591,9 +552,12 @@ export struct LxAppContainer {
     }
     .width('100%')
     .height('100%')
-    .layoutWeight(this.isTabBarTransparent() ? 0 : 1)
-    .backgroundColor(this.navigationMode ? COLOR_WHITE : COLOR_TRANSPARENT)
+    .padding({
+      bottom: this.shouldShowTabBar() && !this.isTabBarTransparent() ? 60 : 0
+    })
+    .backgroundColor(COLOR_TRANSPARENT)
     .clip(this.navigationMode)
+
   }
 
   private handleTabSelected(index: number) {
