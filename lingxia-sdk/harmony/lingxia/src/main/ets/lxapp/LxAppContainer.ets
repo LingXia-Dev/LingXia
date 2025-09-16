@@ -51,6 +51,7 @@ export struct LxAppContainer {
   @State tabBarState: TabBarState | null = null
   @State selectedTabIndex: number = 0
   @State tabBarRefreshKey: number = 0  // Force TabBar refresh when data changes
+  @State navbarRefreshKey: number = 0  // Force NavigationBar refresh when data changes
   @State webViewComponents: Map<string, webview.WebviewController> = new Map() // Store Web components for each WebView
   @State currentWebTag: string = '' // Current active WebView tag
   @State webViewKeys: string[] = [] // Array of WebView keys for ForEach
@@ -246,12 +247,16 @@ export struct LxAppContainer {
   }
 
   /**
-   * Static method to refresh NavigationBar for a specific appId and path
+   * Static method to refresh NavigationBar for a specific appId (uses current path)
    */
-  public static refreshNavBar(appId: string, path: string): boolean {
+  public static refreshNavBar(appId: string): boolean {
     const container = LxAppContainer.activeContainers.get(appId);
     if (container) {
-      container.pageConfig = getNavigationBarState(appId, path);
+      // Use current path from container
+      container.pageConfig = getNavigationBarState(appId, container.path);
+      // Force UI update by incrementing refresh key
+      container.navbarRefreshKey++;
+      hilog.info(DOMAIN, TAG, `NavigationBar refreshed for ${appId}:${container.path}, showNavbar=${container.pageConfig?.showNavbar}, showBack=${container.pageConfig?.showBackButton}, showHome=${container.pageConfig?.showHomeButton}`);
       return true;
     }
     return false;
@@ -383,6 +388,7 @@ export struct LxAppContainer {
                   return true;
                 }
               })
+              .key(`navbar-${this.navbarRefreshKey}`)
             }
             this.buildWebViewArea()
           }
@@ -558,6 +564,7 @@ export struct LxAppContainer {
           return true;
         }
       })
+      .key(`navbar-builder-${this.navbarRefreshKey}`)
     }
   }
 

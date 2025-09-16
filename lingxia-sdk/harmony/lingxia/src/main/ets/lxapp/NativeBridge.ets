@@ -165,8 +165,8 @@ class NativeBridge {
     });
 
     // NavigationBar APIs
-    this.register('refreshNavBar', (appId: string, path: string): boolean => {
-      return LxAppContainer.refreshNavBar(appId, path);
+    this.register('refreshNavBar', (appId: string): boolean => {
+      return LxAppContainer.refreshNavBar(appId);
     });
 
     hilog.info(DOMAIN, TAG, `Registered ${NativeBridge.callbacks.size} default callbacks`);
