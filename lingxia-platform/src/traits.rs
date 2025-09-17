@@ -2,6 +2,7 @@ use std::io::Read;
 use std::path::PathBuf;
 
 use crate::error::PlatformError;
+use crate::picker::PickerOptions;
 use crate::{AssetFileEntry, DeviceInfo};
 
 /// Toast icon types
@@ -186,6 +187,32 @@ pub trait UserFeedback: Send + Sync + 'static {
     /// # Returns
     /// * `Result<(), PlatformError>` - Success or error (result comes via callback)
     fn show_modal(&self, options: ModalOptions, callback_id: u64) -> Result<(), PlatformError>;
+
+    /// Show a picker with the specified options
+    ///
+    /// This method supports both single-column and dual-column picker scenarios,
+    ///
+    /// # Arguments
+    /// * `options` - Picker configuration options including columns and buttons
+    /// * `callback_id` - Callback ID for async result handling
+    ///
+    /// # Returns
+    /// * `Result<(), PlatformError>` - Success or error (result comes via callback)
+    ///
+    /// # Notes
+    /// * For single-column picker: `options.columns` should contain 1 element
+    /// * For dual-column picker: `options.columns` should contain 2 elements
+    /// * Cancel button is always required
+    /// * If confirm_text is Some, confirm_color must also be Some
+    ///
+    /// # UI Implementation Requirements
+    /// The UI implementation must call the callback to pass user behavior:
+    /// * When user selects items in columns: pass the selected indices for each column
+    /// * When user clicks buttons: indicate which button was clicked (cancel/confirm)
+    /// * The callback should include both the final selected indices and the button action
+    /// * For cancel action: typically ignore the selected indices
+    /// * For confirm action: use the selected indices as the final result
+    fn show_picker(&self, options: PickerOptions, callback_id: u64) -> Result<(), PlatformError>;
 }
 
 /// UI update functionality trait

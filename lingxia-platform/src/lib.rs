@@ -18,6 +18,7 @@ pub struct DeviceInfo {
     pub system: String,
 }
 
+mod picker;
 mod traits;
 
 #[cfg(target_os = "android")]
@@ -45,3 +46,6 @@ pub use error::*;
 
 // Re-export traits
 pub use traits::*;
+
+// Re-export picker types
+pub use picker::*;
