@@ -19,6 +19,3 @@
 export { LxApp } from './src/main/ets/lxapp/LxApp';
 export { LxAppNavigation } from './src/main/ets/lxapp/LxAppNavigation';
 export { LingxiaBaseAbility } from './src/main/ets/lxapp/LingxiaBaseAbility';
-export { LxAppToast, ToastManager, ToastIcon, ToastPosition, ToastConfig } from './src/main/ets/lxapp/APIs/LxAppToast';
-export { LxAppModal, ModalManager, ModalConfig, ModalResult } from './src/main/ets/lxapp/APIs/LxAppModal';
-export { animationTypeFromInt } from './src/main/ets/lxapp/NavigationBar';
