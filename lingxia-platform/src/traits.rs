@@ -2,7 +2,6 @@ use std::io::Read;
 use std::path::PathBuf;
 
 use crate::error::PlatformError;
-use crate::picker::PickerOptions;
 use crate::{AssetFileEntry, DeviceInfo};
 
 /// Toast icon types
@@ -20,6 +19,18 @@ pub enum ToastPosition {
     Top,
     Center,
     Bottom,
+}
+
+/// Picker type with associated data
+#[derive(Debug, Clone)]
+pub enum PickerType {
+    /// Single column picker with a list of items
+    SingleColumn { items: Vec<String> },
+    /// Dual column picker with two lists of items
+    DualColumn {
+        first_column: Vec<String>,
+        second_column: Vec<String>,
+    },
 }
 
 /// Toast configuration options
@@ -188,31 +199,80 @@ pub trait UserFeedback: Send + Sync + 'static {
     /// * `Result<(), PlatformError>` - Success or error (result comes via callback)
     fn show_modal(&self, options: ModalOptions, callback_id: u64) -> Result<(), PlatformError>;
 
-    /// Show a picker with the specified options
+    /// Show an action sheet with a list of options
     ///
-    /// This method supports both single-column and dual-column picker scenarios,
+    /// This method displays an action sheet interface similar to WeChat mini-program's showActionSheet.
+    /// Users can select an option by tapping it directly, or cancel the operation.
     ///
     /// # Arguments
-    /// * `options` - Picker configuration options including columns and buttons
+    /// * `options` - List of option strings to display
+    /// * `cancel_text` - Text for the cancel button
+    /// * `callback_id` - Unique identifier for the callback
+    ///
+    /// # Behavior
+    /// - Displays a list of options that users can tap to select
+    /// - Tapping an option immediately confirms the selection and closes the sheet
+    /// - Tapping cancel or the background dismisses the sheet without selection
+    /// - No confirm button - selection is immediate upon tapping an option
+    ///
+    /// # Callback Results
+    /// The callback receives JSON in the following format:
+    /// ```json
+    /// {"tapIndex": 2}   // User selected option at index 2
+    /// {"tapIndex": -1}  // User cancelled (tapped cancel or background)
+    /// ```
+    fn show_action_sheet(
+        &self,
+        options: Vec<String>,
+        cancel_text: String,
+        callback_id: u64,
+    ) -> Result<(), PlatformError>;
+
+    /// Show a picker with the specified type and options
+    ///
+    /// This method displays a picker interface that supports both single-column and dual-column scenarios.
+    /// Unlike action sheets, pickers require explicit confirmation and support real-time selection updates.
+    ///
+    /// # Arguments
+    /// * `picker_type` - Type of picker (SingleColumn or DualColumn) with associated data
+    /// * `cancel_text` - Text for the cancel button
+    /// * `cancel_color` - Color for the cancel button (hex format, e.g., "#666666")
+    /// * `confirm_text` - Text for the confirm button
+    /// * `confirm_color` - Color for the confirm button (hex format, e.g., "#007AFF")
     /// * `callback_id` - Callback ID for async result handling
     ///
     /// # Returns
     /// * `Result<(), PlatformError>` - Success or error (result comes via callback)
     ///
-    /// # Notes
-    /// * For single-column picker: `options.columns` should contain 1 element
-    /// * For dual-column picker: `options.columns` should contain 2 elements
-    /// * Cancel button is always required
-    /// * If confirm_text is Some, confirm_color must also be Some
+    /// # Behavior
+    /// ## Single Column Picker
+    /// - User can scroll to select an option from a single list
+    /// - Must click confirm or cancel to close
+    /// - Sends real-time selection updates during scrolling (only when selection changes)
     ///
-    /// # UI Implementation Requirements
-    /// The UI implementation must call the callback to pass user behavior:
-    /// * When user selects items in columns: pass the selected indices for each column
-    /// * When user clicks buttons: indicate which button was clicked (cancel/confirm)
-    /// * The callback should include both the final selected indices and the button action
-    /// * For cancel action: typically ignore the selected indices
-    /// * For confirm action: use the selected indices as the final result
-    fn show_picker(&self, options: PickerOptions, callback_id: u64) -> Result<(), PlatformError>;
+    /// ## Dual Column Picker
+    /// - User can scroll both columns independently
+    /// - Must click confirm or cancel to close
+    /// - Sends real-time selection updates for both columns during scrolling (only when selection changes)
+    ///
+    /// # Callback Results
+    /// The callback receives JSON in the following format:
+    /// ```json
+    /// {"index": [1], "confirm": true}     // Single column: User confirmed selection
+    /// {"index": [1, 2], "confirm": true}  // Dual column: User confirmed selection
+    /// {"index": [], "cancel": true}       // User cancelled
+    /// {"index": [3]}                      // Single column: Real-time update during scrolling
+    /// {"index": [3, 4]}                   // Dual column: Real-time update during scrolling
+    /// ```
+    fn show_picker(
+        &self,
+        picker_type: PickerType,
+        cancel_text: String,
+        cancel_color: String,
+        confirm_text: String,
+        confirm_color: String,
+        callback_id: u64,
+    ) -> Result<(), PlatformError>;
 }
 
 /// UI update functionality trait

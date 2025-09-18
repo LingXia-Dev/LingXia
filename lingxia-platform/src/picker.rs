@@ -9,40 +9,14 @@ pub struct PickerOptions {
     pub cancel_text: String,
     /// Cancel button color
     pub cancel_color: String,
-    /// Confirm button text (optional, if None then only show cancel button)
-    pub confirm_text: Option<String>,
-    /// Confirm button color (required if confirm_text is Some)
-    pub confirm_color: Option<String>,
+    /// Confirm button text (always required for pickers)
+    pub confirm_text: String,
+    /// Confirm button color (always required for pickers)
+    pub confirm_color: String,
 }
 
 impl PickerOptions {
-    /// Create a single-column picker with only cancel button
-    ///
-    /// # Arguments
-    /// * `items` - List of items for the picker
-    /// * `text_color` - Color for picker item text
-    /// * `cancel_text` - Text for cancel button
-    /// * `cancel_color` - Color for cancel button
-    ///
-    /// # Returns
-    /// * `PickerOptions` - Configured picker options
-    pub fn single_column_cancel_only(
-        items: Vec<String>,
-        text_color: String,
-        cancel_text: String,
-        cancel_color: String,
-    ) -> Self {
-        Self {
-            columns: vec![items],
-            text_color,
-            cancel_text,
-            cancel_color,
-            confirm_text: None,
-            confirm_color: None,
-        }
-    }
-
-    /// Create a single-column picker with cancel and confirm buttons
+    /// Create a single-column picker
     ///
     /// # Arguments
     /// * `items` - List of items for the picker
@@ -54,7 +28,7 @@ impl PickerOptions {
     ///
     /// # Returns
     /// * `PickerOptions` - Configured picker options
-    pub fn single_column_with_confirm(
+    pub fn single_column(
         items: Vec<String>,
         text_color: String,
         cancel_text: String,
@@ -67,12 +41,12 @@ impl PickerOptions {
             text_color,
             cancel_text,
             cancel_color,
-            confirm_text: Some(confirm_text),
-            confirm_color: Some(confirm_color),
+            confirm_text,
+            confirm_color,
         }
     }
 
-    /// Create a dual-column picker (always has both cancel and confirm buttons)
+    /// Create a dual-column picker
     ///
     /// # Arguments
     /// * `first_column` - List of items for the first column
@@ -99,8 +73,8 @@ impl PickerOptions {
             text_color,
             cancel_text,
             cancel_color,
-            confirm_text: Some(confirm_text),
-            confirm_color: Some(confirm_color),
+            confirm_text,
+            confirm_color,
         }
     }
 
@@ -121,11 +95,7 @@ impl PickerOptions {
             }
         }
 
-        // If confirm_text is Some, confirm_color must also be Some
-        match (&self.confirm_text, &self.confirm_color) {
-            (Some(_), Some(_)) => true,
-            (None, None) => true,
-            _ => false,
-        }
+        // Confirm text and color are always required
+        !self.confirm_text.is_empty() && !self.confirm_color.is_empty()
     }
 }
