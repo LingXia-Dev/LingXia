@@ -23,6 +23,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
     public var globalNavigationBar: LingXiaNavigationBar?
     public var currentTabBar: LingXiaTabBar?
     private var cancellables = Set<AnyCancellable>()
+    private var backEdgePanGesture: UIScreenEdgePanGestureRecognizer?
 
     // Store pending navigation state for deferred NavigationBar initialization
     private var pendingNavigationState: (appId: String, path: String)?
@@ -118,6 +119,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
         setupRootContainer()
         setupWebViewContainer()
         setupGlobalNavigationBar()
+        setupBackGestureRecognizer()
     }
 
     private func setupRootContainer() {
@@ -150,6 +152,17 @@ public class LxAppViewController: UIViewController, ObservableObject {
             webViewContainer.trailingAnchor.constraint(equalTo: rootContainer.trailingAnchor),
             webViewContainer.bottomAnchor.constraint(equalTo: rootContainer.bottomAnchor)
         ])
+    }
+
+    private func setupBackGestureRecognizer() {
+        // Mirror Android's back press by listening for a left-edge swipe.
+        let edgePan = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handleBackEdgePan(_:)))
+        edgePan.edges = .left
+        edgePan.delegate = self
+        edgePan.requiresExclusiveTouchType = false
+        edgePan.name = "LxAppBackEdgePan"
+        view.addGestureRecognizer(edgePan)
+        backEdgePanGesture = edgePan
     }
 
     private func configureSystemNavigationBar() {
@@ -319,6 +332,25 @@ public class LxAppViewController: UIViewController, ObservableObject {
         currentTabBar?.isHidden = true
         globalNavigationBar?.isHidden = true
         globalCapsuleButton?.isHidden = true
+    }
+
+    @objc
+    private func handleBackEdgePan(_ gesture: UIScreenEdgePanGestureRecognizer) {
+        guard let appId = LxAppCore.currentAppId else { return }
+
+        switch gesture.state {
+        case .ended, .recognized:
+            let translation = gesture.translation(in: view).x
+            let velocity = gesture.velocity(in: view).x
+            let translationThreshold: CGFloat = 60
+            let velocityThreshold: CGFloat = 600
+
+            if translation > translationThreshold || velocity > velocityThreshold {
+                let _ = onUiEvent(appId, LxAppUIEvent.backPress, "")
+            }
+        default:
+            break
+        }
     }
 
     private func attachWebViewToUI(webView: WKWebView, for appId: String, path: String) {
@@ -988,6 +1020,13 @@ public class LxAppViewController: UIViewController, ObservableObject {
             currentWebView.pauseWebView()
             currentWebView.transform = .identity
         })
+    }
+}
+
+extension LxAppViewController: UIGestureRecognizerDelegate {
+    public func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        // Allow the back edge swipe to coexist with WebView scrolling.
+        gestureRecognizer === backEdgePanGesture
     }
 }
 
