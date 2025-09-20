@@ -54,9 +54,13 @@ public class iOSPushManager: NSObject {
         UNUserNotificationCenter.current().delegate = self
 
         // Check current authorization status first
-        UNUserNotificationCenter.current().getNotificationSettings { settings in
-            DispatchQueue.main.async {
-                switch settings.authorizationStatus {
+        UNUserNotificationCenter.current().getNotificationSettings { [weak self] settings in
+            let authorizationStatus = settings.authorizationStatus
+
+            Task { @MainActor [authorizationStatus] in
+                guard let self else { return }
+
+                switch authorizationStatus {
                 case .authorized, .provisional:
                     // Authorized - register for remote notifications
                     os_log("Notification permission authorized, registering for remote notifications", log: Self.log, type: .info)
