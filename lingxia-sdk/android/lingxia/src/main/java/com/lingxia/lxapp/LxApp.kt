@@ -13,6 +13,8 @@ import com.lingxia.lxapp.APIs.ToastIcon
 import com.lingxia.lxapp.APIs.ToastPosition
 import com.lingxia.lxapp.APIs.ModalResult
 import com.lingxia.lxapp.APIs.LxAppModal
+import com.lingxia.lxapp.APIs.LxAppActionSheet
+import com.lingxia.lxapp.APIs.LxAppPicker
 
 /**
  * Data class representing LxApp information from the native layer
@@ -342,6 +344,42 @@ class LxApp private constructor(private val context: Context) {
 
             activity.runOnUiThread {
                 LxAppModal.showModal(activity, options, callbackId)
+            }
+        }
+
+        /**
+         * Show action sheet with options
+         * @param options Action sheet options including items, cancel text, and callback ID
+         */
+        @JvmStatic
+        fun showActionSheet(options: Map<String, Any?>) {
+            val activity = currentActivity ?: run {
+                Log.e("LingXia.LxApp", "showActionSheet: currentActivity is null")
+                return
+            }
+            val callbackId = options["callbackId"] as? Long ?: 0L
+            val itemList = options["itemList"] as? List<String> ?: run {
+                Log.e("LingXia.LxApp", "showActionSheet: itemList is null or invalid")
+                return
+            }
+            val cancelText = options["cancelText"] as? String ?: "Cancel"
+
+            activity.runOnUiThread {
+                LxAppActionSheet.showActionSheet(activity, itemList, cancelText, callbackId)
+            }
+        }
+
+        /**
+         * Show picker with options
+         * @param options Picker options including columns, buttons, and callback ID
+         */
+        @JvmStatic
+        fun showPicker(options: Map<String, Any?>) {
+            val activity = currentActivity ?: return
+            val callbackId = options["callbackId"] as? Long ?: 0L
+
+            activity.runOnUiThread {
+                LxAppPicker.showPicker(activity, options, callbackId)
             }
         }
 
