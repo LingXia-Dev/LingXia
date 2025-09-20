@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::io::Read;
 use std::path::PathBuf;
 
@@ -30,6 +31,11 @@ pub enum PickerType {
     DualColumn {
         first_column: Vec<String>,
         second_column: Vec<String>,
+    },
+    /// Dual column picker with cascading (linked) data
+    DualColumnCascading {
+        first_column: Vec<String>,
+        cascading_data: HashMap<String, Vec<String>>,
     },
 }
 
@@ -258,19 +264,23 @@ pub trait UserFeedback: Send + Sync + 'static {
     /// # Callback Results
     /// The callback receives JSON in the following format:
     /// ```json
-    /// {"index": [1], "confirm": true}     // Single column: User confirmed selection
+    /// {"index": 1, "confirm": true}       // Single column: User confirmed selection
     /// {"index": [1, 2], "confirm": true}  // Dual column: User confirmed selection
-    /// {"index": [], "cancel": true}       // User cancelled
-    /// {"index": [3]}                      // Single column: Real-time update during scrolling
+    /// {"index": 1, "cancel": true}        // Single column: User cancelled (shows current selection)
+    /// {"index": [1, 2], "cancel": true}   // Dual column: User cancelled (shows current selection)
+    /// {"index": 3}                        // Single column: Real-time update during scrolling
     /// {"index": [3, 4]}                   // Dual column: Real-time update during scrolling
     /// ```
+    ///
     fn show_picker(
         &self,
         picker_type: PickerType,
         cancel_text: String,
-        cancel_color: String,
+        cancel_button_color: String,
+        cancel_text_color: String,
         confirm_text: String,
-        confirm_color: String,
+        confirm_button_color: String,
+        confirm_text_color: String,
         callback_id: u64,
     ) -> Result<(), PlatformError>;
 }
