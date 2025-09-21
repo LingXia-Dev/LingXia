@@ -508,10 +508,8 @@ object LxAppPicker {
                 // Initialize text colors
                 updateTextColors(linearLayout, initialIndex, itemHeight, centerOffset)
 
-                // Send initial selection
                 lastLoggedIndex = initialIndex
                 currentSelectedIndices[columnIndex] = initialIndex
-                sendPickerResultScroll(callbackId)
             }
 
             scrollView.setOnScrollChangeListener { _, _, scrollY, _, _ ->
