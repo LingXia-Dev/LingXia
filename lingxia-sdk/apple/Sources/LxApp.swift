@@ -470,6 +470,21 @@ extension LxApp {
         LxAppModal.showModal(options, callback_id: callback_id)
     }
 
+    /// Show action sheet
+    nonisolated public static func showActionSheet(options: ActionSheetOptions, callback_id: UInt64) {
+        LxAppActionSheet.showActionSheet(options: options, callback_id: callback_id)
+    }
+
+    /// Show action sheet with dictionary (convenience method)
+    @MainActor public static func showActionSheet(_ options: [String: Any], callback_id: UInt64) {
+        LxAppActionSheet.showActionSheet(options, callback_id: callback_id)
+    }
+
+    /// Show picker
+    nonisolated public static func showPicker(options: PickerOptions, callback_id: UInt64) {
+        LxAppPicker.showPicker(options: options, callback_id: callback_id)
+    }
+
     /// Hide current toast immediately
     nonisolated public static func hideToast() {
         executeOnMain {

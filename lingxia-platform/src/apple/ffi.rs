@@ -38,11 +38,30 @@ mod bridge {
         pub confirm_color: String,
     }
 
+    // ActionSheet configuration for Swift
+    #[swift_bridge(swift_repr = "struct")]
+    pub struct ActionSheetOptions {
+        pub options: Vec<String>,
+        pub cancel_text: String,
+    }
+
     // Modal result for Swift
     #[swift_bridge(swift_repr = "struct")]
     pub struct ModalResult {
         pub confirm: bool,
         pub cancel: bool,
+    }
+
+    // Picker configuration for Swift
+    #[swift_bridge(swift_repr = "struct")]
+    pub struct PickerOptions {
+        pub columns_json: String,
+        pub text_color: String,
+        pub cancel_text: String,
+        pub cancel_color: String,
+        pub confirm_text: String,
+        pub confirm_color: String,
+        pub confirm_text_color: String,
     }
 
     extern "Swift" {
@@ -80,11 +99,20 @@ mod bridge {
         // Modal functions (synchronous with callback)
         #[swift_bridge(swift_name = "LxApp.showModal")]
         fn show_modal(options: ModalOptions, callback_id: u64);
+
+        // Action sheet functions (synchronous with callback)
+        #[swift_bridge(swift_name = "LxApp.showActionSheet")]
+        fn show_action_sheet(options: ActionSheetOptions, callback_id: u64);
+
+        // Picker functions (synchronous with callback)
+        #[swift_bridge(swift_name = "LxApp.showPicker")]
+        fn show_picker(options: PickerOptions, callback_id: u64);
     }
 }
 
 // Re-export the bridge functions for use in other modules
 pub use bridge::{
-    ModalOptions, ToastIcon, ToastOptions, ToastPosition, close_lxapp, hide_toast, launch_with_url,
-    navigate, open_lxapp, show_modal, show_toast, update_navbar_ui, update_tabbar_ui,
+    ActionSheetOptions, ModalOptions, PickerOptions, ToastIcon, ToastOptions, ToastPosition,
+    close_lxapp, hide_toast, launch_with_url, navigate, open_lxapp, show_action_sheet, show_modal,
+    show_picker, show_toast, update_navbar_ui, update_tabbar_ui,
 };
