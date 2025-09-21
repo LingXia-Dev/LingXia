@@ -33,6 +33,7 @@ struct JSPickerOptions {
     items: Option<Vec<String>>,
     // Multi column mode (supports both regular and cascading)
     columns: Option<rong::JSArray>,
+
     #[rename = "cancelText"]
     cancel_text: Option<String>,
     #[rename = "cancelButtonColor"]

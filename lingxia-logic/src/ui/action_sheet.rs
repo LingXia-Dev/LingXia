@@ -9,8 +9,8 @@ use std::sync::Arc;
 struct JSActionSheetOptions {
     #[rename = "itemList"]
     item_list: Vec<String>,
-    #[rename = "cancelText"]
-    cancel_text: Option<String>,
+    #[rename = "itemColor"]
+    item_color: Option<String>,
 }
 
 /// JavaScript ActionSheetResult for return value
@@ -51,7 +51,8 @@ async fn show_action_sheet(
     }
 
     // Extract parameters with defaults
-    let cancel_text = options.cancel_text.unwrap_or_else(|| "Cancel".to_string());
+    let cancel_text = "Cancel".to_string();
+    let item_color = options.item_color.unwrap_or_else(|| "#007AFF".to_string());
 
     let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
 
@@ -61,7 +62,7 @@ async fn show_action_sheet(
     // Call runtime interface with callback ID
     match lxapp
         .runtime
-        .show_action_sheet(options.item_list, cancel_text, callback_id)
+        .show_action_sheet(options.item_list, cancel_text, item_color, callback_id)
     {
         Ok(()) => {
             // Wait for result from callback
