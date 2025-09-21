@@ -166,8 +166,6 @@ export struct PickerManager {
 
     setTimeout(() => {
       this.isInitializing = false;
-      // Send initial scroll result for default selection
-      this.sendScrollResult();
     }, 100);
   }
 
