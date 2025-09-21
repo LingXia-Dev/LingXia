@@ -476,5 +476,3 @@ export struct TabBar {
     return undefined;
   }
 }
-
-

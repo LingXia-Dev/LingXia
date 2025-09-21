@@ -4,6 +4,8 @@ import { LxAppContainer } from './LxAppContainer';
 import { onLxappOpened, onLxappClosed, getTabBar, TabBarItem, TabBarState, getCurrentLxapp, CurrentLxApp } from 'liblingxia.so';
 import { ToastManager } from './APIs/LxAppToast';
 import { ModalManager } from './APIs/LxAppModal';
+import { PickerManager } from './APIs/LxAppPicker';
+import { ActionSheetManager } from './APIs/LxAppActionSheet';
 
 const DOMAIN = 0xA000;
 const TAG = 'LingXia.Navigation';
@@ -272,6 +274,12 @@ export struct LxAppNavigation {
 
       ModalManager()
         .zIndex(10001)
+
+      ActionSheetManager()
+        .zIndex(10002)
+
+      PickerManager()
+        .zIndex(10003)
     }
     .width('100%')
     .height('100%')

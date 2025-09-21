@@ -3,6 +3,8 @@ import { webview } from '@kit.ArkWeb';
 import { LxApp } from './LxApp';
 import { LxAppToast, ToastIcon, ToastPosition } from './APIs/LxAppToast';
 import { LxAppModal, ModalResult } from './APIs/LxAppModal';
+import { LxAppActionSheet } from './APIs/LxAppActionSheet';
+import { LxAppPicker } from './APIs/LxAppPicker';
 import { LxAppContainer } from './LxAppContainer';
 import {
   createWebViewController,
@@ -148,6 +150,45 @@ class NativeBridge {
       }
     });
 
+    // ActionSheet APIs
+    this.register('showActionSheet', (options: string, cancelText: string, callbackId: string): void => {
+      try {
+        // Parse options from JSON string
+        const optionsArray: string[] = JSON.parse(options);
+
+        LxAppActionSheet.showActionSheet(optionsArray, cancelText, callbackId);
+      } catch (error) {
+        hilog.error(DOMAIN, TAG, `Error showing action sheet: ${error}`);
+      }
+    });
+
+    // Picker APIs (matching Rust interface)
+    this.register('showPicker', (
+      columns: string,
+      cancelText: string,
+      cancelButtonColor: string,
+      cancelTextColor: string,
+      confirmText: string,
+      confirmButtonColor: string,
+      confirmTextColor: string,
+      callbackId: string
+    ): void => {
+      try {
+        LxAppPicker.showPicker(
+          columns,
+          cancelText,
+          cancelButtonColor,
+          cancelTextColor,
+          confirmText,
+          confirmButtonColor,
+          confirmTextColor,
+          callbackId
+        );
+      } catch (error) {
+        hilog.error(DOMAIN, TAG, `showPicker error: ${error}`);
+      }
+    });
+
     // Update TabBar APIs
     this.register('updateTabBarUI', (appId: string): boolean => {
       try {
@@ -255,6 +296,10 @@ export function getNativeCallbackFunction(): (data: string) => Object | null {
           // New format with 7 args
           args = rawArgs;
         }
+      } else if (functionName === 'showPicker' && rawArgs.length >= 8) {
+        // Handle showPicker arguments: columns, cancelText, cancelButtonColor, cancelTextColor, confirmText, confirmButtonColor, confirmTextColor, callbackId
+        // All arguments are strings, no conversion needed
+        args = rawArgs;
       }
 
       return NativeBridge.call(functionName, ...args);
