@@ -24,7 +24,7 @@ internal object LxAppActionSheet {
     /**
      * Show action sheet with options and callback
      */
-    fun showActionSheet(context: Context, options: List<String>, cancelText: String, callbackId: Long) {
+    fun showActionSheet(context: Context, options: List<String>, cancelText: String, itemColor: String, callbackId: Long) {
         val activity = context as? Activity ?: run {
             Log.e(TAG, "showActionSheet: context is not an Activity")
             return
@@ -46,7 +46,7 @@ internal object LxAppActionSheet {
         rootView.addView(currentMaskView)
 
         // Create action sheet view
-        currentActionSheetView = createActionSheetView(activity, options, cancelText, callbackId)
+        currentActionSheetView = createActionSheetView(activity, options, cancelText, itemColor, callbackId)
         rootView.addView(currentActionSheetView)
     }
 
@@ -66,6 +66,7 @@ internal object LxAppActionSheet {
         context: Context,
         options: List<String>,
         cancelText: String,
+        itemColor: String,
         callbackId: Long
     ): View {
         val container = FrameLayout(context).apply {
@@ -90,7 +91,7 @@ internal object LxAppActionSheet {
 
         // Add option buttons
         options.forEachIndexed { index, option ->
-            val optionButton = createOptionButton(context, option) {
+            val optionButton = createOptionButton(context, option, itemColor) {
                 sendActionSheetResult(callbackId, index)
                 hideActionSheetInternal()
             }
@@ -124,11 +125,11 @@ internal object LxAppActionSheet {
         return container
     }
 
-    private fun createOptionButton(context: Context, text: String, onClick: () -> Unit): TextView {
+    private fun createOptionButton(context: Context, text: String, itemColor: String, onClick: () -> Unit): TextView {
         return TextView(context).apply {
             this.text = text
             textSize = 18f
-            setTextColor(Color.parseColor("#000000"))
+            setTextColor(Color.parseColor(itemColor))
             gravity = Gravity.CENTER
             isClickable = true
             setOnClickListener { onClick() }

@@ -22,19 +22,21 @@ public class LxAppActionSheet {
         }
         showActionSheet([
             "options": optionsArray,
-            "cancelText": options.cancel_text.toString()
+            "cancelText": options.cancel_text.toString(),
+            "itemColor": options.item_color.toString()
         ], callback_id: callback_id)
     }
 
     public static func showActionSheet(_ options: [String: Any], callback_id: UInt64) {
         let optionsArray = options["options"] as? [String] ?? []
         let cancelText = options["cancelText"] as? String ?? "Cancel"
+        let itemColor = options["itemColor"] as? String ?? "#007AFF"
 
         DispatchQueue.main.async {
             #if os(macOS)
-            showMacOSActionSheet(options: optionsArray, cancelText: cancelText, callback_id: callback_id)
+            showMacOSActionSheet(options: optionsArray, cancelText: cancelText, itemColor: itemColor, callback_id: callback_id)
             #else
-            showIOSActionSheet(options: optionsArray, cancelText: cancelText, callback_id: callback_id)
+            showIOSActionSheet(options: optionsArray, cancelText: cancelText, itemColor: itemColor, callback_id: callback_id)
             #endif
         }
     }
@@ -49,7 +51,7 @@ public class LxAppActionSheet {
 
     #if os(macOS)
     @MainActor
-    private static func showMacOSActionSheet(options: [String], cancelText: String, callback_id: UInt64) {
+    private static func showMacOSActionSheet(options: [String], cancelText: String, itemColor: String, callback_id: UInt64) {
         let alert = NSAlert()
         alert.messageText = "Select an option"
 
@@ -66,7 +68,7 @@ public class LxAppActionSheet {
 
     #if os(iOS)
     @MainActor
-    private static func showIOSActionSheet(options: [String], cancelText: String, callback_id: UInt64) {
+    private static func showIOSActionSheet(options: [String], cancelText: String, itemColor: String, callback_id: UInt64) {
         guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
               let window = windowScene.windows.first(where: { $0.isKeyWindow }) ?? windowScene.windows.first,
               let rootViewController = window.rootViewController else {
@@ -79,12 +81,12 @@ public class LxAppActionSheet {
             topViewController = presentedViewController
         }
 
-        let actionSheetView = createCustomActionSheet(options: options, cancelText: cancelText, callback_id: callback_id)
+        let actionSheetView = createCustomActionSheet(options: options, cancelText: cancelText, itemColor: itemColor, callback_id: callback_id)
         presentCustomActionSheet(actionSheetView, on: topViewController)
     }
 
     @MainActor
-    private static func createCustomActionSheet(options: [String], cancelText: String, callback_id: UInt64) -> UIView {
+    private static func createCustomActionSheet(options: [String], cancelText: String, itemColor: String, callback_id: UInt64) -> UIView {
         let backgroundView = UIView(frame: UIScreen.main.bounds)
         backgroundView.backgroundColor = UIColor.black.withAlphaComponent(0.4)
         backgroundView.alpha = 0
@@ -101,7 +103,7 @@ public class LxAppActionSheet {
         stackView.translatesAutoresizingMaskIntoConstraints = false
 
         for (index, option) in options.enumerated() {
-            let button = createOptionButton(title: option, isFirst: index == 0) {
+            let button = createOptionButton(title: option, color: itemColor, isFirst: index == 0) {
                 dismissActionSheet(backgroundView) {
                     sendResult(callback_id: callback_id, tapIndex: index)
                 }
@@ -151,10 +153,14 @@ public class LxAppActionSheet {
     }
 
     @MainActor
-    private static func createOptionButton(title: String, isFirst: Bool = false, action: @escaping () -> Void) -> UIButton {
+    private static func createOptionButton(title: String, color: String, isFirst: Bool = false, action: @escaping () -> Void) -> UIButton {
         let button = UIButton(type: .system)
         button.setTitle(title, for: .normal)
-        button.setTitleColor(UIColor.black, for: .normal)
+
+        // Parse color from hex string, use a softer black as fallback (similar to Android)
+        let buttonColor = parseColor(color) ?? UIColor(red: 0.2, green: 0.2, blue: 0.2, alpha: 1.0)
+        button.setTitleColor(buttonColor, for: .normal)
+
         button.titleLabel?.font = UIFont.systemFont(ofSize: 18)
         button.backgroundColor = isFirst ? UIColor.white : UIColor.clear
         button.contentHorizontalAlignment = .center
@@ -168,6 +174,27 @@ public class LxAppActionSheet {
         button.heightAnchor.constraint(equalToConstant: 56).isActive = true
         button.addAction(UIAction { _ in action() }, for: .touchUpInside)
         return button
+    }
+
+    /// Parse hex color string to UIColor
+    @MainActor
+    private static func parseColor(_ hexString: String) -> UIColor? {
+        var hex = hexString.trimmingCharacters(in: .whitespacesAndNewlines)
+        if hex.hasPrefix("#") {
+            hex.removeFirst()
+        }
+
+        guard hex.count == 6 else { return nil }
+
+        var rgbValue: UInt64 = 0
+        Scanner(string: hex).scanHexInt64(&rgbValue)
+
+        return UIColor(
+            red: CGFloat((rgbValue & 0xFF0000) >> 16) / 255.0,
+            green: CGFloat((rgbValue & 0x00FF00) >> 8) / 255.0,
+            blue: CGFloat(rgbValue & 0x0000FF) / 255.0,
+            alpha: 1.0
+        )
     }
 
     /// Create cancel button matching Android style

@@ -363,9 +363,10 @@ class LxApp private constructor(private val context: Context) {
                 return
             }
             val cancelText = options["cancelText"] as? String ?: "Cancel"
+            val itemColor = options["itemColor"] as? String ?: "#007AFF"
 
             activity.runOnUiThread {
-                LxAppActionSheet.showActionSheet(activity, itemList, cancelText, callbackId)
+                LxAppActionSheet.showActionSheet(activity, itemList, cancelText, itemColor, callbackId)
             }
         }
 

@@ -34,18 +34,18 @@ public class LxAppPicker {
     public static func showPicker(options: PickerOptions, callback_id: UInt64) {
         let columns = options.columns_json.toString()
         let cancelText = options.cancel_text.toString()
+        let cancelButtonColor = options.cancel_button_color.toString()
+        let cancelTextColor = options.cancel_text_color.toString()
         let confirmText = options.confirm_text.toString()
-        let textColor = options.text_color.toString()
-        let cancelButtonColor = options.cancel_color.toString()
-        let confirmButtonColor = options.confirm_color.toString()
+        let confirmButtonColor = options.confirm_button_color.toString()
         let confirmTextColor = options.confirm_text_color.toString()
 
         Task { @MainActor in
             showPicker(
                 columns: columns,
                 cancelText: cancelText,
-                textColor: textColor,
                 cancelButtonColor: cancelButtonColor,
+                cancelTextColor: cancelTextColor,
                 confirmText: confirmText,
                 confirmButtonColor: confirmButtonColor,
                 confirmTextColor: confirmTextColor,
@@ -58,8 +58,8 @@ public class LxAppPicker {
     public static func showPicker(
         columns: String,
         cancelText: String,
-        textColor: String,
         cancelButtonColor: String,
+        cancelTextColor: String,
         confirmText: String,
         confirmButtonColor: String,
         confirmTextColor: String,
@@ -68,8 +68,8 @@ public class LxAppPicker {
         guard let configuration = PickerConfiguration.parse(
             columns: columns,
             cancelText: cancelText,
-            textColor: textColor,
             cancelButtonColor: cancelButtonColor,
+            cancelTextColor: cancelTextColor,
             confirmText: confirmText,
             confirmButtonColor: confirmButtonColor,
             confirmTextColor: confirmTextColor
@@ -196,7 +196,7 @@ extension LxAppPicker {
         let cancelButton = UIButton(type: .system)
         cancelButton.setTitle(configuration.cancelText, for: .normal)
         cancelButton.backgroundColor = resolveColor(configuration.cancelButtonColor, fallback: UIColor.systemGray5)
-        cancelButton.setTitleColor(resolveColor(configuration.textColor, fallback: UIColor.label), for: .normal)
+        cancelButton.setTitleColor(resolveColor(configuration.cancelTextColor, fallback: UIColor.label), for: .normal)
         cancelButton.titleLabel?.font = UIFont.systemFont(ofSize: 17)
         cancelButton.layer.cornerRadius = 8
         cancelButton.translatesAutoresizingMaskIntoConstraints = false
@@ -389,8 +389,8 @@ internal class SimplePickerData: NSObject, UIPickerViewDataSource, UIPickerViewD
         let label = view as? UILabel ?? UILabel()
         label.text = configuration.columns[component][row]
         label.textAlignment = .center
-        label.font = UIFont.systemFont(ofSize: 16, weight: .medium)
-        label.textColor = LxAppPicker.resolveColor(configuration.textColor, fallback: UIColor.label)
+        label.font = UIFont.systemFont(ofSize: 16, weight: .regular)
+        label.textColor = UIColor(red: 0.2, green: 0.2, blue: 0.2, alpha: 1.0)
         label.backgroundColor = UIColor.clear
         label.numberOfLines = 1
 
@@ -441,8 +441,8 @@ internal class SimplePickerData: NSObject, UIPickerViewDataSource, UIPickerViewD
                 let newConfiguration = PickerConfiguration(
                     columns: mutableColumns,
                     cancelText: configuration.cancelText,
-                    textColor: configuration.textColor,
                     cancelButtonColor: configuration.cancelButtonColor,
+                    cancelTextColor: configuration.cancelTextColor,
                     confirmText: configuration.confirmText,
                     confirmButtonColor: configuration.confirmButtonColor,
                     confirmTextColor: configuration.confirmTextColor,
@@ -468,8 +468,8 @@ internal class SimplePickerData: NSObject, UIPickerViewDataSource, UIPickerViewD
 internal struct PickerConfiguration {
     let columns: [[String]]
     let cancelText: String
-    let textColor: String
     let cancelButtonColor: String
+    let cancelTextColor: String
     let confirmText: String
     let confirmButtonColor: String
     let confirmTextColor: String
@@ -479,8 +479,8 @@ internal struct PickerConfiguration {
     static func parse(
         columns: String,
         cancelText: String,
-        textColor: String,
         cancelButtonColor: String,
+        cancelTextColor: String,
         confirmText: String,
         confirmButtonColor: String,
         confirmTextColor: String
@@ -516,8 +516,8 @@ internal struct PickerConfiguration {
         return PickerConfiguration(
             columns: parsedColumns,
             cancelText: cancelText,
-            textColor: textColor,
             cancelButtonColor: cancelButtonColor,
+            cancelTextColor: cancelTextColor,
             confirmText: confirmText,
             confirmButtonColor: confirmButtonColor,
             confirmTextColor: confirmTextColor,
@@ -558,7 +558,6 @@ extension LxAppPicker {
             let scrollPicker = createCustomScrollPicker(
                 items: columnItems,
                 columnIndex: columnIndex,
-                textColorHex: configuration.textColor,
                 callbackID: callbackID
             )
             stackView.addArrangedSubview(scrollPicker)
@@ -569,7 +568,7 @@ extension LxAppPicker {
 
     /// Create individual scroll picker for a column
     @MainActor
-    internal static func createCustomScrollPicker(items: [String], columnIndex: Int, textColorHex: String, callbackID: UInt64) -> UIView {
+    internal static func createCustomScrollPicker(items: [String], columnIndex: Int, callbackID: UInt64) -> UIView {
         let container = UIView()
         container.backgroundColor = UIColor.clear
         container.tag = 100 + columnIndex // mark column index
@@ -605,8 +604,8 @@ extension LxAppPicker {
             let label = UILabel()
             label.text = item
             label.textAlignment = .center
-            label.font = UIFont.systemFont(ofSize: 18, weight: .medium)
-            label.textColor = resolveColor(textColorHex, fallback: UIColor.label)
+            label.font = UIFont.systemFont(ofSize: 18, weight: .regular)
+            label.textColor = UIColor(red: 0.2, green: 0.2, blue: 0.2, alpha: 1.0)
             label.backgroundColor = UIColor.clear
             label.translatesAutoresizingMaskIntoConstraints = false
 
@@ -718,8 +717,8 @@ extension LxAppPicker {
             pickerData.configuration = PickerConfiguration(
                 columns: cols,
                 cancelText: pickerData.configuration.cancelText,
-                textColor: pickerData.configuration.textColor,
                 cancelButtonColor: pickerData.configuration.cancelButtonColor,
+                cancelTextColor: pickerData.configuration.cancelTextColor,
                 confirmText: pickerData.configuration.confirmText,
                 confirmButtonColor: pickerData.configuration.confirmButtonColor,
                 confirmTextColor: pickerData.configuration.confirmTextColor,
@@ -733,7 +732,6 @@ extension LxAppPicker {
                 let newSecondView = createCustomScrollPicker(
                     items: newSecond,
                     columnIndex: 1,
-                    textColorHex: pickerData.configuration.textColor,
                     callbackID: pickerData.callbackID
                 )
                 stack.insertArrangedSubview(newSecondView, at: 1)

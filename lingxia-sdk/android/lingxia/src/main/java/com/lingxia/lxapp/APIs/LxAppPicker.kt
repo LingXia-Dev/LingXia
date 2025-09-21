@@ -603,8 +603,8 @@ object LxAppPicker {
             textView?.let {
                 val itemIndex = i - 1 // Subtract top blank view
                 if (itemIndex == selectedIndex) {
-                    // Selected item: dark color, slightly larger font
-                    it.setTextColor(Color.parseColor("#000000"))
+                    // Selected item: soft dark color, slightly larger font
+                    it.setTextColor(Color.parseColor("#333333"))
                     it.textSize = 20f
                     it.alpha = 1.0f
                 } else {

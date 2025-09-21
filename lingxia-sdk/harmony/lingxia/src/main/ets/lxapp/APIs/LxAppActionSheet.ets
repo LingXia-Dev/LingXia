@@ -7,6 +7,7 @@ import { onCallback } from 'liblingxia.so';
 export interface ActionSheetConfig {
   options: string[];
   cancelText: string;
+  itemColor: string;
 }
 
 /**
@@ -29,12 +30,14 @@ export class LxAppActionSheet {
    * Show ActionSheet
    * @param options - Array of option strings
    * @param cancelText - Cancel button text
+   * @param itemColor - Color for option items
    * @param callbackId - Callback ID for result
    */
-  public static showActionSheet(options: string[], cancelText: string, callbackId: string): void {
+  public static showActionSheet(options: string[], cancelText: string, itemColor: string, callbackId: string): void {
     const config: ActionSheetConfig = {
       options: options,
-      cancelText: cancelText
+      cancelText: cancelText,
+      itemColor: itemColor
     };
 
     if (LxAppActionSheet.actionSheetManagerRef) {
@@ -94,7 +97,7 @@ export struct ActionSheetManager {
           ForEach(this.config?.options || [], (option: string, index: number) => {
             Text(option)
               .fontSize(18)
-              .fontColor('#000000')
+              .fontColor(this.config?.itemColor || '#007AFF')
               .textAlign(TextAlign.Center)
               .width('100%')
               .height(56)

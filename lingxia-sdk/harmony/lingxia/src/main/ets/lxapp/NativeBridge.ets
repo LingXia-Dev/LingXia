@@ -151,12 +151,12 @@ class NativeBridge {
     });
 
     // ActionSheet APIs
-    this.register('showActionSheet', (options: string, cancelText: string, callbackId: string): void => {
+    this.register('showActionSheet', (options: string, cancelText: string, itemColor: string, callbackId: string): void => {
       try {
         // Parse options from JSON string
         const optionsArray: string[] = JSON.parse(options);
 
-        LxAppActionSheet.showActionSheet(optionsArray, cancelText, callbackId);
+        LxAppActionSheet.showActionSheet(optionsArray, cancelText, itemColor, callbackId);
       } catch (error) {
         hilog.error(DOMAIN, TAG, `Error showing action sheet: ${error}`);
       }
