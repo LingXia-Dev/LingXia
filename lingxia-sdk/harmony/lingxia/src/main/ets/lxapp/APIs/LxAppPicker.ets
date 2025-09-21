@@ -355,6 +355,14 @@ export struct PickerManager {
           .defaultPickerItemHeight(40)
           .canLoop(false)
           .width('100%')
+          .selectedTextStyle({
+            color: '#333333',
+            font: { size: 18, weight: FontWeight.Regular }
+          })
+          .disappearTextStyle({
+            color: '#999999',
+            font: { size: 16, weight: FontWeight.Regular }
+          })
       }
 
       // Multi column picker
@@ -380,6 +388,14 @@ export struct PickerManager {
               .canLoop(false)
               .layoutWeight(1)
               .padding({ left: 10, right: 10 })
+              .selectedTextStyle({
+                color: '#333333',
+                font: { size: 18, weight: FontWeight.Regular }
+              })
+              .disappearTextStyle({
+                color: '#999999',
+                font: { size: 16, weight: FontWeight.Regular }
+              })
           }
 
           // Second column (with refresh key for cascading)
@@ -398,6 +414,14 @@ export struct PickerManager {
               .layoutWeight(1)
               .padding({ left: 10, right: 10 })
               .key(`second-picker-${this.refreshKey}`) // Force refresh for cascading
+              .selectedTextStyle({
+                color: '#333333',
+                font: { size: 18, weight: FontWeight.Regular }
+              })
+              .disappearTextStyle({
+                color: '#999999',
+                font: { size: 16, weight: FontWeight.Regular }
+              })
           }
         }
         .width('100%')
