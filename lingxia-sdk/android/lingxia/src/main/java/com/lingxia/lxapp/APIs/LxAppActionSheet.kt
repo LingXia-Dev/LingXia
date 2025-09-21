@@ -10,6 +10,7 @@ import android.view.ViewGroup
 import android.widget.*
 import com.lingxia.lxapp.NativeApi
 import org.json.JSONObject
+import android.graphics.drawable.GradientDrawable
 
 /**
  * LingXia ActionSheet implementation for Android
@@ -76,7 +77,6 @@ internal object LxAppActionSheet {
 
         val actionSheetContent = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.WHITE)
 
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
@@ -84,6 +84,8 @@ internal object LxAppActionSheet {
             ).apply {
                 gravity = Gravity.BOTTOM
             }
+
+            background = createActionSheetBackground(context)
         }
 
         // Add option buttons
@@ -175,6 +177,16 @@ internal object LxAppActionSheet {
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 1
             )
+        }
+    }
+
+    private fun createActionSheetBackground(context: Context): GradientDrawable {
+        val density = context.resources.displayMetrics.density
+        val radius = 16f * density
+        return GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            setColor(Color.WHITE)
+            cornerRadii = floatArrayOf(radius, radius, radius, radius, 0f, 0f, 0f, 0f)
         }
     }
 
