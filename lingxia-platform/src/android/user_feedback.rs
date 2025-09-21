@@ -163,6 +163,7 @@ impl UserFeedback for Platform {
         &self,
         options: Vec<String>,
         cancel_text: String,
+        item_color: String,
         callback_id: u64,
     ) -> Result<(), PlatformError> {
         match || -> Result<(), Box<dyn std::error::Error>> {
@@ -211,6 +212,19 @@ impl UserFeedback for Platform {
                 &[
                     JValue::Object(&cancel_text_key.into()),
                     JValue::Object(&cancel_text_value.into()),
+                ],
+            )?;
+
+            // Put item color
+            let item_color_key = env.new_string("itemColor")?;
+            let item_color_value = env.new_string(&item_color)?;
+            env.call_method(
+                &hashmap,
+                "put",
+                "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;",
+                &[
+                    JValue::Object(&item_color_key.into()),
+                    JValue::Object(&item_color_value.into()),
                 ],
             )?;
 

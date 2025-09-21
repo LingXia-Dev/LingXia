@@ -50,12 +50,14 @@ impl UserFeedback for Platform {
         &self,
         options: Vec<String>,
         cancel_text: String,
+        item_color: String,
         callback_id: u64,
     ) -> Result<(), PlatformError> {
         // Convert our options to the FFI ActionSheetOptions
         let ffi_options = ffi::ActionSheetOptions {
             options,
             cancel_text,
+            item_color,
         };
 
         // Call the Swift FFI function with callback ID
@@ -103,11 +105,11 @@ impl UserFeedback for Platform {
         // Convert our options to the FFI PickerOptions
         let ffi_options = ffi::PickerOptions {
             columns_json,
-            text_color: cancel_text_color,
             cancel_text,
-            cancel_color: cancel_button_color,
+            cancel_button_color,
+            cancel_text_color,
             confirm_text,
-            confirm_color: confirm_button_color,
+            confirm_button_color,
             confirm_text_color,
         };
 

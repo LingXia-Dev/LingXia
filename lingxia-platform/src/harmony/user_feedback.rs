@@ -65,6 +65,7 @@ impl UserFeedback for Platform {
         &self,
         options: Vec<String>,
         cancel_text: String,
+        item_color: String,
         callback_id: u64,
     ) -> Result<(), PlatformError> {
         // Convert options to JSON string
@@ -74,7 +75,12 @@ impl UserFeedback for Platform {
         // Call ArkTS showActionSheet function via TSFN with individual parameters
         lingxia_webview::tsfn::call_arkts(
             "showActionSheet",
-            &[&options_json, &cancel_text, &callback_id.to_string()],
+            &[
+                &options_json,
+                &cancel_text,
+                &item_color,
+                &callback_id.to_string(),
+            ],
         )
         .map_err(|e| PlatformError::Platform(format!("Failed to show action sheet: {}", e)))?;
 

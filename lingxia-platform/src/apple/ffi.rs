@@ -43,6 +43,7 @@ mod bridge {
     pub struct ActionSheetOptions {
         pub options: Vec<String>,
         pub cancel_text: String,
+        pub item_color: String,
     }
 
     // Modal result for Swift
@@ -56,11 +57,11 @@ mod bridge {
     #[swift_bridge(swift_repr = "struct")]
     pub struct PickerOptions {
         pub columns_json: String,
-        pub text_color: String,
         pub cancel_text: String,
-        pub cancel_color: String,
+        pub cancel_button_color: String,
+        pub cancel_text_color: String,
         pub confirm_text: String,
-        pub confirm_color: String,
+        pub confirm_button_color: String,
         pub confirm_text_color: String,
     }
 

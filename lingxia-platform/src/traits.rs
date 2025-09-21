@@ -213,6 +213,7 @@ pub trait UserFeedback: Send + Sync + 'static {
     /// # Arguments
     /// * `options` - List of option strings to display
     /// * `cancel_text` - Text for the cancel button
+    /// * `item_color` - Color for the option items (hex format, e.g., "#007AFF")
     /// * `callback_id` - Unique identifier for the callback
     ///
     /// # Behavior
@@ -231,6 +232,7 @@ pub trait UserFeedback: Send + Sync + 'static {
         &self,
         options: Vec<String>,
         cancel_text: String,
+        item_color: String,
         callback_id: u64,
     ) -> Result<(), PlatformError>;
 
