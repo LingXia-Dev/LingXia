@@ -7,14 +7,25 @@ export default function UIPage() {
           showToastWithParams, hideToast, showModalWithParams, clearModalResult,
           setNavigationBarTitle, setNavigationBarColor,
           showTabBarRedDot, hideTabBarRedDot, setTabBarBadge, removeTabBarBadge,
-          showTabBar, hideTabBar, setTabBarStyle, setTabBarItem } = useLingXia();
-  const { currentType = 'navigation', pageStack = [], modalResult = null } = data;
+          showTabBar, hideTabBar, setTabBarStyle, setTabBarItem,
+          chooseToastIcon, chooseToastPosition } = useLingXia();
+  const { currentType = 'navigation', pageStack = [], modalResult = null,
+          toastIcon = 'success', toastIconLabel = 'Success', toastIconOptions = [],
+          toastPosition = 'center', toastPositionLabel = 'Center', toastPositionOptions = [] } = data;
+
+  const toastIconDisplay = React.useMemo(() => {
+    const match = toastIconOptions.find((option) => option.value === toastIcon);
+    return match?.label || toastIconLabel || toastIcon || 'Select icon';
+  }, [toastIconOptions, toastIcon, toastIconLabel]);
+
+  const toastPositionDisplay = React.useMemo(() => {
+    const match = toastPositionOptions.find((option) => option.value === toastPosition);
+    return match?.label || toastPositionLabel || toastPosition || 'Select position';
+  }, [toastPositionOptions, toastPosition, toastPositionLabel]);
 
   // Local state for toast parameters
   const [toastTitle, setToastTitle] = React.useState('Hello Toast!');
-  const [toastIcon, setToastIcon] = React.useState('success');
   const [toastDuration, setToastDuration] = React.useState(2000);
-  const [toastPosition, setToastPosition] = React.useState('center');
   const [toastMask, setToastMask] = React.useState(false);
 
   // Local state for modal parameters
@@ -98,16 +109,14 @@ export default function UIPage() {
                 {/* Icon Selection */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Icon</label>
-                  <select
-                    value={toastIcon}
-                    onChange={(e) => setToastIcon(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  <button
+                    type="button"
+                    onClick={chooseToastIcon}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md flex items-center justify-between text-left text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="success">Success</option>
-                    <option value="error">Error</option>
-                    <option value="loading">Loading</option>
-                    <option value="none">None</option>
-                  </select>
+                    <span>{toastIconDisplay}</span>
+                    <span className="text-xs text-blue-500">Change</span>
+                  </button>
                 </div>
 
                 {/* Duration Input */}
@@ -127,15 +136,14 @@ export default function UIPage() {
                 {/* Position Selection */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Position</label>
-                  <select
-                    value={toastPosition}
-                    onChange={(e) => setToastPosition(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  <button
+                    type="button"
+                    onClick={chooseToastPosition}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md flex items-center justify-between text-left text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="top">Top</option>
-                    <option value="center">Center</option>
-                    <option value="bottom">Bottom</option>
-                  </select>
+                    <span>{toastPositionDisplay}</span>
+                    <span className="text-xs text-blue-500">Change</span>
+                  </button>
                 </div>
 
                 {/* Mask Checkbox */}

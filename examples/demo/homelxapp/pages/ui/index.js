@@ -4,7 +4,22 @@ Page({
   data: {
     currentType: '',
     pageStack: [],
-    modalResult: null
+    modalResult: null,
+    toastIcon: 'success',
+    toastIconLabel: 'Success',
+    toastIconOptions: [
+      { label: 'Success', value: 'success' },
+      { label: 'Error', value: 'error' },
+      { label: 'Loading', value: 'loading' },
+      { label: 'None', value: 'none' }
+    ],
+    toastPosition: 'center',
+    toastPositionLabel: 'Center',
+    toastPositionOptions: [
+      { label: 'Top', value: 'top' },
+      { label: 'Center', value: 'center' },
+      { label: 'Bottom', value: 'bottom' }
+    ]
   },
 
   onLoad: async function (options) {
@@ -73,12 +88,64 @@ Page({
 
   // Show toast with custom parameters
   showToastWithParams: function (params) {
+    const icon = params.icon || this.data.toastIcon || 'success';
+    const position = params.position || this.data.toastPosition || 'center';
     lx.showToast({
       title: params.title || 'Hello Toast!',
-      icon: params.icon || 'success',
+      icon,
       duration: params.duration || 2000,
-      position: params.position || 'center',
+      position,
       mask: params.mask || false
+    });
+  },
+
+  // Choose toast icon via action sheet
+  chooseToastIcon: function () {
+    const options = this.data.toastIconOptions || [];
+    if (!options.length) {
+      return;
+    }
+
+    lx.showActionSheet({
+      itemList: options.map(option => option.label),
+      itemColor: '#007AFF'
+    }).then((result) => {
+      if (typeof result.tapIndex !== 'number' || result.tapIndex < 0 || result.tapIndex >= options.length) {
+        return null;
+      }
+
+      const selected = options[result.tapIndex];
+      return this.setData({
+        toastIcon: selected.value,
+        toastIconLabel: selected.label
+      });
+    }).catch((error) => {
+      console.log('chooseToastIcon cancelled or failed:', error);
+    });
+  },
+
+  // Choose toast position via action sheet
+  chooseToastPosition: function () {
+    const options = this.data.toastPositionOptions || [];
+    if (!options.length) {
+      return;
+    }
+
+    lx.showActionSheet({
+      itemList: options.map(option => option.label),
+      itemColor: '#007AFF'
+    }).then((result) => {
+      if (typeof result.tapIndex !== 'number' || result.tapIndex < 0 || result.tapIndex >= options.length) {
+        return null;
+      }
+
+      const selected = options[result.tapIndex];
+      return this.setData({
+        toastPosition: selected.value,
+        toastPositionLabel: selected.label
+      });
+    }).catch((error) => {
+      console.log('chooseToastPosition cancelled or failed:', error);
     });
   },
 
