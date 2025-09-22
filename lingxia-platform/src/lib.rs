@@ -18,6 +18,14 @@ pub struct DeviceInfo {
     pub system: String,
 }
 
+/// Screen information
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ScreenInfo {
+    pub width: f64,
+    pub height: f64,
+    pub scale: f64,
+}
+
 mod traits;
 
 #[cfg(target_os = "android")]
@@ -29,7 +37,7 @@ mod apple;
 #[cfg(target_env = "ohos")]
 mod harmony;
 
-// Export Platform type for each platform
+// Export Platform and Device types for each platform
 #[cfg(target_os = "android")]
 pub use android::{Platform, init_lxapp_class};
 

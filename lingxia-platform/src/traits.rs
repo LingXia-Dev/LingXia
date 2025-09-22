@@ -83,6 +83,45 @@ impl From<i32> for AnimationType {
     }
 }
 
+/// Device capabilities and information
+///
+/// This trait provides access to device-specific information and capabilities
+/// such as device info, screen properties, and brightness control
+pub trait Device: Send + Sync + 'static {
+    /// Get device information
+    ///
+    /// # Returns
+    /// * `DeviceInfo` - Device information including brand, model, and system version
+    fn device_info(&self) -> DeviceInfo;
+
+    /// Get screen information
+    ///
+    /// # Arguments
+    /// * `callback_id` - Callback ID for async result
+    ///
+    /// # Returns
+    /// * `Result<(), PlatformError>` - Success or error, result sent via callback
+    fn screen_info(&self, callback_id: u64) -> Result<(), PlatformError>;
+
+    /// Vibrate the device
+    ///
+    /// # Arguments
+    /// * `long` - true for long vibration, false for short vibration
+    ///
+    /// # Returns
+    /// * `Result<(), PlatformError>` - Success or error
+    fn vibrate(&self, long: bool) -> Result<(), PlatformError>;
+
+    /// Make a phone call
+    ///
+    /// # Arguments
+    /// * `phone_number` - Phone number to call
+    ///
+    /// # Returns
+    /// * `Result<(), PlatformError>` - Success or error
+    fn make_phone_call(&self, phone_number: &str) -> Result<(), PlatformError>;
+}
+
 /// Base platform runtime capabilities
 ///
 /// This trait defines the core capabilities required for the lxapp platform,
@@ -124,11 +163,20 @@ pub trait AppRuntime: Send + Sync + 'static {
     /// * `PathBuf` - Path to the application's cache directory
     fn app_cache_dir(&self) -> PathBuf;
 
-    /// Get device information
+    /// Exit the application
     ///
     /// # Returns
-    /// * `DeviceInfo` - Device information including brand, model, and screen dimensions
-    fn device_info(&self) -> DeviceInfo;
+    /// * `Result<(), PlatformError>` - Success or error
+    fn exit_app(&self) -> Result<(), PlatformError>;
+
+    /// Gets the system's primary locale identifier for language and region.
+    ///
+    /// The locale is returned in BCP 47 format, typically consisting of a language
+    /// code and a country/region code (e.g., "en-US", "zh-CN", "fr-FR").
+    ///
+    /// # Returns
+    /// * `&str` - Locale string (e.g., "en-US", "zh-CN")
+    fn get_system_locale(&self) -> &str;
 
     /// Open a lxapp
     ///
