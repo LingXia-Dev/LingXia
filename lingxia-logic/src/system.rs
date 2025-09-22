@@ -1,45 +1,25 @@
-use lingxia_lxapp::lx::fast_api;
-use lingxia_lxapp::{LxApp, LxAppError, lx};
-use lingxia_platform::{AppRuntime, DeviceInfo};
-use rong::{IntoJSObj, JSContext, JSResult};
-use serde::Serialize;
+use lingxia_lxapp::{LxApp, lx};
+use lingxia_platform::AppRuntime;
+use rong::{IntoJSObj, JSContext, JSFunc, JSResult};
 use std::sync::Arc;
 
-/// Device information
-#[derive(Debug, Clone, IntoJSObj, Serialize)]
-pub struct DevInfoObj {
-    pub brand: String,
-    pub model: String,
-    pub system: String, // Operating system version
+/// AppBase information
+#[derive(Debug, Clone, IntoJSObj)]
+pub struct AppBaseInfo {
+    language: String,
 }
 
-impl From<DeviceInfo> for DevInfoObj {
-    fn from(device_info: DeviceInfo) -> Self {
-        DevInfoObj {
-            brand: device_info.brand,
-            model: device_info.model,
-            system: device_info.system,
-        }
-    }
-}
-
-pub(crate) fn device_info(ctx: JSContext) -> JSResult<DevInfoObj> {
+pub(crate) fn get_system_locale(ctx: JSContext) -> JSResult<AppBaseInfo> {
     let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
-    let device_info = lxapp.runtime.device_info();
-    Ok(device_info.into())
+    let locale = lxapp.runtime.get_system_locale();
+    Ok(AppBaseInfo {
+        language: locale.to_string(),
+    })
 }
-
-fast_api!(GetDeviceInfo, DevInfoObj, |lxapp: Arc<LxApp>| -> Result<
-    DevInfoObj,
-    LxAppError,
-> {
-    Ok(lxapp.runtime.device_info().into())
-});
 
 pub fn init(ctx: &JSContext) -> JSResult<()> {
-    // Register JS function to lx object
-    let js_func = rong::JSFunc::new(ctx, device_info)?;
-    lx::register_js_api(ctx, "getDeviceInfo", js_func)?;
+    let get_app_base_info = JSFunc::new(ctx, get_system_locale)?;
+    lx::register_js_api(ctx, "getAppBaseInfo", get_app_base_info)?;
 
     Ok(())
 }
