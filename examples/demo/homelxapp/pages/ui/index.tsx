@@ -8,7 +8,7 @@ export default function UIPage() {
           setNavigationBarTitle, setNavigationBarColor,
           showTabBarRedDot, hideTabBarRedDot, setTabBarBadge, removeTabBarBadge,
           showTabBar, hideTabBar, setTabBarStyle, setTabBarItem,
-          chooseToastIcon, chooseToastPosition } = useLingXia();
+          chooseToastIcon, chooseToastPosition, showDemoActionSheet } = useLingXia();
   const { currentType = 'navigation', pageStack = [], modalResult = null,
           toastIcon = 'success', toastIconLabel = 'Success', toastIconOptions = [],
           toastPosition = 'center', toastPositionLabel = 'Center', toastPositionOptions = [] } = data;
@@ -184,6 +184,18 @@ export default function UIPage() {
               </div>
             </div>
           </>
+        )}
+
+        {/* ActionSheet Demo Section */}
+        {currentType === 'actionsheet' && (
+          <div className="mx-1 mt-8 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div
+              className="px-4 py-10 text-base text-blue-600 font-medium text-center cursor-pointer hover:bg-blue-50"
+              onClick={showDemoActionSheet}
+            >
+              Show Action Sheet
+            </div>
+          </div>
         )}
 
         {/* Modal Demo Section */}

@@ -153,6 +153,25 @@ Page({
     lx.hideToast();
   },
 
+  // Demo action sheet with mixed language options
+  showDemoActionSheet: async function () {
+    const options = ['View Details', '查看日志', 'Send Email', '删除'];
+    try {
+      const { tapIndex } = await lx.showActionSheet({
+        itemList: options,
+        itemColor: '#007AFF'
+      });
+
+      lx.showToast({
+        title: `Selected: ${options[tapIndex]}`,
+        icon: 'success',
+        duration: 2000
+      });
+    } catch (error) {
+      console.log('Action sheet dismissed or failed:', error);
+    }
+  },
+
   // Show modal with custom parameters
   showModalWithParams: async function (params) {
     try {
