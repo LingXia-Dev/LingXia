@@ -305,21 +305,23 @@ public class LxAppViewController: UIViewController, ObservableObject {
     }
 
     private func updateTabBar(for appId: String, path: String) {
-        // If TabBar doesn't exist, create it.
-        // The `initialize` function will call `refreshLayout` and set the initial state.
+        // Tear down the existing tab bar if it belongs to a different mini app
+        if let tabBar = currentTabBar, tabBar.appId != appId {
+            tabBar.removeFromSuperview()
+            currentTabBar = nil
+        }
+
+        // If TabBar doesn't exist, create it with fresh config.
         if currentTabBar == nil {
-            // We need a config to create the tab bar, but if it's not available,
-            // we can't do anything. The tab bar will be created on a subsequent
-            // navigation when the config is ready.
             guard let tabConfig = lingxia.getTabBar(appId) else {
                 return
             }
             currentTabBar = createTabBar(config: tabConfig, appId: appId)
-        } else {
-            // If TabBar exists, tell it to refresh its state from Rust.
-            // This will handle visibility and content for the new page.
-            currentTabBar?.refreshLayout()
+            return
         }
+
+        // Existing tab bar already matches the current mini app; refresh its state from Rust.
+        currentTabBar?.refreshLayout()
     }
 
     private func hideCurrentLxApp() {
