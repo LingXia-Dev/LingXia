@@ -1,5 +1,5 @@
 use crate::error::PlatformError;
-use crate::{AppRuntime, AssetFileEntry, DeviceInfo};
+use crate::{AppRuntime, AssetFileEntry};
 use jni::objects::{GlobalRef, JClass, JObject, JValue};
 use jni::sys::jobject;
 use lingxia_webview::get_env;
@@ -15,7 +15,7 @@ pub struct Platform {
     java_asset_manager: GlobalRef,
     data_dir: String,
     cache_dir: String,
-    device_info: DeviceInfo,
+    locale: String,
 }
 
 unsafe impl Send for Platform {}
@@ -218,6 +218,7 @@ impl Platform {
         java_asset_manager_obj: jobject,
         data_dir: String,
         cache_dir: String,
+        locale: String,
     ) -> Result<Self, String> {
         // Get the native asset manager pointer from the Java AssetManager
         let asset_manager_ptr =
@@ -232,40 +233,12 @@ impl Platform {
             .new_global_ref(unsafe { JObject::from_raw(java_asset_manager_obj) })
             .map_err(|e| format!("Failed to create global reference: {:?}", e))?;
 
-        // Get device information using getprop commands
-        let device_brand = std::process::Command::new("getprop")
-            .arg("ro.product.brand")
-            .output()
-            .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
-            .unwrap_or_else(|_| "Unknown".to_string());
-
-        let device_model = std::process::Command::new("getprop")
-            .arg("ro.product.model")
-            .output()
-            .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
-            .unwrap_or_else(|_| "Unknown".to_string());
-
-        let system = std::process::Command::new("getprop")
-            .arg("ro.build.version.release")
-            .output()
-            .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
-            .unwrap_or_else(|_| "Unknown".to_string());
-
-        // Combine OS name with version
-        let system = format!("{} {}", "Android", system);
-
-        let device_info = DeviceInfo {
-            brand: device_brand,
-            model: device_model,
-            system,
-        };
-
         Ok(Platform {
             asset_manager: asset_manager_ptr,
             java_asset_manager,
             data_dir,
             cache_dir,
-            device_info,
+            locale,
         })
     }
 }
@@ -314,9 +287,24 @@ impl AppRuntime for Platform {
         PathBuf::from(&self.cache_dir)
     }
 
-    /// Get device information
-    fn device_info(&self) -> DeviceInfo {
-        self.device_info.clone()
+    fn exit_app(&self) -> Result<(), PlatformError> {
+        match || -> Result<(), Box<dyn std::error::Error>> {
+            let mut env = get_env()?;
+            let lxapp_class: &JClass = super::get_lxapp_class()?.as_obj().into();
+
+            env.call_static_method(lxapp_class, "exitApp", "()V", &[])?;
+            Ok(())
+        }() {
+            Ok(_) => Ok(()),
+            Err(e) => Err(PlatformError::Platform(format!(
+                "Failed to exit app: {}",
+                e
+            ))),
+        }
+    }
+
+    fn get_system_locale(&self) -> &str {
+        &self.locale
     }
 
     fn open_lxapp(&self, appid: String, path: String) -> Result<(), PlatformError> {

@@ -8,6 +8,9 @@ pub enum PlatformError {
 
     #[error("Asset not found: {0}")]
     AssetNotFound(String),
+
+    #[error("Invalid parameter: {0}")]
+    InvalidParameter(String),
 }
 
 /// Result type for platform operations

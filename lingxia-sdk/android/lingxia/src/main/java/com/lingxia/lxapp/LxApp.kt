@@ -82,7 +82,8 @@ class LxApp private constructor(private val context: Context) {
             val initResultString = NativeApi.onLxAppInited(
                 appContext.filesDir.absolutePath,
                 appContext.cacheDir.absolutePath,
-                appContext.assets
+                appContext.assets,
+                LxApp.getLocale()
             )
 
             if (initResultString != null) {
@@ -100,6 +101,109 @@ class LxApp private constructor(private val context: Context) {
         @JvmStatic
         fun enableWebViewDebugging() {
             com.lingxia.lxapp.WebView.enableDebugging()
+        }
+
+        @JvmStatic
+        fun getScreenInfo(callbackId: Long) {
+            try {
+                val activity = currentActivity ?: throw IllegalStateException("No current activity")
+                val displayMetrics = activity.resources.displayMetrics
+
+                // Convert physical pixels to logical pixels (dp) and round to integers
+                val widthDp = kotlin.math.round(displayMetrics.widthPixels / displayMetrics.density).toInt()
+                val heightDp = kotlin.math.round(displayMetrics.heightPixels / displayMetrics.density).toInt()
+
+                // Round scale to 1 decimal place for consistency
+                val scale = kotlin.math.round(displayMetrics.density * 10.0) / 10.0
+
+                val screenInfo = org.json.JSONObject().apply {
+                    put("width", widthDp)
+                    put("height", heightDp)
+                    put("scale", scale)
+                }
+
+                val success = NativeApi.onCallback(callbackId, true, screenInfo.toString())
+                if (!success) {
+                    Log.e(TAG, "Failed to send screen info callback for ID: $callbackId")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to get screen info", e)
+                // Send error via callback
+                val errorData = org.json.JSONObject().apply {
+                    put("width", 0)
+                    put("height", 0)
+                    put("scale", 1.0)
+                }
+                NativeApi.onCallback(callbackId, false, errorData.toString())
+            }
+        }
+
+        @JvmStatic
+        fun vibrate(longVibration: Boolean) {
+            try {
+                val activity = currentActivity ?: throw IllegalStateException("No current activity")
+
+                val vibrator = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                    // Use VibratorManager for API 31+
+                    val vibratorManager = activity.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as android.os.VibratorManager
+                    vibratorManager.defaultVibrator
+                } else {
+                    // Use legacy Vibrator service for older versions
+                    @Suppress("DEPRECATION")
+                    activity.getSystemService(Context.VIBRATOR_SERVICE) as android.os.Vibrator
+                }
+
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    val duration = if (longVibration) 400L else 15L
+                    val effect = android.os.VibrationEffect.createOneShot(duration, android.os.VibrationEffect.DEFAULT_AMPLITUDE)
+                    vibrator.vibrate(effect)
+                } else {
+                    @Suppress("DEPRECATION")
+                    val duration = if (longVibration) 400L else 15L
+                    vibrator.vibrate(duration)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to vibrate", e)
+                throw e
+            }
+        }
+
+        @JvmStatic
+        fun getLocale(): String {
+            return try {
+                val locale = java.util.Locale.getDefault()
+                "${locale.language}-${locale.country}"
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to get system locale, using default", e)
+                "en-US"
+            }
+        }
+
+        @JvmStatic
+        fun makePhoneCall(phoneNumber: String) {
+            try {
+                val activity = currentActivity ?: throw IllegalStateException("No current activity")
+                val intent = Intent(Intent.ACTION_DIAL).apply {
+                    data = android.net.Uri.parse("tel:$phoneNumber")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                activity.startActivity(intent)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to make phone call", e)
+                throw e
+            }
+        }
+
+        @JvmStatic
+        fun exitApp() {
+            try {
+                val activity = currentActivity ?: throw IllegalStateException("No current activity")
+                activity.finishAffinity()
+                android.os.Process.killProcess(android.os.Process.myPid())
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to exit app", e)
+                throw e
+            }
         }
 
         @JvmStatic
@@ -358,6 +462,7 @@ class LxApp private constructor(private val context: Context) {
                 return
             }
             val callbackId = options["callbackId"] as? Long ?: 0L
+            @Suppress("UNCHECKED_CAST")
             val itemList = options["itemList"] as? List<String> ?: run {
                 Log.e("LingXia.LxApp", "showActionSheet: itemList is null or invalid")
                 return

@@ -39,13 +39,15 @@ object NativeApi {
      * @param dataDir Application data directory path
      * @param cacheDir Application cache directory path
      * @param assetManager Android AssetManager for accessing bundled assets
+     * @param locale System locale (e.g., "en-US", "zh-CN")
      * @return Home app ID if successful, null otherwise
      */
     @JvmStatic
     external fun onLxAppInited(
         dataDir: String,
         cacheDir: String,
-        assetManager: AssetManager
+        assetManager: AssetManager,
+        locale: String
     ): String?
 
     /**

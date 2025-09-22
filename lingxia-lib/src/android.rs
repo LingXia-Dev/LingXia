@@ -79,14 +79,17 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppInited(
     data_dir: JString,
     cache_dir: JString,
     asset_manager: JObject,
+    locale: JString,
 ) -> jni::sys::jstring {
     let data_dir: String = env.get_string(&data_dir).unwrap().into();
     let cache_dir: String = env.get_string(&cache_dir).unwrap().into();
+    let locale: String = env.get_string(&locale).unwrap().into();
 
     log::info!(
-        "Initializing LxApp with data_dir: {}, cache_dir: {}",
+        "Initializing LxApp with data_dir: {}, cache_dir: {}, locale: {}",
         data_dir,
         cache_dir,
+        locale
     );
 
     let app = match lingxia_platform::Platform::from_java(
@@ -94,6 +97,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppInited(
         asset_manager.as_raw(),
         data_dir,
         cache_dir,
+        locale,
     ) {
         Ok(app) => app,
         Err(_) => {
