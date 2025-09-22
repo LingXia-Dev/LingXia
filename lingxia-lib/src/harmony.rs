@@ -100,6 +100,7 @@ pub fn lxapp_init(
     #[napi(ts_arg_type = "resourceManager.ResourceManager | null")] resource_manager: Option<
         Object,
     >,
+    locale: String,
 ) -> Option<String> {
     ohos_hilog::init_once(
         Config::default()
@@ -143,9 +144,10 @@ pub fn lxapp_init(
     });
 
     log::info!(
-        "Initializing LxApp with data_dir: {}, cache_dir: {}",
+        "Initializing LxApp with data_dir: {}, cache_dir: {}, locale: {}",
         data_dir,
         cache_dir,
+        locale
     );
 
     // Initialize TSFN
@@ -166,6 +168,7 @@ pub fn lxapp_init(
         cache_dir.to_string(),
         env,
         resource_manager,
+        locale,
     ) {
         Ok(app) => app,
         Err(e) => {

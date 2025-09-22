@@ -1,7 +1,7 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { webview } from '@kit.ArkWeb';
 import { window } from '@kit.ArkUI';
-import { resourceManager } from '@kit.LocalizationKit';
+import { resourceManager, i18n } from '@kit.LocalizationKit';
 import { Want } from '@kit.AbilityKit';
 import common from '@ohos.app.ability.common';
 import { LxAppContainer } from './LxAppContainer';
@@ -95,7 +95,17 @@ export class LxApp {
     webview.WebviewController.setWebDebuggingAccess(true);
 
     hilog.info(DOMAIN, TAG, `Calling lxappInit with callback and file system paths (FIRST AND ONLY TIME)`);
-    const appId: string | null = lxappInit(callbackFunction, dataDir, cacheDir, resourceManager);
+
+    // Get system locale using HarmonyOS i18n API
+    const systemLanguage = i18n.System.getSystemLanguage();
+    const systemRegion = i18n.System.getSystemRegion();
+
+    // Convert HarmonyOS locale format to standard format
+    // HarmonyOS returns "zh-Hans" but we want "zh"
+    const normalizedLanguage = systemLanguage.split('-')[0];
+    const locale = `${normalizedLanguage}-${systemRegion}`;
+
+    const appId: string | null = lxappInit(callbackFunction, dataDir, cacheDir, resourceManager, locale);
 
     if (appId) {
       hilog.info(DOMAIN, TAG, `LxApp initialized successfully with home app: ${appId}`);

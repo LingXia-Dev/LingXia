@@ -1,5 +1,5 @@
 use crate::error::PlatformError;
-use crate::{AppRuntime, AssetFileEntry, DeviceInfo};
+use crate::{AppRuntime, AssetFileEntry};
 use napi_ohos::JsValue;
 use napi_ohos::bindgen_prelude::{Env, Object};
 use ohos_raw_sys::*;
@@ -11,8 +11,8 @@ use std::process::Command;
 pub struct Platform {
     pub data_dir: String,
     pub cache_dir: String,
+    pub locale: String,
     resource_manager: Option<*mut NativeResourceManager>,
-    device_info: DeviceInfo,
     // Store the original napi values for cloning
     env: Option<napi_ohos::sys::napi_env>,
     js_resource_manager: Option<napi_ohos::sys::napi_value>,
@@ -37,8 +37,8 @@ impl Clone for Platform {
         Platform {
             data_dir: self.data_dir.clone(),
             cache_dir: self.cache_dir.clone(),
+            locale: self.locale.clone(),
             resource_manager,
-            device_info: self.device_info.clone(),
             env: self.env,
             js_resource_manager: self.js_resource_manager,
         }
@@ -48,25 +48,6 @@ impl Clone for Platform {
 unsafe impl Send for Platform {}
 unsafe impl Sync for Platform {}
 
-/// Get system parameter using param command
-fn get_system_param(param_name: &str) -> Option<String> {
-    match Command::new("param").arg("get").arg(param_name).output() {
-        Ok(output) => {
-            if output.status.success() {
-                let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                if !result.is_empty() {
-                    Some(result)
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        }
-        Err(_) => None,
-    }
-}
-
 impl Platform {
     /// Create a new Platform instance
     pub fn new(
@@ -74,6 +55,7 @@ impl Platform {
         cache_dir: String,
         env: Env,
         resource_manager: Option<Object>,
+        locale: String,
     ) -> Result<Self, PlatformError> {
         let (resource_manager_ptr, env_raw, js_rm_raw) =
             if let Some(resource_manager) = resource_manager {
@@ -95,29 +77,11 @@ impl Platform {
                 (None, None, None)
             };
 
-        // Get device information using param commands during initialization
-        let brand = get_system_param("const.product.brand").unwrap_or_else(|| "HUAWEI".to_string());
-
-        let model =
-            get_system_param("const.product.model").unwrap_or_else(|| "Unknown".to_string());
-
-        let os_version = get_system_param("const.product.os.dist.version")
-            .unwrap_or_else(|| "Unknown".to_string());
-
-        // Construct system string with HarmonyOS version
-        let system = format!("HarmonyOS {}", os_version);
-
-        let device_info = DeviceInfo {
-            brand,
-            model,
-            system,
-        };
-
         Ok(Platform {
             data_dir,
             cache_dir,
+            locale,
             resource_manager: resource_manager_ptr,
-            device_info,
             env: env_raw,
             js_resource_manager: js_rm_raw,
         })
@@ -298,8 +262,13 @@ impl AppRuntime for Platform {
         PathBuf::from(&self.cache_dir)
     }
 
-    fn device_info(&self) -> DeviceInfo {
-        self.device_info.clone()
+    fn exit_app(&self) -> Result<(), PlatformError> {
+        lingxia_webview::tsfn::call_arkts("exitApp", &[])
+            .map_err(|e| PlatformError::Platform(format!("Failed to exit app: {}", e)))
+    }
+
+    fn get_system_locale(&self) -> &str {
+        &self.locale
     }
 
     fn open_lxapp(&self, appid: String, path: String) -> Result<(), PlatformError> {

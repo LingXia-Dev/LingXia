@@ -93,13 +93,15 @@ declare module 'liblingxia.so' {
    * @param dataDir - Data directory path
    * @param cacheDir - Cache directory path
    * @param resourceManager - HarmonyOS resource manager (optional)
+   * @param locale - System locale (e.g., "zh-CN", "en-US")
    * @returns Home LxApp ID or null if failed
    */
   export function lxappInit(
     callbackFunction: (name: string, ...args: Object[]) => Object | null,
     dataDir: string,
     cacheDir: string,
-    resourceManager: resourceManager.ResourceManager | null
+    resourceManager: resourceManager.ResourceManager | null,
+    locale: string
   ): string | null;
 
   /**

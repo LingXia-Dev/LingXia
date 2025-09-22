@@ -6,6 +6,8 @@ edition = "2024"
 [dependencies]
 thiserror = { workspace = true }
 log = "0.4.27"
+serde = { workspace = true }
+lingxia-messaging = { path = "../lingxia-messaging" }
 
 # Android-specific dependencies (only what's needed for FFI)
 [target.'cfg(target_os = "android")'.dependencies]
@@ -19,6 +21,7 @@ lingxia-webview = { path = "../lingxia-webview" }
 [target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
 objc2 = "0.6"
 objc2-foundation = "0.3"
+dispatch2 = "0.3"
 swift-bridge = "0.1.57"
 log = "0.4.27"
 oslog = "0.2.0"
