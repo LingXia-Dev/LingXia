@@ -208,7 +208,10 @@ public class LxAppCore {
         // Get platform-specific directory configuration
         let directoryConfig = LxAppDirectoryFactory.createDirectoryConfig()
 
-        let initResult = lxappInit(directoryConfig.dataPath, directoryConfig.cachesPath)
+        // Get system locale
+        let locale = Locale.current.identifier
+
+        let initResult = lxappInit(directoryConfig.dataPath, directoryConfig.cachesPath, locale)
         let initResultString = initResult?.toString()
 
         if let homeAppId = initResultString {

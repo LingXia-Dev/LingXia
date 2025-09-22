@@ -52,6 +52,7 @@ let package = Package(
                 .unsafeFlags([macosLibraryPath], .when(platforms: [.macOS])),
                 .linkedFramework("JavaScriptCore"),
                 .linkedFramework("WebKit"),
+                .linkedFramework("AudioToolbox", .when(platforms: [.iOS])),
             ]
         ),
     ]

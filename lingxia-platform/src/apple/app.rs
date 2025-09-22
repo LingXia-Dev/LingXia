@@ -1,48 +1,15 @@
 use super::ffi;
 use crate::error::PlatformError;
-use crate::{AppRuntime, AssetFileEntry, DeviceInfo};
-use std::ffi::CStr;
+use crate::{AppRuntime, AssetFileEntry};
 use std::io::{Cursor, Read};
-use std::mem;
 use std::path::PathBuf;
-
-#[cfg(target_os = "macos")]
-use objc2_foundation::NSProcessInfo;
-
-#[cfg(target_os = "ios")]
-use objc2::{ClassType, extern_class, msg_send, rc::Retained, runtime::NSObject};
-
-#[cfg(target_os = "ios")]
-use objc2_foundation::NSString;
-
-#[cfg(target_os = "ios")]
-extern_class!(
-    #[derive(Debug, PartialEq, Eq, Hash)]
-    #[unsafe(super(NSObject))]
-    pub struct UIDevice;
-);
-
-#[cfg(target_os = "ios")]
-impl UIDevice {
-    pub fn current() -> Retained<Self> {
-        unsafe { msg_send![Self::class(), currentDevice] }
-    }
-
-    #[allow(dead_code)]
-    pub fn model(&self) -> Retained<NSString> {
-        unsafe { msg_send![self, model] }
-    }
-
-    pub fn system_version(&self) -> Retained<NSString> {
-        unsafe { msg_send![self, systemVersion] }
-    }
-}
 
 /// Platform implementation for Apple platforms (iOS/macOS)
 #[derive(Clone)]
 pub struct Platform {
     pub data_dir: String,
     pub cache_dir: String,
+    pub locale: String,
 }
 
 unsafe impl Send for Platform {}
@@ -50,10 +17,11 @@ unsafe impl Sync for Platform {}
 
 impl Platform {
     /// Create a new Platform instance
-    pub fn new(data_dir: String, cache_dir: String) -> Result<Self, PlatformError> {
+    pub fn new(data_dir: String, cache_dir: String, locale: String) -> Result<Self, PlatformError> {
         Ok(Platform {
             data_dir,
             cache_dir,
+            locale,
         })
     }
 }
@@ -85,16 +53,50 @@ impl AppRuntime for Platform {
         Box::new(entries.into_iter())
     }
 
-    fn device_info(&self) -> DeviceInfo {
-        let brand = "Apple".to_string(); // Fixed for Apple devices
-        let model = get_device_model();
-        let system = get_system_version();
+    fn exit_app(&self) -> Result<(), PlatformError> {
+        #[cfg(target_os = "ios")]
+        {
+            use dispatch2::DispatchQueue;
 
-        DeviceInfo {
-            brand,
-            model,
-            system,
+            // Exit app on main thread
+            DispatchQueue::main().exec_async(move || {
+                // Force exit after a short delay to allow cleanup
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                std::process::exit(0);
+            });
+
+            Ok(())
         }
+        #[cfg(target_os = "macos")]
+        {
+            use objc2::rc::Retained;
+            use objc2::{ClassType, extern_class, msg_send};
+            use objc2_foundation::NSObject;
+
+            extern_class!(
+                #[derive(Debug, PartialEq, Eq, Hash)]
+                #[unsafe(super(NSObject))]
+                pub struct NSApplication;
+            );
+
+            impl NSApplication {
+                pub fn shared() -> Retained<Self> {
+                    unsafe { msg_send![Self::class(), sharedApplication] }
+                }
+
+                pub fn terminate(&self, sender: Option<&NSObject>) {
+                    unsafe { msg_send![self, terminate: sender] }
+                }
+            }
+
+            let app = NSApplication::shared();
+            app.terminate(None);
+            Ok(())
+        }
+    }
+
+    fn get_system_locale(&self) -> &str {
+        &self.locale
     }
 
     fn open_lxapp(&self, appid: String, path: String) -> Result<(), PlatformError> {
@@ -182,68 +184,5 @@ impl Platform {
         }
 
         all_files
-    }
-}
-
-/// Get device model using system calls (like Swift version)
-/// Returns device model string like "iPhone14,2" or "MacBookPro18,1"
-fn get_device_model() -> String {
-    // Define utsname structure manually to avoid libc dependency
-    #[repr(C)]
-    struct UtsName {
-        sysname: [i8; 256],
-        nodename: [i8; 256],
-        release: [i8; 256],
-        version: [i8; 256],
-        machine: [i8; 256],
-    }
-
-    unsafe extern "C" {
-        fn uname(buf: *mut UtsName) -> i32;
-    }
-
-    unsafe {
-        let mut system_info: UtsName = mem::zeroed();
-        if uname(&mut system_info) == 0 {
-            // Convert machine field to String (like Swift version)
-            let machine_ptr = system_info.machine.as_ptr();
-            let machine_cstr = CStr::from_ptr(machine_ptr);
-            if let Ok(machine_str) = machine_cstr.to_str() {
-                return machine_str.to_string();
-            }
-        }
-
-        // Fallback if utsname fails
-        #[cfg(target_os = "ios")]
-        {
-            "iPhone".to_string()
-        }
-        #[cfg(target_os = "macos")]
-        {
-            "Mac".to_string()
-        }
-    }
-}
-
-/// Get system version using objc2 bindings
-/// Returns system version string like "iOS 17.0" or "macOS 14.0"
-fn get_system_version() -> String {
-    #[cfg(target_os = "ios")]
-    {
-        let device = UIDevice::current();
-        let version = device.system_version();
-        format!("iOS {}", version.to_string())
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        // Get NSProcessInfo shared instance
-        let process_info = NSProcessInfo::processInfo();
-
-        // Get operating system version (returns NSOperatingSystemVersion struct)
-        let version = process_info.operatingSystemVersion();
-
-        // Format as simple version string (e.g., "macOS 15.5")
-        format!("macOS {}.{}", version.majorVersion, version.minorVersion)
     }
 }

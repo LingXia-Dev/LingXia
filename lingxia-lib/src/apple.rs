@@ -97,7 +97,7 @@ mod bridge {
 
     extern "Rust" {
         #[swift_bridge(swift_name = "lxappInit")]
-        fn lxapp_init(data_dir: &str, cache_dir: &str) -> Option<String>;
+        fn lxapp_init(data_dir: &str, cache_dir: &str, locale: &str) -> Option<String>;
 
         #[swift_bridge(swift_name = "onPageShow")]
         fn on_page_show(appid: &str, path: &str);
@@ -153,7 +153,7 @@ impl From<CoreLxAppInfo> for bridge::LxAppInfo {
 }
 
 /// Initialize the LxApp system for iOS/macOS
-pub fn lxapp_init(data_dir: &str, cache_dir: &str) -> Option<String> {
+pub fn lxapp_init(data_dir: &str, cache_dir: &str, locale: &str) -> Option<String> {
     oslog::OsLogger::new("LingXia.Rust")
         .level_filter(log::LevelFilter::Info)
         .init()
@@ -200,14 +200,17 @@ pub fn lxapp_init(data_dir: &str, cache_dir: &str) -> Option<String> {
         cache_dir
     );
 
-    let platform =
-        match lingxia_platform::Platform::new(data_dir.to_string(), cache_dir.to_string()) {
-            Ok(platform) => platform,
-            Err(e) => {
-                log::error!("Failed to create Platform: {}", e);
-                return None;
-            }
-        };
+    let platform = match lingxia_platform::Platform::new(
+        data_dir.to_string(),
+        cache_dir.to_string(),
+        locale.to_string(),
+    ) {
+        Ok(platform) => platform,
+        Err(e) => {
+            log::error!("Failed to create Platform: {}", e);
+            return None;
+        }
+    };
 
     lingxia_logic::register_logic_runtime();
     lxapp::init(platform)
