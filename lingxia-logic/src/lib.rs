@@ -3,6 +3,7 @@ use rong::{JSContext, JSResult};
 
 mod device;
 mod env;
+mod location;
 mod navigator;
 mod system;
 mod ui;
@@ -13,6 +14,7 @@ impl LxLogicExtension for LxLogicRuntime {
     fn init(&self, ctx: &JSContext) -> JSResult<()> {
         env::init(ctx)?;
         device::init(ctx)?;
+        location::init(ctx)?;
         navigator::init(ctx)?;
         ui::init(ctx)?;
         system::init(ctx)?;
