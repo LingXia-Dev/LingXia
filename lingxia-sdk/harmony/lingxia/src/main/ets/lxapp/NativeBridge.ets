@@ -1,16 +1,12 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { webview } from '@kit.ArkWeb';
 import { common } from '@kit.AbilityKit';
-import { call } from '@kit.TelephonyKit';
-import { vibrator } from '@kit.SensorServiceKit';
-import { display } from '@kit.ArkUI';
-import { i18n } from '@kit.LocalizationKit';
-import liblingxia from 'liblingxia.so';
 import { LxApp } from './LxApp';
 import { LxAppToast, ToastIcon, ToastPosition } from './APIs/LxAppToast';
 import { LxAppModal, ModalResult } from './APIs/LxAppModal';
 import { LxAppActionSheet } from './APIs/LxAppActionSheet';
 import { LxAppPicker } from './APIs/LxAppPicker';
+import { LxAppDevice } from './APIs/LxAppDevice';
 import { LxAppContainer } from './LxAppContainer';
 import {
   createWebViewController,
@@ -21,13 +17,6 @@ import {
   setScrollListenerEnabled
 } from './WebView';
 import { animationTypeFromInt } from './NavigationBar';
-
-// Interface for screen information
-interface ScreenInfo {
-  width: number;
-  height: number;
-  scale: number;
-}
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.NativeBridge';
@@ -234,75 +223,15 @@ class NativeBridge {
     });
 
     this.register('getScreenInfo', (callbackId: string): void => {
-      try {
-        // Use HarmonyOS Display API to get screen information
-        const defaultDisplay = display.getDefaultDisplaySync();
-
-        const screenInfo: ScreenInfo = {
-          width: Math.round(defaultDisplay.width / defaultDisplay.densityPixels),   // Convert to logical pixels
-          height: Math.round(defaultDisplay.height / defaultDisplay.densityPixels), // Convert to logical pixels
-          scale: defaultDisplay.densityPixels    // Pixel density scale
-        };
-
-        hilog.info(DOMAIN, TAG, `Screen info: ${screenInfo.width}x${screenInfo.height}, scale: ${screenInfo.scale}`);
-
-        // Call back to Rust with the result
-        const success: boolean = liblingxia.onCallback(callbackId, true, JSON.stringify(screenInfo));
-        if (!success) {
-          hilog.error(DOMAIN, TAG, `Failed to send screen info callback for ID: ${callbackId}`);
-        }
-      } catch (error) {
-        hilog.error(DOMAIN, TAG, `Failed to get screen info: ${error}`);
-        // Send error back to Rust
-        const defaultScreenInfo: ScreenInfo = {
-          width: 360,
-          height: 640,
-          scale: 2.0
-        };
-        liblingxia.onCallback(callbackId, false, JSON.stringify(defaultScreenInfo));
-      }
+      LxAppDevice.getScreenInfo(callbackId);
     });
 
     this.register('vibrate', (long: string): void => {
-      try {
-        // Use HarmonyOS vibrator API
-        const isLong = long === 'true';
-        const duration = isLong ? 400 : 15; // Long: 400ms, Short: 15ms (matching iOS)
-
-        hilog.info(DOMAIN, TAG, `Vibrate requested: ${long} (${duration}ms)`);
-
-        // Use HarmonyOS vibrator API
-        vibrator.startVibration({ type: 'time', duration: duration }, {
-          id: 0,
-          usage: 'alarm'
-        }, (error) => {
-          if (error) {
-            hilog.error(DOMAIN, TAG, `Failed to vibrate: ${error.message}`);
-          } else {
-            hilog.info(DOMAIN, TAG, `Vibration completed: ${duration}ms`);
-          }
-        });
-      } catch (error) {
-        hilog.error(DOMAIN, TAG, `Failed to vibrate: ${error}`);
-      }
+      LxAppDevice.vibrate(long === 'true');
     });
 
     this.register('makePhoneCall', (phoneNumber: string): void => {
-      try {
-        // Use HarmonyOS call.makeCall API (no permission required)
-        hilog.info(DOMAIN, TAG, `Phone call requested: ${phoneNumber}`);
-
-        // Use call.makeCall API which opens dialer without requiring permissions
-        call.makeCall(phoneNumber, (err) => {
-          if (err) {
-            hilog.error(DOMAIN, TAG, `Failed to make call: ${err.code} - ${err.message}`);
-          } else {
-            hilog.info(DOMAIN, TAG, `Successfully opened dialer for: ${phoneNumber}`);
-          }
-        });
-      } catch (error) {
-        hilog.error(DOMAIN, TAG, `Failed to make phone call: ${error}`);
-      }
+      LxAppDevice.makePhoneCall(phoneNumber);
     });
 
     hilog.info(DOMAIN, TAG, `Registered ${NativeBridge.callbacks.size} default callbacks`);
