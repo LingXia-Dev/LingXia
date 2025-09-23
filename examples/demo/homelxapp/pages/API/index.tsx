@@ -170,7 +170,40 @@ export default function APIPage() {
                 className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between"
                 onClick={() => navigateToDevicePage({ type: 'device' })}
               >
-                <div className="text-sm text-gray-700">Get Device Info</div>
+                <div className="text-sm text-gray-700">Device Info</div>
+                <div className="w-4 h-4 text-gray-400">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M9 18l6-6-6-6"/>
+                  </svg>
+                </div>
+              </div>
+              <div
+                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+                onClick={() => navigateToDevicePage({ type: 'screen' })}
+              >
+                <div className="text-sm text-gray-700">Screen Info</div>
+                <div className="w-4 h-4 text-gray-400">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M9 18l6-6-6-6"/>
+                  </svg>
+                </div>
+              </div>
+              <div
+                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+                onClick={() => navigateToDevicePage({ type: 'vibrate' })}
+              >
+                <div className="text-sm text-gray-700">Vibration</div>
+                <div className="w-4 h-4 text-gray-400">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M9 18l6-6-6-6"/>
+                  </svg>
+                </div>
+              </div>
+              <div
+                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+                onClick={() => navigateToDevicePage({ type: 'dial' })}
+              >
+                <div className="text-sm text-gray-700">Phone Call</div>
                 <div className="w-4 h-4 text-gray-400">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                     <path d="M9 18l6-6-6-6"/>
