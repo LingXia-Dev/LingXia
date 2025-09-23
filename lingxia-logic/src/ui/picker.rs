@@ -126,6 +126,12 @@ fn parse_columns_data(columns_array: &rong::JSArray) -> JSResult<PickerData> {
     }
 }
 
+fn generate_time_columns() -> (Vec<String>, Vec<String>) {
+    let hours = (0..24).map(|hour| format!("{:02}", hour)).collect();
+    let minutes = (0..60).map(|minute| format!("{:02}", minute)).collect();
+    (hours, minutes)
+}
+
 impl From<CallbackResult> for PickerResult {
     fn from(result: CallbackResult) -> Self {
         if result.success {
@@ -210,9 +216,13 @@ async fn show_picker(
 
             parse_columns_data(&columns_array)?
         }
+        "time" => {
+            let (hours, minutes) = generate_time_columns();
+            PickerData::Dual(hours, minutes)
+        }
         _ => {
             return Err(RongJSError::Error(
-                "mode must be 'selector' or 'multiSelector'".to_string(),
+                "mode must be 'selector', 'multiSelector', or 'time'".to_string(),
             ));
         }
     };
@@ -289,4 +299,3 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     lx::register_js_api(ctx, "showPicker", show_picker_func)?;
     Ok(())
 }
-
