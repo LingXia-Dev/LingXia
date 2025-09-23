@@ -2,6 +2,7 @@ use lingxia_lxapp::{LxApp, lx};
 use lingxia_messaging::{CallbackResult, get_callback};
 use lingxia_platform::{PickerType, UserFeedback};
 use rong::{FromJSObj, IntoJSValue, JSContext, JSFunc, JSObject, JSResult, JSValue, RongJSError};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -134,34 +135,36 @@ fn generate_time_columns() -> (Vec<String>, Vec<String>) {
 
 impl From<CallbackResult> for PickerResult {
     fn from(result: CallbackResult) -> Self {
-        if result.success {
-            if let Ok(picker_data) = serde_json::from_str::<serde_json::Value>(&result.data) {
-                let cancelled = picker_data
-                    .get("cancel")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-                let confirmed = picker_data
+        if !result.success {
+            return PickerResult {
+                index: vec![],
+                cancelled: true,
+                confirmed: false,
+            };
+        }
+
+        match serde_json::from_str::<Value>(&result.data) {
+            Ok(json) => {
+                let cancelled = json.get("cancel").and_then(Value::as_bool).unwrap_or(false);
+                let confirmed = json
                     .get("confirm")
-                    .and_then(|v| v.as_bool())
+                    .and_then(Value::as_bool)
                     .unwrap_or(false);
 
-                // Handle both single number and array formats
-                let index = if let Some(index_value) = picker_data.get("index") {
-                    if let Some(single_index) = index_value.as_i64() {
-                        // Single column: convert single number to array
-                        vec![single_index as i32]
-                    } else if let Some(array) = index_value.as_array() {
-                        // Multi column: use array directly
-                        array
-                            .iter()
-                            .filter_map(|v| v.as_i64())
-                            .map(|i| i as i32)
-                            .collect()
-                    } else {
-                        vec![]
+                let index = match json.get("index") {
+                    Some(index_value) if index_value.is_i64() => {
+                        vec![index_value.as_i64().unwrap_or_default() as i32]
                     }
-                } else {
-                    vec![]
+                    Some(index_value) if index_value.is_array() => index_value
+                        .as_array()
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|v| v.as_i64())
+                                .map(|i| i as i32)
+                                .collect()
+                        })
+                        .unwrap_or_default(),
+                    _ => vec![],
                 };
 
                 PickerResult {
@@ -169,19 +172,12 @@ impl From<CallbackResult> for PickerResult {
                     cancelled,
                     confirmed,
                 }
-            } else {
-                PickerResult {
-                    index: vec![],
-                    cancelled: true,
-                    confirmed: false,
-                }
             }
-        } else {
-            PickerResult {
+            Err(_) => PickerResult {
                 index: vec![],
                 cancelled: true,
                 confirmed: false,
-            }
+            },
         }
     }
 }

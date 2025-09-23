@@ -2,6 +2,7 @@ use lingxia_lxapp::{LxApp, lx};
 use lingxia_messaging::{CallbackResult, get_callback};
 use lingxia_platform::{ModalOptions, UserFeedback};
 use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
+use serde_json::Value;
 use std::sync::Arc;
 
 /// Modal options from JavaScript (compatible with WeChat mini-program API)
@@ -43,32 +44,25 @@ struct JSModalResult {
 
 impl From<CallbackResult> for JSModalResult {
     fn from(result: CallbackResult) -> Self {
-        if result.success {
-            // Parse JSON data for modal result
-            if let Ok(modal_data) = serde_json::from_str::<serde_json::Value>(&result.data) {
-                JSModalResult {
-                    confirm: modal_data
-                        .get("confirm")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(false),
-                    cancel: modal_data
-                        .get("cancel")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(false),
-                }
-            } else {
-                // Fallback: assume confirm if success
-                JSModalResult {
-                    confirm: true,
-                    cancel: false,
-                }
-            }
-        } else {
-            // Error or cancel
-            JSModalResult {
+        if !result.success {
+            return JSModalResult {
                 confirm: false,
                 cancel: true,
-            }
+            };
+        }
+
+        match serde_json::from_str::<Value>(&result.data) {
+            Ok(json) => JSModalResult {
+                confirm: json
+                    .get("confirm")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
+                cancel: json.get("cancel").and_then(Value::as_bool).unwrap_or(false),
+            },
+            Err(_) => JSModalResult {
+                confirm: true,
+                cancel: false,
+            },
         }
     }
 }

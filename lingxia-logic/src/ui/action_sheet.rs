@@ -2,6 +2,7 @@ use lingxia_lxapp::{LxApp, lx};
 use lingxia_messaging::{CallbackResult, get_callback};
 use lingxia_platform::UserFeedback;
 use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
+use serde_json::Value;
 use std::sync::Arc;
 
 /// Action sheet options from JavaScript
@@ -22,20 +23,15 @@ struct JSActionSheetResult {
 
 impl From<CallbackResult> for JSActionSheetResult {
     fn from(result: CallbackResult) -> Self {
-        if result.success {
-            // Parse JSON data for action sheet result
-            if let Ok(action_sheet_data) = serde_json::from_str::<serde_json::Value>(&result.data) {
-                JSActionSheetResult {
-                    tap_index: action_sheet_data
-                        .get("tapIndex")
-                        .and_then(|v| v.as_i64())
-                        .unwrap_or(-1) as i32,
-                }
-            } else {
-                JSActionSheetResult { tap_index: -1 }
-            }
-        } else {
-            JSActionSheetResult { tap_index: -1 }
+        if !result.success {
+            return JSActionSheetResult { tap_index: -1 };
+        }
+
+        match serde_json::from_str::<Value>(&result.data) {
+            Ok(json) => JSActionSheetResult {
+                tap_index: json.get("tapIndex").and_then(Value::as_i64).unwrap_or(-1) as i32,
+            },
+            Err(_) => JSActionSheetResult { tap_index: -1 },
         }
     }
 }

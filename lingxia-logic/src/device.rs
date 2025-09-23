@@ -4,6 +4,7 @@ use lingxia_messaging::{CallbackResult, get_callback};
 use lingxia_platform::{Device, DeviceInfo, ScreenInfo};
 use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
 use serde::Deserialize;
+use serde_json::Value;
 use std::sync::Arc;
 
 /// Device information
@@ -44,38 +45,25 @@ impl From<ScreenInfo> for ScreenInfoObj {
 
 impl From<CallbackResult> for ScreenInfoObj {
     fn from(result: CallbackResult) -> Self {
-        if result.success {
-            // Parse JSON data for screen info result
-            if let Ok(screen_data) = serde_json::from_str::<serde_json::Value>(&result.data) {
-                ScreenInfoObj {
-                    width: screen_data
-                        .get("width")
-                        .and_then(|v| v.as_f64())
-                        .unwrap_or(0.0),
-                    height: screen_data
-                        .get("height")
-                        .and_then(|v| v.as_f64())
-                        .unwrap_or(0.0),
-                    scale: screen_data
-                        .get("scale")
-                        .and_then(|v| v.as_f64())
-                        .unwrap_or(1.0),
-                }
-            } else {
-                // Fallback: return default values
-                ScreenInfoObj {
-                    width: 0.0,
-                    height: 0.0,
-                    scale: 1.0,
-                }
-            }
-        } else {
-            // Error: return default values
-            ScreenInfoObj {
+        if !result.success {
+            return ScreenInfoObj {
                 width: 0.0,
                 height: 0.0,
                 scale: 1.0,
-            }
+            };
+        }
+
+        match serde_json::from_str::<Value>(&result.data) {
+            Ok(json) => ScreenInfoObj {
+                width: json.get("width").and_then(Value::as_f64).unwrap_or(0.0),
+                height: json.get("height").and_then(Value::as_f64).unwrap_or(0.0),
+                scale: json.get("scale").and_then(Value::as_f64).unwrap_or(1.0),
+            },
+            Err(_) => ScreenInfoObj {
+                width: 0.0,
+                height: 0.0,
+                scale: 1.0,
+            },
         }
     }
 }
