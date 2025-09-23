@@ -12,6 +12,7 @@ fn main() {
     if target.contains("linux") && env.eq("ohos") {
         napi_build_ohos::setup();
         println!("cargo:rustc-link-lib=dylib=ohvibrator.z");
+        println!("cargo:rustc-link-lib=dylib=location_ndk");
     }
 
     if target.contains("apple") {

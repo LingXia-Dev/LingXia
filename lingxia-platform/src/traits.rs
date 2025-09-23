@@ -358,3 +358,17 @@ pub trait UIUpdate: Send + Sync + 'static {
     /// * `Result<(), PlatformError>` - Success or error
     fn update_tabbar_ui(&self, appid: String) -> Result<(), PlatformError>;
 }
+
+/// Location services interface
+///
+/// Provides access to the device's current location. Results are delivered via
+/// the callback registered through `lingxia_messaging` using the provided
+/// `callback_id`.
+pub trait Location: Send + Sync + 'static {
+    /// Returns `true` when the system location switch is enabled.
+    fn is_location_enabled(&self) -> Result<bool, PlatformError>;
+
+    /// Request a single location update. The platform should report the
+    /// position through the provided callback ID.
+    fn request_location(&self, callback_id: u64) -> Result<(), PlatformError>;
+}

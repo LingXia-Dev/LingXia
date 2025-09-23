@@ -10,6 +10,7 @@ import { initNativeBridge, getNativeCallbackFunction } from './NativeBridge';
 import { WebViewManager, toWebTag } from './WebView';
 import { AnimationType } from './LxAppNavigation';
 import promptAction from '@kit.ArkUI';
+import { abilityAccessCtrl, Permissions } from '@kit.AbilityKit';
 
 // Import native functions from Rust
 import { lxappInit, registerCustomSchemes, onLxappOpened, onLxappClosed, onPageShow, onApplinkReceived, getCurrentLxapp, CurrentLxApp } from 'liblingxia.so';
@@ -46,6 +47,41 @@ export class LxApp {
     return LxApp.instance;
   }
 
+  /**
+   * Request location permissions
+   * @param context - UIAbilityContext for permission requests
+   */
+  public static requestLocationPermissions(context: common.UIAbilityContext): void {
+    hilog.info(DOMAIN, TAG, 'requestLocationPermissions called');
+
+    const atManager = abilityAccessCtrl.createAtManager();
+    const permissions: Permissions[] = [
+      'ohos.permission.LOCATION' as Permissions,
+      'ohos.permission.APPROXIMATELY_LOCATION' as Permissions
+    ];
+
+    hilog.info(DOMAIN, TAG, `Requesting permissions: ${JSON.stringify(permissions)}`);
+
+    try {
+      hilog.info(DOMAIN, TAG, 'Calling atManager.requestPermissionsFromUser...');
+      atManager.requestPermissionsFromUser(context, permissions).then((data) => {
+        hilog.info(DOMAIN, TAG, `Permission request result: ${JSON.stringify(data)}`);
+        if (data && data.authResults) {
+          for (let i = 0; i < data.authResults.length; i++) {
+            const permission = permissions[i];
+            const result: number = data.authResults[i];
+            const isGranted = result === 0; // 0 means PERMISSION_GRANTED
+            hilog.info(DOMAIN, TAG, `Permission ${permission}: ${isGranted ? 'GRANTED' : 'DENIED'}`);
+          }
+        }
+      }).catch((err: Error) => {
+        hilog.error(DOMAIN, TAG, `Permission request failed: ${err.message}`);
+      });
+    } catch (err) {
+      hilog.error(DOMAIN, TAG, `Permission request error: ${err}`);
+    }
+  }
+
   public static initialize(context?: common.UIAbilityContext, windowStage?: window.WindowStage): void {
     const instance = LxApp.getInstance();
     if (instance.homeLxAppId !== null) {
@@ -59,9 +95,15 @@ export class LxApp {
       return;
     }
 
+    hilog.info(DOMAIN, TAG, `LxApp.initialize called with context: ${context ? 'provided' : 'null'}, windowStage: ${windowStage ? 'provided' : 'null'}`);
+
     // Store context and windowStage for window operations
     if (context) {
       LxApp.context = context;
+      hilog.info(DOMAIN, TAG, 'Requesting location permissions...');
+      LxApp.requestLocationPermissions(context);
+    } else {
+      hilog.warn(DOMAIN, TAG, 'No context provided, skipping permission request');
     }
     if (windowStage) {
       LxApp.windowStage = windowStage;
@@ -423,4 +465,5 @@ struct LxAppManager {
     hilog.info(DOMAIN, TAG, `LxAppManager.navigate called: ${appId}:${path} with type: ${typeName}`);
     return LxApp.navigate(appId, path, animationType);
   }
+
 }

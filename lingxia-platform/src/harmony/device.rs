@@ -56,12 +56,11 @@ impl Device for Platform {
             .or_else(|| get_system_param("ro.product.model"))
             .unwrap_or_else(|| "Unknown".to_string());
 
-        let os_version = get_system_param("const.ohos.version.security_patch")
-            .or_else(|| get_system_param("const.ohos.fullname"))
+        let os_version = get_system_param("const.product.os.dist.version")
             .unwrap_or_else(|| "Unknown".to_string());
 
         // Construct system string with HarmonyOS version
-        let system = format!("HarmonyOS {}", os_version);
+        let system = format!("Harmony {}", os_version);
 
         DeviceInfo {
             brand,
