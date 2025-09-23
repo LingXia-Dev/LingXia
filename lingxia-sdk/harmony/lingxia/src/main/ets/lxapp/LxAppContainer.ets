@@ -14,6 +14,7 @@ import { AnimationType } from './LxAppNavigation';
 
 // Container-specific constants
 const SYSTEM_STATUS_BAR_HEIGHT = 44;     // Default status bar height
+const TAB_BAR_HORIZONTAL_HEIGHT = 72;    // Match TabBar default height
 
 const COLOR_WHITE = '#ffffff';
 const COLOR_BLACK = '#000000';
@@ -31,6 +32,13 @@ const TAG = 'LingXia.Container';
 interface TranslationOptions {
   x: number | string;
   y: number | string;
+}
+
+interface MarginOptions {
+  top?: number;
+  bottom?: number;
+  left?: number;
+  right?: number;
 }
 
 @Component
@@ -226,7 +234,11 @@ export struct LxAppContainer {
     }
 
     this.tabBarRefreshKey++;
-    hilog.info(DOMAIN, TAG, `TabBar refresh completed, selectedIndex: ${this.selectedTabIndex}`);
+    const bg: number | undefined = this.tabBarState?.backgroundColor;
+    const dim: number | undefined = this.tabBarState?.dimension;
+    const pos: TabBarPosition | undefined = this.tabBarState?.position;
+    const items: number = this.tabBarState?.items?.length ?? 0;
+    const alpha: number = bg !== undefined ? ((bg >>> 24) & 0xFF) : -1;
   }
 
   /**
@@ -256,7 +268,6 @@ export struct LxAppContainer {
       container.pageConfig = getNavigationBarState(appId, container.path);
       // Force UI update by incrementing refresh key
       container.navbarRefreshKey++;
-      hilog.info(DOMAIN, TAG, `NavigationBar refreshed for ${appId}:${container.path}, showNavbar=${container.pageConfig?.showNavbar}, showBack=${container.pageConfig?.showBackButton}, showHome=${container.pageConfig?.showHomeButton}`);
       return true;
     }
     return false;
@@ -365,14 +376,13 @@ export struct LxAppContainer {
               })
             }
             // Show NavigationBar only when needed
-            if (this.pageConfig && this.pageConfig.showNavbar) {
+            if (this.shouldRenderNavigationBar()) {
               NavigationBar({
-                config: this.pageConfig,
+                config: this.pageConfig as NavigationBarState,
                 appId: this.appId,
                 currentPath: this.path,
                 translateX: this.navbarTranslateX,
                 statusBarHeight: this.statusBarHeight,
-                forceShowButtons: true, // Always show buttons when needed
                 onNavigationClick: (appId: string, isHomeButton: boolean): boolean => {
                   this.handleNavigationBack(isHomeButton);
                   return true;
@@ -411,6 +421,7 @@ export struct LxAppContainer {
       .width('100%')
       .height('100%')
       .backgroundColor(Color.Transparent)
+      .hitTestBehavior(HitTestMode.Transparent)
       .expandSafeArea(this.shouldExpandSafeAreaForContainer() ? [SafeAreaType.SYSTEM] : [], this.shouldExpandSafeAreaForContainer() ? [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM] : [])
     }
   }
@@ -425,7 +436,7 @@ export struct LxAppContainer {
    * Check if container should expand safe area
    */
   private shouldExpandSafeAreaForContainer(): boolean {
-    // Always expand for full screen coverage
+    // Enable safe area expansion for full screen coverage, but use padding to avoid content overlap
     hilog.info(DOMAIN, TAG, `Safe area expansion for ${this.appId}: true`);
     return true;
   }
@@ -435,8 +446,11 @@ export struct LxAppContainer {
    * When transparent, TabBar overlays WebView; when opaque, they are separate
    */
   private isTabBarTransparent(): boolean {
-    const bgColor: number = this.tabBarState?.backgroundColor ?? 0xFFFFFFFF;
-    return ((bgColor >>> 24) & 0xFF) === 0;
+    // Default to transparent when Rust does not provide a background color so we match the existing behavior and avoid a white flash
+    const bgColor: number = this.tabBarState?.backgroundColor ?? 0x00000000;
+    const alpha = (bgColor >>> 24) & 0xFF;
+    const transparent = alpha === 0;
+    return transparent;
   }
 
   /**
@@ -506,27 +520,22 @@ export struct LxAppContainer {
 
   @Builder
   buildNavigationBar(): void {
-    Column() {
-      if (this.pageConfig && this.pageConfig.showNavbar) {
-        NavigationBar({
-          config: this.pageConfig,
-          appId: this.appId,
-          currentPath: this.path,
-          translateX: this.navbarTranslateX,
-          statusBarHeight: this.statusBarHeight,
-          forceShowButtons: true,
-          onNavigationClick: (appId: string, isHomeButton: boolean): boolean => {
-            this.handleNavigationBack(isHomeButton);
-            return true;
-          }
-        })
-      }
+    if (this.pageConfig && this.pageConfig.showNavbar) {
+      NavigationBar({
+        config: this.pageConfig as NavigationBarState,
+        appId: this.appId,
+        currentPath: this.path,
+        translateX: this.navbarTranslateX,
+        statusBarHeight: this.statusBarHeight,
+        onNavigationClick: (appId: string, isHomeButton: boolean): boolean => {
+          this.handleNavigationBack(isHomeButton);
+          return true;
+        }
+      })
+      .width('100%')
+      .position({ x: 0, y: 0 })
+      .zIndex(10)
     }
-    .width('100%')
-    .height(NAVBAR_TOTAL_HEIGHT)
-    .backgroundColor(COLOR_TRANSPARENT)
-    .position({ x: 0, y: 0 })
-    .zIndex(10)
   }
 
   /**
@@ -552,12 +561,54 @@ export struct LxAppContainer {
     }
     .width('100%')
     .height('100%')
-    .padding({
-      bottom: this.shouldShowTabBar() && !this.isTabBarTransparent() ? 60 : 0
-    })
     .backgroundColor(COLOR_TRANSPARENT)
     .clip(this.navigationMode)
+    // Reserve space for the navigation bar at the top and for an opaque TabBar elsewhere
+    .padding(this.getWebViewAreaPadding())
+    // Keep the layout fixed so the WebView bounds never change, removing the root cause of flicker
+    .hitTestBehavior(HitTestMode.Transparent)
+  }
 
+  /**
+   * Reserve TabBar space on the container (not inside the Web content):
+   * - Only reserve it when the TabBar is opaque to avoid white gaps while the bar is transparent.
+   */
+  private getWebViewAreaPadding(): Padding {
+    // No flicker: always reserve NAVBAR_TOTAL_HEIGHT at the top; let the Web content handle the bottom padding
+    const top = NAVBAR_TOTAL_HEIGHT;
+    const pad: Padding = { top } as Padding;
+    hilog.info(DOMAIN, TAG, `containerPadding -> top=${top}, showNavbar=${this.pageConfig?.showNavbar}`);
+    return pad;
+  }
+
+  /**
+   * Compute WebView padding centrally to keep the layout fixed and prevent overlap.
+   * - Top: reserve the status or navigation bar height when needed.
+   * - Bottom/sides: always reserve space for an opaque TabBar so content never jumps.
+   */
+  private getWebViewPadding(): Padding {
+    // The container handles the top reservation; the bottom is fixed here so opaque TabBars never hide content or trigger flicker when transparency changes
+    const bottomPad = this.getWebBottomPadding();
+    return { top: 0, bottom: bottomPad } as Padding;
+  }
+
+  private getWebBottomPadding(): number {
+    const hasTabBar = (this.tabBarState?.items?.length ?? 0) > 0;
+    if (!hasTabBar) return 0;
+    if (this.isTabBarVertical()) return 0; // Side TabBars do not affect vertical spacing
+    // A transparent TabBar overlays the WebView, so allow content underneath (padding = 0)
+    const transparent = this.isTabBarTransparent();
+    if (transparent) {
+      return 0;
+    }
+    // Reserve the TabBar height when it is opaque to avoid covering content
+    const tabBarSize: number = (this.tabBarState?.dimension as number) ?? TAB_BAR_HORIZONTAL_HEIGHT;
+    return tabBarSize;
+  }
+
+  private shouldRenderNavigationBar(): boolean {
+    // Render the navigation bar only when showNavbar is true so the home page does not show a transparent bar
+    return this.pageConfig?.showNavbar === true;
   }
 
   private handleTabSelected(index: number) {
@@ -570,7 +621,6 @@ export struct LxAppContainer {
    */
   private loadNavbarState(path: string): void {
     this.pageConfig = getNavigationBarState(this.appId, path);
-    hilog.info(DOMAIN, TAG, `Loaded navbar state for ${path}: showNavbar=${this.pageConfig?.showNavbar}, showBack=${this.pageConfig?.showBackButton}, showHome=${this.pageConfig?.showHomeButton}, bgColor=0x${this.pageConfig?.navigationBarBackgroundColor?.toString(16)}, textStyle=${this.pageConfig?.navigationBarTextStyle}`);
   }
 
   /**
@@ -770,6 +820,8 @@ export struct LxAppContainer {
     let _: boolean = onUiEvent(this.appId, UiEventType.CapsuleClick, CAPSULE_ACTION_CLOSE);
   }
 
+  // The previous height/position logic is deprecated; always rely on getWebViewPadding to keep the layout stable
+
   /**
    * Build individual WebView component for a specific webTag with animation support
    */
@@ -781,6 +833,7 @@ export struct LxAppContainer {
     })
       .visibility(this.getWebViewVisibility(webTag))
       .translate(this.getWebViewTranslation(webTag))
+      .margin(this.getWebViewMargin())
       .onAppear(() => {
         hilog.info(DOMAIN, TAG, `WebView component appeared for webTag: ${webTag}, visible: ${webTag === this.currentWebTag}`);
 
@@ -794,7 +847,9 @@ export struct LxAppContainer {
         handleScrollChanged(webTag, event.xOffset, event.yOffset);
       })
       .width('100%')
-      .height('100%')
+      .height(this.getWebContentHeight())
+      .padding(this.getWebViewPadding())
+
       .backgroundColor(COLOR_TRANSPARENT)
   }
 
@@ -811,13 +866,15 @@ export struct LxAppContainer {
       return Visibility.Visible;
     }
 
-    return Visibility.Hidden;
+    // Remove it entirely so it does not intercept taps
+    return Visibility.None;
   }
 
   /**
    * Get WebView translation for slide animation
    */
   private getWebViewTranslation(webTag: string): TranslationOptions {
+    // Translate only on the X axis during transitions; margins handle vertical adjustments to avoid hit-test quirks
     if (!this.animationInProgress) {
       return { x: 0, y: 0 } as TranslationOptions;
     }
@@ -833,5 +890,26 @@ export struct LxAppContainer {
     }
 
     return { x: 0, y: 0 } as TranslationOptions;
+  }
+
+  /**
+   * When the navigation bar is hidden, move the WebView up by NAVBAR_TOTAL_HEIGHT so it visually touches the system top.
+   * Keep the vertical offset at zero when the navigation bar is visible.
+   * This keeps the fixed top padding (no flicker) while preventing pages without a nav bar from showing a white gap.
+   */
+  private getWebViewMargin(): MarginOptions {
+    // Use a negative margin to lift the WebView when the nav bar is hidden; otherwise apply no offset
+    const top = (this.pageConfig?.showNavbar === true) ? 0 : -NAVBAR_TOTAL_HEIGHT;
+    return { top } as MarginOptions;
+  }
+
+  /**
+   * Extend the WebView height when the navigation bar is hidden so the upward shift does not leave a gap; keep 100% height otherwise.
+   */
+  private getWebContentHeight(): string {
+    // Add extra height only when the nav bar is hidden; the Web content handles the bottom padding internally
+    const extraTop = (this.pageConfig?.showNavbar === true) ? 0 : NAVBAR_TOTAL_HEIGHT;
+    const result = extraTop > 0 ? `calc(100% + ${extraTop}vp)` : '100%';
+    return result;
   }
 }

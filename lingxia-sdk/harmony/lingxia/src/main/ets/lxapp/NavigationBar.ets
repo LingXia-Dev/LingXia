@@ -152,14 +152,14 @@ export struct NavigationBar {
     .alignContent(Alignment.Bottom)
     .translate({ x: `${this.translateX}%`, y: 0 })
     .visibility(this.shouldShowNavBar() ? Visibility.Visible : Visibility.Hidden)
+    .hitTestBehavior(HitTestMode.Transparent)
   }
 
   /**
    * Check if navbar should be shown at all
    */
   private shouldShowNavBar(): boolean {
-    return this.config.showNavbar || this.forceShowButtons ||
-           (this.config.showBackButton || this.config.showHomeButton);
+    return this.config.showNavbar || this.forceShowButtons;
   }
 
   /**

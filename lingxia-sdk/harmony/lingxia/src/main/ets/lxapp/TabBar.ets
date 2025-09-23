@@ -86,58 +86,74 @@ export struct TabBar {
   }
 
   build() {
-    if (this.isVertical()) {
-      // Vertical layout (left/right position)
-      Column() {
-        if (this.hasGroupField()) {
-          this.buildGroupedVerticalLayout()
-        } else {
-          this.buildCenteredVerticalLayout()
-        }
+    Stack() {
+      if (this.isVertical()) {
+        this.buildVerticalTabBar();
+      } else {
+        this.buildHorizontalTabBar();
       }
-      .width(this.getTabBarSize())
-      .height('100%')
-      .backgroundColor(this.getBackgroundColor())
-      .justifyContent(this.hasGroupField() ? FlexAlign.Start : FlexAlign.SpaceEvenly)
-      .alignItems(HorizontalAlign.Center)
-      .padding({
-        top: TAB_BAR_PADDING_VERTICAL_TOP,
-        bottom: TAB_BAR_PADDING_VERTICAL_BOTTOM,
-        left: TAB_BAR_PADDING_VERTICAL_LEFT,
-        right: TAB_BAR_PADDING_VERTICAL_RIGHT
-      })
+    }
+    .width('100%')
+    .height('100%')
+    .hitTestBehavior(HitTestMode.Transparent)
+  }
+
+  @Builder
+  private buildVerticalTabBar() {
+    Column() {
+      if (this.hasGroupField()) {
+        this.buildGroupedVerticalLayout()
+      } else {
+        this.buildCenteredVerticalLayout()
+      }
+    }
+    .width(this.getTabBarSize())
+    .height('100%')
+    .backgroundColor(this.getBackgroundColor())
+    .justifyContent(this.hasGroupField() ? FlexAlign.Start : FlexAlign.SpaceEvenly)
+    .alignItems(HorizontalAlign.Center)
+    .padding({
+      top: TAB_BAR_PADDING_VERTICAL_TOP,
+      bottom: TAB_BAR_PADDING_VERTICAL_BOTTOM,
+      left: TAB_BAR_PADDING_VERTICAL_LEFT,
+      right: TAB_BAR_PADDING_VERTICAL_RIGHT
+    })
       .border(this.getVerticalBorder())
       .linearGradient(this.getVerticalGradient())
-      .zIndex(this.isTransparent() ? 1 : 0)
-      .position(this.isTransparent() ? {
+      .hitTestBehavior(HitTestMode.Transparent)
+      .zIndex(1)
+      .position({
         top: 0,
         bottom: 0,
         left: this.tabbar.position === TabBarPosition.Left ? 0 : undefined,
         right: this.tabbar.position === TabBarPosition.Right ? 0 : undefined
-      } : {})
-    } else {
-      // Horizontal layout (bottom position)
-      Row() {
-        if (this.hasGroupField()) {
-          this.buildGroupedHorizontalLayout()
-        } else {
-          this.buildCenteredHorizontalLayout()
-        }
+      })
+  }
+
+  @Builder
+  private buildHorizontalTabBar() {
+    Row() {
+      if (this.hasGroupField()) {
+        this.buildGroupedHorizontalLayout()
+      } else {
+        this.buildCenteredHorizontalLayout()
       }
-      .width('100%')
-      .height(this.getTabBarSize())
-      .backgroundColor(this.getBackgroundColor())
-      .justifyContent(this.hasGroupField() ? FlexAlign.Start : FlexAlign.SpaceEvenly)
-      .alignItems(VerticalAlign.Center)
-      .padding(this.getHorizontalPadding())
+    }
+    .width('100%')
+    .height(this.getTabBarSize())
+    .backgroundColor(this.getBackgroundColor())
+    .justifyContent(this.hasGroupField() ? FlexAlign.Start : FlexAlign.SpaceEvenly)
+    .alignItems(VerticalAlign.Center)
+    .padding(this.getHorizontalPadding())
       .border(this.getHorizontalBorder())
       .linearGradient(this.getHorizontalGradient())
-      .position(this.isTransparent() ? {
+      .hitTestBehavior(HitTestMode.Transparent)
+      .zIndex(1)
+      .position({
         bottom: this.tabbar.position === TabBarPosition.Bottom ? 0 : undefined,
         left: 0,
         right: 0
-      } : {})
-    }
+      })
   }
 
   @Builder
@@ -362,7 +378,7 @@ export struct TabBar {
    * Get background color - supports transparent for better integration
    */
   private getBackgroundColor(): ResourceColor {
-    const bgColor: number = this.tabbar.backgroundColor ?? 0xFFFFFFFF;
+    const bgColor: number = this.tabbar.backgroundColor ?? 0x00000000;
     return this.toResourceColor(bgColor);
   }
 
@@ -392,7 +408,7 @@ export struct TabBar {
    * Check if TabBar is transparent using bit operations
    */
   private isTransparent(): boolean {
-    const bgColor: number = this.tabbar.backgroundColor ?? 0xFFFFFFFF;
+    const bgColor: number = this.tabbar.backgroundColor ?? 0x00000000;
     return ((bgColor >>> 24) & 0xFF) === 0;
   }
 
@@ -400,13 +416,22 @@ export struct TabBar {
    * Get padding for horizontal layout
    */
   private getHorizontalPadding(): Padding {
-    const safeAreaBottom = this.isTransparent() ? SYSTEM_SAFE_AREA_BOTTOM : 0;
-    return {
-      top: TAB_BAR_PADDING_HORIZONTAL_TOP,
-      bottom: TAB_BAR_PADDING_HORIZONTAL_BOTTOM + safeAreaBottom,
-      left: TAB_BAR_PADDING_HORIZONTAL_LEFT,
-      right: TAB_BAR_PADDING_HORIZONTAL_RIGHT
-    };
+    if (this.isTransparent()) {
+      // Overlay mode: keep the bottom safe area at zero to avoid stretching the tappable area and showing a white block
+      return {
+        top: TAB_BAR_PADDING_HORIZONTAL_TOP,
+        bottom: 0,
+        left: TAB_BAR_PADDING_HORIZONTAL_LEFT,
+        right: TAB_BAR_PADDING_HORIZONTAL_RIGHT
+      };
+    } else {
+      return {
+        top: TAB_BAR_PADDING_HORIZONTAL_TOP,
+        bottom: TAB_BAR_PADDING_HORIZONTAL_BOTTOM,
+        left: TAB_BAR_PADDING_HORIZONTAL_LEFT,
+        right: TAB_BAR_PADDING_HORIZONTAL_RIGHT
+      };
+    }
   }
 
   /**
