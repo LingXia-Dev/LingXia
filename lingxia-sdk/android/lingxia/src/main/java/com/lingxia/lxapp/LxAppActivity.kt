@@ -90,7 +90,6 @@ class LxAppActivity : AppCompatActivity() {
          */
         @JvmStatic
         fun updateTabBarUI(appId: String): Boolean {
-
             val activity = LxApp.getCurrentActivity()
             if (activity != null && activity.appId == appId) {
                 // Run on UI thread to update TabBar directly
@@ -100,7 +99,7 @@ class LxAppActivity : AppCompatActivity() {
                         val newTabBarConfig = NativeApi.getTabBarState(appId)
                         if (newTabBarConfig != null) {
                             // Update existing TabBar with new configuration
-                            activity.tabBar?.setConfig(newTabBarConfig)
+                            activity.setupTabBar(newTabBarConfig)
 
                         } else {
                             Log.w(TAG, "No TabBar config available for refresh")
@@ -214,6 +213,9 @@ class LxAppActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Configure transparent system bars for edge-to-edge experience
+        configureTransparentSystemBars(this)
 
         // Set reference to this activity in LxApp
         LxApp.setCurrentActivity(this)
@@ -381,6 +383,8 @@ class LxAppActivity : AppCompatActivity() {
         } else {
             tabBar?.setConfig(config)
             tabBar?.let { tb -> applyTabBarLayoutParams(tb, config) }
+            // Update navigation bar transparency when tabbar config changes
+            updateNavigationBarTransparency(this, isTabBarTransparent, actualTabBarColor)
         }
 
         updateLayoutMargins()
@@ -449,8 +453,10 @@ class LxAppActivity : AppCompatActivity() {
         // Calculate NavigationBar height for webview margin
         val isNavBarVisible = navigationBar?.visibility == View.VISIBLE
         val navBarHeight = if (isNavBarVisible) {
-            // WebView should start right after navbar (navbar total height)
-            navigationBar?.layoutParams?.height ?: 0
+            // WebView should start right after navbar (navbar content height + statusbar height)
+            val statusBarHeight = getStatusBarHeight(this)
+            val navBarContentHeight = navigationBar?.getCalculatedContentHeightPx() ?: 0
+            navBarContentHeight + statusBarHeight
         } else {
             0
         }
@@ -485,19 +491,7 @@ class LxAppActivity : AppCompatActivity() {
         container?.requestLayout()
     }
 
-    /**
-     * Update status bar to match navbar background color
-     */
-    private fun updateStatusBarForNavbar(navbarBgColor: Int) {
-        // Set status bar background to match navbar
-        window.statusBarColor = navbarBgColor
 
-        // Set status bar text color based on navbar background brightness
-        val isNavbarDark = NavigationBar.ColorUtils.isColorDark(navbarBgColor)
-        WindowCompat.getInsetsController(window, window.decorView).apply {
-            isAppearanceLightStatusBars = !isNavbarDark  // Light text on dark bg, dark text on light bg
-        }
-    }
 
     // Find WebView - ONLY find WebView, nothing else
     private fun findWebView(appId: String, path: String): com.lingxia.lxapp.WebView? {
@@ -563,6 +557,13 @@ class LxAppActivity : AppCompatActivity() {
 
         // Attach and resume immediately
         attachWebViewToUI(webView)
+
+        // Update navbar and statusbar for initial page
+        val currentPath = webView.getCurrentPath() ?: ""
+        val navbarState = NativeApi.getNavigationBarState(appId, currentPath)
+        if (navbarState != null) {
+            updateNavigationBar(navbarState, false, true, currentPath)
+        }
 
         // Trigger onPageShow for initial WebView (this is the single place for initial page show)
         if (webView.getAppId() != null && webView.getCurrentPath() != null) {
@@ -1024,9 +1025,6 @@ class LxAppActivity : AppCompatActivity() {
                 onHomeClickListener = { handleHomeButtonClick() },
                 disableAnimation = false
             )
-
-            // Update status bar to match navbar
-            updateStatusBarForNavbar(navbarState.navigationBarBackgroundColor)
         }
     }
 
@@ -1044,9 +1042,6 @@ class LxAppActivity : AppCompatActivity() {
                 onHomeClickListener = { handleHomeButtonClick() },
                 disableAnimation = true
             )
-
-            // Update status bar to match navbar
-            updateStatusBarForNavbar(navbarState.navigationBarBackgroundColor)
         }
     }
 
@@ -1056,22 +1051,22 @@ class LxAppActivity : AppCompatActivity() {
         try {
             val statusBarHeight = getStatusBarHeight(this)
             navigationBar = NavigationBar(this).apply {
-            val navBarContentHeight = getCalculatedContentHeightPx()
-            layoutParams = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                navBarContentHeight + statusBarHeight  // Include status bar height
-            ).apply {
-                gravity = Gravity.TOP
-                topMargin = 0  // Start from very top
+                val navBarContentHeight = getCalculatedContentHeightPx()
+                layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    navBarContentHeight + statusBarHeight  // Include status bar height
+                ).apply {
+                    gravity = Gravity.TOP
+                    topMargin = 0  // Start from very top
+                }
+
+                setPadding(paddingLeft, statusBarHeight, paddingRight, paddingBottom)  // Add status bar padding
+                setOnBackButtonClickListener { handleBackButtonClick() }
+                setOnHomeButtonClickListener { handleHomeButtonClick() }
+                visibility = View.GONE
             }
 
-            setPadding(paddingLeft, statusBarHeight, paddingRight, paddingBottom)  // Add status bar padding
-            setOnBackButtonClickListener { handleBackButtonClick() }
-            setOnHomeButtonClickListener { handleHomeButtonClick() }
-            visibility = View.GONE
-        }
-
-        rootContainer.addView(navigationBar)
+            rootContainer.addView(navigationBar)
         } catch (e: Exception) {
             navigationBar = null
         }
@@ -1079,7 +1074,7 @@ class LxAppActivity : AppCompatActivity() {
 
     private fun updateNavigationBar(config: NavigationBarState?, isBackNavigation: Boolean, disableAnimation: Boolean = false, targetPath: String? = null) {
         val pathForNavbar = targetPath ?: currentWebView?.getCurrentPath() ?: ""
-        val navbarState = NativeApi.getNavigationBarState(appId, pathForNavbar)
+        val navbarState = config ?: NativeApi.getNavigationBarState(appId, pathForNavbar)
 
         if (navbarState != null) {
             // Create navbar if needed
@@ -1093,26 +1088,9 @@ class LxAppActivity : AppCompatActivity() {
                 onHomeClickListener = { handleHomeButtonClick() },
                 disableAnimation = disableAnimation
             )
-
-            // Update status bar based on navbar state
-            if (navbarState.showNavbar) {
-                updateStatusBarForNavbar(navbarState.navigationBarBackgroundColor)
-            } else {
-                // Reset status bar to transparent when navbar is hidden
-                window.statusBarColor = Color.TRANSPARENT
-                WindowCompat.getInsetsController(window, window.decorView).apply {
-                    isAppearanceLightStatusBars = true  // Default to light status bar
-                }
-            }
         } else {
             // Hide navbar completely
             navigationBar?.visibility = View.GONE
-
-            // Reset status bar to transparent
-            window.statusBarColor = Color.TRANSPARENT
-            WindowCompat.getInsetsController(window, window.decorView).apply {
-                isAppearanceLightStatusBars = true  // Default to light status bar
-            }
         }
 
         updateLayoutMargins()

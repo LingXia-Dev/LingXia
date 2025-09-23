@@ -163,8 +163,6 @@ class NavigationBar @JvmOverloads constructor(
         // Calculate dynamic font size for title
         val targetTitleSp = if (isTablet) 12f else 17f
 
-        Log.d(TAG, "Device isTablet: $isTablet, navBarHeightDp: $navBarHeightDp, Setting title font size to: $targetTitleSp sp")
-
         // Title TextView setup
         titleTextView = TextView(context).apply {
             layoutParams = LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
@@ -341,8 +339,6 @@ class NavigationBar @JvmOverloads constructor(
         onHomeClickListener: OnClickListener? = null,
         onAnimationEnd: Runnable? = null
     ) {
-        visibility = View.VISIBLE
-
         // Set state
         setTitle(title)
         setColor(bgColor, textColor)
@@ -389,8 +385,9 @@ class NavigationBar @JvmOverloads constructor(
         disableAnimation: Boolean = false
     ) {
         val textColor = ColorUtils.resolveNavTextColor(navbarState)
-        
+
         if (navbarState.showNavbar) {
+            visibility = View.VISIBLE
             // Show full navbar
             updateStateAndAnimate(
                 title = navbarState.navigationBarTitleText,
@@ -404,6 +401,7 @@ class NavigationBar @JvmOverloads constructor(
                 onHomeClickListener = onHomeClickListener
             )
         } else if (navbarState.showBackButton || navbarState.showHomeButton) {
+            visibility = View.VISIBLE
             // Show button-only mode (transparent background, no title)
             updateStateAndAnimate(
                 title = "",

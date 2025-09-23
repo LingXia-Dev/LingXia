@@ -260,10 +260,6 @@ class TabBar(context: Context) : LinearLayout(context) {
     }
 
     fun setItems(newItems: List<TabBarItem>) {
-        Log.d(TAG, "setItems called with ${newItems.size} items")
-        newItems.forEachIndexed { index, item ->
-            Log.d(TAG, "Item $index: text='${item.text}', pagePath='${item.pagePath}'")
-        }
         items = newItems  // Use all items from configuration
 
         itemsContainer?.let { container ->
@@ -517,7 +513,6 @@ class TabBar(context: Context) : LinearLayout(context) {
             addView(iconWrapper)
 
             if (!item.text.isNullOrBlank()) {
-                Log.d(TAG, "Creating TextView for item: text='${item.text}', pagePath='${item.pagePath}'")
                 val textView = TextView(context).apply {
                     text = item.text
 
@@ -540,7 +535,6 @@ class TabBar(context: Context) : LinearLayout(context) {
 
                 }
                 addView(textView)
-                Log.d(TAG, "Added TextView to LinearLayout: text='${textView.text}', textColor=${textView.currentTextColor}, textSize=${textView.textSize}")
             }
 
             setOnClickListener {
