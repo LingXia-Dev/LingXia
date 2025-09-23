@@ -353,20 +353,18 @@ impl Platform {
 
         unsafe {
             if long {
-                // Long vibration: start continuous pattern
+                // Long vibration: loop the default vibration sound to emulate continuous buzz
                 let vibration_data = Box::new(ContinuousVibrationData {
                     remaining_pulses: Self::CONTINUOUS_VIBRATION_PULSES,
                     pulse_interval_ns: Self::CONTINUOUS_VIBRATION_INTERVAL_NS,
                 });
 
-                // First vibration pulse
+                // Kick off the first pulse immediately
                 AudioServicesPlaySystemSound(K_SYSTEM_SOUND_ID_VIBRATE);
 
-                // Schedule remaining pulses if needed
                 if vibration_data.remaining_pulses > 1 {
                     let context = Box::into_raw(vibration_data) as *mut std::ffi::c_void;
-                    let when =
-                        dispatch_time(DISPATCH_TIME_NOW, Self::CONTINUOUS_VIBRATION_INTERVAL_NS);
+                    let when = dispatch_time(DISPATCH_TIME_NOW, Self::CONTINUOUS_VIBRATION_INTERVAL_NS);
                     dispatch_after_f(
                         when,
                         main_dispatch_queue(),
@@ -375,15 +373,14 @@ impl Platform {
                     );
                 }
             } else {
-                // Short vibration: single pulse
-                AudioServicesPlaySystemSound(K_SYSTEM_SOUND_ID_VIBRATE);
+                AudioServicesPlaySystemSound(Self::SHORT_VIBRATION_SOUND_ID);
             }
         }
     }
 
-    // AudioServices continuous vibration constants - 400ms total duration
-    const CONTINUOUS_VIBRATION_PULSES: usize = 8; // 8 pulses for 400ms duration
-    const CONTINUOUS_VIBRATION_INTERVAL_NS: i64 = 50_000_000; // ~50ms for smooth continuous feel
+    const SHORT_VIBRATION_SOUND_ID: u32 = 1519; // Peek (short, ~15ms)
+    const CONTINUOUS_VIBRATION_PULSES: usize = 8; // Loop ~400ms total
+    const CONTINUOUS_VIBRATION_INTERVAL_NS: i64 = 50_000_000; // 50ms between pulses
 }
 
 #[cfg(target_os = "ios")]
@@ -415,30 +412,24 @@ unsafe extern "C" fn continuous_vibration_callback(context: *mut std::ffi::c_voi
         return;
     }
 
-    let vibration_data = unsafe { &mut *(context as *mut ContinuousVibrationData) };
+    let data = unsafe { &mut *(context as *mut ContinuousVibrationData) };
 
-    if vibration_data.remaining_pulses <= 1 {
+    if data.remaining_pulses <= 1 {
         unsafe { drop(Box::from_raw(context as *mut ContinuousVibrationData)) };
         return;
     }
 
-    // Play vibration pulse
-    unsafe {
-        AudioServicesPlaySystemSound(K_SYSTEM_SOUND_ID_VIBRATE);
-    }
+    AudioServicesPlaySystemSound(K_SYSTEM_SOUND_ID_VIBRATE);
+    data.remaining_pulses -= 1;
 
-    vibration_data.remaining_pulses -= 1;
-
-    if vibration_data.remaining_pulses > 0 {
-        let when = unsafe { dispatch_time(DISPATCH_TIME_NOW, vibration_data.pulse_interval_ns) };
-        unsafe {
-            dispatch_after_f(
-                when,
-                main_dispatch_queue(),
-                context,
-                continuous_vibration_callback,
-            );
-        }
+    if data.remaining_pulses > 0 {
+        let when = dispatch_time(DISPATCH_TIME_NOW, data.pulse_interval_ns);
+        dispatch_after_f(
+            when,
+            main_dispatch_queue(),
+            context,
+            continuous_vibration_callback,
+        );
     } else {
         unsafe { drop(Box::from_raw(context as *mut ContinuousVibrationData)) };
     }
@@ -446,15 +437,6 @@ unsafe extern "C" fn continuous_vibration_callback(context: *mut std::ffi::c_voi
 
 #[cfg(target_os = "ios")]
 type DispatchQueue = *mut std::ffi::c_void;
-
-#[cfg(target_os = "ios")]
-type DispatchTime = u64;
-
-#[cfg(target_os = "ios")]
-const DISPATCH_TIME_NOW: DispatchTime = 0;
-
-#[cfg(target_os = "ios")]
-const K_SYSTEM_SOUND_ID_VIBRATE: u32 = 0x00000FFF;
 
 #[cfg(target_os = "ios")]
 #[link(name = "System", kind = "dylib")]
@@ -477,6 +459,15 @@ unsafe extern "C" {
     // AudioServices functions for vibration
     fn AudioServicesPlaySystemSound(inSystemSoundID: u32);
 }
+
+#[cfg(target_os = "ios")]
+type DispatchTime = u64;
+
+#[cfg(target_os = "ios")]
+const DISPATCH_TIME_NOW: DispatchTime = 0;
+
+#[cfg(target_os = "ios")]
+const K_SYSTEM_SOUND_ID_VIBRATE: u32 = 0x00000FFF;
 
 #[cfg(target_os = "ios")]
 unsafe fn main_dispatch_queue() -> DispatchQueue {
