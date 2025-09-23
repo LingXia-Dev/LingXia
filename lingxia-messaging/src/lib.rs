@@ -1,7 +1,7 @@
 //! LingXia Messaging System
 //!
 //! Provides two core functionalities for cross-platform communication:
-//! 1. A simple callback registry for one-shot request-response operations.
+//! 1. A flexible callback registry that supports both oneshot and stream callbacks.
 //! 2. A publish-subscribe system for system-wide events.
 
 use std::collections::HashMap;
@@ -16,8 +16,21 @@ pub struct CallbackResult {
     pub data: String,
 }
 
-struct CallbackEntry {
-    sender: oneshot::Sender<CallbackResult>,
+impl CallbackResult {
+    /// Borrow the callback payload as a string slice.
+    pub fn as_str(&self) -> &str {
+        &self.data
+    }
+
+    /// Consume the result and return the underlying string payload.
+    pub fn into_string(self) -> String {
+        self.data
+    }
+}
+
+enum CallbackEntry {
+    Oneshot(oneshot::Sender<CallbackResult>),
+    Stream(mpsc::Sender<CallbackResult>),
 }
 
 struct CallbackRegistry {
@@ -33,13 +46,25 @@ impl CallbackRegistry {
         }
     }
 
-    fn register(&self) -> (u64, oneshot::Receiver<CallbackResult>) {
+    fn register_oneshot(&self) -> (u64, oneshot::Receiver<CallbackResult>) {
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let (sender, receiver) = oneshot::channel();
 
         {
             let mut callbacks = self.callbacks.lock().unwrap();
-            callbacks.insert(id, CallbackEntry { sender });
+            callbacks.insert(id, CallbackEntry::Oneshot(sender));
+        }
+
+        (id, receiver)
+    }
+
+    fn register_stream(&self) -> (u64, mpsc::Receiver<CallbackResult>) {
+        let id = self.next_id.fetch_add(1, Ordering::SeqCst);
+        let (sender, receiver) = mpsc::channel(16); // Buffer size of 16
+
+        {
+            let mut callbacks = self.callbacks.lock().unwrap();
+            callbacks.insert(id, CallbackEntry::Stream(sender));
         }
 
         (id, receiver)
@@ -52,12 +77,34 @@ impl CallbackRegistry {
 
     fn invoke(&self, id: u64, success: bool, data: String) -> bool {
         let mut callbacks = self.callbacks.lock().unwrap();
+        let result = CallbackResult { success, data };
 
-        if let Some(entry) = callbacks.remove(&id) {
-            let _ = entry.sender.send(CallbackResult { success, data });
-            true
-        } else {
-            false
+        match callbacks.get(&id) {
+            Some(CallbackEntry::Oneshot(_)) => {
+                // For oneshot, remove the callback after sending
+                if let Some(CallbackEntry::Oneshot(sender)) = callbacks.remove(&id) {
+                    let _ = sender.send(result);
+                    true
+                } else {
+                    false
+                }
+            }
+            Some(CallbackEntry::Stream(sender)) => {
+                // For stream, keep the callback and try to send
+                match sender.try_send(result) {
+                    Ok(_) => true,
+                    Err(mpsc::error::TrySendError::Full(_payload)) => {
+                        // Channel is full; report failure so caller can retry
+                        false
+                    }
+                    Err(mpsc::error::TrySendError::Closed(_payload)) => {
+                        // Channel is closed, remove the callback
+                        callbacks.remove(&id);
+                        false
+                    }
+                }
+            }
+            None => false,
         }
     }
 }
@@ -65,12 +112,17 @@ impl CallbackRegistry {
 static CALLBACK_REGISTRY: OnceLock<CallbackRegistry> = OnceLock::new();
 
 fn get_callback_registry() -> &'static CallbackRegistry {
-    CALLBACK_REGISTRY.get_or_init(|| CallbackRegistry::new())
+    CALLBACK_REGISTRY.get_or_init(CallbackRegistry::new)
 }
 
-/// Get callback ID and receiver for a one-shot request-response operation.
+/// Register a oneshot callback and get its receiver.
 pub fn get_callback() -> (u64, oneshot::Receiver<CallbackResult>) {
-    get_callback_registry().register()
+    get_callback_registry().register_oneshot()
+}
+
+/// Register a stream callback and get its receiver.
+pub fn get_stream_callback() -> (u64, mpsc::Receiver<CallbackResult>) {
+    get_callback_registry().register_stream()
 }
 
 /// Remove callback by ID. This is useful for cancellation or timeout scenarios.
@@ -78,9 +130,11 @@ pub fn remove_callback(id: u64) -> bool {
     get_callback_registry().unregister(id)
 }
 
-/// Invoke callback (called from platform code) to send a single result back.
-pub fn invoke_callback(id: u64, success: bool, data: String) -> bool {
-    get_callback_registry().invoke(id, success, data)
+/// Invoke callback (called from platform code) to send result back.
+/// For oneshot mode, this removes the callback after sending.
+/// For stream mode, this keeps the callback active for future messages.
+pub fn invoke_callback(id: u64, success: bool, data: impl Into<String>) -> bool {
+    get_callback_registry().invoke(id, success, data.into())
 }
 
 /// Represents a system-wide event.
