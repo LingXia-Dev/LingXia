@@ -153,9 +153,24 @@ class LxApp private constructor(private val context: Context) {
                     activity.getSystemService(Context.VIBRATOR_SERVICE) as android.os.Vibrator
                 }
 
+                if (!vibrator.hasVibrator()) {
+                    Log.w(TAG, "Device does not support vibration")
+                    return
+                }
+
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                    val duration = if (longVibration) 400L else 15L
-                    val effect = android.os.VibrationEffect.createOneShot(duration, android.os.VibrationEffect.DEFAULT_AMPLITUDE)
+                    val effect = when {
+                        android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q && !longVibration -> {
+                            android.os.VibrationEffect.createPredefined(android.os.VibrationEffect.EFFECT_TICK)
+                        }
+                        longVibration -> {
+                            android.os.VibrationEffect.createOneShot(400L, android.os.VibrationEffect.DEFAULT_AMPLITUDE)
+                        }
+                        else -> {
+                            val amplitude = if (vibrator.hasAmplitudeControl()) 255 else android.os.VibrationEffect.DEFAULT_AMPLITUDE
+                            android.os.VibrationEffect.createOneShot(15L, amplitude)
+                        }
+                    }
                     vibrator.vibrate(effect)
                 } else {
                     @Suppress("DEPRECATION")
