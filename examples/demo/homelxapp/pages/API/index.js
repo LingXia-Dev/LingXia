@@ -58,6 +58,13 @@ Page({
     });
   },
 
+  // Navigate to Location API page
+  navigateToLocationPage: function () {
+    lx.navigateTo({
+      url: `pages/location/index.tsx`
+    });
+  },
+
   navigateToTestMiniApp: function () {
     lx.navigateToLxApp({
       appId: "testminiapp",

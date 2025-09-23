@@ -3,7 +3,7 @@ import '../../tailwind.css';
 
 export default function APIPage() {
   // Use LingXia hook to get data and functions
-  const { data, toggleSection, navigateToUIPage, navigateToDevicePage, navigateToSystemPage, navigateToTestMiniApp } = window.useLingXia();
+  const { data, toggleSection, navigateToUIPage, navigateToDevicePage, navigateToSystemPage, navigateToLocationPage, navigateToTestMiniApp } = window.useLingXia();
   const { expandedSections = { interface: false, device: false, system: false, navigation: false } } = data;
 
   React.useEffect(() => {
@@ -257,9 +257,12 @@ export default function APIPage() {
           </div>
         </div>
 
-        {/* Location - Empty */}
+        {/* Location - Clickable */}
         <div className="bg-white rounded-lg shadow-sm">
-          <div className="px-4 py-4 flex items-center justify-between">
+          <div
+            className="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
+            onClick={navigateToLocationPage}
+          >
             <div className="text-base text-gray-900">Location</div>
             <div className="w-6 h-6 text-gray-400">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">

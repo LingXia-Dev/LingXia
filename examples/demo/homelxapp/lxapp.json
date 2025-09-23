@@ -8,6 +8,7 @@
     "pages/ui/index.tsx",
     "pages/device/index.tsx",
     "pages/system/index.tsx",
+    "pages/location/index.tsx",
     "pages/todo/index.vue"
   ],
   "debug": true,
