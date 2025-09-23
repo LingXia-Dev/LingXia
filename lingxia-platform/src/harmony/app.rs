@@ -6,7 +6,6 @@ use ohos_raw_sys::*;
 use std::ffi::{CString, c_void};
 use std::io::{Cursor, Read};
 use std::path::PathBuf;
-use std::process::Command;
 
 pub struct Platform {
     pub data_dir: String,

@@ -1,6 +1,5 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { display } from '@kit.ArkUI';
-import { vibrator } from '@kit.SensorServiceKit';
 import { call } from '@kit.TelephonyKit';
 import liblingxia from 'liblingxia.so';
 
@@ -39,23 +38,6 @@ export class LxAppDevice {
     } catch (error) {
       hilog.error(DOMAIN, TAG, `Failed to get screen info: ${error}`);
       liblingxia.onCallback(callbackId, false, JSON.stringify(DEFAULT_SCREEN_INFO));
-    }
-  }
-
-  public static vibrate(isLong: boolean): void {
-    try {
-      const duration = isLong ? 400 : 15;
-      hilog.info(DOMAIN, TAG, `Vibrate requested: ${isLong} (${duration}ms)`);
-
-      vibrator.startVibration({ type: 'time', duration }, { id: 0, usage: 'alarm' }, (error) => {
-        if (error) {
-          hilog.error(DOMAIN, TAG, `Failed to vibrate: ${error.message}`);
-        } else {
-          hilog.info(DOMAIN, TAG, `Vibration completed: ${duration}ms`);
-        }
-      });
-    } catch (error) {
-      hilog.error(DOMAIN, TAG, `Failed to vibrate: ${error}`);
     }
   }
 

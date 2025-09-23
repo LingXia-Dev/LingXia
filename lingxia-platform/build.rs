@@ -11,6 +11,7 @@ fn main() {
     let env = env::var("CARGO_CFG_TARGET_ENV").unwrap_or_default();
     if target.contains("linux") && env.eq("ohos") {
         napi_build_ohos::setup();
+        println!("cargo:rustc-link-lib=dylib=ohvibrator.z");
     }
 
     if target.contains("apple") {

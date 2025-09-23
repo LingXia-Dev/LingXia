@@ -226,10 +226,6 @@ class NativeBridge {
       LxAppDevice.getScreenInfo(callbackId);
     });
 
-    this.register('vibrate', (long: string): void => {
-      LxAppDevice.vibrate(long === 'true');
-    });
-
     this.register('makePhoneCall', (phoneNumber: string): void => {
       LxAppDevice.makePhoneCall(phoneNumber);
     });

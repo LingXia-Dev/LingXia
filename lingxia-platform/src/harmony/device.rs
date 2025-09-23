@@ -7,6 +7,24 @@ use std::process::Command;
 
 use super::Platform;
 
+#[allow(non_camel_case_types)]
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct Vibrator_Attribute {
+    vibrator_id: i32,
+    usage: i32,
+}
+
+#[link(name = "ohvibrator.z")]
+unsafe extern "C" {
+    fn OH_Vibrator_PlayVibration(duration: i32, attribute: Vibrator_Attribute) -> i32;
+}
+
+const VIBRATION_DURATION_SHORT_MS: i32 = 15;
+const VIBRATION_DURATION_LONG_MS: i32 = 400;
+const DEFAULT_VIBRATOR_ID: i32 = 0;
+const VIBRATOR_USAGE_ALARM: i32 = 1;
+
 /// Get system parameter using param command
 fn get_system_param(key: &str) -> Option<String> {
     Command::new("param")
@@ -67,8 +85,26 @@ impl Device for Platform {
     }
 
     fn vibrate(&self, long: bool) -> Result<(), PlatformError> {
-        lingxia_webview::tsfn::call_arkts("vibrate", &[&long.to_string()])
-            .map_err(|e| PlatformError::Platform(format!("Failed to vibrate: {}", e)))
+        let duration = if long {
+            VIBRATION_DURATION_LONG_MS
+        } else {
+            VIBRATION_DURATION_SHORT_MS
+        };
+
+        let attribute = Vibrator_Attribute {
+            vibrator_id: DEFAULT_VIBRATOR_ID,
+            usage: VIBRATOR_USAGE_ALARM,
+        };
+
+        let result = unsafe { OH_Vibrator_PlayVibration(duration, attribute) };
+        if result == 0 {
+            Ok(())
+        } else {
+            Err(PlatformError::Platform(format!(
+                "Failed to vibrate via OH_Vibrator_PlayVibration: error code {}",
+                result
+            )))
+        }
     }
 
     fn make_phone_call(&self, phone_number: &str) -> Result<(), PlatformError> {
