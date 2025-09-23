@@ -13,8 +13,8 @@ pub enum LogLevel {
 
 #[derive(Debug, Clone, Copy)]
 pub enum LogTag {
-    Native,                // For logs from Rust/native code
-    WebViewConsole,        // For logs from WebView's JavaScript console
+    Native,              // For logs from Rust/native code
+    WebViewConsole,      // For logs from WebView's JavaScript console
     LxAppServiceConsole, // For logs from LxApp service layer
 }
 

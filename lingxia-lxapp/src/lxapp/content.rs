@@ -1,8 +1,8 @@
 use crate::error::LxAppError;
 use crate::lxapp::LxApp;
 use crate::{error, info};
-use std::io::Read;
 use lingxia_platform::AppRuntime;
+use std::io::Read;
 
 impl LxApp {
     /// Generate processed HTML content for a page with script and CSS injection

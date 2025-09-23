@@ -76,7 +76,11 @@ pub fn call_arkts(name: &str, args: &[&str]) -> Result<(), WebViewError> {
 }
 
 /// Helper function for TSFN calls with callback
-pub fn call_arkts_with_callback<F>(name: &str, args: &[&str], callback: F) -> Result<(), WebViewError>
+pub fn call_arkts_with_callback<F>(
+    name: &str,
+    args: &[&str],
+    callback: F,
+) -> Result<(), WebViewError>
 where
     F: FnOnce() + Send + 'static,
 {

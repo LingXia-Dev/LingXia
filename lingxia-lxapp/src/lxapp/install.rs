@@ -1,7 +1,7 @@
 use super::version::Version;
 use super::{LINGXIA_DIR, LXAPPS_DIR, VERSIONS_DIR};
 use crate::{LxApp, LxAppError};
-use lingxia_platform::{Platform, AppRuntime};
+use lingxia_platform::{AppRuntime, Platform};
 use std::sync::Arc;
 
 /// Check if a mini app is installed
@@ -124,7 +124,11 @@ pub(crate) fn install_home_lxapp(
     Ok(())
 }
 
-fn update_version(controller: Arc<Platform>, appid: &str, new_version: &str) -> Result<(), LxAppError> {
+fn update_version(
+    controller: Arc<Platform>,
+    appid: &str,
+    new_version: &str,
+) -> Result<(), LxAppError> {
     let version_dir = controller
         .app_data_dir()
         .join(LINGXIA_DIR)

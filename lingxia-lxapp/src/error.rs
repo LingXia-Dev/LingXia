@@ -1,7 +1,7 @@
+use lingxia_platform::PlatformError;
 use rong::RongJSError;
 use std::io;
 use thiserror::Error;
-use lingxia_platform::PlatformError;
 
 #[derive(Debug, Clone, Error)]
 pub enum LxAppError {

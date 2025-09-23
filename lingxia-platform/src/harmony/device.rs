@@ -53,8 +53,8 @@ impl Device for Platform {
     }
 
     fn screen_info(&self, callback_id: u64) -> Result<(), PlatformError> {
-        lingxia_webview::tsfn::call_arkts("getScreenInfo", &[&callback_id.to_string()])
-            .map_err(|e| {
+        lingxia_webview::tsfn::call_arkts("getScreenInfo", &[&callback_id.to_string()]).map_err(
+            |e| {
                 // Send error via callback
                 lingxia_messaging::invoke_callback(
                     callback_id,
@@ -62,7 +62,8 @@ impl Device for Platform {
                     format!("Failed to get screen info: {}", e),
                 );
                 PlatformError::Platform(format!("Failed to get screen info: {}", e))
-            })
+            },
+        )
     }
 
     fn vibrate(&self, long: bool) -> Result<(), PlatformError> {

@@ -67,4 +67,3 @@ pub fn get_env() -> Result<JNIEnv<'static>, Box<dyn std::error::Error>> {
 pub(crate) fn get_lingxia_webview_class() -> Option<&'static GlobalRef> {
     LINGXIA_WEBVIEW_CLASS.get()
 }
-
