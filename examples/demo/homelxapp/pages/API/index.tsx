@@ -3,8 +3,8 @@ import '../../tailwind.css';
 
 export default function APIPage() {
   // Use LingXia hook to get data and functions
-  const { data, toggleSection, navigateToUIPage, navigateToDevicePage, navigateToTestMiniApp } = window.useLingXia();
-  const { expandedSections = { interface: false, device: false, navigation: false } } = data;
+  const { data, toggleSection, navigateToUIPage, navigateToDevicePage, navigateToSystemPage, navigateToTestMiniApp } = window.useLingXia();
+  const { expandedSections = { interface: false, device: false, system: false, navigation: false } } = data;
 
   React.useEffect(() => {
     document.body.className = 'api-page';
@@ -139,6 +139,37 @@ export default function APIPage() {
                 onClick={() => navigateToUIPage({ type: 'actionsheet' })}
               >
                 <div className="text-sm text-gray-700">Action Sheet</div>
+                <div className="w-4 h-4 text-gray-400">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M9 18l6-6-6-6"/>
+                  </svg>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* System - Dropdown */}
+        <div className="bg-white rounded-lg shadow-sm">
+          <div
+            className="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
+            onClick={() => toggleSection({ section: 'system' })}
+          >
+            <div className="text-base text-gray-900">System</div>
+            <div className="w-6 h-6 text-gray-400">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M4 4h16v16H4z"/>
+              </svg>
+            </div>
+          </div>
+
+          {expandedSections.system && (
+            <div className="border-t border-gray-100 bg-gray-50">
+              <div
+                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between"
+                onClick={() => navigateToSystemPage({ type: 'appBaseInfo' })}
+              >
+                <div className="text-sm text-gray-700">App Base Info</div>
                 <div className="w-4 h-4 text-gray-400">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                     <path d="M9 18l6-6-6-6"/>

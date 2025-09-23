@@ -6,6 +6,7 @@ Page({
     expandedSections: {
       interface: false,
       device: false,
+      system: false,
       navigation: false
     }
   },
@@ -46,6 +47,14 @@ Page({
     const { type = 'device' } = params || {};
     lx.navigateTo({
       url: `pages/device/index.tsx?type=${type}`
+    });
+  },
+
+  // Navigate to System API page with specific type parameter
+  navigateToSystemPage: function (params) {
+    const { type = 'appBaseInfo' } = params || {};
+    lx.navigateTo({
+      url: `pages/system/index.tsx?type=${type}`
     });
   },
 
