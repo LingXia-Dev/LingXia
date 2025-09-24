@@ -391,5 +391,9 @@ pub trait Location: Send + Sync + 'static {
 
     /// Request a single location update. The platform should report the
     /// position through the provided callback ID.
-    fn request_location(&self, callback_id: u64, config: LocationRequestConfig) -> Result<(), PlatformError>;
+    fn request_location(
+        &self,
+        callback_id: u64,
+        config: LocationRequestConfig,
+    ) -> Result<(), PlatformError>;
 }

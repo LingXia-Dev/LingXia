@@ -364,7 +364,8 @@ impl Platform {
 
                 if vibration_data.remaining_pulses > 1 {
                     let context = Box::into_raw(vibration_data) as *mut std::ffi::c_void;
-                    let when = dispatch_time(DISPATCH_TIME_NOW, Self::CONTINUOUS_VIBRATION_INTERVAL_NS);
+                    let when =
+                        dispatch_time(DISPATCH_TIME_NOW, Self::CONTINUOUS_VIBRATION_INTERVAL_NS);
                     dispatch_after_f(
                         when,
                         main_dispatch_queue(),

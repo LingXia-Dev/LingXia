@@ -21,6 +21,7 @@ lingxia-webview = { path = "../lingxia-webview" }
 [target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
 objc2 = "0.6"
 objc2-foundation = "0.3"
+objc2-core-location = "0.3"
 dispatch2 = "0.3"
 swift-bridge = "0.1.57"
 log = "0.4.27"

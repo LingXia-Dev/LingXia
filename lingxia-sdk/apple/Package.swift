@@ -53,6 +53,7 @@ let package = Package(
                 .linkedFramework("JavaScriptCore"),
                 .linkedFramework("WebKit"),
                 .linkedFramework("AudioToolbox", .when(platforms: [.iOS])),
+                .linkedFramework("CoreLocation", .when(platforms: [.iOS])),
             ]
         ),
     ]

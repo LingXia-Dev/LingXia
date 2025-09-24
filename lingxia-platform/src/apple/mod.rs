@@ -5,6 +5,7 @@
 mod app;
 mod device;
 mod ffi;
+mod location;
 mod resources;
 mod ui_update;
 mod user_feedback;
