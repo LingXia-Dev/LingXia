@@ -142,11 +142,12 @@ class ToastOverlayManager {
     private let config: ToastConfig
     private let position: ToastPosition
 
-    #if os(iOS)
+#if os(iOS)
     private var overlayViewController: UIViewController?
-    #elseif os(macOS)
+    private var overlayWindow: PassthroughWindow?
+#elseif os(macOS)
     private var overlayView: NSView?
-    #endif
+#endif
 
     init(config: ToastConfig, position: ToastPosition) {
         self.config = config
@@ -163,8 +164,18 @@ class ToastOverlayManager {
 
     func hide() {
         #if os(iOS)
-        overlayViewController?.dismiss(animated: false)
-        overlayViewController = nil
+        if let controller = overlayViewController {
+            if controller.presentingViewController != nil {
+                controller.dismiss(animated: false)
+            } else if controller.parent != nil {
+                controller.willMove(toParent: nil)
+                controller.view.removeFromSuperview()
+                controller.removeFromParent()
+            }
+            overlayViewController = nil
+        }
+        overlayWindow?.isHidden = true
+        overlayWindow = nil
         #elseif os(macOS)
         overlayView?.removeFromSuperview()
         overlayView = nil
@@ -192,8 +203,22 @@ class ToastOverlayManager {
         hostingController.modalPresentationStyle = .overFullScreen
         hostingController.modalTransitionStyle = .crossDissolve
 
-        overlayViewController = hostingController
-        topViewController.present(hostingController, animated: true)
+        if config.mask {
+            overlayViewController = hostingController
+            topViewController.present(hostingController, animated: true)
+        } else {
+            let toastWindow: PassthroughWindow
+            if #available(iOS 13.0, *), let scene = window.windowScene {
+                toastWindow = PassthroughWindow(windowScene: scene)
+            } else {
+                toastWindow = PassthroughWindow(frame: window.bounds)
+            }
+            toastWindow.windowLevel = window.windowLevel + 1
+            toastWindow.backgroundColor = .clear
+            toastWindow.rootViewController = hostingController
+            toastWindow.isHidden = false
+            overlayWindow = toastWindow
+        }
     }
     #endif
 
@@ -212,6 +237,14 @@ class ToastOverlayManager {
     }
     #endif
 }
+
+#if os(iOS)
+final class PassthroughWindow: UIWindow {
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        return false
+    }
+}
+#endif
 
 /// SwiftUI Toast Content View
 struct ToastContentView: View {
