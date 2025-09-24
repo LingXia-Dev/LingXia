@@ -149,7 +149,12 @@ export struct ToastManager {
       .width('100%')
       .height('100%')
       .zIndex(9999)
-      .hitTestBehavior(this.config.mask ? HitTestMode.Block : HitTestMode.Transparent)
+      .hitTestBehavior(HitTestMode.Block)
+      .onClick(() => {
+        if (!this.config?.mask) {
+          this.hideToast();
+        }
+      })
     }
   }
 
