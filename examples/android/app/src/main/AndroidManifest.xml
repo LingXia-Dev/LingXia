@@ -18,7 +18,7 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            
+
             <!-- DeepLink intent filter for security link -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />

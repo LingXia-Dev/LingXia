@@ -17,5 +17,9 @@
         <key>NSAllowsArbitraryLoads</key>
         <true/>
     </dict>
+
+    <!-- Location permission description for runtime prompts -->
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>Allow LingXia to access your location to provide location-based features.</string>
 </dict>
 </plist>
