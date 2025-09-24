@@ -7,8 +7,8 @@ Page({
       interface: false,
       device: false,
       system: false,
-      navigation: false
-    }
+      navigation: false,
+    },
   },
 
   onLoad: function (options) {
@@ -30,38 +30,38 @@ Page({
     const currentState = this.data.expandedSections[section];
 
     await this.setData({
-      [`expandedSections.${section}`]: !currentState
+      [`expandedSections.${section}`]: !currentState,
     });
   },
 
   // Navigate to UI API page with specific type parameter
   navigateToUIPage: function (params) {
-    const { type = 'navigation' } = params || {};
+    const { type = "navigation" } = params || {};
     lx.navigateTo({
-      url: `pages/ui/index.tsx?type=${type}`
+      url: `pages/ui/index.tsx?type=${type}`,
     });
   },
 
   // Navigate to Device API page with specific type parameter
   navigateToDevicePage: function (params) {
-    const { type = 'device' } = params || {};
+    const { type = "device" } = params || {};
     lx.navigateTo({
-      url: `pages/device/index.tsx?type=${type}`
+      url: `pages/device/index.tsx?type=${type}`,
     });
   },
 
   // Navigate to System API page with specific type parameter
   navigateToSystemPage: function (params) {
-    const { type = 'appBaseInfo' } = params || {};
+    const { type = "appBaseInfo" } = params || {};
     lx.navigateTo({
-      url: `pages/system/index.tsx?type=${type}`
+      url: `pages/system/index.tsx?type=${type}`,
     });
   },
 
   // Navigate to Location API page
   navigateToLocationPage: function () {
     lx.navigateTo({
-      url: `pages/location/index.tsx`
+      url: `pages/location/index.tsx`,
     });
   },
 

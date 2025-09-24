@@ -242,10 +242,6 @@ mod ios {
         Ok(enabled)
     }
 
-    pub(super) fn request_location(callback_id: u64) -> Result<(), PlatformError> {
-        request_location_with_config(callback_id, crate::LocationRequestConfig::default())
-    }
-
     pub(super) fn request_location_with_config(
         callback_id: u64,
         config: crate::LocationRequestConfig,
