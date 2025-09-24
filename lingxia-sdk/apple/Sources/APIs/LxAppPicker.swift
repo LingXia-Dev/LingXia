@@ -114,14 +114,17 @@ public class LxAppPicker {
         sendPickerResult(callback_id: callback_id, buttonType: "confirm", selectedIndices: selectedIndices)
     }
     internal static func sendPickerResultScroll(callback_id: UInt64, selectedIndices: [Int]) {
-        // Match Android: build payload with index only; do not send to JS yet
         var payload: [String: Any] = [:]
         if selectedIndices.count == 1 {
             payload["index"] = selectedIndices.first ?? 0
         } else {
             payload["index"] = selectedIndices
         }
-        // TODO: Keep parity with Android: no native callback for scroll until ready
+
+        let jsonData = try! JSONSerialization.data(withJSONObject: payload)
+        if let jsonString = String(data: jsonData, encoding: .utf8) {
+            _ = onCallback(callback_id, true, jsonString)
+        }
     }
 }
 

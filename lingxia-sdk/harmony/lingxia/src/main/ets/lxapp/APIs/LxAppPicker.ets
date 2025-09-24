@@ -254,9 +254,8 @@ export struct PickerManager {
       index: index
     };
 
-    hilog.info(DOMAIN, TAG, `Scroll result: ${JSON.stringify(result)}`);
-    // TODO: Currently not sending scroll results
-    // onCallback(this.callbackId, true, JSON.stringify(result));
+    //hilog.info(DOMAIN, TAG, `Scroll result: ${JSON.stringify(result)}`);
+    onCallback(this.callbackId, true, JSON.stringify(result));
   }
 
   build() {

@@ -1,7 +1,11 @@
+use futures::stream;
 use lingxia_lxapp::{LxApp, lx};
-use lingxia_messaging::{CallbackResult, get_callback};
+use lingxia_messaging::{CallbackResult, get_stream_callback, remove_callback};
 use lingxia_platform::{PickerType, UserFeedback};
-use rong::{FromJSObj, IntoJSValue, JSContext, JSFunc, JSObject, JSResult, JSValue, RongJSError};
+use rong::{
+    FromJSObj, IntoJSAsyncIteratorExt, IntoJSValue, JSContext, JSFunc, JSObject, JSResult, JSValue,
+    RongJSError,
+};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -182,10 +186,7 @@ impl From<CallbackResult> for PickerResult {
     }
 }
 
-async fn show_picker(
-    ctx: JSContext,
-    options: JSPickerOptions,
-) -> Result<PickerResult, RongJSError> {
+fn show_picker(ctx: JSContext, options: JSPickerOptions) -> JSResult<JSObject> {
     let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
 
     let picker_data = match options.mode.as_str() {
@@ -253,7 +254,7 @@ async fn show_picker(
         }
     };
 
-    let (callback_id, receiver) = get_callback();
+    let (callback_id, receiver) = get_stream_callback();
     let cancel_text = options.cancel_text.unwrap_or_else(|| "Cancel".to_string());
     let cancel_button_color = options
         .cancel_button_color
@@ -281,13 +282,41 @@ async fn show_picker(
         confirm_text_color,
         callback_id,
     ) {
-        Ok(()) => match receiver.await {
-            Ok(result) => Ok(PickerResult::from(result)),
-            Err(_) => Err(RongJSError::Error(
-                "Picker callback timeout or cancelled".to_string(),
-            )),
-        },
-        Err(e) => Err(RongJSError::Error(format!("Failed to show picker: {}", e))),
+        Ok(()) => {
+            let stream = stream::unfold(
+                (Some(receiver), callback_id),
+                |(receiver_opt, callback_id)| async move {
+                    let mut receiver = match receiver_opt {
+                        Some(receiver) => receiver,
+                        None => return None,
+                    };
+
+                    match receiver.recv().await {
+                        Some(result) => {
+                            let picker_result = PickerResult::from(result);
+                            let should_close = picker_result.cancelled || picker_result.confirmed;
+
+                            if should_close {
+                                remove_callback(callback_id);
+                                Some((picker_result, (None, callback_id)))
+                            } else {
+                                Some((picker_result, (Some(receiver), callback_id)))
+                            }
+                        }
+                        None => {
+                            remove_callback(callback_id);
+                            None
+                        }
+                    }
+                },
+            );
+
+            stream.to_js_async_iter(&ctx)
+        }
+        Err(e) => {
+            remove_callback(callback_id);
+            Err(RongJSError::Error(format!("Failed to show picker: {}", e)))
+        }
     }
 }
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {

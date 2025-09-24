@@ -414,8 +414,7 @@ object LxAppPicker {
                 put("index", JSONArray(currentSelectedIndices))
             }
         }
-        // TODO: Temporarily not calling native API for scroll updates (Rust not ready yet)
-        // NativeApi.onCallback(callbackId, true, result.toString())
+        NativeApi.onCallback(callbackId, true, result.toString())
     }
 
     private fun hidePickerInternal() {

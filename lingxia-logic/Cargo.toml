@@ -14,3 +14,4 @@ serde_json = { workspace = true }
 lingxia-lxapp = { path = "../lingxia-lxapp" }
 lingxia-platform = { path = "../lingxia-platform" }
 lingxia-messaging = { path = "../lingxia-messaging" }
+futures = { workspace = true }
