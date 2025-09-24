@@ -80,6 +80,12 @@ impl LxAppDelegate for LxApp {
             return resolved_path;
         }
 
+        if let Err(e) = self.push_to_page_stack(&resolved_path) {
+            error!("Failed to initialize page stack: {}", e)
+                .with_appid(self.appid.clone())
+                .with_path(resolved_path.clone());
+        }
+
         let options = self.state.lock().unwrap().startup_options.clone();
         let options_str = serde_json::to_string(&options).ok();
 
@@ -150,13 +156,6 @@ impl LxAppDelegate for LxApp {
                 return;
             }
         };
-
-        // Push to page stack - this is where all pages get pushed, regardless of type
-        if let Err(e) = self.push_to_page_stack(&path, false) {
-            error!("Failed to push page to stack: {}", e)
-                .with_appid(self.appid.clone())
-                .with_path(path.clone());
-        }
 
         page.dispatch_lifecycle_event(PageLifecycleEvent::OnShow);
 

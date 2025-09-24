@@ -414,13 +414,11 @@ impl Page {
                     info!("Page stack is full, cannot navigate forward.");
                     return Ok(());
                 }
-                // Special case: if navigating forward to the same page, force push.
-                if self.path() == path {
-                    lxapp.push_to_page_stack(&path, true)?;
-                }
             }
             NavigationType::Backward => {
-                // Backward is handled by navigate_back, so this is a no-op here.
+                return Err(LxAppError::UnsupportedOperation(
+                    "should use navigate_back".to_string(),
+                ));
             }
         }
 
@@ -431,6 +429,8 @@ impl Page {
         if !query_str.is_empty() {
             target_page.set_query(query_str);
         }
+
+        lxapp.push_to_page_stack(&path)?;
 
         // Set navbar state AFTER page creation to avoid being overwritten
         if nav_type == NavigationType::Forward {
