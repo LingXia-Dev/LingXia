@@ -1,6 +1,6 @@
 //! Harmony platform location (GPS) implementation
 
-use log::{info, warn};
+use log::warn;
 use serde_json::json;
 use std::ffi::c_void;
 
@@ -90,8 +90,8 @@ impl HarmonyLocationContext {
         }))
     }
 
-    unsafe fn from_raw(ptr: *mut c_void) -> Box<Self> {
-        Box::from_raw(ptr as *mut Self)
+    fn from_raw(ptr: *mut c_void) -> Box<Self> {
+        unsafe { Box::from_raw(ptr as *mut Self) }
     }
 }
 
@@ -104,15 +104,6 @@ unsafe extern "C" fn handle_location_update(location: *mut Location_Info, user_d
 
     let basic = unsafe { OH_LocationInfo_GetBasicInfo(location) };
 
-    // 打印 HarmonyOS 原生位置数据用于调试
-    info!("HarmonyOS Location Basic Info:");
-    info!("  latitude: {}", basic.latitude);
-    info!("  longitude: {}", basic.longitude);
-    info!("  speed: {}", basic.speed);
-    info!("  accuracy: {}", basic.accuracy);
-    info!("  altitude: {}", basic.altitude);
-    info!("  altitudeAccuracy: {}", basic.altitudeAccuracy);
-
     let payload = json!({
         "latitude": basic.latitude,
         "longitude": basic.longitude,
@@ -121,8 +112,6 @@ unsafe extern "C" fn handle_location_update(location: *mut Location_Info, user_d
         "altitude": basic.altitude,
         "vertical_accuracy": basic.altitudeAccuracy,
         "horizontal_accuracy": basic.accuracy,
-        // HarmonyOS 原生返回 WGS84 坐标，不需要硬编码 coordinate_system
-        // 让上层 logic 根据用户请求的 type 参数决定是否需要坐标转换
     });
 
     let payload_str = match serde_json::to_string(&payload) {
@@ -132,8 +121,6 @@ unsafe extern "C" fn handle_location_update(location: *mut Location_Info, user_d
             "{}".to_string()
         }
     };
-
-    info!("Generated JSON payload: {}", payload_str);
 
     if unsafe { OH_Location_StopLocating(ctx.request_config) } != LOCATION_SUCCESS {
         warn!("Failed to stop Harmony location updates");
@@ -162,12 +149,11 @@ impl Location for Platform {
         }
     }
 
-    fn request_location(&self, callback_id: u64) -> Result<(), PlatformError> {
-        info!(
-            "Starting location request with callback_id: {}",
-            callback_id
-        );
-
+    fn request_location(
+        &self,
+        callback_id: u64,
+        config: crate::LocationRequestConfig,
+    ) -> Result<(), PlatformError> {
         unsafe {
             let request_config = OH_Location_CreateRequestConfig();
             if request_config.is_null() {
@@ -175,10 +161,10 @@ impl Location for Platform {
                     "Failed to create location request config".to_string(),
                 ));
             }
-            info!("Location request config created successfully");
 
-            OH_LocationRequestConfig_SetInterval(request_config, 1);
-            info!("Location request interval set to 1 second");
+            // Set interval based on accuracy requirements
+            let interval = if config.is_high_accuracy { 1 } else { 5 };
+            OH_LocationRequestConfig_SetInterval(request_config, interval);
 
             let context_ptr = HarmonyLocationContext::new(callback_id, request_config);
             OH_LocationRequestConfig_SetCallback(
@@ -186,12 +172,8 @@ impl Location for Platform {
                 Some(handle_location_update),
                 context_ptr as *mut c_void,
             );
-            info!("Location request callback set");
 
-            info!("Calling OH_Location_StartLocating...");
             let result = OH_Location_StartLocating(request_config);
-            info!("OH_Location_StartLocating returned code: {}", result);
-
             if result != LOCATION_SUCCESS {
                 OH_Location_DestroyRequestConfig(request_config);
                 drop(Box::from_raw(context_ptr));
@@ -201,7 +183,6 @@ impl Location for Platform {
                 )));
             }
 
-            info!("Location request started successfully");
             Ok(())
         }
     }
