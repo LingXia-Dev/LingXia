@@ -13,11 +13,21 @@ export default function LocationPage() {
     };
   }, []);
 
-  const formatCoordinate = (value) => {
-    if (!value) return '--';
-    const degrees = Math.floor(Math.abs(value));
-    const minutes = Math.floor((Math.abs(value) - degrees) * 60);
-    const direction = value >= 0 ? (degrees === Math.floor(value) ? 'E' : 'N') : (degrees === Math.floor(Math.abs(value)) ? 'W' : 'S');
+  const formatCoordinate = (
+    value: number | null | undefined,
+    axis: 'latitude' | 'longitude'
+  ) => {
+    if (value === null || value === undefined) {
+      return '--';
+    }
+
+    const absolute = Math.abs(value);
+    const degrees = Math.floor(absolute);
+    const minutes = Math.floor((absolute - degrees) * 60);
+    const direction = axis === 'latitude'
+      ? value >= 0 ? 'N' : 'S'
+      : value >= 0 ? 'E' : 'W';
+
     return `${direction}: ${degrees}°${minutes.toString().padStart(2, '0')}'`;
   };
 
@@ -44,11 +54,12 @@ export default function LocationPage() {
             ) : location ? (
               <div className="space-y-4">
                 <div className="text-2xl font-light text-gray-800">
-                  {formatCoordinate(location.longitude)} {formatCoordinate(location.latitude)}
+                  {formatCoordinate(location.longitude, 'longitude')}{' '}
+                  {formatCoordinate(location.latitude, 'latitude')}
                 </div>
                 
                 {/* Location Details */}
-                <div className="grid grid-cols-2 gap-4 mt-6 text-sm">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-6 text-sm">
                   <div className="text-center">
                     <div className="text-gray-500">Longitude</div>
                     <div className="font-medium">{location.longitude?.toFixed(6) || '--'}</div>
@@ -68,10 +79,6 @@ export default function LocationPage() {
                   <div className="text-center">
                     <div className="text-gray-500">Speed</div>
                     <div className="font-medium">{location.speed ? `${location.speed.toFixed(1)}m/s` : '--'}</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-gray-500">Coordinate Type</div>
-                    <div className="font-medium">{location.coordinate_type || location.type || '--'}</div>
                   </div>
                 </div>
               </div>
@@ -101,15 +108,6 @@ export default function LocationPage() {
           </button>
         </div>
 
-        {/* Settings Icon (placeholder) */}
-        <div className="fixed bottom-6 right-6">
-          <div className="w-12 h-12 bg-white rounded-full shadow-lg flex items-center justify-center">
-            <svg className="w-6 h-6 text-gray-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <circle cx="12" cy="12" r="3"/>
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1 1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-            </svg>
-          </div>
-        </div>
       </div>
     </div>
   );
