@@ -100,7 +100,7 @@ unsafe extern "C" fn handle_location_update(location: *mut Location_Info, user_d
         return;
     }
 
-    let ctx = unsafe { HarmonyLocationContext::from_raw(user_data) };
+    let ctx = HarmonyLocationContext::from_raw(user_data);
 
     let basic = unsafe { OH_LocationInfo_GetBasicInfo(location) };
 

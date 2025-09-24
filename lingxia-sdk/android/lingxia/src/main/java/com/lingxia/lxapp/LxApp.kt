@@ -1,21 +1,27 @@
 package com.lingxia.lxapp
 
+import android.Manifest
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import com.lingxia.lxapp.APIs.LxAppToast
 import com.lingxia.lxapp.APIs.ToastIcon
 import com.lingxia.lxapp.APIs.ToastPosition
 import com.lingxia.lxapp.APIs.ModalResult
 import com.lingxia.lxapp.APIs.LxAppModal
+import com.lingxia.lxapp.APIs.LxAppLocation
 import com.lingxia.lxapp.APIs.LxAppDevice
 import com.lingxia.lxapp.APIs.LxAppActionSheet
 import com.lingxia.lxapp.APIs.LxAppPicker
+import org.json.JSONObject
 
 /**
  * Data class representing LxApp information from the native layer
@@ -50,6 +56,11 @@ class LxApp private constructor(private val context: Context) {
     companion object {
         private const val TAG = "LingXia.LxApp"
         private var instance: LxApp? = null
+        private const val LOCATION_PERMISSION_REQUEST_CODE = 1001
+        private val LOCATION_PERMISSIONS = arrayOf(
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        )
 
         // Properties to store home app details from native
         var HomeLxAppId: String? = null
@@ -72,6 +83,7 @@ class LxApp private constructor(private val context: Context) {
             // Handle DeepLink for the current activity if it's being initialized from an Activity
             if (context is android.app.Activity) {
                 handleAppLink(context.intent)
+                requestLocationPermissionsIfNeeded(context)
             }
 
             // Register global activity lifecycle callbacks to automatically handle DeepLinks
@@ -131,6 +143,40 @@ class LxApp private constructor(private val context: Context) {
         fun makePhoneCall(phoneNumber: String) {
             val activity = currentActivity ?: throw IllegalStateException("No current activity")
             LxAppDevice.makePhoneCall(activity, phoneNumber)
+        }
+
+        @JvmStatic
+        fun isLocationEnabled(): Boolean {
+            val context = currentActivity ?: instance?.context
+            if (context == null) {
+                Log.w(TAG, "isLocationEnabled called before initialization")
+                return false
+            }
+            return LxAppLocation.isLocationEnabled(context)
+        }
+
+        @JvmStatic
+        fun requestLocation(callbackId: Long) {
+            val activity = currentActivity
+            if (activity == null) {
+                Log.e(TAG, "requestLocation called without active activity")
+                val payload = JSONObject().apply { put("error", "No active activity") }
+                NativeApi.onCallback(callbackId, false, payload.toString())
+                return
+            }
+            LxAppLocation.requestSingleLocation(activity, callbackId)
+        }
+
+        @JvmStatic
+        fun requestLocationWithConfig(callbackId: Long, isHighAccuracy: Boolean, includeAltitude: Boolean, expireTimeMs: Int) {
+            val activity = currentActivity
+            if (activity == null) {
+                Log.e(TAG, "requestLocationWithConfig called without active activity")
+                val payload = JSONObject().apply { put("error", "No active activity") }
+                NativeApi.onCallback(callbackId, false, payload.toString())
+                return
+            }
+            LxAppLocation.requestSingleLocationWithConfig(activity, callbackId, isHighAccuracy, includeAltitude, expireTimeMs)
         }
 
         @JvmStatic
@@ -277,6 +323,7 @@ class LxApp private constructor(private val context: Context) {
                     handleAppLink(activity.intent)
                     if (activity is LxAppActivity) {
                         currentActivity = activity
+                        requestLocationPermissionsIfNeeded(activity)
                     }
                 }
 
@@ -297,6 +344,19 @@ class LxApp private constructor(private val context: Context) {
                 override fun onActivityStopped(activity: Activity) {}
                 override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
             }) ?: Log.w(TAG, "Failed to register ActivityLifecycleCallbacks: Application not found")
+        }
+
+        private fun requestLocationPermissionsIfNeeded(activity: Activity) {
+            val missingPermissions = LOCATION_PERMISSIONS.filter {
+                ContextCompat.checkSelfPermission(activity, it) != PackageManager.PERMISSION_GRANTED
+            }
+            if (missingPermissions.isNotEmpty()) {
+                ActivityCompat.requestPermissions(
+                    activity,
+                    missingPermissions.toTypedArray(),
+                    LOCATION_PERMISSION_REQUEST_CODE,
+                )
+            }
         }
 
         /**

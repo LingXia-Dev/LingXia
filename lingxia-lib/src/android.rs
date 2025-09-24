@@ -562,7 +562,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onCallback(
     let id = id as u64;
     let success = success != 0;
 
-    let data_str = match env.get_string(&data) {
+    let data_str: String = match env.get_string(&data) {
         Ok(s) => s.into(),
         Err(e) => {
             error!("[Android] Failed to get data string: {}", e);
