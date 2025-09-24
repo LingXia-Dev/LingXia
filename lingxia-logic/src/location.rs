@@ -1,6 +1,6 @@
 use lingxia_lxapp::{LxApp, lx};
 use lingxia_messaging::{CallbackResult, get_callback};
-use lingxia_platform::Location;
+use lingxia_platform::{Location, LocationRequestConfig};
 use rong::function::Optional;
 use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
 use serde_json::Value;
@@ -159,15 +159,25 @@ async fn get_location(
     // Get callback ID and receiver
     let (callback_id, receiver) = get_callback();
 
-    // Call runtime interface with callback ID
-    match lxapp.runtime.request_location(callback_id) {
+    // Create location request config from options
+    let config = if let Some(opts) = options.as_ref() {
+        LocationRequestConfig {
+            is_high_accuracy: opts.is_high_accuracy.unwrap_or(false),
+            high_accuracy_expire_time: opts.high_accuracy_expire_time,
+            include_altitude: opts.altitude.unwrap_or(false),
+        }
+    } else {
+        LocationRequestConfig::default()
+    };
+
+    // Call runtime interface with callback ID and config
+    match lxapp.runtime.request_location(callback_id, config) {
         Ok(()) => {
             // Wait for result from callback
             match receiver.await {
                 Ok(result) => {
                     let mut location = LocationObj::from(result);
 
-                    // Handle coordinate system conversion
                     let requested_type = options
                         .as_ref()
                         .and_then(|opts| opts.coordinate_type.as_deref())

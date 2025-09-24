@@ -359,6 +359,27 @@ pub trait UIUpdate: Send + Sync + 'static {
     fn update_tabbar_ui(&self, appid: String) -> Result<(), PlatformError>;
 }
 
+/// Location request configuration
+#[derive(Debug, Clone)]
+pub struct LocationRequestConfig {
+    /// Whether to request high accuracy location
+    pub is_high_accuracy: bool,
+    /// High accuracy expire time in milliseconds
+    pub high_accuracy_expire_time: Option<u32>,
+    /// Whether to include altitude information
+    pub include_altitude: bool,
+}
+
+impl Default for LocationRequestConfig {
+    fn default() -> Self {
+        Self {
+            is_high_accuracy: false,
+            high_accuracy_expire_time: None,
+            include_altitude: false,
+        }
+    }
+}
+
 /// Location services interface
 ///
 /// Provides access to the device's current location. Results are delivered via
@@ -370,5 +391,5 @@ pub trait Location: Send + Sync + 'static {
 
     /// Request a single location update. The platform should report the
     /// position through the provided callback ID.
-    fn request_location(&self, callback_id: u64) -> Result<(), PlatformError>;
+    fn request_location(&self, callback_id: u64, config: LocationRequestConfig) -> Result<(), PlatformError>;
 }
