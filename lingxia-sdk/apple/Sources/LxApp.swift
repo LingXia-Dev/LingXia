@@ -488,6 +488,38 @@ extension LxApp {
         LxAppPicker.showPicker(options: options, callback_id: callback_id)
     }
 
+    /// Show popup overlay
+    nonisolated public static func showPopup(
+        appid: RustStr,
+        path: RustStr,
+        width_ratio: Double,
+        height_ratio: Double,
+        position: PopupPositionBridge
+    ) -> Bool {
+        let appIdString = appid.toString()
+        let pathString = path.toString()
+        let displayPosition = position.toDisplayPosition()
+
+        return executeOnMain {
+            LxAppPopup.showPopup(
+                appId: appIdString,
+                path: pathString,
+                widthRatio: width_ratio,
+                heightRatio: height_ratio,
+                position: displayPosition
+            )
+        }
+    }
+
+    /// Hide popup overlay
+    nonisolated public static func hidePopup(appid: RustStr) -> Bool {
+        let appIdString = appid.toString()
+
+        return executeOnMain {
+            LxAppPopup.hidePopup(appId: appIdString)
+        }
+    }
+
     /// Hide current toast immediately
     nonisolated public static func hideToast() {
         executeOnMain {

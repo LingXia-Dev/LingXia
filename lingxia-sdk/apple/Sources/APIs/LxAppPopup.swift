@@ -1,0 +1,307 @@
+import UIKit
+import WebKit
+import OSLog
+import CLingXiaRustAPI
+import CLingXiaSwiftAPI
+
+@MainActor
+public enum PopupDisplayPosition {
+    case center
+    case bottom
+}
+
+@MainActor
+public final class LxAppPopup {
+    private static let log = OSLog(subsystem: "LingXia", category: "Popup")
+
+    private static var overlayView: UIView?
+    private static var popupContainer: UIView?
+    private static var popupWebView: WKWebView?
+    private static var currentAppId: String?
+    private static var currentPath: String?
+
+    private struct LayoutResult {
+        let width: CGFloat
+        let height: CGFloat
+        let isFullWidth: Bool
+        let isFullHeight: Bool
+    }
+
+    public static func showPopup(
+        appId: String,
+        path: String,
+        widthRatio: Double,
+        heightRatio: Double,
+        position: PopupDisplayPosition
+    ) -> Bool {
+        if let existingOverlay = overlayView {
+            existingOverlay.removeFromSuperview()
+            cleanupPopup()
+        }
+
+        guard let manager = iOSLxApp.getInstance().currentLxAppManager else {
+            os_log("showPopup failed: no active LxAppViewController", log: log, type: .error)
+            return false
+        }
+
+        manager.view.layoutIfNeeded()
+        guard let rootContainer = manager.rootContainer else {
+            os_log("showPopup failed: root container not available", log: log, type: .error)
+            return false
+        }
+
+        guard let webView = WebViewManager.findWebView(appId: appId, path: path) else {
+            return false
+        }
+
+        let layout = resolveLayout(
+            widthRatio: widthRatio,
+            heightRatio: heightRatio,
+            position: position,
+            container: rootContainer
+        )
+
+        let overlay = UIView()
+        overlay.translatesAutoresizingMaskIntoConstraints = false
+        overlay.backgroundColor = .clear
+        overlay.accessibilityViewIsModal = true
+
+        let maskView = UIControl()
+        maskView.translatesAutoresizingMaskIntoConstraints = false
+        maskView.backgroundColor = UIColor(white: 0, alpha: 0.45)
+        maskView.addTarget(self, action: #selector(maskTapped), for: .touchUpInside)
+        overlay.addSubview(maskView)
+
+        let container = UIView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+        container.backgroundColor = .clear
+        overlay.addSubview(container)
+
+        rootContainer.addSubview(overlay)
+
+        NSLayoutConstraint.activate([
+            overlay.leadingAnchor.constraint(equalTo: rootContainer.leadingAnchor),
+            overlay.trailingAnchor.constraint(equalTo: rootContainer.trailingAnchor),
+            overlay.topAnchor.constraint(equalTo: rootContainer.topAnchor),
+            overlay.bottomAnchor.constraint(equalTo: rootContainer.bottomAnchor),
+
+            maskView.leadingAnchor.constraint(equalTo: overlay.leadingAnchor),
+            maskView.trailingAnchor.constraint(equalTo: overlay.trailingAnchor),
+            maskView.topAnchor.constraint(equalTo: overlay.topAnchor),
+            maskView.bottomAnchor.constraint(equalTo: overlay.bottomAnchor)
+        ])
+
+        if layout.isFullWidth {
+            NSLayoutConstraint.activate([
+                container.leadingAnchor.constraint(equalTo: overlay.leadingAnchor),
+                container.trailingAnchor.constraint(equalTo: overlay.trailingAnchor)
+            ])
+        } else {
+            NSLayoutConstraint.activate([
+                container.widthAnchor.constraint(equalToConstant: layout.width),
+                container.centerXAnchor.constraint(equalTo: overlay.centerXAnchor)
+            ])
+        }
+
+        let containerHeight = layout.height
+        NSLayoutConstraint.activate([
+            container.heightAnchor.constraint(equalToConstant: containerHeight)
+        ])
+
+        switch position {
+        case .bottom:
+            NSLayoutConstraint.activate([
+                container.bottomAnchor.constraint(equalTo: overlay.bottomAnchor)
+            ])
+        case .center:
+            NSLayoutConstraint.activate([
+                container.centerYAnchor.constraint(equalTo: overlay.centerYAnchor)
+            ])
+        }
+
+        let sheetView = UIView()
+        sheetView.translatesAutoresizingMaskIntoConstraints = false
+        sheetView.backgroundColor = UIColor.white
+        applyCornerStyle(to: sheetView, position: position, isFullHeight: layout.isFullHeight)
+        sheetView.clipsToBounds = true
+        container.addSubview(sheetView)
+
+        NSLayoutConstraint.activate([
+            sheetView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            sheetView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            sheetView.bottomAnchor.constraint(equalTo: container.bottomAnchor)
+        ])
+
+        sheetView.topAnchor.constraint(equalTo: container.topAnchor).isActive = true
+
+        webView.removeFromSuperview()
+        webView.translatesAutoresizingMaskIntoConstraints = false
+        WebViewManager.configureWebViewTransparency(webView, transparent: true)
+        sheetView.addSubview(webView)
+        NSLayoutConstraint.activate([
+            webView.leadingAnchor.constraint(equalTo: sheetView.leadingAnchor),
+            webView.trailingAnchor.constraint(equalTo: sheetView.trailingAnchor),
+            webView.topAnchor.constraint(equalTo: sheetView.topAnchor),
+            webView.bottomAnchor.constraint(equalTo: sheetView.bottomAnchor)
+        ])
+        webView.resumeWebView()
+
+        overlay.layoutIfNeeded()
+
+        popupWebView = webView
+        overlayView = overlay
+        popupContainer = container
+        currentAppId = appId
+        currentPath = path
+
+        lingxia.onPageShow(appId, path)
+        return true
+    }
+
+    public static func hidePopup(appId: String) -> Bool {
+        if let activeAppId = currentAppId, !activeAppId.isEmpty, activeAppId != appId {
+            os_log("hidePopup called with mismatched appId (expected %{public}@, got %{public}@)", log: log, type: .info, activeAppId, appId)
+        }
+
+        guard let overlay = overlayView else {
+            return true
+        }
+
+        overlay.removeFromSuperview()
+        cleanupPopup()
+        return true
+    }
+
+    private static func cleanupPopup() {
+        popupWebView?.pauseWebView()
+        popupWebView?.removeFromSuperview()
+        popupWebView = nil
+        popupContainer = nil
+        overlayView = nil
+        currentAppId = nil
+        currentPath = nil
+    }
+
+    private static func resolveLayout(
+        widthRatio: Double,
+        heightRatio: Double,
+        position: PopupDisplayPosition,
+        container: UIView
+    ) -> LayoutResult {
+        container.layoutIfNeeded()
+        var containerSize = container.bounds.size
+        if containerSize.width <= 0 || containerSize.height <= 0 {
+            containerSize = UIScreen.main.bounds.size
+        }
+        let sanitizedWidth = sanitizeFraction(widthRatio, defaultValue: 1.0)
+        let defaultHeight = defaultHeightRatio(for: position, containerSize: containerSize)
+        let sanitizedHeight = sanitizeFraction(heightRatio, defaultValue: defaultHeight)
+
+        let availableWidth = containerSize.width
+        let availableHeight = containerSize.height
+
+        let width: CGFloat
+        if sanitizedWidth >= 0.999 {
+            width = availableWidth
+        } else {
+            let computed = CGFloat(sanitizedWidth) * availableWidth
+            let bounded = min(computed, max(availableWidth - 32, 0))
+            width = min(availableWidth, max(160, bounded))
+        }
+
+        let height: CGFloat
+        if sanitizedHeight >= 0.999 {
+            height = availableHeight
+        } else {
+            let computed = CGFloat(sanitizedHeight) * availableHeight
+            let bounded = min(computed, availableHeight)
+            height = min(availableHeight, max(160, bounded))
+        }
+
+        return LayoutResult(
+            width: width,
+            height: height,
+            isFullWidth: sanitizedWidth >= 0.999,
+            isFullHeight: sanitizedHeight >= 0.999
+        )
+    }
+
+    private static func sanitizeFraction(_ value: Double, defaultValue: Double) -> Double {
+        if value.isNaN {
+            return defaultValue
+        }
+        return min(max(value, 0.0), 1.0)
+    }
+
+    private static func defaultHeightRatio(for position: PopupDisplayPosition, containerSize: CGSize) -> Double {
+        let isTablet = UIDevice.current.userInterfaceIdiom == .pad
+        let longestSide = max(containerSize.width, containerSize.height)
+
+        switch position {
+        case .bottom:
+            return isTablet ? 0.45 : 0.55
+        case .center:
+            if isTablet {
+                return 0.5
+            }
+            if longestSide >= 900 {
+                return 0.55
+            }
+            if longestSide >= 780 {
+                return 0.58
+            }
+            return 0.6
+        }
+    }
+
+    private static func applyCornerStyle(
+        to view: UIView,
+        position: PopupDisplayPosition,
+        isFullHeight: Bool
+    ) {
+        let radius: CGFloat = 16
+
+        if isFullHeight || radius <= 0 {
+            view.layer.cornerRadius = 0
+            if #available(iOS 11.0, *) {
+                view.layer.maskedCorners = []
+            }
+            view.layer.masksToBounds = false
+            return
+        }
+
+        view.layer.cornerRadius = radius
+        if #available(iOS 11.0, *) {
+            switch position {
+            case .bottom:
+                view.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+            case .center:
+                view.layer.maskedCorners = [
+                    .layerMinXMinYCorner,
+                    .layerMaxXMinYCorner,
+                    .layerMinXMaxYCorner,
+                    .layerMaxXMaxYCorner
+                ]
+            }
+        }
+        view.layer.masksToBounds = true
+    }
+
+    @objc
+    private static func maskTapped() {
+        // Intentionally left blank to swallow touches outside the popup content.
+    }
+}
+
+extension PopupPositionBridge {
+    func toDisplayPosition() -> PopupDisplayPosition {
+        switch self {
+        case .Center:
+            return .center
+        case .Bottom:
+            return .bottom
+        @unknown default:
+            return .bottom
+        }
+    }
+}
