@@ -12,6 +12,7 @@ import android.view.ViewGroup
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import com.lingxia.lxapp.APIs.LxAppPopup
 import com.lingxia.lxapp.APIs.LxAppToast
 import com.lingxia.lxapp.APIs.ToastIcon
 import com.lingxia.lxapp.APIs.ToastPosition
@@ -21,6 +22,7 @@ import com.lingxia.lxapp.APIs.LxAppLocation
 import com.lingxia.lxapp.APIs.LxAppDevice
 import com.lingxia.lxapp.APIs.LxAppActionSheet
 import com.lingxia.lxapp.APIs.LxAppPicker
+import com.lingxia.lxapp.APIs.PopupPosition
 import org.json.JSONObject
 
 /**
@@ -427,6 +429,49 @@ class LxApp private constructor(private val context: Context) {
         fun hideToast() {
             currentActivity?.runOnUiThread {
                 LxAppToast.hideToast()
+            }
+        }
+
+        /**
+         * Show popup WebView overlay.
+         */
+        @JvmStatic
+        fun showPopup(appId: String, path: String, widthRatio: Double, heightRatio: Double, position: Int) {
+            val activity = currentActivity ?: return
+            if (activity.getAppId() != appId) {
+                Log.w(
+                    TAG,
+                    "showPopup: current activity appId=${activity.getAppId()} does not match requested appId=$appId"
+                )
+                return
+            }
+            activity.runOnUiThread {
+                LxAppPopup.showPopup(
+                    activity,
+                    appId,
+                    path,
+                    widthRatio,
+                    heightRatio,
+                    PopupPosition.fromInt(position)
+                )
+            }
+        }
+
+        /**
+         * Hide popup WebView overlay.
+         */
+        @JvmStatic
+        fun hidePopup(appId: String) {
+            val activity = currentActivity ?: return
+            if (activity.getAppId() != appId) {
+                Log.w(
+                    TAG,
+                    "hidePopup: current activity appId=${activity.getAppId()} does not match requested appId=$appId"
+                )
+                return
+            }
+            activity.runOnUiThread {
+                LxAppPopup.hidePopup(activity, appId)
             }
         }
 

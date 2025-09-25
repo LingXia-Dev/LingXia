@@ -1,5 +1,5 @@
 use dashmap::DashMap;
-use lingxia_platform::{AppRuntime, Platform};
+use lingxia_platform::{AppRuntime, Platform, PopupPresenter, PopupRequest};
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, VecDeque};
 use std::fs;
@@ -11,7 +11,7 @@ use std::time::Instant;
 use crate::app::AppConfig;
 use crate::error::LxAppError;
 use crate::executor::LxAppExecutor;
-use crate::page::Page;
+use crate::page::{Page, PageLifecycleEvent};
 use crate::startup::LxAppStartupOptions;
 use crate::{error, info, warn};
 use security::NetworkSecurity;
@@ -291,6 +291,9 @@ pub(crate) struct LxAppState {
 
     /// Startup options for the app
     pub(crate) startup_options: LxAppStartupOptions,
+
+    /// Currently displayed popup page (if any)
+    pub(crate) current_popup: Option<String>,
 }
 
 impl LxAppState {
@@ -304,6 +307,7 @@ impl LxAppState {
             network_security: NetworkSecurity::new(),
             tabbar: None,
             startup_options: LxAppStartupOptions::default(),
+            current_popup: None,
         }
     }
 }
@@ -624,6 +628,78 @@ impl LxApp {
         // The on_lxapp_closed delegate will then handle removing it from the navigation stack.
         // The underlying UI framework should detect the app closure and automatically display the new app at the top of the stack.
         self.runtime.close_lxapp(self.appid.clone())?;
+        Ok(())
+    }
+
+    /// Show popup content rendered via WebView.
+    ///
+    /// This will ensure the target page is created, query parameters applied, lifecycle
+    /// callbacks dispatched, and then delegate to the platform popup presenter.
+    pub fn show_popup(self: &Arc<Self>, mut request: PopupRequest) -> Result<(), LxAppError> {
+        // Ensure only one popup is active at a time.
+        self.hide_popup()?;
+
+        request.app_id = self.appid.clone();
+
+        let (path, query_str) = if let Some(idx) = request.path.find('?') {
+            (
+                request.path[..idx].to_string(),
+                request.path[idx + 1..].to_string(),
+            )
+        } else {
+            (request.path.clone(), String::new())
+        };
+
+        let popup_page = self.get_or_create_page(&path).ok_or_else(|| {
+            LxAppError::UnsupportedOperation("Failed to get or create popup page".to_string())
+        })?;
+
+        popup_page.mark_active();
+
+        if !query_str.is_empty() {
+            popup_page.set_query(query_str);
+        }
+
+        if !request.width_ratio.is_nan() {
+            request.width_ratio = request.width_ratio.clamp(0.0, 1.0);
+        }
+        if !request.height_ratio.is_nan() {
+            request.height_ratio = request.height_ratio.clamp(0.0, 1.0);
+        }
+
+        popup_page.dispatch_lifecycle_event(PageLifecycleEvent::OnLoad);
+
+        request.path = path.clone();
+
+        self.runtime.show_popup(request).map_err(LxAppError::from)?;
+
+        popup_page.dispatch_lifecycle_event(PageLifecycleEvent::OnReady);
+
+        if let Ok(mut state) = self.state.lock() {
+            state.current_popup = Some(path);
+        }
+
+        Ok(())
+    }
+
+    /// Hide the currently displayed popup, if any.
+    pub fn hide_popup(self: &Arc<Self>) -> Result<(), LxAppError> {
+        let popup_path = {
+            let mut state = self.state.lock().unwrap();
+            state.current_popup.take()
+        };
+
+        if let Some(path) = popup_path {
+            if let Some(page) = self.get_page(&path) {
+                page.dispatch_lifecycle_event(PageLifecycleEvent::OnHide);
+                page.dispatch_lifecycle_event(PageLifecycleEvent::OnUnload);
+            }
+
+            self.runtime
+                .hide_popup(&self.appid)
+                .map_err(LxAppError::from)?;
+        }
+
         Ok(())
     }
 

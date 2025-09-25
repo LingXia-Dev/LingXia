@@ -83,6 +83,53 @@ impl From<i32> for AnimationType {
     }
 }
 
+/// Popup vertical alignment for display overlays.
+#[repr(i32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PopupPosition {
+    Center = 0,
+    Bottom = 1,
+}
+
+impl Default for PopupPosition {
+    fn default() -> Self {
+        PopupPosition::Bottom
+    }
+}
+
+/// Popup display request structure.
+#[derive(Debug, Clone)]
+pub struct PopupRequest {
+    pub app_id: String,
+    pub path: String,
+    /// Width expressed as a fraction of the available viewport (0.0–1.0).
+    pub width_ratio: f64,
+    /// Height expressed as a fraction of the available viewport (0.0–1.0).
+    pub height_ratio: f64,
+    pub position: PopupPosition,
+}
+
+impl PopupRequest {
+    pub fn new(app_id: String, path: String) -> Self {
+        Self {
+            app_id,
+            path,
+            width_ratio: f64::NAN,
+            height_ratio: f64::NAN,
+            position: PopupPosition::Bottom,
+        }
+    }
+}
+
+/// Popup presentation functionality trait.
+pub trait PopupPresenter: Send + Sync + 'static {
+    /// Show a popup with the specified configuration.
+    fn show_popup(&self, request: PopupRequest) -> Result<(), PlatformError>;
+
+    /// Hide the popup associated with the provided `app_id`.
+    fn hide_popup(&self, app_id: &str) -> Result<(), PlatformError>;
+}
+
 /// Device capabilities and information
 ///
 /// This trait provides access to device-specific information and capabilities
