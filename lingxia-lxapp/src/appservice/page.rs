@@ -10,6 +10,7 @@ use rong::{
     Class, JSContext, JSFunc, JSObject, JSResult, JSValue, RongJSError, Source, function::Optional,
     js_class, js_export, js_method,
 };
+use rong_modules::event::EventEmitter;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -25,6 +26,8 @@ pub(crate) struct PageSvc {
 
     pub(crate) page: Page,
     bridge: Bridge,
+
+    event_emitter: EventEmitter,
 
     // state of PageSvc
     state: Rc<Mutex<PageSvcState>>,
@@ -186,6 +189,7 @@ impl PageSvc {
             this: config.clone(), // will be updated later
             page,
             bridge: Bridge::new(),
+            event_emitter: EventEmitter::default(),
             state: Rc::new(Mutex::new(PageSvcState {
                 callback: HashMap::new(),
                 callbackid: AtomicUsize::new(0),
@@ -246,6 +250,11 @@ impl PageSvc {
             .map_err(|e| RongJSError::Error(e.to_string()))?;
 
         Ok(())
+    }
+
+    #[js_method(rename = "getEventEmitter")]
+    pub fn get_event_emitter(&self) -> EventEmitter {
+        self.event_emitter.clone()
     }
 
     #[js_method(gc_mark)]
