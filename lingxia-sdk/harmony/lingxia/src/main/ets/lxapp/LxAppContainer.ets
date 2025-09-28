@@ -4,7 +4,7 @@ import { window } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { LxApp } from './LxApp';
 import { LxAppPopup } from './APIs/LxAppPopup';
-import { findWebview, handleScrollChanged, toWebTag, extractWebTag, WebTagParts, addWebViewUiCallback, removeWebViewUiCallback, WebViewInfo } from './WebView';
+import { findWebview, toWebTag, extractWebTag, WebTagParts, addWebViewUiCallback, removeWebViewUiCallback, WebViewInfo } from './WebView';
 import { NavigationBar, type NavigationBarState, NAVBAR_TOTAL_HEIGHT } from './NavigationBar';
 import { NavigationButton, CapsuleButton } from './LxAppDrawables';
 import { TabBar } from './TabBar';
@@ -1011,9 +1011,6 @@ export struct LxAppContainer {
           if (this.shouldTriggerOnAppear(webTag)) {
             this.triggerOnPageShowIfNeeded(webTag);
           }
-        })
-        .onScroll((event) => {
-          handleScrollChanged(webTag, event.xOffset, event.yOffset);
         })
         .width(this.getRenderWidth(webTag))
         .height(this.getRenderHeight(webTag))

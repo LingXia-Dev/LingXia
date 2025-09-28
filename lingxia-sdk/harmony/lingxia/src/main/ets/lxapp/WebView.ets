@@ -1,6 +1,6 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { webview } from '@kit.ArkWeb';
-import { onPageShow, onScrollChanged } from 'liblingxia.so';
+import { onPageShow } from 'liblingxia.so';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.WebView';
@@ -12,7 +12,6 @@ export interface WebViewInfo {
   webtag: string;
   controller: webview.WebviewController;
   visible: boolean;
-  scrollListenerEnabled?: boolean;
 }
 
 /**
@@ -196,58 +195,6 @@ export class WebViewManager {
 
     hilog.info(DOMAIN, TAG, `Set user agent for WebView ${webtag}: ${userAgent} (not implemented)`);
     return true;
-  }
-
-  /**
-   * Set scroll listener enabled for WebView
-   * @param webtag - WebView tag
-   * @param enabled - Whether to enable scroll listener
-   * @returns true if setting succeeded, false if WebView not found or setting failed
-   */
-  static setScrollListenerEnabled(webtag: string, enabled: boolean): boolean {
-    const webViewInfo = WebViewManager.webViewInfos.get(webtag);
-    if (!webViewInfo) {
-      hilog.warn(DOMAIN, TAG, `WebView not found for setScrollListenerEnabled: ${webtag}`);
-      return false;
-    }
-
-    webViewInfo.scrollListenerEnabled = enabled;
-    hilog.info(DOMAIN, TAG, `Set scroll listener enabled for WebView ${webtag}: ${enabled}`);
-    return true;
-  }
-
-  /**
-   * Handle scroll change event for WebView
-   * This should be called from the UI component when scroll occurs
-   * @param webtag - WebView tag
-   * @param scrollX - Horizontal scroll position
-   * @param scrollY - Vertical scroll position
-   */
-  static handleScrollChanged(webtag: string, scrollX: number, scrollY: number): void {
-    const webViewInfo = WebViewManager.webViewInfos.get(webtag);
-
-    if (webViewInfo && webViewInfo.scrollListenerEnabled) {
-      try {
-        // Parse appId and path from webtag (format: appId-path)
-        const parts = webtag.split('-');
-        if (parts.length >= 2) {
-          const appId = parts[0];
-          const path = parts.slice(1).join('-'); // In case path contains '-'
-
-          // Call native function to notify scroll change
-          const result: number = onScrollChanged(appId, path, scrollX, scrollY);
-          if (result === 0) {
-            hilog.debug(DOMAIN, TAG, `Scroll change notified for ${webtag}: (${scrollX}, ${scrollY})`);
-          } else {
-            hilog.warn(DOMAIN, TAG, `Failed to notify scroll change for ${webtag}, result: ${result}`);
-          }
-        } else {
-          hilog.error(DOMAIN, TAG, `Invalid webtag format for scroll change: ${webtag}`);
-        }
-      } catch (error) {
-        hilog.error(DOMAIN, TAG, `Error handling scroll change for ${webtag}: ${error}`);
-      }
-    }
   }
 
   /**
@@ -435,25 +382,4 @@ export function clearBrowsingData(webtag: string): boolean {
  */
 export function setUserAgent(webtag: string, userAgent: string): boolean {
   return WebViewManager.setUserAgent(webtag, userAgent);
-}
-
-/**
- * Set scroll listener enabled for WebView
- * @param webtag - WebView tag
- * @param enabled - Whether to enable scroll listener
- * @returns true if setting succeeded
- */
-export function setScrollListenerEnabled(webtag: string, enabled: boolean): boolean {
-  return WebViewManager.setScrollListenerEnabled(webtag, enabled);
-}
-
-/**
- * Handle scroll change event for WebView
- * This should be called from UI components when scroll occurs
- * @param webtag - WebView tag
- * @param scrollX - Horizontal scroll position
- * @param scrollY - Vertical scroll position
- */
-export function handleScrollChanged(webtag: string, scrollX: number, scrollY: number): void {
-  return WebViewManager.handleScrollChanged(webtag, scrollX, scrollY);
 }

@@ -14,8 +14,7 @@ import {
   destroyWebViewController,
   loadUrl,
   clearBrowsingData,
-  setUserAgent,
-  setScrollListenerEnabled
+  setUserAgent
 } from './WebView';
 import { animationTypeFromInt } from './NavigationBar';
 
@@ -110,11 +109,6 @@ class NativeBridge {
     // WebView user agent
     this.register('setUserAgent', (webtag: string, userAgent: string) => {
       return setUserAgent(webtag, userAgent);
-    });
-
-    // WebView scroll listener
-    this.register('setScrollListenerEnabled', (webtag: string, enabled: boolean) => {
-      return setScrollListenerEnabled(webtag, enabled);
     });
 
     // Toast APIs
@@ -290,10 +284,7 @@ export function getNativeCallbackFunction(): (data: string) => Object | null {
 
       // Convert arguments based on function type
       let args: Object[] = rawArgs;
-      if (functionName === 'setScrollListenerEnabled' && rawArgs.length >= 2) {
-        // Convert the second argument (enabled) from string to boolean
-        args = [rawArgs[0], rawArgs[1] === 'true'];
-      } else if (functionName === 'showToast' && rawArgs.length >= 6) {
+      if (functionName === 'showToast' && rawArgs.length >= 6) {
         // Convert showToast arguments: title, icon, image, duration, mask, position
         // title: string (keep as is)
         // icon: string -> number (success=0, error=1, loading=2, none=3)

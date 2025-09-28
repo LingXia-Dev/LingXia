@@ -152,16 +152,6 @@ declare module 'liblingxia.so' {
   export function onPageShow(appid: string, path: string): number;
 
   /**
-   * Notify that WebView scroll position has changed
-   * @param appid - LxApp ID
-   * @param path - Page path
-   * @param scrollX - Horizontal scroll position
-   * @param scrollY - Vertical scroll position
-   * @returns Status code (0 for success, -1 for error)
-   */
-  export function onScrollChanged(appid: string, path: string, scrollX: number, scrollY: number): number;
-
-  /**
    * Handle UI events from ArkTS
    * @param appid - LxApp ID
    * @param eventType - UI event type enum
