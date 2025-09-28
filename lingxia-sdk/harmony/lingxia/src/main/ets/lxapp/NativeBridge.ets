@@ -8,6 +8,7 @@ import { LxAppActionSheet } from './APIs/LxAppActionSheet';
 import { LxAppPicker } from './APIs/LxAppPicker';
 import { LxAppDevice } from './APIs/LxAppDevice';
 import { LxAppContainer } from './LxAppContainer';
+import { LxAppPopup } from './APIs/LxAppPopup';
 import {
   createWebViewController,
   destroyWebViewController,
@@ -191,6 +192,20 @@ class NativeBridge {
       }
     });
 
+    this.register('showPopup', (
+      appId: string,
+      path: string,
+      widthRatio: string,
+      heightRatio: string,
+      position: string
+    ): boolean => {
+      return LxAppPopup.showPopup(appId, path, widthRatio, heightRatio, position);
+    });
+
+    this.register('hidePopup', (appId: string): boolean => {
+      return LxAppPopup.hidePopup(appId);
+    });
+
     // Update TabBar APIs
     this.register('updateTabBarUI', (appId: string): boolean => {
       try {
@@ -319,6 +334,9 @@ export function getNativeCallbackFunction(): (data: string) => Object | null {
       } else if (functionName === 'showPicker' && rawArgs.length >= 8) {
         // Handle showPicker arguments: columns, cancelText, cancelButtonColor, cancelTextColor, confirmText, confirmButtonColor, confirmTextColor, callbackId
         // All arguments are strings, no conversion needed
+        args = rawArgs;
+      } else if (functionName === 'showPopup' && rawArgs.length >= 5) {
+        // appId, path, widthRatio, heightRatio, position as strings
         args = rawArgs;
       }
 

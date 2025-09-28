@@ -3,6 +3,7 @@ import { webview } from '@kit.ArkWeb';
 import { window } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { LxApp } from './LxApp';
+import { LxAppPopup } from './APIs/LxAppPopup';
 import { findWebview, handleScrollChanged, toWebTag, extractWebTag, WebTagParts, addWebViewUiCallback, removeWebViewUiCallback, WebViewInfo } from './WebView';
 import { NavigationBar, type NavigationBarState, NAVBAR_TOTAL_HEIGHT } from './NavigationBar';
 import { NavigationButton, CapsuleButton } from './LxAppDrawables';
@@ -19,6 +20,8 @@ const TAB_BAR_HORIZONTAL_HEIGHT = 72;    // Match TabBar default height
 const COLOR_WHITE = '#ffffff';
 const COLOR_BLACK = '#000000';
 const COLOR_TRANSPARENT = Color.Transparent;
+const POPUP_MASK_COLOR = 'rgba(0,0,0,0.45)';
+const OVERLAY_MASK_FADE_DURATION = 180;
 
 const ANIMATION_DURATION_STANDARD = 300;      // Standard animation duration
 const ANIMATION_CURVE_EASE_IN_OUT = Curve.EaseInOut;  // Smooth ease in/out curve
@@ -39,6 +42,11 @@ interface MarginOptions {
   bottom?: number;
   left?: number;
   right?: number;
+}
+
+interface RenderableWebEntry {
+  webTag: string;
+  controller: webview.WebviewController;
 }
 
 @Component
@@ -63,6 +71,15 @@ export struct LxAppContainer {
   @State webViewComponents: Map<string, webview.WebviewController> = new Map() // Store Web components for each WebView
   @State currentWebTag: string = '' // Current active WebView tag
   @State webViewKeys: string[] = [] // Array of WebView keys for ForEach
+  @State popupOverlayWebTag: string = '' // WebView currently displayed in popup
+  @State overlayActive: boolean = false
+  @State overlayWidthVp: number = 0
+  @State overlayHeightVp: number = 0
+  @State overlayPosition: number = 0 // 0 center, 1 bottom
+  @State overlayBottomInset: number = 0
+  @State private overlayMaskOpacity: number = 0
+  @State private placeholderControllers: Map<string, webview.WebviewController> = new Map()
+  @State private keepAliveTags: string[] = [] // Keep WebViews hidden (not removed) to avoid destroy
   private pageShowTriggered: Set<string> = new Set() // Track which pages have triggered onPageShow
   @State private statusBarHeight: number = SYSTEM_STATUS_BAR_HEIGHT // Default status bar height
 
@@ -297,6 +314,28 @@ export struct LxAppContainer {
   }
 
   /**
+   * Static method to set overlay (popup) state for an appId + path
+   */
+  public static setOverlay(
+    appId: string,
+    path: string,
+    active: boolean,
+    widthVp?: number,
+    heightVp?: number,
+    position?: number,
+    bottomInset?: number
+  ): boolean {
+    const container = LxAppContainer.activeContainers.get(appId);
+    if (!container) {
+      hilog.warn(DOMAIN, TAG, `setOverlay: no active container for ${appId}`);
+      return false;
+    }
+    const webTag = toWebTag(appId, path);
+    container.applyOverlayState(webTag, active, widthVp, heightVp, position, bottomInset);
+    return true;
+  }
+
+  /**
    * Handle external path changes from LxApp.navigate API
    */
   onExternalPathChange() {
@@ -321,6 +360,12 @@ export struct LxAppContainer {
 
     switch (action) {
       case 'create':
+        // If popup overlay is currently using this webtag, skip attaching in base to avoid double-attach
+        const activePopup = LxAppPopup.getActiveLayout && LxAppPopup.getActiveLayout();
+        if (activePopup && info.webtag === toWebTag(activePopup.appId, activePopup.path)) {
+          hilog.info(DOMAIN, TAG, `Skip base attach for popup webtag: ${info.webtag}`);
+          break;
+        }
         this.webViewComponents.set(info.webtag, info.controller);
         this.webViewKeys = Array.from(this.webViewComponents.keys());
         hilog.info(DOMAIN, TAG, `Stored WebView component: ${info.webtag}, total components: ${this.webViewComponents.size}`);
@@ -340,6 +385,32 @@ export struct LxAppContainer {
             this.currentWebTag = '';
             hilog.info(DOMAIN, TAG, `Destroyed last WebView: ${info.webtag}`);
           }
+        }
+        break;
+      case 'popup_show':
+        if (info.webtag.startsWith(`${this.appId}-`)) {
+          this.webViewComponents.set(info.webtag, info.controller);
+          this.webViewKeys = Array.from(this.webViewComponents.keys());
+          const layout = LxAppPopup.getActiveLayout && LxAppPopup.getActiveLayout();
+          if (layout && layout.appId === this.appId) {
+            this.applyOverlayState(info.webtag, true, layout.widthVp, layout.heightVp, layout.position as number, layout.bottomInset);
+            hilog.info(DOMAIN, TAG, `Overlay style set for ${info.webtag}: w=${layout.widthVp} h=${layout.heightVp} pos=${layout.position}`);
+          } else {
+            this.applyOverlayState(info.webtag, true);
+          }
+          hilog.info(DOMAIN, TAG, `Popup overlay active for ${info.webtag}`);
+        }
+        break;
+      case 'popup_hide':
+        if (info.webtag.startsWith(`${this.appId}-`)) {
+          this.webViewComponents.set(info.webtag, info.controller);
+          this.webViewKeys = Array.from(this.webViewComponents.keys());
+          if (this.keepAliveTags.indexOf(info.webtag) < 0) {
+            this.keepAliveTags = [...this.keepAliveTags, info.webtag];
+          }
+          this.pageShowTriggered.delete(info.webtag);
+          this.applyOverlayState(info.webtag, false);
+          hilog.info(DOMAIN, TAG, `Popup overlay cleared for ${info.webtag}`);
         }
         break;
     }
@@ -377,17 +448,7 @@ export struct LxAppContainer {
             }
             // Show NavigationBar only when needed
             if (this.shouldRenderNavigationBar()) {
-              NavigationBar({
-                config: this.pageConfig as NavigationBarState,
-                appId: this.appId,
-                currentPath: this.path,
-                translateX: this.navbarTranslateX,
-                statusBarHeight: this.statusBarHeight,
-                onNavigationClick: (appId: string, isHomeButton: boolean): boolean => {
-                  this.handleNavigationBack(isHomeButton);
-                  return true;
-                }
-              })
+              this.buildInlineNavigationBar()
             }
             this.buildWebViewArea()
           }
@@ -521,21 +582,121 @@ export struct LxAppContainer {
   @Builder
   buildNavigationBar(): void {
     if (this.pageConfig && this.pageConfig.showNavbar) {
-      NavigationBar({
-        config: this.pageConfig as NavigationBarState,
-        appId: this.appId,
-        currentPath: this.path,
-        translateX: this.navbarTranslateX,
-        statusBarHeight: this.statusBarHeight,
-        onNavigationClick: (appId: string, isHomeButton: boolean): boolean => {
-          this.handleNavigationBack(isHomeButton);
-          return true;
+      Stack() {
+        this.renderNavigationBarCore()
+        if (this.shouldRenderOverlayMask()) {
+          this.renderNavigationMaskLayer()
         }
-      })
+      }
       .width('100%')
       .position({ x: 0, y: 0 })
-      .zIndex(10)
+      .height(this.getNavigationBarHeight())
+      .zIndex(this.shouldRenderOverlayMask() ? 10002 : 10)
+      .hitTestBehavior(this.shouldBlockOverlayInteractions() ? HitTestMode.Block : HitTestMode.Transparent)
     }
+  }
+
+  @Builder
+  private buildInlineNavigationBar(): void {
+    if (this.pageConfig && this.pageConfig.showNavbar) {
+      Stack() {
+        this.renderNavigationBarCore()
+        if (this.shouldRenderOverlayMask()) {
+          this.renderNavigationMaskLayer()
+        }
+      }
+      .width('100%')
+      .height(this.getNavigationBarHeight())
+      .zIndex(this.shouldRenderOverlayMask() ? 10002 : 10)
+      .hitTestBehavior(this.shouldBlockOverlayInteractions() ? HitTestMode.Block : HitTestMode.Transparent)
+    }
+  }
+
+  @Builder
+  private renderNavigationBarCore(): void {
+    NavigationBar({
+      config: this.pageConfig as NavigationBarState,
+      appId: this.appId,
+      currentPath: this.path,
+      translateX: this.navbarTranslateX,
+      statusBarHeight: this.statusBarHeight,
+      onNavigationClick: (appId: string, isHomeButton: boolean): boolean => {
+        this.handleNavigationBack(isHomeButton);
+        return true;
+      }
+    })
+    .width('100%')
+    .position({ x: 0, y: 0 })
+    .zIndex(10)
+  }
+
+  @Builder
+  private renderNavigationMaskLayer(): void {
+    Column()
+      .width('100%')
+      .height(this.getNavigationBarHeight())
+      .backgroundColor(POPUP_MASK_COLOR)
+      .opacity(this.overlayMaskOpacity)
+      .hitTestBehavior(this.shouldBlockOverlayInteractions() ? HitTestMode.Block : HitTestMode.Transparent)
+      .onClick(() => {})
+      .zIndex(10003)
+  }
+
+  private getNavigationBarHeight(): number {
+    const contentHeight = NAVBAR_TOTAL_HEIGHT - SYSTEM_STATUS_BAR_HEIGHT;
+    return this.statusBarHeight + contentHeight;
+  }
+
+  private shouldRenderOverlayMask(): boolean {
+    return this.overlayActive || this.overlayMaskOpacity > 0;
+  }
+
+  private shouldBlockOverlayInteractions(): boolean {
+    return this.overlayActive || this.overlayMaskOpacity > 0;
+  }
+
+  private applyOverlayState(
+    webTag: string,
+    active: boolean,
+    widthVp?: number,
+    heightVp?: number,
+    position?: number,
+    bottomInset?: number
+  ): void {
+    if (active) {
+      this.popupOverlayWebTag = webTag;
+      this.overlayActive = true;
+      if (widthVp !== undefined) this.overlayWidthVp = widthVp;
+      if (heightVp !== undefined) this.overlayHeightVp = heightVp;
+      if (position !== undefined) this.overlayPosition = position;
+      if (bottomInset !== undefined) this.overlayBottomInset = bottomInset;
+      if (this.keepAliveTags.indexOf(webTag) < 0) {
+        this.keepAliveTags = [...this.keepAliveTags, webTag];
+      }
+      this.animateOverlayMask(true);
+      hilog.info(DOMAIN, TAG, `Overlay enabled for ${webTag} w=${this.overlayWidthVp} h=${this.overlayHeightVp}`);
+    } else {
+      if (this.popupOverlayWebTag === webTag) {
+        this.popupOverlayWebTag = '';
+      }
+      this.overlayActive = false;
+      this.animateOverlayMask(false);
+      hilog.info(DOMAIN, TAG, `Overlay disabled for ${webTag}`);
+    }
+  }
+
+  private animateOverlayMask(visible: boolean): void {
+    const target = visible ? 1 : 0;
+    if (this.overlayMaskOpacity === target) {
+      return;
+    }
+    animateTo({
+      duration: OVERLAY_MASK_FADE_DURATION,
+      curve: ANIMATION_CURVE_EASE_IN_OUT,
+      playMode: PlayMode.Normal
+    }, () => {
+      this.overlayMaskOpacity = target;
+    });
   }
 
   /**
@@ -555,9 +716,21 @@ export struct LxAppContainer {
   buildWebViewArea(): void {
     Stack() {
       // Render all WebView components so they can be associated with controllers
-      ForEach(this.webViewKeys, (webTag: string) => {
-        this.buildWebViewComponent(webTag, this.webViewComponents.get(webTag)!)
-      })
+      ForEach(this.getRenderableWebEntries(), (entry: RenderableWebEntry) => {
+        this.buildWebViewComponent(entry.webTag, entry.controller)
+      }, (entry: RenderableWebEntry) => entry.webTag)
+      // Overlay mask on top
+      if (this.shouldRenderOverlayMask()) {
+        Column()
+          .width('100%')
+          .height('100%')
+          .backgroundColor(POPUP_MASK_COLOR)
+          .opacity(this.overlayMaskOpacity)
+          .hitTestBehavior(this.shouldBlockOverlayInteractions() ? HitTestMode.Block : HitTestMode.Transparent)
+          // Do not close on mask click; hidePopup must be called explicitly
+          .onClick(() => {})
+          .zIndex(10003)
+      }
     }
     .width('100%')
     .height('100%')
@@ -824,33 +997,137 @@ export struct LxAppContainer {
 
   /**
    * Build individual WebView component for a specific webTag with animation support
-   */
+  */
   @Builder
   buildWebViewComponent(webTag: string, controller: webview.WebviewController): void {
-    Web({
-      src: '',
-      controller: controller
-    })
-      .visibility(this.getWebViewVisibility(webTag))
-      .translate(this.getWebViewTranslation(webTag))
-      .margin(this.getWebViewMargin())
-      .onAppear(() => {
-        hilog.info(DOMAIN, TAG, `WebView component appeared for webTag: ${webTag}, visible: ${webTag === this.currentWebTag}`);
+    Column() {
+      Web({ src: '', controller: controller })
+        .visibility(this.getRenderVisibility(webTag))
+        .translate(this.getRenderTranslation(webTag))
+        .margin(this.getRenderMargin(webTag))
+        .onAppear(() => {
+          const overlay = this.isOverlayWebView(webTag);
+          hilog.info(DOMAIN, TAG, `WebView component appeared for webTag: ${webTag}, overlay: ${overlay}`);
+          if (this.shouldTriggerOnAppear(webTag)) {
+            this.triggerOnPageShowIfNeeded(webTag);
+          }
+        })
+        .onScroll((event) => {
+          handleScrollChanged(webTag, event.xOffset, event.yOffset);
+        })
+        .width(this.getRenderWidth(webTag))
+        .height(this.getRenderHeight(webTag))
+        .padding(this.getRenderPadding(webTag))
+        .align(this.getRenderAlignment(webTag))
+        .borderRadius(this.getRenderBorderRadius(webTag))
+        .clip(this.getRenderClip(webTag))
+        .zIndex(this.getRenderZIndex(webTag))
+        .hitTestBehavior(this.getRenderHitTest(webTag))
+        .backgroundColor(COLOR_TRANSPARENT);
+    }
+    .width('100%')
+    .height('100%')
+    .justifyContent(this.getWrapperJustify(webTag))
+    .alignItems(this.getWrapperAlign(webTag))
+    .hitTestBehavior(HitTestMode.Transparent)
+    .zIndex(this.getRenderZIndex(webTag));
+  }
 
-        // Trigger onPageShow if this is the current WebView
-        if (webTag === this.currentWebTag) {
-          this.triggerOnPageShowIfNeeded(webTag);
-        }
-      })
-      .onScroll((event) => {
-        // Handle scroll event when scroll listener is enabled
-        handleScrollChanged(webTag, event.xOffset, event.yOffset);
-      })
-      .width('100%')
-      .height(this.getWebContentHeight())
-      .padding(this.getWebViewPadding())
+  private getWrapperJustify(webTag: string): FlexAlign {
+    if (this.isOverlayWebView(webTag)) {
+      return this.overlayPosition === 1 ? FlexAlign.End : FlexAlign.Center;
+    }
+    return FlexAlign.Start;
+  }
 
-      .backgroundColor(COLOR_TRANSPARENT)
+  private getWrapperAlign(webTag: string): HorizontalAlign {
+    return this.isOverlayWebView(webTag) ? HorizontalAlign.Center : HorizontalAlign.Start;
+  }
+
+  private getOverlayWidth(): string {
+    return this.overlayWidthVp > 0 ? `${this.overlayWidthVp}vp` : '90%';
+  }
+
+  private getOverlayHeight(): string {
+    return this.overlayHeightVp > 0 ? `${this.overlayHeightVp}vp` : '80%';
+  }
+
+  private getOverlayAlignment(): Alignment {
+    return this.overlayPosition === 1 ? Alignment.Bottom : Alignment.Center;
+  }
+
+  private getOverlayMargin(): MarginOptions {
+    if (this.overlayPosition === 1 && this.overlayBottomInset > 0) {
+      return { bottom: this.overlayBottomInset } as MarginOptions;
+    }
+    return { top: 0, left: 0, right: 0, bottom: 0 } as MarginOptions;
+  }
+
+  private isOverlayWebView(webTag: string): boolean {
+    return this.overlayActive && webTag === this.popupOverlayWebTag;
+  }
+
+  private getRenderVisibility(webTag: string): Visibility {
+    if (this.isOverlayWebView(webTag)) {
+      return Visibility.Visible;
+    }
+    return this.getWebViewVisibility(webTag);
+  }
+
+  private getRenderTranslation(webTag: string): TranslationOptions {
+    if (this.isOverlayWebView(webTag)) {
+      return { x: 0, y: 0 } as TranslationOptions;
+    }
+    return this.getWebViewTranslation(webTag);
+  }
+
+  private getRenderMargin(webTag: string): MarginOptions {
+    if (this.isOverlayWebView(webTag)) {
+      return this.getOverlayMargin();
+    }
+    return this.getWebViewMargin();
+  }
+
+  private getRenderWidth(webTag: string): string {
+    return this.isOverlayWebView(webTag) ? this.getOverlayWidth() : '100%';
+  }
+
+  private getRenderHeight(webTag: string): string {
+    return this.isOverlayWebView(webTag) ? this.getOverlayHeight() : this.getWebContentHeight();
+  }
+
+  private getRenderPadding(webTag: string): Padding {
+    if (this.isOverlayWebView(webTag)) {
+      return { top: 0, bottom: 0, left: 0, right: 0 } as Padding;
+    }
+    return this.getWebViewPadding();
+  }
+
+  private getRenderAlignment(webTag: string): Alignment {
+    return this.isOverlayWebView(webTag) ? this.getOverlayAlignment() : Alignment.TopStart;
+  }
+
+  private getRenderBorderRadius(webTag: string): number {
+    return this.isOverlayWebView(webTag) ? 16 : 0;
+  }
+
+  private getRenderClip(webTag: string): boolean {
+    return this.isOverlayWebView(webTag);
+  }
+
+  private getRenderZIndex(webTag: string): number {
+    return this.isOverlayWebView(webTag) ? 10004 : 0;
+  }
+
+  private getRenderHitTest(webTag: string): HitTestMode {
+    return this.isOverlayWebView(webTag) ? HitTestMode.Block : HitTestMode.Transparent;
+  }
+
+  private shouldTriggerOnAppear(webTag: string): boolean {
+    if (this.isOverlayWebView(webTag)) {
+      return true;
+    }
+    return webTag === this.currentWebTag;
   }
 
   /**
@@ -866,7 +1143,11 @@ export struct LxAppContainer {
       return Visibility.Visible;
     }
 
-    // Remove it entirely so it does not intercept taps
+    // Keep-alive pages remain Visible (moved offscreen) to preserve ArkWeb host
+    if (this.keepAliveTags.indexOf(webTag) >= 0) {
+      return Visibility.Visible;
+    }
+
     return Visibility.None;
   }
 
@@ -875,6 +1156,11 @@ export struct LxAppContainer {
    */
   private getWebViewTranslation(webTag: string): TranslationOptions {
     // Translate only on the X axis during transitions; margins handle vertical adjustments to avoid hit-test quirks
+    // If this page is kept alive (not current), move it offscreen vertically to avoid paint while keeping host
+    if (this.keepAliveTags.indexOf(webTag) >= 0 && webTag !== this.currentWebTag && webTag !== this.previousWebTag) {
+      return { x: 0, y: '200%' } as TranslationOptions;
+    }
+
     if (!this.animationInProgress) {
       return { x: 0, y: 0 } as TranslationOptions;
     }
@@ -891,6 +1177,32 @@ export struct LxAppContainer {
 
     return { x: 0, y: 0 } as TranslationOptions;
   }
+
+  private getRenderableWebKeys(): string[] {
+    // Always return all keys; overlay branch will restyle the popup webtag,
+    // default branch will handle others and skip overlay webtag via the if-branch in buildWebViewComponent
+    return this.webViewKeys;
+  }
+
+  private getRenderableWebEntries(): RenderableWebEntry[] {
+    const entries: RenderableWebEntry[] = [];
+    const keys = this.getRenderableWebKeys();
+
+    keys.forEach((webTag: string) => {
+      const controller = this.getRenderController(webTag);
+      if (controller) {
+        entries.push({ webTag, controller });
+      }
+    });
+
+    return entries;
+  }
+
+  private getRenderController(webTag: string): webview.WebviewController | null {
+    // Always return the controller; overlay branch will restyle the popup webTag
+    return this.webViewComponents.get(webTag) || null;
+  }
+
 
   /**
    * When the navigation bar is hidden, move the WebView up by NAVBAR_TOTAL_HEIGHT so it visually touches the system top.
@@ -912,4 +1224,5 @@ export struct LxAppContainer {
     const result = extraTop > 0 ? `calc(100% + ${extraTop}vp)` : '100%';
     return result;
   }
+
 }

@@ -292,6 +292,29 @@ export class WebViewManager {
   }
 
   /**
+   * Notify UI that a WebView is being reused by the popup overlay.
+   * When `active` is true the base container should hide the WebView; when false it should restore it.
+   */
+  static notifyPopupState(appId: string, path: string, active: boolean) {
+    const webtag = toWebTag(appId, path);
+    const webViewInfo = WebViewManager.webViewInfos.get(webtag);
+    if (!webViewInfo) {
+      hilog.warn(DOMAIN, TAG, `notifyPopupState: WebView not found for ${webtag}`);
+      return;
+    }
+
+    WebViewManager.uiCallbacks.forEach(callback => {
+      try {
+        callback(active ? 'popup_show' : 'popup_hide', webViewInfo);
+      } catch (error) {
+        hilog.error(DOMAIN, TAG, `UI callback error: ${error}`);
+      }
+    });
+
+    hilog.info(DOMAIN, TAG, `notifyPopupState -> ${active ? 'show' : 'hide'} for ${webtag}`);
+  }
+
+  /**
    * Get all WebView infos (for UI rendering)
    * @returns Array of WebView infos
    */

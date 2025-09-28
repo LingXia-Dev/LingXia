@@ -6,6 +6,7 @@ import { ToastManager } from './APIs/LxAppToast';
 import { ModalManager } from './APIs/LxAppModal';
 import { PickerManager } from './APIs/LxAppPicker';
 import { ActionSheetManager } from './APIs/LxAppActionSheet';
+import { PopupManager } from './APIs/LxAppPopup';
 
 const DOMAIN = 0xA000;
 const TAG = 'LingXia.Navigation';
@@ -280,6 +281,9 @@ export struct LxAppNavigation {
 
       PickerManager()
         .zIndex(10003)
+
+      PopupManager()
+        .zIndex(10004)
     }
     .width('100%')
     .height('100%')
