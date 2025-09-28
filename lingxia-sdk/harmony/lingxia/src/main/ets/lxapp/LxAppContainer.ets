@@ -132,7 +132,7 @@ export struct LxAppContainer {
   @Watch('onExternalPathChange') @Prop externalPath: string = ''
 
   // Listen for navigation trigger changes (unified method for all LxApps)
-  @Prop navigationTrigger: number = 0
+  @Watch('onNavigationTriggerChange') @Prop navigationTrigger: number = 0
 
   // Manual animation control for new lxapps
   @State animationOffsetY: number = 0 // 0 = final position, positive = off-screen bottom
@@ -343,6 +343,16 @@ export struct LxAppContainer {
       hilog.info(DOMAIN, TAG, `External path change: ${this.externalPath}`);
       this.navigateToPage(this.externalPath);
     }
+  }
+
+  private onNavigationTriggerChange() {
+    if (!this.externalPath) {
+      hilog.info(DOMAIN, TAG, 'navigationTrigger changed but externalPath is empty, skipping navigate');
+      return;
+    }
+
+    hilog.info(DOMAIN, TAG, `navigationTrigger updated -> navigating to ${this.externalPath}`);
+    this.navigateToPage(this.externalPath);
   }
 
   /**

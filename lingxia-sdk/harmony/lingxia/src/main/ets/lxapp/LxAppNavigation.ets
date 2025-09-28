@@ -150,8 +150,6 @@ export struct LxAppNavigation {
     }
   }
 
-
-
   /**
    * Required by NavigationInstance interface
    * Tabbar visibility is handled by navigation type in LxAppContainer
@@ -218,8 +216,6 @@ export struct LxAppNavigation {
     hilog.warn(DOMAIN, TAG, `LxApp ${appId} not found or not currently visible for page navigation`);
     return false;
   }
-
-
 
   /**
    * Build modal LxApp container with common styling
