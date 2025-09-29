@@ -62,6 +62,17 @@ export default function UIPage() {
   }, [toastPositionOptions, toastPosition, toastPositionLabel]);
 
   const popupMessage = (popupDemo && popupDemo.message) || '';
+  const [popupWidthRatio, setPopupWidthRatio] = React.useState(1);
+  const [popupHeightRatio, setPopupHeightRatio] = React.useState(0.6);
+  const [popupPosition, setPopupPosition] = React.useState<'center' | 'bottom'>('bottom');
+  const popupPositions: Array<'center' | 'bottom'> = ['center', 'bottom'];
+
+  const clampRatio = React.useCallback((value: number, fallback: number) => {
+    if (!Number.isFinite(value)) {
+      return fallback;
+    }
+    return Math.min(1, Math.max(0.1, value));
+  }, []);
 
   // Local state for toast parameters
   const [toastTitle, setToastTitle] = React.useState('Hello Toast!');
@@ -128,13 +139,83 @@ export default function UIPage() {
         {/* Popup Demo Section */}
         {currentType === 'popup' && (
           <>
-            <div className="mt-4 mb-3 px-4 text-sm text-gray-500 font-medium">Popup overlay demo</div>
+            <div className="mt-4 mb-6 px-4 text-center">
+              <h1 className="text-2xl font-light text-gray-800 mb-2">showPopup</h1>
+              <div className="w-16 h-0.5 bg-gray-400 mx-auto"></div>
+            </div>
 
             <div className="mx-1 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
               <div className="px-4 py-4 space-y-4">
+                <div className="space-y-3">
+                  <div>
+                    <div className="flex items-center justify-between text-xs uppercase text-gray-500 tracking-wide">
+                      <span>Width Ratio</span>
+                      <span className="text-gray-700 font-mono">{popupWidthRatio.toFixed(2)}</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0.1}
+                      max={1}
+                      step={0.05}
+                      value={popupWidthRatio}
+                      onChange={(event) =>
+                        setPopupWidthRatio(clampRatio(parseFloat(event.target.value), 0.9))
+                      }
+                      className="w-full mt-2"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between text-xs uppercase text-gray-500 tracking-wide">
+                      <span>Height Ratio</span>
+                      <span className="text-gray-700 font-mono">{popupHeightRatio.toFixed(2)}</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0.1}
+                      max={1}
+                      step={0.05}
+                      value={popupHeightRatio}
+                      onChange={(event) =>
+                        setPopupHeightRatio(clampRatio(parseFloat(event.target.value), 0.6))
+                      }
+                      className="w-full mt-2"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="text-xs uppercase text-gray-500 tracking-wide mb-2">Position</div>
+                    <div className="grid grid-cols-3 gap-2">
+                      {popupPositions.map((pos) => {
+                        const active = popupPosition === pos;
+                        const baseClass = 'py-2 text-sm rounded-lg transition-colors border';
+                        const className = active
+                          ? `${baseClass} bg-blue-500 border-blue-500 text-white`
+                          : `${baseClass} bg-white border-gray-200 text-gray-600 hover:bg-gray-50`;
+                        return (
+                          <button
+                            key={pos}
+                            type="button"
+                            className={className}
+                            onClick={() => setPopupPosition(pos)}
+                          >
+                            {pos.charAt(0).toUpperCase() + pos.slice(1)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
                 <button
                   type="button"
-                  onClick={() => showPopupDemo()}
+                  onClick={() =>
+                    showPopupDemo({
+                      widthRatio: popupWidthRatio,
+                      heightRatio: popupHeightRatio,
+                      position: popupPosition,
+                    })
+                  }
                   className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
                 >
                   Open popup

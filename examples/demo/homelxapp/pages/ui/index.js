@@ -285,7 +285,7 @@ Page({
     }
   },
 
-  showPopupDemo: function () {
+  showPopupDemo: function (config) {
     const query = `source=ui-page&time=${Date.now()}`;
 
     this.setData({
@@ -293,16 +293,28 @@ Page({
     });
 
     try {
-      if (this.popupDemoEmitter) {
-        this.popupDemoEmitter.off("popupMessage");
-        this.popupDemoEmitter = null;
-      }
+      const cfg = config || {};
+      const clamp = (value, fallback) => {
+        const num = Number(value);
+        if (Number.isFinite(num)) {
+          return Math.min(1, Math.max(0.1, num));
+        }
+        return fallback;
+      };
+
+      const widthRatio = clamp(cfg.widthRatio, 0.9);
+      const heightRatio = clamp(cfg.heightRatio, 0.6);
+      const allowedPositions = new Set(["top", "center", "bottom"]);
+      const position =
+        typeof cfg.position === "string" && allowedPositions.has(cfg.position)
+          ? cfg.position
+          : "bottom";
 
       const popup = lx.showPopup({
         url: `pages/popup/index.tsx?${query}`,
-        position: "bottom",
-        widthRatio: 1,
-        heightRatio: 0.6,
+        position,
+        widthRatio,
+        heightRatio,
       });
 
       const handler = (payload) => {
@@ -323,7 +335,6 @@ Page({
       };
 
       popup.eventEmitter.on("popupMessage", handler);
-      this.popupDemoEmitter = popup.eventEmitter;
     } catch (error) {
       console.error("showPopup failed:", error);
       this.setData({
