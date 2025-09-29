@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "pages": [
     "pages/home/index.html",
+    "pages/popup/index.tsx",
     "pages/API/index.tsx",
     "pages/ui/index.tsx",
     "pages/device/index.tsx",

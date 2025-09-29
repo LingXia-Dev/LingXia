@@ -26,6 +26,7 @@ export default function UIPage() {
     chooseToastIcon,
     chooseToastPosition,
     showDemoActionSheet,
+    showPopupDemo,
     startShowPickerDemo,
     resetShowPickerDemo,
   } = useLingXia();
@@ -40,6 +41,7 @@ export default function UIPage() {
     toastPositionLabel = 'Center',
     toastPositionOptions = [],
     pickerDemo = {},
+    popupDemo = {},
   } = data;
 
   const pickerStreamingKey = pickerDemo.streamingKey || '';
@@ -58,6 +60,8 @@ export default function UIPage() {
     const match = toastPositionOptions.find((option) => option.value === toastPosition);
     return match?.label || toastPositionLabel || toastPosition || 'Select position';
   }, [toastPositionOptions, toastPosition, toastPositionLabel]);
+
+  const popupMessage = (popupDemo && popupDemo.message) || '';
 
   // Local state for toast parameters
   const [toastTitle, setToastTitle] = React.useState('Hello Toast!');
@@ -118,6 +122,30 @@ export default function UIPage() {
             <div className="text-base text-black">Jump to Tab page</div>
           </div>
         </div>
+          </>
+        )}
+
+        {/* Popup Demo Section */}
+        {currentType === 'popup' && (
+          <>
+            <div className="mt-4 mb-3 px-4 text-sm text-gray-500 font-medium">Popup overlay demo</div>
+
+            <div className="mx-1 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="px-4 py-4 space-y-4">
+                <button
+                  type="button"
+                  onClick={() => showPopupDemo()}
+                  className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
+                >
+                  Open popup
+                </button>
+
+                <div className="text-xs text-gray-500 uppercase tracking-wide">Message from popup demo page</div>
+                <div className="text-sm text-gray-800 bg-gray-50 rounded-lg px-3 py-2 font-mono break-words">
+                  {popupMessage || 'No message received yet.'}
+                </div>
+              </div>
+            </div>
           </>
         )}
 

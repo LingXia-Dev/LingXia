@@ -3,7 +3,7 @@ import '../../tailwind.css';
 
 export default function LocationPage() {
   // Use LingXia hook to get data and functions
-  const { data, getLocation, clearLocation } = window.useLingXia();
+  const { data, getLocation, clearLocation } = useLingXia();
   const { location = null, isLoading = false } = data;
 
   React.useEffect(() => {

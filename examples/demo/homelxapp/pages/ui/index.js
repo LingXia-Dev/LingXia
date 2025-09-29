@@ -103,6 +103,9 @@ Page({
       cascading: createPickerEntry(),
       time: createPickerEntry(),
     },
+    popupDemo: {
+      message: "",
+    },
   },
 
   onLoad: async function (options) {
@@ -264,6 +267,59 @@ Page({
       });
     } catch (error) {
       console.log("Action sheet dismissed or failed:", error);
+    }
+  },
+
+  showPopupDemo: async function () {
+    const query = `source=ui-page&time=${Date.now()}`;
+
+    await this.setData({
+      "popupDemo.message": "",
+    });
+
+    try {
+      if (this.popupDemoEmitter) {
+        this.popupDemoEmitter.off("popupMessage");
+        this.popupDemoEmitter = null;
+      }
+
+      const popup = lx.showPopup({
+        url: `pages/popup/index.tsx?${query}`,
+        position: "bottom",
+        widthRatio: 1,
+        heightRatio: 0.6,
+      });
+
+      const handler = (payload) => {
+        console.log("popupMessage received:", payload);
+
+        const message =
+          payload && typeof payload === "object"
+            ? (payload.message ?? JSON.stringify(payload))
+            : payload;
+
+        const readable = typeof message === "string" ? message : "";
+
+        // this.setData({
+        //   "popupDemo.message": readable,
+        // });
+
+        // mark, rong has bug, it cause deadlock
+        //popup.eventEmitter.off("popupMessage", handler);
+        this.popupDemoEmitter = null;
+      };
+
+      popup.eventEmitter.on("popupMessage", handler);
+      this.popupDemoEmitter = popup.eventEmitter;
+    } catch (error) {
+      console.error("showPopup failed:", error);
+      await this.setData({
+        "popupDemo.message": `Failed: ${error.message}`,
+      });
+      lx.showToast({
+        title: `showPopup failed: ${error.message}`,
+        icon: "none",
+      });
     }
   },
 
