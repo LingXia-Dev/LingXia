@@ -382,6 +382,49 @@ impl PageSvc {
     }
 }
 
+impl Page {
+    pub fn get_event_emitter(&self, ctx: &JSContext) -> JSResult<EventEmitter> {
+        if !self.is_service_ready() {
+            return Err(RongJSError::Error("Page service not ready".to_string()));
+        }
+
+        let registry = ctx
+            .get_user_data::<Rc<RefCell<HashMap<String, PageSvc>>>>()
+            .ok_or_else(|| RongJSError::Error("Page service registry not available".to_string()))?;
+
+        registry
+            .borrow()
+            .get(self.path().as_str())
+            .map(|svc| svc.get_event_emitter())
+            .ok_or_else(|| RongJSError::Error("Page service not found after creation".to_string()))
+    }
+}
+
+impl LxApp {
+    pub fn create_page_with_ctx(&self, ctx: &JSContext, url: &str) -> JSResult<Page> {
+        let page = self.get_or_create_page(url);
+
+        if page.is_service_ready() {
+            return Ok(page);
+        }
+
+        let page_path = page.path();
+
+        let create_page = ctx
+            .global()
+            .get::<_, JSFunc>("__CREATE_PAGE__")
+            .map_err(|e| RongJSError::Error(e.to_string()))?;
+
+        create_page
+            .call::<_, ()>(None, (page_path.clone(),))
+            .map_err(|e| RongJSError::Error(e.to_string()))?;
+
+        page.mark_service_ready();
+
+        Ok(page)
+    }
+}
+
 fn get_current_pages(ctx: JSContext) -> JSResult<Vec<JSObject>> {
     let registry = ctx.global().get::<_, JSObject>("__PAGE_REGISTRY__")?;
     let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();

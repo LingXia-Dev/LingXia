@@ -104,6 +104,16 @@ pub fn parse_query_string(query_str: &str) -> Result<serde_json::Value, serde_js
     Ok(serde_json::Value::Object(query_map))
 }
 
+/// Splits a full URL (path?query) into path and raw query string (without the '?').
+pub fn split_path_query(url: &str) -> (String, Option<String>) {
+    if let Some(idx) = url.find('?') {
+        let (path, query) = url.split_at(idx);
+        (path.to_string(), Some(query[1..].to_string()))
+    } else {
+        (url.to_string(), None)
+    }
+}
+
 impl LxAppStartupOptions {
     /// Creates a new `LxAppStartupOptions` from a path that may contain a query string.
     pub fn new(path_with_query: &str) -> Self {

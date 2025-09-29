@@ -4,7 +4,7 @@ use crate::lx;
 use crate::lxapp::LxApp;
 use crate::{error, info};
 
-use rong::{JSContext, JSFunc, JSObject, JSResult, JSRuntime, RongJSError, Source};
+use rong::{JSContext, JSObject, JSResult, JSRuntime, RongJSError, Source};
 use rong_modules::{console, fs, http, storage};
 
 use std::cell::RefCell;
@@ -235,9 +235,9 @@ pub(crate) async fn lxapp_service_handler(
         }
         ServiceMessage::CreatePage { appid, path } => {
             if let Some(ctx) = current_ctx.as_ref() {
-                if let Ok(page_jsfunc) = ctx.global().get::<_, JSFunc>("__CREATE_PAGE__") {
-                    if let Err(e) = page_jsfunc.call::<_, ()>(None, (path.clone(),)) {
-                        error!("[Worker {}] __CREATE_PAGE__ call failed: {}", worker_id, e)
+                if let Some(lxapp) = ctx.get_user_data::<Arc<LxApp>>() {
+                    if let Err(e) = lxapp.create_page_with_ctx(ctx, &path) {
+                        error!("[Worker {}] create_page_with_ctx failed: {}", worker_id, e)
                             .with_appid(appid)
                             .with_path(path);
                     }

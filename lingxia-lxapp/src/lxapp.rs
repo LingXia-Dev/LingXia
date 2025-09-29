@@ -614,9 +614,8 @@ impl LxApp {
                 startup_options.path.clone()
             };
 
-            if let Some(page) = app.get_or_create_page(&target_path) {
-                page.set_query(startup_options.query);
-            }
+            let page = app.get_or_create_page(&target_path);
+            page.set_query(startup_options.query);
 
             app.runtime.open_lxapp(appid, target_path)?;
         }
@@ -650,9 +649,7 @@ impl LxApp {
             (request.path.clone(), String::new())
         };
 
-        let popup_page = self.get_or_create_page(&path).ok_or_else(|| {
-            LxAppError::UnsupportedOperation("Failed to get or create popup page".to_string())
-        })?;
+        let popup_page = self.get_or_create_page(&path);
 
         popup_page.mark_active();
 
@@ -709,19 +706,22 @@ impl LxApp {
 
     /// Get existing page or create a new one if it doesn't exist
     /// Returns None if creation fails
-    pub(crate) fn get_or_create_page(self: &Arc<Self>, path: &str) -> Option<Page> {
-        // Check if page already exists
+    pub(crate) fn get_or_create_page(&self, url: &str) -> Page {
+        let (path, query) = crate::startup::split_path_query(url);
+
         {
             let state = self.state.lock().unwrap();
-            if let Some(page) = state.pages.lock().unwrap().get(path) {
-                return Some(page.clone());
+            if let Some(page) = state.pages.lock().unwrap().get(&path) {
+                if let Some(query) = query.clone() {
+                    page.set_query(query);
+                }
+                return page.clone();
             }
         }
 
-        // Create new page first
         let appid = self.appid.clone();
         let executor = self.executor.clone();
-        let page = Page::new(appid.clone(), path.to_string(), &**self, move |page| {
+        let page = Page::new(appid.clone(), path.to_string(), self, move |page| {
             // Load HTML content into the page
             if let Err(e) = page.load_html() {
                 error!("Failed to load HTML for page: {}", e)
@@ -729,11 +729,12 @@ impl LxApp {
                     .with_path(page.path());
             }
 
-            // Create page service
-            if let Err(e) = executor.create_page_svc(page.appid(), page.path()) {
-                error!("Failed to request page service creation: {}", e)
-                    .with_appid(page.appid())
-                    .with_path(page.path());
+            if !page.is_service_ready() {
+                if let Err(e) = executor.create_page_svc(page.appid(), page.path()) {
+                    error!("Failed to request page service creation: {}", e)
+                        .with_appid(page.appid())
+                        .with_path(page.path());
+                }
             }
         });
 
@@ -744,13 +745,16 @@ impl LxApp {
                 .pages
                 .lock()
                 .unwrap()
-                .insert(path.to_string(), page.clone());
+                .insert(path.clone(), page.clone());
         }
 
-        // Check if we need to evict pages after creating new one
         self.evict_inactive_pages_if_needed();
 
-        Some(page)
+        if let Some(query) = query {
+            page.set_query(query);
+        }
+
+        page
     }
 
     /// Check if we need to evict pages before creating new ones

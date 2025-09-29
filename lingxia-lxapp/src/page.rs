@@ -8,6 +8,7 @@ use lingxia_webview::{
     LogLevel, WebTag, WebView, WebViewController, WebViewDelegate, create_webview,
 };
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::Instant;
 
@@ -25,6 +26,8 @@ pub(crate) struct PageInner {
 
     // state of Page
     state: Arc<Mutex<PageState>>,
+
+    service_ready: Arc<AtomicBool>,
 }
 
 #[derive(Clone, Debug)]
@@ -139,6 +142,7 @@ impl Page {
             last_active_time: Arc::new(Mutex::new(Instant::now())),
             state: Arc::new(Mutex::new(page_state)),
             webview: Arc::new(Mutex::new(None)),
+            service_ready: Arc::new(AtomicBool::new(false)),
         });
 
         let page = Self { inner };
@@ -365,6 +369,14 @@ impl Page {
         self.inner.last_active_time.lock().ok().map(|time| *time)
     }
 
+    pub(crate) fn is_service_ready(&self) -> bool {
+        self.inner.service_ready.load(Ordering::SeqCst)
+    }
+
+    pub(crate) fn mark_service_ready(&self) {
+        self.inner.service_ready.store(true, Ordering::SeqCst);
+    }
+
     /// Check if this page is a TabBar page
     pub fn is_tabbar_page(&self) -> bool {
         let lxapp = lxapp::get(self.inner.appid.clone());
@@ -374,20 +386,14 @@ impl Page {
         }
     }
 
-    pub fn navigate(&self, url: &str, nav_type: NavigationType) -> Result<(), LxAppError> {
+    pub fn navigate_to(
+        &self,
+        target_page: Page,
+        nav_type: NavigationType,
+    ) -> Result<Page, LxAppError> {
         let lxapp = lxapp::get(self.appid());
 
-        // 1. Parse URL to get path and query string
-        let (path, query_str) = if nav_type == NavigationType::SwitchTab {
-            (url.to_string(), String::new())
-        } else {
-            let (p, q_str) = if let Some(idx) = url.find('?') {
-                (url[..idx].to_string(), &url[idx + 1..])
-            } else {
-                (url.to_string(), "")
-            };
-            (p, q_str.to_string())
-        };
+        let path = target_page.path();
 
         // 2. Handle UI state based on navigation type (TabBar, NavBar)
         let is_tab_switch = nav_type == NavigationType::SwitchTab;
@@ -412,7 +418,7 @@ impl Page {
             NavigationType::Forward => {
                 if lxapp.is_page_stack_full() {
                     info!("Page stack is full, cannot navigate forward.");
-                    return Ok(());
+                    return Ok(target_page);
                 }
             }
             NavigationType::Backward => {
@@ -420,14 +426,6 @@ impl Page {
                     "should use navigate_back".to_string(),
                 ));
             }
-        }
-
-        // 4. Get or create the target page and set its query
-        let target_page = lxapp.get_or_create_page(&path).ok_or_else(|| {
-            LxAppError::UnsupportedOperation("Failed to get or create page".to_string())
-        })?;
-        if !query_str.is_empty() {
-            target_page.set_query(query_str);
         }
 
         lxapp.push_to_page_stack(&path)?;
@@ -453,7 +451,7 @@ impl Page {
         // 7. Dispatch final lifecycle event for the target page
         target_page.dispatch_lifecycle_event(PageLifecycleEvent::OnReady);
 
-        Ok(())
+        Ok(target_page)
     }
 
     pub fn navigate_back(&self, delta: u32) -> Result<(), LxAppError> {

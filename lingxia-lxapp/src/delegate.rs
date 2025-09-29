@@ -69,15 +69,9 @@ impl LxAppDelegate for LxApp {
         }
 
         // Create or get the page first for launch page
-        if let Some(page) = self.get_or_create_page(&resolved_path) {
-            if page.is_tabbar_page() {
-                self.with_tabbar_mut(|t| t.set_visible(true));
-            }
-        } else {
-            error!("Failed to create launch page")
-                .with_appid(self.appid.clone())
-                .with_path(resolved_path.clone());
-            return resolved_path;
+        let page = self.get_or_create_page(&resolved_path);
+        if page.is_tabbar_page() {
+            self.with_tabbar_mut(|t| t.set_visible(true));
         }
 
         if let Err(e) = self.push_to_page_stack(&resolved_path) {
@@ -111,10 +105,7 @@ impl LxAppDelegate for LxApp {
                     if tab_path == initial_path {
                         continue; // Skip the initial page we already created
                     }
-                    if lxapp_clone.get_or_create_page(&tab_path).is_none() {
-                        error!("Failed to pre-create tab page: {}", tab_path)
-                            .with_appid(lxapp_clone.appid.clone());
-                    }
+                    let _ = lxapp_clone.get_or_create_page(&tab_path);
                 }
             });
         }
@@ -195,7 +186,11 @@ impl LxApp {
             if let Some(tab_path) = tab_pages.get(index) {
                 if let Some(current_page_path) = self.peek_current_page() {
                     if let Some(page) = self.get_page(&current_page_path) {
-                        if page.navigate(tab_path, NavigationType::SwitchTab).is_ok() {
+                        let target_page = self.get_or_create_page(tab_path);
+                        if page
+                            .navigate_to(target_page, NavigationType::SwitchTab)
+                            .is_ok()
+                        {
                             return true;
                         }
                     }
@@ -273,7 +268,8 @@ impl LxApp {
 
                 if let Some(path) = self.peek_current_page() {
                     if let Some(page) = self.get_page(&path) {
-                        let _ = page.navigate(&home_route, navigate_type);
+                        let target_page = self.get_or_create_page(&home_route);
+                        let _ = page.navigate_to(target_page, navigate_type);
                     }
                 }
                 true
