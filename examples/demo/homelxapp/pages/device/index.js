@@ -9,7 +9,7 @@ Page({
     console.log("Device page onLoad options:", options);
 
     // Pass querystring parameters to page via setData
-    await this.setData({
+    this.setData({
       currentType: options.type || 'device'
     });
   },
@@ -28,7 +28,7 @@ Page({
       const deviceInfo = lx.getDeviceInfo();
       console.log("Device info:", deviceInfo);
 
-      await this.setData({
+      this.setData({
         deviceInfo: deviceInfo
       });
     } catch (error) {
@@ -42,7 +42,7 @@ Page({
       const screenInfo = await lx.getScreenInfo();
       console.log("Screen info:", screenInfo);
 
-      await this.setData({
+      this.setData({
         screenInfo: screenInfo
       });
     } catch (error) {

@@ -6,7 +6,7 @@ Page({
 
   onLoad: async function (options) {
     console.log('System page onLoad options:', options);
-    await this.setData({
+    this.setData({
       currentType: options.type || 'appBaseInfo'
     });
   },
@@ -23,12 +23,12 @@ Page({
     try {
       const info = lx.getAppBaseInfo();
       console.log('App base info:', info);
-      await this.setData({
+      this.setData({
         appBaseInfo: info
       });
     } catch (error) {
       console.error('Failed to get app base info:', error);
-      await this.setData({
+      this.setData({
         appBaseInfo: null
       });
     }

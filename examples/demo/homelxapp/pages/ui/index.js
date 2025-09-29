@@ -112,7 +112,7 @@ Page({
     console.log("UI page onLoad options:", options);
 
     // Pass querystring parameters to page via setData
-    await this.setData({
+    this.setData({
       currentType: options.type || "navigation",
     });
 
@@ -136,7 +136,7 @@ Page({
         options: page.options || {},
       }));
 
-      await this.setData({
+      this.setData({
         pageStack: pageStack,
       });
     } catch (error) {
@@ -273,7 +273,7 @@ Page({
   showPopupDemo: async function () {
     const query = `source=ui-page&time=${Date.now()}`;
 
-    await this.setData({
+    this.setData({
       "popupDemo.message": "",
     });
 
@@ -300,20 +300,18 @@ Page({
 
         const readable = typeof message === "string" ? message : "";
 
-        // this.setData({
-        //   "popupDemo.message": readable,
-        // });
+        this.setData({
+          "popupDemo.message": readable,
+        });
 
-        // mark, rong has bug, it cause deadlock
-        //popup.eventEmitter.off("popupMessage", handler);
-        this.popupDemoEmitter = null;
+        popup.eventEmitter.off("popupMessage", handler);
       };
 
       popup.eventEmitter.on("popupMessage", handler);
       this.popupDemoEmitter = popup.eventEmitter;
     } catch (error) {
       console.error("showPopup failed:", error);
-      await this.setData({
+      this.setData({
         "popupDemo.message": `Failed: ${error.message}`,
       });
       lx.showToast({
@@ -353,7 +351,7 @@ Page({
       streamingKey: variant,
       [variant]: createPickerEntry("--", "--", "Listening..."),
     };
-    await this.setData({ pickerDemo: pickerState });
+    this.setData({ pickerDemo: pickerState });
 
     try {
       for await (const event of lx.showPicker(options)) {
@@ -377,7 +375,7 @@ Page({
           ...pickerState,
           [variant]: createPickerEntry(label, indexLabel, status),
         };
-        await this.setData({ pickerDemo: pickerState });
+        this.setData({ pickerDemo: pickerState });
 
         if (event && (event.confirmed || event.cancelled)) {
           break;
@@ -391,13 +389,13 @@ Page({
         ...pickerState,
         [variant]: createPickerEntry(previous.label, previous.index, "Error"),
       };
-      await this.setData({ pickerDemo: pickerState });
+      this.setData({ pickerDemo: pickerState });
     } finally {
       pickerState = {
         ...pickerState,
         streamingKey: "",
       };
-      await this.setData({ pickerDemo: pickerState });
+      this.setData({ pickerDemo: pickerState });
     }
   },
 
@@ -417,7 +415,7 @@ Page({
     }
 
     const current = ensurePickerDemo(this);
-    await this.setData({
+    this.setData({
       pickerDemo: {
         ...current,
         [variant]: createPickerEntry(),
@@ -443,7 +441,7 @@ Page({
       };
 
       // Update page data with filtered result
-      await this.setData({
+      this.setData({
         modalResult: filteredResult,
       });
 
@@ -453,7 +451,7 @@ Page({
       const errorResult = { error: error.message };
 
       // Update page data with error
-      await this.setData({
+      this.setData({
         modalResult: errorResult,
       });
 
@@ -463,7 +461,7 @@ Page({
 
   // Clear modal result
   clearModalResult: async function () {
-    await this.setData({
+    this.setData({
       modalResult: null,
     });
   },

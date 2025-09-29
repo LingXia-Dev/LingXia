@@ -98,7 +98,7 @@ Page({
     };
 
     console.log("[Todo] addTodo: Adding new todo:", newTodo);
-    await this.setData({
+    this.setData({
       todos: [...this.data.todos, newTodo],
       lastUpdated: getCurrentTimestamp(),
     });
@@ -126,7 +126,7 @@ Page({
       todo.id === id ? { ...todo, completed: !todo.completed } : todo,
     );
 
-    await this.setData({
+    this.setData({
       todos: updatedTodos,
       lastUpdated: new Date().toISOString(),
     });
@@ -149,7 +149,7 @@ Page({
 
     const updatedTodos = this.data.todos.filter((todo) => todo.id !== id);
 
-    await this.setData({
+    this.setData({
       todos: updatedTodos,
       lastUpdated: new Date().toISOString(),
     });
@@ -175,7 +175,7 @@ Page({
 
     const updatedTodos = this.data.todos.filter((todo) => !todo.completed);
 
-    await this.setData({
+    this.setData({
       todos: updatedTodos,
       lastUpdated: new Date().toISOString(),
     });
@@ -198,7 +198,7 @@ Page({
     }
 
     console.log("[Todo] setFilter: Setting filter to:", filter);
-    await this.setData({
+    this.setData({
       currentFilter: filter,
       lastUpdated: new Date().toISOString(),
     });

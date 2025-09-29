@@ -25,11 +25,11 @@ Page({
   },
 
   // Toggle category expansion state
-  toggleSection: async function (params) {
+  toggleSection: function (params) {
     const { section } = params;
     const currentState = this.data.expandedSections[section];
 
-    await this.setData({
+    this.setData({
       [`expandedSections.${section}`]: !currentState,
     });
   },

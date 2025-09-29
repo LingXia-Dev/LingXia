@@ -13,7 +13,7 @@ Page({
       return;
     }
 
-    await this.setData({
+    this.setData({
       isLoading: true,
     });
 
@@ -23,14 +23,14 @@ Page({
 
       console.log("Location info:", location);
 
-      await this.setData({
+      this.setData({
         location: location,
         isLoading: false,
       });
     } catch (error) {
       console.error("Failed to get location:", error);
 
-      await this.setData({
+      this.setData({
         isLoading: false,
       });
 
@@ -45,7 +45,7 @@ Page({
 
   // Clear location data
   clearLocation: async function () {
-    await this.setData({
+    this.setData({
       location: null,
     });
   },

@@ -9,21 +9,20 @@ Page({
     greetCount: 0,
   },
 
-  onReady: async function () {
+  onReady: function () {
     console.log("[Home] Page ready");
     // Add callback directly to App
-    app.ipReadyCallback = async (ip) => {
+    app.ipReadyCallback = (ip) => {
       console.log("IP received in Page:", ip);
-      await this.setData({
+      this.setData({
         ipAddr: ip,
       });
     };
 
     // Check if IP is already available
     if (app.globalData.ipAddr) {
-      // Use async IIFE for immediate execution
-      (async () => {
-        await this.setData({
+      (() => {
+        this.setData({
           ipAddr: app.globalData.ipAddr,
         });
       })();
@@ -61,9 +60,9 @@ Page({
     console.log("[Home] App data:", app.globalData);
   },
 
-  greet: async function (option) {
+  greet: function (option) {
     const count = this.data.greetCount + 1;
-    await this.setData(
+    this.setData(
       {
         greeting: `👋 Hello ${option.name}! (#${count})
 

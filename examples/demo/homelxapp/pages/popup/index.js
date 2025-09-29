@@ -13,7 +13,7 @@ Page({
       ? entries.map(({ key, value }) => `${key}=${value}`).join("&")
       : "";
 
-    await this.setData({
+    this.setData({
       queryString,
     });
   },
