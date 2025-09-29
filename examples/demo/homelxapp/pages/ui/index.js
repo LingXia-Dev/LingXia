@@ -77,6 +77,17 @@ const ensurePickerDemo = (page) => {
   };
 };
 
+const NAV_TITLE_MAP = {
+  navigation: "Navigation Demo",
+  toast: "Toast Demo",
+  actionsheet: "Action Sheet Demo",
+  showpicker: "Picker Demo",
+  modal: "Modal Demo",
+  navbar: "Navigation Bar Demo",
+  tabbar: "Tab Bar Demo",
+  popup: "Popup Demo",
+};
+
 Page({
   data: {
     currentType: "",
@@ -108,26 +119,30 @@ Page({
     },
   },
 
-  onLoad: async function (options) {
+  onLoad: function (options) {
     console.log("UI page onLoad options:", options);
 
     // Pass querystring parameters to page via setData
+    const type = options.type || "navigation";
     this.setData({
-      currentType: options.type || "navigation",
+      currentType: type,
     });
 
+    const title = NAV_TITLE_MAP[type] || "User Interface";
+    this.setNavigationBarTitle({ title });
+
     // Update page stack immediately
-    await this.updatePageStack();
+    this.updatePageStack();
   },
 
-  onShow: async function () {
+  onShow: function () {
     console.log("UI page onShow");
     // Update page stack every time page shows
-    await this.updatePageStack();
+    this.updatePageStack();
   },
 
   // Update current page stack
-  updatePageStack: async function () {
+  updatePageStack: function () {
     try {
       const pages = getCurrentPages();
       const pageStack = pages.map((page, index) => ({
@@ -270,7 +285,7 @@ Page({
     }
   },
 
-  showPopupDemo: async function () {
+  showPopupDemo: function () {
     const query = `source=ui-page&time=${Date.now()}`;
 
     this.setData({
@@ -399,7 +414,7 @@ Page({
     }
   },
 
-  resetShowPickerDemo: async function (params) {
+  resetShowPickerDemo: function (params) {
     const variant = params && params.variant;
     if (!variant || !PICKER_OPTIONS[variant]) {
       return;
@@ -460,7 +475,7 @@ Page({
   },
 
   // Clear modal result
-  clearModalResult: async function () {
+  clearModalResult: function () {
     this.setData({
       modalResult: null,
     });
@@ -468,60 +483,36 @@ Page({
 
   // NavigationBar API functions
   setNavigationBarTitle: function (options) {
-    console.log("setNavigationBarTitle called with:", options);
-    const result = lx.setNavigationBarTitle(options);
-    console.log("setNavigationBarTitle result:", result);
-    return result;
+    return lx.setNavigationBarTitle(options);
   },
 
   setNavigationBarColor: function (options) {
-    console.log("setNavigationBarColor called with:", options);
-    const result = lx.setNavigationBarColor(options);
-    console.log("setNavigationBarColor result:", result);
-    return result;
+    return lx.setNavigationBarColor(options);
   },
 
   // TabBar API functions
   showTabBarRedDot: function (options) {
-    console.log("showTabBarRedDot called with:", options);
-    const result = lx.showTabBarRedDot(options);
-    console.log("showTabBarRedDot result:", result);
-    return result;
+    return lx.showTabBarRedDot(options);
   },
 
   hideTabBarRedDot: function (options) {
-    console.log("hideTabBarRedDot called with:", options);
-    const result = lx.hideTabBarRedDot(options);
-    console.log("hideTabBarRedDot result:", result);
-    return result;
+    return lx.hideTabBarRedDot(options);
   },
 
   setTabBarBadge: function (options) {
-    console.log("setTabBarBadge called with:", options);
-    const result = lx.setTabBarBadge(options);
-    console.log("setTabBarBadge result:", result);
-    return result;
+    return lx.setTabBarBadge(options);
   },
 
   removeTabBarBadge: function (options) {
-    console.log("removeTabBarBadge called with:", options);
-    const result = lx.removeTabBarBadge(options);
-    console.log("removeTabBarBadge result:", result);
-    return result;
+    return lx.removeTabBarBadge(options);
   },
 
   showTabBar: function () {
-    console.log("showTabBar called");
-    const result = lx.showTabBar();
-    console.log("showTabBar result:", result);
-    return result;
+    return lx.showTabBar();
   },
 
   hideTabBar: function () {
-    console.log("hideTabBar called");
-    const result = lx.hideTabBar();
-    console.log("hideTabBar result:", result);
-    return result;
+    return lx.hideTabBar();
   },
 
   setTabBarStyle: function (options) {
