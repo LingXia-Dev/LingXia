@@ -1,6 +1,6 @@
 use lingxia_lxapp::{LxApp, lx};
 use lingxia_platform::{PopupPosition, PopupRequest};
-use rong::{FromJSObj, JSContext, JSFunc, JSResult, RongJSError};
+use rong::{FromJSObj, JSContext, JSFunc, JSObject, JSResult, RongJSError};
 use std::sync::Arc;
 
 #[derive(FromJSObj)]
@@ -25,8 +25,12 @@ fn parse_position(value: Option<String>) -> PopupPosition {
     }
 }
 
-fn show_popup(ctx: JSContext, options: JSPopupOptions) -> JSResult<()> {
+fn show_popup(ctx: JSContext, options: JSPopupOptions) -> JSResult<JSObject> {
     let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+
+    let page = lxapp
+        .create_page_with_ctx(&ctx, &options.url)
+        .map_err(|e| RongJSError::Error(format!("Failed to prepare popup page: {}", e)))?;
 
     let mut request = PopupRequest::new(lxapp.appid.clone(), options.url);
     if let Some(width) = options.width_ratio {
@@ -39,7 +43,16 @@ fn show_popup(ctx: JSContext, options: JSPopupOptions) -> JSResult<()> {
 
     lxapp
         .show_popup(request)
-        .map_err(|e| RongJSError::Error(format!("Failed to show popup: {}", e)))
+        .map_err(|e| RongJSError::Error(format!("Failed to show popup: {}", e)))?;
+
+    let event_emitter = page
+        .get_event_emitter(&ctx)
+        .map_err(|e| RongJSError::Error(format!("Failed to get popup event emitter: {}", e)))?;
+
+    let response = JSObject::new(&ctx);
+    response.set("eventEmitter", event_emitter)?;
+
+    Ok(response)
 }
 
 fn hide_popup(ctx: JSContext) -> JSResult<()> {
