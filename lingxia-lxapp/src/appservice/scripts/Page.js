@@ -35,67 +35,69 @@
     // Setup state management
     let updateTimer = null;
     let pendingData = null;
-    let pendingResolvers = [];
+    let pendingCallbacks = [];
     const DEBOUNCE_WAIT = 16; // 16ms ≈ 60fps, better for UI updates
 
     // Enhanced setData with debouncing and diff optimization
-    pageSvc.setData = async function (updates, callback) {
+    pageSvc.setData = function (updates, callback) {
       if (!updates || typeof updates !== "object") {
         throw new Error("setData: Invalid updates");
       }
 
-      return new Promise((resolve, reject) => {
-        pendingData = pendingData ? { ...pendingData, ...updates } : updates;
-        pendingResolvers.push({ resolve, reject, callback });
+      pendingData = pendingData ? { ...pendingData, ...updates } : updates;
+      if (typeof callback === "function") {
+        pendingCallbacks.push(callback);
+      }
 
-        const self = this;
+      const self = this;
 
-        clearTimeout(updateTimer);
-        updateTimer = setTimeout(async () => {
-          try {
-            const currentUpdates = pendingData;
-            const resolvers = pendingResolvers;
+      clearTimeout(updateTimer);
+      updateTimer = setTimeout(() => {
+        const currentUpdates = pendingData;
+        const callbacks = pendingCallbacks;
 
-            // Reset state
-            pendingData = null;
-            pendingResolvers = [];
+        // Reset state for next batch
+        pendingData = null;
+        pendingCallbacks = [];
 
-            // Apply updates to local data
-            for (const [path, value] of Object.entries(currentUpdates)) {
-              setValueByPath(self.data, path, value);
-            }
-
-            // Generate and send patch if needed
-            const patch = diff(self._lastData, self.data);
-            if (Object.keys(patch).length > 0) {
-              const callbacks = resolvers
-                .filter((r) => r.callback)
-                .map((r) => r.callback);
-
-              if (callbacks.length > 0) {
-                const combinedCallback =
-                  callbacks.length === 1
-                    ? callbacks[0]
-                    : () => callbacks.forEach((cb) => cb());
-                await self._setData(JSON.stringify(patch), combinedCallback);
-              } else {
-                await self._setData(JSON.stringify(patch));
-              }
-
-              self._lastData = JSON.parse(JSON.stringify(self.data));
-            } else {
-              // Execute callbacks even if no patch
-              resolvers.forEach((r) => r.callback && r.callback());
-            }
-
-            // Resolve all pending promises
-            resolvers.forEach(({ resolve }) => resolve());
-          } catch (err) {
-            console.error("Error in setData:", err);
-            resolvers.forEach(({ reject }) => reject(err));
+        try {
+          if (!currentUpdates) {
+            return;
           }
-        }, DEBOUNCE_WAIT);
-      });
+
+          // Apply updates to local data
+          for (const [path, value] of Object.entries(currentUpdates)) {
+            setValueByPath(self.data, path, value);
+          }
+
+          // Generate and send patch if needed
+          const patch = diff(self._lastData, self.data);
+          if (Object.keys(patch).length > 0) {
+            const combinedCallback =
+              callbacks.length === 0
+                ? undefined
+                : callbacks.length === 1
+                  ? callbacks[0]
+                  : () => callbacks.forEach((cb) => cb());
+
+            const maybePromise = combinedCallback
+              ? self._setData(JSON.stringify(patch), combinedCallback)
+              : self._setData(JSON.stringify(patch));
+
+            if (maybePromise && typeof maybePromise.then === "function") {
+              maybePromise.catch((err) => {
+                console.error("Error in setData:", err);
+              });
+            }
+
+            self._lastData = JSON.parse(JSON.stringify(self.data));
+          } else {
+            callbacks.forEach((cb) => cb());
+          }
+        } catch (err) {
+          console.error("Error in setData:", err);
+        }
+      }, DEBOUNCE_WAIT);
     };
 
     return pageSvc;
