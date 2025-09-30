@@ -60,7 +60,10 @@ pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> j
     if let Ok(mut env) = vm.get_env() {
         if let Ok(local_class) = env.find_class("com/lingxia/lxapp/LxApp") {
             if let Ok(global_class) = env.new_global_ref(local_class) {
-                lingxia_platform::init_lxapp_class(global_class);
+                lingxia_platform::init_cached_class(
+                    lingxia_platform::CachedClass::LxApp,
+                    global_class,
+                );
             }
         }
     }

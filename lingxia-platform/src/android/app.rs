@@ -290,7 +290,9 @@ impl AppRuntime for Platform {
     fn exit_app(&self) -> Result<(), PlatformError> {
         match || -> Result<(), Box<dyn std::error::Error>> {
             let mut env = get_env()?;
-            let lxapp_class: &JClass = super::get_lxapp_class()?.as_obj().into();
+            let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)?
+                .as_obj()
+                .into();
 
             env.call_static_method(lxapp_class, "exitApp", "()V", &[])?;
             Ok(())
@@ -311,7 +313,9 @@ impl AppRuntime for Platform {
         match || -> Result<(), Box<dyn std::error::Error>> {
             let mut env = get_env()?;
 
-            let lxapp_class: &JClass = super::get_lxapp_class()?.as_obj().into();
+            let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)?
+                .as_obj()
+                .into();
             let appid_jstring = env.new_string(&appid)?;
             let path_jstring = env.new_string(&path)?;
 
@@ -338,7 +342,9 @@ impl AppRuntime for Platform {
         match || -> Result<(), Box<dyn std::error::Error>> {
             let mut env = get_env()?;
 
-            let lxapp_class: &JClass = super::get_lxapp_class()?.as_obj().into();
+            let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)?
+                .as_obj()
+                .into();
 
             let appid_jstring = env.new_string(&appid)?;
 
@@ -367,7 +373,9 @@ impl AppRuntime for Platform {
         match || -> Result<(), Box<dyn std::error::Error>> {
             let mut env = get_env()?;
 
-            let lxapp_class: &JClass = super::get_lxapp_class()?.as_obj().into();
+            let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)?
+                .as_obj()
+                .into();
 
             let appid_jstring = env.new_string(&appid)?;
             let path_jstring = env.new_string(&path)?;
@@ -411,7 +419,9 @@ impl AppRuntime for Platform {
         match || -> Result<(), Box<dyn std::error::Error>> {
             let mut env = get_env()?;
 
-            let lxapp_class: &JClass = super::get_lxapp_class()?.as_obj().into();
+            let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)?
+                .as_obj()
+                .into();
             let url_jstring = env.new_string(url)?;
 
             env.call_static_method(

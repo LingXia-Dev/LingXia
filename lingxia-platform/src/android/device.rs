@@ -53,7 +53,10 @@ impl Device for Platform {
 
     fn screen_info(&self, callback_id: u64) -> Result<(), PlatformError> {
         match || -> Result<(), Box<dyn std::error::Error>> {
-            let lxapp_class: &jni::objects::JClass = super::get_lxapp_class()?.as_obj().into();
+            let lxapp_class: &jni::objects::JClass =
+                super::get_cached_class(super::CachedClass::LxApp)?
+                    .as_obj()
+                    .into();
             let mut jni_env = get_env()?;
 
             jni_env.call_static_method(
@@ -81,7 +84,10 @@ impl Device for Platform {
 
     fn vibrate(&self, long: bool) -> Result<(), PlatformError> {
         match || -> Result<(), Box<dyn std::error::Error>> {
-            let lxapp_class: &jni::objects::JClass = super::get_lxapp_class()?.as_obj().into();
+            let lxapp_class: &jni::objects::JClass =
+                super::get_cached_class(super::CachedClass::LxApp)?
+                    .as_obj()
+                    .into();
             let mut jni_env = get_env()?;
 
             jni_env.call_static_method(lxapp_class, "vibrate", "(Z)V", &[long.into()])?;
@@ -98,7 +104,10 @@ impl Device for Platform {
     fn make_phone_call(&self, phone_number: &str) -> Result<(), PlatformError> {
         match || -> Result<(), Box<dyn std::error::Error>> {
             let mut env = get_env()?;
-            let lxapp_class: &jni::objects::JClass = super::get_lxapp_class()?.as_obj().into();
+            let lxapp_class: &jni::objects::JClass =
+                super::get_cached_class(super::CachedClass::LxApp)?
+                    .as_obj()
+                    .into();
 
             let phone_number_jstring = env.new_string(phone_number)?;
 

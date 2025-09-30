@@ -9,17 +9,35 @@ mod ui_update;
 mod user_feedback;
 pub use app::Platform;
 
-/// Global reference to LxApp class for worker threads
-static LXAPP_CLASS: OnceLock<GlobalRef> = OnceLock::new();
-
-/// Initialize LxApp class global reference (called from JNI_OnLoad)
-pub fn init_lxapp_class(global_ref: GlobalRef) {
-    let _ = LXAPP_CLASS.set(global_ref);
+/// Enumerates the cacheable Java classes we keep as global references.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(usize)]
+pub enum CachedClass {
+    LxApp = 0,
 }
 
-/// Get the global LxApp class reference
-pub(crate) fn get_lxapp_class() -> Result<&'static GlobalRef, &'static str> {
-    LXAPP_CLASS
-        .get()
-        .ok_or("Global LxApp class reference not available")
+impl CachedClass {
+    const COUNT: usize = 2;
+
+    fn missing_message(self) -> &'static str {
+        match self {
+            CachedClass::LxApp => "Global LxApp class reference not available",
+        }
+    }
+}
+
+fn cached_slot(kind: CachedClass) -> &'static OnceLock<GlobalRef> {
+    static CLASS_CACHE: [OnceLock<GlobalRef>; CachedClass::COUNT] =
+        [OnceLock::new(), OnceLock::new()];
+    &CLASS_CACHE[kind as usize]
+}
+
+/// Initialize a cached Java class reference (called from JNI_OnLoad)
+pub fn init_cached_class(kind: CachedClass, global_ref: GlobalRef) {
+    let _ = cached_slot(kind).set(global_ref);
+}
+
+/// Fetch a cached Java class reference
+pub(crate) fn get_cached_class(kind: CachedClass) -> Result<&'static GlobalRef, &'static str> {
+    cached_slot(kind).get().ok_or(kind.missing_message())
 }

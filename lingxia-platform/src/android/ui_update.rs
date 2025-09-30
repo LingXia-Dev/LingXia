@@ -10,7 +10,9 @@ impl UIUpdate for Platform {
             let mut env = lingxia_webview::get_env()?;
 
             // Get the LxApp class
-            let lxapp_class: &JClass = super::get_lxapp_class()?.as_obj().into();
+            let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)?
+                .as_obj()
+                .into();
 
             // Convert parameters to Java objects
             let appid_jstring = env.new_string(&appid)?;
@@ -43,7 +45,9 @@ impl UIUpdate for Platform {
             let mut env = lingxia_webview::get_env()?;
 
             // Get the LxApp class
-            let lxapp_class: &JClass = super::get_lxapp_class()?.as_obj().into();
+            let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)?
+                .as_obj()
+                .into();
 
             // Convert parameters to Java objects
             let appid_jstring = env.new_string(&appid)?;

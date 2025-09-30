@@ -10,7 +10,9 @@ impl UserFeedback for Platform {
             let mut env = lingxia_webview::get_env()?;
 
             // Get the LxApp class
-            let lxapp_class: &JClass = super::get_lxapp_class()?.as_obj().into();
+            let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)?
+                .as_obj()
+                .into();
 
             // Convert parameters to Java objects
             let title_jstring = env.new_string(&options.title)?;
@@ -51,7 +53,9 @@ impl UserFeedback for Platform {
             let mut env = lingxia_webview::get_env()?;
 
             // Get the LxApp class
-            let lxapp_class: &JClass = super::get_lxapp_class()?.as_obj().into();
+            let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)?
+                .as_obj()
+                .into();
 
             // Call the static hideToast method on LxApp
             env.call_static_method(lxapp_class, "hideToast", "()V", &[])?;
@@ -70,7 +74,9 @@ impl UserFeedback for Platform {
             let mut env = lingxia_webview::get_env()?;
 
             // Get the LxApp class
-            let lxapp_class: &JClass = super::get_lxapp_class()?.as_obj().into();
+            let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)?
+                .as_obj()
+                .into();
 
             // Create parameters map
             let mut params = HashMap::new();
@@ -170,7 +176,9 @@ impl UserFeedback for Platform {
             let mut env = lingxia_webview::get_env()?;
 
             // Get the LxApp class
-            let lxapp_class: &JClass = super::get_lxapp_class()?.as_obj().into();
+            let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)?
+                .as_obj()
+                .into();
 
             // Create HashMap object
             let hashmap_class = env.find_class("java/util/HashMap")?;
@@ -279,7 +287,9 @@ impl UserFeedback for Platform {
             let mut env = lingxia_webview::get_env()?;
 
             // Get the LxApp class
-            let lxapp_class: &JClass = super::get_lxapp_class()?.as_obj().into();
+            let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)?
+                .as_obj()
+                .into();
 
             // Create HashMap object
             let hashmap_class = env.find_class("java/util/HashMap")?;

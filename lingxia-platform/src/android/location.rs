@@ -10,7 +10,10 @@ use super::Platform;
 impl Location for Platform {
     fn is_location_enabled(&self) -> Result<bool, PlatformError> {
         match || -> Result<bool, Box<dyn std::error::Error>> {
-            let lxapp_class: &jni::objects::JClass = super::get_lxapp_class()?.as_obj().into();
+            let lxapp_class: &jni::objects::JClass =
+                super::get_cached_class(super::CachedClass::LxApp)?
+                    .as_obj()
+                    .into();
             let mut env = get_env()?;
 
             let result = env.call_static_method(lxapp_class, "isLocationEnabled", "()Z", &[])?;
@@ -30,7 +33,10 @@ impl Location for Platform {
         config: crate::LocationRequestConfig,
     ) -> Result<(), PlatformError> {
         match || -> Result<(), Box<dyn std::error::Error>> {
-            let lxapp_class: &jni::objects::JClass = super::get_lxapp_class()?.as_obj().into();
+            let lxapp_class: &jni::objects::JClass =
+                super::get_cached_class(super::CachedClass::LxApp)?
+                    .as_obj()
+                    .into();
             let mut env = get_env()?;
 
             // Pass configuration parameters to Android implementation
