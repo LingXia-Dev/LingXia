@@ -5,6 +5,7 @@
 mod app;
 mod device;
 mod ffi;
+mod media;
 mod location;
 mod popup;
 mod resources;
