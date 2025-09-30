@@ -130,6 +130,154 @@ pub trait PopupPresenter: Send + Sync + 'static {
     fn hide_popup(&self, app_id: &str) -> Result<(), PlatformError>;
 }
 
+/// Media type for preview operations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MediaKind {
+    Image,
+    Video,
+    Unknown,
+}
+
+/// Selection mode for choosing media assets.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChooseMediaMode {
+    Images,
+    Videos,
+}
+
+/// Source preference when choosing media.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MediaSource {
+    Album,
+    Camera,
+}
+
+/// Preferred camera when capturing media.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CameraFacing {
+    Front,
+    Back,
+}
+
+/// Parameters for previewing media (images, video, etc.).
+#[derive(Debug, Clone)]
+pub struct PreviewMediaItem {
+    /// Fully-resolved file path ready for the platform to load.
+    pub path: String,
+    pub media_type: MediaKind,
+    /// Optional cover thumbnail URL for video assets.
+    pub cover_url: Option<String>,
+}
+
+/// Request payload to preview a collection of media items.
+#[derive(Debug, Clone)]
+pub struct PreviewMediaRequest {
+    /// Items that can be swiped/browsed.
+    pub items: Vec<PreviewMediaItem>,
+}
+
+impl Default for PreviewMediaRequest {
+    fn default() -> Self {
+        Self { items: Vec::new() }
+    }
+}
+
+/// Request options when choosing media from album/camera.
+#[derive(Debug, Clone)]
+pub struct ChooseMediaRequest {
+    /// Maximum number of assets the user can pick.
+    pub max_count: u32,
+    /// Media type the user may select or capture.
+    pub mode: ChooseMediaMode,
+    /// Allowed sources (album/camera).
+    pub source_types: Vec<MediaSource>,
+    /// Optional maximum duration for captured video (seconds).
+    pub max_duration_seconds: Option<u32>,
+    /// Preferred camera when capturing (optional hint).
+    pub camera_facing: Option<CameraFacing>,
+    /// Whether the original sized assets can be returned (images only).
+    pub allow_original: bool,
+    /// Whether compressed variants can be returned (images only).
+    pub allow_compressed: bool,
+    /// Callback identifier for returning results via messaging.
+    pub callback_id: u64,
+}
+
+impl Default for ChooseMediaRequest {
+    fn default() -> Self {
+        Self {
+            max_count: 9,
+            mode: ChooseMediaMode::Images,
+            source_types: vec![MediaSource::Album, MediaSource::Camera],
+            max_duration_seconds: None,
+            camera_facing: None,
+            allow_original: true,
+            allow_compressed: true,
+            callback_id: 0,
+        }
+    }
+}
+
+/// Supported code types when scanning.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScanType {
+    Auto,
+    QrCode,
+    BarCode,
+    DataMatrix,
+    Pdf417,
+    Unknown,
+}
+
+/// Request parameters for initiating a scan operation.
+#[derive(Debug, Clone)]
+pub struct ScanCodeRequest {
+    /// Types of code that should be recognised.
+    pub scan_types: Vec<ScanType>,
+    /// When true, restrict scanning to the camera (skip album selection).
+    pub only_from_camera: bool,
+    /// Whether the platform should include the captured image in the callback payload.
+    pub need_result_image: bool,
+    /// Callback identifier used to deliver scan results via messaging channel.
+    pub callback_id: u64,
+}
+
+impl Default for ScanCodeRequest {
+    fn default() -> Self {
+        Self {
+            scan_types: vec![ScanType::Auto],
+            only_from_camera: true,
+            need_result_image: false,
+            callback_id: 0,
+        }
+    }
+}
+
+/// Save a media asset into the system gallery/photos album.
+#[derive(Debug, Clone)]
+pub struct SaveMediaRequest {
+    /// File URI pointing to the media resource (e.g., file:///... ).
+    pub file_uri: String,
+}
+
+/// Media-related platform functionality.
+pub trait MediaInteraction: Send + Sync + 'static {
+    /// Preview a collection of media assets (images/videos) in full-screen viewer.
+    fn preview_media(&self, request: PreviewMediaRequest) -> Result<(), PlatformError>;
+
+    /// Launch a system picker / capture flow to obtain media resources.
+    fn choose_media(&self, request: ChooseMediaRequest) -> Result<(), PlatformError>;
+
+    /// Initiate a scan operation (QR/Bar code, etc.) and deliver results via callback.
+    fn scan_code(&self, request: ScanCodeRequest) -> Result<(), PlatformError>;
+
+    /// Persist an image asset to the device's gallery/photos album.
+    fn save_image_to_photos_album(&self, request: SaveMediaRequest) -> Result<(), PlatformError>;
+
+    /// Persist a video asset to the device's gallery/photos album.
+    fn save_video_to_photos_album(&self, request: SaveMediaRequest) -> Result<(), PlatformError>;
+}
+
 /// Device capabilities and information
 ///
 /// This trait provides access to device-specific information and capabilities
