@@ -1,0 +1,257 @@
+package com.lingxia.lxapp.media
+
+import android.animation.ValueAnimator
+import android.content.Context
+import android.graphics.Matrix
+import android.graphics.RectF
+import android.graphics.drawable.Drawable
+import android.util.AttributeSet
+import android.view.GestureDetector
+import android.view.MotionEvent
+import android.view.ScaleGestureDetector
+import android.view.View
+import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.min
+
+class ZoomImageView @JvmOverloads constructor(
+    context: Context,
+    attrs: AttributeSet? = null
+) : androidx.appcompat.widget.AppCompatImageView(context, attrs), View.OnTouchListener {
+
+    private val baseMatrix = Matrix()
+    private val suppMatrix = Matrix()
+    private val displayMatrix = Matrix()
+    private val displayRect = RectF()
+    private val matrixValues = FloatArray(9)
+
+    private val scaleDetector = ScaleGestureDetector(context, ScaleListener())
+    private val gestureDetector = GestureDetector(context, GestureListener())
+
+    private var lastTouchX = 0f
+    private var lastTouchY = 0f
+    private var isDragging = false
+    private var isScaling = false
+
+    private var minScale = 1f
+    private var maxScale = 4f
+
+    private var dismissListener: (() -> Unit)? = null
+    private var scaleStateListener: ((Boolean) -> Unit)? = null
+
+    init {
+        scaleType = ScaleType.MATRIX
+        imageMatrix = Matrix()
+        setOnTouchListener(this)
+    }
+
+    fun setDismissListener(listener: (() -> Unit)?) {
+        dismissListener = listener
+    }
+
+    fun setOnScaleStateListener(listener: ((Boolean) -> Unit)?) {
+        scaleStateListener = listener
+        listener?.invoke(isZoomed())
+    }
+
+    override fun setImageDrawable(drawable: Drawable?) {
+        super.setImageDrawable(drawable)
+        configureMatrix()
+    }
+
+    override fun setImageBitmap(bm: android.graphics.Bitmap?) {
+        super.setImageBitmap(bm)
+        configureMatrix()
+    }
+
+    override fun setImageResource(resId: Int) {
+        super.setImageResource(resId)
+        configureMatrix()
+    }
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        configureMatrix()
+    }
+
+    private fun configureMatrix() {
+        val d = drawable ?: return
+        val viewWidth = width.toFloat()
+        val viewHeight = height.toFloat()
+        if (viewWidth <= 0f || viewHeight <= 0f) return
+
+        baseMatrix.reset()
+        suppMatrix.reset()
+
+        val drawableWidth = d.intrinsicWidth.toFloat()
+        val drawableHeight = d.intrinsicHeight.toFloat()
+        if (drawableWidth <= 0f || drawableHeight <= 0f) {
+            imageMatrix = baseMatrix
+            return
+        }
+
+        val scale = min(viewWidth / drawableWidth, viewHeight / drawableHeight)
+        val dx = (viewWidth - drawableWidth * scale) / 2f
+        val dy = (viewHeight - drawableHeight * scale) / 2f
+
+        baseMatrix.postScale(scale, scale)
+        baseMatrix.postTranslate(dx, dy)
+
+        minScale = scale
+        maxScale = max( minScale * 4f, minScale + 0.01f )
+
+        applyMatrix()
+        notifyScaleState()
+    }
+
+    override fun onTouch(v: View?, event: MotionEvent): Boolean {
+        if (drawable == null) return false
+
+        scaleDetector.onTouchEvent(event)
+        if (!isScaling) {
+            gestureDetector.onTouchEvent(event)
+        }
+
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                lastTouchX = event.x
+                lastTouchY = event.y
+                isDragging = true
+                parent?.requestDisallowInterceptTouchEvent(isZoomed())
+            }
+            MotionEvent.ACTION_POINTER_DOWN -> {
+                isDragging = false
+                parent?.requestDisallowInterceptTouchEvent(true)
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (isDragging && event.pointerCount == 1) {
+                    val dx = event.x - lastTouchX
+                    val dy = event.y - lastTouchY
+                    if (abs(dx) > 1f || abs(dy) > 1f) {
+                        suppMatrix.postTranslate(dx, dy)
+                        constrain()
+                        applyMatrix()
+                        lastTouchX = event.x
+                        lastTouchY = event.y
+                    }
+                }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                isDragging = false
+                parent?.requestDisallowInterceptTouchEvent(false)
+                if (getCurrentScale() < minScale) {
+                    animateScale(getCurrentScale(), minScale, width / 2f, height / 2f)
+                }
+            }
+        }
+
+        return true
+    }
+
+    private fun applyMatrix() {
+        displayMatrix.set(baseMatrix)
+        displayMatrix.postConcat(suppMatrix)
+        imageMatrix = displayMatrix
+        invalidate()
+        notifyScaleState()
+    }
+
+    private fun getCurrentScale(): Float {
+        suppMatrix.getValues(matrixValues)
+        val suppScale = matrixValues[Matrix.MSCALE_X]
+        return minScale * suppScale
+    }
+
+    private fun constrain() {
+        val rect = getDisplayRect() ?: return
+        var deltaX = 0f
+        var deltaY = 0f
+        val viewWidth = width.toFloat()
+        val viewHeight = height.toFloat()
+
+        if (rect.width() <= viewWidth) {
+            deltaX = viewWidth / 2f - rect.centerX()
+        } else {
+            if (rect.left > 0) deltaX = -rect.left
+            else if (rect.right < viewWidth) deltaX = viewWidth - rect.right
+        }
+
+        if (rect.height() <= viewHeight) {
+            deltaY = viewHeight / 2f - rect.centerY()
+        } else {
+            if (rect.top > 0) deltaY = -rect.top
+            else if (rect.bottom < viewHeight) deltaY = viewHeight - rect.bottom
+        }
+
+        suppMatrix.postTranslate(deltaX, deltaY)
+    }
+
+    private fun getDisplayRect(): RectF? {
+        val d = drawable ?: return null
+        displayRect.set(0f, 0f, d.intrinsicWidth.toFloat(), d.intrinsicHeight.toFloat())
+        displayMatrix.set(baseMatrix)
+        displayMatrix.postConcat(suppMatrix)
+        displayMatrix.mapRect(displayRect)
+        return displayRect
+    }
+
+    private inner class ScaleListener : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+        override fun onScaleBegin(detector: ScaleGestureDetector): Boolean {
+            isScaling = true
+            return true
+        }
+
+        override fun onScaleEnd(detector: ScaleGestureDetector) {
+            isScaling = false
+            if (getCurrentScale() < minScale) {
+                animateScale(getCurrentScale(), minScale, width / 2f, height / 2f)
+            } else if (getCurrentScale() > maxScale) {
+                animateScale(getCurrentScale(), maxScale, width / 2f, height / 2f)
+            }
+        }
+
+        override fun onScale(detector: ScaleGestureDetector): Boolean {
+            val currentScale = getCurrentScale()
+            val targetScale = (currentScale * detector.scaleFactor).coerceIn(minScale, maxScale)
+            val scaleFactor = targetScale / currentScale
+            suppMatrix.postScale(scaleFactor, scaleFactor, detector.focusX, detector.focusY)
+            constrain()
+            applyMatrix()
+            return true
+        }
+    }
+
+    private inner class GestureListener : GestureDetector.SimpleOnGestureListener() {
+        override fun onDoubleTap(e: MotionEvent): Boolean {
+            val currentScale = getCurrentScale()
+            val target = if (currentScale > minScale + 0.05f) minScale else min(maxScale, minScale * 2f)
+            animateScale(currentScale, target, e.x, e.y)
+            return true
+        }
+
+        override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+            dismissListener?.invoke()
+            return true
+        }
+    }
+
+    private fun animateScale(from: Float, to: Float, pivotX: Float, pivotY: Float) {
+        if (from == to) return
+        val animator = ValueAnimator.ofFloat(from, to)
+        animator.duration = 200
+        animator.addUpdateListener { valueAnimator ->
+            val current = valueAnimator.animatedValue as Float
+            val scaleFactor = (current / getCurrentScale()).coerceIn(0.5f, 2f)
+            suppMatrix.postScale(scaleFactor, scaleFactor, pivotX, pivotY)
+            constrain()
+            applyMatrix()
+        }
+        animator.start()
+    }
+
+    private fun isZoomed(): Boolean = getCurrentScale() > minScale + 0.05f
+
+    private fun notifyScaleState() {
+        scaleStateListener?.invoke(isZoomed())
+    }
+}

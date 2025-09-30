@@ -66,6 +66,24 @@ pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> j
                 );
             }
         }
+
+        if let Ok(media_class) = env.find_class("com/lingxia/lxapp/media/PreviewMediaPayload") {
+            if let Ok(global_media_class) = env.new_global_ref(media_class) {
+                lingxia_platform::init_cached_class(
+                    lingxia_platform::CachedClass::PreviewMediaPayload,
+                    global_media_class,
+                );
+            }
+        }
+
+        if let Ok(lxapp_media_class) = env.find_class("com/lingxia/lxapp/APIs/LxAppMedia") {
+            if let Ok(global_lxapp_media_class) = env.new_global_ref(lxapp_media_class) {
+                lingxia_platform::init_cached_class(
+                    lingxia_platform::CachedClass::LxAppMedia,
+                    global_lxapp_media_class,
+                );
+            }
+        }
     }
 
     // Initialize JNI environment

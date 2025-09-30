@@ -1,0 +1,125 @@
+use super::app::Platform;
+use crate::error::PlatformError;
+use crate::traits::MediaKind;
+use crate::traits::{
+    ChooseMediaRequest, MediaInteraction, PreviewMediaRequest, SaveMediaRequest, ScanCodeRequest,
+};
+use jni::JNIEnv;
+use jni::objects::{JClass, JObject, JString, JValue};
+use jni::sys::jint;
+use lingxia_webview::get_env;
+
+fn with_jni<T, F>(env: &mut JNIEnv<'static>, f: F) -> Result<T, Box<dyn std::error::Error>>
+where
+    F: FnOnce(&mut JNIEnv<'static>) -> jni::errors::Result<T>,
+{
+    match f(env) {
+        Ok(value) => Ok(value),
+        Err(err) => {
+            if let Ok(true) = env.exception_check() {
+                let _ = env.exception_clear();
+            }
+            Err(Box::new(err))
+        }
+    }
+}
+
+impl MediaInteraction for Platform {
+    fn preview_media(&self, request: PreviewMediaRequest) -> Result<(), PlatformError> {
+        match preview_media_impl(request) {
+            Ok(()) => Ok(()),
+            Err(e) => Err(PlatformError::Platform(format!(
+                "Failed to preview media: {}",
+                e
+            ))),
+        }
+    }
+
+    fn choose_media(&self, _request: ChooseMediaRequest) -> Result<(), PlatformError> {
+        Err(PlatformError::Platform(
+            "choose_media is not implemented on Android".to_string(),
+        ))
+    }
+
+    fn scan_code(&self, _request: ScanCodeRequest) -> Result<(), PlatformError> {
+        Err(PlatformError::Platform(
+            "scan_code is not implemented on Android".to_string(),
+        ))
+    }
+
+    fn save_image_to_photos_album(&self, _request: SaveMediaRequest) -> Result<(), PlatformError> {
+        Err(PlatformError::Platform(
+            "save_image_to_photos_album is not implemented on Android".to_string(),
+        ))
+    }
+
+    fn save_video_to_photos_album(&self, _request: SaveMediaRequest) -> Result<(), PlatformError> {
+        Err(PlatformError::Platform(
+            "save_video_to_photos_album is not implemented on Android".to_string(),
+        ))
+    }
+}
+
+fn preview_media_impl(request: PreviewMediaRequest) -> Result<(), Box<dyn std::error::Error>> {
+    let mut env = get_env()?;
+
+    let media_class_ref = super::get_cached_class(super::CachedClass::LxAppMedia)?;
+    let payload_class_ref = super::get_cached_class(super::CachedClass::PreviewMediaPayload)?;
+
+    let item_count = request.items.len();
+    let payload_array = with_jni(&mut env, |env| {
+        let class_ref = env.new_local_ref(payload_class_ref.as_obj())?;
+        let class = JClass::from(class_ref);
+        env.new_object_array(item_count as i32, class, JObject::null())
+    })?;
+
+    for (idx, item) in request.items.iter().enumerate() {
+        let path_java = with_jni(&mut env, |env| env.new_string(&item.path))?;
+        let path_obj: JObject = path_java.into();
+
+        let media_type_value = match item.media_type {
+            MediaKind::Image => 0,
+            MediaKind::Video => 1,
+            MediaKind::Unknown => -1,
+        } as jint;
+
+        let cover_obj = match item.cover_url.as_deref().filter(|s| !s.is_empty()) {
+            Some(url) => {
+                let cover_java: JString = with_jni(&mut env, |env| env.new_string(url))?;
+                cover_java.into()
+            }
+            None => JObject::null(),
+        };
+
+        let payload_obj = with_jni(&mut env, |env| {
+            let class_ref = env.new_local_ref(payload_class_ref.as_obj())?;
+            let class = JClass::from(class_ref);
+            env.new_object(
+                class,
+                "(Ljava/lang/String;ILjava/lang/String;)V",
+                &[
+                    JValue::Object(&path_obj),
+                    JValue::Int(media_type_value),
+                    JValue::Object(&cover_obj),
+                ],
+            )
+        })?;
+
+        with_jni(&mut env, |env| {
+            env.set_object_array_element(&payload_array, idx as i32, payload_obj)
+        })?;
+    }
+
+    with_jni(&mut env, |env| {
+        let class_ref = env.new_local_ref(media_class_ref.as_obj())?;
+        let class = JClass::from(class_ref);
+        env.call_static_method(
+            class,
+            "previewMedia",
+            "([Lcom/lingxia/lxapp/media/PreviewMediaPayload;)V",
+            &[JValue::Object(&payload_array)],
+        )
+    })?;
+
+    Ok(())
+}

@@ -4,6 +4,7 @@ use std::sync::OnceLock;
 mod app;
 mod device;
 mod location;
+mod media;
 mod popup;
 mod ui_update;
 mod user_feedback;
@@ -14,21 +15,27 @@ pub use app::Platform;
 #[repr(usize)]
 pub enum CachedClass {
     LxApp = 0,
+    LxAppMedia = 1,
+    PreviewMediaPayload = 2,
 }
 
 impl CachedClass {
-    const COUNT: usize = 2;
+    const COUNT: usize = 3;
 
     fn missing_message(self) -> &'static str {
         match self {
             CachedClass::LxApp => "Global LxApp class reference not available",
+            CachedClass::PreviewMediaPayload => {
+                "Global PreviewMediaPayload class reference not available"
+            }
+            CachedClass::LxAppMedia => "Global LxAppMedia class reference not available",
         }
     }
 }
 
 fn cached_slot(kind: CachedClass) -> &'static OnceLock<GlobalRef> {
     static CLASS_CACHE: [OnceLock<GlobalRef>; CachedClass::COUNT] =
-        [OnceLock::new(), OnceLock::new()];
+        [OnceLock::new(), OnceLock::new(), OnceLock::new()];
     &CLASS_CACHE[kind as usize]
 }
 

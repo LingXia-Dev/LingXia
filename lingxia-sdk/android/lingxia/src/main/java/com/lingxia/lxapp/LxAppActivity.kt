@@ -735,8 +735,6 @@ class LxAppActivity : AppCompatActivity() {
         }
     }
 
-
-
     /**
      * Coordinate all UI updates (TabBar, NavBar, WebView) in the same step
      *
@@ -782,8 +780,6 @@ class LxAppActivity : AppCompatActivity() {
         animationType: AnimationType,
         pageConfig: NavigationBarState?
     ): Boolean {
-
-
         // All animation types use coordinated logic
         val success = when (animationType) {
             AnimationType.FORWARD -> {
