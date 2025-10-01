@@ -28,6 +28,10 @@ log = "0.4.27"
 oslog = "0.2.0"
 serde_json = { workspace = true }
 
+[target.'cfg(target_os = "ios")'.dependencies]
+objc2-photos = "0.3"
+block2 = "0.6"
+
 # HarmonyOS-specific dependencies
 [target.'cfg(target_env = "ohos")'.dependencies]
 ohos_hilog = "0.1.3"
