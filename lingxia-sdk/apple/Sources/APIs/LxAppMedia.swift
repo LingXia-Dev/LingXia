@@ -293,6 +293,7 @@ private final class MediaPreviewVideoController: UIViewController, IndexedPrevie
     private let closeButton = UIButton(type: .system)
     private var coverOverlay: UIImageView?
     private var timeObserver: Any?
+    private var hasStartedPlayback = false
 
     init(item: PreviewMediaItem, index: Int, dismissHandler: @escaping () -> Void) {
         self.item = item
@@ -332,7 +333,14 @@ private final class MediaPreviewVideoController: UIViewController, IndexedPrevie
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+        player?.pause()
+        hasStartedPlayback = false
         cleanupTimeObserver()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        startPlaybackIfNeeded()
     }
 
     private func embedPlayerInline() {
@@ -382,12 +390,11 @@ private final class MediaPreviewVideoController: UIViewController, IndexedPrevie
                 }
             }
         }
-
-        // Autoplay immediately so the user sees motion in the preview
-        player.play()
     }
 
     @objc private func closeTapped() {
+        player?.pause()
+        hasStartedPlayback = false
         cleanupTimeObserver()
         dismissHandler()
     }
@@ -405,6 +412,13 @@ private final class MediaPreviewVideoController: UIViewController, IndexedPrevie
             player.removeTimeObserver(observer)
             timeObserver = nil
         }
+    }
+
+    private func startPlaybackIfNeeded() {
+        guard !hasStartedPlayback else { return }
+        guard let player else { return }
+        hasStartedPlayback = true
+        player.play()
     }
 
 }
