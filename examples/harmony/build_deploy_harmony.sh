@@ -159,8 +159,19 @@ uninstall_app() {
 install_hap() {
     print_step "7" "Installing HAP Application"
 
-    hdc install "$HAP_PATH" > /dev/null 2>&1
-    echo -e "${GREEN}✅ HAP installed${NC}"
+    # Install HAP (use -r to replace if already installed)
+    INSTALL_OUTPUT=$(hdc install -r "$HAP_PATH" 2>&1)
+    INSTALL_RESULT=$?
+
+    # Check if installation was successful
+    if echo "$INSTALL_OUTPUT" | grep -q "successfully"; then
+        echo -e "${GREEN}✅ HAP installed${NC}"
+    else
+        echo -e "${RED}❌ HAP installation failed${NC}"
+        echo "Error output:"
+        echo "$INSTALL_OUTPUT"
+        exit 1
+    fi
 }
 
 # Function to start app
