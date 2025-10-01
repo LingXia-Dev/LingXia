@@ -161,8 +161,10 @@ struct MediaPreviewContent {
                 const offsetX = event.offsetX;
                 if (offsetX > 50 && this.currentIndex > 0) {
                   this.currentIndex--;
+                  this.isZoomed = false; // Reset zoom state when changing items
                 } else if (offsetX < -50 && this.currentIndex < this.params.items.length - 1) {
                   this.currentIndex++;
+                  this.isZoomed = false; // Reset zoom state when changing items
                 }
               }
             })
@@ -186,6 +188,11 @@ struct MediaViewer {
   private readonly minScale: number = 1;
   private readonly maxScale: number = 3;
   private lastTapTime: number = 0;
+
+  aboutToAppear() {
+    // Reset zoom when a new item is displayed
+    this.resetZoom();
+  }
 
   build() {
     Stack({ alignContent: Alignment.Center }) {
@@ -251,11 +258,11 @@ struct MediaViewer {
   }
 
   private resetZoom(): void {
-    animateTo({ duration: 200, curve: Curve.EaseOut }, () => {
-      this.imageScale = this.minScale;
-    });
-    setTimeout(() => {
+    if (this.imageScale !== this.minScale) {
+      animateTo({ duration: 200, curve: Curve.EaseOut }, () => {
+        this.imageScale = this.minScale;
+      });
       this.onZoomStateChanged(false);
-    }, 100);
+    }
   }
 }
