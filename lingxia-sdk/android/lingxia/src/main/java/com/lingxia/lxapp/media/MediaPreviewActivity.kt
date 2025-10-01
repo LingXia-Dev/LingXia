@@ -9,26 +9,30 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.ProgressBar
-import android.widget.VideoView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
 import androidx.core.view.WindowCompat
-import android.widget.MediaController
 import android.util.TypedValue
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.graphics.Typeface
-import android.view.MotionEvent
 import android.widget.TextView
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
 import java.net.URL
 import java.lang.ref.WeakReference
+import java.io.File
 import android.graphics.drawable.BitmapDrawable
+import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
 
 class MediaPreviewActivity : AppCompatActivity() {
     private lateinit var viewPager: ViewPager2
+    private lateinit var previewAdapter: PreviewPagerAdapter
     private var totalItems: Int = 0
     private var indicatorText: TextView? = null
     private var pageChangeCallback: ViewPager2.OnPageChangeCallback? = null
@@ -52,10 +56,12 @@ class MediaPreviewActivity : AppCompatActivity() {
         }
 
         val items = payloads.map { payload ->
+            val normalizedUri = normalizeUri(payload.url)
+            val coverUri = payload.coverUrl?.takeIf { it.isNotEmpty() }?.let { normalizeUri(it) }?.takeUnless { it == Uri.EMPTY }
             PreviewItem(
-                url = payload.url,
+                uri = normalizedUri,
                 mediaType = MediaPreviewType.fromInt(payload.type),
-                coverUrl = payload.coverUrl?.takeIf { it.isNotEmpty() }
+                coverUri = coverUri
             )
         }
 
@@ -66,7 +72,7 @@ class MediaPreviewActivity : AppCompatActivity() {
 
         totalItems = items.size
 
-        val previewAdapter = PreviewPagerAdapter(items) { finishWithAnimation() }
+        previewAdapter = PreviewPagerAdapter(items) { finishWithAnimation() }
 
         viewPager = ViewPager2(this).apply {
             layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
@@ -92,6 +98,7 @@ class MediaPreviewActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         pageChangeCallback?.let { viewPager.unregisterOnPageChangeCallback(it) }
+        previewAdapter.release()
     }
 
     private fun createTopBar(itemCount: Int): View {
@@ -159,9 +166,9 @@ class MediaPreviewActivity : AppCompatActivity() {
 }
 
 private data class PreviewItem(
-    val url: String,
+    val uri: Uri,
     val mediaType: MediaPreviewType,
-    val coverUrl: String?
+    val coverUri: Uri?
 )
 
 private enum class MediaPreviewType(val value: Int) {
@@ -178,6 +185,28 @@ private enum class MediaPreviewType(val value: Int) {
     }
 }
 
+private fun normalizeUri(raw: String?): Uri {
+    if (raw.isNullOrBlank()) return Uri.EMPTY
+    val trimmed = raw.trim()
+    return try {
+        val parsed = Uri.parse(trimmed)
+        if (parsed.scheme.isNullOrEmpty()) {
+            val file = File(trimmed)
+            Uri.fromFile(file)
+        } else {
+            parsed
+        }
+    } catch (_: Exception) {
+        Uri.EMPTY
+    }
+}
+
+private fun isLocalUri(uri: Uri): Boolean {
+    if (uri == Uri.EMPTY) return false
+    val scheme = uri.scheme
+    return scheme.isNullOrEmpty() || scheme.equals("file", true) || scheme.equals("content", true)
+}
+
 private class PreviewPagerAdapter(
     private val items: List<PreviewItem>,
     private val onDismiss: () -> Unit
@@ -187,6 +216,19 @@ private class PreviewPagerAdapter(
 
     fun attachToViewPager(pager: ViewPager2) {
         viewPager = pager
+    }
+
+    fun release() {
+        val recyclerView = viewPager?.getChildAt(0) as? RecyclerView
+        recyclerView?.let { rv ->
+            for (index in 0 until rv.childCount) {
+                val holder = rv.getChildViewHolder(rv.getChildAt(index))
+                if (holder is MediaViewHolder) {
+                    holder.reset()
+                }
+            }
+        }
+        viewPager = null
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): MediaViewHolder {
@@ -203,20 +245,39 @@ private class PreviewPagerAdapter(
 
     override fun getItemCount(): Int = items.size
 
+    override fun onViewRecycled(holder: MediaViewHolder) {
+        holder.reset()
+        super.onViewRecycled(holder)
+    }
+
     class MediaViewHolder(
         private val container: FrameLayout,
         private val onZoomStateChanged: (Boolean) -> Unit,
         private val onDismiss: () -> Unit
     ) : RecyclerView.ViewHolder(container) {
         private var currentLoader: Future<*>? = null
+        private var currentPlayer: ExoPlayer? = null
+        private var currentPlayerView: PlayerView? = null
 
         fun bind(item: PreviewItem) {
+            reset()
             container.removeAllViews()
-            currentLoader?.cancel(true)
             when (item.mediaType) {
                 MediaPreviewType.VIDEO -> bindVideo(item)
                 MediaPreviewType.IMAGE, MediaPreviewType.UNKNOWN -> bindImage(item)
             }
+        }
+
+        fun reset() {
+            currentLoader?.cancel(true)
+            currentLoader = null
+            currentPlayerView?.player = null
+            currentPlayerView = null
+            currentPlayer?.let { player ->
+                player.clearMediaItems()
+                player.release()
+            }
+            currentPlayer = null
         }
 
         private fun bindImage(item: PreviewItem) {
@@ -232,62 +293,122 @@ private class PreviewPagerAdapter(
             zoomImageView.setDismissListener(onDismiss)
             zoomImageView.setOnScaleStateListener { zoomed -> onZoomStateChanged(zoomed) }
 
-            val uri = Uri.parse(item.url)
-            if (uri.scheme.isNullOrEmpty() || uri.scheme.equals("file", true) || uri.scheme.equals("content", true)) {
+            val uri = item.uri
+
+            if (uri == Uri.EMPTY) {
+                zoomImageView.setImageResource(android.R.drawable.ic_dialog_alert)
+                return
+            }
+
+            if (isLocalUri(uri)) {
                 zoomImageView.setImageURI(uri)
             } else {
                 progressBar.visibility = View.VISIBLE
-                currentLoader = ImageLoader.load(item.url, zoomImageView, progressBar)
+                currentLoader = ImageLoader.load(uri.toString(), zoomImageView, progressBar)
             }
         }
 
         private fun bindVideo(item: PreviewItem) {
             val context = container.context
-            val videoView = VideoView(context).apply {
+            val playerView = PlayerView(context).apply {
                 layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
                 setBackgroundColor(Color.BLACK)
+                useController = true
+                setControllerShowTimeoutMs(3_000)
+                setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
             }
 
-            val mediaController = MediaController(context)
-            mediaController.setAnchorView(videoView)
-            videoView.setMediaController(mediaController)
-            videoView.setVideoURI(Uri.parse(item.url))
-            videoView.setOnPreparedListener { mediaPlayer ->
-                mediaPlayer.isLooping = true
-                videoView.start()
+            val thumbnailView = ImageView(context).apply {
+                layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                setBackgroundColor(Color.BLACK)
+                visibility = View.GONE
             }
 
-            container.addView(videoView)
+            val progressBar = ProgressBar(context).apply {
+                layoutParams = FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.CENTER)
+                visibility = View.VISIBLE
+            }
+
+            val mediaUri = item.uri
+
+            if (mediaUri == Uri.EMPTY) {
+                progressBar.visibility = View.GONE
+                thumbnailView.visibility = View.VISIBLE
+                thumbnailView.setImageResource(android.R.drawable.ic_dialog_alert)
+                return
+            }
+
+            val coverUri = item.coverUri
+            if (coverUri != null && coverUri != Uri.EMPTY) {
+                if (isLocalUri(coverUri)) {
+                    thumbnailView.visibility = View.VISIBLE
+                    thumbnailView.setImageURI(coverUri)
+                } else {
+                    thumbnailView.visibility = View.VISIBLE
+                    currentLoader = ImageLoader.load(coverUri.toString(), thumbnailView, null)
+                }
+            }
+
+            val player = ExoPlayer.Builder(context).build().apply {
+                repeatMode = Player.REPEAT_MODE_ALL
+                setMediaItem(MediaItem.fromUri(mediaUri))
+                playWhenReady = true
+                addListener(object : Player.Listener {
+                    override fun onPlaybackStateChanged(playbackState: Int) {
+                        when (playbackState) {
+                            Player.STATE_READY -> {
+                                progressBar.visibility = View.GONE
+                                thumbnailView.visibility = View.GONE
+                            }
+                            Player.STATE_ENDED -> {
+                                progressBar.visibility = View.GONE
+                            }
+                        }
+                    }
+
+                    override fun onPlayerError(error: PlaybackException) {
+                        progressBar.visibility = View.GONE
+                        thumbnailView.visibility = View.VISIBLE
+                    }
+                })
+                prepare()
+            }
+
+            playerView.player = player
+
+            container.addView(playerView)
+            container.addView(thumbnailView)
+            container.addView(progressBar)
             container.setOnClickListener { onDismiss() }
-            videoView.setOnClickListener { onDismiss() }
-
+            currentPlayer = player
+            currentPlayerView = playerView
         }
     }
 
     companion object ImageLoader {
         private val executor = Executors.newCachedThreadPool()
 
-        fun load(url: String, zoomImageView: ZoomImageView, progressBar: ProgressBar): Future<*> {
-            val imageRef = WeakReference(zoomImageView)
-            val progressRef = WeakReference(progressBar)
+        fun load(url: String, target: ImageView, progressBar: ProgressBar?): Future<*> {
+            val imageRef = WeakReference(target)
+            val progressRef = progressBar?.let { WeakReference(it) }
             return executor.submit {
                 try {
-                    val stream = URL(url).openStream()
-                    val drawable = BitmapDrawable.createFromStream(stream, "media")
-                    val img = imageRef.get()
-                    val progress = progressRef.get()
-                    if (img != null && drawable != null) {
-                        img.post {
-                            progress?.visibility = View.GONE
-                            img.setImageDrawable(drawable)
+                    URL(url).openStream().use { stream ->
+                        val drawable = BitmapDrawable.createFromStream(stream, "media")
+                        val imageView = imageRef.get()
+                        if (imageView != null && drawable != null) {
+                            imageView.post {
+                                progressRef?.get()?.visibility = View.GONE
+                                imageView.setImageDrawable(drawable)
+                            }
                         }
                     }
                 } catch (e: Exception) {
-                    val img = imageRef.get()
-                    val progress = progressRef.get()
-                    img?.post {
-                        progress?.visibility = View.GONE
-                        img.setImageResource(android.R.drawable.ic_dialog_alert)
+                    val imageView = imageRef.get()
+                    imageView?.post {
+                        progressRef?.get()?.visibility = View.GONE
+                        imageView.setImageResource(android.R.drawable.ic_dialog_alert)
                     }
                 }
             }
