@@ -4,6 +4,7 @@ import { window } from '@kit.ArkUI';
 export interface MediaPreviewItem {
   id: string;
   uri: string;
+  mediaType?: number; // 0 = image, 1 = video
 }
 
 export interface MediaPreviewPageParams {
@@ -110,6 +111,7 @@ struct MediaPreviewContent {
   @State private currentIndex: number = 0;
   @State private statusBarHeight: number = 44;
   @State private isZoomed: boolean = false;
+  @State private isVideoPlaying: boolean = false;
 
   aboutToAppear() {
     this.currentIndex = this.params.initialIndex || 0;
@@ -128,7 +130,7 @@ struct MediaPreviewContent {
 
   build() {
     Stack({ alignContent: Alignment.Top }) {
-      // Indicator
+      // Indicator - always show when there are multiple items
       if (this.params.items.length > 1) {
         Text(`${this.currentIndex + 1}/${this.params.items.length}`)
           .fontColor(Color.White)
@@ -140,7 +142,7 @@ struct MediaPreviewContent {
           .zIndex(10)
       }
 
-      // Media display area (currently supports images only)
+      // Media display area (supports both images and videos)
       if (this.params.items.length > 0) {
         Stack() {
           MediaViewer({
@@ -154,6 +156,7 @@ struct MediaPreviewContent {
         .gesture(
           PanGesture({ fingers: 1, direction: PanDirection.Horizontal })
             .onActionEnd((event: GestureEvent) => {
+              // Disable swipe navigation when zoomed
               if (!this.isZoomed) {
                 const offsetX = event.offsetX;
                 if (offsetX > 50 && this.currentIndex > 0) {
@@ -170,7 +173,7 @@ struct MediaPreviewContent {
 }
 
 /**
- * Media viewer component (currently supports images only, extensible for video)
+ * Media viewer component (supports both images and videos)
  */
 @Component
 struct MediaViewer {
@@ -179,46 +182,68 @@ struct MediaViewer {
   onDismiss: () => void = () => {};
 
   @State private imageScale: number = 1;
+  @State private showVideoControls: boolean = false;
   private readonly minScale: number = 1;
   private readonly maxScale: number = 3;
   private lastTapTime: number = 0;
 
   build() {
     Stack({ alignContent: Alignment.Center }) {
-      Image(this.item.uri)
+      // Check if this is a video (mediaType = 1)
+      if (this.item.mediaType === 1) {
+        // For videos, use Video component with toggle controls
+        Video({
+          src: this.item.uri,
+          controller: undefined
+        })
         .width('100%')
         .height('100%')
         .objectFit(ImageFit.Contain)
-        .scale({ x: this.imageScale, y: this.imageScale })
-        .gesture(
-          GestureGroup(GestureMode.Exclusive,
-            TapGesture({ count: 1 })
-              .onAction(() => {
-                if (this.imageScale <= this.minScale + 0.1) {
-                  const now = Date.now();
-                  const timeSinceLastTap = now - this.lastTapTime;
+        .controls(this.showVideoControls)
+        .autoPlay(true)
+        .loop(false)
+        .muted(false)
+        .onClick(() => {
+          // Toggle video controls visibility
+          this.showVideoControls = !this.showVideoControls;
+        })
+      } else {
+        // Image viewer (default) - use contain to maintain aspect ratio and fit screen
+        Image(this.item.uri)
+          .width('100%')
+          .height('100%')
+          .objectFit(ImageFit.Contain)
+          .scale({ x: this.imageScale, y: this.imageScale })
+          .gesture(
+            GestureGroup(GestureMode.Exclusive,
+              TapGesture({ count: 1 })
+                .onAction(() => {
+                  if (this.imageScale <= this.minScale + 0.1) {
+                    const now = Date.now();
+                    const timeSinceLastTap = now - this.lastTapTime;
 
-                  if (timeSinceLastTap > 300) {
-                    this.lastTapTime = now;
-                    this.onDismiss();
+                    if (timeSinceLastTap > 300) {
+                      this.lastTapTime = now;
+                      this.onDismiss();
+                    }
                   }
-                }
-              }),
+                }),
 
-            PinchGesture({ fingers: 2, distance: 1 })
-              .onActionUpdate((event: GestureEvent) => {
-                if (event.scale) {
-                  this.imageScale = Math.min(this.maxScale, Math.max(this.minScale, event.scale));
-                  this.onZoomStateChanged(this.imageScale > this.minScale + 0.1);
-                }
-              })
-              .onActionEnd(() => {
-                if (this.imageScale <= this.minScale + 0.1) {
-                  this.resetZoom();
-                }
-              })
+              PinchGesture({ fingers: 2, distance: 1 })
+                .onActionUpdate((event: GestureEvent) => {
+                  if (event.scale) {
+                    this.imageScale = Math.min(this.maxScale, Math.max(this.minScale, event.scale));
+                    this.onZoomStateChanged(this.imageScale > this.minScale + 0.1);
+                  }
+                })
+                .onActionEnd(() => {
+                  if (this.imageScale <= this.minScale + 0.1) {
+                    this.resetZoom();
+                  }
+                })
+            )
           )
-        )
+      }
     }
     .width('100%')
     .height('100%')

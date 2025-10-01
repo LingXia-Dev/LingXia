@@ -58,16 +58,17 @@ export class LxAppMedia {
       return null;
     }
 
-    // Phase 1: Support image preview only (media_type: 0 = image, 1 = video)
+    // Support both images and videos (media_type: 0 = image, 1 = video)
     const mediaType = typeof entry.media_type === 'number' ? entry.media_type : Number(entry.media_type ?? 0);
-    if (mediaType !== 0) {
-      hilog.warn(DOMAIN, TAG, `previewMedia phase 1 supports images only, skipping media type: ${mediaType}`);
+    if (mediaType !== 0 && mediaType !== 1) {
+      hilog.warn(DOMAIN, TAG, `previewMedia supports only images (0) and videos (1), skipping media type: ${mediaType}`);
       return null;
     }
 
     return {
       id: `${Date.now()}_${index}`,
-      uri: uri
+      uri: uri,
+      mediaType: mediaType
     };
   }
 
