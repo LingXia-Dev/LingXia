@@ -1,9 +1,23 @@
 package com.lingxia.lxapp.APIs
 
+import android.content.ContentValues
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.media.MediaScannerConnection
+import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import android.util.Log
 import com.lingxia.lxapp.LxApp
 import com.lingxia.lxapp.media.MediaPreviewActivity
 import com.lingxia.lxapp.media.PreviewMediaPayload
+import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
+import java.io.InputStream
+import java.io.OutputStream
 
 internal object LxAppMedia {
     private const val TAG = "LingXia.LxAppMedia"
@@ -21,6 +35,110 @@ internal object LxAppMedia {
         }
         activity.runOnUiThread {
             MediaPreviewActivity.launch(activity, items)
+        }
+    }
+
+    @JvmStatic
+    fun saveImageToPhotosAlbum(imageUri: String): Boolean {
+        return saveMediaToGallery(imageUri, "image/jpeg", true)
+    }
+
+    @JvmStatic
+    fun saveVideoToPhotosAlbum(videoUri: String): Boolean {
+        return saveMediaToGallery(videoUri, "video/mp4", false)
+    }
+
+    private fun saveMediaToGallery(uriString: String, mimeType: String, isImage: Boolean): Boolean {
+        val context = LxApp.applicationContext() ?: return false
+
+        return try {
+            // Handle both file URIs (file://) and regular paths
+            val sourceFile = if (uriString.startsWith("file://")) {
+                File(android.net.Uri.parse(uriString).path ?: uriString)
+            } else {
+                File(uriString)
+            }
+
+            if (!sourceFile.exists()) {
+                Log.e(TAG, "Source file does not exist: $uriString")
+                return false
+            }
+
+            val contentResolver = context.contentResolver
+            val contentValues = ContentValues()
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                // Use MediaStore for Android 10+ (no permission required)
+                contentValues.put(MediaStore.MediaColumns.DISPLAY_NAME, sourceFile.name)
+                contentValues.put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                contentValues.put(
+                    MediaStore.MediaColumns.RELATIVE_PATH,
+                    if (isImage) Environment.DIRECTORY_PICTURES else Environment.DIRECTORY_MOVIES
+                )
+                contentValues.put(MediaStore.Video.Media.DATE_ADDED, System.currentTimeMillis() / 1000)
+                contentValues.put(MediaStore.Video.Media.DATE_MODIFIED, System.currentTimeMillis() / 1000)
+
+                val collection = if (isImage) MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+                else MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+
+                val uri = contentResolver.insert(collection, contentValues)
+                uri?.let { contentUri ->
+                    try {
+                        contentResolver.openOutputStream(contentUri).use { outputStream ->
+                            if (outputStream != null) {
+                                copyFile(sourceFile, outputStream)
+                            }
+                        }
+                        true
+                    } catch (e: IOException) {
+                        Log.e(TAG, "Failed to copy file to MediaStore: ${e.message}")
+                        contentResolver.delete(contentUri, null, null) // Clean up on failure
+                        false
+                    }
+                } ?: false
+            } else {
+                // For older Android versions, use MediaStore to avoid needing WRITE_EXTERNAL_STORAGE
+                // This still requires WRITE_EXTERNAL_STORAGE permission, but we'll try the best approach
+                // First try to use MediaStore
+                contentValues.put(MediaStore.MediaColumns.DISPLAY_NAME, sourceFile.name)
+                contentValues.put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                
+                val collection = if (isImage) MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+                else MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+
+                val uri = contentResolver.insert(collection, contentValues)
+                uri?.let { contentUri ->
+                    try {
+                        contentResolver.openOutputStream(contentUri).use { outputStream ->
+                            if (outputStream != null) {
+                                copyFile(sourceFile, outputStream)
+                            }
+                        }
+                        true
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to save using MediaStore, attempting alternative method: ${e.message}")
+                        // On older Android versions without permission, we cannot save to public directories
+                        false
+                    }
+                } ?: false
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error saving media to gallery: ${e.message}", e)
+            false
+        }
+    }
+
+    private fun copyFile(sourceFile: File, outputStream: OutputStream): Boolean {
+        return try {
+            sourceFile.inputStream().use { inputStream ->
+                outputStream.use { output ->
+                    inputStream.copyTo(output)
+                }
+            }
+            true
+        } catch (e: IOException) {
+            Log.e(TAG, "Error copying file: ${e.message}", e)
+            false
         }
     }
 }

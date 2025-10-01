@@ -47,18 +47,34 @@ impl MediaInteraction for Platform {
         ))
     }
 
-    fn save_image_to_photos_album(&self, _request: SaveMediaRequest) -> Result<(), PlatformError> {
-        Err(PlatformError::Platform(
-            "save_image_to_photos_album is not implemented on Android".to_string(),
-        ))
+    fn save_image_to_photos_album(&self, request: SaveMediaRequest) -> Result<(), PlatformError> {
+        match save_media_impl(request, "saveImageToPhotosAlbum") {
+            Ok(true) => Ok(()),
+            Ok(false) => Err(PlatformError::Platform(
+                "Failed to save image to photos album".to_string(),
+            )),
+            Err(e) => Err(PlatformError::Platform(format!(
+                "Failed to save image to photos album: {}",
+                e
+            ))),
+        }
     }
 
-    fn save_video_to_photos_album(&self, _request: SaveMediaRequest) -> Result<(), PlatformError> {
-        Err(PlatformError::Platform(
-            "save_video_to_photos_album is not implemented on Android".to_string(),
-        ))
+    fn save_video_to_photos_album(&self, request: SaveMediaRequest) -> Result<(), PlatformError> {
+        match save_media_impl(request, "saveVideoToPhotosAlbum") {
+            Ok(true) => Ok(()),
+            Ok(false) => Err(PlatformError::Platform(
+                "Failed to save video to photos album".to_string(),
+            )),
+            Err(e) => Err(PlatformError::Platform(format!(
+                "Failed to save video to photos album: {}",
+                e
+            ))),
+        }
     }
 }
+
+fn preview_media_impl(request: PreviewMediaRequest) -> Result<(), Box<dyn std::error::Error>> {}
 
 fn preview_media_impl(request: PreviewMediaRequest) -> Result<(), Box<dyn std::error::Error>> {
     let mut env = get_env()?;
@@ -122,4 +138,32 @@ fn preview_media_impl(request: PreviewMediaRequest) -> Result<(), Box<dyn std::e
     })?;
 
     Ok(())
+}
+
+fn save_media_impl(
+    request: SaveMediaRequest,
+    method: &str,
+) -> Result<bool, Box<dyn std::error::Error>> {
+    let mut env = get_env()?;
+
+    let media_class_ref = super::get_cached_class(super::CachedClass::LxAppMedia)?;
+
+    let path_java = with_jni(&mut env, |env| env.new_string(&request.file_uri))?;
+    let path_obj: JObject = path_java.into();
+
+    let result = with_jni(&mut env, |env| {
+        let class_ref = env.new_local_ref(media_class_ref.as_obj())?;
+        let class = JClass::from(class_ref);
+        env.call_static_method(
+            class,
+            method,
+            "(Ljava/lang/String;)Z", // (String) returns boolean
+            &[JValue::Object(&path_obj)],
+        )
+    })?;
+
+    // Extract the boolean result using .z() method
+    let success = result.z()?;
+
+    Ok(success)
 }
