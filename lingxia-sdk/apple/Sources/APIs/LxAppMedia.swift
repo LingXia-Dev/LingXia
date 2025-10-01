@@ -5,6 +5,7 @@ import CLingXiaSwiftAPI
 #if os(iOS)
 import UIKit
 import AVKit
+import AVFoundation
 #endif
 
 @MainActor
@@ -14,7 +15,7 @@ enum LxAppMedia {
     struct PreviewMediaPayload: Codable {
         let path: String
         let media_type: Int32
-        let cover_url: String
+        let cover_url: String?
     }
 
     nonisolated static func previewMedia(items_json: RustStr) -> Bool {
@@ -104,12 +105,9 @@ private struct PreviewMediaItem {
 
     init(payload: LxAppMedia.PreviewMediaPayload) {
         let pathString = payload.path
-        if let url = URL(string: pathString), url.scheme != nil {
-            self.url = url
-        } else {
-            self.url = URL(fileURLWithPath: pathString)
-        }
-        let coverString = payload.cover_url
+        self.url = URL(fileURLWithPath: pathString)
+
+        let coverString = payload.cover_url ?? ""
         if coverString.isEmpty {
             self.coverURL = nil
         } else if let cover = URL(string: coverString), cover.scheme != nil {
@@ -284,10 +282,17 @@ private final class MediaPreviewImageController: UIViewController, IndexedPrevie
     }
 }
 
+@MainActor
 private final class MediaPreviewVideoController: UIViewController, IndexedPreviewController {
     let index: Int
     private let item: PreviewMediaItem
     private let dismissHandler: () -> Void
+
+    private var playerVC: AVPlayerViewController?
+    private var player: AVPlayer?
+    private let closeButton = UIButton(type: .system)
+    private var coverOverlay: UIImageView?
+    private var timeObserver: Any?
 
     init(item: PreviewMediaItem, index: Int, dismissHandler: @escaping () -> Void) {
         self.item = item
@@ -304,30 +309,104 @@ private final class MediaPreviewVideoController: UIViewController, IndexedPrevie
         super.viewDidLoad()
         view.backgroundColor = .black
 
-        let playerController = AVPlayerViewController()
-        playerController.view.translatesAutoresizingMaskIntoConstraints = false
-        addChild(playerController)
-        view.addSubview(playerController.view)
-        playerController.didMove(toParent: self)
+        // Close button setup
+        closeButton.translatesAutoresizingMaskIntoConstraints = false
+        if let closeImage = UIImage(systemName: "xmark.circle.fill") {
+            closeButton.setImage(closeImage, for: .normal)
+            closeButton.tintColor = .white
+        } else {
+            closeButton.setTitle("Close", for: .normal)
+            closeButton.setTitleColor(.white, for: .normal)
+        }
+        closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
+        view.addSubview(closeButton)
 
         NSLayoutConstraint.activate([
-            playerController.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            playerController.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            playerController.view.topAnchor.constraint(equalTo: view.topAnchor),
-            playerController.view.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+            closeButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
+            closeButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 12)
         ])
 
-        playerController.player = AVPlayer(url: item.url)
-        playerController.showsPlaybackControls = true
-        playerController.player?.play()
-
-        let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap))
-        view.addGestureRecognizer(tap)
+        // Embed native player inline
+        embedPlayerInline()
     }
 
-    @objc private func handleTap() {
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        cleanupTimeObserver()
+    }
+
+    private func embedPlayerInline() {
+        let playerItem = AVPlayerItem(url: item.url)
+        let player = AVPlayer(playerItem: playerItem)
+        player.automaticallyWaitsToMinimizeStalling = true
+        self.player = player
+
+        let vc = AVPlayerViewController()
+        vc.player = player
+        vc.showsPlaybackControls = true
+        vc.entersFullScreenWhenPlaybackBegins = false
+        vc.exitsFullScreenWhenPlaybackEnds = false
+        vc.view.translatesAutoresizingMaskIntoConstraints = false
+        addChild(vc)
+        view.addSubview(vc.view)
+        NSLayoutConstraint.activate([
+            vc.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            vc.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            vc.view.topAnchor.constraint(equalTo: view.topAnchor),
+            vc.view.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+        vc.didMove(toParent: self)
+        playerVC = vc
+
+        // If a local cover is provided, overlay it until playback starts
+        if let coverURL = item.coverURL, coverURL.isFileURL,
+           let image = UIImage(contentsOfFile: coverURL.path) {
+            let overlay = UIImageView(image: image)
+            overlay.translatesAutoresizingMaskIntoConstraints = false
+            overlay.contentMode = .scaleAspectFit
+            overlay.backgroundColor = .black
+            (vc.contentOverlayView ?? vc.view).addSubview(overlay)
+            NSLayoutConstraint.activate([
+                overlay.leadingAnchor.constraint(equalTo: vc.view.leadingAnchor),
+                overlay.trailingAnchor.constraint(equalTo: vc.view.trailingAnchor),
+                overlay.topAnchor.constraint(equalTo: vc.view.topAnchor),
+                overlay.bottomAnchor.constraint(equalTo: vc.view.bottomAnchor)
+            ])
+            coverOverlay = overlay
+
+            // Hide overlay when playback actually starts
+            timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.1, preferredTimescale: 600), queue: .main) { [weak self] _ in
+                guard let self, let player = self.player else { return }
+                if player.rate > 0 {
+                    self.hideCoverOverlay()
+                }
+            }
+        }
+
+        // Autoplay immediately so the user sees motion in the preview
+        player.play()
+    }
+
+    @objc private func closeTapped() {
+        cleanupTimeObserver()
         dismissHandler()
     }
+
+    private func hideCoverOverlay() {
+        cleanupTimeObserver()
+    }
+
+    private func cleanupTimeObserver() {
+        if let overlay = coverOverlay {
+            overlay.removeFromSuperview()
+            coverOverlay = nil
+        }
+        if let observer = timeObserver, let player {
+            player.removeTimeObserver(observer)
+            timeObserver = nil
+        }
+    }
+
 }
 
 private final class ZoomableImageView: UIView, UIScrollViewDelegate {
@@ -401,12 +480,8 @@ private final class ZoomableImageView: UIView, UIScrollViewDelegate {
     private func loadImage() {
         activityIndicator.startAnimating()
         Task {
-            let image: UIImage?
-            if imageURL.isFileURL {
-                image = UIImage(contentsOfFile: imageURL.path)
-            } else {
-                image = try? await loadRemoteImage()
-            }
+            // Local-only preview: load from filesystem
+            let image = UIImage(contentsOfFile: imageURL.path)
 
             await MainActor.run {
                 activityIndicator.stopAnimating()
@@ -419,11 +494,6 @@ private final class ZoomableImageView: UIView, UIScrollViewDelegate {
                 }
             }
         }
-    }
-
-    private func loadRemoteImage() async throws -> UIImage? {
-        let (data, _) = try await URLSession.shared.data(from: imageURL)
-        return UIImage(data: data)
     }
 
     private func resetZoom() {
