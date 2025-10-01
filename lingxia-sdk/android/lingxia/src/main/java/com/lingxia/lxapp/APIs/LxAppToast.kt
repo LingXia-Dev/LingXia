@@ -20,6 +20,7 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import java.io.File
+import com.lingxia.lxapp.LxApp
 
 /**
  * Toast icon types
@@ -83,6 +84,40 @@ internal object LxAppToast {
     private var hideHandler: Handler? = null
     private var hideRunnable: Runnable? = null
 
+    @JvmStatic
+    fun showToast(
+        title: String,
+        icon: Int,
+        image: String?,
+        duration: Double,
+        mask: Boolean,
+        position: Int
+    ) {
+        val activity = LxApp.getCurrentActivity()
+        if (activity == null) {
+            Log.w(TAG, "showToast: current activity is null")
+            return
+        }
+        activity.runOnUiThread {
+            showToast(
+                context = activity,
+                title = title,
+                icon = ToastIcon.fromInt(icon),
+                image = image,
+                duration = duration,
+                mask = mask,
+                position = ToastPosition.fromInt(position)
+            )
+        }
+    }
+
+    @JvmStatic
+    fun hideToast() {
+        LxApp.getCurrentActivity()?.runOnUiThread {
+            hideToastInternal()
+        } ?: hideToastInternal()
+    }
+
     /**
      * Show toast with specified configuration
      */
@@ -95,7 +130,7 @@ internal object LxAppToast {
         mask: Boolean = false,
         position: ToastPosition = ToastPosition.Center
     ) {
-        hideToast()
+        hideToastInternal()
 
         val config = ToastConfig(title, icon, image, duration, mask, position)
         showToastInternal(context, config)
@@ -104,7 +139,7 @@ internal object LxAppToast {
     /**
      * Hide current toast immediately
      */
-    fun hideToast() {
+    private fun hideToastInternal() {
         // Cancel auto-hide timer
         hideRunnable?.let { runnable ->
             hideHandler?.removeCallbacks(runnable)
@@ -149,7 +184,7 @@ internal object LxAppToast {
         // Auto-hide after duration
         if (config.duration > 0) {
             hideHandler = Handler(Looper.getMainLooper())
-            hideRunnable = Runnable { hideToast() }
+            hideRunnable = Runnable { hideToastInternal() }
             hideHandler?.postDelayed(hideRunnable!!, (config.duration * 1000).toLong())
         }
     }

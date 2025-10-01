@@ -15,6 +15,7 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import com.lingxia.lxapp.LxApp
 import com.lingxia.lxapp.LxAppActivity
 import com.lingxia.lxapp.NativeApi
 import kotlin.math.max
@@ -38,6 +39,34 @@ internal object LxAppPopup {
     private var overlayView: FrameLayout? = null
     private var popupWebView: com.lingxia.lxapp.WebView? = null
     private var popupAppId: String? = null
+
+    @JvmStatic
+    fun showPopup(appId: String, path: String, widthRatio: Double, heightRatio: Double, position: Int) {
+        val activity = LxApp.getCurrentActivity()
+        if (activity == null) {
+            Log.w(TAG, "showPopup: current activity is null")
+            return
+        }
+        if (activity.getAppId() != appId) {
+            Log.w(TAG, "showPopup: activity appId=${activity.getAppId()} does not match requested appId=$appId")
+            return
+        }
+        activity.runOnUiThread {
+            showPopup(activity, appId, path, widthRatio, heightRatio, PopupPosition.fromInt(position))
+        }
+    }
+
+    @JvmStatic
+    fun hidePopup(appId: String) {
+        val activity = LxApp.getCurrentActivity()
+        if (activity == null) {
+            Log.w(TAG, "hidePopup: current activity is null")
+            return
+        }
+        activity.runOnUiThread {
+            hidePopup(activity, appId)
+        }
+    }
 
     fun showPopup(
         activity: LxAppActivity,

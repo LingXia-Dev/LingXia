@@ -8,9 +8,10 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
+import com.lingxia.lxapp.LxApp
+import android.graphics.drawable.GradientDrawable
 import com.lingxia.lxapp.NativeApi
 import org.json.JSONObject
-import android.graphics.drawable.GradientDrawable
 
 /**
  * LingXia ActionSheet implementation for Android
@@ -20,6 +21,26 @@ internal object LxAppActionSheet {
 
     private var currentActionSheetView: View? = null
     private var currentMaskView: View? = null
+
+    @JvmStatic
+    fun showActionSheet(options: Array<String>, cancelText: String, itemColor: String, callbackId: Long) {
+        val activity = LxApp.getCurrentActivity()
+        if (activity == null) {
+            Log.e(TAG, "showActionSheet: current activity is null")
+            sendActionSheetResult(callbackId, -1)
+            return
+        }
+        activity.runOnUiThread {
+            showActionSheet(activity, options.toList(), cancelText, itemColor, callbackId)
+        }
+    }
+
+    @JvmStatic
+    fun hideActionSheet() {
+        LxApp.getCurrentActivity()?.runOnUiThread {
+            hideActionSheetInternal()
+        } ?: hideActionSheetInternal()
+    }
 
     /**
      * Show action sheet with options and callback

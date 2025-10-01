@@ -9,6 +9,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
+import com.lingxia.lxapp.LxApp
 import com.lingxia.lxapp.NativeApi
 import org.json.JSONArray
 import org.json.JSONObject
@@ -43,48 +44,148 @@ object LxAppPicker {
     private var firstColumnItems: List<String>? = null
     private var secondColumnPicker: View? = null // Track current picker mode
 
-    /**
-     * Show picker with options map and callback
-     */
-    fun showPicker(context: Context, options: Map<String, Any?>, callbackId: Long) {
-
-        try {
-            val mode = options["mode"] as String
-
-            val range = options["range"] as List<*>
-            val value = options["value"] as? List<*> ?: listOf(0)
-            val cascading = (options["cascading"] as? String) == "true"
-            val cancelText = options["cancelText"] as String
-            val cancelButtonColor = options["cancelButtonColor"] as String
-            val cancelTextColor = options["cancelTextColor"] as String
-            val confirmText = options["confirmText"] as String
-            val confirmButtonColor = options["confirmButtonColor"] as String
-            val confirmTextColor = options["confirmTextColor"] as String
-
-            val config = PickerConfig(
-                mode = mode,
-                range = range as List<Any>,
-                value = value.mapNotNull { (it as? Number)?.toInt() },
-                cascading = cascading,
-                cancelText = cancelText,
-                cancelButtonColor = cancelButtonColor,
-                cancelTextColor = cancelTextColor,
-                confirmText = confirmText,
-                confirmButtonColor = confirmButtonColor,
-                confirmTextColor = confirmTextColor
-            )
-
-            // Initialize selected indices and mode
-            currentSelectedIndices.clear()
-            currentSelectedIndices.addAll(config.value)
-            currentMode = config.mode
-
-            showPickerInternal(context, config, callbackId)
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Error in showPicker: ${e.message}", e)
-            throw e
+    @JvmStatic
+    fun showSingleColumnPicker(
+        options: Array<String>,
+        cancelText: String,
+        cancelButtonColor: String,
+        cancelTextColor: String,
+        confirmText: String,
+        confirmButtonColor: String,
+        confirmTextColor: String,
+        callbackId: Long
+    ) {
+        val activity = LxApp.getCurrentActivity()
+        if (activity == null) {
+            Log.e(TAG, "showSingleColumnPicker: current activity is null")
+            sendPickerResultCancel(callbackId)
+            return
         }
+
+        val config = PickerConfig(
+            mode = "selector",
+            range = options.toList(),
+            value = listOf(0),
+            cascading = false,
+            cancelText = cancelText,
+            cancelButtonColor = cancelButtonColor,
+            cancelTextColor = cancelTextColor,
+            confirmText = confirmText,
+            confirmButtonColor = confirmButtonColor,
+            confirmTextColor = confirmTextColor
+        )
+
+        currentSelectedIndices.clear()
+        currentSelectedIndices.addAll(config.value)
+        currentMode = config.mode
+        cascadingData = null
+        firstColumnItems = null
+
+        activity.runOnUiThread {
+            showPickerInternal(activity, config, callbackId)
+        }
+    }
+
+    @JvmStatic
+    fun showDualColumnPicker(
+        firstColumn: Array<String>,
+        secondColumn: Array<String>,
+        cancelText: String,
+        cancelButtonColor: String,
+        cancelTextColor: String,
+        confirmText: String,
+        confirmButtonColor: String,
+        confirmTextColor: String,
+        callbackId: Long
+    ) {
+        val activity = LxApp.getCurrentActivity()
+        if (activity == null) {
+            Log.e(TAG, "showDualColumnPicker: current activity is null")
+            sendPickerResultCancel(callbackId)
+            return
+        }
+
+        val config = PickerConfig(
+            mode = "multiSelector",
+            range = listOf(firstColumn.toList(), secondColumn.toList()),
+            value = listOf(0, 0),
+            cascading = false,
+            cancelText = cancelText,
+            cancelButtonColor = cancelButtonColor,
+            cancelTextColor = cancelTextColor,
+            confirmText = confirmText,
+            confirmButtonColor = confirmButtonColor,
+            confirmTextColor = confirmTextColor
+        )
+
+        currentSelectedIndices.clear()
+        currentSelectedIndices.addAll(config.value)
+        currentMode = config.mode
+        cascadingData = null
+        firstColumnItems = null
+
+        activity.runOnUiThread {
+            showPickerInternal(activity, config, callbackId)
+        }
+    }
+
+    @JvmStatic
+    fun showCascadingPicker(
+        firstColumn: Array<String>,
+        keys: Array<String>,
+        values: Array<Array<String>>,
+        cancelText: String,
+        cancelButtonColor: String,
+        cancelTextColor: String,
+        confirmText: String,
+        confirmButtonColor: String,
+        confirmTextColor: String,
+        callbackId: Long
+    ) {
+        val activity = LxApp.getCurrentActivity()
+        if (activity == null) {
+            Log.e(TAG, "showCascadingPicker: current activity is null")
+            sendPickerResultCancel(callbackId)
+            return
+        }
+
+        val cascadingMap = mutableMapOf<String, List<String>>().apply {
+            for (index in keys.indices) {
+                val key = keys[index]
+                val columnValues = values.getOrNull(index)?.toList() ?: emptyList()
+                put(key, columnValues)
+            }
+        }
+
+        val config = PickerConfig(
+            mode = "multiSelector",
+            range = listOf(firstColumn.toList(), cascadingMap as Map<String, List<String>>),
+            value = listOf(0, 0),
+            cascading = true,
+            cancelText = cancelText,
+            cancelButtonColor = cancelButtonColor,
+            cancelTextColor = cancelTextColor,
+            confirmText = confirmText,
+            confirmButtonColor = confirmButtonColor,
+            confirmTextColor = confirmTextColor
+        )
+
+        currentSelectedIndices.clear()
+        currentSelectedIndices.addAll(config.value)
+        currentMode = config.mode
+        cascadingData = cascadingMap
+        firstColumnItems = firstColumn.toList()
+
+        activity.runOnUiThread {
+            showPickerInternal(activity, config, callbackId)
+        }
+    }
+
+    @JvmStatic
+    fun hidePicker() {
+        LxApp.getCurrentActivity()?.runOnUiThread {
+            hidePickerInternal()
+        } ?: hidePickerInternal()
     }
 
     private fun showPickerInternal(context: Context, config: PickerConfig, callbackId: Long) {

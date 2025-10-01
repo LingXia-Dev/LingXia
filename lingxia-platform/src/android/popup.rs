@@ -16,7 +16,7 @@ impl PopupPresenter for Platform {
                 position,
             } = request;
 
-            let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)?
+            let popup_class: &JClass = super::get_cached_class(super::CachedClass::LxAppPopup)?
                 .as_obj()
                 .into();
 
@@ -27,7 +27,7 @@ impl PopupPresenter for Platform {
             let path_obj: JObject = path_jstring.into();
 
             env.call_static_method(
-                lxapp_class,
+                popup_class,
                 "showPopup",
                 "(Ljava/lang/String;Ljava/lang/String;DDI)V",
                 &[
@@ -53,7 +53,7 @@ impl PopupPresenter for Platform {
         match || -> Result<(), Box<dyn std::error::Error>> {
             let mut env = lingxia_webview::get_env()?;
 
-            let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)?
+            let popup_class: &JClass = super::get_cached_class(super::CachedClass::LxAppPopup)?
                 .as_obj()
                 .into();
 
@@ -61,7 +61,7 @@ impl PopupPresenter for Platform {
             let app_id_obj: JObject = app_id_jstring.into();
 
             env.call_static_method(
-                lxapp_class,
+                popup_class,
                 "hidePopup",
                 "(Ljava/lang/String;)V",
                 &[JValue::Object(&app_id_obj)],

@@ -17,10 +17,17 @@ pub enum CachedClass {
     LxApp = 0,
     LxAppMedia = 1,
     PreviewMediaPayload = 2,
+    LxAppDevice = 3,
+    LxAppLocation = 4,
+    LxAppPopup = 5,
+    LxAppToast = 6,
+    LxAppModal = 7,
+    LxAppActionSheet = 8,
+    LxAppPicker = 9,
 }
 
 impl CachedClass {
-    const COUNT: usize = 3;
+    const COUNT: usize = 10;
 
     fn missing_message(self) -> &'static str {
         match self {
@@ -29,13 +36,30 @@ impl CachedClass {
                 "Global PreviewMediaPayload class reference not available"
             }
             CachedClass::LxAppMedia => "Global LxAppMedia class reference not available",
+            CachedClass::LxAppDevice => "Global LxAppDevice class reference not available",
+            CachedClass::LxAppLocation => "Global LxAppLocation class reference not available",
+            CachedClass::LxAppPopup => "Global LxAppPopup class reference not available",
+            CachedClass::LxAppToast => "Global LxAppToast class reference not available",
+            CachedClass::LxAppModal => "Global LxAppModal class reference not available",
+            CachedClass::LxAppActionSheet => "Global LxAppActionSheet class reference not available",
+            CachedClass::LxAppPicker => "Global LxAppPicker class reference not available",
         }
     }
 }
 
 fn cached_slot(kind: CachedClass) -> &'static OnceLock<GlobalRef> {
-    static CLASS_CACHE: [OnceLock<GlobalRef>; CachedClass::COUNT] =
-        [OnceLock::new(), OnceLock::new(), OnceLock::new()];
+    static CLASS_CACHE: [OnceLock<GlobalRef>; CachedClass::COUNT] = [
+        OnceLock::new(),
+        OnceLock::new(),
+        OnceLock::new(),
+        OnceLock::new(),
+        OnceLock::new(),
+        OnceLock::new(),
+        OnceLock::new(),
+        OnceLock::new(),
+        OnceLock::new(),
+        OnceLock::new(),
+    ];
     &CLASS_CACHE[kind as usize]
 }
 

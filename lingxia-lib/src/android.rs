@@ -84,6 +84,69 @@ pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> j
                 );
             }
         }
+
+        if let Ok(device_class) = env.find_class("com/lingxia/lxapp/APIs/LxAppDevice") {
+            if let Ok(global_device_class) = env.new_global_ref(device_class) {
+                lingxia_platform::init_cached_class(
+                    lingxia_platform::CachedClass::LxAppDevice,
+                    global_device_class,
+                );
+            }
+        }
+
+        if let Ok(location_class) = env.find_class("com/lingxia/lxapp/APIs/LxAppLocation") {
+            if let Ok(global_location_class) = env.new_global_ref(location_class) {
+                lingxia_platform::init_cached_class(
+                    lingxia_platform::CachedClass::LxAppLocation,
+                    global_location_class,
+                );
+            }
+        }
+
+        if let Ok(popup_class) = env.find_class("com/lingxia/lxapp/APIs/LxAppPopup") {
+            if let Ok(global_popup_class) = env.new_global_ref(popup_class) {
+                lingxia_platform::init_cached_class(
+                    lingxia_platform::CachedClass::LxAppPopup,
+                    global_popup_class,
+                );
+            }
+        }
+
+        if let Ok(toast_class) = env.find_class("com/lingxia/lxapp/APIs/LxAppToast") {
+            if let Ok(global_toast_class) = env.new_global_ref(toast_class) {
+                lingxia_platform::init_cached_class(
+                    lingxia_platform::CachedClass::LxAppToast,
+                    global_toast_class,
+                );
+            }
+        }
+
+        if let Ok(modal_class) = env.find_class("com/lingxia/lxapp/APIs/LxAppModal") {
+            if let Ok(global_modal_class) = env.new_global_ref(modal_class) {
+                lingxia_platform::init_cached_class(
+                    lingxia_platform::CachedClass::LxAppModal,
+                    global_modal_class,
+                );
+            }
+        }
+
+        if let Ok(action_sheet_class) = env.find_class("com/lingxia/lxapp/APIs/LxAppActionSheet") {
+            if let Ok(global_action_sheet_class) = env.new_global_ref(action_sheet_class) {
+                lingxia_platform::init_cached_class(
+                    lingxia_platform::CachedClass::LxAppActionSheet,
+                    global_action_sheet_class,
+                );
+            }
+        }
+
+        if let Ok(picker_class) = env.find_class("com/lingxia/lxapp/APIs/LxAppPicker") {
+            if let Ok(global_picker_class) = env.new_global_ref(picker_class) {
+                lingxia_platform::init_cached_class(
+                    lingxia_platform::CachedClass::LxAppPicker,
+                    global_picker_class,
+                );
+            }
+        }
     }
 
     // Initialize JNI environment

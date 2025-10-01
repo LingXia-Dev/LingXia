@@ -12,18 +12,6 @@ import android.view.ViewGroup
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import com.lingxia.lxapp.APIs.LxAppPopup
-import com.lingxia.lxapp.APIs.LxAppToast
-import com.lingxia.lxapp.APIs.ToastIcon
-import com.lingxia.lxapp.APIs.ToastPosition
-import com.lingxia.lxapp.APIs.ModalResult
-import com.lingxia.lxapp.APIs.LxAppModal
-import com.lingxia.lxapp.APIs.LxAppLocation
-import com.lingxia.lxapp.APIs.LxAppDevice
-import com.lingxia.lxapp.APIs.LxAppActionSheet
-import com.lingxia.lxapp.APIs.LxAppPicker
-import com.lingxia.lxapp.APIs.PopupPosition
-import org.json.JSONObject
 
 /**
  * Data class representing LxApp information from the native layer
@@ -119,18 +107,6 @@ class LxApp private constructor(private val context: Context) {
         }
 
         @JvmStatic
-        fun getScreenInfo(callbackId: Long) {
-            val activity = currentActivity ?: throw IllegalStateException("No current activity")
-            LxAppDevice.getScreenInfo(activity, callbackId)
-        }
-
-        @JvmStatic
-        fun vibrate(longVibration: Boolean) {
-            val activity = currentActivity ?: throw IllegalStateException("No current activity")
-            LxAppDevice.vibrate(activity, longVibration)
-        }
-
-        @JvmStatic
         fun getLocale(): String {
             return try {
                 val locale = java.util.Locale.getDefault()
@@ -139,46 +115,6 @@ class LxApp private constructor(private val context: Context) {
                 Log.w(TAG, "Failed to get system locale, using default", e)
                 "en-US"
             }
-        }
-
-        @JvmStatic
-        fun makePhoneCall(phoneNumber: String) {
-            val activity = currentActivity ?: throw IllegalStateException("No current activity")
-            LxAppDevice.makePhoneCall(activity, phoneNumber)
-        }
-
-        @JvmStatic
-        fun isLocationEnabled(): Boolean {
-            val context = currentActivity ?: instance?.context
-            if (context == null) {
-                Log.w(TAG, "isLocationEnabled called before initialization")
-                return false
-            }
-            return LxAppLocation.isLocationEnabled(context)
-        }
-
-        @JvmStatic
-        fun requestLocation(callbackId: Long) {
-            val activity = currentActivity
-            if (activity == null) {
-                Log.e(TAG, "requestLocation called without active activity")
-                val payload = JSONObject().apply { put("error", "No active activity") }
-                NativeApi.onCallback(callbackId, false, payload.toString())
-                return
-            }
-            LxAppLocation.requestSingleLocation(activity, callbackId)
-        }
-
-        @JvmStatic
-        fun requestLocationWithConfig(callbackId: Long, isHighAccuracy: Boolean, includeAltitude: Boolean, expireTimeMs: Int) {
-            val activity = currentActivity
-            if (activity == null) {
-                Log.e(TAG, "requestLocationWithConfig called without active activity")
-                val payload = JSONObject().apply { put("error", "No active activity") }
-                NativeApi.onCallback(callbackId, false, payload.toString())
-                return
-            }
-            LxAppLocation.requestSingleLocationWithConfig(activity, callbackId, isHighAccuracy, includeAltitude, expireTimeMs)
         }
 
         @JvmStatic
@@ -385,9 +321,10 @@ class LxApp private constructor(private val context: Context) {
          * Get the current LxAppActivity instance
          */
         @JvmStatic
-        internal fun getCurrentActivity(): LxAppActivity? {
-            return currentActivity
-        }
+        fun getCurrentActivity(): LxAppActivity? = currentActivity
+
+        @JvmStatic
+        fun applicationContext(): Context? = instance?.context
 
         /**
          * Show toast
@@ -398,83 +335,15 @@ class LxApp private constructor(private val context: Context) {
          * @param mask Whether to show mask to prevent touch through
          * @param position Toast position
          */
-        @JvmStatic
-        fun showToast(
-            title: String,
-            icon: Int,
-            image: String?,
-            duration: Double,
-            mask: Boolean,
-            position: Int
-        ) {
-            currentActivity?.let { activity ->
-                activity.runOnUiThread {
-                    LxAppToast.showToast(
-                        context = activity,
-                        title = title,
-                        icon = ToastIcon.fromInt(icon),
-                        image = image,
-                        duration = duration,
-                        mask = mask,
-                        position = ToastPosition.fromInt(position)
-                    )
-                }
-            }
-        }
-
         /**
          * Hide toast
          */
-        @JvmStatic
-        fun hideToast() {
-            currentActivity?.runOnUiThread {
-                LxAppToast.hideToast()
-            }
-        }
-
         /**
          * Show popup WebView overlay.
          */
-        @JvmStatic
-        fun showPopup(appId: String, path: String, widthRatio: Double, heightRatio: Double, position: Int) {
-            val activity = currentActivity ?: return
-            if (activity.getAppId() != appId) {
-                Log.w(
-                    TAG,
-                    "showPopup: current activity appId=${activity.getAppId()} does not match requested appId=$appId"
-                )
-                return
-            }
-            activity.runOnUiThread {
-                LxAppPopup.showPopup(
-                    activity,
-                    appId,
-                    path,
-                    widthRatio,
-                    heightRatio,
-                    PopupPosition.fromInt(position)
-                )
-            }
-        }
-
         /**
          * Hide popup WebView overlay.
          */
-        @JvmStatic
-        fun hidePopup(appId: String) {
-            val activity = currentActivity ?: return
-            if (activity.getAppId() != appId) {
-                Log.w(
-                    TAG,
-                    "hidePopup: current activity appId=${activity.getAppId()} does not match requested appId=$appId"
-                )
-                return
-            }
-            activity.runOnUiThread {
-                LxAppPopup.hidePopup(activity, appId)
-            }
-        }
-
         /**
          * Show modal dialog
          * @param title Modal title
@@ -485,54 +354,14 @@ class LxApp private constructor(private val context: Context) {
          * @param confirmColor Custom color for confirm button
          * @param callbackId for async result
          */
-        @JvmStatic
-        fun showModal(options: Map<String, Any?>) {
-            val activity = currentActivity ?: return
-            val callbackId = options["callbackId"] as? Long ?: 0L
-
-            activity.runOnUiThread {
-                LxAppModal.showModal(activity, options, callbackId)
-            }
-        }
-
         /**
          * Show action sheet with options
          * @param options Action sheet options including items, cancel text, and callback ID
          */
-        @JvmStatic
-        fun showActionSheet(options: Map<String, Any?>) {
-            val activity = currentActivity ?: run {
-                Log.e("LingXia.LxApp", "showActionSheet: currentActivity is null")
-                return
-            }
-            val callbackId = options["callbackId"] as? Long ?: 0L
-            @Suppress("UNCHECKED_CAST")
-            val itemList = options["itemList"] as? List<String> ?: run {
-                Log.e("LingXia.LxApp", "showActionSheet: itemList is null or invalid")
-                return
-            }
-            val cancelText = options["cancelText"] as? String ?: "Cancel"
-            val itemColor = options["itemColor"] as? String ?: "#007AFF"
-
-            activity.runOnUiThread {
-                LxAppActionSheet.showActionSheet(activity, itemList, cancelText, itemColor, callbackId)
-            }
-        }
-
         /**
          * Show picker with options
          * @param options Picker options including columns, buttons, and callback ID
          */
-        @JvmStatic
-        fun showPicker(options: Map<String, Any?>) {
-            val activity = currentActivity ?: return
-            val callbackId = options["callbackId"] as? Long ?: 0L
-
-            activity.runOnUiThread {
-                LxAppPicker.showPicker(activity, options, callbackId)
-            }
-        }
-
         /**
          * Update NavigationBar UI for a specific LxApp
          * This is called by the native layer to trigger navbar UI refresh

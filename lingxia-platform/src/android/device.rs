@@ -53,14 +53,14 @@ impl Device for Platform {
 
     fn screen_info(&self, callback_id: u64) -> Result<(), PlatformError> {
         match || -> Result<(), Box<dyn std::error::Error>> {
-            let lxapp_class: &jni::objects::JClass =
-                super::get_cached_class(super::CachedClass::LxApp)?
+            let device_class: &jni::objects::JClass =
+                super::get_cached_class(super::CachedClass::LxAppDevice)?
                     .as_obj()
                     .into();
             let mut jni_env = get_env()?;
 
             jni_env.call_static_method(
-                lxapp_class,
+                device_class,
                 "getScreenInfo",
                 "(J)V",
                 &[(callback_id as jni::sys::jlong).into()],
@@ -84,13 +84,13 @@ impl Device for Platform {
 
     fn vibrate(&self, long: bool) -> Result<(), PlatformError> {
         match || -> Result<(), Box<dyn std::error::Error>> {
-            let lxapp_class: &jni::objects::JClass =
-                super::get_cached_class(super::CachedClass::LxApp)?
+            let device_class: &jni::objects::JClass =
+                super::get_cached_class(super::CachedClass::LxAppDevice)?
                     .as_obj()
                     .into();
             let mut jni_env = get_env()?;
 
-            jni_env.call_static_method(lxapp_class, "vibrate", "(Z)V", &[long.into()])?;
+            jni_env.call_static_method(device_class, "vibrate", "(Z)V", &[long.into()])?;
             Ok(())
         }() {
             Ok(_) => Ok(()),
@@ -104,15 +104,15 @@ impl Device for Platform {
     fn make_phone_call(&self, phone_number: &str) -> Result<(), PlatformError> {
         match || -> Result<(), Box<dyn std::error::Error>> {
             let mut env = get_env()?;
-            let lxapp_class: &jni::objects::JClass =
-                super::get_cached_class(super::CachedClass::LxApp)?
+            let device_class: &jni::objects::JClass =
+                super::get_cached_class(super::CachedClass::LxAppDevice)?
                     .as_obj()
                     .into();
 
             let phone_number_jstring = env.new_string(phone_number)?;
 
             env.call_static_method(
-                lxapp_class,
+                device_class,
                 "makePhoneCall",
                 "(Ljava/lang/String;)V",
                 &[JValue::Object(&phone_number_jstring)],

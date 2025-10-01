@@ -14,6 +14,7 @@ import android.os.Looper
 import android.util.Log
 import androidx.core.content.ContextCompat
 import org.json.JSONObject
+import com.lingxia.lxapp.LxApp
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -23,6 +24,30 @@ object LxAppLocation {
     private const val TAG = "LingXia.Location"
     private const val LOCATION_TIMEOUT_MS = 10_000L
     private const val STALE_LOCATION_THRESHOLD_MS = 2 * 60 * 1000L
+
+    @JvmStatic
+    fun isLocationEnabled(): Boolean {
+        val context = LxApp.getCurrentActivity() ?: LxApp.applicationContext()
+        if (context == null) {
+            Log.w(TAG, "isLocationEnabled: no context available")
+            return false
+        }
+        return isLocationEnabled(context)
+    }
+
+    @JvmStatic
+    fun requestLocation(callbackId: Long, isHighAccuracy: Boolean, includeAltitude: Boolean, expireTimeMs: Int) {
+        val activity = LxApp.getCurrentActivity()
+        if (activity == null) {
+            Log.e(TAG, "requestLocation: current activity is null")
+            val payload = JSONObject().apply { put("error", "No active activity") }
+            com.lingxia.lxapp.NativeApi.onCallback(callbackId, false, payload.toString())
+            return
+        }
+        activity.runOnUiThread {
+            requestSingleLocationWithConfig(activity, callbackId, isHighAccuracy, includeAltitude, expireTimeMs)
+        }
+    }
 
     fun isLocationEnabled(context: Context): Boolean {
         val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager

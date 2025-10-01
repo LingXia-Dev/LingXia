@@ -13,6 +13,7 @@ import android.widget.*
 import androidx.core.view.setPadding
 import com.lingxia.lxapp.NativeApi
 import org.json.JSONObject
+import com.lingxia.lxapp.LxApp
 
 /**
  * Modal configuration data class
@@ -42,6 +43,50 @@ internal object LxAppModal {
 
     private var currentModalView: View? = null
     private var currentMaskView: View? = null
+
+    @JvmStatic
+    fun showModal(
+        title: String,
+        content: String,
+        showCancel: Boolean,
+        cancelText: String,
+        cancelColor: String?,
+        confirmText: String,
+        confirmColor: String?,
+        callbackId: Long
+    ) {
+        val activity = LxApp.getCurrentActivity()
+        if (activity == null) {
+            Log.e(TAG, "showModal: current activity is null")
+            val result = JSONObject().apply {
+                put("confirm", false)
+                put("cancel", true)
+                put("error", "No active activity")
+            }
+            NativeApi.onCallback(callbackId, false, result.toString())
+            return
+        }
+
+        val config = ModalConfig(
+            title = title,
+            content = content,
+            showCancel = showCancel,
+            cancelText = cancelText,
+            confirmText = confirmText,
+            confirmColor = confirmColor?.takeIf { it.isNotBlank() }
+        )
+
+        activity.runOnUiThread {
+            showModalInternal(activity, config, callbackId)
+        }
+    }
+
+    @JvmStatic
+    fun hideModal() {
+        LxApp.getCurrentActivity()?.runOnUiThread {
+            hideModalInternal()
+        } ?: hideModalInternal()
+    }
 
     /**
      * Show modal with options map and callback

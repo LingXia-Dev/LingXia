@@ -6,12 +6,64 @@ import android.util.Log
 import android.content.Intent
 import android.net.Uri
 import org.json.JSONObject
+import com.lingxia.lxapp.LxApp
 
 /**
  * Device-related APIs shared by LxApp JNI surface on Android.
  */
 object LxAppDevice {
     private const val TAG = "LingXia.Device"
+
+    @JvmStatic
+    fun getScreenInfo(callbackId: Long) {
+        val activity = LxApp.getCurrentActivity()
+        if (activity == null) {
+            Log.e(TAG, "getScreenInfo: current activity is null")
+            val errorData = JSONObject().apply {
+                put("width", 0)
+                put("height", 0)
+                put("scale", 1.0)
+                put("error", "No active activity")
+            }
+            com.lingxia.lxapp.NativeApi.onCallback(callbackId, false, errorData.toString())
+            return
+        }
+        activity.runOnUiThread {
+            getScreenInfo(activity, callbackId)
+        }
+    }
+
+    @JvmStatic
+    fun vibrate(longVibration: Boolean) {
+        val activity = LxApp.getCurrentActivity()
+        if (activity == null) {
+            Log.w(TAG, "vibrate: current activity is null")
+            return
+        }
+        activity.runOnUiThread {
+            try {
+                vibrate(activity, longVibration)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to vibrate", e)
+            }
+        }
+    }
+
+    @JvmStatic
+    fun makePhoneCall(phoneNumber: String) {
+        val activity = LxApp.getCurrentActivity()
+        if (activity == null) {
+            Log.w(TAG, "makePhoneCall: current activity is null")
+            return
+        }
+        activity.runOnUiThread {
+            try {
+                makePhoneCall(activity, phoneNumber)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to make phone call", e)
+            }
+        }
+    }
 
     fun getScreenInfo(activity: Activity, callbackId: Long) {
         try {
