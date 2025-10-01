@@ -85,9 +85,11 @@ class MediaPreviewActivity : AppCompatActivity() {
         root.addView(topBar)
 
         updateIndicator(0)
+        previewAdapter.onPageSelected(0)
         pageChangeCallback = object : ViewPager2.OnPageChangeCallback() {
             override fun onPageSelected(position: Int) {
                 updateIndicator(position)
+                previewAdapter.onPageSelected(position)
             }
         }
         pageChangeCallback?.let { viewPager.registerOnPageChangeCallback(it) }
@@ -213,6 +215,7 @@ private class PreviewPagerAdapter(
 ) : RecyclerView.Adapter<PreviewPagerAdapter.MediaViewHolder>() {
 
     private var viewPager: ViewPager2? = null
+    private var currentPosition: Int = RecyclerView.NO_POSITION
 
     fun attachToViewPager(pager: ViewPager2) {
         viewPager = pager
@@ -224,11 +227,35 @@ private class PreviewPagerAdapter(
             for (index in 0 until rv.childCount) {
                 val holder = rv.getChildViewHolder(rv.getChildAt(index))
                 if (holder is MediaViewHolder) {
+                    holder.onHidden()
                     holder.reset()
                 }
             }
         }
         viewPager = null
+        currentPosition = RecyclerView.NO_POSITION
+    }
+
+    fun onPageSelected(position: Int) {
+        if (position == currentPosition) return
+
+        val recyclerView = viewPager?.getChildAt(0) as? RecyclerView
+
+        if (currentPosition != RecyclerView.NO_POSITION) {
+            recyclerView
+                ?.findViewHolderForAdapterPosition(currentPosition)
+                ?.let { holder ->
+                    if (holder is MediaViewHolder) holder.onHidden()
+                }
+        }
+
+        currentPosition = position
+
+        recyclerView
+            ?.findViewHolderForAdapterPosition(position)
+            ?.let { holder ->
+                if (holder is MediaViewHolder) holder.onVisible()
+            }
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): MediaViewHolder {
@@ -241,11 +268,15 @@ private class PreviewPagerAdapter(
 
     override fun onBindViewHolder(holder: MediaViewHolder, position: Int) {
         holder.bind(items[position])
+        if (position == currentPosition) {
+            holder.onVisible()
+        }
     }
 
     override fun getItemCount(): Int = items.size
 
     override fun onViewRecycled(holder: MediaViewHolder) {
+        holder.onHidden()
         holder.reset()
         super.onViewRecycled(holder)
     }
@@ -258,6 +289,10 @@ private class PreviewPagerAdapter(
         private var currentLoader: Future<*>? = null
         private var currentPlayer: ExoPlayer? = null
         private var currentPlayerView: PlayerView? = null
+        private var isVideoItem: Boolean = false
+        private var videoThumbnail: ImageView? = null
+        private var videoProgress: ProgressBar? = null
+        private var controlsVisible: Boolean = false
 
         fun bind(item: PreviewItem) {
             reset()
@@ -278,6 +313,10 @@ private class PreviewPagerAdapter(
                 player.release()
             }
             currentPlayer = null
+            isVideoItem = false
+            videoThumbnail = null
+            videoProgress = null
+            controlsVisible = false
         }
 
         private fun bindImage(item: PreviewItem) {
@@ -316,6 +355,7 @@ private class PreviewPagerAdapter(
                 useController = true
                 setControllerShowTimeoutMs(3_000)
                 setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
+                setControllerAutoShow(false)
             }
 
             val thumbnailView = ImageView(context).apply {
@@ -353,36 +393,87 @@ private class PreviewPagerAdapter(
             val player = ExoPlayer.Builder(context).build().apply {
                 repeatMode = Player.REPEAT_MODE_ALL
                 setMediaItem(MediaItem.fromUri(mediaUri))
-                playWhenReady = true
+                playWhenReady = false
                 addListener(object : Player.Listener {
                     override fun onPlaybackStateChanged(playbackState: Int) {
                         when (playbackState) {
                             Player.STATE_READY -> {
-                                progressBar.visibility = View.GONE
-                                thumbnailView.visibility = View.GONE
+                                videoProgress?.visibility = View.GONE
+                                videoThumbnail?.visibility = View.GONE
                             }
                             Player.STATE_ENDED -> {
-                                progressBar.visibility = View.GONE
+                                videoProgress?.visibility = View.GONE
                             }
                         }
                     }
 
                     override fun onPlayerError(error: PlaybackException) {
-                        progressBar.visibility = View.GONE
-                        thumbnailView.visibility = View.VISIBLE
+                        videoProgress?.visibility = View.GONE
+                        videoThumbnail?.visibility = View.VISIBLE
                     }
                 })
                 prepare()
             }
 
             playerView.player = player
+            playerView.setControllerVisibilityListener(
+                PlayerView.ControllerVisibilityListener { visibility ->
+                    controlsVisible = visibility == View.VISIBLE
+                }
+            )
+
+            playerView.setOnClickListener {
+                if (controlsVisible) {
+                    // Already visible, let Playerview auto-hide on timeout instead of forcing hide
+                    return@setOnClickListener
+                }
+                playerView.showController()
+            }
 
             container.addView(playerView)
             container.addView(thumbnailView)
             container.addView(progressBar)
-            container.setOnClickListener { onDismiss() }
+            container.setOnClickListener(null)
             currentPlayer = player
             currentPlayerView = playerView
+            isVideoItem = true
+            videoThumbnail = thumbnailView
+            videoProgress = progressBar
+            playerView.hideController()
+            controlsVisible = false
+        }
+
+        fun onVisible() {
+            if (isVideoItem) {
+                val player = currentPlayer ?: return
+                when (player.playbackState) {
+                    Player.STATE_READY -> {
+                        videoProgress?.visibility = View.GONE
+                        videoThumbnail?.visibility = View.GONE
+                    }
+                    Player.STATE_BUFFERING -> {
+                        videoProgress?.visibility = View.VISIBLE
+                        videoThumbnail?.visibility = View.GONE
+                    }
+                    else -> {
+                        videoProgress?.visibility = View.VISIBLE
+                    }
+                }
+                player.playWhenReady = true
+                player.play()
+                currentPlayerView?.hideController()
+                controlsVisible = false
+            }
+        }
+
+        fun onHidden() {
+            if (isVideoItem) {
+                currentPlayer?.pause()
+                currentPlayer?.seekTo(0)
+                videoThumbnail?.visibility = View.VISIBLE
+                videoProgress?.visibility = View.GONE
+                currentPlayerView?.hideController()
+            }
         }
     }
 
