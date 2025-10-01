@@ -7,6 +7,7 @@ import { ModalManager } from './APIs/LxAppModal';
 import { PickerManager } from './APIs/LxAppPicker';
 import { ActionSheetManager } from './APIs/LxAppActionSheet';
 import { PopupManager } from './APIs/LxAppPopup';
+import { MediaPreviewOverlayManager, MediaPreviewOverlay } from './MediaPreviewOverlay';
 
 const DOMAIN = 0xA000;
 const TAG = 'LingXia.Navigation';
@@ -280,6 +281,10 @@ export struct LxAppNavigation {
 
       PopupManager()
         .zIndex(10004)
+
+      // Integrated media preview overlay
+      MediaPreviewOverlay()
+        .zIndex(10005)
     }
     .width('100%')
     .height('100%')

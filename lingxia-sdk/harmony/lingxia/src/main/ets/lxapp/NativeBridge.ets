@@ -7,6 +7,7 @@ import { LxAppModal, ModalResult } from './APIs/LxAppModal';
 import { LxAppActionSheet } from './APIs/LxAppActionSheet';
 import { LxAppPicker } from './APIs/LxAppPicker';
 import { LxAppDevice } from './APIs/LxAppDevice';
+import { LxAppMedia } from './APIs/LxAppMedia';
 import { LxAppContainer } from './LxAppContainer';
 import { LxAppPopup } from './APIs/LxAppPopup';
 import {
@@ -237,6 +238,10 @@ class NativeBridge {
 
     this.register('makePhoneCall', (phoneNumber: string): void => {
       LxAppDevice.makePhoneCall(phoneNumber);
+    });
+
+    this.register('previewMedia', (payload: string): boolean => {
+      return LxAppMedia.previewMedia(payload);
     });
 
     hilog.info(DOMAIN, TAG, `Registered ${NativeBridge.callbacks.size} default callbacks`);

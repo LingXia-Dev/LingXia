@@ -402,12 +402,12 @@ export struct LxAppContainer {
           this.webViewComponents.set(info.webtag, info.controller);
           this.webViewKeys = Array.from(this.webViewComponents.keys());
           const layout = LxAppPopup.getActiveLayout && LxAppPopup.getActiveLayout();
-          if (layout && layout.appId === this.appId) {
-            this.applyOverlayState(info.webtag, true, layout.widthVp, layout.heightVp, layout.position as number, layout.bottomInset);
-            hilog.info(DOMAIN, TAG, `Overlay style set for ${info.webtag}: w=${layout.widthVp} h=${layout.heightVp} pos=${layout.position}`);
-          } else {
-            this.applyOverlayState(info.webtag, true);
-          }
+      if (layout && layout.appId === this.appId) {
+        this.applyOverlayState(info.webtag, true, layout.widthVp, layout.heightVp, layout.position as number, layout.bottomInset);
+        hilog.info(DOMAIN, TAG, `Overlay style set for ${info.webtag}: w=${layout.widthVp} h=${layout.heightVp} pos=${layout.position}`);
+      } else {
+        this.applyOverlayState(info.webtag, true);
+      }
           hilog.info(DOMAIN, TAG, `Popup overlay active for ${info.webtag}`);
         }
         break;
