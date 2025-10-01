@@ -1,5 +1,5 @@
 use lingxia_lxapp::{LxApp, lx};
-use lingxia_platform::{MediaInteraction, MediaKind, PreviewMediaItem, PreviewMediaRequest};
+use lingxia_platform::{MediaInteraction, MediaKind, PreviewMediaItem, PreviewMediaRequest, SaveMediaRequest};
 use rong::{FromJSObj, JSContext, JSFunc, JSResult, RongJSError};
 use std::sync::Arc;
 
@@ -67,8 +67,47 @@ fn preview_media(ctx: JSContext, options: JSPreviewMediaOptions) -> JSResult<()>
         .map_err(|e| RongJSError::Error(format!("previewMedia failed: {}", e)))
 }
 
+#[derive(FromJSObj)]
+struct JSSaveMediaOptions {
+    #[rename = "filePath"]
+    file_path: String,
+}
+
+fn save_image_to_photos_album(ctx: JSContext, options: JSSaveMediaOptions) -> JSResult<()> {
+    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let runtime = &lxapp.runtime;
+
+    let request = SaveMediaRequest {
+        file_uri: options.file_path,
+    };
+
+    runtime
+        .save_image_to_photos_album(request)
+        .map_err(|e| RongJSError::Error(format!("saveImageToPhotosAlbum failed: {}", e)))
+}
+
+fn save_video_to_photos_album(ctx: JSContext, options: JSSaveMediaOptions) -> JSResult<()> {
+    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let runtime = &lxapp.runtime;
+
+    let request = SaveMediaRequest {
+        file_uri: options.file_path,
+    };
+
+    runtime
+        .save_video_to_photos_album(request)
+        .map_err(|e| RongJSError::Error(format!("saveVideoToPhotosAlbum failed: {}", e)))
+}
+
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     let preview_media_func = JSFunc::new(ctx, preview_media)?;
     lx::register_js_api(ctx, "previewMedia", preview_media_func)?;
+
+    let save_image_func = JSFunc::new(ctx, save_image_to_photos_album)?;
+    lx::register_js_api(ctx, "saveImageToPhotosAlbum", save_image_func)?;
+
+    let save_video_func = JSFunc::new(ctx, save_video_to_photos_album)?;
+    lx::register_js_api(ctx, "saveVideoToPhotosAlbum", save_video_func)?;
+
     Ok(())
 }
