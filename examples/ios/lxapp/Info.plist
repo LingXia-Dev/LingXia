@@ -21,5 +21,11 @@
     <!-- Location permission description for runtime prompts -->
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>Allow LingXia to access your location to provide location-based features.</string>
+
+    <!-- Photos library permission descriptions -->
+    <key>NSPhotoLibraryAddUsageDescription</key>
+    <string>Allow LingXia to save images and videos to your photo library.</string>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>Allow LingXia to access your photo library for media features.</string>
 </dict>
 </plist>
