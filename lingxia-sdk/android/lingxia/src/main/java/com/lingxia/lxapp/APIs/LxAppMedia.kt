@@ -2,21 +2,17 @@ package com.lingxia.lxapp.APIs
 
 import android.content.ContentValues
 import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.media.MediaScannerConnection
-import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.util.Log
 import com.lingxia.lxapp.LxApp
+import androidx.appcompat.app.AppCompatActivity
 import com.lingxia.lxapp.media.MediaPreviewActivity
+import com.lingxia.lxapp.media.MediaPickerFragment
 import com.lingxia.lxapp.media.PreviewMediaPayload
 import java.io.File
-import java.io.FileOutputStream
 import java.io.IOException
-import java.io.InputStream
 import java.io.OutputStream
 
 internal object LxAppMedia {
@@ -141,4 +137,61 @@ internal object LxAppMedia {
             false
         }
     }
+
+    /**
+     * Choose media from album (initial implementation).
+     * @param maxCount Maximum number of items to select
+     * @param mode 0 = images, 1 = videos, 2 = mix
+     * @param sources Int array of sources: 0 = album, 1 = camera
+     * @param allowOriginal Allow original size (images)
+     * @param allowCompressed Allow compressed (images)
+     * @param maxDurationSeconds Max duration for video capture (ignored here)
+     * @param cameraFacing 0 = front, 1 = back (ignored here)
+     * @param callbackId Callback identifier to deliver result
+     */
+    @JvmStatic
+    fun chooseMedia(
+        maxCount: Int,
+        mode: Int,
+        sources: IntArray?,
+        allowOriginal: Boolean,
+        allowCompressed: Boolean,
+        maxDurationSeconds: Int,
+        cameraFacing: Int,
+        callbackId: Long
+    ) {
+        val activity = LxApp.getCurrentActivity()
+        if (activity == null) {
+            Log.w(TAG, "chooseMedia: current activity is null")
+            val payload = org.json.JSONObject().apply { put("error", "No current activity available") }
+            com.lingxia.lxapp.NativeApi.onCallback(callbackId, false, payload.toString())
+            return
+        }
+
+        val allowAlbum = sources == null || sources.isEmpty() || sources.any { it == 0 }
+        if (!allowAlbum) {
+            val payload = org.json.JSONObject().apply { put("error", "Only album source is supported currently") }
+            com.lingxia.lxapp.NativeApi.onCallback(callbackId, false, payload.toString())
+            return
+        }
+
+        val allowMultiple = maxCount.coerceAtLeast(1) > 1
+
+        val appCompat = activity as? AppCompatActivity
+        if (appCompat == null) {
+            val payload = org.json.JSONObject().apply { put("error", "Activity is not AppCompatActivity") }
+            com.lingxia.lxapp.NativeApi.onCallback(callbackId, false, payload.toString())
+            return
+        }
+
+        appCompat.runOnUiThread {
+            MediaPickerFragment.start(
+                appCompat,
+                maxCount.coerceAtLeast(1),
+                callbackId,
+                when (mode) { 1 -> "videos"; 2 -> "mix"; else -> "images" }
+            )
+        }
+    }
+
 }

@@ -8,6 +8,7 @@ use jni::JNIEnv;
 use jni::objects::{JClass, JObject, JString, JValue};
 use jni::sys::jint;
 use lingxia_webview::get_env;
+use jni::objects::JIntArray;
 
 fn with_jni<T, F>(env: &mut JNIEnv<'static>, f: F) -> Result<T, Box<dyn std::error::Error>>
 where
@@ -35,10 +36,14 @@ impl MediaInteraction for Platform {
         }
     }
 
-    fn choose_media(&self, _request: ChooseMediaRequest) -> Result<(), PlatformError> {
-        Err(PlatformError::Platform(
-            "choose_media is not implemented on Android".to_string(),
-        ))
+    fn choose_media(&self, request: ChooseMediaRequest) -> Result<(), PlatformError> {
+        match choose_media_impl(request) {
+            Ok(()) => Ok(()),
+            Err(e) => Err(PlatformError::Platform(format!(
+                "Failed to choose media: {}",
+                e
+            ))),
+        }
     }
 
     fn scan_code(&self, _request: ScanCodeRequest) -> Result<(), PlatformError> {
@@ -72,6 +77,7 @@ impl MediaInteraction for Platform {
             ))),
         }
     }
+
 }
 
 fn preview_media_impl(request: PreviewMediaRequest) -> Result<(), Box<dyn std::error::Error>> {
@@ -164,4 +170,69 @@ fn save_media_impl(
     let success = result.z()?;
 
     Ok(success)
+}
+
+fn choose_media_impl(request: ChooseMediaRequest) -> Result<(), Box<dyn std::error::Error>> {
+    let mut env = get_env()?;
+
+    let media_class_ref = super::get_cached_class(super::CachedClass::LxAppMedia)?;
+
+    // Map enums to integers expected by Android side
+    let mode_value: jint = match request.mode {
+        crate::traits::ChooseMediaMode::Images => 0,
+        crate::traits::ChooseMediaMode::Videos => 1,
+        crate::traits::ChooseMediaMode::Mix => 2,
+    };
+
+    let source_values: Vec<jint> = request
+        .source_types
+        .iter()
+        .map(|s| match s {
+            crate::traits::MediaSource::Album => 0,
+            crate::traits::MediaSource::Camera => 1,
+        })
+        .collect();
+
+    let sources_array: JIntArray = with_jni(&mut env, |env| {
+        let arr = env.new_int_array(source_values.len() as i32)?;
+        if !source_values.is_empty() {
+            env.set_int_array_region(&arr, 0, &source_values)?;
+        }
+        Ok(arr)
+    })?;
+
+    let max_duration_value: jint = request
+        .max_duration_seconds
+        .map(|v| v as jint)
+        .unwrap_or(-1);
+
+    let camera_facing_value: jint = request
+        .camera_facing
+        .map(|c| match c {
+            crate::traits::CameraFacing::Front => 0,
+            crate::traits::CameraFacing::Back => 1,
+        })
+        .unwrap_or(-1);
+
+    with_jni(&mut env, |env| {
+        let class_ref = env.new_local_ref(media_class_ref.as_obj())?;
+        let class = JClass::from(class_ref);
+        env.call_static_method(
+            class,
+            "chooseMedia",
+            "(II[IZZIIJ)V",
+            &[
+                JValue::Int(request.max_count as jint),
+                JValue::Int(mode_value),
+                JValue::Object(&sources_array),
+                JValue::Bool(request.allow_original as u8),
+                JValue::Bool(request.allow_compressed as u8),
+                JValue::Int(max_duration_value),
+                JValue::Int(camera_facing_value),
+                JValue::Long(request.callback_id as i64),
+            ],
+        )
+    })?;
+
+    Ok(())
 }
