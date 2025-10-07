@@ -1,5 +1,10 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { MediaPreviewOverlayManager, MediaPreviewItem, MediaPreviewPageParams } from '../MediaPreviewOverlay';
+import { photoAccessHelper } from '@kit.MediaLibraryKit';
+import { fileIo } from '@kit.CoreFileKit';
+import { LxApp } from '../LxApp';
+import common from '@ohos.app.ability.common';
+//
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.Media';
@@ -10,41 +15,114 @@ interface PreviewMediaPayload {
   cover_url?: string;
 }
 
+interface SaveMediaPayload {
+    path: string;
+    mediaType: number;
+}
+
+interface PhotoAssetHandle {
+  uri?: string;
+  path?: string;
+}
+
+interface FileDescriptorHandle {
+  fd: number;
+}
+
+interface PhotoAssetFdHandle extends FileDescriptorHandle {
+  close?: () => Promise<void>;
+}
+
 export class LxAppMedia {
+  private static lastSaveKey: string = '';
+  private static lastSaveAt: number = 0;
+  private static getCreateExtension(path: string, photoType: number): string {
+    const lower = (path || '').toLowerCase();
+    const idx = lower.lastIndexOf('.');
+    let ext = '';
+    if (idx !== -1) {
+      ext = lower.substring(idx + 1); // without dot
+    }
+    if (photoType === (photoAccessHelper.PhotoType.VIDEO as number)) {
+      const validVideo = ['mp4', 'mov', 'm4v', '3gp', '3gpp', 'avi', 'mkv', 'webm'];
+      if (validVideo.indexOf(ext) !== -1) { return ext; }
+      return 'mp4';
+    } else {
+      // Prefer original image ext; normalize jpg->jpeg; fallback jpeg
+      const validImage = ['jpeg', 'jpg', 'png', 'gif', 'bmp', 'webp', 'heic', 'heif'];
+      if (ext === 'jpg') { return 'jpeg'; }
+      if (validImage.indexOf(ext) !== -1) { return ext; }
+      return 'jpeg';
+    }
+  }
+  //
   public static previewMedia(payload: string): boolean {
     try {
-      const decoded: string = typeof payload === 'string' ? payload.replace(/%7C/g, '|') : '';
-      const parsed: PreviewMediaPayload[] = JSON.parse(decoded ?? '[]');
-      if (!Array.isArray(parsed) || parsed.length === 0) {
-        hilog.error(DOMAIN, TAG, 'previewMedia called with empty payload');
-        return false;
-      }
-
-      const items: MediaPreviewItem[] = parsed
+      const decoded = typeof payload === 'string' ? payload.replace(/%7C/g, '|') : '';
+      const parsed: PreviewMediaPayload[] = JSON.parse(decoded || '[]');
+      if (!Array.isArray(parsed) || parsed.length === 0) { return false; }
+      const items = parsed
         .map((entry, index) => LxAppMedia.normalizeEntry(entry, index))
-        .filter((item) => item !== null) as MediaPreviewItem[];
-
-      if (items.length === 0) {
-        hilog.error(DOMAIN, TAG, 'previewMedia normalized items are empty');
-        return false;
-      }
-
-      hilog.info(DOMAIN, TAG, `previewMedia: items count=${items.length}`);
-      items.forEach((item, idx) => {
-        hilog.info(DOMAIN, TAG, `  Item ${idx}: id=${item.id}, uri=${item.uri}`);
-      });
-
-      const success = LxAppMedia.navigateToMediaPreview(items);
-      if (!success) {
-        hilog.error(DOMAIN, TAG, `previewMedia failed to navigate to media preview`);
-      } else {
-        hilog.info(DOMAIN, TAG, `previewMedia success`);
-      }
-      return success;
-    } catch (error) {
-      hilog.error(DOMAIN, TAG, `previewMedia error: ${error}`);
+        .filter((it) => it !== null) as MediaPreviewItem[];
+      if (items.length === 0) { return false; }
+      return LxAppMedia.navigateToMediaPreview(items);
+    } catch (_) {
       return false;
     }
+  }
+
+  public static async saveMedia(path: string, mediaType: number): Promise<boolean> {
+    if (!path || mediaType === undefined || mediaType === null || !LxApp.context) { return false; }
+
+    // Deduplicate rapid duplicate requests for the same file/type (2s window)
+    const now = Date.now();
+    const mapType = (mediaType === 2) ? (photoAccessHelper.PhotoType.VIDEO as number) : (photoAccessHelper.PhotoType.IMAGE as number);
+    const key = `${mapType}:${path}`;
+    if (LxAppMedia.lastSaveKey === key && (now - LxAppMedia.lastSaveAt) < 2000) { return true; }
+    LxAppMedia.lastSaveKey = key;
+    LxAppMedia.lastSaveAt = now;
+
+    const helper = photoAccessHelper.getPhotoAccessHelper(LxApp.context as common.UIAbilityContext);
+    const type = mapType;
+    const ext = LxAppMedia.getCreateExtension(path, type);
+
+    let uri: string | undefined;
+    try {
+      uri = LxAppMedia.resolveAssetUri(await helper.createAsset(type, ext));
+      if (!uri) { hilog.error(DOMAIN, TAG, 'saveMedia: empty asset uri'); return false; }
+      const src = await fileIo.open(path, fileIo.OpenMode.READ_ONLY);
+      try {
+        const dst = await fileIo.open(uri, fileIo.OpenMode.READ_WRITE | fileIo.OpenMode.CREATE);
+        try {
+          await fileIo.copyFile(src.fd, dst.fd);
+          hilog.info(DOMAIN, TAG, `saveMedia: saved to ${uri}`);
+          return true;
+        } finally {
+          try { await fileIo.close(dst.fd); } catch {}
+        }
+      } finally {
+        try { await fileIo.close(src.fd); } catch {}
+      }
+    } catch (err) {
+      hilog.error(DOMAIN, TAG, `saveMedia failed: ${err}`);
+      return false;
+    }
+  }
+
+  private static resolveAssetUri(assetResult: PhotoAssetHandle | string | null | undefined): string | undefined {
+    if (!assetResult) {
+      return undefined;
+    }
+    if (typeof assetResult === 'string') {
+      return assetResult;
+    }
+    if (typeof assetResult.uri === 'string') {
+      return assetResult.uri;
+    }
+    if (typeof assetResult.path === 'string') {
+      return assetResult.path;
+    }
+    return undefined;
   }
 
   private static normalizeEntry(entry: PreviewMediaPayload, index: number): MediaPreviewItem | null {
@@ -60,10 +138,7 @@ export class LxAppMedia {
 
     // Support both images and videos (media_type: 0 = image, 1 = video)
     const mediaType = typeof entry.media_type === 'number' ? entry.media_type : Number(entry.media_type ?? 0);
-    if (mediaType !== 0 && mediaType !== 1) {
-      hilog.warn(DOMAIN, TAG, `previewMedia supports only images (0) and videos (1), skipping media type: ${mediaType}`);
-      return null;
-    }
+    if (mediaType !== 0 && mediaType !== 1) { return null; }
 
     return {
       id: `${Date.now()}_${index}`,
@@ -78,10 +153,8 @@ export class LxAppMedia {
         items: items,
         initialIndex: 0
       };
-      
-      // Use overlay system
+
       MediaPreviewOverlayManager.show(params);
-      hilog.info(DOMAIN, TAG, `Media preview overlay shown with ${items.length} items`);
       return true;
     } catch (error) {
       hilog.error(DOMAIN, TAG, `Error showing media preview overlay: ${error}`);

@@ -57,7 +57,9 @@ export class LxApp {
     const atManager = abilityAccessCtrl.createAtManager();
     const permissions: Permissions[] = [
       'ohos.permission.LOCATION' as Permissions,
-      'ohos.permission.APPROXIMATELY_LOCATION' as Permissions
+      'ohos.permission.APPROXIMATELY_LOCATION' as Permissions,
+      'ohos.permission.READ_IMAGEVIDEO' as Permissions,
+      'ohos.permission.WRITE_IMAGEVIDEO' as Permissions
     ];
 
     hilog.info(DOMAIN, TAG, `Requesting permissions: ${JSON.stringify(permissions)}`);

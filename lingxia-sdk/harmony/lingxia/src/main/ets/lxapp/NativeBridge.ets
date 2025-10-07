@@ -244,6 +244,15 @@ class NativeBridge {
       return LxAppMedia.previewMedia(payload);
     });
 
+    this.register('saveMedia', (path: string, mediaTypeStr: string): boolean => {
+      const mediaType = Number(mediaTypeStr);
+      if (!path || Number.isNaN(mediaType)) { return false; }
+      LxAppMedia.saveMedia(path, mediaType).catch((err: Error) => {
+        hilog.error(DOMAIN, TAG, `saveMedia async error: ${err}`);
+      });
+      return true;
+    });
+
     hilog.info(DOMAIN, TAG, `Registered ${NativeBridge.callbacks.size} default callbacks`);
   }
 

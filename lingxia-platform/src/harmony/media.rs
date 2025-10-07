@@ -6,6 +6,9 @@ use crate::traits::{
 };
 use serde::Serialize;
 
+const MEDIA_LIBRARY_IMAGE_RESOURCE: i32 = 1;
+const MEDIA_LIBRARY_VIDEO_RESOURCE: i32 = 2;
+
 #[derive(Serialize)]
 struct PreviewMediaPayload<'a> {
     path: &'a str,
@@ -57,15 +60,17 @@ impl MediaInteraction for Platform {
         ))
     }
 
-    fn save_image_to_photos_album(&self, _request: SaveMediaRequest) -> Result<(), PlatformError> {
-        Err(PlatformError::Platform(
-            "save_image_to_photos_album is not implemented on Harmony platform".to_string(),
-        ))
+    fn save_image_to_photos_album(&self, request: SaveMediaRequest) -> Result<(), PlatformError> {
+        save_media_resource(&request.file_uri, MEDIA_LIBRARY_IMAGE_RESOURCE)
     }
 
-    fn save_video_to_photos_album(&self, _request: SaveMediaRequest) -> Result<(), PlatformError> {
-        Err(PlatformError::Platform(
-            "save_video_to_photos_album is not implemented on Harmony platform".to_string(),
-        ))
+    fn save_video_to_photos_album(&self, request: SaveMediaRequest) -> Result<(), PlatformError> {
+        save_media_resource(&request.file_uri, MEDIA_LIBRARY_VIDEO_RESOURCE)
     }
+}
+
+fn save_media_resource(file_uri: &str, resource_type: i32) -> Result<(), PlatformError> {
+    let media_type_str = resource_type.to_string();
+    lingxia_webview::tsfn::call_arkts("saveMedia", &[file_uri, &media_type_str])
+        .map_err(|e| PlatformError::Platform(format!("Failed to save media: {}", e)))
 }
