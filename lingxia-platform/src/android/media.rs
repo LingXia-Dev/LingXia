@@ -74,8 +74,6 @@ impl MediaInteraction for Platform {
     }
 }
 
-fn preview_media_impl(request: PreviewMediaRequest) -> Result<(), Box<dyn std::error::Error>> {}
-
 fn preview_media_impl(request: PreviewMediaRequest) -> Result<(), Box<dyn std::error::Error>> {
     let mut env = get_env()?;
 
