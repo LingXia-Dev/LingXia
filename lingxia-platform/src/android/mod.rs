@@ -41,7 +41,9 @@ impl CachedClass {
             CachedClass::LxAppPopup => "Global LxAppPopup class reference not available",
             CachedClass::LxAppToast => "Global LxAppToast class reference not available",
             CachedClass::LxAppModal => "Global LxAppModal class reference not available",
-            CachedClass::LxAppActionSheet => "Global LxAppActionSheet class reference not available",
+            CachedClass::LxAppActionSheet => {
+                "Global LxAppActionSheet class reference not available"
+            }
             CachedClass::LxAppPicker => "Global LxAppPicker class reference not available",
         }
     }

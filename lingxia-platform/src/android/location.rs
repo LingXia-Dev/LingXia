@@ -47,8 +47,16 @@ impl Location for Platform {
                 "(JZZI)V",
                 &[
                     JValue::Long(callback_id as i64),
-                    JValue::Bool(if config.is_high_accuracy { JNI_TRUE } else { JNI_FALSE }),
-                    JValue::Bool(if config.include_altitude { JNI_TRUE } else { JNI_FALSE }),
+                    JValue::Bool(if config.is_high_accuracy {
+                        JNI_TRUE
+                    } else {
+                        JNI_FALSE
+                    }),
+                    JValue::Bool(if config.include_altitude {
+                        JNI_TRUE
+                    } else {
+                        JNI_FALSE
+                    }),
                     JValue::Int(config.high_accuracy_expire_time.unwrap_or(10000) as i32),
                 ],
             )?;

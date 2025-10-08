@@ -5,10 +5,10 @@ use crate::traits::{
     ChooseMediaRequest, MediaInteraction, PreviewMediaRequest, SaveMediaRequest, ScanCodeRequest,
 };
 use jni::JNIEnv;
+use jni::objects::JIntArray;
 use jni::objects::{JClass, JObject, JString, JValue};
 use jni::sys::jint;
 use lingxia_webview::get_env;
-use jni::objects::JIntArray;
 
 fn with_jni<T, F>(env: &mut JNIEnv<'static>, f: F) -> Result<T, Box<dyn std::error::Error>>
 where
@@ -77,7 +77,6 @@ impl MediaInteraction for Platform {
             ))),
         }
     }
-
 }
 
 fn preview_media_impl(request: PreviewMediaRequest) -> Result<(), Box<dyn std::error::Error>> {

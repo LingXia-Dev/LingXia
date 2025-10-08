@@ -182,7 +182,6 @@ impl UserFeedback for Platform {
                 .as_obj()
                 .into();
 
-
             let cancel_text_jstring = env.new_string(&cancel_text)?;
             let cancel_button_color_jstring = env.new_string(&cancel_button_color)?;
             let cancel_text_color_jstring = env.new_string(&cancel_text_color)?;
@@ -222,9 +221,13 @@ impl UserFeedback for Platform {
                     second_column,
                 } => {
                     let first_array = {
-                    let string_class = env.find_class("java/lang/String")?;
-                    env.new_object_array(first_column.len() as i32, string_class, JObject::null())?
-                };
+                        let string_class = env.find_class("java/lang/String")?;
+                        env.new_object_array(
+                            first_column.len() as i32,
+                            string_class,
+                            JObject::null(),
+                        )?
+                    };
                     for (idx, item) in first_column.iter().enumerate() {
                         let jstr = env.new_string(item)?;
                         env.set_object_array_element(&first_array, idx as i32, jstr)?;
@@ -232,9 +235,13 @@ impl UserFeedback for Platform {
                     let first_array_obj: JObject = first_array.into();
 
                     let second_array = {
-                    let string_class = env.find_class("java/lang/String")?;
-                    env.new_object_array(second_column.len() as i32, string_class, JObject::null())?
-                };
+                        let string_class = env.find_class("java/lang/String")?;
+                        env.new_object_array(
+                            second_column.len() as i32,
+                            string_class,
+                            JObject::null(),
+                        )?
+                    };
                     for (idx, item) in second_column.iter().enumerate() {
                         let jstr = env.new_string(item)?;
                         env.set_object_array_element(&second_array, idx as i32, jstr)?;
@@ -263,9 +270,13 @@ impl UserFeedback for Platform {
                     cascading_data,
                 } => {
                     let first_array = {
-                    let string_class = env.find_class("java/lang/String")?;
-                    env.new_object_array(first_column.len() as i32, string_class, JObject::null())?
-                };
+                        let string_class = env.find_class("java/lang/String")?;
+                        env.new_object_array(
+                            first_column.len() as i32,
+                            string_class,
+                            JObject::null(),
+                        )?
+                    };
                     for (idx, item) in first_column.iter().enumerate() {
                         let jstr = env.new_string(item)?;
                         env.set_object_array_element(&first_array, idx as i32, jstr)?;
@@ -274,9 +285,9 @@ impl UserFeedback for Platform {
 
                     let keys: Vec<String> = first_column.clone();
                     let keys_array = {
-                    let string_class = env.find_class("java/lang/String")?;
-                    env.new_object_array(keys.len() as i32, string_class, JObject::null())?
-                };
+                        let string_class = env.find_class("java/lang/String")?;
+                        env.new_object_array(keys.len() as i32, string_class, JObject::null())?
+                    };
                     for (idx, key) in keys.iter().enumerate() {
                         let jstr = env.new_string(key)?;
                         env.set_object_array_element(&keys_array, idx as i32, jstr)?;
@@ -284,13 +295,21 @@ impl UserFeedback for Platform {
                     let keys_array_obj: JObject = keys_array.into();
 
                     let string_array_class = env.find_class("[Ljava/lang/String;")?;
-                    let values_outer = env.new_object_array(keys.len() as i32, string_array_class, JObject::null())?;
+                    let values_outer = env.new_object_array(
+                        keys.len() as i32,
+                        string_array_class,
+                        JObject::null(),
+                    )?;
                     for (idx, key) in keys.iter().enumerate() {
                         let values = cascading_data.get(key).cloned().unwrap_or_default();
                         let value_array = {
-                        let string_class = env.find_class("java/lang/String")?;
-                        env.new_object_array(values.len() as i32, string_class, JObject::null())?
-                    };
+                            let string_class = env.find_class("java/lang/String")?;
+                            env.new_object_array(
+                                values.len() as i32,
+                                string_class,
+                                JObject::null(),
+                            )?
+                        };
                         for (inner_idx, value) in values.iter().enumerate() {
                             let jstr = env.new_string(value)?;
                             env.set_object_array_element(&value_array, inner_idx as i32, jstr)?;
@@ -328,5 +347,4 @@ impl UserFeedback for Platform {
             ))),
         }
     }
-
 }
