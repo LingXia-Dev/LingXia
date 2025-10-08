@@ -1,115 +1,149 @@
 package com.lingxia.lxapp.media
 
+import android.content.Context
 import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewGroup.LayoutParams.MATCH_PARENT
+import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.ProgressBar
+import android.widget.TextView
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.WindowCompat
+import androidx.fragment.app.Fragment
+import androidx.fragment.app.FragmentManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
-import androidx.core.view.WindowCompat
-import android.util.TypedValue
-import android.view.ViewGroup.LayoutParams.MATCH_PARENT
-import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-import android.graphics.Typeface
-import android.widget.TextView
-import java.util.concurrent.Executors
-import java.util.concurrent.Future
-import java.net.URL
-import java.lang.ref.WeakReference
-import java.io.File
-import android.graphics.drawable.BitmapDrawable
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import java.io.File
+import java.lang.ref.WeakReference
+import java.net.URL
+import java.util.concurrent.Executors
+import java.util.concurrent.Future
 
-class MediaPreviewActivity : AppCompatActivity() {
-    private lateinit var viewPager: ViewPager2
-    private lateinit var previewAdapter: PreviewPagerAdapter
-    private var totalItems: Int = 0
+class MediaPreviewFragment : Fragment() {
+    private var viewPager: ViewPager2? = null
+    private var previewAdapter: PreviewPagerAdapter? = null
     private var indicatorText: TextView? = null
     private var pageChangeCallback: ViewPager2.OnPageChangeCallback? = null
+    private var totalItems: Int = 0
+    private var originalStatusBarColor: Int? = null
+    private var originalNavigationBarColor: Int? = null
+    private var dismissed = false
+
+    private var previewItems: List<PreviewItem> = emptyList()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        WindowCompat.setDecorFitsSystemWindows(window, false)
-        window.statusBarColor = Color.BLACK
-        window.navigationBarColor = Color.BLACK
+        previewItems = readPreviewItems()
+    }
 
-        val payloads: Array<PreviewMediaPayload>? = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            intent.getSerializableExtra(EXTRA_PAYLOADS, Array<PreviewMediaPayload>::class.java)
-        } else {
-            @Suppress("DEPRECATION")
-            intent.getSerializableExtra(EXTRA_PAYLOADS) as? Array<PreviewMediaPayload>
-        }
-
-        if (payloads == null || payloads.isEmpty()) {
-            finish()
-            return
-        }
-
-        val items = payloads.map { payload ->
-            val normalizedUri = normalizeUri(payload.url)
-            val coverUri = payload.coverUrl?.takeIf { it.isNotEmpty() }?.let { normalizeUri(it) }?.takeUnless { it == Uri.EMPTY }
-            PreviewItem(
-                uri = normalizedUri,
-                mediaType = MediaPreviewType.fromInt(payload.type),
-                coverUri = coverUri
-            )
-        }
-
-        val root = FrameLayout(this).apply {
+    override fun onCreateView(
+        inflater: android.view.LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View {
+        val context = requireContext()
+        val root = FrameLayout(context).apply {
             setBackgroundColor(Color.BLACK)
             layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
         }
 
-        totalItems = items.size
-
-        previewAdapter = PreviewPagerAdapter(items) { finishWithAnimation() }
-
-        viewPager = ViewPager2(this).apply {
-            layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
-            adapter = previewAdapter
+        if (previewItems.isEmpty()) {
+            root.post { dismissOverlay() }
+            return root
         }
-        previewAdapter.attachToViewPager(viewPager)
-        root.addView(viewPager)
 
-        val topBar = createTopBar(totalItems)
+        totalItems = previewItems.size
+
+        val adapter = PreviewPagerAdapter(previewItems) { dismissOverlay() }
+        previewAdapter = adapter
+
+        val pager = ViewPager2(context).apply {
+            layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
+            this.adapter = adapter
+        }
+        adapter.attachToViewPager(pager)
+        viewPager = pager
+        root.addView(pager)
+
+        val topBar = createTopBar(context, totalItems)
         root.addView(topBar)
 
         updateIndicator(0)
-        previewAdapter.onPageSelected(0)
-        pageChangeCallback = object : ViewPager2.OnPageChangeCallback() {
+        adapter.onPageSelected(0)
+        val callback = object : ViewPager2.OnPageChangeCallback() {
             override fun onPageSelected(position: Int) {
                 updateIndicator(position)
-                previewAdapter.onPageSelected(position)
+                adapter.onPageSelected(position)
             }
         }
-        pageChangeCallback?.let { viewPager.registerOnPageChangeCallback(it) }
+        pageChangeCallback = callback
+        pager.registerOnPageChangeCallback(callback)
 
-        setContentView(root)
+        return root
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        pageChangeCallback?.let { viewPager.unregisterOnPageChangeCallback(it) }
-        previewAdapter.release()
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        if (previewItems.isEmpty()) return
+
+        val activity = requireActivity()
+        originalStatusBarColor = activity.window.statusBarColor
+        originalNavigationBarColor = activity.window.navigationBarColor
+        WindowCompat.setDecorFitsSystemWindows(activity.window, false)
+        activity.window.statusBarColor = Color.BLACK
+        activity.window.navigationBarColor = Color.BLACK
+
+        activity.onBackPressedDispatcher.addCallback(
+            viewLifecycleOwner,
+            object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    dismissOverlay()
+                }
+            }
+        )
     }
 
-    private fun createTopBar(itemCount: Int): View {
-        val topContainer = FrameLayout(this).apply {
+    override fun onDestroyView() {
+        super.onDestroyView()
+        pageChangeCallback?.let { callback ->
+            viewPager?.unregisterOnPageChangeCallback(callback)
+        }
+        pageChangeCallback = null
+        previewAdapter?.release()
+        previewAdapter = null
+        viewPager = null
+        indicatorText = null
+
+        activity?.let { host ->
+            originalStatusBarColor?.let { host.window.statusBarColor = it }
+            originalNavigationBarColor?.let { host.window.navigationBarColor = it }
+            WindowCompat.setDecorFitsSystemWindows(host.window, true)
+        }
+    }
+
+    private fun createTopBar(context: Context, itemCount: Int): View {
+        val topContainer = FrameLayout(context).apply {
             setBackgroundColor(Color.TRANSPARENT)
             layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT, Gravity.TOP)
         }
 
-        indicatorText = TextView(this).apply {
+        indicatorText = TextView(context).apply {
             setTextColor(Color.WHITE)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
@@ -120,9 +154,9 @@ class MediaPreviewActivity : AppCompatActivity() {
                 val margin = TypedValue.applyDimension(
                     TypedValue.COMPLEX_UNIT_DIP,
                     16f,
-                    resources.displayMetrics
+                    context.resources.displayMetrics
                 ).toInt()
-                val top = statusBarHeight() + margin
+                val top = statusBarHeight(context) + margin
                 setMargins(margin, top, margin, margin)
             }
             visibility = if (itemCount > 1) View.VISIBLE else View.GONE
@@ -130,16 +164,6 @@ class MediaPreviewActivity : AppCompatActivity() {
 
         indicatorText?.let(topContainer::addView)
         return topContainer
-    }
-
-    private fun finishWithAnimation() {
-        finish()
-        overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
-    }
-
-    private fun statusBarHeight(): Int {
-        val resourceId = resources.getIdentifier("status_bar_height", "dimen", "android")
-        return if (resourceId > 0) resources.getDimensionPixelSize(resourceId) else 0
     }
 
     private fun updateIndicator(position: Int) {
@@ -151,18 +175,65 @@ class MediaPreviewActivity : AppCompatActivity() {
         indicatorText?.text = "${position + 1}/$totalItems"
     }
 
-    companion object {
-        private const val EXTRA_PAYLOADS = "extra_payloads"
+    private fun readPreviewItems(): List<PreviewItem> {
+        val args = arguments ?: return emptyList()
+        val raw = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            args.getSerializable(ARG_PAYLOADS, java.util.ArrayList::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            args.getSerializable(ARG_PAYLOADS)
+        }
+        val payloads: List<PreviewMediaPayload> = when (raw) {
+            is Array<*> -> raw.filterIsInstance<PreviewMediaPayload>()
+            is List<*> -> raw.filterIsInstance<PreviewMediaPayload>()
+            else -> emptyList()
+        }
 
-        fun launch(
-            activity: android.app.Activity,
-            payloads: Array<PreviewMediaPayload>
-        ) {
-            val intent = android.content.Intent(activity, MediaPreviewActivity::class.java).apply {
-                putExtra(EXTRA_PAYLOADS, payloads as java.io.Serializable)
+        return payloads.map { payload ->
+            val normalizedUri = normalizeUri(payload.url)
+            val coverUri = payload.coverUrl
+                ?.takeIf { it.isNotEmpty() }
+                ?.let { normalizeUri(it) }
+                ?.takeUnless { it == Uri.EMPTY }
+            PreviewItem(
+                uri = normalizedUri,
+                mediaType = MediaPreviewType.fromInt(payload.type),
+                coverUri = coverUri
+            )
+        }
+    }
+
+    private fun dismissOverlay() {
+        if (dismissed) return
+        dismissed = true
+        parentFragmentManager.popBackStack(TAG, FragmentManager.POP_BACK_STACK_INCLUSIVE)
+    }
+
+    companion object {
+        private const val ARG_PAYLOADS = "arg_payloads"
+        private const val TAG = "MediaPreviewOverlay"
+
+        fun show(activity: AppCompatActivity, payloads: Array<PreviewMediaPayload>) {
+            val fm = activity.supportFragmentManager
+            if (fm.findFragmentByTag(TAG) != null) return
+
+            val fragment = MediaPreviewFragment().apply {
+                arguments = Bundle().apply {
+                    putSerializable(ARG_PAYLOADS, ArrayList(payloads.toList()))
+                }
             }
-            activity.startActivity(intent)
-            activity.overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
+
+            fm.beginTransaction()
+                .setCustomAnimations(
+                    android.R.anim.fade_in,
+                    android.R.anim.fade_out,
+                    android.R.anim.fade_in,
+                    android.R.anim.fade_out
+                )
+                .add(android.R.id.content, fragment, TAG)
+                .addToBackStack(TAG)
+                .commitAllowingStateLoss()
+            fm.executePendingTransactions()
         }
     }
 }
@@ -185,6 +256,11 @@ private enum class MediaPreviewType(val value: Int) {
             else -> UNKNOWN
         }
     }
+}
+
+private fun statusBarHeight(context: Context): Int {
+    val resourceId = context.resources.getIdentifier("status_bar_height", "dimen", "android")
+    return if (resourceId > 0) context.resources.getDimensionPixelSize(resourceId) else 0
 }
 
 private fun normalizeUri(raw: String?): Uri {
@@ -424,7 +500,6 @@ private class PreviewPagerAdapter(
 
             playerView.setOnClickListener {
                 if (controlsVisible) {
-                    // Already visible, let Playerview auto-hide on timeout instead of forcing hide
                     return@setOnClickListener
                 }
                 playerView.showController()

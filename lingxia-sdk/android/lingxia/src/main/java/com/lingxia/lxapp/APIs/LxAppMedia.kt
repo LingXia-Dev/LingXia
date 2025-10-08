@@ -8,8 +8,8 @@ import android.provider.MediaStore
 import android.util.Log
 import com.lingxia.lxapp.LxApp
 import androidx.appcompat.app.AppCompatActivity
-import com.lingxia.lxapp.media.MediaPreviewActivity
 import com.lingxia.lxapp.media.MediaPickerFragment
+import com.lingxia.lxapp.media.MediaPreviewFragment
 import com.lingxia.lxapp.media.PreviewMediaPayload
 import java.io.File
 import java.io.IOException
@@ -29,8 +29,13 @@ internal object LxAppMedia {
             Log.w(TAG, "previewMedia: invalid media payload")
             return
         }
-        activity.runOnUiThread {
-            MediaPreviewActivity.launch(activity, items)
+        val appCompat = activity as? AppCompatActivity
+        if (appCompat == null) {
+            Log.w(TAG, "previewMedia: activity is not AppCompatActivity")
+            return
+        }
+        appCompat.runOnUiThread {
+            MediaPreviewFragment.show(appCompat, items)
         }
     }
 
