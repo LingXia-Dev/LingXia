@@ -242,8 +242,14 @@ Page({
     if (!choice) {
       return;
     }
+    const sourceChanged = choice.key !== this.data.sourceKey;
     this.setData({
       sourceKey: choice.key,
+      ...(sourceChanged
+        ? {
+            selectedMedia: [],
+          }
+        : null),
     });
   },
 
