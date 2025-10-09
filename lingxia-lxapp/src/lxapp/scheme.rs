@@ -1,6 +1,9 @@
-use http::{Request, Response, StatusCode};
+use http::{Request, Response, StatusCode, Uri};
+use std::fs;
+use std::path::PathBuf;
 
 use crate::error;
+use crate::error::LxAppError;
 use crate::lxapp::LxApp;
 
 impl LxApp {
@@ -8,14 +11,12 @@ impl LxApp {
     /// HTML files are handled separately through generate_page_html and load_data
     pub(crate) fn lingxia_handler(&self, req: Request<Vec<u8>>) -> Option<Response<Vec<u8>>> {
         let uri = req.uri();
-        let path = uri.path().trim_start_matches('/');
-
-        // Try to read the static asset from app directory
-        let file_result = self.read_bytes(path);
+        let file_result = self.read_bytes_from_lx_uri(uri);
 
         let response = match file_result {
             Ok(data) => {
                 // Determine MIME type based on file extension
+                let path = uri.path();
                 let mime_type = if path.ends_with(".js") {
                     "application/javascript"
                 } else if path.ends_with(".css") {
@@ -58,18 +59,46 @@ impl LxApp {
                     })
             }
             Err(e) => {
-                error!("Static asset not found: {} - {}", path, e).with_appid(self.appid.clone());
+                error!("Asset not found: {} - {}", uri.path(), e).with_appid(self.appid.clone());
 
-                // Return a styled 404 Not Found response for static assets
+                // Return a styled 404 Not Found response
                 Self::create_error_response(
                     StatusCode::NOT_FOUND,
                     "Asset Not Found",
-                    &format!("The requested static asset '{}' could not be found.", path),
+                    &format!("The requested asset '{}' could not be found.", uri.path()),
                 )
             }
         };
 
         Some(response)
+    }
+
+    fn resolve_lx_uri(&self, uri: &Uri) -> Result<PathBuf, LxAppError> {
+        if uri.scheme_str() != Some("lx") {
+            return Err(LxAppError::InvalidParameter(format!(
+                "unsupported scheme: {}",
+                uri
+            )));
+        }
+
+        if uri.host() != Some(self.appid.as_str()) {
+            return Err(LxAppError::ResourceNotFound(uri.to_string()));
+        }
+
+        let path_str = uri.path();
+        let raw_path = path_str.trim_start_matches('/');
+        if raw_path.is_empty() {
+            return Err(LxAppError::ResourceNotFound(uri.to_string()));
+        }
+
+        self.resolve_accessible_path(raw_path)
+    }
+
+    fn read_bytes_from_lx_uri(&self, uri: &Uri) -> Result<Vec<u8>, LxAppError> {
+        let resolved_path = self.resolve_lx_uri(uri)?;
+
+        fs::read(&resolved_path)
+            .map_err(|e| LxAppError::ResourceNotFound(format!("{}:{}", uri.path(), e)))
     }
 
     /// Handler for HTTPS requests to check domain whitelist and restrict to static resources

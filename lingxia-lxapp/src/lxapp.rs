@@ -4,7 +4,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::hash::{Hash, Hasher};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Instant;
 
@@ -527,6 +527,59 @@ impl LxApp {
         // Try to read from the filesystem
         fs::read(file_path)
             .map_err(|e| LxAppError::ResourceNotFound(format!("{}:{}", relative_path, e)))
+    }
+
+    pub fn resolve_accessible_path(&self, path: &str) -> Result<PathBuf, LxAppError> {
+        if path.trim().is_empty() {
+            return Err(LxAppError::ResourceNotFound("empty path".to_string()));
+        }
+
+        let path_ref = Path::new(path);
+        let bundle_root = self
+            .lxapp_dir
+            .canonicalize()
+            .unwrap_or_else(|_| self.lxapp_dir.clone());
+
+        if !path_ref.is_absolute() {
+            let bundle_candidate = bundle_root.join(path_ref);
+            if let Ok(canonical) = bundle_candidate.canonicalize() {
+                if canonical.starts_with(&bundle_root) {
+                    return Ok(canonical);
+                }
+            }
+        }
+
+        let candidate = if path_ref.is_absolute() || path.contains(':') {
+            PathBuf::from(path)
+        } else {
+            Path::new("/").join(path_ref)
+        };
+
+        let canonical = candidate
+            .canonicalize()
+            .map_err(|_| LxAppError::ResourceNotFound(path.to_string()))?;
+
+        let trusted_roots: Vec<PathBuf> = [
+            &self.lxapp_dir,
+            &self.user_cache_dir,
+            &self.user_data_dir,
+            &self.storage_dir,
+        ]
+        .iter()
+        .filter_map(|dir| {
+            if dir.as_os_str().is_empty() {
+                None
+            } else {
+                dir.canonicalize().ok()
+            }
+        })
+        .collect();
+
+        if trusted_roots.iter().any(|root| canonical.starts_with(root)) {
+            Ok(canonical)
+        } else {
+            Err(LxAppError::ResourceNotFound(path.to_string()))
+        }
     }
 
     /// Reads text content from the specified relative path
