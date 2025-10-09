@@ -1,0 +1,292 @@
+import React from 'react';
+import '../../tailwind.css';
+
+const SOURCE_OPTIONS = [
+  { key: 'album', label: 'Album' },
+  { key: 'camera', label: 'Camera' },
+];
+
+const QUALITY_OPTIONS = [{ key: 'original', label: 'Original' }];
+
+const COUNT_OPTIONS = Array.from({ length: 9 }, (_, index) => {
+  const value = index + 1;
+  return {
+    key: String(value),
+    label: String(value),
+    value,
+  };
+});
+
+const CAMERA_OPTIONS = [
+  { key: 'back', label: 'Rear Camera' },
+  { key: 'front', label: 'Front Camera' },
+];
+
+const DURATION_OPTIONS = [
+  { key: '15', label: '15 seconds', value: 15 },
+  { key: '30', label: '30 seconds', value: 30 },
+  { key: '60', label: '60 seconds', value: 60 },
+];
+
+type MediaItem = {
+  url: string;
+  type: 'image' | 'video';
+};
+
+type PageData = {
+  mediaType?: 'image' | 'video';
+  selectedMedia?: MediaItem[];
+  isRunning?: boolean;
+  countLimit?: number;
+  sourceKey?: string;
+  qualityKey?: string;
+  countKey?: string;
+  cameraKey?: string;
+  durationKey?: string;
+  durationValue?: number;
+  emptyHint?: string;
+  previewHint?: string;
+  galleryHint?: string;
+  headerSubtitle?: string;
+  addLabel?: string;
+};
+
+type PageActions = {
+  data: PageData;
+  launchMediaDemo(): void;
+  previewSelectedMedia(payload: { index?: number; url?: string; item?: MediaItem }): void;
+  openSourcePicker?(): void;
+  openQualityPicker?(): void;
+  openCountPicker?(): void;
+  openCameraPicker?(): void;
+  openDurationPicker?(): void;
+};
+
+declare function useLingXia(): PageActions;
+
+export default function MediaPage() {
+  const {
+    data,
+    launchMediaDemo,
+    previewSelectedMedia,
+    openSourcePicker,
+    openQualityPicker,
+    openCountPicker,
+    openCameraPicker,
+    openDurationPicker,
+  } = useLingXia();
+
+  const mediaType = data?.mediaType === 'video' ? 'video' : 'image';
+  const selectedMedia: MediaItem[] = Array.isArray(data?.selectedMedia)
+    ? (data?.selectedMedia as MediaItem[])
+    : [];
+  const isRunning = Boolean(data?.isRunning);
+  const sourceKey = data?.sourceKey || SOURCE_OPTIONS[0].key;
+  const qualityKey = data?.qualityKey || QUALITY_OPTIONS[0].key;
+  const countKey = data?.countKey || COUNT_OPTIONS[COUNT_OPTIONS.length - 1].key;
+  const cameraKey = data?.cameraKey || CAMERA_OPTIONS[0].key;
+  const durationKey = data?.durationKey || DURATION_OPTIONS[DURATION_OPTIONS.length - 1].key;
+
+  const sourceOption =
+    SOURCE_OPTIONS.find((option) => option.key === sourceKey) || SOURCE_OPTIONS[0];
+  const qualityOption =
+    QUALITY_OPTIONS.find((option) => option.key === qualityKey) || QUALITY_OPTIONS[0];
+  const countOption =
+    COUNT_OPTIONS.find((option) => option.key === countKey) ||
+    COUNT_OPTIONS[COUNT_OPTIONS.length - 1];
+  const cameraOption =
+    CAMERA_OPTIONS.find((option) => option.key === cameraKey) || CAMERA_OPTIONS[0];
+  const durationOption =
+    DURATION_OPTIONS.find((option) => option.key === durationKey) ||
+    DURATION_OPTIONS[DURATION_OPTIONS.length - 1];
+
+  const sourceLabel = sourceOption.label;
+  const qualityLabel = qualityOption.label;
+  const countLabel = countOption.label;
+  const cameraLabel = cameraOption.label;
+  const durationLabel = durationOption.label;
+
+  const countLimit =
+    typeof data?.countLimit === 'number' ? data.countLimit : countOption.value ?? 0;
+  const counterText = countLimit ? `${selectedMedia.length}/${countLimit}` : `${selectedMedia.length}`;
+
+  const isPictureMode = mediaType === 'image';
+
+  const emptyHint = data?.emptyHint || (isPictureMode ? 'Tap + to pick photos.' : 'Tap + to add a video.');
+  const previewHint = data?.previewHint || (isPictureMode ? 'Tap a photo to preview.' : 'Tap the clip to preview.');
+  const galleryHint = data?.galleryHint || previewHint;
+  const headerSubtitle = data?.headerSubtitle || (isPictureMode ? 'choose/previewImage' : 'choose/previewMedia');
+
+  const addLabel = data?.addLabel || (isPictureMode ? 'Add Photo' : 'Add Video');
+  const helperText = selectedMedia.length ? previewHint : emptyHint;
+  const enforceLimit = isPictureMode
+    ? countLimit || Number.POSITIVE_INFINITY
+    : 1;
+  const canAddMore = selectedMedia.length < enforceLimit;
+
+  const handleChoose = React.useCallback(() => {
+    if (!isRunning && canAddMore) {
+      launchMediaDemo();
+    }
+  }, [isRunning, canAddMore, launchMediaDemo]);
+
+  const handlePreview = React.useCallback(
+    (item: MediaItem) => {
+      previewSelectedMedia({ item });
+    },
+    [previewSelectedMedia],
+  );
+
+  const renderAddTile = () => {
+    const baseClass = isPictureMode ? 'aspect-square' : 'h-48';
+    const disabled = isRunning || !canAddMore;
+    const disabledClasses = disabled ? 'cursor-not-allowed opacity-60' : 'hover:bg-gray-100';
+    return (
+      <button
+        type="button"
+        className={`flex w-full flex-col items-center justify-center rounded-lg border border-dashed border-gray-300 bg-gray-50 text-gray-400 ${baseClass} ${disabledClasses}`}
+        onClick={handleChoose}
+        disabled={disabled}
+      >
+        <span className="text-3xl leading-none">+</span>
+        <span className="mt-2 text-xs uppercase tracking-wide text-gray-400">
+          {addLabel}
+        </span>
+      </button>
+    );
+  };
+
+  const renderPictureTiles = () => {
+    const tiles: React.ReactNode[] = selectedMedia.map((item, index) => (
+      <button
+        type="button"
+        key={`${item.url}-${index}`}
+        className="relative aspect-square overflow-hidden rounded-lg border border-gray-200 bg-gray-50"
+        onClick={() => handlePreview(item)}
+      >
+        <img
+          src={item.url}
+          alt=""
+          className="h-full w-full object-cover"
+        />
+        <div className="absolute inset-x-0 bottom-0 bg-black/50 px-1 py-0.5 text-[10px] text-white truncate">
+          {item.url}
+        </div>
+      </button>
+    ));
+
+    if (canAddMore) {
+      tiles.push(<div key="add">{renderAddTile()}</div>);
+    }
+
+    return <div className="grid grid-cols-3 gap-2">{tiles}</div>;
+  };
+
+  const renderVideoTiles = () => {
+    return (
+      <div className="space-y-3">
+        {selectedMedia.map((item, index) => (
+          <button
+            type="button"
+            key={`${item.url}-${index}`}
+            className="relative h-48 overflow-hidden rounded-lg border border-gray-200 bg-black"
+            onClick={() => handlePreview(item)}
+          >
+            <video
+              src={item.url}
+              className="h-full w-full object-cover opacity-90"
+              muted
+            />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-black/60 text-white">
+                ▶
+              </div>
+            </div>
+            <div className="absolute inset-x-0 bottom-0 bg-black/50 px-2 py-1 text-[10px] text-white truncate">
+              {item.url}
+            </div>
+          </button>
+        ))}
+        {canAddMore ? renderAddTile() : null}
+      </div>
+    );
+  };
+
+  const SettingRow: React.FC<{
+    label: string;
+    value: string;
+    onPress?: () => void;
+  }> = ({ label, value, onPress }) => {
+    const clickable = typeof onPress === 'function';
+    return (
+      <button
+        type="button"
+        className={`flex w-full items-center justify-between px-5 py-3 text-sm ${
+          clickable ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-600 cursor-default'
+        }`}
+        onClick={clickable ? onPress : undefined}
+        disabled={!clickable}
+      >
+        <span className="text-gray-500">{label}</span>
+        <span className="font-medium text-gray-900">{value}</span>
+      </button>
+    );
+  };
+
+  const settingRows = isPictureMode
+    ? [
+        { label: 'Photo Source', value: sourceLabel, action: openSourcePicker },
+        { label: 'Photo Quality', value: qualityLabel, action: openQualityPicker },
+        { label: 'Count Limit', value: countLabel, action: openCountPicker },
+      ]
+    : (() => {
+        const rows = [
+          { label: 'Video Source', value: sourceLabel, action: openSourcePicker },
+        ];
+        if (sourceKey === 'camera') {
+          rows.push(
+            { label: 'Camera', value: cameraLabel, action: openCameraPicker },
+            { label: 'Duration', value: durationLabel, action: openDurationPicker },
+          );
+        }
+        return rows;
+      })();
+
+  return (
+    <div className="min-h-screen bg-gray-100">
+      <div className="px-4 py-5 space-y-4">
+        <div className="bg-white shadow-sm">
+          <div className="px-5 py-6 text-center">
+            <div className="text-base font-medium text-gray-700">{headerSubtitle}</div>
+            <div className="mx-auto mt-3 h-0.5 w-12 bg-gray-200" />
+          </div>
+          <div className="border-t border-gray-100">
+            {settingRows.map(({ label, value, action }, index) => (
+              <React.Fragment key={label}>
+                <SettingRow label={label} value={value} onPress={action} />
+                {index < settingRows.length - 1 ? <div className="h-px bg-gray-100" /> : null}
+              </React.Fragment>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+          <div className="flex items-center justify-between text-xs text-gray-500">
+            <span>{helperText}</span>
+            {selectedMedia.length ? (
+              null
+            ) : null}
+          </div>
+          {countLimit ? (
+            <div className="text-xs text-gray-400">Selected {counterText}</div>
+          ) : null}
+          {selectedMedia.length ? (
+            <div className="text-[10px] text-gray-400">{galleryHint}</div>
+          ) : null}
+
+          {isPictureMode ? renderPictureTiles() : renderVideoTiles()}
+        </div>
+      </div>
+    </div>
+  );
+}

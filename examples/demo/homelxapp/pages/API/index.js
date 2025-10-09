@@ -8,6 +8,7 @@ Page({
       device: false,
       system: false,
       navigation: false,
+      media: false,
     },
   },
 
@@ -62,6 +63,14 @@ Page({
   navigateToLocationPage: function () {
     lx.navigateTo({
       url: `pages/location/index.tsx`,
+    });
+  },
+
+  // Navigate to Media API page with specific type parameter
+  navigateToMediaPage: function (params) {
+    const { type = "Pictures" } = params || {};
+    lx.navigateTo({
+      url: `pages/media/index.tsx?type=${type}`,
     });
   },
 
