@@ -137,6 +137,8 @@ struct JSChooseMediaOptions {
     camera: Option<String>, // "front" | "back"
     #[rename = "sizeType"]
     size_type: Option<Vec<String>>, // ["original", "compressed"]
+    #[rename = "maxDuration"]
+    max_duration: Option<f64>,
 }
 
 #[derive(Debug, Clone)]
@@ -221,17 +223,22 @@ fn choose_media(
         source_type: None,
         camera: None,
         size_type: None,
+        max_duration: None,
     });
 
     let (callback_id, receiver) = get_stream_callback();
     let cache_root = lxapp.user_cache_dir.clone();
 
     let (allow_original, allow_compressed) = parse_size_flags(opts.size_type);
+    let max_duration_seconds = opts
+        .max_duration
+        .filter(|v| !v.is_sign_negative())
+        .map(|v| v.min(u32::MAX as f64).round() as u32);
     let request = ChooseMediaRequest {
         max_count: opts.max_count.or(opts.count).unwrap_or(20),
         mode: parse_choose_mode(opts.media_type),
         source_types: parse_sources(opts.source_type),
-        max_duration_seconds: None,
+        max_duration_seconds,
         camera_facing: parse_camera(opts.camera),
         allow_original,
         allow_compressed,
