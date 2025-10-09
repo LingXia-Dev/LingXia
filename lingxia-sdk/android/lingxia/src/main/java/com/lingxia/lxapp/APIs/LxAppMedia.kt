@@ -8,6 +8,7 @@ import android.provider.MediaStore
 import android.util.Log
 import com.lingxia.lxapp.LxApp
 import androidx.appcompat.app.AppCompatActivity
+import com.lingxia.lxapp.media.MediaCaptureFragment
 import com.lingxia.lxapp.media.MediaPickerFragment
 import com.lingxia.lxapp.media.MediaPreviewFragment
 import com.lingxia.lxapp.media.PreviewMediaPayload
@@ -103,7 +104,7 @@ internal object LxAppMedia {
                 // First try to use MediaStore
                 contentValues.put(MediaStore.MediaColumns.DISPLAY_NAME, sourceFile.name)
                 contentValues.put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
-                
+
                 val collection = if (isImage) MediaStore.Images.Media.EXTERNAL_CONTENT_URI
                 else MediaStore.Video.Media.EXTERNAL_CONTENT_URI
 
@@ -174,11 +175,7 @@ internal object LxAppMedia {
         }
 
         val allowAlbum = sources == null || sources.isEmpty() || sources.any { it == 0 }
-        if (!allowAlbum) {
-            val payload = org.json.JSONObject().apply { put("error", "Only album source is supported currently") }
-            com.lingxia.lxapp.NativeApi.onCallback(callbackId, false, payload.toString())
-            return
-        }
+        val allowCamera = sources == null || sources.isEmpty() || sources.any { it == 1 }
 
         val allowMultiple = maxCount.coerceAtLeast(1) > 1
 
@@ -190,12 +187,30 @@ internal object LxAppMedia {
         }
 
         appCompat.runOnUiThread {
-            MediaPickerFragment.start(
-                appCompat,
-                maxCount.coerceAtLeast(1),
-                callbackId,
-                when (mode) { 1 -> "videos"; 2 -> "mix"; else -> "images" }
-            )
+            val modeStr = when (mode) { 1 -> "videos"; 2 -> "mix"; else -> "images" }
+            if (allowCamera && !allowAlbum) {
+                val captureMode = if (mode == 1) "video" else "image"
+                MediaCaptureFragment.start(
+                    appCompat,
+                    captureMode,
+                    maxDurationSeconds,
+                    callbackId,
+                    cameraFacing
+                )
+            } else if (allowAlbum) {
+                MediaPickerFragment.start(
+                    appCompat,
+                    maxCount.coerceAtLeast(1),
+                    callbackId,
+                    modeStr,
+                    allowCamera,
+                    maxDurationSeconds,
+                    cameraFacing
+                )
+            } else {
+                val payload = org.json.JSONObject().apply { put("error", "No valid source (album/camera)") }
+                com.lingxia.lxapp.NativeApi.onCallback(callbackId, false, payload.toString())
+            }
         }
     }
 

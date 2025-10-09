@@ -44,18 +44,29 @@ class MediaPickerFragment : Fragment() {
         private const val ARG_MAX_COUNT = "arg_max_count"
         private const val ARG_CALLBACK_ID = "arg_callback_id"
         private const val ARG_MODE = "arg_mode" // images | videos | mix
+        private const val ARG_ALLOW_CAMERA = "arg_allow_camera"
+        private const val ARG_MAX_DURATION = "arg_max_duration"
+        private const val ARG_CAMERA_FACING = "arg_camera_facing"
+        private const val CAMERA_ITEM_TYPE = "__camera__"
+        private val CAMERA_PLACEHOLDER_URI: Uri = Uri.parse("lxapp-camera://capture")
 
         fun start(
             activity: AppCompatActivity,
             maxCount: Int,
             callbackId: Long,
-            mode: String
+            mode: String,
+            allowCamera: Boolean,
+            maxDurationSeconds: Int,
+            cameraFacing: Int
         ) {
             val frag = MediaPickerFragment().apply {
                 arguments = Bundle().apply {
                     putInt(ARG_MAX_COUNT, maxCount)
                     putLong(ARG_CALLBACK_ID, callbackId)
                     putString(ARG_MODE, mode)
+                    putBoolean(ARG_ALLOW_CAMERA, allowCamera)
+                    putInt(ARG_MAX_DURATION, maxDurationSeconds)
+                    putInt(ARG_CAMERA_FACING, cameraFacing)
                 }
             }
             val fm = activity.supportFragmentManager
@@ -69,6 +80,15 @@ class MediaPickerFragment : Fragment() {
 
     private val selectedMode: String
         get() = arguments?.getString(ARG_MODE) ?: "images"
+
+    private val allowCamera: Boolean
+        get() = arguments?.getBoolean(ARG_ALLOW_CAMERA) ?: false
+
+    private val maxCaptureDuration: Int
+        get() = arguments?.getInt(ARG_MAX_DURATION) ?: -1
+
+    private val cameraFacingPref: Int
+        get() = arguments?.getInt(ARG_CAMERA_FACING) ?: -1
 
     private var recycler: RecyclerView? = null
     private var sendBtn: TextView? = null
@@ -196,9 +216,11 @@ class MediaPickerFragment : Fragment() {
         val spanCount = 4
         rv.layoutManager = GridLayoutManager(context, spanCount)
         rv.addItemDecoration(HairlineDividerDecoration(context, 0.5f, Color.parseColor("#3A3A3A")))
-        val adapter = MediaGridAdapter(context) { item ->
-            toggleSelection(item)
-        }
+        val adapter = MediaGridAdapter(
+            context,
+            onMediaClick = { item -> toggleSelection(item) },
+            onCameraClick = { launchCameraFromPicker() }
+        )
         rv.adapter = adapter
         root.addView(rv)
 
@@ -394,6 +416,10 @@ class MediaPickerFragment : Fragment() {
     }
 
     private fun toggleSelection(item: GridItem) {
+        if (item.fileType == CAMERA_ITEM_TYPE) {
+            launchCameraFromPicker()
+            return
+        }
         if (selected.containsKey(item.uri)) {
             selected.remove(item.uri)
         } else {
@@ -415,6 +441,28 @@ class MediaPickerFragment : Fragment() {
         var i = 1
         for (uri in selected.keys) { order[uri] = i; i += 1 }
         (recycler?.adapter as? MediaGridAdapter)?.setSelected(selected.keys, order)
+    }
+
+    private fun launchCameraFromPicker() {
+        if (!allowCamera) return
+        val host = activity as? AppCompatActivity
+        if (host == null) {
+            sendFailure("Activity is not AppCompatActivity")
+            removeSelf()
+            return
+        }
+        val captureMode = when (selectedMode.lowercase()) {
+            "videos" -> "video"
+            else -> "image"
+        }
+        MediaCaptureFragment.start(
+            host,
+            captureMode,
+            maxCaptureDuration,
+            callbackId,
+            cameraFacingPref
+        )
+        removeSelf()
     }
 
     private fun applySendButtonStyle(count: Int) {
@@ -461,140 +509,201 @@ class MediaPickerFragment : Fragment() {
 
     private class MediaGridAdapter(
         private val context: Context,
-        private val onClick: (GridItem) -> Unit
-    ) : ListAdapter<GridItem, MediaGridAdapter.VH>(Diff()) {
+        private val onMediaClick: (GridItem) -> Unit,
+        private val onCameraClick: () -> Unit
+    ) : ListAdapter<GridItem, RecyclerView.ViewHolder>(Diff()) {
+        companion object {
+            private const val TYPE_MEDIA = 0
+            private const val TYPE_CAMERA = 1
+        }
+
         private val selected = HashSet<Uri>()
         private val order = HashMap<Uri, Int>()
+
         fun setSelected(keys: Collection<Uri>, orderMap: Map<Uri, Int>) {
-            selected.clear(); selected.addAll(keys);
-            order.clear(); order.putAll(orderMap);
+            selected.clear(); selected.addAll(keys)
+            order.clear(); order.putAll(orderMap)
             notifyDataSetChanged()
         }
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
-            val size = parent.measuredWidth / 4
-            val container = FrameLayout(context).apply {
-                layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, size)
-            }
-            val iv = ImageView(context).apply {
-                layoutParams = FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.MATCH_PARENT,
-                    FrameLayout.LayoutParams.MATCH_PARENT
-                )
-                scaleType = ImageView.ScaleType.CENTER_CROP
-                setBackgroundColor(Color.DKGRAY)
-            }
-            val overlay = View(context).apply {
-                setBackgroundColor(Color.parseColor("#66000000"))
-                visibility = View.GONE
-                layoutParams = FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.MATCH_PARENT,
-                    FrameLayout.LayoutParams.MATCH_PARENT
-                )
-            }
-            val badgeSize = dp(context, 22)
-            val badge = TextView(context).apply {
-                setTextColor(Color.WHITE)
-                textSize = 12f
-                gravity = Gravity.CENTER
-                background = GradientDrawable().apply {
-                    shape = GradientDrawable.OVAL
-                    setColor(Color.parseColor("#07C160"))
-                }
-                layoutParams = FrameLayout.LayoutParams(badgeSize, badgeSize).apply {
-                    gravity = Gravity.TOP or Gravity.END
-                    val m = dp(context, 6)
-                    setMargins(m, m, m, m)
-                }
-                visibility = View.GONE
-            }
-            // Hollow ring for unselected
-            val ring = FrameLayout(context).apply {
-                layoutParams = FrameLayout.LayoutParams(badgeSize, badgeSize).apply {
-                    gravity = Gravity.TOP or Gravity.END
-                    val m = dp(context, 6)
-                    setMargins(m, m, m, m)
-                }
-                val bg = View(context).apply {
-                    background = GradientDrawable().apply {
-                        shape = GradientDrawable.OVAL
-                        setColor(Color.parseColor("#33000000"))
-                    }
-                    layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
-                }
-                val stroke = View(context).apply {
-                    background = GradientDrawable().apply {
-                        shape = GradientDrawable.OVAL
-                        setColor(Color.TRANSPARENT)
-                        setStroke(dp(context, 2), Color.WHITE)
-                    }
-                    layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
-                }
-                addView(bg)
-                addView(stroke)
-                visibility = View.VISIBLE
-            }
-            val durationLabel = TextView(context).apply {
-                setTextColor(Color.WHITE)
-                textSize = 12f
-                setPadding(dp(context, 4), dp(context, 2), dp(context, 4), dp(context, 2))
-                background = GradientDrawable().apply {
-                    shape = GradientDrawable.RECTANGLE
-                    cornerRadius = dp(context, 8).toFloat()
-                    setColor(Color.parseColor("#88000000"))
-                }
-                layoutParams = FrameLayout.LayoutParams(
-                    FrameLayout.LayoutParams.WRAP_CONTENT,
-                    FrameLayout.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    gravity = Gravity.BOTTOM or Gravity.END
-                    val m = dp(context, 6)
-                    setMargins(m, m, m, m)
-                }
-                visibility = View.GONE
-            }
-            container.addView(iv)
-            container.addView(overlay)
-            container.addView(durationLabel)
-            container.addView(badge)
-            container.addView(ring)
-            return VH(container, iv, overlay, badge, ring, durationLabel)
+
+        override fun getItemViewType(position: Int): Int {
+            return if (getItem(position).fileType == CAMERA_ITEM_TYPE) TYPE_CAMERA else TYPE_MEDIA
         }
-        override fun onBindViewHolder(holder: VH, position: Int) {
-            val item = getItem(position)
-            holder.itemView.setOnClickListener { onClick(item) }
-            try {
-                val bmp = context.contentResolver.loadThumbnail(item.uri, Size(300, 300), null)
-                holder.image.setImageBitmap(bmp)
-            } catch (_: Exception) {
-                holder.image.setImageDrawable(null)
-                holder.image.setBackgroundColor(Color.DKGRAY)
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+            return if (viewType == TYPE_CAMERA) {
+                val size = parent.measuredWidth / 4
+                val container = FrameLayout(context).apply {
+                    layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, size)
+                    setBackgroundColor(Color.parseColor("#2F2F2F"))
+                }
+                val icon = ImageView(context).apply {
+                    setImageResource(android.R.drawable.ic_menu_camera)
+                    setColorFilter(Color.WHITE)
+                    layoutParams = FrameLayout.LayoutParams(dp(context, 36), dp(context, 36)).apply {
+                        gravity = Gravity.CENTER_HORIZONTAL
+                        topMargin = dp(context, 18)
+                    }
+                }
+                val label = TextView(context).apply {
+                    text = "拍摄"
+                    setTextColor(Color.WHITE)
+                    textSize = 14f
+                    gravity = Gravity.CENTER
+                    layoutParams = FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        FrameLayout.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        gravity = Gravity.BOTTOM
+                        bottomMargin = dp(context, 16)
+                    }
+                }
+                container.addView(icon)
+                container.addView(label)
+                CameraVH(container)
+            } else {
+                val size = parent.measuredWidth / 4
+                val container = FrameLayout(context).apply {
+                    layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, size)
+                }
+                val iv = ImageView(context).apply {
+                    layoutParams = FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        FrameLayout.LayoutParams.MATCH_PARENT
+                    )
+                    scaleType = ImageView.ScaleType.CENTER_CROP
+                    setBackgroundColor(Color.DKGRAY)
+                }
+                val overlay = View(context).apply {
+                    setBackgroundColor(Color.parseColor("#66000000"))
+                    visibility = View.GONE
+                    layoutParams = FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        FrameLayout.LayoutParams.MATCH_PARENT
+                    )
+                }
+                val badgeSize = dp(context, 22)
+                val badge = TextView(context).apply {
+                    setTextColor(Color.WHITE)
+                    textSize = 12f
+                    gravity = Gravity.CENTER
+                    background = GradientDrawable().apply {
+                        shape = GradientDrawable.OVAL
+                        setColor(Color.parseColor("#07C160"))
+                    }
+                    layoutParams = FrameLayout.LayoutParams(badgeSize, badgeSize).apply {
+                        gravity = Gravity.TOP or Gravity.END
+                        val m = dp(context, 6)
+                        setMargins(m, m, m, m)
+                    }
+                    visibility = View.GONE
+                }
+                val ring = FrameLayout(context).apply {
+                    layoutParams = FrameLayout.LayoutParams(badgeSize, badgeSize).apply {
+                        gravity = Gravity.TOP or Gravity.END
+                        val m = dp(context, 6)
+                        setMargins(m, m, m, m)
+                    }
+                    val bg = View(context).apply {
+                        background = GradientDrawable().apply {
+                            shape = GradientDrawable.OVAL
+                            setColor(Color.parseColor("#33000000"))
+                        }
+                        layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+                    }
+                    val stroke = View(context).apply {
+                        background = GradientDrawable().apply {
+                            shape = GradientDrawable.OVAL
+                            setColor(Color.TRANSPARENT)
+                            setStroke(dp(context, 2), Color.WHITE)
+                        }
+                        layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+                    }
+                    addView(bg)
+                    addView(stroke)
+                    visibility = View.VISIBLE
+                }
+                val durationLabel = TextView(context).apply {
+                    setTextColor(Color.WHITE)
+                    textSize = 12f
+                    setPadding(dp(context, 4), dp(context, 2), dp(context, 4), dp(context, 2))
+                    background = GradientDrawable().apply {
+                        shape = GradientDrawable.RECTANGLE
+                        cornerRadius = dp(context, 8).toFloat()
+                        setColor(Color.parseColor("#88000000"))
+                    }
+                    layoutParams = FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.WRAP_CONTENT,
+                        FrameLayout.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        gravity = Gravity.BOTTOM or Gravity.END
+                        val m = dp(context, 6)
+                        setMargins(m, m, m, m)
+                    }
+                    visibility = View.GONE
+                }
+                container.addView(iv)
+                container.addView(overlay)
+                container.addView(durationLabel)
+                container.addView(badge)
+                container.addView(ring)
+                MediaVH(container, iv, overlay, badge, ring, durationLabel)
             }
-            val isSel = selected.contains(item.uri)
-            holder.overlay.visibility = if (isSel) View.VISIBLE else View.GONE
-            if (isSel) {
-                val idx = order[item.uri] ?: 0
-                if (idx > 0) {
-                    holder.badge.visibility = View.VISIBLE
-                    holder.badge.text = idx.toString()
+        }
+
+        override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+            val item = getItem(position)
+            if (holder is CameraVH) {
+                holder.itemView.setOnClickListener { onCameraClick() }
+            } else if (holder is MediaVH) {
+                holder.itemView.setOnClickListener { onMediaClick(item) }
+                try {
+                    val bmp = context.contentResolver.loadThumbnail(item.uri, Size(300, 300), null)
+                    holder.image.setImageBitmap(bmp)
+                } catch (_: Exception) {
+                    holder.image.setImageDrawable(null)
+                    holder.image.setBackgroundColor(Color.DKGRAY)
+                }
+                val isSel = selected.contains(item.uri)
+                holder.overlay.visibility = if (isSel) View.VISIBLE else View.GONE
+                if (isSel) {
+                    val idx = order[item.uri] ?: 0
+                    if (idx > 0) {
+                        holder.badge.visibility = View.VISIBLE
+                        holder.badge.text = idx.toString()
+                    } else {
+                        holder.badge.visibility = View.GONE
+                    }
+                    holder.ring.visibility = View.GONE
                 } else {
                     holder.badge.visibility = View.GONE
+                    holder.ring.visibility = View.VISIBLE
                 }
-                holder.ring.visibility = View.GONE
-            } else {
-                holder.badge.visibility = View.GONE
-                holder.ring.visibility = View.VISIBLE
-            }
-            if (item.fileType == "video" && item.durationSec > 0) {
-                holder.duration.visibility = View.VISIBLE
-                holder.duration.text = formatDuration(item.durationSec)
-            } else {
-                holder.duration.visibility = View.GONE
+                if (item.fileType == "video" && item.durationSec > 0) {
+                    holder.duration.visibility = View.VISIBLE
+                    holder.duration.text = formatDuration(item.durationSec)
+                } else {
+                    holder.duration.visibility = View.GONE
+                }
             }
         }
-        class VH(view: View, val image: ImageView, val overlay: View, val badge: TextView, val ring: View, val duration: TextView) : RecyclerView.ViewHolder(view)
-        class Diff : DiffUtil.ItemCallback<GridItem>() {
-            override fun areItemsTheSame(oldItem: GridItem, newItem: GridItem) = oldItem.uri == newItem.uri
-            override fun areContentsTheSame(oldItem: GridItem, newItem: GridItem) = oldItem == newItem
+
+        private class CameraVH(view: View) : RecyclerView.ViewHolder(view)
+        private class MediaVH(
+            view: View,
+            val image: ImageView,
+            val overlay: View,
+            val badge: TextView,
+            val ring: View,
+            val duration: TextView
+        ) : RecyclerView.ViewHolder(view)
+
+        private class Diff : DiffUtil.ItemCallback<GridItem>() {
+            override fun areItemsTheSame(oldItem: GridItem, newItem: GridItem): Boolean {
+                return oldItem.uri == newItem.uri && oldItem.fileType == newItem.fileType
+            }
+
+            override fun areContentsTheSame(oldItem: GridItem, newItem: GridItem): Boolean = oldItem == newItem
         }
     }
 
@@ -686,7 +795,15 @@ class MediaPickerFragment : Fragment() {
 
     private fun filterByAlbum(list: List<GridItem>): List<GridItem> {
         val id = currentAlbumId
-        return if (id == null) list else list.filter { it.bucketId == id }
+        val filtered = if (id == null) list else list.filter { it.bucketId == id }
+        return if (allowCamera) {
+            ArrayList<GridItem>(filtered.size + 1).apply {
+                add(cameraGridItem())
+                addAll(filtered)
+            }
+        } else {
+            filtered
+        }
     }
 
     private class AlbumVH(view: View, val cover: ImageView, val name: TextView, val count: TextView) : RecyclerView.ViewHolder(view)
@@ -738,6 +855,15 @@ class MediaPickerFragment : Fragment() {
             activity?.supportFragmentManager?.beginTransaction()?.remove(this)?.commitAllowingStateLoss()
         } catch (_: Exception) { }
     }
+
+    private fun cameraGridItem(): GridItem = GridItem(
+        CAMERA_PLACEHOLDER_URI,
+        CAMERA_ITEM_TYPE,
+        0.0,
+        Long.MAX_VALUE,
+        null,
+        null
+    )
 }
 
 // Top-level helpers for nested classes

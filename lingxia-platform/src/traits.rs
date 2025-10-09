@@ -143,6 +143,7 @@ pub enum MediaKind {
 pub enum ChooseMediaMode {
     Images,
     Videos,
+    Mix,
 }
 
 /// Source preference when choosing media.
