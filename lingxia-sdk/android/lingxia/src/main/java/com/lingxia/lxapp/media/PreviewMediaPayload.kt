@@ -1,7 +1,7 @@
 package com.lingxia.lxapp.media
 
 data class PreviewMediaPayload(
-    val url: String,
+    val path: String,
     val type: Int,
-    val coverUrl: String?
+    val coverPath: String?
 ) : java.io.Serializable

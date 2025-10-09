@@ -15,7 +15,7 @@ enum LxAppMedia {
     struct PreviewMediaPayload: Codable {
         let path: String
         let media_type: Int32
-        let cover_url: String?
+        let cover_path: String?
     }
 
     nonisolated static func previewMedia(items_json: RustStr) -> Bool {
@@ -107,7 +107,7 @@ private struct PreviewMediaItem {
         let pathString = payload.path
         self.url = URL(fileURLWithPath: pathString)
 
-        let coverString = payload.cover_url ?? ""
+        let coverString = payload.cover_path ?? ""
         if coverString.isEmpty {
             self.coverURL = nil
         } else if let cover = URL(string: coverString), cover.scheme != nil {

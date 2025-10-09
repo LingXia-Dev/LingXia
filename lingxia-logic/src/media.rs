@@ -17,11 +17,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(FromJSObj)]
 struct JSPreviewMediaItem {
-    url: Option<String>,
+    path: Option<String>,
     #[rename = "type"]
     kind: Option<String>,
-    #[rename = "coverUrl"]
-    cover_url: Option<String>,
+    #[rename = "coverPath"]
+    cover_path: Option<String>,
 }
 
 #[derive(FromJSObj)]
@@ -56,18 +56,23 @@ fn preview_media(ctx: JSContext, options: JSPreviewMediaOptions) -> JSResult<()>
         .into_iter()
         .map(|item| -> Result<PreviewMediaItem, RongJSError> {
             let JSPreviewMediaItem {
-                url,
+                path,
                 kind,
-                cover_url,
+                cover_path,
             } = item;
 
-            let resolved_path =
-                url.ok_or_else(|| RongJSError::Error("previewMedia item requires url".into()))?;
+            let raw_path =
+                path.ok_or_else(|| RongJSError::Error("previewMedia item requires path".into()))?;
+
+            let resolved_path = lxapp.resolve_accessible_path(&raw_path).map_err(|err| {
+                RongJSError::Error(format!("previewMedia path not accessible: {}", err))
+            })?;
+            let normalized_path = resolved_path.to_string_lossy().into_owned();
 
             Ok(PreviewMediaItem {
-                path: resolved_path,
+                path: normalized_path,
                 media_type: parse_media_kind(kind),
-                cover_url,
+                cover_path,
             })
         })
         .collect::<Result<_, _>>()?;
@@ -233,7 +238,7 @@ fn choose_media(ctx: JSContext, options: Optional<JSChooseMediaOptions>) -> JSRe
         .map(|v| v.min(u32::MAX as f64).round() as u32);
     let source = parse_source(opts.source_type);
     let source_types = vec![source];
-    let mut mode = parse_choose_mode(opts.media_type);
+    let mode = parse_choose_mode(opts.media_type);
     // Mix applies only to album UI; when camera-only, report error
     if matches!(source, MediaSource::Camera) {
         if let ChooseMediaMode::Mix = mode {

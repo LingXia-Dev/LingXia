@@ -13,7 +13,7 @@ const MEDIA_LIBRARY_VIDEO_RESOURCE: i32 = 2;
 struct PreviewMediaPayload<'a> {
     path: &'a str,
     media_type: i32,
-    cover_url: &'a str,
+    cover_path: &'a str,
 }
 
 impl MediaInteraction for Platform {
@@ -34,7 +34,7 @@ impl MediaInteraction for Platform {
                     MediaKind::Video => 1,
                     MediaKind::Unknown => -1,
                 },
-                cover_url: item.cover_url.as_deref().unwrap_or_default(),
+                cover_path: item.cover_path.as_deref().unwrap_or_default(),
             })
             .collect();
 

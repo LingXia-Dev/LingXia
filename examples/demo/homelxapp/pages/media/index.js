@@ -58,7 +58,7 @@ function getModeCopy(mediaType) {
     };
   }
   return {
-    headerSubtitle: "choose/previewImage",
+    headerSubtitle: "choose/previewMedia",
     emptyHint: "Tap + to pick photos.",
     previewHint: "Tap a photo to preview.",
     galleryHint: "Tap a photo to preview.",
@@ -108,7 +108,7 @@ function extractMediaSource(item, mediaType) {
     rawType === "video" ? "video" : rawType === "image" ? "image" : null;
 
   return {
-    url: path,
+    path,
     type: normalizedType || (mediaType === "video" ? "video" : "image"),
   };
 }
@@ -401,12 +401,12 @@ Page({
     let target = candidate && typeof candidate === "object" ? candidate : null;
 
     if (!target) {
-      const displayUrl =
-        event?.url ||
-        event?.detail?.url ||
-        event?.currentTarget?.dataset?.url ||
+      const displayPath =
+        event?.path ||
+        event?.detail?.path ||
+        event?.currentTarget?.dataset?.path ||
         "";
-      target = sources.find((item) => item.url === displayUrl);
+      target = sources.find((item) => item.path === displayPath);
     }
 
     if (!target) {
@@ -414,7 +414,7 @@ Page({
     }
 
     const targetSource = {
-      url: target.url,
+      path: target.path,
       type: target.type,
     };
 

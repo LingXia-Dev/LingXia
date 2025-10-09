@@ -5,8 +5,8 @@
 mod app;
 mod device;
 mod ffi;
-mod media;
 mod location;
+mod media;
 mod popup;
 mod resources;
 mod ui_update;

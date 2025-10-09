@@ -166,8 +166,8 @@ pub struct PreviewMediaItem {
     /// Fully-resolved file path ready for the platform to load.
     pub path: String,
     pub media_type: MediaKind,
-    /// Optional cover thumbnail URL for video assets.
-    pub cover_url: Option<String>,
+    /// Optional cover thumbnail path for video assets.
+    pub cover_path: Option<String>,
 }
 
 /// Request payload to preview a collection of media items.

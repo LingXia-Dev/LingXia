@@ -29,7 +29,7 @@ const DURATION_OPTIONS = [
 ];
 
 type MediaItem = {
-  url: string;
+  path: string;
   type: 'image' | 'video';
 };
 
@@ -54,7 +54,7 @@ type PageData = {
 type PageActions = {
   data: PageData;
   launchMediaDemo(): void;
-  previewSelectedMedia(payload: { index?: number; url?: string; item?: MediaItem }): void;
+  previewSelectedMedia(payload: { index?: number; path?: string; item?: MediaItem }): void;
   openSourcePicker?(): void;
   openQualityPicker?(): void;
   openCountPicker?(): void;
@@ -115,7 +115,7 @@ export default function MediaPage() {
   const emptyHint = data?.emptyHint || (isPictureMode ? 'Tap + to pick photos.' : 'Tap + to add a video.');
   const previewHint = data?.previewHint || (isPictureMode ? 'Tap a photo to preview.' : 'Tap the clip to preview.');
   const galleryHint = data?.galleryHint || previewHint;
-  const headerSubtitle = data?.headerSubtitle || (isPictureMode ? 'choose/previewImage' : 'choose/previewMedia');
+  const headerSubtitle = data?.headerSubtitle || 'choose/previewMedia';
 
   const addLabel = data?.addLabel || (isPictureMode ? 'Add Photo' : 'Add Video');
   const helperText = selectedMedia.length ? previewHint : emptyHint;
@@ -160,17 +160,17 @@ export default function MediaPage() {
     const tiles: React.ReactNode[] = selectedMedia.map((item, index) => (
       <button
         type="button"
-        key={`${item.url}-${index}`}
+        key={`${item.path}-${index}`}
         className="relative aspect-square overflow-hidden rounded-lg border border-gray-200 bg-gray-50"
         onClick={() => handlePreview(item)}
       >
         <img
-          src={item.url}
+          src={item.path}
           alt=""
           className="h-full w-full object-cover"
         />
         <div className="absolute inset-x-0 bottom-0 bg-black/50 px-1 py-0.5 text-[10px] text-white truncate">
-          {item.url}
+          {item.path}
         </div>
       </button>
     ));
@@ -188,12 +188,12 @@ export default function MediaPage() {
         {selectedMedia.map((item, index) => (
           <button
             type="button"
-            key={`${item.url}-${index}`}
+            key={`${item.path}-${index}`}
             className="relative h-48 overflow-hidden rounded-lg border border-gray-200 bg-black"
             onClick={() => handlePreview(item)}
           >
             <video
-              src={item.url}
+              src={item.path}
               className="h-full w-full object-cover opacity-90"
               muted
             />
@@ -203,7 +203,7 @@ export default function MediaPage() {
               </div>
             </div>
             <div className="absolute inset-x-0 bottom-0 bg-black/50 px-2 py-1 text-[10px] text-white truncate">
-              {item.url}
+              {item.path}
             </div>
           </button>
         ))}

@@ -12,7 +12,7 @@ const TAG = 'LingXia.Media';
 interface PreviewMediaPayload {
   path: string;
   media_type: number;
-  cover_url?: string;
+  cover_path?: string;
 }
 
 interface SaveMediaPayload {

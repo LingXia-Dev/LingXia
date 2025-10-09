@@ -11,7 +11,7 @@ use serde::Serialize;
 struct PreviewMediaPayload {
     path: String,
     media_type: i32,
-    cover_url: String,
+    cover_path: String,
 }
 
 impl MediaInteraction for Platform {
@@ -32,7 +32,7 @@ impl MediaInteraction for Platform {
                     MediaKind::Video => 1,
                     MediaKind::Unknown => -1,
                 },
-                cover_url: item.cover_url.unwrap_or_default(),
+                cover_path: item.cover_path.unwrap_or_default(),
             })
             .collect();
 

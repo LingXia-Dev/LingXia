@@ -190,8 +190,8 @@ class MediaPreviewFragment : Fragment() {
         }
 
         return payloads.map { payload ->
-            val normalizedUri = normalizeUri(payload.url)
-            val coverUri = payload.coverUrl
+            val normalizedUri = normalizeUri(payload.path)
+            val coverUri = payload.coverPath
                 ?.takeIf { it.isNotEmpty() }
                 ?.let { normalizeUri(it) }
                 ?.takeUnless { it == Uri.EMPTY }

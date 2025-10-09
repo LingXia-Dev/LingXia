@@ -102,7 +102,7 @@ fn preview_media_impl(request: PreviewMediaRequest) -> Result<(), Box<dyn std::e
             MediaKind::Unknown => -1,
         } as jint;
 
-        let cover_obj = match item.cover_url.as_deref().filter(|s| !s.is_empty()) {
+        let cover_obj = match item.cover_path.as_deref().filter(|s| !s.is_empty()) {
             Some(url) => {
                 let cover_java: JString = with_jni(&mut env, |env| env.new_string(url))?;
                 cover_java.into()
