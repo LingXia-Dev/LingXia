@@ -36,11 +36,26 @@ export class FileUtils {
   /**
    * Clean directory (remove all contents)
    */
-  cleanDirectory(dirPath: string): void {
+  cleanDirectory(dirPath: string, excludeDirs: string[] = []): void {
     if (fs.existsSync(dirPath)) {
-      fs.rmSync(dirPath, { recursive: true, force: true });
+      // If no exclusions, remove entire directory
+      if (excludeDirs.length === 0) {
+        fs.rmSync(dirPath, { recursive: true, force: true });
+        this.ensureDirectory(dirPath);
+        return;
+      }
+
+      // Remove contents except excluded directories
+      const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+      for (const entry of entries) {
+        const entryPath = path.join(dirPath, entry.name);
+        if (!excludeDirs.includes(entry.name)) {
+          fs.rmSync(entryPath, { recursive: true, force: true });
+        }
+      }
+    } else {
+      this.ensureDirectory(dirPath);
     }
-    this.ensureDirectory(dirPath);
   }
 
   /**

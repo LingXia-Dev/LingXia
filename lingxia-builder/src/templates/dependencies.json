@@ -1,6 +1,13 @@
 {
   "common": {
     "devDependencies": {
+      "vite": "^7.0.4",
+      "tailwindcss": "^3.4.15",
+      "autoprefixer": "^10.4.20"
+    }
+  },
+  "logic": {
+    "devDependencies": {
       "vite": "^7.0.4"
     }
   },

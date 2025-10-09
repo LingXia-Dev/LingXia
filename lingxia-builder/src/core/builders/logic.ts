@@ -81,14 +81,46 @@ export class LogicBuilder {
    */
   private async buildLogicWithVite(logicFiles: string[], pages: string[], options: BuildOptions = {}): Promise<void> {
     const buildDir = path.join(this.projectPath, '.lingxia-build', 'logic');
+    
+    // Always clean entire directory, including node_modules
+    const nodeModulesPath = path.join(buildDir, 'node_modules');
     this.fileUtils.cleanDirectory(buildDir);
 
     // Create entry file that imports all logic files
     const entryContent = this.createLogicEntry(logicFiles, pages);
     fs.writeFileSync(path.join(buildDir, 'main.js'), entryContent);
 
-    // Create package.json for logic build using TemplateManager
-    this.templateManager.createPackageJson('logic', buildDir, this.projectPath);
+    // Prepare package files by copying from project root (preserve and only overwrite)
+    const rootPackageJson = path.join(this.projectPath, 'package.json');
+    const rootPackageLock = path.join(this.projectPath, 'package-lock.json');
+    const packageJsonPath = path.join(buildDir, 'package.json');
+    const packageLockPath = path.join(buildDir, 'package-lock.json');
+
+    if (fs.existsSync(rootPackageJson)) {
+      fs.copyFileSync(rootPackageJson, packageJsonPath);
+    }
+    if (fs.existsSync(rootPackageLock)) {
+      fs.copyFileSync(rootPackageLock, packageLockPath);
+    }
+
+    // Keep root package.json as-is (scripts unchanged) to ensure consistency across layers
+
+    // Install dependencies: prefer npm ci when lock exists
+    const hasLock = fs.existsSync(packageLockPath);
+    const hasNodeModules = fs.existsSync(nodeModulesPath);
+    if (hasNodeModules) {
+      // Enforce fresh install per requirement
+      fs.rmSync(nodeModulesPath, { recursive: true, force: true });
+    }
+    {
+      console.log(` Installing logic dependencies...`);
+      console.log(`  -> ${hasLock ? 'Using npm ci (lock found)' : 'Using npm install (no lock found)'}`);
+      if (hasLock) {
+        execSync('npm ci', { cwd: buildDir, stdio: 'inherit' });
+      } else {
+        execSync('npm install', { cwd: buildDir, stdio: 'inherit' });
+      }
+    }
 
     // Create Vite config for logic build
     this.createLogicViteConfig(buildDir, options);
@@ -96,9 +128,8 @@ export class LogicBuilder {
     // Copy source files to build directory
     this.copySourceFiles(logicFiles, buildDir);
 
-    // Install dependencies and build with Vite
-    execSync('npm install', { cwd: buildDir, stdio: 'inherit' });
-    execSync('npm run build', { cwd: buildDir, stdio: 'inherit' });
+    // Build with Vite (invoke directly to avoid using root scripts in copied package.json)
+    execSync('npx vite build', { cwd: buildDir, stdio: 'inherit' });
 
     // Copy built logic.js to output
     const builtLogicPath = path.join(buildDir, 'dist', 'main.iife.js');

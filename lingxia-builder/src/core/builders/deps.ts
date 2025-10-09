@@ -32,18 +32,32 @@ export class DependencyResolver {
     let packageJson: any = {
       name: `lingxia-${framework}-page`,
       version: '1.0.0',
-      type: 'module'
+      type: 'module',
+      scripts: {
+        build: 'vite build'
+      }
     };
 
     if (fs.existsSync(projectPackageJson)) {
       const projectDeps = this.fileUtils.readJsonFile(projectPackageJson);
       if (projectDeps) {
-        packageJson = {
-          ...packageJson,
-          dependencies: { ...(frameworkDeps.dependencies || {}), ...(projectDeps.dependencies || {}) },
-          devDependencies: { ...(frameworkDeps.devDependencies || {}), ...(projectDeps.devDependencies || {}) }
-        };
-        console.log(' Inherited project dependencies');
+        // For view layers, only inherit dependencies, not devDependencies
+        if (framework.startsWith('view-')) {
+          packageJson = {
+            ...packageJson,
+            dependencies: { ...(frameworkDeps.dependencies || {}), ...(projectDeps.dependencies || {}) },
+            devDependencies: frameworkDeps.devDependencies || {}
+          };
+          console.log(' Inherited project dependencies (view layer - no devDependencies)');
+        } else {
+          // For logic layer, inherit both dependencies and devDependencies
+          packageJson = {
+            ...packageJson,
+            dependencies: { ...(frameworkDeps.dependencies || {}), ...(projectDeps.dependencies || {}) },
+            devDependencies: { ...(frameworkDeps.devDependencies || {}), ...(projectDeps.devDependencies || {}) }
+          };
+          console.log(' Inherited project dependencies');
+        }
       }
     } else {
       packageJson = {

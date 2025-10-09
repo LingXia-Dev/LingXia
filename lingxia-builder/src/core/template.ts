@@ -117,7 +117,7 @@ export class TemplateManager {
     const dependencies = JSON.parse(fs.readFileSync(depsPath, 'utf-8'));
 
     if (framework === 'logic') {
-      return { devDependencies: dependencies.common.devDependencies };
+      return { devDependencies: dependencies.logic.devDependencies };
     }
 
     // Validate framework
