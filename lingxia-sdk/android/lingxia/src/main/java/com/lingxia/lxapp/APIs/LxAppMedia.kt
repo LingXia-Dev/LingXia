@@ -189,7 +189,11 @@ internal object LxAppMedia {
         appCompat.runOnUiThread {
             val modeStr = when (mode) { 1 -> "videos"; 2 -> "mix"; else -> "images" }
             if (allowCamera && !allowAlbum) {
-                val captureMode = if (mode == 1) "video" else "image"
+                // Camera-only: honor image/video; Mix is album-only, default to image
+                val captureMode = when (mode) {
+                    1 -> "video"
+                    else -> "image" // 0: images, 2: mix -> image
+                }
                 MediaCaptureFragment.start(
                     appCompat,
                     captureMode,

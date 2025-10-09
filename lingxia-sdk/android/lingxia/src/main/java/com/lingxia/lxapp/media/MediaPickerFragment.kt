@@ -49,6 +49,9 @@ class MediaPickerFragment : Fragment() {
         private const val ARG_CAMERA_FACING = "arg_camera_facing"
         private const val CAMERA_ITEM_TYPE = "__camera__"
         private val CAMERA_PLACEHOLDER_URI: Uri = Uri.parse("lxapp-camera://capture")
+        // Sentinel album IDs for pseudo entries
+        private const val ALBUM_ALL_VIDEOS_ID: Long = -10001L
+        private const val ALBUM_ALL_IMAGES_ID: Long = -10002L
 
         fun start(
             activity: AppCompatActivity,
@@ -79,7 +82,7 @@ class MediaPickerFragment : Fragment() {
         get() = arguments?.getLong(ARG_CALLBACK_ID) ?: 0L
 
     private val selectedMode: String
-        get() = arguments?.getString(ARG_MODE) ?: "images"
+        get() = arguments?.getString(ARG_MODE) ?: "mix"
 
     private val allowCamera: Boolean
         get() = arguments?.getBoolean(ARG_ALLOW_CAMERA) ?: false
@@ -295,23 +298,52 @@ class MediaPickerFragment : Fragment() {
                 b.count += 1
                 if (b.coverUri == null) b.coverUri = item.uri
             }
-            val list = ArrayList<AlbumItem>()
+            val systemAlbums = ArrayList<AlbumItem>()
             for ((_, builder) in albumMap) {
                 if (builder.id != null) {
-                    list.add(AlbumItem(builder.id, builder.name, builder.count, builder.coverUri))
+                    systemAlbums.add(AlbumItem(builder.id, builder.name, builder.count, builder.coverUri))
                 }
             }
-            albums = list
-            setupAlbumList()
-            // default album = the one with largest count
-            val defaultAlbum = albums.maxByOrNull { it.count }
-            if (defaultAlbum != null) {
-                currentAlbumId = defaultAlbum.id
-                (albumSelectorView?.getChildAt(0) as? TextView)?.text = defaultAlbum.name
-                adapter.submitList(filterByAlbum(allItems))
-            } else {
-                adapter.submitList(emptyList())
+
+            // Inject pseudo albums at top based on mode
+            val lowerMode = selectedMode.lowercase()
+            val allCount = items.size
+            val firstAllCover = items.firstOrNull()?.uri
+            val videos = items.filter { it.fileType == "video" }
+            val images = items.filter { it.fileType == "image" }
+            val firstVideoCover = videos.firstOrNull()?.uri
+            val firstImageCover = images.firstOrNull()?.uri
+
+            val albumList = ArrayList<AlbumItem>()
+            when (lowerMode) {
+                "videos" -> {
+                    // Title: 所有视频; albums: [所有视频] + system video categories
+                    albumList.add(AlbumItem(null, "所有视频", allCount, firstAllCover))
+                    albumList.addAll(systemAlbums)
+                }
+                "images" -> {
+                    // Title: 所有图片; albums: [所有图片] + system image categories
+                    albumList.add(AlbumItem(null, "所有图片", allCount, firstAllCover))
+                    albumList.addAll(systemAlbums)
+                }
+                else -> {
+                    // mix: Title: 图片和视频; albums: [图片和视频] + [所有视频] + system categories
+                    albumList.add(AlbumItem(null, "图片和视频", allCount, firstAllCover))
+                    albumList.add(AlbumItem(ALBUM_ALL_VIDEOS_ID, "所有视频", videos.size, firstVideoCover))
+                    albumList.addAll(systemAlbums)
+                }
             }
+            albums = albumList
+            setupAlbumList()
+            // Default selection per mode
+            val defaultTitle = when (lowerMode) {
+                "videos" -> "所有视频"
+                "images" -> "所有图片"
+                else -> "图片和视频"
+            }
+            currentAlbumId = if (lowerMode == "mix") null else null // null denotes the top "all" option
+            (albumSelectorView?.getChildAt(0) as? TextView)?.text = defaultTitle
+            adapter.submitList(filterByAlbum(allItems))
             albumMenuContainer?.visibility = View.GONE
             applySendButtonStyle(0)
         }
@@ -754,8 +786,8 @@ class MediaPickerFragment : Fragment() {
                     holder.cover.setImageDrawable(null)
                     holder.cover.setBackgroundColor(Color.DKGRAY)
                 }
-                // Right green arrow for selected album
-                if (currentAlbumId != null && currentAlbumId == item.id) {
+                // Right green check for selected album (including null id)
+                if (currentAlbumId == item.id) {
                     if (holder.itemView.findViewWithTag<View>("sel_check") == null) {
                         val size = dp(ctx, 18)
                         val check = CheckMarkView(ctx, Color.parseColor("#07C160"), dp(ctx, 2).toFloat()).apply {
@@ -795,7 +827,12 @@ class MediaPickerFragment : Fragment() {
 
     private fun filterByAlbum(list: List<GridItem>): List<GridItem> {
         val id = currentAlbumId
-        val filtered = if (id == null) list else list.filter { it.bucketId == id }
+        val filtered = when (id) {
+            null -> list // All of current mode (for mix: all images + videos)
+            ALBUM_ALL_VIDEOS_ID -> list.filter { it.fileType == "video" }
+            ALBUM_ALL_IMAGES_ID -> list.filter { it.fileType == "image" }
+            else -> list.filter { it.bucketId == id }
+        }
         return if (allowCamera) {
             ArrayList<GridItem>(filtered.size + 1).apply {
                 add(cameraGridItem())
