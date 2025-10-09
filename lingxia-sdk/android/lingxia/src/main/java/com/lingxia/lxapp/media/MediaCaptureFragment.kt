@@ -19,6 +19,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.ParcelFileDescriptor
+import android.os.SystemClock
 import android.util.Log
 import android.view.Gravity
 import android.view.View
@@ -128,6 +129,8 @@ class MediaCaptureFragment : Fragment() {
     private var videoCapture: VideoCapture<Recorder>? = null
     private var activeRecording: Recording? = null
     private var isRecording = false
+    private var timerUpdater: Runnable? = null
+    private var recordingStartElapsedMs: Long = -1L
 
     private lateinit var mainExecutor: Executor
 
@@ -471,7 +474,8 @@ class MediaCaptureFragment : Fragment() {
                 pendingLongPressStart?.let { handler.removeCallbacks(it) }
                 pendingLongPressStart = null
                 if (video) {
-                    if (isRecording) stopRecording() else captureButton?.pressVisual(false)
+                    // Stop as soon as a recording session exists, even if START event hasn't arrived yet
+                    if (activeRecording != null) stopRecording() else captureButton?.pressVisual(false)
                 } else {
                     // If photo capture already navigated to preview, the control is hidden; otherwise, restore
                     captureButton?.pressVisual(false)
@@ -529,6 +533,8 @@ class MediaCaptureFragment : Fragment() {
             .start(mainExecutor) { event ->
                 when (event) {
                     is VideoRecordEvent.Start -> {
+                        // If the session was already stopped before START (quick tap), ignore UI changes
+                        if (activeRecording == null) return@start
                         isRecording = true
                         captureButton?.setRecording(true)
                         captureButton?.setProgress(0f)
@@ -546,10 +552,12 @@ class MediaCaptureFragment : Fragment() {
                                 android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
                             )
                         }
+                        startTimerTicker()
                     }
 
                     is VideoRecordEvent.Finalize -> {
                         stopMaxDurationCountdown()
+                        stopTimerTicker()
                         isRecording = false
                         captureButton?.setRecording(false)
                         captureButton?.setProgress(0f)
@@ -566,19 +574,7 @@ class MediaCaptureFragment : Fragment() {
                     }
 
                     is VideoRecordEvent.Status -> {
-                        timerText?.let { indicator ->
-                            val totalSeconds = event.recordingStats.recordedDurationNanos / 1_000_000_000L
-                            val minutes = (totalSeconds / 60).toInt()
-                            val seconds = (totalSeconds % 60).toInt()
-                            val timeText = String.format(Locale.getDefault(), "● %02d:%02d", minutes, seconds)
-                            val spannableText = android.text.SpannableString(timeText)
-                            spannableText.setSpan(
-                                android.text.style.ForegroundColorSpan(Color.RED),
-                                0, 1, // Only the dot character
-                                android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                            )
-                            indicator.text = spannableText
-                        }
+                        // Keep using Status for progress computation; timer UI is updated by ticker
                         val maxDuration = maxDurationSeconds
                         if (maxDuration > 0) {
                             val durationSeconds = event.recordingStats.recordedDurationNanos / 1_000_000_000.0
@@ -594,6 +590,7 @@ class MediaCaptureFragment : Fragment() {
 
     private fun stopRecording() {
         stopMaxDurationCountdown()
+        stopTimerTicker()
         activeRecording?.stop()
         activeRecording = null
     }
@@ -628,6 +625,7 @@ class MediaCaptureFragment : Fragment() {
 
     private fun cancelCapture(message: String, isCancel: Boolean = false) {
         captureButton?.resetState()
+        stopTimerTicker()
         timerText?.visibility = View.GONE
         timerText?.text = "00:00"
         pendingCapture?.file?.takeIf { it.exists() }?.delete()
@@ -741,6 +739,7 @@ class MediaCaptureFragment : Fragment() {
         backButton?.visibility = View.VISIBLE
         switchCameraButton?.visibility = View.VISIBLE
         hintText?.visibility = View.VISIBLE
+        stopTimerTicker()
         timerText?.visibility = View.GONE
         timerText?.text = "00:00"
         backButton?.let { button ->
@@ -891,6 +890,7 @@ class MediaCaptureFragment : Fragment() {
 
     private fun releaseCamera() {
         stopMaxDurationCountdown()
+        stopTimerTicker()
         try {
             activeRecording?.stop()
         } catch (_: Exception) {
@@ -910,6 +910,39 @@ class MediaCaptureFragment : Fragment() {
         cameraProvider = null
         imageCapture = null
         videoCapture = null
+    }
+
+    private fun startTimerTicker() {
+        recordingStartElapsedMs = SystemClock.elapsedRealtime()
+        timerUpdater?.let { handler.removeCallbacks(it) }
+        val runnable = object : Runnable {
+            override fun run() {
+                val start = recordingStartElapsedMs
+                val txt = timerText ?: return
+                if (start <= 0L || activeRecording == null) return
+                val elapsed = (SystemClock.elapsedRealtime() - start).coerceAtLeast(0L)
+                val totalSeconds = (elapsed / 1000L).toInt()
+                val minutes = totalSeconds / 60
+                val seconds = totalSeconds % 60
+                val timeText = String.format(Locale.getDefault(), "● %02d:%02d", minutes, seconds)
+                val spannableText = android.text.SpannableString(timeText)
+                spannableText.setSpan(
+                    android.text.style.ForegroundColorSpan(Color.RED),
+                    0, 1,
+                    android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+                txt.text = spannableText
+                handler.postDelayed(this, 200L)
+            }
+        }
+        timerUpdater = runnable
+        handler.post(runnable)
+    }
+
+    private fun stopTimerTicker() {
+        timerUpdater?.let { handler.removeCallbacks(it) }
+        timerUpdater = null
+        recordingStartElapsedMs = -1L
     }
 
     private fun removeSelf() {
@@ -961,6 +994,8 @@ class MediaCaptureFragment : Fragment() {
         private val innerCircle: InnerCircleView
         private var recording = false
 
+        fun ringStrokeWidthPx(): Float = progressRing.strokeWidthPx
+
         private class InnerCircleView(context: Context, private val button: ShutterButtonView) : View(context) {
             var transition: Float = 0f
                 set(value) {
@@ -974,20 +1009,25 @@ class MediaCaptureFragment : Fragment() {
                 val cy = height / 2f
                 val radius = min(width, height) / 2f
 
-                // Draw outer band (gray ring)
-                val bandPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                    color = Color.parseColor("#60888888")
-                    style = Paint.Style.FILL
-                }
-                canvas.drawCircle(cx, cy, radius, bandPaint)
-
-                // Draw inner circle (white/gray) - smaller radius, no gap
-                val idleRatio = 0.70f
-                val recRatio = 0.50f
+                // Draw inner circle (white/gray) — two-layer design (ring + inner circle)
+                // Stronger shrink on long-press/recording
+                val idleRatio = 0.68f
+                val recRatio = 0.30f
                 val currentRatio = idleRatio - transition * (idleRatio - recRatio)
-                val innerRadius = radius * currentRatio
+                var innerRadius = radius * currentRatio
+                val ringStroke = button.ringStrokeWidthPx()
+                val ringInner = radius - ringStroke / 2f
+                val overlap = 0.5f // pixels, tiny overlap to avoid seam
+                if (button.recording) {
+                    // Pressed: hug ring inner edge (no gap), shrink comes from thicker ring
+                    innerRadius = (ringInner + overlap).coerceAtLeast(0f)
+                } else {
+                    // Idle: ensure no seam; allow slightly larger inner radius than ring inner edge
+                    if (innerRadius < ringInner + overlap) innerRadius = ringInner + overlap
+                }
                 val innerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                    color = if (button.recording) Color.parseColor("#F2F2F2") else Color.WHITE
+                    // More visible color change while pressed/recording
+                    color = if (button.recording) Color.parseColor("#E0E0E0") else Color.WHITE
                     style = Paint.Style.FILL
                 }
                 canvas.drawCircle(cx, cy, innerRadius, innerPaint)
@@ -1000,14 +1040,16 @@ class MediaCaptureFragment : Fragment() {
             diameter = max(dp(context, 88f), (base * 0.16f).toInt())
             layoutParams = LayoutParams(diameter, diameter, Gravity.CENTER)
 
-            innerCircle = InnerCircleView(context, this)
-            addView(innerCircle, LayoutParams(diameter, diameter, Gravity.CENTER))
-
-            // Progress ring on top
+            // Draw order: ring (with progress) below, inner circle above -> avoids inner-edge seam
             progressRing = ProgressRingView(context).also { ring ->
                 ring.layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
             }
             addView(progressRing)
+
+            innerCircle = InnerCircleView(context, this)
+            addView(innerCircle, LayoutParams(diameter, diameter, Gravity.CENTER))
+            // Apply idle ring thickness immediately for clear visibility
+            animatePress(false)
             refresh()
         }
 
@@ -1036,7 +1078,8 @@ class MediaCaptureFragment : Fragment() {
             recording = pressed
             if (!recording) progressRing.progress = 0f
             val d = diameter.toFloat()
-            val strokeTarget = if (pressed) d * 0.11f else d * 0.075f
+            // Make idle ring clearly visible; pressed ring much thicker to shrink the inner circle (no gap)
+            val strokeTarget = if (pressed) d * 0.42f else d * 0.22f
             progressRing.animateStrokeTo(strokeTarget, 180)
             val from = innerCircle.transition
             val to = if (pressed) 1f else 0f
@@ -1073,6 +1116,7 @@ class MediaCaptureFragment : Fragment() {
         private val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
             strokeCap = Paint.Cap.ROUND
+            // Revert to earlier subtler ring color
             color = Color.parseColor("#553A3A3C")
         }
         private val progressPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -1080,7 +1124,8 @@ class MediaCaptureFragment : Fragment() {
             strokeCap = Paint.Cap.ROUND
             color = Color.parseColor("#FF07C160")
         }
-        private val rect = RectF()
+        private val ringRect = RectF()       // ring centerline rect
+        private val progressRect = RectF()   // progress centerline rect (outer half of ring)
         var progress: Float = 0f
             set(value) {
                 field = value.coerceIn(0f, 1f)
@@ -1095,26 +1140,37 @@ class MediaCaptureFragment : Fragment() {
         init {
             val stroke = dp(context, 6f).toFloat()
             backgroundPaint.strokeWidth = stroke
-            progressPaint.strokeWidth = stroke
+            // Keep progress clearly thinner than ring
+            progressPaint.strokeWidth = dp(context, 2f).toFloat()
         }
 
         override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
             super.onSizeChanged(w, h, oldw, oldh)
             val size = min(w, h)
             if (size <= 0) return
-            val stroke = max(dp(context, 3f).toFloat(), size * 0.075f)
-            backgroundPaint.strokeWidth = stroke
-            progressPaint.strokeWidth = stroke * 0.6f // thinner green progress
+            val ringStroke = max(dp(context, 3f).toFloat(), size * 0.075f)
+            backgroundPaint.strokeWidth = ringStroke
+            // Progress stays constant thickness
+            progressPaint.strokeWidth = dp(context, 2f).toFloat()
         }
 
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
-            val inset = backgroundPaint.strokeWidth / 2f
-            rect.set(inset, inset, width - inset, height - inset)
-            canvas.drawOval(rect, backgroundPaint)
+            // Compute centerline rects each draw to follow animated stroke
+            // Ring centerline
+            val ringInset = backgroundPaint.strokeWidth / 2f
+            ringRect.set(ringInset, ringInset, width - ringInset, height - ringInset)
+
+            // Progress hugs the ring's outer edge (not inside), use its own thinner stroke centerline
+            val progInset = progressPaint.strokeWidth / 2f
+            progressRect.set(progInset, progInset, width - progInset, height - progInset)
+
+            // Draw base ring
+            canvas.drawOval(ringRect, backgroundPaint)
+            // Draw progress along outer edge of ring (not inside)
             if (showProgress && progress > 0f) {
                 val sweep = 360f * progress
-                canvas.drawArc(rect, -90f, sweep, false, progressPaint)
+                canvas.drawArc(progressRect, -90f, sweep, false, progressPaint)
             }
         }
 
@@ -1125,7 +1181,8 @@ class MediaCaptureFragment : Fragment() {
             animator.addUpdateListener {
                 val v = it.animatedValue as Float
                 backgroundPaint.strokeWidth = v
-                progressPaint.strokeWidth = v * 0.6f
+                // Progress width stays constant to keep thinner than ring
+                progressPaint.strokeWidth = dp(context, 2f).toFloat()
                 invalidate()
             }
             animator.start()
