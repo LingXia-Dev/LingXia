@@ -5,7 +5,10 @@ use lingxia_platform::{
     CameraFacing, ChooseMediaMode, ChooseMediaRequest, MediaInteraction, MediaKind, MediaSource,
     PreviewMediaItem, PreviewMediaRequest, SaveMediaRequest,
 };
-use rong::{FromJSObj, IntoJSAsyncIteratorExt, JSContext, JSFunc, JSObject, JSResult, RongJSError};
+use rong::{
+    FromJSObj, IntoJSAsyncIteratorExt, JSContext, JSFunc, JSObject, JSResult, RongJSError,
+    function::Optional,
+};
 use std::fs::File;
 use std::io::{self};
 use std::os::fd::FromRawFd;
@@ -133,7 +136,7 @@ struct JSChooseMediaOptions {
     #[rename = "mediaType"]
     media_type: Option<String>, // "image" | "video" | "mix"
     #[rename = "sourceType"]
-    source_type: Option<Vec<String>>, // ["album", "camera"]
+    source_type: Option<String>, // "album" | "camera"
     camera: Option<String>, // "front" | "back"
     #[rename = "sizeType"]
     size_type: Option<Vec<String>>, // ["original", "compressed"]
@@ -160,25 +163,22 @@ impl rong::function::JSParameterType for ChosenMediaEntry {}
 
 fn parse_choose_mode(s: Option<String>) -> ChooseMediaMode {
     match s
-        .unwrap_or_else(|| "image".to_string())
+        .unwrap_or_else(|| "mix".to_string())
         .to_lowercase()
         .as_str()
     {
         "video" | "videos" => ChooseMediaMode::Videos,
-        "mix" => ChooseMediaMode::Mix,
-        _ => ChooseMediaMode::Images,
+        "image" | "images" => ChooseMediaMode::Images,
+        _ => ChooseMediaMode::Mix,
     }
 }
 
-fn parse_sources(v: Option<Vec<String>>) -> Vec<MediaSource> {
-    v.unwrap_or_else(|| vec!["album".to_string(), "camera".to_string()])
-        .into_iter()
-        .filter_map(|s| match s.to_lowercase().as_str() {
-            "album" => Some(MediaSource::Album),
-            "camera" => Some(MediaSource::Camera),
-            _ => None,
-        })
-        .collect()
+fn parse_source(v: Option<String>) -> MediaSource {
+    match v.as_deref() {
+        Some("camera") => MediaSource::Camera,
+        // default and "album": album-only
+        _ => MediaSource::Album,
+    }
 }
 
 fn parse_camera(s: Option<String>) -> Option<CameraFacing> {
@@ -210,10 +210,7 @@ fn parse_size_flags(v: Option<Vec<String>>) -> (bool, bool) {
     }
 }
 
-fn choose_media(
-    ctx: JSContext,
-    options: rong::function::Optional<JSChooseMediaOptions>,
-) -> JSResult<JSObject> {
+fn choose_media(ctx: JSContext, options: Optional<JSChooseMediaOptions>) -> JSResult<JSObject> {
     let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
 
     let opts = options.as_ref().cloned().unwrap_or(JSChooseMediaOptions {
@@ -234,10 +231,23 @@ fn choose_media(
         .max_duration
         .filter(|v| !v.is_sign_negative())
         .map(|v| v.min(u32::MAX as f64).round() as u32);
+    let source = parse_source(opts.source_type);
+    let source_types = vec![source];
+    let mut mode = parse_choose_mode(opts.media_type);
+    // Mix applies only to album UI; when camera-only, report error
+    if matches!(source, MediaSource::Camera) {
+        if let ChooseMediaMode::Mix = mode {
+            return Err(RongJSError::Error(
+                "camera source does not support mediaType \"mix\"; use \"image\" or \"video\""
+                    .into(),
+            ));
+        }
+    }
+
     let request = ChooseMediaRequest {
         max_count: opts.max_count.or(opts.count).unwrap_or(20),
-        mode: parse_choose_mode(opts.media_type),
-        source_types: parse_sources(opts.source_type),
+        mode,
+        source_types,
         max_duration_seconds,
         camera_facing: parse_camera(opts.camera),
         allow_original,
