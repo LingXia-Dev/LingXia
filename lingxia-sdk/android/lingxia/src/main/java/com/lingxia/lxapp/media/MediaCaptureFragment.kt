@@ -52,6 +52,8 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import com.lingxia.lxapp.NativeApi
+import android.text.SpannableString
+import android.text.style.ForegroundColorSpan
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -545,13 +547,12 @@ class MediaCaptureFragment : Fragment() {
                         hintText?.visibility = View.INVISIBLE
                         timerText?.visibility = View.VISIBLE
                         // Red dot + time
-                        timerText?.text = android.text.SpannableString("● 00:00").apply {
-                            setSpan(
-                                android.text.style.ForegroundColorSpan(Color.RED),
-                                0, 1,
-                                android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                            )
+                        val initialDisplaySeconds = if (maxDurationSeconds > 0) {
+                            maxDurationSeconds
+                        } else {
+                            0
                         }
+                        timerText?.text = formatTimerDisplay(initialDisplaySeconds)
                         startTimerTicker()
                     }
 
@@ -912,6 +913,21 @@ class MediaCaptureFragment : Fragment() {
         videoCapture = null
     }
 
+    private fun formatTimerDisplay(secondsInput: Int): SpannableString {
+        val totalSeconds = secondsInput.coerceAtLeast(0)
+        val minutes = totalSeconds / 60
+        val seconds = totalSeconds % 60
+        val timeText = String.format(Locale.getDefault(), "● %02d:%02d", minutes, seconds)
+        return SpannableString(timeText).apply {
+            setSpan(
+                ForegroundColorSpan(Color.RED),
+                0,
+                1,
+                android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+        }
+    }
+
     private fun startTimerTicker() {
         recordingStartElapsedMs = SystemClock.elapsedRealtime()
         timerUpdater?.let { handler.removeCallbacks(it) }
@@ -921,17 +937,14 @@ class MediaCaptureFragment : Fragment() {
                 val txt = timerText ?: return
                 if (start <= 0L || activeRecording == null) return
                 val elapsed = (SystemClock.elapsedRealtime() - start).coerceAtLeast(0L)
-                val totalSeconds = (elapsed / 1000L).toInt()
-                val minutes = totalSeconds / 60
-                val seconds = totalSeconds % 60
-                val timeText = String.format(Locale.getDefault(), "● %02d:%02d", minutes, seconds)
-                val spannableText = android.text.SpannableString(timeText)
-                spannableText.setSpan(
-                    android.text.style.ForegroundColorSpan(Color.RED),
-                    0, 1,
-                    android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                )
-                txt.text = spannableText
+                val elapsedSeconds = (elapsed / 1000L).toInt()
+                val maxDuration = maxDurationSeconds
+                val displaySeconds = if (maxDuration > 0) {
+                    (maxDuration - elapsedSeconds).coerceAtLeast(0)
+                } else {
+                    elapsedSeconds
+                }
+                txt.text = formatTimerDisplay(displaySeconds)
                 handler.postDelayed(this, 200L)
             }
         }
