@@ -1,7 +1,11 @@
 package com.lingxia.lxapp.media
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.graphics.ImageDecoder
+import android.graphics.Matrix
 import android.graphics.Typeface
 import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
@@ -29,11 +33,13 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import androidx.exifinterface.media.ExifInterface
 import java.io.File
 import java.lang.ref.WeakReference
 import java.net.URL
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
+import kotlin.math.max
 
 class MediaPreviewFragment : Fragment() {
     private var viewPager: ViewPager2? = null
@@ -416,10 +422,11 @@ private class PreviewPagerAdapter(
             }
 
             if (isLocalUri(uri)) {
-                zoomImageView.setImageURI(uri)
+                progressBar.visibility = View.VISIBLE
+                currentLoader = ImageLoader.loadLocal(context, uri, zoomImageView, progressBar)
             } else {
                 progressBar.visibility = View.VISIBLE
-                currentLoader = ImageLoader.load(uri.toString(), zoomImageView, progressBar)
+                currentLoader = ImageLoader.loadRemote(uri.toString(), zoomImageView, progressBar)
             }
         }
 
@@ -462,7 +469,7 @@ private class PreviewPagerAdapter(
                     thumbnailView.setImageURI(coverUri)
                 } else {
                     thumbnailView.visibility = View.VISIBLE
-                    currentLoader = ImageLoader.load(coverUri.toString(), thumbnailView, null)
+                    currentLoader = ImageLoader.loadRemote(coverUri.toString(), thumbnailView, null)
                 }
             }
 
@@ -555,7 +562,7 @@ private class PreviewPagerAdapter(
     companion object ImageLoader {
         private val executor = Executors.newCachedThreadPool()
 
-        fun load(url: String, target: ImageView, progressBar: ProgressBar?): Future<*> {
+        fun loadRemote(url: String, target: ImageView, progressBar: ProgressBar?): Future<*> {
             val imageRef = WeakReference(target)
             val progressRef = progressBar?.let { WeakReference(it) }
             return executor.submit {
@@ -578,6 +585,126 @@ private class PreviewPagerAdapter(
                     }
                 }
             }
+        }
+
+        fun loadLocal(
+            context: Context,
+            uri: Uri,
+            target: ImageView,
+            progressBar: ProgressBar?
+        ): Future<*> {
+            val appContext = context.applicationContext
+            val imageRef = WeakReference(target)
+            val progressRef = progressBar?.let { WeakReference(it) }
+            return executor.submit {
+                val imageView = imageRef.get()
+                val metrics = imageView?.context?.resources?.displayMetrics
+                val targetW = metrics?.widthPixels ?: 1080
+                val targetH = metrics?.heightPixels ?: 1920
+                val bitmap = decodeLocalBitmap(appContext, uri, targetW, targetH)
+                imageView?.post {
+                    progressRef?.get()?.visibility = View.GONE
+                    if (bitmap != null) {
+                        imageView.setImageBitmap(bitmap)
+                    } else {
+                        imageView.setImageResource(android.R.drawable.ic_dialog_alert)
+                    }
+                }
+            }
+        }
+
+        private fun decodeLocalBitmap(
+            context: Context,
+            uri: Uri,
+            targetWidth: Int,
+            targetHeight: Int
+        ): Bitmap? {
+            return try {
+                when {
+                    uri.scheme.isNullOrEmpty() || uri.scheme.equals("file", true) -> {
+                        val path = uri.path ?: return null
+                        decodeFileWithSample(path, targetWidth, targetHeight)
+                    }
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.P -> {
+                        val source = ImageDecoder.createSource(context.contentResolver, uri)
+                        ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
+                            val sample = calculateSample(info.size.width, info.size.height, targetWidth, targetHeight)
+                            val width = max(1, info.size.width / sample)
+                            val height = max(1, info.size.height / sample)
+                            decoder.setTargetSize(width, height)
+                            decoder.isMutableRequired = false
+                        }
+                    }
+                    else -> {
+                        context.contentResolver.openInputStream(uri)?.use { stream ->
+                            BitmapFactory.decodeStream(stream)
+                        }
+                    }
+                }
+            } catch (_: Exception) {
+                null
+            }
+        }
+
+        private fun decodeFileWithSample(path: String, targetWidth: Int, targetHeight: Int): Bitmap? {
+            val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(path, opts)
+            if (opts.outWidth <= 0 || opts.outHeight <= 0) {
+                return BitmapFactory.decodeFile(path)
+            }
+
+            val sample = calculateSample(opts.outWidth, opts.outHeight, targetWidth, targetHeight)
+            val decodeOpts = BitmapFactory.Options().apply {
+                inSampleSize = sample
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            }
+
+            val decoded = BitmapFactory.decodeFile(path, decodeOpts) ?: return null
+            val orientation = try {
+                ExifInterface(path).getAttributeInt(
+                    ExifInterface.TAG_ORIENTATION,
+                    ExifInterface.ORIENTATION_NORMAL
+                )
+            } catch (_: Exception) {
+                ExifInterface.ORIENTATION_UNDEFINED
+            }
+
+            val matrix = Matrix()
+            when (orientation) {
+                ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
+                ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
+                ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
+                ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.postScale(-1f, 1f)
+                ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.postScale(1f, -1f)
+            }
+
+            return if (!matrix.isIdentity) {
+                try {
+                    Bitmap.createBitmap(decoded, 0, 0, decoded.width, decoded.height, matrix, true)
+                        .also { if (it != decoded) decoded.recycle() }
+                } catch (_: Exception) {
+                    decoded
+                }
+            } else {
+                decoded
+            }
+        }
+
+        private fun calculateSample(
+            width: Int,
+            height: Int,
+            targetWidth: Int,
+            targetHeight: Int
+        ): Int {
+            var sample = 1
+            var outWidth = width
+            var outHeight = height
+            while (outWidth / 2 >= targetWidth || outHeight / 2 >= targetHeight) {
+                outWidth /= 2
+                outHeight /= 2
+                sample *= 2
+            }
+            return sample.coerceAtLeast(1)
         }
     }
 }
