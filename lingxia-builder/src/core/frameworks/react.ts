@@ -190,10 +190,10 @@ export class ReactProcessor extends FrameworkProcessor {
     );
 
     // CSS path: /assets/*.css -> ./baseName.css
-    // fixedContent = fixedContent.replace(
-    //   /<link[^>]*href="\/assets\/[^"]*\.css"[^>]*>/g,
-    //   `<link rel="stylesheet" href="./${baseName}.css">`
-    // );
+    fixedContent = fixedContent.replace(
+      /<link[^>]*href="\/assets\/[^"]*\.css"[^>]*>/g,
+      `<link rel="stylesheet" href="./${baseName}.css">`
+    );
 
     // Module preload paths: /assets/*.js -> ../../assets/*.js
     fixedContent = fixedContent.replace(
