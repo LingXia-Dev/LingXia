@@ -1,8 +1,11 @@
+use crate::WebResourceResponse;
 use crate::webview::{WebTag, get_webview_delegate};
 use objc2::runtime::{AnyObject, NSObject};
 use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send, rc::Retained};
 use objc2_foundation::{NSData, NSMutableDictionary, NSObjectProtocol, NSString};
 use objc2_web_kit::WKURLSchemeHandler;
+use std::fs::File;
+use std::io::Read;
 
 // Define ivars struct first
 #[derive(Debug)]
@@ -163,9 +166,9 @@ define_class!(
                 match response {
                     Some(http_response) => {
                         log::debug!(
-                            "Got response from handle_request, status: {}, body length: {}",
-                            http_response.status(),
-                            http_response.body().len()
+                            "Got response from handle_request, status: {}, file: {}",
+                            http_response.parts().status,
+                            http_response.file_path().display()
                         );
                         self.send_response_to_task(task, http_response, request);
                     }
@@ -213,36 +216,39 @@ impl LingXiaSchemeHandler {
     fn send_response_to_task(
         &self,
         task: *mut AnyObject,
-        http_response: http::Response<Vec<u8>>,
+        response: WebResourceResponse,
         request: *mut AnyObject,
     ) {
         unsafe {
-            log::info!("=== send_response_to_task ENTRY ===");
-            let body_len = http_response.body().len();
-            log::info!(
-                "Response body length: {}, status: {}",
-                body_len,
-                http_response.status().as_u16()
-            );
-
-            // Destructure the http::Response to get parts and body
-            let (parts, body) = http_response.into_parts();
+            let (parts, file_path) = response.into_parts();
+            let status = parts.status;
+            let mut headers_map = parts.headers.clone();
 
             // Get the original request URL for creating the response
             let url_obj: *mut AnyObject = msg_send![request, URL];
 
-            let status_code = parts.status.as_u16() as i64;
+            let status_code = status.as_u16() as i64;
             let http_version = NSString::from_str("HTTP/1.1");
             let headers = NSMutableDictionary::new();
 
-            log::info!("Response has {} headers", parts.headers.len());
+            let mut file = match File::open(&file_path) {
+                Ok(file) => file,
+                Err(e) => {
+                    log::error!(
+                        "Failed to open response file {}: {}",
+                        file_path.display(),
+                        e
+                    );
+                    self.fail_task_with_error(task, "Failed to open response file");
+                    return;
+                }
+            };
 
             // Get Content-Type from response headers
-            let content_type = parts
-                .headers
+            let content_type = headers_map
                 .get("content-type")
                 .and_then(|v| v.to_str().ok())
-                .unwrap_or("text/html");
+                .unwrap_or("application/octet-stream");
 
             // Add Content-Type header with charset
             let content_type_key = NSString::from_str("Content-Type");
@@ -255,12 +261,15 @@ impl LingXiaSchemeHandler {
             headers.insert(&*content_type_key, &*content_type_value);
 
             // Add Content-Length header
-            let content_length_key = NSString::from_str("Content-Length");
-            let content_length_value = NSString::from_str(&body.len().to_string());
-            headers.insert(&*content_length_key, &*content_length_value);
+            let file_len = file.metadata().map(|m| m.len()).unwrap_or(0);
+            if !headers_map.contains_key("content-length") {
+                if let Ok(value) = http::HeaderValue::from_str(&file_len.to_string()) {
+                    headers_map.insert(http::header::CONTENT_LENGTH, value);
+                }
+            }
 
             // Add all headers from the response
-            for (key, value) in parts.headers.iter() {
+            for (key, value) in headers_map.iter() {
                 if let Ok(value_str) = value.to_str() {
                     let key_ns = NSString::from_str(key.as_str());
                     let value_ns = NSString::from_str(value_str);
@@ -278,12 +287,28 @@ impl LingXiaSchemeHandler {
                 headerFields: &*headers];
 
             if !response_result.is_null() {
-                // Create response data using NSData::from_vec like Swift's Data(Array(...))
-                let body_data = NSData::from_vec(body.clone());
-
                 // Send response to WebView - use correct method names from wry
                 let _: () = msg_send![task, didReceiveResponse: response_result];
-                let _: () = msg_send![task, didReceiveData: &*body_data];
+
+                let mut buffer = [0u8; 64 * 1024];
+                loop {
+                    match file.read(&mut buffer) {
+                        Ok(0) => break,
+                        Ok(read_bytes) => {
+                            let chunk = NSData::from_vec(buffer[..read_bytes].to_vec());
+                            let _: () = msg_send![task, didReceiveData: &*chunk];
+                        }
+                        Err(e) => {
+                            log::error!(
+                                "Failed while streaming response file {}: {}",
+                                file_path.display(),
+                                e
+                            );
+                            self.fail_task_with_error(task, "Failed to read response data");
+                            return;
+                        }
+                    }
+                }
 
                 let _: () = msg_send![task, didFinish];
             } else {

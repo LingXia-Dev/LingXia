@@ -44,17 +44,19 @@ public class LingXiaWebView extends WebView {
         public final int statusCode;
         public final String reasonPhrase;
         public final Map<String, String> responseHeaders;
-        public final byte[] data;
+        public final String filePath;
+        public final long contentLength;
 
         public WebResourceResponseData(String mimeType, String encoding, int statusCode,
-                                     String reasonPhrase, Map<String, String> responseHeaders,
-                                     byte[] data) {
+                                       String reasonPhrase, Map<String, String> responseHeaders,
+                                       String filePath, long contentLength) {
             this.mimeType = mimeType;
             this.encoding = encoding;
             this.statusCode = statusCode;
             this.reasonPhrase = reasonPhrase;
             this.responseHeaders = responseHeaders;
-            this.data = data;
+            this.filePath = filePath;
+            this.contentLength = contentLength;
         }
     }
 

@@ -1,7 +1,10 @@
+use crate::WebResourceResponse;
 use crate::webview::{WebTag, find_webview, get_webview_delegate};
 use napi_ohos::Result as NapiResult;
 use ohos_web_sys::*;
 use std::ffi::{CStr, CString};
+use std::fs::File;
+use std::io::Read;
 use std::os::raw::{c_char, c_int};
 use std::ptr;
 
@@ -105,9 +108,10 @@ pub unsafe extern "C" fn on_lx_request_start(
 /// Send a successful response
 unsafe fn send_response(
     resource_handler: *const ArkWeb_ResourceHandler,
-    http_response: http::Response<Vec<u8>>,
+    http_response: WebResourceResponse,
 ) {
-    let (parts, body) = http_response.into_parts();
+    let (parts, file_path) = http_response.into_parts();
+    let mut headers_map = parts.headers.clone();
 
     // Create ArkWeb response
     let mut response: *mut ArkWeb_Response = ptr::null_mut();
@@ -120,8 +124,42 @@ unsafe fn send_response(
         OH_ArkWebResponse_SetStatus(response, parts.status.as_u16() as c_int);
     }
 
+    let mut file = match File::open(&file_path) {
+        Ok(file) => file,
+        Err(e) => {
+            log::error!(
+                "Failed to open response file for Harmony webview: {} ({})",
+                file_path.display(),
+                e
+            );
+            unsafe {
+                OH_ArkWebResponse_SetStatus(response, 500);
+            }
+            let message = CString::new("Internal Server Error").unwrap();
+            unsafe {
+                OH_ArkWebResourceHandler_DidReceiveResponse(resource_handler, response);
+                OH_ArkWebResourceHandler_DidReceiveData(
+                    resource_handler,
+                    message.as_ptr() as *const u8,
+                    message.as_bytes().len() as i64,
+                );
+                OH_ArkWebResourceHandler_DidFinish(resource_handler);
+                OH_ArkWeb_DestroyResponse(response);
+            }
+            return;
+        }
+    };
+
+    if !headers_map.contains_key(http::header::CONTENT_LENGTH) {
+        if let Ok(metadata) = file.metadata() {
+            if let Ok(value) = http::HeaderValue::from_str(&metadata.len().to_string()) {
+                headers_map.insert(http::header::CONTENT_LENGTH, value);
+            }
+        }
+    }
+
     // Set headers
-    for (key, value) in parts.headers.iter() {
+    for (key, value) in headers_map.iter() {
         if let Ok(value_str) = value.to_str() {
             if let (Ok(key_cstr), Ok(value_cstr)) =
                 (CString::new(key.as_str()), CString::new(value_str))
@@ -144,13 +182,25 @@ unsafe fn send_response(
     }
 
     // Send response body
-    if !body.is_empty() {
-        unsafe {
-            OH_ArkWebResourceHandler_DidReceiveData(
-                resource_handler,
-                body.as_ptr(),
-                body.len() as i64,
-            );
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        match file.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(read_bytes) => unsafe {
+                OH_ArkWebResourceHandler_DidReceiveData(
+                    resource_handler,
+                    buffer.as_ptr(),
+                    read_bytes as i64,
+                );
+            },
+            Err(e) => {
+                log::error!(
+                    "Failed while streaming response file for Harmony webview: {} ({})",
+                    file_path.display(),
+                    e
+                );
+                break;
+            }
         }
     }
 

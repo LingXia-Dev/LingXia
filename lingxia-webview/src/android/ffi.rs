@@ -1,11 +1,12 @@
 use crate::webview::{WebTag, get_webview_delegate, register_webview};
-use crate::{LogLevel, WebViewError};
+use crate::{LogLevel, WebResourceResponse, WebViewError};
 use http;
 use http::header::{HeaderMap, HeaderName, HeaderValue};
-use http::{Method, Request, Response};
+use http::{Method, Request};
 use jni::JNIEnv;
 use jni::objects::{JObject, JObjectArray, JString};
 use jni::sys::jint;
+use std::fs;
 use std::sync::Arc;
 
 // Import from webview.rs
@@ -155,7 +156,7 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handleRequest<'a>
     }
 }
 
-fn create_java_response<'a>(env: &mut JNIEnv<'a>, response: Response<Vec<u8>>) -> JObject<'a> {
+fn create_java_response<'a>(env: &mut JNIEnv<'a>, response: WebResourceResponse) -> JObject<'a> {
     // Try to find the WebResourceResponseData inner class with package
     let response_class =
         match env.find_class("com/lingxia/webview/LingXiaWebView$WebResourceResponseData") {
@@ -163,11 +164,12 @@ fn create_java_response<'a>(env: &mut JNIEnv<'a>, response: Response<Vec<u8>>) -
             Err(_) => return JObject::null(),
         };
 
+    let (parts, file_path) = response.into_parts();
+
     // Extract response components
-    let status = response.status().as_u16() as i32;
-    let reason = response.status().canonical_reason().unwrap_or("Unknown");
-    let headers = response.headers();
-    let body = response.body();
+    let status = parts.status.as_u16() as i32;
+    let reason = parts.status.canonical_reason().unwrap_or("Unknown");
+    let headers = &parts.headers;
 
     // Get content type and parse it
     let (mime_type, encoding) = headers
@@ -221,22 +223,30 @@ fn create_java_response<'a>(env: &mut JNIEnv<'a>, response: Response<Vec<u8>>) -
         Ok(s) => s,
         Err(_) => return JObject::null(),
     };
-    let byte_array = match env.byte_array_from_slice(body) {
-        Ok(arr) => arr,
+    let file_path_str = match env.new_string(file_path.to_string_lossy()) {
+        Ok(s) => s,
         Err(_) => return JObject::null(),
     };
+
+    let content_length = headers
+        .get(http::header::CONTENT_LENGTH)
+        .and_then(|h| h.to_str().ok())
+        .and_then(|v| v.parse::<i64>().ok())
+        .or_else(|| fs::metadata(&file_path).ok().map(|meta| meta.len() as i64))
+        .unwrap_or(-1);
 
     // Create the WebResourceResponseData object
     match env.new_object(
         response_class,
-        "(Ljava/lang/String;Ljava/lang/String;ILjava/lang/String;Ljava/util/Map;[B)V",
+        "(Ljava/lang/String;Ljava/lang/String;ILjava/lang/String;Ljava/util/Map;Ljava/lang/String;J)V",
         &[
             (&mime_type_str).into(),
             (&encoding_str).into(),
             status.into(),
             (&reason_str).into(),
             (&map).into(),
-            (&byte_array).into(),
+            (&file_path_str).into(),
+            content_length.into(),
         ],
     ) {
         Ok(obj) => obj,

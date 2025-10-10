@@ -1,4 +1,5 @@
 use crate::{LogLevel, WebViewError};
+use std::path::PathBuf;
 
 /// Interface for controlling WebView (100% copy from lxapp)
 pub trait WebViewController: Send + Sync {
@@ -82,8 +83,37 @@ pub trait WebViewDelegate: Send + Sync {
     fn handle_post_message(&self, msg: String);
 
     /// Handles an HTTP request from the page
-    fn handle_request(&self, req: http::Request<Vec<u8>>) -> Option<http::Response<Vec<u8>>>;
+    fn handle_request(&self, req: http::Request<Vec<u8>>) -> Option<WebResourceResponse>;
 
     /// Receive log from WebView
     fn log(&self, level: LogLevel, message: &str);
+}
+
+/// Represents an HTTP response whose body data is stored in a file on disk.
+#[derive(Debug)]
+pub struct WebResourceResponse {
+    parts: http::response::Parts,
+    file_path: PathBuf,
+}
+
+impl WebResourceResponse {
+    /// Create a new WebResourceResponse from response parts and an absolute file path.
+    pub fn new(parts: http::response::Parts, file_path: PathBuf) -> Self {
+        Self { parts, file_path }
+    }
+
+    /// Borrow the response parts (status, headers, etc.).
+    pub fn parts(&self) -> &http::response::Parts {
+        &self.parts
+    }
+
+    /// Consume the struct and return the owned parts and file path.
+    pub fn into_parts(self) -> (http::response::Parts, PathBuf) {
+        (self.parts, self.file_path)
+    }
+
+    /// Borrow the file path where the response body is stored.
+    pub fn file_path(&self) -> &PathBuf {
+        &self.file_path
+    }
 }

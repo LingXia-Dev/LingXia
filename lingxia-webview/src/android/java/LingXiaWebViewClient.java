@@ -6,8 +6,10 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import org.json.JSONObject;
-import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.InputStream;
 import java.lang.ref.WeakReference;
 
 /**
@@ -116,18 +118,25 @@ public class LingXiaWebViewClient extends WebViewClient {
                 headerArray
             );
 
-            if (response == null) {
+            if (response == null || response.filePath == null || response.filePath.isEmpty()) {
                 return null;
             }
 
-            return new WebResourceResponse(
-                response.mimeType,
-                response.encoding,
-                response.statusCode,
-                response.reasonPhrase,
-                response.responseHeaders,
-                response.data != null ? new ByteArrayInputStream(response.data) : null
-            );
+            try {
+                File file = new File(response.filePath);
+                InputStream inputStream = new FileInputStream(file);
+
+                return new WebResourceResponse(
+                    response.mimeType,
+                    response.encoding,
+                    response.statusCode,
+                    response.reasonPhrase,
+                    response.responseHeaders,
+                    inputStream
+                );
+            } catch (FileNotFoundException e) {
+                Log.e(TAG, "Failed to open intercepted file: " + response.filePath, e);
+            }
         }
 
         return null;
