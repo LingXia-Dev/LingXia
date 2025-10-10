@@ -1,4 +1,5 @@
 use http::{Request, Response, StatusCode, Uri};
+use lingxia_webview::WebResourceResponse;
 use std::fs;
 use std::path::PathBuf;
 
@@ -9,68 +10,58 @@ use crate::lxapp::LxApp;
 impl LxApp {
     /// Handler for lx:// scheme requests to access static app assets (images, CSS, JS, etc.)
     /// HTML files are handled separately through generate_page_html and load_data
-    pub(crate) fn lingxia_handler(&self, req: Request<Vec<u8>>) -> Option<Response<Vec<u8>>> {
+    pub(crate) fn lingxia_handler(&self, req: Request<Vec<u8>>) -> Option<WebResourceResponse> {
         let uri = req.uri();
-        let file_result = self.read_bytes_from_lx_uri(uri);
-
-        let response = match file_result {
-            Ok(data) => {
-                // Determine MIME type based on file extension
-                let path = uri.path();
-                let mime_type = if path.ends_with(".js") {
-                    "application/javascript"
-                } else if path.ends_with(".css") {
-                    "text/css"
-                } else if path.ends_with(".png") {
-                    "image/png"
-                } else if path.ends_with(".jpg") || path.ends_with(".jpeg") {
-                    "image/jpeg"
-                } else if path.ends_with(".gif") {
-                    "image/gif"
-                } else if path.ends_with(".svg") {
-                    "image/svg+xml"
-                } else if path.ends_with(".webp") {
-                    "image/webp"
-                } else if path.ends_with(".ico") {
-                    "image/x-icon"
-                } else if path.ends_with(".json") {
-                    "application/json"
-                } else if path.ends_with(".woff") {
-                    "font/woff"
-                } else if path.ends_with(".woff2") {
-                    "font/woff2"
-                } else if path.ends_with(".ttf") {
-                    "font/ttf"
-                } else {
-                    "application/octet-stream"
-                };
-
-                Response::builder()
-                    .status(StatusCode::OK)
-                    .header("Content-Type", mime_type)
-                    .header("Content-Length", data.len().to_string())
-                    .header("Access-Control-Allow-Origin", "null") // Solve CORS issues on the HarmonyOS platform with the Access-Control-Allow-Origin header
-                    .body(data)
-                    .unwrap_or_else(|_| {
-                        Response::builder()
-                            .status(StatusCode::INTERNAL_SERVER_ERROR)
-                            .body(Vec::new())
-                            .unwrap()
-                    })
-            }
+        let asset_path = match self.resolve_lx_uri(uri) {
+            Ok(path) => path,
             Err(e) => {
                 error!("Asset not found: {} - {}", uri.path(), e).with_appid(self.appid.clone());
-
-                // Return a styled 404 Not Found response
-                Self::create_error_response(
+                return Some(self.create_error_response(
                     StatusCode::NOT_FOUND,
                     "Asset Not Found",
                     &format!("The requested asset '{}' could not be found.", uri.path()),
-                )
+                ));
             }
         };
 
-        Some(response)
+        let metadata = match fs::metadata(&asset_path) {
+            Ok(meta) => meta,
+            Err(e) => {
+                error!(
+                    "Failed to read asset metadata: {} - {}",
+                    asset_path.display(),
+                    e
+                )
+                .with_appid(self.appid.clone());
+                return Some(self.create_error_response(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Asset Error",
+                    "Failed to read asset metadata.",
+                ));
+            }
+        };
+
+        let file_len = metadata.len();
+        let mime_type = Self::infer_mime_type(uri.path());
+
+        let mut builder = Response::builder()
+            .status(StatusCode::OK)
+            .header("Content-Type", mime_type)
+            .header("Access-Control-Allow-Origin", "null");
+
+        if let Ok(value) = http::HeaderValue::from_str(&file_len.to_string()) {
+            builder = builder.header("Content-Length", value);
+        }
+
+        let response = builder.body(()).unwrap_or_else(|_| {
+            Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body(())
+                .expect("Failed to build fallback empty response")
+        });
+
+        let (parts, _) = response.into_parts();
+        Some(WebResourceResponse::new(parts, asset_path))
     }
 
     fn resolve_lx_uri(&self, uri: &Uri) -> Result<PathBuf, LxAppError> {
@@ -94,15 +85,8 @@ impl LxApp {
         self.resolve_accessible_path(raw_path)
     }
 
-    fn read_bytes_from_lx_uri(&self, uri: &Uri) -> Result<Vec<u8>, LxAppError> {
-        let resolved_path = self.resolve_lx_uri(uri)?;
-
-        fs::read(&resolved_path)
-            .map_err(|e| LxAppError::ResourceNotFound(format!("{}:{}", uri.path(), e)))
-    }
-
     /// Handler for HTTPS requests to check domain whitelist and restrict to static resources
-    pub(crate) fn https_handler(&self, req: Request<Vec<u8>>) -> Option<Response<Vec<u8>>> {
+    pub(crate) fn https_handler(&self, req: Request<Vec<u8>>) -> Option<WebResourceResponse> {
         let uri = req.uri();
 
         // Check if the domain is allowed
@@ -115,7 +99,7 @@ impl LxApp {
                 .network_security
                 .is_domain_allowed(host)
             {
-                return Some(Self::create_error_response(
+                return Some(self.create_error_response(
                     StatusCode::FORBIDDEN,
                     "Domain Access Denied",
                     &format!(
@@ -128,7 +112,7 @@ impl LxApp {
             // Check if this is likely an API request based on request headers
             let is_api_request = self.is_api_request(&req);
             if is_api_request {
-                return Some(Self::create_error_response(
+                return Some(self.create_error_response(
                     StatusCode::FORBIDDEN,
                     "API Request Blocked",
                     &format!(
@@ -149,7 +133,7 @@ impl LxApp {
 
                 if has_extension {
                     // Has extension but not in our allowed list
-                    return Some(Self::create_error_response(
+                    return Some(self.create_error_response(
                         StatusCode::FORBIDDEN,
                         "Resource Type Not Allowed",
                         &format!(
@@ -165,7 +149,7 @@ impl LxApp {
         }
 
         // URI doesn't have a host component
-        Some(Self::create_error_response(
+        Some(self.create_error_response(
             StatusCode::BAD_REQUEST,
             "Invalid URL",
             "The URL is missing a host component and cannot be processed.",
@@ -227,8 +211,59 @@ impl LxApp {
             None => false, // No extension - could be anything
         }
     }
+
+    fn infer_mime_type(path: &str) -> &'static str {
+        if path.ends_with(".js") {
+            "application/javascript"
+        } else if path.ends_with(".css") {
+            "text/css"
+        } else if path.ends_with(".png") {
+            "image/png"
+        } else if path.ends_with(".jpg") || path.ends_with(".jpeg") {
+            "image/jpeg"
+        } else if path.ends_with(".gif") {
+            "image/gif"
+        } else if path.ends_with(".svg") {
+            "image/svg+xml"
+        } else if path.ends_with(".webp") {
+            "image/webp"
+        } else if path.ends_with(".ico") {
+            "image/x-icon"
+        } else if path.ends_with(".json") {
+            "application/json"
+        } else if path.ends_with(".woff") {
+            "font/woff"
+        } else if path.ends_with(".woff2") {
+            "font/woff2"
+        } else if path.ends_with(".ttf") {
+            "font/ttf"
+        } else if path.ends_with(".mp3") {
+            "audio/mpeg"
+        } else if path.ends_with(".wav") {
+            "audio/wav"
+        } else if path.ends_with(".mp4") {
+            "video/mp4"
+        } else {
+            "application/octet-stream"
+        }
+    }
+
+    fn sanitize_for_filename(value: &str) -> String {
+        value
+            .chars()
+            .map(|c| match c {
+                'a'..='z' | 'A'..='Z' | '0'..='9' => c,
+                _ => '_',
+            })
+            .collect()
+    }
     /// Create a simple centered error response
-    fn create_error_response(status: StatusCode, title: &str, message: &str) -> Response<Vec<u8>> {
+    pub(crate) fn create_error_response(
+        &self,
+        status: StatusCode,
+        title: &str,
+        message: &str,
+    ) -> WebResourceResponse {
         let html_content = format!(
             r#"<!DOCTYPE html>
 <html>
@@ -257,16 +292,60 @@ impl LxApp {
             message
         );
 
-        Response::builder()
+        let mut target_dir = self.user_cache_dir.join("webview_errors");
+        if let Err(e) = fs::create_dir_all(&target_dir) {
+            error!("Failed to prepare error directory: {}", e).with_appid(self.appid.clone());
+            target_dir = std::env::temp_dir().join("lingxia-webview-errors");
+            let _ = fs::create_dir_all(&target_dir);
+        }
+
+        let file_name = format!(
+            "{}_{}.html",
+            status.as_u16(),
+            Self::sanitize_for_filename(title)
+        );
+        let mut file_path = target_dir.join(file_name);
+
+        if let Err(e) = fs::write(&file_path, html_content.as_bytes()) {
+            error!(
+                "Failed to write error response file ({}): {}",
+                file_path.display(),
+                e
+            )
+            .with_appid(self.appid.clone());
+            let unique_suffix = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis())
+                .unwrap_or(0);
+            file_path = target_dir.join(format!(
+                "{}_{}_{}.html",
+                status.as_u16(),
+                Self::sanitize_for_filename(title),
+                unique_suffix
+            ));
+            let _ = fs::write(&file_path, html_content.as_bytes());
+        }
+
+        let file_len = fs::metadata(&file_path)
+            .map(|meta| meta.len())
+            .unwrap_or_else(|_| html_content.as_bytes().len() as u64);
+
+        let mut builder = Response::builder()
             .status(status)
-            .header("Content-Type", "text/html; charset=utf-8")
-            .body(html_content.into_bytes())
-            .unwrap_or_else(|_| {
-                Response::builder()
-                    .status(StatusCode::INTERNAL_SERVER_ERROR)
-                    .header("Content-Type", "text/plain")
-                    .body("Internal Server Error".as_bytes().to_vec())
-                    .unwrap()
-            })
+            .header("Content-Type", "text/html; charset=utf-8");
+
+        if let Ok(value) = http::HeaderValue::from_str(&file_len.to_string()) {
+            builder = builder.header("Content-Length", value);
+        }
+
+        let response = builder.body(()).unwrap_or_else(|_| {
+            Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body(())
+                .expect("Failed to build fallback error response")
+        });
+
+        let (parts, _) = response.into_parts();
+        WebResourceResponse::new(parts, file_path)
     }
 }

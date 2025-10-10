@@ -5,8 +5,10 @@ use crate::startup::parse_query_string;
 use crate::{LxApp, LxAppError, error, info};
 use lingxia_platform::{AnimationType, AppRuntime};
 use lingxia_webview::{
-    LogLevel, WebTag, WebView, WebViewController, WebViewDelegate, create_webview,
+    LogLevel, WebResourceResponse, WebTag, WebView, WebViewController, WebViewDelegate,
+    create_webview,
 };
+use http::StatusCode;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
@@ -585,7 +587,7 @@ impl WebViewDelegate for Page {
     }
 
     /// Handles an HTTP request from the WebView
-    fn handle_request(&self, req: http::Request<Vec<u8>>) -> Option<http::Response<Vec<u8>>> {
+    fn handle_request(&self, req: http::Request<Vec<u8>>) -> Option<WebResourceResponse> {
         // Get LxApp and delegate to its request handler
         let lxapp = lxapp::get(self.inner.appid.clone());
 
@@ -602,13 +604,11 @@ impl WebViewDelegate for Page {
             "lx" => lxapp.lingxia_handler(req),
 
             // Reject all other schemes with 400 Bad Request
-            _ => Some(
-                http::Response::builder()
-                    .status(400)
-                    .header("Content-Type", "text/plain")
-                    .body(format!("Unsupported scheme: {}", scheme).into_bytes())
-                    .unwrap(),
-            ),
+            _ => Some(lxapp.create_error_response(
+                StatusCode::BAD_REQUEST,
+                "Unsupported Scheme",
+                &format!("Unsupported scheme: {}", scheme),
+            )),
         }
     }
 
