@@ -56,7 +56,7 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
       const viewBuilder = new ViewBuilder(projectPath, outputDir);
       await viewBuilder.buildPages(pages, buildOptions);
     } else {
-      // 顺序构建：先逻辑层再视图层，确保使用同一套根依赖/锁
+      
       console.log('▶ Building logic layer...');
       const logicBuilder = new LogicBuilder(projectPath, outputDir);
       await logicBuilder.buildLogic(buildOptions);

@@ -37,7 +37,7 @@ export interface Page {
 export interface BuildOptions {
   dev?: boolean;
   prod?: boolean;
-  keepNodeModules?: boolean; // 保留node_modules目录，不清理
+  keepNodeModules?: boolean;
 }
 
 export interface BuildResult {
