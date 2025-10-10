@@ -16,15 +16,8 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
   // Map CLI options to BuildOptions
   const buildOptions: BuildOptions = {
     dev: options.dev,
-    prod: options.prod,
-    keepNodeModules: (options as any).keepNodeModules || false
+    prod: options.prod
   };
-
-  // Production builds should always clean node_modules for consistency
-  if (buildOptions.prod && buildOptions.keepNodeModules) {
-    console.log('⚠️  Production build detected, ignoring --keep-node-modules for consistency');
-    buildOptions.keepNodeModules = false;
-  }
 
   console.log('🚀 Starting LingXia build...');
   console.log(` Project: ${projectPath}`);

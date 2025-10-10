@@ -37,7 +37,6 @@ export interface Page {
 export interface BuildOptions {
   dev?: boolean;
   prod?: boolean;
-  keepNodeModules?: boolean;
 }
 
 export interface BuildResult {

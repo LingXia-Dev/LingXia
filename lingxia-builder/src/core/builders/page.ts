@@ -116,8 +116,6 @@ export class PageProcessor {
     await processor.generateOutput(page, pageFiles, buildResult, bridgeScript);
   }
 
-  // Removed Webpack batch builder; Vite is the only bundler
-
   /**
    * Batch build multiple pages for a single framework using Vite multi-entry.
    * Writes a dedicated multi-entry vite.config.js (no framework API changes),
