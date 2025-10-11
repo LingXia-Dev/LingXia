@@ -512,30 +512,32 @@ class MediaPickerFragment : Fragment() {
     }
 
     private fun confirmSelection() {
-        val uris = selected.keys.toList()
+        val keys = selected.keys.toList()
         val cbId = callbackId
         Thread {
-            for (uri in uris) {
-                val typeStr = when (itemsIndex[uri]?.fileType) { "video" -> "video"; else -> "image" }
-                try {
+            try {
+                val arr = org.json.JSONArray()
+                for (uri in keys) {
+                    val typeStr = when (itemsIndex[uri]?.fileType) { "video" -> "video"; else -> "image" }
                     val pfd = requireContext().contentResolver.openFileDescriptor(uri, "r")
                     val fd = pfd?.detachFd()
                     if (fd == null) {
                         NativeApi.onCallback(cbId, false, "Failed to obtain file descriptor")
-                        continue
+                        return@Thread
                     }
-                    val payload = org.json.JSONObject().apply {
+                    val obj = org.json.JSONObject().apply {
                         put("uri", uri.toString())
                         put("fileType", typeStr)
                         put("fd", fd)
                     }
-                    NativeApi.onCallback(cbId, true, payload.toString())
-                } catch (e: Exception) {
-                    NativeApi.onCallback(cbId, false, (e.message ?: "openFileDescriptor failed"))
+                    arr.put(obj)
                 }
+                NativeApi.onCallback(cbId, true, arr.toString())
+            } catch (e: Exception) {
+                NativeApi.onCallback(cbId, false, (e.message ?: "openFileDescriptor failed"))
+            } finally {
+                activity?.runOnUiThread { removeSelf() }
             }
-            NativeApi.onCallback(cbId, true, JSONObject().apply { put("done", true) }.toString())
-            activity?.runOnUiThread { removeSelf() }
         }.start()
     }
 
