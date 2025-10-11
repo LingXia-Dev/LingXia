@@ -1,14 +1,10 @@
-use futures::stream;
 use lingxia_lxapp::{LxApp, lx};
-use lingxia_messaging::{CallbackResult, get_stream_callback, remove_callback};
+use lingxia_messaging::{CallbackResult, get_callback};
 use lingxia_platform::{
     CameraFacing, ChooseMediaMode, ChooseMediaRequest, MediaInteraction, MediaKind, MediaSource,
     PreviewMediaItem, PreviewMediaRequest, SaveMediaRequest,
 };
-use rong::{
-    FromJSObj, IntoJSAsyncIteratorExt, JSContext, JSFunc, JSObject, JSResult, RongJSError,
-    function::Optional,
-};
+use rong::{FromJSObj, JSContext, JSFunc, JSObject, JSResult, RongJSError, function::Optional};
 use std::fs::File;
 use std::io::{self};
 use std::os::fd::FromRawFd;
@@ -215,7 +211,10 @@ fn parse_size_flags(v: Option<Vec<String>>) -> (bool, bool) {
     }
 }
 
-fn choose_media(ctx: JSContext, options: Optional<JSChooseMediaOptions>) -> JSResult<JSObject> {
+async fn choose_media(
+    ctx: JSContext,
+    options: Optional<JSChooseMediaOptions>,
+) -> JSResult<Vec<ChosenMediaEntry>> {
     let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
 
     let opts = options.as_ref().cloned().unwrap_or(JSChooseMediaOptions {
@@ -228,7 +227,7 @@ fn choose_media(ctx: JSContext, options: Optional<JSChooseMediaOptions>) -> JSRe
         max_duration: None,
     });
 
-    let (callback_id, receiver) = get_stream_callback();
+    let (callback_id, receiver) = get_callback();
     let cache_root = lxapp.user_cache_dir.clone();
 
     let (allow_original, allow_compressed) = parse_size_flags(opts.size_type);
@@ -266,112 +265,60 @@ fn choose_media(ctx: JSContext, options: Optional<JSChooseMediaOptions>) -> JSRe
         .choose_media(request)
         .map_err(|e| RongJSError::Error(format!("chooseMedia failed to start: {}", e)))?;
 
-    let stream = stream::unfold(
-        (Some(receiver), callback_id, cache_root.clone()),
-        |(receiver_opt, callback_id, cache_root)| async move {
-            let mut receiver = match receiver_opt {
-                Some(r) => r,
-                None => return None,
+    // Await single aggregated callback
+    let CallbackResult { success, data } = receiver
+        .await
+        .map_err(|_| RongJSError::Error("chooseMedia cancelled or failed".to_string()))?;
+
+    if !success {
+        return Err(RongJSError::Error(data));
+    }
+
+    // Expect an array of entries: [{ uri, fileType, fd? }, ...]
+    let parsed: serde_json::Value = serde_json::from_str(&data)
+        .map_err(|_| RongJSError::Error("chooseMedia invalid payload".to_string()))?;
+    let arr = parsed.as_array().cloned().unwrap_or_else(|| Vec::new());
+
+    let mut out: Vec<ChosenMediaEntry> = Vec::new();
+    for item in arr.into_iter() {
+        let uri = item.get("uri").and_then(|v| v.as_str()).unwrap_or("");
+        let kind = item
+            .get("fileType")
+            .and_then(|v| v.as_str())
+            .unwrap_or("image");
+        if uri.is_empty() {
+            continue;
+        }
+        let fd_opt = item.get("fd").and_then(|v| v.as_i64());
+
+        let final_path = if let Some(fd_val) = fd_opt {
+            let ext = match kind {
+                "video" => "mp4",
+                _ => "jpg",
             };
-
-            match receiver.recv().await {
-                Some(CallbackResult { success, data }) => {
-                    // Close on error or done
-                    let parsed: serde_json::Value = match serde_json::from_str(&data) {
-                        Ok(v) => v,
-                        Err(_) => {
-                            remove_callback(callback_id);
-                            return None;
-                        }
-                    };
-
-                    if !success {
-                        remove_callback(callback_id);
-                        return None;
-                    }
-
-                    if parsed
-                        .get("done")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(false)
-                    {
-                        remove_callback(callback_id);
-                        return None;
-                    }
-
-                    if parsed
-                        .get("cancel")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(false)
-                    {
-                        remove_callback(callback_id);
-                        return None;
-                    }
-
-                    // Expect raw UI item; parse original uri + fileType + optional fd
-                    let uri = parsed
-                        .get("uri")
-                        .and_then(|v| v.as_str())
-                        .or_else(|| parsed.get("path").and_then(|v| v.as_str()))
-                        .unwrap_or("");
-                    let kind = parsed
-                        .get("fileType")
-                        .and_then(|v| v.as_str())
-                        .or_else(|| parsed.get("type").and_then(|v| v.as_str()))
-                        .unwrap_or("image");
-                    let fd_opt = parsed.get("fd").and_then(|v| v.as_i64());
-
-                    if uri.is_empty() {
-                        remove_callback(callback_id);
-                        return None;
-                    }
-
-                    // If fd present (Android), copy to cache immediately and return final path
-                    let final_path = if let Some(fd_val) = fd_opt {
-                        let cache_dir = cache_root.clone();
-                        let ext = match kind {
-                            "video" => "mp4",
-                            _ => "jpg",
-                        };
-                        let now = SystemTime::now()
-                            .duration_since(UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_millis();
-                        let filename = format!("{}.{}", now, ext);
-                        let dest_path = cache_dir.join(filename);
-
-                        // Safety: take ownership of the fd here
-                        let mut src = unsafe { File::from_raw_fd(fd_val as i32) };
-                        let mut dst = match File::create(&dest_path) {
-                            Ok(f) => f,
-                            Err(_) => {
-                                remove_callback(callback_id);
-                                return None;
-                            }
-                        };
-                        if let Err(_) = io::copy(&mut src, &mut dst) {
-                            remove_callback(callback_id);
-                            return None;
-                        }
-                        dest_path.to_string_lossy().to_string()
-                    } else {
-                        uri.to_string()
-                    };
-
-                    let entry = ChosenMediaEntry {
-                        path: final_path,
-                        kind: kind.to_string(),
-                    };
-
-                    Some((entry, (Some(receiver), callback_id, cache_root)))
-                }
-                None => {
-                    remove_callback(callback_id);
-                    None
-                }
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis();
+            let filename = format!("{}.{}", now, ext);
+            let dest_path = cache_root.join(filename);
+            let mut src = unsafe { File::from_raw_fd(fd_val as i32) };
+            let mut dst = match File::create(&dest_path) {
+                Ok(f) => f,
+                Err(_) => continue,
+            };
+            if io::copy(&mut src, &mut dst).is_err() {
+                continue;
             }
-        },
-    );
+            dest_path.to_string_lossy().to_string()
+        } else {
+            uri.to_string()
+        };
 
-    stream.to_js_async_iter(&ctx)
+        out.push(ChosenMediaEntry {
+            path: final_path,
+            kind: kind.to_string(),
+        });
+    }
+    Ok(out)
 }
