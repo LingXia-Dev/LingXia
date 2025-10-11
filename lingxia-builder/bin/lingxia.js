@@ -28,7 +28,6 @@ program
   .description('Build the LxApp project')
   .option('-d, --dev', 'Development build')
   .option('-p, --prod', 'Production build')
-  .option('--no-cleanup', 'Keep build directory for debugging')
   .option('--output <dir>', 'Output directory', 'dist')
   .action(async (options) => {
     const { buildCommand } = await import('../dist/commands/build.js');

@@ -128,7 +128,6 @@ export class PageProcessor {
     options: BuildOptions = {}
   ): Promise<void> {
     if (items.length === 0) return;
-    console.error('buildPagesBatch', framework, items, options);
     const processor = FrameworkFactory.createProcessor(
       framework,
       this.projectPath,
