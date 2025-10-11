@@ -1,10 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { execSync } from 'child_process';
-import type { Page, PageFiles, BuildOptions } from '../../types/index.js';
+import type { BuildOptions, Page, PageFiles } from '../../types/index.js';
 import { FileUtils } from '../utils/file.js';
-import { DependencyResolver } from './deps.js';
-
 import { TemplateManager } from '../template.js';
 import { FrameworkFactory } from '../frameworks/factory.js';
 
@@ -12,14 +9,12 @@ export class PageProcessor {
   private projectPath: string;
   private outputDir: string;
   private fileUtils: FileUtils;
-  private dependencyResolver: DependencyResolver;
   private templateManager: TemplateManager;
 
   constructor(projectPath: string, outputDir: string) {
     this.projectPath = projectPath;
     this.outputDir = outputDir;
     this.fileUtils = new FileUtils();
-    this.dependencyResolver = new DependencyResolver(projectPath);
     this.templateManager = new TemplateManager();
   }
 
@@ -69,20 +64,6 @@ export class PageProcessor {
     // Clean and setup build directory
     this.fileUtils.cleanDirectory(buildDir);
 
-    // Prepare package files by copying from project root, then override build script for Vite
-    console.log(` Installing ${processor.getFrameworkName()} dependencies...`);
-    const rootPackageJson = path.join(this.projectPath, 'package.json');
-    const rootPackageLock = path.join(this.projectPath, 'package-lock.json');
-    const packageJsonPath = path.join(buildDir, 'package.json');
-    const packageLockPath = path.join(buildDir, 'package-lock.json');
-
-    if (fs.existsSync(rootPackageJson)) {
-      fs.copyFileSync(rootPackageJson, packageJsonPath);
-    }
-    if (fs.existsSync(rootPackageLock)) {
-      fs.copyFileSync(rootPackageLock, packageLockPath);
-    }
-
     // Copy src directory and resolve dependencies
     await this.copySrcDirectory(buildDir);
     await this.copyTailwindConfig(buildDir);
@@ -91,22 +72,19 @@ export class PageProcessor {
     // Setup framework-specific build
     await processor.setupBuild(buildDir, page, pageFiles, pageFunctions);
 
-    // Create Vite config using framework processor with build options
-    await processor.createViteConfig(buildDir, options);
-
-    // Install and build (prefer npm ci)
-    const hasLockVite = fs.existsSync(packageLockPath);
-    if (hasLockVite) {
-      console.log('  -> Using npm ci (lock found)');
-      execSync('npm ci', { cwd: buildDir, stdio: 'inherit' });
-    } else {
-      console.log('  -> Using npm install (no lock found)');
-      execSync('npm install', { cwd: buildDir, stdio: 'inherit' });
-    }
-    console.log(`${processor.getFrameworkName()} dependencies installed`);
-
-    console.log(` Building ${processor.getFrameworkName()} page with Vite...`);
-    execSync('npx vite build', { cwd: buildDir, stdio: 'inherit' });
+    console.log(` Building ${processor.getFrameworkName()} page with bundled Vite...`);
+    await this.runViteBuild(buildDir, framework as 'react' | 'vue', {
+      options,
+      inputs: { index: path.join(buildDir, 'index.html') },
+      output: {
+        entryFileNames: 'main.js',
+        chunkFileNames: 'chunks/[name]-[hash].js',
+        assetFileNames: 'assets/[name].[ext]'
+      },
+      cssCodeSplit: false,
+      esbuild: framework === 'react' ? { jsx: 'automatic' } : undefined,
+      target: 'es2015'
+    });
 
     // Generate function bridge script (unified for all frameworks)
     const bridgeScript = this.templateManager.generateFunctionBridge(pageFunctions);
@@ -139,18 +117,6 @@ export class PageProcessor {
     this.fileUtils.cleanDirectory(buildDir);
 
     // Shared package.json: copy from root and override build script for Vite
-    console.log(` Installing ${processor.getFrameworkName()} dependencies...`);
-    const rootPackageJson = path.join(this.projectPath, 'package.json');
-    const rootPackageLock = path.join(this.projectPath, 'package-lock.json');
-    const packageJsonPath = path.join(buildDir, 'package.json');
-    const packageLockPath = path.join(buildDir, 'package-lock.json');
-    if (fs.existsSync(rootPackageJson)) {
-      fs.copyFileSync(rootPackageJson, packageJsonPath);
-    }
-    if (fs.existsSync(rootPackageLock)) {
-      fs.copyFileSync(rootPackageLock, packageLockPath);
-    }
-
     // Copy shared assets/config
     await this.copySrcDirectory(buildDir);
     await this.copyTailwindConfig(buildDir);
@@ -175,34 +141,18 @@ export class PageProcessor {
       entryNameByPagePath[page.path] = entryName;
     }
 
-    // Write multi-entry vite.config.js locally (include framework plugins, disable shared chunks)
-    const viteConfig = (() => {
-      if (framework === 'react') {
-        return `import react from '@vitejs/plugin-react';\nimport tailwindcss from 'tailwindcss';\nimport autoprefixer from 'autoprefixer';\nimport { defineConfig } from 'vite'\nexport default defineConfig({\n  plugins: [react()],\n  css: { postcss: { plugins: [tailwindcss, autoprefixer] } },\n  build: {\n    outDir: 'dist',\n    emptyOutDir: true,\n    rollupOptions: {\n      input: ${JSON.stringify(inputs, null, 2)},\n      output: {\n        entryFileNames: 'pages/[name]/[name].js',\n        chunkFileNames: 'assets/[name]-[hash].js',\n        assetFileNames: 'assets/[name].[ext]',
+    console.log(` Building ${processor.getFrameworkName()} pages with bundled Vite (multi-entry)...`);
+    await this.runViteBuild(buildDir, framework, {
+      options,
+      inputs,
+      output: {
+        entryFileNames: 'pages/[name]/[name].js',
+        chunkFileNames: 'assets/[name]-[hash].js',
+        assetFileNames: 'assets/[name].[ext]',
         manualChunks: null
-      }
-    },\n    cssCodeSplit: false\n  }\n})\n`;
-      }
-      // vue
-      return `import vue from '@vitejs/plugin-vue';\nimport tailwindcss from 'tailwindcss';\nimport autoprefixer from 'autoprefixer';\nimport { defineConfig } from 'vite'\nexport default defineConfig({\n  plugins: [vue()],\n  css: { postcss: { plugins: [tailwindcss, autoprefixer] } },\n  build: {\n    outDir: 'dist',\n    emptyOutDir: true,\n    rollupOptions: {\n      input: ${JSON.stringify(inputs, null, 2)},\n      output: {\n        entryFileNames: 'pages/[name]/[name].js',\n        chunkFileNames: 'assets/[name]-[hash].js',\n        assetFileNames: 'assets/[name].[ext]',
-        manualChunks: null
-      }
-    },\n    cssCodeSplit: false\n  }\n})\n`;
-    })();
-    fs.writeFileSync(path.join(buildDir, 'vite.config.js'), viteConfig);
-
-    // Install deps and build once (prefer npm ci when lock exists)
-    const hasLock = fs.existsSync(path.join(buildDir, 'package-lock.json'));
-    if (hasLock) {
-      console.log('  -> Using npm ci (lock found)');
-      execSync('npm ci', { cwd: buildDir, stdio: 'inherit' });
-    } else {
-      console.log('  -> Using npm install (no lock found)');
-      execSync('npm install', { cwd: buildDir, stdio: 'inherit' });
-    }
-    console.log(`${processor.getFrameworkName()} dependencies installed`);
-    console.log(` Building ${processor.getFrameworkName()} pages with Vite (multi-entry)...`);
-    execSync('npx vite build', { cwd: buildDir, stdio: 'inherit' });
+      },
+      cssCodeSplit: false
+    });
 
     const distDir = path.join(buildDir, 'dist');
 
@@ -251,6 +201,76 @@ export class PageProcessor {
       if (backups.html && fs.existsSync(backups.html)) fs.unlinkSync(backups.html);
       if (backups.js && fs.existsSync(backups.js)) fs.unlinkSync(backups.js);
     }
+  }
+
+  private async runViteBuild(
+    buildDir: string,
+    framework: 'react' | 'vue',
+    config: {
+      options: BuildOptions;
+      inputs: Record<string, string>;
+      output: Record<string, unknown>;
+      cssCodeSplit?: boolean;
+      esbuild?: Record<string, unknown>;
+      target?: string;
+    }
+  ): Promise<void> {
+    const { build } = await import('vite');
+    const plugins = await this.resolveFrameworkPlugins(framework);
+    const css = await this.createCssConfig(buildDir);
+    const isDev = Boolean(config.options.dev);
+    const isProd = Boolean(config.options.prod);
+
+    await build({
+      configFile: false,
+      root: buildDir,
+      logLevel: 'warn',
+      mode: isDev ? 'development' : isProd ? 'production' : undefined,
+      plugins,
+      css,
+      esbuild: config.esbuild,
+      build: {
+        outDir: path.join(buildDir, 'dist'),
+        emptyOutDir: true,
+        rollupOptions: {
+          input: config.inputs,
+          output: config.output
+        },
+        cssCodeSplit: config.cssCodeSplit ?? true,
+        target: config.target,
+        minify: isProd ? 'esbuild' : false,
+        sourcemap: isDev
+      }
+    });
+  }
+
+  private async resolveFrameworkPlugins(framework: 'react' | 'vue') {
+    if (framework === 'react') {
+      const reactModule = await import('@vitejs/plugin-react');
+      const pluginFactory = (reactModule as any).default ?? reactModule;
+      return [pluginFactory()];
+    }
+    const vueModule = await import('@vitejs/plugin-vue');
+    const pluginFactory = (vueModule as any).default ?? vueModule;
+    return [pluginFactory()];
+  }
+
+  private async createCssConfig(buildDir: string) {
+    const tailwindConfigPath = path.join(buildDir, 'tailwind.config.js');
+    if (!fs.existsSync(tailwindConfigPath)) {
+      return undefined;
+    }
+
+    const tailwindModule = await import('tailwindcss');
+    const autoprefixerModule = await import('autoprefixer');
+    const tailwindcss = (tailwindModule as any).default ?? tailwindModule;
+    const autoprefixer = (autoprefixerModule as any).default ?? autoprefixerModule;
+
+    return {
+      postcss: {
+        plugins: [tailwindcss, autoprefixer]
+      }
+    };
   }
 
   private async copySrcDirectory(buildDir: string): Promise<void> {

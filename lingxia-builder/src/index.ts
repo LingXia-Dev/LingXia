@@ -3,6 +3,8 @@
 import { Command } from 'commander';
 import { buildCommand } from './commands/build.js';
 
+export { buildCommand };
+
 const program = new Command();
 
 program

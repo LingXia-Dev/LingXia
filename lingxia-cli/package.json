@@ -1,0 +1,31 @@
+{
+  "name": "@lingxia/cli",
+  "version": "0.0.0",
+  "private": true,
+  "description": "LingXia command line interface that wraps lingxia-builder for developers.",
+  "type": "module",
+  "bin": {
+    "lingxia": "./bin/lingxia.js"
+  },
+  "files": [
+    "bin/",
+    "dist/",
+    "src/",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "commander": "^14.0.1",
+    "lingxia-builder": "file:../lingxia-builder"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
