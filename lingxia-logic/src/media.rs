@@ -1,5 +1,6 @@
 use lingxia_lxapp::{LxApp, lx};
 use lingxia_messaging::{CallbackResult, get_callback};
+use lingxia_platform::AppRuntime;
 use lingxia_platform::{
     CameraFacing, ChooseMediaMode, ChooseMediaRequest, MediaInteraction, MediaKind, MediaSource,
     PreviewMediaItem, PreviewMediaRequest, SaveMediaRequest,
@@ -312,7 +313,23 @@ async fn choose_media(
             }
             dest_path.to_string_lossy().to_string()
         } else {
-            uri.to_string()
+            let ext = match kind {
+                "video" => "mp4",
+                _ => "jpg",
+            };
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis();
+            let filename = format!("{}.{}", now, ext);
+            let dest_path = cache_root.join(filename);
+
+            match lxapp.runtime.copy_media_uri_to_path(uri, &dest_path) {
+                Ok(()) => dest_path.to_string_lossy().to_string(),
+                Err(err) => {
+                    return Err(RongJSError::Error(format!("copyMedia failed: {}", err)));
+                }
+            }
         };
 
         out.push(ChosenMediaEntry {
