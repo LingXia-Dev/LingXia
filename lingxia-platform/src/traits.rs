@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::error::PlatformError;
 use crate::{AssetFileEntry, DeviceInfo};
@@ -358,6 +358,13 @@ pub trait AppRuntime: Send + Sync + 'static {
     /// # Returns
     /// * `PathBuf` - Path to the application's cache directory
     fn app_cache_dir(&self) -> PathBuf;
+
+    /// Copy a platform media resource identified by `uri` into the supplied destination path.
+    ///
+    /// The destination path must be a writable location
+    fn copy_media_uri_to_path(&self, _uri: &str, _dest_path: &Path) -> Result<(), PlatformError> {
+        Ok(())
+    }
 
     /// Exit the application
     ///

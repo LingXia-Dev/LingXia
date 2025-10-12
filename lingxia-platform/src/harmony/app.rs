@@ -1,11 +1,16 @@
 use crate::error::PlatformError;
 use crate::{AppRuntime, AssetFileEntry};
+use log::warn;
 use napi_ohos::JsValue;
 use napi_ohos::bindgen_prelude::{Env, Object};
 use ohos_raw_sys::*;
+use std::collections::HashMap;
 use std::ffi::{CString, c_void};
+use std::fs;
 use std::io::{Cursor, Read};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::{LazyLock, Mutex, mpsc};
+use std::time::Duration;
 
 pub struct Platform {
     pub data_dir: String,
@@ -46,6 +51,98 @@ impl Clone for Platform {
 
 unsafe impl Send for Platform {}
 unsafe impl Sync for Platform {}
+
+const ZERO_REQUEST_ID: &str = "00000000-0000-0000-0000-000000000000";
+
+struct RequestState {
+    sender: Option<mpsc::Sender<i32>>,
+    result: Option<i32>,
+}
+
+static REQUEST_CHANNELS: LazyLock<Mutex<HashMap<String, RequestState>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+unsafe extern "C" fn on_media_copy_prepared(result: i32, request_id: ffi::MediaLibrary_RequestId) {
+    let request_key = request_id_to_string(&request_id);
+    let mut map = REQUEST_CHANNELS.lock().expect("REQUEST_CHANNELS poisoned");
+    let mut remove_entry = false;
+
+    if let Some(state) = map.get_mut(&request_key) {
+        if let Some(sender) = state.sender.take() {
+            let _ = sender.send(result);
+            remove_entry = true;
+        } else {
+            state.result = Some(result);
+        }
+    } else {
+        map.insert(
+            request_key.clone(),
+            RequestState {
+                sender: None,
+                result: Some(result),
+            },
+        );
+    }
+
+    if remove_entry {
+        map.remove(&request_key);
+    }
+}
+
+fn request_id_to_string(id: &ffi::MediaLibrary_RequestId) -> String {
+    let mut bytes = Vec::new();
+    for &ch in &id.request_id {
+        if ch == 0 {
+            break;
+        }
+        bytes.push(ch as u8);
+    }
+    String::from_utf8_lossy(&bytes).to_string()
+}
+
+fn insert_request_channel(request_key: &str, sender: mpsc::Sender<i32>) {
+    let mut map = REQUEST_CHANNELS.lock().expect("REQUEST_CHANNELS poisoned");
+
+    if let Some(state) = map.get_mut(request_key) {
+        if let Some(result) = state.result.take() {
+            map.remove(request_key);
+            drop(map);
+            let _ = sender.send(result);
+        } else {
+            state.sender = Some(sender);
+        }
+    } else {
+        map.insert(
+            request_key.to_string(),
+            RequestState {
+                sender: Some(sender),
+                result: None,
+            },
+        );
+    }
+}
+
+fn cleanup_request_channel(request_key: &str) {
+    let _ = REQUEST_CHANNELS
+        .lock()
+        .expect("REQUEST_CHANNELS poisoned")
+        .remove(request_key);
+}
+
+struct ManagerGuard(*mut ffi::OH_MediaAssetManager);
+
+impl Drop for ManagerGuard {
+    fn drop(&mut self) {
+        unsafe {
+            if !self.0.is_null() {
+                let code = ffi::OH_MediaAssetManager_Release(self.0);
+                if code != ffi::MEDIA_LIBRARY_OK {
+                    warn!("Failed to release OH_MediaAssetManager, code={}", code);
+                }
+            }
+        }
+    }
+}
 
 impl Platform {
     /// Create a new Platform instance
@@ -198,6 +295,101 @@ impl Platform {
             None
         }
     }
+
+    pub(crate) fn copy_media_uri_to_path_impl(
+        &self,
+        uri: &str,
+        dest_path: &Path,
+    ) -> Result<(), PlatformError> {
+        if uri.is_empty() {
+            return Err(PlatformError::Platform("URI must not be empty".to_string()));
+        }
+
+        if dest_path.as_os_str().is_empty() {
+            return Err(PlatformError::Platform(
+                "Destination path must not be empty".to_string(),
+            ));
+        }
+
+        if let Some(parent) = dest_path.parent() {
+            fs::create_dir_all(parent).map_err(|e| {
+                PlatformError::Platform(format!(
+                    "Failed to create destination directory {}: {}",
+                    parent.display(),
+                    e
+                ))
+            })?;
+        }
+
+        let manager_ptr = unsafe { ffi::OH_MediaAssetManager_Create() };
+        if manager_ptr.is_null() {
+            return Err(PlatformError::Platform(
+                "Failed to create OH_MediaAssetManager".to_string(),
+            ));
+        }
+
+        let manager = ManagerGuard(manager_ptr);
+
+        let uri_cstr = CString::new(uri)
+            .map_err(|_| PlatformError::Platform("URI contains interior null byte".to_string()))?;
+        let dest_string = dest_path.to_string_lossy();
+        let dest_cstr = CString::new(dest_string.as_bytes()).map_err(|_| {
+            PlatformError::Platform("Destination path contains interior null byte".to_string())
+        })?;
+
+        let request_options = ffi::MediaLibrary_RequestOptions {
+            deliveryMode: ffi::MEDIA_LIBRARY_HIGH_QUALITY_MODE,
+        };
+
+        let (tx, rx) = mpsc::channel();
+
+        let request_id = unsafe {
+            ffi::OH_MediaAssetManager_RequestImageForPath(
+                manager.0,
+                uri_cstr.as_ptr(),
+                request_options,
+                dest_cstr.as_ptr(),
+                Some(on_media_copy_prepared),
+            )
+        };
+
+        let request_key = request_id_to_string(&request_id);
+        if request_key.is_empty() || request_key == ZERO_REQUEST_ID {
+            return Err(PlatformError::Platform(
+                "Media request failed to start".to_string(),
+            ));
+        }
+
+        insert_request_channel(&request_key, tx.clone());
+
+        let result_code = match rx.recv_timeout(Duration::from_secs(20)) {
+            Ok(code) => code,
+            Err(_) => {
+                cleanup_request_channel(&request_key);
+                return Err(PlatformError::Platform(
+                    "Timed out waiting for media request".to_string(),
+                ));
+            }
+        };
+
+        if result_code != ffi::MEDIA_LIBRARY_OK {
+            cleanup_request_channel(&request_key);
+            return Err(PlatformError::Platform(format!(
+                "Media request failed with code {}",
+                result_code
+            )));
+        }
+
+        cleanup_request_channel(&request_key);
+
+        if !dest_path.exists() {
+            return Err(PlatformError::Platform(
+                "Destination file was not created".to_string(),
+            ));
+        }
+
+        Ok(())
+    }
 }
 
 impl AppRuntime for Platform {
@@ -261,6 +453,10 @@ impl AppRuntime for Platform {
         PathBuf::from(&self.cache_dir)
     }
 
+    fn copy_media_uri_to_path(&self, uri: &str, dest_path: &Path) -> Result<(), PlatformError> {
+        self.copy_media_uri_to_path_impl(uri, dest_path)
+    }
+
     fn exit_app(&self) -> Result<(), PlatformError> {
         lingxia_webview::tsfn::call_arkts("exitApp", &[])
             .map_err(|e| PlatformError::Platform(format!("Failed to exit app: {}", e)))
@@ -299,5 +495,54 @@ impl AppRuntime for Platform {
     fn launch_with_url(&self, url: String) -> Result<(), PlatformError> {
         lingxia_webview::tsfn::call_arkts("launchWithUrl", &[&url])
             .map_err(|e| PlatformError::Platform(format!("Failed to launch with url: {}", e)))
+    }
+}
+
+#[allow(non_camel_case_types)]
+mod ffi {
+    use std::os::raw::{c_char, c_int};
+
+    #[repr(C)]
+    pub struct OH_MediaAssetManager {
+        _private: [u8; 0],
+    }
+
+    #[repr(C)]
+    #[derive(Copy, Clone)]
+    pub struct MediaLibrary_RequestId {
+        pub request_id: [c_char; 37],
+    }
+
+    pub type MediaLibrary_ErrorCode = c_int;
+
+    pub const MEDIA_LIBRARY_OK: MediaLibrary_ErrorCode = 0;
+
+    pub const MEDIA_LIBRARY_HIGH_QUALITY_MODE: c_int = 1;
+
+    #[allow(non_snake_case)]
+    #[repr(C)]
+    #[derive(Copy, Clone)]
+    pub struct MediaLibrary_RequestOptions {
+        pub deliveryMode: c_int,
+    }
+
+    pub type OH_MediaLibrary_OnDataPrepared =
+        Option<unsafe extern "C" fn(result: c_int, request_id: MediaLibrary_RequestId)>;
+
+    #[link(name = "media_asset_manager")]
+    unsafe extern "C" {
+        pub fn OH_MediaAssetManager_Create() -> *mut OH_MediaAssetManager;
+
+        pub fn OH_MediaAssetManager_RequestImageForPath(
+            manager: *mut OH_MediaAssetManager,
+            uri: *const c_char,
+            requestOptions: MediaLibrary_RequestOptions,
+            destPath: *const c_char,
+            callback: OH_MediaLibrary_OnDataPrepared,
+        ) -> MediaLibrary_RequestId;
+
+        pub fn OH_MediaAssetManager_Release(
+            manager: *mut OH_MediaAssetManager,
+        ) -> MediaLibrary_ErrorCode;
     }
 }
