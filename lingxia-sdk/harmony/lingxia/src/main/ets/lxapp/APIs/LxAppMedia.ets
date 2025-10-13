@@ -4,7 +4,7 @@ import { photoAccessHelper } from '@kit.MediaLibraryKit';
 import { fileIo } from '@kit.CoreFileKit';
 import { LxApp } from '../LxApp';
 import common from '@ohos.app.ability.common';
-//
+import { onCallback } from 'liblingxia.so';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.Media';
@@ -31,6 +31,18 @@ interface FileDescriptorHandle {
 
 interface PhotoAssetFdHandle extends FileDescriptorHandle {
   close?: () => Promise<void>;
+}
+
+interface ChooseMediaResult { uri: string; fileType: string; isOriginal: boolean }
+
+interface ChooseMediaOptions {
+  callbackId: string;
+  maxCount: number;
+  allowOriginal: boolean;
+  allowCompressed: boolean;
+  mode: string; // images/videos/mix
+  allowAlbum: boolean;
+  allowCamera: boolean;
 }
 
 export class LxAppMedia {
@@ -67,6 +79,80 @@ export class LxAppMedia {
       if (items.length === 0) { return false; }
       return LxAppMedia.navigateToMediaPreview(items);
     } catch (_) {
+      return false;
+    }
+  }
+
+  public static chooseMedia(payload: string): boolean {
+    try {
+      const options: ChooseMediaOptions = JSON.parse(payload || '{}');
+      if (!options || typeof options.callbackId !== 'string' || options.callbackId.length === 0) {
+        hilog.error(DOMAIN, TAG, 'chooseMedia: invalid payload');
+        return false;
+      }
+
+      const normalized: ChooseMediaOptions = {
+        callbackId: options.callbackId,
+        maxCount: Number.isFinite(options.maxCount) && options.maxCount > 0 ? Math.floor(options.maxCount) : 1,
+        allowOriginal: !!options.allowOriginal,
+        allowCompressed: !!options.allowCompressed,
+        mode: options.mode ?? 'images',
+        allowAlbum: options.allowAlbum !== false,
+        allowCamera: !!options.allowCamera
+      };
+
+      if (normalized.mode !== 'images') {
+        onCallback(normalized.callbackId, false, 'Only image mode is supported');
+        return false;
+      }
+
+      // Use official system photo picker to avoid restricted READ_IMAGEVIDEO access.
+      const ctx = LxApp.context as common.UIAbilityContext | null;
+      if (!ctx) {
+        onCallback(normalized.callbackId, false, 'No context');
+        return false;
+      }
+
+      (async () => {
+        try {
+          const count = Math.max(1, normalized.maxCount);
+          // Use photoAccessHelper PhotoViewPicker with options
+          const pv = new photoAccessHelper.PhotoViewPicker();
+          const opts: photoAccessHelper.PhotoSelectOptions = {
+            MIMEType: photoAccessHelper.PhotoViewMIMETypes.IMAGE_TYPE,
+            maxSelectNumber: count,
+            isPhotoTakingSupported: false,
+            isSearchSupported: false
+          };
+          const res: photoAccessHelper.PhotoSelectResult = await pv.select(opts);
+          const uris: string[] = Array.isArray(res && res.photoUris) ? res.photoUris : [];
+
+          if (!uris || uris.length === 0) {
+            onCallback(normalized.callbackId, true, '{"cancel":true}');
+            return;
+          }
+
+          const results: ChooseMediaResult[] = [];
+          for (let i = 0; i < Math.min(uris.length, count); i++) {
+            const uri = LxAppMedia.normalizeUri(String(uris[i] ?? ''));
+            if (uri) { results.push({ uri, fileType: 'image', isOriginal: true }); }
+          }
+          if (results.length === 0) {
+            onCallback(normalized.callbackId, true, '{"cancel":true}');
+            return;
+          }
+          onCallback(normalized.callbackId, true, JSON.stringify(results));
+        } catch (err) {
+          const message = err instanceof Error ? err.message : `${err}`;
+          hilog.error(DOMAIN, TAG, `chooseMedia (PhotoViewPicker) failed: ${message}`);
+          onCallback(normalized.callbackId, false, message);
+        }
+      })();
+
+      return true;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : `${err}`;
+      hilog.error(DOMAIN, TAG, `chooseMedia: failed to parse payload: ${message}`);
       return false;
     }
   }

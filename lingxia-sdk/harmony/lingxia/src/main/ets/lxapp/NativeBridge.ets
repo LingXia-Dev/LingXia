@@ -244,6 +244,10 @@ class NativeBridge {
       return LxAppMedia.previewMedia(payload);
     });
 
+    this.register('chooseMedia', (payload: string): boolean => {
+      return LxAppMedia.chooseMedia(payload);
+    });
+
     this.register('saveMedia', (path: string, mediaTypeStr: string): boolean => {
       const mediaType = Number(mediaTypeStr);
       if (!path || Number.isNaN(mediaType)) { return false; }
@@ -271,7 +275,6 @@ class NativeBridge {
     const callback = NativeBridge.callbacks.get(name);
     if (callback) {
       try {
-        hilog.info(DOMAIN, TAG, `Calling callback: ${name} with args: ${JSON.stringify(args)}`);
         return callback(...args);
       } catch (error) {
         hilog.error(DOMAIN, TAG, `Error calling callback ${name}: ${error}`);
@@ -300,22 +303,51 @@ export function getNativeCallbackFunction(): (data: string) => Object | null {
       let args: Object[] = rawArgs;
       if (functionName === 'showToast' && rawArgs.length >= 6) {
         // Convert showToast arguments: title, icon, image, duration, mask, position
-        // title: string (keep as is)
-        // icon: string -> number (success=0, error=1, loading=2, none=3)
-        // image: string (keep as is)
-        // duration: string -> number
-        // mask: string -> boolean
-        // position: string -> number (top=0, center=1, bottom=2)
+        // Accept both string and numeric forms for icon/position, and ms/seconds for duration
         const iconMap: Record<string, number> = { 'success': 0, 'error': 1, 'loading': 2, 'none': 3 };
         const positionMap: Record<string, number> = { 'top': 0, 'center': 1, 'bottom': 2 };
 
+        const parseIcon = (v: Object): number => {
+          const s = String(v ?? '').toLowerCase().trim();
+          const mapped = iconMap[s];
+          if (mapped !== undefined) { return mapped; }
+          const n = Number(s);
+          if (Number.isFinite(n) && n >= 0 && n <= 3) { return Math.floor(n); }
+          return 3; // default none
+        };
+
+        const parsePosition = (v: Object): number => {
+          const s = String(v ?? '').toLowerCase().trim();
+          const mapped = positionMap[s];
+          if (mapped !== undefined) { return mapped; }
+          const n = Number(s);
+          if (Number.isFinite(n) && n >= 0 && n <= 2) { return Math.floor(n); }
+          return 1; // default center
+        };
+
+        const parseBool = (v: Object): boolean => {
+          const s = String(v ?? '').toLowerCase().trim();
+          if (s === 'true' || s === '1') { return true; }
+          if (s === 'false' || s === '0' || s === '') { return false; }
+          return !!v;
+        };
+
+        const parseDurationSeconds = (v: Object): number => {
+          const num = Number(String(v ?? '').trim());
+          if (!Number.isFinite(num) || num < 0) { return 1.5; }
+          // Heuristic: treat values >= 50 as milliseconds and convert to seconds
+          // (common web pattern passes 1500/2000 ms)
+          const secs = num >= 50 ? (num / 1000) : num;
+          return secs;
+        };
+
         args = [
-          rawArgs[0], // title (string)
-          iconMap[rawArgs[1]] ?? 3, // icon (string -> number, default to none)
-          rawArgs[2], // image (string)
-          parseFloat(rawArgs[3]) || 1.5, // duration (string -> number)
-          rawArgs[4] === 'true', // mask (string -> boolean)
-          positionMap[rawArgs[5]] ?? 1 // position (string -> number, default to center)
+          String(rawArgs[0] ?? ''),                          // title
+          parseIcon(rawArgs[1]),                              // icon
+          String(rawArgs[2] ?? ''),                           // image
+          parseDurationSeconds(rawArgs[3]),                   // duration (seconds)
+          parseBool(rawArgs[4]),                              // mask
+          parsePosition(rawArgs[5])                           // position
         ];
       } else if (functionName === 'showModal' && rawArgs.length >= 7) {
         // Handle showModal arguments - skip legacy editable/placeholder parameters if present

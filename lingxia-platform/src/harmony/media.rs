@@ -1,8 +1,8 @@
 use super::app::Platform;
 use crate::error::PlatformError;
 use crate::traits::{
-    ChooseMediaRequest, MediaInteraction, MediaKind, PreviewMediaRequest, SaveMediaRequest,
-    ScanCodeRequest,
+    ChooseMediaMode, ChooseMediaRequest, MediaInteraction, MediaKind, MediaSource,
+    PreviewMediaRequest, SaveMediaRequest, ScanCodeRequest,
 };
 use serde::Serialize;
 
@@ -48,10 +48,51 @@ impl MediaInteraction for Platform {
             .map_err(|e| PlatformError::Platform(format!("Failed to preview media: {}", e)))
     }
 
-    fn choose_media(&self, _request: ChooseMediaRequest) -> Result<(), PlatformError> {
-        Err(PlatformError::Platform(
-            "choose_media is not implemented on Harmony platform".to_string(),
-        ))
+    fn choose_media(&self, request: ChooseMediaRequest) -> Result<(), PlatformError> {
+        if request.max_count == 0 {
+            return Err(PlatformError::Platform(
+                "chooseMedia requires max_count to be greater than 0".to_string(),
+            ));
+        }
+
+        if request.mode != ChooseMediaMode::Images {
+            let err = "Harmony chooseMedia currently supports images only".to_string();
+            lingxia_messaging::invoke_callback(request.callback_id, false, err.clone());
+            return Err(PlatformError::Platform(err));
+        }
+
+        if !request
+            .source_types
+            .iter()
+            .any(|source| matches!(source, MediaSource::Album))
+        {
+            let err = "Harmony chooseMedia currently supports album source only".to_string();
+            lingxia_messaging::invoke_callback(request.callback_id, false, err.clone());
+            return Err(PlatformError::Platform(err));
+        }
+
+        let payload = ChooseMediaPayload {
+            callback_id: request.callback_id.to_string(),
+            max_count: request.max_count,
+            allow_original: request.allow_original,
+            allow_compressed: request.allow_compressed,
+            mode: "images".to_string(),
+            allow_album: true,
+            allow_camera: request
+                .source_types
+                .iter()
+                .any(|source| matches!(source, MediaSource::Camera)),
+        };
+
+        let payload_json = serde_json::to_string(&payload).map_err(|e| {
+            PlatformError::Platform(format!("Failed to serialize chooseMedia payload: {}", e))
+        })?;
+
+        lingxia_webview::tsfn::call_arkts("chooseMedia", &[payload_json.as_str()]).map_err(|e| {
+            let message = format!("Failed to start chooseMedia flow: {}", e);
+            lingxia_messaging::invoke_callback(request.callback_id, false, message.clone());
+            PlatformError::Platform(message)
+        })
     }
 
     fn scan_code(&self, _request: ScanCodeRequest) -> Result<(), PlatformError> {
@@ -73,4 +114,21 @@ fn save_media_resource(file_uri: &str, resource_type: i32) -> Result<(), Platfor
     let media_type_str = resource_type.to_string();
     lingxia_webview::tsfn::call_arkts("saveMedia", &[file_uri, &media_type_str])
         .map_err(|e| PlatformError::Platform(format!("Failed to save media: {}", e)))
+}
+
+#[derive(Serialize)]
+struct ChooseMediaPayload {
+    #[serde(rename = "callbackId")]
+    callback_id: String,
+    #[serde(rename = "maxCount")]
+    max_count: u32,
+    #[serde(rename = "allowOriginal")]
+    allow_original: bool,
+    #[serde(rename = "allowCompressed")]
+    allow_compressed: bool,
+    mode: String,
+    #[serde(rename = "allowAlbum")]
+    allow_album: bool,
+    #[serde(rename = "allowCamera")]
+    allow_camera: bool,
 }
