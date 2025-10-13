@@ -4,7 +4,7 @@
   "description": "LingXia LxApp demo",
   "type": "module",
   "scripts": {
-    "build": "lingxia build",
+    "build": "lingxia build --prod",
     "dev": "lingxia build --dev",
     "build:logic": "LINGXIA_ONLY=logic lingxia build",
     "build:view": "LINGXIA_ONLY=view lingxia build"

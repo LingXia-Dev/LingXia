@@ -4,18 +4,24 @@ import type { BuildOptions, Page, PageFiles } from '../../types/index.js';
 import { FileUtils } from '../utils/file.js';
 import { TemplateManager } from '../template.js';
 import { FrameworkFactory } from '../frameworks/factory.js';
+import type { ViewBuildConfig } from '../config/view-config.js';
+import { ViewConfigManager } from '../config/view-config.js';
+import { resolveUserViewConfig } from '../config/view-config.js';
 
 export class PageProcessor {
   private projectPath: string;
   private outputDir: string;
   private fileUtils: FileUtils;
   private templateManager: TemplateManager;
+  private viewConfigManager: ViewConfigManager;
 
   constructor(projectPath: string, outputDir: string) {
     this.projectPath = projectPath;
     this.outputDir = outputDir;
     this.fileUtils = new FileUtils();
     this.templateManager = new TemplateManager();
+    const userConfig = resolveUserViewConfig(projectPath);
+    this.viewConfigManager = new ViewConfigManager(projectPath, userConfig);
   }
 
   /**
@@ -73,17 +79,15 @@ export class PageProcessor {
     await processor.setupBuild(buildDir, page, pageFiles, pageFunctions);
 
     console.log(` Building ${processor.getFrameworkName()} page with bundled Vite...`);
+    const frameworkConfig = this.viewConfigManager.getFrameworkConfig(framework as 'react' | 'vue');
     await this.runViteBuild(buildDir, framework as 'react' | 'vue', {
       options,
       inputs: { index: path.join(buildDir, 'index.html') },
-      output: {
-        entryFileNames: 'main.js',
-        chunkFileNames: 'chunks/[name]-[hash].js',
-        assetFileNames: 'assets/[name].[ext]'
-      },
-      cssCodeSplit: false,
-      esbuild: framework === 'react' ? { jsx: 'automatic' } : undefined,
-      target: 'es2015'
+      frameworkConfig,
+      output: frameworkConfig.output.single,
+      cssCodeSplit: frameworkConfig.cssCodeSplitSingle,
+      esbuild: frameworkConfig.esbuild ?? (framework === 'react' ? { jsx: 'automatic' } : undefined),
+      target: frameworkConfig.target ?? 'es2015'
     });
 
     // Generate function bridge script (unified for all frameworks)
@@ -140,18 +144,15 @@ export class PageProcessor {
       inputs[entryName] = path.join(subDir, 'index.html');
       entryNameByPagePath[page.path] = entryName;
     }
-
+    
+    const frameworkConfig = this.viewConfigManager.getFrameworkConfig(framework);
     console.log(` Building ${processor.getFrameworkName()} pages with bundled Vite (multi-entry)...`);
     await this.runViteBuild(buildDir, framework, {
       options,
       inputs,
-      output: {
-        entryFileNames: 'pages/[name]/[name].js',
-        chunkFileNames: 'assets/[name]-[hash].js',
-        assetFileNames: 'assets/[name].[ext]',
-        manualChunks: null
-      },
-      cssCodeSplit: false
+      frameworkConfig,
+      output: frameworkConfig.output.multi,
+      cssCodeSplit: frameworkConfig.cssCodeSplitMulti
     });
 
     const distDir = path.join(buildDir, 'dist');
@@ -213,11 +214,12 @@ export class PageProcessor {
       cssCodeSplit?: boolean;
       esbuild?: Record<string, unknown>;
       target?: string;
+      frameworkConfig: ViewBuildConfig;
     }
   ): Promise<void> {
     const { build } = await import('vite');
-    const plugins = await this.resolveFrameworkPlugins(framework);
-    const css = await this.createCssConfig(buildDir);
+    const plugins = await this.resolveFrameworkPlugins(framework, config.frameworkConfig);
+    const css = await this.createCssConfig(buildDir, config.frameworkConfig);
     const isDev = Boolean(config.options.dev);
     const isProd = Boolean(config.options.prod);
 
@@ -238,13 +240,17 @@ export class PageProcessor {
         },
         cssCodeSplit: config.cssCodeSplit ?? true,
         target: config.target,
-        minify: isProd ? 'esbuild' : false,
+        minify: isProd ? (config.frameworkConfig.minifyStrategy ?? 'esbuild') : false,
         sourcemap: isDev
       }
     });
   }
 
-  private async resolveFrameworkPlugins(framework: 'react' | 'vue') {
+  private async resolveFrameworkPlugins(framework: 'react' | 'vue', config: ViewBuildConfig) {
+    const pluginFactories = await config.resolvePlugins?.(framework);
+    if (pluginFactories && pluginFactories.length > 0) {
+      return pluginFactories;
+    }
     if (framework === 'react') {
       const reactModule = await import('@vitejs/plugin-react');
       const pluginFactory = (reactModule as any).default ?? reactModule;
@@ -255,7 +261,13 @@ export class PageProcessor {
     return [pluginFactory()];
   }
 
-  private async createCssConfig(buildDir: string) {
+  private async createCssConfig(buildDir: string, config: ViewBuildConfig) {
+    if (config.cssConfig === false) {
+      return undefined;
+    }
+    if (typeof config.cssConfig === 'function') {
+      return config.cssConfig(buildDir);
+    }
     const tailwindConfigPath = path.join(buildDir, 'tailwind.config.js');
     if (!fs.existsSync(tailwindConfigPath)) {
       return undefined;

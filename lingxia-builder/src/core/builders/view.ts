@@ -1,23 +1,19 @@
 import fs from 'fs';
 import path from 'path';
-import { execSync } from 'child_process';
 import type { Page, PageFiles, BuildOptions } from '../../types/index.js';
 import { FileUtils } from '../utils/file.js';
-import { DependencyResolver } from './deps.js';
 import { PageProcessor } from './page.js';
 
 export class ViewBuilder {
   private projectPath: string;
   private outputDir: string;
   private fileUtils: FileUtils;
-  private dependencyResolver: DependencyResolver;
   private pageProcessor: PageProcessor;
 
   constructor(projectPath: string, outputDir: string) {
     this.projectPath = projectPath;
     this.outputDir = outputDir;
     this.fileUtils = new FileUtils();
-    this.dependencyResolver = new DependencyResolver(projectPath);
     this.pageProcessor = new PageProcessor(projectPath, outputDir);
   }
 

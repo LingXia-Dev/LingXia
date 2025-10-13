@@ -29,16 +29,7 @@ export class VueProcessor extends FrameworkProcessor {
   }
 
   getDependencies(): { dependencies: any; devDependencies: any } {
-    return this.templateManager.getFrameworkDependencies('vue');
-  }
-
-  async createViteConfig(buildDir: string, options: any = {}): Promise<any> {
-    // Generate dynamic Vite config based on build mode
-    const isProd = options.prod || false;
-    const viteConfig = this.templateManager.getViteConfig('vue', this.projectPath, isProd);
-    const destPath = path.join(buildDir, 'vite.config.js');
-    fs.writeFileSync(destPath, viteConfig);
-    return null; // Config is written as file, not returned as object
+    return { dependencies: {}, devDependencies: {} };
   }
 
   async setupBuild(
