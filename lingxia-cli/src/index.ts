@@ -5,8 +5,8 @@ export function runCLI(): void {
   const program = new Command();
   program
     .name('lingxia')
-    .description('LingXia CLI')
-    .version('0.0.0');
+    .description('LingXia CLI - Build LingXia LxApp projects')
+    .version('0.0.1');
 
   program
     .command('build')
