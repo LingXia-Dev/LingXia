@@ -1,16 +1,18 @@
-# LingXia CLI (draft)
+# LingXia CLI
 
-开发者使用的 LingXia 命令行入口，当前仅在本地迭代，尚未发布到 npm。
+The LingXia CLI provides the command-line entry point for building LingXia applications alongside the workspace builder tooling. The package is currently consumed locally and is not yet published to npm.
 
-## 命令
+## Usage
 
 ```bash
-lingxia build [--dev|--prod]
+lingxia build [--dev | --prod]
 ```
 
-命令逻辑来自内部的 `lingxia-builder` 包。
+The CLI delegates the build workflow to the internal `lingxia-builder` package.
 
-## 开发
+## Local Development
+
+Install dependencies and produce the compiled command-line bundle:
 
 ```bash
 npm install --prefix ../lingxia-builder
@@ -18,10 +20,10 @@ npm install --prefix .
 npm run build
 ```
 
-构建完成后可直接执行：
+After the build completes you can invoke the CLI directly:
 
 ```bash
 ./bin/lingxia.js --help
 ```
 
-如需修改 CLI 行为，请编辑 `src/index.ts` 并重新运行 `npm run build`。
+Update `src/index.ts` when you need to adjust CLI behavior, then re-run `npm run build` to refresh the distribution artifacts.
