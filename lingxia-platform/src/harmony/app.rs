@@ -300,6 +300,7 @@ impl Platform {
         &self,
         uri: &str,
         dest_path: &Path,
+        _kind: crate::traits::MediaKind,
     ) -> Result<(), PlatformError> {
         if uri.is_empty() {
             return Err(PlatformError::Platform("URI must not be empty".to_string()));
@@ -344,13 +345,22 @@ impl Platform {
         let (tx, rx) = mpsc::channel();
 
         let request_id = unsafe {
-            ffi::OH_MediaAssetManager_RequestImageForPath(
-                manager.0,
-                uri_cstr.as_ptr(),
-                request_options,
-                dest_cstr.as_ptr(),
-                Some(on_media_copy_prepared),
-            )
+            match _kind {
+                crate::traits::MediaKind::Video => ffi::OH_MediaAssetManager_RequestVideoForPath(
+                    manager.0,
+                    uri_cstr.as_ptr(),
+                    request_options,
+                    dest_cstr.as_ptr(),
+                    Some(on_media_copy_prepared),
+                ),
+                _ => ffi::OH_MediaAssetManager_RequestImageForPath(
+                    manager.0,
+                    uri_cstr.as_ptr(),
+                    request_options,
+                    dest_cstr.as_ptr(),
+                    Some(on_media_copy_prepared),
+                ),
+            }
         };
 
         let request_key = request_id_to_string(&request_id);
@@ -453,8 +463,13 @@ impl AppRuntime for Platform {
         PathBuf::from(&self.cache_dir)
     }
 
-    fn copy_media_uri_to_path(&self, uri: &str, dest_path: &Path) -> Result<(), PlatformError> {
-        self.copy_media_uri_to_path_impl(uri, dest_path)
+    fn copy_media_uri_to_path(
+        &self,
+        uri: &str,
+        dest_path: &Path,
+        kind: crate::traits::MediaKind,
+    ) -> Result<(), PlatformError> {
+        self.copy_media_uri_to_path_impl(uri, dest_path, kind)
     }
 
     fn exit_app(&self) -> Result<(), PlatformError> {
@@ -534,6 +549,14 @@ mod ffi {
         pub fn OH_MediaAssetManager_Create() -> *mut OH_MediaAssetManager;
 
         pub fn OH_MediaAssetManager_RequestImageForPath(
+            manager: *mut OH_MediaAssetManager,
+            uri: *const c_char,
+            requestOptions: MediaLibrary_RequestOptions,
+            destPath: *const c_char,
+            callback: OH_MediaLibrary_OnDataPrepared,
+        ) -> MediaLibrary_RequestId;
+
+        pub fn OH_MediaAssetManager_RequestVideoForPath(
             manager: *mut OH_MediaAssetManager,
             uri: *const c_char,
             requestOptions: MediaLibrary_RequestOptions,

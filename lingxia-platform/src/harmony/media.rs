@@ -55,12 +55,6 @@ impl MediaInteraction for Platform {
             ));
         }
 
-        if request.mode != ChooseMediaMode::Images {
-            let err = "Harmony chooseMedia currently supports images only".to_string();
-            lingxia_messaging::invoke_callback(request.callback_id, false, err.clone());
-            return Err(PlatformError::Platform(err));
-        }
-
         if !request
             .source_types
             .iter()
@@ -71,12 +65,18 @@ impl MediaInteraction for Platform {
             return Err(PlatformError::Platform(err));
         }
 
+        let mode_str = match request.mode {
+            ChooseMediaMode::Images => "images",
+            ChooseMediaMode::Videos => "videos",
+            ChooseMediaMode::Mix => "mix",
+        };
+
         let payload = ChooseMediaPayload {
             callback_id: request.callback_id.to_string(),
             max_count: request.max_count,
             allow_original: request.allow_original,
             allow_compressed: request.allow_compressed,
-            mode: "images".to_string(),
+            mode: mode_str.to_string(),
             allow_album: true,
             allow_camera: request
                 .source_types

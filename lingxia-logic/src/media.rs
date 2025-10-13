@@ -324,7 +324,16 @@ async fn choose_media(
             let filename = format!("{}.{}", now, ext);
             let dest_path = cache_root.join(filename);
 
-            match lxapp.runtime.copy_media_uri_to_path(uri, &dest_path) {
+            let media_kind = match kind {
+                "video" => MediaKind::Video,
+                "image" => MediaKind::Image,
+                _ => MediaKind::Image,
+            };
+
+            match lxapp
+                .runtime
+                .copy_media_uri_to_path(uri, &dest_path, media_kind)
+            {
                 Ok(()) => dest_path.to_string_lossy().to_string(),
                 Err(err) => {
                     return Err(RongJSError::Error(format!("copyMedia failed: {}", err)));

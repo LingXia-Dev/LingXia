@@ -361,8 +361,14 @@ pub trait AppRuntime: Send + Sync + 'static {
 
     /// Copy a platform media resource identified by `uri` into the supplied destination path.
     ///
-    /// The destination path must be a writable location
-    fn copy_media_uri_to_path(&self, _uri: &str, _dest_path: &Path) -> Result<(), PlatformError> {
+    /// The destination path must be a writable location.
+    /// `kind` hints the platform whether the asset is an image or a video.
+    fn copy_media_uri_to_path(
+        &self,
+        _uri: &str,
+        _dest_path: &Path,
+        _kind: MediaKind,
+    ) -> Result<(), PlatformError> {
         Ok(())
     }
 

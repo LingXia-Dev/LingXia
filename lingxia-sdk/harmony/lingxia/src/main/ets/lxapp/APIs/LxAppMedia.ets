@@ -101,11 +101,6 @@ export class LxAppMedia {
         allowCamera: !!options.allowCamera
       };
 
-      if (normalized.mode !== 'images') {
-        onCallback(normalized.callbackId, false, 'Only image mode is supported');
-        return false;
-      }
-
       // Use official system photo picker to avoid restricted READ_IMAGEVIDEO access.
       const ctx = LxApp.context as common.UIAbilityContext | null;
       if (!ctx) {
@@ -118,14 +113,26 @@ export class LxAppMedia {
           const count = Math.max(1, normalized.maxCount);
           // Use photoAccessHelper PhotoViewPicker with options
           const pv = new photoAccessHelper.PhotoViewPicker();
+          // Select MIME types per requested mode
+          let mime: photoAccessHelper.PhotoViewMIMETypes;
+          const mode = (normalized.mode || 'images').toLowerCase();
+          if (mode === 'videos') {
+            mime = photoAccessHelper.PhotoViewMIMETypes.VIDEO_TYPE;
+          } else if (mode === 'mix') {
+            mime = photoAccessHelper.PhotoViewMIMETypes.IMAGE_VIDEO_TYPE;
+          } else {
+            mime = photoAccessHelper.PhotoViewMIMETypes.IMAGE_TYPE;
+          }
+
           const opts: photoAccessHelper.PhotoSelectOptions = {
-            MIMEType: photoAccessHelper.PhotoViewMIMETypes.IMAGE_TYPE,
+            MIMEType: mime,
             maxSelectNumber: count,
             isPhotoTakingSupported: false,
             isSearchSupported: false
           };
           const res: photoAccessHelper.PhotoSelectResult = await pv.select(opts);
           const uris: string[] = Array.isArray(res && res.photoUris) ? res.photoUris : [];
+          const isOriginalPick: boolean = (res && (res as photoAccessHelper.PhotoSelectResult).isOriginalPhoto === true);
 
           if (!uris || uris.length === 0) {
             onCallback(normalized.callbackId, true, '{"cancel":true}');
@@ -134,8 +141,14 @@ export class LxAppMedia {
 
           const results: ChooseMediaResult[] = [];
           for (let i = 0; i < Math.min(uris.length, count); i++) {
-            const uri = LxAppMedia.normalizeUri(String(uris[i] ?? ''));
-            if (uri) { results.push({ uri, fileType: 'image', isOriginal: true }); }
+            const raw = String(uris[i] ?? '');
+            const uri = LxAppMedia.normalizeUri(raw);
+            if (!uri) { continue; }
+            const fileType = LxAppMedia.detectMediaTypeFromUri(uri);
+            // Enforce mode-specific filtering as safeguard
+            if (normalized.mode === 'images' && fileType !== 'image') { continue; }
+            if (normalized.mode === 'videos' && fileType !== 'video') { continue; }
+            results.push({ uri, fileType, isOriginal: isOriginalPick });
           }
           if (results.length === 0) {
             onCallback(normalized.callbackId, true, '{"cancel":true}');
@@ -256,5 +269,17 @@ export class LxAppMedia {
       return path;
     }
     return `file://${path}`;
+  }
+
+  private static detectMediaTypeFromUri(uri: string): 'image' | 'video' {
+    const lower = (uri || '').toLowerCase();
+    const q = lower.split('?')[0];
+    const dot = q.lastIndexOf('.');
+    const ext = dot !== -1 ? q.substring(dot + 1) : '';
+    const videoExts = ['mp4', 'mov', 'm4v', '3gp', '3gpp', 'avi', 'mkv', 'webm'];
+    if (videoExts.indexOf(ext) !== -1) {
+      return 'video';
+    }
+    return 'image';
   }
 }
