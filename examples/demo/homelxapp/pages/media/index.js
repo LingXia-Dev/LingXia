@@ -5,7 +5,10 @@ const SOURCE_OPTIONS = [
   { key: "camera", label: "Camera", request: ["camera"] },
 ];
 
-const QUALITY_OPTIONS = [{ key: "original", label: "Original" }];
+const QUALITY_OPTIONS = [
+  { key: "original", label: "Original" },
+  { key: "compressed", label: "Compressed" },
+];
 
 const COUNT_OPTIONS = Array.from({ length: 9 }, (_, index) => {
   const value = index + 1;
@@ -308,9 +311,7 @@ Page({
   },
 
   launchMediaDemo: async function () {
-    if (this.data.isRunning) {
-      return;
-    }
+    if (this.data.isRunning) return;
 
     const modeKey = this.data.modeKey || DEFAULT_MODE;
     const config = MODE_SETTINGS[modeKey] || MODE_SETTINGS[DEFAULT_MODE];
@@ -320,65 +321,42 @@ Page({
       SOURCE_OPTIONS[0],
     );
 
+    // Build minimal request; latest chooseMedia returns a plain JS array
     const request = {
-      mediaType: this.data.mediaType,
+      mediaType: this.data.mediaType, // "image" | "video"
       sourceType: sourceOption?.request || ["album"],
     };
     if (this.data.mediaType === "video") {
       request.count = 1;
-      const durationOption = findOption(
-        DURATION_OPTIONS,
-        this.data.durationKey,
-        DURATION_OPTIONS[DURATION_OPTIONS.length - 1],
-      );
-      if (durationOption?.value) {
-        request.maxDuration = durationOption.value;
-      }
-      if (this.data.cameraKey) {
-        request.camera = this.data.cameraKey;
-      }
+      if (this.data.durationValue > 0)
+        request.maxDuration = this.data.durationValue;
+      if (this.data.cameraKey) request.camera = this.data.cameraKey;
     } else {
-      const countValue =
-        typeof this.data.countLimit === "number" && this.data.countLimit > 0
-          ? this.data.countLimit
-          : undefined;
-      if (typeof countValue === "number") {
-        request.count = countValue;
+      if (this.data.countLimit > 0) request.count = this.data.countLimit;
+      // Map quality to compression flags
+      if (this.data.qualityKey === "compressed") {
+        request.allowCompressed = true;
+        request.allowOriginal = false;
+      } else {
+        request.allowOriginal = true;
+        request.allowCompressed = false;
       }
     }
 
-    this.setData({
-      isRunning: true,
-      selectedMedia: [],
-    });
-
-    const aggregated = [];
+    this.setData({ isRunning: true, selectedMedia: [] });
 
     try {
-      const iterator = lx.chooseMedia(request);
-      if (iterator && typeof iterator[Symbol.asyncIterator] === "function") {
-        for await (const item of iterator) {
-          const source = extractMediaSource(item, config.mediaType);
-          if (source) {
-            aggregated.push(source);
-            this.setData({ selectedMedia: aggregated });
-            if (this.data.mediaType === "video") {
-              break;
-            }
-          }
-        }
-      } else {
-        const resolved =
-          iterator && typeof iterator.then === "function"
-            ? await iterator
-            : iterator;
-        const selections = collectSources(resolved, config.mediaType);
-        aggregated.push(...selections);
-        if (this.data.mediaType === "video" && aggregated.length > 1) {
-          aggregated.splice(1);
-        }
-        this.setData({ selectedMedia: aggregated });
-      }
+      const results = await lx.chooseMedia(request);
+      const mapped = results
+        .map((it) => ({
+          path: it?.uri || it?.path || "",
+          type: it?.fileType === "video" ? "video" : "image",
+        }))
+        .filter((it) => it.path);
+      // For video enforce single selection
+      const finalList =
+        this.data.mediaType === "video" ? mapped.slice(0, 1) : mapped;
+      this.setData({ selectedMedia: finalList });
     } catch (error) {
       console.error("[media-demo] chooseMedia failed:", error);
       lx.showToast({
@@ -386,10 +364,7 @@ Page({
         icon: "none",
       });
     } finally {
-      this.setData({
-        isRunning: false,
-        selectedMedia: aggregated,
-      });
+      this.setData({ isRunning: false });
     }
   },
 

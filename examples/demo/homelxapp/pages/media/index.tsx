@@ -6,7 +6,10 @@ const SOURCE_OPTIONS = [
   { key: 'camera', label: 'Camera' },
 ];
 
-const QUALITY_OPTIONS = [{ key: 'original', label: 'Original' }];
+const QUALITY_OPTIONS = [
+  { key: 'original', label: 'Original' },
+  { key: 'compressed', label: 'Compressed' },
+];
 
 const COUNT_OPTIONS = Array.from({ length: 9 }, (_, index) => {
   const value = index + 1;
