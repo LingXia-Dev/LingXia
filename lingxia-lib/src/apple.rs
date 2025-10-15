@@ -1,5 +1,4 @@
 use lingxia_messaging::invoke_callback;
-use lxapp::LxAppInfo as CoreLxAppInfo;
 use lxapp::log::LogLevel;
 use lxapp::{LxAppDelegate, UiEventType};
 
@@ -26,6 +25,7 @@ mod bridge {
     #[swift_bridge(swift_repr = "struct")]
     pub struct LxAppInfo {
         pub app_name: String,
+        pub cache_dir: String,
     }
 
     // NavigationBar state for Swift
@@ -140,15 +140,6 @@ mod bridge {
 
         #[swift_bridge(swift_name = "onCallback")]
         fn on_callback(id: u64, success: bool, data: &str) -> bool;
-    }
-}
-
-// Conversion from core LxAppInfo to FFI LxAppInfo
-impl From<CoreLxAppInfo> for bridge::LxAppInfo {
-    fn from(core_info: CoreLxAppInfo) -> Self {
-        Self {
-            app_name: core_info.app_name,
-        }
     }
 }
 
@@ -277,8 +268,10 @@ pub fn get_lxapp_info(appid: &str) -> bridge::LxAppInfo {
     let lxapp = lxapp::get(appid.to_string());
     let lxapp_info = lxapp.get_lxapp_info();
 
-    // Convert from core LxAppInfo to FFI LxAppInfo
-    lxapp_info.into()
+    bridge::LxAppInfo {
+        app_name: lxapp_info.app_name,
+        cache_dir: lxapp.user_cache_dir.to_string_lossy().into_owned(),
+    }
 }
 
 /// Get NavigationBar state

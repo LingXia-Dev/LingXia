@@ -398,12 +398,16 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getLxAppInfo<'a>(
         Ok(s) => s,
         Err(_) => return JObject::null(),
     };
+    let cache_dir_str = match env.new_string(&lxapp.user_cache_dir.to_string_lossy().into_owned()) {
+        Ok(s) => s,
+        Err(_) => return JObject::null(),
+    };
 
-    // Create LxAppInfo object
+    // Create LxAppInfo object (appName, cacheDir)
     match env.new_object(
         lxapp_info_class,
-        "(Ljava/lang/String;)V",
-        &[(&app_name_str).into()],
+        "(Ljava/lang/String;Ljava/lang/String;)V",
+        &[(&app_name_str).into(), (&cache_dir_str).into()],
     ) {
         Ok(obj) => obj,
         Err(_) => JObject::null(),

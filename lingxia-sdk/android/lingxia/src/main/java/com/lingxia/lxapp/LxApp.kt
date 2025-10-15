@@ -18,6 +18,7 @@ import androidx.core.content.ContextCompat
  */
 data class LxAppInfo(
     val appName: String,
+    val cacheDir: String,
 )
 
 /**
