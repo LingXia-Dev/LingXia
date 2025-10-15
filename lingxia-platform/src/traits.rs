@@ -365,12 +365,10 @@ pub trait AppRuntime: Send + Sync + 'static {
     /// `kind` hints the platform whether the asset is an image or a video.
     fn copy_media_uri_to_path(
         &self,
-        _uri: &str,
-        _dest_path: &Path,
-        _kind: MediaKind,
-    ) -> Result<(), PlatformError> {
-        Ok(())
-    }
+        uri: &str,
+        dest_path: &Path,
+        kind: MediaKind,
+    ) -> Result<(), PlatformError>;
 
     /// Exit the application
     ///

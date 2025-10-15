@@ -40,6 +40,26 @@ internal object LxAppMedia {
         }
     }
 
+    /**
+     * Copy a content URI to destination path using the application ContentResolver
+     */
+    @JvmStatic
+    fun copyUriToPath(uri: String, destPath: String): Boolean {
+        return try {
+            val ctx = LxApp.getApplicationContext()
+            val cr = ctx.contentResolver
+            val outFile = java.io.File(destPath)
+            outFile.parentFile?.let { if (!it.exists()) it.mkdirs() }
+            cr.openInputStream(android.net.Uri.parse(uri))?.use { input ->
+                outFile.outputStream().use { output -> input.copyTo(output) }
+            } ?: return false
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "copyUriToPath failed: ${e.message}")
+            false
+        }
+    }
+
     @JvmStatic
     fun saveImageToPhotosAlbum(imageUri: String): Boolean {
         return saveMediaToGallery(imageUri, "image/jpeg", true)

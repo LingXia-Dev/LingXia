@@ -35,6 +35,17 @@ impl AppRuntime for Platform {
         PathBuf::from(&self.cache_dir)
     }
 
+    fn copy_media_uri_to_path(
+        &self,
+        _uri: &str,
+        _dest_path: &std::path::Path,
+        _kind: crate::traits::MediaKind,
+    ) -> Result<(), PlatformError> {
+        Err(PlatformError::Platform(
+            "copy_media_uri_to_path is not supported on Apple".to_string(),
+        ))
+    }
+
     fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, PlatformError> {
         let data = super::resources::read_asset_data(path);
 

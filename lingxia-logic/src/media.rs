@@ -6,9 +6,6 @@ use lingxia_platform::{
     PreviewMediaItem, PreviewMediaRequest, SaveMediaRequest,
 };
 use rong::{FromJSObj, JSContext, JSFunc, JSObject, JSResult, RongJSError, function::Optional};
-use std::fs::File;
-use std::io::{self};
-use std::os::fd::FromRawFd;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -290,28 +287,8 @@ async fn choose_media(
         if uri.is_empty() {
             continue;
         }
-        let fd_opt = item.get("fd").and_then(|v| v.as_i64());
-
-        let final_path = if let Some(fd_val) = fd_opt {
-            let ext = match kind {
-                "video" => "mp4",
-                _ => "jpg",
-            };
-            let now = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis();
-            let filename = format!("{}.{}", now, ext);
-            let dest_path = cache_root.join(filename);
-            let mut src = unsafe { File::from_raw_fd(fd_val as i32) };
-            let mut dst = match File::create(&dest_path) {
-                Ok(f) => f,
-                Err(_) => continue,
-            };
-            if io::copy(&mut src, &mut dst).is_err() {
-                continue;
-            }
-            dest_path.to_string_lossy().to_string()
+        let final_path = if std::path::Path::new(uri).is_absolute() {
+            uri.to_string()
         } else {
             let ext = match kind {
                 "video" => "mp4",

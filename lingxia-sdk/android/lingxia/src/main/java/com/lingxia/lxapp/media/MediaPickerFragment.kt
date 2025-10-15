@@ -519,22 +519,15 @@ class MediaPickerFragment : Fragment() {
                 val arr = org.json.JSONArray()
                 for (uri in keys) {
                     val typeStr = when (itemsIndex[uri]?.fileType) { "video" -> "video"; else -> "image" }
-                    val pfd = requireContext().contentResolver.openFileDescriptor(uri, "r")
-                    val fd = pfd?.detachFd()
-                    if (fd == null) {
-                        NativeApi.onCallback(cbId, false, "Failed to obtain file descriptor")
-                        return@Thread
-                    }
                     val obj = org.json.JSONObject().apply {
                         put("uri", uri.toString())
                         put("fileType", typeStr)
-                        put("fd", fd)
                     }
                     arr.put(obj)
                 }
                 NativeApi.onCallback(cbId, true, arr.toString())
             } catch (e: Exception) {
-                NativeApi.onCallback(cbId, false, (e.message ?: "openFileDescriptor failed"))
+                NativeApi.onCallback(cbId, false, (e.message ?: "build result failed"))
             } finally {
                 activity?.runOnUiThread { removeSelf() }
             }

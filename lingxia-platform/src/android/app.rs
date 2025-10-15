@@ -6,7 +6,7 @@ use lingxia_webview::get_env;
 use ndk_sys;
 use std::ffi::CString;
 use std::io::{Read, Result as IoResult};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 // Platform for Android
 #[derive(Clone)]
@@ -285,6 +285,39 @@ impl AppRuntime for Platform {
     /// Get cache directory path
     fn app_cache_dir(&self) -> PathBuf {
         PathBuf::from(&self.cache_dir)
+    }
+
+    fn copy_media_uri_to_path(
+        &self,
+        uri: &str,
+        dest_path: &Path,
+        _kind: crate::traits::MediaKind,
+    ) -> Result<(), PlatformError> {
+        // Call APIs.LxAppMedia.copyUriToPath(String uri, String destPath): boolean (cached class)
+        match || -> Result<(), Box<dyn std::error::Error>> {
+            let mut env = get_env()?;
+            let media_class_ref = super::get_cached_class(super::CachedClass::LxAppMedia)?;
+            let media_class: &JClass = media_class_ref.as_obj().into();
+            let j_uri = env.new_string(uri)?;
+            let j_dest = env.new_string(dest_path.to_string_lossy().as_ref())?;
+            let res = env.call_static_method(
+                media_class,
+                "copyUriToPath",
+                "(Ljava/lang/String;Ljava/lang/String;)Z",
+                &[(&j_uri).into(), (&j_dest).into()],
+            )?;
+            if res.z()? {
+                Ok(())
+            } else {
+                Err("copyUriToPath returned false".into())
+            }
+        }() {
+            Ok(_) => Ok(()),
+            Err(e) => Err(PlatformError::Platform(format!(
+                "Android copy_media_uri_to_path failed: {}",
+                e
+            ))),
+        }
     }
 
     fn exit_app(&self) -> Result<(), PlatformError> {

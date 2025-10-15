@@ -658,18 +658,14 @@ class MediaCaptureFragment : Fragment() {
                 cancelCapture("Captured file missing")
                 return
             }
-            val fd = openFileDescriptor(pending.file) ?: run {
-                finishButton?.isEnabled = true
-                cancelCapture("Failed to open captured media")
-                return
+            // Return JS array with single item (uri + fileType), no fd
+            val arr = org.json.JSONArray().apply {
+                put(JSONObject().apply {
+                    put("uri", pending.file.absolutePath)
+                    put("fileType", pending.fileType)
+                })
             }
-            val payload = JSONObject().apply {
-                put("uri", Uri.fromFile(pending.file).toString())
-                put("path", pending.file.absolutePath)
-                put("fileType", pending.fileType)
-                put("fd", fd)
-            }
-            NativeApi.onCallback(callbackId, true, payload.toString())
+            NativeApi.onCallback(callbackId, true, arr.toString())
             NativeApi.onCallback(
                 callbackId,
                 true,
@@ -874,14 +870,14 @@ class MediaCaptureFragment : Fragment() {
         val captureParams = capture.layoutParams as? FrameLayout.LayoutParams ?: return
         val captureHeight = if (capture.height > 0) capture.height else captureParams.height
         val buttonSize = if (button.height > 0) button.height else params.height.takeIf { it > 0 } ?: dp(button.context, 32f)
-        
+
         // Calculate position between left edge and big circle left edge
         val screenEdge = dp(button.context, 20f)
         val screenWidth = button.context.resources.displayMetrics.widthPixels
         val bigCircleLeftEdge = (screenWidth / 2) - (captureHeight / 2)  // Big circle left edge
         val availableSpace = bigCircleLeftEdge - screenEdge
         val centerPosition = screenEdge + (availableSpace / 2) - (buttonSize / 2)
-        
+
         params.gravity = Gravity.START or Gravity.BOTTOM
         params.leftMargin = centerPosition
         params.topMargin = 0
@@ -970,19 +966,15 @@ class MediaCaptureFragment : Fragment() {
     }
 
     private fun createOutputFile(suffix: String): File {
-        val ctx = requireContext()
-        val dir = File(ctx.cacheDir, "lxapp/capture").apply {
-            if (!exists()) {
-                mkdirs()
-            }
-        }
+        // Strict: LxApp cache dir is guaranteed
+        val appId = (activity as com.lingxia.lxapp.LxAppActivity).getAppId()
+        val info = NativeApi.getLxAppInfo(appId)!!
+        val dir = File(info.cacheDir).apply { if (!exists()) mkdirs() }
         val now = System.currentTimeMillis()
-        val name = buildString {
-            append(if (suffix == ".mp4") "VID_" else "IMG_")
-            append(dateFormatter.format(java.util.Date(now)))
-            append('_')
-            append(now)
-            append(suffix)
+        val name = if (suffix == ".mp4") {
+            "video_" + now.toString() + suffix
+        } else {
+            "photo_" + now.toString() + suffix
         }
         return File(dir, name)
     }
@@ -1112,11 +1104,11 @@ class MediaCaptureFragment : Fragment() {
         fun resetState() {
             recording = false
             progressRing.progress = 0f
-            
+
             // Reset any scale transformations to avoid polygon issue
             innerCircle.scaleX = 1f
             innerCircle.scaleY = 1f
-            
+
             refresh()
         }
 
@@ -1234,27 +1226,27 @@ class MediaCaptureFragment : Fragment() {
             val radius = min(width, height) / 2f
             val cx = width / 2f
             val cy = height / 2f
-            
+
             // Draw subtle shadow
             canvas.drawCircle(cx + 1f, cy + 1f, radius, shadowPaint)
-            
+
             // Draw white circle background
             canvas.drawCircle(cx, cy, radius, circlePaint)
 
             // Create V-shaped cutout (V opening upward, point downward)
             val chevronSize = radius * 0.4f
             val strokeWidth = radius * 0.12f
-            
+
             cutoutPaint.strokeWidth = strokeWidth
             cutoutPaint.style = Paint.Style.STROKE
-            
+
             val chevronPath = android.graphics.Path().apply {
                 // V shape: like the letter V
                 moveTo(cx - chevronSize * 0.4f, cy - chevronSize * 0.3f)  // Top left
                 lineTo(cx, cy + chevronSize * 0.3f)                       // Bottom center (point)
                 lineTo(cx + chevronSize * 0.4f, cy - chevronSize * 0.3f)  // Top right
             }
-            
+
             // Cut out the V shape with stroke
             canvas.drawPath(chevronPath, cutoutPaint)
         }
@@ -1290,7 +1282,7 @@ class MediaCaptureFragment : Fragment() {
             val bodyTop = cy - bodyHeight * 0.2f
             val bodyBottom = cy + bodyHeight * 0.8f
             val bodyRadius = size * 0.05f
-            
+
             val bodyRect = RectF(bodyLeft, bodyTop, bodyRight, bodyBottom)
             canvas.drawRoundRect(bodyRect, bodyRadius, bodyRadius, whitePaint)
 
@@ -1299,14 +1291,14 @@ class MediaCaptureFragment : Fragment() {
                 val topWidth = bodyWidth * 0.35f
                 val bottomWidth = bodyWidth * 0.45f
                 val trapHeight = bodyHeight * 0.35f
-                
+
                 val topLeft = cx - topWidth * 0.5f
                 val topRight = cx + topWidth * 0.5f
                 val bottomLeft = cx - bottomWidth * 0.5f
                 val bottomRight = cx + bottomWidth * 0.5f
                 val trapTop = bodyTop - trapHeight * 0.8f
                 val trapBottom = bodyTop + trapHeight * 0.2f
-                
+
                 // Draw trapezoid shape
                 moveTo(topLeft, trapTop)
                 lineTo(topRight, trapTop)
@@ -1351,7 +1343,7 @@ class MediaCaptureFragment : Fragment() {
 
             // Draw very thin curved arrows like in reference image
             arrowPaint.strokeWidth = size * 0.04f  // Much thinner stroke
-            
+
             // Draw two curved arrows forming S-like refresh symbol, centered in rectangle
             val bodyHeight = size * 0.45f
             val bodyCenter = cy + bodyHeight * 0.3f  // Center of the main rectangle
@@ -1361,12 +1353,12 @@ class MediaCaptureFragment : Fragment() {
 
         private fun drawCurvedArrow(canvas: Canvas, cx: Float, cy: Float, size: Float, isTop: Boolean) {
             val radius = size * 0.15f  // Much smaller
-            
+
             if (isTop) {
                 // Top curved arrow - smaller arc
                 val arcRect = RectF(cx - radius, cy - radius * 0.8f, cx + radius, cy + radius * 0.8f)
                 canvas.drawArc(arcRect, -30f, 120f, false, arrowPaint)
-                
+
                 // Small arrow head
                 val endAngle = 90f
                 val endX = cx + radius * 0.7f * cos(Math.toRadians(endAngle.toDouble())).toFloat()
@@ -1376,7 +1368,7 @@ class MediaCaptureFragment : Fragment() {
                 // Bottom curved arrow - smaller arc
                 val arcRect = RectF(cx - radius, cy - radius * 0.8f, cx + radius, cy + radius * 0.8f)
                 canvas.drawArc(arcRect, 150f, 120f, false, arrowPaint)
-                
+
                 // Small arrow head
                 val endAngle = -90f
                 val endX = cx + radius * 0.7f * cos(Math.toRadians(endAngle.toDouble())).toFloat()
@@ -1389,12 +1381,12 @@ class MediaCaptureFragment : Fragment() {
             val arrowSize = size * 0.03f  // Much smaller arrowhead
             val rad1 = Math.toRadians((angle + 25).toDouble())
             val rad2 = Math.toRadians((angle - 25).toDouble())
-            
+
             val x1 = (x + arrowSize * cos(rad1)).toFloat()
             val y1 = (y + arrowSize * sin(rad1)).toFloat()
             val x2 = (x + arrowSize * cos(rad2)).toFloat()
             val y2 = (y + arrowSize * sin(rad2)).toFloat()
-            
+
             canvas.drawLine(x, y, x1, y1, arrowPaint)
             canvas.drawLine(x, y, x2, y2, arrowPaint)
         }
@@ -1450,7 +1442,7 @@ class MediaCaptureFragment : Fragment() {
             val cx = width / 2f
             val cy = height / 2f
             val r = min(width, height) / 2f
-            
+
             // Draw white circle background
             canvas.drawCircle(cx, cy, r, circlePaint)
 
@@ -1460,33 +1452,33 @@ class MediaCaptureFragment : Fragment() {
                 val chevronTipX = cx - r * 0.4f  // Moved left from -0.3f to -0.4f
                 val chevronY = cy - r * 0.1f
                 val chevronSize = r * 0.2f
-                
+
                 // Left chevron (<)
                 moveTo(chevronTipX + chevronSize, chevronY - chevronSize * 0.6f)
                 lineTo(chevronTipX, chevronY)
                 lineTo(chevronTipX + chevronSize, chevronY + chevronSize * 0.6f)
-                
+
                 // Horizontal line from chevron to the right (much longer)
                 moveTo(chevronTipX + chevronSize, chevronY)
                 lineTo(cx + r * 0.4f, chevronY)  // Extended from 0.35f to 0.4f
-                
+
                 // Create smooth rounded arc turn
                 val arcStartX = cx + r * 0.4f
                 val arcStartY = chevronY
                 val arcEndX = cx + r * 0.25f
                 val arcEndY = cy + r * 0.25f
-                
+
                 // Draw smooth arc using quadratic curve for more rounded feel
                 moveTo(arcStartX, arcStartY)
                 quadTo(
                     arcStartX + r * 0.1f, arcEndY,  // Control point creates rounded arc
                     arcEndX, arcEndY
                 )
-                
+
                 // Short line after the turn
                 lineTo(cx - r * 0.05f, arcEndY)
             }
-            
+
             // Cut out the curved arrow path
             canvas.drawPath(arrowPath, cutoutPaint)
         }

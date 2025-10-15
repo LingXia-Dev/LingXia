@@ -135,6 +135,12 @@ class LxApp private constructor(private val context: Context) {
             return instance ?: throw IllegalStateException("LxApp not initialized")
         }
 
+        // Expose application context for internal helpers (e.g., content resolver)
+        @JvmStatic
+        fun getApplicationContext(): Context {
+            return getInstance().context
+        }
+
         /**
          * Launch external application with URI
          * @param uri Complete URI to open the target app (e.g., "weixin://dl/scan")
