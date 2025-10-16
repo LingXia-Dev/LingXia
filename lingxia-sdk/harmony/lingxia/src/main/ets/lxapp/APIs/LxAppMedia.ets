@@ -1,6 +1,7 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { MediaPreviewOverlayManager, MediaPreviewItem, MediaPreviewPageParams } from '../MediaPreviewOverlay';
 import { photoAccessHelper } from '@kit.MediaLibraryKit';
+import { CameraCaptureOverlayManager, CameraCaptureOptions } from './CameraCaptureOverlay';
 import { fileIo } from '@kit.CoreFileKit';
 import { LxApp } from '../LxApp';
 import common from '@ohos.app.ability.common';
@@ -43,6 +44,11 @@ interface ChooseMediaOptions {
   mode: string; // images/videos/mix
   allowAlbum: boolean;
   allowCamera: boolean;
+  maxDurationSeconds?: number;
+  // alias accepted from callers
+  maxDuration?: number;
+  duration?: number;
+  cameraFacing?: 'front' | 'back';
 }
 
 export class LxAppMedia {
@@ -100,6 +106,36 @@ export class LxAppMedia {
         allowAlbum: options.allowAlbum !== false,
         allowCamera: !!options.allowCamera
       };
+      const rawDuration = ((): number | undefined => {
+        if (typeof options.maxDurationSeconds === 'number' && Number.isFinite(options.maxDurationSeconds)) {
+          return options.maxDurationSeconds;
+        }
+        if (typeof options.maxDuration === 'number' && Number.isFinite(options.maxDuration)) {
+          return options.maxDuration;
+        }
+        if (typeof options.duration === 'number' && Number.isFinite(options.duration)) {
+          return options.duration;
+        }
+        return undefined;
+      })();
+      if (typeof rawDuration === 'number' && Number.isFinite(rawDuration) && rawDuration > 0) {
+        normalized.maxDurationSeconds = Math.floor(rawDuration);
+      }
+      if (options.cameraFacing === 'front' || options.cameraFacing === 'back') {
+        normalized.cameraFacing = options.cameraFacing;
+      }
+
+      // Route to camera capture when only camera is requested
+      if (normalized.allowCamera && !normalized.allowAlbum) {
+        const cap: CameraCaptureOptions = {
+          callbackId: normalized.callbackId,
+          mode: normalized.mode,
+          maxDurationSeconds: normalized.maxDurationSeconds,
+          cameraFacing: normalized.cameraFacing
+        };
+        CameraCaptureOverlayManager.show(cap);
+        return true;
+      }
 
       // Use official system photo picker to avoid restricted READ_IMAGEVIDEO access.
       const ctx = LxApp.context as common.UIAbilityContext | null;

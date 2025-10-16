@@ -8,6 +8,7 @@ import { PickerManager } from './APIs/LxAppPicker';
 import { ActionSheetManager } from './APIs/LxAppActionSheet';
 import { PopupManager } from './APIs/LxAppPopup';
 import { MediaPreviewOverlayManager, MediaPreviewOverlay } from './MediaPreviewOverlay';
+import { CameraCaptureOverlay } from './APIs/CameraCaptureOverlay';
 
 const DOMAIN = 0xA000;
 const TAG = 'LingXia.Navigation';
@@ -285,6 +286,10 @@ export struct LxAppNavigation {
       // Integrated media preview overlay
       MediaPreviewOverlay()
         .zIndex(10005)
+
+      // Integrated camera capture overlay
+      CameraCaptureOverlay()
+        .zIndex(10006)
     }
     .width('100%')
     .height('100%')

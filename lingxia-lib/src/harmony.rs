@@ -1,4 +1,5 @@
 use lingxia_messaging::invoke_callback;
+use lingxia_platform::harmony::camera;
 use lingxia_webview::{WebTag, get_webview_delegate, tsfn};
 use log::LevelFilter;
 use lxapp::log::LogLevel;
@@ -349,4 +350,68 @@ fn on_callback(id: String, success: bool, data: String) -> bool {
         }
     };
     invoke_callback(id, success, data)
+}
+
+#[napi]
+pub fn camera_init(surface_id: String, facing: String) -> bool {
+    log::info!(
+        "[Harmony.Camera] camera_init called: surfaceId={}, facing={}",
+        surface_id,
+        facing
+    );
+    match camera::camera_init(&surface_id, &facing) {
+        Ok(v) => {
+            log::info!("[Harmony.Camera] camera_init Ok: {}", v);
+            v
+        }
+        Err(e) => {
+            log::error!("[Harmony.Camera] camera_init Err: {}", e);
+            false
+        }
+    }
+}
+
+#[napi]
+pub fn camera_release() {
+    camera::camera_release();
+}
+
+#[napi]
+pub fn camera_switch_facing(is_back: bool) -> bool {
+    camera::camera_switch_facing(is_back).unwrap_or(false)
+}
+
+#[napi]
+pub fn camera_start_video_with_surface(surface_id: String) -> bool {
+    camera::camera_start_video_with_surface(&surface_id).unwrap_or(false)
+}
+
+#[napi]
+pub fn camera_video_output_start() -> bool {
+    camera::camera_video_output_start().unwrap_or(false)
+}
+
+#[napi]
+pub fn camera_video_output_stop_and_release() -> bool {
+    camera::camera_video_output_stop_and_release().unwrap_or(false)
+}
+
+#[napi]
+pub fn camera_start_photo_with_surface(
+    surface_id: String,
+    callback_id: String,
+    cache_dir: String,
+) -> bool {
+    log::info!(
+        "[Harmony.Camera] camera_start_photo_with_surface: surface_id={}, callback_id={}, cache_dir={}",
+        surface_id,
+        callback_id,
+        cache_dir
+    );
+    camera::camera_start_photo_with_surface(&surface_id, &callback_id, &cache_dir).unwrap_or(false)
+}
+
+#[napi]
+pub fn camera_take_photo() -> bool {
+    camera::camera_take_photo().is_ok()
 }

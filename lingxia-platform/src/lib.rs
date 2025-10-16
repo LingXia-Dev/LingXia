@@ -35,7 +35,7 @@ mod android;
 mod apple;
 
 #[cfg(target_env = "ohos")]
-mod harmony;
+pub mod harmony;
 
 // Export Platform and Device types for each platform
 #[cfg(target_os = "android")]

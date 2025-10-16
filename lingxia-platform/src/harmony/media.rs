@@ -55,21 +55,16 @@ impl MediaInteraction for Platform {
             ));
         }
 
-        if !request
-            .source_types
-            .iter()
-            .any(|source| matches!(source, MediaSource::Album))
-        {
-            let err = "Harmony chooseMedia currently supports album source only".to_string();
-            lingxia_messaging::invoke_callback(request.callback_id, false, err.clone());
-            return Err(PlatformError::Platform(err));
-        }
-
         let mode_str = match request.mode {
             ChooseMediaMode::Images => "images",
             ChooseMediaMode::Videos => "videos",
             ChooseMediaMode::Mix => "mix",
         };
+
+        let allow_album = request
+            .source_types
+            .iter()
+            .any(|source| matches!(source, MediaSource::Album));
 
         let payload = ChooseMediaPayload {
             callback_id: request.callback_id.to_string(),
@@ -77,11 +72,23 @@ impl MediaInteraction for Platform {
             allow_original: request.allow_original,
             allow_compressed: request.allow_compressed,
             mode: mode_str.to_string(),
-            allow_album: true,
+            allow_album,
             allow_camera: request
                 .source_types
                 .iter()
                 .any(|source| matches!(source, MediaSource::Camera)),
+            max_duration_seconds: None,
+            camera_facing: None,
+        };
+
+        // Attach optional duration and facing
+        let payload = ChooseMediaPayload {
+            max_duration_seconds: request.max_duration_seconds,
+            camera_facing: request.camera_facing.as_ref().map(|f| match f {
+                crate::traits::CameraFacing::Front => "front".to_string(),
+                crate::traits::CameraFacing::Back => "back".to_string(),
+            }),
+            ..payload
         };
 
         let payload_json = serde_json::to_string(&payload).map_err(|e| {
@@ -131,4 +138,8 @@ struct ChooseMediaPayload {
     allow_album: bool,
     #[serde(rename = "allowCamera")]
     allow_camera: bool,
+    #[serde(rename = "maxDurationSeconds")]
+    max_duration_seconds: Option<u32>,
+    #[serde(rename = "cameraFacing")]
+    camera_facing: Option<String>,
 }

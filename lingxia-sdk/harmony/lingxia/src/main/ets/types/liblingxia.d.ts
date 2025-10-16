@@ -119,8 +119,6 @@ declare module 'liblingxia.so' {
    */
   export function getTabBar(appid: string): TabBarState | null;
 
-
-
   /**
    * Get navigation bar state for a specific LxApp page
    * @param appid - LxApp ID
@@ -135,7 +133,8 @@ declare module 'liblingxia.so' {
    * @param path - Page path
    * @returns Status code (0 for success)
    */
-  export function onLxappOpened(appid: string, path: string): number;
+  // Returns resolved path string
+  export function onLxappOpened(appid: string, path: string): string;
 
   /**
    * Notify that LxApp was closed
@@ -151,6 +150,13 @@ declare module 'liblingxia.so' {
    * @returns Status code (0 for success, -1 for error)
    */
   export function onPageShow(appid: string, path: string): number;
+
+  /**
+   * Handle AppLink (https) received by platform
+   * @param applinkUrl - Full https URL
+   * @returns Status code (0 for success)
+   */
+  export function onApplinkReceived(applinkUrl: string): number;
 
   /**
    * Handle UI events from ArkTS
@@ -175,4 +181,61 @@ declare module 'liblingxia.so' {
    * @returns true if callback was handled successfully, false otherwise
    */
   export function onCallback(id: string, success: boolean, data: string): boolean;
+
+  /**
+   * Initialize camera with surface ID and facing preference
+   * @param surfaceId - XComponent surface ID for camera preview
+   * @param facing - Camera facing preference ("front" or "back")
+   * @returns true if initialization successful, false otherwise
+   */
+  export function cameraInit(surfaceId: string, facing: string): boolean;
+
+  /**
+   * Release camera resources and stop preview
+   */
+  export function cameraRelease(): void;
+
+  /**
+   * Switch camera facing
+   * @param isBack - true for back camera, false for front camera
+   * @returns true if switch successful, false otherwise
+   */
+  export function cameraSwitchFacing(isBack: boolean): boolean;
+
+  /**
+   * Take a photo (notifies via callback when done)
+   * @returns true if capture started successfully
+   */
+  export function cameraTakePhoto(): boolean;
+
+
+  /**
+   * Start photo capture with dedicated surface, callback and cache dir
+   * @param surfaceId - Surface ID for photo capture
+   * @param callbackId - Callback ID for photo result
+   * @param cacheDir - Directory to save captured photo
+   * @returns true if photo capture setup successful, false otherwise
+   */
+  export function cameraStartPhotoWithSurface(surfaceId: string, callbackId: string, cacheDir: string): boolean;
+
+  /**
+   * Start video recording with dedicated surface
+   * @param surfaceId - Surface ID for video recording
+   * @returns true if video recording setup successful, false otherwise
+   */
+  export function cameraStartVideoWithSurface(surfaceId: string): boolean;
+
+  /**
+   * Start video output recording
+   * @returns true if video output started successfully, false otherwise
+   */
+  export function cameraVideoOutputStart(): boolean;
+
+  /**
+   * Stop video output and release resources
+   * @returns true if video output stopped successfully, false otherwise
+   */
+  export function cameraVideoOutputStopAndRelease(): boolean;
+
+  
 }

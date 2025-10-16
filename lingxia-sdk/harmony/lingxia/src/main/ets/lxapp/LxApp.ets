@@ -9,6 +9,7 @@ import { ToastManager } from './APIs/LxAppToast';
 import { initNativeBridge, getNativeCallbackFunction } from './NativeBridge';
 import { WebViewManager, toWebTag } from './WebView';
 import { AnimationType } from './LxAppNavigation';
+import { CameraCaptureOverlay } from './APIs/CameraCaptureOverlay';
 import promptAction from '@kit.ArkUI';
 import { abilityAccessCtrl, Permissions } from '@kit.AbilityKit';
 
@@ -58,6 +59,8 @@ export class LxApp {
     const permissions: Permissions[] = [
       'ohos.permission.LOCATION' as Permissions,
       'ohos.permission.APPROXIMATELY_LOCATION' as Permissions,
+      'ohos.permission.CAMERA' as Permissions,
+      'ohos.permission.MICROPHONE' as Permissions,
       'ohos.permission.READ_IMAGEVIDEO' as Permissions,
       'ohos.permission.WRITE_IMAGEVIDEO' as Permissions
     ];
@@ -380,6 +383,10 @@ struct LxAppManager {
     // Toast manager - always on top
     ToastManager()
       .zIndex(10000)
+
+    // Camera capture overlay - always on top of everything
+    CameraCaptureOverlay()
+      .zIndex(20000)
     }
     .width('100%')
     .height('100%')
