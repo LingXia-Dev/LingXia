@@ -169,8 +169,7 @@ internal object LxAppMedia {
      * @param maxCount Maximum number of items to select
      * @param mode 0 = images, 1 = videos, 2 = mix
      * @param sources Int array of sources: 0 = album, 1 = camera
-     * @param allowOriginal Allow original size (images)
-     * @param allowCompressed Allow compressed (images)
+     * @param allowOriginal Allow original size (images), false for compressed
      * @param maxDurationSeconds Max duration for video capture (ignored here)
      * @param cameraFacing 0 = front, 1 = back (ignored here)
      * @param callbackId Callback identifier to deliver result
@@ -181,7 +180,6 @@ internal object LxAppMedia {
         mode: Int,
         sources: IntArray?,
         allowOriginal: Boolean,
-        allowCompressed: Boolean,
         maxDurationSeconds: Int,
         cameraFacing: Int,
         callbackId: Long

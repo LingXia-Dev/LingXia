@@ -160,6 +160,15 @@ pub enum CameraFacing {
     Back,
 }
 
+/// Quality preference for selected media.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MediaQuality {
+    /// Return original quality images
+    Original,
+    /// Return compressed images
+    Compressed,
+}
+
 /// Parameters for previewing media (images, video, etc.).
 #[derive(Debug, Clone)]
 pub struct PreviewMediaItem {
@@ -196,10 +205,8 @@ pub struct ChooseMediaRequest {
     pub max_duration_seconds: Option<u32>,
     /// Preferred camera when capturing (optional hint).
     pub camera_facing: Option<CameraFacing>,
-    /// Whether the original sized assets can be returned (images only).
-    pub allow_original: bool,
-    /// Whether compressed variants can be returned (images only).
-    pub allow_compressed: bool,
+    /// Quality preference for selected images (original vs compressed).
+    pub image_quality: MediaQuality,
     /// Callback identifier for returning results via messaging.
     pub callback_id: u64,
 }
@@ -212,8 +219,7 @@ impl Default for ChooseMediaRequest {
             source_types: vec![MediaSource::Album, MediaSource::Camera],
             max_duration_seconds: None,
             camera_facing: None,
-            allow_original: true,
-            allow_compressed: true,
+            image_quality: MediaQuality::Original,
             callback_id: 0,
         }
     }

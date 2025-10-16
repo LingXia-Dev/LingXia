@@ -39,8 +39,7 @@ interface ChooseMediaResult { uri: string; fileType: string; isOriginal: boolean
 interface ChooseMediaOptions {
   callbackId: string;
   maxCount: number;
-  allowOriginal: boolean;
-  allowCompressed: boolean;
+  allowOriginal: boolean; // true for original quality, false for compressed
   mode: string; // images/videos/mix
   allowAlbum: boolean;
   allowCamera: boolean;
@@ -101,7 +100,6 @@ export class LxAppMedia {
         callbackId: options.callbackId,
         maxCount: Number.isFinite(options.maxCount) && options.maxCount > 0 ? Math.floor(options.maxCount) : 1,
         allowOriginal: !!options.allowOriginal,
-        allowCompressed: !!options.allowCompressed,
         mode: options.mode ?? 'images',
         allowAlbum: options.allowAlbum !== false,
         allowCamera: !!options.allowCamera

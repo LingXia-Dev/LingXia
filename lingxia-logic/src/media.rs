@@ -2,8 +2,8 @@ use lingxia_lxapp::{LxApp, lx};
 use lingxia_messaging::{CallbackResult, get_callback};
 use lingxia_platform::AppRuntime;
 use lingxia_platform::{
-    CameraFacing, ChooseMediaMode, ChooseMediaRequest, MediaInteraction, MediaKind, MediaSource,
-    PreviewMediaItem, PreviewMediaRequest, SaveMediaRequest,
+    CameraFacing, ChooseMediaMode, ChooseMediaRequest, MediaInteraction, MediaKind, MediaQuality,
+    MediaSource, PreviewMediaItem, PreviewMediaRequest, SaveMediaRequest,
 };
 use rong::{FromJSObj, JSContext, JSFunc, JSObject, JSResult, RongJSError, function::Optional};
 use std::sync::Arc;
@@ -187,25 +187,19 @@ fn parse_camera(s: Option<String>) -> Option<CameraFacing> {
     })
 }
 
-fn parse_size_flags(v: Option<Vec<String>>) -> (bool, bool) {
+fn parse_size_flags(v: Option<Vec<String>>) -> MediaQuality {
     if let Some(list) = v {
-        let mut allow_original = false;
-        let mut allow_compressed = false;
         for s in list {
             match s.to_lowercase().as_str() {
-                "original" => allow_original = true,
-                "compressed" => allow_compressed = true,
+                "original" => return MediaQuality::Original,
+                "compressed" => return MediaQuality::Compressed,
                 _ => {}
             }
         }
-        // If none specified, default to both true
-        if !allow_original && !allow_compressed {
-            (true, true)
-        } else {
-            (allow_original, allow_compressed)
-        }
+        // If none specified, default to original
+        MediaQuality::Original
     } else {
-        (true, true)
+        MediaQuality::Original
     }
 }
 
@@ -228,7 +222,7 @@ async fn choose_media(
     let (callback_id, receiver) = get_callback();
     let cache_root = lxapp.user_cache_dir.clone();
 
-    let (allow_original, allow_compressed) = parse_size_flags(opts.size_type);
+    let image_quality = parse_size_flags(opts.size_type);
     let max_duration_seconds = opts
         .max_duration
         .filter(|v| !v.is_sign_negative())
@@ -252,8 +246,7 @@ async fn choose_media(
         source_types,
         max_duration_seconds,
         camera_facing: parse_camera(opts.camera),
-        allow_original,
-        allow_compressed,
+        image_quality,
         callback_id,
     };
 

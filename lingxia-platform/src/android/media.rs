@@ -213,19 +213,24 @@ fn choose_media_impl(request: ChooseMediaRequest) -> Result<(), Box<dyn std::err
         })
         .unwrap_or(-1);
 
+    // Convert MediaQuality to boolean (true = original, false = compressed)
+    let allow_original = match request.image_quality {
+        crate::traits::MediaQuality::Original => true,
+        crate::traits::MediaQuality::Compressed => false,
+    };
+
     with_jni(&mut env, |env| {
         let class_ref = env.new_local_ref(media_class_ref.as_obj())?;
         let class = JClass::from(class_ref);
         env.call_static_method(
             class,
             "chooseMedia",
-            "(II[IZZIIJ)V",
+            "(II[IZIIJ)V",
             &[
                 JValue::Int(request.max_count as jint),
                 JValue::Int(mode_value),
                 JValue::Object(&sources_array),
-                JValue::Bool(request.allow_original as u8),
-                JValue::Bool(request.allow_compressed as u8),
+                JValue::Bool(allow_original as u8),
                 JValue::Int(max_duration_value),
                 JValue::Int(camera_facing_value),
                 JValue::Long(request.callback_id as i64),
