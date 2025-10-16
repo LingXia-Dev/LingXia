@@ -5,7 +5,6 @@ const SOURCE_OPTIONS = [
   { key: "camera", label: "Camera", request: ["camera"] },
 ];
 
-
 const COUNT_OPTIONS = Array.from({ length: 9 }, (_, index) => {
   const value = index + 1;
   return {
@@ -253,7 +252,6 @@ Page({
     this.setData(updates);
   },
 
-
   openCountPicker: async function () {
     if (!COUNT_OPTIONS.length) {
       return;
@@ -316,6 +314,10 @@ Page({
       if (this.data.durationValue > 0)
         request.maxDuration = this.data.durationValue;
       if (this.data.cameraKey) request.camera = this.data.cameraKey;
+    } else {
+      // Respect count selection for images
+      const n = parseInt(this.data.countLimit || this.data.countKey || "0", 10);
+      if (n > 0) request.count = n;
     }
 
     this.setData({ isRunning: true, selectedMedia: [] });
