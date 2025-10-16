@@ -8,10 +8,10 @@ import android.provider.MediaStore
 import android.util.Log
 import com.lingxia.lxapp.LxApp
 import androidx.appcompat.app.AppCompatActivity
-import com.lingxia.lxapp.media.MediaCaptureFragment
-import com.lingxia.lxapp.media.MediaPickerFragment
-import com.lingxia.lxapp.media.MediaPreviewFragment
-import com.lingxia.lxapp.media.PreviewMediaPayload
+import com.lingxia.lxapp.APIs.media.MediaCaptureFragment
+import com.lingxia.lxapp.APIs.media.MediaPickerFragment
+import com.lingxia.lxapp.APIs.media.MediaPreviewFragment
+import com.lingxia.lxapp.APIs.media.PreviewMediaPayload
 import java.io.File
 import java.io.IOException
 import java.io.OutputStream

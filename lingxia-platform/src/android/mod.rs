@@ -29,22 +29,63 @@ pub enum CachedClass {
 impl CachedClass {
     const COUNT: usize = 10;
 
+    pub const fn class_path(self) -> &'static str {
+        match self {
+            CachedClass::LxApp => "com/lingxia/lxapp/LxApp",
+            CachedClass::LxAppMedia => "com/lingxia/lxapp/APIs/LxAppMedia",
+            CachedClass::PreviewMediaPayload => "com/lingxia/lxapp/APIs/media/PreviewMediaPayload",
+            CachedClass::LxAppDevice => "com/lingxia/lxapp/APIs/LxAppDevice",
+            CachedClass::LxAppLocation => "com/lingxia/lxapp/APIs/LxAppLocation",
+            CachedClass::LxAppPopup => "com/lingxia/lxapp/APIs/LxAppPopup",
+            CachedClass::LxAppToast => "com/lingxia/lxapp/APIs/LxAppToast",
+            CachedClass::LxAppModal => "com/lingxia/lxapp/APIs/LxAppModal",
+            CachedClass::LxAppActionSheet => "com/lingxia/lxapp/APIs/LxAppActionSheet",
+            CachedClass::LxAppPicker => "com/lingxia/lxapp/APIs/LxAppPicker",
+        }
+    }
+
     fn missing_message(self) -> &'static str {
         match self {
-            CachedClass::LxApp => "Global LxApp class reference not available",
-            CachedClass::PreviewMediaPayload => {
-                "Global PreviewMediaPayload class reference not available"
-            }
-            CachedClass::LxAppMedia => "Global LxAppMedia class reference not available",
-            CachedClass::LxAppDevice => "Global LxAppDevice class reference not available",
-            CachedClass::LxAppLocation => "Global LxAppLocation class reference not available",
-            CachedClass::LxAppPopup => "Global LxAppPopup class reference not available",
-            CachedClass::LxAppToast => "Global LxAppToast class reference not available",
-            CachedClass::LxAppModal => "Global LxAppModal class reference not available",
-            CachedClass::LxAppActionSheet => {
-                "Global LxAppActionSheet class reference not available"
-            }
-            CachedClass::LxAppPicker => "Global LxAppPicker class reference not available",
+            CachedClass::LxApp => concat!(
+                "Global class reference not found: ",
+                "com/lingxia/lxapp/LxApp"
+            ),
+            CachedClass::LxAppMedia => concat!(
+                "Global class reference not found: ",
+                "com/lingxia/lxapp/APIs/LxAppMedia"
+            ),
+            CachedClass::PreviewMediaPayload => concat!(
+                "Global class reference not found: ",
+                "com/lingxia/lxapp/APIs/media/PreviewMediaPayload"
+            ),
+            CachedClass::LxAppDevice => concat!(
+                "Global class reference not found: ",
+                "com/lingxia/lxapp/APIs/LxAppDevice"
+            ),
+            CachedClass::LxAppLocation => concat!(
+                "Global class reference not found: ",
+                "com/lingxia/lxapp/APIs/LxAppLocation"
+            ),
+            CachedClass::LxAppPopup => concat!(
+                "Global class reference not found: ",
+                "com/lingxia/lxapp/APIs/LxAppPopup"
+            ),
+            CachedClass::LxAppToast => concat!(
+                "Global class reference not found: ",
+                "com/lingxia/lxapp/APIs/LxAppToast"
+            ),
+            CachedClass::LxAppModal => concat!(
+                "Global class reference not found: ",
+                "com/lingxia/lxapp/APIs/LxAppModal"
+            ),
+            CachedClass::LxAppActionSheet => concat!(
+                "Global class reference not found: ",
+                "com/lingxia/lxapp/APIs/LxAppActionSheet"
+            ),
+            CachedClass::LxAppPicker => concat!(
+                "Global class reference not found: ",
+                "com/lingxia/lxapp/APIs/LxAppPicker"
+            ),
         }
     }
 }

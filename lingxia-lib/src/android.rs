@@ -3,6 +3,7 @@ use jni::objects::{JClass, JObject, JString};
 use jni::sys::{jboolean, jint, jlong};
 use jni::{JNIEnv, JavaVM};
 use lingxia_messaging::invoke_callback;
+use lingxia_platform::CachedClass;
 use log::{error, info};
 use lxapp::{LxAppDelegate, UiEventType, log::LogLevel};
 
@@ -58,91 +59,96 @@ pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> j
 
     // Create global reference to LxApp class for worker threads first
     if let Ok(mut env) = vm.get_env() {
-        if let Ok(local_class) = env.find_class("com/lingxia/lxapp/LxApp") {
+        if let Ok(local_class) = env.find_class(CachedClass::LxApp.class_path()) {
             if let Ok(global_class) = env.new_global_ref(local_class) {
-                lingxia_platform::init_cached_class(
-                    lingxia_platform::CachedClass::LxApp,
-                    global_class,
-                );
+                lingxia_platform::init_cached_class(CachedClass::LxApp, global_class);
             }
         }
 
-        if let Ok(media_class) = env.find_class("com/lingxia/lxapp/media/PreviewMediaPayload") {
+        if let Ok(media_class) =
+            env.find_class(CachedClass::PreviewMediaPayload.class_path())
+        {
             if let Ok(global_media_class) = env.new_global_ref(media_class) {
                 lingxia_platform::init_cached_class(
-                    lingxia_platform::CachedClass::PreviewMediaPayload,
+                    CachedClass::PreviewMediaPayload,
                     global_media_class,
                 );
             }
         }
 
-        if let Ok(lxapp_media_class) = env.find_class("com/lingxia/lxapp/APIs/LxAppMedia") {
+        if let Ok(lxapp_media_class) =
+            env.find_class(CachedClass::LxAppMedia.class_path())
+        {
             if let Ok(global_lxapp_media_class) = env.new_global_ref(lxapp_media_class) {
                 lingxia_platform::init_cached_class(
-                    lingxia_platform::CachedClass::LxAppMedia,
+                    CachedClass::LxAppMedia,
                     global_lxapp_media_class,
                 );
             }
         }
 
-        if let Ok(device_class) = env.find_class("com/lingxia/lxapp/APIs/LxAppDevice") {
+        if let Ok(device_class) = env.find_class(CachedClass::LxAppDevice.class_path()) {
             if let Ok(global_device_class) = env.new_global_ref(device_class) {
                 lingxia_platform::init_cached_class(
-                    lingxia_platform::CachedClass::LxAppDevice,
+                    CachedClass::LxAppDevice,
                     global_device_class,
                 );
             }
         }
 
-        if let Ok(location_class) = env.find_class("com/lingxia/lxapp/APIs/LxAppLocation") {
+        if let Ok(location_class) =
+            env.find_class(CachedClass::LxAppLocation.class_path())
+        {
             if let Ok(global_location_class) = env.new_global_ref(location_class) {
                 lingxia_platform::init_cached_class(
-                    lingxia_platform::CachedClass::LxAppLocation,
+                    CachedClass::LxAppLocation,
                     global_location_class,
                 );
             }
         }
 
-        if let Ok(popup_class) = env.find_class("com/lingxia/lxapp/APIs/LxAppPopup") {
+        if let Ok(popup_class) = env.find_class(CachedClass::LxAppPopup.class_path()) {
             if let Ok(global_popup_class) = env.new_global_ref(popup_class) {
                 lingxia_platform::init_cached_class(
-                    lingxia_platform::CachedClass::LxAppPopup,
+                    CachedClass::LxAppPopup,
                     global_popup_class,
                 );
             }
         }
 
-        if let Ok(toast_class) = env.find_class("com/lingxia/lxapp/APIs/LxAppToast") {
+        if let Ok(toast_class) = env.find_class(CachedClass::LxAppToast.class_path()) {
             if let Ok(global_toast_class) = env.new_global_ref(toast_class) {
                 lingxia_platform::init_cached_class(
-                    lingxia_platform::CachedClass::LxAppToast,
+                    CachedClass::LxAppToast,
                     global_toast_class,
                 );
             }
         }
 
-        if let Ok(modal_class) = env.find_class("com/lingxia/lxapp/APIs/LxAppModal") {
+        if let Ok(modal_class) = env.find_class(CachedClass::LxAppModal.class_path()) {
             if let Ok(global_modal_class) = env.new_global_ref(modal_class) {
                 lingxia_platform::init_cached_class(
-                    lingxia_platform::CachedClass::LxAppModal,
+                    CachedClass::LxAppModal,
                     global_modal_class,
                 );
             }
         }
 
-        if let Ok(action_sheet_class) = env.find_class("com/lingxia/lxapp/APIs/LxAppActionSheet") {
+        if let Ok(action_sheet_class) =
+            env.find_class(CachedClass::LxAppActionSheet.class_path())
+        {
             if let Ok(global_action_sheet_class) = env.new_global_ref(action_sheet_class) {
                 lingxia_platform::init_cached_class(
-                    lingxia_platform::CachedClass::LxAppActionSheet,
+                    CachedClass::LxAppActionSheet,
                     global_action_sheet_class,
                 );
             }
         }
 
-        if let Ok(picker_class) = env.find_class("com/lingxia/lxapp/APIs/LxAppPicker") {
+        if let Ok(picker_class) = env.find_class(CachedClass::LxAppPicker.class_path()) {
             if let Ok(global_picker_class) = env.new_global_ref(picker_class) {
                 lingxia_platform::init_cached_class(
-                    lingxia_platform::CachedClass::LxAppPicker,
+                    CachedClass::LxAppPicker,
                     global_picker_class,
                 );
             }

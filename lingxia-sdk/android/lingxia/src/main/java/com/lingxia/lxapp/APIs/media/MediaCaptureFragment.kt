@@ -1,4 +1,4 @@
-package com.lingxia.lxapp.media
+package com.lingxia.lxapp.APIs.media
 
 import android.Manifest
 import android.content.Context

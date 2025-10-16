@@ -128,13 +128,18 @@ fn preview_media_impl(request: PreviewMediaRequest) -> Result<(), Box<dyn std::e
         })?;
     }
 
+    let preview_signature = format!(
+        "([L{};)V",
+        super::CachedClass::PreviewMediaPayload.class_path()
+    );
+
     with_jni(&mut env, |env| {
         let class_ref = env.new_local_ref(media_class_ref.as_obj())?;
         let class = JClass::from(class_ref);
         env.call_static_method(
             class,
             "previewMedia",
-            "([Lcom/lingxia/lxapp/media/PreviewMediaPayload;)V",
+            preview_signature.as_str(),
             &[JValue::Object(&payload_array)],
         )
     })?;

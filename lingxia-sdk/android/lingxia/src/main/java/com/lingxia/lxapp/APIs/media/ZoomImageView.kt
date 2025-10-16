@@ -1,4 +1,4 @@
-package com.lingxia.lxapp.media
+package com.lingxia.lxapp.APIs.media
 
 import android.animation.ValueAnimator
 import android.content.Context
