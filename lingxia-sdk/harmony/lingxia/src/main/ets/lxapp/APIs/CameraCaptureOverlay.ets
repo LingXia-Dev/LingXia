@@ -472,6 +472,7 @@ export struct CameraCaptureOverlay {
   @State private captureProgress: number = 0; // For video recording progress
   @State private showTimer: boolean = false;
   @State private timerDisplay: string = '00:00';
+  @State private showingErrorHint: boolean = false;
   private recordingTimer: number = -1;
   private ctrl: XComponentController = new XComponentController();
   private photoSurfaceId: string = ''; // ArkTS ImageReceiver surface ID
@@ -488,6 +489,40 @@ export struct CameraCaptureOverlay {
   private readonly LONG_PRESS_DURATION: number = 280;
   private maxDurationSeconds: number = -1; // Max recording duration
   private readonly DEFAULT_PROGRESS_PERIOD: number = 15; // seconds, ring cycles when no max
+  private stoppingVideo: boolean = false; // prevent duplicate stop
+  private readonly MIN_RECORD_SECONDS: number = 1; // too-short threshold
+  private shortHintTimer: number = -1;
+  private startingVideo: boolean = false; // startVideo in progress
+  private stopRequestedDuringStart: boolean = false; // request stop before start completes
+  private stopDeferTimer: number = -1; // polls for start completion to stop
+
+  // Small async helpers
+  private async sleep(ms: number): Promise<void> {
+    await new Promise<void>((resolve) => setTimeout(resolve, ms));
+  }
+
+  // Wait until file size stops growing to avoid playing half-finalized MP4
+  private async waitFileStable(path: string, attempts: number = 6, intervalMs: number = 100): Promise<void> {
+    try {
+      let lastSize = -1;
+      for (let i = 0; i < attempts; i++) {
+        let size = 0;
+        try {
+          const st = fileIo.statSync(path);
+          size = (st && typeof st.size === 'number') ? st.size : 0;
+        } catch {
+          size = 0;
+        }
+        if (size > 0 && size === lastSize) {
+          break; // stable
+        }
+        lastSize = size;
+        await this.sleep(intervalMs);
+      }
+    } catch {
+      // ignore
+    }
+  }
 
   // Resolve and cache base cache directory
   private getCacheRoot(): string {
@@ -559,7 +594,7 @@ export struct CameraCaptureOverlay {
     }, 120);
   }
 
-  private async onSurfaceReady(surfaceId: string) {
+  private async onSurfaceReady(surfaceId: string): Promise<void> {
     try {
       // Initialize camera with preview surface FIRST
       await NativeCameraBridge.init(surfaceId, this.facing);
@@ -574,7 +609,7 @@ export struct CameraCaptureOverlay {
     }
   }
 
-  private createImageReceiver() {
+  private createImageReceiver(): void {
     try {
       // Create ImageReceiver for 1280x720 JPEG images, capacity 8
       const imageSize: image.Size = { width: 1280, height: 720 };
@@ -605,7 +640,7 @@ export struct CameraCaptureOverlay {
     }
   }
 
-  private async savePhoto(buffer: ArrayBuffer, img: image.Image) {
+  private async savePhoto(buffer: ArrayBuffer, img: image.Image): Promise<void> {
     try {
       // Save directly under lxapp cache dir
       const base = this.getCacheRoot();
@@ -628,7 +663,7 @@ export struct CameraCaptureOverlay {
     }
   }
 
-  private async takePhoto() {
+  private async takePhoto(): Promise<void> {
     const cb = this.options?.callbackId || '';
     if (!cb) return;
 
@@ -666,8 +701,10 @@ export struct CameraCaptureOverlay {
     }
   }
 
-  private async startVideo() {
+  private async startVideo(): Promise<void> {
     try {
+      this.startingVideo = true;
+      this.stopRequestedDuringStart = false;
       this.longPressTimer = -1;
       this.cacheRoot = this.getCacheRoot();
 
@@ -703,12 +740,21 @@ export struct CameraCaptureOverlay {
       this.isRecording = true;
       this.startRecordingTimer();
       this.updateHint();
+      this.startingVideo = false;
+      if (this.stopRequestedDuringStart) {
+        // Defer stop to next tick to avoid race with start
+        this.stopRequestedDuringStart = false;
+        setTimeout(() => { this.stopVideo(); }, 0);
+        return;
+      }
     } catch (err) {
       hilog.error(DOMAIN, TAG, `startRecording failed: ${err}`);
+      this.startingVideo = false;
+      this.stopRequestedDuringStart = false;
     }
   }
 
-  private startRecordingTimer() {
+  private startRecordingTimer(): void {
     this.clearRecordingInterval();
     this.clearMaxDurationTimer();
     this.recordingDuration = 0;
@@ -727,6 +773,8 @@ export struct CameraCaptureOverlay {
         this.timerDisplay = this.formatRecordingDuration(remaining);
         if (remaining === 0) {
           this.clearRecordingInterval();
+          // Backup stop in case maxDuration timeout missed
+          this.stopVideo();
         }
       } else {
         // cycle countdown + ring when no max is provided
@@ -744,20 +792,20 @@ export struct CameraCaptureOverlay {
     }
   }
 
-  private stopRecordingTimer() {
+  private stopRecordingTimer(): void {
     this.clearRecordingInterval();
     this.clearMaxDurationTimer();
     this.resetRecordingIndicators();
   }
 
-  private clearRecordingInterval() {
+  private clearRecordingInterval(): void {
     if (this.recordingTimer !== -1) {
       clearInterval(this.recordingTimer);
       this.recordingTimer = -1;
     }
   }
 
-  private resetRecordingIndicators() {
+  private resetRecordingIndicators(): void {
     this.recordingDuration = 0;
     this.captureProgress = 0;
     this.showTimer = false;
@@ -765,30 +813,56 @@ export struct CameraCaptureOverlay {
     this.recordingStartTs = 0;
   }
 
-  private clearMaxDurationTimer() {
+  private clearMaxDurationTimer(): void {
     if (this.maxDurationTimer !== -1) {
       clearTimeout(this.maxDurationTimer);
       this.maxDurationTimer = -1;
     }
   }
 
-  private clearLongPressTimer() {
+  private clearLongPressTimer(): void {
     if (this.longPressTimer !== -1) {
       clearTimeout(this.longPressTimer);
       this.longPressTimer = -1;
     }
   }
 
-  private async stopVideo() {
+  private clearStopDeferTimer(): void {
+    if (this.stopDeferTimer !== -1) {
+      clearInterval(this.stopDeferTimer);
+      this.stopDeferTimer = -1;
+    }
+  }
+
+  private ensureStopAfterStart(): void {
+    this.clearStopDeferTimer();
+    this.stopDeferTimer = setInterval(() => {
+      if (this.isRecording) {
+        this.clearStopDeferTimer();
+        this.stopVideo();
+      } else if (!this.startingVideo) {
+        // Start aborted or failed
+        this.clearStopDeferTimer();
+      }
+    }, 60) as number;
+  }
+
+  private async stopVideo(): Promise<void> {
     const cb = this.options?.callbackId || '';
-    if (!cb) return;
+    if (this.stoppingVideo) return;
+    this.stoppingVideo = true;
     try {
+      this.stopRequestedDuringStart = false;
+      this.startingVideo = false;
+      const elapsedMs = this.recordingStartTs > 0 ? (Date.now() - this.recordingStartTs) : 0;
       this.clearLongPressTimer();
       this.stopRecordingTimer();
+      this.isCapturePressed = false;
+      // Finalize recorder first, then stop camera output (aligns with reference impl)
       try { await this.videoRecorder?.stop(); } catch {}
       try { await this.videoRecorder?.release(); } catch {}
       this.videoRecorder = undefined;
-      await NativeCameraBridge.stopVideoOutput();
+      try { await NativeCameraBridge.stopVideoOutput(); } catch {}
       try {
         if (this.videoFd >= 0) {
           await fileIo.close(this.videoFd);
@@ -796,24 +870,57 @@ export struct CameraCaptureOverlay {
         }
       } catch {}
       this.isRecording = false;
-      this.updateHint();
+      this.clearStopDeferTimer();
       const resPath = this.lastVideoPath || '';
-      // Ensure entering preview mode
-      if (resPath) {
-        this.enterPreviewMode(resPath, 'video');
+
+      // Determine actual elapsed seconds precisely (from snapshot)
+      const elapsedSec = Math.max(0, Math.floor(elapsedMs / 1000));
+      const tooShort = elapsedSec < this.MIN_RECORD_SECONDS;
+
+      if (tooShort) {
+        // Delete too-short file and show in-place hint instead of exiting to preview
+        try { if (resPath) { fileIo.unlinkSync(resPath); } } catch {}
+        this.lastVideoPath = '';
+        // Show short-duration hint at the hint text location
+        this.hintText = '拍摄时间过短';
+        this.showingErrorHint = true;
+        if (this.shortHintTimer !== -1) { clearTimeout(this.shortHintTimer); this.shortHintTimer = -1; }
+        this.shortHintTimer = setTimeout(() => {
+          this.shortHintTimer = -1;
+          this.showingErrorHint = false;
+          this.updateHint();
+        }, 1500) as number;
+        // Stay in camera mode; do not enter preview, do not close overlay
+        // Reset camera pipeline to clear any latent short-stop state
+        try {
+          const sid = String(this.ctrl.getXComponentSurfaceId());
+          await NativeCameraBridge.release();
+          await NativeCameraBridge.init(sid, this.facing);
+          this.photoOutputConfigured = false;
+          this.photoSurfaceId = '';
+          this.createImageReceiver();
+        } catch {}
       } else {
-        onCallback(cb, true, '{"cancel":true}');
-        CameraCaptureOverlayManager.hide();
-        await NativeCameraBridge.release().catch(() => {});
+        // Normal case: enter preview when valid path exists; otherwise cancel
+      if (resPath) {
+          // Ensure file has stabilized before preview
+          await this.waitFileStable(resPath, 6, 100);
+          setTimeout(() => { this.enterPreviewMode(resPath, 'video'); }, 200);
+      } else {
+          onCallback(cb, true, '{"cancel":true}');
+          CameraCaptureOverlayManager.hide();
+          await NativeCameraBridge.release().catch(() => {});
+        }
       }
     } catch (err) {
       onCallback(cb, false, String(err));
       CameraCaptureOverlayManager.hide();
       await NativeCameraBridge.release().catch(() => {});
     }
+    this.stoppingVideo = false;
   }
 
-  private cancel() {
+  private cancel(): void {
     const cb = this.options?.callbackId || '';
     if (cb) { onCallback(cb, true, '{"cancel":true}'); }
     this.clearLongPressTimer();
@@ -827,9 +934,15 @@ export struct CameraCaptureOverlay {
   }
 
   private enterPreviewMode(uri: string, type: 'image' | 'video') {
-    this.previewUri = uri;
+    // Force re-mount of preview to avoid stale internal state causing black frame
+    this.isPreview = false;
+    this.previewUri = '';
     this.previewType = type;
-    this.isPreview = true;
+    const normalized = this.normalizeMediaUri(uri);
+    setTimeout(() => {
+      this.previewUri = normalized;
+      this.isPreview = true;
+    }, 0);
     this.isRecording = false;
     this.stopRecordingTimer();
     this.isCapturePressed = false;
@@ -839,11 +952,13 @@ export struct CameraCaptureOverlay {
     this.clearLongPressTimer();
   }
 
-  private exitPreview() {
+  private exitPreview(): void {
     // Delete the captured file and return to camera
     try {
       if (this.previewUri) {
-        fileIo.unlinkSync(this.previewUri);
+        const uri = this.previewUri;
+        const path = uri.startsWith('file://') ? uri.replace('file://', '') : uri;
+        fileIo.unlinkSync(path);
       }
     } catch (e) {
       hilog.error(DOMAIN, TAG, `Failed to delete preview file: ${e}`);
@@ -858,24 +973,34 @@ export struct CameraCaptureOverlay {
     this.updateHint();
   }
 
-  private completeCapture() {
+  private completeCapture(): void {
     const cb = this.options?.callbackId || '';
-    if (cb && this.previewUri) {
-      const res: CameraCaptureResult = { uri: this.previewUri, fileType: this.previewType, isOriginal: true };
+    if (cb) {
+      // Prefer raw filesystem path for logic layer to avoid extra copy via URI
+      let outPath = '';
+      if (this.previewType === 'video') {
+        outPath = this.lastVideoPath || this.previewUri;
+      } else {
+        outPath = this.lastPhotoPath || this.previewUri;
+      }
+      if (outPath.startsWith('file://')) {
+        outPath = outPath.replace('file://', '');
+      }
+      const res: CameraCaptureResult = { uri: outPath, fileType: this.previewType, isOriginal: true };
       onCallback(cb, true, JSON.stringify([res]));
     }
     CameraCaptureOverlayManager.hide();
     NativeCameraBridge.release().catch(() => {});
   }
 
-  private resetToCameraMode() {
+  private resetToCameraMode(): void {
     this.isRecording = false;
     this.stopRecordingTimer();
     this.captureProgress = 0;
     this.isCapturePressed = false;
   }
 
-  private onPreviewTouch(event: TouchEvent) {
+  private onPreviewTouch(event: TouchEvent): void {
     if (event.type === TouchType.Down && event.touches.length === 1) {
       const touch = event.touches[0];
       const newPos = new FocusPositionType(touch.x, touch.y);
@@ -911,7 +1036,7 @@ export struct CameraCaptureOverlay {
     return this.normalizeMediaUri(this.previewUri);
   }
 
-  private async switchCamera() {
+  private async switchCamera(): Promise<void> {
     if (this.isRecording || this.isPreview) return;
     this.facing = this.facing === 'back' ? 'front' : 'back';
     await NativeCameraBridge.switchFacing(this.facing).catch(() => {});
@@ -919,56 +1044,18 @@ export struct CameraCaptureOverlay {
 
   private updateHint(): void {
     const activeMode = this.isVideoOnly ? 'video' : (this.isImagesOnly ? 'photo' : this.currentMode);
+    if (this.showingErrorHint) {
+      return;
+    }
     if (this.isRecording) {
       this.hintText = '松开停止';
       return;
     }
     if (activeMode === 'video') {
-      this.hintText = '长按摄像';
+      this.hintText = '长按拍摄';
       return;
     }
     this.hintText = '轻触拍照';
-  }
-
-  // Handle capture button touch events for both photo and video modes
-  private handleCaptureTouch(event: TouchEvent) {
-    if (this.isPreview) return;
-    const supportsVideo = this.isVideoOnly || this.isMix;
-
-    switch (event.type) {
-      case TouchType.Down:
-        if (supportsVideo) {
-          this.isCapturePressed = true;
-          this.clearLongPressTimer();
-          this.longPressTimer = setTimeout(() => {
-            this.longPressTimer = -1;
-            if (!this.isRecording) {
-              this.startVideo();
-            }
-          }, this.LONG_PRESS_DURATION) as number;
-        } else {
-          // images only
-          this.takePhoto();
-        }
-        break;
-
-      case TouchType.Up:
-      case TouchType.Cancel:
-        if (supportsVideo) {
-          if (this.longPressTimer !== -1) {
-            // short tap
-            this.clearLongPressTimer();
-            if (this.isMix) {
-              this.takePhoto();
-            }
-          } else if (this.isRecording) {
-            // long press finished
-            this.stopVideo();
-          }
-        }
-        this.isCapturePressed = false;
-        break;
-    }
   }
 
   private activeMode(): 'photo' | 'video' {
@@ -992,8 +1079,9 @@ export struct CameraCaptureOverlay {
           Video({ src: this.previewSource() })
             .width('100%')
             .height('100%')
-            .objectFit(ImageFit.Cover)
+            .objectFit(ImageFit.Contain)
             .controls(false)
+            .muted(true)
             .autoPlay(true)
             .loop(true)
         } else {
@@ -1142,10 +1230,9 @@ export struct CameraCaptureOverlay {
                 .fontSize(14)
                 .fontColor('rgba(204,204,204,1.0)')
                 .textAlign(TextAlign.Center)
-                .padding({ bottom: 16 })
+                .padding({ bottom: 28 })
             } else {
-              Blank()
-                .height(16)
+              Blank().height(16)
             }
 
             Row({}) {
@@ -1175,15 +1262,39 @@ export struct CameraCaptureOverlay {
                 buttonSize: 88
               })
               .margin({ left: 36, right: 36 })
-              .onTouch((event: TouchEvent) => {
-                this.handleCaptureTouch(event);
-              })
 
               Blank()
                 .width(32)
                 .height(32)
             }
             .justifyContent(FlexAlign.Center)
+            .gesture(
+              GestureGroup(GestureMode.Exclusive,
+                LongPressGesture({ repeat: false, duration: this.LONG_PRESS_DURATION })
+                  .onAction(() => {
+                    if (!this.isPreview && this.isVideoOnly && !this.isRecording && !this.startingVideo) {
+                      this.isCapturePressed = true;
+                      this.startVideo();
+                    }
+                  })
+                  .onActionEnd(() => {
+                    if (this.isRecording) {
+                      this.stopVideo();
+                    } else if (this.startingVideo) {
+                      this.stopRequestedDuringStart = true;
+                      this.ensureStopAfterStart();
+                    } else {
+                      this.isCapturePressed = false;
+                    }
+                  }),
+                TapGesture({ count: 1 })
+                  .onAction(() => {
+                    if (!this.isPreview && this.isImagesOnly) {
+                      this.takePhoto();
+                    }
+                  })
+              )
+            )
           }
           .width('100%')
           .position({ left: 0, right: 0, bottom: 44 })
