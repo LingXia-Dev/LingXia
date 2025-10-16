@@ -210,6 +210,7 @@ class LxAppActivity : AppCompatActivity() {
 
     // Tracks the currently visible WebView instance
     private var currentWebView: com.lingxia.lxapp.WebView? = null
+    private var systemBottomInset: Int = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -273,14 +274,21 @@ class LxAppActivity : AppCompatActivity() {
         // Setup window insets listener
         ViewCompat.setOnApplyWindowInsetsListener(rootContainer) { view, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            val tabBarBgColor = tabBarConfig?.backgroundColor
-            val isTabBarTransparent = tabBarBgColor == Color.TRANSPARENT ||
-                                     (tabBarBgColor?.let { Color.alpha(it) < 255 } == true)
+            systemBottomInset = systemBars.bottom
+
+            val currentBg = tabBar?.config?.backgroundColor ?: tabBarConfig?.backgroundColor
+            val isTabBarTransparent = currentBg == Color.TRANSPARENT ||
+                                     (currentBg?.let { Color.alpha(it) < 255 } == true)
 
             if (isTabBarTransparent) {
                 view.setPadding(0, 0, 0, 0)
             } else {
                 view.setPadding(systemBars.left, 0, systemBars.right, systemBars.bottom)
+            }
+
+            // Re-apply TabBar layout so bottom margin reflects latest inset when transparent
+            tabBar?.config?.let { cfg ->
+                tabBar?.let { tb -> applyTabBarLayoutParams(tb, cfg) }
             }
             insets
         }
@@ -412,12 +420,13 @@ class LxAppActivity : AppCompatActivity() {
                 }
                 // Add top margin to avoid status bar for vertical TabBars
                 topMargin = getStatusBarHeight(this@LxAppActivity)
+                bottomMargin = 0
             } else {
                 width = ViewGroup.LayoutParams.MATCH_PARENT
                 height = tabBarSizePx
                 gravity = Gravity.BOTTOM
-
-                // No bottom margin for transparent TabBar - it should overlay content
+                // For a transparent TabBar, lift it above the system navigation bar
+                bottomMargin = if (isTabBarTransparent) systemBottomInset else 0
             }
             tabBar.layoutParams = this
         } ?: run {
@@ -431,11 +440,13 @@ class LxAppActivity : AppCompatActivity() {
                     }
                     // Add top margin to avoid status bar for vertical TabBars
                     topMargin = getStatusBarHeight(this@LxAppActivity)
+                    bottomMargin = 0
                 }
             } else {
                 FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, tabBarSizePx).apply {
                     gravity = Gravity.BOTTOM
-                    // No bottom margin for transparent TabBar - it should overlay content
+                    // For a transparent TabBar, lift it above the system navigation bar
+                    bottomMargin = if (isTabBarTransparent) systemBottomInset else 0
                 }
             }
             tabBar.layoutParams = newLayoutParams

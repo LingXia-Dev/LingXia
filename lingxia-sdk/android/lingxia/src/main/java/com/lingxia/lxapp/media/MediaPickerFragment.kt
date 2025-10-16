@@ -13,6 +13,7 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import android.util.Size
+import android.util.Log
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
@@ -25,6 +26,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
+import com.lingxia.lxapp.util.WindowInsetsUtils
 import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.GridLayoutManager
@@ -277,6 +279,10 @@ class MediaPickerFragment : Fragment() {
         bottom.addView(summaryView)
         bottom.addView(send)
         root.addView(bottom)
+
+        // Lift bottom bar and content above system navigation bar using helper
+        WindowInsetsUtils.applyBottomMargin(root, bottom, 0)
+        WindowInsetsUtils.applyBottomMargin(root, rv, dp(context, 64))
 
         recycler = rv
         sendBtn = send
