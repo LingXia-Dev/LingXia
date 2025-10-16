@@ -1,7 +1,7 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { MediaPreviewOverlayManager, MediaPreviewItem, MediaPreviewPageParams } from '../MediaPreviewOverlay';
+import { MediaPreviewOverlayManager, MediaPreviewItem, MediaPreviewPageParams } from './media/MediaPreviewOverlay';
 import { photoAccessHelper } from '@kit.MediaLibraryKit';
-import { CameraCaptureOverlayManager, CameraCaptureOptions } from './CameraCaptureOverlay';
+import { CameraCaptureOverlayManager, CameraCaptureOptions } from './media/CameraCaptureOverlay';
 import { fileIo } from '@kit.CoreFileKit';
 import { LxApp } from '../LxApp';
 import common from '@ohos.app.ability.common';

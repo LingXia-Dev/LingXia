@@ -7,8 +7,8 @@ import { ModalManager } from './APIs/LxAppModal';
 import { PickerManager } from './APIs/LxAppPicker';
 import { ActionSheetManager } from './APIs/LxAppActionSheet';
 import { PopupManager } from './APIs/LxAppPopup';
-import { MediaPreviewOverlayManager, MediaPreviewOverlay } from './MediaPreviewOverlay';
-import { CameraCaptureOverlay } from './APIs/CameraCaptureOverlay';
+import { MediaPreviewOverlayManager, MediaPreviewOverlay } from './APIs/media/MediaPreviewOverlay';
+import { CameraCaptureOverlay } from './APIs/media/CameraCaptureOverlay';
 
 const DOMAIN = 0xA000;
 const TAG = 'LingXia.Navigation';

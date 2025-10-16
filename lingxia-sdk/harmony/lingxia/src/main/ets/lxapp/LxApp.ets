@@ -9,7 +9,7 @@ import { ToastManager } from './APIs/LxAppToast';
 import { initNativeBridge, getNativeCallbackFunction } from './NativeBridge';
 import { WebViewManager, toWebTag } from './WebView';
 import { AnimationType } from './LxAppNavigation';
-import { CameraCaptureOverlay } from './APIs/CameraCaptureOverlay';
+import { CameraCaptureOverlay } from './APIs/media/CameraCaptureOverlay';
 import promptAction from '@kit.ArkUI';
 import { abilityAccessCtrl, Permissions } from '@kit.AbilityKit';
 
