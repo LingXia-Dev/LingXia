@@ -246,14 +246,22 @@ Page({
       return;
     }
     const sourceChanged = choice.key !== this.data.sourceKey;
-    this.setData({
+    const isCamera = choice.key === "camera";
+    const updates = {
       sourceKey: choice.key,
-      ...(sourceChanged
-        ? {
-            selectedMedia: [],
-          }
-        : null),
-    });
+    };
+
+    if (sourceChanged) {
+      updates.selectedMedia = [];
+    }
+
+    // Auto-set count limit to 1 when camera is selected for photos
+    if (this.data.mediaType === "image" && isCamera) {
+      updates.countKey = "1";
+      updates.countLimit = 1;
+    }
+
+    this.setData(updates);
   },
 
   openQualityPicker: async function () {
