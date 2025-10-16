@@ -6,10 +6,6 @@ const SOURCE_OPTIONS = [
   { key: 'camera', label: 'Camera' },
 ];
 
-const QUALITY_OPTIONS = [
-  { key: 'original', label: 'Original' },
-  { key: 'compressed', label: 'Compressed' },
-];
 
 const COUNT_OPTIONS = Array.from({ length: 9 }, (_, index) => {
   const value = index + 1;
@@ -42,7 +38,6 @@ type PageData = {
   isRunning?: boolean;
   countLimit?: number;
   sourceKey?: string;
-  qualityKey?: string;
   countKey?: string;
   cameraKey?: string;
   durationKey?: string;
@@ -59,7 +54,6 @@ type PageActions = {
   launchMediaDemo(): void;
   previewSelectedMedia(payload: { index?: number; path?: string; item?: MediaItem }): void;
   openSourcePicker?(): void;
-  openQualityPicker?(): void;
   openCountPicker?(): void;
   openCameraPicker?(): void;
   openDurationPicker?(): void;
@@ -73,7 +67,6 @@ export default function MediaPage() {
     launchMediaDemo,
     previewSelectedMedia,
     openSourcePicker,
-    openQualityPicker,
     openCountPicker,
     openCameraPicker,
     openDurationPicker,
@@ -85,15 +78,12 @@ export default function MediaPage() {
     : [];
   const isRunning = Boolean(data?.isRunning);
   const sourceKey = data?.sourceKey || SOURCE_OPTIONS[0].key;
-  const qualityKey = data?.qualityKey || QUALITY_OPTIONS[0].key;
   const countKey = data?.countKey || COUNT_OPTIONS[COUNT_OPTIONS.length - 1].key;
   const cameraKey = data?.cameraKey || CAMERA_OPTIONS[0].key;
   const durationKey = data?.durationKey || DURATION_OPTIONS[DURATION_OPTIONS.length - 1].key;
 
   const sourceOption =
     SOURCE_OPTIONS.find((option) => option.key === sourceKey) || SOURCE_OPTIONS[0];
-  const qualityOption =
-    QUALITY_OPTIONS.find((option) => option.key === qualityKey) || QUALITY_OPTIONS[0];
   const countOption =
     COUNT_OPTIONS.find((option) => option.key === countKey) ||
     COUNT_OPTIONS[COUNT_OPTIONS.length - 1];
@@ -104,7 +94,6 @@ export default function MediaPage() {
     DURATION_OPTIONS[DURATION_OPTIONS.length - 1];
 
   const sourceLabel = sourceOption.label;
-  const qualityLabel = qualityOption.label;
   const countLabel = countOption.label;
   const cameraLabel = cameraOption.label;
   const durationLabel = durationOption.label;
@@ -239,7 +228,6 @@ export default function MediaPage() {
   const settingRows = isPictureMode
     ? [
         { label: 'Photo Source', value: sourceLabel, action: openSourcePicker },
-        { label: 'Photo Quality', value: qualityLabel, action: openQualityPicker },
         { label: 'Count Limit', value: countLabel, action: openCountPicker },
       ]
     : (() => {

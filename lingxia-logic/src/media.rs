@@ -2,8 +2,8 @@ use lingxia_lxapp::{LxApp, lx};
 use lingxia_messaging::{CallbackResult, get_callback};
 use lingxia_platform::AppRuntime;
 use lingxia_platform::{
-    CameraFacing, ChooseMediaMode, ChooseMediaRequest, MediaInteraction, MediaKind, MediaQuality,
-    MediaSource, PreviewMediaItem, PreviewMediaRequest, SaveMediaRequest,
+    CameraFacing, ChooseMediaMode, ChooseMediaRequest, MediaInteraction, MediaKind, MediaSource,
+    PreviewMediaItem, PreviewMediaRequest, SaveMediaRequest,
 };
 use rong::{FromJSObj, JSContext, JSFunc, JSObject, JSResult, RongJSError, function::Optional};
 use std::sync::Arc;
@@ -137,8 +137,6 @@ struct JSChooseMediaOptions {
     #[rename = "sourceType"]
     source_type: Option<String>, // "album" | "camera"
     camera: Option<String>, // "front" | "back"
-    #[rename = "sizeType"]
-    size_type: Option<Vec<String>>, // ["original", "compressed"]
     #[rename = "maxDuration"]
     max_duration: Option<f64>,
 }
@@ -147,13 +145,15 @@ struct JSChooseMediaOptions {
 struct ChosenMediaEntry {
     path: String,
     kind: String,
+    is_original: bool, // true = original, false = compressed
 }
 
 impl rong::IntoJSValue<rong::JSEngineValue> for ChosenMediaEntry {
     fn into_js_value(self, ctx: &rong::JSContext) -> rong::JSEngineValue {
         let obj = JSObject::new(ctx);
-        obj.set("path", self.path).ok();
+        obj.set("tempFilePath", self.path).ok();
         obj.set("fileType", self.kind).ok();
+        obj.set("isOriginal", self.is_original).ok();
         obj.into_value()
     }
 }
@@ -187,22 +187,6 @@ fn parse_camera(s: Option<String>) -> Option<CameraFacing> {
     })
 }
 
-fn parse_size_flags(v: Option<Vec<String>>) -> MediaQuality {
-    if let Some(list) = v {
-        for s in list {
-            match s.to_lowercase().as_str() {
-                "original" => return MediaQuality::Original,
-                "compressed" => return MediaQuality::Compressed,
-                _ => {}
-            }
-        }
-        // If none specified, default to original
-        MediaQuality::Original
-    } else {
-        MediaQuality::Original
-    }
-}
-
 async fn choose_media(
     ctx: JSContext,
     options: Optional<JSChooseMediaOptions>,
@@ -215,14 +199,12 @@ async fn choose_media(
         media_type: None,
         source_type: None,
         camera: None,
-        size_type: None,
         max_duration: None,
     });
 
     let (callback_id, receiver) = get_callback();
     let cache_root = lxapp.user_cache_dir.clone();
 
-    let image_quality = parse_size_flags(opts.size_type);
     let max_duration_seconds = opts
         .max_duration
         .filter(|v| !v.is_sign_negative())
@@ -246,7 +228,6 @@ async fn choose_media(
         source_types,
         max_duration_seconds,
         camera_facing: parse_camera(opts.camera),
-        image_quality,
         callback_id,
     };
 
@@ -277,6 +258,10 @@ async fn choose_media(
             .get("fileType")
             .and_then(|v| v.as_str())
             .unwrap_or("image");
+        let is_original = item
+            .get("isOriginal")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true); // Default to original
         if uri.is_empty() {
             continue;
         }
@@ -314,6 +299,7 @@ async fn choose_media(
         out.push(ChosenMediaEntry {
             path: final_path,
             kind: kind.to_string(),
+            is_original,
         });
     }
     Ok(out)

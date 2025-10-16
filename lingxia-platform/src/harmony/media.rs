@@ -66,17 +66,9 @@ impl MediaInteraction for Platform {
             .iter()
             .any(|source| matches!(source, MediaSource::Album));
 
-        // Convert MediaQuality to boolean (true = original, false = compressed)
-        let allow_original = match request.image_quality {
-            crate::traits::MediaQuality::Original => true,
-            crate::traits::MediaQuality::Compressed => false,
-        };
-
         let payload = ChooseMediaPayload {
             callback_id: request.callback_id.to_string(),
             max_count: request.max_count,
-            allow_original,
-            allow_compressed: !allow_original, // Inverse of allow_original
             mode: mode_str.to_string(),
             allow_album,
             allow_camera: request
@@ -135,10 +127,6 @@ struct ChooseMediaPayload {
     callback_id: String,
     #[serde(rename = "maxCount")]
     max_count: u32,
-    #[serde(rename = "allowOriginal")]
-    allow_original: bool,
-    #[serde(rename = "allowCompressed")]
-    allow_compressed: bool,
     mode: String,
     #[serde(rename = "allowAlbum")]
     allow_album: bool,

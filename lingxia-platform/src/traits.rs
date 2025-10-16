@@ -205,8 +205,6 @@ pub struct ChooseMediaRequest {
     pub max_duration_seconds: Option<u32>,
     /// Preferred camera when capturing (optional hint).
     pub camera_facing: Option<CameraFacing>,
-    /// Quality preference for selected images (original vs compressed).
-    pub image_quality: MediaQuality,
     /// Callback identifier for returning results via messaging.
     pub callback_id: u64,
 }
@@ -219,7 +217,6 @@ impl Default for ChooseMediaRequest {
             source_types: vec![MediaSource::Album, MediaSource::Camera],
             max_duration_seconds: None,
             camera_facing: None,
-            image_quality: MediaQuality::Original,
             callback_id: 0,
         }
     }

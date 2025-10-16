@@ -5,10 +5,6 @@ const SOURCE_OPTIONS = [
   { key: "camera", label: "Camera", request: ["camera"] },
 ];
 
-const QUALITY_OPTIONS = [
-  { key: "original", label: "Original" },
-  { key: "compressed", label: "Compressed" },
-];
 
 const COUNT_OPTIONS = Array.from({ length: 9 }, (_, index) => {
   const value = index + 1;
@@ -35,7 +31,6 @@ const MODE_SETTINGS = {
     mediaType: "image",
     defaults: {
       sourceKey: "album",
-      qualityKey: "original",
       countKey: "9",
     },
   },
@@ -176,11 +171,6 @@ function createState(modeKey) {
     defaults.sourceKey,
     SOURCE_OPTIONS[0],
   );
-  const qualityOption = findOption(
-    QUALITY_OPTIONS,
-    defaults.qualityKey,
-    QUALITY_OPTIONS[0],
-  );
   const countOption = findOption(
     COUNT_OPTIONS,
     defaults.countKey,
@@ -205,7 +195,6 @@ function createState(modeKey) {
     isRunning: false,
     selectedMedia: [],
     sourceKey: sourceOption ? sourceOption.key : "",
-    qualityKey: qualityOption ? qualityOption.key : "",
     countKey: countOption ? countOption.key : "",
     countLimit: countOption ? countOption.value : 0,
     cameraKey: cameraOption ? cameraOption.key : "",
@@ -264,18 +253,6 @@ Page({
     this.setData(updates);
   },
 
-  openQualityPicker: async function () {
-    if (!QUALITY_OPTIONS.length) {
-      return;
-    }
-    const choice = await pickOption(QUALITY_OPTIONS, this.data.qualityKey);
-    if (!choice) {
-      return;
-    }
-    this.setData({
-      qualityKey: choice.key,
-    });
-  },
 
   openCountPicker: async function () {
     if (!COUNT_OPTIONS.length) {
@@ -339,16 +316,6 @@ Page({
       if (this.data.durationValue > 0)
         request.maxDuration = this.data.durationValue;
       if (this.data.cameraKey) request.camera = this.data.cameraKey;
-    } else {
-      if (this.data.countLimit > 0) request.count = this.data.countLimit;
-      // Map quality to compression flags
-      if (this.data.qualityKey === "compressed") {
-        request.allowCompressed = true;
-        request.allowOriginal = false;
-      } else {
-        request.allowOriginal = true;
-        request.allowCompressed = false;
-      }
     }
 
     this.setData({ isRunning: true, selectedMedia: [] });
@@ -357,8 +324,9 @@ Page({
       const results = await lx.chooseMedia(request);
       const mapped = results
         .map((it) => ({
-          path: it?.uri || it?.path || "",
+          path: it?.tempFilePath || "",
           type: it?.fileType === "video" ? "video" : "image",
+          isOriginal: !!it?.isOriginal,
         }))
         .filter((it) => it.path);
       // For video enforce single selection

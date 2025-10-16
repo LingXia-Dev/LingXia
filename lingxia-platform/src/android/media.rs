@@ -5,7 +5,6 @@ use crate::traits::{
     ChooseMediaRequest, MediaInteraction, PreviewMediaRequest, SaveMediaRequest, ScanCodeRequest,
 };
 use jni::JNIEnv;
-use jni::objects::JIntArray;
 use jni::objects::{JClass, JObject, JString, JValue};
 use jni::sys::jint;
 use lingxia_webview::get_env;
@@ -183,22 +182,20 @@ fn choose_media_impl(request: ChooseMediaRequest) -> Result<(), Box<dyn std::err
         crate::traits::ChooseMediaMode::Mix => 2,
     };
 
-    let source_values: Vec<jint> = request
-        .source_types
-        .iter()
-        .map(|s| match s {
-            crate::traits::MediaSource::Album => 0,
-            crate::traits::MediaSource::Camera => 1,
-        })
-        .collect();
-
-    let sources_array: JIntArray = with_jni(&mut env, |env| {
-        let arr = env.new_int_array(source_values.len() as i32)?;
-        if !source_values.is_empty() {
-            env.set_int_array_region(&arr, 0, &source_values)?;
+    let mut has_album = false;
+    let mut has_camera = false;
+    for source in &request.source_types {
+        match source {
+            crate::traits::MediaSource::Album => has_album = true,
+            crate::traits::MediaSource::Camera => has_camera = true,
         }
-        Ok(arr)
-    })?;
+    }
+
+    let source_flag: jint = match (has_album, has_camera) {
+        (true, false) => 0,
+        (false, true) => 1,
+        _ => 2, // default to both when unspecified
+    };
 
     let max_duration_value: jint = request
         .max_duration_seconds
@@ -213,24 +210,17 @@ fn choose_media_impl(request: ChooseMediaRequest) -> Result<(), Box<dyn std::err
         })
         .unwrap_or(-1);
 
-    // Convert MediaQuality to boolean (true = original, false = compressed)
-    let allow_original = match request.image_quality {
-        crate::traits::MediaQuality::Original => true,
-        crate::traits::MediaQuality::Compressed => false,
-    };
-
     with_jni(&mut env, |env| {
         let class_ref = env.new_local_ref(media_class_ref.as_obj())?;
         let class = JClass::from(class_ref);
         env.call_static_method(
             class,
             "chooseMedia",
-            "(II[IZIIJ)V",
+            "(IIIIIJ)V",
             &[
                 JValue::Int(request.max_count as jint),
                 JValue::Int(mode_value),
-                JValue::Object(&sources_array),
-                JValue::Bool(allow_original as u8),
+                JValue::Int(source_flag),
                 JValue::Int(max_duration_value),
                 JValue::Int(camera_facing_value),
                 JValue::Long(request.callback_id as i64),

@@ -39,7 +39,6 @@ interface ChooseMediaResult { uri: string; fileType: string; isOriginal: boolean
 interface ChooseMediaOptions {
   callbackId: string;
   maxCount: number;
-  allowOriginal: boolean; // true for original quality, false for compressed
   mode: string; // images/videos/mix
   allowAlbum: boolean;
   allowCamera: boolean;
@@ -99,7 +98,6 @@ export class LxAppMedia {
       const normalized: ChooseMediaOptions = {
         callbackId: options.callbackId,
         maxCount: Number.isFinite(options.maxCount) && options.maxCount > 0 ? Math.floor(options.maxCount) : 1,
-        allowOriginal: !!options.allowOriginal,
         mode: options.mode ?? 'images',
         allowAlbum: options.allowAlbum !== false,
         allowCamera: !!options.allowCamera
@@ -162,7 +160,8 @@ export class LxAppMedia {
             MIMEType: mime,
             maxSelectNumber: count,
             isPhotoTakingSupported: false,
-            isSearchSupported: false
+            isSearchSupported: false,
+            isOriginalSupported: true // Always enable original option, let user choose
           };
           const res: photoAccessHelper.PhotoSelectResult = await pv.select(opts);
           const uris: string[] = Array.isArray(res && res.photoUris) ? res.photoUris : [];
