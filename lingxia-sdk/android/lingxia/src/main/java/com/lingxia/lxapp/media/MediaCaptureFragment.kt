@@ -140,6 +140,9 @@ class MediaCaptureFragment : Fragment() {
     private var maxDurationRunnable: Runnable? = null
     private var pendingLongPressStart: Runnable? = null
     private val longPressMs: Long = 280
+    private val minRecordingDurationMs: Long = 1000 // Minimum recording duration: 1 second
+    private var showingErrorHint: Boolean = false
+    private var ignoreRecordingFinalize: Boolean = false
 
     private val dateFormatter by lazy {
         SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
@@ -286,7 +289,7 @@ class MediaCaptureFragment : Fragment() {
                     FrameLayout.LayoutParams.WRAP_CONTENT,
                     Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
                 ).apply {
-                    bottomMargin = shutterBottomMargin + captureSize + dp(context, 16f)
+                    bottomMargin = shutterBottomMargin + captureSize + dp(context, 45f)
                 }
                 setTextColor(Color.parseColor("#CCFFFFFF"))
                 textSize = 14f
@@ -538,6 +541,7 @@ class MediaCaptureFragment : Fragment() {
                         // If the session was already stopped before START (quick tap), ignore UI changes
                         if (activeRecording == null) return@start
                         isRecording = true
+                        recordingStartElapsedMs = SystemClock.elapsedRealtime() // Record actual start time
                         captureButton?.setRecording(true)
                         captureButton?.setProgress(0f)
                         updateHint()
@@ -557,6 +561,28 @@ class MediaCaptureFragment : Fragment() {
                     }
 
                     is VideoRecordEvent.Finalize -> {
+                        // Handle short duration recording specially
+                        if (ignoreRecordingFinalize) {
+                            ignoreRecordingFinalize = false
+
+                            // First ensure recording state is cleared
+                            isRecording = false
+                            captureButton?.setRecording(false)
+                            captureButton?.setProgress(0f)
+                            timerText?.visibility = View.GONE
+                            timerText?.text = "00:00"
+                            stopMaxDurationCountdown()
+                            stopTimerTicker()
+
+                            // Then reset to initial state (but don't overwrite error hint)
+                            resetToIdle()
+                            // Show error hint after a short delay to ensure it's not overwritten
+                            handler.postDelayed({
+                                showShortDurationHint()
+                            }, 50)
+                            return@start
+                        }
+
                         stopMaxDurationCountdown()
                         stopTimerTicker()
                         isRecording = false
@@ -590,8 +616,31 @@ class MediaCaptureFragment : Fragment() {
     }
 
     private fun stopRecording() {
+        // Check minimum recording duration BEFORE stopping timers
+        val currentElapsed = if (recordingStartElapsedMs > 0) {
+            SystemClock.elapsedRealtime() - recordingStartElapsedMs
+        } else {
+            0L
+        }
+
+        if (currentElapsed < minRecordingDurationMs && activeRecording != null) {
+            // Recording too short - mark to ignore finalize events and let recording complete normally
+            // But we'll discard the result and not proceed to preview
+            ignoreRecordingFinalize = true
+
+            // Stop normally but we'll handle the result differently in finalize
+            activeRecording?.stop()
+            activeRecording = null
+            // Clean up timers after checking
+            stopMaxDurationCountdown()
+            stopTimerTicker()
+            return
+        }
+
+        // Normal stop - clean up timers
         stopMaxDurationCountdown()
         stopTimerTicker()
+
         activeRecording?.stop()
         activeRecording = null
     }
@@ -702,6 +751,9 @@ class MediaCaptureFragment : Fragment() {
     }
 
     private fun updateHint() {
+        // Skip update if showing error hint
+        if (showingErrorHint) return
+
         val isVideoMode = isVideoMode()
         captureButton?.setVideoMode(isVideoMode)
         hintText?.text = when {
@@ -715,6 +767,9 @@ class MediaCaptureFragment : Fragment() {
         pendingCapture = null
         finishButton?.visibility = View.GONE
         finishButton?.isEnabled = false
+        showingErrorHint = false
+        ignoreRecordingFinalize = false // Reset finalize ignore flag
+
         captureButton?.apply {
             visibility = View.VISIBLE
             isEnabled = true
@@ -952,6 +1007,18 @@ class MediaCaptureFragment : Fragment() {
         timerUpdater?.let { handler.removeCallbacks(it) }
         timerUpdater = null
         recordingStartElapsedMs = -1L
+    }
+
+    private fun showShortDurationHint() {
+        showingErrorHint = true
+        // Ensure hint is visible and has correct text
+        hintText?.visibility = View.VISIBLE
+        hintText?.text = "拍摄时间过短"
+        // Reset hint after 1.5 seconds
+        handler.postDelayed({
+            showingErrorHint = false
+            updateHint()
+        }, 1500)
     }
 
     private fun removeSelf() {
