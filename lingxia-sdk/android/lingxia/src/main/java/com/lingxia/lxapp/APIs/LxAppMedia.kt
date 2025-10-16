@@ -194,8 +194,6 @@ internal object LxAppMedia {
         val allowAlbum = normalizedSources == 0 || normalizedSources == 2
         val allowCamera = normalizedSources == 1 || normalizedSources == 2
 
-        val allowMultiple = maxCount.coerceAtLeast(1) > 1
-
         val appCompat = activity as? AppCompatActivity
         if (appCompat == null) {
             val payload = org.json.JSONObject().apply { put("error", "Activity is not AppCompatActivity") }

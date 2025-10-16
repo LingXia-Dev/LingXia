@@ -4,15 +4,14 @@ import android.Manifest
 import android.content.ContentUris
 import android.content.Context
 import android.content.pm.PackageManager
-import android.graphics.Color
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
-import android.util.Log
 import android.util.Size
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -22,9 +21,10 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
-import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
 import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.GridLayoutManager
@@ -95,6 +95,12 @@ class MediaPickerFragment : Fragment() {
 
     private var recycler: RecyclerView? = null
     private var sendBtn: TextView? = null
+    private var sendBtnBackground: GradientDrawable? = null
+    private var selectionSummaryView: TextView? = null
+    private var maxSelectable: Int = 1
+    private val techBlueColor: Int = Color.parseColor("#1677FF")
+    private val lightTechBlueColor: Int = Color.parseColor("#AFCBFF")
+    private val disabledBlueColor: Int = Color.parseColor("#80A6D9")
     private val selected = linkedMapOf<Uri, Boolean>()
     private var allItems: List<GridItem> = emptyList()
     private val itemsIndex = HashMap<Uri, GridItem>()
@@ -131,22 +137,26 @@ class MediaPickerFragment : Fragment() {
     ): View {
         val context = requireContext()
         val root = FrameLayout(context).apply {
-            setBackgroundColor(Color.BLACK)
+            setBackgroundColor(Color.parseColor("#F7F8FA"))
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
             )
         }
 
+        val argLimit = arguments?.getInt(ARG_MAX_COUNT) ?: 1
+        maxSelectable = argLimit.coerceAtLeast(1)
+
         // Top bar
         val topBar = FrameLayout(context).apply {
-            setBackgroundColor(Color.parseColor("#2C2C2C"))
-            val h = dp(context, 48) + statusBarHeight()
-            setPadding(0, statusBarHeight(), 0, 0)
+            setBackgroundColor(Color.WHITE)
+            val h = dp(context, 56) + statusBarHeight()
+            setPadding(dp(context, 16), statusBarHeight(), dp(context, 16), dp(context, 12))
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 h
             ).apply { gravity = Gravity.TOP }
+            ViewCompat.setElevation(this, dp(context, 2).toFloat())
         }
         // Custom drawn close "X" for better visual integration
         val backBtn = CloseXView(context).apply {
@@ -162,9 +172,9 @@ class MediaPickerFragment : Fragment() {
         val selector = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(dp(context, 12), dp(context, 6), dp(context, 10), dp(context, 6))
-            background = android.graphics.drawable.GradientDrawable().apply {
+            background = GradientDrawable().apply {
                 cornerRadius = dp(context, 20).toFloat()
-                setColor(Color.parseColor("#3A3A3A"))
+                setColor(Color.parseColor("#F2F3F5"))
             }
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.WRAP_CONTENT,
@@ -175,7 +185,7 @@ class MediaPickerFragment : Fragment() {
             setOnClickListener { toggleAlbumMenu() }
         }
         val selectorText = TextView(context).apply {
-            setTextColor(Color.WHITE)
+            setTextColor(Color.parseColor("#1F1F1F"))
             // Do not set default text to avoid flicker; will set after album chosen
             text = ""
             textSize = 16f
@@ -211,14 +221,14 @@ class MediaPickerFragment : Fragment() {
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
             ).apply {
-                topMargin = dp(context, 48) + statusBarHeight()
-                bottomMargin = dp(context, 56)
+                topMargin = dp(context, 56) + statusBarHeight()
+                bottomMargin = dp(context, 64)
             }
-            setBackgroundColor(Color.parseColor("#2C2C2C"))
+            setBackgroundColor(Color.parseColor("#F7F8FA"))
         }
         val spanCount = 4
         rv.layoutManager = GridLayoutManager(context, spanCount)
-        rv.addItemDecoration(HairlineDividerDecoration(context, 0.5f, Color.parseColor("#3A3A3A")))
+        rv.addItemDecoration(HairlineDividerDecoration(context, 0.5f, Color.parseColor("#E5E6EB")))
         val adapter = MediaGridAdapter(
             context,
             onMediaClick = { item -> toggleSelection(item) },
@@ -230,30 +240,41 @@ class MediaPickerFragment : Fragment() {
         // Bottom bar
         val bottom = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
-            setBackgroundColor(Color.parseColor("#1E1E1E"))
+            setBackgroundColor(Color.WHITE)
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
-                dp(context, 56)
+                dp(context, 64)
             ).apply { gravity = Gravity.BOTTOM }
-            setPadding(dp(context, 12), 0, dp(context, 12), dp(context, 6))
+            setPadding(dp(context, 16), dp(context, 10), dp(context, 16), dp(context, 14))
             gravity = Gravity.CENTER_VERTICAL
         }
-        val spacer = View(context).apply { layoutParams = LinearLayout.LayoutParams(0, 1, 1f) }
+        val summaryView = TextView(context).apply {
+            text = "已选 0/$maxSelectable"
+            setTextColor(disabledBlueColor)
+            textSize = 15f
+            typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        selectionSummaryView = summaryView
+
+        val sendBackground = GradientDrawable().apply {
+            cornerRadius = dp(context, 18).toFloat()
+            setColor(lightTechBlueColor)
+        }
+        sendBtnBackground = sendBackground
         val send = TextView(context).apply {
             text = "完成"
             setTextColor(Color.WHITE)
             textSize = 16f
-            background = GradientDrawable().apply {
-                cornerRadius = dp(context, 16).toFloat()
-                setColor(Color.parseColor("#3A3A3A"))
-            }
+            typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+            background = sendBackground
             gravity = Gravity.CENTER
-            // Slightly smaller height via reduced vertical padding
-            setPadding(dp(context, 16), dp(context, 6), dp(context, 16), dp(context, 6))
+            setPadding(dp(context, 18), dp(context, 8), dp(context, 18), dp(context, 8))
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             setOnClickListener { confirmSelection() }
         }
-        bottom.addView(spacer)
+
+        bottom.addView(summaryView)
         bottom.addView(send)
         root.addView(bottom)
 
@@ -262,7 +283,7 @@ class MediaPickerFragment : Fragment() {
 
         // Album dropdown container (overlay)
         val albumContainer = FrameLayout(context).apply {
-            setBackgroundColor(Color.parseColor("#66000000"))
+            setBackgroundColor(Color.parseColor("#33000000"))
             visibility = View.GONE
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
@@ -270,13 +291,13 @@ class MediaPickerFragment : Fragment() {
             )
         }
         val albumList = RecyclerView(context).apply {
-            setBackgroundColor(Color.parseColor("#1E1E1E"))
+            setBackgroundColor(Color.WHITE)
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT
             ).apply {
                 gravity = Gravity.TOP
-                topMargin = dp(context, 48) + statusBarHeight()
+                topMargin = dp(context, 56) + statusBarHeight()
             }
             layoutManager = androidx.recyclerview.widget.LinearLayoutManager(context)
         }
@@ -456,8 +477,7 @@ class MediaPickerFragment : Fragment() {
             selected.remove(item.uri)
         } else {
             selected[item.uri] = true
-            val max = arguments?.getInt(ARG_MAX_COUNT) ?: 1
-            if (selected.size > max) {
+            if (selected.size > maxSelectable) {
                 val first = selected.keys.firstOrNull()
                 if (first != null) selected.remove(first)
             }
@@ -468,11 +488,7 @@ class MediaPickerFragment : Fragment() {
     private fun updateSelectionUI() {
         val count = selected.size
         applySendButtonStyle(count)
-        // compute selection order map
-        val order = LinkedHashMap<Uri, Int>()
-        var i = 1
-        for (uri in selected.keys) { order[uri] = i; i += 1 }
-        (recycler?.adapter as? MediaGridAdapter)?.setSelected(selected.keys, order)
+        (recycler?.adapter as? MediaGridAdapter)?.setSelected(selected.keys)
     }
 
     private fun launchCameraFromPicker() {
@@ -499,16 +515,25 @@ class MediaPickerFragment : Fragment() {
 
     private fun applySendButtonStyle(count: Int) {
         val enabled = count > 0
-        val btn = sendBtn ?: return
-        btn.text = if (enabled) "完成($count)" else "完成"
-        btn.isEnabled = enabled
-        btn.alpha = if (enabled) 1f else 1f // keep text crisp
-        val bg = GradientDrawable().apply {
-            cornerRadius = dp(requireContext(), 16).toFloat()
-            setColor(Color.parseColor(if (enabled) "#07C160" else "#3A3A3A"))
+        val label = maxSelectable.toString()
+        selectionSummaryView?.let { summary ->
+            val txt = "已选 $count/$label"
+            summary.text = txt
+            summary.setTextColor(if (enabled) techBlueColor else disabledBlueColor)
         }
-        btn.background = bg
-        btn.setTextColor(if (enabled) Color.WHITE else Color.parseColor("#BFBFBF"))
+
+        sendBtn?.let { btn ->
+            btn.isEnabled = enabled
+            btn.text = "完成"
+            btn.alpha = if (enabled) 1f else 0.8f
+            val background = sendBtnBackground
+            background?.setColor(if (enabled) techBlueColor else lightTechBlueColor)
+            if (background != null && btn.background !== background) {
+                btn.background = background
+            }
+            btn.setTextColor(Color.WHITE)
+        }
+
     }
 
     private fun confirmSelection() {
@@ -544,12 +569,12 @@ class MediaPickerFragment : Fragment() {
             private const val TYPE_CAMERA = 1
         }
 
-        private val selected = HashSet<Uri>()
-        private val order = HashMap<Uri, Int>()
+        private val accentBlue = Color.parseColor("#1677FF")
 
-        fun setSelected(keys: Collection<Uri>, orderMap: Map<Uri, Int>) {
+        private val selected = HashSet<Uri>()
+
+        fun setSelected(keys: Collection<Uri>) {
             selected.clear(); selected.addAll(keys)
-            order.clear(); order.putAll(orderMap)
             notifyDataSetChanged()
         }
 
@@ -562,19 +587,22 @@ class MediaPickerFragment : Fragment() {
                 val size = parent.measuredWidth / 4
                 val container = FrameLayout(context).apply {
                     layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, size)
-                    setBackgroundColor(Color.parseColor("#2F2F2F"))
+                    background = GradientDrawable().apply {
+                        cornerRadius = dp(context, 12).toFloat()
+                        setColor(Color.WHITE)
+                    }
                 }
                 val icon = ImageView(context).apply {
                     setImageResource(android.R.drawable.ic_menu_camera)
-                    setColorFilter(Color.WHITE)
+                    setColorFilter(accentBlue)
                     layoutParams = FrameLayout.LayoutParams(dp(context, 36), dp(context, 36)).apply {
                         gravity = Gravity.CENTER_HORIZONTAL
-                        topMargin = dp(context, 18)
+                        topMargin = dp(context, 16)
                     }
                 }
                 val label = TextView(context).apply {
                     text = "拍摄"
-                    setTextColor(Color.WHITE)
+                    setTextColor(Color.parseColor("#1F1F1F"))
                     textSize = 14f
                     gravity = Gravity.CENTER
                     layoutParams = FrameLayout.LayoutParams(
@@ -599,7 +627,7 @@ class MediaPickerFragment : Fragment() {
                         FrameLayout.LayoutParams.MATCH_PARENT
                     )
                     scaleType = ImageView.ScaleType.CENTER_CROP
-                    setBackgroundColor(Color.DKGRAY)
+                    setBackgroundColor(Color.parseColor("#F0F0F0"))
                 }
                 val overlay = View(context).apply {
                     setBackgroundColor(Color.parseColor("#66000000"))
@@ -612,11 +640,13 @@ class MediaPickerFragment : Fragment() {
                 val badgeSize = dp(context, 22)
                 val badge = TextView(context).apply {
                     setTextColor(Color.WHITE)
-                    textSize = 12f
+                    textSize = 14f
+                    typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
                     gravity = Gravity.CENTER
+                    text = "✓"
                     background = GradientDrawable().apply {
                         shape = GradientDrawable.OVAL
-                        setColor(Color.parseColor("#07C160"))
+                        setColor(accentBlue)
                     }
                     layoutParams = FrameLayout.LayoutParams(badgeSize, badgeSize).apply {
                         gravity = Gravity.TOP or Gravity.END
@@ -634,7 +664,7 @@ class MediaPickerFragment : Fragment() {
                     val bg = View(context).apply {
                         background = GradientDrawable().apply {
                             shape = GradientDrawable.OVAL
-                            setColor(Color.parseColor("#33000000"))
+                            setColor(Color.parseColor("#14000000"))
                         }
                         layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
                     }
@@ -642,7 +672,7 @@ class MediaPickerFragment : Fragment() {
                         background = GradientDrawable().apply {
                             shape = GradientDrawable.OVAL
                             setColor(Color.TRANSPARENT)
-                            setStroke(dp(context, 2), Color.WHITE)
+                            setStroke(dp(context, 2), Color.parseColor("#D0D5DD"))
                         }
                         layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
                     }
@@ -689,18 +719,12 @@ class MediaPickerFragment : Fragment() {
                     holder.image.setImageBitmap(bmp)
                 } catch (_: Exception) {
                     holder.image.setImageDrawable(null)
-                    holder.image.setBackgroundColor(Color.DKGRAY)
+                    holder.image.setBackgroundColor(Color.parseColor("#D9D9D9"))
                 }
                 val isSel = selected.contains(item.uri)
                 holder.overlay.visibility = if (isSel) View.VISIBLE else View.GONE
                 if (isSel) {
-                    val idx = order[item.uri] ?: 0
-                    if (idx > 0) {
-                        holder.badge.visibility = View.VISIBLE
-                        holder.badge.text = idx.toString()
-                    } else {
-                        holder.badge.visibility = View.GONE
-                    }
+                    holder.badge.visibility = View.VISIBLE
                     holder.ring.visibility = View.GONE
                 } else {
                     holder.badge.visibility = View.GONE
@@ -746,19 +770,20 @@ class MediaPickerFragment : Fragment() {
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.WRAP_CONTENT
                     )
+                    setBackgroundColor(Color.WHITE)
                 }
                 val cover = ImageView(ctx).apply {
                     layoutParams = LinearLayout.LayoutParams(dp(ctx, 48), dp(ctx, 48))
                     scaleType = ImageView.ScaleType.CENTER_CROP
-                    setBackgroundColor(Color.DKGRAY)
+                    setBackgroundColor(Color.parseColor("#D9D9D9"))
                 }
                 val texts = LinearLayout(ctx).apply {
                     orientation = LinearLayout.VERTICAL
                     layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
                     setPadding(dp(ctx, 12), 0, 0, 0)
                 }
-                val name = TextView(ctx).apply { setTextColor(Color.WHITE); textSize = 16f }
-                val count = TextView(ctx).apply { setTextColor(Color.GRAY); textSize = 12f }
+                val name = TextView(ctx).apply { setTextColor(Color.parseColor("#1F1F1F")); textSize = 16f }
+                val count = TextView(ctx).apply { setTextColor(Color.parseColor("#8C8C8C")); textSize = 12f }
                 texts.addView(name); texts.addView(count)
                 row.addView(cover); row.addView(texts)
                 return AlbumVH(row, cover, name, count)
@@ -775,17 +800,17 @@ class MediaPickerFragment : Fragment() {
                         holder.cover.setImageBitmap(bmp)
                     } else {
                         holder.cover.setImageDrawable(null)
-                        holder.cover.setBackgroundColor(Color.DKGRAY)
+                        holder.cover.setBackgroundColor(Color.parseColor("#D9D9D9"))
                     }
                 } catch (_: Exception) {
                     holder.cover.setImageDrawable(null)
-                    holder.cover.setBackgroundColor(Color.DKGRAY)
+                    holder.cover.setBackgroundColor(Color.parseColor("#D9D9D9"))
                 }
-                // Right green check for selected album (including null id)
+                // Right selection check for selected album (including null id)
                 if (currentAlbumId == item.id) {
                     if (holder.itemView.findViewWithTag<View>("sel_check") == null) {
                         val size = dp(ctx, 18)
-                        val check = CheckMarkView(ctx, Color.parseColor("#07C160"), dp(ctx, 2).toFloat()).apply {
+                        val check = CheckMarkView(ctx, this@MediaPickerFragment.techBlueColor, dp(ctx, 2).toFloat()).apply {
                             tag = "sel_check"
                             layoutParams = LinearLayout.LayoutParams(size, size).apply {
                                 gravity = Gravity.CENTER_VERTICAL
@@ -794,8 +819,10 @@ class MediaPickerFragment : Fragment() {
                         }
                         (holder.itemView as ViewGroup).addView(check)
                     }
+                    holder.itemView.setBackgroundColor(Color.parseColor("#E8F2FF"))
                 } else {
                     holder.itemView.findViewWithTag<View>("sel_check")?.let { (holder.itemView as ViewGroup).removeView(it) }
+                    holder.itemView.setBackgroundColor(Color.WHITE)
                 }
                 holder.itemView.setOnClickListener {
                     currentAlbumId = item.id
@@ -911,7 +938,7 @@ private fun formatDuration(d: Double): String {
 // Custom-drawn arrow view (inside grey circle) for album selector
 private class ArrowView(context: Context) : View(context) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#666666")
+        color = Color.parseColor("#595959")
         style = Paint.Style.STROKE
         strokeWidth = (context.resources.displayMetrics.density * 1.0f)
         strokeCap = Paint.Cap.ROUND
@@ -966,14 +993,14 @@ private class CheckMarkView(context: Context, color: Int, private val stroke: Fl
 // Custom-drawn close X view
 private class CloseXView(context: Context) : View(context) {
     private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#FFFFFF")
+        color = Color.parseColor("#1F1F1F")
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
         strokeWidth = dp(context, 2).toFloat()
     }
     private val pressPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#44FFFFFF")
+        color = Color.parseColor("#1A000000")
         style = Paint.Style.FILL
     }
     override fun onDraw(canvas: Canvas) {

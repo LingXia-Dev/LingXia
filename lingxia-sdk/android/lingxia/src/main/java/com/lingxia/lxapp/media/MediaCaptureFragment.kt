@@ -113,6 +113,7 @@ class MediaCaptureFragment : Fragment() {
     private var switchCameraButton: ImageButton? = null
     private var backButton: CutoutChevronButton? = null
     private var finishButton: TextView? = null
+    private var finishButtonBackground: GradientDrawable? = null
     private var timerText: TextView? = null
     private data class PendingCapture(val file: File, val fileType: String)
     private var pendingCapture: PendingCapture? = null
@@ -147,6 +148,9 @@ class MediaCaptureFragment : Fragment() {
     private val dateFormatter by lazy {
         SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
     }
+
+    private val techBlueColor: Int = Color.parseColor("#1677FF")
+    private val lightTechBlueColor: Int = Color.parseColor("#AFCBFF")
 
     // Modern permission launcher (replaces deprecated requestPermissions API)
     private val permissionLauncher = registerForActivityResult(
@@ -326,10 +330,12 @@ class MediaCaptureFragment : Fragment() {
                     bottomMargin = shutterBottomMargin + dp(context, 6f)
                 }
                 setPadding(dp(context, 16f), dp(context, 6f), dp(context, 16f), dp(context, 6f))
-                background = GradientDrawable().apply {
+                val backgroundDrawable = GradientDrawable().apply {
                     cornerRadius = dp(context, 18f).toFloat()
-                    setColor(Color.parseColor("#FF07C160"))
+                    setColor(lightTechBlueColor)
                 }
+                background = backgroundDrawable
+                finishButtonBackground = backgroundDrawable
                 setTextColor(Color.WHITE)
                 text = "完成"
                 textSize = 14f
@@ -337,6 +343,7 @@ class MediaCaptureFragment : Fragment() {
                 setOnClickListener { completeCapture() }
             }
             finishButton = doneButton
+            updateFinishButtonEnabled(false)
             bottomOverlay.addView(doneButton)
         }
 
@@ -359,6 +366,7 @@ class MediaCaptureFragment : Fragment() {
         switchCameraButton = null
         backButton = null
         finishButton = null
+        finishButtonBackground = null
         timerText = null
         pendingCapture = null
     }
@@ -393,6 +401,7 @@ class MediaCaptureFragment : Fragment() {
         captureButton?.isEnabled = false
         timerText?.visibility = View.GONE
         finishButton?.visibility = View.GONE
+        updateFinishButtonEnabled(false)
         switchCameraButton?.visibility = View.VISIBLE
         val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
         cameraProviderFuture.addListener({
@@ -681,7 +690,7 @@ class MediaCaptureFragment : Fragment() {
         pendingCapture?.file?.takeIf { it.exists() }?.delete()
         pendingCapture = null
         finishButton?.visibility = View.GONE
-        finishButton?.isEnabled = false
+        updateFinishButtonEnabled(false)
         NativeApi.onCallback(
             callbackId,
             false,
@@ -700,10 +709,10 @@ class MediaCaptureFragment : Fragment() {
 
     private fun completeCapture() {
         val pending = pendingCapture ?: return
-        finishButton?.isEnabled = false
+        updateFinishButtonEnabled(false)
         try {
             if (!pending.file.exists()) {
-                finishButton?.isEnabled = true
+                updateFinishButtonEnabled(true)
                 cancelCapture("Captured file missing")
                 return
             }
@@ -725,7 +734,7 @@ class MediaCaptureFragment : Fragment() {
             removeSelf()
         } catch (e: Exception) {
             Log.e(TAG, "completeCapture: failed", e)
-            finishButton?.isEnabled = true
+            updateFinishButtonEnabled(true)
             cancelCapture(e.message ?: "Failed to complete capture")
         }
     }
@@ -766,7 +775,7 @@ class MediaCaptureFragment : Fragment() {
     private fun resetToIdle() {
         pendingCapture = null
         finishButton?.visibility = View.GONE
-        finishButton?.isEnabled = false
+        updateFinishButtonEnabled(false)
         showingErrorHint = false
         ignoreRecordingFinalize = false // Reset finalize ignore flag
 
@@ -903,7 +912,7 @@ class MediaCaptureFragment : Fragment() {
                 btn.layoutParams = lp
             }
             btn.visibility = View.VISIBLE
-            btn.isEnabled = true
+            updateFinishButtonEnabled(true)
             btn.bringToFront()
         }
 
@@ -917,6 +926,14 @@ class MediaCaptureFragment : Fragment() {
         params.topMargin = statusBarHeight() + dp(button.context, 16f)
         params.bottomMargin = 0
         button.layoutParams = params
+    }
+
+    private fun updateFinishButtonEnabled(enabled: Boolean) {
+        finishButton?.let { btn ->
+            btn.isEnabled = enabled
+            finishButtonBackground?.setColor(if (enabled) techBlueColor else lightTechBlueColor)
+            btn.alpha = if (enabled) 1f else 0.8f
+        }
     }
 
     private fun placeBackButtonBottom(button: CutoutChevronButton) {
