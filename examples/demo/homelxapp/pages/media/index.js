@@ -42,6 +42,13 @@ const MODE_SETTINGS = {
       countKey: "1",
     },
   },
+  ScanCode: {
+    mediaType: "scanCode",
+    defaults: {
+      scanOnlyCamera: true,
+      scanTypeKey: "all",
+    },
+  },
 };
 
 function getModeCopy(mediaType) {
@@ -52,6 +59,15 @@ function getModeCopy(mediaType) {
       previewHint: "Tap the clip to replay.",
       galleryHint: "Tap the clip to replay.",
       addLabel: "Add Video",
+    };
+  }
+  if (mediaType === "scanCode") {
+    return {
+      headerSubtitle: "lx.scanCode",
+      emptyHint: "",
+      previewHint: "",
+      galleryHint: "",
+      addLabel: "ScanCode",
     };
   }
   return {
@@ -73,7 +89,8 @@ function resolveModeKey(input) {
   }
 
   if (input && typeof input === "object") {
-    return resolveModeKey(input.mode);
+    // Support both type/mode fields
+    return resolveModeKey(input.type || input.mode);
   }
 
   return DEFAULT_MODE;
@@ -199,11 +216,18 @@ function createState(modeKey) {
     cameraKey: cameraOption ? cameraOption.key : "",
     durationKey: durationOption ? durationOption.key : "",
     durationValue: durationOption ? durationOption.value : 0,
+    scanOnlyCamera:
+      config.mediaType === "scanCode" ? !!defaults.scanOnlyCamera : true,
+    scanTypeKey:
+      config.mediaType === "scanCode" ? defaults.scanTypeKey || "all" : "all",
     emptyHint: copy.emptyHint,
     previewHint: copy.previewHint,
     galleryHint: copy.galleryHint,
     headerSubtitle: copy.headerSubtitle,
     addLabel: copy.addLabel,
+    scanResult: "",
+    scanType: "",
+    scanBusy: false,
   };
 }
 
@@ -220,12 +244,12 @@ Page({
     this.setData(state);
 
     const title =
-      state.mediaType === "video" ? "Record / Pick Video" : "Photos";
-    if (typeof this.setNavigationBarTitle === "function") {
-      this.setNavigationBarTitle({ title });
-    } else if (typeof lx.setNavigationBarTitle === "function") {
-      lx.setNavigationBarTitle({ title });
-    }
+      state.mediaType === "video"
+        ? "Record / Pick Video"
+        : state.mediaType === "scanCode"
+          ? "Scan"
+          : "Photos";
+    lx.setNavigationBarTitle({ title });
   },
 
   openSourcePicker: async function () {
@@ -294,6 +318,10 @@ Page({
   },
 
   launchMediaDemo: async function () {
+    if (this.data.mediaType === "scanCode") {
+      this.startScan();
+      return;
+    }
     if (this.data.isRunning) return;
 
     const modeKey = this.data.modeKey || DEFAULT_MODE;
@@ -344,6 +372,59 @@ Page({
     } finally {
       this.setData({ isRunning: false });
     }
+  },
+
+  startScan: async function () {
+    if (this.data.scanBusy) {
+      return;
+    }
+    this.setData({ scanBusy: true, scanResult: "", scanType: "" });
+    try {
+      const onlyFromCamera = !!this.data.scanOnlyCamera;
+      const scanTypeKey = this.data.scanTypeKey || "all";
+      const payload = { onlyFromCamera };
+      if (scanTypeKey && scanTypeKey !== "all") {
+        payload.scanType = [scanTypeKey];
+      }
+      const result = await lx.scanCode(payload);
+      const next = {
+        scanBusy: false,
+        scanResult: result?.scanResult || "",
+        scanType: result?.scanType || "",
+      };
+      this.setData(next);
+    } catch (error) {
+      console.error("scanCode failed:", error);
+      this.setData({ scanBusy: false });
+      lx.showToast({
+        title: error?.message || "scanCode failed",
+        icon: "none",
+      });
+    }
+  },
+
+  openScanSourcePicker: async function () {
+    const OPTIONS = [
+      { key: "camera", label: "Camera Only", value: true },
+      { key: "cameraOrPhoto", label: "Camera & Photo", value: false },
+    ];
+    const currentKey = this.data.scanOnlyCamera ? "camera" : "cameraOrPhoto";
+    const choice = await pickOption(OPTIONS, currentKey);
+    if (!choice) return;
+    this.setData({ scanOnlyCamera: choice.key === "camera" });
+  },
+
+  openScanTypePicker: async function () {
+    const OPTIONS = [
+      { key: "all", label: "All" },
+      { key: "barCode", label: "barCode (1D)" },
+      { key: "qrCode", label: "qrCode" },
+      { key: "datamatrix", label: "datamatrix" },
+      { key: "pdf417", label: "pdf417" },
+    ];
+    const choice = await pickOption(OPTIONS, this.data.scanTypeKey || "all");
+    if (!choice) return;
+    this.setData({ scanTypeKey: choice.key });
   },
 
   previewSelectedMedia: async function (event) {

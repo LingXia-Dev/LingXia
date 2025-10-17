@@ -33,7 +33,7 @@ type MediaItem = {
 };
 
 type PageData = {
-  mediaType?: 'image' | 'video';
+  mediaType?: 'image' | 'video' | 'scanCode';
   selectedMedia?: MediaItem[];
   isRunning?: boolean;
   countLimit?: number;
@@ -47,6 +47,11 @@ type PageData = {
   galleryHint?: string;
   headerSubtitle?: string;
   addLabel?: string;
+  scanResult?: string;
+  scanType?: string;
+  scanBusy?: boolean;
+  scanOnlyCamera?: boolean;
+  scanTypeKey?: string;
 };
 
 type PageActions = {
@@ -57,6 +62,9 @@ type PageActions = {
   openCountPicker?(): void;
   openCameraPicker?(): void;
   openDurationPicker?(): void;
+  openScanSourcePicker?(): void;
+  openScanTypePicker?(): void;
+  startScan?(): void;
 };
 
 declare function useLingXia(): PageActions;
@@ -70,9 +78,17 @@ export default function MediaPage() {
     openCountPicker,
     openCameraPicker,
     openDurationPicker,
+    openScanSourcePicker,
+    openScanTypePicker,
+    startScan,
   } = useLingXia();
 
-  const mediaType = data?.mediaType === 'video' ? 'video' : 'image';
+  const mediaTypeInput = data?.mediaType || 'image';
+  const mediaType = mediaTypeInput === 'video'
+    ? 'video'
+    : (mediaTypeInput === 'scanCode')
+      ? 'scanCode'
+      : 'image';
   const selectedMedia: MediaItem[] = Array.isArray(data?.selectedMedia)
     ? (data?.selectedMedia as MediaItem[])
     : [];
@@ -99,15 +115,19 @@ export default function MediaPage() {
   const durationLabel = durationOption.label;
 
   const countLimit =
-    typeof data?.countLimit === 'number' ? data.countLimit : countOption.value ?? 0;
+  typeof data?.countLimit === 'number' ? data.countLimit : countOption.value ?? 0;
   const counterText = countLimit ? `${selectedMedia.length}/${countLimit}` : `${selectedMedia.length}`;
 
   const isPictureMode = mediaType === 'image';
+  const isScanMode = mediaType === 'scanCode';
 
   const emptyHint = data?.emptyHint || (isPictureMode ? 'Tap + to pick photos.' : 'Tap + to add a video.');
   const previewHint = data?.previewHint || (isPictureMode ? 'Tap a photo to preview.' : 'Tap the clip to preview.');
   const galleryHint = data?.galleryHint || previewHint;
   const headerSubtitle = data?.headerSubtitle || 'choose/previewMedia';
+
+  const scanResult = (typeof data?.scanResult === 'string') ? data?.scanResult : '';
+  const scanBusy = Boolean(data?.scanBusy);
 
   const addLabel = data?.addLabel || (isPictureMode ? 'Add Photo' : 'Add Video');
   const helperText = selectedMedia.length ? previewHint : emptyHint;
@@ -213,24 +233,34 @@ export default function MediaPage() {
     return (
       <button
         type="button"
-        className={`flex w-full items-center justify-between px-5 py-3 text-sm ${
+        className={`flex w-full items-center px-5 py-3 text-sm text-left ${
           clickable ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-600 cursor-default'
         }`}
         onClick={clickable ? onPress : undefined}
         disabled={!clickable}
       >
-        <span className="text-gray-500">{label}</span>
-        <span className="font-medium text-gray-900">{value}</span>
+        <span className="text-gray-500 flex-1 pr-3 whitespace-nowrap text-left">{label}</span>
+        <span className="font-medium text-gray-900 max-w-[60%] truncate text-right">{value}</span>
       </button>
     );
   };
 
-  const settingRows = isPictureMode
+  const scanSourceLabel = data?.scanOnlyCamera ? 'Camera' : 'Camera & Album';
+  const scanTypeKey = data?.scanTypeKey || 'all';
+  // Show raw key directly (no conversion): e.g., barCode, qrCode, pdf417
+  const scanTypeLabel = String(scanTypeKey);
+
+  const settingRows = isScanMode
     ? [
+        { label: 'Source', value: scanSourceLabel, action: openScanSourcePicker },
+        { label: 'Scan Type', value: scanTypeLabel, action: openScanTypePicker },
+      ]
+    : isPictureMode
+      ? [
         { label: 'Photo Source', value: sourceLabel, action: openSourcePicker },
         { label: 'Count Limit', value: countLabel, action: openCountPicker },
       ]
-    : (() => {
+      : (() => {
         const rows = [
           { label: 'Video Source', value: sourceLabel, action: openSourcePicker },
         ];
@@ -243,12 +273,13 @@ export default function MediaPage() {
         return rows;
       })();
 
+  const pagePaddingX = isScanMode ? 'px-0' : 'px-4';
   return (
     <div className="min-h-screen bg-gray-100">
-      <div className="px-4 py-5 space-y-4">
+      <div className={`${pagePaddingX} py-5 space-y-4`}>
         <div className="bg-white shadow-sm">
           <div className="px-5 py-6 text-center">
-            <div className="text-base font-medium text-gray-700">{headerSubtitle}</div>
+            <div className="text-base font-medium text-gray-700">{isScanMode ? 'lx.scanCode' : headerSubtitle}</div>
             <div className="mx-auto mt-3 h-0.5 w-12 bg-gray-200" />
           </div>
           <div className="border-t border-gray-100">
@@ -261,21 +292,42 @@ export default function MediaPage() {
           </div>
         </div>
 
-        <div className="space-y-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between text-xs text-gray-500">
-            <span>{helperText}</span>
-            {selectedMedia.length ? (
-              null
-            ) : null}
-          </div>
-          {countLimit ? (
+        <div className={`space-y-3 bg-white ${isScanMode ? 'p-6 w-full' : 'rounded-xl border border-gray-200 p-4 shadow-sm'}`}>
+          {!isScanMode && (
+            <div className="flex items-center justify-between text-xs text-gray-500">
+              <span>{helperText}</span>
+              {selectedMedia.length ? null : null}
+            </div>
+          )}
+          {!isScanMode && countLimit ? (
             <div className="text-xs text-gray-400">Selected {counterText}</div>
           ) : null}
-          {selectedMedia.length ? (
+          {!isScanMode && selectedMedia.length ? (
             <div className="text-[10px] text-gray-400">{galleryHint}</div>
           ) : null}
 
-          {isPictureMode ? renderPictureTiles() : renderVideoTiles()}
+          {isScanMode ? (
+            <>
+              <div className="space-y-2">
+                <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Scan Result</div>
+                <div className="min-h-[7rem] w-full rounded-lg bg-gray-50 px-4 py-3 text-base text-gray-900 break-words">
+                  {scanResult}
+                </div>
+                <div className="text-xs text-gray-400">Type: {typeof data?.scanType === 'string' && data?.scanType ? data.scanType : '--'}</div>
+              </div>
+
+              <button
+                type="button"
+                className={`mt-3 w-full rounded-lg bg-blue-600 py-3 text-sm font-medium text-white shadow-sm transition hover:bg-blue-500 ${scanBusy ? 'opacity-70' : ''}`}
+                onClick={() => { startScan(); }}
+                disabled={scanBusy}
+              >
+                {'ScanCode'}
+              </button>
+            </>
+          ) : (
+            isPictureMode ? renderPictureTiles() : renderVideoTiles()
+          )}
         </div>
       </div>
     </div>

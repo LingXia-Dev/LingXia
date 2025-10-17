@@ -284,7 +284,7 @@ export default function APIPage() {
             className="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
             onClick={() => toggleSection({ section: 'media' })}
           >
-            <div className="text-base text-gray-900">Media</div>
+            <div className="text-base text-gray-900">Media & Camera</div>
             <div className="w-6 h-6 text-gray-400">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <polygon points="5,3 19,12 5,21"/>
@@ -310,6 +310,17 @@ export default function APIPage() {
                 onClick={() => navigateToMediaPage({ type: 'Videos' })}
               >
                 <div className="text-sm text-gray-700">Videos</div>
+                <div className="w-4 h-4 text-gray-400">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M9 18l6-6-6-6"/>
+                  </svg>
+                </div>
+              </div>
+              <div
+                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+                onClick={() => navigateToMediaPage({ type: 'scanCode' })}
+              >
+                <div className="text-sm text-gray-700">ScanCode</div>
                 <div className="w-4 h-4 text-gray-400">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                     <path d="M9 18l6-6-6-6"/>
