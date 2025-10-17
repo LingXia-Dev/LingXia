@@ -15,6 +15,7 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import com.lingxia.lxapp.util.WindowInsetsUtils
 import com.lingxia.lxapp.LxApp
 import com.lingxia.lxapp.LxAppActivity
 import com.lingxia.lxapp.NativeApi
@@ -132,7 +133,15 @@ internal object LxAppPopup {
 
         val container = FrameLayout(activity).apply {
             val baseHeight = resolvedHeight.size
-            val params = FrameLayout.LayoutParams(resolvedWidth.size, baseHeight)
+            val bottomInset = WindowInsetsUtils.getBottomInset(rootView)
+            val params = FrameLayout.LayoutParams(
+                resolvedWidth.size,
+                if (position == PopupPosition.BOTTOM && !resolvedHeight.isFull && bottomInset > 0) {
+                    (baseHeight + bottomInset).coerceAtMost(metrics.heightPixels)
+                } else {
+                    baseHeight
+                }
+            )
             params.gravity = when (position) {
                 PopupPosition.BOTTOM -> Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
                 PopupPosition.CENTER -> Gravity.CENTER
@@ -141,16 +150,9 @@ internal object LxAppPopup {
             val margin = (16 * metrics.density).roundToInt()
             val horizontalMargin = if (resolvedWidth.isFull) 0 else margin
             val topMargin = if (position == PopupPosition.BOTTOM) 0 else margin
-            val bottomInset = getBottomInset(rootView)
             val bottomMargin = if (position == PopupPosition.BOTTOM) 0 else margin
             params.setMargins(horizontalMargin, topMargin, horizontalMargin, bottomMargin)
             layoutParams = params
-
-            if (position == PopupPosition.BOTTOM && !resolvedHeight.isFull && bottomInset > 0) {
-                val adjustedHeight = (baseHeight + bottomInset).coerceAtMost(metrics.heightPixels)
-                layoutParams.height = adjustedHeight
-                setPadding(paddingLeft, paddingTop, paddingRight, bottomInset)
-            }
 
             clipToPadding = false
             isClickable = false
@@ -161,7 +163,13 @@ internal object LxAppPopup {
             val contentHeight = if (resolvedHeight.isFull) {
                 FrameLayout.LayoutParams.MATCH_PARENT
             } else {
-                resolvedHeight.size
+                // For bottom popup, let the surface fill container so it can cover navbar area
+                val bottomInset = WindowInsetsUtils.getBottomInset(rootView)
+                if (position == PopupPosition.BOTTOM && bottomInset > 0) {
+                    FrameLayout.LayoutParams.MATCH_PARENT
+                } else {
+                    resolvedHeight.size
+                }
             }
             val lp = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
@@ -227,10 +235,16 @@ internal object LxAppPopup {
         webView.visibility = View.VISIBLE
         webView.resume()
 
+        // If we extended the surface to cover the navbar, keep content above it via padding
+        val insetForContent = WindowInsetsUtils.getBottomInset(rootView)
+        if (position == PopupPosition.BOTTOM && !resolvedHeight.isFull && insetForContent > 0) {
+            webView.setPadding(webView.paddingLeft, webView.paddingTop, webView.paddingRight, insetForContent)
+        }
         popupSurface.addView(webView)
         container.addView(popupSurface)
         overlay.addView(container)
         rootView.addView(overlay)
+        ViewCompat.requestApplyInsets(overlay)
 
         Log.d(TAG, "showPopup overlay attached to root")
 
@@ -285,11 +299,6 @@ internal object LxAppPopup {
         val clamped = rawSize.coerceIn(minPx, totalPx)
         Log.d(TAG, "resolveDimension fraction=$fraction totalPx=$totalPx density=$density -> $clamped")
         return ResolvedDimension(clamped, false)
-    }
-
-    private fun getBottomInset(root: View): Int {
-        val insets = ViewCompat.getRootWindowInsets(root)
-        return insets?.getInsets(WindowInsetsCompat.Type.systemBars())?.bottom ?: 0
     }
 
     private fun sanitizeFraction(value: Double): Double {
