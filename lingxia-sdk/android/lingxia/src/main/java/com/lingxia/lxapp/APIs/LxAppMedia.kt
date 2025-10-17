@@ -7,11 +7,14 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.util.Log
 import com.lingxia.lxapp.LxApp
+import com.lingxia.lxapp.NativeApi
 import androidx.appcompat.app.AppCompatActivity
 import com.lingxia.lxapp.APIs.media.MediaCaptureFragment
 import com.lingxia.lxapp.APIs.media.MediaPickerFragment
 import com.lingxia.lxapp.APIs.media.MediaPreviewFragment
 import com.lingxia.lxapp.APIs.media.PreviewMediaPayload
+import com.lingxia.lxapp.APIs.media.ScanCodeFragment
+import org.json.JSONObject
 import java.io.File
 import java.io.IOException
 import java.io.OutputStream
@@ -229,6 +232,36 @@ internal object LxAppMedia {
             } else {
                 val payload = org.json.JSONObject().apply { put("error", "No valid source (album/camera)") }
                 com.lingxia.lxapp.NativeApi.onCallback(callbackId, false, payload.toString())
+            }
+        }
+    }
+
+    @JvmStatic
+    fun scanCode(scanTypes: IntArray, onlyFromCamera: Boolean, callbackId: Long) {
+        val activity = LxApp.getCurrentActivity()
+        if (activity == null) {
+            val payload = JSONObject().apply { put("error", "No current activity available") }
+            NativeApi.onCallback(callbackId, false, payload.toString())
+            return
+        }
+        val appCompat = activity as? AppCompatActivity
+        if (appCompat == null) {
+            val payload = JSONObject().apply { put("error", "Activity is not AppCompatActivity") }
+            NativeApi.onCallback(callbackId, false, payload.toString())
+            return
+        }
+
+        appCompat.runOnUiThread {
+            try {
+                val normalizedTypes = if (scanTypes.isNotEmpty()) scanTypes else intArrayOf()
+                ScanCodeFragment.start(appCompat, normalizedTypes, onlyFromCamera, callbackId)
+            } catch (e: Exception) {
+                Log.e(TAG, "scanCode failed", e)
+                NativeApi.onCallback(
+                    callbackId,
+                    false,
+                    e.message ?: "Failed to start scan"
+                )
             }
         }
     }

@@ -48,4 +48,5 @@ dependencies {
     implementation("androidx.camera:camera-view:1.3.4")
     implementation("androidx.camera:camera-video:1.3.4")
     implementation("androidx.exifinterface:exifinterface:1.3.6")
+    implementation("com.google.mlkit:barcode-scanning:17.2.0")
 }

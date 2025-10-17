@@ -1,12 +1,12 @@
 use super::app::Platform;
 use crate::error::PlatformError;
-use crate::traits::MediaKind;
 use crate::traits::{
-    ChooseMediaRequest, MediaInteraction, PreviewMediaRequest, SaveMediaRequest, ScanCodeRequest,
+    ChooseMediaRequest, MediaInteraction, MediaKind, PreviewMediaRequest, SaveMediaRequest,
+    ScanCodeRequest, ScanType,
 };
 use jni::JNIEnv;
 use jni::objects::{JClass, JObject, JString, JValue};
-use jni::sys::jint;
+use jni::sys::{jint, jlong};
 use lingxia_webview::get_env;
 
 fn with_jni<T, F>(env: &mut JNIEnv<'static>, f: F) -> Result<T, Box<dyn std::error::Error>>
@@ -45,10 +45,14 @@ impl MediaInteraction for Platform {
         }
     }
 
-    fn scan_code(&self, _request: ScanCodeRequest) -> Result<(), PlatformError> {
-        Err(PlatformError::Platform(
-            "scan_code is not implemented on Android".to_string(),
-        ))
+    fn scan_code(&self, request: ScanCodeRequest) -> Result<(), PlatformError> {
+        match scan_code_impl(request) {
+            Ok(()) => Ok(()),
+            Err(e) => Err(PlatformError::Platform(format!(
+                "Failed to start scanCode: {}",
+                e
+            ))),
+        }
     }
 
     fn save_image_to_photos_album(&self, request: SaveMediaRequest) -> Result<(), PlatformError> {
@@ -141,6 +145,50 @@ fn preview_media_impl(request: PreviewMediaRequest) -> Result<(), Box<dyn std::e
             "previewMedia",
             preview_signature.as_str(),
             &[JValue::Object(&payload_array)],
+        )
+    })?;
+
+    Ok(())
+}
+
+fn scan_code_impl(request: ScanCodeRequest) -> Result<(), Box<dyn std::error::Error>> {
+    let mut env = get_env()?;
+
+    let media_class_ref = super::get_cached_class(super::CachedClass::LxAppMedia)?;
+
+    // Group codes understood by Kotlin fragment:
+    // 1 = QR, 2 = BAR (1D), 3 = DATA_MATRIX, 4 = PDF_417
+    let type_codes: Vec<jint> = request
+        .scan_types
+        .iter()
+        .map(|t| match t {
+            ScanType::QrCode => 1,
+            ScanType::BarCode => 2,
+            ScanType::DataMatrix => 3,
+            ScanType::Pdf417 => 4,
+        })
+        .collect();
+
+    let scan_types_array = with_jni(&mut env, |env| {
+        let array = env.new_int_array(type_codes.len() as i32)?;
+        if !type_codes.is_empty() {
+            env.set_int_array_region(&array, 0, &type_codes)?;
+        }
+        Ok::<_, jni::errors::Error>(JObject::from(array))
+    })?;
+
+    with_jni(&mut env, |env| {
+        let class_ref = env.new_local_ref(media_class_ref.as_obj())?;
+        let class = JClass::from(class_ref);
+        env.call_static_method(
+            class,
+            "scanCode",
+            "([IZJ)V",
+            &[
+                JValue::Object(&scan_types_array),
+                JValue::Bool(if request.only_from_camera { 1 } else { 0 }),
+                JValue::Long(request.callback_id as jlong),
+            ],
         )
     })?;
 

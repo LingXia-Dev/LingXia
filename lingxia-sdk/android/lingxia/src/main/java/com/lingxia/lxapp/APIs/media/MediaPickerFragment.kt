@@ -78,6 +78,30 @@ class MediaPickerFragment : Fragment() {
             fm.beginTransaction().add(android.R.id.content, frag, TAG).commitAllowingStateLoss()
             fm.executePendingTransactions()
         }
+
+        // Lightweight picker for in-app flows (e.g., ScanCode selecting one image)
+        fun pick(
+            activity: AppCompatActivity,
+            maxCount: Int = 1,
+            mode: String = "images",
+            allowCamera: Boolean = false,
+            onPicked: (List<Uri>) -> Unit
+        ) {
+            val frag = MediaPickerFragment().apply {
+                arguments = Bundle().apply {
+                    putInt(ARG_MAX_COUNT, maxCount)
+                    putLong(ARG_CALLBACK_ID, 0L)
+                    putString(ARG_MODE, mode)
+                    putBoolean(ARG_ALLOW_CAMERA, allowCamera)
+                    putInt(ARG_MAX_DURATION, -1)
+                    putInt(ARG_CAMERA_FACING, -1)
+                }
+                resultListener = onPicked
+            }
+            val fm = activity.supportFragmentManager
+            fm.beginTransaction().add(android.R.id.content, frag, TAG).commitAllowingStateLoss()
+            fm.executePendingTransactions()
+        }
     }
 
     private val callbackId: Long
@@ -112,6 +136,7 @@ class MediaPickerFragment : Fragment() {
     private var albumListView: RecyclerView? = null
     private var albumSelectorView: LinearLayout? = null
     private var pendingOnLoaded: ((List<GridItem>) -> Unit)? = null
+    private var resultListener: ((List<Uri>) -> Unit)? = null
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -544,6 +569,12 @@ class MediaPickerFragment : Fragment() {
 
     private fun confirmSelection() {
         val keys = selected.keys.toList()
+        // Prefer in-memory listener when present (embedded flows like ScanCode)
+        resultListener?.let { listener ->
+            listener.invoke(keys)
+            activity?.runOnUiThread { removeSelf() }
+            return
+        }
         val cbId = callbackId
         Thread {
             try {
@@ -902,6 +933,11 @@ class MediaPickerFragment : Fragment() {
     }
 
     private fun sendFailure(message: String) {
+        resultListener?.let {
+            // For embedded flows, just dismiss
+            activity?.runOnUiThread { removeSelf() }
+            return
+        }
         try {
             val payload = JSONObject().apply { put("error", message) }
             NativeApi.onCallback(callbackId, false, payload.toString())
@@ -909,6 +945,11 @@ class MediaPickerFragment : Fragment() {
     }
 
     private fun sendCancel() {
+        resultListener?.let {
+            // For embedded flows, just dismiss
+            activity?.runOnUiThread { removeSelf() }
+            return
+        }
         try {
             val payload = JSONObject().apply { put("cancel", true) }
             NativeApi.onCallback(callbackId, true, payload.toString())

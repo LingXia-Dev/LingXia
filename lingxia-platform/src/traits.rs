@@ -222,26 +222,27 @@ impl Default for ChooseMediaRequest {
     }
 }
 
-/// Supported code types when scanning.
+/// Supported scan type groups.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScanType {
-    Auto,
-    QrCode,
+    /// 1D barcodes (CODE_128/CODE_39/CODE_93/CODABAR/EAN_8/EAN_13/ITF/UPC_A/UPC_E/etc.)
     BarCode,
+    /// QR codes
+    QrCode,
+    /// Data Matrix
     DataMatrix,
+    /// PDF417
     Pdf417,
-    Unknown,
 }
 
 /// Request parameters for initiating a scan operation.
 #[derive(Debug, Clone)]
 pub struct ScanCodeRequest {
     /// Types of code that should be recognised.
+    /// Empty vector means: scan all supported formats on the platform.
     pub scan_types: Vec<ScanType>,
-    /// When true, restrict scanning to the camera (skip album selection).
+    /// When true, restrict scanning to the camera
     pub only_from_camera: bool,
-    /// Whether the platform should include the captured image in the callback payload.
-    pub need_result_image: bool,
     /// Callback identifier used to deliver scan results via messaging channel.
     pub callback_id: u64,
 }
@@ -249,9 +250,9 @@ pub struct ScanCodeRequest {
 impl Default for ScanCodeRequest {
     fn default() -> Self {
         Self {
-            scan_types: vec![ScanType::Auto],
+            // Empty means: scan all supported types on the platform
+            scan_types: Vec::new(),
             only_from_camera: true,
-            need_result_image: false,
             callback_id: 0,
         }
     }
