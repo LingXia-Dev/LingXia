@@ -3,9 +3,12 @@ use lingxia_messaging::{CallbackResult, get_callback};
 use lingxia_platform::AppRuntime;
 use lingxia_platform::{
     CameraFacing, ChooseMediaMode, ChooseMediaRequest, MediaInteraction, MediaKind, MediaSource,
-    PreviewMediaItem, PreviewMediaRequest, SaveMediaRequest,
+    PreviewMediaItem, PreviewMediaRequest, SaveMediaRequest, ScanCodeRequest, ScanType,
 };
-use rong::{FromJSObj, JSContext, JSFunc, JSObject, JSResult, RongJSError, function::Optional};
+use rong::{
+    FromJSObj, IntoJSObj, JSContext, JSFunc, JSObject, JSResult, RongJSError, function::Optional,
+};
+use serde_json::Value;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -123,6 +126,9 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     let choose_media_func = JSFunc::new(ctx, choose_media)?;
     lx::register_js_api(ctx, "chooseMedia", choose_media_func)?;
 
+    let scan_func = JSFunc::new(ctx, scan)?;
+    lx::register_js_api(ctx, "scanCode", scan_func)?;
+
     Ok(())
 }
 
@@ -139,6 +145,47 @@ struct JSChooseMediaOptions {
     camera: Option<String>, // "front" | "back"
     #[rename = "maxDuration"]
     max_duration: Option<f64>,
+}
+
+#[derive(FromJSObj, Clone, Default)]
+struct JSScanOptions {
+    #[rename = "onlyFromCamera"]
+    only_from_camera: Option<bool>,
+    #[rename = "scanType"]
+    scan_type: Option<Vec<String>>, // strict: if present, must be array; otherwise omit for all
+}
+
+#[derive(Debug, Clone, IntoJSObj)]
+struct ScanResultObj {
+    #[rename = "scanResult"]
+    scan_result: String,
+    #[rename = "scanType"]
+    scan_type: String,
+}
+
+fn parse_scan_type_token(value: &str) -> Option<ScanType> {
+    // Strict tokens only
+    match value {
+        "barCode" => Some(ScanType::BarCode),
+        "qrCode" => Some(ScanType::QrCode),
+        "datamatrix" => Some(ScanType::DataMatrix),
+        "pdf417" => Some(ScanType::Pdf417),
+        _ => None,
+    }
+}
+
+fn parse_scan_types(value: Option<Vec<String>>) -> JSResult<Vec<ScanType>> {
+    let mut out: Vec<ScanType> = Vec::new();
+    if let Some(list) = value {
+        for token in list {
+            let t = parse_scan_type_token(token.as_str())
+                .ok_or_else(|| RongJSError::Error("invalid scanType token".to_string()))?;
+            if !out.contains(&t) {
+                out.push(t);
+            }
+        }
+    }
+    Ok(out)
 }
 
 #[derive(Debug, Clone)]
@@ -303,4 +350,52 @@ async fn choose_media(
         });
     }
     Ok(out)
+}
+
+async fn scan(ctx: JSContext, options: Optional<JSScanOptions>) -> JSResult<ScanResultObj> {
+    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let opts = options.as_ref().cloned().unwrap_or_default();
+    let scan_types = parse_scan_types(opts.scan_type)?; // empty vec means all types
+    let only_from_camera = opts.only_from_camera.unwrap_or(true);
+
+    let (callback_id, receiver) = get_callback();
+
+    let request = ScanCodeRequest {
+        scan_types,
+        only_from_camera,
+        callback_id,
+    };
+
+    lxapp
+        .runtime
+        .scan_code(request)
+        .map_err(|e| RongJSError::Error(format!("scan failed to start: {}", e)))?;
+
+    let CallbackResult { success, data } = receiver
+        .await
+        .map_err(|_| RongJSError::Error("scan cancelled or failed".to_string()))?;
+
+    if !success {
+        return Err(RongJSError::Error(data));
+    }
+
+    // Accept empty payload (e.g., cancel). Parse best-effort; empty means empty result.
+    let payload: Value = serde_json::from_str(&data).unwrap_or(Value::Null);
+
+    let scan_result = payload
+        .get("scanResult")
+        .and_then(Value::as_str)
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| "".to_string());
+
+    let scan_type = payload
+        .get("scanType")
+        .and_then(Value::as_str)
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| "".to_string());
+
+    Ok(ScanResultObj {
+        scan_result,
+        scan_type,
+    })
 }
