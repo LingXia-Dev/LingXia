@@ -8,6 +8,7 @@ import { LxAppActionSheet } from './APIs/LxAppActionSheet';
 import { LxAppPicker } from './APIs/LxAppPicker';
 import { LxAppDevice } from './APIs/LxAppDevice';
 import { LxAppMedia } from './APIs/LxAppMedia';
+import { LxAppScan } from './APIs/LxAppScan';
 import { LxAppContainer } from './LxAppContainer';
 import { LxAppPopup } from './APIs/LxAppPopup';
 import {
@@ -255,6 +256,10 @@ class NativeBridge {
         hilog.error(DOMAIN, TAG, `saveMedia async error: ${err}`);
       });
       return true;
+    });
+
+    this.register('scanCode', (payload: string): boolean => {
+      return LxAppScan.scanCode(payload);
     });
 
     hilog.info(DOMAIN, TAG, `Registered ${NativeBridge.callbacks.size} default callbacks`);

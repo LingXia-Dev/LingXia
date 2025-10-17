@@ -2,7 +2,7 @@ use super::app::Platform;
 use crate::error::PlatformError;
 use crate::traits::{
     ChooseMediaMode, ChooseMediaRequest, MediaInteraction, MediaKind, MediaSource,
-    PreviewMediaRequest, SaveMediaRequest, ScanCodeRequest,
+    PreviewMediaRequest, SaveMediaRequest, ScanCodeRequest, ScanType,
 };
 use serde::Serialize;
 
@@ -14,6 +14,16 @@ struct PreviewMediaPayload<'a> {
     path: &'a str,
     media_type: i32,
     cover_path: &'a str,
+}
+
+#[derive(Serialize)]
+struct ScanCodePayload {
+    #[serde(rename = "scanTypes")]
+    scan_types: Vec<String>,
+    #[serde(rename = "onlyFromCamera")]
+    only_from_camera: bool,
+    #[serde(rename = "callbackId")]
+    callback_id: String,
 }
 
 impl MediaInteraction for Platform {
@@ -100,10 +110,33 @@ impl MediaInteraction for Platform {
         })
     }
 
-    fn scan_code(&self, _request: ScanCodeRequest) -> Result<(), PlatformError> {
-        Err(PlatformError::Platform(
-            "scan_code is not implemented on Harmony platform".to_string(),
-        ))
+    fn scan_code(&self, request: ScanCodeRequest) -> Result<(), PlatformError> {
+        let scan_types: Vec<String> = request
+            .scan_types
+            .iter()
+            .map(|scan_type| match scan_type {
+                ScanType::QrCode => "qrCode".to_string(),
+                ScanType::BarCode => "barCode".to_string(),
+                ScanType::DataMatrix => "datamatrix".to_string(),
+                ScanType::Pdf417 => "pdf417".to_string(),
+            })
+            .collect();
+
+        let payload = ScanCodePayload {
+            scan_types,
+            only_from_camera: request.only_from_camera,
+            callback_id: request.callback_id.to_string(),
+        };
+
+        let payload_json = serde_json::to_string(&payload).map_err(|e| {
+            PlatformError::Platform(format!("Failed to serialize scanCode payload: {}", e))
+        })?;
+
+        lingxia_webview::tsfn::call_arkts("scanCode", &[payload_json.as_str()]).map_err(|e| {
+            let message = format!("Failed to start scanCode flow: {}", e);
+            lingxia_messaging::invoke_callback(request.callback_id, false, message.clone());
+            PlatformError::Platform(message)
+        })
     }
 
     fn save_image_to_photos_album(&self, request: SaveMediaRequest) -> Result<(), PlatformError> {
