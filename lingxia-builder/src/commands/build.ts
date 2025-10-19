@@ -13,9 +13,16 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
   const projectPath = process.cwd();
   const outputDir = path.join(projectPath, 'dist');
 
+  // Map CLI options to BuildOptions
+  const buildOptions: BuildOptions = {
+    dev: options.dev,
+    prod: options.prod
+  };
+
   console.log('🚀 Starting LingXia build...');
   console.log(` Project: ${projectPath}`);
   console.log(` Output: ${outputDir}`);
+  console.log(` View bundler: Vite`);
 
   try {
     // Clean and prepare output directory
@@ -30,16 +37,34 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
       return;
     }
 
-    // Build view layer
-    const viewBuilder = new ViewBuilder(projectPath, outputDir);
-    await viewBuilder.buildPages(pages, options);
+    const startTime = Date.now();
 
-    // Build logic layer
-    const logicBuilder = new LogicBuilder(projectPath, outputDir);
-    await logicBuilder.buildLogic(options);
+    const only = process.env.LINGXIA_ONLY?.toLowerCase();
+    if (only === 'logic') {
+      console.log('▶ Building logic layer only...');
+      const logicBuilder = new LogicBuilder(projectPath, outputDir);
+      await logicBuilder.buildLogic(buildOptions);
+    } else if (only === 'view') {
+      console.log('▶ Building view layer only...');
+      const viewBuilder = new ViewBuilder(projectPath, outputDir);
+      await viewBuilder.buildPages(pages, buildOptions);
+    } else {
+      
+      console.log('▶ Building logic layer...');
+      const logicBuilder = new LogicBuilder(projectPath, outputDir);
+      await logicBuilder.buildLogic(buildOptions);
 
-    console.log('Build completed successfully!');
-    console.log(` Output directory: ${outputDir}`);
+      console.log('▶ Building view layer...');
+      const viewBuilder = new ViewBuilder(projectPath, outputDir);
+      await viewBuilder.buildPages(pages, buildOptions);
+    }
+
+    const endTime = Date.now();
+    const buildTime = ((endTime - startTime) / 1000).toFixed(2);
+
+    console.log('✅ Build completed successfully!');
+    console.log(` ⏱ Completed in ${buildTime}s`);
+    console.log(` 📁 Output directory: ${outputDir}`);
 
   } catch (error) {
     console.error('❌ Build failed:', error instanceof Error ? error.message : String(error));

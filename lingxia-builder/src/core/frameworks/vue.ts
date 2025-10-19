@@ -29,16 +29,7 @@ export class VueProcessor extends FrameworkProcessor {
   }
 
   getDependencies(): { dependencies: any; devDependencies: any } {
-    return this.templateManager.getFrameworkDependencies('vue');
-  }
-
-  async createViteConfig(buildDir: string, options: any = {}): Promise<any> {
-    // Generate dynamic Vite config based on build mode
-    const isProd = options.prod || false;
-    const viteConfig = this.templateManager.getViteConfig('vue', this.projectPath, isProd);
-    const destPath = path.join(buildDir, 'vite.config.js');
-    fs.writeFileSync(destPath, viteConfig);
-    return null; // Config is written as file, not returned as object
+    return { dependencies: {}, devDependencies: {} };
   }
 
   async setupBuild(
@@ -142,6 +133,11 @@ export class VueProcessor extends FrameworkProcessor {
     const indexHtmlPath = path.join(buildDir, 'index.html');
     if (fs.existsSync(indexHtmlPath)) {
       let indexHtml = fs.readFileSync(indexHtmlPath, 'utf-8');
+      // Ensure relative script path for multi-entry subdirs
+      indexHtml = indexHtml.replace(
+        /<script\s+type="module"\s+src="\/main\.js"\s*><\/script>/i,
+        '<script type="module" src="./main.js"></script>'
+      );
       indexHtml = this.processPageTitle(indexHtml, pageTitle);
       fs.writeFileSync(indexHtmlPath, indexHtml);
     }
@@ -167,9 +163,13 @@ export class VueProcessor extends FrameworkProcessor {
   private fixHtmlPaths(htmlContent: string, baseName: string): string {
     let fixedContent = htmlContent;
 
-    // JS path: /main.js -> ./view.js
+    // JS path: /main.js or /pages/name/name.js -> ./view.js
     fixedContent = fixedContent.replace(
       /<script[^>]*src="\/main\.js"[^>]*><\/script>/g,
+      '<script type="module" src="./view.js"></script>'
+    );
+    fixedContent = fixedContent.replace(
+      /<script[^>]*src="\/pages\/[^"]*\/[^"]*\.js"[^>]*><\/script>/g,
       '<script type="module" src="./view.js"></script>'
     );
 
@@ -177,6 +177,12 @@ export class VueProcessor extends FrameworkProcessor {
     fixedContent = fixedContent.replace(
       /<link[^>]*href="\/assets\/[^"]*\.css"[^>]*>/g,
       `<link rel="stylesheet" href="./${baseName}.css">`
+    );
+
+    // Module preload paths: /assets/*.js -> ../../assets/*.js
+    fixedContent = fixedContent.replace(
+      /<link[^>]*href="\/assets\/([^"]*\.js)"[^>]*>/g,
+      '<link rel="modulepreload" crossorigin href="../../assets/$1">'
     );
 
     return fixedContent;

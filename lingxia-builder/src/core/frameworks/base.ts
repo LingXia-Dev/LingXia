@@ -28,11 +28,6 @@ export abstract class FrameworkProcessor {
   abstract getExtensions(): string[];
 
   /**
-   * Create Vite configuration for this framework
-   */
-  abstract createViteConfig(buildDir: string, options?: any): any;
-
-  /**
    * Setup framework-specific build environment
    */
   abstract setupBuild(
@@ -81,24 +76,9 @@ export abstract class FrameworkProcessor {
       const sourcePath = path.join(frameworkTemplateDir, file);
       const destPath = path.join(buildDir, file);
 
-      if (fs.statSync(sourcePath).isFile() && file !== 'vite.config.js') {
+      if (fs.statSync(sourcePath).isFile()) {
         fs.copyFileSync(sourcePath, destPath);
       }
     }
-  }
-
-  /**
-   * Load framework-specific template function
-   */
-  protected async loadTemplateFunction(functionName: string): Promise<any> {
-    const frameworkTemplateDir = path.join(this.templatesDir, this.getFrameworkName().toLowerCase());
-    const configPath = path.join(frameworkTemplateDir, 'vite.config.js');
-
-    if (fs.existsSync(configPath)) {
-      const module = await import(`file://${configPath}`);
-      return module[functionName];
-    }
-
-    throw new Error(`Template function ${functionName} not found for ${this.getFrameworkName()}`);
   }
 }

@@ -1,23 +1,19 @@
 import fs from 'fs';
 import path from 'path';
-import { execSync } from 'child_process';
 import type { Page, PageFiles, BuildOptions } from '../../types/index.js';
 import { FileUtils } from '../utils/file.js';
-import { DependencyResolver } from './deps.js';
 import { PageProcessor } from './page.js';
 
 export class ViewBuilder {
   private projectPath: string;
   private outputDir: string;
   private fileUtils: FileUtils;
-  private dependencyResolver: DependencyResolver;
   private pageProcessor: PageProcessor;
 
   constructor(projectPath: string, outputDir: string) {
     this.projectPath = projectPath;
     this.outputDir = outputDir;
     this.fileUtils = new FileUtils();
-    this.dependencyResolver = new DependencyResolver(projectPath);
     this.pageProcessor = new PageProcessor(projectPath, outputDir);
   }
 
@@ -27,9 +23,44 @@ export class ViewBuilder {
     await this.copyStaticAssets();
     await this.copyRootFiles();
 
-    for (const page of pages) {
+    // Group pages by framework
+    const htmlPages: Page[] = [];
+    const reactPages: Page[] = [];
+    const vuePages: Page[] = [];
+    for (const p of pages) {
+      if (p.type === 'react') reactPages.push(p);
+      else if (p.type === 'vue') vuePages.push(p);
+      else htmlPages.push(p);
+    }
+
+    // Build HTML pages individually (no bundler)
+    for (const page of htmlPages) {
       await this.buildPage(page, options);
     }
+
+    // Batch build React/Vue using multi-entry
+    const buildBatch = async (framework: 'react' | 'vue', subset: Page[]) => {
+      if (subset.length === 0) return;
+      const items = subset.map(page => {
+        const pageFiles = this.detectPageFiles(page);
+        const pageFunctions = this.extractPageFunctions(pageFiles);
+        return { page, pageFiles, pageFunctions };
+      });
+
+      // Always use Vite for view builds
+      await this.pageProcessor.buildPagesBatch(framework, items, options);
+    };
+
+    // Parallel build for better performance
+    const buildPromises = [];
+    if (reactPages.length > 0) {
+      buildPromises.push(buildBatch('react', reactPages));
+    }
+    if (vuePages.length > 0) {
+      buildPromises.push(buildBatch('vue', vuePages));
+    }
+    
+    await Promise.all(buildPromises);
   }
 
   private async buildPage(page: Page, options: BuildOptions = {}): Promise<void> {

@@ -1,8 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { execSync } from 'child_process';
 import { FileUtils } from '../utils/file.js';
-import { TemplateManager } from '../template.js';
 import { ConfigManager } from '../config.js';
 import type { BuildOptions } from '../../types/index.js';
 
@@ -13,14 +11,12 @@ export class LogicBuilder {
   private projectPath: string;
   private outputDir: string;
   private fileUtils: FileUtils;
-  private templateManager: TemplateManager;
   private configManager: ConfigManager;
 
   constructor(projectPath: string, outputDir: string) {
     this.projectPath = projectPath;
     this.outputDir = outputDir;
     this.fileUtils = new FileUtils();
-    this.templateManager = new TemplateManager();
     this.configManager = new ConfigManager(projectPath);
   }
 
@@ -81,24 +77,19 @@ export class LogicBuilder {
    */
   private async buildLogicWithVite(logicFiles: string[], pages: string[], options: BuildOptions = {}): Promise<void> {
     const buildDir = path.join(this.projectPath, '.lingxia-build', 'logic');
+
+    // Always clean build directory
     this.fileUtils.cleanDirectory(buildDir);
 
     // Create entry file that imports all logic files
     const entryContent = this.createLogicEntry(logicFiles, pages);
     fs.writeFileSync(path.join(buildDir, 'main.js'), entryContent);
 
-    // Create package.json for logic build using TemplateManager
-    this.templateManager.createPackageJson('logic', buildDir, this.projectPath);
-
-    // Create Vite config for logic build
-    this.createLogicViteConfig(buildDir, options);
-
     // Copy source files to build directory
     this.copySourceFiles(logicFiles, buildDir);
 
-    // Install dependencies and build with Vite
-    execSync('npm install', { cwd: buildDir, stdio: 'inherit' });
-    execSync('npm run build', { cwd: buildDir, stdio: 'inherit' });
+    // Build with bundled Vite
+    await this.runViteLogicBuild(buildDir, options);
 
     // Copy built logic.js to output
     const builtLogicPath = path.join(buildDir, 'dist', 'main.iife.js');
@@ -221,12 +212,6 @@ export class LogicBuilder {
   /**
    * Create Vite config for logic build using TemplateManager
    */
-  private createLogicViteConfig(buildDir: string, options: BuildOptions = {}): void {
-    const isProd = options.prod || false;
-    const viteConfig = this.templateManager.getViteConfig('logic', this.projectPath, isProd);
-    fs.writeFileSync(path.join(buildDir, 'vite.config.js'), viteConfig);
-  }
-
   /**
    * Copy source files to build directory
    */
@@ -236,5 +221,30 @@ export class LogicBuilder {
       const destPath = path.join(buildDir, fileName);
       fs.copyFileSync(logicFile, destPath);
     }
+  }
+
+  private async runViteLogicBuild(buildDir: string, options: BuildOptions = {}): Promise<void> {
+    const { build } = await import('vite');
+    const isDev = Boolean(options.dev);
+    const isProd = Boolean(options.prod);
+
+    await build({
+      configFile: false,
+      root: buildDir,
+      logLevel: 'warn',
+      mode: isDev ? 'development' : isProd ? 'production' : undefined,
+      build: {
+        lib: {
+          entry: path.join(buildDir, 'main.js'),
+          name: 'LingXiaLogic',
+          fileName: 'main',
+          formats: ['iife']
+        },
+        outDir: path.join(buildDir, 'dist'),
+        emptyOutDir: true,
+        minify: isProd ? 'esbuild' : false,
+        sourcemap: isDev
+      }
+    });
   }
 }
