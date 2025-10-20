@@ -1,6 +1,7 @@
 plugins {
     id("com.android.library")
     id("org.jetbrains.kotlin.android")
+    id("maven-publish")
 }
 
 android {
@@ -30,10 +31,18 @@ android {
     kotlinOptions {
         jvmTarget = "11"
     }
+
+    // Enable publishing of the release variant
+    publishing {
+        singleVariant("release") {
+            // withSourcesJar() // optional
+            // withJavadocJar() // optional
+        }
+    }
 }
 
 dependencies {
-    // LingXia WebView JAR (built by Rust build.rs and placed in Gradle build directory)
+    // LingXia WebView JAR (built by Rust build.rs or Makefile and placed in Gradle build directory)
     api(files("${layout.buildDirectory.get()}/generated/lingxia-webview/lingxia-webview.jar"))
 
     implementation(libs.androidx.core.ktx)
@@ -49,4 +58,26 @@ dependencies {
     implementation("androidx.camera:camera-video:1.3.4")
     implementation("androidx.exifinterface:exifinterface:1.3.6")
     implementation("com.google.mlkit:barcode-scanning:17.2.0")
+}
+
+publishing {
+    publications {
+        create<MavenPublication>("release") {
+            groupId = "com.lingxia"
+            artifactId = "lingxia"
+            version = "0.0.1"
+            afterEvaluate {
+                from(components["release"])
+            }
+        }
+    }
+    repositories {
+        maven {
+            name = "localExample"
+            val repoDirProp = project.findProperty("LOCAL_MAVEN_REPO_DIR") as String?
+            // Default to the workspace Rust cargo target directory
+            val fallback = File(rootProject.projectDir, "../../target/maven").absolutePath
+            url = uri(repoDirProp ?: fallback)
+        }
+    }
 }

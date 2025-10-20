@@ -24,6 +24,8 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // Sign release with debug keystore for local installs
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
     compileOptions {
@@ -36,7 +38,10 @@ android {
 }
 
 dependencies {
-    implementation("com.lingxia:lingxia:1.0.0")
+    // Depend on local Maven-published SDK
+    implementation("com.lingxia:lingxia:0.0.1")
+
+    // App's own dependencies
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.material)

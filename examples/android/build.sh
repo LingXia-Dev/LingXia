@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Exit on error
-set -e
+set -euo pipefail
 
 # Parse command line arguments
 SKIP_RUST=false
@@ -32,6 +32,9 @@ MAIN_ACTIVITY="$APP_PACKAGE.MainActivity"
 # Define the assets directory
 ASSETS_DIR="$SCRIPT_DIR/app/src/main/assets"
 
+# Default values for variables used later
+LOGCAT_PID=""
+
 # Function to cleanup and exit
 cleanup() {
     echo "Cleaning up..."
@@ -44,19 +47,14 @@ cleanup() {
 # Set trap for cleanup
 trap cleanup EXIT
 
-# Build Rust library (unless skipped)
+GRADLE_BUILD_DIR="$LINGXIA_SDK_ANDROID/lingxia/build/generated/lingxia-webview"
+mkdir -p "$GRADLE_BUILD_DIR"
+export LINGXIA_JAR_OUTPUT_DIR="$GRADLE_BUILD_DIR"
+
+# 1) Build Rust lib (liblingxia.so) or skip
 if [ "$SKIP_RUST" = false ]; then
-    echo "Building Rust library..."
-
-    # Set JAR output directory to LingXia SDK Gradle build directory
-    GRADLE_BUILD_DIR="$LINGXIA_SDK_ANDROID/lingxia/build/generated/lingxia-webview"
-    mkdir -p "$GRADLE_BUILD_DIR"
-    export LINGXIA_JAR_OUTPUT_DIR="$GRADLE_BUILD_DIR"
-
-    # First build lingxia-webview to generate JAR
-    echo "Building lingxia-webview to generate JAR..."
+    echo "[1/4] Building Rust library (liblingxia) ..."
     cd "$WORKSPACE_ROOT"
-
     env \
     CMAKE_CONFIGURE_ARGS="-DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake -DCMAKE_SYSTEM_PROCESSOR=aarch64"  \
     AR_aarch64_linux_android="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-ar" \
@@ -65,12 +63,40 @@ if [ "$SKIP_RUST" = false ]; then
     CXX_aarch64_linux_android="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android33-clang++" \
     cargo build --target aarch64-linux-android --release -p lingxia-lib
 
-    echo "Copying Rust library to jniLibs..."
+    echo "Copying liblingxia.so to SDK jniLibs..."
     JNILIBS_DIR="$LINGXIA_SDK_ANDROID/lingxia/src/main/jniLibs/arm64-v8a"
     mkdir -p "$JNILIBS_DIR"
     cp "$WORKSPACE_ROOT/target/aarch64-linux-android/release/liblingxia.so" "$JNILIBS_DIR/"
 else
     echo "⏭️  Skipping Rust compilation (using existing library)"
+fi
+
+# Ensure lingxia-webview.jar exists; if missing (skip-rust path), build via Makefile
+LINGXIA_WEBVIEW_JAR="$GRADLE_BUILD_DIR/lingxia-webview.jar"
+if [ ! -f "$LINGXIA_WEBVIEW_JAR" ]; then
+    echo "Building lingxia-webview.jar via Makefile (no Rust)..."
+    JAVA_SRC_DIR="$WORKSPACE_ROOT/lingxia-webview/src/android/java"
+    if [ ! -d "$JAVA_SRC_DIR" ]; then
+        echo "❌ Java source dir not found: $JAVA_SRC_DIR"; exit 1
+    fi
+    (cd "$JAVA_SRC_DIR" && TARGET_DIR="$GRADLE_BUILD_DIR" make)
+    if [ ! -f "$LINGXIA_WEBVIEW_JAR" ]; then
+        echo "❌ Failed to create $LINGXIA_WEBVIEW_JAR"; exit 1
+    fi
+fi
+
+echo "Copying lingxia-view files into SDK AAR assets..."
+SDK_ASSETS_DIR="$LINGXIA_SDK_ANDROID/lingxia/src/main/assets"
+mkdir -p "$SDK_ASSETS_DIR"
+cp "$LINGXIA_ROOT/lingxia-view/404.html" "$SDK_ASSETS_DIR/"
+cp "$LINGXIA_ROOT/lingxia-view/webview-bridge.js" "$SDK_ASSETS_DIR/"
+
+echo "[2/4] Publishing SDK AAR (release) to local Maven ..."
+cd "$LINGXIA_SDK_ANDROID"
+LOCAL_MAVEN_DIR="$LINGXIA_ROOT/target/maven"
+./gradlew :lingxia:publish -PLOCAL_MAVEN_REPO_DIR="$LOCAL_MAVEN_DIR"
+if [ ! -f "$LOCAL_MAVEN_DIR/com/lingxia/lingxia/0.0.1/lingxia-0.0.1.aar" ]; then
+    echo "❌ Failed to publish SDK AAR to $LOCAL_MAVEN_DIR"; exit 1
 fi
 
 # Create assets directory if it doesn't exist
@@ -79,10 +105,6 @@ mkdir -p "$ASSETS_DIR"
 # Clean assets directory before copying new files
 echo "Cleaning assets directory..."
 rm -rf "$ASSETS_DIR"/*
-
-echo "Copying lingxia-view files to assets..."
-cp "$LINGXIA_ROOT/lingxia-view/404.html" "$ASSETS_DIR/"
-cp "$LINGXIA_ROOT/lingxia-view/webview-bridge.js" "$ASSETS_DIR/"
 
 echo "Copying host app configuration..."
 cp "$LINGXIA_ROOT/examples/demo/app.json" "$ASSETS_DIR/"
@@ -105,18 +127,13 @@ else
     exit 1
 fi
 
-echo "Building Android library..."
-cd "$LINGXIA_SDK_ANDROID"
-# ./gradlew :lingxia:clean
-./gradlew :lingxia:assembleDebug
-
-echo "Building and installing Android app..."
+echo "[4/4] Building and installing Android example app (release)..."
 cd "$SCRIPT_DIR"
 # ./gradlew clean
-./gradlew assembleDebug
+./gradlew assembleRelease
 
 adb devices
-adb install -r ./app/build/outputs/apk/debug/app-debug.apk
+adb install -r ./app/build/outputs/apk/release/app-release.apk
 
 echo "Starting logcat capture..."
 # Clear existing logs
