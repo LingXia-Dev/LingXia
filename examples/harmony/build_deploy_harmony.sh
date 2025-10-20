@@ -1,283 +1,108 @@
 #!/bin/bash
 
-set -e  # Exit on any error
+set -euo pipefail
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
-
-# Configuration
-APP_PACKAGE="app.lingxia.lxapp.example"
-APP_ABILITY="EntryAbility"
-HAP_PATH="entry/build/default/outputs/default/entry-default-signed.hap"
-SCREENSHOT_DEVICE_PATH="/data/local/tmp/lingxia_screenshot.jpeg"
-SCREENSHOT_LOCAL_PATH="./lingxia_screenshot.jpeg"
-
-export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_OHOS_LINKER="$OHOS_NDK_HOME/native/llvm/bin/aarch64-unknown-linux-ohos-clang"
-export CPATH=$OHOS_NDK_HOME/native/sysroot/usr/include/:$OHOS_NDK_HOME/native/sysroot/usr/include/aarch64-linux-ohos
-
-echo -e "${BLUE}🚀 LingXia LxApp Harmony Build & Deploy Script${NC}"
-echo "=================================================="
-
-# Get the absolute path of the script directory
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-# Navigate to LingXia root (3 levels up from examples/harmony)
-LINGXIA_ROOT="$SCRIPT_DIR/../.."
-
-# Function to print step headers
-print_step() {
-    echo -e "\n${YELLOW}📋 Step $1: $2${NC}"
-    echo "----------------------------------------"
-}
-
-# Function to check if hdc is available
-check_hdc() {
-    if ! command -v hdc &> /dev/null; then
-        echo -e "${RED}❌ Error: hdc command not found. Please install HarmonyOS SDK and add hdc to PATH.${NC}"
-        exit 1
-    fi
-
-    # Check if device is connected
-    if ! hdc list targets | grep -q ".*"; then
-        echo -e "${RED}❌ Error: No HarmonyOS device connected. Please connect a device or start emulator.${NC}"
-        exit 1
-    fi
-
-    echo -e "${GREEN}✅ HarmonyOS device connected${NC}"
-}
-
-# Function to build Rust library
-build_rust() {
-    print_step "1" "Building Rust Library"
-
-    # Navigate to the LingXia root directory where Cargo.toml is located
-    cd "$LINGXIA_ROOT"
-
-    # Build Rust library with HarmonyOS target
-    echo "Building Rust library for HarmonyOS..."
-     env CARGO_TARGET_AARCH64_UNKNOWN_LINUX_OHOS_LINKER="$OHOS_NDK_HOME/native/llvm/bin/aarch64-unknown-linux-ohos-clang" \
-         cargo build --release --target=aarch64-unknown-linux-ohos -p lingxia-lib
-
-    # Copy the SO file to the example project
-    SO_SOURCE="$LINGXIA_ROOT/target/aarch64-unknown-linux-ohos/release/liblingxia.so"
-    SO_DEST="$SCRIPT_DIR/entry/libs/arm64-v8a/liblingxia.so"
-
-    mkdir -p "$SCRIPT_DIR/entry/libs/arm64-v8a"
-    cp "$SO_SOURCE" "$SO_DEST"
-
-    echo -e "${GREEN}✅ Rust library copied${NC}"
-    cd "$SCRIPT_DIR"
-}
-
-# Function to build and copy LxApp assets
-build_lxapp_assets() {
-    print_step "2" "Building LxApp Assets"
-
-    ASSETS_DIR="$SCRIPT_DIR/entry/src/main/resources/rawfile"
-    mkdir -p "$ASSETS_DIR"
-    rm -rf "$ASSETS_DIR"/*
-
-    echo "Copying lingxia-view files to assets..."
-    cp "$LINGXIA_ROOT/lingxia-view/404.html" "$ASSETS_DIR/"
-    cp "$LINGXIA_ROOT/lingxia-view/webview-bridge.js" "$ASSETS_DIR/"
-
-    echo "Copying host app configuration..."
-    cp "$LINGXIA_ROOT/examples/demo/app.json" "$ASSETS_DIR/"
-
-    echo "Building and copying demo LxApp..."
-    cd "$LINGXIA_ROOT/examples/demo/homelxapp"
-    if [ -f "package.json" ]; then
-        if [ -d "dist" ]; then
-            echo "Copying built LxApp to assets..."
-            mkdir -p "$ASSETS_DIR/homelxapp"
-            cp -R dist/* "$ASSETS_DIR/homelxapp/"
-        else
-            ls -la .
-            exit 1
-        fi
-    else
-        echo "No package.json found, copying source files..."
-        exit 1
-    fi
-
-    echo -e "${GREEN}✅ LxApp assets copied${NC}"
-    cd "$SCRIPT_DIR"
-}
-
-# Function to build HAR library
-build_har() {
-    print_step "3" "Building HAR Library"
-
-    cd "$LINGXIA_ROOT/lingxia-sdk/harmony"
-    echo "Building HAR library..."
-    hvigorw assembleHar
-    echo -e "${GREEN}✅ HAR library built${NC}"
-    cd "$SCRIPT_DIR"
-}
-
-# Function to install dependencies
-install_dependencies() {
-    print_step "4" "Installing Dependencies"
-
-    echo "Installing HarmonyOS dependencies..."
-    echo "This creates symbolic links from oh_modules/lingxia to lingxia-sdk/harmony/lingxia"
-    cd "$SCRIPT_DIR/entry"
-    ohpm install
-    cd "$SCRIPT_DIR"
-
-    # Verify the symbolic link was created
-    if [ -L "$SCRIPT_DIR/entry/oh_modules/lingxia" ]; then
-        echo -e "${GREEN}✅ Dependencies installed successfully${NC}"
-        echo "📁 Symbolic link created: entry/oh_modules/lingxia -> $(readlink "$SCRIPT_DIR/entry/oh_modules/lingxia")"
-    else
-        echo -e "${RED}❌ Error: lingxia dependency not properly linked${NC}"
-        exit 1
-    fi
-}
-
-# Function to build HAP application
-build_hap() {
-    print_step "5" "Building HAP Application"
-
-    echo "Building HAP application..."
-    hvigorw assembleHap
-    echo -e "${GREEN}✅ HAP application built${NC}"
-}
-
-# Function to uninstall existing app
-uninstall_app() {
-    print_step "6" "Uninstalling App"
-
-    hdc uninstall $APP_PACKAGE > /dev/null 2>&1 || true
-    echo -e "${GREEN}✅ App uninstalled${NC}"
-}
-
-# Function to install HAP
-install_hap() {
-    print_step "7" "Installing HAP Application"
-
-    # Install HAP (use -r to replace if already installed)
-    INSTALL_OUTPUT=$(hdc install -r "$HAP_PATH" 2>&1)
-    INSTALL_RESULT=$?
-
-    # Check if installation was successful
-    if echo "$INSTALL_OUTPUT" | grep -q "successfully"; then
-        echo -e "${GREEN}✅ HAP installed${NC}"
-    else
-        echo -e "${RED}❌ HAP installation failed${NC}"
-        echo "Error output:"
-        echo "$INSTALL_OUTPUT"
-        exit 1
-    fi
-}
-
-# Function to start app
-start_app() {
-    print_step "8" "Starting Application"
-
-    hdc shell aa start -a $APP_ABILITY -b $APP_PACKAGE > /dev/null 2>&1
-    echo -e "${GREEN}✅ Application started${NC}"
-    sleep 2
-}
-
-# Function to capture logs
-capture_logs() {
-    print_step "9" "Capturing Application Logs"
-
-    echo "Clearing existing logs..."
-    hdc hilog -r
-
-    echo "Capturing logs (press Ctrl+C to stop)..."
-    echo -e "${BLUE}📝 Log output:${NC}"
-    echo "----------------------------------------"
-
-    # Show logs and filter for LingXia
-    timeout 30s hdc hilog | grep -E "(LingXia|LxApp|WebView)"
-}
-
-# Main execution
-main() {
-    echo -e "${BLUE}Starting build and deploy process...${NC}"
-
-    check_hdc
-    build_rust
-    build_lxapp_assets
-    build_har
-    build_hap
-    uninstall_app
-    install_hap
-    start_app
-    capture_logs
-
-    echo -e "\n${GREEN}🎉 Build and deploy completed successfully!${NC}"
-    echo -e "${GREEN}📱 LingXia LxApp should now be running on your device${NC}"
-}
-
-# Parse arguments
+# Usage: build_deploy_harmony.sh [skip-rust]
 SKIP_RUST=false
-
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        --skip-rust|-s)
-            SKIP_RUST=true
-            shift
-            ;;
-        *)
-            echo -e "${RED}Unknown option: $1${NC}"
-            echo -e "${YELLOW}Usage: $0 [--skip-rust|-s]${NC}"
-            exit 1
-            ;;
-    esac
+for arg in "$@"; do
+  case "$arg" in
+    skip-rust) SKIP_RUST=true; echo "⏭️  Skipping Rust compilation" ;;
+    *) echo "Usage: $0 [skip-rust]" >&2; exit 1 ;;
+  esac
 done
 
-# Main build and deploy flow
-if [ "$SKIP_RUST" = true ]; then
-    echo -e "${BLUE}Starting quick build and deploy (skipping Rust)...${NC}"
-else
-    echo -e "${BLUE}Starting full build and deploy (including Rust)...${NC}"
-fi
+# Paths
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+LINGXIA_ROOT="$SCRIPT_DIR/../.."
+SDK_DIR="$LINGXIA_ROOT/lingxia-sdk/harmony"
 
-check_hdc
+# Example app config
+APP_PACKAGE="app.lingxia.lxapp.example"
+APP_ABILITY="EntryAbility"
+HAP_PATH="$SCRIPT_DIR/entry/build/default/outputs/default/entry-default-signed.hap"
 
-# Build phase
+# 1) Build/ensure SDK HAR
+HAR_BUNDLE="$LINGXIA_ROOT/target/ohpm/lingxia.har"
+SDK_BUILD_SH="$LINGXIA_ROOT/lingxia-sdk/harmony/build.sh"
+
 if [ "$SKIP_RUST" = false ]; then
-    build_rust
+  echo "[0/3] Building SDK HAR (full) ..."
+  if [ -z "${OHOS_NDK_HOME:-}" ]; then
+    echo "❌ OHOS_NDK_HOME not set; cannot build Rust for HAR" >&2; exit 1
+  fi
+  bash "$SDK_BUILD_SH" || { echo "❌ Failed to build SDK HAR" >&2; exit 1; }
 else
-    echo -e "${YELLOW}⏭️  Skipping Rust compilation${NC}"
+  if [ ! -f "$HAR_BUNDLE" ]; then
+    echo "[0/3] SDK HAR not found. Building SDK HAR (skip-rust) ..."
+    bash "$SDK_BUILD_SH" skip-rust || { echo "❌ Failed to build SDK HAR (skip-rust)" >&2; exit 1; }
+  fi
 fi
 
-build_lxapp_assets
-build_har
+if [ ! -f "$HAR_BUNDLE" ]; then
+  echo "❌ HAR not found after build: $HAR_BUNDLE" >&2; exit 1
+fi
 
-# Install dependencies after HAR is built to ensure lingxia module is available
-# This creates the necessary symbolic links in oh_modules/
-install_dependencies
+# Prevent duplicate native libs in example (SDK HAR already includes liblingxia.so)
+if [ -f "$SCRIPT_DIR/entry/libs/arm64-v8a/liblingxia.so" ]; then
+  rm -f "$SCRIPT_DIR/entry/libs/arm64-v8a/liblingxia.so"
+fi
 
-build_hap
+# 2) Prepare example app assets (app.json + homelxapp)
+echo "[1/3] Preparing example app assets (app.json + homelxapp) ..."
+RAWFILE_DIR="$SCRIPT_DIR/entry/src/main/resources/rawfile"
+mkdir -p "$RAWFILE_DIR" && rm -rf "$RAWFILE_DIR"/*
+cp "$LINGXIA_ROOT/examples/demo/app.json" "$RAWFILE_DIR/"
+if [ -d "$LINGXIA_ROOT/examples/demo/homelxapp/dist" ]; then
+  mkdir -p "$RAWFILE_DIR/homelxapp" && cp -R "$LINGXIA_ROOT/examples/demo/homelxapp/dist/"* "$RAWFILE_DIR/homelxapp/"
+fi
 
-# Deploy phase
-uninstall_app
-install_hap
+# 4) Build & install example HAP
+echo "[2/3] Installing ohpm dependencies (local har) ..."
+(cd "$SCRIPT_DIR/entry" && ohpm install)
 
-# Start log capture BEFORE launching the app to catch startup logs
-echo -e "${BLUE}📝 Starting log capture before app launch...${NC}"
-echo "Clearing existing logs..."
-timeout 2s hdc shell hilog -r >/dev/null 2>&1 || true
+echo "[3/3] Building example HAP ..."
+(cd "$SCRIPT_DIR" && hvigorw assembleHap)
 
-echo "Starting log capture in background..."
-timeout 30s hdc hilog | grep -E "(LingXia|LxApp|WebView)" &
-LOG_PID=$!
+echo "Installing HAP ..."
+if ! command -v hdc >/dev/null 2>&1; then
+  echo "❌ hdc not found in PATH" >&2; exit 1
+fi
+if ! hdc list targets | grep -q ".*"; then
+  echo "❌ No HarmonyOS device connected (hdc list targets empty)" >&2; exit 1
+fi
+hdc install -r "$HAP_PATH" >/dev/null
 
-# Now start the app
-start_app
+echo "Starting app ..."
+hdc shell aa start -a "$APP_ABILITY" -b "$APP_PACKAGE" >/dev/null
 
-echo -e "${GREEN}✅ Build and deploy completed${NC}"
-echo -e "${BLUE}📱 App launched, logs are being captured for 30 seconds...${NC}"
-echo -e "${YELLOW}💡 Press Ctrl+C to stop log capture early, or use 'hdc hilog | grep LingXia' for manual monitoring${NC}"
- hdc fport tcp:9222 localabstract:webview_devtools_remote_$( hdc shell cat /proc/net/unix |grep devtools | grep -o '[0-9]*$')
-# Wait for log capture to complete
-wait $LOG_PID 2>/dev/null
-echo -e "${BLUE}📝 Log capture completed${NC}"
+echo "Showing logs (Ctrl-C to stop; auto-stop after ${HILOG_DURATION:-60}s)..."
+
+DURATION="${HILOG_DURATION:-60}"
+TAGS_CSV="${HILOG_TAGS:-LingXia,LxApp,WebView}"
+IFS=',' read -r -a TAGS_ARR <<< "$TAGS_CSV"
+PATTERN="$(printf '%s|' "${TAGS_ARR[@]}")"; PATTERN="${PATTERN%|}"
+
+# Stream via FIFO so we hold hdc PID and can terminate it on Ctrl-C
+TMP_DIR="$(mktemp -d 2>/dev/null || mktemp -d -t lingxia_hilog)"
+PIPE="$TMP_DIR/hilog.pipe"
+mkfifo "$PIPE" || { echo "❌ Failed to create log pipe" >&2; exit 1; }
+
+cleanup_logs() {
+  echo; echo "Stopping logs..."
+  [ -n "${HILOG_PID:-}" ] && kill "${HILOG_PID}" 2>/dev/null || true
+  rm -f "$PIPE" 2>/dev/null || true
+  rmdir "$TMP_DIR" 2>/dev/null || true
+}
+trap cleanup_logs INT TERM
+
+hdc hilog > "$PIPE" &
+HILOG_PID=$!
+
+if [ "$DURATION" -gt 0 ] 2>/dev/null; then
+  ( sleep "$DURATION"; cleanup_logs ) &
+fi
+
+grep -E "(${PATTERN})" < "$PIPE" || true
+cleanup_logs
+
+echo "✅ Done."

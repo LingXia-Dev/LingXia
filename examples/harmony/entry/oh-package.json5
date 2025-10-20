@@ -6,7 +6,6 @@
   "author": "",
   "license": "",
   "dependencies": {
-    "lingxia": "file:../../../lingxia-sdk/harmony/lingxia"
+    "lingxia": "file:../../../target/ohpm/lingxia.har"
   }
 }
-
