@@ -252,7 +252,8 @@ class MediaCaptureFragment : Fragment() {
         root.addView(timerLabel)
         timerLabel.bringToFront()
 
-        val navInset = WindowInsetsUtils.getBottomInset(root).let { if (it > 0) it else navBarHeight() }
+        // Lift capture controls above nav bar (3-button) while staying flush on gesture nav.
+        val navInset = WindowInsetsUtils.getEffectiveContentInset(root)
         val bottomOverlay = FrameLayout(context).apply {
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,

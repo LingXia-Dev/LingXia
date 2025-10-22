@@ -133,7 +133,8 @@ internal object LxAppPopup {
 
         val container = FrameLayout(activity).apply {
             val baseHeight = resolvedHeight.size
-            val bottomInset = WindowInsetsUtils.getBottomInset(rootView)
+            // Use stable inset so container background can extend under hidden navbar (3-button mode)
+            val bottomInset = WindowInsetsUtils.getStableBottomInset(rootView)
             val params = FrameLayout.LayoutParams(
                 resolvedWidth.size,
                 if (position == PopupPosition.BOTTOM && !resolvedHeight.isFull && bottomInset > 0) {
@@ -164,7 +165,7 @@ internal object LxAppPopup {
                 FrameLayout.LayoutParams.MATCH_PARENT
             } else {
                 // For bottom popup, let the surface fill container so it can cover navbar area
-                val bottomInset = WindowInsetsUtils.getBottomInset(rootView)
+                val bottomInset = WindowInsetsUtils.getStableBottomInset(rootView)
                 if (position == PopupPosition.BOTTOM && bottomInset > 0) {
                     FrameLayout.LayoutParams.MATCH_PARENT
                 } else {
@@ -236,6 +237,7 @@ internal object LxAppPopup {
         webView.resume()
 
         // If we extended the surface to cover the navbar, keep content above it via padding
+        // Use visible inset for content padding so gesture nav (no 3-button) doesn't add space
         val insetForContent = WindowInsetsUtils.getBottomInset(rootView)
         if (position == PopupPosition.BOTTOM && !resolvedHeight.isFull && insetForContent > 0) {
             webView.setPadding(webView.paddingLeft, webView.paddingTop, webView.paddingRight, insetForContent)
