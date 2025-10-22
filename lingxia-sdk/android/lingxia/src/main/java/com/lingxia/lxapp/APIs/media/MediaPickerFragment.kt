@@ -22,6 +22,8 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -138,6 +140,11 @@ class MediaPickerFragment : Fragment() {
     private var pendingOnLoaded: ((List<GridItem>) -> Unit)? = null
     private var resultListener: ((List<Uri>) -> Unit)? = null
 
+    // System Photo Picker launchers (Android 13+)
+    private var pickSingleLauncher: ActivityResultLauncher<PickVisualMediaRequest>? = null
+    private var pickMultipleLauncher: ActivityResultLauncher<PickVisualMediaRequest>? = null
+    private var pendingSystemPicker: Boolean = false
+
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { results ->
@@ -155,6 +162,42 @@ class MediaPickerFragment : Fragment() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Ensure maxSelectable is available for launcher registration
+        maxSelectable = (arguments?.getInt(ARG_MAX_COUNT) ?: 1).coerceAtLeast(1)
+
+        // Register native Photo Picker launchers (Android 13+)
+        if (Build.VERSION.SDK_INT >= 33) {
+            pickSingleLauncher = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+                if (uri == null) {
+                    sendCancel(); removeSelf()
+                } else {
+                    deliverPickedUris(listOf(uri))
+                }
+            }
+            if (maxSelectable > 1) {
+                pickMultipleLauncher = registerForActivityResult(
+                    ActivityResultContracts.PickMultipleVisualMedia(maxSelectable)
+                ) { uris ->
+                    if (uris == null || uris.isEmpty()) {
+                        sendCancel(); removeSelf()
+                    } else {
+                        deliverPickedUris(uris)
+                    }
+                }
+            } else {
+                pickMultipleLauncher = null
+            }
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        if (pendingSystemPicker) {
+            pendingSystemPicker = false
+            // Post to ensure we are fully in STARTED state
+            view?.post { launchSystemPhotoPicker() }
+        }
     }
 
     override fun onCreateView(
@@ -338,66 +381,7 @@ class MediaPickerFragment : Fragment() {
         albumListView = albumList
 
         ensurePermissionsThenLoad { items ->
-            allItems = items
-            itemsIndex.clear()
-            for (it in items) itemsIndex[it.uri] = it
-            // build albums from items (group by bucket)
-            val albumMap = LinkedHashMap<Long, AlbumItemBuilder>()
-            for (item in items) {
-                val b = albumMap.getOrPut(item.bucketId ?: -1L) {
-                    AlbumItemBuilder(item.bucketId, item.bucketName ?: "")
-                }
-                b.count += 1
-                if (b.coverUri == null) b.coverUri = item.uri
-            }
-            val systemAlbums = ArrayList<AlbumItem>()
-            for ((_, builder) in albumMap) {
-                if (builder.id != null) {
-                    systemAlbums.add(AlbumItem(builder.id, builder.name, builder.count, builder.coverUri))
-                }
-            }
-
-            // Inject pseudo albums at top based on mode
-            val lowerMode = selectedMode.lowercase()
-            val allCount = items.size
-            val firstAllCover = items.firstOrNull()?.uri
-            val videos = items.filter { it.fileType == "video" }
-            val images = items.filter { it.fileType == "image" }
-            val firstVideoCover = videos.firstOrNull()?.uri
-            val firstImageCover = images.firstOrNull()?.uri
-
-            val albumList = ArrayList<AlbumItem>()
-            when (lowerMode) {
-                "videos" -> {
-                    // Title: 所有视频; albums: [所有视频] + system video categories
-                    albumList.add(AlbumItem(null, "所有视频", allCount, firstAllCover))
-                    albumList.addAll(systemAlbums)
-                }
-                "images" -> {
-                    // Title: 所有图片; albums: [所有图片] + system image categories
-                    albumList.add(AlbumItem(null, "所有图片", allCount, firstAllCover))
-                    albumList.addAll(systemAlbums)
-                }
-                else -> {
-                    // mix: Title: 图片和视频; albums: [图片和视频] + [所有视频] + system categories
-                    albumList.add(AlbumItem(null, "图片和视频", allCount, firstAllCover))
-                    albumList.add(AlbumItem(ALBUM_ALL_VIDEOS_ID, "所有视频", videos.size, firstVideoCover))
-                    albumList.addAll(systemAlbums)
-                }
-            }
-            albums = albumList
-            setupAlbumList()
-            // Default selection per mode
-            val defaultTitle = when (lowerMode) {
-                "videos" -> "所有视频"
-                "images" -> "所有图片"
-                else -> "图片和视频"
-            }
-            currentAlbumId = if (lowerMode == "mix") null else null // null denotes the top "all" option
-            (albumSelectorView?.getChildAt(0) as? TextView)?.text = defaultTitle
-            adapter.submitList(filterByAlbum(allItems))
-            albumMenuContainer?.visibility = View.GONE
-            applySendButtonStyle(0)
+            applyLoadedItems(items)
         }
 
         return root
@@ -406,11 +390,137 @@ class MediaPickerFragment : Fragment() {
     // Permissions and loading
     private fun ensurePermissionsThenLoad(onLoaded: (List<GridItem>) -> Unit) {
         val act = activity ?: return
+        // Restricted access on Android 13+: use system Photo Picker only
+        if (Build.VERSION.SDK_INT >= 33 && !hasMediaPermission(act)) {
+            // Defer launching until Fragment is STARTED to avoid lifecycle crash
+            pendingSystemPicker = true
+            return
+        }
         if (!hasMediaPermission(act)) {
             pendingOnLoaded = onLoaded
             permissionLauncher.launch(getNeededPermissions())
         } else {
             loadMedia(onLoaded)
+        }
+    }
+
+    private fun applyLoadedItems(items: List<GridItem>) {
+        allItems = items
+        itemsIndex.clear()
+        for (it in items) itemsIndex[it.uri] = it
+        // build albums from items (group by bucket)
+        val albumMap = LinkedHashMap<Long, AlbumItemBuilder>()
+        for (item in items) {
+            val b = albumMap.getOrPut(item.bucketId ?: -1L) {
+                AlbumItemBuilder(item.bucketId, item.bucketName ?: "")
+            }
+            b.count += 1
+            if (b.coverUri == null) b.coverUri = item.uri
+        }
+        val systemAlbums = ArrayList<AlbumItem>()
+        for ((_, builder) in albumMap) {
+            if (builder.id != null) {
+                systemAlbums.add(AlbumItem(builder.id, builder.name, builder.count, builder.coverUri))
+            }
+        }
+
+        // Inject pseudo albums at top based on mode
+        val lowerMode = selectedMode.lowercase()
+        val allCount = items.size
+        val firstAllCover = items.firstOrNull()?.uri
+        val videos = items.filter { it.fileType == "video" }
+        val images = items.filter { it.fileType == "image" }
+        val firstVideoCover = videos.firstOrNull()?.uri
+        val firstImageCover = images.firstOrNull()?.uri
+
+        val albumList = ArrayList<AlbumItem>()
+        when (lowerMode) {
+            "videos" -> {
+                albumList.add(AlbumItem(null, "所有视频", allCount, firstAllCover))
+                albumList.addAll(systemAlbums)
+            }
+            "images" -> {
+                albumList.add(AlbumItem(null, "所有图片", allCount, firstAllCover))
+                albumList.addAll(systemAlbums)
+            }
+            else -> {
+                albumList.add(AlbumItem(null, "图片和视频", allCount, firstAllCover))
+                albumList.add(AlbumItem(ALBUM_ALL_VIDEOS_ID, "所有视频", videos.size, firstVideoCover))
+                albumList.addAll(systemAlbums)
+            }
+        }
+        albums = albumList
+        setupAlbumList()
+        val defaultTitle = when (lowerMode) {
+            "videos" -> "所有视频"
+            "images" -> "所有图片"
+            else -> "图片和视频"
+        }
+        currentAlbumId = if (lowerMode == "mix") null else null
+        (albumSelectorView?.getChildAt(0) as? TextView)?.text = defaultTitle
+        (recycler?.adapter as? ListAdapter<GridItem, *>)?.submitList(filterByAlbum(allItems))
+        albumMenuContainer?.visibility = View.GONE
+        applySendButtonStyle(0)
+    }
+
+    private fun launchSystemPhotoPicker() {
+        if (Build.VERSION.SDK_INT < 33) {
+            // Fallback safeguard; on <33 we keep our own picker
+            loadMedia { items ->
+                allItems = items
+                recycler?.adapter?.let { (it as? ListAdapter<GridItem, *>)?.submitList(filterByAlbum(items)) }
+            }
+            return
+        }
+        val mediaType = when (selectedMode.lowercase()) {
+            "videos" -> ActivityResultContracts.PickVisualMedia.VideoOnly
+            "images" -> ActivityResultContracts.PickVisualMedia.ImageOnly
+            else -> ActivityResultContracts.PickVisualMedia.ImageAndVideo
+        }
+        val request = PickVisualMediaRequest.Builder()
+            .setMediaType(mediaType)
+            .build()
+        if (maxSelectable <= 1) {
+            pickSingleLauncher?.launch(request)
+        } else {
+            pickMultipleLauncher?.launch(request)
+        }
+    }
+
+    private fun deliverPickedUris(uris: List<Uri>) {
+        val listener = resultListener
+        if (listener != null) {
+            listener.invoke(uris)
+            activity?.runOnUiThread { removeSelf() }
+            return
+        }
+        val cbId = callbackId
+        Thread {
+            try {
+                val arr = org.json.JSONArray()
+                for (uri in uris.take(maxSelectable)) {
+                    val typeStr = detectFileType(uri)
+                    val obj = org.json.JSONObject().apply {
+                        put("uri", uri.toString())
+                        put("fileType", typeStr)
+                    }
+                    arr.put(obj)
+                }
+                NativeApi.onCallback(cbId, true, arr.toString())
+            } catch (e: Exception) {
+                NativeApi.onCallback(cbId, false, (e.message ?: "build result failed"))
+            } finally {
+                activity?.runOnUiThread { removeSelf() }
+            }
+        }.start()
+    }
+
+    private fun detectFileType(uri: Uri): String {
+        return try {
+            val mime = requireContext().contentResolver.getType(uri) ?: ""
+            if (mime.startsWith("video")) "video" else "image"
+        } catch (_: Exception) {
+            "image"
         }
     }
 
