@@ -8,9 +8,10 @@ use lingxia_platform::{
 use rong::{
     FromJSObj, IntoJSObj, JSContext, JSFunc, JSObject, JSResult, RongJSError, function::Optional,
 };
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::hash::Hash;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(FromJSObj)]
 struct JSPreviewMediaItem {
@@ -207,6 +208,21 @@ impl rong::IntoJSValue<rong::JSEngineValue> for ChosenMediaEntry {
 
 impl rong::function::JSParameterType for ChosenMediaEntry {}
 
+fn default_kind() -> String {
+    "image".to_string()
+}
+fn default_is_original() -> bool {
+    true
+}
+#[derive(Deserialize, Serialize, Hash, Clone)]
+struct MediaKey {
+    uri: String,
+    #[serde(rename = "fileType", default = "default_kind")]
+    kind: String,
+    #[serde(rename = "isOriginal", default = "default_is_original")]
+    is_original: bool,
+}
+
 fn parse_choose_mode(s: Option<String>) -> ChooseMediaMode {
     match s
         .unwrap_or_else(|| "mix".to_string())
@@ -250,7 +266,6 @@ async fn choose_media(
     });
 
     let (callback_id, receiver) = get_callback();
-    let cache_root = lxapp.user_cache_dir.clone();
 
     let max_duration_seconds = opts
         .max_duration
@@ -293,52 +308,43 @@ async fn choose_media(
         return Err(RongJSError::Error(data));
     }
 
-    // Expect an array of entries: [{ uri, fileType, fd? }, ...]
-    let parsed: serde_json::Value = serde_json::from_str(&data)
+    // Expect an array of entries: [{ uri, fileType, isOriginal }, ...]
+    let arr: Vec<MediaKey> = serde_json::from_str(&data)
         .map_err(|_| RongJSError::Error("chooseMedia invalid payload".to_string()))?;
-    let arr = parsed.as_array().cloned().unwrap_or_else(|| Vec::new());
 
     let mut out: Vec<ChosenMediaEntry> = Vec::new();
-    for item in arr.into_iter() {
-        let uri = item.get("uri").and_then(|v| v.as_str()).unwrap_or("");
-        let kind = item
-            .get("fileType")
-            .and_then(|v| v.as_str())
-            .unwrap_or("image");
-        let is_original = item
-            .get("isOriginal")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(true); // Default to original
+    for key in arr.into_iter() {
+        let uri = key.uri.clone();
         if uri.is_empty() {
             continue;
         }
-        let final_path = if std::path::Path::new(uri).is_absolute() {
+        let kind = key.kind.clone();
+        let is_original = key.is_original;
+        let final_path = if std::path::Path::new(&uri).is_absolute() {
             uri.to_string()
         } else {
-            let ext = match kind {
+            // Build deterministic cache key (serde-friendly + Hash)
+            let ext = match kind.as_str() {
                 "video" => "mp4",
                 _ => "jpg",
             };
-            let now = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis();
-            let filename = format!("{}.{}", now, ext);
-            let dest_path = cache_root.join(filename);
-
-            let media_kind = match kind {
-                "video" => MediaKind::Video,
-                "image" => MediaKind::Image,
-                _ => MediaKind::Image,
-            };
-
-            match lxapp
-                .runtime
-                .copy_media_uri_to_path(uri, &dest_path, media_kind)
-            {
-                Ok(()) => dest_path.to_string_lossy().to_string(),
-                Err(err) => {
-                    return Err(RongJSError::Error(format!("copyMedia failed: {}", err)));
+            match lxapp.cache().resolve_path_with_ext(&key, ext) {
+                lingxia_lxapp::ResolveResult::Exists(path) => path.to_string_lossy().to_string(),
+                lingxia_lxapp::ResolveResult::NonExists(path) => {
+                    let media_kind = match kind.as_str() {
+                        "video" => MediaKind::Video,
+                        "image" => MediaKind::Image,
+                        _ => MediaKind::Image,
+                    };
+                    match lxapp
+                        .runtime
+                        .copy_media_uri_to_path(&uri, &path, media_kind)
+                    {
+                        Ok(()) => path.to_string_lossy().to_string(),
+                        Err(err) => {
+                            return Err(RongJSError::Error(format!("copyMedia failed: {}", err)));
+                        }
+                    }
                 }
             }
         };
