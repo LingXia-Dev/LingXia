@@ -308,6 +308,29 @@ async fn choose_media(
         return Err(RongJSError::Error(data));
     }
 
+    let parsed: Value = serde_json::from_str(&data)
+        .map_err(|_| RongJSError::Error("chooseMedia invalid payload".to_string()))?;
+
+    if parsed.is_null() {
+        return Ok(Vec::new());
+    }
+
+    if let Some(obj) = parsed.as_object() {
+        if obj.get("cancel").and_then(Value::as_bool).unwrap_or(false) {
+            // Harmony platform may include index field alongside cancel flag.
+            return Ok(Vec::new());
+        }
+        return Err(RongJSError::Error(
+            "chooseMedia invalid payload".to_string(),
+        ));
+    }
+
+    if !parsed.is_array() {
+        return Err(RongJSError::Error(
+            "chooseMedia invalid payload".to_string(),
+        ));
+    }
+
     // Expect an array of entries: [{ uri, fileType, isOriginal }, ...]
     let arr: Vec<MediaKey> = serde_json::from_str(&data)
         .map_err(|_| RongJSError::Error("chooseMedia invalid payload".to_string()))?;
