@@ -20,7 +20,7 @@ export interface PickerConfig {
  * Picker result structure
  */
 export interface PickerResult {
-  index: number | number[];
+  index?: number | number[];
   cancel?: boolean;
   confirm?: boolean;
 }
@@ -182,15 +182,7 @@ export struct PickerManager {
    * Handle cancel button click
    */
   private onCancel(): void {
-    let index: number | number[];
-    if (this.config && this.config.columns.length === 1) {
-      index = this.selectedIndices[0] ?? 0;
-    } else {
-      index = [...this.selectedIndices];
-    }
-
     const result: PickerResult = {
-      index: index,
       cancel: true
     };
 
