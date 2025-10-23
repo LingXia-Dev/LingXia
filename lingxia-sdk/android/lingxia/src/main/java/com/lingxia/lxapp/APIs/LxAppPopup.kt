@@ -14,8 +14,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
-import com.lingxia.lxapp.util.WindowInsetsUtils
+import com.lingxia.lxapp.util.ActivityInsets
 import com.lingxia.lxapp.LxApp
 import com.lingxia.lxapp.LxAppActivity
 import com.lingxia.lxapp.NativeApi
@@ -133,8 +132,8 @@ internal object LxAppPopup {
 
         val container = FrameLayout(activity).apply {
             val baseHeight = resolvedHeight.size
-            // Use stable inset so container background can extend under hidden navbar (3-button mode)
-            val bottomInset = WindowInsetsUtils.getStableBottomInset(rootView)
+            // Use Activity content inset for sizing; backgrounds will still cover the screen area
+            val bottomInset = ActivityInsets.contentBottomInset()
             val params = FrameLayout.LayoutParams(
                 resolvedWidth.size,
                 if (position == PopupPosition.BOTTOM && !resolvedHeight.isFull && bottomInset > 0) {
@@ -164,13 +163,9 @@ internal object LxAppPopup {
             val contentHeight = if (resolvedHeight.isFull) {
                 FrameLayout.LayoutParams.MATCH_PARENT
             } else {
-                // For bottom popup, let the surface fill container so it can cover navbar area
-                val bottomInset = WindowInsetsUtils.getStableBottomInset(rootView)
-                if (position == PopupPosition.BOTTOM && bottomInset > 0) {
-                    FrameLayout.LayoutParams.MATCH_PARENT
-                } else {
-                    resolvedHeight.size
-                }
+                // For bottom popup, extend by content inset to keep content lifted above nav
+                val bottomInset = ActivityInsets.contentBottomInset()
+                if (position == PopupPosition.BOTTOM && bottomInset > 0) bottomInset + resolvedHeight.size else resolvedHeight.size
             }
             val lp = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
@@ -236,9 +231,8 @@ internal object LxAppPopup {
         webView.visibility = View.VISIBLE
         webView.resume()
 
-        // If we extended the surface to cover the navbar, keep content above it via padding
-        // Use visible inset for content padding so gesture nav (no 3-button) doesn't add space
-        val insetForContent = WindowInsetsUtils.getBottomInset(rootView)
+        // Keep content above navigation area by padding using Activity-provided inset
+        val insetForContent = ActivityInsets.contentBottomInset()
         if (position == PopupPosition.BOTTOM && !resolvedHeight.isFull && insetForContent > 0) {
             webView.setPadding(webView.paddingLeft, webView.paddingTop, webView.paddingRight, insetForContent)
         }

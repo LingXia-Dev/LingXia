@@ -50,7 +50,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.core.content.ContextCompat
-import com.lingxia.lxapp.util.WindowInsetsUtils
+import com.lingxia.lxapp.util.ActivityInsets
 import androidx.fragment.app.Fragment
 import com.lingxia.lxapp.NativeApi
 import android.text.SpannableString
@@ -253,7 +253,7 @@ class MediaCaptureFragment : Fragment() {
         timerLabel.bringToFront()
 
         // Lift capture controls above nav bar (3-button) while staying flush on gesture nav.
-        val navInset = WindowInsetsUtils.getEffectiveContentInset(root)
+        val navInset = ActivityInsets.contentBottomInset()
         val bottomOverlay = FrameLayout(context).apply {
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
@@ -914,7 +914,7 @@ class MediaCaptureFragment : Fragment() {
                 btn.layoutParams = lp
             }
             // Apply bottom inset updates via helper
-            WindowInsetsUtils.applyBottomMargin(container, btn, dp(requireContext(), 20f))
+            ActivityInsets.applyBottomMargin(container, btn, dp(requireContext(), 20f))
             btn.visibility = View.VISIBLE
             updateFinishButtonEnabled(true)
             btn.bringToFront()

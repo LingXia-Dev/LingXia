@@ -28,13 +28,13 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
-import com.lingxia.lxapp.util.WindowInsetsUtils
 import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.lingxia.lxapp.NativeApi
+import com.lingxia.lxapp.LxApp
 import org.json.JSONObject
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.graphics.drawable.GradientDrawable
@@ -348,9 +348,9 @@ class MediaPickerFragment : Fragment() {
         bottom.addView(send)
         root.addView(bottom)
 
-        // Lift bottom bar and content above system navigation bar using helper
-        WindowInsetsUtils.applyBottomMargin(root, bottom, 0)
-        WindowInsetsUtils.applyBottomMargin(root, rv, dp(context, 64))
+        // Lift bottom bar and content above system navigation bar using Activity provider
+        com.lingxia.lxapp.util.ActivityInsets.applyBottomMargin(root, bottom, 0)
+        com.lingxia.lxapp.util.ActivityInsets.applyBottomMargin(root, rv, dp(context, 64))
 
         recycler = rv
         sendBtn = send

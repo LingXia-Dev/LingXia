@@ -9,7 +9,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
-import com.lingxia.lxapp.util.WindowInsetsUtils
+import androidx.core.view.ViewCompat
 import com.lingxia.lxapp.LxApp
 import com.lingxia.lxapp.NativeApi
 import org.json.JSONArray
@@ -275,8 +275,8 @@ object LxAppPicker {
 
         container.addView(pickerContent)
 
-        // Lift picker above system navigation bar (3-button) using helper
-        WindowInsetsUtils.applyBottomMargin(container, pickerContent, 0)
+        // Use Activity-provided bottom inset (encapsulated helper)
+        com.lingxia.lxapp.util.ActivityInsets.applyBottomMargin(container, pickerContent, 0)
         return container
     }
 

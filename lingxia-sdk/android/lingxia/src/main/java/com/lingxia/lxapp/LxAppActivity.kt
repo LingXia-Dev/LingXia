@@ -19,6 +19,7 @@ import android.widget.LinearLayout
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import android.provider.Settings
 import android.content.Intent
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
@@ -273,17 +274,19 @@ class LxAppActivity : AppCompatActivity() {
 
         // Setup window insets listener
         ViewCompat.setOnApplyWindowInsetsListener(rootContainer) { view, insets ->
-            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            systemBottomInset = systemBars.bottom
+            val sysBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            systemBottomInset = resolveContentBottomInset(insets)
 
             val currentBg = tabBar?.config?.backgroundColor ?: tabBarConfig?.backgroundColor
             val isTabBarTransparent = currentBg == Color.TRANSPARENT ||
                                      (currentBg?.let { Color.alpha(it) < 255 } == true)
 
             if (isTabBarTransparent) {
+                // Let TabBar overlay nav bar; do not pad root
                 view.setPadding(0, 0, 0, 0)
             } else {
-                view.setPadding(systemBars.left, 0, systemBars.right, systemBars.bottom)
+                // Non-transparent TabBar: keep default system bars padding for root
+                view.setPadding(sysBars.left, 0, sysBars.right, sysBars.bottom)
             }
 
             // Re-apply TabBar layout so bottom margin reflects latest inset when transparent
@@ -321,6 +324,47 @@ class LxAppActivity : AppCompatActivity() {
                     }
                 }
             })
+        }
+    }
+
+    /**
+     * Provides a single source of truth for bottom content inset.
+     * Gesture nav -> 0, 3-button visible -> visible bottom inset, others -> 0.
+     */
+    fun getContentBottomInset(): Int = systemBottomInset
+
+    private fun resolveContentBottomInset(insets: WindowInsetsCompat): Int {
+        val navVisible = insets.isVisible(WindowInsetsCompat.Type.navigationBars())
+        val gestureInset = insets.getInsets(WindowInsetsCompat.Type.systemGestures()).bottom
+        val visible = maxOf(
+            insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom,
+            insets.getInsets(WindowInsetsCompat.Type.systemBars()).bottom
+        )
+        val stable = maxOf(
+            insets.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.navigationBars()).bottom,
+            insets.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.systemBars()).bottom
+        )
+
+        val clearGesture = !navVisible && visible == 0 && gestureInset > 0
+        val navMode = resolveNavigationMode()
+        when (navMode) {
+            2 -> return 0 // gesture navigation: keep content flush
+            0, 1 -> return if (clearGesture) 0 else visible // legacy 3-button/2-button
+        }
+
+        if (clearGesture) return 0
+        if (navVisible && visible > 0) return visible
+        // Some OEMs report stable>0 for gesture; do not use stable for content inset
+        if (!navVisible && visible == 0 && stable > 0 && gestureInset == 0) return 0
+        return 0
+    }
+
+    private fun resolveNavigationMode(): Int? {
+        return try {
+            Settings.Secure.getInt(contentResolver, "navigation_mode")
+        } catch (_: Throwable) {
+            val resId = resources.getIdentifier("config_navBarInteractionMode", "integer", "android")
+            if (resId > 0) resources.getInteger(resId) else null
         }
     }
 
