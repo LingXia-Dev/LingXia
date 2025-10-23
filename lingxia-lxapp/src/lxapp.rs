@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Instant;
 
 use crate::app::AppConfig;
+use crate::cache::LxAppCache;
 use crate::error::LxAppError;
 use crate::executor::LxAppExecutor;
 use crate::page::{Page, PageLifecycleEvent};
@@ -328,6 +329,8 @@ pub struct LxApp {
 
     // Mutable state - protected by mutex for fine-grained locking
     pub(crate) state: Mutex<LxAppState>,
+    // Per-app cache for network and media artifacts
+    cache: Option<LxAppCache>,
 }
 
 impl LxApp {
@@ -344,6 +347,7 @@ impl LxApp {
             config: LxAppConfig::default(),
             executor,
             state: Mutex::new(LxAppState::new()),
+            cache: None,
         }
     }
 
@@ -495,7 +499,16 @@ impl LxApp {
     fn setup(&mut self) -> Result<(), LxAppError> {
         self.initialize_paths()?;
         self.load_config()?;
+        // Initialize per-app cache directly using the app's cache dir
+        self.cache = Some(
+            LxAppCache::new(self.user_cache_dir.clone())
+                .map_err(|e| LxAppError::IoError(e.to_string()))?,
+        );
         Ok(())
+    }
+
+    pub fn cache(&self) -> &LxAppCache {
+        self.cache.as_ref().expect("cache initialized")
     }
 
     /// Get the version of this app from storage

@@ -1,11 +1,13 @@
 mod app;
 mod appservice;
+mod cache;
 mod delegate;
 mod error;
 mod executor;
 pub mod log;
 pub mod lx;
 mod lxapp;
+pub use cache::{LxAppCache, ResolveResult};
 mod page;
 pub mod startup;
 

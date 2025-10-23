@@ -2,6 +2,7 @@ use http::{Request, Response, StatusCode, Uri};
 use lingxia_webview::WebResourceResponse;
 use std::fs;
 use std::path::PathBuf;
+use std::time::{Duration, Instant};
 
 use crate::error;
 use crate::error::LxAppError;
@@ -144,7 +145,37 @@ impl LxApp {
                 }
             }
 
-            // Resource type is allowed or undetermined, let the request proceed
+            // Resource type is allowed or undetermined.
+            // For allowed static resources over HTTP(S), use per-app cache to download
+            // and serve a local file path to the WebView when possible.
+            if is_allowed_resource && req.method() == http::Method::GET {
+                let url_str = uri.to_string();
+                // Start or get path for progressive download
+                let file_path = self.cache().get_or_download(&url_str, &url_str);
+
+                // Quick wait: only when the download just started (missing or zero-length file).
+                if should_wait_for_download(&file_path) {
+                    quick_wait_for_download(&file_path);
+                }
+
+                let mime_type = Self::infer_mime_type(uri.path());
+                let builder = http::Response::builder()
+                    .status(StatusCode::OK)
+                    .header("Content-Type", mime_type)
+                    .header("Access-Control-Allow-Origin", "null");
+
+                // Avoid setting Content-Length to support progressive reads
+
+                let response = builder.body(()).unwrap_or_else(|_| {
+                    http::Response::builder()
+                        .status(StatusCode::INTERNAL_SERVER_ERROR)
+                        .body(())
+                        .expect("Failed to build cached file response")
+                });
+                let (parts, _) = response.into_parts();
+                return Some(WebResourceResponse::new(parts, file_path));
+            }
+            // Let the request proceed to the network
             return None;
         }
 
@@ -347,5 +378,27 @@ impl LxApp {
 
         let (parts, _) = response.into_parts();
         WebResourceResponse::new(parts, file_path)
+    }
+}
+
+fn should_wait_for_download(path: &PathBuf) -> bool {
+    match fs::metadata(path) {
+        Ok(meta) => meta.len() == 0,
+        Err(_) => true,
+    }
+}
+
+fn quick_wait_for_download(path: &PathBuf) {
+    let start = Instant::now();
+    let max_wait = Duration::from_millis(200);
+    let step = Duration::from_millis(20);
+
+    while start.elapsed() < max_wait {
+        match fs::metadata(path) {
+            Ok(meta) if meta.len() > 0 => break,
+            Ok(_) => { /* still zero-length */ }
+            Err(_) => { /* not created yet */ }
+        }
+        std::thread::sleep(step);
     }
 }

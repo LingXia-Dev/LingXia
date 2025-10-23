@@ -1,0 +1,331 @@
+use std::fs;
+use std::hash::{Hash, Hasher};
+use std::path::{Path, PathBuf};
+
+use thiserror::Error;
+
+type HashId = String;
+
+/// Lightweight cache for LxApp resources.
+///
+/// Only tracks in-flight operations; completed files are discovered via the filesystem.
+pub struct LxAppCache {
+    cache_dir: PathBuf,
+}
+
+impl LxAppCache {
+    /// Create a cache rooted at `cache_dir`.
+    pub(crate) fn new(cache_dir: PathBuf) -> Result<Self, CacheError> {
+        // Assume LxApp already prepared cache_dir; do not create extra directories here.
+        Ok(Self { cache_dir })
+    }
+
+    /// Request a cached file; start download in background if missing.
+    ///
+    /// Returns the intended final file path immediately (with an extension derived
+    /// from the URL). If the file isn't available yet, a background task begins
+    /// downloading it via the existing async runtime. A sidecar marker `<hash>.ok`
+    /// is written on success to distinguish complete files from partial ones.
+    pub fn get_or_download<K: Hash + ?Sized>(&self, key: &K, url: &str) -> PathBuf {
+        let hash_id = hash_key(key);
+        let ext = url_path_ext(url).unwrap_or("bin");
+        let target_path = self.cache_dir.join(format!("{hash_id}.{}", ext));
+
+        // If already completed and present, return immediately.
+        if self.ok_marker_exists(&hash_id) && target_path.exists() {
+            return target_path;
+        }
+
+        // file-based lock: <hash>.lock indicates a download in progress
+        let lock_path = self.cache_dir.join(format!("{}.lock", hash_id));
+        let should_spawn = match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&lock_path)
+        {
+            Ok(_) => true,
+            Err(_) => false,
+        };
+
+        if should_spawn {
+            let final_path = target_path.clone();
+            let key_id = hash_id.clone();
+            let lock_path_cloned = lock_path.clone();
+            let url_owned = url.to_string();
+
+            // Use net runtime to handle the download; invoke callback on completion
+            let send_res = rong::net::request_download_to_file(
+                url_owned,
+                final_path.clone(),
+                None,
+                move |res| {
+                    match res {
+                        Ok(()) => {
+                            let _ = fs::write(ok_marker_path(&final_path, &key_id), b"ok");
+                        }
+                        Err(_) => {
+                            let _ = fs::remove_file(ok_marker_path(&final_path, &key_id));
+                        }
+                    }
+                    let _ = fs::remove_file(lock_path_cloned);
+                },
+            );
+            if send_res.is_err() {
+                // Failed to enqueue download; release lock so others can retry
+                let _ = fs::remove_file(lock_path);
+            }
+        }
+
+        target_path
+    }
+
+    /// Try to resolve an existing path for `key`; returns None if not present.
+    fn try_resolve<K: Hash + ?Sized>(&self, key: &K) -> Option<PathBuf> {
+        let hash_id = hash_key(key);
+        // If we have a complete marker, try to locate a file with any extension
+        if self.ok_marker_exists(&hash_id) {
+            if let Ok(entries) = fs::read_dir(&self.cache_dir) {
+                for entry in entries.flatten() {
+                    if let Some(name) = entry.file_name().to_str() {
+                        // Ignore cache bookkeeping files
+                        if !name.starts_with(&hash_id) {
+                            continue;
+                        }
+                        if name.ends_with(".ok") || name.ends_with(".lock") {
+                            continue;
+                        }
+                        // Only return regular files
+                        if entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
+                            return Some(entry.path());
+                        }
+                    }
+                }
+            }
+        }
+        // Fall back to first match without requiring OK marker (e.g., media copies)
+        let base = self.cache_dir.join(&hash_id);
+        if base.exists() {
+            return Some(base);
+        }
+        if let Ok(entries) = fs::read_dir(&self.cache_dir) {
+            for entry in entries.flatten() {
+                if let Some(name) = entry.file_name().to_str() {
+                    if !name.starts_with(&hash_id) {
+                        continue;
+                    }
+                    if name.ends_with(".ok") || name.ends_with(".lock") {
+                        continue;
+                    }
+                    if entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
+                        return Some(entry.path());
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Compute the canonical target path for a given key and extension.
+    fn target_path_for_ext<K: Hash + ?Sized>(&self, key: &K, ext: &str) -> PathBuf {
+        let hash_id = hash_key(key);
+        if ext.is_empty() {
+            self.cache_dir.join(&hash_id)
+        } else {
+            self.cache_dir.join(format!("{hash_id}.{}", ext))
+        }
+    }
+
+    /// Resolve a cache path for `key` with desired extension.
+    /// - Exists(path): a cached file already exists.
+    /// - NonExists(path): caller may write the file to this path.
+    pub fn resolve_path_with_ext<K: Hash + ?Sized>(&self, key: &K, ext: &str) -> ResolveResult {
+        if let Some(p) = self.try_resolve(key) {
+            ResolveResult::Exists(p)
+        } else {
+            ResolveResult::NonExists(self.target_path_for_ext(key, ext))
+        }
+    }
+
+    // media: use resolve_path_with_ext and copy when NonExists
+    // cleanup removed; add if needed later
+}
+
+impl LxAppCache {
+    /// Request download with a completion callback.
+    /// The callback fires once when the download succeeds or fails.
+    pub fn get_or_download_with_callback<K, F>(&self, key: &K, url: &str, on_complete: F) -> PathBuf
+    where
+        K: Hash + ?Sized,
+        F: FnOnce(CacheResult) + Send + 'static,
+    {
+        use std::time::Duration;
+
+        let hash_id = hash_key(key);
+        let ext = url_path_ext(url).unwrap_or("bin");
+        let target_path = self.cache_dir.join(format!("{hash_id}.{}", ext));
+
+        // Already complete? Call callback immediately.
+        if self.ok_marker_exists(&hash_id) && target_path.exists() {
+            on_complete(CacheResult::Ready);
+            return target_path;
+        }
+
+        let lock_path = self.cache_dir.join(format!("{}.lock", hash_id));
+        let acquired = match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&lock_path)
+        {
+            Ok(_) => true,
+            Err(_) => false,
+        };
+
+        if acquired {
+            let final_path = target_path.clone();
+            let key_id = hash_id.clone();
+            let lock_path_cloned = lock_path.clone();
+            let url_owned = url.to_string();
+
+            // Share callback so we can invoke it either from the net runtime or on immediate error
+            let cb_shared: std::sync::Arc<std::sync::Mutex<Option<F>>> =
+                std::sync::Arc::new(std::sync::Mutex::new(Some(on_complete)));
+            let cb_for_task = cb_shared.clone();
+
+            let send_res = rong::net::request_download_to_file(
+                url_owned,
+                final_path.clone(),
+                None,
+                move |res| {
+                    match res {
+                        Ok(()) => {
+                            let _ = fs::write(ok_marker_path(&final_path, &key_id), b"ok");
+                            if let Some(cb) = cb_for_task.lock().unwrap().take() {
+                                cb(CacheResult::Ready);
+                            }
+                        }
+                        Err(e) => {
+                            let _ = fs::remove_file(ok_marker_path(&final_path, &key_id));
+                            if let Some(cb) = cb_for_task.lock().unwrap().take() {
+                                cb(CacheResult::Failed(format!("{}", e)));
+                            }
+                        }
+                    }
+                    let _ = fs::remove_file(lock_path_cloned);
+                },
+            );
+            if let Err(e) = send_res {
+                // Failed to enqueue download; release lock and invoke callback immediately
+                let _ = fs::remove_file(lock_path);
+                if let Some(cb) = cb_shared.lock().unwrap().take() {
+                    cb(CacheResult::Failed(e));
+                }
+            }
+        } else {
+            // Someone else is downloading; watch for completion and then fire callback
+            let final_path = target_path.clone();
+            let key_id = hash_id.clone();
+            let lock_path_cloned = lock_path.clone();
+
+            let task = async move {
+                use tokio::time::sleep;
+
+                loop {
+                    let success = ok_marker_path(&final_path, &key_id).exists();
+                    let in_progress = lock_path_cloned.exists();
+                    if success {
+                        on_complete(CacheResult::Ready);
+                        break;
+                    }
+                    if !in_progress {
+                        // Not in progress and no success marker -> treat as failure
+                        on_complete(CacheResult::Failed("download not completed".to_string()));
+                        break;
+                    }
+                    sleep(Duration::from_millis(200)).await;
+                }
+            };
+            rong::spawn(task);
+        }
+
+        target_path
+    }
+}
+
+fn url_path_ext(url: &str) -> Option<&str> {
+    // crude parse: strip query/fragment, take suffix after last '.' if short and sane
+    let path = url.split(&['?', '#'][..]).next().unwrap_or(url);
+    let seg = path.rsplit('/').next().unwrap_or(path);
+    let dot = seg.rfind('.')?;
+    let ext = &seg[dot + 1..];
+    if ext.len() >= 1 && ext.len() <= 8 {
+        Some(ext)
+    } else {
+        None
+    }
+}
+
+fn ok_marker_path(final_path: &Path, hash_id: &str) -> PathBuf {
+    // place marker alongside cache root: <cache_dir>/<hash>.ok
+    let dir = final_path.parent().unwrap_or_else(|| Path::new("."));
+    dir.join(format!("{}.ok", hash_id))
+}
+
+impl LxAppCache {
+    fn ok_marker_exists(&self, hash_id: &str) -> bool {
+        self.cache_dir.join(format!("{}.ok", hash_id)).exists()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum CacheResult {
+    Ready,
+    Failed(String),
+}
+
+#[derive(Debug, Clone)]
+pub enum ResolveResult {
+    Exists(PathBuf),
+    NonExists(PathBuf),
+}
+
+#[derive(Debug, Error)]
+pub enum CacheError {
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+}
+
+fn hash_key<K: Hash + ?Sized>(key: &K) -> HashId {
+    // Stable 64-bit FNV-1a hasher for deterministic IDs across runs.
+    let mut hasher = Fnv64Hasher::new();
+    key.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
+}
+
+#[derive(Default)]
+struct Fnv64Hasher(u64);
+
+impl Fnv64Hasher {
+    fn new() -> Self {
+        // 64-bit FNV-1a offset basis
+        Self(0xcbf29ce484222325)
+    }
+}
+
+impl Hasher for Fnv64Hasher {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        // 64-bit FNV-1a prime
+        const FNV_PRIME: u64 = 0x00000100000001B3;
+        let mut hash = self.0;
+        for &b in bytes {
+            hash ^= u64::from(b);
+            hash = hash.wrapping_mul(FNV_PRIME);
+        }
+        self.0 = hash;
+    }
+}
+
+// No directory creation here to avoid creating extra structure beyond LxApp's cache

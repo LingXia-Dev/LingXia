@@ -3,12 +3,12 @@ use crate::executor::LxAppExecutor;
 use crate::lxapp::{self, navbar::NavigationBarState};
 use crate::startup::parse_query_string;
 use crate::{LxApp, LxAppError, error, info};
+use http::StatusCode;
 use lingxia_platform::{AnimationType, AppRuntime};
 use lingxia_webview::{
     LogLevel, WebResourceResponse, WebTag, WebView, WebViewController, WebViewDelegate,
     create_webview,
 };
-use http::StatusCode;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
