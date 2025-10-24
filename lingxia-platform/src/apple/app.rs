@@ -219,7 +219,15 @@ mod ios {
         uri: &str,
         dest_path: &std::path::Path,
     ) -> Result<(), PlatformError> {
-        let source_path = std::path::Path::new(uri);
+        let mut owned_uri: Option<String> = None;
+        let resolved_uri = if let Some(stripped) = uri.strip_prefix("file://") {
+            owned_uri = Some(stripped.to_string());
+            owned_uri.as_deref().unwrap()
+        } else {
+            uri
+        };
+
+        let source_path = std::path::Path::new(resolved_uri);
 
         if !source_path.exists() {
             return Err(PlatformError::Platform(format!(

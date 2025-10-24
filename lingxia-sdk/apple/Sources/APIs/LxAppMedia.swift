@@ -868,7 +868,7 @@ private final class CameraDelegate: NSObject, UIImagePickerControllerDelegate, U
                     requiresSecurityScope: false
                 ) {
                     jsonItem = [
-                        "uri": tempURL.path,
+                        "uri": tempURL.absoluteString,
                         "fileType": "video",
                         "isOriginal": true
                     ]
@@ -884,7 +884,7 @@ private final class CameraDelegate: NSObject, UIImagePickerControllerDelegate, U
                     requiresSecurityScope: false
                 ) {
                     jsonItem = [
-                        "uri": tempURL.path,
+                        "uri": tempURL.absoluteString,
                         "fileType": "image",
                         "isOriginal": true
                     ]
@@ -892,7 +892,7 @@ private final class CameraDelegate: NSObject, UIImagePickerControllerDelegate, U
             } else if let image = info[.originalImage] as? UIImage {
                 if let tempURL = saveCapturedImageToTemp(image) {
                     jsonItem = [
-                        "uri": tempURL.path,
+                        "uri": tempURL.absoluteString,
                         "fileType": "image",
                         "isOriginal": true
                     ]
@@ -1007,7 +1007,7 @@ private class AlbumDelegate: NSObject, PHPickerViewControllerDelegate {
                 DispatchQueue.main.async {
                     if let tempURL {
                         let jsonItem: [String: Any] = [
-                            "uri": tempURL.path,
+                            "uri": tempURL.absoluteString,
                             "fileType": "image",
                             "isOriginal": true
                         ]
@@ -1038,7 +1038,7 @@ private class AlbumDelegate: NSObject, PHPickerViewControllerDelegate {
                 DispatchQueue.main.async {
                     if let tempURL {
                         let jsonItem: [String: Any] = [
-                            "uri": tempURL.path,
+                            "uri": tempURL.absoluteString,
                             "fileType": "video",
                             "isOriginal": true
                         ]
