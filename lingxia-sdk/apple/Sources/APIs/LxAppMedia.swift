@@ -587,7 +587,7 @@ private final class ZoomableImageView: UIView, UIScrollViewDelegate {
 
 extension LxAppMedia {
 #if os(iOS)
-    @MainActor
+@MainActor
     private static var albumPickerDelegate: AlbumDelegate?
     @MainActor
     private static var cameraPickerDelegate: CameraDelegate?
@@ -664,40 +664,72 @@ extension LxAppMedia {
             }
 
             let modeLowercased = mode.lowercased()
-            let captureMode: CameraDelegate.CaptureMode = modeLowercased == "video" ? .video : .photo
-            let picker = UIImagePickerController()
+            let desiredFacingFront = cameraFacing.lowercased() == "front"
+
+            if modeLowercased == "video" {
+                checkMicrophonePermission { micGranted in
+                    guard micGranted else {
+                        let _ = onCallback(callbackId, false, "Microphone access is required to record video. Please enable access in Settings > Privacy & Security > Microphone.")
+                        return
+                    }
+
+                    let maxDurationValue = Double(maxDuration).flatMap { $0 > 0 ? $0 : nil }
+                    let initialPosition: AVCaptureDevice.Position = desiredFacingFront ? .front : .back
+
+                    let videoController = VideoCaptureViewController(
+                        initialCameraPosition: initialPosition,
+                        maxDuration: maxDurationValue
+                    ) { result in
+                        switch result {
+                        case .cancelled:
+                            let _ = onCallback(callbackId, true, "{\"cancel\":true}")
+                        case .failure(let message):
+                            let _ = onCallback(callbackId, false, message)
+                        case .success(let fileURL):
+                            let copiedURL = copyMediaFileToTemp(
+                                from: fileURL,
+                                prefix: "camera_video",
+                                fallbackExtension: "mov",
+                                requiresSecurityScope: false
+                            )
+                            let finalURL = copiedURL ?? fileURL
+                            if finalURL != fileURL {
+                                try? FileManager.default.removeItem(at: fileURL)
+                            }
+                            let jsonItem: [String: Any] = [
+                                "uri": finalURL.absoluteString,
+                                "fileType": "video",
+                                "isOriginal": true
+                            ]
+                            if let data = try? JSONSerialization.data(withJSONObject: [jsonItem], options: []),
+                               let jsonString = String(data: data, encoding: .utf8) {
+                                let _ = onCallback(callbackId, true, jsonString)
+                            } else {
+                                let _ = onCallback(callbackId, false, "Failed to serialize camera capture result")
+                            }
+                        }
+                    }
+
+                    presenter.present(videoController, animated: true)
+                }
+                return
+            }
+
+            let picker = StatusBarHiddenImagePickerController()
             picker.sourceType = .camera
             picker.allowsEditing = false
             picker.modalPresentationStyle = .fullScreen
+            picker.modalPresentationCapturesStatusBarAppearance = true
 
             if #available(iOS 14.0, *) {
-                switch captureMode {
-                case .video:
-                    picker.mediaTypes = [UTType.movie.identifier]
-                case .photo:
-                    picker.mediaTypes = [UTType.image.identifier]
-                }
+                picker.mediaTypes = [UTType.image.identifier]
             } else {
-                switch captureMode {
-                case .video:
-                    picker.mediaTypes = ["public.movie"]
-                case .photo:
-                    picker.mediaTypes = ["public.image"]
-                }
+                picker.mediaTypes = ["public.image"]
             }
 
-            switch captureMode {
-            case .video:
-                picker.cameraCaptureMode = .video
-                if let durationValue = Double(maxDuration), durationValue > 0 {
-                    picker.videoMaximumDuration = TimeInterval(durationValue)
-                }
-                picker.videoQuality = .typeHigh
-            case .photo:
-                picker.cameraCaptureMode = .photo
-            }
+            picker.cameraCaptureMode = .photo
 
-            let desiredFacing = cameraFacing.lowercased() == "front"
+            let desiredFacing = desiredFacingFront
                 ? UIImagePickerController.CameraDevice.front
                 : UIImagePickerController.CameraDevice.rear
 
@@ -707,7 +739,7 @@ extension LxAppMedia {
                 picker.cameraDevice = .rear
             }
 
-            let delegate = CameraDelegate(callbackId: callbackId, captureMode: captureMode) {
+            let delegate = CameraDelegate(callbackId: callbackId, captureMode: .photo) {
                 LxAppMedia.cameraPickerDelegate = nil
             }
             LxAppMedia.cameraPickerDelegate = delegate
@@ -730,6 +762,24 @@ extension LxAppMedia {
             }
         case .denied, .restricted:
             completion(false)
+        @unknown default:
+            completion(false)
+        }
+    }
+
+    private static func checkMicrophonePermission(completion: @escaping (Bool) -> Void) {
+        let audioSession = AVAudioSession.sharedInstance()
+        switch audioSession.recordPermission {
+        case .granted:
+            completion(true)
+        case .denied:
+            completion(false)
+        case .undetermined:
+            audioSession.requestRecordPermission { granted in
+                DispatchQueue.main.async {
+                    completion(granted)
+                }
+            }
         @unknown default:
             completion(false)
         }
@@ -843,7 +893,6 @@ private final class CameraDelegate: NSObject, UIImagePickerControllerDelegate, U
         _ picker: UIImagePickerController,
         didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]
     ) {
-
         let mediaType = (info[.mediaType] as? String) ?? ""
         let movieIdentifier: String
         if #available(iOS 14.0, *) {
@@ -959,7 +1008,7 @@ private class AlbumDelegate: NSObject, PHPickerViewControllerDelegate {
 
         var jsonArray: [[String: Any]] = []
         let group = DispatchGroup()
-
+        
         for result in results {
             group.enter()
             handleResult(result) { item in
@@ -969,7 +1018,7 @@ private class AlbumDelegate: NSObject, PHPickerViewControllerDelegate {
                 group.leave()
             }
         }
-
+        
         group.notify(queue: .main) {
             self.sendCallback(jsonArray: jsonArray)
             self.cleanup()
@@ -979,11 +1028,11 @@ private class AlbumDelegate: NSObject, PHPickerViewControllerDelegate {
     private func handleResult(_ result: PHPickerResult, completion: @escaping ([String: Any]?) -> Void) {
         guard #available(iOS 14.0, *) else {
             DispatchQueue.main.async {
-                completion(nil)
+                    completion(nil)
             }
-            return
-        }
-
+                    return
+                }
+                
         let provider = result.itemProvider
 
         if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
@@ -1004,7 +1053,7 @@ private class AlbumDelegate: NSObject, PHPickerViewControllerDelegate {
                     fallbackExtension: "jpg",
                     requiresSecurityScope: true
                 )
-                DispatchQueue.main.async {
+            DispatchQueue.main.async {
                     if let tempURL {
                         let jsonItem: [String: Any] = [
                             "uri": tempURL.absoluteString,
@@ -1013,7 +1062,7 @@ private class AlbumDelegate: NSObject, PHPickerViewControllerDelegate {
                         ]
                         completion(jsonItem)
                     } else {
-                        completion(nil)
+                    completion(nil)
                     }
                 }
             }
@@ -1023,7 +1072,7 @@ private class AlbumDelegate: NSObject, PHPickerViewControllerDelegate {
                     DispatchQueue.main.async { completion(nil) }
                     return
                 }
-
+                
                 guard let url else {
                     DispatchQueue.main.async { completion(nil) }
                     return
@@ -1073,6 +1122,900 @@ private class AlbumDelegate: NSObject, PHPickerViewControllerDelegate {
 #endif
 
 #if os(iOS)
+private final class StatusBarHiddenImagePickerController: UIImagePickerController {
+    override var prefersStatusBarHidden: Bool { true }
+    override var preferredStatusBarUpdateAnimation: UIStatusBarAnimation { .fade }
+}
+
+private enum VideoCaptureResult {
+    case success(URL)
+    case cancelled
+    case failure(String)
+}
+
+private final class VideoCaptureViewController: UIViewController {
+    private let resultHandler: (VideoCaptureResult) -> Void
+    private let maxDuration: TimeInterval
+    private var currentPosition: AVCaptureDevice.Position
+
+    private let session = AVCaptureSession()
+    private let sessionQueue = DispatchQueue(label: "com.lingxia.camera.session")
+    private let movieOutput = AVCaptureMovieFileOutput()
+    private var videoInput: AVCaptureDeviceInput?
+    private var audioInput: AVCaptureDeviceInput?
+    private var previewLayer: AVCaptureVideoPreviewLayer?
+
+    private let overlayView = VideoCaptureOverlayView()
+
+    private var isSessionRunning = false
+    private var isRecording = false
+    private var isCancelling = false
+    private var recordingStartDate: Date?
+    private var updateTimer: Timer?
+    private var lastPressInside = true
+    private var pendingReviewURL: URL?
+
+    init(initialCameraPosition: AVCaptureDevice.Position, maxDuration: TimeInterval?, resultHandler: @escaping (VideoCaptureResult) -> Void) {
+        self.currentPosition = initialCameraPosition
+        let fallback: TimeInterval = 15
+        self.maxDuration = max(maxDuration ?? fallback, 1)
+        self.resultHandler = resultHandler
+        super.init(nibName: nil, bundle: nil)
+        modalPresentationStyle = .fullScreen
+        modalPresentationCapturesStatusBarAppearance = true
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override var prefersStatusBarHidden: Bool { true }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .black
+        configurePreviewLayer()
+        configureOverlay()
+        configureSession()
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        startSessionIfNeeded()
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        stopSession()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        previewLayer?.frame = view.bounds
+    }
+
+    deinit {
+        stopSession()
+    }
+
+    private func configurePreviewLayer() {
+        let layer = AVCaptureVideoPreviewLayer(session: session)
+        layer.videoGravity = .resizeAspectFill
+        layer.frame = view.bounds
+        view.layer.addSublayer(layer)
+        previewLayer = layer
+    }
+
+    private func configureOverlay() {
+        overlayView.translatesAutoresizingMaskIntoConstraints = false
+        overlayView.setInitialTimer(maxDuration: maxDuration)
+        overlayView.updateCameraPosition(isFront: currentPosition == .front)
+        overlayView.onLongPressChanged = { [weak self] state in
+            self?.handleLongPressState(state)
+        }
+        overlayView.onCancelTapped = { [weak self] in
+            self?.handleCancelTapped()
+        }
+        overlayView.onSwitchCameraTapped = { [weak self] in
+            self?.switchCamera()
+        }
+        view.addSubview(overlayView)
+        NSLayoutConstraint.activate([
+            overlayView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            overlayView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            overlayView.topAnchor.constraint(equalTo: view.topAnchor),
+            overlayView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+    }
+
+    private func configureSession() {
+        sessionQueue.async {
+            do {
+                try self.configureAudioSession()
+            } catch {
+                self.finish(with: .failure("音频会话初始化失败: \(error.localizedDescription)"))
+                return
+            }
+
+            self.session.beginConfiguration()
+            self.session.sessionPreset = .high
+
+            guard let videoDevice = self.bestVideoDevice(position: self.currentPosition) else {
+                self.finish(with: .failure("无法访问摄像头"))
+                self.session.commitConfiguration()
+                return
+            }
+
+            do {
+                let videoInput = try AVCaptureDeviceInput(device: videoDevice)
+                if self.session.canAddInput(videoInput) {
+                    self.session.addInput(videoInput)
+                    self.videoInput = videoInput
+        } else {
+                    self.session.commitConfiguration()
+                    self.finish(with: .failure("无法添加视频输入"))
+                return
+            }
+            } catch {
+                self.session.commitConfiguration()
+                self.finish(with: .failure("摄像头初始化失败: \(error.localizedDescription)"))
+                return
+            }
+
+            if let audioDevice = AVCaptureDevice.default(for: .audio) {
+                do {
+                    let audioInput = try AVCaptureDeviceInput(device: audioDevice)
+                    if self.session.canAddInput(audioInput) {
+                        self.session.addInput(audioInput)
+                        self.audioInput = audioInput
+                    }
+                } catch {
+                    // ignore audio input failure; we will proceed without it
+                }
+            }
+
+            if self.session.canAddOutput(self.movieOutput) {
+                self.session.addOutput(self.movieOutput)
+                self.movieOutput.maxRecordedDuration = CMTime(seconds: self.maxDuration, preferredTimescale: 1)
+            } else {
+                self.session.commitConfiguration()
+                self.finish(with: .failure("无法添加视频输出"))
+                return
+            }
+
+            self.session.commitConfiguration()
+            self.startSessionIfNeeded()
+        }
+    }
+
+    private func configureAudioSession() throws {
+        let audioSession = AVAudioSession.sharedInstance()
+        try audioSession.setCategory(.playAndRecord, mode: .videoRecording, options: [.defaultToSpeaker, .allowBluetooth])
+        try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
+    }
+
+    private func startSessionIfNeeded() {
+        sessionQueue.async {
+            guard !self.isSessionRunning else { return }
+            self.session.startRunning()
+            self.isSessionRunning = true
+        }
+    }
+
+    private func stopSession() {
+        sessionQueue.async {
+            guard self.isSessionRunning else { return }
+            self.session.stopRunning()
+            self.isSessionRunning = false
+        }
+    }
+
+    private func handleLongPressState(_ state: VideoCaptureOverlayView.LongPressState) {
+        switch state {
+        case .began:
+            lastPressInside = true
+            overlayView.updateFingerOutside(false)
+            if !isRecording {
+                beginRecording()
+            }
+        case .changed(let isInside):
+            lastPressInside = isInside
+            overlayView.updateFingerOutside(!isInside)
+        case .ended:
+            overlayView.updateFingerOutside(false)
+            if isRecording {
+                if lastPressInside {
+                    stopRecording()
+                } else {
+                    cancelRecording()
+                }
+            } else {
+                overlayView.updateToIdle()
+            }
+        case .cancelled:
+            overlayView.updateFingerOutside(false)
+            if isRecording {
+                cancelRecording()
+        } else {
+                finish(with: .cancelled)
+            }
+        }
+    }
+
+    private func handleCancelTapped() {
+        if isRecording {
+            cancelRecording()
+        } else {
+            finish(with: .cancelled)
+        }
+    }
+
+    private func beginRecording() {
+        sessionQueue.async {
+            guard !self.movieOutput.isRecording else { return }
+            if let connection = self.movieOutput.connection(with: .video) {
+                connection.videoOrientation = self.currentVideoOrientation()
+            }
+
+            let outputURL = self.makeTemporaryFileURL()
+            self.isCancelling = false
+
+            DispatchQueue.main.async {
+                self.overlayView.prepareForRecording()
+            }
+
+            self.movieOutput.startRecording(to: outputURL, recordingDelegate: self)
+        }
+    }
+
+    private func stopRecording() {
+        sessionQueue.async {
+            guard self.movieOutput.isRecording else { return }
+            self.movieOutput.stopRecording()
+        }
+    }
+
+    private func cancelRecording() {
+        sessionQueue.async {
+            guard self.movieOutput.isRecording else {
+            DispatchQueue.main.async {
+                    self.overlayView.updateToIdle()
+                }
+                return
+            }
+            self.isCancelling = true
+            DispatchQueue.main.async {
+                self.overlayView.updateToCancelling()
+            }
+            self.movieOutput.stopRecording()
+        }
+    }
+
+    private func switchCamera() {
+        guard !isRecording else { return }
+        sessionQueue.async {
+            self.session.beginConfiguration()
+            if let currentInput = self.videoInput {
+                self.session.removeInput(currentInput)
+            }
+
+            self.currentPosition = self.currentPosition == .front ? .back : .front
+
+            guard let newDevice = self.bestVideoDevice(position: self.currentPosition) else {
+                self.session.commitConfiguration()
+                DispatchQueue.main.async {
+                    self.overlayView.showHint("无法切换摄像头")
+                }
+                return
+            }
+
+            do {
+                let newInput = try AVCaptureDeviceInput(device: newDevice)
+                if self.session.canAddInput(newInput) {
+                    self.session.addInput(newInput)
+                    self.videoInput = newInput
+                } else {
+                    self.session.commitConfiguration()
+                    DispatchQueue.main.async {
+                        self.overlayView.showHint("无法切换摄像头")
+                    }
+                    return
+                }
+            } catch {
+                self.session.commitConfiguration()
+                DispatchQueue.main.async {
+                    self.overlayView.showHint("摄像头切换失败")
+                }
+                return
+            }
+
+            self.session.commitConfiguration()
+
+            DispatchQueue.main.async {
+                self.overlayView.updateCameraPosition(isFront: self.currentPosition == .front)
+            }
+        }
+    }
+
+    private func makeTemporaryFileURL() -> URL {
+        let tempDir = FileManager.default.temporaryDirectory
+        return tempDir.appendingPathComponent("lx_video_\(UUID().uuidString).mov")
+    }
+
+    private func startUpdateTimer() {
+        updateTimer?.invalidate()
+        updateTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            guard let self = self, self.isRecording, let start = self.recordingStartDate else { return }
+            let elapsed = Date().timeIntervalSince(start)
+            DispatchQueue.main.async {
+                self.overlayView.updateRecordingProgress(elapsed: elapsed, maxDuration: self.maxDuration)
+            }
+            if elapsed >= self.maxDuration {
+                self.stopRecording()
+            }
+        }
+        if let updateTimer {
+            RunLoop.main.add(updateTimer, forMode: .common)
+        }
+    }
+
+    private func stopUpdateTimer() {
+        updateTimer?.invalidate()
+        updateTimer = nil
+    }
+
+    private func currentVideoOrientation() -> AVCaptureVideoOrientation {
+        switch UIApplication.shared.windows.first?.windowScene?.interfaceOrientation {
+        case .landscapeLeft:
+            return .landscapeRight
+        case .landscapeRight:
+            return .landscapeLeft
+        case .portraitUpsideDown:
+            return .portraitUpsideDown
+        default:
+            return .portrait
+        }
+    }
+
+    private func presentReview(for url: URL) {
+        pendingReviewURL = url
+        overlayView.isHidden = true
+
+        let reviewController = VideoReviewViewController(
+            videoURL: url,
+            onRetake: { [weak self] in
+                self?.handleRetakeFromReview()
+            },
+            onConfirm: { [weak self] in
+                self?.handleConfirmFromReview()
+            }
+        )
+        reviewController.modalPresentationStyle = .fullScreen
+        present(reviewController, animated: true)
+    }
+
+    private func handleRetakeFromReview() {
+        guard let url = pendingReviewURL else { return }
+        pendingReviewURL = nil
+        if FileManager.default.fileExists(atPath: url.path) {
+            try? FileManager.default.removeItem(at: url)
+        }
+        overlayView.isHidden = false
+        overlayView.updateToIdle()
+        startSessionIfNeeded()
+    }
+
+    private func handleConfirmFromReview() {
+        guard let url = pendingReviewURL else { return }
+        pendingReviewURL = nil
+        finish(with: .success(url))
+    }
+
+    nonisolated private func bestVideoDevice(position: AVCaptureDevice.Position) -> AVCaptureDevice? {
+        if let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: position) {
+            return device
+        }
+        if let device = AVCaptureDevice.default(.builtInDualCamera, for: .video, position: position) {
+            return device
+        }
+        return AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
+    }
+
+    private func finish(with result: VideoCaptureResult) {
+        stopUpdateTimer()
+        stopSession()
+        pendingReviewURL = nil
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        DispatchQueue.main.async {
+            self.dismiss(animated: true) {
+                self.resultHandler(result)
+            }
+        }
+    }
+}
+
+extension VideoCaptureViewController: @preconcurrency AVCaptureFileOutputRecordingDelegate {
+    @MainActor
+    func fileOutput(_ output: AVCaptureFileOutput, didStartRecordingTo fileURL: URL, from connections: [AVCaptureConnection]) {
+        self.isRecording = true
+        self.recordingStartDate = Date()
+        self.overlayView.updateToRecording()
+        self.startUpdateTimer()
+    }
+
+    @MainActor
+    func fileOutput(_ output: AVCaptureFileOutput, didFinishRecordingTo outputFileURL: URL, from connections: [AVCaptureConnection], error: Error?) {
+        self.isRecording = false
+        self.recordingStartDate = nil
+        self.stopUpdateTimer()
+        if let error {
+            let nsError = error as NSError
+            if nsError.domain == AVFoundationErrorDomain,
+               nsError.code == AVError.Code.maximumDurationReached.rawValue {
+                self.overlayView.showMaxDurationReached()
+                self.overlayView.updateToFinishing()
+                self.finish(with: .success(outputFileURL))
+                return
+            }
+
+            if FileManager.default.fileExists(atPath: outputFileURL.path) {
+                try? FileManager.default.removeItem(at: outputFileURL)
+            }
+            self.overlayView.showHint("录制失败: \(error.localizedDescription)")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                self.overlayView.updateToIdle()
+                self.finish(with: .failure("录制失败"))
+            }
+            return
+        }
+
+        if self.isCancelling {
+            if FileManager.default.fileExists(atPath: outputFileURL.path) {
+                try? FileManager.default.removeItem(at: outputFileURL)
+            }
+            self.isCancelling = false
+            self.overlayView.updateToIdle()
+            self.finish(with: .cancelled)
+            return
+        }
+        self.isCancelling = false
+        self.presentReview(for: outputFileURL)
+    }
+}
+
+private final class VideoReviewViewController: UIViewController {
+    private let videoURL: URL
+    private let onRetake: () -> Void
+    private let onConfirm: () -> Void
+    private var player: AVPlayer?
+    private var playerLayer: AVPlayerLayer?
+
+    init(videoURL: URL, onRetake: @escaping () -> Void, onConfirm: @escaping () -> Void) {
+        self.videoURL = videoURL
+        self.onRetake = onRetake
+        self.onConfirm = onConfirm
+        super.init(nibName: nil, bundle: nil)
+        modalPresentationCapturesStatusBarAppearance = true
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override var prefersStatusBarHidden: Bool { true }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .black
+        configurePlayer()
+        configureControls()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        playerLayer?.frame = view.bounds
+    }
+
+    nonisolated deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    private func configurePlayer() {
+        let player = AVPlayer(url: videoURL)
+        self.player = player
+        let layer = AVPlayerLayer(player: player)
+        layer.videoGravity = .resizeAspect
+        view.layer.addSublayer(layer)
+        playerLayer = layer
+
+        NotificationCenter.default.addObserver(self, selector: #selector(loopPlayback), name: .AVPlayerItemDidPlayToEndTime, object: player.currentItem)
+        player.play()
+    }
+
+    private func configureControls() {
+        let confirmButton = UIButton(type: .system)
+        confirmButton.translatesAutoresizingMaskIntoConstraints = false
+        confirmButton.setTitle("完成", for: .normal)
+        confirmButton.titleLabel?.font = UIFont.systemFont(ofSize: 17, weight: .semibold)
+        confirmButton.setTitleColor(.white, for: .normal)
+        confirmButton.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.9)
+        confirmButton.layer.cornerRadius = 20
+        confirmButton.contentEdgeInsets = UIEdgeInsets(top: 10, left: 24, bottom: 10, right: 24)
+        confirmButton.addTarget(self, action: #selector(confirmTapped), for: .touchUpInside)
+
+        let retakeButton = UIButton(type: .system)
+        retakeButton.translatesAutoresizingMaskIntoConstraints = false
+        retakeButton.setTitle("返回", for: .normal)
+        retakeButton.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .medium)
+        retakeButton.setTitleColor(.white, for: .normal)
+        retakeButton.backgroundColor = UIColor.black.withAlphaComponent(0.45)
+        retakeButton.layer.cornerRadius = 18
+        retakeButton.contentEdgeInsets = UIEdgeInsets(top: 8, left: 16, bottom: 8, right: 16)
+        retakeButton.addTarget(self, action: #selector(retakeTapped), for: .touchUpInside)
+
+        view.addSubview(confirmButton)
+        view.addSubview(retakeButton)
+
+            NSLayoutConstraint.activate([
+            confirmButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -24),
+            confirmButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -24),
+
+            retakeButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            retakeButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16)
+        ])
+    }
+
+    @objc private func loopPlayback() {
+        player?.seek(to: .zero)
+        player?.play()
+    }
+
+    @objc private func confirmTapped() {
+        player?.pause()
+        dismiss(animated: false) { [weak self] in
+            self?.onConfirm()
+        }
+    }
+
+    @objc private func retakeTapped() {
+        player?.pause()
+        dismiss(animated: true) { [weak self] in
+            self?.onRetake()
+        }
+    }
+}
+
+private final class VideoCaptureOverlayView: UIView {
+    enum LongPressState {
+        case began
+        case changed(isInside: Bool)
+        case ended
+        case cancelled
+    }
+
+    var onLongPressChanged: ((LongPressState) -> Void)?
+    var onCancelTapped: (() -> Void)?
+    var onSwitchCameraTapped: (() -> Void)?
+
+    private var maxDuration: TimeInterval = 15
+    private var recordingActive = false
+    private var cameraSwitchAvailable = false
+
+    private let captureButton = UIView()
+    private let innerCircle = UIView()
+    private let hintLabel = UILabel()
+    private let timerLabel = UILabel()
+    private let cancelButton = UIButton(type: .system)
+    private let switchCameraButton = UIButton(type: .system)
+    private let progressBackgroundLayer = CAShapeLayer()
+    private let progressLayer = CAShapeLayer()
+    private let cancelBaseColor = UIColor.clear
+    private let cancelHighlightColor = UIColor.clear
+    private let cancelNormalTextColor = UIColor.white
+    private let cancelHighlightTextColor = UIColor.systemRed
+
+    private lazy var longPressRecognizer: UILongPressGestureRecognizer = {
+        let recognizer = UILongPressGestureRecognizer(target: self, action: #selector(handleLongPress(_:)))
+        recognizer.minimumPressDuration = 0.05
+        recognizer.allowableMovement = 15
+        return recognizer
+    }()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        configureView()
+    }
+    
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+    
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        updateProgressPath()
+    }
+
+    func setInitialTimer(maxDuration: TimeInterval) {
+        self.maxDuration = maxDuration
+        timerLabel.text = Self.format(time: maxDuration, rounding: .up)
+        timerLabel.isHidden = true
+        updateProgressLayer(progress: 0, hidden: true)
+        applyCameraButtonState()
+    }
+
+    func updateToIdle() {
+        recordingActive = false
+        hintLabel.text = "长按摄像"
+        updateFingerOutside(false)
+        timerLabel.isHidden = true
+        updateProgressLayer(progress: 0, hidden: true)
+        applyCameraButtonState()
+        UIView.animate(withDuration: 0.2) {
+            self.innerCircle.transform = .identity
+            self.cancelButton.alpha = 1.0
+        }
+    }
+
+    func updateToIdle(after delay: TimeInterval) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            self?.updateToIdle()
+        }
+    }
+
+    func prepareForRecording() {
+        hintLabel.text = "准备录制..."
+        timerLabel.text = Self.format(time: maxDuration, rounding: .up)
+        timerLabel.isHidden = false
+        cancelButton.alpha = 0.0
+    }
+
+    func updateToRecording() {
+        recordingActive = true
+        hintLabel.text = "松开停止"
+        cancelButton.backgroundColor = cancelBaseColor
+        cancelButton.setTitleColor(cancelNormalTextColor, for: .normal)
+        timerLabel.isHidden = false
+        updateProgressLayer(progress: 0, hidden: false)
+        applyCameraButtonState()
+        UIView.animate(withDuration: 0.2) {
+            self.innerCircle.transform = CGAffineTransform(scaleX: 0.82, y: 0.82)
+            self.cancelButton.alpha = 0.0
+        }
+    }
+
+    func updateToFinishing() {
+        hintLabel.text = "保存中..."
+        timerLabel.isHidden = true
+        applyCameraButtonState()
+    }
+
+    func updateToCancelling() {
+        hintLabel.text = "取消中..."
+        cancelButton.backgroundColor = cancelBaseColor
+        cancelButton.setTitleColor(cancelNormalTextColor, for: .normal)
+        timerLabel.isHidden = true
+        applyCameraButtonState()
+        cancelButton.alpha = 1.0
+    }
+
+    func showHint(_ text: String) {
+        hintLabel.text = text
+    }
+
+    func showMaxDurationReached() {
+        hintLabel.text = "已达最长录制时间"
+        timerLabel.isHidden = false
+    }
+
+    func updateRecordingProgress(elapsed: TimeInterval, maxDuration: TimeInterval) {
+        self.maxDuration = maxDuration
+        let remaining = max(maxDuration - elapsed, 0)
+        timerLabel.text = Self.format(time: remaining, rounding: .up)
+        updateProgressLayer(progress: CGFloat(min(max(elapsed / maxDuration, 0), 1)), hidden: !recordingActive)
+        timerLabel.isHidden = !recordingActive
+    }
+
+    func updateFingerOutside(_ isOutside: Bool) {
+        guard recordingActive else {
+            cancelButton.backgroundColor = cancelBaseColor
+            cancelButton.setTitleColor(cancelNormalTextColor, for: .normal)
+            cancelButton.alpha = 1.0
+            return
+        }
+        if isOutside {
+            hintLabel.text = "松手取消"
+            cancelButton.backgroundColor = cancelHighlightColor
+            cancelButton.setTitleColor(cancelHighlightTextColor, for: .normal)
+            if cancelButton.alpha < 1.0 {
+                UIView.animate(withDuration: 0.15) {
+                    self.cancelButton.alpha = 1.0
+                }
+            }
+        } else {
+            hintLabel.text = "松开停止"
+            cancelButton.backgroundColor = cancelBaseColor
+            cancelButton.setTitleColor(cancelNormalTextColor, for: .normal)
+            if cancelButton.alpha > 0.0 {
+                UIView.animate(withDuration: 0.15) {
+                    self.cancelButton.alpha = 0.0
+                }
+            }
+        }
+    }
+
+    func updateCameraPosition(isFront: Bool) {
+        let discovery = AVCaptureDevice.DiscoverySession(
+            deviceTypes: [.builtInWideAngleCamera, .builtInDualCamera, .builtInTripleCamera, .builtInDualWideCamera],
+            mediaType: .video,
+            position: .unspecified
+        )
+        let positions = Set(discovery.devices.map { $0.position })
+        cameraSwitchAvailable = positions.contains(.front) && positions.contains(.back)
+        applyCameraButtonState()
+        switchCameraButton.accessibilityLabel = isFront ? "切换到后置摄像头" : "切换到前置摄像头"
+    }
+
+    private func updateProgressLayer(progress: CGFloat, hidden: Bool) {
+        progressLayer.strokeEnd = min(max(progress, 0), 1)
+        progressLayer.isHidden = hidden
+        progressBackgroundLayer.isHidden = hidden
+    }
+
+    private func configureView() {
+        backgroundColor = .clear
+
+        captureButton.translatesAutoresizingMaskIntoConstraints = false
+        captureButton.backgroundColor = UIColor.white
+        captureButton.layer.cornerRadius = 42
+        captureButton.layer.borderColor = UIColor.black.withAlphaComponent(0.25).cgColor
+        captureButton.layer.borderWidth = 4
+        captureButton.addGestureRecognizer(longPressRecognizer)
+        addSubview(captureButton)
+
+        innerCircle.translatesAutoresizingMaskIntoConstraints = false
+        innerCircle.backgroundColor = UIColor.white
+        innerCircle.layer.cornerRadius = 30
+        innerCircle.layer.masksToBounds = true
+        captureButton.addSubview(innerCircle)
+
+        progressBackgroundLayer.fillColor = UIColor.clear.cgColor
+        progressBackgroundLayer.strokeColor = UIColor.white.withAlphaComponent(0.2).cgColor
+        progressBackgroundLayer.lineWidth = 4
+        progressBackgroundLayer.lineCap = .round
+        progressBackgroundLayer.zPosition = 1
+        captureButton.layer.addSublayer(progressBackgroundLayer)
+
+        progressLayer.fillColor = UIColor.clear.cgColor
+        progressLayer.strokeColor = UIColor.systemBlue.cgColor
+        progressLayer.lineWidth = 4
+        progressLayer.lineCap = .round
+        progressLayer.strokeEnd = 0
+        progressLayer.zPosition = 2
+        captureButton.layer.addSublayer(progressLayer)
+
+        timerLabel.translatesAutoresizingMaskIntoConstraints = false
+        timerLabel.font = UIFont.monospacedDigitSystemFont(ofSize: 22, weight: .medium)
+        timerLabel.textAlignment = .center
+        timerLabel.textColor = .white
+        timerLabel.text = "00:00"
+        timerLabel.isHidden = true
+        addSubview(timerLabel)
+
+        hintLabel.translatesAutoresizingMaskIntoConstraints = false
+        hintLabel.textAlignment = .center
+        hintLabel.textColor = .white
+        hintLabel.font = UIFont.systemFont(ofSize: 16, weight: .medium)
+        addSubview(hintLabel)
+
+        cancelButton.translatesAutoresizingMaskIntoConstraints = false
+        cancelButton.backgroundColor = cancelBaseColor
+        cancelButton.layer.cornerRadius = 18
+        cancelButton.layer.masksToBounds = false
+        cancelButton.layer.borderWidth = 0
+        cancelButton.setTitle("取消", for: .normal)
+        cancelButton.setTitleColor(cancelNormalTextColor, for: .normal)
+        cancelButton.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .medium)
+        cancelButton.contentEdgeInsets = UIEdgeInsets(top: 6, left: 10, bottom: 6, right: 10)
+        cancelButton.accessibilityLabel = "取消"
+        cancelButton.addTarget(self, action: #selector(cancelTapped), for: .touchUpInside)
+        addSubview(cancelButton)
+
+        switchCameraButton.translatesAutoresizingMaskIntoConstraints = false
+        switchCameraButton.backgroundColor = UIColor.black.withAlphaComponent(0.35)
+        switchCameraButton.layer.cornerRadius = 22
+        if let image = UIImage(systemName: "arrow.triangle.2.circlepath.camera") {
+            switchCameraButton.setImage(image, for: .normal)
+            switchCameraButton.tintColor = .white
+        } else {
+            switchCameraButton.setTitle("切换", for: .normal)
+            switchCameraButton.setTitleColor(.white, for: .normal)
+        }
+        switchCameraButton.alpha = 0.0
+        switchCameraButton.addTarget(self, action: #selector(switchCameraTapped), for: .touchUpInside)
+        addSubview(switchCameraButton)
+
+        NSLayoutConstraint.activate([
+            captureButton.centerXAnchor.constraint(equalTo: centerXAnchor),
+            captureButton.bottomAnchor.constraint(equalTo: safeAreaLayoutGuide.bottomAnchor, constant: -28),
+            captureButton.widthAnchor.constraint(equalToConstant: 84),
+            captureButton.heightAnchor.constraint(equalToConstant: 84),
+
+            innerCircle.centerXAnchor.constraint(equalTo: captureButton.centerXAnchor),
+            innerCircle.centerYAnchor.constraint(equalTo: captureButton.centerYAnchor),
+            innerCircle.widthAnchor.constraint(equalToConstant: 60),
+            innerCircle.heightAnchor.constraint(equalToConstant: 60),
+
+            hintLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
+            hintLabel.bottomAnchor.constraint(equalTo: captureButton.topAnchor, constant: -18),
+
+            cancelButton.centerYAnchor.constraint(equalTo: captureButton.centerYAnchor),
+            cancelButton.trailingAnchor.constraint(equalTo: captureButton.leadingAnchor, constant: -40),
+            
+
+            timerLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
+            timerLabel.topAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor, constant: 18),
+
+            switchCameraButton.widthAnchor.constraint(equalToConstant: 44),
+            switchCameraButton.heightAnchor.constraint(equalToConstant: 44),
+            switchCameraButton.trailingAnchor.constraint(equalTo: safeAreaLayoutGuide.trailingAnchor, constant: -16),
+            switchCameraButton.topAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor, constant: 16)
+        ])
+
+        updateToIdle()
+    }
+
+    private func updateProgressPath() {
+        let radius = min(captureButton.bounds.width, captureButton.bounds.height) / 2 - 6
+        let center = CGPoint(x: captureButton.bounds.midX, y: captureButton.bounds.midY)
+        let path = UIBezierPath(arcCenter: center, radius: radius, startAngle: -.pi / 2, endAngle: 1.5 * .pi, clockwise: true)
+        progressBackgroundLayer.path = path.cgPath
+        progressLayer.path = path.cgPath
+    }
+
+    private static func format(time: TimeInterval, rounding rule: FloatingPointRoundingRule) -> String {
+        let totalSeconds = max(Int(time.rounded(rule)), 0)
+        let minutes = totalSeconds / 60
+        let seconds = totalSeconds % 60
+        return String(format: "%02d:%02d", minutes, seconds)
+    }
+
+    private func applyCameraButtonState() {
+        guard cameraSwitchAvailable else {
+            switchCameraButton.isEnabled = false
+            switchCameraButton.alpha = 0.0
+            return
+        }
+        switchCameraButton.isEnabled = !recordingActive
+        switchCameraButton.alpha = recordingActive ? 0.5 : 1.0
+    }
+
+    @objc private func handleLongPress(_ recognizer: UILongPressGestureRecognizer) {
+        let location = recognizer.location(in: captureButton)
+        let isInside = captureButton.bounds.contains(location)
+
+        switch recognizer.state {
+        case .began:
+            onLongPressChanged?(.began)
+        case .changed:
+            onLongPressChanged?(.changed(isInside: isInside))
+        case .ended:
+            onLongPressChanged?(.ended)
+        case .cancelled, .failed:
+            onLongPressChanged?(.cancelled)
+        default:
+            break
+        }
+    }
+    
+    @objc private func cancelTapped() {
+        onCancelTapped?()
+    }
+
+    @objc private func switchCameraTapped() {
+        onSwitchCameraTapped?()
+    }
+}
+
 private func copyMediaFileToTemp(
     from sourceURL: URL,
     prefix: String,
