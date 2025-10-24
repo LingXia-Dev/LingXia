@@ -1,5 +1,5 @@
 use super::app::Platform;
-use super::ffi::preview_media;
+use super::ffi::{choose_media_ios, preview_media};
 use crate::error::PlatformError;
 use crate::traits::{
     ChooseMediaRequest, MediaInteraction, MediaKind, PreviewMediaRequest, SaveMediaRequest,
@@ -49,10 +49,19 @@ impl MediaInteraction for Platform {
         }
     }
 
-    fn choose_media(&self, _request: ChooseMediaRequest) -> Result<(), PlatformError> {
-        Err(PlatformError::Platform(
-            "choose_media is not implemented on Apple platform".to_string(),
-        ))
+    fn choose_media(&self, request: ChooseMediaRequest) -> Result<(), PlatformError> {
+        #[cfg(target_os = "ios")]
+        {
+            ios::choose_media(request)
+        }
+
+        #[cfg(not(target_os = "ios"))]
+        {
+            let _ = request;
+            Err(PlatformError::Platform(
+                "choose_media is only supported on iOS".to_string(),
+            ))
+        }
     }
 
     fn scan_code(&self, _request: ScanCodeRequest) -> Result<(), PlatformError> {
@@ -261,5 +270,74 @@ mod ios {
 
     fn ns_error_to_string(error: &NSError) -> String {
         error.localizedDescription().to_string()
+    }
+
+    /// Initiate media selection process on iOS
+    pub(super) fn choose_media(request: ChooseMediaRequest) -> Result<(), PlatformError> {
+        let max_count = request.max_count;
+        let mode = match request.mode {
+            crate::traits::ChooseMediaMode::Images => "image",
+            crate::traits::ChooseMediaMode::Videos => "video",
+            crate::traits::ChooseMediaMode::Mix => "mix",
+        };
+        let source_types: Vec<String> = request
+            .source_types
+            .iter()
+            .map(|s| match s {
+                crate::traits::MediaSource::Album => "album".to_string(),
+                crate::traits::MediaSource::Camera => "camera".to_string(),
+            })
+            .collect();
+        let camera_facing = request.camera_facing.map(|c| match c {
+            crate::traits::CameraFacing::Front => "front",
+            crate::traits::CameraFacing::Back => "back",
+        });
+        let max_duration = request.max_duration_seconds;
+        let callback_id = request.callback_id;
+
+        let source_types_json = serde_json::to_string(&source_types).map_err(|e| {
+            PlatformError::Platform(format!("Failed to serialize source types: {}", e))
+        })?;
+
+        let camera_facing_str = camera_facing.unwrap_or_else(|| "back");
+        let max_duration_str = max_duration
+            .map(|d| d.to_string())
+            .unwrap_or_else(|| "0".to_string());
+        run_on_main(|_| {
+            choose_media_on_main(
+                max_count,
+                mode,
+                &source_types_json,
+                &camera_facing_str,
+                &max_duration_str,
+                callback_id,
+            )
+        })
+    }
+
+    fn choose_media_on_main(
+        max_count: u32,
+        mode: &str,
+        source_types_json: &str,
+        camera_facing: &str,
+        max_duration: &str,
+        callback_id: u64,
+    ) -> Result<(), PlatformError> {
+        let success = choose_media_ios(
+            max_count,
+            mode,
+            source_types_json,
+            camera_facing,
+            max_duration,
+            callback_id,
+        );
+
+        if success {
+            Ok(())
+        } else {
+            Err(PlatformError::Platform(
+                "Failed to start media selection on iOS".to_string(),
+            ))
+        }
     }
 }

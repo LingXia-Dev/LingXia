@@ -1,11 +1,15 @@
 import Foundation
 import os.log
 import CLingXiaSwiftAPI
+import CLingXiaRustAPI
 
 #if os(iOS)
 import UIKit
 import AVKit
 import AVFoundation
+import Photos
+import PhotosUI
+import UniformTypeIdentifiers
 #endif
 
 @MainActor
@@ -576,6 +580,528 @@ private final class ZoomableImageView: UIView, UIScrollViewDelegate {
 
     private func notifyScaleState() {
         onZoomStateChanged?(scrollView.zoomScale > 1.05)
+    }
+}
+
+// MARK: - Choose Media
+
+extension LxAppMedia {
+#if os(iOS)
+    @MainActor
+    private static var albumPickerDelegate: AlbumDelegate?
+    @MainActor
+    private static var cameraPickerDelegate: CameraDelegate?
+#endif
+
+    nonisolated static func chooseMedia(
+        max_count: UInt32,
+        mode: RustStr,
+        source_types_json: RustStr,
+        camera_facing: RustStr,
+        max_duration: RustStr,
+        callback_id: UInt64
+    ) -> Bool {
+        let modeStr = mode.toString()
+        let sourceTypesJson = source_types_json.toString()
+        let cameraFacingStr = camera_facing.toString()
+        let maxDurationStr = max_duration.toString()
+
+
+        #if os(iOS)
+        DispatchQueue.main.async {
+            guard let presenter = topViewController() else {
+                let _ = onCallback(callback_id, false, "Unable to find top view controller")
+                return
+            }
+
+            // Parse source types
+            guard let sourceTypesData = sourceTypesJson.data(using: .utf8),
+                  let sourceTypes = try? JSONDecoder().decode([String].self, from: sourceTypesData) else {
+                let _ = onCallback(callback_id, false, "Failed to parse source types")
+                return
+            }
+
+            let allowAlbum = sourceTypes.contains("album")
+            let allowCamera = sourceTypes.contains("camera")
+
+            if allowCamera && !allowAlbum {
+                openCamera(
+                    presenter: presenter,
+                    mode: modeStr,
+                    cameraFacing: cameraFacingStr,
+                    maxDuration: maxDurationStr,
+                    callbackId: callback_id
+                )
+            } else if allowAlbum {
+                openAlbum(presenter: presenter, mode: modeStr, maxCount: max_count, callbackId: callback_id)
+            } else {
+                let _ = onCallback(callback_id, false, "No supported source types")
+            }
+        }
+        return true
+        #else
+        return false
+        #endif
+    }
+
+    private static func openCamera(
+        presenter: UIViewController,
+        mode: String,
+        cameraFacing: String,
+        maxDuration: String,
+        callbackId: UInt64
+    ) {
+
+        guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
+            let _ = onCallback(callbackId, false, "Camera is not available on this device")
+            return
+        }
+
+        checkCameraPermission { granted in
+            guard granted else {
+                let _ = onCallback(callbackId, false, "Camera access is required to capture media. Please enable access in Settings > Privacy & Security > Camera.")
+                return
+            }
+
+            let modeLowercased = mode.lowercased()
+            let captureMode: CameraDelegate.CaptureMode = modeLowercased == "video" ? .video : .photo
+            let picker = UIImagePickerController()
+            picker.sourceType = .camera
+            picker.allowsEditing = false
+            picker.modalPresentationStyle = .fullScreen
+
+            if #available(iOS 14.0, *) {
+                switch captureMode {
+                case .video:
+                    picker.mediaTypes = [UTType.movie.identifier]
+                case .photo:
+                    picker.mediaTypes = [UTType.image.identifier]
+                }
+            } else {
+                switch captureMode {
+                case .video:
+                    picker.mediaTypes = ["public.movie"]
+                case .photo:
+                    picker.mediaTypes = ["public.image"]
+                }
+            }
+
+            switch captureMode {
+            case .video:
+                picker.cameraCaptureMode = .video
+                if let durationValue = Double(maxDuration), durationValue > 0 {
+                    picker.videoMaximumDuration = TimeInterval(durationValue)
+                }
+                picker.videoQuality = .typeHigh
+            case .photo:
+                picker.cameraCaptureMode = .photo
+            }
+
+            let desiredFacing = cameraFacing.lowercased() == "front"
+                ? UIImagePickerController.CameraDevice.front
+                : UIImagePickerController.CameraDevice.rear
+
+            if UIImagePickerController.isCameraDeviceAvailable(desiredFacing) {
+                picker.cameraDevice = desiredFacing
+            } else if UIImagePickerController.isCameraDeviceAvailable(.rear) {
+                picker.cameraDevice = .rear
+            }
+
+            let delegate = CameraDelegate(callbackId: callbackId, captureMode: captureMode) {
+                LxAppMedia.cameraPickerDelegate = nil
+            }
+            LxAppMedia.cameraPickerDelegate = delegate
+            picker.delegate = delegate
+
+            presenter.present(picker, animated: true)
+        }
+    }
+
+    private static func checkCameraPermission(completion: @escaping (Bool) -> Void) {
+        let status = AVCaptureDevice.authorizationStatus(for: .video)
+        switch status {
+        case .authorized:
+            completion(true)
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .video) { granted in
+                DispatchQueue.main.async {
+                    completion(granted)
+                }
+            }
+        case .denied, .restricted:
+            completion(false)
+        @unknown default:
+            completion(false)
+        }
+    }
+
+    private static func openAlbum(presenter: UIViewController, mode: String, maxCount: UInt32, callbackId: UInt64) {
+
+        // Check if PHPickerViewController is available (iOS 14+)
+        if #available(iOS 14.0, *) {
+            // PHPickerViewController doesn't require explicit permission, but we should check photo library access
+            checkPhotoLibraryPermission { hasPermission in
+                if hasPermission {
+                    presentPhotoPicker(presenter: presenter, mode: mode, maxCount: maxCount, callbackId: callbackId)
+                } else {
+                    // Send error callback for permission denied
+                    let _ = onCallback(callbackId, false, "Photo library access is required to select photos. Please enable access in Settings > Privacy & Security > Photos.")
+                }
+            }
+        } else {
+            // For iOS 13 and below, we would need to use UIImagePickerController with permission checks
+            let _ = onCallback(callbackId, false, "Photo picker requires iOS 14.0 or later")
+        }
+    }
+
+    private static func checkPhotoLibraryPermission(completion: @escaping (Bool) -> Void) {
+        let deliver: (Bool) -> Void = { granted in
+            if Thread.isMainThread {
+                completion(granted)
+            } else {
+                DispatchQueue.main.async {
+                    completion(granted)
+                }
+            }
+        }
+
+        if #available(iOS 14.0, *) {
+            let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+
+            switch status {
+            case .authorized, .limited:
+                deliver(true)
+            case .notDetermined:
+                PHPhotoLibrary.requestAuthorization(for: .readWrite) { newStatus in
+                    let granted = newStatus == .authorized || newStatus == .limited
+                    deliver(granted)
+                }
+            case .denied:
+                deliver(false)
+            case .restricted:
+                deliver(false)
+            @unknown default:
+                deliver(false)
+            }
+        } else {
+            deliver(false)
+        }
+    }
+
+    private static func presentPhotoPicker(presenter: UIViewController, mode: String, maxCount: UInt32, callbackId: UInt64) {
+
+        var configuration = PHPickerConfiguration()
+        configuration.selectionLimit = Int(maxCount)
+
+        // Set media type based on mode
+        switch mode.lowercased() {
+        case "video":
+            configuration.filter = .videos
+        case "image":
+            configuration.filter = .images
+        default: // mix
+            configuration.filter = .any(of: [.images, .videos])
+        }
+
+        let picker = PHPickerViewController(configuration: configuration)
+        let delegate = AlbumDelegate(callbackId: callbackId) {
+            LxAppMedia.albumPickerDelegate = nil
+        }
+        albumPickerDelegate = delegate
+        picker.delegate = delegate
+        presenter.present(picker, animated: true)
+    }
+}
+
+// MARK: - Camera Delegate
+private final class CameraDelegate: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+    enum CaptureMode {
+        case photo
+        case video
+    }
+
+    private let callbackId: UInt64
+    private let captureMode: CaptureMode
+    private let cleanup: () -> Void
+
+    init(callbackId: UInt64, captureMode: CaptureMode, cleanup: @escaping () -> Void) {
+        self.callbackId = callbackId
+        self.captureMode = captureMode
+        self.cleanup = cleanup
+        super.init()
+    }
+
+    func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+        picker.dismiss(animated: true) {
+            let cancelPayload = "{\"cancel\":true}"
+            let _ = onCallback(self.callbackId, true, cancelPayload)
+            self.cleanup()
+        }
+    }
+
+    func imagePickerController(
+        _ picker: UIImagePickerController,
+        didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]
+    ) {
+
+        let mediaType = (info[.mediaType] as? String) ?? ""
+        let movieIdentifier: String
+        if #available(iOS 14.0, *) {
+            movieIdentifier = UTType.movie.identifier
+        } else {
+            movieIdentifier = "public.movie"
+        }
+
+        let isVideoCapture = captureMode == .video
+            || mediaType == movieIdentifier
+            || mediaType == "public.movie"
+            || mediaType.contains("movie")
+
+        var jsonItem: [String: Any]?
+
+        if isVideoCapture {
+            if let mediaURL = info[.mediaURL] as? URL {
+                if let tempURL = copyMediaFileToTemp(
+                    from: mediaURL,
+                    prefix: "camera_video",
+                    fallbackExtension: "mov",
+                    requiresSecurityScope: false
+                ) {
+                    jsonItem = [
+                        "uri": tempURL.path,
+                        "fileType": "video",
+                        "isOriginal": true
+                    ]
+                }
+            }
+        } else {
+            if let imageURL = info[.imageURL] as? URL {
+                let ext = imageURL.pathExtension.isEmpty ? "jpg" : imageURL.pathExtension
+                if let tempURL = copyMediaFileToTemp(
+                    from: imageURL,
+                    prefix: "camera_image",
+                    fallbackExtension: ext,
+                    requiresSecurityScope: false
+                ) {
+                    jsonItem = [
+                        "uri": tempURL.path,
+                        "fileType": "image",
+                        "isOriginal": true
+                    ]
+                }
+            } else if let image = info[.originalImage] as? UIImage {
+                if let tempURL = saveCapturedImageToTemp(image) {
+                    jsonItem = [
+                        "uri": tempURL.path,
+                        "fileType": "image",
+                        "isOriginal": true
+                    ]
+                }
+            }
+        }
+
+        picker.dismiss(animated: true) {
+            if let item = jsonItem {
+                self.sendSuccess(with: item)
+            } else {
+                let _ = onCallback(self.callbackId, false, "Failed to capture media")
+                self.cleanup()
+            }
+        }
+    }
+
+    private func sendSuccess(with item: [String: Any]) {
+        do {
+            let data = try JSONSerialization.data(withJSONObject: [item], options: [])
+            let jsonString = String(data: data, encoding: .utf8) ?? "[]"
+            let _ = onCallback(callbackId, true, jsonString)
+        } catch {
+            let _ = onCallback(callbackId, false, "Failed to serialize camera capture result")
+        }
+        cleanup()
+    }
+
+    private func saveCapturedImageToTemp(_ image: UIImage) -> URL? {
+        guard let data = image.jpegData(compressionQuality: 0.95) else {
+            return nil
+        }
+        let tempDir = FileManager.default.temporaryDirectory
+        let fileURL = tempDir.appendingPathComponent("camera_image_\(UUID().uuidString).jpg")
+        do {
+            try data.write(to: fileURL)
+            return fileURL
+        } catch {
+            return nil
+        }
+    }
+}
+
+// MARK: - Album Delegate
+private class AlbumDelegate: NSObject, PHPickerViewControllerDelegate {
+    private let callbackId: UInt64
+    private let cleanup: () -> Void
+
+    init(callbackId: UInt64, cleanup: @escaping () -> Void) {
+        self.callbackId = callbackId
+        self.cleanup = cleanup
+        super.init()
+    }
+
+    func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+
+        picker.dismiss(animated: true)
+
+        guard !results.isEmpty else {
+            sendCancel()
+            cleanup()
+            return
+        }
+
+        var jsonArray: [[String: Any]] = []
+        let group = DispatchGroup()
+
+        for result in results {
+            group.enter()
+            handleResult(result) { item in
+                if let item {
+                    jsonArray.append(item)
+                }
+                group.leave()
+            }
+        }
+
+        group.notify(queue: .main) {
+            self.sendCallback(jsonArray: jsonArray)
+            self.cleanup()
+        }
+    }
+
+    private func handleResult(_ result: PHPickerResult, completion: @escaping ([String: Any]?) -> Void) {
+        guard #available(iOS 14.0, *) else {
+            DispatchQueue.main.async {
+                completion(nil)
+            }
+            return
+        }
+
+        let provider = result.itemProvider
+
+        if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
+            provider.loadFileRepresentation(forTypeIdentifier: UTType.image.identifier) { url, error in
+                if error != nil {
+                    DispatchQueue.main.async { completion(nil) }
+                    return
+                }
+
+                guard let url else {
+                    DispatchQueue.main.async { completion(nil) }
+                    return
+                }
+
+                let tempURL = copyMediaFileToTemp(
+                    from: url,
+                    prefix: "album_image",
+                    fallbackExtension: "jpg",
+                    requiresSecurityScope: true
+                )
+                DispatchQueue.main.async {
+                    if let tempURL {
+                        let jsonItem: [String: Any] = [
+                            "uri": tempURL.path,
+                            "fileType": "image",
+                            "isOriginal": true
+                        ]
+                        completion(jsonItem)
+                    } else {
+                        completion(nil)
+                    }
+                }
+            }
+        } else if provider.hasItemConformingToTypeIdentifier(UTType.movie.identifier) {
+            provider.loadFileRepresentation(forTypeIdentifier: UTType.movie.identifier) { url, error in
+                if error != nil {
+                    DispatchQueue.main.async { completion(nil) }
+                    return
+                }
+
+                guard let url else {
+                    DispatchQueue.main.async { completion(nil) }
+                    return
+                }
+
+                let tempURL = copyMediaFileToTemp(
+                    from: url,
+                    prefix: "album_video",
+                    fallbackExtension: "mov",
+                    requiresSecurityScope: true
+                )
+                DispatchQueue.main.async {
+                    if let tempURL {
+                        let jsonItem: [String: Any] = [
+                            "uri": tempURL.path,
+                            "fileType": "video",
+                            "isOriginal": true
+                        ]
+                        completion(jsonItem)
+                    } else {
+                        completion(nil)
+                    }
+                }
+            }
+        } else {
+            DispatchQueue.main.async {
+                completion(nil)
+            }
+        }
+    }
+
+    private func sendCallback(jsonArray: [[String: Any]]) {
+        do {
+            let jsonData = try JSONSerialization.data(withJSONObject: jsonArray, options: [])
+            let jsonString = String(data: jsonData, encoding: .utf8) ?? "[]"
+
+            let _ = onCallback(callbackId, true, jsonString)
+        } catch {
+            let _ = onCallback(callbackId, false, "Failed to serialize album data")
+        }
+    }
+
+    private func sendCancel() {
+        let _ = onCallback(callbackId, true, "{\"cancel\":true}")
+    }
+}
+#endif
+
+#if os(iOS)
+private func copyMediaFileToTemp(
+    from sourceURL: URL,
+    prefix: String,
+    fallbackExtension: String,
+    requiresSecurityScope: Bool
+) -> URL? {
+    let fileManager = FileManager.default
+    let tempDir = fileManager.temporaryDirectory
+
+    let sanitizedFallback = fallbackExtension.isEmpty ? "tmp" : fallbackExtension
+    let ext = sourceURL.pathExtension.isEmpty ? sanitizedFallback : sourceURL.pathExtension
+    let filename = "\(prefix)_\(UUID().uuidString)" + (ext.isEmpty ? "" : ".\(ext)")
+    let destinationURL = tempDir.appendingPathComponent(filename)
+
+    let accessed = requiresSecurityScope ? sourceURL.startAccessingSecurityScopedResource() : false
+    defer {
+        if requiresSecurityScope && accessed {
+            sourceURL.stopAccessingSecurityScopedResource()
+        }
+    }
+
+    do {
+        if fileManager.fileExists(atPath: destinationURL.path) {
+            try fileManager.removeItem(at: destinationURL)
+        }
+        try fileManager.copyItem(at: sourceURL, to: destinationURL)
+        return destinationURL
+    } catch {
+        return nil
     }
 }
 #endif

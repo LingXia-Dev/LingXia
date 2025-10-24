@@ -35,15 +35,26 @@ impl AppRuntime for Platform {
         PathBuf::from(&self.cache_dir)
     }
 
+    /// Copy media URI to a local file path
     fn copy_media_uri_to_path(
         &self,
-        _uri: &str,
-        _dest_path: &std::path::Path,
+        uri: &str,
+        dest_path: &std::path::Path,
         _kind: crate::traits::MediaKind,
     ) -> Result<(), PlatformError> {
-        Err(PlatformError::Platform(
-            "copy_media_uri_to_path is not supported on Apple".to_string(),
-        ))
+        #[cfg(target_os = "ios")]
+        {
+            ios::copy_media_uri_to_path(uri, dest_path)
+        }
+
+        #[cfg(not(target_os = "ios"))]
+        {
+            let _ = uri;
+            let _ = dest_path;
+            Err(PlatformError::Platform(
+                "copy_media_uri_to_path is only supported on iOS".to_string(),
+            ))
+        }
     }
 
     fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, PlatformError> {
@@ -195,5 +206,44 @@ impl Platform {
         }
 
         all_files
+    }
+}
+
+#[cfg(target_os = "ios")]
+mod ios {
+    use super::*;
+    use std::fs;
+
+    /// Copy media file from temporary location to application cache directory
+    pub(super) fn copy_media_uri_to_path(
+        uri: &str,
+        dest_path: &std::path::Path,
+    ) -> Result<(), PlatformError> {
+        let source_path = std::path::Path::new(uri);
+
+        if !source_path.exists() {
+            return Err(PlatformError::Platform(format!(
+                "Source file does not exist: {}",
+                uri
+            )));
+        }
+
+        if let Some(parent) = dest_path.parent() {
+            if let Err(e) = fs::create_dir_all(parent) {
+                return Err(PlatformError::Platform(format!(
+                    "Failed to create destination directory: {}",
+                    e
+                )));
+            }
+        }
+        match fs::copy(source_path, dest_path) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(PlatformError::Platform(format!(
+                "Failed to copy file from {} to {}: {}",
+                uri,
+                dest_path.display(),
+                e
+            ))),
+        }
     }
 }
