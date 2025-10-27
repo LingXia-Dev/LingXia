@@ -662,13 +662,13 @@ extension LxAppMedia {
         callbackId: UInt64
     ) {
         let alert = UIAlertController(
-            title: NSLocalizedString("Select Media Source", comment: "Media source selection title"),
+            title: NSLocalizedString("选择媒体来源", comment: "Media source selection title"),
             message: nil,
             preferredStyle: .actionSheet
         )
 
         let albumAction = UIAlertAction(
-            title: NSLocalizedString("Photo Library", comment: "Media source option - album"),
+            title: NSLocalizedString("相册", comment: "Media source option - album"),
             style: .default
         ) { _ in
             openAlbum(
@@ -681,7 +681,7 @@ extension LxAppMedia {
         alert.addAction(albumAction)
 
         let cameraAction = UIAlertAction(
-            title: NSLocalizedString("Camera", comment: "Media source option - camera"),
+            title: NSLocalizedString("相机", comment: "Media source option - camera"),
             style: .default
         ) { _ in
             openCamera(
@@ -695,7 +695,7 @@ extension LxAppMedia {
         alert.addAction(cameraAction)
 
         let cancelAction = UIAlertAction(
-            title: NSLocalizedString("Cancel", comment: "Cancel action"),
+            title: NSLocalizedString("取消", comment: "Cancel action"),
             style: .cancel
         ) { _ in
             let _ = onCallback(callbackId, true, "{\"cancel\":true}")
