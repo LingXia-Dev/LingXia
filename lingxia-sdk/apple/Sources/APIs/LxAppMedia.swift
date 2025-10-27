@@ -1711,12 +1711,14 @@ private final class VideoReviewViewController: UIViewController {
 
         let retakeButton = UIButton(type: .system)
         retakeButton.translatesAutoresizingMaskIntoConstraints = false
-        retakeButton.setTitle("返回", for: .normal)
-        retakeButton.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .medium)
-        retakeButton.setTitleColor(.white, for: .normal)
+        retakeButton.tintColor = .white
         retakeButton.backgroundColor = UIColor.black.withAlphaComponent(0.45)
         retakeButton.layer.cornerRadius = 18
-        retakeButton.contentEdgeInsets = UIEdgeInsets(top: 8, left: 16, bottom: 8, right: 16)
+        retakeButton.contentEdgeInsets = UIEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
+        if let image = UIImage(systemName: "arrow.uturn.backward") {
+            let symbolConfig = UIImage.SymbolConfiguration(pointSize: 18, weight: .medium)
+            retakeButton.setImage(image.applyingSymbolConfiguration(symbolConfig), for: .normal)
+        }
         retakeButton.addTarget(self, action: #selector(retakeTapped), for: .touchUpInside)
 
         view.addSubview(confirmButton)
@@ -1782,7 +1784,7 @@ private final class VideoCaptureOverlayView: UIView {
 
     private lazy var longPressRecognizer: UILongPressGestureRecognizer = {
         let recognizer = UILongPressGestureRecognizer(target: self, action: #selector(handleLongPress(_:)))
-        recognizer.minimumPressDuration = 0.05
+        recognizer.minimumPressDuration = 0.3
         recognizer.allowableMovement = 15
         return recognizer
     }()
