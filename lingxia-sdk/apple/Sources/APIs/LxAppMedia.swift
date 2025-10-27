@@ -624,7 +624,16 @@ extension LxAppMedia {
             let allowAlbum = sourceTypes.contains("album")
             let allowCamera = sourceTypes.contains("camera")
 
-            if allowCamera && !allowAlbum {
+            if allowAlbum && allowCamera {
+                presentSourceSelection(
+                    presenter: presenter,
+                    mode: modeStr,
+                    maxCount: max_count,
+                    cameraFacing: cameraFacingStr,
+                    maxDuration: maxDurationStr,
+                    callbackId: callback_id
+                )
+            } else if allowCamera {
                 openCamera(
                     presenter: presenter,
                     mode: modeStr,
@@ -642,6 +651,63 @@ extension LxAppMedia {
         #else
         return false
         #endif
+    }
+
+    private static func presentSourceSelection(
+        presenter: UIViewController,
+        mode: String,
+        maxCount: UInt32,
+        cameraFacing: String,
+        maxDuration: String,
+        callbackId: UInt64
+    ) {
+        let alert = UIAlertController(
+            title: NSLocalizedString("Select Media Source", comment: "Media source selection title"),
+            message: nil,
+            preferredStyle: .actionSheet
+        )
+
+        let albumAction = UIAlertAction(
+            title: NSLocalizedString("Photo Library", comment: "Media source option - album"),
+            style: .default
+        ) { _ in
+            openAlbum(
+                presenter: presenter,
+                mode: mode,
+                maxCount: maxCount,
+                callbackId: callbackId
+            )
+        }
+        alert.addAction(albumAction)
+
+        let cameraAction = UIAlertAction(
+            title: NSLocalizedString("Camera", comment: "Media source option - camera"),
+            style: .default
+        ) { _ in
+            openCamera(
+                presenter: presenter,
+                mode: mode,
+                cameraFacing: cameraFacing,
+                maxDuration: maxDuration,
+                callbackId: callbackId
+            )
+        }
+        alert.addAction(cameraAction)
+
+        let cancelAction = UIAlertAction(
+            title: NSLocalizedString("Cancel", comment: "Cancel action"),
+            style: .cancel
+        ) { _ in
+            let _ = onCallback(callbackId, true, "{\"cancel\":true}")
+        }
+        alert.addAction(cancelAction)
+
+        if let popover = alert.popoverPresentationController {
+            popover.sourceView = presenter.view
+            popover.sourceRect = presenter.view.bounds
+        }
+
+        presenter.present(alert, animated: true)
     }
 
     private static func openCamera(

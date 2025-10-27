@@ -213,21 +213,20 @@ impl Platform {
 mod ios {
     use super::*;
     use std::fs;
+    use percent_encoding::percent_decode_str;
 
     /// Copy media file from temporary location to application cache directory
     pub(super) fn copy_media_uri_to_path(
         uri: &str,
         dest_path: &std::path::Path,
     ) -> Result<(), PlatformError> {
-        let mut owned_uri: Option<String> = None;
-        let resolved_uri = if let Some(stripped) = uri.strip_prefix("file://") {
-            owned_uri = Some(stripped.to_string());
-            owned_uri.as_deref().unwrap()
-        } else {
-            uri
-        };
-
-        let source_path = std::path::Path::new(resolved_uri);
+        let trimmed = uri.strip_prefix("file://").unwrap_or(uri);
+        let decoded = percent_decode_str(trimmed)
+            .decode_utf8()
+            .map_err(|e| {
+                PlatformError::Platform(format!("Failed to decode file URI '{}': {}", uri, e))
+            })?;
+        let source_path = std::path::Path::new(decoded.as_ref());
 
         if !source_path.exists() {
             return Err(PlatformError::Platform(format!(
