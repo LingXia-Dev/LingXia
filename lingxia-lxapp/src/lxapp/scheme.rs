@@ -1,20 +1,29 @@
 use crate::info;
-use http::{Request, Response, StatusCode, Uri};
+use http::{Method, Request, Response, StatusCode, Uri};
 use lingxia_webview::{SystemPipeReader, WebResourceResponse};
 use rong::net;
 use std::fs;
 use std::path::PathBuf;
+use std::str::FromStr;
+use urlencoding::decode;
 
 use crate::error;
 use crate::error::LxAppError;
 use crate::lxapp::LxApp;
 
 impl LxApp {
+    const PROXY_SEGMENT: &'static str = "_LINGXIA_";
+
     /// Handler for lx:// scheme requests to access static app assets (images, CSS, JS, etc.)
     /// HTML files are handled separately through generate_page_html and load_data
     pub(crate) fn lingxia_handler(&self, req: Request<Vec<u8>>) -> Option<WebResourceResponse> {
-        let uri = req.uri();
-        let asset_path = match self.resolve_lx_uri(uri) {
+        let uri = req.uri().clone();
+
+        if let Some(target_uri) = Self::extract_proxy_target(&uri) {
+            return self.handle_lingxia_proxy(target_uri);
+        }
+
+        let asset_path = match self.resolve_lx_uri(&uri) {
             Ok(path) => path,
             Err(e) => {
                 error!("Asset not found: {} - {}", uri.path(), e).with_appid(self.appid.clone());
@@ -64,6 +73,99 @@ impl LxApp {
 
         let (parts, _) = response.into_parts();
         Some((parts, asset_path).into())
+    }
+
+    fn handle_lingxia_proxy(&self, target_uri: Uri) -> Option<WebResourceResponse> {
+        let target_str = target_uri.to_string();
+
+        //info!("lingxia_proxy: forwarding request to {}", target_str).with_appid(self.appid.clone());
+
+        if target_uri.scheme_str() != Some("https") {
+            return Some(self.create_error_response(
+                StatusCode::BAD_REQUEST,
+                "Unsupported Scheme",
+                "Only https URLs are allowed in proxy requests.",
+            ));
+        }
+
+        let host = match target_uri.host() {
+            Some(host) => host,
+            None => {
+                return Some(self.create_error_response(
+                    StatusCode::BAD_REQUEST,
+                    "Invalid URL",
+                    "Proxy target is missing host component.",
+                ));
+            }
+        };
+
+        if !self
+            .state
+            .lock()
+            .unwrap()
+            .network_security
+            .is_domain_allowed(host)
+        {
+            return Some(self.create_error_response(
+                StatusCode::FORBIDDEN,
+                "Domain Access Denied",
+                &format!(
+                    "Access to domain '{}' is not allowed by the security policy.",
+                    host
+                ),
+            ));
+        }
+
+        let proxy_request = match Request::builder()
+            .method(Method::GET)
+            .uri(target_uri)
+            .body(Vec::new())
+        {
+            Ok(req) => req,
+            Err(e) => {
+                error!(
+                    "lingxia_proxy: failed to build proxy request {}: {}",
+                    target_str, e
+                )
+                .with_appid(self.appid.clone());
+
+                return Some(self.create_error_response(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Proxy Request Error",
+                    &format!("Failed to prepare proxy request: {}", e),
+                ));
+            }
+        };
+
+        self.https_handler(proxy_request)
+    }
+
+    fn extract_proxy_target(uri: &Uri) -> Option<Uri> {
+        if !uri.path().contains(Self::PROXY_SEGMENT) {
+            return None;
+        }
+
+        let query = uri.query()?;
+        for pair in query.split('&') {
+            let mut parts = pair.splitn(2, '=');
+            let key = parts.next()?;
+            let value = parts.next()?;
+
+            if key != "url" {
+                continue;
+            }
+
+            let decoded = decode(value).ok()?;
+            let decoded_str = decoded.trim();
+
+            if !decoded_str.starts_with("https://") {
+                return None;
+            }
+
+            return Uri::from_str(decoded_str).ok();
+        }
+
+        None
     }
 
     fn resolve_lx_uri(&self, uri: &Uri) -> Result<PathBuf, LxAppError> {
@@ -127,25 +229,12 @@ impl LxApp {
                 ));
             }
 
-            // Treat all GET as downloadable resources
-            info!(
-                "https_handler: allowed GET, host={}, path={}",
-                host,
-                uri.path()
-            )
-            .with_appid(self.appid.clone());
-
             let url_str = uri.to_string();
             // Decide extension from URL or query
             let ext_opt = url_ext_from_uri(uri);
             let ext = ext_opt.as_deref().unwrap_or("bin");
             match self.cache().resolve_path_with_ext(&url_str, ext) {
                 crate::cache::ResolveResult::Exists(file_path) => {
-                    info!(
-                        "https_handler: cache hit, serving file {}",
-                        file_path.display()
-                    )
-                    .with_appid(self.appid.clone());
                     // Cached: serve file path
                     let mime_type = ext_opt
                         .as_deref()
@@ -169,11 +258,11 @@ impl LxApp {
                     {
                         match create_pipe_sink() {
                             Ok((reader, sink)) => {
-                                info!(
-                                    "https_handler: cache miss, start pipe download -> {}",
-                                    dest_path.display()
-                                )
-                                .with_appid(self.appid.clone());
+                                // info!(
+                                //     "https_handler: cache miss, start pipe download -> {}",
+                                //     dest_path.display()
+                                // )
+                                // .with_appid(self.appid.clone());
 
                                 let mime_type = ext_opt
                                     .as_deref()
