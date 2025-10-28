@@ -1,5 +1,5 @@
 use crate::webview::{WebTag, get_webview_delegate, register_webview};
-use crate::{LogLevel, WebResourceResponse, WebViewError};
+use crate::{LogLevel, WebResourceBody, WebResourceResponse, WebViewError};
 use http;
 use http::header::{HeaderMap, HeaderName, HeaderValue};
 use http::{Method, Request};
@@ -164,7 +164,7 @@ fn create_java_response<'a>(env: &mut JNIEnv<'a>, response: WebResourceResponse)
             Err(_) => return JObject::null(),
         };
 
-    let (parts, file_path) = response.into_parts();
+    let (parts, body) = response.into_parts();
 
     // Extract response components
     let status = parts.status.as_u16() as i32;
@@ -223,22 +223,36 @@ fn create_java_response<'a>(env: &mut JNIEnv<'a>, response: WebResourceResponse)
         Ok(s) => s,
         Err(_) => return JObject::null(),
     };
-    let file_path_str = match env.new_string(file_path.to_string_lossy()) {
-        Ok(s) => s,
-        Err(_) => return JObject::null(),
+    // Prepare file path and optional pipe fd
+    let (file_path_str, pipe_fd_jint, content_length): (JString, jint, i64) = match body {
+        WebResourceBody::Path(path) => {
+            let file_path_str = match env.new_string(path.to_string_lossy()) {
+                Ok(s) => s,
+                Err(_) => return JObject::null(),
+            };
+            let content_length = headers
+                .get(http::header::CONTENT_LENGTH)
+                .and_then(|h| h.to_str().ok())
+                .and_then(|v| v.parse::<i64>().ok())
+                .or_else(|| fs::metadata(&path).ok().map(|meta| meta.len() as i64))
+                .unwrap_or(-1);
+            (file_path_str, 0, content_length)
+        }
+        WebResourceBody::Pipe(reader) => {
+            let fd = reader.into_raw_fd();
+            let empty_path = match env.new_string("") {
+                Ok(s) => s,
+                Err(_) => return JObject::null(),
+            };
+            // Content length unknown for pipe
+            (empty_path, fd as jint, -1i64)
+        }
     };
-
-    let content_length = headers
-        .get(http::header::CONTENT_LENGTH)
-        .and_then(|h| h.to_str().ok())
-        .and_then(|v| v.parse::<i64>().ok())
-        .or_else(|| fs::metadata(&file_path).ok().map(|meta| meta.len() as i64))
-        .unwrap_or(-1);
 
     // Create the WebResourceResponseData object
     match env.new_object(
         response_class,
-        "(Ljava/lang/String;Ljava/lang/String;ILjava/lang/String;Ljava/util/Map;Ljava/lang/String;J)V",
+        "(Ljava/lang/String;Ljava/lang/String;ILjava/lang/String;Ljava/util/Map;Ljava/lang/String;IJ)V",
         &[
             (&mime_type_str).into(),
             (&encoding_str).into(),
@@ -246,6 +260,7 @@ fn create_java_response<'a>(env: &mut JNIEnv<'a>, response: WebResourceResponse)
             (&reason_str).into(),
             (&map).into(),
             (&file_path_str).into(),
+            pipe_fd_jint.into(),
             content_length.into(),
         ],
     ) {

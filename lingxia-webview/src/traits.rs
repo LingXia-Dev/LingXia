@@ -1,6 +1,47 @@
 use crate::{LogLevel, WebViewError};
 use std::path::PathBuf;
 
+/// Body source for WebResourceResponse
+#[derive(Debug)]
+pub enum WebResourceBody {
+    /// Serve data from a regular file path on disk
+    Path(PathBuf),
+    /// Serve data from a system pipe (read end)
+    Pipe(SystemPipeReader),
+}
+
+/// Cross‑platform system pipe reader (read end)
+#[derive(Debug)]
+pub struct SystemPipeReader {
+    #[cfg(unix)]
+    fd: std::os::fd::RawFd,
+}
+
+impl SystemPipeReader {
+    /// Consume and return the raw file descriptor (Unix).
+    /// Caller becomes responsible for closing it.
+    #[cfg(unix)]
+    pub fn into_raw_fd(self) -> std::os::fd::RawFd {
+        let fd = self.fd;
+        // Prevent Drop since we are transferring ownership of the fd
+        std::mem::forget(self);
+        fd
+    }
+
+    /// Construct from a raw file descriptor (Unix). Unsafe: caller guarantees it's a valid read end.
+    #[cfg(unix)]
+    pub unsafe fn from_raw_fd(fd: std::os::fd::RawFd) -> Self {
+        Self { fd }
+    }
+
+    /// Convert into a File for reading (consumes self).
+    #[cfg(unix)]
+    pub fn into_file(self) -> std::fs::File {
+        use std::os::fd::FromRawFd;
+        unsafe { std::fs::File::from_raw_fd(self.into_raw_fd()) }
+    }
+}
+
 /// Interface for controlling WebView (100% copy from lxapp)
 pub trait WebViewController: Send + Sync {
     /// Load a URL in the WebView
@@ -89,31 +130,41 @@ pub trait WebViewDelegate: Send + Sync {
     fn log(&self, level: LogLevel, message: &str);
 }
 
-/// Represents an HTTP response whose body data is stored in a file on disk.
+/// Represents an HTTP response whose body is provided by either a file path or a system pipe.
 #[derive(Debug)]
 pub struct WebResourceResponse {
     parts: http::response::Parts,
-    file_path: PathBuf,
+    body: WebResourceBody,
 }
 
 impl WebResourceResponse {
-    /// Create a new WebResourceResponse from response parts and an absolute file path.
-    pub fn new(parts: http::response::Parts, file_path: PathBuf) -> Self {
-        Self { parts, file_path }
-    }
-
     /// Borrow the response parts (status, headers, etc.).
     pub fn parts(&self) -> &http::response::Parts {
         &self.parts
     }
 
     /// Consume the struct and return the owned parts and file path.
-    pub fn into_parts(self) -> (http::response::Parts, PathBuf) {
-        (self.parts, self.file_path)
+    pub fn into_parts(self) -> (http::response::Parts, WebResourceBody) {
+        (self.parts, self.body)
     }
+}
 
-    /// Borrow the file path where the response body is stored.
-    pub fn file_path(&self) -> &PathBuf {
-        &self.file_path
+/// Convenience conversion from (Parts, PathBuf)
+impl From<(http::response::Parts, PathBuf)> for WebResourceResponse {
+    fn from(value: (http::response::Parts, PathBuf)) -> Self {
+        WebResourceResponse {
+            parts: value.0,
+            body: WebResourceBody::Path(value.1),
+        }
+    }
+}
+
+/// Convenience conversion from (Parts, SystemPipeReader)
+impl From<(http::response::Parts, SystemPipeReader)> for WebResourceResponse {
+    fn from(value: (http::response::Parts, SystemPipeReader)) -> Self {
+        WebResourceResponse {
+            parts: value.0,
+            body: WebResourceBody::Pipe(value.1),
+        }
     }
 }

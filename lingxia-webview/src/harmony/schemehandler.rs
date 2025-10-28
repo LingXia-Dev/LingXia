@@ -1,5 +1,5 @@
-use crate::WebResourceResponse;
 use crate::webview::{WebTag, find_webview, get_webview_delegate};
+use crate::{WebResourceBody, WebResourceResponse};
 use napi_ohos::Result as NapiResult;
 use ohos_web_sys::*;
 use std::ffi::{CStr, CString};
@@ -110,7 +110,7 @@ unsafe fn send_response(
     resource_handler: *const ArkWeb_ResourceHandler,
     http_response: WebResourceResponse,
 ) {
-    let (parts, file_path) = http_response.into_parts();
+    let (parts, body) = http_response.into_parts();
     let mut headers_map = parts.headers.clone();
 
     // Create ArkWeb response
@@ -124,30 +124,33 @@ unsafe fn send_response(
         OH_ArkWebResponse_SetStatus(response, parts.status.as_u16() as c_int);
     }
 
-    let mut file = match File::open(&file_path) {
-        Ok(file) => file,
-        Err(e) => {
-            log::error!(
-                "Failed to open response file for Harmony webview: {} ({})",
-                file_path.display(),
-                e
-            );
-            unsafe {
-                OH_ArkWebResponse_SetStatus(response, 500);
-            }
-            let message = CString::new("Internal Server Error").unwrap();
-            unsafe {
-                OH_ArkWebResourceHandler_DidReceiveResponse(resource_handler, response);
-                OH_ArkWebResourceHandler_DidReceiveData(
-                    resource_handler,
-                    message.as_ptr() as *const u8,
-                    message.as_bytes().len() as i64,
+    let mut file = match body {
+        WebResourceBody::Path(path) => match File::open(&path) {
+            Ok(f) => f,
+            Err(e) => {
+                log::error!(
+                    "Failed to open response file for Harmony webview: {} ({})",
+                    path.display(),
+                    e
                 );
-                OH_ArkWebResourceHandler_DidFinish(resource_handler);
-                OH_ArkWeb_DestroyResponse(response);
+                unsafe {
+                    OH_ArkWebResponse_SetStatus(response, 500);
+                }
+                let message = CString::new("Internal Server Error").unwrap();
+                unsafe {
+                    OH_ArkWebResourceHandler_DidReceiveResponse(resource_handler, response);
+                    OH_ArkWebResourceHandler_DidReceiveData(
+                        resource_handler,
+                        message.as_ptr() as *const u8,
+                        message.as_bytes().len() as i64,
+                    );
+                    OH_ArkWebResourceHandler_DidFinish(resource_handler);
+                    OH_ArkWeb_DestroyResponse(response);
+                }
+                return;
             }
-            return;
-        }
+        },
+        WebResourceBody::Pipe(reader) => reader.into_file(),
     };
 
     if !headers_map.contains_key(http::header::CONTENT_LENGTH) {
@@ -195,8 +198,7 @@ unsafe fn send_response(
             },
             Err(e) => {
                 log::error!(
-                    "Failed while streaming response file for Harmony webview: {} ({})",
-                    file_path.display(),
+                    "Failed while streaming response data for Harmony webview: {}",
                     e
                 );
                 break;

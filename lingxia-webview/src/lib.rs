@@ -31,7 +31,9 @@ mod harmony;
 
 // Public exports
 // WebViewError and LogLevel are defined above
-pub use traits::{WebResourceResponse, WebViewController, WebViewDelegate};
+pub use traits::{
+    SystemPipeReader, WebResourceBody, WebResourceResponse, WebViewController, WebViewDelegate,
+};
 pub use webview::{
     WebTag, WebView, create_webview, destroy_webview, find_webview, get_webview_delegate,
     init_webview_manager, set_webview_delegate,

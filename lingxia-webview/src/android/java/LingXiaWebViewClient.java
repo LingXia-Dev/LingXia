@@ -11,6 +11,7 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.lang.ref.WeakReference;
+import android.os.ParcelFileDescriptor;
 
 /**
  * WebViewClient implementation for LingXia WebView
@@ -118,13 +119,22 @@ public class LingXiaWebViewClient extends WebViewClient {
                 headerArray
             );
 
-            if (response == null || response.filePath == null || response.filePath.isEmpty()) {
+            if (response == null) {
                 return null;
             }
 
             try {
-                File file = new File(response.filePath);
-                InputStream inputStream = new FileInputStream(file);
+                InputStream inputStream = null;
+                if (response.pipeFd > 0) {
+                    // Use pipe fd provided by native side
+                    ParcelFileDescriptor pfd = ParcelFileDescriptor.adoptFd(response.pipeFd);
+                    inputStream = new ParcelFileDescriptor.AutoCloseInputStream(pfd);
+                } else if (response.filePath != null && !response.filePath.isEmpty()) {
+                    File file = new File(response.filePath);
+                    inputStream = new FileInputStream(file);
+                } else {
+                    return null;
+                }
 
                 return new WebResourceResponse(
                     response.mimeType,
@@ -135,7 +145,7 @@ public class LingXiaWebViewClient extends WebViewClient {
                     inputStream
                 );
             } catch (FileNotFoundException e) {
-                Log.e(TAG, "Failed to open intercepted file: " + response.filePath, e);
+                Log.e(TAG, "Failed to open intercepted body", e);
             }
         }
 

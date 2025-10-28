@@ -1,19 +1,19 @@
-use crate::WebResourceResponse;
 use crate::webview::{WebTag, get_webview_delegate};
+use crate::{WebResourceBody, WebResourceResponse};
 use objc2::runtime::{AnyObject, NSObject};
 use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send, rc::Retained};
 use objc2_foundation::{NSData, NSMutableDictionary, NSObjectProtocol, NSString};
 use objc2_web_kit::WKURLSchemeHandler;
 use std::fs::File;
 use std::io::Read;
-
+#[cfg(unix)]
+use std::os::fd::FromRawFd;
 // Define ivars struct first
 #[derive(Debug)]
 pub(super) struct LingXiaSchemeHandlerIvars {
     webtag: WebTag,
 }
 
-// Define the LingXiaSchemeHandler class
 define_class!(
     #[unsafe(super(NSObject))]
     #[name = "LingXiaSchemeHandler"]
@@ -166,9 +166,8 @@ define_class!(
                 match response {
                     Some(http_response) => {
                         log::debug!(
-                            "Got response from handle_request, status: {}, file: {}",
+                            "Got response from handle_request, status: {}",
                             http_response.parts().status,
-                            http_response.file_path().display()
                         );
                         self.send_response_to_task(task, http_response, request);
                     }
@@ -220,37 +219,20 @@ impl LingXiaSchemeHandler {
         request: *mut AnyObject,
     ) {
         unsafe {
-            let (parts, file_path) = response.into_parts();
+            let (parts, body) = response.into_parts();
             let status = parts.status;
             let mut headers_map = parts.headers.clone();
 
-            // Get the original request URL for creating the response
             let url_obj: *mut AnyObject = msg_send![request, URL];
-
             let status_code = status.as_u16() as i64;
             let http_version = NSString::from_str("HTTP/1.1");
             let headers = NSMutableDictionary::new();
 
-            let mut file = match File::open(&file_path) {
-                Ok(file) => file,
-                Err(e) => {
-                    log::error!(
-                        "Failed to open response file {}: {}",
-                        file_path.display(),
-                        e
-                    );
-                    self.fail_task_with_error(task, "Failed to open response file");
-                    return;
-                }
-            };
-
-            // Get Content-Type from response headers
             let content_type = headers_map
                 .get("content-type")
                 .and_then(|v| v.to_str().ok())
                 .unwrap_or("application/octet-stream");
 
-            // Add Content-Type header with charset
             let content_type_key = NSString::from_str("Content-Type");
             let content_type_with_charset = if content_type == "text/html" {
                 "text/html; charset=UTF-8"
@@ -260,15 +242,17 @@ impl LingXiaSchemeHandler {
             let content_type_value = NSString::from_str(content_type_with_charset);
             headers.insert(&*content_type_key, &*content_type_value);
 
-            // Add Content-Length header
-            let file_len = file.metadata().map(|m| m.len()).unwrap_or(0);
-            if !headers_map.contains_key("content-length") {
-                if let Ok(value) = http::HeaderValue::from_str(&file_len.to_string()) {
-                    headers_map.insert(http::header::CONTENT_LENGTH, value);
+            if let WebResourceBody::Path(ref path) = body {
+                if !headers_map.contains_key("content-length") {
+                    if let Ok(metadata) = std::fs::metadata(path) {
+                        if let Ok(value) = http::HeaderValue::from_str(&metadata.len().to_string())
+                        {
+                            headers_map.insert(http::header::CONTENT_LENGTH, value);
+                        }
+                    }
                 }
             }
 
-            // Add all headers from the response
             for (key, value) in headers_map.iter() {
                 if let Ok(value_str) = value.to_str() {
                     let key_ns = NSString::from_str(key.as_str());
@@ -277,44 +261,63 @@ impl LingXiaSchemeHandler {
                 }
             }
 
-            // Create NSHTTPURLResponse using simpler approach like Swift version
-            // Create the response using msg_send like Swift's HTTPURLResponse constructor
             let response_class: *mut AnyObject = msg_send![objc2::class!(NSHTTPURLResponse), alloc];
             let response_result: *mut AnyObject = msg_send![response_class,
-                initWithURL: url_obj,
-                statusCode: status_code,
-                HTTPVersion: &*http_version,
-                headerFields: &*headers];
+            initWithURL: url_obj,
+            statusCode: status_code,
+            HTTPVersion: &*http_version,
+            headerFields: &*headers];
 
-            if !response_result.is_null() {
-                // Send response to WebView - use correct method names from wry
-                let _: () = msg_send![task, didReceiveResponse: response_result];
-
-                let mut buffer = [0u8; 64 * 1024];
-                loop {
-                    match file.read(&mut buffer) {
-                        Ok(0) => break,
-                        Ok(read_bytes) => {
-                            let chunk = NSData::from_vec(buffer[..read_bytes].to_vec());
-                            let _: () = msg_send![task, didReceiveData: &*chunk];
-                        }
-                        Err(e) => {
-                            log::error!(
-                                "Failed while streaming response file {}: {}",
-                                file_path.display(),
-                                e
-                            );
-                            self.fail_task_with_error(task, "Failed to read response data");
-                            return;
-                        }
-                    }
-                }
-
-                let _: () = msg_send![task, didFinish];
-            } else {
+            if response_result.is_null() {
                 log::error!("Failed to create NSHTTPURLResponse using msg_send approach!");
                 self.fail_task_with_error(task, "Failed to create HTTP response");
                 return;
+            }
+
+            let _: () = msg_send![task, didReceiveResponse: response_result];
+
+            let mut reader: Box<dyn std::io::Read> = match body {
+                WebResourceBody::Path(path) => match File::open(&path) {
+                    Ok(file) => Box::new(file),
+                    Err(e) => {
+                        log::error!("Failed to open response file {}: {}", path.display(), e);
+                        self.fail_task_with_error(task, "Failed to open response file");
+                        return;
+                    }
+                },
+                WebResourceBody::Pipe(pipe) => {
+                    #[cfg(unix)]
+                    {
+                        let fd = pipe.into_raw_fd();
+                        let file = std::fs::File::from_raw_fd(fd);
+                        Box::new(file)
+                    }
+                    #[cfg(not(unix))]
+                    {
+                        log::error!("Pipe bodies are not supported on this platform");
+                        self.fail_task_with_error(task, "Pipe body unsupported");
+                        return;
+                    }
+                }
+            };
+
+            let mut buffer = [0u8; 64 * 1024];
+            loop {
+                match reader.read(&mut buffer) {
+                    Ok(0) => {
+                        let _: () = msg_send![task, didFinish];
+                        break;
+                    }
+                    Ok(read_bytes) => {
+                        let chunk = NSData::from_vec(buffer[..read_bytes].to_vec());
+                        let _: () = msg_send![task, didReceiveData: &*chunk];
+                    }
+                    Err(e) => {
+                        log::error!("Failed while streaming response data: {}", e);
+                        self.fail_task_with_error(task, "Failed to read response data");
+                        return;
+                    }
+                }
             }
         }
     }

@@ -44,18 +44,20 @@ public class LingXiaWebView extends WebView {
         public final int statusCode;
         public final String reasonPhrase;
         public final Map<String, String> responseHeaders;
-        public final String filePath;
-        public final long contentLength;
+        public final String filePath; // preferred when available (disk file)
+        public final int pipeFd;      // non-zero when using a system pipe (read-end fd)
+        public final long contentLength; // -1 when unknown
 
         public WebResourceResponseData(String mimeType, String encoding, int statusCode,
                                        String reasonPhrase, Map<String, String> responseHeaders,
-                                       String filePath, long contentLength) {
+                                       String filePath, int pipeFd, long contentLength) {
             this.mimeType = mimeType;
             this.encoding = encoding;
             this.statusCode = statusCode;
             this.reasonPhrase = reasonPhrase;
             this.responseHeaders = responseHeaders;
             this.filePath = filePath;
+            this.pipeFd = pipeFd;
             this.contentLength = contentLength;
         }
     }
