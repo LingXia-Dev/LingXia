@@ -135,6 +135,6 @@ mod bridge {
 pub use bridge::{
     ActionSheetOptions, ModalOptions, PickerOptions, PopupPositionBridge, ToastIcon, ToastOptions,
     ToastPosition, close_lxapp, hide_popup, hide_toast, launch_with_url, navigate, open_lxapp,
-    show_action_sheet, show_modal, show_picker, show_popup, show_toast, update_navbar_ui,
-    update_tabbar_ui, preview_media,
+    preview_media, show_action_sheet, show_modal, show_picker, show_popup, show_toast,
+    update_navbar_ui, update_tabbar_ui,
 };

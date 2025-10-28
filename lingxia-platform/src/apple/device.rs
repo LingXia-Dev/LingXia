@@ -420,17 +420,21 @@ unsafe extern "C" fn continuous_vibration_callback(context: *mut std::ffi::c_voi
         return;
     }
 
-    AudioServicesPlaySystemSound(K_SYSTEM_SOUND_ID_VIBRATE);
+    unsafe {
+        AudioServicesPlaySystemSound(K_SYSTEM_SOUND_ID_VIBRATE);
+    };
     data.remaining_pulses -= 1;
 
     if data.remaining_pulses > 0 {
-        let when = dispatch_time(DISPATCH_TIME_NOW, data.pulse_interval_ns);
-        dispatch_after_f(
-            when,
-            main_dispatch_queue(),
-            context,
-            continuous_vibration_callback,
-        );
+        let when = unsafe { dispatch_time(DISPATCH_TIME_NOW, data.pulse_interval_ns) };
+        unsafe {
+            dispatch_after_f(
+                when,
+                main_dispatch_queue(),
+                context,
+                continuous_vibration_callback,
+            );
+        };
     } else {
         unsafe { drop(Box::from_raw(context as *mut ContinuousVibrationData)) };
     }

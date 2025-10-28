@@ -97,7 +97,6 @@ mod ios {
     use super::*;
     use block2::RcBlock;
     use dispatch2::{DispatchSemaphore, DispatchTime, dispatch_block_t, run_on_main};
-    use objc2::rc::Retained;
     use objc2_foundation::{NSError, NSString, NSURL};
     use objc2_photos::{
         PHAccessLevel, PHAssetCreationRequest, PHAuthorizationStatus, PHPhotoLibrary,
@@ -120,7 +119,7 @@ mod ios {
         ensure_photo_authorization()?;
 
         let ns_path = NSString::from_str(path);
-        let file_url = unsafe { NSURL::fileURLWithPath(&ns_path) };
+        let file_url = NSURL::fileURLWithPath(&ns_path);
 
         let error_holder = Arc::new(Mutex::new(None::<String>));
         let error_clone = Arc::clone(&error_holder);
@@ -152,7 +151,7 @@ mod ios {
         ensure_photo_authorization()?;
 
         let ns_path = NSString::from_str(path);
-        let file_url = unsafe { NSURL::fileURLWithPath(&ns_path) };
+        let file_url = NSURL::fileURLWithPath(&ns_path);
 
         let error_holder = Arc::new(Mutex::new(None::<String>));
         let error_clone = Arc::clone(&error_holder);

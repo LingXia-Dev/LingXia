@@ -29,12 +29,14 @@ mod ios {
         OnceLock::new();
 
     #[derive(Clone)]
+    #[allow(dead_code)]
     struct LocationCallbackInfo {
         callback_id: u64,
         config: crate::LocationRequestConfig,
         start_time: Instant,
     }
 
+    #[allow(dead_code)]
     struct ActiveLocationRequest {
         manager: Retained<CLLocationManager>,
         delegate: Retained<LocationDelegate>,
