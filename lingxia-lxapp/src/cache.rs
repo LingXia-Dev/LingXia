@@ -1,10 +1,93 @@
 use std::fs;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
+use rong::net::{self, BodySink};
 use thiserror::Error;
 
 type HashId = String;
+
+struct CacheDownloadSink {
+    final_path: PathBuf,
+    key_id: String,
+    lock_path: PathBuf,
+}
+
+impl CacheDownloadSink {
+    fn new(final_path: PathBuf, key_id: String, lock_path: PathBuf) -> Self {
+        Self {
+            final_path,
+            key_id,
+            lock_path,
+        }
+    }
+}
+
+impl BodySink for CacheDownloadSink {
+    fn write(&mut self, _chunk: &[u8]) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn close(&mut self, result: &Result<(), String>) {
+        match result {
+            Ok(()) => {
+                let _ = fs::write(ok_marker_path(&self.final_path, &self.key_id), b"ok");
+            }
+            Err(_) => {
+                let _ = fs::remove_file(ok_marker_path(&self.final_path, &self.key_id));
+            }
+        }
+        let _ = fs::remove_file(&self.lock_path);
+    }
+}
+
+struct CacheDownloadSinkWithCallback<F: FnOnce(CacheResult) + Send> {
+    final_path: PathBuf,
+    key_id: String,
+    lock_path: PathBuf,
+    callback: Arc<Mutex<Option<F>>>,
+}
+
+impl<F: FnOnce(CacheResult) + Send> CacheDownloadSinkWithCallback<F> {
+    fn new(
+        final_path: PathBuf,
+        key_id: String,
+        lock_path: PathBuf,
+        callback: Arc<Mutex<Option<F>>>,
+    ) -> Self {
+        Self {
+            final_path,
+            key_id,
+            lock_path,
+            callback,
+        }
+    }
+}
+
+impl<F: FnOnce(CacheResult) + Send> BodySink for CacheDownloadSinkWithCallback<F> {
+    fn write(&mut self, _chunk: &[u8]) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn close(&mut self, result: &Result<(), String>) {
+        match result {
+            Ok(()) => {
+                let _ = fs::write(ok_marker_path(&self.final_path, &self.key_id), b"ok");
+                if let Some(cb) = self.callback.lock().unwrap().take() {
+                    cb(CacheResult::Ready);
+                }
+            }
+            Err(err) => {
+                let _ = fs::remove_file(ok_marker_path(&self.final_path, &self.key_id));
+                if let Some(cb) = self.callback.lock().unwrap().take() {
+                    cb(CacheResult::Failed(err.clone()));
+                }
+            }
+        }
+        let _ = fs::remove_file(&self.lock_path);
+    }
+}
 
 /// Lightweight cache for LxApp resources.
 ///
@@ -53,26 +136,16 @@ impl LxAppCache {
             let lock_path_cloned = lock_path.clone();
             let url_owned = url.to_string();
 
-            // Use net runtime to handle the download; invoke callback on completion
-            let send_res = rong::net::request_download_to_file(
-                url_owned,
+            let sink = CacheDownloadSink::new(
                 final_path.clone(),
-                None,
-                move |res| {
-                    match res {
-                        Ok(()) => {
-                            let _ = fs::write(ok_marker_path(&final_path, &key_id), b"ok");
-                        }
-                        Err(_) => {
-                            let _ = fs::remove_file(ok_marker_path(&final_path, &key_id));
-                        }
-                    }
-                    let _ = fs::remove_file(lock_path_cloned);
-                },
+                key_id.clone(),
+                lock_path_cloned.clone(),
             );
-            if send_res.is_err() {
-                // Failed to enqueue download; release lock so others can retry
-                let _ = fs::remove_file(lock_path);
+            match net::request_download(url_owned, final_path.clone(), None, Some(Box::new(sink))) {
+                Ok(_rx) => {}
+                Err(_) => {
+                    let _ = fs::remove_file(lock_path);
+                }
             }
         }
 
@@ -187,37 +260,21 @@ impl LxAppCache {
             let url_owned = url.to_string();
 
             // Share callback so we can invoke it either from the net runtime or on immediate error
-            let cb_shared: std::sync::Arc<std::sync::Mutex<Option<F>>> =
-                std::sync::Arc::new(std::sync::Mutex::new(Some(on_complete)));
-            let cb_for_task = cb_shared.clone();
+            let cb_shared: Arc<Mutex<Option<F>>> = Arc::new(Mutex::new(Some(on_complete)));
 
-            let send_res = rong::net::request_download_to_file(
-                url_owned,
+            let sink = CacheDownloadSinkWithCallback::new(
                 final_path.clone(),
-                None,
-                move |res| {
-                    match res {
-                        Ok(()) => {
-                            let _ = fs::write(ok_marker_path(&final_path, &key_id), b"ok");
-                            if let Some(cb) = cb_for_task.lock().unwrap().take() {
-                                cb(CacheResult::Ready);
-                            }
-                        }
-                        Err(e) => {
-                            let _ = fs::remove_file(ok_marker_path(&final_path, &key_id));
-                            if let Some(cb) = cb_for_task.lock().unwrap().take() {
-                                cb(CacheResult::Failed(format!("{}", e)));
-                            }
-                        }
-                    }
-                    let _ = fs::remove_file(lock_path_cloned);
-                },
+                key_id.clone(),
+                lock_path_cloned.clone(),
+                cb_shared.clone(),
             );
-            if let Err(e) = send_res {
-                // Failed to enqueue download; release lock and invoke callback immediately
-                let _ = fs::remove_file(lock_path);
-                if let Some(cb) = cb_shared.lock().unwrap().take() {
-                    cb(CacheResult::Failed(e));
+            match net::request_download(url_owned, final_path.clone(), None, Some(Box::new(sink))) {
+                Ok(_rx) => {}
+                Err(e) => {
+                    let _ = fs::remove_file(lock_path);
+                    if let Some(cb) = cb_shared.lock().unwrap().take() {
+                        cb(CacheResult::Failed(e));
+                    }
                 }
             }
         } else {
@@ -327,5 +384,3 @@ impl Hasher for Fnv64Hasher {
         self.0 = hash;
     }
 }
-
-// No directory creation here to avoid creating extra structure beyond LxApp's cache

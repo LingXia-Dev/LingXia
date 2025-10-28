@@ -1,8 +1,9 @@
+use crate::info;
 use http::{Request, Response, StatusCode, Uri};
-use lingxia_webview::WebResourceResponse;
+use lingxia_webview::{SystemPipeReader, WebResourceResponse};
+use rong::net;
 use std::fs;
 use std::path::PathBuf;
-use std::time::{Duration, Instant};
 
 use crate::error;
 use crate::error::LxAppError;
@@ -62,7 +63,7 @@ impl LxApp {
         });
 
         let (parts, _) = response.into_parts();
-        Some(WebResourceResponse::new(parts, asset_path))
+        Some((parts, asset_path).into())
     }
 
     fn resolve_lx_uri(&self, uri: &Uri) -> Result<PathBuf, LxAppError> {
@@ -86,7 +87,10 @@ impl LxApp {
         self.resolve_accessible_path(raw_path)
     }
 
-    /// Handler for HTTPS requests to check domain whitelist and restrict to static resources
+    /// Handler for HTTPS requests:
+    /// - Only accepts GET; other methods are rejected
+    /// - All GETs to allowed domains are treated as downloadable resources
+    ///   with per-app cache; miss -> stream via system pipe while saving
     pub(crate) fn https_handler(&self, req: Request<Vec<u8>>) -> Option<WebResourceResponse> {
         let uri = req.uri();
 
@@ -110,73 +114,136 @@ impl LxApp {
                 ));
             }
 
-            // Check if this is likely an API request based on request headers
-            let is_api_request = self.is_api_request(&req);
-            if is_api_request {
+            // Only accept GET; reject others
+            if req.method() != http::Method::GET {
                 return Some(self.create_error_response(
-                    StatusCode::FORBIDDEN,
-                    "API Request Blocked",
+                    StatusCode::METHOD_NOT_ALLOWED,
+                    "Method Not Allowed",
                     &format!(
-                        "API requests are not allowed. Domain: {}, Path: {}",
-                        host,
-                        uri.path()
+                        "Only GET is allowed in WebView: method={} {}",
+                        req.method(),
+                        uri
                     ),
                 ));
             }
 
-            // Check if the request is for an allowed resource type based on URL
-            let is_allowed_resource = self.is_allowed_resource_by_url(uri.path());
+            // Treat all GET as downloadable resources
+            info!(
+                "https_handler: allowed GET, host={}, path={}",
+                host,
+                uri.path()
+            )
+            .with_appid(self.appid.clone());
 
-            if !is_allowed_resource {
-                // Check if this looks like a typical web page request (no extension)
-                let path = uri.path();
-                let has_extension = path.rfind('.').is_some();
+            let url_str = uri.to_string();
+            // Decide extension from URL or query
+            let ext_opt = url_ext_from_uri(uri);
+            let ext = ext_opt.as_deref().unwrap_or("bin");
+            match self.cache().resolve_path_with_ext(&url_str, ext) {
+                crate::cache::ResolveResult::Exists(file_path) => {
+                    info!(
+                        "https_handler: cache hit, serving file {}",
+                        file_path.display()
+                    )
+                    .with_appid(self.appid.clone());
+                    // Cached: serve file path
+                    let mime_type = ext_opt
+                        .as_deref()
+                        .map(Self::infer_mime_type_ext)
+                        .unwrap_or_else(|| Self::infer_mime_type(uri.path()));
+                    let builder = http::Response::builder()
+                        .status(StatusCode::OK)
+                        .header("Content-Type", mime_type)
+                        .header("Access-Control-Allow-Origin", "null");
+                    let response = builder.body(()).unwrap_or_else(|_| {
+                        http::Response::builder()
+                            .status(StatusCode::INTERNAL_SERVER_ERROR)
+                            .body(())
+                            .expect("Failed to build cached file response")
+                    });
+                    let (parts, _) = response.into_parts();
+                    return Some((parts, file_path).into());
+                }
+                crate::cache::ResolveResult::NonExists(dest_path) => {
+                    #[cfg(unix)]
+                    {
+                        match create_pipe_sink() {
+                            Ok((reader, sink)) => {
+                                info!(
+                                    "https_handler: cache miss, start pipe download -> {}",
+                                    dest_path.display()
+                                )
+                                .with_appid(self.appid.clone());
 
-                if has_extension {
-                    // Has extension but not in our allowed list
-                    return Some(self.create_error_response(
-                        StatusCode::FORBIDDEN,
-                        "Resource Type Not Allowed",
-                        &format!(
-                            "The requested resource type is not allowed. Domain: {}, Path: {}",
-                            host, path
-                        ),
-                    ));
+                                let mime_type = ext_opt
+                                    .as_deref()
+                                    .map(Self::infer_mime_type_ext)
+                                    .unwrap_or_else(|| Self::infer_mime_type(uri.path()));
+                                let builder = http::Response::builder()
+                                    .status(StatusCode::OK)
+                                    .header("Content-Type", mime_type)
+                                    .header("Access-Control-Allow-Origin", "null");
+
+                                let response = builder.body(()).unwrap_or_else(|_| {
+                                    http::Response::builder()
+                                        .status(StatusCode::INTERNAL_SERVER_ERROR)
+                                        .body(())
+                                        .expect("Failed to build pipe response")
+                                });
+                                let (parts, _) = response.into_parts();
+
+                                match net::request_download(
+                                    url_str.clone(),
+                                    dest_path.clone(),
+                                    None,
+                                    Some(sink),
+                                ) {
+                                    Ok(_rx) => {
+                                        info!("https_handler: pipe ready for {}", uri.path())
+                                            .with_appid(self.appid.clone());
+                                        return Some((parts, reader).into());
+                                    }
+                                    Err(e) => {
+                                        error!(
+                                            "https_handler: failed to start download task: {}",
+                                            e
+                                        )
+                                        .with_appid(self.appid.clone());
+                                        return Some(self.create_error_response(
+                                            StatusCode::BAD_GATEWAY,
+                                            "Download Failed",
+                                            &format!("Failed to start download: {}", e),
+                                        ));
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                error!("https_handler: failed to create pipe sink: {}", e)
+                                    .with_appid(self.appid.clone());
+                                return Some(self.create_error_response(
+                                    StatusCode::INTERNAL_SERVER_ERROR,
+                                    "Pipe Creation Failed",
+                                    &e,
+                                ));
+                            }
+                        }
+                    }
+                    #[cfg(not(unix))]
+                    {
+                        // Fallback: no pipe support here; return 501
+                        warn!(
+                            "https_handler: pipe unsupported on this platform for {}",
+                            uri
+                        )
+                        .with_appid(self.appid.clone());
+                        return Some(self.create_error_response(
+                            StatusCode::NOT_IMPLEMENTED,
+                            "Pipe Unsupported",
+                            "Streaming via pipe is not supported on this platform.",
+                        ));
+                    }
                 }
             }
-
-            // Resource type is allowed or undetermined.
-            // For allowed static resources over HTTP(S), use per-app cache to download
-            // and serve a local file path to the WebView when possible.
-            if is_allowed_resource && req.method() == http::Method::GET {
-                let url_str = uri.to_string();
-                // Start or get path for progressive download
-                let file_path = self.cache().get_or_download(&url_str, &url_str);
-
-                // Quick wait: only when the download just started (missing or zero-length file).
-                if should_wait_for_download(&file_path) {
-                    quick_wait_for_download(&file_path);
-                }
-
-                let mime_type = Self::infer_mime_type(uri.path());
-                let builder = http::Response::builder()
-                    .status(StatusCode::OK)
-                    .header("Content-Type", mime_type)
-                    .header("Access-Control-Allow-Origin", "null");
-
-                // Avoid setting Content-Length to support progressive reads
-
-                let response = builder.body(()).unwrap_or_else(|_| {
-                    http::Response::builder()
-                        .status(StatusCode::INTERNAL_SERVER_ERROR)
-                        .body(())
-                        .expect("Failed to build cached file response")
-                });
-                let (parts, _) = response.into_parts();
-                return Some(WebResourceResponse::new(parts, file_path));
-            }
-            // Let the request proceed to the network
-            return None;
         }
 
         // URI doesn't have a host component
@@ -185,62 +252,6 @@ impl LxApp {
             "Invalid URL",
             "The URL is missing a host component and cannot be processed.",
         ))
-    }
-
-    /// Check if a request is likely an API request based on headers
-    fn is_api_request(&self, req: &Request<Vec<u8>>) -> bool {
-        // Check Content-Type for POST/PUT requests
-        if let Some(content_type) = req
-            .headers()
-            .get("Content-Type")
-            .and_then(|h| h.to_str().ok())
-        {
-            if content_type.contains("application/json") || content_type.contains("application/xml")
-            {
-                return true;
-            }
-        }
-
-        // Check for common API path patterns
-        let path = req.uri().path().to_lowercase();
-        if path.contains("/api/") || path.contains("/rest/") || path.contains("/graphql") {
-            return true;
-        }
-
-        false
-    }
-
-    /// Check if a URL path represents an allowed static resource
-    fn is_allowed_resource_by_url(&self, path: &str) -> bool {
-        let extension = path.rfind('.').map(|pos| path[pos + 1..].to_lowercase());
-
-        match extension.as_ref() {
-            Some(ext) => {
-                matches!(
-                    ext.as_str(),
-                    // Images
-                    "jpg" | "jpeg" | "png" | "gif" | "svg" | "webp" | "ico" | "bmp" | "tiff" |
-                    // Audio
-                    "mp3" | "wav" | "ogg" | "aac" | "flac" | "m4a" |
-                    // Video
-                    "mp4" | "webm" | "ogv" | "avi" | "mov" | "wmv" | "flv" |
-                    // Multimedia playlist
-                    "m3u" | "m3u8" | "pls" |
-                    // Fonts
-                    "ttf" | "woff" | "woff2" | "eot" | "otf" |
-                    // Scripts and styles (from trusted domains)
-                    "js" | "css" | "mjs" |
-                    // Documents and archives (common static files)
-                    "pdf" | "doc" | "docx" | "xls" | "xlsx" | "ppt" | "pptx" |
-                    "zip" | "rar" | "7z" | "tar" | "gz" |
-                    // Text files
-                    "txt" | "md" | "csv" |
-                    // Data files
-                    "json" | "xml" | "yaml" | "yml"
-                )
-            }
-            None => false, // No extension - could be anything
-        }
     }
 
     fn infer_mime_type(path: &str) -> &'static str {
@@ -276,6 +287,27 @@ impl LxApp {
             "video/mp4"
         } else {
             "application/octet-stream"
+        }
+    }
+
+    fn infer_mime_type_ext(ext: &str) -> &'static str {
+        match ext.to_ascii_lowercase().as_str() {
+            "js" => "application/javascript",
+            "css" => "text/css",
+            "png" => "image/png",
+            "jpg" | "jpeg" => "image/jpeg",
+            "gif" => "image/gif",
+            "svg" => "image/svg+xml",
+            "webp" => "image/webp",
+            "ico" => "image/x-icon",
+            "json" => "application/json",
+            "woff" => "font/woff",
+            "woff2" => "font/woff2",
+            "ttf" => "font/ttf",
+            "mp3" => "audio/mpeg",
+            "wav" => "audio/wav",
+            "mp4" => "video/mp4",
+            _ => "application/octet-stream",
         }
     }
 
@@ -377,28 +409,71 @@ impl LxApp {
         });
 
         let (parts, _) = response.into_parts();
-        WebResourceResponse::new(parts, file_path)
+        (parts, file_path).into()
     }
 }
 
-fn should_wait_for_download(path: &PathBuf) -> bool {
-    match fs::metadata(path) {
-        Ok(meta) => meta.len() == 0,
-        Err(_) => true,
+fn url_ext_from_uri(uri: &Uri) -> Option<String> {
+    // Try path first
+    if let Some(ext) = ext_from_segment(uri.path()) {
+        return Some(ext.to_string());
     }
-}
-
-fn quick_wait_for_download(path: &PathBuf) {
-    let start = Instant::now();
-    let max_wait = Duration::from_millis(200);
-    let step = Duration::from_millis(20);
-
-    while start.elapsed() < max_wait {
-        match fs::metadata(path) {
-            Ok(meta) if meta.len() > 0 => break,
-            Ok(_) => { /* still zero-length */ }
-            Err(_) => { /* not created yet */ }
+    // Then try query (e.g., id=...UHD.jpg)
+    if let Some(q) = uri.query() {
+        let lower = q.to_ascii_lowercase();
+        if let Some(pos) = lower.rfind('.') {
+            let tail = &lower[pos + 1..];
+            let end: String = tail
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric())
+                .collect();
+            if !end.is_empty() && end.len() <= 8 {
+                return Some(end);
+            }
         }
-        std::thread::sleep(step);
     }
+    None
+}
+
+fn ext_from_segment(path: &str) -> Option<&str> {
+    let seg = path.rsplit('/').next().unwrap_or(path);
+    let dot = seg.rfind('.')?;
+    let ext = &seg[dot + 1..];
+    if ext.len() >= 1 && ext.len() <= 8 {
+        Some(ext)
+    } else {
+        None
+    }
+}
+
+#[cfg(unix)]
+struct PipeBodySink {
+    writer: std::os::unix::net::UnixStream,
+}
+
+#[cfg(unix)]
+impl rong::net::BodySink for PipeBodySink {
+    fn write(&mut self, chunk: &[u8]) -> Result<(), String> {
+        use std::io::Write;
+        self.writer
+            .write_all(chunk)
+            .map_err(|e| format!("pipe write: {}", e))
+    }
+
+    fn close(&mut self, _result: &Result<(), String>) {
+        use std::net::Shutdown;
+        let _ = self.writer.shutdown(Shutdown::Write);
+    }
+}
+
+#[cfg(unix)]
+fn create_pipe_sink() -> Result<(SystemPipeReader, Box<dyn rong::net::BodySink + Send>), String> {
+    use std::os::fd::IntoRawFd;
+    use std::os::unix::net::UnixStream;
+
+    let (read_end, write_end) = UnixStream::pair().map_err(|e| format!("pipe: {}", e))?;
+    let read_fd = read_end.into_raw_fd();
+    let reader = unsafe { SystemPipeReader::from_raw_fd(read_fd) };
+    let sink: Box<dyn rong::net::BodySink + Send> = Box::new(PipeBodySink { writer: write_end });
+    Ok((reader, sink))
 }
