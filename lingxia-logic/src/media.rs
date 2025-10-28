@@ -137,8 +137,6 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 struct JSChooseMediaOptions {
     #[rename = "count"]
     count: Option<u32>,
-    #[rename = "maxCount"]
-    max_count: Option<u32>,
     #[rename = "mediaType"]
     media_type: Option<String>, // "image" | "video" | "mix"
     #[rename = "sourceType"]
@@ -258,7 +256,6 @@ async fn choose_media(
 
     let opts = options.as_ref().cloned().unwrap_or(JSChooseMediaOptions {
         count: None,
-        max_count: None,
         media_type: None,
         source_type: None,
         camera: None,
@@ -285,7 +282,7 @@ async fn choose_media(
     }
 
     let request = ChooseMediaRequest {
-        max_count: opts.max_count.or(opts.count).unwrap_or(20),
+        max_count: opts.count.unwrap_or(9),
         mode,
         source_types,
         max_duration_seconds,
