@@ -1030,7 +1030,11 @@ export struct LxAppContainer {
         .clip(this.getRenderClip(webTag))
         .zIndex(this.getRenderZIndex(webTag))
         .hitTestBehavior(this.getRenderHitTest(webTag))
-        .backgroundColor(COLOR_TRANSPARENT);
+        .backgroundColor(COLOR_TRANSPARENT)
+        .domStorageAccess(false)
+        .fileAccess(false)
+        .databaseAccess(false)
+        .mixedMode(MixedMode.None);
     }
     .width('100%')
     .height('100%')
