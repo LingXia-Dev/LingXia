@@ -587,10 +587,7 @@ private final class ZoomableImageView: UIView, UIScrollViewDelegate {
 
 extension LxAppMedia {
 #if os(iOS)
-@MainActor
-    private static var albumPickerDelegate: AlbumDelegate?
-    @MainActor
-    private static var cameraPickerDelegate: CameraDelegate?
+    @MainActor private static var albumPickerDelegate: AlbumDelegate?
 #endif
 
     nonisolated static func chooseMedia(
@@ -715,37 +712,39 @@ extension LxAppMedia {
                 return
             }
 
-            let picker = StatusBarHiddenImagePickerController()
-            picker.sourceType = .camera
-            picker.allowsEditing = false
-            picker.modalPresentationStyle = .fullScreen
-            picker.modalPresentationCapturesStatusBarAppearance = true
+            let initialPosition: AVCaptureDevice.Position = desiredFacingFront ? .front : .back
+            let photoController = PhotoCaptureViewController(initialCameraPosition: initialPosition) { result in
+                switch result {
+                case .cancelled:
+                    let _ = onCallback(callbackId, true, "{\"cancel\":true}")
+                case .failure(let message):
+                    let _ = onCallback(callbackId, false, message)
+                case .success(let fileURL):
+                    let copiedURL = copyMediaFileToTemp(
+                        from: fileURL,
+                        prefix: "camera_image",
+                        fallbackExtension: "jpg",
+                        requiresSecurityScope: false
+                    )
+                    let finalURL = copiedURL ?? fileURL
+                    if finalURL != fileURL {
+                        try? FileManager.default.removeItem(at: fileURL)
+                    }
+                    let jsonItem: [String: Any] = [
+                        "uri": finalURL.absoluteString,
+                        "fileType": "image",
+                        "isOriginal": true
+                    ]
 
-            if #available(iOS 14.0, *) {
-                picker.mediaTypes = [UTType.image.identifier]
-            } else {
-                picker.mediaTypes = ["public.image"]
+                    if let data = try? JSONSerialization.data(withJSONObject: [jsonItem], options: []),
+                       let jsonString = String(data: data, encoding: .utf8) {
+                        let _ = onCallback(callbackId, true, jsonString)
+                    } else {
+                        let _ = onCallback(callbackId, false, "Failed to serialize camera capture result")
+                    }
+                }
             }
-
-            picker.cameraCaptureMode = .photo
-
-            let desiredFacing = desiredFacingFront
-                ? UIImagePickerController.CameraDevice.front
-                : UIImagePickerController.CameraDevice.rear
-
-            if UIImagePickerController.isCameraDeviceAvailable(desiredFacing) {
-                picker.cameraDevice = desiredFacing
-            } else if UIImagePickerController.isCameraDeviceAvailable(.rear) {
-                picker.cameraDevice = .rear
-            }
-
-            let delegate = CameraDelegate(callbackId: callbackId, captureMode: .photo) {
-                LxAppMedia.cameraPickerDelegate = nil
-            }
-            LxAppMedia.cameraPickerDelegate = delegate
-            picker.delegate = delegate
-
-            presenter.present(picker, animated: true)
+            presenter.present(photoController, animated: true)
         }
     }
 
@@ -860,128 +859,6 @@ extension LxAppMedia {
         albumPickerDelegate = delegate
         picker.delegate = delegate
         presenter.present(picker, animated: true)
-    }
-}
-
-// MARK: - Camera Delegate
-private final class CameraDelegate: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
-    enum CaptureMode {
-        case photo
-        case video
-    }
-
-    private let callbackId: UInt64
-    private let captureMode: CaptureMode
-    private let cleanup: () -> Void
-
-    init(callbackId: UInt64, captureMode: CaptureMode, cleanup: @escaping () -> Void) {
-        self.callbackId = callbackId
-        self.captureMode = captureMode
-        self.cleanup = cleanup
-        super.init()
-    }
-
-    func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
-        picker.dismiss(animated: true) {
-            let cancelPayload = "{\"cancel\":true}"
-            let _ = onCallback(self.callbackId, true, cancelPayload)
-            self.cleanup()
-        }
-    }
-
-    func imagePickerController(
-        _ picker: UIImagePickerController,
-        didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]
-    ) {
-        let mediaType = (info[.mediaType] as? String) ?? ""
-        let movieIdentifier: String
-        if #available(iOS 14.0, *) {
-            movieIdentifier = UTType.movie.identifier
-        } else {
-            movieIdentifier = "public.movie"
-        }
-
-        let isVideoCapture = captureMode == .video
-            || mediaType == movieIdentifier
-            || mediaType == "public.movie"
-            || mediaType.contains("movie")
-
-        var jsonItem: [String: Any]?
-
-        if isVideoCapture {
-            if let mediaURL = info[.mediaURL] as? URL {
-                if let tempURL = copyMediaFileToTemp(
-                    from: mediaURL,
-                    prefix: "camera_video",
-                    fallbackExtension: "mov",
-                    requiresSecurityScope: false
-                ) {
-                    jsonItem = [
-                        "uri": tempURL.absoluteString,
-                        "fileType": "video",
-                        "isOriginal": true
-                    ]
-                }
-            }
-        } else {
-            if let imageURL = info[.imageURL] as? URL {
-                let ext = imageURL.pathExtension.isEmpty ? "jpg" : imageURL.pathExtension
-                if let tempURL = copyMediaFileToTemp(
-                    from: imageURL,
-                    prefix: "camera_image",
-                    fallbackExtension: ext,
-                    requiresSecurityScope: false
-                ) {
-                    jsonItem = [
-                        "uri": tempURL.absoluteString,
-                        "fileType": "image",
-                        "isOriginal": true
-                    ]
-                }
-            } else if let image = info[.originalImage] as? UIImage {
-                if let tempURL = saveCapturedImageToTemp(image) {
-                    jsonItem = [
-                        "uri": tempURL.absoluteString,
-                        "fileType": "image",
-                        "isOriginal": true
-                    ]
-                }
-            }
-        }
-
-        picker.dismiss(animated: true) {
-            if let item = jsonItem {
-                self.sendSuccess(with: item)
-            } else {
-                let _ = onCallback(self.callbackId, false, "Failed to capture media")
-                self.cleanup()
-            }
-        }
-    }
-
-    private func sendSuccess(with item: [String: Any]) {
-        do {
-            let data = try JSONSerialization.data(withJSONObject: [item], options: [])
-            let jsonString = String(data: data, encoding: .utf8) ?? "[]"
-            let _ = onCallback(callbackId, true, jsonString)
-        } catch {
-            let _ = onCallback(callbackId, false, "Failed to serialize camera capture result")
-        }
-        cleanup()
-    }
-
-    private func saveCapturedImageToTemp(_ image: UIImage) -> URL? {
-        guard let data = image.jpegData(compressionQuality: 0.95) else {
-            return nil
-        }
-        let tempDir = FileManager.default.temporaryDirectory
-        let fileURL = tempDir.appendingPathComponent("camera_image_\(UUID().uuidString).jpg")
-        do {
-            try data.write(to: fileURL)
-            return fileURL
-        } catch {
-            return nil
-        }
     }
 }
 
@@ -1122,9 +999,591 @@ private class AlbumDelegate: NSObject, PHPickerViewControllerDelegate {
 #endif
 
 #if os(iOS)
-private final class StatusBarHiddenImagePickerController: UIImagePickerController {
+private enum PhotoCaptureResult {
+    case success(URL)
+    case cancelled
+    case failure(String)
+}
+
+private enum PhotoCaptureHint {
+    static let preparing = "准备相机..."
+    static let ready = "点击拍照"
+    static let capturing = "拍摄中..."
+    static let switching = "切换摄像头..."
+    static let previewing = "预览中…"
+}
+
+private final class PhotoCaptureViewController: UIViewController {
+    private let resultHandler: (PhotoCaptureResult) -> Void
+    private var currentPosition: AVCaptureDevice.Position
+
+    private let session = AVCaptureSession()
+    private let sessionQueue = DispatchQueue(label: "com.lingxia.camera.photo.session")
+    private let photoOutput = AVCapturePhotoOutput()
+    private var videoInput: AVCaptureDeviceInput?
+    private var previewLayer: AVCaptureVideoPreviewLayer?
+
+    private let overlayView = PhotoCaptureOverlayView()
+    private lazy var photoDelegate = PhotoCaptureDelegate(controller: self)
+
+    private var isSessionConfigured = false
+    private var isCapturingPhoto = false
+    private var pendingPhotoURL: URL?
+
+    init(initialCameraPosition: AVCaptureDevice.Position, resultHandler: @escaping (PhotoCaptureResult) -> Void) {
+        self.currentPosition = initialCameraPosition
+        self.resultHandler = resultHandler
+        super.init(nibName: nil, bundle: nil)
+        modalPresentationStyle = .fullScreen
+        modalPresentationCapturesStatusBarAppearance = true
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
     override var prefersStatusBarHidden: Bool { true }
-    override var preferredStatusBarUpdateAnimation: UIStatusBarAnimation { .fade }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .black
+        configurePreviewLayer()
+        configureOverlay()
+        configureSession { [weak self] in
+            guard let self else { return }
+            self.overlayView.setBusy(false)
+            self.overlayView.showHint(PhotoCaptureHint.ready)
+            self.updateCameraSwitchAvailability()
+        }
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        startSession()
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        stopSession()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        previewLayer?.frame = view.bounds
+    }
+
+    private func configurePreviewLayer() {
+        let layer = AVCaptureVideoPreviewLayer(session: session)
+        layer.videoGravity = .resizeAspectFill
+        layer.frame = view.bounds
+        view.layer.addSublayer(layer)
+        previewLayer = layer
+    }
+
+    private func configureOverlay() {
+        overlayView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(overlayView)
+        NSLayoutConstraint.activate([
+            overlayView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            overlayView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            overlayView.topAnchor.constraint(equalTo: view.topAnchor),
+            overlayView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+
+        overlayView.onCaptureTapped = { [weak self] in
+            self?.capturePhoto()
+        }
+        overlayView.onCancelTapped = { [weak self] in
+            self?.handleCancel()
+        }
+        overlayView.onSwitchCameraTapped = { [weak self] in
+            self?.switchCamera()
+        }
+
+        overlayView.showHint(PhotoCaptureHint.preparing)
+        overlayView.setBusy(true)
+        overlayView.updateCameraPosition(isFront: currentPosition == .front)
+    }
+
+    private func configureSession(completion: (() -> Void)? = nil) {
+        sessionQueue.async {
+            self.configureSessionOnQueue(completion: completion)
+        }
+    }
+
+    private func configureSessionOnQueue(completion: (() -> Void)?) {
+        self.isSessionConfigured = false
+        self.session.beginConfiguration()
+        self.session.sessionPreset = .photo
+
+        if let input = self.videoInput {
+            self.session.removeInput(input)
+            self.videoInput = nil
+        }
+
+        guard let device = self.cameraDevice(position: self.currentPosition) else {
+            self.session.commitConfiguration()
+            DispatchQueue.main.async {
+                self.finish(with: .failure("Camera device not available"))
+            }
+            return
+        }
+
+        do {
+            let input = try AVCaptureDeviceInput(device: device)
+            if self.session.canAddInput(input) {
+                self.session.addInput(input)
+                self.videoInput = input
+            } else {
+                throw NSError(domain: "LingXia.Camera", code: -1, userInfo: [NSLocalizedDescriptionKey: "Unable to add camera input"])
+            }
+        } catch {
+            self.session.commitConfiguration()
+            DispatchQueue.main.async {
+                self.finish(with: .failure("Failed to configure camera input"))
+            }
+            return
+        }
+
+        if !self.session.outputs.contains(self.photoOutput) {
+            if self.session.canAddOutput(self.photoOutput) {
+                self.session.addOutput(self.photoOutput)
+            } else {
+                self.session.commitConfiguration()
+                DispatchQueue.main.async {
+                    self.finish(with: .failure("Failed to configure photo output"))
+                }
+                return
+            }
+        }
+        self.photoOutput.isHighResolutionCaptureEnabled = true
+        if #available(iOS 16.0, *) {
+            self.photoOutput.maxPhotoQualityPrioritization = .quality
+        }
+
+        if let connection = self.photoOutput.connection(with: .video), connection.isVideoOrientationSupported {
+            connection.videoOrientation = .portrait
+        }
+
+        self.session.commitConfiguration()
+        self.isSessionConfigured = true
+        self.startSession()
+
+        if let completion {
+            DispatchQueue.main.async {
+                completion()
+            }
+        }
+    }
+
+    private func startSession() {
+        sessionQueue.async {
+            guard self.isSessionConfigured, !self.session.isRunning else { return }
+            self.session.startRunning()
+        }
+    }
+
+    private func stopSession() {
+        sessionQueue.async {
+            guard self.session.isRunning else { return }
+            self.session.stopRunning()
+        }
+    }
+
+    private func capturePhoto() {
+        guard !isCapturingPhoto else { return }
+        isCapturingPhoto = true
+        overlayView.showHint(PhotoCaptureHint.capturing)
+
+        let settings = AVCapturePhotoSettings()
+        settings.isHighResolutionPhotoEnabled = true
+        if photoOutput.supportedFlashModes.contains(.auto) {
+            settings.flashMode = .auto
+        } else if photoOutput.supportedFlashModes.contains(.off) {
+            settings.flashMode = .off
+        }
+        if #available(iOS 11.0, *) {
+            settings.isAutoStillImageStabilizationEnabled = true
+            if photoOutput.isDepthDataDeliverySupported {
+                settings.isDepthDataDeliveryEnabled = false
+            }
+        }
+
+        sessionQueue.async { [weak self] in
+            guard let self else { return }
+            self.photoOutput.capturePhoto(with: settings, delegate: self.photoDelegate)
+        }
+    }
+
+    private func switchCamera() {
+        currentPosition = currentPosition == .front ? .back : .front
+        overlayView.updateCameraPosition(isFront: currentPosition == .front)
+        overlayView.showHint(PhotoCaptureHint.switching)
+
+        configureSession { [weak self] in
+            guard let self else { return }
+            self.overlayView.showHint(PhotoCaptureHint.ready)
+            self.updateCameraSwitchAvailability()
+        }
+    }
+
+    private func updateCameraSwitchAvailability() {
+        let discovery = AVCaptureDevice.DiscoverySession(
+            deviceTypes: [.builtInWideAngleCamera, .builtInDualCamera, .builtInDualWideCamera, .builtInTripleCamera],
+            mediaType: .video,
+            position: .unspecified
+        )
+        let positions = Set(discovery.devices.map { $0.position })
+        overlayView.setSwitchAvailable(positions.contains(.front) && positions.contains(.back))
+    }
+
+    private func handleCancel() {
+        finish(with: .cancelled)
+    }
+
+    private func finish(with result: PhotoCaptureResult) {
+        stopSession()
+        dismiss(animated: true) {
+            self.resultHandler(result)
+        }
+    }
+
+    private func cameraDevice(position: AVCaptureDevice.Position) -> AVCaptureDevice? {
+        let discovery = AVCaptureDevice.DiscoverySession(
+            deviceTypes: [.builtInDualCamera, .builtInWideAngleCamera, .builtInTripleCamera, .builtInDualWideCamera],
+            mediaType: .video,
+            position: position
+        )
+        return discovery.devices.first ?? AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: position)
+    }
+
+    @MainActor
+    fileprivate func handleCapturedPhoto(data: Data?, error: Error?) {
+        overlayView.setBusy(false)
+        isCapturingPhoto = false
+
+        if let error {
+            overlayView.showHint(PhotoCaptureHint.ready)
+            finish(with: .failure(error.localizedDescription))
+            return
+        }
+
+        guard let data, let url = savePhotoData(data) else {
+            overlayView.showHint(PhotoCaptureHint.ready)
+            finish(with: .failure("Failed to save captured photo"))
+            return
+        }
+
+        overlayView.showHint(PhotoCaptureHint.previewing)
+        presentReview(for: url)
+    }
+
+    private func savePhotoData(_ data: Data) -> URL? {
+        let tempDir = FileManager.default.temporaryDirectory
+        let fileURL = tempDir.appendingPathComponent("camera_image_\(UUID().uuidString).jpg")
+        do {
+            try data.write(to: fileURL, options: .atomic)
+            return fileURL
+        } catch {
+            return nil
+        }
+    }
+
+    private func presentReview(for url: URL) {
+        pendingPhotoURL = url
+        overlayView.isHidden = true
+
+        let reviewController = PhotoReviewViewController(
+            imageURL: url,
+            onRetake: { [weak self] in
+                self?.handleRetakeFromReview()
+            },
+            onConfirm: { [weak self] in
+                self?.handleConfirmFromReview()
+            }
+        )
+        reviewController.modalPresentationStyle = .fullScreen
+        present(reviewController, animated: true)
+    }
+
+    private func handleRetakeFromReview() {
+        guard let url = pendingPhotoURL else { return }
+        pendingPhotoURL = nil
+        if FileManager.default.fileExists(atPath: url.path) {
+            try? FileManager.default.removeItem(at: url)
+        }
+        overlayView.isHidden = false
+        overlayView.setBusy(false)
+        overlayView.showHint(PhotoCaptureHint.ready)
+    }
+
+    private func handleConfirmFromReview() {
+        guard let url = pendingPhotoURL else { return }
+        pendingPhotoURL = nil
+        finish(with: .success(url))
+    }
+}
+
+private final class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
+    private weak var controller: PhotoCaptureViewController?
+
+    init(controller: PhotoCaptureViewController) {
+        self.controller = controller
+    }
+
+    func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
+        let data = photo.fileDataRepresentation()
+        guard let controller else { return }
+        DispatchQueue.main.async {
+            controller.handleCapturedPhoto(data: data, error: error)
+        }
+    }
+}
+
+@MainActor
+private enum ReviewButtonFactory {
+    static func makeConfirmButton(title: String, target: Any?, action: Selector) -> UIButton {
+        let button = UIButton(type: .system)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.setTitle(title, for: .normal)
+        button.titleLabel?.font = UIFont.systemFont(ofSize: 17, weight: .semibold)
+        button.setTitleColor(.white, for: .normal)
+        button.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.9)
+        button.layer.cornerRadius = 20
+        button.contentEdgeInsets = UIEdgeInsets(top: 10, left: 24, bottom: 10, right: 24)
+        button.addTarget(target, action: action, for: .touchUpInside)
+        return button
+    }
+
+    static func makeRetakeButton(target: Any?, action: Selector) -> UIButton {
+        let button = UIButton(type: .system)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.tintColor = .white
+        button.backgroundColor = UIColor.black.withAlphaComponent(0.45)
+        button.layer.cornerRadius = 18
+        button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
+        if let image = UIImage(systemName: "arrow.uturn.backward") {
+            let symbolConfig = UIImage.SymbolConfiguration(pointSize: 18, weight: .medium)
+            button.setImage(image.applyingSymbolConfiguration(symbolConfig), for: .normal)
+        }
+        button.addTarget(target, action: action, for: .touchUpInside)
+        return button
+    }
+}
+
+private final class PhotoReviewViewController: UIViewController {
+    private let imageURL: URL
+    private let onRetake: () -> Void
+    private let onConfirm: () -> Void
+
+    private let imageView = UIImageView()
+
+    init(imageURL: URL, onRetake: @escaping () -> Void, onConfirm: @escaping () -> Void) {
+        self.imageURL = imageURL
+        self.onRetake = onRetake
+        self.onConfirm = onConfirm
+        super.init(nibName: nil, bundle: nil)
+        modalPresentationCapturesStatusBarAppearance = true
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override var prefersStatusBarHidden: Bool { true }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .black
+        configureImageView()
+        configureControls()
+        loadImage()
+    }
+
+    private func configureImageView() {
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        imageView.contentMode = .scaleAspectFill
+        imageView.clipsToBounds = true
+        view.addSubview(imageView)
+
+        NSLayoutConstraint.activate([
+            imageView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            imageView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            imageView.topAnchor.constraint(equalTo: view.topAnchor),
+            imageView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+    }
+
+    private func configureControls() {
+        let confirmButton = ReviewButtonFactory.makeConfirmButton(
+            title: "完成",
+            target: self,
+            action: #selector(confirmTapped)
+        )
+
+        let retakeButton = ReviewButtonFactory.makeRetakeButton(
+            target: self,
+            action: #selector(retakeTapped)
+        )
+
+        view.addSubview(confirmButton)
+        view.addSubview(retakeButton)
+
+        NSLayoutConstraint.activate([
+            confirmButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -24),
+            confirmButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -24),
+
+            retakeButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            retakeButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16)
+        ])
+    }
+
+    private func loadImage() {
+        if let image = UIImage(contentsOfFile: imageURL.path) {
+            imageView.image = image
+            return
+        }
+
+        if let data = try? Data(contentsOf: imageURL), let image = UIImage(data: data) {
+            imageView.image = image
+            return
+        }
+
+        // 如果加载失败，直接视为重拍
+        retakeTapped()
+    }
+
+    @objc private func confirmTapped() {
+        dismiss(animated: false) { [weak self] in
+            self?.onConfirm()
+        }
+    }
+
+    @objc private func retakeTapped() {
+        dismiss(animated: true) { [weak self] in
+            self?.onRetake()
+        }
+    }
+}
+
+private final class PhotoCaptureOverlayView: UIView {
+    var onCaptureTapped: (() -> Void)?
+    var onCancelTapped: (() -> Void)?
+    var onSwitchCameraTapped: (() -> Void)?
+
+    private let captureButton = UIButton(type: .custom)
+    private let hintLabel = UILabel()
+    private let cancelButton = UIButton(type: .system)
+    private let switchCameraButton = UIButton(type: .system)
+    private let activityIndicator = UIActivityIndicatorView(style: .large)
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        configureView()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    func setBusy(_ busy: Bool) {
+        captureButton.isEnabled = !busy
+        switchCameraButton.isEnabled = !busy
+        busy ? activityIndicator.startAnimating() : activityIndicator.stopAnimating()
+        activityIndicator.isHidden = !busy
+        captureButton.alpha = busy ? 0.6 : 1.0
+    }
+
+    func showHint(_ text: String) {
+        hintLabel.text = text
+    }
+
+    func setSwitchAvailable(_ available: Bool) {
+        switchCameraButton.isHidden = !available
+    }
+
+    func updateCameraPosition(isFront: Bool) {
+        switchCameraButton.accessibilityLabel = isFront ? "切换到后置摄像头" : "切换到前置摄像头"
+    }
+
+    private func configureView() {
+        backgroundColor = .clear
+
+        captureButton.translatesAutoresizingMaskIntoConstraints = false
+        captureButton.backgroundColor = .white
+        captureButton.layer.cornerRadius = 36
+        captureButton.layer.borderColor = UIColor.black.withAlphaComponent(0.25).cgColor
+        captureButton.layer.borderWidth = 4
+        captureButton.addTarget(self, action: #selector(captureTapped), for: .touchUpInside)
+        addSubview(captureButton)
+
+        hintLabel.translatesAutoresizingMaskIntoConstraints = false
+        hintLabel.textAlignment = .center
+        hintLabel.textColor = .white
+        hintLabel.font = UIFont.systemFont(ofSize: 16, weight: .medium)
+        addSubview(hintLabel)
+
+        cancelButton.translatesAutoresizingMaskIntoConstraints = false
+        cancelButton.backgroundColor = UIColor.black.withAlphaComponent(0.35)
+        cancelButton.layer.cornerRadius = 18
+        cancelButton.setTitle("取消", for: .normal)
+        cancelButton.setTitleColor(.white, for: .normal)
+        cancelButton.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .medium)
+        cancelButton.contentEdgeInsets = UIEdgeInsets(top: 6, left: 12, bottom: 6, right: 12)
+        cancelButton.addTarget(self, action: #selector(cancelTapped), for: .touchUpInside)
+        addSubview(cancelButton)
+
+        switchCameraButton.translatesAutoresizingMaskIntoConstraints = false
+        switchCameraButton.backgroundColor = UIColor.black.withAlphaComponent(0.35)
+        switchCameraButton.layer.cornerRadius = 22
+        if let image = UIImage(systemName: "arrow.triangle.2.circlepath.camera") {
+            switchCameraButton.setImage(image, for: .normal)
+            switchCameraButton.tintColor = .white
+        } else {
+            switchCameraButton.setTitle("切换", for: .normal)
+            switchCameraButton.setTitleColor(.white, for: .normal)
+        }
+        switchCameraButton.addTarget(self, action: #selector(switchCameraTapped), for: .touchUpInside)
+        addSubview(switchCameraButton)
+
+        activityIndicator.translatesAutoresizingMaskIntoConstraints = false
+        activityIndicator.color = .white
+        activityIndicator.hidesWhenStopped = true
+        addSubview(activityIndicator)
+
+        NSLayoutConstraint.activate([
+            captureButton.centerXAnchor.constraint(equalTo: centerXAnchor),
+            captureButton.bottomAnchor.constraint(equalTo: safeAreaLayoutGuide.bottomAnchor, constant: -32),
+            captureButton.widthAnchor.constraint(equalToConstant: 72),
+            captureButton.heightAnchor.constraint(equalToConstant: 72),
+
+            hintLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
+            hintLabel.bottomAnchor.constraint(equalTo: captureButton.topAnchor, constant: -18),
+
+            cancelButton.centerYAnchor.constraint(equalTo: captureButton.centerYAnchor),
+            cancelButton.trailingAnchor.constraint(equalTo: captureButton.leadingAnchor, constant: -32),
+
+            switchCameraButton.topAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor, constant: 16),
+            switchCameraButton.trailingAnchor.constraint(equalTo: safeAreaLayoutGuide.trailingAnchor, constant: -16),
+            switchCameraButton.widthAnchor.constraint(equalToConstant: 44),
+            switchCameraButton.heightAnchor.constraint(equalToConstant: 44),
+
+            activityIndicator.centerXAnchor.constraint(equalTo: centerXAnchor),
+            activityIndicator.centerYAnchor.constraint(equalTo: centerYAnchor)
+        ])
+    }
+
+    @objc private func captureTapped() {
+        onCaptureTapped?()
+    }
+
+    @objc private func cancelTapped() {
+        onCancelTapped?()
+    }
+
+    @objc private func switchCameraTapped() {
+        onSwitchCameraTapped?()
+    }
 }
 
 private enum VideoCaptureResult {
@@ -1633,32 +2092,21 @@ private final class VideoReviewViewController: UIViewController {
     }
 
     private func configureControls() {
-        let confirmButton = UIButton(type: .system)
-        confirmButton.translatesAutoresizingMaskIntoConstraints = false
-        confirmButton.setTitle("完成", for: .normal)
-        confirmButton.titleLabel?.font = UIFont.systemFont(ofSize: 17, weight: .semibold)
-        confirmButton.setTitleColor(.white, for: .normal)
-        confirmButton.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.9)
-        confirmButton.layer.cornerRadius = 20
-        confirmButton.contentEdgeInsets = UIEdgeInsets(top: 10, left: 24, bottom: 10, right: 24)
-        confirmButton.addTarget(self, action: #selector(confirmTapped), for: .touchUpInside)
+        let confirmButton = ReviewButtonFactory.makeConfirmButton(
+            title: "完成",
+            target: self,
+            action: #selector(confirmTapped)
+        )
 
-        let retakeButton = UIButton(type: .system)
-        retakeButton.translatesAutoresizingMaskIntoConstraints = false
-        retakeButton.tintColor = .white
-        retakeButton.backgroundColor = UIColor.black.withAlphaComponent(0.45)
-        retakeButton.layer.cornerRadius = 18
-        retakeButton.contentEdgeInsets = UIEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
-        if let image = UIImage(systemName: "arrow.uturn.backward") {
-            let symbolConfig = UIImage.SymbolConfiguration(pointSize: 18, weight: .medium)
-            retakeButton.setImage(image.applyingSymbolConfiguration(symbolConfig), for: .normal)
-        }
-        retakeButton.addTarget(self, action: #selector(retakeTapped), for: .touchUpInside)
+        let retakeButton = ReviewButtonFactory.makeRetakeButton(
+            target: self,
+            action: #selector(retakeTapped)
+        )
 
         view.addSubview(confirmButton)
         view.addSubview(retakeButton)
 
-            NSLayoutConstraint.activate([
+        NSLayoutConstraint.activate([
             confirmButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -24),
             confirmButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -24),
 
