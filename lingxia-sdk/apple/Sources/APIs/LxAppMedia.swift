@@ -1592,6 +1592,20 @@ private enum VideoCaptureResult {
     case failure(String)
 }
 
+private enum PendingRecordingAction: Equatable {
+    case none
+    case stop
+    case cancel
+}
+
+private enum RecordingState: Equatable {
+    case idle
+    case preparing(pending: PendingRecordingAction)
+    case recording
+    case finishing
+    case cancelling
+}
+
 private final class VideoCaptureViewController: UIViewController {
     private let resultHandler: (VideoCaptureResult) -> Void
     private let maxDuration: TimeInterval
@@ -1607,8 +1621,11 @@ private final class VideoCaptureViewController: UIViewController {
     private let overlayView = VideoCaptureOverlayView()
 
     private var isSessionRunning = false
-    private var isRecording = false
-    private var isCancelling = false
+    private var recordingState: RecordingState = .idle {
+        didSet {
+            handleRecordingStateChange(from: oldValue, to: recordingState)
+        }
+    }
     private var recordingStartDate: Date?
     private var updateTimer: Timer?
     private var lastPressInside = true
@@ -1655,6 +1672,36 @@ private final class VideoCaptureViewController: UIViewController {
 
     deinit {
         stopSession()
+    }
+
+    @MainActor
+    private func handleRecordingStateChange(from oldValue: RecordingState, to newValue: RecordingState) {
+        guard oldValue != newValue else { return }
+
+        switch newValue {
+        case .idle:
+            overlayView.updateToIdle()
+        case .preparing(let pending):
+            if case .preparing = oldValue {
+                // already in preparing; only adjust pending action visuals
+            } else {
+                overlayView.prepareForRecording()
+            }
+            switch pending {
+            case .stop:
+                overlayView.updateToFinishing()
+            case .cancel:
+                overlayView.updateToCancelling()
+            case .none:
+                break
+            }
+        case .recording:
+            overlayView.updateToRecording()
+        case .finishing:
+            overlayView.updateToFinishing()
+        case .cancelling:
+            overlayView.updateToCancelling()
+        }
     }
 
     private func configurePreviewLayer() {
@@ -1774,7 +1821,7 @@ private final class VideoCaptureViewController: UIViewController {
         case .began:
             lastPressInside = true
             overlayView.updateFingerOutside(false)
-            if !isRecording {
+            if recordingState == .idle {
                 beginRecording()
             }
         case .changed(let isInside):
@@ -1782,76 +1829,108 @@ private final class VideoCaptureViewController: UIViewController {
             overlayView.updateFingerOutside(!isInside)
         case .ended:
             overlayView.updateFingerOutside(false)
-            if isRecording {
+            switch recordingState {
+            case .recording, .finishing:
                 if lastPressInside {
-                    stopRecording()
+                    requestStopRecording()
                 } else {
-                    cancelRecording()
+                    requestCancelRecording()
                 }
-            } else {
+            case .preparing:
+                updatePendingActionForPreparing(lastPressInside ? .stop : .cancel)
+            case .cancelling:
+                break
+            case .idle:
                 overlayView.updateToIdle()
             }
         case .cancelled:
             overlayView.updateFingerOutside(false)
-            if isRecording {
-                cancelRecording()
-        } else {
+            switch recordingState {
+            case .recording, .finishing:
+                requestCancelRecording()
+            case .preparing:
+                updatePendingActionForPreparing(.cancel)
+            case .cancelling:
+                break
+            case .idle:
                 finish(with: .cancelled)
             }
         }
     }
 
     private func handleCancelTapped() {
-        if isRecording {
-            cancelRecording()
-        } else {
-            finish(with: .cancelled)
-        }
+        requestCancelRecording()
     }
 
     private func beginRecording() {
+        guard recordingState == .idle else { return }
+        recordingState = .preparing(pending: .none)
+
         sessionQueue.async {
-            guard !self.movieOutput.isRecording else { return }
+            if self.movieOutput.isRecording {
+                DispatchQueue.main.async {
+                    self.recordingState = .recording
+                }
+                return
+            }
             if let connection = self.movieOutput.connection(with: .video) {
                 connection.videoOrientation = self.currentVideoOrientation()
             }
 
             let outputURL = self.makeTemporaryFileURL()
-            self.isCancelling = false
-
-            DispatchQueue.main.async {
-                self.overlayView.prepareForRecording()
-            }
-
             self.movieOutput.startRecording(to: outputURL, recordingDelegate: self)
         }
     }
 
-    private func stopRecording() {
+    private func requestStopRecording() {
+        switch recordingState {
+        case .recording:
+            recordingState = .finishing
+            stopMovieOutput()
+        case .preparing:
+            recordingState = .preparing(pending: .stop)
+        default:
+            break
+        }
+    }
+
+    private func requestCancelRecording() {
+        switch recordingState {
+        case .recording, .finishing:
+            recordingState = .cancelling
+            stopMovieOutput()
+        case .preparing:
+            recordingState = .preparing(pending: .cancel)
+        case .idle:
+            finish(with: .cancelled)
+        case .cancelling:
+            break
+        }
+    }
+
+    private func updatePendingActionForPreparing(_ action: PendingRecordingAction) {
+        guard case .preparing = recordingState else { return }
+        recordingState = .preparing(pending: action)
+    }
+
+    private func stopMovieOutput() {
         sessionQueue.async {
             guard self.movieOutput.isRecording else { return }
             self.movieOutput.stopRecording()
         }
     }
 
-    private func cancelRecording() {
-        sessionQueue.async {
-            guard self.movieOutput.isRecording else {
-            DispatchQueue.main.async {
-                    self.overlayView.updateToIdle()
-                }
-                return
-            }
-            self.isCancelling = true
-            DispatchQueue.main.async {
-                self.overlayView.updateToCancelling()
-            }
-            self.movieOutput.stopRecording()
+    private var isRecordingActive: Bool {
+        switch recordingState {
+        case .recording, .finishing, .cancelling:
+            return true
+        default:
+            return false
         }
     }
 
     private func switchCamera() {
-        guard !isRecording else { return }
+        guard recordingState == .idle else { return }
         sessionQueue.async {
             self.session.beginConfiguration()
             if let currentInput = self.videoInput {
@@ -1904,13 +1983,13 @@ private final class VideoCaptureViewController: UIViewController {
     private func startUpdateTimer() {
         updateTimer?.invalidate()
         updateTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-            guard let self = self, self.isRecording, let start = self.recordingStartDate else { return }
+            guard let self = self, self.isRecordingActive, let start = self.recordingStartDate else { return }
             let elapsed = Date().timeIntervalSince(start)
             DispatchQueue.main.async {
                 self.overlayView.updateRecordingProgress(elapsed: elapsed, maxDuration: self.maxDuration)
             }
             if elapsed >= self.maxDuration {
-                self.stopRecording()
+                self.requestStopRecording()
             }
         }
         if let updateTimer {
@@ -1960,7 +2039,7 @@ private final class VideoCaptureViewController: UIViewController {
             try? FileManager.default.removeItem(at: url)
         }
         overlayView.isHidden = false
-        overlayView.updateToIdle()
+        recordingState = .idle
         startSessionIfNeeded()
     }
 
@@ -1986,6 +2065,7 @@ private final class VideoCaptureViewController: UIViewController {
         pendingReviewURL = nil
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         DispatchQueue.main.async {
+            self.recordingState = .idle
             self.dismiss(animated: true) {
                 self.resultHandler(result)
             }
@@ -1996,17 +2076,43 @@ private final class VideoCaptureViewController: UIViewController {
 extension VideoCaptureViewController: @preconcurrency AVCaptureFileOutputRecordingDelegate {
     @MainActor
     func fileOutput(_ output: AVCaptureFileOutput, didStartRecordingTo fileURL: URL, from connections: [AVCaptureConnection]) {
-        self.isRecording = true
-        self.recordingStartDate = Date()
-        self.overlayView.updateToRecording()
-        self.startUpdateTimer()
+        let pendingAction: PendingRecordingAction
+        if case .preparing(let action) = recordingState {
+            pendingAction = action
+        } else {
+            pendingAction = .none
+        }
+
+        recordingStartDate = Date()
+        startUpdateTimer()
+
+        switch pendingAction {
+        case .none:
+            recordingState = .recording
+        case .stop:
+            recordingState = .finishing
+            stopMovieOutput()
+        case .cancel:
+            recordingState = .cancelling
+            stopMovieOutput()
+        }
     }
 
     @MainActor
     func fileOutput(_ output: AVCaptureFileOutput, didFinishRecordingTo outputFileURL: URL, from connections: [AVCaptureConnection], error: Error?) {
-        self.isRecording = false
-        self.recordingStartDate = nil
-        self.stopUpdateTimer()
+        let wasCancelling: Bool
+        switch recordingState {
+        case .cancelling:
+            wasCancelling = true
+        case .preparing(let action):
+            wasCancelling = action == .cancel
+        default:
+            wasCancelling = false
+        }
+
+        recordingStartDate = nil
+        stopUpdateTimer()
+        recordingState = .idle
         if let error {
             let nsError = error as NSError
             if nsError.domain == AVFoundationErrorDomain,
@@ -2028,16 +2134,13 @@ extension VideoCaptureViewController: @preconcurrency AVCaptureFileOutputRecordi
             return
         }
 
-        if self.isCancelling {
+        if wasCancelling {
             if FileManager.default.fileExists(atPath: outputFileURL.path) {
                 try? FileManager.default.removeItem(at: outputFileURL)
             }
-            self.isCancelling = false
-            self.overlayView.updateToIdle()
             self.finish(with: .cancelled)
             return
         }
-        self.isCancelling = false
         self.presentReview(for: outputFileURL)
     }
 }
