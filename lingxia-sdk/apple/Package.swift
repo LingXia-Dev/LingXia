@@ -41,6 +41,13 @@ let package = Package(
             name: "lingxia",
             dependencies: ["CLingXiaRustAPI", "CLingXiaSwiftAPI"],
             path: "Sources",
+            resources: [
+                .copy("Resources/icon_back.pdf"),
+                .copy("Resources/icon_close.pdf"),
+                .copy("Resources/icon_flash_on.pdf"),
+                .copy("Resources/icon_flash_off.pdf"),
+                .copy("Resources/icon_switch.pdf"),
+            ],
             publicHeadersPath: nil,
             cSettings: [
                 .headerSearchPath("generated"),
