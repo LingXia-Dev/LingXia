@@ -143,6 +143,9 @@ mod bridge {
             max_duration: &str,
             callback_id: u64,
         ) -> bool;
+
+        #[swift_bridge(swift_name = "LxAppMedia.scanCode")]
+        fn scan_code_ios(scan_types_json: &str, only_from_camera: bool, callback_id: u64) -> bool;
     }
 }
 
@@ -150,6 +153,6 @@ mod bridge {
 pub use bridge::{
     ActionSheetOptions, ModalOptions, PickerOptions, PopupPositionBridge, ToastIcon, ToastOptions,
     ToastPosition, choose_media_ios, close_lxapp, hide_popup, hide_toast, launch_with_url,
-    navigate, open_document, open_lxapp, preview_media, show_action_sheet, show_modal, show_picker,
-    show_popup, show_toast, update_navbar_ui, update_tabbar_ui,
+    navigate, open_document, open_lxapp, preview_media, scan_code_ios, show_action_sheet,
+    show_modal, show_picker, show_popup, show_toast, update_navbar_ui, update_tabbar_ui,
 };

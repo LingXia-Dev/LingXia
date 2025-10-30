@@ -1,5 +1,5 @@
 use super::app::Platform;
-use super::ffi::{choose_media_ios, preview_media};
+use super::ffi::{choose_media_ios, preview_media, scan_code_ios};
 use crate::error::PlatformError;
 use crate::traits::{
     ChooseMediaRequest, MediaInteraction, MediaKind, PreviewMediaRequest, SaveMediaRequest,
@@ -64,10 +64,19 @@ impl MediaInteraction for Platform {
         }
     }
 
-    fn scan_code(&self, _request: ScanCodeRequest) -> Result<(), PlatformError> {
-        Err(PlatformError::Platform(
-            "scan_code is not implemented on Apple platform".to_string(),
-        ))
+    fn scan_code(&self, request: ScanCodeRequest) -> Result<(), PlatformError> {
+        #[cfg(target_os = "ios")]
+        {
+            ios::scan_code(request)
+        }
+
+        #[cfg(not(target_os = "ios"))]
+        {
+            let _ = request;
+            Err(PlatformError::Platform(
+                "scan_code is not implemented on this Apple target".to_string(),
+            ))
+        }
     }
 
     fn save_image_to_photos_album(&self, request: SaveMediaRequest) -> Result<(), PlatformError> {
@@ -104,6 +113,7 @@ impl MediaInteraction for Platform {
 #[cfg(target_os = "ios")]
 mod ios {
     use super::*;
+    use crate::traits::ScanType;
     use block2::RcBlock;
     use dispatch2::{DispatchSemaphore, DispatchTime, dispatch_block_t, run_on_main};
     use objc2_foundation::{NSError, NSString, NSURL};
@@ -337,6 +347,31 @@ mod ios {
         } else {
             Err(PlatformError::Platform(
                 "Failed to start media selection on iOS".to_string(),
+            ))
+        }
+    }
+
+    pub(super) fn scan_code(request: ScanCodeRequest) -> Result<(), PlatformError> {
+        let type_codes: Vec<i32> = request
+            .scan_types
+            .iter()
+            .map(|t| match t {
+                ScanType::QrCode => 1,
+                ScanType::BarCode => 2,
+                ScanType::DataMatrix => 3,
+                ScanType::Pdf417 => 4,
+            })
+            .collect();
+
+        let types_json = serde_json::to_string(&type_codes)
+            .map_err(|e| PlatformError::Platform(format!("Failed to encode scan types: {}", e)))?;
+
+        let started = scan_code_ios(&types_json, request.only_from_camera, request.callback_id);
+        if started {
+            Ok(())
+        } else {
+            Err(PlatformError::Platform(
+                "Failed to initiate scanCode on Apple platform".to_string(),
             ))
         }
     }
