@@ -1694,9 +1694,6 @@ private final class VideoCaptureOverlayView: UIView {
     }
 
     @objc private func recordTapped() {
-        if !recordingActive {
-            CaptureFeedback.playRecordStart()
-        }
         onRecordTapped?()
     }
 
