@@ -1,5 +1,5 @@
 use super::app::Platform;
-use super::ffi::{choose_media_ios, preview_media, scan_code_ios};
+use super::ffi::{choose_media, preview_media, scan_code};
 use crate::error::PlatformError;
 use crate::traits::{
     ChooseMediaRequest, MediaInteraction, MediaKind, PreviewMediaRequest, SaveMediaRequest,
@@ -52,7 +52,7 @@ impl MediaInteraction for Platform {
     fn choose_media(&self, request: ChooseMediaRequest) -> Result<(), PlatformError> {
         #[cfg(target_os = "ios")]
         {
-            ios::choose_media(request)
+            ios::choose_media_impl(request)
         }
 
         #[cfg(not(target_os = "ios"))]
@@ -67,7 +67,7 @@ impl MediaInteraction for Platform {
     fn scan_code(&self, request: ScanCodeRequest) -> Result<(), PlatformError> {
         #[cfg(target_os = "ios")]
         {
-            ios::scan_code(request)
+            ios::scan_code_impl(request)
         }
 
         #[cfg(not(target_os = "ios"))]
@@ -283,7 +283,7 @@ mod ios {
     }
 
     /// Initiate media selection process on iOS
-    pub(super) fn choose_media(request: ChooseMediaRequest) -> Result<(), PlatformError> {
+    pub(super) fn choose_media_impl(request: ChooseMediaRequest) -> Result<(), PlatformError> {
         let max_count = request.max_count;
         let mode = match request.mode {
             crate::traits::ChooseMediaMode::Images => "image",
@@ -313,19 +313,17 @@ mod ios {
         let max_duration_str = max_duration
             .map(|d| d.to_string())
             .unwrap_or_else(|| "0".to_string());
-        run_on_main(|_| {
-            choose_media_on_main(
-                max_count,
-                mode,
-                &source_types_json,
-                &camera_facing_str,
-                &max_duration_str,
-                callback_id,
-            )
-        })
+        run_on_main(|_| start_choose_media(
+            max_count,
+            mode,
+            &source_types_json,
+            &camera_facing_str,
+            &max_duration_str,
+            callback_id,
+        ))
     }
 
-    fn choose_media_on_main(
+    fn start_choose_media(
         max_count: u32,
         mode: &str,
         source_types_json: &str,
@@ -333,7 +331,7 @@ mod ios {
         max_duration: &str,
         callback_id: u64,
     ) -> Result<(), PlatformError> {
-        let success = choose_media_ios(
+        let success = choose_media(
             max_count,
             mode,
             source_types_json,
@@ -351,7 +349,7 @@ mod ios {
         }
     }
 
-    pub(super) fn scan_code(request: ScanCodeRequest) -> Result<(), PlatformError> {
+    pub(super) fn scan_code_impl(request: ScanCodeRequest) -> Result<(), PlatformError> {
         let type_codes: Vec<i32> = request
             .scan_types
             .iter()
@@ -366,7 +364,8 @@ mod ios {
         let types_json = serde_json::to_string(&type_codes)
             .map_err(|e| PlatformError::Platform(format!("Failed to encode scan types: {}", e)))?;
 
-        let started = scan_code_ios(&types_json, request.only_from_camera, request.callback_id);
+        let started =
+            scan_code(&types_json, request.only_from_camera, request.callback_id);
         if started {
             Ok(())
         } else {
