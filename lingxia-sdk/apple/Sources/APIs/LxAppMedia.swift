@@ -62,13 +62,10 @@ private extension UIImage {
 private enum CaptureFeedback {
     private static func play(soundID: SystemSoundID) {
         AudioServicesPlaySystemSound(soundID)
-        AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)
-        if #available(iOS 13.0, *) {
-            let generator = UIImpactFeedbackGenerator(style: .medium)
+        if #available(iOS 10.0, *) {
+            let generator = UIImpactFeedbackGenerator(style: .light)
             generator.prepare()
             generator.impactOccurred()
-        } else {
-            AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)
         }
     }
 
