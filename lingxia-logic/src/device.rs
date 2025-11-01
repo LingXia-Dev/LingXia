@@ -12,6 +12,8 @@ use std::sync::Arc;
 pub struct DevInfoObj {
     brand: String,
     model: String,
+    #[rename = "marketName"]
+    market_name: String,
     system: String, // Operating system version
 }
 
@@ -28,6 +30,7 @@ impl From<DeviceInfo> for DevInfoObj {
         DevInfoObj {
             brand: device_info.brand,
             model: device_info.model,
+            market_name: device_info.market_name,
             system: device_info.system,
         }
     }

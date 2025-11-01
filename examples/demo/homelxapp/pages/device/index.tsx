@@ -20,7 +20,6 @@ export default function DevicePage() {
     deviceInfo = null,
     screenInfo = null,
   } = data;
-
   const [phoneNumber, setPhoneNumber] = React.useState('');
 
   React.useEffect(() => {
@@ -49,7 +48,7 @@ export default function DevicePage() {
           <div className="text-xl mr-4">📱</div>
           <div className="flex-1">
             <div className="text-base text-black mb-0.5 font-medium">Get Device Information</div>
-            <div className="text-xs text-gray-400 leading-tight">Retrieve device brand, model and system version</div>
+            <div className="text-xs text-gray-400 leading-tight">Retrieve device brand, market name, model, and system version</div>
           </div>
           <div className="flex items-center gap-2 ml-3">
             <button
@@ -66,6 +65,7 @@ export default function DevicePage() {
             <h4 className="text-sm font-medium text-gray-700 mb-3">Device Information</h4>
             <div className="space-y-2">
               <InfoRow label="Brand" value={deviceInfo.brand} />
+              <InfoRow label="Market Name" value={deviceInfo.marketName || deviceInfo.model} />
               <InfoRow label="Model" value={deviceInfo.model} />
               <InfoRow label="System" value={deviceInfo.system} />
             </div>
