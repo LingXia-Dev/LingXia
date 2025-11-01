@@ -1,8 +1,8 @@
 Page({
   data: {
-    currentType: '',
+    currentType: "",
     deviceInfo: null,
-    screenInfo: null
+    screenInfo: null,
   },
 
   onLoad: async function (options) {
@@ -10,7 +10,7 @@ Page({
 
     // Pass querystring parameters to page via setData
     this.setData({
-      currentType: options.type || 'device'
+      currentType: options.type || "device",
     });
   },
 
@@ -29,7 +29,7 @@ Page({
       console.log("Device info:", deviceInfo);
 
       this.setData({
-        deviceInfo: deviceInfo
+        deviceInfo: deviceInfo,
       });
     } catch (error) {
       console.error("Failed to get device info:", error);
@@ -39,11 +39,11 @@ Page({
   // Get screen information
   getScreenInfo: async function () {
     try {
-      const screenInfo = await lx.getScreenInfo();
+      const screenInfo = lx.getScreenInfo();
       console.log("Screen info:", screenInfo);
 
       this.setData({
-        screenInfo: screenInfo
+        screenInfo: screenInfo,
       });
     } catch (error) {
       console.error("Failed to get screen info:", error);
@@ -54,9 +54,9 @@ Page({
   vibrateShort: function () {
     try {
       lx.vibrateShort();
-      console.log('Triggered short vibration');
+      console.log("Triggered short vibration");
     } catch (error) {
-      console.error('Failed to trigger short vibration:', error);
+      console.error("Failed to trigger short vibration:", error);
     }
   },
 
@@ -64,9 +64,9 @@ Page({
   vibrateLong: function () {
     try {
       lx.vibrateLong();
-      console.log('Triggered long vibration');
+      console.log("Triggered long vibration");
     } catch (error) {
-      console.error('Failed to trigger long vibration:', error);
+      console.error("Failed to trigger long vibration:", error);
     }
-  }
+  },
 });

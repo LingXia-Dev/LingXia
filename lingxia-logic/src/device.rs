@@ -1,6 +1,6 @@
 use lingxia_lxapp::lx::fast_api;
 use lingxia_lxapp::{LxApp, LxAppError, lx};
-use lingxia_messaging::{CallbackResult, get_callback};
+use lingxia_messaging::{CallbackResult};
 use lingxia_platform::{Device, DeviceInfo, ScreenInfo};
 use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
 use serde::Deserialize;
@@ -83,28 +83,10 @@ pub(crate) fn device_info(ctx: JSContext) -> JSResult<DevInfoObj> {
     Ok(device_info.into())
 }
 
-async fn screen_info(ctx: JSContext) -> JSResult<ScreenInfoObj> {
+fn screen_info(ctx: JSContext) -> JSResult<ScreenInfoObj> {
     let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
-
-    // Get callback ID and receiver
-    let (callback_id, receiver) = get_callback();
-
-    // Call runtime interface with callback ID
-    match lxapp.runtime.screen_info(callback_id) {
-        Ok(()) => {
-            // Wait for result from callback
-            match receiver.await {
-                Ok(result) => Ok(result.into()),
-                Err(_) => Err(RongJSError::Error(
-                    "Screen info callback timeout or cancelled".to_string(),
-                )),
-            }
-        }
-        Err(e) => Err(RongJSError::Error(format!(
-            "Failed to get screen info: {}",
-            e
-        ))),
-    }
+    let info = lxapp.runtime.screen_info();
+    Ok(info.into())
 }
 
 pub(crate) fn vibrate_short(ctx: JSContext) -> JSResult<bool> {
