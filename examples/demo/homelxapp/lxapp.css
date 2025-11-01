@@ -3,11 +3,11 @@ html, body {
   width: 100%;
   margin: 0;
   padding: 0;
-  overflow: hidden;
-  position: fixed;
 }
 
 body {
+  overflow: hidden;
+  position: fixed;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   background-color: #f6f6f6;
   color: #333;
@@ -20,8 +20,15 @@ body {
 body.api-page {
   align-items: stretch;
   justify-content: flex-start;
+  position: relative;
+  overflow-x: hidden;
+  overflow-y: auto;
+  min-height: 100%;
+  height: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 body.api-page #root {
   width: 100%;
+  min-height: 100vh;
 }

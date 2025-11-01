@@ -16,15 +16,15 @@ export default function APIPage() {
   const { expandedSections = { interface: false, device: false, system: false, navigation: false, media: false } } = data;
 
   React.useEffect(() => {
-    document.body.className = 'api-page';
+    document.body.classList.add('api-page');
     return () => {
-      document.body.className = '';
+      document.body.classList.remove('api-page');
     };
   }, []);
 
   return (
     <div className="min-h-screen bg-gray-100">
-      <div className="px-3 py-2 space-y-2">
+      <div className="px-3 py-2 pb-12 space-y-2">
 
         {/* Header Card - Description */}
         <div className="bg-white rounded-lg shadow-sm">
