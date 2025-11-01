@@ -4,6 +4,7 @@ import '../../tailwind.css';
 const SOURCE_OPTIONS = [
   { key: 'album', label: 'Album' },
   { key: 'camera', label: 'Camera' },
+  { key: 'either', label: 'Album or Camera' },
 ];
 
 
@@ -260,18 +261,11 @@ export default function MediaPage() {
         { label: 'Photo Source', value: sourceLabel, action: openSourcePicker },
         { label: 'Count Limit', value: countLabel, action: openCountPicker },
       ]
-      : (() => {
-        const rows = [
-          { label: 'Video Source', value: sourceLabel, action: openSourcePicker },
-        ];
-        if (sourceKey === 'camera') {
-          rows.push(
-            { label: 'Camera', value: cameraLabel, action: openCameraPicker },
-            { label: 'Duration', value: durationLabel, action: openDurationPicker },
-          );
-        }
-        return rows;
-      })();
+      : [
+        { label: 'Video Source', value: sourceLabel, action: openSourcePicker },
+        { label: 'Camera', value: cameraLabel, action: openCameraPicker },
+        { label: 'Duration', value: durationLabel, action: openDurationPicker },
+      ];
 
   const pagePaddingX = isScanMode ? 'px-0' : 'px-4';
   return (

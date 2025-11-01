@@ -3,6 +3,7 @@ const DEFAULT_MODE = "Pictures";
 const SOURCE_OPTIONS = [
   { key: "album", label: "Album", request: ["album"] },
   { key: "camera", label: "Camera", request: ["camera"] },
+  { key: "either", label: "Album or Camera", request: ["album", "camera"] },
 ];
 
 const COUNT_OPTIONS = Array.from({ length: 9 }, (_, index) => {
@@ -105,6 +106,22 @@ function findOption(options, key, fallback) {
   }
   const matched = options.find((option) => option.key === key);
   return matched || fallback || options[0] || null;
+}
+
+function resolveMediaTypeTokens(input) {
+  if (Array.isArray(input) && input.length) {
+    return input;
+  }
+  if (typeof input === "string") {
+    const normalized = input.toLowerCase();
+    if (normalized === "video") {
+      return ["video"];
+    }
+    if (normalized === "image") {
+      return ["image"];
+    }
+  }
+  return ["image", "video"];
 }
 
 function extractMediaSource(item, mediaType) {
@@ -258,7 +275,12 @@ Page({
       return;
     }
     const sourceChanged = choice.key !== this.data.sourceKey;
-    const isCamera = choice.key === "camera";
+    const requestedSources = Array.isArray(choice.request)
+      ? choice.request
+      : ["album"];
+    const isCameraOnly =
+      requestedSources.includes("camera") &&
+      !requestedSources.includes("album");
     const updates = {
       sourceKey: choice.key,
     };
@@ -268,7 +290,7 @@ Page({
     }
 
     // Auto-set count limit to 1 when camera is selected for photos
-    if (this.data.mediaType === "image" && isCamera) {
+    if (this.data.mediaType === "image" && isCameraOnly) {
       updates.countKey = "1";
       updates.countLimit = 1;
     }
@@ -334,7 +356,7 @@ Page({
 
     // Build minimal request; latest chooseMedia returns a plain JS array
     const request = {
-      mediaType: this.data.mediaType, // "image" | "video"
+      mediaType: resolveMediaTypeTokens(this.data.mediaType),
       sourceType: sourceOption?.request || ["album"],
     };
     if (this.data.mediaType === "video") {
