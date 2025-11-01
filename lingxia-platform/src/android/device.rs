@@ -1,9 +1,9 @@
 //! Android platform device implementation
 
-use crate::DeviceInfo;
 use crate::error::PlatformError;
 use crate::traits::Device;
-use jni::objects::JValue;
+use crate::{DeviceInfo, ScreenInfo};
+use jni::objects::{JObject, JValue};
 use lingxia_webview::get_env;
 use std::process::Command;
 
@@ -51,34 +51,80 @@ impl Device for Platform {
         }
     }
 
-    fn screen_info(&self, callback_id: u64) -> Result<(), PlatformError> {
-        match || -> Result<(), Box<dyn std::error::Error>> {
-            let device_class: &jni::objects::JClass =
-                super::get_cached_class(super::CachedClass::LxAppDevice)?
+    fn screen_info(&self) -> ScreenInfo {
+        // Synchronous retrieval via JNI: getCurrentActivity -> Resources -> DisplayMetrics
+        match || -> Result<ScreenInfo, Box<dyn std::error::Error>> {
+            let mut env = get_env()?;
+
+            // Get current activity
+            let lxapp_class: &jni::objects::JClass =
+                super::get_cached_class(super::CachedClass::LxApp)?
                     .as_obj()
                     .into();
-            let mut jni_env = get_env()?;
 
-            jni_env.call_static_method(
-                device_class,
-                "getScreenInfo",
-                "(J)V",
-                &[(callback_id as jni::sys::jlong).into()],
-            )?;
-            Ok(())
-        }() {
-            Ok(_) => Ok(()),
-            Err(e) => {
-                lingxia_messaging::invoke_callback(
-                    callback_id,
-                    false,
-                    format!("Failed to call getScreenInfo via JNI: {}", e),
-                );
-                Err(PlatformError::Platform(format!(
-                    "Failed to call getScreenInfo via JNI: {}",
-                    e
-                )))
+            let activity_obj = env
+                .call_static_method(
+                    lxapp_class,
+                    "getCurrentActivity",
+                    "()Lcom/lingxia/lxapp/LxAppActivity;",
+                    &[],
+                )?
+                .l()?;
+
+            // If activity is null, fall back to defaults
+            if activity_obj.is_null() {
+                return Ok(ScreenInfo {
+                    width: 0.0,
+                    height: 0.0,
+                    scale: 1.0,
+                });
             }
+
+            // resources = activity.getResources()
+            let resources: JObject = env
+                .call_method(
+                    activity_obj,
+                    "getResources",
+                    "()Landroid/content/res/Resources;",
+                    &[],
+                )?
+                .l()?;
+
+            // metrics = resources.getDisplayMetrics()
+            let metrics: JObject = env
+                .call_method(
+                    resources,
+                    "getDisplayMetrics",
+                    "()Landroid/util/DisplayMetrics;",
+                    &[],
+                )?
+                .l()?;
+
+            // Read widthPixels, heightPixels, density from DisplayMetrics
+            let width_px = env.get_field(&metrics, "widthPixels", "I")?.i()? as f64;
+            let height_px = env.get_field(&metrics, "heightPixels", "I")?.i()? as f64;
+            let density = env.get_field(&metrics, "density", "F")?.f()? as f64;
+
+            let scale = if density > 0.0 {
+                (density * 10.0).round() / 10.0
+            } else {
+                1.0
+            };
+            let width = (width_px / density).round();
+            let height = (height_px / density).round();
+
+            Ok(ScreenInfo {
+                width,
+                height,
+                scale,
+            })
+        }() {
+            Ok(info) => info,
+            Err(_) => ScreenInfo {
+                width: 0.0,
+                height: 0.0,
+                scale: 1.0,
+            },
         }
     }
 

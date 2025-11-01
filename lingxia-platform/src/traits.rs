@@ -3,7 +3,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use crate::error::PlatformError;
-use crate::{AssetFileEntry, DeviceInfo};
+use crate::{AssetFileEntry, DeviceInfo, ScreenInfo};
 
 /// Toast icon types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -296,12 +296,9 @@ pub trait Device: Send + Sync + 'static {
 
     /// Get screen information
     ///
-    /// # Arguments
-    /// * `callback_id` - Callback ID for async result
-    ///
     /// # Returns
-    /// * `Result<(), PlatformError>` - Success or error, result sent via callback
-    fn screen_info(&self, callback_id: u64) -> Result<(), PlatformError>;
+    /// * `ScreenInfo` - Screen information including logical width/height and scale factor
+    fn screen_info(&self) -> ScreenInfo;
 
     /// Vibrate the device
     ///

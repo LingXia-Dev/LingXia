@@ -28,7 +28,7 @@ impl Device for Platform {
         }
     }
 
-    fn screen_info(&self, callback_id: u64) -> Result<(), PlatformError> {
+    fn screen_info(&self) -> ScreenInfo {
         #[cfg(target_os = "ios")]
         {
             use objc2::rc::Retained;
@@ -51,30 +51,11 @@ impl Device for Platform {
             let bounds: NSRect = unsafe { msg_send![&screen, bounds] };
             let scale: f64 = unsafe { msg_send![&screen, scale] };
 
-            let screen_info = ScreenInfo {
+            return ScreenInfo {
                 width: bounds.size.width,
                 height: bounds.size.height,
                 scale,
             };
-
-            // Immediately invoke callback with result
-            match serde_json::to_string(&screen_info) {
-                Ok(json_data) => {
-                    lingxia_messaging::invoke_callback(callback_id, true, json_data);
-                    Ok(())
-                }
-                Err(e) => {
-                    lingxia_messaging::invoke_callback(
-                        callback_id,
-                        false,
-                        format!("JSON serialization error: {}", e),
-                    );
-                    Err(PlatformError::Platform(format!(
-                        "JSON serialization error: {}",
-                        e
-                    )))
-                }
-            }
         }
         #[cfg(target_os = "macos")]
         {
@@ -97,41 +78,18 @@ impl Device for Platform {
             if let Some(screen) = NSScreen::main() {
                 let frame: NSRect = unsafe { msg_send![&screen, frame] };
                 let scale: f64 = unsafe { msg_send![&screen, backingScaleFactor] };
-
-                let screen_info = ScreenInfo {
+                return ScreenInfo {
                     width: frame.size.width,
                     height: frame.size.height,
                     scale,
                 };
-
-                // Immediately invoke callback with result
-                match serde_json::to_string(&screen_info) {
-                    Ok(json_data) => {
-                        lingxia_messaging::invoke_callback(callback_id, true, json_data);
-                        Ok(())
-                    }
-                    Err(e) => {
-                        lingxia_messaging::invoke_callback(
-                            callback_id,
-                            false,
-                            format!("JSON serialization error: {}", e),
-                        );
-                        Err(PlatformError::Platform(format!(
-                            "JSON serialization error: {}",
-                            e
-                        )))
-                    }
-                }
-            } else {
-                lingxia_messaging::invoke_callback(
-                    callback_id,
-                    false,
-                    "No main screen available on macOS".to_string(),
-                );
-                Err(PlatformError::Platform(
-                    "No main screen available on macOS".to_string(),
-                ))
             }
+            // Fallback when no main screen is detected
+            return ScreenInfo {
+                width: 0.0,
+                height: 0.0,
+                scale: 1.0,
+            };
         }
     }
 

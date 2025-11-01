@@ -1,8 +1,7 @@
 //! Harmony platform device implementation
-
-use crate::DeviceInfo;
 use crate::error::PlatformError;
 use crate::traits::Device;
+use crate::{DeviceInfo, ScreenInfo};
 use std::os::raw::c_char;
 
 use super::Platform;
@@ -18,6 +17,14 @@ struct Vibrator_Attribute {
 #[link(name = "ohvibrator.z")]
 unsafe extern "C" {
     fn OH_Vibrator_PlayVibration(duration: i32, attribute: Vibrator_Attribute) -> i32;
+}
+
+// Harmony Display Manager C API
+#[link(name = "native_display_manager")]
+unsafe extern "C" {
+    fn OH_NativeDisplayManager_GetDefaultDisplayWidth(displayWidth: *mut i32) -> i32;
+    fn OH_NativeDisplayManager_GetDefaultDisplayHeight(displayHeight: *mut i32) -> i32;
+    fn OH_NativeDisplayManager_GetDefaultDisplayDensityPixels(densityPixels: *mut f32) -> i32;
 }
 
 // Harmony DeviceInfo C API
@@ -90,18 +97,35 @@ impl Device for Platform {
         }
     }
 
-    fn screen_info(&self, callback_id: u64) -> Result<(), PlatformError> {
-        lingxia_webview::tsfn::call_arkts("getScreenInfo", &[&callback_id.to_string()]).map_err(
-            |e| {
-                // Send error via callback
-                lingxia_messaging::invoke_callback(
-                    callback_id,
-                    false,
-                    format!("Failed to get screen info: {}", e),
-                );
-                PlatformError::Platform(format!("Failed to get screen info: {}", e))
-            },
-        )
+    fn screen_info(&self) -> ScreenInfo {
+        // Harmony: Use C Display Manager API to synchronously get display metrics
+        // width/height are physical pixels, densityPixels is the virtual pixel ratio (like Android density)
+        let mut width_px: i32 = 0;
+        let mut height_px: i32 = 0;
+        let mut density_pixels: f32 = 1.0;
+
+        unsafe {
+            // Ignore error codes here and fall back to defaults if calls fail
+            let _ = OH_NativeDisplayManager_GetDefaultDisplayWidth(&mut width_px as *mut i32);
+            let _ = OH_NativeDisplayManager_GetDefaultDisplayHeight(&mut height_px as *mut i32);
+            let _ = OH_NativeDisplayManager_GetDefaultDisplayDensityPixels(
+                &mut density_pixels as *mut f32,
+            );
+        }
+
+        let density = if density_pixels > 0.0 {
+            density_pixels as f64
+        } else {
+            1.0
+        };
+        let width = ((width_px as f64) / density).round();
+        let height = ((height_px as f64) / density).round();
+
+        ScreenInfo {
+            width,
+            height,
+            scale: density,
+        }
     }
 
     fn vibrate(&self, long: bool) -> Result<(), PlatformError> {
