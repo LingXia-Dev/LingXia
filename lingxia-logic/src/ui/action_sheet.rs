@@ -21,59 +21,72 @@ struct JSActionSheetResult {
     tap_index: i32,
 }
 
-impl From<CallbackResult> for JSActionSheetResult {
-    fn from(result: CallbackResult) -> Self {
-        if !result.success {
-            return JSActionSheetResult { tap_index: -1 };
-        }
-
-        match serde_json::from_str::<Value>(&result.data) {
-            Ok(json) => JSActionSheetResult {
-                tap_index: json.get("tapIndex").and_then(Value::as_i64).unwrap_or(-1) as i32,
-            },
-            Err(_) => JSActionSheetResult { tap_index: -1 },
-        }
-    }
-}
-
 /// Show action sheet function for JavaScript
 async fn show_action_sheet(
     ctx: JSContext,
     options: JSActionSheetOptions,
 ) -> Result<JSActionSheetResult, RongJSError> {
-    // Validate parameters
-    if options.item_list.is_empty() {
+    let JSActionSheetOptions {
+        item_list,
+        item_color,
+    } = options;
+
+    if item_list.is_empty() {
         return Err(RongJSError::Error("itemList cannot be empty".to_string()));
     }
 
-    // Extract parameters with defaults
-    let cancel_text = "Cancel".to_string();
-    let item_color = options.item_color.unwrap_or_else(|| "#007AFF".to_string());
-
     let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
 
-    // Get callback ID and receiver
+    let selected_index = present_action_sheet(&lxapp, item_list, None, item_color).await?;
+    let tap_index = selected_index.map(|idx| idx as i32).unwrap_or(-1);
+
+    Ok(JSActionSheetResult { tap_index })
+}
+
+pub(crate) async fn present_action_sheet(
+    lxapp: &Arc<LxApp>,
+    item_list: Vec<String>,
+    cancel_text: Option<String>,
+    item_color: Option<String>,
+) -> Result<Option<usize>, RongJSError> {
+    if item_list.is_empty() {
+        return Err(RongJSError::Error("itemList cannot be empty".to_string()));
+    }
+
+    let cancel_text = cancel_text.unwrap_or_else(|| "Cancel".to_string());
+    let item_color = item_color.unwrap_or_else(|| "#007AFF".to_string());
+    let item_len = item_list.len();
+
     let (callback_id, receiver) = get_callback();
 
-    // Call runtime interface with callback ID
-    match lxapp
+    lxapp
         .runtime
-        .show_action_sheet(options.item_list, cancel_text, item_color, callback_id)
-    {
-        Ok(()) => {
-            // Wait for result from callback
-            match receiver.await {
-                Ok(result) => Ok(result.into()),
-                Err(_) => Err(RongJSError::Error(
-                    "Action sheet callback timeout or cancelled".to_string(),
-                )),
-            }
-        }
-        Err(e) => Err(RongJSError::Error(format!(
-            "Failed to show action sheet: {}",
-            e
-        ))),
+        .show_action_sheet(item_list, cancel_text, item_color, callback_id)
+        .map_err(|e| RongJSError::Error(format!("Failed to show action sheet: {}", e)))?;
+
+    let CallbackResult { success, data } = receiver.await.map_err(|_| {
+        RongJSError::Error("Action sheet callback timeout or cancelled".to_string())
+    })?;
+
+    if !success {
+        return Ok(None);
     }
+
+    let index = serde_json::from_str::<Value>(&data)
+        .ok()
+        .and_then(|json| json.get("tapIndex").and_then(Value::as_i64))
+        .unwrap_or(-1);
+
+    if index < 0 {
+        return Ok(None);
+    }
+
+    let idx = index as usize;
+    if idx >= item_len {
+        return Ok(None);
+    }
+
+    Ok(Some(idx))
 }
 
 /// Initialize action sheet functions

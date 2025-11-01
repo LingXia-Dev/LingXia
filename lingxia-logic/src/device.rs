@@ -1,6 +1,6 @@
 use lingxia_lxapp::lx::fast_api;
 use lingxia_lxapp::{LxApp, LxAppError, lx};
-use lingxia_messaging::{CallbackResult};
+use lingxia_messaging::CallbackResult;
 use lingxia_platform::{Device, DeviceInfo, ScreenInfo};
 use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
 use serde::Deserialize;

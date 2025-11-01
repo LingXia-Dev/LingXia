@@ -1,3 +1,4 @@
+use crate::ui::present_action_sheet;
 use lingxia_lxapp::{LxApp, lx};
 use lingxia_messaging::{CallbackResult, get_callback};
 use lingxia_platform::AppRuntime;
@@ -138,9 +139,9 @@ struct JSChooseMediaOptions {
     #[rename = "count"]
     count: Option<u32>,
     #[rename = "mediaType"]
-    media_type: Option<String>, // "image" | "video" | "mix"
+    media_type: Option<Vec<String>>, // ["image", "video"]
     #[rename = "sourceType"]
-    source_type: Option<String>, // "album" | "camera"
+    source_type: Option<Vec<String>>, // ["album", "camera"]
     camera: Option<String>, // "front" | "back"
     #[rename = "maxDuration"]
     max_duration: Option<f64>,
@@ -221,23 +222,93 @@ struct MediaKey {
     is_original: bool,
 }
 
-fn parse_choose_mode(s: Option<String>) -> ChooseMediaMode {
-    match s
-        .unwrap_or_else(|| "mix".to_string())
-        .to_lowercase()
-        .as_str()
-    {
-        "video" | "videos" => ChooseMediaMode::Videos,
-        "image" | "images" => ChooseMediaMode::Images,
-        _ => ChooseMediaMode::Mix,
+fn parse_choose_mode(values: Option<Vec<String>>) -> JSResult<ChooseMediaMode> {
+    let raw = values.unwrap_or_else(|| vec!["image".to_string(), "video".to_string()]);
+    let mut has_image = false;
+    let mut has_video = false;
+
+    for token in raw {
+        match token.to_lowercase().as_str() {
+            "image" => has_image = true,
+            "video" => has_video = true,
+            other => {
+                return Err(RongJSError::Error(format!(
+                    "chooseMedia invalid mediaType token \"{}\"",
+                    other
+                )));
+            }
+        }
+    }
+
+    if !has_image && !has_video {
+        // Default fallback when caller passes empty array.
+        has_image = true;
+        has_video = true;
+    }
+
+    Ok(match (has_image, has_video) {
+        (true, true) => ChooseMediaMode::Mix,
+        (true, false) => ChooseMediaMode::Images,
+        (false, true) => ChooseMediaMode::Videos,
+        _ => ChooseMediaMode::Images,
+    })
+}
+
+fn parse_sources(values: Option<Vec<String>>) -> JSResult<Vec<MediaSource>> {
+    let raw = values.unwrap_or_else(|| vec!["album".to_string()]);
+    let mut out: Vec<MediaSource> = Vec::new();
+
+    for token in raw {
+        let source = match token.to_lowercase().as_str() {
+            "album" => MediaSource::Album,
+            "camera" => MediaSource::Camera,
+            other => {
+                return Err(RongJSError::Error(format!(
+                    "chooseMedia invalid sourceType token \"{}\"",
+                    other
+                )));
+            }
+        };
+
+        if !out.contains(&source) {
+            out.push(source);
+        }
+    }
+
+    if out.is_empty() {
+        out.push(MediaSource::Album);
+    }
+
+    Ok(out)
+}
+
+fn label_for_media_source(source: MediaSource) -> &'static str {
+    match source {
+        MediaSource::Album => "Album",
+        MediaSource::Camera => "Camera",
     }
 }
 
-fn parse_source(v: Option<String>) -> MediaSource {
-    match v.as_deref() {
-        Some("camera") => MediaSource::Camera,
-        // default and "album": album-only
-        _ => MediaSource::Album,
+async fn present_source_picker(
+    lxapp: &Arc<LxApp>,
+    sources: &[MediaSource],
+) -> JSResult<Option<MediaSource>> {
+    let item_list: Vec<String> = sources
+        .iter()
+        .map(|source| label_for_media_source(*source).to_string())
+        .collect();
+
+    let selection = present_action_sheet(lxapp, item_list, None, None).await?;
+
+    match selection {
+        Some(idx) => sources
+            .get(idx)
+            .copied()
+            .ok_or_else(|| {
+                RongJSError::Error("chooseMedia source picker returned invalid index".to_string())
+            })
+            .map(Some),
+        None => Ok(None),
     }
 }
 
@@ -262,24 +333,29 @@ async fn choose_media(
         max_duration: None,
     });
 
-    let (callback_id, receiver) = get_callback();
+    let mode = parse_choose_mode(opts.media_type)?;
+    let sources = parse_sources(opts.source_type)?;
+    let selected_source = if sources.len() > 1 {
+        match present_source_picker(&lxapp, &sources).await? {
+            Some(source) => source,
+            None => return Ok(Vec::new()),
+        }
+    } else {
+        sources.first().copied().unwrap_or(MediaSource::Album)
+    };
 
+    if matches!(selected_source, MediaSource::Camera) && matches!(mode, ChooseMediaMode::Mix) {
+        return Err(RongJSError::Error(
+            "camera source does not support selecting both image and video; specify a single mediaType entry".into(),
+        ));
+    }
+
+    let (callback_id, receiver) = get_callback();
     let max_duration_seconds = opts
         .max_duration
         .filter(|v| !v.is_sign_negative())
         .map(|v| v.min(u32::MAX as f64).round() as u32);
-    let source = parse_source(opts.source_type);
-    let source_types = vec![source];
-    let mode = parse_choose_mode(opts.media_type);
-    // Mix applies only to album UI; when camera-only, report error
-    if matches!(source, MediaSource::Camera) {
-        if let ChooseMediaMode::Mix = mode {
-            return Err(RongJSError::Error(
-                "camera source does not support mediaType \"mix\"; use \"image\" or \"video\""
-                    .into(),
-            ));
-        }
-    }
+    let source_types = vec![selected_source];
 
     let request = ChooseMediaRequest {
         max_count: opts.count.unwrap_or(9),

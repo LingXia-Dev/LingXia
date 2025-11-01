@@ -9,6 +9,8 @@ mod router;
 mod tabbar;
 mod toast;
 
+pub(crate) use action_sheet::present_action_sheet;
+
 /// Initialize UI module
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     toast::init(ctx)?;
