@@ -275,6 +275,14 @@ Page({
         itemColor: "#007AFF",
       });
 
+      if (
+        typeof tapIndex !== "number" ||
+        tapIndex < 0 ||
+        tapIndex >= options.length
+      ) {
+        return;
+      }
+
       lx.showToast({
         title: `Selected: ${options[tapIndex]}`,
         icon: "success",
