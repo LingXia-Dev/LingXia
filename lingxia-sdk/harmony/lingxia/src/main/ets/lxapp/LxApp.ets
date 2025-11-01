@@ -10,6 +10,7 @@ import { initNativeBridge, getNativeCallbackFunction } from './NativeBridge';
 import { WebViewManager, toWebTag } from './WebView';
 import { AnimationType } from './LxAppNavigation';
 import { CameraCaptureOverlay } from './APIs/media/CameraCaptureOverlay';
+import { LxAppPush } from './APIs/LxAppPush';
 import promptAction from '@kit.ArkUI';
 import { abilityAccessCtrl, Permissions } from '@kit.AbilityKit';
 
@@ -160,6 +161,14 @@ export class LxApp {
     } else {
       hilog.error(DOMAIN, TAG, 'Failed to get home LxApp details from native init.');
     }
+
+    // Initialize push: request permission and fetch token once
+    try {
+      LxAppPush.requestEnableNotification();
+      LxAppPush.initToken();
+    } catch (e) {
+      hilog.error(DOMAIN, TAG, `Push init error: ${e}`);
+    }
   }
 
   public static enableWebViewDebugging(): void {
@@ -295,11 +304,16 @@ export class LxApp {
    * @param want The Want object containing the applink URI
    */
   public static handleWant(want: Want): void {
-    if (want.uri && want.uri.startsWith('https://')) {
-      hilog.info(DOMAIN, TAG, `Processing Want with URI: ${want.uri}`);
-      LxApp.handleAppLink(want.uri);
-    } else if (want.uri) {
-      hilog.info(DOMAIN, TAG, `AppLink ignored - not HTTPS scheme: ${want.uri}`);
+    try {
+      if (!want) { return; }
+      // Treat HTTPS Want.uri as push click (trigger=1), do not call AppLink
+      if (want.uri && typeof want.uri === 'string' && want.uri.startsWith('https://')) {
+        LxAppPush.handlePushLink(want.uri, 1);
+        return;
+      }
+    } catch (e) {
+      const err: Error = e as Error;
+      hilog.error(DOMAIN, TAG, `handleWant error: ${JSON.stringify(err)}`);
     }
   }
 }

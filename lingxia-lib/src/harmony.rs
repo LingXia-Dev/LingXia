@@ -329,6 +329,30 @@ pub fn on_applink_received(applink_url: String) -> i32 {
     0
 }
 
+/// Push: device token from ArkTS
+#[napi]
+pub fn on_push_token_received(token: String) -> i32 {
+    log::info!("[Harmony] Push token received: {}", token);
+    0
+}
+
+/// Push: link/message from ArkTS (trigger: 0=Background,1=Tap,2=Launch)
+#[napi]
+pub fn on_pushlink_received(url: String, trigger: i32) -> i32 {
+    let trigger_name = match trigger {
+        0 => "Background",
+        1 => "Tap",
+        2 => "Launch",
+        _ => "Unknown",
+    };
+    log::info!(
+        "[Harmony] Push Link received: {} (trigger: {})",
+        url,
+        trigger_name
+    );
+    0
+}
+
 /// Get current active LxApp ID and path from Rust stack
 #[napi]
 fn get_current_lxapp() -> CurrentLxApp {

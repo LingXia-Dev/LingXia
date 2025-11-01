@@ -183,6 +183,21 @@ declare module 'liblingxia.so' {
   export function onCallback(id: string, success: boolean, data: string): boolean;
 
   /**
+   * Push: deliver device token from ArkTS to native
+   * @param token - Push device token string
+   * @returns 0 on success
+   */
+  export function onPushTokenReceived(token: string): number;
+
+  /**
+   * Push: deliver push link/message to native with trigger
+   * @param url - App link or message target URL
+   * @param trigger - 0=Background, 1=Tap, 2=Launch
+   * @returns 0 on success
+   */
+  export function onPushlinkReceived(url: string, trigger: number): number;
+
+  /**
    * Initialize camera with surface ID and facing preference
    * @param surfaceId - XComponent surface ID for camera preview
    * @param facing - Camera facing preference ("front" or "back")
