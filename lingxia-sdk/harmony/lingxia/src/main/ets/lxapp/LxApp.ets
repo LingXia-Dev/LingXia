@@ -62,7 +62,6 @@ export class LxApp {
       'ohos.permission.APPROXIMATELY_LOCATION' as Permissions,
       'ohos.permission.CAMERA' as Permissions,
       'ohos.permission.MICROPHONE' as Permissions,
-      'ohos.permission.READ_IMAGEVIDEO' as Permissions,
       'ohos.permission.WRITE_IMAGEVIDEO' as Permissions
     ];
 
