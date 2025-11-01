@@ -291,7 +291,7 @@ pub trait Device: Send + Sync + 'static {
     /// Get device information
     ///
     /// # Returns
-    /// * `DeviceInfo` - Device information including brand, model, and system version
+    /// * `DeviceInfo` - Device information including brand, marketing name, model, and system version
     fn device_info(&self) -> DeviceInfo;
 
     /// Get screen information

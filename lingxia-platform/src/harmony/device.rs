@@ -31,7 +31,6 @@ unsafe extern "C" {
 #[link(name = "deviceinfo_ndk.z")]
 #[allow(dead_code)]
 unsafe extern "C" {
-    fn OH_GetDeviceType() -> *const c_char;
     fn OH_GetManufacture() -> *const c_char;
     fn OH_GetBrand() -> *const c_char;
     fn OH_GetMarketName() -> *const c_char;
@@ -88,11 +87,12 @@ impl Device for Platform {
         // Use Harmony C DeviceInfo API (market name preferred for model)
         let brand = call_cstr(OH_GetBrand).unwrap_or_else(|| "Unknown".to_string());
         let model = call_cstr(OH_GetProductModel).unwrap_or_else(|| "Unknown".to_string());
+        let market_name = call_cstr(OH_GetMarketName).unwrap_or_else(|| model.clone());
         let system = call_cstr(OH_GetOSFullName).unwrap_or_else(|| "Unknown".to_string());
-
         DeviceInfo {
             brand,
             model,
+            market_name,
             system,
         }
     }

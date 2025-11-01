@@ -39,6 +39,10 @@ impl Device for Platform {
             .or_else(|| get_system_property("ro.product.name"))
             .unwrap_or_else(|| "Unknown".to_string());
 
+        let market_name = get_system_property("ro.product.marketname")
+            .or_else(|| get_system_property("ro.config.marketing_name"))
+            .unwrap_or_else(|| model.clone());
+
         let android_version = get_system_property("ro.build.version.release")
             .unwrap_or_else(|| "Unknown".to_string());
 
@@ -47,6 +51,7 @@ impl Device for Platform {
         DeviceInfo {
             brand,
             model,
+            market_name,
             system,
         }
     }

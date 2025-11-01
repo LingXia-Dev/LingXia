@@ -15,10 +15,11 @@ pub struct AssetFileEntry<'a> {
 pub struct DeviceInfo {
     pub brand: String,
     pub model: String,
+    pub market_name: String,
     pub system: String,
 }
 
-/// Screen information
+/// Screen information reported in logical pixels (dp/pt) and scale factor
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ScreenInfo {
     pub width: f64,

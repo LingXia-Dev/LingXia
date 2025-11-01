@@ -5,7 +5,11 @@ use crate::traits::Device;
 use crate::{DeviceInfo, ScreenInfo};
 
 #[cfg(target_os = "ios")]
-use objc2::{extern_class, runtime::NSObject};
+use objc2::rc::Retained;
+#[cfg(target_os = "ios")]
+use objc2::{ClassType, extern_class, msg_send, runtime::NSObject};
+#[cfg(target_os = "ios")]
+use objc2_foundation::NSString;
 
 #[cfg(target_os = "ios")]
 extern_class!(
@@ -14,16 +18,32 @@ extern_class!(
     pub struct UIDevice;
 );
 
+#[cfg(target_os = "ios")]
+impl UIDevice {
+    pub fn current() -> Retained<Self> {
+        unsafe { msg_send![Self::class(), currentDevice] }
+    }
+
+    pub fn system_version(&self) -> Retained<NSString> {
+        unsafe { msg_send![self, systemVersion] }
+    }
+
+    pub fn localized_model(&self) -> Retained<NSString> {
+        unsafe { msg_send![self, localizedModel] }
+    }
+}
+
 // Platform Device trait implementation - direct implementation without delegation
 impl Device for Platform {
     fn device_info(&self) -> DeviceInfo {
         let brand = "Apple".to_string(); // Fixed for Apple devices
         let model = get_device_model();
+        let market_name = get_device_market_name(&model);
         let system = get_system_version();
-
         DeviceInfo {
             brand,
             model,
+            market_name,
             system,
         }
     }
@@ -33,11 +53,11 @@ impl Device for Platform {
         {
             use objc2::rc::Retained;
             use objc2::{ClassType, extern_class, msg_send};
-            use objc2_foundation::{NSObject, NSRect};
+            use objc2_foundation::{NSObject as ObjNSObject, NSRect};
 
             extern_class!(
                 #[derive(Debug, PartialEq, Eq, Hash)]
-                #[unsafe(super(NSObject))]
+                #[unsafe(super(ObjNSObject))]
                 pub struct UIScreen;
             );
 
@@ -250,34 +270,57 @@ fn get_device_model() -> String {
     }
 }
 
+fn get_device_market_name(model_identifier: &str) -> String {
+    #[cfg(target_os = "ios")]
+    {
+        let device = UIDevice::current();
+        let localized = device.localized_model().to_string();
+        if localized.is_empty() {
+            model_identifier.to_string()
+        } else {
+            localized
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        get_macos_market_name().unwrap_or_else(|| model_identifier.to_string())
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn get_macos_market_name() -> Option<String> {
+    use std::process::Command;
+
+    let output = Command::new("system_profiler")
+        .arg("SPHardwareDataType")
+        .arg("-detailLevel")
+        .arg("mini")
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    for line in String::from_utf8_lossy(&output.stdout).lines() {
+        let trimmed = line.trim();
+        if let Some(value) = trimmed.strip_prefix("Model Name:") {
+            let name = value.trim();
+            if !name.is_empty() {
+                return Some(name.to_string());
+            }
+        }
+    }
+
+    None
+}
+
 /// Get system version using objc2 bindings
 /// Returns system version string like "iOS 17.0" or "macOS 14.0"
 fn get_system_version() -> String {
     #[cfg(target_os = "ios")]
-    use objc2::rc::Retained;
-    #[cfg(target_os = "ios")]
-    use objc2::{ClassType, extern_class, msg_send};
-    #[cfg(target_os = "ios")]
-    use objc2_foundation::{NSObject, NSString};
-
-    #[cfg(target_os = "ios")]
     {
-        extern_class!(
-            #[derive(Debug, PartialEq, Eq, Hash)]
-            #[unsafe(super(NSObject))]
-            pub struct UIDevice;
-        );
-
-        impl UIDevice {
-            pub fn current() -> Retained<Self> {
-                unsafe { msg_send![Self::class(), currentDevice] }
-            }
-
-            pub fn system_version(&self) -> Retained<NSString> {
-                unsafe { msg_send![self, systemVersion] }
-            }
-        }
-
         let device = UIDevice::current();
         let version = device.system_version();
         format!("iOS {}", version.to_string())
