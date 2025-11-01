@@ -3,7 +3,7 @@
 use crate::DeviceInfo;
 use crate::error::PlatformError;
 use crate::traits::Device;
-use std::process::Command;
+use std::os::raw::c_char;
 
 use super::Platform;
 
@@ -20,47 +20,68 @@ unsafe extern "C" {
     fn OH_Vibrator_PlayVibration(duration: i32, attribute: Vibrator_Attribute) -> i32;
 }
 
+// Harmony DeviceInfo C API
+#[link(name = "deviceinfo_ndk.z")]
+#[allow(dead_code)]
+unsafe extern "C" {
+    fn OH_GetDeviceType() -> *const c_char;
+    fn OH_GetManufacture() -> *const c_char;
+    fn OH_GetBrand() -> *const c_char;
+    fn OH_GetMarketName() -> *const c_char;
+    fn OH_GetProductSeries() -> *const c_char;
+    fn OH_GetProductModel() -> *const c_char;
+    fn OH_GetSoftwareModel() -> *const c_char;
+    fn OH_GetHardwareModel() -> *const c_char;
+    fn OH_GetBootloaderVersion() -> *const c_char;
+    fn OH_GetAbiList() -> *const c_char;
+    fn OH_GetSecurityPatchTag() -> *const c_char;
+    fn OH_GetDisplayVersion() -> *const c_char;
+    fn OH_GetIncrementalVersion() -> *const c_char;
+    fn OH_GetOsReleaseType() -> *const c_char;
+    fn OH_GetOSFullName() -> *const c_char;
+    fn OH_GetVersionId() -> *const c_char;
+    fn OH_GetBuildType() -> *const c_char;
+    fn OH_GetBuildUser() -> *const c_char;
+    fn OH_GetBuildHost() -> *const c_char;
+    fn OH_GetBuildTime() -> *const c_char;
+    fn OH_GetBuildRootHash() -> *const c_char;
+    fn OH_GetDistributionOSName() -> *const c_char;
+    fn OH_GetDistributionOSVersion() -> *const c_char;
+    fn OH_GetDistributionOSReleaseType() -> *const c_char;
+}
+
 const VIBRATION_DURATION_SHORT_MS: i32 = 15;
 const VIBRATION_DURATION_LONG_MS: i32 = 400;
 const DEFAULT_VIBRATOR_ID: i32 = 0;
 const VIBRATOR_USAGE_ALARM: i32 = 1;
 
-/// Get system parameter using param command
-fn get_system_param(key: &str) -> Option<String> {
-    Command::new("param")
-        .arg("get")
-        .arg(key)
-        .output()
-        .ok()
-        .and_then(|output| {
-            if output.status.success() {
-                String::from_utf8(output.stdout)
-                    .ok()
-                    .map(|s| s.trim().to_string())
-                    .filter(|s| !s.is_empty())
-            } else {
-                None
-            }
-        })
+/// Convert C const char* to Rust String
+fn cstr_to_string(ptr: *const c_char) -> Option<String> {
+    if ptr.is_null() {
+        return None;
+    }
+    unsafe {
+        let s = std::ffi::CStr::from_ptr(ptr)
+            .to_string_lossy()
+            .trim()
+            .to_string();
+        if s.is_empty() { None } else { Some(s) }
+    }
+}
+
+/// Call a 0-arg C function that returns const char* and convert to String
+fn call_cstr(f: unsafe extern "C" fn() -> *const c_char) -> Option<String> {
+    let p = unsafe { f() };
+    cstr_to_string(p)
 }
 
 // Platform Device trait implementation - direct implementation without delegation
 impl Device for Platform {
     fn device_info(&self) -> DeviceInfo {
-        // Use pure Rust implementation with system commands
-        let brand = get_system_param("const.product.brand")
-            .or_else(|| get_system_param("ro.product.brand"))
-            .unwrap_or_else(|| "Unknown".to_string());
-
-        let model = get_system_param("const.product.model")
-            .or_else(|| get_system_param("ro.product.model"))
-            .unwrap_or_else(|| "Unknown".to_string());
-
-        let os_version = get_system_param("const.product.os.dist.version")
-            .unwrap_or_else(|| "Unknown".to_string());
-
-        // Construct system string with HarmonyOS version
-        let system = format!("Harmony {}", os_version);
+        // Use Harmony C DeviceInfo API (market name preferred for model)
+        let brand = call_cstr(OH_GetBrand).unwrap_or_else(|| "Unknown".to_string());
+        let model = call_cstr(OH_GetProductModel).unwrap_or_else(|| "Unknown".to_string());
+        let system = call_cstr(OH_GetOSFullName).unwrap_or_else(|| "Unknown".to_string());
 
         DeviceInfo {
             brand,
