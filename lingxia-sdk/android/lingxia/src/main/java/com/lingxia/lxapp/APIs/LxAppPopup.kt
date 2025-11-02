@@ -13,6 +13,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import androidx.core.view.MarginLayoutParamsCompat
 import androidx.core.view.ViewCompat
 import com.lingxia.lxapp.util.ActivityInsets
 import com.lingxia.lxapp.LxApp
@@ -23,11 +24,15 @@ import kotlin.math.roundToInt
 
 internal enum class PopupPosition(val value: Int) {
     CENTER(0),
-    BOTTOM(1);
+    BOTTOM(1),
+    LEFT(2),
+    RIGHT(3);
 
     companion object {
         fun fromInt(value: Int): PopupPosition = when (value) {
             BOTTOM.value -> BOTTOM
+            LEFT.value -> LEFT
+            RIGHT.value -> RIGHT
             else -> CENTER
         }
     }
@@ -97,11 +102,7 @@ internal object LxAppPopup {
 
         val metrics = activity.resources.displayMetrics
         val widthFraction = sanitizeFraction(widthRatio)
-        val heightFraction = if (heightRatio.isNaN()) {
-            defaultHeightFraction(position, metrics)
-        } else {
-            sanitizeFraction(heightRatio)
-        }
+        val heightFraction = sanitizeFraction(heightRatio)
 
         val resolvedWidth = resolveDimension(widthFraction, metrics.widthPixels, metrics.density)
         val resolvedHeight = resolveDimension(heightFraction, metrics.heightPixels, metrics.density)
@@ -145,13 +146,59 @@ internal object LxAppPopup {
             params.gravity = when (position) {
                 PopupPosition.BOTTOM -> Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
                 PopupPosition.CENTER -> Gravity.CENTER
+                PopupPosition.LEFT -> Gravity.START or Gravity.LEFT or Gravity.CENTER_VERTICAL
+                PopupPosition.RIGHT -> Gravity.END or Gravity.RIGHT or Gravity.CENTER_VERTICAL
             }
 
             val margin = (16 * metrics.density).roundToInt()
             val horizontalMargin = if (resolvedWidth.isFull) 0 else margin
-            val topMargin = if (position == PopupPosition.BOTTOM) 0 else margin
-            val bottomMargin = if (position == PopupPosition.BOTTOM) 0 else margin
-            params.setMargins(horizontalMargin, topMargin, horizontalMargin, bottomMargin)
+            var startMargin = when (position) {
+                PopupPosition.LEFT -> 0
+                PopupPosition.RIGHT -> horizontalMargin
+                else -> horizontalMargin
+            }
+            var endMargin = when (position) {
+                PopupPosition.RIGHT -> 0
+                PopupPosition.LEFT -> horizontalMargin
+                else -> horizontalMargin
+            }
+            var topMargin = when (position) {
+                PopupPosition.BOTTOM -> 0
+                PopupPosition.LEFT, PopupPosition.RIGHT -> margin
+                else -> margin
+            }
+            var bottomMargin = when (position) {
+                PopupPosition.BOTTOM -> 0
+                PopupPosition.LEFT, PopupPosition.RIGHT -> margin
+                else -> margin
+            }
+            if (resolvedHeight.isFull) {
+                topMargin = 0
+                bottomMargin = 0
+            }
+            if (!resolvedWidth.isFull) {
+                val availableWidth = metrics.widthPixels
+                val totalWidth = startMargin + resolvedWidth.size + endMargin
+                if (totalWidth > availableWidth) {
+                    val overflow = totalWidth - availableWidth
+                    when (position) {
+                        PopupPosition.LEFT -> {
+                            endMargin = (endMargin - overflow).coerceAtLeast(0)
+                        }
+                        PopupPosition.RIGHT -> {
+                            startMargin = (startMargin - overflow).coerceAtLeast(0)
+                        }
+                        else -> {
+                            val reduceStart = overflow / 2
+                            startMargin = (startMargin - reduceStart).coerceAtLeast(0)
+                            endMargin = (endMargin - (overflow - reduceStart)).coerceAtLeast(0)
+                        }
+                    }
+                }
+            }
+            params.setMargins(startMargin, topMargin, endMargin, bottomMargin)
+            MarginLayoutParamsCompat.setMarginStart(params, startMargin)
+            MarginLayoutParamsCompat.setMarginEnd(params, endMargin)
             layoutParams = params
 
             clipToPadding = false
@@ -173,7 +220,7 @@ internal object LxAppPopup {
             )
             lp.gravity = when (position) {
                 PopupPosition.BOTTOM -> Gravity.TOP or Gravity.CENTER_HORIZONTAL
-                PopupPosition.CENTER -> Gravity.CENTER
+                PopupPosition.CENTER, PopupPosition.LEFT, PopupPosition.RIGHT -> Gravity.CENTER
             }
             layoutParams = lp
 
@@ -190,9 +237,31 @@ internal object LxAppPopup {
                     0f
                 )
                 PopupPosition.CENTER -> FloatArray(8) { radiusPx }
+                PopupPosition.LEFT -> floatArrayOf(
+                    0f,
+                    0f,
+                    radiusPx,
+                    radiusPx,
+                    radiusPx,
+                    radiusPx,
+                    0f,
+                    0f
+                )
+                PopupPosition.RIGHT -> floatArrayOf(
+                    radiusPx,
+                    radiusPx,
+                    0f,
+                    0f,
+                    0f,
+                    0f,
+                    radiusPx,
+                    radiusPx
+                )
             }
 
-            if (!resolvedHeight.isFull) {
+            val applyRoundedBackground = position != PopupPosition.BOTTOM || !resolvedHeight.isFull
+
+            if (applyRoundedBackground) {
                 setCornerRadii(radii)
                 background = GradientDrawable().apply {
                     shape = GradientDrawable.RECTANGLE
@@ -200,6 +269,7 @@ internal object LxAppPopup {
                     when (position) {
                         PopupPosition.BOTTOM -> cornerRadii = radii
                         PopupPosition.CENTER -> cornerRadius = radiusPx
+                        PopupPosition.LEFT, PopupPosition.RIGHT -> cornerRadii = radii
                     }
                 }
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
@@ -303,29 +373,6 @@ internal object LxAppPopup {
             value <= 0.0 -> 0.0
             value >= 1.0 -> 1.0
             else -> value
-        }
-    }
-
-    private fun defaultHeightFraction(position: PopupPosition, metrics: DisplayMetrics): Double {
-        val minDp = minOf(metrics.widthPixels, metrics.heightPixels) / metrics.density
-        val maxDp = max(
-            metrics.widthPixels / metrics.density,
-            metrics.heightPixels / metrics.density
-        )
-        val isTablet = minDp >= 600f
-        return when (position) {
-            PopupPosition.BOTTOM -> if (isTablet) 0.45 else 0.55
-            PopupPosition.CENTER -> {
-                if (isTablet) {
-                    0.5
-                } else {
-                    when {
-                        maxDp >= 900f -> 0.55
-                        maxDp >= 780f -> 0.58
-                        else -> 0.6
-                    }
-                }
-            }
         }
     }
 
