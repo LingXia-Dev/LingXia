@@ -310,13 +310,15 @@ Page({
         return fallback;
       };
 
-      const widthRatio = clamp(cfg.widthRatio, 0.9);
-      const heightRatio = clamp(cfg.heightRatio, 0.6);
-      const allowedPositions = new Set(["top", "center", "bottom"]);
-      const position =
-        typeof cfg.position === "string" && allowedPositions.has(cfg.position)
-          ? cfg.position
-          : "bottom";
+      const normalizedPosition =
+        typeof cfg.position === "string" ? cfg.position.trim().toLowerCase() : "";
+      const allowedPositions = new Set(["bottom", "center", "left", "right"]);
+      const position = allowedPositions.has(normalizedPosition) ? normalizedPosition : "bottom";
+
+      const fallbackWidth = position === "left" || position === "right" ? 0.72 : 0.9;
+      const fallbackHeight = position === "left" || position === "right" ? 0.85 : 0.6;
+      const widthRatio = clamp(cfg.widthRatio, fallbackWidth);
+      const heightRatio = clamp(cfg.heightRatio, fallbackHeight);
 
       const popup = lx.showPopup({
         url: `pages/popup/index.tsx?${query}`,

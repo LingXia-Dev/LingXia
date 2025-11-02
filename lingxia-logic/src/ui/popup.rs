@@ -1,5 +1,5 @@
 use lingxia_lxapp::{LxApp, lx};
-use lingxia_platform::{PopupPosition, PopupRequest};
+use lingxia_platform::{Device, PopupPosition, PopupRequest, ScreenInfo};
 use rong::{FromJSObj, JSContext, JSFunc, JSObject, JSResult, RongJSError};
 use std::sync::Arc;
 
@@ -21,8 +21,87 @@ fn parse_position(value: Option<String>) -> PopupPosition {
     {
         "center" => PopupPosition::Center,
         "bottom" => PopupPosition::Bottom,
+        "left" => PopupPosition::Left,
+        "right" => PopupPosition::Right,
         _ => PopupPosition::Bottom,
     }
+}
+
+fn sanitize_ratio_input(value: Option<f64>) -> Option<f64> {
+    match value {
+        Some(v) if v.is_finite() => Some(v),
+        _ => None,
+    }
+}
+
+fn clamp_ratio(value: f64) -> f64 {
+    if !value.is_finite() {
+        1.0
+    } else if value <= 0.0 {
+        0.0
+    } else if value >= 1.0 {
+        1.0
+    } else {
+        value
+    }
+}
+
+fn default_width_ratio(position: PopupPosition, screen: &ScreenInfo) -> f64 {
+    let min_side = screen.width.min(screen.height);
+    let is_tablet = min_side >= 600.0;
+
+    match position {
+        PopupPosition::Bottom | PopupPosition::Center => 1.0,
+        PopupPosition::Left | PopupPosition::Right => {
+            if is_tablet {
+                0.4
+            } else {
+                0.7
+            }
+        }
+    }
+}
+
+fn default_height_ratio(position: PopupPosition, screen: &ScreenInfo) -> f64 {
+    let min_side = screen.width.min(screen.height);
+    let max_side = screen.width.max(screen.height);
+    let is_tablet = min_side >= 600.0;
+
+    match position {
+        PopupPosition::Bottom => {
+            if is_tablet {
+                0.45
+            } else {
+                0.55
+            }
+        }
+        PopupPosition::Center => {
+            if is_tablet {
+                0.5
+            } else if max_side >= 900.0 {
+                0.55
+            } else if max_side >= 780.0 {
+                0.58
+            } else {
+                0.6
+            }
+        }
+        PopupPosition::Left | PopupPosition::Right => 1.0,
+    }
+}
+
+fn resolve_popup_ratios(
+    width_ratio: Option<f64>,
+    height_ratio: Option<f64>,
+    position: PopupPosition,
+    screen: &ScreenInfo,
+) -> (f64, f64) {
+    let width =
+        sanitize_ratio_input(width_ratio).unwrap_or_else(|| default_width_ratio(position, screen));
+    let height = sanitize_ratio_input(height_ratio)
+        .unwrap_or_else(|| default_height_ratio(position, screen));
+
+    (clamp_ratio(width), clamp_ratio(height))
 }
 
 fn show_popup(ctx: JSContext, options: JSPopupOptions) -> JSResult<JSObject> {
@@ -32,14 +111,15 @@ fn show_popup(ctx: JSContext, options: JSPopupOptions) -> JSResult<JSObject> {
         .create_page_with_ctx(&ctx, &options.url)
         .map_err(|e| RongJSError::Error(format!("Failed to prepare popup page: {}", e)))?;
 
+    let position = parse_position(options.position);
+    let screen = lxapp.runtime.screen_info();
+    let (width_ratio, height_ratio) =
+        resolve_popup_ratios(options.width_ratio, options.height_ratio, position, &screen);
+
     let mut request = PopupRequest::new(lxapp.appid.clone(), options.url);
-    if let Some(width) = options.width_ratio {
-        request.width_ratio = width;
-    }
-    if let Some(height) = options.height_ratio {
-        request.height_ratio = height;
-    }
-    request.position = parse_position(options.position);
+    request.width_ratio = width_ratio;
+    request.height_ratio = height_ratio;
+    request.position = position;
 
     lxapp
         .show_popup(request)

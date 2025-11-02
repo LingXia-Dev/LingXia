@@ -64,8 +64,8 @@ export default function UIPage() {
   const popupMessage = (popupDemo && popupDemo.message) || '';
   const [popupWidthRatio, setPopupWidthRatio] = React.useState(1);
   const [popupHeightRatio, setPopupHeightRatio] = React.useState(0.6);
-  const [popupPosition, setPopupPosition] = React.useState<'center' | 'bottom'>('bottom');
-  const popupPositions: Array<'center' | 'bottom'> = ['center', 'bottom'];
+  const [popupPosition, setPopupPosition] = React.useState<'center' | 'bottom' | 'left' | 'right'>('bottom');
+  const popupPositions: Array<'center' | 'bottom' | 'left' | 'right'> = ['bottom', 'center', 'left', 'right'];
 
   const clampRatio = React.useCallback((value: number, fallback: number) => {
     if (!Number.isFinite(value)) {
@@ -185,7 +185,7 @@ export default function UIPage() {
 
                   <div>
                     <div className="text-xs uppercase text-gray-500 tracking-wide mb-2">Position</div>
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-2 gap-2">
                       {popupPositions.map((pos) => {
                         const active = popupPosition === pos;
                         const baseClass = 'py-2 text-sm rounded-lg transition-colors border';
