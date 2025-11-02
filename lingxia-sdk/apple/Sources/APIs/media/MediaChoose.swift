@@ -97,27 +97,25 @@ extension LxAppMedia {
                         case .failure(let message):
                             let _ = onCallback(callbackId, false, message)
                         case .success(let fileURL):
-                            let copiedURL = copyMediaFileToTemp(
-                                from: fileURL,
-                                prefix: "camera_video",
-                                fallbackExtension: "mov",
-                                requiresSecurityScope: false
-                            )
-                            let finalURL = copiedURL ?? fileURL
-                            if finalURL != fileURL {
-                                try? FileManager.default.removeItem(at: fileURL)
+                            exportVideoToCache(from: fileURL) { exportResult in
+                                switch exportResult {
+                                case .success(let cacheURL):
+                                    let jsonItem: [String: Any] = [
+                                        "uri": cacheURL.path,
+                                        "fileType": "video",
+                                        "isOriginal": true
+                                    ]
+                                    if let data = try? JSONSerialization.data(withJSONObject: [jsonItem], options: []),
+                                       let jsonString = String(data: data, encoding: .utf8) {
+                                        let _ = onCallback(callbackId, true, jsonString)
+                                    } else {
+                                        let _ = onCallback(callbackId, false, "Failed to serialize camera capture result")
+                                    }
+                                case .failure:
+                                    let _ = onCallback(callbackId, false, "Failed to process captured video")
+                                }
                             }
-                            let jsonItem: [String: Any] = [
-                                "uri": finalURL.absoluteString,
-                                "fileType": "video",
-                                "isOriginal": true
-                            ]
-                            if let data = try? JSONSerialization.data(withJSONObject: [jsonItem], options: []),
-                               let jsonString = String(data: data, encoding: .utf8) {
-                                let _ = onCallback(callbackId, true, jsonString)
-                            } else {
-                                let _ = onCallback(callbackId, false, "Failed to serialize camera capture result")
-                            }
+                            return
                         }
                     }
 
@@ -134,18 +132,8 @@ extension LxAppMedia {
                 case .failure(let message):
                     let _ = onCallback(callbackId, false, message)
                 case .success(let fileURL):
-                    let copiedURL = copyMediaFileToTemp(
-                        from: fileURL,
-                        prefix: "camera_image",
-                        fallbackExtension: "jpg",
-                        requiresSecurityScope: false
-                    )
-                    let finalURL = copiedURL ?? fileURL
-                    if finalURL != fileURL {
-                        try? FileManager.default.removeItem(at: fileURL)
-                    }
                     let jsonItem: [String: Any] = [
-                        "uri": finalURL.absoluteString,
+                        "uri": fileURL.path,
                         "fileType": "image",
                         "isOriginal": true
                     ]
@@ -253,20 +241,26 @@ extension LxAppMedia {
 
     private static func presentPhotoPicker(presenter: UIViewController, mode: String, maxCount: UInt32, callbackId: UInt64) {
 
-        var configuration = PHPickerConfiguration()
-        configuration.selectionLimit = Int(maxCount)
+        let configuration: PHPickerConfiguration
+        if #available(iOS 15.0, *) {
+            configuration = PHPickerConfiguration(photoLibrary: PHPhotoLibrary.shared())
+        } else {
+            configuration = PHPickerConfiguration()
+        }
+        var mutableConfiguration = configuration
+        mutableConfiguration.selectionLimit = Int(maxCount)
 
         // Set media type based on mode
         switch mode.lowercased() {
         case "video":
-            configuration.filter = .videos
+            mutableConfiguration.filter = .videos
         case "image":
-            configuration.filter = .images
+            mutableConfiguration.filter = .images
         default: // mix
-            configuration.filter = .any(of: [.images, .videos])
+            mutableConfiguration.filter = .any(of: [.images, .videos])
         }
 
-        let picker = PHPickerViewController(configuration: configuration)
+        let picker = PHPickerViewController(configuration: mutableConfiguration)
         let delegate = AlbumDelegate(callbackId: callbackId) {
             LxAppMedia.albumPickerDelegate = nil
         }

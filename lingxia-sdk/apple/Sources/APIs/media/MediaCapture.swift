@@ -313,11 +313,8 @@ final class PhotoCaptureViewController: UIViewController {
     }
 
     private func savePhotoData(_ data: Data) -> URL? {
-        let tempDir = FileManager.default.temporaryDirectory
-        let fileURL = tempDir.appendingPathComponent("camera_image_\(UUID().uuidString).jpg")
         do {
-            try data.write(to: fileURL, options: .atomic)
-            return fileURL
+            return try LxAppMediaStorage.write(data: data, prefix: "photo", fileExtension: "jpg")
         } catch {
             return nil
         }
@@ -1712,35 +1709,84 @@ private final class VideoCaptureOverlayView: UIView {
     }
 }
 
-func copyMediaFileToTemp(
+func exportVideoToCache(
     from sourceURL: URL,
-    prefix: String,
-    fallbackExtension: String,
-    requiresSecurityScope: Bool
-) -> URL? {
-    let fileManager = FileManager.default
-    let tempDir = fileManager.temporaryDirectory
-
-    let sanitizedFallback = fallbackExtension.isEmpty ? "tmp" : fallbackExtension
-    let ext = sourceURL.pathExtension.isEmpty ? sanitizedFallback : sourceURL.pathExtension
-    let filename = "\(prefix)_\(UUID().uuidString)" + (ext.isEmpty ? "" : ".\(ext)")
-    let destinationURL = tempDir.appendingPathComponent(filename)
-
-    let accessed = requiresSecurityScope ? sourceURL.startAccessingSecurityScopedResource() : false
-    defer {
-        if requiresSecurityScope && accessed {
-            sourceURL.stopAccessingSecurityScopedResource()
+    completion: @Sendable @escaping (Result<URL, Error>) -> Void
+) {
+    let exportExtension = "mp4"
+    let fallbackExtension = sourceURL.pathExtension.isEmpty ? exportExtension : sourceURL.pathExtension
+    let deliverOnMain: @Sendable (Result<URL, Error>) -> Void = { result in
+        DispatchQueue.main.async {
+            completion(result)
         }
     }
 
-    do {
-        if fileManager.fileExists(atPath: destinationURL.path) {
-            try fileManager.removeItem(at: destinationURL)
+    let performFallbackCopy: @Sendable () -> Void = {
+        do {
+            let copied = try LxAppMediaStorage.copy(
+                from: sourceURL,
+                prefix: "video",
+                fallbackExtension: fallbackExtension,
+                requiresSecurityScope: false
+            )
+            try? FileManager.default.removeItem(at: sourceURL)
+            deliverOnMain(.success(copied))
+        } catch {
+            deliverOnMain(.failure(error))
         }
-        try fileManager.copyItem(at: sourceURL, to: destinationURL)
-        return destinationURL
-    } catch {
-        return nil
+    }
+
+    DispatchQueue.global(qos: .userInitiated).async {
+        if sourceURL.pathExtension.lowercased() == exportExtension {
+            do {
+                let copied = try LxAppMediaStorage.copy(
+                    from: sourceURL,
+                    prefix: "video",
+                    fallbackExtension: exportExtension,
+                    requiresSecurityScope: false
+                )
+                try? FileManager.default.removeItem(at: sourceURL)
+                deliverOnMain(.success(copied))
+            } catch {
+                deliverOnMain(.failure(error))
+            }
+            return
+        }
+
+        guard let destinationURL = LxAppMediaStorage.makeFileURL(prefix: "video", preferredExtension: exportExtension) else {
+            performFallbackCopy()
+            return
+        }
+
+        let asset = AVAsset(url: sourceURL)
+        guard let exportSession =
+            AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetHighestQuality) ??
+            AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetPassthrough) else {
+            performFallbackCopy()
+            return
+        }
+
+        guard exportSession.supportedFileTypes.contains(.mp4) else {
+            performFallbackCopy()
+            return
+        }
+
+        exportSession.outputFileType = .mp4
+
+        exportSession.shouldOptimizeForNetworkUse = true
+        exportSession.outputURL = destinationURL
+
+        exportSession.exportAsynchronously {
+            switch exportSession.status {
+            case .completed:
+                try? FileManager.default.removeItem(at: sourceURL)
+                deliverOnMain(.success(destinationURL))
+            case .failed, .cancelled:
+                performFallbackCopy()
+            default:
+                performFallbackCopy()
+            }
+        }
     }
 }
 #endif

@@ -57,64 +57,85 @@ final class AlbumDelegate: NSObject, PHPickerViewControllerDelegate {
         let provider = result.itemProvider
 
         if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
-            provider.loadFileRepresentation(forTypeIdentifier: UTType.image.identifier) { url, error in
-                if error != nil {
-                    DispatchQueue.main.async { completion(nil) }
-                    return
+            if let assetIdentifier = result.assetIdentifier {
+                DispatchQueue.main.async {
+                    let jsonItem: [String: Any] = [
+                        "uri": "phasset:\(assetIdentifier)",
+                        "fileType": "image",
+                        "isOriginal": true
+                    ]
+                    completion(jsonItem)
                 }
+            } else {
+                provider.loadFileRepresentation(forTypeIdentifier: UTType.image.identifier) { url, error in
+                    if error != nil {
+                        DispatchQueue.main.async { completion(nil) }
+                        return
+                    }
 
-                guard let url else {
-                    DispatchQueue.main.async { completion(nil) }
-                    return
-                }
+                    guard let url else {
+                        DispatchQueue.main.async { completion(nil) }
+                        return
+                    }
 
-                let tempURL = copyMediaFileToTemp(
-                    from: url,
-                    prefix: "album_image",
-                    fallbackExtension: "jpg",
-                    requiresSecurityScope: true
-                )
-            DispatchQueue.main.async {
-                    if let tempURL {
-                        let jsonItem: [String: Any] = [
-                            "uri": tempURL.absoluteString,
-                            "fileType": "image",
-                            "isOriginal": true
-                        ]
-                        completion(jsonItem)
-                    } else {
-                    completion(nil)
+                    DispatchQueue.main.async {
+                        do {
+                            let cachedURL = try LxAppMediaStorage.copy(
+                                from: url,
+                                prefix: "album_image",
+                                fallbackExtension: "jpg",
+                                requiresSecurityScope: true
+                            )
+                            let jsonItem: [String: Any] = [
+                                "uri": cachedURL.path,
+                                "fileType": "image",
+                                "isOriginal": true
+                            ]
+                            completion(jsonItem)
+                        } catch {
+                            completion(nil)
+                        }
                     }
                 }
             }
         } else if provider.hasItemConformingToTypeIdentifier(UTType.movie.identifier) {
-            provider.loadFileRepresentation(forTypeIdentifier: UTType.movie.identifier) { url, error in
-                if error != nil {
-                    DispatchQueue.main.async { completion(nil) }
-                    return
-                }
-                
-                guard let url else {
-                    DispatchQueue.main.async { completion(nil) }
-                    return
-                }
-
-                let tempURL = copyMediaFileToTemp(
-                    from: url,
-                    prefix: "album_video",
-                    fallbackExtension: "mov",
-                    requiresSecurityScope: true
-                )
+            if let assetIdentifier = result.assetIdentifier {
                 DispatchQueue.main.async {
-                    if let tempURL {
-                        let jsonItem: [String: Any] = [
-                            "uri": tempURL.absoluteString,
-                            "fileType": "video",
-                            "isOriginal": true
-                        ]
-                        completion(jsonItem)
-                    } else {
-                        completion(nil)
+                    let jsonItem: [String: Any] = [
+                        "uri": "phasset:\(assetIdentifier)",
+                        "fileType": "video",
+                        "isOriginal": true
+                    ]
+                    completion(jsonItem)
+                }
+            } else {
+                provider.loadFileRepresentation(forTypeIdentifier: UTType.movie.identifier) { url, error in
+                    if error != nil {
+                        DispatchQueue.main.async { completion(nil) }
+                        return
+                    }
+                    
+                    guard let url else {
+                        DispatchQueue.main.async { completion(nil) }
+                        return
+                    }
+                    DispatchQueue.main.async {
+                        do {
+                            let cachedURL = try LxAppMediaStorage.copy(
+                                from: url,
+                                prefix: "album_video",
+                                fallbackExtension: "mov",
+                                requiresSecurityScope: true
+                            )
+                            let jsonItem: [String: Any] = [
+                                "uri": cachedURL.path,
+                                "fileType": "video",
+                                "isOriginal": true
+                            ]
+                            completion(jsonItem)
+                        } catch {
+                            completion(nil)
+                        }
                     }
                 }
             }
@@ -138,6 +159,71 @@ final class AlbumDelegate: NSObject, PHPickerViewControllerDelegate {
 
     private func sendCancel() {
         let _ = onCallback(callbackId, true, "{\"cancel\":true}")
+    }
+}
+#endif
+
+#if os(iOS)
+extension LxAppMedia {
+    nonisolated static func copyAssetResource(
+        local_identifier: RustStr,
+        destination_path: RustStr,
+        media_type: Int32
+    ) -> Bool {
+        let assetId = local_identifier.toString()
+        let path = destination_path.toString()
+
+        guard !assetId.isEmpty, !path.isEmpty else {
+            return false
+        }
+
+        let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [assetId], options: nil)
+        guard let asset = fetchResult.firstObject else {
+            return false
+        }
+
+        let isVideo = media_type == 1
+        let resources = PHAssetResource.assetResources(for: asset)
+
+        let preferredTypes: [PHAssetResourceType]
+        if isVideo {
+            preferredTypes = [.video, .fullSizeVideo, .pairedVideo, .adjustmentBaseVideo]
+        } else {
+            preferredTypes = [.photo, .fullSizePhoto, .adjustmentBasePhoto]
+        }
+
+        let resource = resources.first { preferredTypes.contains($0.type) } ?? resources.first
+        guard let assetResource = resource else {
+            return false
+        }
+
+        let destinationURL = URL(fileURLWithPath: path)
+        let fileManager = FileManager.default
+        let parentURL = destinationURL.deletingLastPathComponent()
+        try? fileManager.createDirectory(at: parentURL, withIntermediateDirectories: true)
+        if fileManager.fileExists(atPath: destinationURL.path) {
+            try? fileManager.removeItem(at: destinationURL)
+        }
+
+        let options = PHAssetResourceRequestOptions()
+        options.isNetworkAccessAllowed = true
+
+        let semaphore = DispatchSemaphore(value: 0)
+        var success = true
+
+        PHAssetResourceManager.default().writeData(
+            for: assetResource,
+            toFile: destinationURL,
+            options: options
+        ) { error in
+            if error != nil {
+                success = false
+            }
+            semaphore.signal()
+        }
+
+        semaphore.wait()
+        return success
     }
 }
 #endif

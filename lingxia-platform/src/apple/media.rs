@@ -313,14 +313,16 @@ mod ios {
         let max_duration_str = max_duration
             .map(|d| d.to_string())
             .unwrap_or_else(|| "0".to_string());
-        run_on_main(|_| start_choose_media(
-            max_count,
-            mode,
-            &source_types_json,
-            &camera_facing_str,
-            &max_duration_str,
-            callback_id,
-        ))
+        run_on_main(|_| {
+            start_choose_media(
+                max_count,
+                mode,
+                &source_types_json,
+                &camera_facing_str,
+                &max_duration_str,
+                callback_id,
+            )
+        })
     }
 
     fn start_choose_media(
@@ -364,8 +366,7 @@ mod ios {
         let types_json = serde_json::to_string(&type_codes)
             .map_err(|e| PlatformError::Platform(format!("Failed to encode scan types: {}", e)))?;
 
-        let started =
-            scan_code(&types_json, request.only_from_camera, request.callback_id);
+        let started = scan_code(&types_json, request.only_from_camera, request.callback_id);
         if started {
             Ok(())
         } else {

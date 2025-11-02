@@ -40,17 +40,18 @@ impl AppRuntime for Platform {
         &self,
         uri: &str,
         dest_path: &std::path::Path,
-        _kind: crate::traits::MediaKind,
+        kind: crate::traits::MediaKind,
     ) -> Result<(), PlatformError> {
         #[cfg(target_os = "ios")]
         {
-            ios::copy_media_uri_to_path(uri, dest_path)
+            ios::copy_media_uri_to_path(uri, dest_path, kind)
         }
 
         #[cfg(not(target_os = "ios"))]
         {
             let _ = uri;
             let _ = dest_path;
+            let _ = kind;
             Err(PlatformError::Platform(
                 "copy_media_uri_to_path is only supported on iOS".to_string(),
             ))
@@ -212,20 +213,28 @@ impl Platform {
 #[cfg(target_os = "ios")]
 mod ios {
     use super::*;
-    use std::fs;
+    use crate::traits::MediaKind;
     use percent_encoding::percent_decode_str;
+    use std::fs;
 
     /// Copy media file from temporary location to application cache directory
     pub(super) fn copy_media_uri_to_path(
         uri: &str,
         dest_path: &std::path::Path,
+        kind: MediaKind,
     ) -> Result<(), PlatformError> {
+        if let Some(identifier) = uri.strip_prefix("phasset://") {
+            return copy_phasset_to_path(identifier, dest_path, kind);
+        }
+
+        if let Some(identifier) = uri.strip_prefix("phasset:") {
+            return copy_phasset_to_path(identifier, dest_path, kind);
+        }
+
         let trimmed = uri.strip_prefix("file://").unwrap_or(uri);
-        let decoded = percent_decode_str(trimmed)
-            .decode_utf8()
-            .map_err(|e| {
-                PlatformError::Platform(format!("Failed to decode file URI '{}': {}", uri, e))
-            })?;
+        let decoded = percent_decode_str(trimmed).decode_utf8().map_err(|e| {
+            PlatformError::Platform(format!("Failed to decode file URI '{}': {}", uri, e))
+        })?;
         let source_path = std::path::Path::new(decoded.as_ref());
 
         if !source_path.exists() {
@@ -251,6 +260,47 @@ mod ios {
                 dest_path.display(),
                 e
             ))),
+        }
+    }
+
+    fn copy_phasset_to_path(
+        identifier: &str,
+        dest_path: &std::path::Path,
+        kind: MediaKind,
+    ) -> Result<(), PlatformError> {
+        if let Some(parent) = dest_path.parent() {
+            if let Err(e) = fs::create_dir_all(parent) {
+                return Err(PlatformError::Platform(format!(
+                    "Failed to create destination directory: {}",
+                    e
+                )));
+            }
+        }
+
+        let kind_code = match kind {
+            MediaKind::Video => 1,
+            _ => 0,
+        };
+
+        let dest_str = dest_path
+            .to_str()
+            .ok_or_else(|| {
+                PlatformError::Platform(format!(
+                    "Destination path contains invalid UTF-8: {}",
+                    dest_path.display()
+                ))
+            })?
+            .to_string();
+
+        let success = super::ffi::copy_asset_resource(identifier, &dest_str, kind_code);
+        if success {
+            Ok(())
+        } else {
+            Err(PlatformError::Platform(format!(
+                "Failed to copy asset '{}' to {}",
+                identifier,
+                dest_path.display()
+            )))
         }
     }
 }
