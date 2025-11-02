@@ -44,6 +44,13 @@ interface MarginOptions {
   right?: number;
 }
 
+interface CornerRadii {
+  topLeft: number;
+  topRight: number;
+  bottomLeft: number;
+  bottomRight: number;
+}
+
 interface RenderableWebEntry {
   webTag: string;
   controller: webview.WebviewController;
@@ -75,8 +82,10 @@ export struct LxAppContainer {
   @State overlayActive: boolean = false
   @State overlayWidthVp: number = 0
   @State overlayHeightVp: number = 0
-  @State overlayPosition: number = 0 // 0 center, 1 bottom
+  @State overlayPosition: number = 0 // 0 center, 1 bottom, 2 left, 3 right
   @State overlayBottomInset: number = 0
+  @State overlayFullWidth: boolean = false
+  @State overlayFullHeight: boolean = false
   @State private overlayMaskOpacity: number = 0
   @State private placeholderControllers: Map<string, webview.WebviewController> = new Map()
   @State private keepAliveTags: string[] = [] // Keep WebViews hidden (not removed) to avoid destroy
@@ -323,7 +332,9 @@ export struct LxAppContainer {
     widthVp?: number,
     heightVp?: number,
     position?: number,
-    bottomInset?: number
+    bottomInset?: number,
+    fullWidth?: boolean,
+    fullHeight?: boolean
   ): boolean {
     const container = LxAppContainer.activeContainers.get(appId);
     if (!container) {
@@ -331,7 +342,7 @@ export struct LxAppContainer {
       return false;
     }
     const webTag = toWebTag(appId, path);
-    container.applyOverlayState(webTag, active, widthVp, heightVp, position, bottomInset);
+    container.applyOverlayState(webTag, active, widthVp, heightVp, position, bottomInset, fullWidth, fullHeight);
     return true;
   }
 
@@ -403,7 +414,7 @@ export struct LxAppContainer {
           this.webViewKeys = Array.from(this.webViewComponents.keys());
           const layout = LxAppPopup.getActiveLayout && LxAppPopup.getActiveLayout();
       if (layout && layout.appId === this.appId) {
-        this.applyOverlayState(info.webtag, true, layout.widthVp, layout.heightVp, layout.position as number, layout.bottomInset);
+        this.applyOverlayState(info.webtag, true, layout.widthVp, layout.heightVp, layout.position as number, layout.bottomInset, layout.fullWidth, layout.fullHeight);
         hilog.info(DOMAIN, TAG, `Overlay style set for ${info.webtag}: w=${layout.widthVp} h=${layout.heightVp} pos=${layout.position}`);
       } else {
         this.applyOverlayState(info.webtag, true);
@@ -671,7 +682,9 @@ export struct LxAppContainer {
     widthVp?: number,
     heightVp?: number,
     position?: number,
-    bottomInset?: number
+    bottomInset?: number,
+    fullWidth?: boolean,
+    fullHeight?: boolean
   ): void {
     if (active) {
       this.popupOverlayWebTag = webTag;
@@ -680,6 +693,8 @@ export struct LxAppContainer {
       if (heightVp !== undefined) this.overlayHeightVp = heightVp;
       if (position !== undefined) this.overlayPosition = position;
       if (bottomInset !== undefined) this.overlayBottomInset = bottomInset;
+      if (fullWidth !== undefined) this.overlayFullWidth = fullWidth;
+      if (fullHeight !== undefined) this.overlayFullHeight = fullHeight;
       if (this.keepAliveTags.indexOf(webTag) < 0) {
         this.keepAliveTags = [...this.keepAliveTags, webTag];
       }
@@ -691,6 +706,8 @@ export struct LxAppContainer {
       }
       this.overlayActive = false;
       this.animateOverlayMask(false);
+      this.overlayFullWidth = false;
+      this.overlayFullHeight = false;
       hilog.info(DOMAIN, TAG, `Overlay disabled for ${webTag}`);
     }
   }
@@ -746,10 +763,12 @@ export struct LxAppContainer {
     .height('100%')
     .backgroundColor(COLOR_TRANSPARENT)
     .clip(this.navigationMode)
-    // Reserve space for the navigation bar at the top and for an opaque TabBar elsewhere
-    .padding(this.getWebViewAreaPadding())
+    // Reserve space for the navigation bar only when the overlay is hidden
+    .padding(this.getContainerPadding())
     // Keep the layout fixed so the WebView bounds never change, removing the root cause of flicker
     .hitTestBehavior(HitTestMode.Transparent)
+    .zIndex(this.shouldRenderOverlayMask() ? 10004 : 0)
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 
   /**
@@ -762,6 +781,13 @@ export struct LxAppContainer {
     const pad: Padding = { top } as Padding;
     hilog.info(DOMAIN, TAG, `containerPadding -> top=${top}, showNavbar=${this.pageConfig?.showNavbar}`);
     return pad;
+  }
+
+  private getContainerPadding(): Padding {
+    if (this.overlayActive || this.overlayMaskOpacity > 0) {
+      return { top: 0, bottom: 0, left: 0, right: 0 } as Padding;
+    }
+    return this.getWebViewAreaPadding();
   }
 
   /**
@@ -1046,32 +1072,88 @@ export struct LxAppContainer {
 
   private getWrapperJustify(webTag: string): FlexAlign {
     if (this.isOverlayWebView(webTag)) {
-      return this.overlayPosition === 1 ? FlexAlign.End : FlexAlign.Center;
+      switch (this.overlayPosition) {
+        case 1:
+          return FlexAlign.End;
+        case 2:
+        case 3:
+          return FlexAlign.Center;
+        default:
+          return FlexAlign.Center;
+      }
     }
     return FlexAlign.Start;
   }
 
   private getWrapperAlign(webTag: string): HorizontalAlign {
-    return this.isOverlayWebView(webTag) ? HorizontalAlign.Center : HorizontalAlign.Start;
+    if (!this.isOverlayWebView(webTag)) {
+      return HorizontalAlign.Start;
+    }
+    switch (this.overlayPosition) {
+      case 2:
+        return HorizontalAlign.Start;
+      case 3:
+        return HorizontalAlign.End;
+      default:
+        return HorizontalAlign.Center;
+    }
   }
 
   private getOverlayWidth(): string {
+    if (this.overlayFullWidth && this.overlayWidthVp > 0) {
+      return `${this.overlayWidthVp}vp`;
+    }
     return this.overlayWidthVp > 0 ? `${this.overlayWidthVp}vp` : '90%';
   }
 
   private getOverlayHeight(): string {
+    if (this.overlayFullHeight && this.overlayHeightVp > 0) {
+      return `${this.overlayHeightVp}vp`;
+    }
     return this.overlayHeightVp > 0 ? `${this.overlayHeightVp}vp` : '80%';
   }
 
   private getOverlayAlignment(): Alignment {
-    return this.overlayPosition === 1 ? Alignment.Bottom : Alignment.Center;
+    switch (this.overlayPosition) {
+      case 1:
+        return Alignment.Bottom;
+      case 2:
+        return Alignment.Start;
+      case 3:
+        return Alignment.End;
+      default:
+        return Alignment.Center;
+    }
   }
 
   private getOverlayMargin(): MarginOptions {
-    if (this.overlayPosition === 1 && this.overlayBottomInset > 0) {
-      return { bottom: this.overlayBottomInset } as MarginOptions;
+    const base: MarginOptions = { top: 0, left: 0, right: 0, bottom: 0 };
+    const horizontalGap = this.overlayFullWidth ? 0 : 16;
+    const verticalGap = this.overlayFullHeight ? 0 : 16;
+    switch (this.overlayPosition) {
+      case 1:
+        if (this.overlayBottomInset > 0) {
+          base.bottom = this.overlayBottomInset;
+        }
+        break;
+      case 2:
+        base.left = 0;
+        base.right = horizontalGap;
+        base.top = verticalGap;
+        base.bottom = verticalGap;
+        break;
+      case 3:
+        base.right = 0;
+        base.left = horizontalGap;
+        base.top = verticalGap;
+        base.bottom = verticalGap;
+        break;
+      default:
+        base.top = verticalGap;
+        base.bottom = verticalGap;
+        break;
     }
-    return { top: 0, left: 0, right: 0, bottom: 0 } as MarginOptions;
+    return base;
   }
 
   private isOverlayWebView(webTag: string): boolean {
@@ -1118,8 +1200,25 @@ export struct LxAppContainer {
     return this.isOverlayWebView(webTag) ? this.getOverlayAlignment() : Alignment.TopStart;
   }
 
-  private getRenderBorderRadius(webTag: string): number {
-    return this.isOverlayWebView(webTag) ? 16 : 0;
+  private getRenderBorderRadius(webTag: string): number | CornerRadii {
+    if (!this.isOverlayWebView(webTag)) {
+      return 0;
+    }
+
+    const radius = 16;
+    switch (this.overlayPosition) {
+      case 1:
+        const bottomRadii: CornerRadii = { topLeft: radius, topRight: radius, bottomLeft: 0, bottomRight: 0 };
+        return bottomRadii;
+      case 2:
+        const leftRadii: CornerRadii = { topLeft: 0, topRight: radius, bottomLeft: 0, bottomRight: radius };
+        return leftRadii;
+      case 3:
+        const rightRadii: CornerRadii = { topLeft: radius, topRight: 0, bottomLeft: radius, bottomRight: 0 };
+        return rightRadii;
+      default:
+        return radius;
+    }
   }
 
   private getRenderClip(webTag: string): boolean {

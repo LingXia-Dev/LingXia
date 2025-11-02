@@ -10,7 +10,9 @@ const TAG = 'LingXia.Popup';
 
 export enum PopupPosition {
   Center = 0,
-  Bottom = 1
+  Bottom = 1,
+  Left = 2,
+  Right = 3
 }
 
 interface PopupState {
@@ -20,12 +22,16 @@ interface PopupState {
   heightVp: number;
   position: PopupPosition;
   bottomInset: number;
+  fullWidth: boolean;
+  fullHeight: boolean;
 }
 
 interface PopupDimensions {
   widthVp: number;
   heightVp: number;
   bottomInset: number;
+  fullWidth: boolean;
+  fullHeight: boolean;
 }
 
 export interface PopupLayoutConfig {
@@ -35,6 +41,8 @@ export interface PopupLayoutConfig {
   bottomInset: number;
   appId: string;
   path: string;
+  fullWidth: boolean;
+  fullHeight: boolean;
 }
 
 export class LxAppPopup {
@@ -77,7 +85,9 @@ export class LxAppPopup {
       widthVp: dimensions.widthVp,
       heightVp: dimensions.heightVp,
       position: position,
-      bottomInset: dimensions.bottomInset
+      bottomInset: dimensions.bottomInset,
+      fullWidth: dimensions.fullWidth,
+      fullHeight: dimensions.fullHeight
     };
 
     const success = LxAppPopup.managerRef.showPopup({
@@ -86,7 +96,9 @@ export class LxAppPopup {
       widthVp: dimensions.widthVp,
       heightVp: dimensions.heightVp,
       position: position,
-      bottomInset: dimensions.bottomInset
+      bottomInset: dimensions.bottomInset,
+      fullWidth: dimensions.fullWidth,
+      fullHeight: dimensions.fullHeight
     });
 
     hilog.info(DOMAIN, TAG, `showPopup result=${success} for ${appId}:${path}`);
@@ -98,7 +110,9 @@ export class LxAppPopup {
         dimensions.widthVp,
         dimensions.heightVp,
         position,
-        dimensions.bottomInset
+        dimensions.bottomInset,
+        dimensions.fullWidth,
+        dimensions.fullHeight
       );
       WebViewManager.notifyPopupState(appId, path, true);
       onPageShow(appId, path);
@@ -140,9 +154,9 @@ function parseRatio(value: string): number {
   return parsed;
 }
 
-function sanitizeFraction(value: number, fallback: number): number {
-  if (isNaN(value)) {
-    return fallback;
+function sanitizeFraction(value: number): number {
+  if (isNaN(value) || !isFinite(value)) {
+    return 1;
   }
   if (value <= 0) {
     return 0;
@@ -161,31 +175,13 @@ function normalizePosition(value: string): PopupPosition {
   if (normalized === 'bottom') {
     return PopupPosition.Bottom;
   }
+  if (normalized === 'left') {
+    return PopupPosition.Left;
+  }
+  if (normalized === 'right') {
+    return PopupPosition.Right;
+  }
   return PopupPosition.Bottom;
-}
-
-function defaultHeightRatio(position: PopupPosition, screenWidth: number, screenHeight: number): number {
-  const minDp = Math.min(screenWidth, screenHeight);
-  const maxDp = Math.max(screenWidth, screenHeight);
-  const isTablet = minDp >= 600;
-
-  if (position === PopupPosition.Bottom) {
-    return isTablet ? 0.45 : 0.55;
-  }
-
-  if (isTablet) {
-    return 0.5;
-  }
-
-  if (maxDp >= 900) {
-    return 0.55;
-  }
-
-  if (maxDp >= 780) {
-    return 0.58;
-  }
-
-  return 0.6;
 }
 
 function computeDimensions(
@@ -197,26 +193,30 @@ function computeDimensions(
   const screenWidth = defaultDisplay.width / defaultDisplay.densityPixels;
   const screenHeight = defaultDisplay.height / defaultDisplay.densityPixels;
 
-  const sanitizedWidth = sanitizeFraction(widthRatio, 1.0);
-  const defaultHeight = defaultHeightRatio(position, screenWidth, screenHeight);
-  const sanitizedHeight = sanitizeFraction(heightRatio, defaultHeight);
+  const sanitizedWidth = sanitizeFraction(widthRatio);
+  const sanitizedHeight = sanitizeFraction(heightRatio);
+
+  const effectiveWidth = sanitizedWidth;
+  const effectiveHeight = sanitizedHeight;
+  const isFullWidth = sanitizedWidth >= 0.999;
+  const isFullHeight = sanitizedHeight >= 0.999;
 
   let widthVp: number;
-  if (sanitizedWidth >= 0.999) {
+  if (effectiveWidth >= 0.999) {
     widthVp = screenWidth;
   } else {
     const widthCap = Math.max(screenWidth - 32, 0);
-    const boundedWidth = Math.min(sanitizedWidth * screenWidth, widthCap);
+    const boundedWidth = Math.min(effectiveWidth * screenWidth, widthCap);
     widthVp = Math.min(screenWidth, Math.max(160, boundedWidth));
   }
 
   let heightVp: number;
-  if (sanitizedHeight >= 0.999) {
+  if (effectiveHeight >= 0.999) {
     heightVp = screenHeight;
   } else {
     const rawCap = position === PopupPosition.Bottom ? screenHeight - 24 : screenHeight - 32;
     const verticalCap = Math.max(rawCap, 0);
-    const boundedHeight = Math.min(sanitizedHeight * screenHeight, verticalCap);
+    const boundedHeight = Math.min(effectiveHeight * screenHeight, verticalCap);
     heightVp = Math.min(screenHeight, Math.max(160, boundedHeight));
   }
 
@@ -225,7 +225,9 @@ function computeDimensions(
   return {
     widthVp: widthVp,
     heightVp: heightVp,
-    bottomInset: bottomInset
+    bottomInset: bottomInset,
+    fullWidth: isFullWidth,
+    fullHeight: isFullHeight
   };
 }
 
