@@ -68,6 +68,8 @@ mod bridge {
     pub enum PopupPositionBridge {
         Center,
         Bottom,
+        Left,
+        Right,
     }
 
     extern "Swift" {

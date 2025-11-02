@@ -89,6 +89,8 @@ impl From<i32> for AnimationType {
 pub enum PopupPosition {
     Center = 0,
     Bottom = 1,
+    Left = 2,
+    Right = 3,
 }
 
 impl Default for PopupPosition {

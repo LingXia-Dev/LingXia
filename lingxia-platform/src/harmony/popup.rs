@@ -17,6 +17,8 @@ impl PopupPresenter for Platform {
         let position = match request.position {
             PopupPosition::Center => "center",
             PopupPosition::Bottom => "bottom",
+            PopupPosition::Left => "left",
+            PopupPosition::Right => "right",
         };
 
         let args = [

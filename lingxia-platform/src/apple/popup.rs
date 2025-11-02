@@ -8,6 +8,8 @@ impl PopupPresenter for Platform {
         let position = match request.position {
             PopupPosition::Center => PopupPositionBridge::Center,
             PopupPosition::Bottom => PopupPositionBridge::Bottom,
+            PopupPosition::Left => PopupPositionBridge::Left,
+            PopupPosition::Right => PopupPositionBridge::Right,
         };
 
         if show_popup(
