@@ -5,14 +5,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SDK_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SRC_DIR="$SDK_ROOT/resources/icons/svg"
-DST_DIR="$SDK_ROOT/resources/icons/pdf"
+APPLE_RESOURCES_DIR="$SDK_ROOT/apple/Sources/Resources/icons"
 
 if [[ ! -d "$SRC_DIR" ]]; then
     echo "[convert_svg_icons] Source directory not found: $SRC_DIR" >&2
     exit 1
 fi
 
-mkdir -p "$DST_DIR"
+mkdir -p "$APPLE_RESOURCES_DIR"
 
 convert_with_rsvg() {
     local input="$1"
@@ -53,8 +53,14 @@ shopt -s nullglob
 converted_any=false
 for svg_file in "$SRC_DIR"/*.svg; do
     base_name="$(basename "$svg_file" .svg)"
-    pdf_file="$DST_DIR/$base_name.pdf"
-    echo "[convert_svg_icons] Converting $base_name.svg -> $base_name.pdf using $converter"
+    case "$base_name" in
+        icon_camera_switch) output_name="icon_camera_switch" ;;
+        icon_camera_flash_on) output_name="icon_camera_flash_on" ;;
+        icon_camera_flash_off) output_name="icon_camera_flash_off" ;;
+        *) output_name="$base_name" ;;
+    esac
+    pdf_file="$APPLE_RESOURCES_DIR/$output_name.pdf"
+    echo "[convert_svg_icons] Converting $base_name.svg -> $output_name.pdf using $converter"
     case "$converter" in
         rsvg) convert_with_rsvg "$svg_file" "$pdf_file" ;;
         inkscape) convert_with_inkscape "$svg_file" "$pdf_file" ;;

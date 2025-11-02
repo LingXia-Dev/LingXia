@@ -42,11 +42,11 @@ let package = Package(
             dependencies: ["CLingXiaRustAPI", "CLingXiaSwiftAPI"],
             path: "Sources",
             resources: [
-                .copy("../../resources/icons/pdf/icon_back.pdf"),
-                .copy("../../resources/icons/pdf/icon_close.pdf"),
-                .copy("../../resources/icons/pdf/icon_flash_on.pdf"),
-                .copy("../../resources/icons/pdf/icon_flash_off.pdf"),
-                .copy("../../resources/icons/pdf/icon_switch.pdf"),
+                .copy("Resources/icons/icon_back.pdf"),
+                .copy("Resources/icons/icon_close.pdf"),
+                .copy("Resources/icons/icon_camera_flash_on.pdf"),
+                .copy("Resources/icons/icon_camera_flash_off.pdf"),
+                .copy("Resources/icons/icon_camera_switch.pdf"),
             ],
             publicHeadersPath: nil,
             cSettings: [

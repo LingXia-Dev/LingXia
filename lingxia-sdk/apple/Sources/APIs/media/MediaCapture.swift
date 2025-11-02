@@ -627,7 +627,7 @@ private final class PhotoCaptureOverlayView: UIView {
         switchCameraButton.translatesAutoresizingMaskIntoConstraints = false
         switchCameraButton.backgroundColor = .clear
         switchCameraButton.layer.cornerRadius = 0
-        switchCameraButton.setImage(LxAppMedia.controlImage(named: "icon_switch"), for: .normal)
+        switchCameraButton.setImage(LxAppMedia.controlImage(named: "icon_camera_switch"), for: .normal)
         switchCameraButton.tintColor = .white
         switchCameraButton.contentEdgeInsets = .zero
         switchCameraButton.addTarget(self, action: #selector(switchCameraTapped), for: .touchUpInside)
@@ -691,7 +691,7 @@ private final class PhotoCaptureOverlayView: UIView {
     }
 
     private func updateFlashButtonImage() {
-        let name = flashEnabled ? "icon_flash_on" : "icon_flash_off"
+        let name = flashEnabled ? "icon_camera_flash_on" : "icon_camera_flash_off"
         flashButton.setImage(LxAppMedia.controlImage(named: name), for: .normal)
         flashButton.accessibilityLabel = flashEnabled ? "关闭闪光灯" : "开启闪光灯"
     }
@@ -1590,7 +1590,7 @@ private final class VideoCaptureOverlayView: UIView {
         switchCameraButton.translatesAutoresizingMaskIntoConstraints = false
         switchCameraButton.backgroundColor = .clear
         switchCameraButton.layer.cornerRadius = 0
-        switchCameraButton.setImage(LxAppMedia.controlImage(named: "icon_switch"), for: .normal)
+        switchCameraButton.setImage(LxAppMedia.controlImage(named: "icon_camera_switch"), for: .normal)
         switchCameraButton.tintColor = .white
         switchCameraButton.contentEdgeInsets = .zero
         switchCameraButton.alpha = 0.0
@@ -1671,7 +1671,7 @@ private final class VideoCaptureOverlayView: UIView {
     }
 
     private func updateFlashButtonImage() {
-        let name = flashEnabled ? "icon_flash_on" : "icon_flash_off"
+        let name = flashEnabled ? "icon_camera_flash_on" : "icon_camera_flash_off"
         flashButton.setImage(LxAppMedia.controlImage(named: name), for: .normal)
         flashButton.accessibilityLabel = flashEnabled ? "关闭闪光灯" : "开启闪光灯"
     }
