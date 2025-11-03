@@ -8,6 +8,8 @@ import CLingXiaSwiftAPI
 public enum PopupDisplayPosition {
     case center
     case bottom
+    case left
+    case right
 }
 
 @MainActor
@@ -91,6 +93,7 @@ public final class LxAppPopup {
             maskView.bottomAnchor.constraint(equalTo: overlay.bottomAnchor)
         ])
 
+        let safeArea = overlay.safeAreaLayoutGuide
         if layout.isFullWidth {
             NSLayoutConstraint.activate([
                 container.leadingAnchor.constraint(equalTo: overlay.leadingAnchor),
@@ -98,15 +101,35 @@ public final class LxAppPopup {
             ])
         } else {
             NSLayoutConstraint.activate([
-                container.widthAnchor.constraint(equalToConstant: layout.width),
-                container.centerXAnchor.constraint(equalTo: overlay.centerXAnchor)
+                container.widthAnchor.constraint(equalToConstant: layout.width)
             ])
+            switch position {
+            case .left:
+                NSLayoutConstraint.activate([
+                    container.leadingAnchor.constraint(equalTo: overlay.leadingAnchor)
+                ])
+            case .right:
+                NSLayoutConstraint.activate([
+                    container.trailingAnchor.constraint(equalTo: overlay.trailingAnchor)
+                ])
+            default:
+                NSLayoutConstraint.activate([
+                    container.centerXAnchor.constraint(equalTo: safeArea.centerXAnchor)
+                ])
+            }
         }
 
         let containerHeight = layout.height
-        NSLayoutConstraint.activate([
-            container.heightAnchor.constraint(equalToConstant: containerHeight)
-        ])
+        if layout.isFullHeight {
+            NSLayoutConstraint.activate([
+                container.topAnchor.constraint(equalTo: overlay.topAnchor),
+                container.bottomAnchor.constraint(equalTo: overlay.bottomAnchor)
+            ])
+        } else {
+            NSLayoutConstraint.activate([
+                container.heightAnchor.constraint(equalToConstant: containerHeight)
+            ])
+        }
 
         switch position {
         case .bottom:
@@ -115,8 +138,18 @@ public final class LxAppPopup {
             ])
         case .center:
             NSLayoutConstraint.activate([
-                container.centerYAnchor.constraint(equalTo: overlay.centerYAnchor)
+                container.centerYAnchor.constraint(equalTo: safeArea.centerYAnchor)
             ])
+        case .left, .right:
+            NSLayoutConstraint.activate([
+                container.centerYAnchor.constraint(equalTo: safeArea.centerYAnchor)
+            ])
+            if !layout.isFullHeight {
+                NSLayoutConstraint.activate([
+                    container.topAnchor.constraint(greaterThanOrEqualTo: safeArea.topAnchor, constant: 16),
+                    container.bottomAnchor.constraint(lessThanOrEqualTo: safeArea.bottomAnchor, constant: -16)
+                ])
+            }
         }
 
         let sheetView = UIView()
@@ -193,9 +226,8 @@ public final class LxAppPopup {
         if containerSize.width <= 0 || containerSize.height <= 0 {
             containerSize = UIScreen.main.bounds.size
         }
-        let sanitizedWidth = sanitizeFraction(widthRatio, defaultValue: 1.0)
-        let defaultHeight = defaultHeightRatio(for: position, containerSize: containerSize)
-        let sanitizedHeight = sanitizeFraction(heightRatio, defaultValue: defaultHeight)
+        let sanitizedWidth = sanitizeFraction(widthRatio)
+        let sanitizedHeight = sanitizeFraction(heightRatio)
 
         let availableWidth = containerSize.width
         let availableHeight = containerSize.height
@@ -226,32 +258,11 @@ public final class LxAppPopup {
         )
     }
 
-    private static func sanitizeFraction(_ value: Double, defaultValue: Double) -> Double {
-        if value.isNaN {
-            return defaultValue
+    private static func sanitizeFraction(_ value: Double) -> Double {
+        if value.isNaN || !value.isFinite {
+            return 1.0
         }
         return min(max(value, 0.0), 1.0)
-    }
-
-    private static func defaultHeightRatio(for position: PopupDisplayPosition, containerSize: CGSize) -> Double {
-        let isTablet = UIDevice.current.userInterfaceIdiom == .pad
-        let longestSide = max(containerSize.width, containerSize.height)
-
-        switch position {
-        case .bottom:
-            return isTablet ? 0.45 : 0.55
-        case .center:
-            if isTablet {
-                return 0.5
-            }
-            if longestSide >= 900 {
-                return 0.55
-            }
-            if longestSide >= 780 {
-                return 0.58
-            }
-            return 0.6
-        }
     }
 
     private static func applyCornerStyle(
@@ -261,7 +272,7 @@ public final class LxAppPopup {
     ) {
         let radius: CGFloat = 16
 
-        if isFullHeight || radius <= 0 {
+        if radius <= 0 {
             view.layer.cornerRadius = 0
             if #available(iOS 11.0, *) {
                 view.layer.maskedCorners = []
@@ -270,21 +281,36 @@ public final class LxAppPopup {
             return
         }
 
-        view.layer.cornerRadius = radius
+        let shouldClip = !(isFullHeight && position == .bottom)
+        view.layer.cornerRadius = shouldClip ? radius : 0
         if #available(iOS 11.0, *) {
-            switch position {
-            case .bottom:
-                view.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
-            case .center:
-                view.layer.maskedCorners = [
-                    .layerMinXMinYCorner,
-                    .layerMaxXMinYCorner,
-                    .layerMinXMaxYCorner,
-                    .layerMaxXMaxYCorner
-                ]
+            if shouldClip {
+                switch position {
+                case .bottom:
+                    view.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+                case .center:
+                    view.layer.maskedCorners = [
+                        .layerMinXMinYCorner,
+                        .layerMaxXMinYCorner,
+                        .layerMinXMaxYCorner,
+                        .layerMaxXMaxYCorner
+                    ]
+                case .left:
+                    view.layer.maskedCorners = [
+                        .layerMaxXMinYCorner,
+                        .layerMaxXMaxYCorner
+                    ]
+                case .right:
+                    view.layer.maskedCorners = [
+                        .layerMinXMinYCorner,
+                        .layerMinXMaxYCorner
+                    ]
+                }
+            } else {
+                view.layer.maskedCorners = []
             }
         }
-        view.layer.masksToBounds = true
+        view.layer.masksToBounds = shouldClip
     }
 
     @objc
@@ -300,6 +326,10 @@ extension PopupPositionBridge {
             return .center
         case .Bottom:
             return .bottom
+        case .Left:
+            return .left
+        case .Right:
+            return .right
         @unknown default:
             return .bottom
         }
