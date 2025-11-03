@@ -267,6 +267,19 @@ pub struct SaveMediaRequest {
     pub file_uri: String,
 }
 
+/// Request payload to open a document using the system viewer.
+#[derive(Debug, Clone)]
+pub struct OpenDocumentRequest {
+    /// Absolute file path to the document.
+    pub file_path: String,
+    /// Optional MIME type describing the document content (e.g. application/pdf).
+    pub mime_type: Option<String>,
+    /// Whether to show the menu button for additional operations like sharing.
+    /// true: Show menu and enable additional operations
+    /// false: Hide menu and restrict to viewing only
+    pub show_menu: Option<bool>,
+}
+
 /// Media-related platform functionality.
 pub trait MediaInteraction: Send + Sync + 'static {
     /// Preview a collection of media assets (images/videos) in full-screen viewer.
@@ -283,6 +296,12 @@ pub trait MediaInteraction: Send + Sync + 'static {
 
     /// Persist a video asset to the device's gallery/photos album.
     fn save_video_to_photos_album(&self, request: SaveMediaRequest) -> Result<(), PlatformError>;
+}
+
+/// Document-related platform functionality.
+pub trait DocumentInteraction: Send + Sync + 'static {
+    /// Open a document (PDF/Word/Excel/etc.) using the native viewer.
+    fn open_document(&self, request: OpenDocumentRequest) -> Result<(), PlatformError>;
 }
 
 /// Device capabilities and information

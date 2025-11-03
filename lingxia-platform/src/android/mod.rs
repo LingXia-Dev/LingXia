@@ -3,6 +3,7 @@ use std::sync::OnceLock;
 
 mod app;
 mod device;
+mod document;
 mod location;
 mod media;
 mod popup;
@@ -24,10 +25,11 @@ pub enum CachedClass {
     LxAppModal = 7,
     LxAppActionSheet = 8,
     LxAppPicker = 9,
+    LxAppDocument = 10,
 }
 
 impl CachedClass {
-    const COUNT: usize = 10;
+    const COUNT: usize = 11;
 
     pub const fn class_path(self) -> &'static str {
         match self {
@@ -41,6 +43,7 @@ impl CachedClass {
             CachedClass::LxAppModal => "com/lingxia/lxapp/APIs/LxAppModal",
             CachedClass::LxAppActionSheet => "com/lingxia/lxapp/APIs/LxAppActionSheet",
             CachedClass::LxAppPicker => "com/lingxia/lxapp/APIs/LxAppPicker",
+            CachedClass::LxAppDocument => "com/lingxia/lxapp/APIs/LxAppDocument",
         }
     }
 
@@ -86,12 +89,17 @@ impl CachedClass {
                 "Global class reference not found: ",
                 "com/lingxia/lxapp/APIs/LxAppPicker"
             ),
+            CachedClass::LxAppDocument => concat!(
+                "Global class reference not found: ",
+                "com/lingxia/lxapp/APIs/LxAppDocument"
+            ),
         }
     }
 }
 
 fn cached_slot(kind: CachedClass) -> &'static OnceLock<GlobalRef> {
     static CLASS_CACHE: [OnceLock<GlobalRef>; CachedClass::COUNT] = [
+        OnceLock::new(),
         OnceLock::new(),
         OnceLock::new(),
         OnceLock::new(),

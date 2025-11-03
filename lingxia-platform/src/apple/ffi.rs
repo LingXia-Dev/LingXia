@@ -130,13 +130,16 @@ mod bridge {
 
         #[swift_bridge(swift_name = "LxAppMedia.previewMedia")]
         fn preview_media(items_json: &str) -> bool;
+
+        #[swift_bridge(swift_name = "LxApp.openDocument")]
+        fn open_document(file_path: &str, mime_type: &str, show_menu: bool) -> bool;
     }
 }
 
 // Re-export the bridge functions for use in other modules
 pub use bridge::{
     ActionSheetOptions, ModalOptions, PickerOptions, PopupPositionBridge, ToastIcon, ToastOptions,
-    ToastPosition, close_lxapp, hide_popup, hide_toast, launch_with_url, navigate, open_lxapp,
-    preview_media, show_action_sheet, show_modal, show_picker, show_popup, show_toast,
+    ToastPosition, close_lxapp, hide_popup, hide_toast, launch_with_url, navigate, open_document,
+    open_lxapp, preview_media, show_action_sheet, show_modal, show_picker, show_popup, show_toast,
     update_navbar_ui, update_tabbar_ui,
 };
