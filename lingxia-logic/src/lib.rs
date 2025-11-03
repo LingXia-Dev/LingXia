@@ -6,6 +6,7 @@ mod env;
 mod location;
 mod media;
 mod navigator;
+mod open;
 mod system;
 mod ui;
 
@@ -20,6 +21,7 @@ impl LxLogicExtension for LxLogicRuntime {
         ui::init(ctx)?;
         system::init(ctx)?;
         media::init(ctx)?;
+        open::init(ctx)?;
         Ok(())
     }
 }
