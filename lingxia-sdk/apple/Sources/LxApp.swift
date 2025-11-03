@@ -319,6 +319,18 @@ public class LxApp {
     }
     #endif
 
+    #if os(iOS)
+    /// Get the topmost view controller (iOS only)
+    public static func topViewController() -> UIViewController? {
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let window = windowScene.windows.first,
+              let rootViewController = window.rootViewController else {
+            return nil
+        }
+        return LxAppViewHierarchyHelper.findTopmostViewController(from: rootViewController)
+    }
+    #endif
+
     /// Open home LxApp (internal use)
     internal static func openHomeLxApp() {
         LxAppPlatform.openHomeLxApp()
@@ -518,6 +530,29 @@ extension LxApp {
         return executeOnMain {
             LxAppPopup.hidePopup(appId: appIdString)
         }
+    }
+
+    /// Open a document using the system viewer
+    nonisolated public static func openDocument(file_path filePath: RustStr, mime_type mimeType: RustStr, show_menu showMenu: Bool) -> Bool {
+        #if os(iOS)
+        let pathString = filePath.toString()
+        let mimeString = mimeType.toString()
+        return executeOnMain {
+            LxAppDocument.openDocument(
+                path: pathString,
+                mimeType: mimeString.isEmpty ? nil : mimeString,
+                showMenu: showMenu
+            )
+        }
+        #elseif os(macOS)
+        let pathString = filePath.toString()
+        let url = URL(fileURLWithPath: pathString)
+        let _ = (mimeType, showMenu)
+        return NSWorkspace.shared.open(url)
+        #else
+        let _ = (filePath, mimeType, showMenu)
+        return false
+        #endif
     }
 
     /// Hide current toast immediately

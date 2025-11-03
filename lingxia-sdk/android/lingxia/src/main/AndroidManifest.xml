@@ -16,5 +16,14 @@
             android:exported="false"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
             android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
+        <activity
+            android:name="com.lingxia.lxapp.APIs.document.PdfViewerActivity"
+            android:exported="false"
+            android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
+        <provider
+            android:name="com.lingxia.lxapp.APIs.document.LingxiaDocumentProvider"
+            android:authorities="${applicationId}.lingxia.documents"
+            android:exported="false"
+            android:grantUriPermissions="true" />
     </application>
 </manifest>
