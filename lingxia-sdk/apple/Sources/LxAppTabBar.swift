@@ -802,6 +802,12 @@ public class iOSTabBarWrapper: UIView, TabBarProtocol {
         // Update selected index from fresh config
         self.selectedIndex = Int(freshConfig.selected_index)
 
+        // Apply background color from config
+        let bgColor = PlatformColor(argb: freshConfig.background_color)
+        self.backgroundColor = bgColor
+        self.layer.backgroundColor = bgColor.cgColor
+        self.isOpaque = ((freshConfig.background_color >> 24) & 0xFF) == 0xFF
+
         let items = freshConfig.getItems(appId: appId)
 
         // Always recreate layout to ensure fresh badge/red dot data
@@ -824,6 +830,7 @@ public class iOSTabBarWrapper: UIView, TabBarProtocol {
         subviews.forEach { $0.removeFromSuperview() }
 
         let containerView = UIView()
+        // Keep container clear so parent background shows through
         containerView.backgroundColor = UIColor.clear
         containerView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(containerView)
