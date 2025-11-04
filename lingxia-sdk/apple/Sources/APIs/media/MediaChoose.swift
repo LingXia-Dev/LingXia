@@ -55,6 +55,10 @@ extension LxAppMedia {
         return true
     }
 
+    private static func sendDone(_ callbackId: UInt64) {
+        let _ = onCallback(callbackId, true, "{\"done\":true}")
+    }
+
     private static func openCamera(
         presenter: UIViewController,
         mode: String,
@@ -94,8 +98,10 @@ extension LxAppMedia {
                         switch result {
                         case .cancelled:
                             let _ = onCallback(callbackId, true, "{\"cancel\":true}")
+                            sendDone(callbackId)
                         case .failure(let message):
                             let _ = onCallback(callbackId, false, message)
+                            sendDone(callbackId)
                         case .success(let fileURL):
                             exportVideoToCache(from: fileURL) { exportResult in
                                 switch exportResult {
@@ -108,11 +114,14 @@ extension LxAppMedia {
                                     if let data = try? JSONSerialization.data(withJSONObject: [jsonItem], options: []),
                                        let jsonString = String(data: data, encoding: .utf8) {
                                         let _ = onCallback(callbackId, true, jsonString)
+                                        sendDone(callbackId)
                                     } else {
                                         let _ = onCallback(callbackId, false, "Failed to serialize camera capture result")
+                                        sendDone(callbackId)
                                     }
                                 case .failure:
                                     let _ = onCallback(callbackId, false, "Failed to process captured video")
+                                    sendDone(callbackId)
                                 }
                             }
                             return
@@ -129,8 +138,10 @@ extension LxAppMedia {
                 switch result {
                 case .cancelled:
                     let _ = onCallback(callbackId, true, "{\"cancel\":true}")
+                    sendDone(callbackId)
                 case .failure(let message):
                     let _ = onCallback(callbackId, false, message)
+                    sendDone(callbackId)
                 case .success(let fileURL):
                     let jsonItem: [String: Any] = [
                         "uri": fileURL.path,
@@ -141,8 +152,10 @@ extension LxAppMedia {
                     if let data = try? JSONSerialization.data(withJSONObject: [jsonItem], options: []),
                        let jsonString = String(data: data, encoding: .utf8) {
                         let _ = onCallback(callbackId, true, jsonString)
+                        sendDone(callbackId)
                     } else {
                         let _ = onCallback(callbackId, false, "Failed to serialize camera capture result")
+                        sendDone(callbackId)
                     }
                 }
             }
