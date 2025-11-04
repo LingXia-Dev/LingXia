@@ -107,23 +107,29 @@ class ZoomImageView @JvmOverloads constructor(
     override fun onTouch(v: View?, event: MotionEvent): Boolean {
         if (drawable == null) return false
 
+        // Feed gesture detectors first
         scaleDetector.onTouchEvent(event)
         if (!isScaling) {
             gestureDetector.onTouchEvent(event)
         }
+
+        // Strengthen disallow intercept logic for better pinch zooming in RecyclerView
+        val multiTouch = event.pointerCount > 1
+        val shouldDisallow = multiTouch || isScaling || isZoomed()
 
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 lastTouchX = event.x
                 lastTouchY = event.y
                 isDragging = true
-                parent?.requestDisallowInterceptTouchEvent(isZoomed())
+                parent?.requestDisallowInterceptTouchEvent(shouldDisallow)
             }
             MotionEvent.ACTION_POINTER_DOWN -> {
                 isDragging = false
                 parent?.requestDisallowInterceptTouchEvent(true)
             }
             MotionEvent.ACTION_MOVE -> {
+                parent?.requestDisallowInterceptTouchEvent(shouldDisallow)
                 if (isDragging && event.pointerCount == 1) {
                     val dx = event.x - lastTouchX
                     val dy = event.y - lastTouchY
@@ -198,6 +204,7 @@ class ZoomImageView @JvmOverloads constructor(
     private inner class ScaleListener : ScaleGestureDetector.SimpleOnScaleGestureListener() {
         override fun onScaleBegin(detector: ScaleGestureDetector): Boolean {
             isScaling = true
+            parent?.requestDisallowInterceptTouchEvent(true)
             return true
         }
 
@@ -223,6 +230,7 @@ class ZoomImageView @JvmOverloads constructor(
 
     private inner class GestureListener : GestureDetector.SimpleOnGestureListener() {
         override fun onDoubleTap(e: MotionEvent): Boolean {
+            parent?.requestDisallowInterceptTouchEvent(true)
             val currentScale = getCurrentScale()
             val target = if (currentScale > minScale + 0.05f) minScale else min(maxScale, minScale * 2f)
             animateScale(currentScale, target, e.x, e.y)

@@ -1,6 +1,4 @@
 package com.lingxia.lxapp.APIs.document
-
-import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
@@ -11,25 +9,24 @@ import android.os.Bundle
 import android.os.ParcelFileDescriptor
 import android.util.TypedValue
 import android.view.Gravity
-import android.view.GestureDetector
 import android.view.Menu
 import android.view.MenuItem
-import android.view.MotionEvent
-import android.view.ScaleGestureDetector
 import android.view.View
+import android.view.MotionEvent
+import android.view.ViewGroup
 import android.widget.FrameLayout
-import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.widget.Toolbar
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.color.MaterialColors
+import com.lingxia.lxapp.APIs.media.ZoomImageView
 import java.io.File
 import java.io.IOException
-import kotlin.math.abs
 import kotlin.math.roundToInt
 
 class PdfViewerActivity : AppCompatActivity() {
@@ -38,26 +35,26 @@ class PdfViewerActivity : AppCompatActivity() {
         const val EXTRA_DISPLAY_NAME = "com.lingxia.lxapp.document.extra.DISPLAY_NAME"
         const val EXTRA_SHOW_MENU = "com.lingxia.lxapp.document.extra.SHOW_MENU"
         private const val MENU_ID_SHARE = 1
-        private const val FLING_DISTANCE_DP = 48
-        private const val FLING_VELOCITY_DP = 24
     }
 
     private var parcelFileDescriptor: ParcelFileDescriptor? = null
     private var pdfRenderer: PdfRenderer? = null
-    private var currentPage: PdfRenderer.Page? = null
 
     private lateinit var toolbar: MaterialToolbar
     private lateinit var rootLayout: LinearLayout
     private lateinit var contentFrame: FrameLayout
+    private lateinit var recyclerView: RecyclerView
+    private lateinit var layoutManager: LinearLayoutManager
     private lateinit var overlayContainer: LinearLayout
-    private lateinit var imageView: ZoomableImageView
     private lateinit var pageIndicator: TextView
-    private lateinit var gestureDetector: GestureDetector
+    private var overlayHideRunnable: Runnable? = null
+    private val overlayHideDelayMs = 1200L
 
     private var pageCount: Int = 0
     private var currentIndex: Int = 0
     private var showMenu: Boolean = true
     private var filePath: String = ""
+    private var anyZoomed: Boolean = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -72,41 +69,6 @@ class PdfViewerActivity : AppCompatActivity() {
         showMenu = intent.getBooleanExtra(EXTRA_SHOW_MENU, true)
 
         buildLayout()
-
-        gestureDetector = GestureDetector(
-            this,
-            object : GestureDetector.SimpleOnGestureListener() {
-                override fun onDown(e: MotionEvent): Boolean = true
-
-                override fun onFling(
-                    e1: MotionEvent,
-                    e2: MotionEvent,
-                    velocityX: Float,
-                    velocityY: Float
-                ): Boolean {
-                    if (imageView.isZoomed()) {
-                        return false
-                    }
-                    val deltaY = e2.y - e1.y
-                    val deltaX = e2.x - e1.x
-                    val distanceThreshold = dp(FLING_DISTANCE_DP).toFloat()
-                    val velocityThreshold = dp(FLING_VELOCITY_DP) * 8f
-                    if (abs(deltaY) > abs(deltaX) &&
-                        abs(deltaY) > distanceThreshold &&
-                        abs(velocityY) > velocityThreshold
-                    ) {
-                        val moved = if (deltaY < 0) {
-                            showPage(currentIndex + 1)
-                        } else {
-                            showPage(currentIndex - 1)
-                        }
-                        return moved
-                    }
-                    return false
-                }
-            }
-        )
-        imageView.attachGestureDetector(gestureDetector)
 
         toolbar.title = displayName
         setSupportActionBar(toolbar)
@@ -123,7 +85,9 @@ class PdfViewerActivity : AppCompatActivity() {
                 finish()
                 return
             }
-            showPage(0)
+            // Initial display index
+            currentIndex = 0
+            updateUi()
         } catch (error: IOException) {
             error.printStackTrace()
             finish()
@@ -189,38 +153,48 @@ class PdfViewerActivity : AppCompatActivity() {
             )
         }
 
-        imageView = ZoomableImageView(this).apply {
+        recyclerView = RecyclerView(this).apply {
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
             )
-            contentDescription = "PDF page preview"
+            overScrollMode = RecyclerView.OVER_SCROLL_IF_CONTENT_SCROLLS
+            // Help child views receive pinch gestures by disallowing parent intercept when multi-touch
+            setOnTouchListener { v, ev ->
+                val multiTouch = ev.pointerCount > 1
+                if (multiTouch || anyZoomed) {
+                    v.parent?.requestDisallowInterceptTouchEvent(true)
+                }
+                false
+            }
         }
+
+        contentFrame.addView(recyclerView)
 
         overlayContainer = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            setPadding(dp(16), dp(10), dp(16), dp(10))
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(12), dp(6), dp(12), dp(6))
             elevation = dp(2).toFloat()
             background = createOverlayBackground(Color.argb(220, 0, 0, 0))
             visibility = View.GONE
         }
 
         pageIndicator = TextView(this).apply {
-            textSize = 16f
+            textSize = 14f
         }
 
         overlayContainer.addView(pageIndicator)
 
-        contentFrame.addView(imageView)
         contentFrame.addView(
             overlayContainer,
             FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT
             ).apply {
-                gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-                bottomMargin = dp(24)
+                gravity = Gravity.TOP or Gravity.START
+                leftMargin = dp(16)
+                topMargin = dp(12)
             }
         )
 
@@ -235,50 +209,47 @@ class PdfViewerActivity : AppCompatActivity() {
         parcelFileDescriptor = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
         pdfRenderer = PdfRenderer(parcelFileDescriptor!!)
         pageCount = pdfRenderer?.pageCount ?: 0
-        overlayContainer.visibility = if (pageCount > 0) View.VISIBLE else View.GONE
+
+        // Setup RecyclerView for continuous vertical scrolling
+        layoutManager = LinearLayoutManager(this, LinearLayoutManager.VERTICAL, false)
+        recyclerView.layoutManager = layoutManager
+        recyclerView.adapter = PdfPageAdapter()
+        recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
+                super.onScrolled(rv, dx, dy)
+                val firstVisible = layoutManager.findFirstVisibleItemPosition()
+                if (firstVisible != RecyclerView.NO_POSITION && firstVisible != currentIndex) {
+                    currentIndex = firstVisible
+                    updatePageIndicator()
+                }
+                showPageIndicatorTransient()
+            }
+        })
+
         invalidateOptionsMenu()
     }
 
     private fun closeRenderer() {
-        currentPage?.close()
         pdfRenderer?.close()
         parcelFileDescriptor?.close()
     }
 
-    private fun showPage(index: Int): Boolean {
-        val renderer = pdfRenderer ?: return false
-        if (index < 0 || index >= renderer.pageCount) {
-            return false
-        }
-
-        currentPage?.close()
-        currentPage = renderer.openPage(index)
-
-        val targetWidth = imageView.width.takeIf { it > 0 }
-            ?: imageView.measuredWidth.takeIf { it > 0 }
-            ?: resources.displayMetrics.widthPixels
-        val scale = targetWidth.toFloat() / currentPage!!.width.toFloat()
-        val bitmapWidth = (currentPage!!.width * scale).toInt()
-        val bitmapHeight = (currentPage!!.height * scale).toInt()
-
-        val bitmap = Bitmap.createBitmap(bitmapWidth, bitmapHeight, Bitmap.Config.ARGB_8888)
-        currentPage?.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-        imageView.setImageBitmap(bitmap)
-        imageView.resetZoom()
-
-        currentIndex = index
-        updateUi()
-        return true
+    private fun updateUi() {
+        updatePageIndicator()
+        tintToolbarMenuIcons()
     }
 
-    private fun updateUi() {
-        pageIndicator.text = if (pageCount > 0) {
-            "${currentIndex + 1} / $pageCount"
-        } else {
-            "0 / 0"
-        }
-        overlayContainer.visibility = if (pageCount > 0) View.VISIBLE else View.GONE
-        tintToolbarMenuIcons()
+    private fun updatePageIndicator() {
+        pageIndicator.text = if (pageCount > 0) "${currentIndex + 1} / $pageCount" else "0 / 0"
+    }
+
+    private fun showPageIndicatorTransient() {
+        if (pageCount <= 0) return
+        overlayContainer.visibility = View.VISIBLE
+        overlayHideRunnable?.let { overlayContainer.removeCallbacks(it) }
+        val r = Runnable { overlayContainer.visibility = View.GONE }
+        overlayHideRunnable = r
+        overlayContainer.postDelayed(r, overlayHideDelayMs)
     }
 
     private fun shareDocument() {
@@ -318,7 +289,7 @@ class PdfViewerActivity : AppCompatActivity() {
 
         rootLayout.setBackgroundColor(backgroundColor)
         contentFrame.setBackgroundColor(backgroundColor)
-        imageView.setBackgroundColor(backgroundColor)
+        recyclerView.setBackgroundColor(backgroundColor)
 
         toolbar.setBackgroundColor(surfaceColor)
         toolbar.setTitleTextColor(onSurfaceColor)
@@ -374,56 +345,67 @@ class PdfViewerActivity : AppCompatActivity() {
         }
     }
 
-    private class ZoomableImageView(context: Context) : androidx.appcompat.widget.AppCompatImageView(context) {
-        private val scaleDetector = ScaleGestureDetector(
-            context,
-            object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
-                override fun onScale(detector: ScaleGestureDetector): Boolean {
-                    val newScale = (scaleFactor * detector.scaleFactor).coerceIn(MIN_SCALE, MAX_SCALE)
-                    if (newScale == scaleFactor) {
-                        return false
-                    }
-                    scaleFactor = newScale
-                    pivotX = detector.focusX
-                    pivotY = detector.focusY
-                    scaleX = scaleFactor
-                    scaleY = scaleFactor
-                    return true
-                }
+    private inner class PdfPageAdapter : RecyclerView.Adapter<PdfPageAdapter.PageVH>() {
+        override fun getItemCount(): Int = pageCount
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PageVH {
+            val iv = ZoomImageView(parent.context).apply {
+                layoutParams = RecyclerView.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+                adjustViewBounds = false
+                scaleType = android.widget.ImageView.ScaleType.MATRIX
+                contentDescription = "PDF page preview"
+                setBackgroundColor(Color.TRANSPARENT)
+                setOnScaleStateListener { zoomed -> anyZoomed = zoomed }
             }
-        )
-        private var scaleFactor: Float = 1f
-        private var gestureDetector: GestureDetector? = null
-
-        init {
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            isClickable = true
-            isFocusable = true
+            return PageVH(iv)
         }
 
-        override fun onTouchEvent(event: MotionEvent): Boolean {
-            gestureDetector?.onTouchEvent(event)
-            scaleDetector.onTouchEvent(event)
-            return true
+        override fun onBindViewHolder(holder: PageVH, position: Int) {
+            val renderer = pdfRenderer ?: return
+            var page: PdfRenderer.Page? = null
+            try {
+                page = renderer.openPage(position)
+                // Render at higher resolution for better quality when zooming
+                val targetWidth = (holder.itemView.width
+                    .takeIf { it > 0 }
+                    ?: recyclerView.width
+                    .takeIf { it > 0 }
+                    ?: resources.displayMetrics.widthPixels)
+
+                // Render at 2x resolution for better zoom quality
+                val renderScale = 2.0f
+                val bmpWidth = (page.width * renderScale).toInt().coerceAtLeast(1)
+                val bmpHeight = (page.height * renderScale).toInt().coerceAtLeast(1)
+
+                val bitmap = Bitmap.createBitmap(bmpWidth, bmpHeight, Bitmap.Config.ARGB_8888)
+                page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+
+                // Set explicit height for the view based on aspect ratio
+                val aspectRatio = page.height.toFloat() / page.width.toFloat()
+                val viewHeight = (targetWidth * aspectRatio).toInt()
+                holder.image.layoutParams = RecyclerView.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    viewHeight
+                )
+
+                holder.image.setImageBitmap(bitmap)
+            } catch (_: Throwable) {
+                // Ignore rendering errors for now
+            } finally {
+                try { page?.close() } catch (_: Throwable) {}
+            }
         }
 
-        fun attachGestureDetector(detector: GestureDetector) {
-            gestureDetector = detector
+        override fun onViewRecycled(holder: PageVH) {
+            super.onViewRecycled(holder)
+            holder.image.setImageDrawable(null)
+            anyZoomed = false
         }
 
-        fun resetZoom() {
-            scaleFactor = 1f
-            pivotX = width / 2f
-            pivotY = height / 2f
-            scaleX = 1f
-            scaleY = 1f
-        }
-
-        fun isZoomed(): Boolean = scaleFactor > 1.05f
-
-        companion object {
-            private const val MIN_SCALE = 1f
-            private const val MAX_SCALE = 4f
-        }
+        inner class PageVH(val image: ZoomImageView) : RecyclerView.ViewHolder(image)
     }
+    
 }
