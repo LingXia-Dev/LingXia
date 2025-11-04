@@ -9,6 +9,7 @@ Page({
       system: false,
       navigation: false,
       media: false,
+      document: false,
     },
   },
 
@@ -71,6 +72,13 @@ Page({
     const { type = "Pictures" } = params || {};
     lx.navigateTo({
       url: `pages/media/index.tsx?type=${type}`,
+    });
+  },
+
+  // Navigate to Document API page
+  navigateToDocumentPage: function () {
+    lx.navigateTo({
+      url: `pages/document/index.tsx`,
     });
   },
 

@@ -11,6 +11,7 @@
     "pages/device/index.tsx",
     "pages/system/index.tsx",
     "pages/location/index.tsx",
+    "pages/document/index.tsx",
     "pages/todo/index.vue"
   ],
   "debug": true,
