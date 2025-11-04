@@ -122,6 +122,11 @@ struct PdfSinglePageContent {
   private hideIndicatorTimer: number = -1; // Timer for auto-hiding indicator
   private scroller: Scroller = new Scroller(); // Scroller controller
 
+  // Zoom state for each page (simplified - no pan, just zoom)
+  @State private pageScales: number[] = []; // Scale for each page
+  private readonly minScale: number = 1.0;
+  private readonly maxScale: number = 4.0;
+
   aboutToAppear() {
     this.loadDocument();
   }
@@ -150,16 +155,19 @@ struct PdfSinglePageContent {
   private loadAllPages(): void {
     if (!this.document) { return; }
     const maps: image.PixelMap[] = [];
+    const scales: number[] = [];
     for (let i = 0; i < this.pageCount; i++) {
       try {
         const page = this.document.getPage(i);
         const map = page.getPagePixelMap();
         maps.push(map);
+        scales.push(1.0); // Initial scale
       } catch (e) {
         hilog.error(DOMAIN, TAG, `loadPage ${i} failed: ${e}`);
       }
     }
     this.pagePixelMaps = maps;
+    this.pageScales = scales;
     hilog.info(DOMAIN, TAG, `Loaded ${maps.length} pages`);
   }
 
@@ -171,6 +179,7 @@ struct PdfSinglePageContent {
       try { map?.release(); } catch (_) {}
     }
     this.pagePixelMaps = [];
+    this.pageScales = [];
   }
 
   private displayPageIndicator(): void {
@@ -213,11 +222,7 @@ struct PdfSinglePageContent {
         List({ scroller: this.scroller }) {
           ForEach(this.pagePixelMaps, (pixelMap: image.PixelMap, index: number) => {
             ListItem() {
-              Image(pixelMap)
-                .width('100%')
-                .objectFit(ImageFit.Contain)
-                .backgroundColor('#FFFFFF')
-                .margin({ bottom: 8 }) // Small gap between pages
+              this.renderZoomablePage(pixelMap, index)
             }
           }, (pixelMap: image.PixelMap, index: number) => `page_${index}`)
         }
@@ -226,6 +231,7 @@ struct PdfSinglePageContent {
         .padding({ top: 92 })
         .backgroundColor('#F5F5F5')
         .edgeEffect(EdgeEffect.Spring)
+        .scrollBar(BarState.Off)
         .onScrollIndex((start: number, end: number) => {
           this.onScrollIndex(start, end);
         })
@@ -264,6 +270,52 @@ struct PdfSinglePageContent {
           .hitTestBehavior(HitTestMode.None) // Allow gestures to pass through
       }
     }
+  }
+
+  @Builder
+  private renderZoomablePage(pixelMap: image.PixelMap, index: number) {
+    Column() {
+      Image(pixelMap)
+        .width('100%')
+        .objectFit(ImageFit.Contain)
+        .backgroundColor('#FFFFFF')
+        .scale({
+          x: this.pageScales[index] ?? 1.0,
+          y: this.pageScales[index] ?? 1.0
+        })
+        .gesture(
+          GestureGroup(GestureMode.Exclusive,
+            // Double tap to toggle zoom (2x)
+            TapGesture({ count: 2 })
+              .onAction(() => {
+                const currentScale = this.pageScales[index] ?? 1.0;
+                if (currentScale > this.minScale + 0.1) {
+                  // Zoomed in, reset to min
+                  this.pageScales[index] = this.minScale;
+                } else {
+                  // Not zoomed, zoom to 2x
+                  this.pageScales[index] = 2.0;
+                }
+              }),
+            // Pinch gesture for zooming (like MediaPreviewOverlay)
+            PinchGesture({ fingers: 2, distance: 1 })
+              .onActionUpdate((event: GestureEvent) => {
+                if (event && event.scale) {
+                  // event.scale is the scale from gesture start (not cumulative)
+                  this.pageScales[index] = Math.min(this.maxScale, Math.max(this.minScale, event.scale));
+                }
+              })
+              .onActionEnd(() => {
+                // Reset to minScale if user zoomed out below threshold
+                if (this.pageScales[index] <= this.minScale + 0.1) {
+                  this.pageScales[index] = this.minScale;
+                }
+              })
+          )
+        )
+    }
+    .width('100%')
+    .margin({ bottom: 8 })
   }
 
   @Builder
