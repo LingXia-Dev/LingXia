@@ -12,6 +12,8 @@ thiserror = { workspace = true }
 serde = { workspace = true }
 tokio = { workspace = true }
 urlencoding = { workspace = true }
+redb = "3.1.0"
+zip = { version = "6.0.0", default-features = false, features = ["deflate"] }
 
 # Local dependencies
 rong_modules = { workspace = true }

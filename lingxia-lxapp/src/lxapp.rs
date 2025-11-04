@@ -21,16 +21,18 @@ pub mod config;
 use config::LxAppConfig;
 mod content;
 mod install;
+mod metadata;
+use metadata::ReleaseType;
 pub mod navbar;
 mod scheme;
 mod security;
 pub mod tabbar;
-mod version;
+pub(crate) mod version;
 
 /// Constants for lxapp storage layout
 const LINGXIA_DIR: &str = "lingxia";
 const LXAPPS_DIR: &str = "lxapps";
-const VERSIONS_DIR: &str = "versions";
+const LXAPPS_DB_FILE: &str = "lxapps.redb";
 const STORAGE_DIR: &str = "storage";
 const USER_DATA_DIR: &str = "userdata";
 const USER_CACHE_DIR: &str = "usercache";
@@ -324,6 +326,7 @@ pub struct LxApp {
     pub user_cache_dir: PathBuf,
     pub is_home_lxapp: bool,
     pub version: String,
+    pub(crate) release_type: ReleaseType,
     pub(crate) config: LxAppConfig,
     pub(crate) executor: Arc<LxAppExecutor>,
 
@@ -344,6 +347,7 @@ impl LxApp {
             user_cache_dir: PathBuf::new(),
             is_home_lxapp: false,
             version: String::new(),
+            release_type: ReleaseType::default(),
             config: LxAppConfig::default(),
             executor,
             state: Mutex::new(LxAppState::new()),
@@ -377,16 +381,6 @@ impl LxApp {
 
     /// Removes all files and directories associated with this LxApp from disk.
     pub(crate) fn delete_disk_files(&self) -> Result<(), LxAppError> {
-        let version_path = self
-            .runtime
-            .app_data_dir()
-            .join(LINGXIA_DIR)
-            .join(VERSIONS_DIR)
-            .join(format!("{}.txt", self.appid));
-        if version_path.exists() {
-            fs::remove_file(&version_path)?;
-        }
-
         if self.lxapp_dir.exists() {
             fs::remove_dir_all(&self.lxapp_dir)?;
         }
@@ -397,22 +391,36 @@ impl LxApp {
             fs::remove_dir_all(&self.user_cache_dir)?;
         }
 
-        Ok(())
+        metadata::remove_all(&self.appid)
     }
 
     /// Initialize paths and directories for the lxapp
     fn initialize_paths(&mut self) -> Result<(), LxAppError> {
-        // Get the app's version
-        self.version = self.read_version();
+        // Load metadata if available to determine version and install path
+        let metadata = metadata::get(&self.appid, self.release_type).ok().flatten();
+        self.version = metadata
+            .as_ref()
+            .map(|record| record.version_string())
+            .unwrap_or_else(|| DEFAULT_VERSION.to_string());
 
-        // Calculate the directory name based on appid, user and whether this is a home app
-        let dir_name = if self.is_home_lxapp {
-            // Home lxapp uses appid directly as directory name
-            self.appid.clone()
-        } else {
-            let user_id = get_lxapps_manager().unwrap().get_user_id();
-            generate_app_hash(&self.appid, &user_id)
-        };
+        // Determine install path (if present) and directory name
+        let stored_path = metadata
+            .as_ref()
+            .map(|record| PathBuf::from(&record.install_path));
+        let dir_name = stored_path
+            .as_ref()
+            .and_then(|path| path.file_name())
+            .and_then(|name| name.to_str())
+            .map(|name| name.to_string())
+            .unwrap_or_else(|| {
+                if self.is_home_lxapp {
+                    // Home lxapp uses appid directly as directory name
+                    self.appid.clone()
+                } else {
+                    let user_id = get_lxapps_manager().unwrap().get_user_id();
+                    generate_app_hash(&self.appid, &user_id)
+                }
+            });
 
         // Set up app directory
         let base_dir = self
@@ -421,7 +429,11 @@ impl LxApp {
             .join(LINGXIA_DIR)
             .join(LXAPPS_DIR);
 
-        self.lxapp_dir = base_dir.join(&dir_name);
+        self.lxapp_dir = if let Some(path) = stored_path {
+            path
+        } else {
+            base_dir.join(&dir_name)
+        };
         if !self.lxapp_dir.exists() {
             std::fs::create_dir_all(&self.lxapp_dir).map_err(|e| {
                 LxAppError::IoError(format!("Failed to create lx apps directory: {}", e))
@@ -512,25 +524,13 @@ impl LxApp {
     }
 
     /// Get the version of this app from storage
-    fn read_version(&self) -> String {
-        let version_path = self
-            .runtime
-            .app_data_dir()
-            .join(LINGXIA_DIR)
-            .join(VERSIONS_DIR)
-            .join(format!("{}.txt", self.appid));
-
-        if version_path.exists() {
-            if let Ok(content) = fs::read_to_string(&version_path) {
-                let trimmed = content.trim();
-                if !trimmed.is_empty() {
-                    return trimmed.to_string();
-                }
-            }
-        }
-
-        // Return default version
-        DEFAULT_VERSION.to_string()
+    pub fn read_version(&self) -> String {
+        metadata::get(&self.appid, self.release_type)
+            .ok()
+            .flatten()
+            .map(|record| record.version_string())
+            .filter(|version| !version.is_empty())
+            .unwrap_or_else(|| DEFAULT_VERSION.to_string())
     }
 
     // Reads binary data from the specified relative path
@@ -1000,7 +1000,6 @@ fn prepare_directory_structure(runtime: Arc<Platform>) -> Result<(), LxAppError>
     // Create required directories
     let dirs = [
         data_dir.join(LINGXIA_DIR).join(LXAPPS_DIR),
-        data_dir.join(LINGXIA_DIR).join(VERSIONS_DIR),
         data_dir.join(LINGXIA_DIR).join(USER_DATA_DIR),
         data_dir.join(LINGXIA_DIR).join(STORAGE_DIR),
         cache_dir.join(LINGXIA_DIR).join(LXAPPS_DIR),
@@ -1010,7 +1009,8 @@ fn prepare_directory_structure(runtime: Arc<Platform>) -> Result<(), LxAppError>
         fs::create_dir_all(dir)?;
     }
 
-    Ok(())
+    let metadata_path = data_dir.join(LINGXIA_DIR).join(LXAPPS_DB_FILE);
+    metadata::init(metadata_path)
 }
 
 // Global instance of LxApps manager
@@ -1052,7 +1052,7 @@ pub fn init(runtime: Platform) -> Option<String> {
             let home_lxapp_appid = config.home_lxapp_appid.clone();
             let home_lxapp_version = &config.home_lxapp_version;
 
-            if !install::is_installed(runtime_arc.clone(), &home_lxapp_appid) {
+            if !install::is_installed(&home_lxapp_appid, ReleaseType::Release) {
                 if let Err(e) = install::install_home_lxapp(
                     runtime_arc.clone(),
                     &home_lxapp_appid,

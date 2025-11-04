@@ -2,6 +2,7 @@ use std::io::Read;
 use std::sync::Arc;
 
 use crate::error::LxAppError;
+use crate::lxapp::version::Version;
 use lingxia_platform::{AppRuntime, Platform};
 use serde::{Deserialize, Serialize};
 
@@ -10,7 +11,8 @@ use serde::{Deserialize, Serialize};
 pub struct AppConfig {
     #[serde(rename = "productName")]
     pub product_name: String,
-    pub version: String,
+    #[serde(rename = "semanticVersion")]
+    pub semantic_version: String,
     pub identifier: String, // Unique identifier for this application, used by the server to identify different clients
 
     // API server address (optional)
@@ -58,23 +60,17 @@ impl AppConfig {
             ));
         }
 
-        if config.version.is_empty() {
+        if config.semantic_version.is_empty() {
             return Err(LxAppError::InvalidParameter(
-                "version is mandatory and cannot be empty".to_string(),
+                "semanticVersion is mandatory and cannot be empty".to_string(),
             ));
         }
 
-        // Basic semver format check (major.minor.patch)
-        if !config.version.chars().any(|c| c == '.')
-            || !config
-                .version
-                .chars()
-                .all(|c| c.is_ascii_digit() || c == '.')
-        {
-            return Err(LxAppError::InvalidParameter(
-                "version must be in format x.y.z with numeric values".to_string(),
-            ));
-        }
+        Version::parse(&config.semantic_version).map_err(|_| {
+            LxAppError::InvalidParameter(
+                "semanticVersion must be a semantic version (major.minor.patch)".to_string(),
+            )
+        })?;
 
         if config.identifier.is_empty() {
             return Err(LxAppError::InvalidParameter(
@@ -95,6 +91,12 @@ impl AppConfig {
                 "homeLxAppVersion is mandatory and cannot be empty".to_string(),
             ));
         }
+
+        Version::parse(&config.home_lxapp_version).map_err(|_| {
+            LxAppError::InvalidParameter(
+                "homeLxAppVersion must be a semantic version (major.minor.patch)".to_string(),
+            )
+        })?;
 
         Ok(())
     }
