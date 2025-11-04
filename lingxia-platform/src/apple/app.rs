@@ -231,6 +231,68 @@ mod ios {
             return copy_phasset_to_path(identifier, dest_path, kind);
         }
 
+        if let Some(temp_path) = uri.strip_prefix("tempfile://") {
+            let decoded = percent_decode_str(temp_path).decode_utf8().map_err(|e| {
+                PlatformError::Platform(format!("Failed to decode temp file URI '{}': {}", uri, e))
+            })?;
+            let source_path = std::path::Path::new(decoded.as_ref());
+
+            if !source_path.exists() {
+                return Err(PlatformError::Platform(format!(
+                    "Temporary source file does not exist: {}",
+                    uri
+                )));
+            }
+
+            if let Some(parent) = dest_path.parent() {
+                if let Err(e) = fs::create_dir_all(parent) {
+                    return Err(PlatformError::Platform(format!(
+                        "Failed to create destination directory: {}",
+                        e
+                    )));
+                }
+            }
+
+            // Try to transcode to match the expected dest extension when reasonable
+            let dest_ext = dest_path
+                .extension()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .to_ascii_lowercase();
+            let src_ext = source_path
+                .extension()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .to_ascii_lowercase();
+
+            // Prefer platform transcoders when extension indicates conversion
+            if kind == MediaKind::Image && (dest_ext == "jpg" || dest_ext == "jpeg") && src_ext != dest_ext {
+                if super::ffi::transcode_temp_image_to_jpeg(source_path.to_string_lossy().as_ref(), &dest_path.to_string_lossy()) {
+                    let _ = fs::remove_file(source_path);
+                    return Ok(());
+                }
+            }
+            if kind == MediaKind::Video && dest_ext == "mp4" && src_ext != dest_ext {
+                if super::ffi::transcode_temp_video_to_mp4(source_path.to_string_lossy().as_ref(), &dest_path.to_string_lossy()) {
+                    let _ = fs::remove_file(source_path);
+                    return Ok(());
+                }
+            }
+
+            return match fs::copy(source_path, dest_path) {
+                Ok(_) => {
+                    let _ = fs::remove_file(source_path);
+                    Ok(())
+                }
+                Err(e) => Err(PlatformError::Platform(format!(
+                    "Failed to copy temp file from {} to {}: {}",
+                    uri,
+                    dest_path.display(),
+                    e
+                )))
+            };
+        }
+
         let trimmed = uri.strip_prefix("file://").unwrap_or(uri);
         let decoded = percent_decode_str(trimmed).decode_utf8().map_err(|e| {
             PlatformError::Platform(format!("Failed to decode file URI '{}': {}", uri, e))

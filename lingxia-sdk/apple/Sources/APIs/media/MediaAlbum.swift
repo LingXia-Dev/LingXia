@@ -4,6 +4,7 @@ import PhotosUI
 import Photos
 import UniformTypeIdentifiers
 import AVFoundation
+import CryptoKit
 import CLingXiaRustAPI
 
 // MARK: - Album Delegate
@@ -15,6 +16,41 @@ final class AlbumDelegate: NSObject, PHPickerViewControllerDelegate {
         self.callbackId = callbackId
         self.cleanup = cleanup
         super.init()
+    }
+
+    private func loadImageObjectFallback(provider: NSItemProvider, completion: @escaping ([String: Any]?) -> Void) {
+        if provider.canLoadObject(ofClass: UIImage.self) {
+            provider.loadObject(ofClass: UIImage.self) { object, _ in
+                guard let image = object as? UIImage else {
+                    DispatchQueue.main.async { completion(nil) }
+                    return
+                }
+                DispatchQueue.main.async {
+                    do {
+                        guard let d = image.jpegData(compressionQuality: 0.95) else { completion(nil); return }
+                        // Deterministic temp name from data hash
+                        let hex = d.withUnsafeBytes { ptr -> String in
+                            let digest = SHA256.hash(data: Data(ptr))
+                            return digest.map { String(format: "%02x", $0) }.joined()
+                        }
+                        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("album_image_\(hex).jpg")
+                        if !FileManager.default.fileExists(atPath: tmp.path) {
+                            try d.write(to: tmp, options: .atomic)
+                        }
+                            let jsonItem: [String: Any] = [
+                                "uri": "tempfile://\(tmp.path)",
+                                "fileType": "image",
+                                "isOriginal": true
+                            ]
+                            completion(jsonItem)
+                    } catch {
+                        completion(nil)
+                    }
+                }
+            }
+        } else {
+            DispatchQueue.main.async { completion(nil) }
+        }
     }
 
     func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
@@ -68,33 +104,29 @@ final class AlbumDelegate: NSObject, PHPickerViewControllerDelegate {
                 }
             } else {
                 provider.loadFileRepresentation(forTypeIdentifier: UTType.image.identifier) { url, error in
-                    if error != nil {
-                        DispatchQueue.main.async { completion(nil) }
-                        return
-                    }
-
-                    guard let url else {
-                        DispatchQueue.main.async { completion(nil) }
-                        return
-                    }
-
-                    DispatchQueue.main.async {
-                        do {
-                            let cachedURL = try LxAppMediaStorage.copy(
-                                from: url,
-                                prefix: "album_image",
-                                fallbackExtension: "jpg",
-                                requiresSecurityScope: true
-                            )
+                    if let fileURL = url, error == nil {
+                        DispatchQueue.main.async {
+                            do {
+                                let tempURL = try LxAppMediaStorage.copyToTemporary(
+                                    from: fileURL,
+                                    prefix: "album_image",
+                                    fallbackExtension: "jpg",
+                                    requiresSecurityScope: true
+                                )
                             let jsonItem: [String: Any] = [
-                                "uri": cachedURL.path,
+                                "uri": "tempfile://\(tempURL.path)",
                                 "fileType": "image",
                                 "isOriginal": true
                             ]
                             completion(jsonItem)
-                        } catch {
-                            completion(nil)
+                            } catch {
+                                // fallback to object-based load
+                                self.loadImageObjectFallback(provider: provider, completion: completion)
+                            }
                         }
+                    } else {
+                        // fallback to object-based load
+                        self.loadImageObjectFallback(provider: provider, completion: completion)
                     }
                 }
             }
@@ -110,32 +142,27 @@ final class AlbumDelegate: NSObject, PHPickerViewControllerDelegate {
                 }
             } else {
                 provider.loadFileRepresentation(forTypeIdentifier: UTType.movie.identifier) { url, error in
-                    if error != nil {
-                        DispatchQueue.main.async { completion(nil) }
-                        return
-                    }
-                    
-                    guard let url else {
-                        DispatchQueue.main.async { completion(nil) }
-                        return
-                    }
-                    DispatchQueue.main.async {
-                        do {
-                            let cachedURL = try LxAppMediaStorage.copy(
-                                from: url,
-                                prefix: "album_video",
-                                fallbackExtension: "mov",
-                                requiresSecurityScope: true
-                            )
+                    if let fileURL = url, error == nil {
+                        DispatchQueue.main.async {
+                            do {
+                                let tempURL = try LxAppMediaStorage.copyToTemporary(
+                                    from: fileURL,
+                                    prefix: "album_video",
+                                    fallbackExtension: "mov",
+                                    requiresSecurityScope: true
+                                )
                             let jsonItem: [String: Any] = [
-                                "uri": cachedURL.path,
+                                "uri": "tempfile://\(tempURL.path)",
                                 "fileType": "video",
                                 "isOriginal": true
                             ]
                             completion(jsonItem)
-                        } catch {
-                            completion(nil)
+                            } catch {
+                                completion(nil)
+                            }
                         }
+                    } else {
+                        DispatchQueue.main.async { completion(nil) }
                     }
                 }
             }
@@ -239,5 +266,78 @@ enum PhotoCaptureHint {
     static let preparing = "准备相机..."
     static let ready = "点击拍照"
     static let switching = "切换摄像头..."
+}
+#endif
+
+#if os(iOS)
+import UIKit
+import AVFoundation
+
+extension LxAppMedia {
+    // Transcode a temporary image file into JPEG at the destination path
+    nonisolated static func transcodeTempImageToJpeg(
+        src_path: RustStr,
+        dest_path: RustStr
+    ) -> Bool {
+        let src = src_path.toString()
+        let dst = dest_path.toString()
+        guard !src.isEmpty, !dst.isEmpty else { return false }
+        let destURL = URL(fileURLWithPath: dst)
+        do {
+            try FileManager.default.createDirectory(at: destURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        } catch {
+            return false
+        }
+        guard let image = UIImage(contentsOfFile: src) else { return false }
+        guard let data = image.jpegData(compressionQuality: 0.95) else { return false }
+        do {
+            if FileManager.default.fileExists(atPath: destURL.path) {
+                try? FileManager.default.removeItem(at: destURL)
+            }
+            try data.write(to: destURL, options: .atomic)
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    // Transcode a temporary video file into MP4 at the destination path
+    nonisolated static func transcodeTempVideoToMp4(
+        src_path: RustStr,
+        dest_path: RustStr
+    ) -> Bool {
+        let src = src_path.toString()
+        let dst = dest_path.toString()
+        guard !src.isEmpty, !dst.isEmpty else { return false }
+        let sourceURL = URL(fileURLWithPath: src)
+        let destURL = URL(fileURLWithPath: dst)
+        do {
+            try FileManager.default.createDirectory(at: destURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        } catch {
+            return false
+        }
+        let asset = AVAsset(url: sourceURL)
+        guard let exporter = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetHighestQuality) ?? AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetPassthrough) else {
+            return false
+        }
+        guard exporter.supportedFileTypes.contains(.mp4) else { return false }
+        if FileManager.default.fileExists(atPath: destURL.path) {
+            try? FileManager.default.removeItem(at: destURL)
+        }
+        exporter.outputURL = destURL
+        exporter.outputFileType = .mp4
+        exporter.shouldOptimizeForNetworkUse = true
+        let semaphore = DispatchSemaphore(value: 0)
+        exporter.exportAsynchronously {
+            semaphore.signal()
+        }
+        _ = semaphore.wait(timeout: .now() + 120)
+        switch exporter.status {
+        case .completed:
+            return true
+        default:
+            return false
+        }
+    }
 }
 #endif

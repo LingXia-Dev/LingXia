@@ -1,5 +1,6 @@
 #if os(iOS)
 import Foundation
+import CryptoKit
 import CLingXiaRustAPI
 
 enum LxAppMediaStorage {
@@ -66,6 +67,51 @@ enum LxAppMediaStorage {
 
         if FileManager.default.fileExists(atPath: destinationURL.path) {
             try FileManager.default.removeItem(at: destinationURL)
+        }
+
+        try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
+        return destinationURL
+    }
+
+    private static func sha256Hex(of url: URL, requiresSecurityScope: Bool) -> String? {
+        let accessed = requiresSecurityScope ? url.startAccessingSecurityScopedResource() : false
+        defer { if requiresSecurityScope && accessed { url.stopAccessingSecurityScopedResource() } }
+        guard let stream = InputStream(url: url) else { return nil }
+        stream.open()
+        defer { stream.close() }
+        var hasher = SHA256()
+        let bufferSize = 1024 * 1024
+        let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: bufferSize)
+        defer { buffer.deallocate() }
+        while stream.hasBytesAvailable {
+            let read = stream.read(buffer, maxLength: bufferSize)
+            if read < 0 { return nil }
+            if read == 0 { break }
+            hasher.update(data: Data(bytes: buffer, count: read))
+        }
+        let digest = hasher.finalize()
+        return digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    static func copyToTemporary(from sourceURL: URL, prefix: String, fallbackExtension: String, requiresSecurityScope: Bool) throws -> URL {
+        let tempDir = FileManager.default.temporaryDirectory
+        let sanitizedExt = sourceURL.pathExtension.isEmpty ? fallbackExtension : sourceURL.pathExtension
+        // Compute deterministic name from content hash to stabilize downstream cache keys
+        let hex = sha256Hex(of: sourceURL, requiresSecurityScope: requiresSecurityScope)
+        let fileName: String
+        if let hex { fileName = "\(prefix)_\(hex).\(sanitizedExt)" } else { fileName = "\(prefix)_\(timestamp()).\(sanitizedExt)" }
+        let destinationURL = tempDir.appendingPathComponent(fileName)
+
+        let accessed = requiresSecurityScope ? sourceURL.startAccessingSecurityScopedResource() : false
+        defer {
+            if requiresSecurityScope && accessed {
+                sourceURL.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        if FileManager.default.fileExists(atPath: destinationURL.path) {
+            // If already exists, reuse it to keep idempotency
+            return destinationURL
         }
 
         try FileManager.default.copyItem(at: sourceURL, to: destinationURL)

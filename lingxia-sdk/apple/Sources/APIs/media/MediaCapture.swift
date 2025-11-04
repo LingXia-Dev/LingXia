@@ -765,10 +765,20 @@ final class VideoCaptureViewController: UIViewController {
 
     private let session = AVCaptureSession()
     private let sessionQueue = DispatchQueue(label: "com.lingxia.camera.session")
-    private let movieOutput = AVCaptureMovieFileOutput()
+    private let writerQueue = DispatchQueue(label: "com.lingxia.camera.writer")
+    private let videoOutput = AVCaptureVideoDataOutput()
+    private let audioOutput = AVCaptureAudioDataOutput()
+    private lazy var sampleBufferDelegate = SampleBufferDelegate(owner: self)
     private var videoInput: AVCaptureDeviceInput?
     private var audioInput: AVCaptureDeviceInput?
     private var previewLayer: AVCaptureVideoPreviewLayer?
+    private var assetWriter: AVAssetWriter?
+    private var assetWriterVideoInput: AVAssetWriterInput?
+    private var assetWriterAudioInput: AVAssetWriterInput?
+    private var videoDimensions: CGSize = .zero
+    private var currentRecordingURL: URL?
+    private var isWriterSessionStarted = false
+    private var isWriterFinishing = false
 
     private let overlayView = VideoCaptureOverlayView()
 
@@ -933,18 +943,40 @@ final class VideoCaptureViewController: UIViewController {
                 }
             }
 
-            if self.session.canAddOutput(self.movieOutput) {
-                self.session.addOutput(self.movieOutput)
-                self.movieOutput.maxRecordedDuration = CMTime(seconds: self.maxDuration, preferredTimescale: 1)
+            self.videoOutput.alwaysDiscardsLateVideoFrames = false
+            self.videoOutput.videoSettings = [
+                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
+            ]
+
+            if self.session.canAddOutput(self.videoOutput) {
+                self.session.addOutput(self.videoOutput)
+                self.videoOutput.setSampleBufferDelegate(self.sampleBufferDelegate, queue: self.writerQueue)
             } else {
                 self.session.commitConfiguration()
                 self.finish(with: .failure("无法添加视频输出"))
                 return
             }
 
+            if self.session.canAddOutput(self.audioOutput) {
+                self.session.addOutput(self.audioOutput)
+                self.audioOutput.setSampleBufferDelegate(self.sampleBufferDelegate, queue: self.writerQueue)
+            }
+
             self.session.commitConfiguration()
+            self.configureVideoOutputConnection(orientation: self.currentVideoOrientation())
             self.updateTorchAvailability(for: videoDevice)
             self.startSessionIfNeeded()
+        }
+    }
+
+    private func configureVideoOutputConnection(orientation: AVCaptureVideoOrientation) {
+        guard let connection = videoOutput.connection(with: .video) else { return }
+        if connection.isVideoOrientationSupported {
+            connection.videoOrientation = orientation
+        }
+        if connection.isVideoMirroringSupported {
+            connection.automaticallyAdjustsVideoMirroring = false
+            connection.isVideoMirrored = currentPosition == .front
         }
     }
 
@@ -1032,18 +1064,32 @@ final class VideoCaptureViewController: UIViewController {
         recordingState = .preparing(pending: .none)
 
         sessionQueue.async {
-            if self.movieOutput.isRecording {
+            if self.assetWriter != nil && self.isWriterSessionStarted {
                 DispatchQueue.main.async {
                     self.recordingState = .recording
                 }
                 return
             }
-            if let connection = self.movieOutput.connection(with: .video) {
-                connection.videoOrientation = self.currentVideoOrientation()
-            }
 
-            let outputURL = self.makeTemporaryFileURL()
-            self.movieOutput.startRecording(to: outputURL, recordingDelegate: self)
+            let orientation = self.currentVideoOrientation()
+            self.configureVideoOutputConnection(orientation: orientation)
+
+            let outputURL: URL
+            do {
+                outputURL = try self.makeOutputFileURL()
+            } catch {
+                DispatchQueue.main.async {
+                    self.handleRecordingSetupFailure(error)
+                }
+                return
+            }
+            do {
+                try self.prepareAssetWriter(at: outputURL, orientation: orientation)
+            } catch {
+                DispatchQueue.main.async {
+                    self.handleRecordingSetupFailure(error)
+                }
+            }
         }
     }
 
@@ -1052,7 +1098,7 @@ final class VideoCaptureViewController: UIViewController {
         case .recording:
             CaptureFeedback.playRecordStop()
             recordingState = .finishing
-            stopMovieOutput()
+            stopWriter(cancelled: false)
         case .preparing:
             CaptureFeedback.playRecordStop()
             recordingState = .preparing(pending: .stop)
@@ -1066,7 +1112,7 @@ final class VideoCaptureViewController: UIViewController {
         case .recording, .finishing:
             CaptureFeedback.playRecordStop()
             recordingState = .cancelling
-            stopMovieOutput()
+            stopWriter(cancelled: true)
         case .preparing:
             CaptureFeedback.playRecordStop()
             recordingState = .preparing(pending: .cancel)
@@ -1080,13 +1126,6 @@ final class VideoCaptureViewController: UIViewController {
     private func updatePendingActionForPreparing(_ action: PendingRecordingAction) {
         guard case .preparing = recordingState else { return }
         recordingState = .preparing(pending: action)
-    }
-
-    private func stopMovieOutput() {
-        sessionQueue.async {
-            guard self.movieOutput.isRecording else { return }
-            self.movieOutput.stopRecording()
-        }
     }
 
     private var isRecordingActive: Bool {
@@ -1137,6 +1176,7 @@ final class VideoCaptureViewController: UIViewController {
             }
 
             self.session.commitConfiguration()
+            self.configureVideoOutputConnection(orientation: self.currentVideoOrientation())
             self.updateTorchAvailability(for: newDevice)
 
             DispatchQueue.main.async {
@@ -1145,9 +1185,266 @@ final class VideoCaptureViewController: UIViewController {
         }
     }
 
-    private func makeTemporaryFileURL() -> URL {
-        let tempDir = FileManager.default.temporaryDirectory
-        return tempDir.appendingPathComponent("lx_video_\(UUID().uuidString).mov")
+    private func makeOutputFileURL() throws -> URL {
+        guard let url = LxAppMediaStorage.makeFileURL(prefix: "video", preferredExtension: "mp4") else {
+            throw NSError(domain: "LingXia.Camera", code: -3004, userInfo: [NSLocalizedDescriptionKey: "缓存目录不可用"])
+        }
+        return url
+    }
+
+    private func prepareAssetWriter(at url: URL, orientation: AVCaptureVideoOrientation) throws {
+        if FileManager.default.fileExists(atPath: url.path) {
+            try FileManager.default.removeItem(at: url)
+        }
+
+        let writer = try AVAssetWriter(url: url, fileType: .mp4)
+        writer.shouldOptimizeForNetworkUse = true
+
+        guard let videoSettings = videoOutput.recommendedVideoSettingsForAssetWriter(writingTo: .mp4) as? [String: Any] else {
+            throw NSError(domain: "LingXia.Camera", code: -3001, userInfo: [NSLocalizedDescriptionKey: "无法创建视频编码配置"])
+        }
+
+        let width = (videoSettings[AVVideoWidthKey] as? NSNumber)?.doubleValue ?? 0
+        let height = (videoSettings[AVVideoHeightKey] as? NSNumber)?.doubleValue ?? 0
+        if width > 0, height > 0 {
+            videoDimensions = CGSize(width: width, height: height)
+        } else {
+            videoDimensions = CGSize(width: 1280, height: 720)
+        }
+
+        let videoWriterInput = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
+        videoWriterInput.expectsMediaDataInRealTime = true
+        // Let AVCaptureConnection handle buffer orientation; keep track transform identity
+        guard writer.canAdd(videoWriterInput) else {
+            throw NSError(domain: "LingXia.Camera", code: -3002, userInfo: [NSLocalizedDescriptionKey: "无法添加视频输入"])
+        }
+        writer.add(videoWriterInput)
+
+        var audioWriterInput: AVAssetWriterInput?
+        if let rawSettings = audioOutput.recommendedAudioSettingsForAssetWriter(writingTo: .mp4) {
+            let audioSettings = rawSettings as? [String: Any]
+            if let audioSettings {
+                let input = AVAssetWriterInput(mediaType: .audio, outputSettings: audioSettings)
+                input.expectsMediaDataInRealTime = true
+                if writer.canAdd(input) {
+                    writer.add(input)
+                    audioWriterInput = input
+                }
+            }
+        }
+
+        if audioWriterInput == nil {
+            // Fallback AAC settings in case recommended settings are unavailable.
+            let fallbackAudioSettings: [String: Any] = [
+                AVFormatIDKey: kAudioFormatMPEG4AAC,
+                AVNumberOfChannelsKey: 1,
+                AVSampleRateKey: 44_100,
+                AVEncoderBitRateKey: 64_000
+            ]
+            let input = AVAssetWriterInput(mediaType: .audio, outputSettings: fallbackAudioSettings)
+            input.expectsMediaDataInRealTime = true
+            if writer.canAdd(input) {
+                writer.add(input)
+                audioWriterInput = input
+            }
+        }
+
+        assetWriter = writer
+        assetWriterVideoInput = videoWriterInput
+        assetWriterAudioInput = audioWriterInput
+        currentRecordingURL = url
+        isWriterSessionStarted = false
+        isWriterFinishing = false
+    }
+
+    @MainActor
+    private func handleRecordingSetupFailure(_ error: Error) {
+        overlayView.showHint("录制失败: \(error.localizedDescription)")
+        recordingState = .idle
+        finish(with: .failure("录制失败"))
+    }
+
+    // With AVCaptureVideoDataOutput, we rely on AVCaptureConnection.videoOrientation
+    // to deliver buffers in the desired orientation, so we keep track transform identity.
+
+    private func handleWriterDidStart() {
+        if recordingStartDate == nil {
+            recordingStartDate = Date()
+            startUpdateTimer()
+        }
+
+        let pendingAction: PendingRecordingAction
+        if case .preparing(let action) = recordingState {
+            pendingAction = action
+        } else {
+            pendingAction = .none
+        }
+
+        switch pendingAction {
+        case .none:
+            recordingState = .recording
+        case .stop:
+            recordingState = .finishing
+            stopWriter(cancelled: false)
+        case .cancel:
+            recordingState = .cancelling
+            stopWriter(cancelled: true)
+        }
+    }
+
+    private func stopWriter(cancelled: Bool) {
+        writerQueue.async { [weak self] in
+            self?.finishRecording(cancelled: cancelled)
+        }
+    }
+
+    private func finishRecording(cancelled: Bool) {
+        guard let writer = assetWriter else {
+            let url = currentRecordingURL
+            resetWriterState()
+            DispatchQueue.main.async {
+                self.handleWriterCompletion(url: url, error: nil, cancelled: true)
+            }
+            return
+        }
+
+        if isWriterFinishing {
+            return
+        }
+        isWriterFinishing = true
+
+        let outputURL = currentRecordingURL
+        let markInputs: () -> Void = { [videoInput = assetWriterVideoInput, audioInput = assetWriterAudioInput] in
+            videoInput?.markAsFinished()
+            audioInput?.markAsFinished()
+        }
+
+        let complete: (_ cancelled: Bool) -> Void = { [weak self, outputURL] completedCancelled in
+            guard let self else { return }
+            self.resetWriterState()
+            DispatchQueue.main.async {
+                self.handleWriterCompletion(url: outputURL, error: writer.error, cancelled: completedCancelled)
+            }
+        }
+
+        if isWriterSessionStarted {
+            markInputs()
+            writer.finishWriting {
+                self.writerQueue.async {
+                    complete(cancelled)
+                }
+            }
+        } else {
+            writer.cancelWriting()
+            self.writerQueue.async {
+                complete(true)
+            }
+        }
+    }
+
+    private func resetWriterState() {
+        assetWriter = nil
+        assetWriterVideoInput = nil
+        assetWriterAudioInput = nil
+        isWriterSessionStarted = false
+        isWriterFinishing = false
+        videoDimensions = .zero
+    }
+
+    @MainActor
+    private func handleWriterCompletion(url: URL?, error: Error?, cancelled: Bool) {
+        recordingStartDate = nil
+        stopUpdateTimer()
+        let outputURL = url
+        currentRecordingURL = nil
+
+        if let error = error {
+            if let outputURL, FileManager.default.fileExists(atPath: outputURL.path) {
+                try? FileManager.default.removeItem(at: outputURL)
+            }
+            overlayView.showHint("录制失败: \(error.localizedDescription)")
+            recordingState = .idle
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                self.overlayView.updateToIdle()
+                self.finish(with: .failure("录制失败"))
+            }
+            return
+        }
+
+        guard let outputURL else {
+            recordingState = .idle
+            finish(with: cancelled ? .cancelled : .failure("录制失败"))
+            return
+        }
+
+        if cancelled {
+            if FileManager.default.fileExists(atPath: outputURL.path) {
+                try? FileManager.default.removeItem(at: outputURL)
+            }
+            recordingState = .idle
+            finish(with: .cancelled)
+            return
+        }
+
+        recordingState = .idle
+        presentReview(for: outputURL)
+    }
+
+    nonisolated(unsafe) fileprivate func handleSampleBuffer(_ sampleBuffer: CMSampleBuffer, from output: AVCaptureOutput) {
+        guard CMSampleBufferDataIsReady(sampleBuffer) else { return }
+        guard !isWriterFinishing else { return }
+        guard let writer = assetWriter else { return }
+
+        if writer.status == .failed {
+            DispatchQueue.main.async { [weak self] in
+                self?.handleWriterFailure(error: writer.error)
+            }
+            return
+        }
+
+        let isVideo = output === videoOutput
+        let isAudio = output === audioOutput
+
+        guard isVideo || isAudio else { return }
+
+        if isVideo && !isWriterSessionStarted {
+            if writer.status == .unknown && !writer.startWriting() {
+                DispatchQueue.main.async { [weak self] in
+                    self?.handleWriterFailure(error: writer.error)
+                }
+                return
+            }
+            let startTime = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+            writer.startSession(atSourceTime: startTime)
+            isWriterSessionStarted = true
+            DispatchQueue.main.async { [weak self] in
+                self?.handleWriterDidStart()
+            }
+        }
+
+        guard isWriterSessionStarted else { return }
+
+        let input = isVideo ? assetWriterVideoInput : assetWriterAudioInput
+        guard let writerInput = input else { return }
+        guard writerInput.isReadyForMoreMediaData else { return }
+
+        if !writerInput.append(sampleBuffer) {
+            DispatchQueue.main.async { [weak self] in
+                self?.handleWriterFailure(error: writer.error)
+            }
+        }
+    }
+
+    @MainActor
+    private func handleWriterFailure(error: Error?) {
+        guard !isWriterFinishing else { return }
+        isWriterFinishing = true
+        let outputURL = currentRecordingURL
+        assetWriter?.cancelWriting()
+        resetWriterState()
+        DispatchQueue.main.async {
+            self.handleWriterCompletion(url: outputURL, error: error ?? NSError(domain: "LingXia.Camera", code: -3003, userInfo: [NSLocalizedDescriptionKey: "录制失败"]), cancelled: false)
+        }
     }
 
     private func startUpdateTimer() {
@@ -1159,6 +1456,11 @@ final class VideoCaptureViewController: UIViewController {
                 self.overlayView.updateRecordingProgress(elapsed: elapsed, maxDuration: self.maxDuration)
             }
             if elapsed >= self.maxDuration {
+                if self.recordingState == .recording {
+                    DispatchQueue.main.async {
+                        self.overlayView.showMaxDurationReached()
+                    }
+                }
                 self.requestStopRecording()
             }
         }
@@ -1244,75 +1546,16 @@ final class VideoCaptureViewController: UIViewController {
     }
 }
 
-extension VideoCaptureViewController: @preconcurrency AVCaptureFileOutputRecordingDelegate {
-    @MainActor
-    func fileOutput(_ output: AVCaptureFileOutput, didStartRecordingTo fileURL: URL, from connections: [AVCaptureConnection]) {
-        let pendingAction: PendingRecordingAction
-        if case .preparing(let action) = recordingState {
-            pendingAction = action
-        } else {
-            pendingAction = .none
-        }
+private final class SampleBufferDelegate: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, AVCaptureAudioDataOutputSampleBufferDelegate {
+    private weak var owner: VideoCaptureViewController?
 
-        recordingStartDate = Date()
-        startUpdateTimer()
-
-        switch pendingAction {
-        case .none:
-            recordingState = .recording
-        case .stop:
-            recordingState = .finishing
-            stopMovieOutput()
-        case .cancel:
-            recordingState = .cancelling
-            stopMovieOutput()
-        }
+    init(owner: VideoCaptureViewController) {
+        self.owner = owner
+        super.init()
     }
 
-    @MainActor
-    func fileOutput(_ output: AVCaptureFileOutput, didFinishRecordingTo outputFileURL: URL, from connections: [AVCaptureConnection], error: Error?) {
-        let wasCancelling: Bool
-        switch recordingState {
-        case .cancelling:
-            wasCancelling = true
-        case .preparing(let action):
-            wasCancelling = action == .cancel
-        default:
-            wasCancelling = false
-        }
-
-        recordingStartDate = nil
-        stopUpdateTimer()
-        recordingState = .idle
-        if let error {
-            let nsError = error as NSError
-            if nsError.domain == AVFoundationErrorDomain,
-               nsError.code == AVError.Code.maximumDurationReached.rawValue {
-                self.overlayView.showMaxDurationReached()
-                self.overlayView.updateToRecording()
-                self.finish(with: .success(outputFileURL))
-                return
-            }
-
-            if FileManager.default.fileExists(atPath: outputFileURL.path) {
-                try? FileManager.default.removeItem(at: outputFileURL)
-            }
-            self.overlayView.showHint("录制失败: \(error.localizedDescription)")
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                self.overlayView.updateToIdle()
-                self.finish(with: .failure("录制失败"))
-            }
-            return
-        }
-
-        if wasCancelling {
-            if FileManager.default.fileExists(atPath: outputFileURL.path) {
-                try? FileManager.default.removeItem(at: outputFileURL)
-            }
-            self.finish(with: .cancelled)
-            return
-        }
-        self.presentReview(for: outputFileURL)
+    func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        owner?.handleSampleBuffer(sampleBuffer, from: output)
     }
 }
 
@@ -1738,6 +1981,14 @@ func exportVideoToCache(
 
     DispatchQueue.global(qos: .userInitiated).async {
         if sourceURL.pathExtension.lowercased() == exportExtension {
+            if let cacheDir = LxAppMediaStorage.cacheDirectory() {
+                let sourceDir = sourceURL.deletingLastPathComponent().standardizedFileURL
+                let cacheURL = cacheDir.standardizedFileURL
+                if sourceDir == cacheURL {
+                    deliverOnMain(.success(sourceURL))
+                    return
+                }
+            }
             do {
                 let copied = try LxAppMediaStorage.copy(
                     from: sourceURL,
