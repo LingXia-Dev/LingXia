@@ -1,7 +1,7 @@
 use crate::info;
 use http::{Method, Request, Response, StatusCode, Uri};
 use lingxia_webview::{SystemPipeReader, WebResourceResponse};
-use rong::net;
+use rong::service_executor as net;
 use std::fs;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -541,7 +541,7 @@ struct PipeBodySink {
 }
 
 #[cfg(unix)]
-impl rong::net::BodySink for PipeBodySink {
+impl net::BodySink for PipeBodySink {
     fn write(&mut self, chunk: &[u8]) -> Result<(), String> {
         use std::io::Write;
         self.writer
@@ -556,13 +556,13 @@ impl rong::net::BodySink for PipeBodySink {
 }
 
 #[cfg(unix)]
-fn create_pipe_sink() -> Result<(SystemPipeReader, Box<dyn rong::net::BodySink + Send>), String> {
+fn create_pipe_sink() -> Result<(SystemPipeReader, Box<dyn net::BodySink + Send>), String> {
     use std::os::fd::IntoRawFd;
     use std::os::unix::net::UnixStream;
 
     let (read_end, write_end) = UnixStream::pair().map_err(|e| format!("pipe: {}", e))?;
     let read_fd = read_end.into_raw_fd();
     let reader = unsafe { SystemPipeReader::from_raw_fd(read_fd) };
-    let sink: Box<dyn rong::net::BodySink + Send> = Box::new(PipeBodySink { writer: write_end });
+    let sink: Box<dyn net::BodySink + Send> = Box::new(PipeBodySink { writer: write_end });
     Ok((reader, sink))
 }

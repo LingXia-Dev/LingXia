@@ -3,7 +3,7 @@ use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use rong::net::{self, BodySink};
+use rong::service_executor::{self as net, BodySink};
 use thiserror::Error;
 
 type HashId = String;
