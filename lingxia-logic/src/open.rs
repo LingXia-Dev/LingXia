@@ -9,6 +9,10 @@ struct JSOpenDocumentOptions {
     file_path: String,
     #[rename = "fileType"]
     file_type: Option<String>,
+    /// Controls share/menu button visibility
+    /// - For PDF: Works on all platforms (Android, iOS, Harmony)
+    /// - For Office docs (Word/Excel/PPT) and other files (ZIP, etc.):
+    ///   * All platforms: No effect (always opens with default system app)
     #[rename = "showMenu"]
     show_menu: Option<bool>,
 }

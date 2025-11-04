@@ -41,6 +41,8 @@ internal object LxAppDocument {
             return launchInternalPdfViewer(activity, file, showMenu)
         }
 
+        // For non-PDF documents (Office, ZIP, etc.), always open with default app
+        // showMenu parameter is ignored for these file types
         val contentUri: Uri = LingxiaDocumentProvider.uriForFile(activity, file)
 
         val intent = Intent(Intent.ACTION_VIEW).apply {
@@ -53,12 +55,8 @@ internal object LxAppDocument {
 
         activity.runOnUiThread {
             try {
-                if (showMenu) {
-                    val chooser = Intent.createChooser(intent, file.name)
-                    activity.startActivity(chooser)
-                } else {
-                    activity.startActivity(intent)
-                }
+                // Always open directly with default app (no chooser)
+                activity.startActivity(intent)
                 success = true
             } catch (error: ActivityNotFoundException) {
                 Log.e(TAG, "openDocument: no activity found to handle document", error)

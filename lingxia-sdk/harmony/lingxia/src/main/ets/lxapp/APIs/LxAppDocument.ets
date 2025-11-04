@@ -42,12 +42,12 @@ export class LxAppDocument {
     }
 
     // Non-PDF: use system viewer with fileshare
-    launchSystemViewer(context, filePath, normalizedMime);
+    launchSystemViewer(context, filePath, normalizedMime, showMenu);
     return true;
   }
 }
 
-function launchSystemViewer(context: common.UIAbilityContext, filePath: string, mimeType?: string): void {
+function launchSystemViewer(context: common.UIAbilityContext, filePath: string, mimeType?: string, showMenu: boolean = true): void {
   const uri = resolveUri(context, filePath);
   // Build Want to open directly with WPS Office
   const want: Want = {
