@@ -107,6 +107,7 @@ internal object LxAppDocument {
     }
 
     private fun guessMimeType(path: String): String? {
+        // Note: Rust layer (open.rs) already handles common document types
         val extension = MimeTypeMap.getFileExtensionFromUrl(path)?.lowercase()
         if (!extension.isNullOrEmpty()) {
             val mapped = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension)
@@ -114,15 +115,6 @@ internal object LxAppDocument {
                 return mapped
             }
         }
-        return when (extension) {
-            "doc", "dot" -> "application/msword"
-            "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            "xls" -> "application/vnd.ms-excel"
-            "xlsx" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            "ppt" -> "application/vnd.ms-powerpoint"
-            "pptx" -> "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-            "pdf" -> "application/pdf"
-            else -> null
-        }
+        return null
     }
 }

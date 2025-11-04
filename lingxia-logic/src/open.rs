@@ -33,11 +33,7 @@ fn map_file_type_to_mime(file_type: Option<String>) -> Option<String> {
         "xlsx" => {
             Some("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet".to_string())
         }
-        "txt" => Some("text/plain".to_string()),
-        "rtf" => Some("application/rtf".to_string()),
-        "pages" => Some("application/x-iwork-pages-sffpages".to_string()),
-        "numbers" => Some("application/x-iwork-numbers-sffnumbers".to_string()),
-        "key" => Some("application/x-iwork-keynote-sffkey".to_string()),
+        "zip" => Some("application/zip".to_string()),
         _ => None, // Let the system auto-detect
     }
 }
