@@ -106,6 +106,7 @@ impl LxAppExecutor {
 
         // Initialize Rong JS engine with workers
         let rong = Rong::<RongJS>::builder()
+            .with_service_threads(3)
             .with_num_workers(num_workers)
             .build();
 
@@ -292,15 +293,5 @@ impl LxAppExecutor {
             source: crate::appservice::PageSvcSource::Native { name, args },
         })?;
         Ok(())
-    }
-
-    /// Spawn a task in a separate thread
-    pub fn spawn_task<F>(closure: F)
-    where
-        F: FnOnce() + Send + 'static,
-    {
-        std::thread::spawn(move || {
-            closure();
-        });
     }
 }

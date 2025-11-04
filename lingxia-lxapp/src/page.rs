@@ -1,5 +1,4 @@
 use crate::appservice::bridge::IncomingMessage;
-use crate::executor::LxAppExecutor;
 use crate::lxapp::{self, navbar::NavigationBarState};
 use crate::startup::parse_query_string;
 use crate::{LxApp, LxAppError, error, info};
@@ -10,6 +9,7 @@ use lingxia_webview::{
     create_webview,
 };
 
+use rong::service_executor;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::Instant;
@@ -162,7 +162,7 @@ impl Page {
         let appid_clone = appid.clone();
         let path_clone = path.clone();
 
-        LxAppExecutor::spawn_task(move || {
+        if let Err(e) = service_executor::spawn_blocking(move || {
             match receiver.recv() {
                 Ok(Ok(webview_controller)) => {
                     // First attach WebView to page
@@ -186,7 +186,11 @@ impl Page {
                         .with_path(path_clone);
                 }
             }
-        });
+        }) {
+            error!("Failed to spawn blocking task for WebView creation: {}", e)
+                .with_appid(appid.clone())
+                .with_path(path.clone());
+        }
 
         page
     }

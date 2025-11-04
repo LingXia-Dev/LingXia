@@ -1,7 +1,7 @@
-use crate::executor::LxAppExecutor;
 use crate::page::{NavigationType, PageLifecycleEvent};
 use crate::{LxApp, error, info, lxapp};
 use lingxia_platform::AppRuntime;
+use rong::service_executor;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -99,7 +99,7 @@ impl LxAppDelegate for LxApp {
             let initial_path = resolved_path.clone();
             let lxapp_clone = self.clone();
 
-            LxAppExecutor::spawn_task(move || {
+            if let Err(e) = service_executor::spawn_blocking(move || {
                 info!("Pre-creating tab pages...").with_appid(lxapp_clone.appid.clone());
                 for tab_path in tab_pages {
                     if tab_path == initial_path {
@@ -107,7 +107,10 @@ impl LxAppDelegate for LxApp {
                     }
                     let _ = lxapp_clone.get_or_create_page(&tab_path);
                 }
-            });
+            }) {
+                error!("Failed to spawn background task for tab pre-create: {}", e)
+                    .with_appid(self.appid.clone());
+            }
         }
 
         resolved_path
