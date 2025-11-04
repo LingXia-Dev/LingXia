@@ -11,6 +11,7 @@ import { LxAppMedia } from './APIs/LxAppMedia';
 import { LxAppScan } from './APIs/LxAppScan';
 import { LxAppContainer } from './LxAppContainer';
 import { LxAppPopup } from './APIs/LxAppPopup';
+import { LxAppDocument } from './APIs/LxAppDocument';
 import {
   createWebViewController,
   destroyWebViewController,
@@ -34,6 +35,23 @@ export const CAPSULE_ACTION_MORE = "more";
 export const CAPSULE_ACTION_CLOSE = "close";
 export const NAVIGATION_ACTION_BACK = "back";
 export const NAVIGATION_ACTION_HOME = "home";
+
+function parseBoolean(value: Object | undefined, defaultValue: boolean): boolean {
+  if (value === undefined || value === null) {
+    return defaultValue;
+  }
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  const normalized = String(value).toLowerCase().trim();
+  if (normalized === 'true' || normalized === '1' || normalized === 'yes') {
+    return true;
+  }
+  if (normalized === 'false' || normalized === '0' || normalized === 'no') {
+    return false;
+  }
+  return defaultValue;
+}
 
 /**
  * Native Bridge - Internal callback manager
@@ -256,6 +274,11 @@ class NativeBridge {
         hilog.error(DOMAIN, TAG, `saveMedia async error: ${err}`);
       });
       return true;
+    });
+
+    this.register('openDocument', (filePath: string, mimeType: string = '', showMenu: string = '1'): boolean => {
+      const showFlag = parseBoolean(showMenu, true);
+      return LxAppDocument.openDocument(filePath, mimeType, showFlag);
     });
 
     this.register('scanCode', (payload: string): boolean => {

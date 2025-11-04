@@ -9,6 +9,7 @@ import { ActionSheetManager } from './APIs/LxAppActionSheet';
 import { PopupManager } from './APIs/LxAppPopup';
 import { MediaPreviewOverlayManager, MediaPreviewOverlay } from './APIs/media/MediaPreviewOverlay';
 import { CameraCaptureOverlay } from './APIs/media/CameraCaptureOverlay';
+import { PdfSinglePageViewerOverlay } from './APIs/document/PdfSinglePageViewerOverlay';
 
 const DOMAIN = 0xA000;
 const TAG = 'LingXia.Navigation';
@@ -290,6 +291,10 @@ export struct LxAppNavigation {
       // Integrated camera capture overlay
       CameraCaptureOverlay()
         .zIndex(10006)
+
+      // Integrated PDF single-page viewer (closed, safe-area aware)
+      PdfSinglePageViewerOverlay()
+        .zIndex(10007)
     }
     .width('100%')
     .height('100%')
