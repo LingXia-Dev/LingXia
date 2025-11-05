@@ -93,7 +93,7 @@ final class AlbumDelegate: NSObject, PHPickerViewControllerDelegate {
         let provider = result.itemProvider
 
         if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
-            if let assetIdentifier = result.assetIdentifier {
+            if let assetIdentifier = result.assetIdentifier, canAccessAsset(assetIdentifier) {
                 DispatchQueue.main.async {
                     let jsonItem: [String: Any] = [
                         "uri": "phasset:\(assetIdentifier)",
@@ -105,24 +105,24 @@ final class AlbumDelegate: NSObject, PHPickerViewControllerDelegate {
             } else {
                 provider.loadFileRepresentation(forTypeIdentifier: UTType.image.identifier) { url, error in
                     if let fileURL = url, error == nil {
-                        DispatchQueue.main.async {
-                            do {
-                                let tempURL = try LxAppMediaStorage.copyToTemporary(
-                                    from: fileURL,
-                                    prefix: "album_image",
-                                    fallbackExtension: "jpg",
-                                    requiresSecurityScope: true
-                                )
+                        do {
+                            let tempURL = try LxAppMediaStorage.copyToTemporary(
+                                from: fileURL,
+                                prefix: "album_image",
+                                fallbackExtension: "jpg",
+                                requiresSecurityScope: true
+                            )
                             let jsonItem: [String: Any] = [
                                 "uri": "tempfile://\(tempURL.path)",
                                 "fileType": "image",
                                 "isOriginal": true
                             ]
-                            completion(jsonItem)
-                            } catch {
-                                // fallback to object-based load
-                                self.loadImageObjectFallback(provider: provider, completion: completion)
+                            DispatchQueue.main.async {
+                                completion(jsonItem)
                             }
+                        } catch {
+                            // fallback to object-based load
+                            self.loadImageObjectFallback(provider: provider, completion: completion)
                         }
                     } else {
                         // fallback to object-based load
@@ -131,7 +131,7 @@ final class AlbumDelegate: NSObject, PHPickerViewControllerDelegate {
                 }
             }
         } else if provider.hasItemConformingToTypeIdentifier(UTType.movie.identifier) {
-            if let assetIdentifier = result.assetIdentifier {
+            if let assetIdentifier = result.assetIdentifier, canAccessAsset(assetIdentifier) {
                 DispatchQueue.main.async {
                     let jsonItem: [String: Any] = [
                         "uri": "phasset:\(assetIdentifier)",
@@ -143,23 +143,23 @@ final class AlbumDelegate: NSObject, PHPickerViewControllerDelegate {
             } else {
                 provider.loadFileRepresentation(forTypeIdentifier: UTType.movie.identifier) { url, error in
                     if let fileURL = url, error == nil {
-                        DispatchQueue.main.async {
-                            do {
-                                let tempURL = try LxAppMediaStorage.copyToTemporary(
-                                    from: fileURL,
-                                    prefix: "album_video",
-                                    fallbackExtension: "mov",
-                                    requiresSecurityScope: true
-                                )
+                        do {
+                            let tempURL = try LxAppMediaStorage.copyToTemporary(
+                                from: fileURL,
+                                prefix: "album_video",
+                                fallbackExtension: "mov",
+                                requiresSecurityScope: true
+                            )
                             let jsonItem: [String: Any] = [
                                 "uri": "tempfile://\(tempURL.path)",
                                 "fileType": "video",
                                 "isOriginal": true
                             ]
-                            completion(jsonItem)
-                            } catch {
-                                completion(nil)
+                            DispatchQueue.main.async {
+                                completion(jsonItem)
                             }
+                        } catch {
+                            DispatchQueue.main.async { completion(nil) }
                         }
                     } else {
                         DispatchQueue.main.async { completion(nil) }
@@ -186,6 +186,11 @@ final class AlbumDelegate: NSObject, PHPickerViewControllerDelegate {
 
     private func sendCancel() {
         let _ = onCallback(callbackId, true, "{\"cancel\":true}")
+    }
+
+    private func canAccessAsset(_ localIdentifier: String) -> Bool {
+        let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [localIdentifier], options: nil)
+        return fetchResult.firstObject != nil
     }
 }
 #endif

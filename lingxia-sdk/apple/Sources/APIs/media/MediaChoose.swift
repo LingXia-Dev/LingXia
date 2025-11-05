@@ -55,7 +55,7 @@ extension LxAppMedia {
         return true
     }
 
-    private static func sendDone(_ callbackId: UInt64) {
+    nonisolated private static func sendDone(_ callbackId: UInt64) {
         let _ = onCallback(callbackId, true, "{\"done\":true}")
     }
 
@@ -103,26 +103,19 @@ extension LxAppMedia {
                             let _ = onCallback(callbackId, false, message)
                             sendDone(callbackId)
                         case .success(let fileURL):
-                            exportVideoToCache(from: fileURL) { exportResult in
-                                switch exportResult {
-                                case .success(let cacheURL):
-                                    let jsonItem: [String: Any] = [
-                                        "uri": cacheURL.path,
-                                        "fileType": "video",
-                                        "isOriginal": true
-                                    ]
-                                    if let data = try? JSONSerialization.data(withJSONObject: [jsonItem], options: []),
-                                       let jsonString = String(data: data, encoding: .utf8) {
-                                        let _ = onCallback(callbackId, true, jsonString)
-                                        sendDone(callbackId)
-                                    } else {
-                                        let _ = onCallback(callbackId, false, "Failed to serialize camera capture result")
-                                        sendDone(callbackId)
-                                    }
-                                case .failure:
-                                    let _ = onCallback(callbackId, false, "Failed to process captured video")
-                                    sendDone(callbackId)
-                                }
+                            let jsonItem: [String: Any] = [
+                                "uri": fileURL.path,
+                                "fileType": "video",
+                                "isOriginal": true
+                            ]
+
+                            if let data = try? JSONSerialization.data(withJSONObject: [jsonItem], options: []),
+                               let jsonString = String(data: data, encoding: .utf8) {
+                                let _ = onCallback(callbackId, true, jsonString)
+                                sendDone(callbackId)
+                            } else {
+                                let _ = onCallback(callbackId, false, "Failed to serialize camera capture result")
+                                sendDone(callbackId)
                             }
                             return
                         }
@@ -203,52 +196,46 @@ extension LxAppMedia {
 
         // Check if PHPickerViewController is available (iOS 14+)
         if #available(iOS 14.0, *) {
-            // PHPickerViewController doesn't require explicit permission, but we should check photo library access
-            checkPhotoLibraryPermission { hasPermission in
-                if hasPermission {
-                    presentPhotoPicker(presenter: presenter, mode: mode, maxCount: maxCount, callbackId: callbackId)
-                } else {
-                    // Send error callback for permission denied
-                    let _ = onCallback(callbackId, false, "Photo library access is required to select photos. Please enable access in Settings > Privacy & Security > Photos.")
-                }
-            }
+            handlePhotoLibraryAccess(
+                presenter: presenter,
+                mode: mode,
+                maxCount: maxCount,
+                callbackId: callbackId
+            )
         } else {
             // For iOS 13 and below, we would need to use UIImagePickerController with permission checks
             let _ = onCallback(callbackId, false, "Photo picker requires iOS 14.0 or later")
         }
     }
 
-    private static func checkPhotoLibraryPermission(completion: @escaping (Bool) -> Void) {
-        let deliver: (Bool) -> Void = { granted in
-            if Thread.isMainThread {
-                completion(granted)
-            } else {
+    private static func handlePhotoLibraryAccess(
+        presenter: UIViewController,
+        mode: String,
+        maxCount: UInt32,
+        callbackId: UInt64
+    ) {
+        guard #available(iOS 14.0, *) else { return }
+
+        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+
+        switch status {
+        case .authorized, .limited:
+            presentPhotoPicker(presenter: presenter, mode: mode, maxCount: maxCount, callbackId: callbackId)
+        case .notDetermined:
+            PHPhotoLibrary.requestAuthorization(for: .readWrite) { newStatus in
+                let granted = newStatus == .authorized || newStatus == .limited
                 DispatchQueue.main.async {
-                    completion(granted)
+                    if granted {
+                        presentPhotoPicker(presenter: presenter, mode: mode, maxCount: maxCount, callbackId: callbackId)
+                    } else {
+                        let _ = onCallback(callbackId, false, "Photo library access is required to select photos. Please enable access in Settings > Privacy & Security > Photos.")
+                    }
                 }
             }
-        }
-
-        if #available(iOS 14.0, *) {
-            let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-
-            switch status {
-            case .authorized, .limited:
-                deliver(true)
-            case .notDetermined:
-                PHPhotoLibrary.requestAuthorization(for: .readWrite) { newStatus in
-                    let granted = newStatus == .authorized || newStatus == .limited
-                    deliver(granted)
-                }
-            case .denied:
-                deliver(false)
-            case .restricted:
-                deliver(false)
-            @unknown default:
-                deliver(false)
-            }
-        } else {
-            deliver(false)
+        case .denied, .restricted:
+            let _ = onCallback(callbackId, false, "Photo library access is required to select photos. Please enable access in Settings > Privacy & Security > Photos.")
+        @unknown default:
+            let _ = onCallback(callbackId, false, "Photo library access is required to select photos. Please enable access in Settings > Privacy & Security > Photos.")
         }
     }
 
@@ -256,7 +243,12 @@ extension LxAppMedia {
 
         let configuration: PHPickerConfiguration
         if #available(iOS 15.0, *) {
-            configuration = PHPickerConfiguration(photoLibrary: PHPhotoLibrary.shared())
+            let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+            if status == .authorized || status == .limited {
+                configuration = PHPickerConfiguration(photoLibrary: PHPhotoLibrary.shared())
+            } else {
+                configuration = PHPickerConfiguration()
+            }
         } else {
             configuration = PHPickerConfiguration()
         }

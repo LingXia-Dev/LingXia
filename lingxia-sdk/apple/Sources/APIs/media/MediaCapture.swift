@@ -772,6 +772,7 @@ final class VideoCaptureViewController: UIViewController {
     private var videoInput: AVCaptureDeviceInput?
     private var audioInput: AVCaptureDeviceInput?
     private var previewLayer: AVCaptureVideoPreviewLayer?
+    private let minimumRecordingDuration: TimeInterval = 1.0
     private var assetWriter: AVAssetWriter?
     private var assetWriterVideoInput: AVAssetWriterInput?
     private var assetWriterAudioInput: AVAssetWriterInput?
@@ -1353,6 +1354,7 @@ final class VideoCaptureViewController: UIViewController {
 
     @MainActor
     private func handleWriterCompletion(url: URL?, error: Error?, cancelled: Bool) {
+        let recordedDuration = recordingStartDate.map { Date().timeIntervalSince($0) } ?? 0
         recordingStartDate = nil
         stopUpdateTimer()
         let outputURL = url
@@ -1387,6 +1389,16 @@ final class VideoCaptureViewController: UIViewController {
         }
 
         recordingState = .idle
+
+        if recordedDuration < minimumRecordingDuration {
+            if FileManager.default.fileExists(atPath: outputURL.path) {
+                try? FileManager.default.removeItem(at: outputURL)
+            }
+            overlayView.showHint("拍摄时间过短")
+            overlayView.updateToIdle(after: 1.0)
+            return
+        }
+
         presentReview(for: outputURL)
     }
 
@@ -1952,92 +1964,4 @@ private final class VideoCaptureOverlayView: UIView {
     }
 }
 
-func exportVideoToCache(
-    from sourceURL: URL,
-    completion: @Sendable @escaping (Result<URL, Error>) -> Void
-) {
-    let exportExtension = "mp4"
-    let fallbackExtension = sourceURL.pathExtension.isEmpty ? exportExtension : sourceURL.pathExtension
-    let deliverOnMain: @Sendable (Result<URL, Error>) -> Void = { result in
-        DispatchQueue.main.async {
-            completion(result)
-        }
-    }
-
-    let performFallbackCopy: @Sendable () -> Void = {
-        do {
-            let copied = try LxAppMediaStorage.copy(
-                from: sourceURL,
-                prefix: "video",
-                fallbackExtension: fallbackExtension,
-                requiresSecurityScope: false
-            )
-            try? FileManager.default.removeItem(at: sourceURL)
-            deliverOnMain(.success(copied))
-        } catch {
-            deliverOnMain(.failure(error))
-        }
-    }
-
-    DispatchQueue.global(qos: .userInitiated).async {
-        if sourceURL.pathExtension.lowercased() == exportExtension {
-            if let cacheDir = LxAppMediaStorage.cacheDirectory() {
-                let sourceDir = sourceURL.deletingLastPathComponent().standardizedFileURL
-                let cacheURL = cacheDir.standardizedFileURL
-                if sourceDir == cacheURL {
-                    deliverOnMain(.success(sourceURL))
-                    return
-                }
-            }
-            do {
-                let copied = try LxAppMediaStorage.copy(
-                    from: sourceURL,
-                    prefix: "video",
-                    fallbackExtension: exportExtension,
-                    requiresSecurityScope: false
-                )
-                try? FileManager.default.removeItem(at: sourceURL)
-                deliverOnMain(.success(copied))
-            } catch {
-                deliverOnMain(.failure(error))
-            }
-            return
-        }
-
-        guard let destinationURL = LxAppMediaStorage.makeFileURL(prefix: "video", preferredExtension: exportExtension) else {
-            performFallbackCopy()
-            return
-        }
-
-        let asset = AVAsset(url: sourceURL)
-        guard let exportSession =
-            AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetHighestQuality) ??
-            AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetPassthrough) else {
-            performFallbackCopy()
-            return
-        }
-
-        guard exportSession.supportedFileTypes.contains(.mp4) else {
-            performFallbackCopy()
-            return
-        }
-
-        exportSession.outputFileType = .mp4
-
-        exportSession.shouldOptimizeForNetworkUse = true
-        exportSession.outputURL = destinationURL
-
-        exportSession.exportAsynchronously {
-            switch exportSession.status {
-            case .completed:
-                try? FileManager.default.removeItem(at: sourceURL)
-                deliverOnMain(.success(destinationURL))
-            case .failed, .cancelled:
-                performFallbackCopy()
-            default:
-                performFallbackCopy()
-            }
-        }
-    }
-}
 #endif
