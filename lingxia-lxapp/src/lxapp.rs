@@ -20,24 +20,23 @@ use security::NetworkSecurity;
 pub mod config;
 use config::LxAppConfig;
 mod content;
-mod install;
-mod metadata;
-use metadata::ReleaseType;
+pub(crate) mod metadata;
+pub use metadata::ReleaseType;
 pub mod navbar;
 mod scheme;
 mod security;
 pub mod tabbar;
 pub(crate) mod version;
+use version::need_update;
 
 /// Constants for lxapp storage layout
-const LINGXIA_DIR: &str = "lingxia";
-const LXAPPS_DIR: &str = "lxapps";
-const LXAPPS_DB_FILE: &str = "lxapps.redb";
-const STORAGE_DIR: &str = "storage";
-const USER_DATA_DIR: &str = "userdata";
-const USER_CACHE_DIR: &str = "usercache";
+pub(crate) const LINGXIA_DIR: &str = "lingxia";
+pub(crate) const LXAPPS_DIR: &str = "lxapps";
+pub(crate) const STORAGE_DIR: &str = "storage";
+pub(crate) const USER_DATA_DIR: &str = "userdata";
+pub(crate) const USER_CACHE_DIR: &str = "usercache";
 
-const DEFAULT_USER_ID: &str = "default";
+const LXAPPS_DB_FILE: &str = "lxapps.redb";
 const DEFAULT_VERSION: &str = "0.0.1";
 
 const LXAPP_STACK_MAX: usize = 5;
@@ -60,52 +59,17 @@ pub struct LxApps {
     /// Reference to the executor
     /// Handles async task execution for lxapp apps
     pub(crate) executor: Arc<LxAppExecutor>,
-
-    /// Current user ID (hashed for privacy)
-    /// Used to generate directory names for user-specific storage
-    user_id: Mutex<String>,
 }
 
 impl LxApps {
     fn new(runtime: Platform, executor: Arc<LxAppExecutor>) -> Self {
         let runtime = Arc::new(runtime);
 
-        // Initialize with default user ID
-        let user_id = Mutex::new(DEFAULT_USER_ID.to_string());
-
         Self {
             lxapps: DashMap::new(),
             runtime,
             executor,
             lxapp_stack: Mutex::new(VecDeque::with_capacity(LXAPP_STACK_MAX)),
-            user_id,
-        }
-    }
-
-    /// Set the current user ID for all LingXia apps
-    ///
-    /// This will affect the directory structure for new lx apps.
-    /// Existing lx apps will continue to use their current directories.
-    ///
-    /// The user ID is used to generate hashed directory names for privacy protection.
-    /// Each user gets isolated storage and cache directories.
-    ///
-    /// # Arguments
-    /// * `new_user_id` - The new user ID to use (will be hashed for directory names)
-    pub fn set_user_id(&self, new_user_id: String) {
-        if let Ok(mut user_id) = self.user_id.lock() {
-            *user_id = new_user_id;
-        }
-    }
-
-    /// Get the current user ID
-    fn get_user_id(&self) -> String {
-        match self.user_id.lock() {
-            Ok(user_id) => user_id.clone(),
-            Err(_) => {
-                // If lock is poisoned, return default
-                DEFAULT_USER_ID.to_string()
-            }
         }
     }
 
@@ -126,67 +90,6 @@ impl LxApps {
         // Insert into collection and return
         self.lxapps.insert(appid, new_lxapp.clone());
         new_lxapp
-    }
-
-    /// Uninstalls an LxApp.
-    ///
-    /// The currently active (top of stack) app cannot be uninstalled.
-    /// If the app is in the navigation stack but not active, it will be destroyed
-    /// (removed from memory) and then its files will be deleted.
-    /// If the app is not in the stack at all, only its files will be deleted.
-    #[allow(dead_code)]
-    pub fn uninstall(&self, appid: &str) -> Result<(), LxAppError> {
-        // 1. Check if it's the currently active app.
-        if let Some(active_app) = self.peek_lxapp_stack() {
-            if active_app == appid {
-                return Err(LxAppError::UnsupportedOperation(
-                    "Cannot uninstall the currently active application.".to_string(),
-                ));
-            }
-        }
-
-        // 2. Handle the case where the app is currently in memory.
-        if let Some(app_entry) = self.lxapps.get(appid) {
-            let app_to_uninstall = app_entry.value().clone();
-            // Check if it's the home app.
-            if app_to_uninstall.is_home_lxapp {
-                return Err(LxAppError::UnsupportedOperation(
-                    "Cannot uninstall the home lxapp".to_string(),
-                ));
-            }
-
-            // It's in memory and not active, so we can "destroy" and "uninstall".
-            info!("App is in memory; destroying and uninstalling...").with_appid(appid);
-
-            // Remove from the stack and the main map (Drop trait will handle cleanup)
-            self.remove_from_stack(appid);
-            self.lxapps.remove(appid);
-
-            // Uninstall (disk part)
-            app_to_uninstall.delete_disk_files()?;
-
-            return Ok(());
-        }
-
-        // 3. Handle the case where the app is not in memory (pure disk uninstall).
-        info!("App not in memory; uninstalling from disk...").with_appid(appid);
-
-        // Create a temporary instance just to get path info.
-        let temp_app = LxApp::new(
-            appid.to_string(),
-            self.runtime.clone(),
-            self.executor.clone(),
-        );
-
-        // Check if it's the home app.
-        if temp_app.is_home_lxapp {
-            return Err(LxAppError::UnsupportedOperation(
-                "Cannot uninstall the home lxapp".to_string(),
-            ));
-        }
-
-        // Uninstall (disk part)
-        temp_app.delete_disk_files()
     }
 
     /// Finds and evicts the least recently used LxApp to free up memory.
@@ -321,9 +224,10 @@ pub struct LxApp {
     pub appid: String,
     pub runtime: Arc<Platform>,
     pub lxapp_dir: PathBuf,
-    pub storage_dir: PathBuf,
+    pub storage_file_path: PathBuf,
     pub user_data_dir: PathBuf,
     pub user_cache_dir: PathBuf,
+    pub fingermark: String,
     pub is_home_lxapp: bool,
     pub version: String,
     pub(crate) release_type: ReleaseType,
@@ -342,9 +246,10 @@ impl LxApp {
             appid,
             runtime,
             lxapp_dir: PathBuf::new(),
-            storage_dir: PathBuf::new(),
+            storage_file_path: PathBuf::new(),
             user_data_dir: PathBuf::new(),
             user_cache_dir: PathBuf::new(),
+            fingermark: String::new(),
             is_home_lxapp: false,
             version: String::new(),
             release_type: ReleaseType::default(),
@@ -379,48 +284,20 @@ impl LxApp {
         app
     }
 
-    /// Removes all files and directories associated with this LxApp from disk.
-    pub(crate) fn delete_disk_files(&self) -> Result<(), LxAppError> {
-        if self.lxapp_dir.exists() {
-            fs::remove_dir_all(&self.lxapp_dir)?;
-        }
-        if self.storage_dir.exists() {
-            fs::remove_dir_all(&self.storage_dir)?;
-        }
-        if self.user_cache_dir.exists() {
-            fs::remove_dir_all(&self.user_cache_dir)?;
-        }
-
-        metadata::remove_all(&self.appid)
-    }
-
     /// Initialize paths and directories for the lxapp
     fn initialize_paths(&mut self) -> Result<(), LxAppError> {
         // Load metadata if available to determine version and install path
-        let metadata = metadata::get(&self.appid, self.release_type).ok().flatten();
-        self.version = metadata
+        let meta = metadata::get(&self.appid, self.release_type).ok().flatten();
+        self.version = meta
             .as_ref()
             .map(|record| record.version_string())
             .unwrap_or_else(|| DEFAULT_VERSION.to_string());
-
-        // Determine install path (if present) and directory name
-        let stored_path = metadata
+        self.fingermark = meta
             .as_ref()
-            .map(|record| PathBuf::from(&record.install_path));
-        let dir_name = stored_path
-            .as_ref()
-            .and_then(|path| path.file_name())
-            .and_then(|name| name.to_str())
-            .map(|name| name.to_string())
-            .unwrap_or_else(|| {
-                if self.is_home_lxapp {
-                    // Home lxapp uses appid directly as directory name
-                    self.appid.clone()
-                } else {
-                    let user_id = get_lxapps_manager().unwrap().get_user_id();
-                    generate_app_hash(&self.appid, &user_id)
-                }
-            });
+            .map(|record| record.fingermark.clone())
+            .unwrap_or_else(|| lxapp_fingermark(&self.appid, self.release_type));
+        // Determine directory name from fingerprint
+        let dir_name = self.fingermark.clone();
 
         // Set up app directory
         let base_dir = self
@@ -429,22 +306,15 @@ impl LxApp {
             .join(LINGXIA_DIR)
             .join(LXAPPS_DIR);
 
-        self.lxapp_dir = if let Some(path) = stored_path {
-            path
-        } else {
-            base_dir.join(&dir_name)
-        };
-        if !self.lxapp_dir.exists() {
-            std::fs::create_dir_all(&self.lxapp_dir).map_err(|e| {
-                LxAppError::IoError(format!("Failed to create lx apps directory: {}", e))
-            })?;
-        }
+        self.lxapp_dir = base_dir.join(&dir_name);
 
-        self.storage_dir = self
+        // Compute storage file path: <data>/lingxia/storage/<fingermark>.redb
+        self.storage_file_path = self
             .runtime
             .app_data_dir()
             .join(LINGXIA_DIR)
-            .join(STORAGE_DIR);
+            .join(STORAGE_DIR)
+            .join(format!("{}.redb", self.fingermark));
 
         // Set up userdata directory
         let userdata_base_dir = self
@@ -533,6 +403,15 @@ impl LxApp {
             .unwrap_or_else(|| DEFAULT_VERSION.to_string())
     }
 
+    pub(crate) fn should_update(&self, required_version: &str) -> bool {
+        let installed = metadata::get(&self.appid, self.release_type)
+            .ok()
+            .flatten()
+            .map(|record| record.version_string())
+            .or_else(|| Some(self.version.clone()));
+        need_update(installed.as_deref(), required_version)
+    }
+
     // Reads binary data from the specified relative path
     fn read_bytes(&self, relative_path: &str) -> Result<Vec<u8>, LxAppError> {
         let file_path = self.lxapp_dir.join(relative_path);
@@ -572,21 +451,21 @@ impl LxApp {
             .canonicalize()
             .map_err(|_| LxAppError::ResourceNotFound(path.to_string()))?;
 
-        let trusted_roots: Vec<PathBuf> = [
-            &self.lxapp_dir,
-            &self.user_cache_dir,
-            &self.user_data_dir,
-            &self.storage_dir,
-        ]
-        .iter()
-        .filter_map(|dir| {
-            if dir.as_os_str().is_empty() {
-                None
-            } else {
-                dir.canonicalize().ok()
+        let mut trusted_roots: Vec<PathBuf> = Vec::new();
+        for dir in [&self.lxapp_dir, &self.user_cache_dir, &self.user_data_dir] {
+            if !dir.as_os_str().is_empty() {
+                if let Ok(c) = dir.canonicalize() {
+                    trusted_roots.push(c);
+                }
             }
-        })
-        .collect();
+        }
+        if !self.storage_file_path.as_os_str().is_empty() {
+            if let Some(parent) = self.storage_file_path.parent() {
+                if let Ok(c) = parent.canonicalize() {
+                    trusted_roots.push(c);
+                }
+            }
+        }
 
         if trusted_roots.iter().any(|root| canonical.starts_with(root)) {
             Ok(canonical)
@@ -952,6 +831,16 @@ impl LxApp {
     }
 }
 
+/// Compute a stable hash id for lxapp-scoped data separation.
+/// Includes lxappid + release_type  to ensure isolation across variants.
+pub(crate) fn lxapp_fingermark(lxappid: &str, release_type: ReleaseType) -> String {
+    // Fingermark uses appid + release_type (version excluded)
+    let combined = format!("{}|{}", lxappid, release_type.as_str());
+    let mut hasher = DefaultHasher::new();
+    combined.hash(&mut hasher);
+    format!("{:x}", hasher.finish())
+}
+
 impl Drop for LxApp {
     fn drop(&mut self) {
         // Don't destroy home app
@@ -978,20 +867,6 @@ impl Drop for LxApp {
     }
 }
 
-/// Generates a hash string based on app ID and user ID
-fn generate_app_hash(app_id: &str, user_id: &str) -> String {
-    // Combine app_id and user_id
-    let combined = format!("{}_{}", app_id, user_id);
-
-    // Calculate hash using standard library's DefaultHasher
-    let mut hasher = DefaultHasher::new();
-    combined.hash(&mut hasher);
-    let result = hasher.finish();
-
-    // Convert to hex string
-    format!("{:x}", result)
-}
-
 /// Prepares the base directory structure for lxapps
 fn prepare_directory_structure(runtime: Arc<Platform>) -> Result<(), LxAppError> {
     let data_dir = runtime.app_data_dir();
@@ -1011,6 +886,27 @@ fn prepare_directory_structure(runtime: Arc<Platform>) -> Result<(), LxAppError>
 
     let metadata_path = data_dir.join(LINGXIA_DIR).join(LXAPPS_DB_FILE);
     metadata::init(metadata_path)
+}
+
+/// Clear user cache directory on startup. Does not affect storage or user data.
+fn clear_user_cache_dir(runtime: &Arc<Platform>) -> Result<(), LxAppError> {
+    let root = runtime
+        .app_cache_dir()
+        .join(LINGXIA_DIR)
+        .join(USER_CACHE_DIR);
+    if root.exists() {
+        for entry in std::fs::read_dir(&root)? {
+            let path = entry?.path();
+            if path.is_dir() {
+                let _ = fs::remove_dir_all(&path);
+            } else {
+                let _ = fs::remove_file(&path);
+            }
+        }
+    } else {
+        fs::create_dir_all(&root)?;
+    }
+    Ok(())
 }
 
 // Global instance of LxApps manager
@@ -1041,10 +937,14 @@ pub fn init(runtime: Platform) -> Option<String> {
 
     let runtime_arc = Arc::new(runtime.clone());
 
-    // Prepare the directory structure
+    // Prepare directory structure
     if let Err(e) = prepare_directory_structure(runtime_arc.clone()) {
         error!("Failed to prepare directory structure: {}", e);
         return None;
+    }
+    // Always clear cache (usercache) on startup; do not touch storage/userdata
+    if let Err(e) = clear_user_cache_dir(&runtime_arc) {
+        error!("Failed to clear user cache: {}", e);
     }
 
     match AppConfig::load(runtime_arc.clone()) {
@@ -1052,8 +952,8 @@ pub fn init(runtime: Platform) -> Option<String> {
             let home_lxapp_appid = config.home_lxapp_appid.clone();
             let home_lxapp_version = &config.home_lxapp_version;
 
-            if !install::is_installed(&home_lxapp_appid, ReleaseType::Release) {
-                if let Err(e) = install::install_home_lxapp(
+            if !metadata::exists(&home_lxapp_appid, ReleaseType::Release).unwrap_or(false) {
+                if let Err(e) = crate::update::UpdateManager::install_from_assets(
                     runtime_arc.clone(),
                     &home_lxapp_appid,
                     home_lxapp_version,
@@ -1077,7 +977,7 @@ pub fn init(runtime: Platform) -> Option<String> {
 
             // Check if home lxapp needs updating after loading its configuration
             if home_lxapp.is_debug_enabled() || home_lxapp.should_update(home_lxapp_version) {
-                if let Err(e) = install::install_home_lxapp(
+                if let Err(e) = crate::update::UpdateManager::install_from_assets(
                     runtime_arc.clone(),
                     &home_lxapp_appid,
                     home_lxapp_version,
@@ -1177,4 +1077,14 @@ pub fn get_current_lxapp() -> (String, String) {
         }
     }
     (String::new(), String::new())
+}
+
+/// Check whether a given appid is currently opened (in-memory and marked opened).
+pub fn is_lxapp_open(lxappid: &str) -> bool {
+    if let Some(manager) = LXAPPS_MANAGER.get() {
+        if let Some(app) = manager.lxapps.get(lxappid) {
+            return app.is_opened();
+        }
+    }
+    false
 }

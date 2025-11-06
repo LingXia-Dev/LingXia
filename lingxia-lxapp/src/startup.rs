@@ -1,27 +1,5 @@
+use crate::lxapp::ReleaseType;
 use serde::{Deserialize, Serialize, Serializer, ser::SerializeMap};
-
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
-pub enum LxAppMode {
-    Develop,
-    Trial,
-    Release,
-}
-
-impl Default for LxAppMode {
-    fn default() -> Self {
-        LxAppMode::Release
-    }
-}
-
-impl From<&str> for LxAppMode {
-    fn from(s: &str) -> Self {
-        match s {
-            "develop" => LxAppMode::Develop,
-            "trial" => LxAppMode::Trial,
-            _ => LxAppMode::Release,
-        }
-    }
-}
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
 pub enum Scene {
@@ -53,7 +31,7 @@ impl From<i32> for Scene {
 pub struct LxAppStartupOptions {
     pub path: String,
     pub query: String,
-    pub mode: LxAppMode,
+    pub release_type: ReleaseType,
     pub scene: Scene,
 }
 
@@ -114,6 +92,15 @@ pub fn split_path_query(url: &str) -> (String, Option<String>) {
     }
 }
 
+/// Parse envVersion tag (e.g., "develop", "trial") into a ReleaseType.
+pub fn parse_env_release_type(tag: &str) -> ReleaseType {
+    match tag {
+        "develop" => ReleaseType::Developer,
+        "trial" => ReleaseType::Preview,
+        _ => ReleaseType::Release,
+    }
+}
+
 impl LxAppStartupOptions {
     /// Creates a new `LxAppStartupOptions` from a path that may contain a query string.
     pub fn new(path_with_query: &str) -> Self {
@@ -127,13 +114,14 @@ impl LxAppStartupOptions {
         Self {
             path: path.to_string(),
             query: query_str.to_string(),
+            release_type: ReleaseType::Release,
             ..Default::default()
         }
     }
 
-    /// Sets the `mode` for the startup options.
-    pub fn set_mode(mut self, mode: LxAppMode) -> Self {
-        self.mode = mode;
+    /// Sets the release type for the startup options.
+    pub fn set_release_type(mut self, release_type: ReleaseType) -> Self {
+        self.release_type = release_type;
         self
     }
 

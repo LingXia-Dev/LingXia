@@ -8,7 +8,8 @@ use std::sync::{Arc, OnceLock};
 use super::version::Version;
 use crate::LxAppError;
 
-const LXAPPS_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("lxapps");
+const INSTALLED_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("installed");
+const DOWNLOADED_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("downloaded");
 
 static DATABASE: OnceLock<Arc<Database>> = OnceLock::new();
 
@@ -31,14 +32,6 @@ impl SemanticVersion {
     pub fn to_version_string(&self) -> String {
         format!("{}.{}.{}", self.major, self.minor, self.patch)
     }
-
-    pub fn to_version(&self) -> Version {
-        Version {
-            major: self.major,
-            minor: self.minor,
-            patch: self.patch,
-        }
-    }
 }
 
 impl fmt::Display for SemanticVersion {
@@ -52,8 +45,9 @@ pub(crate) struct LxAppRecord {
     pub lxappid: String,
     pub release_type: ReleaseType,
     pub version: SemanticVersion,
+    pub fingermark: String,
     pub install_path: String,
-    pub installed_at: i64,
+    pub last_open_at: i64,
 }
 
 impl LxAppRecord {
@@ -61,15 +55,17 @@ impl LxAppRecord {
         lxappid: &str,
         release_type: ReleaseType,
         version: SemanticVersion,
+        fingermark: String,
         install_path: String,
-        installed_at: i64,
+        last_open_at: i64,
     ) -> Self {
         Self {
             lxappid: lxappid.to_string(),
             release_type,
             version,
+            fingermark,
             install_path,
-            installed_at,
+            last_open_at,
         }
     }
 
@@ -80,7 +76,7 @@ impl LxAppRecord {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
-pub(crate) enum ReleaseType {
+pub enum ReleaseType {
     Release,
     Preview,
     Developer,
@@ -127,9 +123,12 @@ pub(crate) fn init(db_path: PathBuf) -> Result<(), LxAppError> {
         .begin_write()
         .map_err(|e| metadata_error("begin write transaction", e))?;
     {
-        let _table = write_txn
-            .open_table(LXAPPS_TABLE)
-            .map_err(|e| metadata_error("open table", e))?;
+        let _installed = write_txn
+            .open_table(INSTALLED_TABLE)
+            .map_err(|e| metadata_error("open installed table", e))?;
+        let _downloaded = write_txn
+            .open_table(DOWNLOADED_TABLE)
+            .map_err(|e| metadata_error("open downloaded table", e))?;
     }
     write_txn
         .commit()
@@ -149,8 +148,8 @@ pub(crate) fn get(
         .begin_read()
         .map_err(|e| metadata_error("begin read transaction", e))?;
     let table = txn
-        .open_table(LXAPPS_TABLE)
-        .map_err(|e| metadata_error("open table", e))?;
+        .open_table(INSTALLED_TABLE)
+        .map_err(|e| metadata_error("open installed table", e))?;
     if let Some(value) = table
         .get(key.as_str())
         .map_err(|e| metadata_error("read record", e))?
@@ -170,15 +169,15 @@ pub(crate) fn upsert(record: &LxAppRecord) -> Result<(), LxAppError> {
         .map_err(|e| metadata_error("begin write transaction", e))?;
     {
         let mut table = txn
-            .open_table(LXAPPS_TABLE)
-            .map_err(|e| metadata_error("open table", e))?;
+            .open_table(INSTALLED_TABLE)
+            .map_err(|e| metadata_error("open installed table", e))?;
         let serialized = serde_json::to_vec(record)?;
         table
             .insert(key.as_str(), serialized.as_slice())
-            .map_err(|e| metadata_error("write record", e))?;
+            .map_err(|e| metadata_error("write installed record", e))?;
     }
     txn.commit()
-        .map_err(|e| metadata_error("commit write transaction", e))?;
+        .map_err(|e| metadata_error("commit installed write", e))?;
     Ok(())
 }
 
@@ -191,15 +190,15 @@ pub(crate) fn remove_all(lxappid: &str) -> Result<(), LxAppError> {
 
     {
         let mut table = txn
-            .open_table(LXAPPS_TABLE)
-            .map_err(|e| metadata_error("open table", e))?;
+            .open_table(INSTALLED_TABLE)
+            .map_err(|e| metadata_error("open installed table", e))?;
         let mut keys_to_remove = Vec::new();
         let iter = table
             .iter()
-            .map_err(|e| metadata_error("iterate records", e))?;
+            .map_err(|e| metadata_error("iterate installed records", e))?;
 
         for entry in iter {
-            let (key, _) = entry.map_err(|e| metadata_error("read record", e))?;
+            let (key, _) = entry.map_err(|e| metadata_error("read installed record", e))?;
             let key_value = key.value();
             if key_value.starts_with(&prefix) {
                 keys_to_remove.push(key_value.to_string());
@@ -209,12 +208,12 @@ pub(crate) fn remove_all(lxappid: &str) -> Result<(), LxAppError> {
         for key in keys_to_remove {
             table
                 .remove(key.as_str())
-                .map_err(|e| metadata_error("delete record", e))?;
+                .map_err(|e| metadata_error("delete installed record", e))?;
         }
     }
 
     txn.commit()
-        .map_err(|e| metadata_error("commit delete transaction", e))?;
+        .map_err(|e| metadata_error("commit installed delete", e))?;
     Ok(())
 }
 
@@ -235,4 +234,72 @@ fn database() -> Result<Arc<Database>, LxAppError> {
 
 fn metadata_error(action: &str, err: impl fmt::Display) -> LxAppError {
     LxAppError::Runtime(format!("metadata database {} failed: {}", action, err))
+}
+
+// Update last open time for an installed app
+pub(crate) fn touch_last_open(
+    lxappid: &str,
+    release_type: ReleaseType,
+    ts: i64,
+) -> Result<(), LxAppError> {
+    if let Some(mut record) = get(lxappid, release_type)? {
+        record.last_open_at = ts;
+        upsert(&record)?;
+    }
+    Ok(())
+}
+
+// Downloaded updates API
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct PendingUpdateRecord {
+    pub lxappid: String,
+    pub release_type: ReleaseType,
+    pub version: SemanticVersion,
+    pub zip_path: String,
+}
+
+pub(crate) fn downloaded_get(
+    lxappid: &str,
+    release_type: ReleaseType,
+) -> Result<Option<PendingUpdateRecord>, LxAppError> {
+    let key = key_for(lxappid, release_type);
+    let db = database()?;
+    let txn = db
+        .begin_read()
+        .map_err(|e| metadata_error("begin read transaction", e))?;
+    let table = txn
+        .open_table(DOWNLOADED_TABLE)
+        .map_err(|e| metadata_error("open downloaded table", e))?;
+    if let Some(value) = table
+        .get(key.as_str())
+        .map_err(|e| metadata_error("read downloaded record", e))?
+    {
+        let record: PendingUpdateRecord = serde_json::from_slice(value.value())?;
+        Ok(Some(record))
+    } else {
+        Ok(None)
+    }
+}
+
+pub(crate) fn downloaded_remove(
+    lxappid: &str,
+    release_type: ReleaseType,
+) -> Result<(), LxAppError> {
+    let key = key_for(lxappid, release_type);
+    let db = database()?;
+    let txn = db
+        .begin_write()
+        .map_err(|e| metadata_error("begin write transaction", e))?;
+    {
+        let mut table = txn
+            .open_table(DOWNLOADED_TABLE)
+            .map_err(|e| metadata_error("open downloaded table", e))?;
+        table
+            .remove(key.as_str())
+            .map_err(|e| metadata_error("delete downloaded record", e))?;
+    }
+    txn.commit()
+        .map_err(|e| metadata_error("commit downloaded delete", e))?;
+    Ok(())
 }

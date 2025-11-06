@@ -170,7 +170,8 @@ pub(crate) async fn lxapp_service_handler(
             // Set network access guard to prevent unauthorized domain access
             http::set_network_access_guard(Box::new(LxAppCtx::new(lxapp.clone())));
 
-            let localstorage = lxapp.storage_dir.join(format!("{}.redb", lxapp.appid));
+            // Use resolved per-app storage file path
+            let localstorage = lxapp.storage_file_path.clone();
             if let Err(e) = storage::set_storage_path(localstorage) {
                 info!("[Worker {}] failed to open localstorage: {}", worker_id, e)
                     .with_appid(lxapp.appid.clone());

@@ -66,6 +66,13 @@ impl LxAppDelegate for LxApp {
                 error!("Failed to trigger onLaunch service: {}", e).with_appid(self.appid.clone());
             }
             self.state.lock().unwrap().opened = true;
+
+            // Update last_open_at in metadata for this installed app
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or_default();
+            let _ = lxapp::metadata::touch_last_open(&self.appid, self.release_type, now);
         }
 
         // Create or get the page first for launch page
