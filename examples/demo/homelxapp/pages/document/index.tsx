@@ -40,7 +40,7 @@ export default function DocumentPage() {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      <div className="px-3 py-2 pb-12 space-y-3">
+      <div className="px-3 pt-6 pb-12 space-y-3">
 
         {/* Options Section */}
         <div className="bg-white rounded-lg shadow-sm">
@@ -52,7 +52,7 @@ export default function DocumentPage() {
               <input
                 type="checkbox"
                 checked={showMenu}
-                onChange={toggleShowMenu}
+                onChange={() => toggleShowMenu()}
                 className="w-5 h-5 text-blue-500 border-gray-300 rounded focus:ring-2 focus:ring-blue-500 mt-0.5"
               />
               <div className="ml-3 flex-1">
@@ -80,7 +80,7 @@ export default function DocumentPage() {
               <input
                 type="text"
                 value={pdfUrl}
-                onChange={onPdfUrlInput}
+                onChange={(e) => onPdfUrlInput({ detail: { value: e.target.value } })}
                 placeholder="Enter PDF URL"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
@@ -115,7 +115,7 @@ export default function DocumentPage() {
               <input
                 type="text"
                 value={officeUrl}
-                onChange={onOfficeUrlInput}
+                onChange={(e) => onOfficeUrlInput({ detail: { value: e.target.value } })}
                 placeholder="Enter document URL"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
@@ -127,7 +127,7 @@ export default function DocumentPage() {
               <input
                 type="text"
                 value={officeFileType}
-                onChange={onOfficeFileTypeInput}
+                onChange={(e) => onOfficeFileTypeInput({ detail: { value: e.target.value } })}
                 placeholder="e.g., docx, xlsx, pptx"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
@@ -153,4 +153,3 @@ export default function DocumentPage() {
     </div>
   );
 }
-

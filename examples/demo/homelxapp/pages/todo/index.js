@@ -46,12 +46,20 @@ Page({
     }
   },
 
+  _ensureStorage: function () {
+    if (!this._storage) {
+      this._storage = lx.getStorage();
+    }
+    return this._storage;
+  },
+
   _loadFromStorage: async function () {
     try {
+      const storage = this._ensureStorage();
       const [storedTodos, storedFilter, storedLastUpdated] = await Promise.all([
-        Rong.storage.get(this.STORAGE_KEYS.TODOS),
-        Rong.storage.get(this.STORAGE_KEYS.FILTER),
-        Rong.storage.get(this.STORAGE_KEYS.LAST_UPDATED),
+        storage.get(this.STORAGE_KEYS.TODOS),
+        storage.get(this.STORAGE_KEYS.FILTER),
+        storage.get(this.STORAGE_KEYS.LAST_UPDATED),
       ]);
 
       if (storedTodos && Array.isArray(storedTodos) && storedTodos.length > 0) {
@@ -71,13 +79,14 @@ Page({
 
   _saveToStorage: async function (overrides = {}) {
     try {
+      const storage = this._ensureStorage();
       const todos = overrides.todos ?? this.data.todos;
       const filter = overrides.filter ?? this.data.currentFilter;
       const lastUpdated = overrides.lastUpdated ?? this.data.lastUpdated;
       await Promise.all([
-        Rong.storage.set(this.STORAGE_KEYS.TODOS, todos),
-        Rong.storage.set(this.STORAGE_KEYS.FILTER, filter),
-        Rong.storage.set(this.STORAGE_KEYS.LAST_UPDATED, lastUpdated),
+        storage.set(this.STORAGE_KEYS.TODOS, todos),
+        storage.set(this.STORAGE_KEYS.FILTER, filter),
+        storage.set(this.STORAGE_KEYS.LAST_UPDATED, lastUpdated),
       ]);
       console.log("[Todo] saveToStorage: Successfully saved to storage");
     } catch (error) {
@@ -87,10 +96,11 @@ Page({
 
   _clearStorage: async function () {
     try {
+      const storage = this._ensureStorage();
       await Promise.all([
-        Rong.storage.delete(this.STORAGE_KEYS.TODOS),
-        Rong.storage.delete(this.STORAGE_KEYS.FILTER),
-        Rong.storage.delete(this.STORAGE_KEYS.LAST_UPDATED),
+        storage.delete(this.STORAGE_KEYS.TODOS),
+        storage.delete(this.STORAGE_KEYS.FILTER),
+        storage.delete(this.STORAGE_KEYS.LAST_UPDATED),
       ]);
       console.log("[Todo] clearStorage: Successfully cleared storage");
     } catch (error) {
@@ -219,7 +229,8 @@ Page({
   // Debug method (can be removed in production)
   _getStorageInfo: async function () {
     try {
-      const info = await Rong.storage.info();
+      const storage = this._ensureStorage();
+      const info = await storage.info();
       console.log("[Todo] Storage info:", info);
       return info;
     } catch (error) {
