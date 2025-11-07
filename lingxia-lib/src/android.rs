@@ -65,9 +65,7 @@ pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> j
             }
         }
 
-        if let Ok(media_class) =
-            env.find_class(CachedClass::PreviewMediaPayload.class_path())
-        {
+        if let Ok(media_class) = env.find_class(CachedClass::PreviewMediaPayload.class_path()) {
             if let Ok(global_media_class) = env.new_global_ref(media_class) {
                 lingxia_platform::init_cached_class(
                     CachedClass::PreviewMediaPayload,
@@ -76,9 +74,7 @@ pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> j
             }
         }
 
-        if let Ok(lxapp_media_class) =
-            env.find_class(CachedClass::LxAppMedia.class_path())
-        {
+        if let Ok(lxapp_media_class) = env.find_class(CachedClass::LxAppMedia.class_path()) {
             if let Ok(global_lxapp_media_class) = env.new_global_ref(lxapp_media_class) {
                 lingxia_platform::init_cached_class(
                     CachedClass::LxAppMedia,
@@ -89,16 +85,11 @@ pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> j
 
         if let Ok(device_class) = env.find_class(CachedClass::LxAppDevice.class_path()) {
             if let Ok(global_device_class) = env.new_global_ref(device_class) {
-                lingxia_platform::init_cached_class(
-                    CachedClass::LxAppDevice,
-                    global_device_class,
-                );
+                lingxia_platform::init_cached_class(CachedClass::LxAppDevice, global_device_class);
             }
         }
 
-        if let Ok(location_class) =
-            env.find_class(CachedClass::LxAppLocation.class_path())
-        {
+        if let Ok(location_class) = env.find_class(CachedClass::LxAppLocation.class_path()) {
             if let Ok(global_location_class) = env.new_global_ref(location_class) {
                 lingxia_platform::init_cached_class(
                     CachedClass::LxAppLocation,
@@ -109,34 +100,23 @@ pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> j
 
         if let Ok(popup_class) = env.find_class(CachedClass::LxAppPopup.class_path()) {
             if let Ok(global_popup_class) = env.new_global_ref(popup_class) {
-                lingxia_platform::init_cached_class(
-                    CachedClass::LxAppPopup,
-                    global_popup_class,
-                );
+                lingxia_platform::init_cached_class(CachedClass::LxAppPopup, global_popup_class);
             }
         }
 
         if let Ok(toast_class) = env.find_class(CachedClass::LxAppToast.class_path()) {
             if let Ok(global_toast_class) = env.new_global_ref(toast_class) {
-                lingxia_platform::init_cached_class(
-                    CachedClass::LxAppToast,
-                    global_toast_class,
-                );
+                lingxia_platform::init_cached_class(CachedClass::LxAppToast, global_toast_class);
             }
         }
 
         if let Ok(modal_class) = env.find_class(CachedClass::LxAppModal.class_path()) {
             if let Ok(global_modal_class) = env.new_global_ref(modal_class) {
-                lingxia_platform::init_cached_class(
-                    CachedClass::LxAppModal,
-                    global_modal_class,
-                );
+                lingxia_platform::init_cached_class(CachedClass::LxAppModal, global_modal_class);
             }
         }
 
-        if let Ok(action_sheet_class) =
-            env.find_class(CachedClass::LxAppActionSheet.class_path())
-        {
+        if let Ok(action_sheet_class) = env.find_class(CachedClass::LxAppActionSheet.class_path()) {
             if let Ok(global_action_sheet_class) = env.new_global_ref(action_sheet_class) {
                 lingxia_platform::init_cached_class(
                     CachedClass::LxAppActionSheet,
@@ -147,9 +127,15 @@ pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> j
 
         if let Ok(picker_class) = env.find_class(CachedClass::LxAppPicker.class_path()) {
             if let Ok(global_picker_class) = env.new_global_ref(picker_class) {
+                lingxia_platform::init_cached_class(CachedClass::LxAppPicker, global_picker_class);
+            }
+        }
+
+        if let Ok(document_class) = env.find_class(CachedClass::LxAppDocument.class_path()) {
+            if let Ok(global_document_class) = env.new_global_ref(document_class) {
                 lingxia_platform::init_cached_class(
-                    CachedClass::LxAppPicker,
-                    global_picker_class,
+                    CachedClass::LxAppDocument,
+                    global_document_class,
                 );
             }
         }
