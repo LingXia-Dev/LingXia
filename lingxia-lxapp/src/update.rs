@@ -2,7 +2,7 @@ use crate::error::LxAppError;
 use crate::lxapp::metadata::{LxAppRecord, SemanticVersion};
 use crate::lxapp::{
     self, LINGXIA_DIR, LXAPPS_DIR, ReleaseType, STORAGE_DIR, USER_CACHE_DIR, USER_DATA_DIR,
-    lxapp_fingermark, metadata, version, version::Version,
+    lxapp_fingermark, metadata, version::Version,
 };
 use lingxia_platform::{AppRuntime, Platform};
 use ring::digest::{Context, SHA256};
@@ -13,6 +13,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use zip::read::ZipArchive;
+
+mod cloud;
 
 /// Information about a downloadable update package from the cloud.
 #[derive(Clone, Debug)]
@@ -303,43 +305,7 @@ impl UpdateManager {
         Ok(())
     }
 
-    /// Download an archive to the internal downloads directory and return its path.
-    /// If `checksum_sha256` is provided, verify the file before returning.
-    pub fn download_archive_with_checksum(
-        &self,
-        url: &str,
-        checksum_sha256: &str,
-    ) -> Result<PathBuf, LxAppError> {
-        let dest = self.dest_path_for_url(url);
-        if dest.exists() {
-            let _ = fs::remove_file(&dest);
-        }
-        let receiver =
-            service_executor::request_download(url.to_string(), dest.clone(), None, None)
-                .map_err(|e| LxAppError::IoError(format!("failed to start download: {}", e)))?;
-
-        match receiver
-            .blocking_recv()
-            .map_err(|_| LxAppError::IoError("download task cancelled".to_string()))?
-        {
-            Ok(()) => {
-                if !checksum_sha256.is_empty() {
-                    if let Err(e) = maybe_verify_sha256(&dest, checksum_sha256) {
-                        let _ = fs::remove_file(&dest);
-                        return Err(e);
-                    }
-                }
-                Ok(dest)
-            }
-            Err(err) => {
-                let _ = fs::remove_file(&dest);
-                Err(LxAppError::IoError(format!("download failed: {}", err)))
-            }
-        }
-    }
-
-    /// Async variant with checksum verification.
-    pub async fn download_archive_with_checksum_async(
+    pub async fn download_archive_with_checksum(
         &self,
         url: &str,
         checksum_sha256: &str,
@@ -414,37 +380,6 @@ impl UpdateManager {
         );
 
         metadata::upsert(&record)
-    }
-
-    /// Check with the cloud whether a newer package is available.
-    ///
-    /// - `current_version`: None means client requests the latest package regardless of current state (first install).
-    /// - Returns `UpdateCheckResult` with a package URL and checksum when an update is available.
-    pub fn check_update(
-        &self,
-        _lxappid: &str,
-        _release_type: ReleaseType,
-        current_version: Option<&str>,
-    ) -> Result<UpdateCheckResult, LxAppError> {
-        let remote_version = "to do get".to_string();
-        let newer_available = version::need_update(current_version, &remote_version);
-
-        if !newer_available {
-            return Ok(UpdateCheckResult {
-                has_update: false,
-                package: None,
-            });
-        }
-        let url = "to get".to_string();
-
-        Ok(UpdateCheckResult {
-            has_update: true,
-            package: Some(UpdatePackageInfo {
-                version: remote_version,
-                url,
-                checksum_sha256: String::new(),
-            }),
-        })
     }
 }
 
