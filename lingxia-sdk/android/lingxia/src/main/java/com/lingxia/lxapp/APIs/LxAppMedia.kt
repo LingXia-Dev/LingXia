@@ -44,10 +44,10 @@ internal object LxAppMedia {
     }
 
     /**
-     * Copy a content URI to destination path using the application ContentResolver
+     * Copy an album/content URI into a concrete file path via the ContentResolver.
      */
     @JvmStatic
-    fun copyUriToPath(uri: String, destPath: String): Boolean {
+    fun copyAlbumMediaToFile(uri: String, destPath: String): Boolean {
         return try {
             val ctx = LxApp.getApplicationContext()
             val cr = ctx.contentResolver
@@ -58,7 +58,7 @@ internal object LxAppMedia {
             } ?: return false
             true
         } catch (e: Exception) {
-            Log.e(TAG, "copyUriToPath failed: ${e.message}")
+            Log.e(TAG, "copyAlbumMediaToFile failed: ${e.message}")
             false
         }
     }

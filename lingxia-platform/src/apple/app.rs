@@ -35,8 +35,8 @@ impl AppRuntime for Platform {
         PathBuf::from(&self.cache_dir)
     }
 
-    /// Copy media URI to a local file path
-    fn copy_media_uri_to_path(
+    /// Copy album media to a local file path
+    fn copy_album_media_to_file(
         &self,
         uri: &str,
         dest_path: &std::path::Path,
@@ -58,7 +58,7 @@ impl AppRuntime for Platform {
                 })?
                 .to_string();
 
-            if super::ffi::copy_media_uri_to_path(uri, &dest_str, kind_code) {
+            if super::ffi::copy_album_media_to_file(uri, &dest_str, kind_code) {
                 Ok(())
             } else {
                 Err(PlatformError::Platform(format!(
@@ -74,7 +74,7 @@ impl AppRuntime for Platform {
             let _ = dest_path;
             let _ = kind;
             Err(PlatformError::Platform(
-                "copy_media_uri_to_path is only supported on iOS".to_string(),
+                "copy_album_media_to_file is only supported on iOS".to_string(),
             ))
         }
     }

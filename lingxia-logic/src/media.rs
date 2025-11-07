@@ -434,7 +434,7 @@ async fn choose_media(
                     };
                     match lxapp
                         .runtime
-                        .copy_media_uri_to_path(&uri, &path, media_kind)
+                        .copy_album_media_to_file(&uri, &path, media_kind)
                     {
                         Ok(()) => path.to_string_lossy().to_string(),
                         Err(err) => {

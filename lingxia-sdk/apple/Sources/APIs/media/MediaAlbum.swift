@@ -5,11 +5,11 @@ import AVFoundation
 import CLingXiaRustAPI
 
 extension LxAppMedia {
-    // Copy media to destination with normalized output format.
+    // Copy album media to destination with normalized output format.
     // Image → JPEG (.jpg/.jpeg), Video → MP4 (.mp4)
     // Supported URIs: phasset:<localIdentifier> only (album assets)
     // Images are compressed to 80% quality by default
-    nonisolated static func copyMediaUriToPath(
+    nonisolated static func copyAlbumMediaToFile(
         uri: RustStr,
         destination_path: RustStr,
         media_type: Int32

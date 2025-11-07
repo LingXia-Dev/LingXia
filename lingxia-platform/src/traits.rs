@@ -381,11 +381,18 @@ pub trait AppRuntime: Send + Sync + 'static {
     /// * `PathBuf` - Path to the application's cache directory
     fn app_cache_dir(&self) -> PathBuf;
 
-    /// Copy a platform media resource identified by `uri` into the supplied destination path.
+    /// Copy an album asset referenced by `uri` into a normalized output file.
     ///
-    /// The destination path must be a writable location.
-    /// `kind` hints the platform whether the asset is an image or a video.
-    fn copy_media_uri_to_path(
+    /// Contract:
+    /// - `uri` points to a user-album resource (e.g. `phasset:<id>` on iOS).
+    /// - `dest_path` is a writable local *file* path (never a directory).
+    /// - Images must be written as JPEG (.jpg/.jpeg); videos must be written as MP4 (.mp4).
+    /// - The platform performs any transcoding needed to satisfy the contract and must return
+    ///   an error instead of producing mismatched extensions/content.
+    ///
+    /// Each platform implements this so callers can always expect a normalized asset copy
+    /// regardless of how the underlying album URI is expressed.
+    fn copy_album_media_to_file(
         &self,
         uri: &str,
         dest_path: &Path,

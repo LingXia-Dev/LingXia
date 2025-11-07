@@ -296,7 +296,7 @@ impl Platform {
         }
     }
 
-    pub(crate) fn copy_media_uri_to_path_impl(
+    pub(crate) fn copy_album_media_to_file_impl(
         &self,
         uri: &str,
         dest_path: &Path,
@@ -463,13 +463,13 @@ impl AppRuntime for Platform {
         PathBuf::from(&self.cache_dir)
     }
 
-    fn copy_media_uri_to_path(
+    fn copy_album_media_to_file(
         &self,
         uri: &str,
         dest_path: &Path,
         kind: crate::traits::MediaKind,
     ) -> Result<(), PlatformError> {
-        self.copy_media_uri_to_path_impl(uri, dest_path, kind)
+        self.copy_album_media_to_file_impl(uri, dest_path, kind)
     }
 
     fn exit_app(&self) -> Result<(), PlatformError> {

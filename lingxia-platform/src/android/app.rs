@@ -287,13 +287,13 @@ impl AppRuntime for Platform {
         PathBuf::from(&self.cache_dir)
     }
 
-    fn copy_media_uri_to_path(
+    fn copy_album_media_to_file(
         &self,
         uri: &str,
         dest_path: &Path,
         _kind: crate::traits::MediaKind,
     ) -> Result<(), PlatformError> {
-        // Call APIs.LxAppMedia.copyUriToPath(String uri, String destPath): boolean (cached class)
+        // Call APIs.LxAppMedia.copyAlbumMediaToFile(String uri, String destPath): boolean (cached class)
         match || -> Result<(), Box<dyn std::error::Error>> {
             let mut env = get_env()?;
             let media_class_ref = super::get_cached_class(super::CachedClass::LxAppMedia)?;
@@ -302,19 +302,19 @@ impl AppRuntime for Platform {
             let j_dest = env.new_string(dest_path.to_string_lossy().as_ref())?;
             let res = env.call_static_method(
                 media_class,
-                "copyUriToPath",
+                "copyAlbumMediaToFile",
                 "(Ljava/lang/String;Ljava/lang/String;)Z",
                 &[(&j_uri).into(), (&j_dest).into()],
             )?;
             if res.z()? {
                 Ok(())
             } else {
-                Err("copyUriToPath returned false".into())
+                Err("copyAlbumMediaToFile returned false".into())
             }
         }() {
             Ok(_) => Ok(()),
             Err(e) => Err(PlatformError::Platform(format!(
-                "Android copy_media_uri_to_path failed: {}",
+                "Android copy_album_media_to_file failed: {}",
                 e
             ))),
         }
