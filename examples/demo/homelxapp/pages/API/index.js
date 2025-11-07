@@ -82,10 +82,14 @@ Page({
     });
   },
 
-  navigateToTestMiniApp: function () {
-    lx.navigateToLxApp({
-      appId: "testminiapp",
-      path: "pages/home/index.html?a=100&X=bcd",
-    });
+  navigateToTestMiniApp: async function () {
+    try {
+      await lx.navigateToLxApp({
+        appId: "testminiapp",
+        path: "pages/home/index.html?a=100&X=bcd",
+      });
+    } catch (err) {
+      console.error("navigateToLxApp failed", err);
+    }
   },
 });
