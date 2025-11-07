@@ -17,6 +17,17 @@ struct JSOpenDocumentOptions {
     show_menu: Option<bool>,
 }
 
+#[derive(FromJSObj)]
+struct JSOpenURLOptions {
+    #[rename = "url"]
+    url: String,
+    /// Opens URL in external browser (default) or internal webview
+    /// - "external": Open in system browser (current behavior)
+    /// - "internal": Open in internal webview (future support)
+    #[rename = "openIn"]
+    open_in: Option<String>,
+}
+
 /// Maps file type string to appropriate MIME type
 fn map_file_type_to_mime(file_type: Option<String>) -> Option<String> {
     match file_type
@@ -69,16 +80,18 @@ fn open_document(ctx: JSContext, options: JSOpenDocumentOptions) -> JSResult<()>
         .map_err(|e| RongJSError::Error(format!("openDocument failed: {}", e)))
 }
 
-fn open_url(ctx: JSContext, url: String) -> JSResult<()> {
+fn open_url(ctx: JSContext, options: JSOpenURLOptions) -> JSResult<()> {
     let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
     let runtime = &lxapp.runtime;
 
-    if url.is_empty() {
+    if options.url.is_empty() {
         return Err(RongJSError::Error("openURL requires url".into()));
     }
 
+    // TODO: Add support for openIn option in the future
+    // For now, always open in external browser (ignore openIn option)
     runtime
-        .launch_with_url(url)
+        .launch_with_url(options.url)
         .map_err(|e| RongJSError::Error(format!("openURL failed: {}", e)))
 }
 
