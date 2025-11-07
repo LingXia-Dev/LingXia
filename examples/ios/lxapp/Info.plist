@@ -27,5 +27,11 @@
     <string>Allow LingXia to save images and videos to your photo library.</string>
     <key>NSPhotoLibraryUsageDescription</key>
     <string>Allow LingXia to access your photo library for media features.</string>
+
+    <!-- Camera and microphone permission descriptions -->
+    <key>NSCameraUsageDescription</key>
+    <string>Allow LingXia to capture photos and videos through the camera.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Allow LingXia to record audio when capturing videos.</string>
 </dict>
 </plist>

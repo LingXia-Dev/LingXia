@@ -47,6 +47,9 @@ else
     exit 1
 fi
 
+echo "Converting shared SVG icons to PDF for iOS bundle..."
+"$LINGXIA_ROOT/lingxia-sdk/scripts/convert_svg_icons.sh"
+
 echo "Building and deploying iOS app..."
 cd "$SCRIPT_DIR/lxapp"
 env LINGXIA_PROJECT_ROOT=$LINGXIA_ROOT xtool dev

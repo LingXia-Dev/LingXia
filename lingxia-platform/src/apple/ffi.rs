@@ -133,13 +133,40 @@ mod bridge {
 
         #[swift_bridge(swift_name = "LxApp.openDocument")]
         fn open_document(file_path: &str, mime_type: &str, show_menu: bool) -> bool;
+
+        #[swift_bridge(swift_name = "LxAppMedia.chooseMedia")]
+        fn choose_media(
+            max_count: u32,
+            mode: &str,
+            source_types_json: &str,
+            camera_facing: &str,
+            max_duration: &str,
+            callback_id: u64,
+        ) -> bool;
+
+        #[swift_bridge(swift_name = "LxAppMedia.copyAssetResource")]
+        fn copy_asset_resource(
+            local_identifier: &str,
+            destination_path: &str,
+            media_type: i32,
+        ) -> bool;
+
+        #[swift_bridge(swift_name = "LxAppMedia.transcodeTempImageToJpeg")]
+        fn transcode_temp_image_to_jpeg(src_path: &str, dest_path: &str) -> bool;
+
+        #[swift_bridge(swift_name = "LxAppMedia.transcodeTempVideoToMp4")]
+        fn transcode_temp_video_to_mp4(src_path: &str, dest_path: &str) -> bool;
+
+        #[swift_bridge(swift_name = "LxAppMedia.scanCode")]
+        fn scan_code(scan_types_json: &str, only_from_camera: bool, callback_id: u64) -> bool;
     }
 }
 
 // Re-export the bridge functions for use in other modules
 pub use bridge::{
     ActionSheetOptions, ModalOptions, PickerOptions, PopupPositionBridge, ToastIcon, ToastOptions,
-    ToastPosition, close_lxapp, hide_popup, hide_toast, launch_with_url, navigate, open_document,
-    open_lxapp, preview_media, show_action_sheet, show_modal, show_picker, show_popup, show_toast,
-    update_navbar_ui, update_tabbar_ui,
+    ToastPosition, choose_media, close_lxapp, copy_asset_resource, hide_popup, hide_toast,
+    launch_with_url, navigate, open_document, open_lxapp, preview_media, scan_code,
+    show_action_sheet, show_modal, show_picker, show_popup, show_toast, transcode_temp_image_to_jpeg,
+    transcode_temp_video_to_mp4, update_navbar_ui, update_tabbar_ui,
 };
