@@ -5,7 +5,7 @@ use crate::lxapp::LxApp;
 use crate::{error, info};
 
 use rong::{JSContext, JSObject, JSResult, JSRuntime, RongJSError, Source};
-use rong_modules::{console, fs, http, storage};
+use rong_modules::{console, fs, http};
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -169,13 +169,6 @@ pub(crate) async fn lxapp_service_handler(
 
             // Set network access guard to prevent unauthorized domain access
             http::set_network_access_guard(Box::new(LxAppCtx::new(lxapp.clone())));
-
-            // Use resolved per-app storage file path
-            let localstorage = lxapp.storage_file_path.clone();
-            if let Err(e) = storage::set_storage_path(localstorage) {
-                info!("[Worker {}] failed to open localstorage: {}", worker_id, e)
-                    .with_appid(lxapp.appid.clone());
-            }
 
             let _ = rong_modules::init(&ctx);
             let _ = lx::init(&ctx);
