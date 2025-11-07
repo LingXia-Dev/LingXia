@@ -21,12 +21,44 @@ extension LxAppMedia {
 
     /// Compress an image with optional quality, width, and height parameters
     /// - Parameters:
+    ///   - sourceUrl: URL string to the source image file
+    ///   - quality: JPEG compression quality (0-100), default 80
+    ///   - compressedWidth: Optional target width (0 means not specified)
+    ///   - compressedHeight: Optional target height (0 means not specified)
+    /// - Returns: Path string to the compressed image file, or empty string if compression fails
+    @objc public static func compressImage(
+        sourceUrl: String,
+        quality: Int,
+        compressedWidth: Int,
+        compressedHeight: Int
+    ) -> String {
+        guard let url = URL(string: sourceUrl) else {
+            os_log(.error, log: log, "Invalid source URL: %@", sourceUrl)
+            return ""
+        }
+
+        let width = compressedWidth > 0 ? compressedWidth : nil
+        let height = compressedHeight > 0 ? compressedHeight : nil
+
+        if let resultURL = compressImageInternal(
+            sourceURL: url,
+            quality: quality,
+            compressedWidth: width,
+            compressedHeight: height
+        ) {
+            return resultURL.path
+        }
+        return ""
+    }
+
+    /// Internal compress an image with optional quality, width, and height parameters
+    /// - Parameters:
     ///   - sourceURL: URL to the source image file
     ///   - quality: JPEG compression quality (0-100), default 80
     ///   - compressedWidth: Optional target width
     ///   - compressedHeight: Optional target height
     /// - Returns: URL to the compressed image file, or nil if compression fails
-    static func compressImage(
+    private static func compressImageInternal(
         sourceURL: URL,
         quality: Int = 80,
         compressedWidth: Int? = nil,

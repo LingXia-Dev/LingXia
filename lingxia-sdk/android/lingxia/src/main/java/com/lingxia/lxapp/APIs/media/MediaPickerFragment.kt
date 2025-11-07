@@ -45,6 +45,7 @@ import android.graphics.drawable.GradientDrawable
 class MediaPickerFragment : Fragment() {
     companion object {
         private const val TAG = "LingXia.MediaPickerFrag"
+        private const val STATE_IS_ORIGINAL = "state_is_original"
         private const val ARG_MAX_COUNT = "arg_max_count"
         private const val ARG_CALLBACK_ID = "arg_callback_id"
         private const val ARG_MODE = "arg_mode" // images | videos | mix
@@ -87,7 +88,7 @@ class MediaPickerFragment : Fragment() {
             maxCount: Int = 1,
             mode: String = "images",
             allowCamera: Boolean = false,
-            onPicked: (List<Uri>) -> Unit
+            onPicked: (List<Uri>, Boolean) -> Unit
         ) {
             val frag = MediaPickerFragment().apply {
                 arguments = Bundle().apply {
@@ -130,6 +131,8 @@ class MediaPickerFragment : Fragment() {
     private val lightTechBlueColor: Int = Color.parseColor("#AFCBFF")
     private val disabledBlueColor: Int = Color.parseColor("#80A6D9")
     private val selected = linkedMapOf<Uri, Boolean>()
+    private var isOriginal: Boolean = false
+    private var originalOptionView: RadioOptionView? = null
     private var allItems: List<GridItem> = emptyList()
     private val itemsIndex = HashMap<Uri, GridItem>()
     private var albums: List<AlbumItem> = emptyList()
@@ -138,7 +141,7 @@ class MediaPickerFragment : Fragment() {
     private var albumListView: RecyclerView? = null
     private var albumSelectorView: LinearLayout? = null
     private var pendingOnLoaded: ((List<GridItem>) -> Unit)? = null
-    private var resultListener: ((List<Uri>) -> Unit)? = null
+    private var resultListener: ((List<Uri>, Boolean) -> Unit)? = null
 
     // System Photo Picker launchers (Android 13+)
     private var pickSingleLauncher: ActivityResultLauncher<PickVisualMediaRequest>? = null
@@ -165,6 +168,9 @@ class MediaPickerFragment : Fragment() {
 
         // Ensure maxSelectable is available for launcher registration
         maxSelectable = (arguments?.getInt(ARG_MAX_COUNT) ?: 1).coerceAtLeast(1)
+        if (savedInstanceState != null) {
+            isOriginal = savedInstanceState.getBoolean(STATE_IS_ORIGINAL, false)
+        }
 
         // Register native Photo Picker launchers (Android 13+)
         if (Build.VERSION.SDK_INT >= 33) {
@@ -189,6 +195,11 @@ class MediaPickerFragment : Fragment() {
                 pickMultipleLauncher = null
             }
         }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(STATE_IS_ORIGINAL, isOriginal)
     }
 
     override fun onStart() {
@@ -323,9 +334,43 @@ class MediaPickerFragment : Fragment() {
             setTextColor(disabledBlueColor)
             textSize = 15f
             typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
         selectionSummaryView = summaryView
+
+        // Spacer to push "原图" to center
+        val spacer = View(context).apply {
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+
+        // Original image option (hidden for video mode, centered)
+        val originalOption = RadioOptionView(context, "原图", techBlueColor).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            setOnClickListener {
+                isOriginal = !isOriginal
+                setChecked(isOriginal)
+            }
+        }
+        originalOptionView = originalOption
+
+        // Hide "原图" option for video mode
+        val isVideoMode = selectedMode.lowercase() == "video" || selectedMode.lowercase() == "videos"
+        if (isVideoMode) {
+            isOriginal = false
+            originalOption.visibility = View.GONE
+            originalOption.setChecked(false)
+        } else {
+            originalOption.visibility = View.VISIBLE
+            originalOption.setChecked(isOriginal)
+        }
+
+        // Another spacer to balance the layout
+        val spacer2 = View(context).apply {
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
 
         val sendBackground = GradientDrawable().apply {
             cornerRadius = dp(context, 18).toFloat()
@@ -345,6 +390,9 @@ class MediaPickerFragment : Fragment() {
         }
 
         bottom.addView(summaryView)
+        bottom.addView(spacer)
+        bottom.addView(originalOption)
+        bottom.addView(spacer2)
         bottom.addView(send)
         root.addView(bottom)
 
@@ -490,7 +538,7 @@ class MediaPickerFragment : Fragment() {
     private fun deliverPickedUris(uris: List<Uri>) {
         val listener = resultListener
         if (listener != null) {
-            listener.invoke(uris)
+            listener.invoke(uris, isOriginal)
             activity?.runOnUiThread { removeSelf() }
             return
         }
@@ -503,6 +551,7 @@ class MediaPickerFragment : Fragment() {
                     val obj = org.json.JSONObject().apply {
                         put("uri", uri.toString())
                         put("fileType", typeStr)
+                        put("isOriginal", isOriginal)
                     }
                     arr.put(obj)
                 }
@@ -681,7 +730,7 @@ class MediaPickerFragment : Fragment() {
         val keys = selected.keys.toList()
         // Prefer in-memory listener when present (embedded flows like ScanCode)
         resultListener?.let { listener ->
-            listener.invoke(keys)
+            listener.invoke(keys, isOriginal)
             activity?.runOnUiThread { removeSelf() }
             return
         }
@@ -694,6 +743,7 @@ class MediaPickerFragment : Fragment() {
                     val obj = org.json.JSONObject().apply {
                         put("uri", uri.toString())
                         put("fileType", typeStr)
+                        put("isOriginal", isOriginal)
                     }
                     arr.put(obj)
                 }
@@ -1172,5 +1222,69 @@ private class CloseXView(context: Context) : View(context) {
         }
         canvas.drawLine(pad, pad, w - pad, h - pad, linePaint)
         canvas.drawLine(w - pad, pad, pad, h - pad, linePaint)
+    }
+}
+
+// Radio button option view (similar to iOS RadioOptionView)
+private class RadioOptionView(context: Context, title: String, private val accentColor: Int) : LinearLayout(context) {
+    private val radioButton: View
+    private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = dp(context, 2).toFloat()
+        color = Color.LTGRAY
+    }
+    private val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = accentColor
+    }
+    private var isChecked = false
+
+    init {
+        orientation = HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+
+        // Radio circle
+        radioButton = object : View(context) {
+            override fun onDraw(canvas: Canvas) {
+                super.onDraw(canvas)
+                val cx = width / 2f
+                val cy = height / 2f
+                val radius = (minOf(width, height) / 2f) - dp(context, 2)
+
+                // Draw ring
+                canvas.drawCircle(cx, cy, radius, ringPaint)
+
+                // Draw dot when checked
+                if (isChecked) {
+                    canvas.drawCircle(cx, cy, radius * 0.6f, dotPaint)
+                }
+            }
+        }.apply {
+            val size = dp(context, 20)
+            layoutParams = LayoutParams(size, size)
+        }
+        addView(radioButton)
+
+        // Label
+        val label = TextView(context).apply {
+            text = title
+            setTextColor(Color.DKGRAY)
+            textSize = 14f
+            layoutParams = LayoutParams(
+                LayoutParams.WRAP_CONTENT,
+                LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(dp(context, 6), 0, 0, 0)
+            }
+        }
+        addView(label)
+
+        isClickable = true
+        isFocusable = true
+    }
+
+    fun setChecked(checked: Boolean) {
+        isChecked = checked
+        radioButton.invalidate()
     }
 }

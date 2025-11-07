@@ -360,7 +360,7 @@ class ScanCodeFragment : Fragment() {
             maxCount = 1,
             mode = "images",
             allowCamera = false
-        ) { uris ->
+        ) { uris, _ ->
             val first = uris.firstOrNull() ?: return@pick
             try {
                 val ctx = requireContext()

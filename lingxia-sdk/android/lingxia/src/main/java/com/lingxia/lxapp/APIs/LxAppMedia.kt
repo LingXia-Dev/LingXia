@@ -1,7 +1,11 @@
 package com.lingxia.lxapp.APIs
 
+import android.content.ContentResolver
 import android.content.ContentValues
-import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import android.media.ExifInterface
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
@@ -18,6 +22,7 @@ import org.json.JSONObject
 import java.io.File
 import java.io.IOException
 import java.io.OutputStream
+import kotlin.math.max
 
 internal object LxAppMedia {
     private const val TAG = "LingXia.LxAppMedia"
@@ -45,22 +50,159 @@ internal object LxAppMedia {
 
     /**
      * Copy an album/content URI into a concrete file path via the ContentResolver.
+     * For JPEG/JPG destinations, transcodes to 80% quality while guarding against OOM.
+     * For videos and other files, streams bytes as-is.
      */
     @JvmStatic
     fun copyAlbumMediaToFile(uri: String, destPath: String): Boolean {
         return try {
             val ctx = LxApp.getApplicationContext()
-            val cr = ctx.contentResolver
-            val outFile = java.io.File(destPath)
+            val contentResolver = ctx.contentResolver
+            val outFile = File(destPath)
             outFile.parentFile?.let { if (!it.exists()) it.mkdirs() }
-            cr.openInputStream(android.net.Uri.parse(uri))?.use { input ->
-                outFile.outputStream().use { output -> input.copyTo(output) }
-            } ?: return false
-            true
+
+            // Check if destination is JPEG (image compression required)
+            val ext = outFile.extension.lowercase()
+            val isJpeg = ext == "jpg" || ext == "jpeg"
+
+            if (isJpeg) {
+                val parsed = android.net.Uri.parse(uri)
+                val bitmap = decodeBitmapForCopy(contentResolver, parsed)
+                if (bitmap == null) {
+                    Log.w(TAG, "decodeBitmapForCopy failed, falling back to byte copy for $uri")
+                    return streamCopy(contentResolver, parsed, outFile)
+                }
+                val orientedBitmap = correctOrientation(bitmap, uri)
+                try {
+                    outFile.outputStream().use { outputStream ->
+                        orientedBitmap.compress(Bitmap.CompressFormat.JPEG, 80, outputStream)
+                    }
+                } finally {
+                    if (orientedBitmap !== bitmap) {
+                        orientedBitmap.recycle()
+                    }
+                    bitmap.recycle()
+                }
+                true
+            } else {
+                streamCopy(contentResolver, android.net.Uri.parse(uri), outFile)
+            }
+        } catch (oom: OutOfMemoryError) {
+            Log.e(TAG, "copyAlbumMediaToFile OOM for $uri, falling back to stream", oom)
+            val ctx = LxApp.getApplicationContext()
+            return streamCopy(ctx.contentResolver, android.net.Uri.parse(uri), File(destPath))
         } catch (e: Exception) {
-            Log.e(TAG, "copyAlbumMediaToFile failed: ${e.message}")
+            Log.e(TAG, "copyAlbumMediaToFile failed: ${e.message}", e)
             false
         }
+    }
+
+    private fun decodeBitmapForCopy(resolver: ContentResolver, uri: android.net.Uri): Bitmap? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+        val width = bounds.outWidth
+        val height = bounds.outHeight
+        if (width <= 0 || height <= 0) {
+            return null
+        }
+        val options = BitmapFactory.Options().apply {
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+            inSampleSize = calculateSampleSize(max(width, height), 4096)
+        }
+        return try {
+            resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
+        } catch (oom: OutOfMemoryError) {
+            Log.e(TAG, "decodeBitmapForCopy OOM for $uri", oom)
+            null
+        }
+    }
+
+    private fun calculateSampleSize(maxDimension: Int, targetMax: Int): Int {
+        if (maxDimension <= 0) return 1
+        var sample = 1
+        var current = maxDimension
+        while (current > targetMax) {
+            sample *= 2
+            current /= 2
+        }
+        return sample.coerceAtLeast(1)
+    }
+
+    private fun streamCopy(resolver: ContentResolver, uri: android.net.Uri, dest: File): Boolean {
+        return try {
+            resolver.openInputStream(uri)?.use { input ->
+                dest.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+                true
+            } ?: false
+        } catch (e: Exception) {
+            Log.e(TAG, "streamCopy failed: ${e.message}", e)
+            false
+        }
+    }
+
+    /**
+     * Correct image orientation based on EXIF data
+     */
+    private fun correctOrientation(bitmap: Bitmap, sourceUri: String): Bitmap {
+        return try {
+            val ctx = LxApp.getApplicationContext()
+            val exif = if (sourceUri.startsWith("content://")) {
+                ctx.contentResolver.openInputStream(android.net.Uri.parse(sourceUri))?.use { inputStream ->
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                        ExifInterface(inputStream)
+                    } else {
+                        null
+                    }
+                }
+            } else {
+                val path = if (sourceUri.startsWith("file://")) {
+                    android.net.Uri.parse(sourceUri).path ?: sourceUri
+                } else {
+                    sourceUri
+                }
+                ExifInterface(path)
+            }
+
+            val orientation = exif?.getAttributeInt(
+                ExifInterface.TAG_ORIENTATION,
+                ExifInterface.ORIENTATION_NORMAL
+            ) ?: ExifInterface.ORIENTATION_NORMAL
+
+            when (orientation) {
+                ExifInterface.ORIENTATION_ROTATE_90 -> rotateBitmap(bitmap, 90f)
+                ExifInterface.ORIENTATION_ROTATE_180 -> rotateBitmap(bitmap, 180f)
+                ExifInterface.ORIENTATION_ROTATE_270 -> rotateBitmap(bitmap, 270f)
+                ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> flipBitmap(bitmap, horizontal = true, vertical = false)
+                ExifInterface.ORIENTATION_FLIP_VERTICAL -> flipBitmap(bitmap, horizontal = false, vertical = true)
+                else -> bitmap
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to correct orientation: ${e.message}")
+            bitmap
+        }
+    }
+
+    /**
+     * Rotate a bitmap by the specified degrees
+     */
+    private fun rotateBitmap(bitmap: Bitmap, degrees: Float): Bitmap {
+        val matrix = Matrix().apply { postRotate(degrees) }
+        return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+    }
+
+    /**
+     * Flip a bitmap horizontally or vertically
+     */
+    private fun flipBitmap(bitmap: Bitmap, horizontal: Boolean, vertical: Boolean): Bitmap {
+        val matrix = Matrix().apply {
+            postScale(
+                if (horizontal) -1f else 1f,
+                if (vertical) -1f else 1f
+            )
+        }
+        return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
     }
 
     @JvmStatic
