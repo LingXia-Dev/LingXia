@@ -7,6 +7,7 @@ mod location;
 mod media;
 mod navigator;
 mod open;
+mod storage;
 mod system;
 mod ui;
 
@@ -22,6 +23,7 @@ impl LxLogicExtension for LxLogicRuntime {
         system::init(ctx)?;
         media::init(ctx)?;
         open::init(ctx)?;
+        storage::init(ctx)?;
         Ok(())
     }
 }
