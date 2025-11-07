@@ -5,12 +5,13 @@ import AVKit
 import QuartzCore
 import Photos
 import PhotosUI
-import UniformTypeIdentifiers
 import Vision
 import CLingXiaSwiftAPI
 import CLingXiaRustAPI
+import os.log
 
 extension LxAppMedia {
+    nonisolated(unsafe) private static let previewLog = OSLog(subsystem: "LingXia", category: "MediaPreview")
     struct PreviewMediaPayload: Codable {
         let path: String
         let media_type: Int32
@@ -20,7 +21,7 @@ extension LxAppMedia {
     nonisolated static func previewMedia(items_json: RustStr) -> Bool {
         let itemsJson = items_json.toString()
         guard let jsonData = itemsJson.data(using: .utf8) else {
-            NSLog("[LingXia] Failed to convert items JSON to data")
+            os_log(.error, log: previewLog, "Failed to convert items JSON to data")
             return false
         }
 
@@ -28,18 +29,18 @@ extension LxAppMedia {
         do {
             items = try JSONDecoder().decode([PreviewMediaPayload].self, from: jsonData)
         } catch {
-            NSLog("[LingXia] Failed to decode items JSON: %@", error.localizedDescription)
+            os_log(.error, log: previewLog, "Failed to decode items JSON: %{public}@", error.localizedDescription)
             return false
         }
         guard !items.isEmpty else {
-            NSLog("[LingXia] previewMedia called with empty items")
+            os_log(.error, log: previewLog, "previewMedia called with empty items")
             return false
         }
 
         // Dispatch to main actor for UI operations
         DispatchQueue.main.async {
             guard let presenter = topViewController() else {
-                NSLog("[LingXia] Unable to find top view controller for media preview")
+                os_log(.error, log: previewLog, "Unable to find top view controller for media preview")
                 return
             }
 
@@ -1150,9 +1151,4 @@ private final class ZoomableImageView: UIView, UIScrollViewDelegate {
     }
 }
 
-// MARK: - Choose Media
-
-extension LxAppMedia {
-    @MainActor static var albumPickerDelegate: AlbumDelegate?
-}
 #endif

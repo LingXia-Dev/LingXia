@@ -44,7 +44,28 @@ impl AppRuntime for Platform {
     ) -> Result<(), PlatformError> {
         #[cfg(target_os = "ios")]
         {
-            ios::copy_media_uri_to_path(uri, dest_path, kind)
+            let kind_code = match kind {
+                crate::traits::MediaKind::Video => 1,
+                _ => 0,
+            };
+            let dest_str = dest_path
+                .to_str()
+                .ok_or_else(|| {
+                    PlatformError::Platform(format!(
+                        "Destination path contains invalid UTF-8: {}",
+                        dest_path.display()
+                    ))
+                })?
+                .to_string();
+
+            if super::ffi::copy_media_uri_to_path(uri, &dest_str, kind_code) {
+                Ok(())
+            } else {
+                Err(PlatformError::Platform(format!(
+                    "Failed to copy media to {}",
+                    dest_path.display()
+                )))
+            }
         }
 
         #[cfg(not(target_os = "ios"))]
@@ -207,162 +228,5 @@ impl Platform {
         }
 
         all_files
-    }
-}
-
-#[cfg(target_os = "ios")]
-mod ios {
-    use super::*;
-    use crate::traits::MediaKind;
-    use percent_encoding::percent_decode_str;
-    use std::fs;
-
-    /// Copy media file from temporary location to application cache directory
-    pub(super) fn copy_media_uri_to_path(
-        uri: &str,
-        dest_path: &std::path::Path,
-        kind: MediaKind,
-    ) -> Result<(), PlatformError> {
-        if let Some(identifier) = uri.strip_prefix("phasset://") {
-            return copy_phasset_to_path(identifier, dest_path, kind);
-        }
-
-        if let Some(identifier) = uri.strip_prefix("phasset:") {
-            return copy_phasset_to_path(identifier, dest_path, kind);
-        }
-
-        if let Some(temp_path) = uri.strip_prefix("tempfile://") {
-            let decoded = percent_decode_str(temp_path).decode_utf8().map_err(|e| {
-                PlatformError::Platform(format!("Failed to decode temp file URI '{}': {}", uri, e))
-            })?;
-            let source_path = std::path::Path::new(decoded.as_ref());
-
-            if !source_path.exists() {
-                return Err(PlatformError::Platform(format!(
-                    "Temporary source file does not exist: {}",
-                    uri
-                )));
-            }
-
-            if let Some(parent) = dest_path.parent() {
-                if let Err(e) = fs::create_dir_all(parent) {
-                    return Err(PlatformError::Platform(format!(
-                        "Failed to create destination directory: {}",
-                        e
-                    )));
-                }
-            }
-
-            // Try to transcode to match the expected dest extension when reasonable
-            let dest_ext = dest_path
-                .extension()
-                .and_then(|s| s.to_str())
-                .unwrap_or("")
-                .to_ascii_lowercase();
-            let src_ext = source_path
-                .extension()
-                .and_then(|s| s.to_str())
-                .unwrap_or("")
-                .to_ascii_lowercase();
-
-            // Prefer platform transcoders when extension indicates conversion
-            if kind == MediaKind::Image && (dest_ext == "jpg" || dest_ext == "jpeg") && src_ext != dest_ext {
-                if super::ffi::transcode_temp_image_to_jpeg(source_path.to_string_lossy().as_ref(), &dest_path.to_string_lossy()) {
-                    let _ = fs::remove_file(source_path);
-                    return Ok(());
-                }
-            }
-            if kind == MediaKind::Video && dest_ext == "mp4" && src_ext != dest_ext {
-                if super::ffi::transcode_temp_video_to_mp4(source_path.to_string_lossy().as_ref(), &dest_path.to_string_lossy()) {
-                    let _ = fs::remove_file(source_path);
-                    return Ok(());
-                }
-            }
-
-            return match fs::copy(source_path, dest_path) {
-                Ok(_) => {
-                    let _ = fs::remove_file(source_path);
-                    Ok(())
-                }
-                Err(e) => Err(PlatformError::Platform(format!(
-                    "Failed to copy temp file from {} to {}: {}",
-                    uri,
-                    dest_path.display(),
-                    e
-                )))
-            };
-        }
-
-        let trimmed = uri.strip_prefix("file://").unwrap_or(uri);
-        let decoded = percent_decode_str(trimmed).decode_utf8().map_err(|e| {
-            PlatformError::Platform(format!("Failed to decode file URI '{}': {}", uri, e))
-        })?;
-        let source_path = std::path::Path::new(decoded.as_ref());
-
-        if !source_path.exists() {
-            return Err(PlatformError::Platform(format!(
-                "Source file does not exist: {}",
-                uri
-            )));
-        }
-
-        if let Some(parent) = dest_path.parent() {
-            if let Err(e) = fs::create_dir_all(parent) {
-                return Err(PlatformError::Platform(format!(
-                    "Failed to create destination directory: {}",
-                    e
-                )));
-            }
-        }
-        match fs::copy(source_path, dest_path) {
-            Ok(_) => Ok(()),
-            Err(e) => Err(PlatformError::Platform(format!(
-                "Failed to copy file from {} to {}: {}",
-                uri,
-                dest_path.display(),
-                e
-            ))),
-        }
-    }
-
-    fn copy_phasset_to_path(
-        identifier: &str,
-        dest_path: &std::path::Path,
-        kind: MediaKind,
-    ) -> Result<(), PlatformError> {
-        if let Some(parent) = dest_path.parent() {
-            if let Err(e) = fs::create_dir_all(parent) {
-                return Err(PlatformError::Platform(format!(
-                    "Failed to create destination directory: {}",
-                    e
-                )));
-            }
-        }
-
-        let kind_code = match kind {
-            MediaKind::Video => 1,
-            _ => 0,
-        };
-
-        let dest_str = dest_path
-            .to_str()
-            .ok_or_else(|| {
-                PlatformError::Platform(format!(
-                    "Destination path contains invalid UTF-8: {}",
-                    dest_path.display()
-                ))
-            })?
-            .to_string();
-
-        let success = super::ffi::copy_asset_resource(identifier, &dest_str, kind_code);
-        if success {
-            Ok(())
-        } else {
-            Err(PlatformError::Platform(format!(
-                "Failed to copy asset '{}' to {}",
-                identifier,
-                dest_path.display()
-            )))
-        }
     }
 }

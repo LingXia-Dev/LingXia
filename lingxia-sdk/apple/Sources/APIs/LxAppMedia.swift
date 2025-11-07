@@ -14,8 +14,73 @@ enum LxAppMedia {
 }
 
 #if os(iOS)
+import Photos
+
 extension LxAppMedia {
     private final class MediaBundleToken {}
+
+    /// Compress an image with optional quality, width, and height parameters
+    /// - Parameters:
+    ///   - sourceURL: URL to the source image file
+    ///   - quality: JPEG compression quality (0-100), default 80
+    ///   - compressedWidth: Optional target width
+    ///   - compressedHeight: Optional target height
+    /// - Returns: URL to the compressed image file, or nil if compression fails
+    static func compressImage(
+        sourceURL: URL,
+        quality: Int = 80,
+        compressedWidth: Int? = nil,
+        compressedHeight: Int? = nil
+    ) -> URL? {
+        guard let image = UIImage(contentsOfFile: sourceURL.path) else {
+            os_log(.error, log: log, "Failed to load image from %@", sourceURL.path)
+            return nil
+        }
+
+        var processedImage = image
+
+        // Resize if dimensions are provided
+        if let targetWidth = compressedWidth, let targetHeight = compressedHeight {
+            processedImage = resizeImage(image, targetWidth: CGFloat(targetWidth), targetHeight: CGFloat(targetHeight))
+        } else if let targetWidth = compressedWidth {
+            let aspectRatio = image.size.height / image.size.width
+            let targetHeight = CGFloat(targetWidth) * aspectRatio
+            processedImage = resizeImage(image, targetWidth: CGFloat(targetWidth), targetHeight: targetHeight)
+        } else if let targetHeight = compressedHeight {
+            let aspectRatio = image.size.width / image.size.height
+            let targetWidth = CGFloat(targetHeight) * aspectRatio
+            processedImage = resizeImage(image, targetWidth: targetWidth, targetHeight: CGFloat(targetHeight))
+        }
+
+        // Compress as JPEG
+        let clampedQuality = max(0, min(100, quality))
+        let compressionQuality = CGFloat(clampedQuality) / 100.0
+
+        guard let jpegData = processedImage.jpegData(compressionQuality: compressionQuality) else {
+            os_log(.error, log: log, "Failed to compress image to JPEG")
+            return nil
+        }
+
+        // Save to temporary file
+        let tempDir = FileManager.default.temporaryDirectory
+        let outputURL = tempDir.appendingPathComponent(UUID().uuidString + ".jpg")
+
+        do {
+            try jpegData.write(to: outputURL)
+            return outputURL
+        } catch {
+            os_log(.error, log: log, "Failed to write compressed image: %@", error.localizedDescription)
+            return nil
+        }
+    }
+
+    private static func resizeImage(_ image: UIImage, targetWidth: CGFloat, targetHeight: CGFloat) -> UIImage {
+        let size = CGSize(width: targetWidth, height: targetHeight)
+        let renderer = UIGraphicsImageRenderer(size: size)
+        return renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: size))
+        }
+    }
 
     static func controlImage(named name: String) -> UIImage? {
         #if SWIFT_PACKAGE

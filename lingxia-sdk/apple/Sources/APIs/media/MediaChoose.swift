@@ -2,8 +2,6 @@
 import UIKit
 import AVFoundation
 import Photos
-import PhotosUI
-import UniformTypeIdentifiers
 import CLingXiaSwiftAPI
 import CLingXiaRustAPI
 
@@ -219,19 +217,9 @@ extension LxAppMedia {
         let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
 
         switch status {
-        case .authorized, .limited:
+        case .authorized, .limited, .notDetermined:
+            // Always present custom picker; it will handle permission acquisition on '+' click if needed
             presentPhotoPicker(presenter: presenter, mode: mode, maxCount: maxCount, callbackId: callbackId)
-        case .notDetermined:
-            PHPhotoLibrary.requestAuthorization(for: .readWrite) { newStatus in
-                let granted = newStatus == .authorized || newStatus == .limited
-                DispatchQueue.main.async {
-                    if granted {
-                        presentPhotoPicker(presenter: presenter, mode: mode, maxCount: maxCount, callbackId: callbackId)
-                    } else {
-                        let _ = onCallback(callbackId, false, "Photo library access is required to select photos. Please enable access in Settings > Privacy & Security > Photos.")
-                    }
-                }
-            }
         case .denied, .restricted:
             let _ = onCallback(callbackId, false, "Photo library access is required to select photos. Please enable access in Settings > Privacy & Security > Photos.")
         @unknown default:
@@ -240,38 +228,8 @@ extension LxAppMedia {
     }
 
     private static func presentPhotoPicker(presenter: UIViewController, mode: String, maxCount: UInt32, callbackId: UInt64) {
-
-        let configuration: PHPickerConfiguration
-        if #available(iOS 15.0, *) {
-            let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-            if status == .authorized || status == .limited {
-                configuration = PHPickerConfiguration(photoLibrary: PHPhotoLibrary.shared())
-            } else {
-                configuration = PHPickerConfiguration()
-            }
-        } else {
-            configuration = PHPickerConfiguration()
-        }
-        var mutableConfiguration = configuration
-        mutableConfiguration.selectionLimit = Int(maxCount)
-
-        // Set media type based on mode
-        switch mode.lowercased() {
-        case "video":
-            mutableConfiguration.filter = .videos
-        case "image":
-            mutableConfiguration.filter = .images
-        default: // mix
-            mutableConfiguration.filter = .any(of: [.images, .videos])
-        }
-
-        let picker = PHPickerViewController(configuration: mutableConfiguration)
-        let delegate = AlbumDelegate(callbackId: callbackId) {
-            LxAppMedia.albumPickerDelegate = nil
-        }
-        albumPickerDelegate = delegate
-        picker.delegate = delegate
-        presenter.present(picker, animated: true)
+        // Use custom picker for consistent UX and Limited-mode support
+        MediaPickerViewController.present(from: presenter, mode: mode, maxCount: maxCount, callbackId: callbackId)
     }
 }
 #endif

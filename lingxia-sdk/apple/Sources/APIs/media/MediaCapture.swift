@@ -2,8 +2,6 @@
 import UIKit
 import AVFoundation
 import Photos
-import PhotosUI
-import UniformTypeIdentifiers
 
 typealias CaptureFeedback = LxAppMedia.CaptureFeedback
 
@@ -314,7 +312,7 @@ final class PhotoCaptureViewController: UIViewController {
 
     private func savePhotoData(_ data: Data) -> URL? {
         do {
-            return try LxAppMediaStorage.write(data: data, prefix: "photo", fileExtension: "jpg")
+            return try MediaStorage.write(data: data, prefix: "photo", fileExtension: "jpg")
         } catch {
             return nil
         }
@@ -1187,7 +1185,7 @@ final class VideoCaptureViewController: UIViewController {
     }
 
     private func makeOutputFileURL() throws -> URL {
-        guard let url = LxAppMediaStorage.makeFileURL(prefix: "video", preferredExtension: "mp4") else {
+        guard let url = MediaStorage.makeFileURL(prefix: "video", preferredExtension: "mp4") else {
             throw NSError(domain: "LingXia.Camera", code: -3004, userInfo: [NSLocalizedDescriptionKey: "缓存目录不可用"])
         }
         return url
