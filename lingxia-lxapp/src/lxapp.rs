@@ -888,27 +888,6 @@ fn prepare_directory_structure(runtime: Arc<Platform>) -> Result<(), LxAppError>
     metadata::init(metadata_path)
 }
 
-/// Clear user cache directory on startup. Does not affect storage or user data.
-fn clear_user_cache_dir(runtime: &Arc<Platform>) -> Result<(), LxAppError> {
-    let root = runtime
-        .app_cache_dir()
-        .join(LINGXIA_DIR)
-        .join(USER_CACHE_DIR);
-    if root.exists() {
-        for entry in std::fs::read_dir(&root)? {
-            let path = entry?.path();
-            if path.is_dir() {
-                let _ = fs::remove_dir_all(&path);
-            } else {
-                let _ = fs::remove_file(&path);
-            }
-        }
-    } else {
-        fs::create_dir_all(&root)?;
-    }
-    Ok(())
-}
-
 // Global instance of LxApps manager
 static LXAPPS_MANAGER: OnceLock<Arc<LxApps>> = OnceLock::new();
 
@@ -941,10 +920,6 @@ pub fn init(runtime: Platform) -> Option<String> {
     if let Err(e) = prepare_directory_structure(runtime_arc.clone()) {
         error!("Failed to prepare directory structure: {}", e);
         return None;
-    }
-    // Always clear cache (usercache) on startup; do not touch storage/userdata
-    if let Err(e) = clear_user_cache_dir(&runtime_arc) {
-        error!("Failed to clear user cache: {}", e);
     }
 
     match AppConfig::load(runtime_arc.clone()) {
