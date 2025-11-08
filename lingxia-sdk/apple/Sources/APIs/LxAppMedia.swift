@@ -6,6 +6,9 @@ import CLingXiaRustAPI
 #if os(iOS)
 import UIKit
 import AudioToolbox
+import ImageIO
+import UniformTypeIdentifiers
+import MobileCoreServices
 #endif
 
 @MainActor
@@ -14,41 +17,77 @@ final class LxAppMedia {
 }
 
 #if os(iOS)
-import Photos
-
 extension LxAppMedia {
     private final class MediaBundleToken {}
 
-    /// Compress an image with optional quality, width, and height parameters
-    /// - Parameters:
-    ///   - sourceUrl: URL string to the source image file
-    ///   - quality: JPEG compression quality (0-100), default 80
-    ///   - compressedWidth: Optional target width (0 means not specified)
-    ///   - compressedHeight: Optional target height (0 means not specified)
-    /// - Returns: Path string to the compressed image file, or empty string if compression fails
-    @objc public static func compressImage(
-        sourceUrl: String,
-        quality: Int,
-        compressedWidth: Int,
-        compressedHeight: Int
-    ) -> String {
-        guard let url = URL(string: sourceUrl) else {
-            os_log(.error, log: log, "Invalid source URL: %@", sourceUrl)
-            return ""
+    nonisolated static func getImageInfo(uri: RustStr) -> SwiftImageInfoResult {
+        let rawUri = uri.toString()
+        guard !rawUri.isEmpty else {
+            return imageInfoFailure("URI is empty")
         }
 
-        let width = compressedWidth > 0 ? compressedWidth : nil
-        let height = compressedHeight > 0 ? compressedHeight : nil
+        guard let url = normalizeURL(from: rawUri) else {
+            return imageInfoFailure("Invalid URI: \(rawUri)")
+        }
 
-        if let resultURL = compressImageInternal(
-            sourceURL: url,
-            quality: quality,
+        guard url.isFileURL else {
+            return imageInfoFailure("Unsupported URI scheme: \(url.scheme ?? "unknown")")
+        }
+
+        return imageInfoFromFile(url: url)
+    }
+
+    nonisolated static func compressImage(
+        source_uri: RustStr,
+        quality: Int32,
+        target_width: Int32,
+        target_height: Int32,
+        output_path: RustStr
+    ) -> SwiftCompressImageResult {
+        let source = source_uri.toString()
+        let outputPath = output_path.toString()
+        guard !source.isEmpty else {
+            return compressImageFailure("source_uri is empty")
+        }
+        guard !outputPath.isEmpty else {
+            return compressImageFailure("output_path is empty")
+        }
+
+        let normalizedQuality = max(0, min(100, Int(quality)))
+        let width = target_width > 0 ? Int(target_width) : nil
+        let height = target_height > 0 ? Int(target_height) : nil
+        let destinationURL = URL(fileURLWithPath: outputPath)
+
+        do {
+            let parentDir = destinationURL.deletingLastPathComponent()
+            if !parentDir.path.isEmpty {
+                try FileManager.default.createDirectory(at: parentDir, withIntermediateDirectories: true)
+            }
+        } catch {
+            return compressImageFailure("Failed to prepare output path: \(error.localizedDescription)")
+        }
+        guard let sourceURL = normalizeURL(from: source) else {
+            return compressImageFailure("Invalid source URI: \(source)")
+        }
+        guard sourceURL.isFileURL else {
+            return compressImageFailure("Only local file URLs are supported for compression")
+        }
+        if compressImageInternal(
+            sourceURL: sourceURL,
+            quality: normalizedQuality,
             compressedWidth: width,
-            compressedHeight: height
-        ) {
-            return resultURL.path
+            compressedHeight: height,
+            outputURL: destinationURL
+        ) == nil {
+            try? FileManager.default.removeItem(at: destinationURL)
+            return compressImageFailure("Failed to compress image")
         }
-        return ""
+
+        return SwiftCompressImageResult(
+            success: true,
+            error: RustString(""),
+            path: RustString(destinationURL.path)
+        )
     }
 
     /// Internal compress an image with optional quality, width, and height parameters
@@ -58,33 +97,60 @@ extension LxAppMedia {
     ///   - compressedWidth: Optional target width
     ///   - compressedHeight: Optional target height
     /// - Returns: URL to the compressed image file, or nil if compression fails
-    private static func compressImageInternal(
+    nonisolated private static func compressImageInternal(
         sourceURL: URL,
         quality: Int = 80,
         compressedWidth: Int? = nil,
-        compressedHeight: Int? = nil
+        compressedHeight: Int? = nil,
+        outputURL: URL? = nil
     ) -> URL? {
         guard let image = UIImage(contentsOfFile: sourceURL.path) else {
             os_log(.error, log: log, "Failed to load image from %@", sourceURL.path)
             return nil
         }
 
-        var processedImage = image
-
-        // Resize if dimensions are provided
-        if let targetWidth = compressedWidth, let targetHeight = compressedHeight {
-            processedImage = resizeImage(image, targetWidth: CGFloat(targetWidth), targetHeight: CGFloat(targetHeight))
-        } else if let targetWidth = compressedWidth {
-            let aspectRatio = image.size.height / image.size.width
-            let targetHeight = CGFloat(targetWidth) * aspectRatio
-            processedImage = resizeImage(image, targetWidth: CGFloat(targetWidth), targetHeight: targetHeight)
-        } else if let targetHeight = compressedHeight {
-            let aspectRatio = image.size.width / image.size.height
-            let targetWidth = CGFloat(targetHeight) * aspectRatio
-            processedImage = resizeImage(image, targetWidth: targetWidth, targetHeight: CGFloat(targetHeight))
+        let destination = outputURL ?? FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".jpg")
+        guard writeCompressedImage(
+            image: image,
+            destinationURL: destination,
+            quality: quality,
+            targetWidth: compressedWidth,
+            targetHeight: compressedHeight
+        ) else {
+            return nil
         }
 
-        // Compress as JPEG
+        return destination
+    }
+
+    nonisolated private static func resizeImage(_ image: UIImage, targetWidth: CGFloat, targetHeight: CGFloat) -> UIImage {
+        let size = CGSize(width: targetWidth, height: targetHeight)
+        let renderer = UIGraphicsImageRenderer(size: size)
+        return renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: size))
+        }
+    }
+
+    nonisolated private static func makeCompressedImageData(
+        image: UIImage,
+        quality: Int,
+        targetWidth: Int?,
+        targetHeight: Int?
+    ) -> Data? {
+        var processedImage = image
+
+        if let width = targetWidth, let height = targetHeight {
+            processedImage = resizeImage(image, targetWidth: CGFloat(width), targetHeight: CGFloat(height))
+        } else if let width = targetWidth {
+            let aspectRatio = image.size.height / image.size.width
+            let computedHeight = CGFloat(width) * aspectRatio
+            processedImage = resizeImage(image, targetWidth: CGFloat(width), targetHeight: computedHeight)
+        } else if let height = targetHeight {
+            let aspectRatio = image.size.width / image.size.height
+            let computedWidth = CGFloat(height) * aspectRatio
+            processedImage = resizeImage(image, targetWidth: computedWidth, targetHeight: CGFloat(height))
+        }
+
         let clampedQuality = max(0, min(100, quality))
         let compressionQuality = CGFloat(clampedQuality) / 100.0
 
@@ -93,24 +159,31 @@ extension LxAppMedia {
             return nil
         }
 
-        // Save to temporary file
-        let tempDir = FileManager.default.temporaryDirectory
-        let outputURL = tempDir.appendingPathComponent(UUID().uuidString + ".jpg")
-
-        do {
-            try jpegData.write(to: outputURL)
-            return outputURL
-        } catch {
-            os_log(.error, log: log, "Failed to write compressed image: %@", error.localizedDescription)
-            return nil
-        }
+        return jpegData
     }
 
-    private static func resizeImage(_ image: UIImage, targetWidth: CGFloat, targetHeight: CGFloat) -> UIImage {
-        let size = CGSize(width: targetWidth, height: targetHeight)
-        let renderer = UIGraphicsImageRenderer(size: size)
-        return renderer.image { _ in
-            image.draw(in: CGRect(origin: .zero, size: size))
+    nonisolated private static func writeCompressedImage(
+        image: UIImage,
+        destinationURL: URL,
+        quality: Int,
+        targetWidth: Int?,
+        targetHeight: Int?
+    ) -> Bool {
+        guard let jpegData = makeCompressedImageData(
+            image: image,
+            quality: quality,
+            targetWidth: targetWidth,
+            targetHeight: targetHeight
+        ) else {
+            return false
+        }
+
+        do {
+            try jpegData.write(to: destinationURL, options: .atomic)
+            return true
+        } catch {
+            os_log(.error, log: log, "Failed to write compressed image: %@", error.localizedDescription)
+            return false
         }
     }
 
@@ -151,6 +224,130 @@ extension LxAppMedia {
             cgContext.drawPDFPage(page)
             cgContext.restoreGState()
         }.withRenderingMode(.alwaysOriginal)
+    }
+
+    private struct ImageInfoPayload {
+        let width: Int
+        let height: Int
+        let mimeType: String
+        let orientation: Int
+        let rotation: Int
+    }
+
+    nonisolated private static func imageInfoFromFile(url: URL) -> SwiftImageInfoResult {
+        guard let info = readImageProperties(url: url) else {
+            return imageInfoFailure("Failed to inspect image at \(url.path)")
+        }
+        return imageInfoSuccess(info)
+    }
+
+    nonisolated private static func readImageProperties(url: URL) -> ImageInfoPayload? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
+            return nil
+        }
+        guard let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] else {
+            return nil
+        }
+
+        let width = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue ?? 0
+        let height = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue ?? 0
+        let orientationValue = (properties[kCGImagePropertyOrientation] as? NSNumber)?.intValue ?? 1
+        let rotation = rotationDegrees(for: orientationValue)
+        let uti = CGImageSourceGetType(source) as String?
+        var mimeType = preferredMimeType(for: uti)
+        if mimeType.isEmpty {
+            mimeType = mimeTypeFromExtension(url.pathExtension.lowercased())
+        }
+
+        return ImageInfoPayload(
+            width: width,
+            height: height,
+            mimeType: mimeType,
+            orientation: orientationValue,
+            rotation: rotation
+        )
+    }
+
+    nonisolated private static func preferredMimeType(for uti: String?) -> String {
+        guard let uti = uti, !uti.isEmpty else {
+            return ""
+        }
+        if #available(iOS 14.0, *) {
+            return UTType(uti)?.preferredMIMEType ?? ""
+        } else {
+            return (UTTypeCopyPreferredTagWithClass(uti as CFString, kUTTagClassMIMEType)?.takeRetainedValue() as String?) ?? ""
+        }
+    }
+
+    nonisolated private static func mimeTypeFromExtension(_ ext: String) -> String {
+        guard !ext.isEmpty else { return "" }
+        if #available(iOS 14.0, *) {
+            return UTType(filenameExtension: ext)?.preferredMIMEType ?? ""
+        } else {
+            guard let uti = UTTypeCreatePreferredIdentifierForTag(
+                kUTTagClassFilenameExtension,
+                ext as CFString,
+                nil
+            )?.takeRetainedValue() else {
+                return ""
+            }
+            return (UTTypeCopyPreferredTagWithClass(uti, kUTTagClassMIMEType)?.takeRetainedValue() as String?) ?? ""
+        }
+    }
+
+    nonisolated private static func rotationDegrees(for orientation: Int) -> Int {
+        switch orientation {
+        case 3, 4:
+            return 180
+        case 5, 6:
+            return 90
+        case 7, 8:
+            return 270
+        default:
+            return 0
+        }
+    }
+
+    nonisolated private static func normalizeURL(from path: String) -> URL? {
+        if path.hasPrefix("file://") {
+            return URL(string: path)
+        }
+        if let url = URL(string: path), url.scheme != nil {
+            return url
+        }
+        return URL(fileURLWithPath: path)
+    }
+
+    nonisolated private static func imageInfoFailure(_ message: String) -> SwiftImageInfoResult {
+        return SwiftImageInfoResult(
+            success: false,
+            error: RustString(message),
+            width: 0,
+            height: 0,
+            rotation: 0,
+            orientation: 0,
+            mime_type: RustString("")
+        )
+    }
+
+    nonisolated private static func imageInfoSuccess(_ info: ImageInfoPayload) -> SwiftImageInfoResult {
+        return SwiftImageInfoResult(
+            success: true,
+            error: RustString(""),
+            width: UInt32(clamping: info.width),
+            height: UInt32(clamping: info.height),
+            rotation: Int32(info.rotation),
+            orientation: Int32(info.orientation),
+            mime_type: RustString(info.mimeType)
+        )
+    }
+
+    nonisolated private static func compressImageFailure(_ message: String) -> SwiftCompressImageResult {
+        return SwiftCompressImageResult(
+            success: false,
+            error: RustString(message),
+            path: RustString("")
+        )
     }
 
     enum CaptureFeedback {
