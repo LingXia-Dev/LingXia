@@ -13,6 +13,7 @@ final class MediaPickerViewController: UIViewController, UICollectionViewDataSou
     private let mode: String
     private let maxCount: Int
     private let callbackId: UInt64
+    private var completionHandler: (([String]) -> Void)?  // For internal lightweight callbacks
 
     private var assets: [PHAsset] = []
     private var selected: Set<String> = [] // localIdentifiers
@@ -114,10 +115,11 @@ final class MediaPickerViewController: UIViewController, UICollectionViewDataSou
         }
     }
 
-    init(mode: String, maxCount: Int, callbackId: UInt64) {
+    init(mode: String, maxCount: Int, callbackId: UInt64, completionHandler: (([String]) -> Void)? = nil) {
         self.mode = mode.lowercased()
         self.maxCount = max(1, maxCount)
         self.callbackId = callbackId
+        self.completionHandler = completionHandler
         super.init(nibName: nil, bundle: nil)
         if #available(iOS 14.0, *) {
             PHPhotoLibrary.shared().register(self)
@@ -134,6 +136,29 @@ final class MediaPickerViewController: UIViewController, UICollectionViewDataSou
 
     static func present(from parent: UIViewController, mode: String, maxCount: UInt32, callbackId: UInt64) {
         let picker = MediaPickerViewController(mode: mode, maxCount: Int(maxCount), callbackId: callbackId)
+        let nav = UINavigationController(rootViewController: picker)
+        nav.modalPresentationStyle = .fullScreen
+        parent.present(nav, animated: true)
+    }
+
+    /// Lightweight picker for internal use (e.g., ScanCode selecting one image)
+    /// - Parameters:
+    ///   - parent: The presenting view controller
+    ///   - mode: Media selection mode ("images", "videos", or "mix")
+    ///   - maxCount: Maximum number of items to select
+    ///   - completion: Completion handler receiving array of phasset URIs
+    static func pickSingle(
+        from parent: UIViewController,
+        mode: String = "images",
+        maxCount: Int = 1,
+        completion: @escaping ([String]) -> Void
+    ) {
+        let picker = MediaPickerViewController(
+            mode: mode,
+            maxCount: maxCount,
+            callbackId: 0,  // No callback needed
+            completionHandler: completion
+        )
         let nav = UINavigationController(rootViewController: picker)
         nav.modalPresentationStyle = .fullScreen
         parent.present(nav, animated: true)
@@ -535,33 +560,48 @@ final class MediaPickerViewController: UIViewController, UICollectionViewDataSou
     }
 
     @objc private func onCancel() {
-        let _ = onCallback(callbackId, true, "{\"cancel\":true}")
+        if let handler = completionHandler {
+            // Use lightweight completion handler
+            handler([])
+        } else {
+            // Use callback ID for Rust FFI
+            let _ = onCallback(callbackId, true, "{\"cancel\":true}")
+        }
         dismiss(animated: true)
     }
 
     @objc private func originalChanged() { isOriginal = originalOption.isOn }
 
     @objc private func onDone() {
-        var arr: [[String: Any]] = []
-        for id in selected {
-            let type: String
-            if let asset = assets.first(where: { $0.localIdentifier == id }) {
-                type = (asset.mediaType == .video) ? "video" : "image"
-            } else { type = "image" }
-            arr.append([
-                "uri": "phasset:\(id)",
-                "fileType": type,
-                "isOriginal": isOriginal
-            ])
+        let uris = selected.map { "phasset:\($0)" }
+
+        if let handler = completionHandler {
+            // Use lightweight completion handler (just return URIs)
+            handler(uris)
+            dismiss(animated: true)
+        } else {
+            // Use callback ID for Rust FFI
+            var arr: [[String: Any]] = []
+            for id in selected {
+                let type: String
+                if let asset = assets.first(where: { $0.localIdentifier == id }) {
+                    type = (asset.mediaType == .video) ? "video" : "image"
+                } else { type = "image" }
+                arr.append([
+                    "uri": "phasset:\(id)",
+                    "fileType": type,
+                    "isOriginal": isOriginal
+                ])
+            }
+            do {
+                let data = try JSONSerialization.data(withJSONObject: arr, options: [])
+                let json = String(data: data, encoding: .utf8) ?? "[]"
+                let _ = onCallback(callbackId, true, json)
+            } catch {
+                let _ = onCallback(callbackId, false, "Failed to serialize selection")
+            }
+            dismiss(animated: true)
         }
-        do {
-            let data = try JSONSerialization.data(withJSONObject: arr, options: [])
-            let json = String(data: data, encoding: .utf8) ?? "[]"
-            let _ = onCallback(callbackId, true, json)
-        } catch {
-            let _ = onCallback(callbackId, false, "Failed to serialize selection")
-        }
-        dismiss(animated: true)
     }
 
     func numberOfSections(in collectionView: UICollectionView) -> Int { 1 }

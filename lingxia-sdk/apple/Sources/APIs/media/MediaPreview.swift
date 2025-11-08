@@ -488,16 +488,65 @@ final class ScanCodeViewController: UIViewController {
     }
 
     @objc private func openAlbum() {
-        if #available(iOS 14.0, *) {
-            var configuration = PHPickerConfiguration()
-            configuration.filter = .images
-            configuration.selectionLimit = 1
-            let picker = PHPickerViewController(configuration: configuration)
-            picker.delegate = self
-            stopSession()
-            present(picker, animated: true)
-        } else {
-            reportFailure("Photo picker requires iOS 14.0 or later")
+        stopSession()
+
+        // Use custom MediaPickerViewController for consistent UX (especially in Limited mode)
+        MediaPickerViewController.pickSingle(
+            from: self,
+            mode: "images",
+            maxCount: 1
+        ) { [weak self] uris in
+            guard let self else { return }
+
+            if let uri = uris.first {
+                // Load image from phasset URI and detect barcode
+                self.loadImageAndDetectBarcode(from: uri)
+            } else {
+                // User cancelled, restart camera
+                self.startSession()
+            }
+        }
+    }
+
+    /// Load image from phasset URI and detect barcode
+    private func loadImageAndDetectBarcode(from uri: String) {
+        guard uri.hasPrefix("phasset:") else {
+            presentAlert(message: "Invalid URI format")
+            startSession()
+            return
+        }
+
+        let localIdentifier = String(uri.dropFirst("phasset:".count))
+        let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [localIdentifier], options: nil)
+
+        guard let asset = fetchResult.firstObject else {
+            presentAlert(message: "Asset not found")
+            startSession()
+            return
+        }
+
+        let options = PHImageRequestOptions()
+        options.deliveryMode = .highQualityFormat
+        options.isNetworkAccessAllowed = true
+        options.isSynchronous = false
+
+        PHImageManager.default().requestImage(
+            for: asset,
+            targetSize: PHImageManagerMaximumSize,
+            contentMode: .aspectFit,
+            options: options
+        ) { [weak self] image, _ in
+            guard let self, let image else {
+                DispatchQueue.main.async {
+                    self?.presentAlert(message: "Failed to load image")
+                    self?.startSession()
+                }
+                return
+            }
+
+            DispatchQueue.main.async {
+                self.detectBarcode(in: image)
+            }
         }
     }
 }
@@ -538,7 +587,6 @@ extension ScanCodeViewController: @preconcurrency AVCaptureMetadataOutputObjects
         }
     }
 
-    @available(iOS 14.0, *)
     private func mapSymbologyToString(_ symbology: VNBarcodeSymbology) -> String {
         switch symbology {
         case .qr:
@@ -571,43 +619,10 @@ extension ScanCodeViewController: @preconcurrency AVCaptureMetadataOutputObjects
     }
 }
 
-@available(iOS 14.0, *)
-extension ScanCodeViewController: PHPickerViewControllerDelegate {
-    func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
-        picker.dismiss(animated: true)
-        guard let provider = results.first?.itemProvider else {
-            if !onlyFromCamera {
-                startSession()
-            }
-            return
-        }
-
-        if provider.canLoadObject(ofClass: UIImage.self) {
-            provider.loadObject(ofClass: UIImage.self) { [weak self] object, error in
-                guard let self else { return }
-                if let error {
-                    DispatchQueue.main.async {
-                        self.presentAlert(message: "Failed to load image: \(error.localizedDescription)")
-                        self.startSession()
-                    }
-                    return
-                }
-                guard let image = object as? UIImage else {
-                    DispatchQueue.main.async {
-                        self.presentAlert(message: "Unsupported image format")
-                        self.startSession()
-                    }
-                    return
-                }
-                self.detectBarcode(in: image)
-            }
-        } else {
-            presentAlert(message: "Unsupported item provider")
-            startSession()
-        }
-    }
-
-    private func detectBarcode(in image: UIImage) {
+@available(iOS 13.0, *)
+private extension ScanCodeViewController {
+    /// Detect barcode in the given image using Vision framework
+    func detectBarcode(in image: UIImage) {
         guard let cgImage = image.cgImage else {
             DispatchQueue.main.async {
                 self.presentAlert(message: "Unable to read image")
