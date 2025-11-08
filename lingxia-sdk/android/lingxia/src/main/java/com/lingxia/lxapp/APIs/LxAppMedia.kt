@@ -2,27 +2,24 @@ package com.lingxia.lxapp.APIs
 
 import android.content.ContentResolver
 import android.content.ContentValues
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.Matrix
-import android.media.ExifInterface
+import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.util.Log
-import com.lingxia.lxapp.LxApp
-import com.lingxia.lxapp.NativeApi
 import androidx.appcompat.app.AppCompatActivity
+import com.lingxia.lxapp.APIs.media.ImageOps
 import com.lingxia.lxapp.APIs.media.MediaCaptureFragment
 import com.lingxia.lxapp.APIs.media.MediaPickerFragment
 import com.lingxia.lxapp.APIs.media.MediaPreviewFragment
 import com.lingxia.lxapp.APIs.media.PreviewMediaPayload
 import com.lingxia.lxapp.APIs.media.ScanCodeFragment
+import com.lingxia.lxapp.LxApp
+import com.lingxia.lxapp.NativeApi
 import org.json.JSONObject
 import java.io.File
 import java.io.IOException
 import java.io.OutputStream
-import kotlin.math.max
 
 internal object LxAppMedia {
     private const val TAG = "LingXia.LxAppMedia"
@@ -49,6 +46,47 @@ internal object LxAppMedia {
     }
 
     /**
+     * Retrieve basic metadata for an image URI (width/height/mime/rotation), akin to wx.getImageInfo.
+     */
+    @JvmStatic
+    fun getImageInfo(uri: String): String {
+        val ctx = LxApp.applicationContext() ?: return JSONObject().apply {
+            put("success", false)
+            put("error", "Application context unavailable")
+        }.toString()
+        val sourceFile = resolveLocalFile(uri) ?: return JSONObject().apply {
+            put("success", false)
+            put("error", "Only local file paths are supported")
+        }.toString()
+
+        val result = try {
+            val info = ImageOps.readInfo(ctx, Uri.fromFile(sourceFile))
+            if (info == null) {
+                JSONObject().apply {
+                    put("success", false)
+                    put("error", "Failed to read image info")
+                }
+            } else {
+                JSONObject().apply {
+                    put("success", true)
+                    put("width", info.width)
+                    put("height", info.height)
+                    put("mimeType", info.mimeType ?: "")
+                    put("orientation", info.orientation)
+                    put("rotation", info.rotation)
+                }
+            }
+        } catch (e: Exception) {
+            JSONObject().apply {
+                put("success", false)
+                put("error", e.message ?: "getImageInfo failed")
+            }
+        }
+
+        return result.toString()
+    }
+
+    /**
      * Copy an album/content URI into a concrete file path via the ContentResolver.
      * For JPEG/JPG destinations, transcodes to 80% quality while guarding against OOM.
      * For videos and other files, streams bytes as-is.
@@ -65,67 +103,25 @@ internal object LxAppMedia {
             val ext = outFile.extension.lowercase()
             val isJpeg = ext == "jpg" || ext == "jpeg"
 
+            val parsed = android.net.Uri.parse(uri)
             if (isJpeg) {
-                val parsed = android.net.Uri.parse(uri)
-                val bitmap = decodeBitmapForCopy(contentResolver, parsed)
-                if (bitmap == null) {
-                    Log.w(TAG, "decodeBitmapForCopy failed, falling back to byte copy for $uri")
-                    return streamCopy(contentResolver, parsed, outFile)
+                if (ImageOps.transcodeToJpeg(contentResolver, parsed, outFile)) {
+                    true
+                } else {
+                    Log.w(TAG, "transcodeToJpeg failed, streaming fallback for $uri")
+                    streamCopy(contentResolver, parsed, outFile)
                 }
-                val orientedBitmap = correctOrientation(bitmap, uri)
-                try {
-                    outFile.outputStream().use { outputStream ->
-                        orientedBitmap.compress(Bitmap.CompressFormat.JPEG, 80, outputStream)
-                    }
-                } finally {
-                    if (orientedBitmap !== bitmap) {
-                        orientedBitmap.recycle()
-                    }
-                    bitmap.recycle()
-                }
-                true
             } else {
-                streamCopy(contentResolver, android.net.Uri.parse(uri), outFile)
+                streamCopy(contentResolver, parsed, outFile)
             }
         } catch (oom: OutOfMemoryError) {
             Log.e(TAG, "copyAlbumMediaToFile OOM for $uri, falling back to stream", oom)
             val ctx = LxApp.getApplicationContext()
-            return streamCopy(ctx.contentResolver, android.net.Uri.parse(uri), File(destPath))
+            streamCopy(ctx.contentResolver, android.net.Uri.parse(uri), File(destPath))
         } catch (e: Exception) {
             Log.e(TAG, "copyAlbumMediaToFile failed: ${e.message}", e)
             false
         }
-    }
-
-    private fun decodeBitmapForCopy(resolver: ContentResolver, uri: android.net.Uri): Bitmap? {
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
-        val width = bounds.outWidth
-        val height = bounds.outHeight
-        if (width <= 0 || height <= 0) {
-            return null
-        }
-        val options = BitmapFactory.Options().apply {
-            inPreferredConfig = Bitmap.Config.ARGB_8888
-            inSampleSize = calculateSampleSize(max(width, height), 4096)
-        }
-        return try {
-            resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
-        } catch (oom: OutOfMemoryError) {
-            Log.e(TAG, "decodeBitmapForCopy OOM for $uri", oom)
-            null
-        }
-    }
-
-    private fun calculateSampleSize(maxDimension: Int, targetMax: Int): Int {
-        if (maxDimension <= 0) return 1
-        var sample = 1
-        var current = maxDimension
-        while (current > targetMax) {
-            sample *= 2
-            current /= 2
-        }
-        return sample.coerceAtLeast(1)
     }
 
     private fun streamCopy(resolver: ContentResolver, uri: android.net.Uri, dest: File): Boolean {
@@ -143,67 +139,74 @@ internal object LxAppMedia {
     }
 
     /**
-     * Correct image orientation based on EXIF data
+     * Compress an image URI into the provided output file path and return the resulting file path.
      */
-    private fun correctOrientation(bitmap: Bitmap, sourceUri: String): Bitmap {
+    @JvmStatic
+    fun compressImage(
+        uri: String,
+        outputPath: String,
+        quality: Int,
+        targetWidth: Int,
+        targetHeight: Int
+    ): String {
         return try {
             val ctx = LxApp.getApplicationContext()
-            val exif = if (sourceUri.startsWith("content://")) {
-                ctx.contentResolver.openInputStream(android.net.Uri.parse(sourceUri))?.use { inputStream ->
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                        ExifInterface(inputStream)
-                    } else {
-                        null
-                    }
-                }
-            } else {
-                val path = if (sourceUri.startsWith("file://")) {
-                    android.net.Uri.parse(sourceUri).path ?: sourceUri
-                } else {
-                    sourceUri
-                }
-                ExifInterface(path)
+            val resolver = ctx.contentResolver
+            val sourceFile = resolveLocalFile(uri)
+                ?: return errorResult("Only local file paths are supported")
+            if (!sourceFile.exists()) {
+                return errorResult("Source file does not exist")
             }
-
-            val orientation = exif?.getAttributeInt(
-                ExifInterface.TAG_ORIENTATION,
-                ExifInterface.ORIENTATION_NORMAL
-            ) ?: ExifInterface.ORIENTATION_NORMAL
-
-            when (orientation) {
-                ExifInterface.ORIENTATION_ROTATE_90 -> rotateBitmap(bitmap, 90f)
-                ExifInterface.ORIENTATION_ROTATE_180 -> rotateBitmap(bitmap, 180f)
-                ExifInterface.ORIENTATION_ROTATE_270 -> rotateBitmap(bitmap, 270f)
-                ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> flipBitmap(bitmap, horizontal = true, vertical = false)
-                ExifInterface.ORIENTATION_FLIP_VERTICAL -> flipBitmap(bitmap, horizontal = false, vertical = true)
-                else -> bitmap
+            val normalizedQuality = quality.coerceIn(0, 100)
+            val width = targetWidth.takeIf { it > 0 }
+            val height = targetHeight.takeIf { it > 0 }
+            val maxDimension = listOfNotNull(width, height).maxOrNull() ?: 4096
+            val outputFile = File(outputPath)
+            outputFile.parentFile?.let { parent ->
+                if (!parent.exists() && !parent.mkdirs()) {
+                    Log.e(TAG, "compressImage: failed to create parent for $outputPath")
+                    return ""
+                }
             }
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to correct orientation: ${e.message}")
-            bitmap
-        }
-    }
-
-    /**
-     * Rotate a bitmap by the specified degrees
-     */
-    private fun rotateBitmap(bitmap: Bitmap, degrees: Float): Bitmap {
-        val matrix = Matrix().apply { postRotate(degrees) }
-        return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
-    }
-
-    /**
-     * Flip a bitmap horizontally or vertically
-     */
-    private fun flipBitmap(bitmap: Bitmap, horizontal: Boolean, vertical: Boolean): Bitmap {
-        val matrix = Matrix().apply {
-            postScale(
-                if (horizontal) -1f else 1f,
-                if (vertical) -1f else 1f
+            val success = ImageOps.transcodeToJpeg(
+                resolver,
+                Uri.fromFile(sourceFile),
+                outputFile,
+                normalizedQuality,
+                maxDimension,
+                width,
+                height
             )
+            if (success) {
+                outputFile.absolutePath
+            } else {
+                outputFile.delete()
+                errorResult("Transcode failed")
+            }
+        } catch (oom: OutOfMemoryError) {
+            Log.e(TAG, "compressImage OOM for $uri", oom)
+            errorResult("Out of memory during compression")
+        } catch (e: Exception) {
+            Log.e(TAG, "compressImage failed: ${e.message}", e)
+            errorResult(e.message ?: "compressImage failed")
         }
-        return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
     }
+
+    private fun resolveLocalFile(uri: String): File? {
+        return when {
+            uri.startsWith("file://", ignoreCase = true) -> {
+                val parsed = Uri.parse(uri)
+                parsed.path?.let { File(it) }
+            }
+            uri.startsWith("content://", ignoreCase = true) || uri.startsWith("phasset:", ignoreCase = true) -> null
+            else -> File(uri)
+        }
+    }
+
+    private fun errorResult(message: String): String {
+        return "__ERROR__:$message"
+    }
+
 
     @JvmStatic
     fun saveImageToPhotosAlbum(imageUri: String): Boolean {
