@@ -153,51 +153,6 @@ impl AppRuntime for Platform {
     }
 }
 
-impl MediaRuntime for Platform {
-    fn copy_album_media_to_file(
-        &self,
-        uri: &str,
-        dest_path: &std::path::Path,
-        kind: crate::traits::MediaKind,
-    ) -> Result<(), PlatformError> {
-        #[cfg(target_os = "ios")]
-        {
-            let kind_code = match kind {
-                crate::traits::MediaKind::Video => 1,
-                _ => 0,
-            };
-            let dest_str = dest_path
-                .to_str()
-                .ok_or_else(|| {
-                    PlatformError::Platform(format!(
-                        "Destination path contains invalid UTF-8: {}",
-                        dest_path.display()
-                    ))
-                })?
-                .to_string();
-
-            if super::ffi::copy_album_media_to_file(uri, &dest_str, kind_code) {
-                Ok(())
-            } else {
-                Err(PlatformError::Platform(format!(
-                    "Failed to copy media to {}",
-                    dest_path.display()
-                )))
-            }
-        }
-
-        #[cfg(not(target_os = "ios"))]
-        {
-            let _ = uri;
-            let _ = dest_path;
-            let _ = kind;
-            Err(PlatformError::Platform(
-                "copy_album_media_to_file is only supported on iOS".to_string(),
-            ))
-        }
-    }
-}
-
 impl Platform {
     /// Recursively collect all files from a directory
     fn collect_files_recursively<'a>(

@@ -1,4 +1,5 @@
 use crate::error::PlatformError;
+use crate::traits::MediaKind;
 use crate::{AppRuntime, AssetFileEntry, MediaRuntime};
 use log::warn;
 use napi_ohos::JsValue;
@@ -300,7 +301,7 @@ impl Platform {
         &self,
         uri: &str,
         dest_path: &Path,
-        _kind: crate::traits::MediaKind,
+        kind: MediaKind,
     ) -> Result<(), PlatformError> {
         if uri.is_empty() {
             return Err(PlatformError::Platform("URI must not be empty".to_string()));
@@ -345,8 +346,8 @@ impl Platform {
         let (tx, rx) = mpsc::channel();
 
         let request_id = unsafe {
-            match _kind {
-                crate::traits::MediaKind::Video => ffi::OH_MediaAssetManager_RequestVideoForPath(
+            match kind {
+                MediaKind::Video => ffi::OH_MediaAssetManager_RequestVideoForPath(
                     manager.0,
                     uri_cstr.as_ptr(),
                     request_options,
@@ -467,7 +468,7 @@ impl AppRuntime for Platform {
         &self,
         uri: &str,
         dest_path: &Path,
-        kind: crate::traits::MediaKind,
+        kind: MediaKind,
     ) -> Result<(), PlatformError> {
         MediaRuntime::copy_album_media_to_file(self, uri, dest_path, kind)
     }
@@ -510,17 +511,6 @@ impl AppRuntime for Platform {
     fn launch_with_url(&self, url: String) -> Result<(), PlatformError> {
         lingxia_webview::tsfn::call_arkts("launchWithUrl", &[&url])
             .map_err(|e| PlatformError::Platform(format!("Failed to launch with url: {}", e)))
-    }
-}
-
-impl MediaRuntime for Platform {
-    fn copy_album_media_to_file(
-        &self,
-        uri: &str,
-        dest_path: &Path,
-        kind: crate::traits::MediaKind,
-    ) -> Result<(), PlatformError> {
-        self.copy_album_media_to_file_impl(uri, dest_path, kind)
     }
 }
 

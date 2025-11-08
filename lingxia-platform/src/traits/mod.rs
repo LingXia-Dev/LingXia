@@ -12,4 +12,4 @@ pub use media_interaction::{
     MediaSource, PreviewMediaItem, PreviewMediaRequest, SaveMediaRequest, ScanCodeRequest,
     ScanType,
 };
-pub use media_runtime::MediaRuntime;
+pub use media_runtime::{CompressImageRequest, ImageInfo, MediaRuntime};

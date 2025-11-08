@@ -2,10 +2,11 @@ use super::app::Platform;
 use super::ffi::preview_media;
 use crate::error::PlatformError;
 use crate::traits::{
-    ChooseMediaRequest, MediaInteraction, MediaKind, PreviewMediaRequest, SaveMediaRequest,
-    ScanCodeRequest,
+    ChooseMediaRequest, CompressImageRequest, ImageInfo, MediaInteraction, MediaKind, MediaRuntime,
+    PreviewMediaRequest, SaveMediaRequest, ScanCodeRequest,
 };
 use serde::Serialize;
+use std::path::{Path, PathBuf};
 
 #[derive(Serialize)]
 struct PreviewMediaPayload {
@@ -110,6 +111,113 @@ impl MediaInteraction for Platform {
     }
 }
 
+impl MediaRuntime for Platform {
+    fn copy_album_media_to_file(
+        &self,
+        uri: &str,
+        dest_path: &Path,
+        kind: MediaKind,
+    ) -> Result<(), PlatformError> {
+        #[cfg(target_os = "ios")]
+        {
+            let kind_code = match kind {
+                MediaKind::Video => 1,
+                _ => 0,
+            };
+            let dest_str = dest_path
+                .to_str()
+                .ok_or_else(|| {
+                    PlatformError::Platform(format!(
+                        "Destination path contains invalid UTF-8: {}",
+                        dest_path.display()
+                    ))
+                })?
+                .to_string();
+
+            if super::ffi::copy_album_media_to_file(uri, &dest_str, kind_code) {
+                Ok(())
+            } else {
+                Err(PlatformError::Platform(format!(
+                    "Failed to copy media to {}",
+                    dest_path.display()
+                )))
+            }
+        }
+
+        #[cfg(not(target_os = "ios"))]
+        {
+            let _ = uri;
+            let _ = dest_path;
+            let _ = kind;
+            Err(PlatformError::Platform(
+                "copy_album_media_to_file is only supported on iOS".to_string(),
+            ))
+        }
+    }
+
+    fn get_image_info(&self, uri: &str) -> Result<ImageInfo, PlatformError> {
+        #[cfg(target_os = "ios")]
+        {
+            let info = super::ffi::get_image_info(uri);
+            if !info.success {
+                return Err(PlatformError::Platform(if info.error.is_empty() {
+                    "get_image_info failed".to_string()
+                } else {
+                    info.error
+                }));
+            }
+            return Ok(ImageInfo {
+                width: info.width,
+                height: info.height,
+                mime_type: if info.mime_type.is_empty() {
+                    None
+                } else {
+                    Some(info.mime_type)
+                },
+                orientation: info.orientation,
+                rotation: info.rotation,
+            });
+        }
+
+        #[cfg(not(target_os = "ios"))]
+        {
+            let _ = uri;
+            Err(PlatformError::Platform(
+                "get_image_info is only supported on iOS".to_string(),
+            ))
+        }
+    }
+
+    fn compress_image(&self, request: &CompressImageRequest) -> Result<PathBuf, PlatformError> {
+        #[cfg(target_os = "ios")]
+        {
+            let output_path = request.output_path.to_string_lossy();
+            let result = super::ffi::compress_image(
+                &request.source_uri,
+                request.quality as i32,
+                request.max_width.unwrap_or(0) as i32,
+                request.max_height.unwrap_or(0) as i32,
+                output_path.as_ref(),
+            );
+            if !result.success || result.path.is_empty() {
+                return Err(PlatformError::Platform(if result.error.is_empty() {
+                    "compress_image failed".to_string()
+                } else {
+                    result.error
+                }));
+            }
+            return Ok(PathBuf::from(result.path));
+        }
+
+        #[cfg(not(target_os = "ios"))]
+        {
+            let _ = request;
+            Err(PlatformError::Platform(
+                "compress_image is only supported on iOS".to_string(),
+            ))
+        }
+    }
+}
 #[cfg(target_os = "ios")]
 #[cfg(target_os = "ios")]
 mod ios {

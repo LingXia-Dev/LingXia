@@ -72,6 +72,24 @@ mod bridge {
         Right,
     }
 
+    #[swift_bridge(swift_repr = "struct")]
+    pub struct SwiftImageInfoResult {
+        pub success: bool,
+        pub error: String,
+        pub width: u32,
+        pub height: u32,
+        pub rotation: i32,
+        pub orientation: i32,
+        pub mime_type: String,
+    }
+
+    #[swift_bridge(swift_repr = "struct")]
+    pub struct SwiftCompressImageResult {
+        pub success: bool,
+        pub error: String,
+        pub path: String,
+    }
+
     extern "Swift" {
         // LxApp navigation functions
         #[swift_bridge(swift_name = "LxApp.openLxApp")]
@@ -151,6 +169,18 @@ mod bridge {
         // media_type: 0=image(JPG), 1=video(MP4)
         #[swift_bridge(swift_name = "LxAppMedia.copyAlbumMediaToFile")]
         fn copy_album_media_to_file(uri: &str, destination_path: &str, media_type: i32) -> bool;
+
+        #[swift_bridge(swift_name = "LxAppMedia.getImageInfo")]
+        fn get_image_info(uri: &str) -> SwiftImageInfoResult;
+
+        #[swift_bridge(swift_name = "LxAppMedia.compressImage")]
+        fn compress_image(
+            source_uri: &str,
+            quality: i32,
+            target_width: i32,
+            target_height: i32,
+            output_path: &str,
+        ) -> SwiftCompressImageResult;
     }
 }
 
@@ -163,4 +193,6 @@ pub use bridge::{
 };
 #[cfg(target_os = "ios")]
 #[allow(unused_imports)]
-pub use bridge::{choose_media, copy_album_media_to_file, scan_code};
+pub use bridge::{
+    choose_media, compress_image, copy_album_media_to_file, get_image_info, scan_code,
+};

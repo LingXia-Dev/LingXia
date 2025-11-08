@@ -1,13 +1,16 @@
 use super::app::Platform;
 use crate::error::PlatformError;
 use crate::traits::{
-    ChooseMediaRequest, MediaInteraction, MediaKind, PreviewMediaRequest, SaveMediaRequest,
-    ScanCodeRequest, ScanType,
+    ChooseMediaRequest, CompressImageRequest, ImageInfo, MediaInteraction, MediaKind, MediaRuntime,
+    PreviewMediaRequest, SaveMediaRequest, ScanCodeRequest, ScanType,
 };
 use jni::JNIEnv;
 use jni::objects::{JClass, JObject, JString, JValue};
 use jni::sys::{jint, jlong};
 use lingxia_webview::get_env;
+use serde::Deserialize;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 fn with_jni<T, F>(env: &mut JNIEnv<'static>, f: F) -> Result<T, Box<dyn std::error::Error>>
 where
@@ -282,4 +285,135 @@ fn choose_media_impl(request: ChooseMediaRequest) -> Result<(), Box<dyn std::err
     })?;
 
     Ok(())
+}
+
+impl MediaRuntime for Platform {
+    fn copy_album_media_to_file(
+        &self,
+        uri: &str,
+        dest_path: &Path,
+        _kind: MediaKind,
+    ) -> Result<(), PlatformError> {
+        copy_album_media_to_file_impl(uri, dest_path).map_err(|e| {
+            PlatformError::Platform(format!("Android copy_album_media_to_file failed: {}", e))
+        })
+    }
+
+    fn get_image_info(&self, uri: &str) -> Result<ImageInfo, PlatformError> {
+        get_image_info_impl(uri)
+            .map_err(|e| PlatformError::Platform(format!("get_image_info failed: {}", e)))
+    }
+
+    fn compress_image(&self, request: &CompressImageRequest) -> Result<PathBuf, PlatformError> {
+        compress_image_impl(request)
+            .map_err(|e| PlatformError::Platform(format!("compress_image failed: {}", e)))
+    }
+}
+
+fn copy_album_media_to_file_impl(
+    uri: &str,
+    dest_path: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut env = get_env()?;
+    let media_class_ref = super::get_cached_class(super::CachedClass::LxAppMedia)?;
+    let media_class: &JClass = media_class_ref.as_obj().into();
+    let j_uri = env.new_string(uri)?;
+    let j_dest = env.new_string(dest_path.to_string_lossy().as_ref())?;
+    let res = env.call_static_method(
+        media_class,
+        "copyAlbumMediaToFile",
+        "(Ljava/lang/String;Ljava/lang/String;)Z",
+        &[(&j_uri).into(), (&j_dest).into()],
+    )?;
+    if res.z()? {
+        Ok(())
+    } else {
+        Err("copyAlbumMediaToFile returned false".into())
+    }
+}
+
+fn get_image_info_impl(uri: &str) -> Result<ImageInfo, Box<dyn std::error::Error>> {
+    let mut env = get_env()?;
+    let media_class_ref = super::get_cached_class(super::CachedClass::LxAppMedia)?;
+    let media_class: &JClass = media_class_ref.as_obj().into();
+    let j_uri = env.new_string(uri)?;
+    let result = env.call_static_method(
+        media_class,
+        "getImageInfo",
+        "(Ljava/lang/String;)Ljava/lang/String;",
+        &[(&j_uri).into()],
+    )?;
+    let json_obj = result.l()?;
+    if json_obj.is_null() {
+        return Err("getImageInfo returned null".into());
+    }
+    let java_str = JString::from(json_obj);
+    let json_str: String = env.get_string(&java_str)?.into();
+    let parsed: AndroidImageInfoResponse = serde_json::from_str(&json_str)?;
+    if !parsed.success {
+        return Err(parsed
+            .error
+            .unwrap_or_else(|| "getImageInfo failed".to_string())
+            .into());
+    }
+    Ok(ImageInfo {
+        width: parsed.width.unwrap_or(0),
+        height: parsed.height.unwrap_or(0),
+        mime_type: parsed.mime_type.filter(|s| !s.is_empty()),
+        orientation: parsed.orientation.unwrap_or(0),
+        rotation: parsed.rotation.unwrap_or(0),
+    })
+}
+
+fn compress_image_impl(
+    request: &CompressImageRequest,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let mut env = get_env()?;
+    let media_class_ref = super::get_cached_class(super::CachedClass::LxAppMedia)?;
+    let media_class: &JClass = media_class_ref.as_obj().into();
+    let j_uri = env.new_string(&request.source_uri)?;
+    let output_path = request.output_path.to_string_lossy();
+    let j_output_path = env.new_string(output_path.as_ref())?;
+    let quality = i32::from(request.quality);
+    let width = request.max_width.unwrap_or(0) as i32;
+    let height = request.max_height.unwrap_or(0) as i32;
+    let result = env.call_static_method(
+        media_class,
+        "compressImage",
+        "(Ljava/lang/String;Ljava/lang/String;III)Ljava/lang/String;",
+        &[
+            (&j_uri).into(),
+            (&j_output_path).into(),
+            JValue::Int(quality),
+            JValue::Int(width),
+            JValue::Int(height),
+        ],
+    )?;
+    let path_obj = result.l()?;
+    if path_obj.is_null() {
+        return Err("compressImage returned null".into());
+    }
+    let java_path = JString::from(path_obj);
+    let path: String = env.get_string(&java_path)?.into();
+    if let Some(err) = path.strip_prefix("__ERROR__:") {
+        return Err(err.to_string().into());
+    }
+    if path.is_empty() {
+        return Err("compressImage failed".into());
+    }
+    Ok(PathBuf::from(path))
+}
+
+#[derive(Deserialize)]
+struct AndroidImageInfoResponse {
+    success: bool,
+    error: Option<String>,
+    #[serde(rename = "width")]
+    width: Option<u32>,
+    #[serde(rename = "height")]
+    height: Option<u32>,
+    #[serde(rename = "mimeType")]
+    mime_type: Option<String>,
+    orientation: Option<i32>,
+    rotation: Option<i32>,
 }

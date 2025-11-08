@@ -1,5 +1,5 @@
 use crate::error::PlatformError;
-use crate::{AppRuntime, AssetFileEntry, MediaRuntime};
+use crate::{AppRuntime, AssetFileEntry};
 use jni::objects::{GlobalRef, JClass, JObject, JValue};
 use jni::sys::jobject;
 use lingxia_webview::get_env;
@@ -444,40 +444,6 @@ impl AppRuntime for Platform {
             Ok(_) => Ok(()),
             Err(e) => Err(PlatformError::Platform(format!(
                 "Failed to launch_with_url: {}",
-                e
-            ))),
-        }
-    }
-}
-
-impl MediaRuntime for Platform {
-    fn copy_album_media_to_file(
-        &self,
-        uri: &str,
-        dest_path: &Path,
-        _kind: crate::traits::MediaKind,
-    ) -> Result<(), PlatformError> {
-        match || -> Result<(), Box<dyn std::error::Error>> {
-            let mut env = get_env()?;
-            let media_class_ref = super::get_cached_class(super::CachedClass::LxAppMedia)?;
-            let media_class: &JClass = media_class_ref.as_obj().into();
-            let j_uri = env.new_string(uri)?;
-            let j_dest = env.new_string(dest_path.to_string_lossy().as_ref())?;
-            let res = env.call_static_method(
-                media_class,
-                "copyAlbumMediaToFile",
-                "(Ljava/lang/String;Ljava/lang/String;)Z",
-                &[(&j_uri).into(), (&j_dest).into()],
-            )?;
-            if res.z()? {
-                Ok(())
-            } else {
-                Err("copyAlbumMediaToFile returned false".into())
-            }
-        }() {
-            Ok(_) => Ok(()),
-            Err(e) => Err(PlatformError::Platform(format!(
-                "Android copy_album_media_to_file failed: {}",
                 e
             ))),
         }
