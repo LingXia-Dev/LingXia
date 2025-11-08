@@ -26,6 +26,28 @@ const DURATION_OPTIONS = [
   { key: "60", label: "60 seconds", value: 60 },
 ];
 
+function extractInputValue(event) {
+  if (!event) return "";
+  if (typeof event === "string") return event;
+  if (typeof event?.detail?.value === "string") return event.detail.value;
+  if (typeof event?.target?.value === "string") return event.target.value;
+  return "";
+}
+
+function clampQualityInput(value) {
+  const parsed = parseInt(String(value ?? ""), 10);
+  if (Number.isNaN(parsed)) return 80;
+  return Math.min(100, Math.max(0, parsed));
+}
+
+function parsePositiveInt(value) {
+  const parsed = parseInt(String(value ?? ""), 10);
+  if (Number.isNaN(parsed) || parsed <= 0) {
+    return undefined;
+  }
+  return parsed;
+}
+
 const MODE_SETTINGS = {
   Pictures: {
     mediaType: "image",
@@ -50,16 +72,44 @@ const MODE_SETTINGS = {
       scanTypeKey: "all",
     },
   },
+  ImageInfo: {
+    mediaType: "imageInfo",
+    defaults: {},
+  },
+  CompressImage: {
+    mediaType: "compressImage",
+    defaults: {
+      compressQuality: "80",
+    },
+  },
 };
 
 function getModeCopy(mediaType) {
   if (mediaType === "video") {
     return {
-      headerSubtitle: "choose/previewMedia",
+      headerSubtitle: "lx.chooseMedia",
       emptyHint: "Tap + to add a video.",
       previewHint: "Tap the clip to replay.",
       galleryHint: "Tap the clip to replay.",
       addLabel: "Add Video",
+    };
+  }
+  if (mediaType === "imageInfo") {
+    return {
+      headerSubtitle: "lx.getImageInfo",
+      emptyHint: "Tap + or enter a file path to inspect metadata.",
+      previewHint: "",
+      galleryHint: "",
+      addLabel: "Image Info",
+    };
+  }
+  if (mediaType === "compressImage") {
+    return {
+      headerSubtitle: "lx.compressImage",
+      emptyHint: "Choose an image to create a compressed copy.",
+      previewHint: "",
+      galleryHint: "",
+      addLabel: "Compress",
     };
   }
   if (mediaType === "scanCode") {
@@ -72,7 +122,7 @@ function getModeCopy(mediaType) {
     };
   }
   return {
-    headerSubtitle: "choose/previewMedia",
+    headerSubtitle: "lx.chooseMedia / lx.previewMedia",
     emptyHint: "Tap + to pick photos.",
     previewHint: "Tap a photo to preview.",
     galleryHint: "Tap a photo to preview.",
@@ -245,6 +295,15 @@ function createState(modeKey) {
     scanResult: "",
     scanType: "",
     scanBusy: false,
+    imageInfoResult: null,
+    imageInfoError: "",
+    imageInfoBusy: false,
+    compressQuality: defaults.compressQuality || "80",
+    compressMaxWidth: "",
+    compressMaxHeight: "",
+    compressing: false,
+    compressResultPath: "",
+    compressError: "",
   };
 }
 
@@ -265,7 +324,11 @@ Page({
         ? "Record / Pick Video"
         : state.mediaType === "scanCode"
           ? "Scan"
-          : "Photos";
+          : state.mediaType === "imageInfo"
+            ? "Image Info"
+            : state.mediaType === "compressImage"
+              ? "Compress Image"
+              : "Photos";
     lx.setNavigationBarTitle({ title });
   },
 
@@ -491,6 +554,219 @@ Page({
         title: error?.message || "Preview failed",
         icon: "none",
       });
+    }
+  },
+
+  pickImageForInfo: async function () {
+    if (this.data.imageInfoBusy) {
+      return;
+    }
+    const picked = await this.pickSingleImage();
+    if (!picked) {
+      return;
+    }
+    this.setData({
+      imageInfoBusy: true,
+      imageInfoError: "",
+      imageInfoResult: null,
+    });
+    try {
+      const info = await lx.getImageInfo({ path: picked });
+      // Get file size using Rong.stat
+      let size = 0;
+      try {
+        const stat = await Rong.stat(picked);
+        size = stat.size;
+      } catch (statError) {
+        console.warn("Failed to get file size:", statError);
+      }
+      this.setData({
+        imageInfoResult: { ...info, size } || null,
+        imageInfoBusy: false,
+      });
+    } catch (error) {
+      const message = error?.message || "getImageInfo failed";
+      this.setData({
+        imageInfoError: message,
+        imageInfoResult: null,
+        imageInfoBusy: false,
+      });
+      lx.showToast({
+        title: message,
+        icon: "none",
+      });
+    }
+  },
+
+  onCompressQualityInput: function (event) {
+    const value = extractInputValue(event);
+    this.setData({ compressQuality: value });
+  },
+
+  onCompressedWidthInput: function (event) {
+    const value = extractInputValue(event);
+    this.setData({ compressedWidth: value });
+  },
+
+  onCompressedHeightInput: function (event) {
+    const value = extractInputValue(event);
+    this.setData({ compressedHeight: value });
+  },
+
+  pickImageForCompress: async function () {
+    if (this.data.compressing) {
+      return;
+    }
+    const path = await this.pickSingleImage();
+    if (!path) {
+      return;
+    }
+    const quality = clampQualityInput(this.data.compressQuality);
+    const compressedWidth = parsePositiveInt(this.data.compressedWidth);
+    const compressedHeight = parsePositiveInt(this.data.compressedHeight);
+
+    const payload = { path, quality };
+    if (typeof compressedWidth === "number") {
+      payload.compressedWidth = compressedWidth;
+    }
+    if (typeof compressedHeight === "number") {
+      payload.compressedHeight = compressedHeight;
+    }
+
+    this.setData({
+      compressing: true,
+      compressError: "",
+      compressResultPath: "",
+    });
+
+    try {
+      const result = await lx.compressImage(payload);
+      this.setData({
+        compressResultPath: result?.tempFilePath || "",
+      });
+    } catch (error) {
+      const message = error?.message || "compressImage failed";
+      this.setData({ compressError: message, compressResultPath: "" });
+      lx.showToast({
+        title: message,
+        icon: "none",
+      });
+    } finally {
+      this.setData({ compressing: false });
+    }
+  },
+
+  compressSelectedImage: async function () {
+    if (this.data.compressing) {
+      return;
+    }
+    const path = this.data.imageInfoResult?.path;
+    if (!path) {
+      lx.showToast({
+        title: "Please select an image first",
+        icon: "none",
+      });
+      return;
+    }
+
+    const quality = clampQualityInput(this.data.compressQuality);
+    const compressedWidth = parsePositiveInt(this.data.compressedWidth);
+    const compressedHeight = parsePositiveInt(this.data.compressedHeight);
+
+    const payload = { path, quality };
+    if (typeof compressedWidth === "number") {
+      payload.compressedWidth = compressedWidth;
+    }
+    if (typeof compressedHeight === "number") {
+      payload.compressedHeight = compressedHeight;
+    }
+
+    this.setData({
+      compressing: true,
+      compressError: "",
+      compressResultPath: "",
+      compressResultSize: 0,
+    });
+
+    try {
+      const result = await lx.compressImage(payload);
+      const resultPath = result?.tempFilePath || "";
+      // Get compressed file size using Rong.stat
+      let resultSize = 0;
+      if (resultPath) {
+        try {
+          const stat = await Rong.stat(resultPath);
+          resultSize = stat.size;
+        } catch (statError) {
+          console.warn("Failed to get compressed file size:", statError);
+        }
+      }
+      this.setData({
+        compressResultPath: resultPath,
+        compressResultSize: resultSize,
+      });
+    } catch (error) {
+      const message = error?.message || "compressImage failed";
+      this.setData({
+        compressError: message,
+        compressResultPath: "",
+        compressResultSize: 0,
+      });
+      lx.showToast({
+        title: message,
+        icon: "none",
+      });
+    } finally {
+      this.setData({ compressing: false });
+    }
+  },
+
+  previewCompressedImage: async function () {
+    const path = this.data.compressResultPath;
+    if (!path) {
+      lx.showToast({
+        title: "No compressed image to preview",
+        icon: "none",
+      });
+      return;
+    }
+
+    try {
+      await lx.previewMedia({
+        sources: [{ path, type: "image" }],
+        current: 0,
+      });
+    } catch (error) {
+      console.error("[media-demo] previewCompressedImage failed:", error);
+      lx.showToast({
+        title: error?.message || "Preview failed",
+        icon: "none",
+      });
+    }
+  },
+
+  pickSingleImage: async function () {
+    try {
+      const result = await lx.chooseMedia({
+        count: 1,
+        mediaType: ["image"],
+        sourceType: ["album", "camera"],
+        camera: "back",
+      });
+      const list = Array.isArray(result) ? result : result ? [result] : [];
+      if (!list.length) {
+        return null;
+      }
+      const first = list[0];
+      const candidate = first?.tempFilePath || first?.path || first?.uri;
+      return candidate || null;
+    } catch (error) {
+      console.error("[media-demo] pickSingleImage failed:", error);
+      lx.showToast({
+        title: error?.message || "chooseMedia failed",
+        icon: "none",
+      });
+      return null;
     }
   },
 });

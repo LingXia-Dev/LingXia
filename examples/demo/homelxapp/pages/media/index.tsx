@@ -33,8 +33,17 @@ type MediaItem = {
   type: 'image' | 'video';
 };
 
+type ImageInfoResult = {
+  width?: number;
+  height?: number;
+  type?: string;
+  orientation?: string;
+  path?: string;
+  size?: number;
+};
+
 type PageData = {
-  mediaType?: 'image' | 'video' | 'scanCode';
+  mediaType?: 'image' | 'video' | 'scanCode' | 'imageInfo' | 'compressImage';
   selectedMedia?: MediaItem[];
   isRunning?: boolean;
   countLimit?: number;
@@ -53,6 +62,16 @@ type PageData = {
   scanBusy?: boolean;
   scanOnlyCamera?: boolean;
   scanTypeKey?: string;
+  imageInfoResult?: ImageInfoResult | null;
+  imageInfoError?: string;
+  compressQuality?: string | number;
+  compressedWidth?: string | number;
+  compressedHeight?: string | number;
+  compressing?: boolean;
+  compressResultPath?: string;
+  compressResultSize?: number;
+  compressError?: string;
+  imageInfoBusy?: boolean;
 };
 
 type PageActions = {
@@ -66,6 +85,13 @@ type PageActions = {
   openScanSourcePicker?(): void;
   openScanTypePicker?(): void;
   startScan?(): void;
+  onCompressQualityInput?(event: any): void;
+  onCompressedWidthInput?(event: any): void;
+  onCompressedHeightInput?(event: any): void;
+  pickImageForInfo?(): void;
+  pickImageForCompress?(): void;
+  compressSelectedImage?(): void;
+  previewCompressedImage?(): void;
 };
 
 declare function useLingXia(): PageActions;
@@ -82,9 +108,18 @@ export default function MediaPage() {
     openScanSourcePicker,
     openScanTypePicker,
     startScan,
+    onCompressQualityInput,
+    onCompressedWidthInput,
+    onCompressedHeightInput,
+    pickImageForInfo,
+    pickImageForCompress,
+    compressSelectedImage,
+    previewCompressedImage,
   } = useLingXia();
 
   const mediaTypeInput = data?.mediaType || 'image';
+  const isImageInfoMode = mediaTypeInput === 'imageInfo';
+  const isCompressMode = mediaTypeInput === 'compressImage';
   const mediaType = mediaTypeInput === 'video'
     ? 'video'
     : (mediaTypeInput === 'scanCode')
@@ -119,7 +154,7 @@ export default function MediaPage() {
   typeof data?.countLimit === 'number' ? data.countLimit : countOption.value ?? 0;
   const counterText = countLimit ? `${selectedMedia.length}/${countLimit}` : `${selectedMedia.length}`;
 
-  const isPictureMode = mediaType === 'image';
+  const isPictureMode = mediaType === 'image' && !isImageInfoMode && !isCompressMode;
   const isScanMode = mediaType === 'scanCode';
 
   const emptyHint = data?.emptyHint || (isPictureMode ? 'Tap + to pick photos.' : 'Tap + to add a video.');
@@ -136,6 +171,28 @@ export default function MediaPage() {
     ? countLimit || Number.POSITIVE_INFINITY
     : 1;
   const canAddMore = selectedMedia.length < enforceLimit;
+  const imageInfoResult = data?.imageInfoResult || null;
+  const imageInfoError = data?.imageInfoError || '';
+  const imageInfoBusy = Boolean(data?.imageInfoBusy);
+  const rawQuality = data?.compressQuality ?? '80';
+  const compressQuality = typeof rawQuality === 'number' ? rawQuality.toString() : rawQuality;
+  const rawWidth = data?.compressedWidth ?? '';
+  const compressedWidth = typeof rawWidth === 'number' ? rawWidth.toString() : rawWidth || '';
+  const rawHeight = data?.compressedHeight ?? '';
+  const compressedHeight = typeof rawHeight === 'number' ? rawHeight.toString() : rawHeight || '';
+  const compressing = Boolean(data?.compressing);
+  const compressResultPath = data?.compressResultPath || '';
+  const compressResultSize = data?.compressResultSize || 0;
+  const compressError = data?.compressError || '';
+
+  // Format file size for display
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
+  };
 
   const handleChoose = React.useCallback(() => {
     if (!isRunning && canAddMore) {
@@ -246,6 +303,173 @@ export default function MediaPage() {
     );
   };
 
+  const renderImageInfoDemo = () => {
+    return (
+      <div className="space-y-4">
+        <button
+          type="button"
+          onClick={() => pickImageForInfo?.()}
+          disabled={imageInfoBusy}
+          className={`w-full rounded-lg bg-blue-600 py-3 text-sm font-medium text-white shadow-sm transition hover:bg-blue-500 ${imageInfoBusy ? 'opacity-70 cursor-not-allowed' : ''}`}
+        >
+          {imageInfoBusy ? 'Getting Info…' : 'Pick Image'}
+        </button>
+        {imageInfoError ? (
+          <div className="text-xs text-red-500">{imageInfoError}</div>
+        ) : null}
+        {imageInfoResult ? (
+          <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+            <div className="text-sm font-medium text-gray-700 mb-2">Result</div>
+            <div className="text-xs text-gray-500 space-y-1">
+              <div className="flex justify-between gap-3">
+                <span>Width</span>
+                <span className="font-semibold text-gray-800">{imageInfoResult.width ?? '--'} px</span>
+              </div>
+              <div className="flex justify-between gap-3">
+                <span>Height</span>
+                <span className="font-semibold text-gray-800">{imageInfoResult.height ?? '--'} px</span>
+              </div>
+              <div className="flex justify-between gap-3">
+                <span>Type</span>
+                <span className="font-semibold text-gray-800 break-all text-right">{imageInfoResult.type || '--'}</span>
+              </div>
+              <div className="flex justify-between gap-3">
+                <span>Size</span>
+                <span className="font-semibold text-gray-800">{formatFileSize(imageInfoResult.size || 0)}</span>
+              </div>
+              <div className="flex justify-between gap-3">
+                <span>Orientation</span>
+                <span className="font-semibold text-gray-800 capitalize">{imageInfoResult.orientation || '--'}</span>
+              </div>
+            </div>
+            {imageInfoResult.path ? (
+              <div className="mt-2 text-[11px] text-gray-500">
+                <span className="font-semibold text-gray-800">Path:</span>
+                <div className="mt-0.5 break-all overflow-hidden">{imageInfoResult.path}</div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    );
+  };
+
+  const renderCompressDemo = () => {
+    const hasImageInfo = Boolean(imageInfoResult);
+
+    return (
+      <div className="space-y-4">
+        {!hasImageInfo ? (
+          <>
+            <button
+              type="button"
+              onClick={() => pickImageForInfo?.()}
+              disabled={imageInfoBusy}
+              className={`w-full rounded-lg bg-blue-600 py-3 text-sm font-medium text-white shadow-sm transition hover:bg-blue-500 ${imageInfoBusy ? 'opacity-70 cursor-not-allowed' : ''}`}
+            >
+              {imageInfoBusy ? 'Loading…' : 'Pick Image'}
+            </button>
+            {imageInfoError ? (
+              <div className="text-xs text-red-500">{imageInfoError}</div>
+            ) : null}
+          </>
+        ) : (
+          <>
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+              <div className="text-xs font-medium text-gray-700 mb-2">Source Image</div>
+              <div className="text-xs text-gray-600 space-y-1">
+                <div className="flex justify-between gap-2">
+                  <span>Pixel Size:</span>
+                  <span className="font-semibold text-gray-800">{imageInfoResult.width} × {imageInfoResult.height}</span>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span>Type:</span>
+                  <span className="font-semibold text-gray-800">{imageInfoResult.type || '--'}</span>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span>File Size:</span>
+                  <span className="font-semibold text-gray-800">{formatFileSize(imageInfoResult.size || 0)}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <div className="text-xs text-gray-600 mb-1">Quality</div>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={compressQuality}
+                  onChange={(event) => onCompressQualityInput?.({ detail: { value: event.target.value } })}
+                  className="w-full px-2 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <div className="text-xs text-gray-600 mb-1">Width</div>
+                <input
+                  type="number"
+                  min={0}
+                  value={compressedWidth}
+                  onChange={(event) => onCompressedWidthInput?.({ detail: { value: event.target.value } })}
+                  placeholder={String(imageInfoResult.width || '')}
+                  className="w-full px-2 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <div className="text-xs text-gray-600 mb-1">Height</div>
+                <input
+                  type="number"
+                  min={0}
+                  value={compressedHeight}
+                  onChange={(event) => onCompressedHeightInput?.({ detail: { value: event.target.value } })}
+                  placeholder={String(imageInfoResult.height || '')}
+                  className="w-full px-2 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => compressSelectedImage?.()}
+              disabled={compressing}
+              className={`w-full rounded-lg bg-blue-600 py-3 text-sm font-medium text-white shadow-sm transition hover:bg-blue-500 ${compressing ? 'opacity-70 cursor-not-allowed' : ''}`}
+            >
+              {compressing ? 'Compressing…' : 'Compress Image'}
+            </button>
+
+            {compressError ? (
+              <div className="text-xs text-red-500">{compressError}</div>
+            ) : null}
+
+            {compressResultPath ? (
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-xs text-gray-600">
+                <div className="font-medium text-gray-800 mb-2">Compressed File</div>
+                <div className="space-y-2">
+                  <div className="flex justify-between gap-2">
+                    <span>File Size:</span>
+                    <span className="font-semibold text-gray-800">{formatFileSize(compressResultSize)}</span>
+                  </div>
+                  <div>
+                    <span className="font-semibold text-gray-800">Path:</span>
+                    <div className="mt-0.5 break-all overflow-hidden">{compressResultPath}</div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => previewCompressedImage?.()}
+                  className="mt-3 w-full rounded-lg bg-gray-600 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-gray-500"
+                >
+                  Preview Image
+                </button>
+              </div>
+            ) : null}
+          </>
+        )}
+      </div>
+    );
+  };
+
   const scanSourceLabel = data?.scanOnlyCamera ? 'Camera' : 'Camera & Album';
   const scanTypeKey = data?.scanTypeKey || 'all';
   // Show raw key directly (no conversion): e.g., barCode, qrCode, pdf417
@@ -256,50 +480,53 @@ export default function MediaPage() {
         { label: 'Source', value: scanSourceLabel, action: openScanSourcePicker },
         { label: 'Scan Type', value: scanTypeLabel, action: openScanTypePicker },
       ]
-    : isPictureMode
-      ? [
-        { label: 'Photo Source', value: sourceLabel, action: openSourcePicker },
-        { label: 'Count Limit', value: countLabel, action: openCountPicker },
-      ]
-      : [
-        { label: 'Video Source', value: sourceLabel, action: openSourcePicker },
+    : (isImageInfoMode || isCompressMode)
+      ? []  // No settings for ImageInfo/Compress
+      : isPictureMode
+        ? [
+          { label: 'Photo Source', value: sourceLabel, action: openSourcePicker },
+          { label: 'Count Limit', value: countLabel, action: openCountPicker },
+        ]
+        : [
+          { label: 'Video Source', value: sourceLabel, action: openSourcePicker },
         { label: 'Camera', value: cameraLabel, action: openCameraPicker },
         { label: 'Duration', value: durationLabel, action: openDurationPicker },
       ];
 
-  const pagePaddingX = isScanMode ? 'px-0' : 'px-4';
+  const pagePaddingX = (isScanMode || isImageInfoMode || isCompressMode) ? 'px-0' : 'px-4';
+
   return (
     <div className="min-h-screen bg-gray-100">
       <div className={`${pagePaddingX} py-5 space-y-4`}>
         <div className="bg-white shadow-sm">
-          <div className="px-5 py-6 text-center">
-            <div className="text-base font-medium text-gray-700">{isScanMode ? 'lx.scanCode' : headerSubtitle}</div>
-            <div className="mx-auto mt-3 h-0.5 w-12 bg-gray-200" />
+          <div className="px-5 py-6 text-center space-y-2">
+            <div className="text-base font-medium text-gray-700">
+              {isScanMode ? 'lx.scanCode' : isImageInfoMode ? 'lx.getImageInfo' : isCompressMode ? 'lx.compressImage' : headerSubtitle}
+            </div>
+            <div className="mx-auto h-0.5 w-12 bg-gray-200" />
+            {(isScanMode || isImageInfoMode || isCompressMode) && (
+              <div className="text-xs text-gray-500 max-w-sm mx-auto">
+                {isScanMode
+                  ? 'Scan QR codes and barcodes using camera or album'
+                  : isImageInfoMode
+                    ? 'Get image dimensions, type and orientation'
+                    : 'Create compressed JPEG with custom quality and size'}
+              </div>
+            )}
           </div>
-          <div className="border-t border-gray-100">
-            {settingRows.map(({ label, value, action }, index) => (
-              <React.Fragment key={label}>
-                <SettingRow label={label} value={value} onPress={action} />
-                {index < settingRows.length - 1 ? <div className="h-px bg-gray-100" /> : null}
-              </React.Fragment>
-            ))}
-          </div>
-        </div>
-
-        <div className={`space-y-3 bg-white ${isScanMode ? 'p-6 w-full' : 'rounded-xl border border-gray-200 p-4 shadow-sm'}`}>
-          {!isScanMode && (
-            <div className="flex items-center justify-between text-xs text-gray-500">
-              <span>{helperText}</span>
-              {selectedMedia.length ? null : null}
+          {settingRows.length > 0 && (
+            <div className="border-t border-gray-100">
+              {settingRows.map(({ label, value, action }, index) => (
+                <React.Fragment key={label}>
+                  <SettingRow label={label} value={value} onPress={action} />
+                  {index < settingRows.length - 1 ? <div className="h-px bg-gray-100" /> : null}
+                </React.Fragment>
+              ))}
             </div>
           )}
-          {!isScanMode && countLimit ? (
-            <div className="text-xs text-gray-400">Selected {counterText}</div>
-          ) : null}
-          {!isScanMode && selectedMedia.length ? (
-            <div className="text-[10px] text-gray-400">{galleryHint}</div>
-          ) : null}
+        </div>
 
+        <div className={`space-y-3 bg-white overflow-hidden ${(isScanMode || isImageInfoMode || isCompressMode) ? 'p-6 w-full' : 'rounded-xl border border-gray-200 p-4 shadow-sm'}`}>
           {isScanMode ? (
             <>
               <div className="space-y-2">
@@ -319,8 +546,23 @@ export default function MediaPage() {
                 {'ScanCode'}
               </button>
             </>
+          ) : isImageInfoMode ? (
+            renderImageInfoDemo()
+          ) : isCompressMode ? (
+            renderCompressDemo()
           ) : (
-            isPictureMode ? renderPictureTiles() : renderVideoTiles()
+            <>
+              <div className="flex items-center justify-between text-xs text-gray-500">
+                <span>{helperText}</span>
+              </div>
+              {countLimit ? (
+                <div className="text-xs text-gray-400">Selected {counterText}</div>
+              ) : null}
+              {selectedMedia.length ? (
+                <div className="text-[10px] text-gray-400">{galleryHint}</div>
+              ) : null}
+              {isPictureMode ? renderPictureTiles() : renderVideoTiles()}
+            </>
           )}
         </div>
       </div>
