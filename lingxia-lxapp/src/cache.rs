@@ -164,7 +164,10 @@ impl LxAppCache {
                         if !name.starts_with(&hash_id) {
                             continue;
                         }
-                        if name.ends_with(".ok") || name.ends_with(".lock") {
+                        if name.ends_with(".ok")
+                            || name.ends_with(".lock")
+                            || name.ends_with(".part")
+                        {
                             continue;
                         }
                         // Only return regular files
@@ -186,7 +189,7 @@ impl LxAppCache {
                     if !name.starts_with(&hash_id) {
                         continue;
                     }
-                    if name.ends_with(".ok") || name.ends_with(".lock") {
+                    if name.ends_with(".ok") || name.ends_with(".lock") || name.ends_with(".part") {
                         continue;
                     }
                     if entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
