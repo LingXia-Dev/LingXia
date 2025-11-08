@@ -9,7 +9,7 @@ import AudioToolbox
 #endif
 
 @MainActor
-enum LxAppMedia {
+final class LxAppMedia {
     nonisolated(unsafe) static let log = OSLog(subsystem: "LingXia", category: "Media")
 }
 
