@@ -157,8 +157,10 @@ mod bridge {
 // Re-export the bridge functions for use in other modules
 pub use bridge::{
     ActionSheetOptions, ModalOptions, PickerOptions, PopupPositionBridge, ToastIcon, ToastOptions,
-    ToastPosition, choose_media, close_lxapp, copy_album_media_to_file, hide_popup, hide_toast,
-    launch_with_url, navigate, open_document, open_lxapp, preview_media, scan_code,
-    show_action_sheet, show_modal, show_picker, show_popup, show_toast, update_navbar_ui,
-    update_tabbar_ui,
+    ToastPosition, close_lxapp, hide_popup, hide_toast, launch_with_url, navigate, open_document,
+    open_lxapp, preview_media, show_action_sheet, show_modal, show_picker, show_popup, show_toast,
+    update_navbar_ui, update_tabbar_ui,
 };
+#[cfg(target_os = "ios")]
+#[allow(unused_imports)]
+pub use bridge::{choose_media, copy_album_media_to_file, scan_code};

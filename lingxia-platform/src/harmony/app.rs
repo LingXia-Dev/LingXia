@@ -1,5 +1,5 @@
 use crate::error::PlatformError;
-use crate::{AppRuntime, AssetFileEntry};
+use crate::{AppRuntime, AssetFileEntry, MediaRuntime};
 use log::warn;
 use napi_ohos::JsValue;
 use napi_ohos::bindgen_prelude::{Env, Object};
@@ -469,7 +469,7 @@ impl AppRuntime for Platform {
         dest_path: &Path,
         kind: crate::traits::MediaKind,
     ) -> Result<(), PlatformError> {
-        self.copy_album_media_to_file_impl(uri, dest_path, kind)
+        MediaRuntime::copy_album_media_to_file(self, uri, dest_path, kind)
     }
 
     fn exit_app(&self) -> Result<(), PlatformError> {
@@ -510,6 +510,17 @@ impl AppRuntime for Platform {
     fn launch_with_url(&self, url: String) -> Result<(), PlatformError> {
         lingxia_webview::tsfn::call_arkts("launchWithUrl", &[&url])
             .map_err(|e| PlatformError::Platform(format!("Failed to launch with url: {}", e)))
+    }
+}
+
+impl MediaRuntime for Platform {
+    fn copy_album_media_to_file(
+        &self,
+        uri: &str,
+        dest_path: &Path,
+        kind: crate::traits::MediaKind,
+    ) -> Result<(), PlatformError> {
+        self.copy_album_media_to_file_impl(uri, dest_path, kind)
     }
 }
 

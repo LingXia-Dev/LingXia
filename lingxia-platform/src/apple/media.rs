@@ -1,5 +1,5 @@
 use super::app::Platform;
-use super::ffi::{choose_media, preview_media, scan_code};
+use super::ffi::preview_media;
 use crate::error::PlatformError;
 use crate::traits::{
     ChooseMediaRequest, MediaInteraction, MediaKind, PreviewMediaRequest, SaveMediaRequest,
@@ -111,8 +111,10 @@ impl MediaInteraction for Platform {
 }
 
 #[cfg(target_os = "ios")]
+#[cfg(target_os = "ios")]
 mod ios {
     use super::*;
+    use crate::apple::ffi::{choose_media, scan_code};
     use crate::traits::ScanType;
     use block2::RcBlock;
     use dispatch2::{DispatchSemaphore, DispatchTime, dispatch_block_t, run_on_main};
