@@ -74,10 +74,6 @@ const MODE_SETTINGS = {
   },
   ImageInfo: {
     mediaType: "imageInfo",
-    defaults: {},
-  },
-  CompressImage: {
-    mediaType: "compressImage",
     defaults: {
       compressQuality: "80",
     },
@@ -100,20 +96,11 @@ function getModeCopy(mediaType) {
   }
   if (mediaType === "imageInfo") {
     return {
-      headerSubtitle: "lx.getImageInfo",
-      emptyHint: "Tap + or enter a file path to inspect metadata.",
+      headerSubtitle: "lx.getImageInfo / lx.compressImage",
+      emptyHint: "Get image info and create compressed copy.",
       previewHint: "",
       galleryHint: "",
       addLabel: "Image Info",
-    };
-  }
-  if (mediaType === "compressImage") {
-    return {
-      headerSubtitle: "lx.compressImage",
-      emptyHint: "Choose an image to create a compressed copy.",
-      previewHint: "",
-      galleryHint: "",
-      addLabel: "Compress",
     };
   }
   if (mediaType === "saveToAlbum") {
@@ -315,7 +302,7 @@ function createState(modeKey) {
     compressMaxWidth: "",
     compressMaxHeight: "",
     compressing: false,
-    compressResultPath: "",
+    compressResult: null,
     compressError: "",
   };
 }
@@ -339,11 +326,9 @@ Page({
           ? "Scan"
           : state.mediaType === "imageInfo"
             ? "Image Info"
-            : state.mediaType === "compressImage"
-              ? "Compress Image"
-              : state.mediaType === "saveToAlbum"
-                ? "Save to Album"
-                : "Photos";
+            : state.mediaType === "saveToAlbum"
+              ? "Save to Album"
+              : "Photos";
     lx.setNavigationBarTitle({ title });
   },
 
@@ -699,33 +684,41 @@ Page({
     this.setData({
       compressing: true,
       compressError: "",
-      compressResultPath: "",
-      compressResultSize: 0,
+      compressResult: null,
     });
 
     try {
       const result = await lx.compressImage(payload);
       const resultPath = result?.tempFilePath || "";
-      // Get compressed file size using Rong.stat
-      let resultSize = 0;
+
+      // Get complete image info for compressed image
+      let compressResult = null;
       if (resultPath) {
         try {
+          const info = await lx.getImageInfo({ path: resultPath });
           const stat = await Rong.stat(resultPath);
-          resultSize = stat.size;
-        } catch (statError) {
-          console.warn("Failed to get compressed file size:", statError);
+          compressResult = {
+            path: resultPath,
+            width: info.width,
+            height: info.height,
+            type: info.type,
+            size: stat.size,
+          };
+        } catch (infoError) {
+          console.warn("Failed to get compressed image info:", infoError);
+          // Fallback to just path if getImageInfo fails
+          compressResult = { path: resultPath };
         }
       }
+
       this.setData({
-        compressResultPath: resultPath,
-        compressResultSize: resultSize,
+        compressResult: compressResult,
       });
     } catch (error) {
       const message = error?.message || "compressImage failed";
       this.setData({
         compressError: message,
-        compressResultPath: "",
-        compressResultSize: 0,
+        compressResult: null,
       });
       lx.showToast({
         title: message,
@@ -737,7 +730,7 @@ Page({
   },
 
   previewCompressedImage: async function () {
-    const path = this.data.compressResultPath;
+    const path = this.data.compressResult?.path;
     if (!path) {
       lx.showToast({
         title: "No compressed image to preview",

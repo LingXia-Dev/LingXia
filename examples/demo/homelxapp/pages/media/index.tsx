@@ -42,7 +42,7 @@ type ImageInfoResult = {
 };
 
 type PageData = {
-  mediaType?: 'image' | 'video' | 'scanCode' | 'imageInfo' | 'compressImage' | 'saveToAlbum';
+  mediaType?: 'image' | 'video' | 'scanCode' | 'imageInfo' | 'saveToAlbum';
   selectedMedia?: MediaItem[];
   isRunning?: boolean;
   countLimit?: number;
@@ -67,8 +67,7 @@ type PageData = {
   compressedWidth?: string | number;
   compressedHeight?: string | number;
   compressing?: boolean;
-  compressResultPath?: string;
-  compressResultSize?: number;
+  compressResult?: ImageInfoResult | null;
   compressError?: string;
   imageInfoBusy?: boolean;
   saveToAlbumBusy?: boolean;
@@ -125,7 +124,6 @@ export default function MediaPage() {
 
   const mediaTypeInput = data?.mediaType || 'image';
   const isImageInfoMode = mediaTypeInput === 'imageInfo';
-  const isCompressMode = mediaTypeInput === 'compressImage';
   const isSaveToAlbumMode = mediaTypeInput === 'saveToAlbum';
   const mediaType = mediaTypeInput === 'video'
     ? 'video'
@@ -161,8 +159,9 @@ export default function MediaPage() {
   typeof data?.countLimit === 'number' ? data.countLimit : countOption.value ?? 0;
   const counterText = countLimit ? `${selectedMedia.length}/${countLimit}` : `${selectedMedia.length}`;
 
-  const isPictureMode = mediaType === 'image' && !isImageInfoMode && !isCompressMode;
+  const isPictureMode = mediaType === 'image' && !isImageInfoMode;
   const isScanMode = mediaType === 'scanCode';
+  const isVideoMode = mediaType === 'video';
 
   const emptyHint = data?.emptyHint || (isPictureMode ? 'Tap + to pick photos.' : 'Tap + to add a video.');
   const previewHint = data?.previewHint || (isPictureMode ? 'Tap a photo to preview.' : 'Tap the clip to preview.');
@@ -188,8 +187,7 @@ export default function MediaPage() {
   const rawHeight = data?.compressedHeight ?? '';
   const compressedHeight = typeof rawHeight === 'number' ? rawHeight.toString() : rawHeight || '';
   const compressing = Boolean(data?.compressing);
-  const compressResultPath = data?.compressResultPath || '';
-  const compressResultSize = data?.compressResultSize || 0;
+  const compressResult = data?.compressResult || null;
   const compressError = data?.compressError || '';
 
   // Format file size for display
@@ -394,6 +392,12 @@ export default function MediaPage() {
                   <span className="font-semibold text-gray-800">{formatFileSize(imageInfoResult.size || 0)}</span>
                 </div>
               </div>
+              {imageInfoResult.path ? (
+                <div className="mt-2 pt-2 border-t border-gray-200 text-[11px] text-gray-500">
+                  <span className="font-semibold text-gray-700">Path:</span>
+                  <div className="mt-0.5 break-all overflow-hidden">{imageInfoResult.path}</div>
+                </div>
+              ) : null}
             </div>
 
             <div className="grid grid-cols-3 gap-3">
@@ -445,19 +449,29 @@ export default function MediaPage() {
               <div className="text-xs text-red-500">{compressError}</div>
             ) : null}
 
-            {compressResultPath ? (
-              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-xs text-gray-600">
-                <div className="font-medium text-gray-800 mb-2">Compressed File</div>
-                <div className="space-y-2">
+            {compressResult ? (
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                <div className="text-xs font-medium text-gray-700 mb-2">Compressed Image</div>
+                <div className="text-xs text-gray-600 space-y-1">
+                  <div className="flex justify-between gap-2">
+                    <span>Pixel Size:</span>
+                    <span className="font-semibold text-gray-800">{compressResult.width} × {compressResult.height}</span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span>Type:</span>
+                    <span className="font-semibold text-gray-800">{compressResult.type || '--'}</span>
+                  </div>
                   <div className="flex justify-between gap-2">
                     <span>File Size:</span>
-                    <span className="font-semibold text-gray-800">{formatFileSize(compressResultSize)}</span>
-                  </div>
-                  <div>
-                    <span className="font-semibold text-gray-800">Path:</span>
-                    <div className="mt-0.5 break-all overflow-hidden">{compressResultPath}</div>
+                    <span className="font-semibold text-gray-800">{formatFileSize(compressResult.size || 0)}</span>
                   </div>
                 </div>
+                {compressResult.path ? (
+                  <div className="mt-2 pt-2 border-t border-gray-200 text-[11px] text-gray-500">
+                    <span className="font-semibold text-gray-700">Path:</span>
+                    <div className="mt-0.5 break-all overflow-hidden">{compressResult.path}</div>
+                  </div>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => previewCompressedImage?.()}
@@ -514,8 +528,8 @@ export default function MediaPage() {
         { label: 'Source', value: scanSourceLabel, action: openScanSourcePicker },
         { label: 'Scan Type', value: scanTypeLabel, action: openScanTypePicker },
       ]
-    : (isImageInfoMode || isCompressMode || isSaveToAlbumMode)
-      ? []  // No settings for ImageInfo/Compress/SaveToAlbum
+    : (isImageInfoMode || isSaveToAlbumMode)
+      ? []  // No settings for ImageInfo/SaveToAlbum
       : isPictureMode
         ? [
           { label: 'Photo Source', value: sourceLabel, action: openSourcePicker },
@@ -527,7 +541,7 @@ export default function MediaPage() {
         { label: 'Duration', value: durationLabel, action: openDurationPicker },
       ];
 
-  const pagePaddingX = (isScanMode || isImageInfoMode || isCompressMode || isSaveToAlbumMode) ? 'px-0' : 'px-4';
+  const pagePaddingX = (isScanMode || isImageInfoMode || isSaveToAlbumMode || isVideoMode) ? 'px-0' : 'px-4';
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -535,18 +549,16 @@ export default function MediaPage() {
         <div className="bg-white shadow-sm">
           <div className="px-5 py-6 text-center space-y-2">
             <div className="text-base font-medium text-gray-700">
-              {isScanMode ? 'lx.scanCode' : isImageInfoMode ? 'lx.getImageInfo' : isCompressMode ? 'lx.compressImage' : isSaveToAlbumMode ? 'lx.saveImageToPhotosAlbum / lx.saveVideoToPhotosAlbum' : headerSubtitle}
+              {isScanMode ? 'lx.scanCode' : isImageInfoMode ? 'lx.getImageInfo / lx.compressImage' : isSaveToAlbumMode ? 'lx.saveImageToPhotosAlbum / lx.saveVideoToPhotosAlbum' : headerSubtitle}
             </div>
             <div className="mx-auto h-0.5 w-12 bg-gray-200" />
-            {(isScanMode || isImageInfoMode || isCompressMode || isSaveToAlbumMode) && (
+            {(isScanMode || isImageInfoMode || isSaveToAlbumMode) && (
               <div className="text-xs text-gray-500 max-w-sm mx-auto">
                 {isScanMode
                   ? 'Scan QR codes and barcodes using camera or album'
                   : isImageInfoMode
-                    ? 'Get image dimensions and type'
-                    : isCompressMode
-                      ? 'Create compressed JPEG with custom quality and size'
-                      : 'Capture photo or video and save to device album'}
+                    ? 'Get image info and create compressed copy'
+                    : 'Capture photo or video and save to device album'}
               </div>
             )}
           </div>
@@ -562,7 +574,7 @@ export default function MediaPage() {
           )}
         </div>
 
-        <div className={`space-y-3 bg-white overflow-hidden ${(isScanMode || isImageInfoMode || isCompressMode || isSaveToAlbumMode) ? 'p-6 w-full' : 'rounded-xl border border-gray-200 p-4 shadow-sm'}`}>
+        <div className={`space-y-3 bg-white overflow-hidden ${(isScanMode || isImageInfoMode || isSaveToAlbumMode || isVideoMode) ? 'p-6 w-full' : 'rounded-xl border border-gray-200 p-4 shadow-sm'}`}>
           {isScanMode ? (
             <>
               <div className="space-y-2">
@@ -583,8 +595,6 @@ export default function MediaPage() {
               </button>
             </>
           ) : isImageInfoMode ? (
-            renderImageInfoDemo()
-          ) : isCompressMode ? (
             renderCompressDemo()
           ) : isSaveToAlbumMode ? (
             renderSaveToAlbumDemo()
