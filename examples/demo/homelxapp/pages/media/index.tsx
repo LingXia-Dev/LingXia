@@ -43,7 +43,7 @@ type ImageInfoResult = {
 };
 
 type PageData = {
-  mediaType?: 'image' | 'video' | 'scanCode' | 'imageInfo' | 'compressImage';
+  mediaType?: 'image' | 'video' | 'scanCode' | 'imageInfo' | 'compressImage' | 'saveToAlbum';
   selectedMedia?: MediaItem[];
   isRunning?: boolean;
   countLimit?: number;
@@ -72,6 +72,9 @@ type PageData = {
   compressResultSize?: number;
   compressError?: string;
   imageInfoBusy?: boolean;
+  saveToAlbumBusy?: boolean;
+  saveToAlbumResult?: string;
+  saveToAlbumError?: string;
 };
 
 type PageActions = {
@@ -92,6 +95,8 @@ type PageActions = {
   pickImageForCompress?(): void;
   compressSelectedImage?(): void;
   previewCompressedImage?(): void;
+  captureImageForAlbum?(): void;
+  captureVideoForAlbum?(): void;
 };
 
 declare function useLingXia(): PageActions;
@@ -115,11 +120,14 @@ export default function MediaPage() {
     pickImageForCompress,
     compressSelectedImage,
     previewCompressedImage,
+    captureImageForAlbum,
+    captureVideoForAlbum,
   } = useLingXia();
 
   const mediaTypeInput = data?.mediaType || 'image';
   const isImageInfoMode = mediaTypeInput === 'imageInfo';
   const isCompressMode = mediaTypeInput === 'compressImage';
+  const isSaveToAlbumMode = mediaTypeInput === 'saveToAlbum';
   const mediaType = mediaTypeInput === 'video'
     ? 'video'
     : (mediaTypeInput === 'scanCode')
@@ -470,6 +478,37 @@ export default function MediaPage() {
     );
   };
 
+  const renderSaveToAlbumDemo = () => {
+    const saveToAlbumBusy = Boolean(data?.saveToAlbumBusy);
+
+    return (
+      <div className="space-y-4">
+        <div className="text-sm text-gray-600">
+          Capture photo or video, then save to album. Check your device album to view saved media.
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={() => captureImageForAlbum?.()}
+            disabled={saveToAlbumBusy}
+            className={`rounded-lg bg-blue-600 py-3 text-sm font-medium text-white shadow-sm transition hover:bg-blue-500 ${saveToAlbumBusy ? 'opacity-70 cursor-not-allowed' : ''}`}
+          >
+            {saveToAlbumBusy ? 'Saving...' : 'Capture & Save Image'}
+          </button>
+          <button
+            type="button"
+            onClick={() => captureVideoForAlbum?.()}
+            disabled={saveToAlbumBusy}
+            className={`rounded-lg bg-green-600 py-3 text-sm font-medium text-white shadow-sm transition hover:bg-green-500 ${saveToAlbumBusy ? 'opacity-70 cursor-not-allowed' : ''}`}
+          >
+            {saveToAlbumBusy ? 'Saving...' : 'Capture & Save Video'}
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   const scanSourceLabel = data?.scanOnlyCamera ? 'Camera' : 'Camera & Album';
   const scanTypeKey = data?.scanTypeKey || 'all';
   // Show raw key directly (no conversion): e.g., barCode, qrCode, pdf417
@@ -480,8 +519,8 @@ export default function MediaPage() {
         { label: 'Source', value: scanSourceLabel, action: openScanSourcePicker },
         { label: 'Scan Type', value: scanTypeLabel, action: openScanTypePicker },
       ]
-    : (isImageInfoMode || isCompressMode)
-      ? []  // No settings for ImageInfo/Compress
+    : (isImageInfoMode || isCompressMode || isSaveToAlbumMode)
+      ? []  // No settings for ImageInfo/Compress/SaveToAlbum
       : isPictureMode
         ? [
           { label: 'Photo Source', value: sourceLabel, action: openSourcePicker },
@@ -493,7 +532,7 @@ export default function MediaPage() {
         { label: 'Duration', value: durationLabel, action: openDurationPicker },
       ];
 
-  const pagePaddingX = (isScanMode || isImageInfoMode || isCompressMode) ? 'px-0' : 'px-4';
+  const pagePaddingX = (isScanMode || isImageInfoMode || isCompressMode || isSaveToAlbumMode) ? 'px-0' : 'px-4';
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -501,16 +540,18 @@ export default function MediaPage() {
         <div className="bg-white shadow-sm">
           <div className="px-5 py-6 text-center space-y-2">
             <div className="text-base font-medium text-gray-700">
-              {isScanMode ? 'lx.scanCode' : isImageInfoMode ? 'lx.getImageInfo' : isCompressMode ? 'lx.compressImage' : headerSubtitle}
+              {isScanMode ? 'lx.scanCode' : isImageInfoMode ? 'lx.getImageInfo' : isCompressMode ? 'lx.compressImage' : isSaveToAlbumMode ? 'lx.saveImageToPhotosAlbum / lx.saveVideoToPhotosAlbum' : headerSubtitle}
             </div>
             <div className="mx-auto h-0.5 w-12 bg-gray-200" />
-            {(isScanMode || isImageInfoMode || isCompressMode) && (
+            {(isScanMode || isImageInfoMode || isCompressMode || isSaveToAlbumMode) && (
               <div className="text-xs text-gray-500 max-w-sm mx-auto">
                 {isScanMode
                   ? 'Scan QR codes and barcodes using camera or album'
                   : isImageInfoMode
                     ? 'Get image dimensions, type and orientation'
-                    : 'Create compressed JPEG with custom quality and size'}
+                    : isCompressMode
+                      ? 'Create compressed JPEG with custom quality and size'
+                      : 'Capture photo or video and save to device album'}
               </div>
             )}
           </div>
@@ -526,7 +567,7 @@ export default function MediaPage() {
           )}
         </div>
 
-        <div className={`space-y-3 bg-white overflow-hidden ${(isScanMode || isImageInfoMode || isCompressMode) ? 'p-6 w-full' : 'rounded-xl border border-gray-200 p-4 shadow-sm'}`}>
+        <div className={`space-y-3 bg-white overflow-hidden ${(isScanMode || isImageInfoMode || isCompressMode || isSaveToAlbumMode) ? 'p-6 w-full' : 'rounded-xl border border-gray-200 p-4 shadow-sm'}`}>
           {isScanMode ? (
             <>
               <div className="space-y-2">
@@ -550,6 +591,8 @@ export default function MediaPage() {
             renderImageInfoDemo()
           ) : isCompressMode ? (
             renderCompressDemo()
+          ) : isSaveToAlbumMode ? (
+            renderSaveToAlbumDemo()
           ) : (
             <>
               <div className="flex items-center justify-between text-xs text-gray-500">

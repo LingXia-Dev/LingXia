@@ -82,6 +82,10 @@ const MODE_SETTINGS = {
       compressQuality: "80",
     },
   },
+  SaveToAlbum: {
+    mediaType: "saveToAlbum",
+    defaults: {},
+  },
 };
 
 function getModeCopy(mediaType) {
@@ -110,6 +114,15 @@ function getModeCopy(mediaType) {
       previewHint: "",
       galleryHint: "",
       addLabel: "Compress",
+    };
+  }
+  if (mediaType === "saveToAlbum") {
+    return {
+      headerSubtitle: "lx.saveImageToPhotosAlbum / lx.saveVideoToPhotosAlbum",
+      emptyHint: "Capture or select media to save to album.",
+      previewHint: "",
+      galleryHint: "",
+      addLabel: "Save to Album",
     };
   }
   if (mediaType === "scanCode") {
@@ -328,7 +341,9 @@ Page({
             ? "Image Info"
             : state.mediaType === "compressImage"
               ? "Compress Image"
-              : "Photos";
+              : state.mediaType === "saveToAlbum"
+                ? "Save to Album"
+                : "Photos";
     lx.setNavigationBarTitle({ title });
   },
 
@@ -767,6 +782,83 @@ Page({
         icon: "none",
       });
       return null;
+    }
+  },
+
+  captureImageForAlbum: async function () {
+    if (this.data.saveToAlbumBusy) {
+      return;
+    }
+    this.setData({ saveToAlbumBusy: true });
+    try {
+      const result = await lx.chooseMedia({
+        count: 1,
+        mediaType: ["image"],
+        sourceType: ["camera"],
+        camera: "back",
+      });
+      const list = Array.isArray(result) ? result : result ? [result] : [];
+      if (!list.length) {
+        this.setData({ saveToAlbumBusy: false });
+        return;
+      }
+      const first = list[0];
+      const filePath = first?.tempFilePath || first?.path || first?.uri;
+      if (!filePath) {
+        throw new Error("No file path in result");
+      }
+      await lx.saveImageToPhotosAlbum({ filePath });
+      this.setData({ saveToAlbumBusy: false });
+      lx.showToast({
+        title: "Image saved to album",
+        icon: "success",
+      });
+    } catch (error) {
+      const message = error?.message || "Failed to save image";
+      this.setData({ saveToAlbumBusy: false });
+      lx.showToast({
+        title: message,
+        icon: "none",
+      });
+    }
+  },
+
+  captureVideoForAlbum: async function () {
+    if (this.data.saveToAlbumBusy) {
+      return;
+    }
+    this.setData({ saveToAlbumBusy: true });
+    try {
+      const result = await lx.chooseMedia({
+        count: 1,
+        mediaType: ["video"],
+        sourceType: ["camera"],
+        camera: "back",
+        maxDuration: 60,
+      });
+      const list = Array.isArray(result) ? result : result ? [result] : [];
+      if (!list.length) {
+        this.setData({ saveToAlbumBusy: false });
+        return;
+      }
+      const first = list[0];
+      const filePath = first?.tempFilePath || first?.path || first?.uri;
+      if (!filePath) {
+        throw new Error("No file path in result");
+      }
+      await lx.saveVideoToPhotosAlbum({ filePath });
+      this.setData({ saveToAlbumBusy: false });
+      lx.showToast({
+        title: "Video saved to album",
+        icon: "success",
+      });
+    } catch (error) {
+      const message = error?.message || "Failed to save video";
+      this.setData({ saveToAlbumBusy: false });
+      lx.showToast({
+        title: message,
+        icon: "none",
+      });
     }
   },
 });
