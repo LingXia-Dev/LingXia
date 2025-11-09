@@ -10,22 +10,25 @@ use urlencoding::decode;
 use crate::error;
 use crate::error::LxAppError;
 use crate::lxapp::LxApp;
+use crate::page::Page;
 
 impl LxApp {
     const PROXY_SEGMENT: &'static str = "_LINGXIA_";
 
     /// Handler for lx:// scheme requests to access static app assets (images, CSS, JS, etc.)
     /// HTML files are handled separately through generate_page_html and load_data
-    pub(crate) fn lingxia_handler(&self, req: Request<Vec<u8>>) -> Option<WebResourceResponse> {
+    pub(crate) fn lingxia_handler(&self, page: &Page, req: Request<Vec<u8>>) -> Option<WebResourceResponse> {
         let uri = req.uri().clone();
 
         if let Some(target_uri) = Self::extract_proxy_target(&uri) {
             return self.handle_lingxia_proxy(target_uri);
         }
 
-        let asset_path = match self.resolve_lx_uri(&uri) {
+        let asset_path = match self.resolve_lx_uri(page, &uri) {
             Ok(path) => path,
             Err(e) => {
+                error!("resolve_lx_uri failed for {}: {}", uri.path(), e)
+                    .with_appid(self.appid.clone());
                 error!("Asset not found: {} - {}", uri.path(), e).with_appid(self.appid.clone());
                 return Some(self.create_error_response(
                     StatusCode::NOT_FOUND,
@@ -168,14 +171,7 @@ impl LxApp {
         None
     }
 
-    fn resolve_lx_uri(&self, uri: &Uri) -> Result<PathBuf, LxAppError> {
-        if uri.scheme_str() != Some("lx") {
-            return Err(LxAppError::InvalidParameter(format!(
-                "unsupported scheme: {}",
-                uri
-            )));
-        }
-
+    fn resolve_lx_uri(&self, page: &Page, uri: &Uri) -> Result<PathBuf, LxAppError> {
         if uri.host() != Some(self.appid.as_str()) {
             return Err(LxAppError::ResourceNotFound(uri.to_string()));
         }
@@ -186,7 +182,35 @@ impl LxApp {
             return Err(LxAppError::ResourceNotFound(uri.to_string()));
         }
 
-        self.resolve_accessible_path(raw_path)
+        // Reject any path containing '.' or '..' segments
+        if raw_path.split('/').any(|s| s == "." || s == "..") {
+            return Err(LxAppError::ResourceNotFound(uri.to_string()));
+        }
+        let normalized = raw_path.trim_matches('/').to_string();
+
+        // Step 1: use the request path as-is (e.g., pages/home/index.css)
+        if let Ok(local_path) = self.resolve_accessible_path(&normalized) {
+            return Ok(local_path);
+        }
+
+        // Step 2: strip the current page base directory once (e.g., pages/home/images/x.png -> images/x.png)
+        if let Ok(base_uri) = Uri::from_str(&page.base_url()) {
+            let base_path = base_uri.path().trim_start_matches('/');
+            if let Some(idx) = base_path.rfind('/') {
+                let base_dir = &base_path[..idx];
+                let prefix = format!("{}/", base_dir.trim_matches('/'));
+                if normalized.starts_with(&prefix) {
+                    let stripped = &normalized[prefix.len()..];
+                    if !stripped.is_empty() {
+                        if let Ok(local_path) = self.resolve_accessible_path(stripped) {
+                            return Ok(local_path);
+                        }
+                    }
+                }
+            }
+        }
+
+        Err(LxAppError::ResourceNotFound(uri.to_string()))
     }
 
     /// Handler for HTTPS requests:

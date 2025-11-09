@@ -338,7 +338,7 @@ impl Page {
         let lxapp = lxapp::get(self.appid());
         let path = self.path();
         let html_data = lxapp.generate_page_html(&path);
-        let base_url = format!("lx://{}/{}", self.appid(), path);
+        let base_url = self.base_url();
 
         if let Some(controller) = self.webview_controller() {
             controller
@@ -361,6 +361,11 @@ impl Page {
     /// Returns the appid of this page
     pub fn appid(&self) -> String {
         self.inner.appid.clone()
+    }
+
+    /// Returns the base URL used when loading this page's HTML (lx://appid/<path>)
+    pub fn base_url(&self) -> String {
+        format!("lx://{}/{}", self.appid(), self.path())
     }
 
     /// Update the last active time to now
@@ -605,7 +610,7 @@ impl WebViewDelegate for Page {
             "https" => lxapp.https_handler(req),
 
             // Lingxia scheme for internal app assets
-            "lx" => lxapp.lingxia_handler(req),
+            "lx" => lxapp.lingxia_handler(self, req),
 
             // Reject all other schemes with 400 Bad Request
             _ => Some(lxapp.create_error_response(

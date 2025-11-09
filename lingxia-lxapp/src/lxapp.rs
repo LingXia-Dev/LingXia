@@ -421,24 +421,48 @@ impl LxApp {
             .map_err(|e| LxAppError::ResourceNotFound(format!("{}:{}", relative_path, e)))
     }
 
+    /// Resolve an "allowed" lxapp path (package dir, user data, user cache) to a canonical path.
+    ///
+    /// Order:
+    /// 1) Absolute path: validate it lies under a trusted root (package, user data, user cache,
+    ///    plus their parents for full-path scenarios); return canonical path or error
+    /// 2) Relative path: check under user data, then user cache, then package dir; return match or error
+    ///
+    /// Note: paths containing `.` or `..` segments are rejected.
     pub fn resolve_accessible_path(&self, path: &str) -> Result<PathBuf, LxAppError> {
         if path.trim().is_empty() {
             return Err(LxAppError::ResourceNotFound("empty path".to_string()));
         }
+        if path.split('/').any(|s| s == "." || s == "..") {
+            return Err(LxAppError::ResourceNotFound(
+                "dot segment not allowed".to_string(),
+            ));
+        }
 
         let path_ref = Path::new(path);
-        let bundle_root = self
+        let _bundle_root = self
             .lxapp_dir
             .canonicalize()
             .unwrap_or_else(|_| self.lxapp_dir.clone());
 
-        if !path_ref.is_absolute() {
-            let bundle_candidate = bundle_root.join(path_ref);
-            if let Ok(canonical) = bundle_candidate.canonicalize() {
-                if canonical.starts_with(&bundle_root) {
-                    return Ok(canonical);
+        // Relative path: search in order user data -> user cache -> package
+        if !path_ref.is_absolute() && !path.contains(':') {
+            let rel = path.trim_matches('/');
+            let search_roots: [&Path; 3] =
+                [&self.user_data_dir, &self.user_cache_dir, &self.lxapp_dir];
+            for root in search_roots
+                .into_iter()
+                .filter(|dir| !dir.as_os_str().is_empty())
+            {
+                let candidate = root.join(rel);
+                let root_canon = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+                if let Ok(canonical) = candidate.canonicalize() {
+                    if canonical.starts_with(&root_canon) {
+                        return Ok(canonical);
+                    }
                 }
             }
+            return Err(LxAppError::ResourceNotFound(path.to_string()));
         }
 
         let candidate = if path_ref.is_absolute() || path.contains(':') {
@@ -459,13 +483,15 @@ impl LxApp {
                 }
             }
         }
-        if !self.storage_file_path.as_os_str().is_empty() {
-            if let Some(parent) = self.storage_file_path.parent() {
+        // Also allow parents of user data/cache roots to support full-path scenarios
+        for dir in [&self.user_cache_dir, &self.user_data_dir] {
+            if let Some(parent) = dir.parent() {
                 if let Ok(c) = parent.canonicalize() {
                     trusted_roots.push(c);
                 }
             }
         }
+        // Note: storage path is intentionally not added to allowed static roots.
 
         if trusted_roots.iter().any(|root| canonical.starts_with(root)) {
             Ok(canonical)
