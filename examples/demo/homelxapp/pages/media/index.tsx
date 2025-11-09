@@ -37,7 +37,6 @@ type ImageInfoResult = {
   width?: number;
   height?: number;
   type?: string;
-  orientation?: string;
   path?: string;
   size?: number;
 };
@@ -345,10 +344,6 @@ export default function MediaPage() {
                 <span>Size</span>
                 <span className="font-semibold text-gray-800">{formatFileSize(imageInfoResult.size || 0)}</span>
               </div>
-              <div className="flex justify-between gap-3">
-                <span>Orientation</span>
-                <span className="font-semibold text-gray-800 capitalize">{imageInfoResult.orientation || '--'}</span>
-              </div>
             </div>
             {imageInfoResult.path ? (
               <div className="mt-2 text-[11px] text-gray-500">
@@ -548,7 +543,7 @@ export default function MediaPage() {
                 {isScanMode
                   ? 'Scan QR codes and barcodes using camera or album'
                   : isImageInfoMode
-                    ? 'Get image dimensions, type and orientation'
+                    ? 'Get image dimensions and type'
                     : isCompressMode
                       ? 'Create compressed JPEG with custom quality and size'
                       : 'Capture photo or video and save to device album'}

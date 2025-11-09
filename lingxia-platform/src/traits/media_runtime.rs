@@ -9,8 +9,6 @@ pub struct ImageInfo {
     pub width: u32,
     pub height: u32,
     pub mime_type: Option<String>,
-    pub orientation: i32,
-    pub rotation: i32,
 }
 
 #[derive(Debug, Clone)]

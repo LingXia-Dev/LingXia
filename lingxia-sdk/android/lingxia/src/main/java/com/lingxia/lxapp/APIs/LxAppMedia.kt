@@ -46,7 +46,7 @@ internal object LxAppMedia {
     }
 
     /**
-     * Retrieve basic metadata for an image URI (width/height/mime/rotation), akin to wx.getImageInfo.
+     * Retrieve basic metadata for an image URI (width/height/mime), akin to wx.getImageInfo.
      */
     @JvmStatic
     fun getImageInfo(uri: String): String {
@@ -72,8 +72,6 @@ internal object LxAppMedia {
                     put("width", info.width)
                     put("height", info.height)
                     put("mimeType", info.mimeType ?: "")
-                    put("orientation", info.orientation)
-                    put("rotation", info.rotation)
                 }
             }
         } catch (e: Exception) {

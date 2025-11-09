@@ -230,8 +230,6 @@ extension LxAppMedia {
         let width: Int
         let height: Int
         let mimeType: String
-        let orientation: Int
-        let rotation: Int
     }
 
     nonisolated private static func imageInfoFromFile(url: URL) -> SwiftImageInfoResult {
@@ -251,8 +249,6 @@ extension LxAppMedia {
 
         let width = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue ?? 0
         let height = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue ?? 0
-        let orientationValue = (properties[kCGImagePropertyOrientation] as? NSNumber)?.intValue ?? 1
-        let rotation = rotationDegrees(for: orientationValue)
         let uti = CGImageSourceGetType(source) as String?
         var mimeType = preferredMimeType(for: uti)
         if mimeType.isEmpty {
@@ -262,9 +258,7 @@ extension LxAppMedia {
         return ImageInfoPayload(
             width: width,
             height: height,
-            mimeType: mimeType,
-            orientation: orientationValue,
-            rotation: rotation
+            mimeType: mimeType
         )
     }
 
@@ -295,19 +289,6 @@ extension LxAppMedia {
         }
     }
 
-    nonisolated private static func rotationDegrees(for orientation: Int) -> Int {
-        switch orientation {
-        case 3, 4:
-            return 180
-        case 5, 6:
-            return 90
-        case 7, 8:
-            return 270
-        default:
-            return 0
-        }
-    }
-
     nonisolated private static func normalizeURL(from path: String) -> URL? {
         if path.hasPrefix("file://") {
             return URL(string: path)
@@ -324,8 +305,6 @@ extension LxAppMedia {
             error: RustString(message),
             width: 0,
             height: 0,
-            rotation: 0,
-            orientation: 0,
             mime_type: RustString("")
         )
     }
@@ -336,8 +315,6 @@ extension LxAppMedia {
             error: RustString(""),
             width: UInt32(clamping: info.width),
             height: UInt32(clamping: info.height),
-            rotation: Int32(info.rotation),
-            orientation: Int32(info.orientation),
             mime_type: RustString(info.mimeType)
         )
     }

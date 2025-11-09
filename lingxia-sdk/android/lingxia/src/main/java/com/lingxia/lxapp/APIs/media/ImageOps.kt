@@ -20,9 +20,7 @@ internal object ImageOps {
     data class Info(
         val width: Int,
         val height: Int,
-        val mimeType: String?,
-        val orientation: Int,
-        val rotation: Int
+        val mimeType: String?
     )
 
     @WorkerThread
@@ -112,9 +110,7 @@ internal object ImageOps {
                 return null
             }
             val mime = resolver.getType(uri)
-            val orientation = readExifOrientation(context, uri)
-            val rotation = orientationToDegrees(orientation)
-            Info(opts.outWidth, opts.outHeight, mime, orientation, rotation)
+            Info(opts.outWidth, opts.outHeight, mime)
         } catch (e: Exception) {
             Log.e(TAG, "readInfo failed: ${e.message}", e)
             null
@@ -194,15 +190,6 @@ internal object ImageOps {
 
     private fun readExifOrientation(context: Context, uri: Uri): Int {
         return readExifOrientation(context.contentResolver, uri)
-    }
-
-    private fun orientationToDegrees(orientation: Int): Int {
-        return when (orientation) {
-            ExifInterface.ORIENTATION_ROTATE_90 -> 90
-            ExifInterface.ORIENTATION_ROTATE_180 -> 180
-            ExifInterface.ORIENTATION_ROTATE_270 -> 270
-            else -> 0
-        }
     }
 
     private fun rotate(bitmap: Bitmap, degrees: Float): Bitmap {

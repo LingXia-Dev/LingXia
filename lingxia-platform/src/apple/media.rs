@@ -174,8 +174,6 @@ impl MediaRuntime for Platform {
                 } else {
                     Some(info.mime_type)
                 },
-                orientation: info.orientation,
-                rotation: info.rotation,
             });
         }
 

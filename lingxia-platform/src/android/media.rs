@@ -9,7 +9,6 @@ use jni::objects::{JClass, JObject, JString, JValue};
 use jni::sys::{jint, jlong};
 use lingxia_webview::get_env;
 use serde::Deserialize;
-use std::fs;
 use std::path::{Path, PathBuf};
 
 fn with_jni<T, F>(env: &mut JNIEnv<'static>, f: F) -> Result<T, Box<dyn std::error::Error>>
@@ -360,8 +359,6 @@ fn get_image_info_impl(uri: &str) -> Result<ImageInfo, Box<dyn std::error::Error
         width: parsed.width.unwrap_or(0),
         height: parsed.height.unwrap_or(0),
         mime_type: parsed.mime_type.filter(|s| !s.is_empty()),
-        orientation: parsed.orientation.unwrap_or(0),
-        rotation: parsed.rotation.unwrap_or(0),
     })
 }
 
@@ -414,6 +411,4 @@ struct AndroidImageInfoResponse {
     height: Option<u32>,
     #[serde(rename = "mimeType")]
     mime_type: Option<String>,
-    orientation: Option<i32>,
-    rotation: Option<i32>,
 }

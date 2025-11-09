@@ -203,8 +203,6 @@ mod image_native {
     use std::slice;
 
     const IMAGE_SUCCESS: i32 = 0;
-    const DEFAULT_ORIENTATION: i32 = 1;
-    const ORIENTATION_KEY: &[u8] = b"Orientation\0";
     const JPEG_MIME: &str = "image/jpeg";
 
     #[repr(C)]
@@ -257,14 +255,11 @@ mod image_native {
         let width = info.width()?;
         let height = info.height()?;
         let mime_type = info.mime_type();
-        let (orientation, rotation) = source.orientation_and_rotation();
 
         Ok(ImageInfo {
             width,
             height,
             mime_type,
-            orientation,
-            rotation,
         })
     }
 
@@ -379,32 +374,6 @@ mod image_native {
                 ));
             }
             Ok(NativePixelMap(pixelmap))
-        }
-
-        fn orientation_and_rotation(&self) -> (i32, i32) {
-            let mut key = ImageString {
-                data: ORIENTATION_KEY.as_ptr() as *mut c_char,
-                size: ORIENTATION_KEY.len() - 1,
-            };
-            let mut value = ImageString {
-                data: ptr::null_mut(),
-                size: 0,
-            };
-
-            let mut orientation = DEFAULT_ORIENTATION;
-            let code = unsafe {
-                OH_ImageSourceNative_GetImagePropertyWithNull(self.0, &mut key, &mut value)
-            };
-            if code == IMAGE_SUCCESS {
-                if let Some(text) = take_image_string(&mut value) {
-                    orientation = text.parse::<i32>().unwrap_or(DEFAULT_ORIENTATION);
-                }
-            } else {
-                let _ = take_image_string(&mut value);
-            }
-
-            let rotation = rotation_from_orientation(orientation);
-            (orientation, rotation)
         }
     }
 
@@ -729,15 +698,6 @@ mod image_native {
         }
     }
 
-    fn rotation_from_orientation(orientation: i32) -> i32 {
-        match orientation {
-            3 | 4 => 180,
-            5 | 6 => 90,
-            7 | 8 => 270,
-            _ => 0,
-        }
-    }
-
     fn check(code: i32, context: &str) -> Result<(), PlatformError> {
         if code == IMAGE_SUCCESS {
             Ok(())
@@ -760,11 +720,6 @@ mod image_native {
             source: *mut OH_ImageSourceNative,
             index: i32,
             info: *mut OH_ImageSource_Info,
-        ) -> i32;
-        fn OH_ImageSourceNative_GetImagePropertyWithNull(
-            source: *mut OH_ImageSourceNative,
-            key: *mut ImageString,
-            value: *mut ImageString,
         ) -> i32;
         fn OH_ImageSourceNative_CreatePixelmap(
             source: *mut OH_ImageSourceNative,

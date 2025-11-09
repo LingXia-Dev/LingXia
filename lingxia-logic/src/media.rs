@@ -43,7 +43,6 @@ struct JSImageInfoResult {
     height: u32,
     #[rename = "type"]
     image_type: String,
-    orientation: String,
     path: String,
 }
 
@@ -165,22 +164,15 @@ async fn get_image_info_api(
     runtime
         .get_image_info(&normalized_path)
         .map(|info| {
-            // Unify MIME type: prefer platform mime, otherwise infer from file extension
             let image_type = info
                 .mime_type
                 .filter(|s| !s.is_empty())
                 .unwrap_or_else(|| infer_mime_from_path(&normalized_path).to_string());
 
-            // Unify orientation across platforms
-            let orientation =
-                orientation_label_unified(info.orientation, info.rotation, info.width, info.height)
-                    .to_string();
-
             JSImageInfoResult {
                 width: info.width,
                 height: info.height,
                 image_type,
-                orientation,
                 path: normalized_path,
             }
         })
@@ -251,31 +243,6 @@ fn generate_compress_output_path(cache_root: &Path) -> JSResult<PathBuf> {
     let filename = format!("lx_{}.jpg", timestamp);
 
     Ok(base_dir.join(filename))
-}
-
-fn orientation_label_unified(
-    orientation: i32,
-    rotation: i32,
-    width: u32,
-    height: u32,
-) -> &'static str {
-    // Prefer EXIF orientation if present
-    match orientation {
-        3 | 4 => return "down",
-        5 | 6 => return "right",
-        7 | 8 => return "left",
-        _ => {}
-    }
-    // Fallback to rotation degrees if EXIF orientation is not set/unknown
-    match rotation.rem_euclid(360) {
-        90 => "right",
-        180 => "down",
-        270 => "left",
-        _ => {
-            // As a last resort, infer from aspect ratio (landscape vs portrait)
-            if width > height { "right" } else { "up" }
-        }
-    }
 }
 
 fn infer_mime_from_path(path: &str) -> &'static str {

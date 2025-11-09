@@ -78,8 +78,6 @@ mod bridge {
         pub error: String,
         pub width: u32,
         pub height: u32,
-        pub rotation: i32,
-        pub orientation: i32,
         pub mime_type: String,
     }
 
