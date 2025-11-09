@@ -4,7 +4,7 @@ const globalData = app.globalData;
 Page({
   data: {
     greeting: globalData.greeting,
-    imageUrl: "../../images/futuristic.jpg",
+    imageUrl: "images/futuristic.jpg",
     ipAddr: globalData.ipAddr,
     greetCount: 0,
   },
