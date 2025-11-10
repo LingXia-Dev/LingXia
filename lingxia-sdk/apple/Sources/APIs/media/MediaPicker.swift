@@ -196,6 +196,22 @@ final class MediaPickerViewController: UIViewController, UICollectionViewDataSou
         }
     }
 
+    private func presentLimitedLibraryPickerIfAvailable() -> Bool {
+        guard #available(iOS 15.0, *) else { return false }
+        let library = PHPhotoLibrary.shared()
+        guard library.responds(to: #selector(PHPhotoLibrary.presentLimitedLibraryPicker(from:))) else {
+            return false
+        }
+        library.presentLimitedLibraryPicker(from: self)
+        return true
+    }
+
+    private func openPhotosSettings() {
+        if let url = URL(string: UIApplication.openSettingsURLString) {
+            UIApplication.shared.open(url)
+        }
+    }
+
     private func setupNav() {
         if #available(iOS 13.0, *) {
             navigationItem.leftBarButtonItem = UIBarButtonItem(barButtonSystemItem: .close, target: self, action: #selector(onCancel))
@@ -641,21 +657,27 @@ final class MediaPickerViewController: UIViewController, UICollectionViewDataSou
                             case .authorized:
                                 self.fetchAssetsAndReload()
                             case .limited:
-                                PHPhotoLibrary.shared().presentLimitedLibraryPicker(from: self)
+                                if !self.presentLimitedLibraryPickerIfAvailable() {
+                                    self.openPhotosSettings()
+                                }
                             case .denied, .restricted:
-                                if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+                                self.openPhotosSettings()
                             default:
                                 break
                             }
                         }
                     }
                 case .limited:
-                    PHPhotoLibrary.shared().presentLimitedLibraryPicker(from: self)
+                    if !presentLimitedLibraryPickerIfAvailable() {
+                        openPhotosSettings()
+                    }
                 case .denied, .restricted:
-                    if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+                    openPhotosSettings()
                 default:
                     break
                 }
+            } else {
+                openPhotosSettings()
             }
             return
         }
