@@ -6,6 +6,7 @@
 #if os(iOS)
 import UIKit
 @preconcurrency import Photos
+import PhotosUI
 import CLingXiaRustAPI
 
 @MainActor
@@ -196,19 +197,77 @@ final class MediaPickerViewController: UIViewController, UICollectionViewDataSou
         }
     }
 
-    private func presentLimitedLibraryPickerIfAvailable() -> Bool {
-        guard #available(iOS 15.0, *) else { return false }
-        let library = PHPhotoLibrary.shared()
-        guard library.responds(to: #selector(PHPhotoLibrary.presentLimitedLibraryPicker(from:))) else {
-            return false
+    private func presentLimitedLibraryPickerIfAvailable() {
+        if #available(iOS 14, *) {
+            PHPhotoLibrary.shared().presentLimitedLibraryPicker(from: self)
         }
-        library.presentLimitedLibraryPicker(from: self)
-        return true
     }
 
     private func openPhotosSettings() {
         if let url = URL(string: UIApplication.openSettingsURLString) {
             UIApplication.shared.open(url)
+        }
+    }
+
+    private func handleAddMoreLimitedAssetsTap() {
+        guard #available(iOS 14.0, *) else {
+            openPhotosSettings()
+            return
+        }
+
+        switch authStatus {
+        case .notDetermined:
+            PHPhotoLibrary.requestAuthorization(for: .readWrite) { [weak self] status in
+                DispatchQueue.main.async {
+                    self?.processAuthorizationStatus(status)
+                }
+            }
+        case .limited:
+            // Refresh status to avoid rare stale state after app relaunch,
+            // then present the system limited picker if still limited.
+            PHPhotoLibrary.requestAuthorization(for: .readWrite) { [weak self] _ in
+                DispatchQueue.main.async {
+                    self?.presentLimitedPickerOrSettings()
+                }
+            }
+        case .authorized:
+            refreshByAuthState()
+        case .denied, .restricted:
+            openPhotosSettings()
+        @unknown default:
+            openPhotosSettings()
+        }
+    }
+
+    private func processAuthorizationStatus(_ status: PHAuthorizationStatus) {
+        switch status {
+        case .authorized:
+            refreshByAuthState()
+        case .limited:
+            presentLimitedPickerOrSettings()
+        case .denied, .restricted:
+            openPhotosSettings()
+        default:
+            break
+        }
+    }
+
+    private func presentLimitedPickerOrSettings() {
+        if #available(iOS 14.0, *) {
+            let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+            switch status {
+            case .limited:
+                presentLimitedLibraryPickerIfAvailable()
+            case .denied, .restricted:
+                openPhotosSettings()
+            case .authorized:
+                // Full access now; just refresh assets
+                refreshByAuthState()
+            default:
+                break
+            }
+        } else {
+            openPhotosSettings()
         }
     }
 
@@ -541,9 +600,7 @@ final class MediaPickerViewController: UIViewController, UICollectionViewDataSou
     }
 
     @objc private func onWarningTap() {
-        if let url = URL(string: UIApplication.openSettingsURLString) {
-            UIApplication.shared.open(url)
-        }
+        handleAddMoreLimitedAssetsTap()
     }
 
 
@@ -647,38 +704,7 @@ final class MediaPickerViewController: UIViewController, UICollectionViewDataSou
 
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         if showPlus && indexPath.item == assets.count {
-            if #available(iOS 14.0, *) {
-                switch authStatus {
-                case .notDetermined:
-                    PHPhotoLibrary.requestAuthorization(for: .readWrite) { [weak self] newStatus in
-                        DispatchQueue.main.async {
-                            guard let self else { return }
-                            switch newStatus {
-                            case .authorized:
-                                self.fetchAssetsAndReload()
-                            case .limited:
-                                if !self.presentLimitedLibraryPickerIfAvailable() {
-                                    self.openPhotosSettings()
-                                }
-                            case .denied, .restricted:
-                                self.openPhotosSettings()
-                            default:
-                                break
-                            }
-                        }
-                    }
-                case .limited:
-                    if !presentLimitedLibraryPickerIfAvailable() {
-                        openPhotosSettings()
-                    }
-                case .denied, .restricted:
-                    openPhotosSettings()
-                default:
-                    break
-                }
-            } else {
-                openPhotosSettings()
-            }
+            handleAddMoreLimitedAssetsTap()
             return
         }
         let asset = assets[indexPath.item]

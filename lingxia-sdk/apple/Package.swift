@@ -61,7 +61,8 @@ let package = Package(
                 .linkedFramework("WebKit"),
                 .linkedFramework("AudioToolbox", .when(platforms: [.iOS])),
                 .linkedFramework("CoreLocation", .when(platforms: [.iOS])),
-                .linkedFramework("QuickLook", .when(platforms: [.iOS]))
+                .linkedFramework("QuickLook", .when(platforms: [.iOS])),
+                .linkedFramework("PhotosUI", .when(platforms: [.iOS]))
             ]
         ),
     ]
