@@ -22,8 +22,6 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
-import androidx.activity.result.ActivityResultLauncher
-import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -34,7 +32,6 @@ import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.lingxia.lxapp.NativeApi
-import com.lingxia.lxapp.LxApp
 import org.json.JSONObject
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.graphics.drawable.GradientDrawable
@@ -53,7 +50,10 @@ class MediaPickerFragment : Fragment() {
         private const val ARG_MAX_DURATION = "arg_max_duration"
         private const val ARG_CAMERA_FACING = "arg_camera_facing"
         private const val CAMERA_ITEM_TYPE = "__camera__"
+        private const val PLUS_ITEM_TYPE = "__plus__"
         private val CAMERA_PLACEHOLDER_URI: Uri = Uri.parse("lxapp-camera://capture")
+        private val PLUS_PLACEHOLDER_URI: Uri = Uri.parse("lxapp-plus://limited")
+        private const val PERM_READ_MEDIA_VISUAL_USER_SELECTED = "android.permission.READ_MEDIA_VISUAL_USER_SELECTED"
         // Sentinel album IDs for pseudo entries
         private const val ALBUM_ALL_VIDEOS_ID: Long = -10001L
         private const val ALBUM_ALL_IMAGES_ID: Long = -10002L
@@ -142,26 +142,58 @@ class MediaPickerFragment : Fragment() {
     private var albumSelectorView: LinearLayout? = null
     private var pendingOnLoaded: ((List<GridItem>) -> Unit)? = null
     private var resultListener: ((List<Uri>, Boolean) -> Unit)? = null
-
-    // System Photo Picker launchers (Android 13+)
-    private var pickSingleLauncher: ActivityResultLauncher<PickVisualMediaRequest>? = null
-    private var pickMultipleLauncher: ActivityResultLauncher<PickVisualMediaRequest>? = null
-    private var pendingSystemPicker: Boolean = false
+    private var limitedWarningBar: View? = null
+    private var baseRecyclerPaddingBottom: Int = 0
+    private var bottomBarHeightPx: Int = 0
+    private var topBarHeightPx: Int = 0
+    private var limitedWarningHeightPx: Int = 0
+    private var limitedModeActive: Boolean = false
+    private var pendingLimitedReload: Boolean = false
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { results ->
-        val granted = results.values.all { it }
-        if (granted) {
-            loadMedia { list ->
-                pendingOnLoaded?.invoke(list)
+        val ctx = activity ?: return@registerForActivityResult
+        val state = permissionState(ctx)
+        limitedModeActive = state == PermissionState.LIMITED
+        when (state) {
+            PermissionState.FULL -> {
+                pendingLimitedReload = false
+                val callback = pendingOnLoaded
                 pendingOnLoaded = null
+                setLimitedWarningVisible(false)
+                if (callback != null) {
+                    loadMedia { items -> callback(items) }
+                } else {
+                    loadMedia { items -> applyLoadedItems(items) }
+                }
             }
-        } else {
-            sendFailure("Permission denied")
-            removeSelf()
+            PermissionState.LIMITED -> {
+                val shouldReload = pendingLimitedReload
+                pendingLimitedReload = false
+                val callback = pendingOnLoaded
+                pendingOnLoaded = null
+                setLimitedWarningVisible(true)
+                if (callback != null) {
+                    loadMedia { items -> callback(items) }
+                } else if (shouldReload) {
+                    loadMedia { items -> applyLoadedItems(items) }
+                }
+            }
+            PermissionState.NONE -> {
+                limitedModeActive = false
+                pendingLimitedReload = false
+                sendFailure("Permission denied")
+                removeSelf()
+                return@registerForActivityResult
+            }
+        }
+        if (allItems.isNotEmpty()) {
+            (recycler?.adapter as? MediaGridAdapter)?.submitList(filterByAlbum(allItems))
         }
     }
+
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -172,29 +204,8 @@ class MediaPickerFragment : Fragment() {
             isOriginal = savedInstanceState.getBoolean(STATE_IS_ORIGINAL, false)
         }
 
-        // Register native Photo Picker launchers (Android 13+)
-        if (Build.VERSION.SDK_INT >= 33) {
-            pickSingleLauncher = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-                if (uri == null) {
-                    sendCancel(); removeSelf()
-                } else {
-                    deliverPickedUris(listOf(uri))
-                }
-            }
-            if (maxSelectable > 1) {
-                pickMultipleLauncher = registerForActivityResult(
-                    ActivityResultContracts.PickMultipleVisualMedia(maxSelectable)
-                ) { uris ->
-                    if (uris == null || uris.isEmpty()) {
-                        sendCancel(); removeSelf()
-                    } else {
-                        deliverPickedUris(uris)
-                    }
-                }
-            } else {
-                pickMultipleLauncher = null
-            }
-        }
+        bottomBarHeightPx = dp(requireContext(), 64)
+        topBarHeightPx = dp(requireContext(), 56) + statusBarHeight()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -202,13 +213,53 @@ class MediaPickerFragment : Fragment() {
         outState.putBoolean(STATE_IS_ORIGINAL, isOriginal)
     }
 
-    override fun onStart() {
-        super.onStart()
-        if (pendingSystemPicker) {
-            pendingSystemPicker = false
-            // Post to ensure we are fully in STARTED state
-            view?.post { launchSystemPhotoPicker() }
+    override fun onResume() {
+        super.onResume()
+        val ctx = activity ?: return
+        val state = permissionState(ctx)
+        limitedModeActive = state == PermissionState.LIMITED
+        setLimitedWarningVisible(limitedModeActive)
+        if (pendingLimitedReload) {
+            pendingLimitedReload = false
+            loadMedia { items -> applyLoadedItems(items) }
         }
+        if (pendingOnLoaded != null) {
+            val callback = pendingOnLoaded
+            when (state) {
+                PermissionState.FULL -> {
+                    pendingOnLoaded = null
+                    if (callback != null) {
+                        loadMedia { items -> callback(items) }
+                    }
+                }
+                PermissionState.LIMITED -> {
+                    pendingOnLoaded = null
+                    if (callback != null) {
+                        loadMedia { items -> callback(items) }
+                    }
+                }
+                PermissionState.NONE -> {
+                    // still waiting for permissions
+                }
+            }
+        }
+        if (allItems.isNotEmpty()) {
+            (recycler?.adapter as? MediaGridAdapter)?.submitList(filterByAlbum(allItems))
+        }
+    }
+
+    override fun onDestroyView() {
+        super.onDestroyView()
+        recycler = null
+        sendBtn = null
+        sendBtnBackground = null
+        selectionSummaryView = null
+        originalOptionView = null
+        albumMenuContainer = null
+        albumListView = null
+        albumSelectorView = null
+        limitedWarningBar = null
+        pendingLimitedReload = false
     }
 
     override fun onCreateView(
@@ -231,7 +282,7 @@ class MediaPickerFragment : Fragment() {
         // Top bar
         val topBar = FrameLayout(context).apply {
             setBackgroundColor(Color.WHITE)
-            val h = dp(context, 56) + statusBarHeight()
+            val h = topBarHeightPx
             setPadding(dp(context, 16), statusBarHeight(), dp(context, 16), dp(context, 12))
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
@@ -313,7 +364,9 @@ class MediaPickerFragment : Fragment() {
         val adapter = MediaGridAdapter(
             context,
             onMediaClick = { item -> toggleSelection(item) },
-            onCameraClick = { launchCameraFromPicker() }
+            onCameraClick = { launchCameraFromPicker() },
+            onPlusClick = { requestLimitedAccessExpansion() },
+            plusHintProvider = { limitedPlusHintText() }
         )
         rv.adapter = adapter
         root.addView(rv)
@@ -324,7 +377,7 @@ class MediaPickerFragment : Fragment() {
             setBackgroundColor(Color.WHITE)
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
-                dp(context, 64)
+                bottomBarHeightPx
             ).apply { gravity = Gravity.BOTTOM }
             setPadding(dp(context, 16), dp(context, 10), dp(context, 16), dp(context, 14))
             gravity = Gravity.CENTER_VERTICAL
@@ -396,12 +449,21 @@ class MediaPickerFragment : Fragment() {
         bottom.addView(send)
         root.addView(bottom)
 
+        val warningHeight = dp(context, 48)
+        limitedWarningHeightPx = warningHeight
+        val warningBar = createLimitedWarningBar(context, warningHeight)
+        root.addView(warningBar)
+        warningBar.visibility = View.GONE
+        limitedWarningBar = warningBar
+        com.lingxia.lxapp.util.ActivityInsets.applyBottomMargin(root, warningBar, bottomBarHeightPx)
+
         // Lift bottom bar and content above system navigation bar using Activity provider
         com.lingxia.lxapp.util.ActivityInsets.applyBottomMargin(root, bottom, 0)
-        com.lingxia.lxapp.util.ActivityInsets.applyBottomMargin(root, rv, dp(context, 64))
+        com.lingxia.lxapp.util.ActivityInsets.applyBottomMargin(root, rv, bottomBarHeightPx)
 
         recycler = rv
         sendBtn = send
+        baseRecyclerPaddingBottom = rv.paddingBottom
 
         // Album dropdown container (overlay)
         val albumContainer = FrameLayout(context).apply {
@@ -438,17 +500,27 @@ class MediaPickerFragment : Fragment() {
     // Permissions and loading
     private fun ensurePermissionsThenLoad(onLoaded: (List<GridItem>) -> Unit) {
         val act = activity ?: return
-        // Restricted access on Android 13+: use system Photo Picker only
-        if (Build.VERSION.SDK_INT >= 33 && !hasMediaPermission(act)) {
-            // Defer launching until Fragment is STARTED to avoid lifecycle crash
-            pendingSystemPicker = true
-            return
+        val state = permissionState(act)
+        limitedModeActive = state == PermissionState.LIMITED
+        when (state) {
+            PermissionState.FULL -> {
+                pendingOnLoaded = null
+                setLimitedWarningVisible(false)
+                loadMedia(onLoaded)
+            }
+            PermissionState.LIMITED -> {
+                setLimitedWarningVisible(true)
+                pendingOnLoaded = null
+                loadMedia(onLoaded)
+            }
+            PermissionState.NONE -> {
+                limitedModeActive = false
+                pendingOnLoaded = onLoaded
+                permissionLauncher.launch(getNeededPermissions())
+            }
         }
-        if (!hasMediaPermission(act)) {
-            pendingOnLoaded = onLoaded
-            permissionLauncher.launch(getNeededPermissions())
-        } else {
-            loadMedia(onLoaded)
+        if (state != PermissionState.NONE && allItems.isNotEmpty()) {
+            (recycler?.adapter as? MediaGridAdapter)?.submitList(filterByAlbum(allItems))
         }
     }
 
@@ -504,91 +576,156 @@ class MediaPickerFragment : Fragment() {
             "images" -> "所有图片"
             else -> "图片和视频"
         }
-        currentAlbumId = if (lowerMode == "mix") null else null
+        currentAlbumId = null
         (albumSelectorView?.getChildAt(0) as? TextView)?.text = defaultTitle
         (recycler?.adapter as? ListAdapter<GridItem, *>)?.submitList(filterByAlbum(allItems))
         albumMenuContainer?.visibility = View.GONE
         applySendButtonStyle(0)
     }
 
-    private fun launchSystemPhotoPicker() {
-        if (Build.VERSION.SDK_INT < 33) {
-            // Fallback safeguard; on <33 we keep our own picker
-            loadMedia { items ->
-                allItems = items
-                recycler?.adapter?.let { (it as? ListAdapter<GridItem, *>)?.submitList(filterByAlbum(items)) }
-            }
-            return
-        }
-        val mediaType = when (selectedMode.lowercase()) {
-            "videos" -> ActivityResultContracts.PickVisualMedia.VideoOnly
-            "images" -> ActivityResultContracts.PickVisualMedia.ImageOnly
-            else -> ActivityResultContracts.PickVisualMedia.ImageAndVideo
-        }
-        val request = PickVisualMediaRequest.Builder()
-            .setMediaType(mediaType)
-            .build()
-        if (maxSelectable <= 1) {
-            pickSingleLauncher?.launch(request)
-        } else {
-            pickMultipleLauncher?.launch(request)
-        }
-    }
-
-    private fun deliverPickedUris(uris: List<Uri>) {
-        val listener = resultListener
-        if (listener != null) {
-            listener.invoke(uris, isOriginal)
-            activity?.runOnUiThread { removeSelf() }
-            return
-        }
-        val cbId = callbackId
-        Thread {
-            try {
-                val arr = org.json.JSONArray()
-                for (uri in uris.take(maxSelectable)) {
-                    val typeStr = detectFileType(uri)
-                    val obj = org.json.JSONObject().apply {
-                        put("uri", uri.toString())
-                        put("fileType", typeStr)
-                        put("isOriginal", isOriginal)
-                    }
-                    arr.put(obj)
-                }
-                NativeApi.onCallback(cbId, true, arr.toString())
-            } catch (e: Exception) {
-                NativeApi.onCallback(cbId, false, (e.message ?: "build result failed"))
-            } finally {
-                activity?.runOnUiThread { removeSelf() }
-            }
-        }.start()
-    }
-
-    private fun detectFileType(uri: Uri): String {
-        return try {
-            val mime = requireContext().contentResolver.getType(uri) ?: ""
-            if (mime.startsWith("video")) "video" else "image"
-        } catch (_: Exception) {
-            "image"
-        }
-    }
-
-    private fun hasMediaPermission(context: Context): Boolean {
-        return if (Build.VERSION.SDK_INT >= 33) {
-            ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED &&
-                ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_VIDEO) == PackageManager.PERMISSION_GRANTED
-        } else {
-            ContextCompat.checkSelfPermission(context, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
-        }
-    }
-
     private fun getNeededPermissions(): Array<String> {
-        return if (Build.VERSION.SDK_INT >= 33) {
-            arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO)
-        } else {
-            arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+        val needImages = needsImageAccess()
+        val needVideos = needsVideoAccess()
+        return when {
+            Build.VERSION.SDK_INT >= 34 -> {
+                // In limited mode, re-requesting VISUAL permission shows the system sheet again
+                if (limitedModeActive) {
+                    arrayOf(PERM_READ_MEDIA_VISUAL_USER_SELECTED)
+                } else {
+                    val perms = mutableListOf<String>()
+                    if (needImages) perms += Manifest.permission.READ_MEDIA_IMAGES
+                    if (needVideos) perms += Manifest.permission.READ_MEDIA_VIDEO
+                    if (perms.isEmpty()) perms += Manifest.permission.READ_MEDIA_IMAGES
+                    perms.distinct().toTypedArray()
+                }
+            }
+            Build.VERSION.SDK_INT >= 33 -> {
+                val perms = mutableListOf<String>()
+                if (needImages) perms += Manifest.permission.READ_MEDIA_IMAGES
+                if (needVideos) perms += Manifest.permission.READ_MEDIA_VIDEO
+                if (perms.isEmpty()) perms += Manifest.permission.READ_MEDIA_IMAGES
+                perms.distinct().toTypedArray()
+            }
+            else -> arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
         }
     }
+
+    private fun needsImageAccess(): Boolean {
+        val mode = selectedMode.lowercase()
+        return mode != "video" && mode != "videos"
+    }
+
+    private fun needsVideoAccess(): Boolean {
+        val mode = selectedMode.lowercase()
+        return mode != "image" && mode != "images"
+    }
+
+    private fun permissionState(context: Context): PermissionState {
+        if (Build.VERSION.SDK_INT < 33) {
+            val granted = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.READ_EXTERNAL_STORAGE
+            ) == PackageManager.PERMISSION_GRANTED
+            return if (granted) PermissionState.FULL else PermissionState.NONE
+        }
+        if (Build.VERSION.SDK_INT >= 34) {
+            val visualGranted = ContextCompat.checkSelfPermission(
+                context,
+                PERM_READ_MEDIA_VISUAL_USER_SELECTED
+            ) == PackageManager.PERMISSION_GRANTED
+            if (visualGranted) {
+                return PermissionState.LIMITED
+            }
+        }
+        val needImages = needsImageAccess()
+        val needVideos = needsVideoAccess()
+        val hasImages = !needImages || ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED
+        val hasVideos = !needVideos || ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_VIDEO) == PackageManager.PERMISSION_GRANTED
+        if (hasImages && hasVideos) {
+            return PermissionState.FULL
+        }
+        return PermissionState.NONE
+    }
+
+    private fun createLimitedWarningBar(context: Context, height: Int): View {
+        val bar = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(Color.WHITE)
+            setPadding(dp(context, 12), dp(context, 8), dp(context, 12), dp(context, 8))
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                height
+            ).apply {
+                gravity = Gravity.BOTTOM
+                bottomMargin = bottomBarHeightPx
+            }
+        }
+        val iconSize = dp(context, 20)
+        val iconBg = FrameLayout(context).apply {
+            background = GradientDrawable().apply {
+                cornerRadius = iconSize / 2f
+                setColor(Color.parseColor("#FFEFD2"))
+            }
+            layoutParams = LinearLayout.LayoutParams(iconSize, iconSize)
+        }
+        val icon = TextView(context).apply {
+            text = "!"
+            textSize = 12f
+            gravity = Gravity.CENTER
+            setTextColor(Color.parseColor("#FA8C16"))
+        }
+        iconBg.addView(
+            icon,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                Gravity.CENTER
+            )
+        )
+        val message = TextView(context).apply {
+            text = "你仅开启有限访问相册权限，建议允许访问「所有照片」"
+            textSize = 13f
+            setTextColor(Color.parseColor("#595959"))
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            setPadding(dp(context, 8), 0, dp(context, 8), 0)
+        }
+        val arrow = TextView(context).apply {
+            text = ">"
+            textSize = 14f
+            setTextColor(Color.parseColor("#BFBFBF"))
+        }
+        bar.addView(iconBg)
+        bar.addView(message)
+        bar.addView(arrow)
+        bar.setOnClickListener { requestLimitedAccessExpansion() }
+        return bar
+    }
+
+    private fun setLimitedWarningVisible(visible: Boolean) {
+        val bar = limitedWarningBar ?: return
+        if ((bar.visibility == View.VISIBLE) == visible) return
+        bar.visibility = if (visible) View.VISIBLE else View.GONE
+        updateRecyclerBottomPadding(if (visible) limitedWarningHeightPx else 0)
+    }
+
+    private fun requestLimitedAccessExpansion() {
+        if (Build.VERSION.SDK_INT >= 33 && limitedModeActive) {
+            pendingLimitedReload = true
+            val perms = arrayOf(
+                Manifest.permission.READ_MEDIA_IMAGES,
+                Manifest.permission.READ_MEDIA_VIDEO
+            )
+            permissionLauncher.launch(perms)
+        }
+    }
+
+    private fun updateRecyclerBottomPadding(extra: Int) {
+        val rv = recycler ?: return
+        rv.setPadding(rv.paddingLeft, rv.paddingTop, rv.paddingRight, baseRecyclerPaddingBottom + extra)
+    }
+
+    private enum class PermissionState { FULL, LIMITED, NONE }
 
     data class GridItem(
         val uri: Uri,
@@ -756,14 +893,18 @@ class MediaPickerFragment : Fragment() {
         }.start()
     }
 
+
     private class MediaGridAdapter(
         private val context: Context,
         private val onMediaClick: (GridItem) -> Unit,
-        private val onCameraClick: () -> Unit
+        private val onCameraClick: () -> Unit,
+        private val onPlusClick: () -> Unit,
+        private val plusHintProvider: () -> String
     ) : ListAdapter<GridItem, RecyclerView.ViewHolder>(Diff()) {
         companion object {
             private const val TYPE_MEDIA = 0
             private const val TYPE_CAMERA = 1
+            private const val TYPE_PLUS = 2
         }
 
         private val accentBlue = Color.parseColor("#1677FF")
@@ -776,7 +917,12 @@ class MediaPickerFragment : Fragment() {
         }
 
         override fun getItemViewType(position: Int): Int {
-            return if (getItem(position).fileType == CAMERA_ITEM_TYPE) TYPE_CAMERA else TYPE_MEDIA
+            val type = getItem(position).fileType
+            return when (type) {
+                CAMERA_ITEM_TYPE -> TYPE_CAMERA
+                PLUS_ITEM_TYPE -> TYPE_PLUS
+                else -> TYPE_MEDIA
+            }
         }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
@@ -813,6 +959,34 @@ class MediaPickerFragment : Fragment() {
                 container.addView(icon)
                 container.addView(label)
                 CameraVH(container)
+            } else if (viewType == TYPE_PLUS) {
+                val size = parent.measuredWidth / 4
+                val container = LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    gravity = Gravity.CENTER
+                    layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, size)
+                    background = GradientDrawable().apply {
+                        cornerRadius = dp(context, 12).toFloat()
+                        setColor(Color.parseColor("#F5F6F7"))
+                        setStroke(dp(context, 1), Color.parseColor("#D9D9D9"))
+                    }
+                    setPadding(dp(context, 8), dp(context, 8), dp(context, 8), dp(context, 8))
+                }
+                val plusLabel = TextView(context).apply {
+                    text = "+"
+                    textSize = 32f
+                    gravity = Gravity.CENTER
+                    setTextColor(accentBlue)
+                }
+                val hint = TextView(context).apply {
+                    text = plusHintProvider()
+                    gravity = Gravity.CENTER
+                    textSize = 11f
+                    setTextColor(Color.parseColor("#8C8C8C"))
+                }
+                container.addView(plusLabel)
+                container.addView(hint)
+                PlusVH(container, hint)
             } else {
                 val size = parent.measuredWidth / 4
                 val container = FrameLayout(context).apply {
@@ -909,6 +1083,9 @@ class MediaPickerFragment : Fragment() {
             val item = getItem(position)
             if (holder is CameraVH) {
                 holder.itemView.setOnClickListener { onCameraClick() }
+            } else if (holder is PlusVH) {
+                holder.hint.text = plusHintProvider()
+                holder.itemView.setOnClickListener { onPlusClick() }
             } else if (holder is MediaVH) {
                 holder.itemView.setOnClickListener { onMediaClick(item) }
                 try {
@@ -945,6 +1122,7 @@ class MediaPickerFragment : Fragment() {
             val ring: View,
             val duration: TextView
         ) : RecyclerView.ViewHolder(view)
+        private class PlusVH(view: View, val hint: TextView) : RecyclerView.ViewHolder(view)
 
         private class Diff : DiffUtil.ItemCallback<GridItem>() {
             override fun areItemsTheSame(oldItem: GridItem, newItem: GridItem): Boolean {
@@ -1052,13 +1230,14 @@ class MediaPickerFragment : Fragment() {
             ALBUM_ALL_IMAGES_ID -> list.filter { it.fileType == "image" }
             else -> list.filter { it.bucketId == id }
         }
-        return if (allowCamera) {
-            ArrayList<GridItem>(filtered.size + 1).apply {
-                add(cameraGridItem())
-                addAll(filtered)
-            }
-        } else {
-            filtered
+        val extras = (if (allowCamera) 1 else 0) + (if (shouldShowLimitedPlusTile()) 1 else 0)
+        if (extras == 0) {
+            return filtered
+        }
+        return ArrayList<GridItem>(filtered.size + extras).apply {
+            if (allowCamera) add(cameraGridItem())
+            addAll(filtered)
+            if (shouldShowLimitedPlusTile()) add(plusGridItem())
         }
     }
 
@@ -1130,6 +1309,27 @@ class MediaPickerFragment : Fragment() {
         null,
         null
     )
+
+    private fun plusGridItem(): GridItem = GridItem(
+        PLUS_PLACEHOLDER_URI,
+        PLUS_ITEM_TYPE,
+        0.0,
+        Long.MAX_VALUE - 1,
+        null,
+        null
+    )
+
+    private fun shouldShowLimitedPlusTile(): Boolean {
+        return limitedModeActive && Build.VERSION.SDK_INT >= 33
+    }
+
+    private fun limitedPlusHintText(): String {
+        return when (selectedMode.lowercase()) {
+            "videos" -> "添加更多\n可访问内容"
+            "images" -> "添加更多\n可访问内容"
+            else -> "添加更多\n可访问内容"
+        }
+    }
 }
 
 // Top-level helpers for nested classes
