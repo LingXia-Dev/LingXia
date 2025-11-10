@@ -17,7 +17,11 @@ impl LxApp {
 
     /// Handler for lx:// scheme requests to access static app assets (images, CSS, JS, etc.)
     /// HTML files are handled separately through generate_page_html and load_data
-    pub(crate) fn lingxia_handler(&self, page: &Page, req: Request<Vec<u8>>) -> Option<WebResourceResponse> {
+    pub(crate) fn lingxia_handler(
+        &self,
+        page: &Page,
+        req: Request<Vec<u8>>,
+    ) -> Option<WebResourceResponse> {
         let uri = req.uri().clone();
 
         if let Some(target_uri) = Self::extract_proxy_target(&uri) {
@@ -177,7 +181,14 @@ impl LxApp {
         }
 
         let path_str = uri.path();
-        let raw_path = path_str.trim_start_matches('/');
+        // Decode any percent-encodings in the path. We handle three cases in order:
+        // Case 1: Direct package-root path (e.g., pages/... or images/...)
+        // Case 2: Page-relative expanded path (e.g., pages/home/images/1.jpg -> strip base once)
+        // Case 3: Absolute OS path tunneled via lx://<lxappid>/<absolute-path>
+        let decoded_path = decode(path_str)
+            .map(|c| c.to_string())
+            .unwrap_or_else(|_| path_str.to_string());
+        let raw_path = decoded_path.trim_start_matches('/');
         if raw_path.is_empty() {
             return Err(LxAppError::ResourceNotFound(uri.to_string()));
         }
@@ -188,16 +199,19 @@ impl LxApp {
         }
         let normalized = raw_path.trim_matches('/').to_string();
 
-        // Step 1: use the request path as-is (e.g., pages/home/index.css)
+        // Case 1: Direct package-root path (e.g., pages/home/index.css, images/1.jpg)
+        // Try the request path as-is relative to allowed roots
         if let Ok(local_path) = self.resolve_accessible_path(&normalized) {
             return Ok(local_path);
         }
 
-        // Step 2: strip the current page base directory once (e.g., pages/home/images/x.png -> images/x.png)
+        // Case 2: Requested URL expanded by WebView as page-relative
+        // If the request path begins with the current page's base directory,
+        // strip that base directory once and try resolving the remainder.
         if let Ok(base_uri) = Uri::from_str(&page.base_url()) {
             let base_path = base_uri.path().trim_start_matches('/');
             if let Some(idx) = base_path.rfind('/') {
-                let base_dir = &base_path[..idx];
+                let base_dir = &base_path[..idx]; // e.g., pages/home
                 let prefix = format!("{}/", base_dir.trim_matches('/'));
                 if normalized.starts_with(&prefix) {
                     let stripped = &normalized[prefix.len()..];
@@ -207,6 +221,14 @@ impl LxApp {
                         }
                     }
                 }
+            }
+        }
+
+        // Case 3: Absolute OS path tunneled via lx://<lxappid>/<absolute-path>
+        // Example: lx://${lxappid}/var/mobile/.../image.jpg -> "/var/mobile/.../image.jpg"
+        if decoded_path.starts_with('/') {
+            if let Ok(local_path) = self.resolve_accessible_path(&decoded_path) {
+                return Ok(local_path);
             }
         }
 
