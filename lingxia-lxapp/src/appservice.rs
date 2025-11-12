@@ -19,9 +19,22 @@ use app::LxAppSvc;
 
 pub mod bridge;
 
+pub mod update;
+
 mod page;
 use crate::event::PageServiceEvent;
 use page::PageSvc;
+
+// fetch or create UpdateManager instance associated with current JSContext
+pub fn get_or_create_update_manager(ctx: &JSContext) -> JSResult<JSObject> {
+    if let Some(svc) = ctx.get_user_data::<LxAppSvc>() {
+        svc.get_or_create_update_manager(ctx)
+    } else {
+        Err(RongJSError::Error(
+            "LxAppSvc not loaded in JSContext".to_string(),
+        ))
+    }
+}
 
 /// Message type for LxApp service system
 #[derive(Clone)]
@@ -102,9 +115,11 @@ async fn handle_app_service_event(
     // Update events: notify only if registered
     match event {
         AppServiceEvent::UpdateReady => {
+            svc.notify_update_ready().await;
             return;
         }
         AppServiceEvent::UpdateFailed => {
+            svc.notify_update_failed().await;
             return;
         }
         AppServiceEvent::OnLaunch | AppServiceEvent::OnShow | AppServiceEvent::OnHide => {

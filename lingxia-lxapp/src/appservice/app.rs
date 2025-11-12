@@ -1,14 +1,17 @@
+use crate::appservice::update::JSUpdateManager;
 use crate::event::AppServiceEvent;
 use rong::{
     Class, JSContext, JSFunc, JSObject, JSResult, JSValue, RongJSError, Source, js_class,
     js_export, js_method,
 };
+use std::cell::RefCell;
 use std::collections::HashMap;
 
 #[js_export]
 pub(crate) struct LxAppSvc {
     event_handlers: HashMap<AppServiceEvent, JSFunc>,
     this: JSObject,
+    update_manager: RefCell<Option<JSObject>>,
 }
 
 #[js_class]
@@ -18,6 +21,7 @@ impl LxAppSvc {
         let mut app_svc = LxAppSvc {
             event_handlers: HashMap::new(),
             this: obj.clone(),
+            update_manager: RefCell::new(None),
         };
 
         // Extract all functions from the object
@@ -37,6 +41,9 @@ impl LxAppSvc {
             mark_fn(func.as_jsvalue());
         }
         mark_fn(self.this.as_jsvalue());
+        if let Some(obj) = self.update_manager.borrow().as_ref() {
+            mark_fn(obj.as_jsvalue());
+        }
     }
 }
 
@@ -95,11 +102,44 @@ impl LxAppSvc {
         )))
     }
 
+    // create or return cached UpdateManager object
+    pub(crate) fn get_or_create_update_manager(&self, ctx: &JSContext) -> JSResult<JSObject> {
+        if let Some(obj) = self.update_manager.borrow().as_ref() {
+            return Ok(obj.clone());
+        }
+
+        let class = Class::get::<JSUpdateManager>(&ctx)?;
+        let instance = class.instance(JSUpdateManager::new());
+        // Cache instance so native update events can notify it later
+        self.update_manager.borrow_mut().replace(instance.clone());
+        Ok(instance)
+    }
+
+    // Notify JS update callbacks if a JSUpdateManager is registered; otherwise ignore
+    pub(crate) async fn notify_update_ready(&self) {
+        if let Some(obj) = self.update_manager.borrow().as_ref().cloned() {
+            if let Ok(mgr) = obj.borrow::<JSUpdateManager>() {
+                mgr.notify_update_ready().await;
+            }
+        } else {
+            // Not created yet (lx.getUpdateManager() hasn't been called)
+            crate::error!("UpdateManager not initialized)");
+        }
+    }
+
+    pub(crate) async fn notify_update_failed(&self) {
+        if let Some(obj) = self.update_manager.borrow().as_ref().cloned() {
+            if let Ok(mgr) = obj.borrow::<JSUpdateManager>() {
+                mgr.notify_update_failed().await;
+            }
+        }
+    }
 }
 
 // Register the global App & getApp function
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     ctx.register_class::<LxAppSvc>()?;
+    ctx.register_class::<JSUpdateManager>()?;
 
     let app_js = Source::from_bytes(include_str!("scripts/App.js"));
     ctx.eval::<()>(app_js)?;
