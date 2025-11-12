@@ -12,7 +12,8 @@ use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
-use zip::read::ZipArchive;
+use tar::Archive;
+use zstd::stream::read::Decoder as ZstdDecoder;
 
 mod cloud;
 
@@ -48,12 +49,12 @@ pub struct UpdateManager {
 #[derive(Clone, Debug)]
 pub struct DownloadedUpdateInfo {
     pub version: String,
-    pub zip_path: PathBuf,
+    pub archive_path: PathBuf,
 }
 
 impl UpdateManager {
     /// Download a package synchronously. When `version` is None, fetch from cloud to get latest.
-    /// Returns the downloaded zip path and records it in `downloaded` table.
+    /// Returns the downloaded archive path and records it in `downloaded` table.
     /// Create a new UpdateManager bound to a specific LxApp.
     pub fn new(lxapp: Arc<lxapp::LxApp>) -> Self {
         let downloads_dir = lxapp
@@ -92,7 +93,7 @@ impl UpdateManager {
         Ok(
             metadata::downloaded_get(lxappid, release_type)?.map(|rec| DownloadedUpdateInfo {
                 version: rec.version.to_version_string(),
-                zip_path: PathBuf::from(rec.zip_path),
+                archive_path: PathBuf::from(rec.zip_path),
             }),
         )
     }
@@ -151,20 +152,21 @@ impl UpdateManager {
     ///
     /// Not installed: downloads, verifies, installs synchronously, and removes the archive.
     /// Installed and newer available: downloads+verifies and saves a pending record to redb (no auto-apply).
-    /// Apply the given zip archive for `lxappid` with explicit release_type and version.
-    pub fn apply_update_zip(
+    /// Apply the given tar.zst archive for `lxappid` with explicit release_type and version.
+    pub fn apply_update_archive(
         &self,
         lxappid: &str,
         release_type: ReleaseType,
         _version: &str,
-        zip_path: &Path,
+        archive_path: &Path,
     ) -> Result<(), LxAppError> {
         // Remember previous install path (if any)
         let previous_path =
             metadata::get(lxappid, release_type)?.map(|rec| PathBuf::from(rec.install_path));
 
         // Install into a new hashed directory for this version
-        let install_path = self.install_from_zip(lxappid, release_type, _version, zip_path)?;
+        let install_path =
+            self.install_from_archive(lxappid, release_type, _version, archive_path)?;
 
         // On successful install, remove previous package path if it differs
         if let Some(prev) = previous_path {
@@ -176,18 +178,18 @@ impl UpdateManager {
         // Update metadata last, pointing to the new install path
         Self::record_install_metadata(lxappid, release_type, _version, &install_path)?;
         // clean downloaded entry and archive
-        let _ = fs::remove_file(zip_path);
+        let _ = fs::remove_file(archive_path);
         let _ = metadata::downloaded_remove(lxappid, release_type);
         Ok(())
     }
 
-    /// Install from a local zip package into the correct per-release path.
-    pub fn install_from_zip(
+    /// Install from a local tar.zst archive into the correct per-release path.
+    pub fn install_from_archive(
         &self,
         lxappid: &str,
         release_type: ReleaseType,
         _version: &str,
-        zip_path: &Path,
+        archive_path: &Path,
     ) -> Result<PathBuf, LxAppError> {
         let dir_name = lxapp_fingermark(lxappid, release_type);
         let destination = self
@@ -200,38 +202,29 @@ impl UpdateManager {
 
         fs::create_dir_all(&destination)?;
 
-        let file = File::open(zip_path)?;
-        let mut archive = ZipArchive::new(file).map_err(|e| {
+        // Open the tar.zst file
+        let file = File::open(archive_path)?;
+
+        // Create zstd decoder
+        let zstd_decoder = ZstdDecoder::new(file).map_err(|e| {
             LxAppError::IoError(format!(
-                "Failed to read zip archive {}: {}",
-                zip_path.display(),
+                "Failed to create zstd decoder for {}: {}",
+                archive_path.display(),
                 e
             ))
         })?;
 
-        // Extract entries; assume package layout is flat under the archive root
-        for index in 0..archive.len() {
-            let mut entry = archive
-                .by_index(index)
-                .map_err(|e| LxAppError::IoError(format!("Cannot read zip entry #{index}: {e}")))?;
+        // Create tar archive reader
+        let mut archive = Archive::new(zstd_decoder);
 
-            let entry_path = match entry.enclosed_name() {
-                Some(path) => destination.join(path),
-                None => continue,
-            };
-
-            if entry.name().ends_with('/') {
-                fs::create_dir_all(&entry_path)?;
-                continue;
-            }
-
-            if let Some(parent) = entry_path.parent() {
-                fs::create_dir_all(parent)?;
-            }
-
-            let mut outfile = File::create(&entry_path)?;
-            io::copy(&mut entry, &mut outfile)?;
-        }
+        // Extract all entries
+        archive.unpack(&destination).map_err(|e| {
+            LxAppError::IoError(format!(
+                "Failed to extract tar.zst archive {}: {}",
+                archive_path.display(),
+                e
+            ))
+        })?;
 
         Ok(destination)
     }
@@ -354,7 +347,7 @@ impl UpdateManager {
                     crate::error!("Failed to record downloaded update: {}", e);
                 } else {
                     crate::info!(
-                        "Recorded downloaded update: appid={}, release_type={}, version={}, zip={}",
+                        "Recorded downloaded update: appid={}, release_type={}, version={}, archive={}",
                         lxappid,
                         release_type,
                         version,
@@ -425,8 +418,8 @@ fn filename_from_url_or_hash(url: &str) -> String {
     if !seg.is_empty() && seg.contains('.') {
         seg.to_string()
     } else {
-        // default to hash.zip
-        format!("{}.zip", UpdateManager::hash_url(url))
+        // default to hash.tar.zst
+        format!("{}.tar.zst", UpdateManager::hash_url(url))
     }
 }
 

@@ -556,18 +556,11 @@ impl LxApp {
         match pre_open_updater.has_downloaded_update(&appid, startup_options.release_type) {
             Ok(Some(info)) => {
                 // Always apply any downloaded package here; version policy handled elsewhere.
-                info!(
-                    "Applying downloaded update before creating LxApp: version={}, zip={}",
-                    info.version,
-                    info.zip_path.display()
-                )
-                .with_appid(appid.clone());
-
-                if let Err(e) = pre_open_updater.apply_update_zip(
+                if let Err(e) = pre_open_updater.apply_update_archive(
                     &appid,
                     startup_options.release_type,
                     &info.version,
-                    &info.zip_path,
+                    &info.archive_path,
                 ) {
                     error!("Failed to apply downloaded update: {}", e).with_appid(appid.clone());
                 }
