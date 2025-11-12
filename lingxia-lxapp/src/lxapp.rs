@@ -15,6 +15,7 @@ use crate::error::LxAppError;
 use crate::executor::LxAppExecutor;
 use crate::page::Page;
 use crate::startup::LxAppStartupOptions;
+use crate::update::UpdateManager;
 use crate::{error, info, warn};
 use security::NetworkSecurity;
 
@@ -230,7 +231,6 @@ pub struct LxApp {
     pub user_cache_dir: PathBuf,
     pub fingermark: String,
     pub is_home_lxapp: bool,
-    pub version: String,
     pub(crate) release_type: ReleaseType,
     pub(crate) config: LxAppConfig,
     pub(crate) executor: Arc<LxAppExecutor>,
@@ -252,7 +252,6 @@ impl LxApp {
             user_cache_dir: PathBuf::new(),
             fingermark: String::new(),
             is_home_lxapp: false,
-            version: String::new(),
             release_type: ReleaseType::default(),
             config: LxAppConfig::default(),
             executor,
@@ -289,10 +288,6 @@ impl LxApp {
     fn initialize_paths(&mut self) -> Result<(), LxAppError> {
         // Load metadata if available to determine version and install path
         let meta = metadata::get(&self.appid, self.release_type).ok().flatten();
-        self.version = meta
-            .as_ref()
-            .map(|record| record.version_string())
-            .unwrap_or_else(|| DEFAULT_VERSION.to_string());
         self.fingermark = meta
             .as_ref()
             .map(|record| record.fingermark.clone())
@@ -394,23 +389,14 @@ impl LxApp {
         self.cache.as_ref().expect("cache initialized")
     }
 
-    /// Get the version of this app from storage
-    pub fn read_version(&self) -> String {
+    /// Get the current installed version of this app variant from storage
+    pub fn current_version(&self) -> String {
         metadata::get(&self.appid, self.release_type)
             .ok()
             .flatten()
             .map(|record| record.version_string())
             .filter(|version| !version.is_empty())
             .unwrap_or_else(|| DEFAULT_VERSION.to_string())
-    }
-
-    pub(crate) fn should_update(&self, required_version: &str) -> bool {
-        let installed = metadata::get(&self.appid, self.release_type)
-            .ok()
-            .flatten()
-            .map(|record| record.version_string())
-            .or_else(|| Some(self.version.clone()));
-        need_update(installed.as_deref(), required_version)
     }
 
     // Reads binary data from the specified relative path
@@ -562,8 +548,34 @@ impl LxApp {
         appid: String,
         options: LxAppStartupOptions,
     ) -> Result<(), LxAppError> {
-        if self.appid == appid {
-            return Ok(());
+        // Prepare startup options first
+        let startup_options = options.clone();
+
+        // Always apply any downloaded package for the target app before creating/opening it
+        let pre_open_updater = UpdateManager::new(get(self.appid.clone()));
+        match pre_open_updater.has_downloaded_update(&appid, startup_options.release_type) {
+            Ok(Some(info)) => {
+                // Always apply any downloaded package here; version policy handled elsewhere.
+                info!(
+                    "Applying downloaded update before creating LxApp: version={}, zip={}",
+                    info.version,
+                    info.zip_path.display()
+                )
+                .with_appid(appid.clone());
+
+                if let Err(e) = pre_open_updater.apply_update_zip(
+                    &appid,
+                    startup_options.release_type,
+                    &info.version,
+                    &info.zip_path,
+                ) {
+                    error!("Failed to apply downloaded update: {}", e).with_appid(appid.clone());
+                }
+            }
+            Ok(None) => {}
+            Err(e) => {
+                error!("Failed to read downloaded update info: {}", e).with_appid(appid.clone());
+            }
         }
 
         if let Some(manager) = get_lxapps_manager() {
@@ -576,8 +588,6 @@ impl LxApp {
             }
 
             let app = manager.get_or_init_lxapp(appid.clone());
-
-            let startup_options = options.clone();
             app.state.lock().unwrap().startup_options = options;
 
             let target_path = if startup_options.path.is_empty() {
@@ -990,7 +1000,14 @@ pub fn init(runtime: Platform) -> Option<String> {
             home_lxapp.state.lock().unwrap().startup_options.path = initial_route;
 
             // Check if home lxapp needs updating after loading its configuration
-            if home_lxapp.is_debug_enabled() || home_lxapp.should_update(home_lxapp_version) {
+            if home_lxapp.is_debug_enabled()
+                || metadata::get(&home_lxapp_appid, ReleaseType::Release)
+                    .ok()
+                    .flatten()
+                    .map(|rec| rec.version_string())
+                    .as_deref()
+                    != Some(home_lxapp_version)
+            {
                 if let Err(e) = crate::update::UpdateManager::install_from_assets(
                     runtime_arc.clone(),
                     &home_lxapp_appid,

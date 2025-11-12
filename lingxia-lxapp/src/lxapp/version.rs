@@ -48,25 +48,6 @@ impl Version {
     }
 }
 
-/// Determine whether an update is required given an installed (optional) and a required/remote version string.
-/// Fallback policy:
-/// - If `required` cannot be parsed, return false (reject update on parse error).
-/// - If `installed` is None or cannot be parsed, return true.
-/// - Otherwise, return installed < required.
-pub(crate) fn need_update(installed: Option<&str>, required: &str) -> bool {
-    let required = match Version::parse(required) {
-        Ok(v) => v,
-        Err(_) => return false,
-    };
-    match installed {
-        None => true,
-        Some(s) => match Version::parse(s) {
-            Ok(inst) => inst < required,
-            Err(_) => true,
-        },
-    }
-}
-
 impl FromStr for Version {
     type Err = VersionError;
 

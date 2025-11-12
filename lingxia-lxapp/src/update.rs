@@ -37,6 +37,7 @@ pub struct UpdateCheckResult {
 }
 
 /// Coordinates update preparation, download, and installation for LxApps.
+#[derive(Clone)]
 pub struct UpdateManager {
     /// Bound app reference used to access platform runtime (paths, fs) and app context.
     lxapp: Arc<lxapp::LxApp>,
@@ -66,6 +67,19 @@ impl UpdateManager {
         Self {
             lxapp,
             downloads_dir,
+        }
+    }
+
+    /// Decide whether we should download/apply the server version for this app variant.
+    /// Policy: allow upgrade or downgrade; skip only when server_version equals installed.
+    pub fn should_update(&self, server_version: &str) -> bool {
+        let installed = crate::lxapp::metadata::get(&self.lxapp.appid, self.lxapp.release_type)
+            .ok()
+            .flatten()
+            .map(|rec| rec.version_string());
+        match installed {
+            Some(v) => v != server_version,
+            None => true,
         }
     }
 
@@ -195,6 +209,7 @@ impl UpdateManager {
             ))
         })?;
 
+        // Extract entries; assume package layout is flat under the archive root
         for index in 0..archive.len() {
             let mut entry = archive
                 .by_index(index)
@@ -307,8 +322,11 @@ impl UpdateManager {
 
     pub async fn download_archive_with_checksum(
         &self,
+        lxappid: &str,
+        release_type: ReleaseType,
         url: &str,
         checksum_sha256: &str,
+        version: &str,
     ) -> Result<PathBuf, LxAppError> {
         let dest = self.dest_path_for_url(url);
         if dest.exists() {
@@ -329,6 +347,21 @@ impl UpdateManager {
                         return Err(e);
                     }
                 }
+                // Persist pending downloaded update so it can be applied later.
+                // Uses current app context (appid + release_type) and explicit version.
+                let upsert_res = metadata::downloaded_upsert(lxappid, release_type, version, &dest);
+                if let Err(e) = &upsert_res {
+                    crate::error!("Failed to record downloaded update: {}", e);
+                } else {
+                    crate::info!(
+                        "Recorded downloaded update: appid={}, release_type={}, version={}, zip={}",
+                        lxappid,
+                        release_type,
+                        version,
+                        dest.display()
+                    );
+                }
+                let _ = upsert_res;
                 Ok(dest)
             }
             Err(err) => {

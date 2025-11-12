@@ -303,3 +303,38 @@ pub(crate) fn downloaded_remove(
         .map_err(|e| metadata_error("commit downloaded delete", e))?;
     Ok(())
 }
+
+pub(crate) fn downloaded_upsert(
+    lxappid: &str,
+    release_type: ReleaseType,
+    version: &str,
+    zip_path: &std::path::Path,
+) -> Result<(), LxAppError> {
+    let parsed_version = Version::parse(version).map_err(|_| {
+        LxAppError::InvalidParameter(format!("Invalid semantic version: {}", version))
+    })?;
+    let record = PendingUpdateRecord {
+        lxappid: lxappid.to_string(),
+        release_type,
+        version: SemanticVersion::from_version(&parsed_version),
+        zip_path: zip_path.to_string_lossy().to_string(),
+    };
+
+    let key = key_for(lxappid, release_type);
+    let db = database()?;
+    let txn = db
+        .begin_write()
+        .map_err(|e| metadata_error("begin write transaction", e))?;
+    {
+        let mut table = txn
+            .open_table(DOWNLOADED_TABLE)
+            .map_err(|e| metadata_error("open downloaded table", e))?;
+        let serialized = serde_json::to_vec(&record)?;
+        table
+            .insert(key.as_str(), serialized.as_slice())
+            .map_err(|e| metadata_error("write downloaded record", e))?;
+    }
+    txn.commit()
+        .map_err(|e| metadata_error("commit downloaded write", e))?;
+    Ok(())
+}
