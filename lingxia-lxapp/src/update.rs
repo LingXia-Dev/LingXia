@@ -8,7 +8,7 @@ use lingxia_platform::{AppRuntime, Platform};
 use ring::digest::{Context, SHA256};
 use rong::service_executor;
 use std::fs::{self, File};
-use std::io::{self, Read};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -168,18 +168,48 @@ impl UpdateManager {
         let install_path =
             self.install_from_archive(lxappid, release_type, _version, archive_path)?;
 
-        // On successful install, remove previous package path if it differs
+        // Write metadata first to allow rollback
+        if let Err(e) =
+            Self::record_install_metadata(lxappid, release_type, _version, &install_path)
+        {
+            // Rollback: remove the new installation since we couldn't commit it
+            if let Err(cleanup_err) = fs::remove_dir_all(&install_path) {
+                crate::error!(
+                    "Failed to rollback new installation at {}: {}",
+                    install_path.display(),
+                    cleanup_err
+                )
+                .with_appid(lxappid);
+            }
+            return Err(e);
+        }
+
+        // Safe to remove previous version
         if let Some(prev) = previous_path {
             if prev.exists() && prev != install_path {
-                let _ = fs::remove_dir_all(prev);
+                if let Err(e) = fs::remove_dir_all(&prev) {
+                    // Log warning but don't fail - new version is already committed
+                    crate::warn!(
+                        "Failed to remove old installation at {}: {}. Manual cleanup may be needed.",
+                        prev.display(),
+                        e
+                    )
+                    .with_appid(lxappid);
+                }
             }
         }
 
-        // Update metadata last, pointing to the new install path
-        Self::record_install_metadata(lxappid, release_type, _version, &install_path)?;
-        // clean downloaded entry and archive
-        let _ = fs::remove_file(archive_path);
-        let _ = metadata::downloaded_remove(lxappid, release_type);
+        // Remove download metadata and archive
+        if let Err(e) = metadata::downloaded_remove(lxappid, release_type) {
+            crate::warn!(
+                "Failed to clean up download metadata and archive for {}:{:?}: {}",
+                lxappid,
+                release_type,
+                e
+            )
+            .with_appid(lxappid);
+        }
+
         Ok(())
     }
 
@@ -199,6 +229,17 @@ impl UpdateManager {
             .join(LINGXIA_DIR)
             .join(LXAPPS_DIR)
             .join(dir_name);
+
+        // Ensure clean destination to avoid mixing versions
+        if destination.exists() {
+            fs::remove_dir_all(&destination).map_err(|e| {
+                LxAppError::IoError(format!(
+                    "Failed to clean existing installation at {}: {}",
+                    destination.display(),
+                    e
+                ))
+            })?;
+        }
 
         fs::create_dir_all(&destination)?;
 
@@ -344,7 +385,7 @@ impl UpdateManager {
                 // Uses current app context (appid + release_type) and explicit version.
                 let upsert_res = metadata::downloaded_upsert(lxappid, release_type, version, &dest);
                 if let Err(e) = &upsert_res {
-                    crate::error!("Failed to record downloaded update: {}", e);
+                    crate::error!("Failed to record downloaded update: {}", e).with_appid(lxappid);
                 } else {
                     crate::info!(
                         "Recorded downloaded update: appid={}, release_type={}, version={}, archive={}",
@@ -352,7 +393,8 @@ impl UpdateManager {
                         release_type,
                         version,
                         dest.display()
-                    );
+                    )
+                    .with_appid(lxappid);
                 }
                 let _ = upsert_res;
                 Ok(dest)

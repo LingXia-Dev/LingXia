@@ -286,6 +286,24 @@ pub(crate) fn downloaded_remove(
     lxappid: &str,
     release_type: ReleaseType,
 ) -> Result<(), LxAppError> {
+    // Fetch record for archive path
+    let record = downloaded_get(lxappid, release_type)?;
+
+    // Best-effort delete archive file
+    if let Some(rec) = record {
+        let archive_path = std::path::PathBuf::from(&rec.zip_path);
+        if archive_path.exists() {
+            if let Err(e) = std::fs::remove_file(&archive_path) {
+                crate::warn!(
+                    "Failed to remove archive file at {}: {}. Disk space may be wasted.",
+                    archive_path.display(),
+                    e
+                );
+            }
+        }
+    }
+
+    // Remove metadata entry
     let key = key_for(lxappid, release_type);
     let db = database()?;
     let txn = db
