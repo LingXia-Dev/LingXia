@@ -465,9 +465,9 @@ Page({
       const result = await lx.showModal({
         title: params.title !== undefined ? params.title : "Alert",
         content: params.content || "This is a modal dialog",
-        show_cancel: params.showCancel !== undefined ? params.showCancel : true,
-        cancel_text: params.cancelText || "Cancel",
-        confirm_text: params.confirmText || "OK",
+        showCancel: params.showCancel !== undefined ? params.showCancel : true,
+        cancelText: params.cancelText || "Cancel",
+        confirmText: params.confirmText || "OK",
       });
 
       // Filter out content field from result

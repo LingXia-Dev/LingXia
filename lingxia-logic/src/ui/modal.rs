@@ -10,10 +10,15 @@ use std::sync::Arc;
 struct JSModalOptions {
     title: Option<String>,
     content: Option<String>,
+    #[rename = "showCancel"]
     show_cancel: Option<bool>,
+    #[rename = "cancelText"]
     cancel_text: Option<String>,
+    #[rename = "cancelColor"]
     cancel_color: Option<String>,
+    #[rename = "confirmText"]
     confirm_text: Option<String>,
+    #[rename = "confirmColor"]
     confirm_color: Option<String>,
 }
 
