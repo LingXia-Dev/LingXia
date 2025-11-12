@@ -93,26 +93,38 @@ impl MessageHandler for PageSvc {
                     _ => unreachable!(), // We're in Call/Event branch
                 };
 
-                let func_name_owned = func_name.to_string();
+                let _func_name_owned = func_name.to_string();
                 let args_owned = args.map(|s| s.to_string());
 
                 // Handle different service types
                 match service_type {
                     ServiceType::JSFunc(js_func) => {
-                        let task = async move {
-                            if let Err(e) = page_svc_clone
-                                .call_or_event_from_view(
-                                    &ctx,
-                                    &func_name_owned,
-                                    args_owned.as_deref(),
-                                    js_func,
-                                )
-                                .await
-                            {
-                                error!("JS function call/event '{}' failed: {}", name_owned, e);
-                            }
+                        // Build args object once
+                        let args_obj = args_owned
+                            .as_deref()
+                            .and_then(|json| rong::JSObject::from_json_string(&ctx, json).ok());
+                        // Priority & coalescing
+                        let (prio, dedup) = match dispatch_msg.message_type() {
+                            DispatchMessageType::Event { name, .. } => (
+                                rong::JsInvokePriority::Event,
+                                Some(format!("page:{}:{}", page_svc_clone.page.path(), name)),
+                            ),
+                            _ => (rong::JsInvokePriority::Normal, None),
                         };
-                        rong::spawn(task);
+                        // Enqueue (non-blocking); Bridge for Call already replied success
+                        if let Err(e) = rong::enqueue_js_invoke(
+                            &ctx,
+                            js_func.clone(),
+                            Some(page_svc_clone.this.clone()),
+                            args_obj,
+                            prio,
+                            dedup,
+                            false,
+                        )
+                        .await
+                        {
+                            error!("JS invocation '{}' failed: {}", name_owned, e);
+                        }
                     }
                     ServiceType::FastAPI(handler) => {
                         // For FastAPI, handle directly and reply
@@ -301,7 +313,14 @@ impl PageSvc {
         args: Option<&str>,
     ) -> JSResult<()> {
         if let Some(func) = self.functions.get(func_name) {
-            return self.call_js_func_with_args(func.clone(), ctx, args).await;
+            let args_obj = args.and_then(|json| rong::JSObject::from_json_string(ctx, json).ok());
+            return match args_obj {
+                Some(obj) => {
+                    func.call_async::<_, ()>(Some(self.this.clone()), (obj,))
+                        .await
+                }
+                None => func.call_async::<_, ()>(Some(self.this.clone()), ()).await,
+            };
         }
         Err(RongJSError::Error(format!("No service: {}", func_name)))
     }
@@ -314,26 +333,24 @@ impl PageSvc {
         args: Option<&str>,
     ) -> JSResult<()> {
         if let Some(js_func) = self.functions.get(event.as_str()) {
-            self.call_js_func_with_args(js_func.clone(), ctx, args)
-                .await
+            let args_obj = args.and_then(|json| rong::JSObject::from_json_string(ctx, json).ok());
+            // Enqueue as Normal priority, no dedup, fire-and-forget
+            rong::enqueue_js_invoke(
+                ctx,
+                js_func.clone(),
+                Some(self.this.clone()),
+                args_obj,
+                rong::JsInvokePriority::Normal,
+                None,
+                false,
+            )
+            .await
         } else {
             Err(RongJSError::Error(format!(
                 "No page event handler: {}",
                 event
             )))
         }
-    }
-
-    // handler for bridge type: call or event from view
-    pub(crate) async fn call_or_event_from_view(
-        &self,
-        ctx: &JSContext,
-        _func_name: &str,
-        args: Option<&str>,
-        js_func: rong::JSFunc,
-    ) -> JSResult<()> {
-        // Reuse the common function calling logic
-        self.call_js_func_with_args(js_func, ctx, args).await
     }
 
     // handler for bridge type: callback
@@ -379,29 +396,6 @@ impl PageSvc {
 
     pub(crate) fn get_ctx(&self) -> JSContext {
         self.this.get_ctx()
-    }
-
-    // Common helper method for calling JS functions with arguments
-    async fn call_js_func_with_args(
-        &self,
-        js_func: rong::JSFunc,
-        ctx: &JSContext,
-        args: Option<&str>,
-    ) -> JSResult<()> {
-        let args_obj = args.and_then(|json| rong::JSObject::from_json_string(ctx, json).ok());
-        match args_obj {
-            Some(obj) => {
-                js_func
-                    .call_async::<_, ()>(Some(self.this.clone()), (obj,))
-                    .await?;
-            }
-            None => {
-                js_func
-                    .call_async::<_, ()>(Some(self.this.clone()), ())
-                    .await?;
-            }
-        }
-        Ok(())
     }
 }
 

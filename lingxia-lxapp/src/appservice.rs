@@ -363,22 +363,15 @@ pub(crate) async fn lxapp_service_handler(
                 };
 
                 if let Some(page_svc) = page_svc {
-                    let ctx_clone = ctx.clone();
-                    let appid_clone = appid.clone();
-                    let path_clone = path.clone();
-                    rong::spawn(async move {
-                        if let Err(e) = page_svc
-                            .call_page_event(&ctx_clone, event, args.as_deref())
-                            .await
-                        {
-                            error!(
-                                "[Worker {}] Page event '{}' failed: {}",
-                                worker_id, event, e
-                            )
-                            .with_appid(appid_clone)
-                            .with_path(path_clone);
-                        }
-                    });
+                    // Enqueue page event via PageSvc API (non-blocking)
+                    if let Err(e) = page_svc.call_page_event(ctx, event, args.as_deref()).await {
+                        error!(
+                            "[Worker {}] Page event '{}' failed: {}",
+                            worker_id, event, e
+                        )
+                        .with_appid(appid)
+                        .with_path(path);
+                    }
                 } else {
                     error!("[Worker {}] Page service not loaded", worker_id)
                         .with_appid(appid)

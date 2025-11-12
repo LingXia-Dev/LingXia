@@ -83,17 +83,20 @@ impl LxAppSvc {
         args: Option<String>,
     ) -> JSResult<()> {
         if let Some(func) = self.event_handlers.get(&event) {
-            let args = args.and_then(|json| JSObject::from_json_string(ctx, json.as_ref()).ok());
-            match args {
-                Some(obj) => {
-                    func.call_async::<_, ()>(Some(self.this.clone()), (obj,))
-                        .await?
-                }
-                None => {
-                    func.call_async::<_, ()>(Some(self.this.clone()), ())
-                        .await?
-                }
-            };
+            // Lifecycle events: schedule with High priority and wait for completion
+            let args_obj = args
+                .as_ref()
+                .and_then(|json| JSObject::from_json_string(ctx, json).ok());
+            rong::enqueue_js_invoke(
+                ctx,
+                func.clone(),
+                Some(self.this.clone()),
+                args_obj,
+                rong::JsInvokePriority::High,
+                None,
+                true,
+            )
+            .await?;
             return Ok(());
         }
         Err(RongJSError::Error(format!(
