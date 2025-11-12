@@ -102,18 +102,12 @@ export struct ModalManager {
   build() {
     if (this.isVisible && this.config) {
       Stack() {
-        // Background mask
+        // Background mask - no onClick to prevent dismissing by clicking outside
         Column()
           .width('100%')
           .height('100%')
           .backgroundColor(Color.Black)
           .opacity(0.5)
-          .onClick(() => {
-            // Click mask to cancel (if cancel is enabled)
-            if (this.config?.showCancel) {
-              this.handleCancel();
-            }
-          })
 
         // Modal content
         this.buildModalContent()
