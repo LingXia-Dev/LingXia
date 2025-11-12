@@ -19,7 +19,14 @@ impl LxApp {
         // Try to read the file
         let data = match self.read_bytes(path) {
             Ok(data) => data,
-            Err(_) => {
+            Err(e) => {
+                error!(
+                    "Failed to read page HTML: {} (root: {}) => {}",
+                    path,
+                    self.lxapp_dir.display(),
+                    e
+                )
+                .with_appid(self.appid.clone());
                 return self.get_404_page(path);
             }
         };
