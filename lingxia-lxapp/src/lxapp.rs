@@ -612,6 +612,20 @@ impl LxApp {
         Ok(())
     }
 
+    /// Restarts the current LxApp by closing and navigating again.
+    /// navigate_to will apply any downloaded update before opening.
+    pub fn restart(&self) -> Result<(), LxAppError> {
+        let path = self
+            .peek_current_page()
+            .unwrap_or_else(|| self.config.get_initial_route());
+        // Close current app instance
+        self.runtime.close_lxapp(self.appid.clone())?;
+        // Re-navigate using our own navigate_to so apply-downloaded logic runs
+        let options =
+            crate::startup::LxAppStartupOptions::new(&path).set_release_type(self.release_type);
+        self.navigate_to(self.appid.clone(), options)
+    }
+
     /// Show popup content rendered via WebView.
     ///
     /// This will ensure the target page is created, query parameters applied, lifecycle
