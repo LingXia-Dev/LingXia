@@ -147,6 +147,9 @@ internal object LxAppModal {
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
             )
+            // Prevent clicks from passing through to views behind the modal
+            isClickable = true
+            isFocusable = true
         }
 
         val modalContent = LinearLayout(context).apply {
