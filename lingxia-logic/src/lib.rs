@@ -10,6 +10,7 @@ mod open;
 mod storage;
 mod system;
 mod ui;
+mod update;
 
 pub struct LxLogicRuntime;
 
@@ -19,6 +20,7 @@ impl LxLogicExtension for LxLogicRuntime {
         device::init(ctx)?;
         location::init(ctx)?;
         navigator::init(ctx)?;
+        update::init(ctx)?;
         ui::init(ctx)?;
         system::init(ctx)?;
         media::init(ctx)?;
