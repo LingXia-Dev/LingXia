@@ -1,4 +1,5 @@
 use crate::appservice::bridge::IncomingMessage;
+use crate::event::PageLifecycleEvent;
 use crate::lxapp::{self, navbar::NavigationBarState};
 use crate::startup::parse_query_string;
 use crate::{LxApp, LxAppError, error, info};
@@ -57,29 +58,6 @@ enum PageRenderStatus {
     Unstarted,
     Started,
     Finished,
-}
-
-#[derive(Copy, Clone, PartialEq, Debug)]
-pub(crate) enum PageLifecycleEvent {
-    OnLoad,
-    OnReady,
-    OnShow,
-    OnHide,
-    OnUnload,
-    Unknown,
-}
-
-impl From<PageLifecycleEvent> for String {
-    fn from(event: PageLifecycleEvent) -> Self {
-        match event {
-            PageLifecycleEvent::OnLoad => "onLoad".to_string(),
-            PageLifecycleEvent::OnReady => "onReady".to_string(),
-            PageLifecycleEvent::OnShow => "onShow".to_string(),
-            PageLifecycleEvent::OnHide => "onHide".to_string(),
-            PageLifecycleEvent::OnUnload => "onUnload".to_string(),
-            PageLifecycleEvent::Unknown => "unknown".to_string(),
-        }
-    }
 }
 
 /// Navigation type for page navigation within LxApp
@@ -244,8 +222,9 @@ impl Page {
                     state.show_requested = true;
                 }
 
-                // Check for onLoad: Can fire if page has started loading and hasn't been fired.
+                // Check for onLoad: Only fire once per Page lifecycle, and only after load started
                 if event == PageLifecycleEvent::OnLoad
+                    && !state.on_load_fired
                     && state.render_status != PageRenderStatus::Unstarted
                 {
                     let query = serde_json::to_string(&state.query).ok();
@@ -280,10 +259,22 @@ impl Page {
             let path = self.path();
 
             for (event, query) in events_to_fire {
-                if let Err(e) = lxapp.executor.call_page_service(
+                let page_event = match event {
+                    PageLifecycleEvent::OnLoad => crate::event::PageServiceEvent::OnLoad,
+                    PageLifecycleEvent::OnShow => crate::event::PageServiceEvent::OnShow,
+                    PageLifecycleEvent::OnReady => crate::event::PageServiceEvent::OnReady,
+                    PageLifecycleEvent::OnHide => crate::event::PageServiceEvent::OnHide,
+                    PageLifecycleEvent::OnUnload => crate::event::PageServiceEvent::OnUnload,
+                    PageLifecycleEvent::Unknown => {
+                        // Skip unknown
+                        continue;
+                    }
+                };
+
+                if let Err(e) = lxapp.executor.call_page_service_event(
                     appid.clone(),
                     path.clone(),
-                    event.into(),
+                    page_event,
                     query,
                 ) {
                     error!("Failed to call {}: {}", String::from(event), e)

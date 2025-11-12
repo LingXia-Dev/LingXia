@@ -1,4 +1,6 @@
 use crate::appservice::{ServiceMessage, WorkerService, lxapp_service_handler};
+use crate::event::AppServiceEvent;
+use crate::event::PageServiceEvent;
 use crate::{LxAppError, error, info};
 
 use rong::{JSContext, Rong, RongJS, Worker, WorkerMessage};
@@ -203,10 +205,11 @@ impl LxAppExecutor {
         let appid = match &message {
             ServiceMessage::CreateLxApp { lxapp } => &lxapp.appid,
             ServiceMessage::TerminateLxApp { appid } => appid,
-            ServiceMessage::CallAppSvc { appid, .. } => appid,
+            ServiceMessage::CallAppSvcEvent { appid, .. } => appid,
             ServiceMessage::CallPageSvc { appid, .. } => appid,
             ServiceMessage::TerminatePage { appid, .. } => appid,
             ServiceMessage::CreatePage { appid, .. } => appid,
+            ServiceMessage::CallPageSvcEvent { appid, .. } => appid,
         };
 
         if let Some(worker_id) = worker_assignments.lock().unwrap().get(appid).copied() {
@@ -252,15 +255,15 @@ impl LxAppExecutor {
         Ok(())
     }
 
-    /// Call a function on an App service
-    pub fn call_app_service(
+    /// Call an AppService event (typed)
+    pub fn call_app_service_event(
         &self,
         appid: String,
-        name: String,
+        event: AppServiceEvent,
         args: Option<String>,
     ) -> Result<(), LxAppError> {
         self.sender
-            .send(ServiceMessage::CallAppSvc { appid, name, args })?;
+            .send(ServiceMessage::CallAppSvcEvent { appid, event, args })?;
         Ok(())
     }
 
@@ -291,6 +294,23 @@ impl LxAppExecutor {
             appid,
             path,
             source: crate::appservice::PageSvcSource::Native { name, args },
+        })?;
+        Ok(())
+    }
+
+    /// Call a typed page event on a Page service
+    pub fn call_page_service_event(
+        &self,
+        appid: String,
+        path: String,
+        event: PageServiceEvent,
+        args: Option<String>,
+    ) -> Result<(), LxAppError> {
+        self.sender.send(ServiceMessage::CallPageSvcEvent {
+            appid,
+            path,
+            event,
+            args,
         })?;
         Ok(())
     }

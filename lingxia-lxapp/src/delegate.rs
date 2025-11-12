@@ -1,4 +1,6 @@
-use crate::page::{NavigationType, PageLifecycleEvent};
+use crate::PageLifecycleEvent;
+use crate::event::AppServiceEvent;
+use crate::page::NavigationType;
 use crate::{LxApp, error, info, lxapp};
 use lingxia_platform::AppRuntime;
 use rong::service_executor;
@@ -59,10 +61,7 @@ impl LxAppDelegate for LxApp {
             if let Err(e) = self.executor.create_app_svc(self.clone()) {
                 error!("Failed to trigger app service: {}", e).with_appid(self.appid.clone());
             }
-            if let Err(e) =
-                self.executor
-                    .call_app_service(self.appid.clone(), "onLaunch".to_string(), None)
-            {
+            if let Err(e) = self.appservice_notify(AppServiceEvent::OnLaunch, None) {
                 error!("Failed to trigger onLaunch service: {}", e).with_appid(self.appid.clone());
             }
             self.state.lock().unwrap().opened = true;
@@ -90,10 +89,7 @@ impl LxAppDelegate for LxApp {
         let options = self.state.lock().unwrap().startup_options.clone();
         let options_str = serde_json::to_string(&options).ok();
 
-        if let Err(e) =
-            self.executor
-                .call_app_service(self.appid.clone(), "onShow".to_string(), options_str)
-        {
+        if let Err(e) = self.appservice_notify(AppServiceEvent::OnShow, options_str) {
             error!("Failed to trigger onShow service: {}", e).with_appid(self.appid.clone());
         }
 
@@ -135,10 +131,7 @@ impl LxAppDelegate for LxApp {
         }
 
         // Trigger onHide
-        if let Err(e) =
-            self.executor
-                .call_app_service(self.appid.clone(), "onHide".to_string(), None)
-        {
+        if let Err(e) = self.appservice_notify(AppServiceEvent::OnHide, None) {
             error!("Failed to trigger onHide service: {}", e).with_appid(self.appid.clone());
         }
 

@@ -3,6 +3,7 @@ mod appservice;
 mod cache;
 mod delegate;
 mod error;
+pub mod event;
 mod executor;
 pub mod log;
 pub mod lx;
@@ -12,8 +13,13 @@ pub use cache::{LxAppCache, ResolveResult};
 mod page;
 pub mod startup;
 
+pub use appservice::get_or_create_update_manager;
 pub use delegate::{LxAppDelegate, UiEventType};
 pub use error::LxAppError;
+pub use event::{
+    AppServiceEvent, LxAppEvent, LxAppLifecycleEvent, LxAppUpdateEvent, PageLifecycleEvent,
+    PageServiceEvent,
+};
 pub use lxapp::{
     LxApp, ReleaseType, config::LxAppInfo, get, get_current_lxapp, init, on_low_memory, tabbar,
 };

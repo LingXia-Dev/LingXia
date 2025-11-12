@@ -1,6 +1,7 @@
 use super::bridge::{
     Bridge, DispatchMessage, DispatchMessageType, MessageHandler, MessageTransport, ServiceType,
 };
+use crate::PageServiceEvent;
 use crate::error;
 use crate::error::LxAppError;
 use crate::lx::fastapi::get_fast_api;
@@ -305,6 +306,24 @@ impl PageSvc {
         Err(RongJSError::Error(format!("No service: {}", func_name)))
     }
 
+    // Typed page event caller using PageServiceEvent
+    pub(crate) async fn call_page_event(
+        &self,
+        ctx: &JSContext,
+        event: PageServiceEvent,
+        args: Option<&str>,
+    ) -> JSResult<()> {
+        if let Some(js_func) = self.functions.get(event.as_str()) {
+            self.call_js_func_with_args(js_func.clone(), ctx, args)
+                .await
+        } else {
+            Err(RongJSError::Error(format!(
+                "No page event handler: {}",
+                event
+            )))
+        }
+    }
+
     // handler for bridge type: call or event from view
     pub(crate) async fn call_or_event_from_view(
         &self,
@@ -336,7 +355,7 @@ impl PageSvc {
     async fn handle_lxport_ready(&mut self) -> JSResult<()> {
         // Dispatch the OnLoad event here to allow user to use setData in onLoad of Page
         self.page
-            .dispatch_lifecycle_event(crate::page::PageLifecycleEvent::OnLoad);
+            .dispatch_lifecycle_event(crate::PageLifecycleEvent::OnLoad);
 
         let mut state = self.state.lock().await;
 

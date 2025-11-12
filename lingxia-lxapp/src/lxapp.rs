@@ -8,11 +8,12 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Instant;
 
+use crate::PageLifecycleEvent;
 use crate::app::AppConfig;
 use crate::cache::LxAppCache;
 use crate::error::LxAppError;
 use crate::executor::LxAppExecutor;
-use crate::page::{Page, PageLifecycleEvent};
+use crate::page::Page;
 use crate::startup::LxAppStartupOptions;
 use crate::{error, info, warn};
 use security::NetworkSecurity;
@@ -27,7 +28,7 @@ mod scheme;
 mod security;
 pub mod tabbar;
 pub(crate) mod version;
-use version::need_update;
+use crate::event::AppServiceEvent;
 
 /// Constants for lxapp storage layout
 pub(crate) const LINGXIA_DIR: &str = "lingxia";
@@ -865,6 +866,18 @@ pub(crate) fn lxapp_fingermark(lxappid: &str, release_type: ReleaseType) -> Stri
     let mut hasher = DefaultHasher::new();
     combined.hash(&mut hasher);
     format!("{:x}", hasher.finish())
+}
+
+impl LxApp {
+    /// Notify the AppService (logic.js layer) with a built-in event and optional JSON payload.
+    pub fn appservice_notify(
+        &self,
+        event: AppServiceEvent,
+        payload_json: Option<String>,
+    ) -> Result<(), LxAppError> {
+        self.executor
+            .call_app_service_event(self.appid.clone(), event, payload_json)
+    }
 }
 
 impl Drop for LxApp {

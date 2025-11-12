@@ -14,11 +14,13 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex, mpsc};
 
 mod app;
+use crate::event::AppServiceEvent;
 use app::LxAppSvc;
 
 pub mod bridge;
 
 mod page;
+use crate::event::PageServiceEvent;
 use page::PageSvc;
 
 /// Message type for LxApp service system
@@ -42,17 +44,24 @@ pub(crate) enum ServiceMessage {
         appid: String,
         path: String,
     },
-    // Call function of App service
-    CallAppSvc {
+    // Call predefined AppService event (typed)
+    CallAppSvcEvent {
         appid: String,
-        name: String,
-        args: Option<String>, // JSON string of arguments
+        event: AppServiceEvent,
+        args: Option<String>,
     },
     // Call function of Page service with different sources
     CallPageSvc {
         appid: String,
         path: String,
         source: PageSvcSource,
+    },
+    // Call typed page event
+    CallPageSvcEvent {
+        appid: String,
+        path: String,
+        event: PageServiceEvent,
+        args: Option<String>,
     },
 }
 
@@ -75,30 +84,38 @@ pub(crate) struct WorkerService {
     pub(crate) svc: ServiceMessage,
 }
 
-// Handles a call to an App service function
-async fn handle_app_service_call(
+// Handles a typed AppService event
+async fn handle_app_service_event(
     worker_id: usize,
     ctx: &JSContext,
     appid: String,
-    name: String,
+    event: AppServiceEvent,
     args: Option<String>,
 ) {
-    if let Some(svc) = ctx.get_user_data::<LxAppSvc>() {
-        let svc_clone = svc.clone();
-        let ctx_clone_for_task = ctx.clone();
+    let svc_opt = ctx.get_user_data::<LxAppSvc>();
+    if svc_opt.is_none() {
+        error!("[Worker {}] App service not loaded", worker_id).with_appid(appid);
+        return;
+    }
+    let svc = svc_opt.unwrap();
 
-        let task = async move {
-            if let Err(e) = svc_clone.call(&ctx_clone_for_task, &name, args).await {
+    // Update events: notify only if registered
+    match event {
+        AppServiceEvent::UpdateReady => {
+            return;
+        }
+        AppServiceEvent::UpdateFailed => {
+            return;
+        }
+        AppServiceEvent::OnLaunch | AppServiceEvent::OnShow | AppServiceEvent::OnHide => {
+            if let Err(e) = svc.call_event(ctx, event, args.clone()).await {
                 error!(
-                    "[Worker {}] App service call '{}' failed, Error: {}",
-                    worker_id, name, e
+                    "[Worker {}] App service event '{}' failed, Error: {}",
+                    worker_id, event, e
                 )
                 .with_appid(appid);
             }
-        };
-        rong::spawn(task);
-    } else {
-        error!("[Worker {}] App service not loaded", worker_id).with_appid(appid);
+        }
     }
 }
 
@@ -260,9 +277,9 @@ pub(crate) async fn lxapp_service_handler(
                 }
             }
         }
-        ServiceMessage::CallAppSvc { appid, name, args } => {
+        ServiceMessage::CallAppSvcEvent { appid, event, args } => {
             if let Some(ctx) = current_ctx.as_ref() {
-                handle_app_service_call(worker_id, ctx, appid, name, args).await;
+                handle_app_service_event(worker_id, ctx, appid, event, args).await;
             }
         }
         ServiceMessage::CallPageSvc {
@@ -311,6 +328,46 @@ pub(crate) async fn lxapp_service_handler(
                                 .with_path(path);
                         }
                     }
+                }
+            }
+        }
+        ServiceMessage::CallPageSvcEvent {
+            appid,
+            path,
+            event,
+            args,
+        } => {
+            if let Some(ctx) = current_ctx.as_ref() {
+                // Resolve PageSvc
+                let page_svc = if let Some(page_svc_map) =
+                    ctx.get_user_data::<Rc<RefCell<HashMap<String, PageSvc>>>>()
+                {
+                    page_svc_map.borrow().get(&path).cloned()
+                } else {
+                    None
+                };
+
+                if let Some(page_svc) = page_svc {
+                    let ctx_clone = ctx.clone();
+                    let appid_clone = appid.clone();
+                    let path_clone = path.clone();
+                    rong::spawn(async move {
+                        if let Err(e) = page_svc
+                            .call_page_event(&ctx_clone, event, args.as_deref())
+                            .await
+                        {
+                            error!(
+                                "[Worker {}] Page event '{}' failed: {}",
+                                worker_id, event, e
+                            )
+                            .with_appid(appid_clone)
+                            .with_path(path_clone);
+                        }
+                    });
+                } else {
+                    error!("[Worker {}] Page service not loaded", worker_id)
+                        .with_appid(appid)
+                        .with_path(path);
                 }
             }
         }
