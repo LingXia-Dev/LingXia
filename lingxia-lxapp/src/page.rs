@@ -192,10 +192,30 @@ impl Page {
         }
     }
 
+    /// Returns whether the underlying WebView has started or finished rendering
+    /// for this Page instance. Used to decide whether we should manually trigger
+    /// onLoad for re-navigation (existing WebView) versus relying on the initial
+    /// WebView/LXPort ready path for first-time creation.
+    pub(crate) fn has_render_started(&self) -> bool {
+        self.inner
+            .state
+            .lock()
+            .map(|s| !matches!(s.render_status, PageRenderStatus::Unstarted))
+            .unwrap_or(false)
+    }
+
     pub(crate) fn dispatch_lifecycle_event(&self, event: PageLifecycleEvent) {
-        // This function acts as a state machine to ensure the JS lifecycle events
-        // fire in the correct order (onLoad -> onShow -> onReady), regardless of
-        // when the underlying events (manual calls, UI visibility, webview delegates) arrive.
+        // Central lifecycle state machine for a single WebView-backed Page.
+        // Sources of events:
+        // - First-time creation: WebView/LXPort ready triggers onLoad (AppService side)
+        // - Re-navigation with new query (navigateTo): native manually triggers onLoad
+        // - Render completion: WebView delegate triggers onReady
+        // - Visibility changes: native triggers onShow/onHide
+        // Goals (Weixin semantics adapted to a single WebView instance):
+        // - onLoad carries query and may occur multiple times across logical navigations
+        //   (first-time + each navigateTo with new params)
+        // - onReady fires once for each logical navigation after render has finished
+        // - onShow fires each time the page becomes visible (after a hide), without query
 
         // A collection of events to fire after the lock is released.
         let mut events_to_fire: Vec<(PageLifecycleEvent, Option<String>)> = Vec::new();
@@ -222,11 +242,8 @@ impl Page {
                     state.show_requested = true;
                 }
 
-                // Check for onLoad: Only fire once per Page lifecycle, and only after load started
-                if event == PageLifecycleEvent::OnLoad
-                    && !state.on_load_fired
-                    && state.render_status != PageRenderStatus::Unstarted
-                {
+                // Handle onLoad (can occur multiple times for navigateTo with new params)
+                if event == PageLifecycleEvent::OnLoad {
                     let query = serde_json::to_string(&state.query).ok();
                     events_to_fire.push((PageLifecycleEvent::OnLoad, query));
                     state.on_load_fired = true;
@@ -234,20 +251,22 @@ impl Page {
                     state.on_ready_fired = false;
                 }
 
-                // Check for onShow: Can fire if onLoad has fired, UI has requested show, and it hasn't been fired.
-                if state.on_load_fired && state.show_requested && !state.on_show_fired {
-                    events_to_fire.push((PageLifecycleEvent::OnShow, None));
-                    state.on_show_fired = true;
-                    state.event = PageLifecycleEvent::OnShow;
-                }
-
-                // Check for onReady: Can fire if onShow has fired, page has finished loading, and it hasn't been fired.
-                if state.on_show_fired
+                // Desired order (Weixin semantics): Load -> Show -> Ready (first load)
+                // 1) Ready: after Load and render finished; only once per lifecycle
+                if state.on_load_fired
                     && state.render_status == PageRenderStatus::Finished
                     && !state.on_ready_fired
                 {
                     events_to_fire.push((PageLifecycleEvent::OnReady, None));
                     state.on_ready_fired = true;
+                }
+
+                // 2) Show: each time the page becomes visible after hide
+                // Do not require Ready; allow Show before Ready on first load.
+                if state.on_load_fired && state.show_requested && !state.on_show_fired {
+                    events_to_fire.push((PageLifecycleEvent::OnShow, None));
+                    state.on_show_fired = true;
+                    state.event = PageLifecycleEvent::OnShow;
                 }
             }
         }
@@ -443,15 +462,29 @@ impl Page {
         } else {
             self.dispatch_lifecycle_event(PageLifecycleEvent::OnHide);
         }
-        target_page.dispatch_lifecycle_event(PageLifecycleEvent::OnLoad);
+
+        // IMPORTANT: Manual onLoad trigger is intentional.
+        // Rationale:
+        // - The WebView (via LXPort ready) can trigger onLoad for the first-time creation path.
+        // - For navigateTo with new query while reusing the same WebView, the WebView itself
+        //   will NOT re-emit a bridge-ready event; therefore we deliberately trigger onLoad
+        //   here for the existing instance so the page receives the new query in onLoad.
+        // Filtering & correctness:
+        // - For the very first navigation (render not started), we do NOT trigger onLoad here;
+        //   the WebView-side handshake will deliver onLoad at the correct time.
+        // - For subsequent navigations (already rendered), we trigger onLoad here and rely on
+        //   dispatch_lifecycle_event to enforce the correct ordering (onLoad -> onReady -> onShow)
+        //   for this logical navigation instance.
+        if target_page.has_render_started() {
+            target_page.dispatch_lifecycle_event(PageLifecycleEvent::OnLoad);
+        }
 
         // 6. Perform the native navigation
         (*lxapp.runtime)
             .navigate(self.appid(), path, nav_type.to_animation())
             .map_err(LxAppError::from)?;
 
-        // 7. Dispatch final lifecycle event for the target page
-        target_page.dispatch_lifecycle_event(PageLifecycleEvent::OnReady);
+        // Do not dispatch OnReady here. WebViewDelegate::on_page_finished() will do it.
 
         Ok(target_page)
     }

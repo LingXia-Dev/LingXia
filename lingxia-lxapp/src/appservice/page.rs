@@ -353,7 +353,11 @@ impl PageSvc {
 
     // post init data to view
     async fn handle_lxport_ready(&mut self) -> JSResult<()> {
-        // Dispatch the OnLoad event here to allow user to use setData in onLoad of Page
+        // First-time creation path:
+        // WebView bridge just became ready (LXPortRdy). We dispatch onLoad once here so the
+        // page can read query in onLoad and safely call setData (bridge is guaranteed ready).
+        // For subsequent navigateTo with new query (WebView already rendered), onLoad is
+        // triggered manually from native navigate_to; see page.rs for the rationale.
         self.page
             .dispatch_lifecycle_event(crate::PageLifecycleEvent::OnLoad);
 
