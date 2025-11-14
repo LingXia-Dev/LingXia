@@ -11,7 +11,7 @@ use lingxia_webview::{
 };
 
 use rong::service_executor;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::Instant;
 
@@ -30,7 +30,6 @@ pub(crate) struct PageInner {
     // state of Page
     state: Arc<Mutex<PageState>>,
 
-    service_ready: Arc<AtomicBool>,
 }
 
 #[derive(Clone, Debug)]
@@ -122,7 +121,6 @@ impl Page {
             last_active_time: Arc::new(Mutex::new(Instant::now())),
             state: Arc::new(Mutex::new(page_state)),
             webview: Arc::new(Mutex::new(None)),
-            service_ready: Arc::new(AtomicBool::new(false)),
         });
 
         let page = Self { inner };
@@ -390,12 +388,8 @@ impl Page {
         self.inner.last_active_time.lock().ok().map(|time| *time)
     }
 
-    pub(crate) fn is_service_ready(&self) -> bool {
-        self.inner.service_ready.load(Ordering::SeqCst)
     }
 
-    pub(crate) fn mark_service_ready(&self) {
-        self.inner.service_ready.store(true, Ordering::SeqCst);
     }
 
     /// Check if this page is a TabBar page
