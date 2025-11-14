@@ -123,6 +123,7 @@ impl Page {
             last_active_time: Arc::new(Mutex::new(Instant::now())),
             state: Arc::new(Mutex::new(page_state)),
             webview: Arc::new(Mutex::new(None)),
+            bridge_ready_tx: Arc::new(Mutex::new(None)),
         });
 
         let page = Self { inner };

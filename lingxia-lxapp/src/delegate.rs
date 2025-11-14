@@ -1,5 +1,6 @@
 use crate::PageLifecycleEvent;
 use crate::event::AppServiceEvent;
+use crate::lxapp::LxAppStatus;
 use crate::page::NavigationType;
 use crate::{LxApp, error, info, lxapp};
 use lingxia_platform::AppRuntime;
@@ -120,7 +121,7 @@ impl LxAppDelegate for LxApp {
     }
 
     fn on_lxapp_closed(self: &Arc<Self>) {
-        self.state.lock().unwrap().opened = false;
+        self.set_status(LxAppStatus::Closed);
 
         // Update last active time
         self.state.lock().unwrap().last_active_time = Instant::now();

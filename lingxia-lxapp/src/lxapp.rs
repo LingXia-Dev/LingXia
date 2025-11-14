@@ -5,6 +5,7 @@ use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, mpsc};
 use std::time::{Duration, Instant};
 
@@ -185,9 +186,8 @@ pub(crate) struct LxAppState {
     /// When true, enables additional logging and debugging features
     debug: bool,
 
-    /// Whether the app is currently opened or closed
-    /// Controls app lifecycle and resource allocation
-    pub opened: bool,
+    /// Unified lifecycle status
+    status: AtomicU8,
 
     /// Network security configuration for HTTPS domain filtering
     /// Manages which domains this app is allowed to access
@@ -211,7 +211,7 @@ impl LxAppState {
             page_stack: Mutex::new(VecDeque::with_capacity(PAGE_STACK_MAX)),
             last_active_time: Instant::now(),
             debug: false,
-            opened: false,
+            status: AtomicU8::new(LxAppStatus::Closed as u8),
             network_security: NetworkSecurity::new(),
             tabbar: None,
             startup_options: LxAppStartupOptions::default(),
@@ -241,7 +241,49 @@ pub struct LxApp {
     cache: Option<LxAppCache>,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub(crate) enum LxAppStatus {
+    Closed = 0,
+    Opening = 1,
+    Opened = 2,
+    Closing = 3,
+    Restarting = 4,
+}
+
 impl LxApp {
+    pub(crate) fn status(&self) -> LxAppStatus {
+        match self.state.lock().unwrap().status.load(Ordering::SeqCst) {
+            1 => LxAppStatus::Opening,
+            2 => LxAppStatus::Opened,
+            3 => LxAppStatus::Closing,
+            4 => LxAppStatus::Restarting,
+            _ => LxAppStatus::Closed,
+        }
+    }
+
+    pub(crate) fn set_status(&self, s: LxAppStatus) {
+        self.state
+            .lock()
+            .unwrap()
+            .status
+            .store(s as u8, Ordering::SeqCst);
+    }
+
+    pub(crate) fn cas_status(&self, from: LxAppStatus, to: LxAppStatus) -> bool {
+        let state = &self.state;
+        let current = state.lock().unwrap().status.load(Ordering::SeqCst);
+        if current == from as u8 {
+            state
+                .lock()
+                .unwrap()
+                .status
+                .store(to as u8, Ordering::SeqCst);
+            true
+        } else {
+            false
+        }
+    }
     fn _new(appid: String, runtime: Arc<Platform>, executor: Arc<LxAppExecutor>) -> Self {
         Self {
             appid,
@@ -506,7 +548,7 @@ impl LxApp {
     }
 
     pub fn is_opened(&self) -> bool {
-        self.state.lock().unwrap().opened
+        matches!(self.status(), LxAppStatus::Opened)
     }
 
     /// Check if a domain is allowed for network access
