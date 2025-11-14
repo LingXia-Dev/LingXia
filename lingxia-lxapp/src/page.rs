@@ -1,6 +1,6 @@
 use crate::appservice::bridge::IncomingMessage;
 use crate::event::PageLifecycleEvent;
-use crate::lxapp::{self, navbar::NavigationBarState};
+use crate::lxapp::{self, LxAppStatus, navbar::NavigationBarState};
 use crate::startup::parse_query_string;
 use crate::{LxApp, LxAppError, error, info};
 use http::StatusCode;
@@ -332,6 +332,20 @@ impl Page {
             webview_guard.clone()
         } else {
             None
+        }
+    }
+
+    /// Detach and drop the WebView held by this page.
+    /// This breaks Page -> WebView strong reference and triggers platform Drop when
+    /// combined with registry removal.
+    pub(crate) fn detach_webview(&self) {
+        if let Ok(mut webview_guard) = self.inner.webview.lock() {
+            if let Some(wv) = webview_guard.as_ref() {
+                // Break potential cycle by removing delegate first
+                wv.remove_delegate();
+            }
+            // Drop the Arc by taking it out
+            let _ = webview_guard.take();
         }
     }
 
@@ -682,19 +696,26 @@ impl WebViewDelegate for Page {
 
 impl Drop for PageInner {
     fn drop(&mut self) {
-        // Terminate page service
+        // Terminate page service only when app is actively opened; suppress during restart/close
         let lxapp = crate::lxapp::get(self.appid.clone());
-        if let Err(e) = lxapp
-            .executor
-            .terminate_page_svc(self.appid.clone(), self.path.clone())
-        {
-            error!("Failed to terminate page service during drop: {}", e)
-                .with_appid(self.appid.clone())
-                .with_path(self.path.clone());
+        if matches!(lxapp.status(), LxAppStatus::Opened) {
+            if let Err(e) = lxapp.executor.terminate_page_svc_with_generation(
+                self.appid.clone(),
+                self.path.clone(),
+                self.generation,
+            ) {
+                error!("Failed to terminate page service during drop: {}", e)
+                    .with_appid(self.appid.clone())
+                    .with_path(self.path.clone());
+            }
         }
 
         // Destroy WebView if it exists
         if let Ok(mut webview) = self.webview.lock() {
+            if let Some(wv) = webview.as_ref() {
+                // Break potential cycle by removing delegate first
+                wv.remove_delegate();
+            }
             if let Some(_webview_controller) = webview.take() {
                 // WebView will be automatically destroyed when controller is dropped
                 info!("WebView destroyed for page")

@@ -31,6 +31,7 @@ mod security;
 pub mod tabbar;
 pub(crate) mod version;
 use crate::event::AppServiceEvent;
+use lingxia_webview::{WebTag, destroy_webview};
 
 /// Constants for lxapp storage layout
 pub(crate) const LINGXIA_DIR: &str = "lingxia";
@@ -283,6 +284,53 @@ impl LxApp {
         } else {
             false
         }
+    }
+    // AppService state subscriptions removed for simplicity; rely on FIFO ordering.
+    /// Shutdown this LxApp completely. Idempotent.
+    ///
+    /// Order:
+    /// 1) Mark Closing to suppress page terminations
+    /// 2) Close UI window
+    /// 3) Break Page↔WebView delegate links and clear pages
+    /// 4) Destroy platform WebViews
+    /// 5) Clear page stack and popup
+    /// 6) Send TerminateLxApp (receiver handles teardown)
+    pub fn shutdown(&self) -> Result<(), LxAppError> {
+        // Mark closing to suppress TerminatePage from Page drops
+        self.set_status(LxAppStatus::Closing);
+
+        // Close UI window
+        let _ = self
+            .runtime
+            .close_lxapp(self.appid.clone())
+            .map_err(LxAppError::from);
+
+        // Collect current pages
+        let page_paths: Vec<String> = {
+            let state = self.state.lock().unwrap();
+            state.pages.lock().unwrap().keys().cloned().collect()
+        };
+
+        // Break Page <-> WebView links early and detach WebViews, then drop pages by clearing the map
+        if let Ok(state) = self.state.lock() {
+            for (_k, page) in state.pages.lock().unwrap().iter() {
+                page.detach_webview();
+            }
+        }
+        if let Ok(state) = self.state.lock() {
+            state.pages.lock().unwrap().clear();
+        }
+        for p in &page_paths {
+            destroy_webview(&WebTag::new(&self.appid, p));
+        }
+        let _ = self.clear_page_stack();
+        if let Ok(mut state) = self.state.lock() {
+            state.current_popup = None;
+        }
+
+        // Terminate AppService (receiver handles its own state)
+        let _ = self.executor.terminate_app_svc(self.appid.clone());
+        Ok(())
     }
     fn _new(appid: String, runtime: Arc<Platform>, executor: Arc<LxAppExecutor>) -> Self {
         Self {
@@ -647,18 +695,26 @@ impl LxApp {
         Ok(())
     }
 
-    /// Restarts the current LxApp by closing and navigating again.
-    /// navigate_to will apply any downloaded update before opening.
+    /// Restarts the current LxApp with cleanup + reopen.
+    /// This offloads the sequence to the service executor to avoid blocking JS worker.
     pub fn restart(&self) -> Result<(), LxAppError> {
-        let path = self
-            .peek_current_page()
-            .unwrap_or_else(|| self.config.get_initial_route());
-        // Close current app instance
-        self.runtime.close_lxapp(self.appid.clone())?;
-        // Re-navigate using our own navigate_to so apply-downloaded logic runs
-        let options =
-            crate::startup::LxAppStartupOptions::new(&path).set_release_type(self.release_type);
-        self.navigate_to(self.appid.clone(), options)
+        // Prevent overlapping restarts
+        if !self.cas_status(LxAppStatus::Opened, LxAppStatus::Restarting) {
+            return Ok(());
+        }
+        // Always relaunch to initial route after restart
+        let relaunch_path = self.config.get_initial_route();
+        let appid = self.appid.clone();
+        let release_type = self.release_type;
+        let app_arc = get(self.appid.clone());
+        let _ = rong::service_executor::spawn_async(async move {
+            let _ = app_arc.shutdown();
+            let options = crate::startup::LxAppStartupOptions::new(&relaunch_path)
+                .set_release_type(release_type);
+            let _ = app_arc.navigate_to(appid, options);
+            // Status will be driven back to Opened by on_lxapp_opened delegate after reopen.
+        });
+        Ok(())
     }
 
     /// Show popup content rendered via WebView.
@@ -958,23 +1014,8 @@ impl Drop for LxApp {
         if self.is_home_lxapp {
             return;
         }
-
-        info!("Dropping LxApp, cleaning up resources").with_appid(self.appid.clone());
-
-        // Terminate the app's background service
-        if let Err(e) = self.executor.terminate_app_svc(self.appid.clone()) {
-            error!("Failed to terminate app service during drop: {}", e)
-                .with_appid(self.appid.clone());
-        }
-
-        // Destroy all pages - they will be automatically dropped when the HashMap is dropped
-        // The Page Drop implementation will handle individual page cleanup
-        let state = self.state.lock().unwrap();
-        let page_count = state.pages.lock().unwrap().len();
-        if page_count > 0 {
-            info!("Dropping {} pages", page_count).with_appid(self.appid.clone());
-        }
-        // Pages will be automatically dropped when state.pages HashMap is dropped
+        info!("Dropping LxApp, shutting down").with_appid(self.appid.clone());
+        let _ = self.shutdown();
     }
 }
 
