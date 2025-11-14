@@ -49,13 +49,7 @@ impl JSUpdateManager {
         let lxapp = ctx
             .get_user_data::<Arc<LxApp>>()
             .ok_or_else(|| RongJSError::Error("LxApp not found in context".to_string()))?;
-        if let Err(e) = lxapp.restart() {
-            let this = self.clone();
-            rong::spawn(async move {
-                this.notify_update_failed().await;
-            });
-            return Err(RongJSError::Error(e.to_string()));
-        }
+        let _ = lxapp.restart();
         Ok(())
     }
 
