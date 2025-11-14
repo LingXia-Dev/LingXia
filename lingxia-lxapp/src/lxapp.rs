@@ -5,8 +5,8 @@ use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, OnceLock};
-use std::time::Instant;
+use std::sync::{Arc, Mutex, OnceLock, mpsc};
+use std::time::{Duration, Instant};
 
 use crate::PageLifecycleEvent;
 use crate::app::AppConfig;
@@ -711,19 +711,32 @@ impl LxApp {
         let appid = self.appid.clone();
         let executor = self.executor.clone();
         let page = Page::new(appid.clone(), path.to_string(), self, move |page| {
-            // Load HTML content into the page
-            if let Err(e) = page.load_html() {
-                error!("Failed to load HTML for page: {}", e)
+            // Prepare a one-shot to be notified when bridge (LXPort) is ready
+            let (tx, rx) = mpsc::channel();
+            page.set_bridge_ready_sender(tx);
+
+            // Create PageSvc (JS binding) for a brand new Page before HTML load
+            if let Err(e) = executor.create_page_svc(page.appid(), page.path()) {
+                error!("Failed to request page service creation: {}", e)
                     .with_appid(page.appid())
                     .with_path(page.path());
             }
 
-            if !page.is_service_ready() {
-                if let Err(e) = executor.create_page_svc(page.appid(), page.path()) {
-                    error!("Failed to request page service creation: {}", e)
-                        .with_appid(page.appid())
-                        .with_path(page.path());
-                }
+            // Load HTML to initialize WebView and JS bridge
+            if let Err(e) = page.load_html() {
+                error!("Failed to load HTML for page: {}", e)
+                    .with_appid(page.appid())
+                    .with_path(page.path());
+                return;
+            }
+
+            if rx.recv_timeout(Duration::from_millis(500)).is_ok() {
+                // We dispatch onLoad once here so the page can read query in onLoad and safely call setData (bridge is guaranteed ready).
+                page.dispatch_lifecycle_event(crate::PageLifecycleEvent::OnLoad);
+            } else {
+                error!("Timeout to get LX Port communication ready")
+                    .with_appid(page.appid())
+                    .with_path(page.path());
             }
         });
 

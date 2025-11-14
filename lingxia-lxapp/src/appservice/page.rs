@@ -370,14 +370,6 @@ impl PageSvc {
 
     // post init data to view
     async fn handle_lxport_ready(&mut self) -> JSResult<()> {
-        // First-time creation path:
-        // WebView bridge just became ready (LXPortRdy). We dispatch onLoad once here so the
-        // page can read query in onLoad and safely call setData (bridge is guaranteed ready).
-        // For subsequent navigateTo with new query (WebView already rendered), onLoad is
-        // triggered manually from native navigate_to; see page.rs for the rationale.
-        self.page
-            .dispatch_lifecycle_event(crate::PageLifecycleEvent::OnLoad);
-
         let mut state = self.state.lock().await;
 
         // only post one time
@@ -387,6 +379,8 @@ impl PageSvc {
                 .await
                 .map_err(|e| RongJSError::Error(e.to_string()))?;
         }
+        // Notify native Page that bridge is ready so it can dispatch onLoad at the right time
+        self.page.notify_bridge_ready();
         Ok(())
     }
 
