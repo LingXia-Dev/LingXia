@@ -291,10 +291,10 @@ public class LingXiaWebView extends WebView {
         try {
             // Enable JavaScript, but disable other potentially insecure features
             settings.setJavaScriptEnabled(true);
-            
+
             // Disable DOM Storage API
             settings.setDomStorageEnabled(false);
-            
+
             // Disable all file access by default for security
             settings.setAllowFileAccess(false);
             settings.setAllowFileAccessFromFileURLs(false);
@@ -482,36 +482,41 @@ public class LingXiaWebView extends WebView {
     public void destroy() {
         Log.d(TAG, "Destroying WebView for appId=" + appId + ", path=" + currentPath);
 
-        try {
-            setVisibility(View.GONE);
-            stopLoading();
-            setWebViewClient(new WebViewClient());
-            setWebChromeClient(new WebChromeClient());
-            cleanupPorts();
+        // Ensure all View operations happen on the main (UI) thread
+        ensureMainThread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    setVisibility(View.GONE);
+                    stopLoading();
+                    setWebViewClient(new WebViewClient());
+                    setWebChromeClient(new WebChromeClient());
+                    cleanupPorts();
 
-            try {
-                clearHistory();
-                clearCache(true);
-                clearFormData();
-            } catch (Exception e) {
-                Log.w(TAG, "Error clearing WebView data: " + e.getMessage());
-            }
+                    try {
+                        clearHistory();
+                        clearCache(true);
+                        clearFormData();
+                    } catch (Exception e) {
+                        Log.w(TAG, "Error clearing WebView data: " + e.getMessage());
+                    }
 
-            try {
-                ViewGroup parent = (ViewGroup) getParent();
-                if (parent != null) {
-                    parent.removeView(this);
+                    try {
+                        ViewGroup parent = (ViewGroup) getParent();
+                        if (parent != null) {
+                            parent.removeView(LingXiaWebView.this);
+                        }
+                    } catch (Exception e) {
+                        Log.w(TAG, "Error removing WebView from parent: " + e.getMessage());
+                    }
+
+                    LingXiaWebView.super.destroy();
+                    Log.d(TAG, "WebView destroyed successfully");
+                } catch (Exception e) {
+                    Log.e(TAG, "Critical error during WebView destruction", e);
                 }
-            } catch (Exception e) {
-                Log.w(TAG, "Error removing WebView from parent: " + e.getMessage());
             }
-
-            super.destroy();
-            Log.d(TAG, "WebView destroyed successfully");
-        } catch (Exception e) {
-            Log.e(TAG, "Critical error during WebView destruction", e);
-            throw e;
-        }
+        });
     }
 
     /**
