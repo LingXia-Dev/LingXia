@@ -126,7 +126,7 @@ impl LxAppSvc {
             }
         } else {
             // Not created yet (lx.getUpdateManager() hasn't been called)
-            crate::error!("UpdateManager not initialized)");
+            crate::error!("UpdateManager not initialized");
         }
     }
 

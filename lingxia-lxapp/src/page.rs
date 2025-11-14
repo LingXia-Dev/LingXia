@@ -614,16 +614,24 @@ impl WebViewDelegate for Page {
 
     /// Handles a postMessage from the WebView
     fn handle_post_message(&self, msg: String) {
-        // Parse the message and forward to executor
-        let incoming = IncomingMessage::from_json_str(&msg).unwrap();
-        let lxapp = lxapp::get(self.inner.appid.clone());
-
-        if let Err(e) = lxapp.executor.handle_view_message(
-            self.inner.appid.clone(),
-            self.inner.path.clone(),
-            Arc::new(incoming),
-        ) {
-            error!("Failed to handle view message: {}", e).with_appid(self.inner.appid.clone());
+        // Parse the message and forward to executor safely
+        match IncomingMessage::from_json_str(&msg) {
+            Ok(incoming) => {
+                let lxapp = lxapp::get(self.inner.appid.clone());
+                if let Err(e) = lxapp.executor.handle_view_message(
+                    self.inner.appid.clone(),
+                    self.inner.path.clone(),
+                    Arc::new(incoming),
+                ) {
+                    error!("Failed to handle view message: {}", e)
+                        .with_appid(self.inner.appid.clone());
+                }
+            }
+            Err(e) => {
+                error!("Invalid postMessage JSON: {}", e)
+                    .with_appid(self.inner.appid.clone())
+                    .with_path(self.inner.path.clone());
+            }
         }
     }
 
