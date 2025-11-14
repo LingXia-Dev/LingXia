@@ -18,6 +18,7 @@ pub(crate) static WEBVIEW_SENDERS: OnceLock<
 #[derive(Debug)]
 pub struct WebViewInner {
     java_webview: GlobalRef,
+    webtag: WebTag,
 }
 
 impl WebViewInner {
@@ -91,8 +92,11 @@ impl WebViewInner {
     }
 
     /// Create WebViewInner from existing Java WebView object (called from onWebViewReady)
-    pub(crate) fn from_java_object(java_webview: GlobalRef) -> Self {
-        WebViewInner { java_webview }
+    pub(crate) fn from_java_object(java_webview: GlobalRef, webtag: WebTag) -> Self {
+        WebViewInner {
+            java_webview,
+            webtag,
+        }
     }
 
     pub fn get_java_webview(&self) -> &GlobalRef {
@@ -105,6 +109,10 @@ impl Drop for WebViewInner {
         if let Ok(mut env) = get_env() {
             let _ = env.call_method(self.java_webview.as_obj(), "destroy", "()V", &[]);
         }
+        log::info!(
+            "[WebViewInner] Android WebViewInner dropped and destroyed ({})",
+            self.webtag.as_str()
+        );
     }
 }
 

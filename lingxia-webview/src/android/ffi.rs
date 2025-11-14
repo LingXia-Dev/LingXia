@@ -340,7 +340,8 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_notifyWebViewRead
                 match env.new_global_ref(webview_obj) {
                     Ok(global_ref) => {
                         // Create WebViewInner from the Java object
-                        let webview_inner = WebViewInner::from_java_object(global_ref);
+                        let webview_inner =
+                            WebViewInner::from_java_object(global_ref, webtag.clone());
 
                         // Create WebView wrapper
                         let webview = Arc::new(crate::WebView::new(

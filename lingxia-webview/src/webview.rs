@@ -18,6 +18,7 @@ pub struct WebView {
     pub(crate) inner: WebViewInner,
     appid: String,
     path: String,
+    // Hold a strong reference to the delegate; PageInner::drop removes it to break cycles
     delegate: RwLock<Option<Arc<dyn WebViewDelegate>>>,
 }
 
@@ -232,10 +233,7 @@ pub fn get_webview_delegate(webtag: &WebTag) -> Option<Arc<dyn WebViewDelegate>>
 pub fn destroy_webview(webtag: &WebTag) {
     if let Some(instances) = WEBVIEW_INSTANCES.get() {
         if let Ok(mut webviews) = instances.lock() {
-            if let Some(_webview) = webviews.remove(webtag.as_str()) {
-                log::info!("WebView destroyed and removed: {}", webtag.as_str());
-                //TODO: platform-specific cleanup if needed
-            }
+            webviews.remove(webtag.as_str());
         }
     }
 }

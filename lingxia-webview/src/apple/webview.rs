@@ -846,6 +846,10 @@ impl Drop for WebViewInner {
                     let _: () = msg_send![webview_ptr, stopLoading];
                 }
             });
+            log::info!(
+                "[WebViewInner] Apple WebViewInner dropped and cleanup requested ({})",
+                self.webtag.as_str()
+            );
         }
     }
 }
@@ -879,7 +883,8 @@ impl WebViewInner {
             let _: () = msg_send![self.webview, release];
 
             log::info!(
-                "WebView instance completely released: removed from superview, cleared all delegates, and released object"
+                "[WebViewInner] Apple WebView instance completely released: removed from superview, cleared all delegates, and released object ({})",
+                self.webtag.as_str()
             );
         }
     }

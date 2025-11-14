@@ -567,6 +567,10 @@ impl Drop for WebViewInner {
         if let Err(e) = call_arkts("destroyWebViewController", &[self.webtag.as_str()]) {
             log::error!("Failed to destroy WebView controller: {:?}", e);
         }
+        log::info!(
+            "[WebViewInner] Harmony WebViewInner dropped and destroyed ({})",
+            self.webtag.as_str()
+        );
     }
 }
 
