@@ -783,6 +783,10 @@ impl LxApp {
             if let Some(page) = self.get_page(&path) {
                 page.dispatch_lifecycle_event(PageLifecycleEvent::OnHide);
                 page.dispatch_lifecycle_event(PageLifecycleEvent::OnUnload);
+                // After unload, terminate PageSvc for popup page
+                let _ = self
+                    .executor
+                    .terminate_page_svc(self.clone_arc(), path.clone());
             }
 
             self.runtime

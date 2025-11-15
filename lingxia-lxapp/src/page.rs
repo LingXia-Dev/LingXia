@@ -459,7 +459,13 @@ impl Page {
                 lxapp.clear_page_stack()?;
             }
             NavigationType::Replace => {
+                // Replace: unload current page, pop it from stack and terminate its PageSvc
+                let current_path = self.path();
                 lxapp.pop_from_page_stack();
+                self.dispatch_lifecycle_event(PageLifecycleEvent::OnUnload);
+                let _ = lxapp
+                    .executor
+                    .terminate_page_svc(lxapp.clone(), current_path.clone());
             }
             NavigationType::Forward => {
                 if lxapp.is_page_stack_full() {
@@ -482,9 +488,7 @@ impl Page {
         }
 
         // 5. Dispatch lifecycle events for current and target pages
-        if nav_type == NavigationType::Replace {
-            self.dispatch_lifecycle_event(PageLifecycleEvent::OnUnload);
-        } else {
+        if nav_type != NavigationType::Replace {
             self.dispatch_lifecycle_event(PageLifecycleEvent::OnHide);
         }
 
@@ -538,6 +542,10 @@ impl Page {
                 if let Some(page) = lxapp.get_page(path.as_str()) {
                     page.dispatch_lifecycle_event(PageLifecycleEvent::OnUnload);
                 }
+                // After unload, terminate PageSvc for popped page
+                let _ = lxapp
+                    .executor
+                    .terminate_page_svc(lxapp.clone(), path.clone());
             }
         }
 
