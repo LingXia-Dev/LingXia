@@ -6,8 +6,8 @@ use std::fs;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU8, Ordering};
-use std::sync::{Arc, Mutex, OnceLock, mpsc};
-use std::time::{Duration, Instant};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Instant;
 
 use crate::PageLifecycleEvent;
 use crate::app::AppConfig;
@@ -820,10 +820,6 @@ impl LxApp {
         let executor = self.executor.clone();
         let lxapp_arc = self.clone_arc();
         let page = Page::new(appid.clone(), path.to_string(), self, move |page| {
-            // Prepare a one-shot to be notified when bridge (LXPort) is ready
-            let (tx, rx) = mpsc::channel();
-            page.set_bridge_ready_sender(tx);
-
             // Create PageSvc (JS binding) for a brand new Page before HTML load
             if let Err(e) = executor.create_page_svc(lxapp_arc.clone(), page.path()) {
                 error!("Failed to request page service creation: {}", e)
@@ -837,15 +833,6 @@ impl LxApp {
                     .with_appid(page.appid())
                     .with_path(page.path());
                 return;
-            }
-
-            if rx.recv_timeout(Duration::from_millis(500)).is_ok() {
-                // We dispatch onLoad once here so the page can read query in onLoad and safely call setData (bridge is guaranteed ready).
-                page.dispatch_lifecycle_event(crate::PageLifecycleEvent::OnLoad);
-            } else {
-                error!("Timeout to get LX Port communication ready")
-                    .with_appid(page.appid())
-                    .with_path(page.path());
             }
         });
 

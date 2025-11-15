@@ -379,8 +379,11 @@ impl PageSvc {
                 .await
                 .map_err(|e| RongJSError::Error(e.to_string()))?;
         }
-        // Notify native Page that bridge is ready so it can dispatch onLoad at the right time
-        self.page.notify_bridge_ready();
+
+        // We dispatch onLoad once here so the page can read query in onLoad and
+        // safely call setData (bridge is guaranteed ready).
+        self.page
+            .dispatch_lifecycle_event(crate::PageLifecycleEvent::OnLoad);
         Ok(())
     }
 

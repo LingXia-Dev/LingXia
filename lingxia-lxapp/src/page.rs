@@ -30,9 +30,6 @@ pub(crate) struct PageInner {
 
     // state of Page
     state: Arc<Mutex<PageState>>,
-
-    // One-shot bridge-ready notifier: PageSvc.handle_lxport_ready() will notify
-    bridge_ready_tx: Arc<Mutex<Option<mpsc::Sender<()>>>>,
 }
 
 #[derive(Clone, Debug)]
@@ -125,7 +122,6 @@ impl Page {
             last_active_time: Arc::new(Mutex::new(Instant::now())),
             state: Arc::new(Mutex::new(page_state)),
             webview: Arc::new(Mutex::new(None)),
-            bridge_ready_tx: Arc::new(Mutex::new(None)),
         });
 
         let page = Self { inner };
@@ -405,22 +401,6 @@ impl Page {
     /// Get the last active time for LRU eviction
     pub(crate) fn get_last_active_time(&self) -> Option<Instant> {
         self.inner.last_active_time.lock().ok().map(|time| *time)
-    }
-
-    /// Set one-shot sender to be fired when bridge (LXPort) is ready.
-    pub(crate) fn set_bridge_ready_sender(&self, tx: mpsc::Sender<()>) {
-        if let Ok(mut guard) = self.inner.bridge_ready_tx.lock() {
-            *guard = Some(tx);
-        }
-    }
-
-    /// Notify the waiting thread that bridge is ready (called from PageSvc.handle_lxport_ready).
-    pub(crate) fn notify_bridge_ready(&self) {
-        if let Ok(mut guard) = self.inner.bridge_ready_tx.lock() {
-            if let Some(tx) = guard.take() {
-                let _ = tx.send(());
-            }
-        }
     }
 
     /// Check if this page is a TabBar page
