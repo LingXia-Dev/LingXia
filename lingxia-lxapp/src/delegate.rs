@@ -4,7 +4,6 @@ use crate::lxapp::LxAppStatus;
 use crate::page::NavigationType;
 use crate::{LxApp, error, info, lxapp};
 use lingxia_platform::AppRuntime;
-use rong::service_executor;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -58,14 +57,31 @@ impl LxAppDelegate for LxApp {
                 manager.push_lxapp_stack(self.appid.clone());
             }
 
-            // First-time launch logic
+            // Create AppService for this LxApp instance.
             if let Err(e) = self.executor.create_app_svc(self.clone()) {
                 error!("Failed to trigger app service: {}", e).with_appid(self.appid.clone());
             }
+            let page = self.get_or_create_page(&resolved_path);
+            if page.is_tabbar_page() {
+                self.with_tabbar_mut(|t| t.set_visible(true));
+            }
+            let _ = self.push_to_page_stack(&resolved_path);
+            // Pre-create tab pages (synchronously enqueue); FIFO ordering ensures CreateAppSvc precedes these.
+            if !was_already_opened {
+                if let Some(tab_pages) = self.get_tabbar().map(|t| t.get_tabbar_pages()) {
+                    for tab_path in tab_pages {
+                        if tab_path == resolved_path {
+                            continue;
+                        }
+                        let _ = self.get_or_create_page(&tab_path);
+                    }
+                }
+            }
+            self.set_status(LxAppStatus::Opening);
             if let Err(e) = self.appservice_notify(AppServiceEvent::OnLaunch, None) {
                 error!("Failed to trigger onLaunch service: {}", e).with_appid(self.appid.clone());
             }
-            self.state.lock().unwrap().opened = true;
+            self.set_status(LxAppStatus::Opened);
 
             // Update last_open_at in metadata for this installed app
             let now = std::time::SystemTime::now()
@@ -75,47 +91,13 @@ impl LxAppDelegate for LxApp {
             let _ = lxapp::metadata::touch_last_open(&self.appid, self.release_type, now);
         }
 
-        // Create or get the page first for launch page
-        let page = self.get_or_create_page(&resolved_path);
-        if page.is_tabbar_page() {
-            self.with_tabbar_mut(|t| t.set_visible(true));
-        }
+        // Ensure status reflects opened (both first open and reopen)
+        self.set_status(LxAppStatus::Opened);
 
-        if let Err(e) = self.push_to_page_stack(&resolved_path) {
-            error!("Failed to initialize page stack: {}", e)
-                .with_appid(self.appid.clone())
-                .with_path(resolved_path.clone());
-        }
-
+        // App-level onShow still fires here (app layer), independent of page service readiness.
         let options = self.state.lock().unwrap().startup_options.clone();
         let options_str = serde_json::to_string(&options).ok();
-
-        if let Err(e) = self.appservice_notify(AppServiceEvent::OnShow, options_str) {
-            error!("Failed to trigger onShow service: {}", e).with_appid(self.appid.clone());
-        }
-
-        // Pre-create all tab pages in background (only on first open)
-        let tab_pages = self
-            .get_tabbar()
-            .map(|t| t.get_tabbar_pages())
-            .unwrap_or_else(Vec::new);
-        if !was_already_opened && !tab_pages.is_empty() {
-            let initial_path = resolved_path.clone();
-            let lxapp_clone = self.clone();
-
-            if let Err(e) = service_executor::spawn_blocking(move || {
-                info!("Pre-creating tab pages...").with_appid(lxapp_clone.appid.clone());
-                for tab_path in tab_pages {
-                    if tab_path == initial_path {
-                        continue; // Skip the initial page we already created
-                    }
-                    let _ = lxapp_clone.get_or_create_page(&tab_path);
-                }
-            }) {
-                error!("Failed to spawn background task for tab pre-create: {}", e)
-                    .with_appid(self.appid.clone());
-            }
-        }
+        let _ = self.appservice_notify(AppServiceEvent::OnShow, options_str);
 
         resolved_path
     }

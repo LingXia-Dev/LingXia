@@ -1,6 +1,6 @@
 use crate::appservice::bridge::IncomingMessage;
 use crate::event::PageLifecycleEvent;
-use crate::lxapp::{self, LxAppStatus, navbar::NavigationBarState};
+use crate::lxapp::{self, navbar::NavigationBarState};
 use crate::startup::parse_query_string;
 use crate::{LxApp, LxAppError, error, info};
 use http::StatusCode;
@@ -11,7 +11,6 @@ use lingxia_webview::{
 };
 
 use rong::service_executor;
-use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::Instant;
 
@@ -20,6 +19,8 @@ use std::time::Instant;
 pub(crate) struct PageInner {
     appid: String,
     path: String,
+    // Weak reference to owning LxApp instance to disambiguate sessions (unused for now)
+    _lxapp: std::sync::Weak<LxApp>,
 
     // Reference to the WebView (optional, set when WebView is ready)
     webview: Arc<Mutex<Option<Arc<WebView>>>>,
@@ -120,6 +121,7 @@ impl Page {
         let inner = Arc::new(PageInner {
             appid: appid.clone(),
             path: path.clone(),
+            _lxapp: Arc::downgrade(&lxapp.clone_arc()),
             last_active_time: Arc::new(Mutex::new(Instant::now())),
             state: Arc::new(Mutex::new(page_state)),
             webview: Arc::new(Mutex::new(None)),
@@ -292,7 +294,7 @@ impl Page {
                 };
 
                 if let Err(e) = lxapp.executor.call_page_service_event(
-                    appid.clone(),
+                    lxapp.clone(),
                     path.clone(),
                     page_event,
                     query,
@@ -584,7 +586,7 @@ impl Page {
         let lxapp = lxapp::get(self.appid());
         lxapp
             .executor
-            .call_page_service(self.appid(), self.path(), name, Some(arg))
+            .call_page_service(lxapp.clone(), self.path(), name, Some(arg))
     }
 }
 
@@ -634,7 +636,7 @@ impl WebViewDelegate for Page {
             Ok(incoming) => {
                 let lxapp = lxapp::get(self.inner.appid.clone());
                 if let Err(e) = lxapp.executor.handle_view_message(
-                    self.inner.appid.clone(),
+                    lxapp.clone(),
                     self.inner.path.clone(),
                     Arc::new(incoming),
                 ) {
@@ -696,20 +698,6 @@ impl WebViewDelegate for Page {
 
 impl Drop for PageInner {
     fn drop(&mut self) {
-        // Terminate page service only when app is actively opened; suppress during restart/close
-        let lxapp = crate::lxapp::get(self.appid.clone());
-        if matches!(lxapp.status(), LxAppStatus::Opened) {
-            if let Err(e) = lxapp.executor.terminate_page_svc_with_generation(
-                self.appid.clone(),
-                self.path.clone(),
-                self.generation,
-            ) {
-                error!("Failed to terminate page service during drop: {}", e)
-                    .with_appid(self.appid.clone())
-                    .with_path(self.path.clone());
-            }
-        }
-
         // Destroy WebView if it exists
         if let Ok(mut webview) = self.webview.lock() {
             if let Some(wv) = webview.as_ref() {

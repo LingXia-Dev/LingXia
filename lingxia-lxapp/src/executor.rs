@@ -4,7 +4,7 @@ use crate::event::PageServiceEvent;
 use crate::{LxAppError, error, info};
 
 use rong::{JSContext, Rong, RongJS, Worker, WorkerMessage};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex, mpsc};
 
 /// LxApp Async Executor
@@ -18,10 +18,10 @@ use std::sync::{Arc, Mutex, mpsc};
 pub struct LxAppExecutor {
     /// Message sender for communicating with workers
     sender: mpsc::Sender<ServiceMessage>,
-    /// Core mapping: appid -> worker_id (enforces 1:1 relationship)
-    worker_assignments: Arc<Mutex<HashMap<String, usize>>>,
-    /// Available worker IDs for new mini-apps
-    free_workers: Arc<Mutex<Vec<usize>>>,
+    /// Mapping: LxApp instance pointer -> worker_id (object-identity routing)
+    instance_assignments: Arc<Mutex<HashMap<usize, usize>>>,
+    /// Available worker IDs for new mini-apps (FIFO)
+    free_workers: Arc<Mutex<VecDeque<usize>>>,
 }
 
 impl LxAppExecutor {
@@ -39,21 +39,22 @@ impl LxAppExecutor {
         let receiver = Arc::new(Mutex::new(receiver));
 
         // Initialize worker assignment tracking
-        let worker_assignments = Arc::new(Mutex::new(HashMap::new()));
-        let free_workers = Arc::new(Mutex::new(Vec::with_capacity(num_workers)));
+        // Instance mapping only (no appid mapping)
+        let instance_assignments = Arc::new(Mutex::new(HashMap::new()));
+        let free_workers = Arc::new(Mutex::new(VecDeque::with_capacity(num_workers)));
         let barrier = Arc::new(std::sync::Barrier::new(2));
         let executor_barrier = barrier.clone();
 
         // Clone references for the executor thread
         let receiver_clone = receiver.clone();
-        let worker_assignments_clone = worker_assignments.clone();
+        let instance_assignments_clone = instance_assignments.clone();
         let free_workers_clone = free_workers.clone();
 
         std::thread::spawn(move || {
             Self::run_executor(
                 num_workers,
                 receiver_clone,
-                worker_assignments_clone,
+                instance_assignments_clone,
                 free_workers_clone,
                 executor_barrier,
             );
@@ -64,7 +65,7 @@ impl LxAppExecutor {
 
         Arc::new(Self {
             sender,
-            worker_assignments,
+            instance_assignments,
             free_workers,
         })
     }
@@ -73,8 +74,8 @@ impl LxAppExecutor {
     fn run_executor(
         num_workers: usize,
         receiver: Arc<Mutex<mpsc::Receiver<ServiceMessage>>>,
-        worker_assignments: Arc<Mutex<HashMap<String, usize>>>,
-        free_workers: Arc<Mutex<Vec<usize>>>,
+        instance_assignments: Arc<Mutex<HashMap<usize, usize>>>,
+        free_workers: Arc<Mutex<VecDeque<usize>>>,
         barrier: Arc<std::sync::Barrier>,
     ) {
         // Create tokio runtime
@@ -88,7 +89,7 @@ impl LxAppExecutor {
             Self::run_async_executor(
                 num_workers,
                 receiver,
-                worker_assignments,
+                instance_assignments,
                 free_workers,
                 barrier,
             )
@@ -100,8 +101,8 @@ impl LxAppExecutor {
     async fn run_async_executor(
         num_workers: usize,
         receiver: Arc<Mutex<mpsc::Receiver<ServiceMessage>>>,
-        worker_assignments: Arc<Mutex<HashMap<String, usize>>>,
-        free_workers: Arc<Mutex<Vec<usize>>>,
+        instance_assignments: Arc<Mutex<HashMap<usize, usize>>>,
+        free_workers: Arc<Mutex<VecDeque<usize>>>,
         barrier: Arc<std::sync::Barrier>,
     ) {
         info!("Starting LxApp async executor with {} workers", num_workers);
@@ -127,7 +128,9 @@ impl LxAppExecutor {
         // Initialize free workers with worker IDs
         {
             let mut free_workers_guard = free_workers.lock().unwrap();
-            *free_workers_guard = workers_map.keys().copied().collect();
+            let mut ids: Vec<usize> = workers_map.keys().copied().collect();
+            ids.sort_unstable();
+            *free_workers_guard = VecDeque::from(ids);
 
             // Signal that executor is ready
             barrier.wait();
@@ -137,7 +140,7 @@ impl LxAppExecutor {
         Self::setup_js_workers(&workers).await;
 
         // Start message dispatch loop
-        Self::run_message_dispatch_loop(receiver, worker_assignments, workers_map).await;
+        Self::run_message_dispatch_loop(receiver, instance_assignments, workers_map).await;
 
         // Clean up
         let _ = rong.join_all().await;
@@ -180,13 +183,13 @@ impl LxAppExecutor {
     /// Main message dispatch loop
     async fn run_message_dispatch_loop(
         receiver: Arc<Mutex<mpsc::Receiver<ServiceMessage>>>,
-        worker_assignments: Arc<Mutex<HashMap<String, usize>>>,
+        instance_assignments: Arc<Mutex<HashMap<usize, usize>>>,
         workers_map: HashMap<usize, Worker<RongJS>>,
     ) {
         loop {
             match receiver.lock().unwrap().recv() {
                 Ok(message) => {
-                    Self::dispatch_message(message, &worker_assignments, &workers_map).await;
+                    Self::dispatch_message(message, &instance_assignments, &workers_map).await;
                 }
                 Err(_) => {
                     error!("Service message channel closed");
@@ -199,83 +202,115 @@ impl LxAppExecutor {
     /// Dispatch a single message to appropriate worker
     async fn dispatch_message(
         message: ServiceMessage,
-        worker_assignments: &Arc<Mutex<HashMap<String, usize>>>,
+        instance_assignments: &Arc<Mutex<HashMap<usize, usize>>>,
         workers_map: &HashMap<usize, Worker<RongJS>>,
     ) {
         let appid = match &message {
-            ServiceMessage::CreateLxApp { lxapp } => &lxapp.appid,
-            ServiceMessage::TerminateLxApp { appid } => appid,
-            ServiceMessage::CallAppSvcEvent { appid, .. } => appid,
-            ServiceMessage::CallPageSvc { appid, .. } => appid,
-            ServiceMessage::TerminatePage { appid, .. } => appid,
-            ServiceMessage::CreatePage { appid, .. } => appid,
-            ServiceMessage::CallPageSvcEvent { appid, .. } => appid,
+            ServiceMessage::CreateAppSvc { lxapp, .. } => &lxapp.appid,
+            ServiceMessage::TerminateAppSvc { lxapp, .. } => &lxapp.appid,
+            ServiceMessage::TerminatePage { lxapp, .. } => &lxapp.appid,
+            ServiceMessage::CallAppSvcEvent { lxapp, .. } => &lxapp.appid,
+            ServiceMessage::CallPageSvc { lxapp, .. } => &lxapp.appid,
+            ServiceMessage::CreatePage { lxapp, .. } => &lxapp.appid,
+            ServiceMessage::CallPageSvcEvent { lxapp, .. } => &lxapp.appid,
         };
 
-        if let Some(worker_id) = worker_assignments.lock().unwrap().get(appid).copied() {
+        // Resolve target worker strictly from instance mapping (object identity)
+        let instance_key: Option<usize> = match &message {
+            ServiceMessage::CreateAppSvc { lxapp, .. }
+            | ServiceMessage::TerminateAppSvc { lxapp, .. }
+            | ServiceMessage::TerminatePage { lxapp, .. }
+            | ServiceMessage::CallAppSvcEvent { lxapp, .. }
+            | ServiceMessage::CallPageSvc { lxapp, .. }
+            | ServiceMessage::CreatePage { lxapp, .. }
+            | ServiceMessage::CallPageSvcEvent { lxapp, .. } => {
+                Some(lxapp.as_ref() as *const _ as usize)
+            }
+        };
+
+        let target_worker_id =
+            instance_key.and_then(|k| instance_assignments.lock().unwrap().get(&k).copied());
+
+        if let Some(worker_id) = target_worker_id {
             if let Some(worker) = workers_map.get(&worker_id) {
                 let _ = worker.post_message(WorkerMessage::Custom(Box::new(WorkerService {
                     svc: message,
                 })));
             }
+        } else {
+            // No instance mapping found; drop message to avoid misrouting.
+            error!(
+                "No worker mapping for LxApp instance (appid: {}) while dispatching message",
+                appid
+            );
         }
     }
 
-    /// Create a new lxapp service
+    /// Create a new lxapp service (worker reads session id from LxApp state).
     pub fn create_app_svc(&self, lxapp: Arc<crate::lxapp::LxApp>) -> Result<(), LxAppError> {
         crate::appservice::create_app_svc(
             lxapp,
             &self.sender,
-            &self.worker_assignments,
+            &self.instance_assignments,
             &self.free_workers,
         )
     }
 
-    /// Terminate a lxapp service
+    /// Terminate a lxapp service.
     pub fn terminate_app_svc(&self, appid: String) -> Result<(), LxAppError> {
         crate::appservice::terminate_app_svc(
             appid,
             &self.sender,
-            &self.worker_assignments,
+            &self.instance_assignments,
             &self.free_workers,
         )
     }
 
+    // ACK-based helpers removed; use LxApp state subscriptions instead.
+
     /// Create a new page service in an existing lxapp
-    pub fn create_page_svc(&self, appid: String, path: String) -> Result<(), LxAppError> {
+    pub fn create_page_svc(
+        &self,
+        lxapp: Arc<crate::lxapp::LxApp>,
+        path: String,
+    ) -> Result<(), LxAppError> {
         self.sender
-            .send(ServiceMessage::CreatePage { appid, path })?;
+            .send(ServiceMessage::CreatePage { lxapp, path })?;
         Ok(())
     }
 
-    /// Terminate a page service in lxapp
-    pub fn terminate_page_svc(&self, appid: String, path: String) -> Result<(), LxAppError> {
+    /// Terminate a page service by object identity.
+    pub(crate) fn terminate_page_svc(
+        &self,
+        lxapp: Arc<crate::lxapp::LxApp>,
+        path: String,
+    ) -> Result<(), LxAppError> {
         self.sender
-            .send(ServiceMessage::TerminatePage { appid, path })?;
+            .send(ServiceMessage::TerminatePage { lxapp, path })?;
         Ok(())
     }
 
     /// Call an AppService event (typed)
     pub fn call_app_service_event(
         &self,
-        appid: String,
+        lxapp: Arc<crate::lxapp::LxApp>,
         event: AppServiceEvent,
         args: Option<String>,
     ) -> Result<(), LxAppError> {
         self.sender
-            .send(ServiceMessage::CallAppSvcEvent { appid, event, args })?;
+            .send(ServiceMessage::CallAppSvcEvent { lxapp, event, args })?;
         Ok(())
     }
 
     /// Handle a message from the view layer to a Page service
     pub fn handle_view_message(
         &self,
-        appid: String,
+        lxapp: Arc<crate::lxapp::LxApp>,
         path: String,
         incoming: Arc<crate::appservice::bridge::IncomingMessage>,
     ) -> Result<(), LxAppError> {
         self.sender.send(ServiceMessage::CallPageSvc {
-            appid,
+            lxapp,
             path,
             source: crate::appservice::PageSvcSource::View { incoming },
         })?;
@@ -285,13 +320,13 @@ impl LxAppExecutor {
     /// Call a function on a Page service from native code
     pub fn call_page_service(
         &self,
-        appid: String,
+        lxapp: Arc<crate::lxapp::LxApp>,
         path: String,
         name: String,
         args: Option<String>,
     ) -> Result<(), LxAppError> {
         self.sender.send(ServiceMessage::CallPageSvc {
-            appid,
+            lxapp,
             path,
             source: crate::appservice::PageSvcSource::Native { name, args },
         })?;
@@ -301,13 +336,13 @@ impl LxAppExecutor {
     /// Call a typed page event on a Page service
     pub fn call_page_service_event(
         &self,
-        appid: String,
+        lxapp: Arc<crate::lxapp::LxApp>,
         path: String,
         event: PageServiceEvent,
         args: Option<String>,
     ) -> Result<(), LxAppError> {
         self.sender.send(ServiceMessage::CallPageSvcEvent {
-            appid,
+            lxapp,
             path,
             event,
             args,

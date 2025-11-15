@@ -5,7 +5,7 @@ use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, mpsc};
 use std::time::{Duration, Instant};
 
@@ -253,6 +253,12 @@ pub(crate) enum LxAppStatus {
 }
 
 impl LxApp {
+    /// Helper to clone Arc<Self> from within methods needing Arc
+    pub(crate) fn clone_arc(&self) -> Arc<LxApp> {
+        // All LxApp instances are stored as Arc in the global manager; retrieve by appid
+        crate::lxapp::get(self.appid.clone())
+    }
+
     pub(crate) fn status(&self) -> LxAppStatus {
         match self.state.lock().unwrap().status.load(Ordering::SeqCst) {
             1 => LxAppStatus::Opening,
@@ -294,7 +300,7 @@ impl LxApp {
     /// 3) Break Page↔WebView delegate links and clear pages
     /// 4) Destroy platform WebViews
     /// 5) Clear page stack and popup
-    /// 6) Send TerminateLxApp (receiver handles teardown)
+    /// 6) Send TerminateAppSvc (receiver handles teardown)
     pub fn shutdown(&self) -> Result<(), LxAppError> {
         // Mark closing to suppress TerminatePage from Page drops
         self.set_status(LxAppStatus::Closing);
@@ -808,13 +814,14 @@ impl LxApp {
 
         let appid = self.appid.clone();
         let executor = self.executor.clone();
+        let lxapp_arc = self.clone_arc();
         let page = Page::new(appid.clone(), path.to_string(), self, move |page| {
             // Prepare a one-shot to be notified when bridge (LXPort) is ready
             let (tx, rx) = mpsc::channel();
             page.set_bridge_ready_sender(tx);
 
             // Create PageSvc (JS binding) for a brand new Page before HTML load
-            if let Err(e) = executor.create_page_svc(page.appid(), page.path()) {
+            if let Err(e) = executor.create_page_svc(lxapp_arc.clone(), page.path()) {
                 error!("Failed to request page service creation: {}", e)
                     .with_appid(page.appid())
                     .with_path(page.path());
@@ -907,7 +914,18 @@ impl LxApp {
         }
 
         // Remove the oldest page
-        if let Some(path) = oldest_path {
+        if let Some(path) = oldest_path.clone() {
+            // First, ask AppService to remove the PageSvc for this path (object-identity safe)
+            let _ = self
+                .executor
+                .terminate_page_svc(self.clone_arc(), path.clone())
+                .map_err(|e| {
+                    warn!("Failed to request page termination: {}", e)
+                        .with_appid(self.appid.clone())
+                        .with_path(path.clone())
+                });
+
+            // Then remove from native registry
             if let Some(_removed_page) = pages.remove(&path) {
                 info!("Evicted inactive page: {}", path).with_appid(self.appid.clone());
             } else {
@@ -1004,7 +1022,7 @@ impl LxApp {
         payload_json: Option<String>,
     ) -> Result<(), LxAppError> {
         self.executor
-            .call_app_service_event(self.appid.clone(), event, payload_json)
+            .call_app_service_event(self.clone_arc(), event, payload_json)
     }
 }
 

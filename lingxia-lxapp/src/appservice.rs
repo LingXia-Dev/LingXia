@@ -9,9 +9,11 @@ use rong_modules::{console, fs, http};
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::path::Path;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex, mpsc};
+use std::time::Duration;
 
 mod app;
 use crate::event::AppServiceEvent;
@@ -37,41 +39,41 @@ pub fn get_or_create_update_manager(ctx: &JSContext) -> JSResult<JSObject> {
 }
 
 /// Message type for LxApp service system
-#[derive(Clone)]
 pub(crate) enum ServiceMessage {
-    // Create a new lxapp service
-    CreateLxApp {
+    // Create a new AppService (JS runtime) for this LxApp instance
+    CreateAppSvc {
         lxapp: Arc<LxApp>,
     },
-    // Delete an lxapp service
-    TerminateLxApp {
-        appid: String,
+    // Terminate AppService for this LxApp instance. ACK returned when cleanup completes.
+    TerminateAppSvc {
+        lxapp: Arc<LxApp>,
+        ack_tx: mpsc::Sender<()>,
     },
     // Create a new page service
     CreatePage {
-        appid: String,
+        lxapp: Arc<LxApp>,
         path: String,
     },
-    // Delete a page service
+    // Delete a page service (object-identity safe)
     TerminatePage {
-        appid: String,
+        lxapp: Arc<LxApp>,
         path: String,
     },
     // Call predefined AppService event (typed)
     CallAppSvcEvent {
-        appid: String,
+        lxapp: Arc<LxApp>,
         event: AppServiceEvent,
         args: Option<String>,
     },
     // Call function of Page service with different sources
     CallPageSvc {
-        appid: String,
+        lxapp: Arc<LxApp>,
         path: String,
         source: PageSvcSource,
     },
     // Call typed page event
     CallPageSvcEvent {
-        appid: String,
+        lxapp: Arc<LxApp>,
         path: String,
         event: PageServiceEvent,
         args: Option<String>,
@@ -92,7 +94,6 @@ pub enum PageSvcSource {
     },
 }
 
-#[derive(Clone)]
 pub(crate) struct WorkerService {
     pub(crate) svc: ServiceMessage,
 }
@@ -178,7 +179,7 @@ pub(crate) async fn lxapp_service_handler(
     current_ctx: &mut Option<JSContext>,
 ) {
     match message {
-        ServiceMessage::CreateLxApp { lxapp } => {
+        ServiceMessage::CreateAppSvc { lxapp } => {
             let ctx = runtime.context();
 
             // Store the LxApp reference directly in JSContext user data
@@ -253,25 +254,39 @@ pub(crate) async fn lxapp_service_handler(
 
             *current_ctx = Some(ctx.clone());
         }
-        ServiceMessage::TerminateLxApp { appid } => {
+        ServiceMessage::TerminateAppSvc { lxapp, ack_tx } => {
+            // Drop the JSContext directly to release all JS/PageSvc resources.
             if current_ctx.is_some() {
                 *current_ctx = None;
-                info!("[Worker {}] Removed LxApp context ", worker_id).with_appid(appid.clone());
+                info!("[Worker {}] Removed LxApp context ", worker_id)
+                    .with_appid(lxapp.appid.clone());
             }
+            // ACK back to the caller that cleanup is complete
+            let _ = ack_tx.send(());
         }
-        ServiceMessage::CreatePage { appid, path } => {
+        ServiceMessage::CreatePage { lxapp, path } => {
             if let Some(ctx) = current_ctx.as_ref() {
-                if let Some(lxapp) = ctx.get_user_data::<Arc<LxApp>>() {
-                    if let Err(e) = lxapp.create_page_with_ctx(ctx, &path) {
-                        error!("[Worker {}] create_page_with_ctx failed: {}", worker_id, e)
-                            .with_appid(appid)
-                            .with_path(path);
-                    }
+                // Do not hard-block on identity guard here; routing already uses mapping.
+                if let Err(e) = lxapp.create_page_with_ctx(ctx, &path) {
+                    error!("[Worker {}] create_page_with_ctx failed: {}", worker_id, e)
+                        .with_appid(lxapp.appid.clone())
+                        .with_path(path);
                 }
             }
         }
-        ServiceMessage::TerminatePage { appid, path } => {
+        ServiceMessage::TerminatePage { lxapp, path } => {
             if let Some(ctx) = current_ctx.as_ref() {
+                if let Some(ctx_lx) = ctx.get_user_data::<Arc<LxApp>>() {
+                    if !Arc::ptr_eq(&ctx_lx, &lxapp) {
+                        info!(
+                            "[Worker {}] Ignored TerminatePage for different LxApp instance",
+                            worker_id
+                        )
+                        .with_appid(lxapp.appid.clone())
+                        .with_path(path.clone());
+                        return;
+                    }
+                }
                 // Remove page from page_svc map stored in JSContext
                 let page_svc = if let Some(page_svc_map) =
                     ctx.get_user_data::<Rc<RefCell<HashMap<String, PageSvc>>>>()
@@ -287,18 +302,23 @@ pub(crate) async fn lxapp_service_handler(
                     }
 
                     info!("[Worker {}] Removed page", worker_id)
-                        .with_appid(appid)
+                        .with_appid(lxapp.appid.clone())
                         .with_path(path);
                 }
             }
         }
-        ServiceMessage::CallAppSvcEvent { appid, event, args } => {
+        ServiceMessage::CallAppSvcEvent { lxapp, event, args } => {
             if let Some(ctx) = current_ctx.as_ref() {
-                handle_app_service_event(worker_id, ctx, appid, event, args).await;
+                if let Some(ctx_lx) = ctx.get_user_data::<Arc<LxApp>>() {
+                    if Arc::ptr_eq(&ctx_lx, &lxapp) {
+                        handle_app_service_event(worker_id, ctx, lxapp.appid.clone(), event, args)
+                            .await;
+                    }
+                }
             }
         }
         ServiceMessage::CallPageSvc {
-            appid,
+            lxapp,
             path,
             source,
         } => {
@@ -321,9 +341,12 @@ pub(crate) async fn lxapp_service_handler(
                                 );
                             }
                         } else {
-                            error!("[Worker {}] Page service not loaded", worker_id)
-                                .with_path(path)
-                                .with_appid(appid);
+                            info!(
+                                "[Worker {}] Dropping view message: page service not loaded",
+                                worker_id
+                            )
+                            .with_appid(lxapp.appid.clone())
+                            .with_path(path);
                         }
                     }
                     PageSvcSource::Native { name, args } => {
@@ -336,18 +359,21 @@ pub(crate) async fn lxapp_service_handler(
                         };
 
                         if let Some(page_svc) = page_svc {
-                            handle_native_source(&page_svc, appid, name, args).await;
+                            handle_native_source(&page_svc, lxapp.appid.clone(), name, args).await;
                         } else {
-                            error!("[Worker {}] Page service not loaded", worker_id)
-                                .with_appid(appid)
-                                .with_path(path);
+                            info!(
+                                "[Worker {}] Dropping native call: page service not loaded",
+                                worker_id
+                            )
+                            .with_appid(lxapp.appid.clone())
+                            .with_path(path);
                         }
                     }
                 }
             }
         }
         ServiceMessage::CallPageSvcEvent {
-            appid,
+            lxapp,
             path,
             event,
             args,
@@ -369,13 +395,16 @@ pub(crate) async fn lxapp_service_handler(
                             "[Worker {}] Page event '{}' failed: {}",
                             worker_id, event, e
                         )
-                        .with_appid(appid)
+                        .with_appid(lxapp.appid.clone())
                         .with_path(path);
                     }
                 } else {
-                    error!("[Worker {}] Page service not loaded", worker_id)
-                        .with_appid(appid)
-                        .with_path(path);
+                    info!(
+                        "[Worker {}] Dropping page event: page service not loaded",
+                        worker_id
+                    )
+                    .with_appid(lxapp.appid.clone())
+                    .with_path(path);
                 }
             }
         }
@@ -386,16 +415,12 @@ pub(crate) async fn lxapp_service_handler(
 pub(crate) fn create_app_svc(
     lxapp: Arc<crate::lxapp::LxApp>,
     sender: &mpsc::Sender<ServiceMessage>,
-    worker_assignments: &Arc<Mutex<HashMap<String, usize>>>,
-    free_workers: &Arc<Mutex<Vec<usize>>>,
+    instance_assignments: &Arc<Mutex<HashMap<usize, usize>>>,
+    free_workers: &Arc<Mutex<VecDeque<usize>>>,
 ) -> Result<(), LxAppError> {
     let appid = lxapp.appid.clone();
 
-    // Check if app already has a dedicated worker (enforce 1:1 mapping)
-    if worker_assignments.lock().unwrap().contains_key(&appid) {
-        info!("App {} already has a dedicated worker", appid);
-        return Ok(());
-    }
+    // Instance mapping only; allow restart to use a new instance.
 
     // Check if we have free workers available
     let worker_id = {
@@ -405,17 +430,15 @@ pub(crate) fn create_app_svc(
                 "No available workers for new mini-app".to_string(),
             ));
         }
-        free_workers_guard.pop().unwrap()
+        free_workers_guard.pop_front().unwrap()
     };
 
-    // Establish the 1:1 mapping: appid -> worker_id
-    worker_assignments
-        .lock()
-        .unwrap()
-        .insert(appid.clone(), worker_id);
+    // Establish instance mapping: LxApp ptr -> worker_id
+    let key = lxapp.as_ref() as *const _ as usize;
+    instance_assignments.lock().unwrap().insert(key, worker_id);
 
     // Send message to create the runtime in the dedicated worker
-    sender.send(ServiceMessage::CreateLxApp { lxapp })?;
+    sender.send(ServiceMessage::CreateAppSvc { lxapp })?;
 
     info!("Assigned dedicated worker {} to app {}", worker_id, appid);
     Ok(())
@@ -425,17 +448,43 @@ pub(crate) fn create_app_svc(
 pub(crate) fn terminate_app_svc(
     appid: String,
     sender: &mpsc::Sender<ServiceMessage>,
-    worker_assignments: &Arc<Mutex<HashMap<String, usize>>>,
-    free_workers: &Arc<Mutex<Vec<usize>>>,
+    instance_assignments: &Arc<Mutex<HashMap<usize, usize>>>,
+    free_workers: &Arc<Mutex<VecDeque<usize>>>,
 ) -> Result<(), LxAppError> {
-    // Break the 1:1 mapping and release the dedicated worker
-    if let Some(worker_id) = worker_assignments.lock().unwrap().remove(&appid) {
-        // Return the worker to free pool for reuse by other mini-apps
-        free_workers.lock().unwrap().push(worker_id);
+    // Ensure mapping remains during terminate; get current worker_id via instance mapping
+    let lxapp_arc = crate::lxapp::get(appid.clone());
+    let key = lxapp_arc.as_ref() as *const _ as usize;
+    let worker_id_opt = instance_assignments.lock().unwrap().get(&key).copied();
+    if worker_id_opt.is_none() {
+        info!(
+            "No active worker mapping for app {}; skipping terminate",
+            appid
+        );
+        return Ok(());
+    }
+
+    // Set up ACK channel and send terminate to current worker
+    let (tx, rx) = mpsc::channel();
+    sender.send(ServiceMessage::TerminateAppSvc {
+        lxapp: lxapp_arc,
+        ack_tx: tx,
+    })?;
+
+    // Wait for ACK with timeout
+    let acked = rx.recv_timeout(Duration::from_secs(3)).is_ok();
+    if acked {
+        info!("Terminate ACK received").with_appid(appid.clone());
+    } else {
+        error!("Terminate ACK timeout; forcing release").with_appid(appid.clone());
+    }
+
+    // Remove instance mapping and release the dedicated worker
+    let worker_id_opt = instance_assignments.lock().unwrap().remove(&key);
+    if let Some(worker_id) = worker_id_opt {
+        free_workers.lock().unwrap().push_back(worker_id);
         info!("Released dedicated worker {} from app {}", worker_id, appid);
     }
 
-    sender.send(ServiceMessage::TerminateLxApp { appid })?;
     Ok(())
 }
 
