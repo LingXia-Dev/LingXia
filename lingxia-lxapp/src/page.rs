@@ -191,18 +191,6 @@ impl Page {
         }
     }
 
-    /// Returns whether the underlying WebView has started or finished rendering
-    /// for this Page instance. Used to decide whether we should manually trigger
-    /// onLoad for re-navigation (existing WebView) versus relying on the initial
-    /// WebView/LXPort ready path for first-time creation.
-    pub(crate) fn has_render_started(&self) -> bool {
-        self.inner
-            .state
-            .lock()
-            .map(|s| !matches!(s.render_status, PageRenderStatus::Unstarted))
-            .unwrap_or(false)
-    }
-
     pub(crate) fn dispatch_lifecycle_event(&self, event: PageLifecycleEvent) {
         // Central lifecycle state machine for a single WebView-backed Page.
         // Sources of events:
@@ -239,6 +227,16 @@ impl Page {
                 // Update raw status based on the incoming event.
                 if event == PageLifecycleEvent::OnShow {
                     state.show_requested = true;
+                }
+
+                // Guard: only honor a manual OnLoad after render has started.
+                // Bridge-ready path typically arrives after on_page_started, so it passes.
+                if event == PageLifecycleEvent::OnLoad
+                    && matches!(state.render_status, PageRenderStatus::Unstarted)
+                {
+                    // Ignore early OnLoad until WebView render actually begins.
+                    // Caller can invoke again later; bridge-ready path will also dispatch.
+                    return;
                 }
 
                 // Handle onLoad (can occur multiple times for navigateTo with new params)
@@ -468,21 +466,10 @@ impl Page {
             self.dispatch_lifecycle_event(PageLifecycleEvent::OnHide);
         }
 
-        // IMPORTANT: Manual onLoad trigger is intentional.
-        // Rationale:
-        // - The WebView (via LXPort ready) can trigger onLoad for the first-time creation path.
-        // - For navigateTo with new query while reusing the same WebView, the WebView itself
-        //   will NOT re-emit a bridge-ready event; therefore we deliberately trigger onLoad
-        //   here for the existing instance so the page receives the new query in onLoad.
-        // Filtering & correctness:
-        // - For the very first navigation (render not started), we do NOT trigger onLoad here;
-        //   the WebView-side handshake will deliver onLoad at the correct time.
-        // - For subsequent navigations (already rendered), we trigger onLoad here and rely on
-        //   dispatch_lifecycle_event to enforce the correct ordering (onLoad -> onReady -> onShow)
-        //   for this logical navigation instance.
-        if target_page.has_render_started() {
-            target_page.dispatch_lifecycle_event(PageLifecycleEvent::OnLoad);
-        }
+        // Request onLoad for the target page; dispatch_lifecycle_event will gate:
+        // - If first-time render hasn't started yet, the early OnLoad is ignored; bridge-ready path will dispatch.
+        // - If the WebView has rendered before (re-navigation), OnLoad will be accepted and ordered correctly.
+        target_page.dispatch_lifecycle_event(PageLifecycleEvent::OnLoad);
 
         // 6. Perform the native navigation
         (*lxapp.runtime)

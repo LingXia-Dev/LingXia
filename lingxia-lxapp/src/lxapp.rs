@@ -768,8 +768,6 @@ impl LxApp {
 
         self.runtime.show_popup(request).map_err(LxAppError::from)?;
 
-        popup_page.dispatch_lifecycle_event(PageLifecycleEvent::OnReady);
-
         if let Ok(mut state) = self.state.lock() {
             state.current_popup = Some(path);
         }
