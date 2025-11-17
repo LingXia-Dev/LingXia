@@ -21,7 +21,7 @@ use tokio::sync::Mutex;
 
 // Page is Send able, but JSFunc is not, we can not let Page hold PageSvc.
 #[js_export]
-pub(crate) struct PageSvc {
+pub struct PageSvc {
     functions: HashMap<String, JSFunc>,
     this: JSObject,
 
@@ -396,36 +396,9 @@ impl PageSvc {
     }
 }
 
-impl Page {
-    pub fn get_event_emitter(&self, ctx: &JSContext) -> JSResult<EventEmitter> {
-        // Use JSContext registry as the single source of truth for PageSvc binding
-        let registry = ctx
-            .get_user_data::<Rc<RefCell<HashMap<String, PageSvc>>>>()
-            .ok_or_else(|| RongJSError::Error("Page service registry not available".to_string()))?;
-
-        registry
-            .borrow()
-            .get(self.path().as_str())
-            .map(|svc| svc.get_event_emitter())
-            .ok_or_else(|| RongJSError::Error("Page service not found after creation".to_string()))
-    }
-}
-
-impl LxApp {
-    pub fn create_page_with_ctx(&self, ctx: &JSContext, path: &str) -> JSResult<Page> {
-        // This method is responsible for JS PageSvc creation only; it should not create native Page.
-        // Expect the native Page to have been created by the caller on the native side already.
-        let page = self
-            .get_page(path)
-            .ok_or_else(|| RongJSError::Error(format!("Page not found: {}", path)))?;
-
-        // If PageSvc already exists in JSContext registry, return the page directly (idempotent)
-        if let Some(registry) = ctx.get_user_data::<Rc<RefCell<HashMap<String, PageSvc>>>>() {
-            if registry.borrow().contains_key(path) {
-                return Ok(page);
-            }
-        }
-
+impl PageSvc {
+    /// Create the JS PageSvc unconditionally without checking the registry.
+    pub fn create_in_ctx(ctx: &JSContext, path: &str) -> JSResult<()> {
         let create_page = ctx
             .global()
             .get::<_, JSFunc>("__CREATE_PAGE__")
@@ -433,9 +406,38 @@ impl LxApp {
 
         create_page
             .call::<_, ()>(None, (path.to_string(),))
-            .map_err(|e| RongJSError::Error(e.to_string()))?;
+            .map_err(|e| RongJSError::Error(e.to_string()))
+    }
 
-        Ok(page)
+    /// Get the native Page associated with this PageSvc
+    pub fn get_page(&self) -> Page {
+        self.page.clone()
+    }
+}
+
+impl LxApp {
+    /// Create or reuse native Page and ensure PageSvc exists in current JSContext.
+    /// If page is newly created, create PageSvc via JSContext; otherwise read from registry.
+    pub fn get_or_create_page_in_ctx(&self, ctx: &JSContext, url: &str) -> JSResult<PageSvc> {
+        let (page, setup_tx_opt) = self.get_or_create_page_core(url);
+        let path = page.path();
+
+        if let Some(setup_tx) = setup_tx_opt {
+            // Synchronously create PageSvc in this JSContext, then unblock setup
+            PageSvc::create_in_ctx(ctx, &path)?;
+            let _ = setup_tx.send(());
+        }
+
+        // Fetch PageSvc from registry and return
+        let registry = ctx
+            .get_user_data::<Rc<RefCell<HashMap<String, PageSvc>>>>()
+            .ok_or_else(|| RongJSError::Error("Page service registry not available".to_string()))?;
+
+        registry
+            .borrow()
+            .get(path.as_str())
+            .cloned()
+            .ok_or_else(|| RongJSError::Error("Page service not found after creation".to_string()))
     }
 }
 

@@ -13,6 +13,7 @@ pub use cache::{LxAppCache, ResolveResult};
 mod page;
 pub mod startup;
 
+pub use appservice::PageSvc;
 pub use appservice::get_or_create_update_manager;
 pub use delegate::{LxAppDelegate, UiEventType};
 pub use error::LxAppError;

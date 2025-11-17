@@ -268,14 +268,18 @@ impl LxAppExecutor {
 
     // ACK-based helpers removed; use LxApp state subscriptions instead.
 
-    /// Create a new page service in an existing lxapp
-    pub fn create_page_svc(
+    /// Create a new page service in an existing lxapp and notify when ready
+    pub fn create_page_svc_with_ack(
         &self,
         lxapp: Arc<crate::lxapp::LxApp>,
         path: String,
+        ack_tx: mpsc::Sender<()>,
     ) -> Result<(), LxAppError> {
-        self.sender
-            .send(ServiceMessage::CreatePage { lxapp, path })?;
+        self.sender.send(ServiceMessage::CreatePage {
+            lxapp,
+            path,
+            ack_tx,
+        })?;
         Ok(())
     }
 

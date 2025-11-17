@@ -57,10 +57,6 @@ impl LxAppDelegate for LxApp {
                 manager.push_lxapp_stack(self.appid.clone());
             }
 
-            // Create AppService for this LxApp instance.
-            if let Err(e) = self.executor.create_app_svc(self.clone()) {
-                error!("Failed to trigger app service: {}", e).with_appid(self.appid.clone());
-            }
             let page = self.get_or_create_page(&resolved_path);
             if page.is_tabbar_page() {
                 self.with_tabbar_mut(|t| t.set_visible(true));
@@ -172,12 +168,13 @@ impl LxApp {
             if let Some(tab_path) = tab_pages.get(index) {
                 if let Some(current_page_path) = self.peek_current_page() {
                     if let Some(page) = self.get_page(&current_page_path) {
-                        let target_page = self.get_or_create_page(tab_path);
-                        if page
-                            .navigate_to(target_page, NavigationType::SwitchTab)
-                            .is_ok()
-                        {
-                            return true;
+                        if let Some(target_page) = self.get_page(tab_path) {
+                            if page
+                                .navigate_to(target_page, NavigationType::SwitchTab)
+                                .is_ok()
+                            {
+                                return true;
+                            }
                         }
                     }
                 }
@@ -254,8 +251,9 @@ impl LxApp {
 
                 if let Some(path) = self.peek_current_page() {
                     if let Some(page) = self.get_page(&path) {
-                        let target_page = self.get_or_create_page(&home_route);
-                        let _ = page.navigate_to(target_page, navigate_type);
+                        if let Some(target_page) = self.get_page(&home_route) {
+                            let _ = page.navigate_to(target_page, navigate_type);
+                        }
                     }
                 }
                 true

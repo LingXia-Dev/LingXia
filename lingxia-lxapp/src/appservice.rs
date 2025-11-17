@@ -25,7 +25,7 @@ pub mod update;
 
 mod page;
 use crate::event::PageServiceEvent;
-use page::PageSvc;
+pub use page::PageSvc;
 
 // fetch or create UpdateManager instance associated with current JSContext
 pub fn get_or_create_update_manager(ctx: &JSContext) -> JSResult<JSObject> {
@@ -53,6 +53,7 @@ pub(crate) enum ServiceMessage {
     CreatePage {
         lxapp: Arc<LxApp>,
         path: String,
+        ack_tx: mpsc::Sender<()>,
     },
     // Delete a page service (object-identity safe)
     TerminatePage {
@@ -264,13 +265,21 @@ pub(crate) async fn lxapp_service_handler(
             // ACK back to the caller that cleanup is complete
             let _ = ack_tx.send(());
         }
-        ServiceMessage::CreatePage { lxapp, path } => {
+        ServiceMessage::CreatePage {
+            lxapp,
+            path,
+            ack_tx,
+        } => {
             if let Some(ctx) = current_ctx.as_ref() {
-                // Do not hard-block on identity guard here; routing already uses mapping.
-                if let Err(e) = lxapp.create_page_with_ctx(ctx, &path) {
-                    error!("[Worker {}] create_page_with_ctx failed: {}", worker_id, e)
-                        .with_appid(lxapp.appid.clone())
-                        .with_path(path);
+                match PageSvc::create_in_ctx(ctx, &path) {
+                    Ok(()) => {
+                        let _ = ack_tx.send(());
+                    }
+                    Err(e) => {
+                        error!("[Worker {}] create_in_ctx failed: {}", worker_id, e)
+                            .with_appid(lxapp.appid.clone())
+                            .with_path(path);
+                    }
                 }
             }
         }
@@ -420,7 +429,15 @@ pub(crate) fn create_app_svc(
 ) -> Result<(), LxAppError> {
     let appid = lxapp.appid.clone();
 
-    // Instance mapping only; allow restart to use a new instance.
+    // Establish instance mapping only once; if a mapping exists, reuse it (idempotent)
+    let key = lxapp.as_ref() as *const _ as usize;
+    {
+        let assignments = instance_assignments.lock().unwrap();
+        if assignments.contains_key(&key) {
+            info!("Reusing existing worker for app {}", appid);
+            return Ok(());
+        }
+    }
 
     // Check if we have free workers available
     let worker_id = {
@@ -434,7 +451,6 @@ pub(crate) fn create_app_svc(
     };
 
     // Establish instance mapping: LxApp ptr -> worker_id
-    let key = lxapp.as_ref() as *const _ as usize;
     instance_assignments.lock().unwrap().insert(key, worker_id);
 
     // Send message to create the runtime in the dedicated worker

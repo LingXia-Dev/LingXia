@@ -6,8 +6,8 @@ use std::fs;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU8, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
-use std::time::Instant;
+use std::sync::{Arc, Mutex, OnceLock, mpsc};
+use std::time::{Duration, Instant};
 
 use crate::PageLifecycleEvent;
 use crate::app::AppConfig;
@@ -679,6 +679,11 @@ impl LxApp {
             let app = manager.get_or_init_lxapp(appid.clone());
             app.state.lock().unwrap().startup_options = options;
 
+            // Ensure the target app's JS worker is created and mapped before creating pages
+            if let Err(e) = app.executor.create_app_svc(app.clone()) {
+                error!("Failed to trigger app service: {}", e).with_appid(appid.clone());
+            }
+
             let target_path = if startup_options.path.is_empty() {
                 app.config.get_initial_route()
             } else {
@@ -801,9 +806,11 @@ impl LxApp {
         self.config.get_lxapp_info()
     }
 
-    /// Get existing page or create a new one if it doesn't exist
-    /// Returns None if creation fails
-    pub(crate) fn get_or_create_page(&self, url: &str) -> Page {
+    /// Get existing page or create a new one (native side only)
+    /// Core path: sets up native Page/WebView and returns a Sender to unblock setup when ready.
+    /// The setup callback waits until the returned Sender is signaled, then runs load_html.
+    /// Does NOT request JS PageSvc creation.
+    pub(crate) fn get_or_create_page_core(&self, url: &str) -> (Page, Option<mpsc::Sender<()>>) {
         let (path, query) = crate::startup::split_path_query(url);
 
         {
@@ -812,29 +819,32 @@ impl LxApp {
                 if let Some(query) = query.clone() {
                     page.set_query(query);
                 }
-                return page.clone();
+                return (page.clone(), None);
             }
         }
 
         let appid = self.appid.clone();
-        let executor = self.executor.clone();
-        let lxapp_arc = self.clone_arc();
-        let page = Page::new(appid.clone(), path.to_string(), self, move |page| {
-            // Create PageSvc (JS binding) for a brand new Page before HTML load
-            if let Err(e) = executor.create_page_svc(lxapp_arc.clone(), page.path()) {
-                error!("Failed to request page service creation: {}", e)
-                    .with_appid(page.appid())
-                    .with_path(page.path());
-            }
-
-            // Load HTML to initialize WebView and JS bridge
-            if let Err(e) = page.load_html() {
-                error!("Failed to load HTML for page: {}", e)
-                    .with_appid(page.appid())
-                    .with_path(page.path());
-                return;
-            }
-        });
+        // Channel to notify when setup (load_html) can proceed
+        let (setup_tx, setup_rx) = mpsc::channel::<()>();
+        let page = {
+            // Only load HTML after receiving the setup signal; do not create PageSvc here
+            Page::new(appid.clone(), path.to_string(), self, move |page| {
+                // Wait until caller signals it's safe to proceed
+                match setup_rx.recv_timeout(Duration::from_millis(4000)) {
+                    Ok(()) => {}
+                    Err(_) => {
+                        warn!("Timed out waiting for setup signal; proceeding to load HTML")
+                            .with_appid(page.appid())
+                            .with_path(page.path());
+                    }
+                }
+                if let Err(e) = page.load_html() {
+                    error!("Failed to load HTML for page: {}", e)
+                        .with_appid(page.appid())
+                        .with_path(page.path());
+                }
+            })
+        };
 
         // Insert the new page first to ensure it's protected
         {
@@ -852,6 +862,25 @@ impl LxApp {
             page.set_query(query);
         }
 
+        (page, Some(setup_tx))
+    }
+
+    /// Get existing page or create a new one; requests JS PageSvc creation and gates HTML load on ACK
+    pub fn get_or_create_page(&self, url: &str) -> Page {
+        let (page, setup_tx_opt) = self.get_or_create_page_core(url);
+        if let Some(setup_tx) = setup_tx_opt {
+            // For newly created page: request JS PageSvc and use setup_tx as the ACK channel
+            let lxapp_arc = self.clone_arc();
+            let path = page.path();
+            if let Err(e) =
+                self.executor
+                    .create_page_svc_with_ack(lxapp_arc, path.clone(), setup_tx)
+            {
+                error!("Failed to request page service creation: {}", e)
+                    .with_appid(page.appid())
+                    .with_path(page.path());
+            }
+        }
         page
     }
 
@@ -1146,6 +1175,15 @@ pub fn init(runtime: Platform) -> Option<String> {
             if LXAPPS_MANAGER.set(lxapps_manager).is_err() {
                 error!("LxApps manager singleton had been initialized by another instance");
                 return None;
+            }
+
+            // Pre-create JS worker for home lxapp
+            if let Err(e) = home_lxapp_arc
+                .executor
+                .create_app_svc(home_lxapp_arc.clone())
+            {
+                error!("Failed to trigger home app service: {}", e)
+                    .with_appid(home_lxapp_appid.clone());
             }
 
             info!("LxApps initialized successfully");
