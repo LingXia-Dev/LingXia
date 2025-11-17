@@ -189,6 +189,13 @@ impl From<CallbackResult> for PickerResult {
 fn show_picker(ctx: JSContext, options: JSPickerOptions) -> JSResult<JSObject> {
     let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
 
+    // Do not show UI if app is not opened
+    if !lxapp.is_opened() {
+        return Err(RongJSError::Error(
+            "LxApp is closed; picker suppressed".to_string(),
+        ));
+    }
+
     let picker_data = match options.mode.as_str() {
         "selector" => {
             let items = options.items.ok_or_else(|| {

@@ -107,6 +107,13 @@ fn resolve_popup_ratios(
 fn show_popup(ctx: JSContext, options: JSPopupOptions) -> JSResult<JSObject> {
     let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
 
+    // Do not show UI if app is not opened
+    if !lxapp.is_opened() {
+        return Err(RongJSError::Error(
+            "LxApp is closed; popup suppressed".to_string(),
+        ));
+    }
+
     let page_svc = lxapp
         .get_or_create_page_in_ctx(&ctx, &options.url)
         .map_err(|e| RongJSError::Error(format!("Failed to ensure popup page service: {}", e)))?;
@@ -135,6 +142,10 @@ fn show_popup(ctx: JSContext, options: JSPopupOptions) -> JSResult<JSObject> {
 
 fn hide_popup(ctx: JSContext) -> JSResult<()> {
     let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+
+    if !lxapp.is_opened() {
+        return Ok(());
+    }
 
     lxapp
         .hide_popup()

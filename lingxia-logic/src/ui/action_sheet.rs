@@ -37,6 +37,13 @@ async fn show_action_sheet(
 
     let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
 
+    // Do not show UI if app is not opened
+    if !lxapp.is_opened() {
+        return Err(RongJSError::Error(
+            "LxApp is closed; actionSheet suppressed".to_string(),
+        ));
+    }
+
     let selected_index = present_action_sheet(&lxapp, item_list, None, item_color).await?;
     let tap_index = selected_index.map(|idx| idx as i32).unwrap_or(-1);
 
@@ -49,6 +56,11 @@ pub(crate) async fn present_action_sheet(
     cancel_text: Option<String>,
     item_color: Option<String>,
 ) -> Result<Option<usize>, RongJSError> {
+    if !lxapp.is_opened() {
+        return Err(RongJSError::Error(
+            "LxApp is closed; actionSheet suppressed".to_string(),
+        ));
+    }
     if item_list.is_empty() {
         return Err(RongJSError::Error("itemList cannot be empty".to_string()));
     }

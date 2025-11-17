@@ -58,6 +58,13 @@ fn show_toast(ctx: JSContext, options: JSToastOptions) -> JSResult<()> {
     let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
     let toast_options: ToastOptions = options.into();
 
+    // Do not show UI if app is not opened
+    if !lxapp.is_opened() {
+        return Err(RongJSError::Error(
+            "LxApp is closed; toast suppressed".to_string(),
+        ));
+    }
+
     lxapp
         .runtime
         .show_toast(toast_options)

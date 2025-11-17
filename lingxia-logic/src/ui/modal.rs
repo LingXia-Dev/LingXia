@@ -77,6 +77,13 @@ async fn show_modal(ctx: JSContext, options: JSModalOptions) -> JSResult<JSModal
     let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
     let modal_options: ModalOptions = options.into();
 
+    // Do not show UI if app is not opened
+    if !lxapp.is_opened() {
+        return Err(RongJSError::Error(
+            "LxApp is closed; modal suppressed".to_string(),
+        ));
+    }
+
     // Get callback ID and receiver
     let (callback_id, receiver) = get_callback();
 
