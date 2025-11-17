@@ -107,9 +107,9 @@ fn resolve_popup_ratios(
 fn show_popup(ctx: JSContext, options: JSPopupOptions) -> JSResult<JSObject> {
     let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
 
-    let page = lxapp
-        .create_page_with_ctx(&ctx, &options.url)
-        .map_err(|e| RongJSError::Error(format!("Failed to prepare popup page: {}", e)))?;
+    let page_svc = lxapp
+        .get_or_create_page_in_ctx(&ctx, &options.url)
+        .map_err(|e| RongJSError::Error(format!("Failed to ensure popup page service: {}", e)))?;
 
     let position = parse_position(options.position);
     let screen = lxapp.runtime.screen_info();
@@ -125,9 +125,7 @@ fn show_popup(ctx: JSContext, options: JSPopupOptions) -> JSResult<JSObject> {
         .show_popup(request)
         .map_err(|e| RongJSError::Error(format!("Failed to show popup: {}", e)))?;
 
-    let event_emitter = page
-        .get_event_emitter(&ctx)
-        .map_err(|e| RongJSError::Error(format!("Failed to get popup event emitter: {}", e)))?;
+    let event_emitter = page_svc.get_event_emitter();
 
     let response = JSObject::new(&ctx);
     response.set("eventEmitter", event_emitter)?;

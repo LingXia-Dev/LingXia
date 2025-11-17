@@ -31,21 +31,23 @@ fn navigate_to(ctx: JSContext, options: NavigateTo) -> JSResult<JSObject> {
         .peek_current_page()
         .ok_or_else(|| RongJSError::Error("No current page found".to_string()))?;
 
-    let target_page = lxapp
-        .create_page_with_ctx(&ctx, &options.url)
-        .map_err(|e| RongJSError::Error(e.to_string()))?;
+    // Ensure PageSvc for target page exists in this JSContext
+    let page_svc = lxapp
+        .get_or_create_page_in_ctx(&ctx, &options.url)
+        .map_err(|e| RongJSError::Error(format!("Failed to ensure target page svc: {}", e)))?;
 
-    let target_page = if let Some(page) = lxapp.get_page(&current_path) {
-        page.navigate_to(target_page, NavigationType::Forward)
-            .map_err(|e| RongJSError::Error(format!("Failed to navigate: {}", e)))?
+    // Get the destination native Page from PageSvc
+    let dest_page = page_svc.get_page();
+
+    if let Some(page) = lxapp.get_page(&current_path) {
+        page.navigate_to(dest_page, NavigationType::Forward)
+            .map_err(|e| RongJSError::Error(format!("Failed to navigate: {}", e)))?;
     } else {
         return Err(RongJSError::Error("Current page not found".to_string()));
-    };
-
-    let event_emitter = target_page.get_event_emitter(&ctx)?;
+    }
 
     let response = JSObject::new(&ctx);
-    response.set("eventEmitter", event_emitter)?;
+    response.set("eventEmitter", page_svc.get_event_emitter())?;
 
     Ok(response)
 }
@@ -78,11 +80,12 @@ fn redirect_to(ctx: JSContext, options: RedirectTo) -> JSResult<()> {
         .peek_current_page()
         .ok_or_else(|| RongJSError::Error("No current page found".to_string()))?;
 
-    if let Some(page) = lxapp.get_page(&current_path) {
-        let target_page = lxapp
-            .create_page_with_ctx(&ctx, &options.url)
-            .map_err(|e| RongJSError::Error(e.to_string()))?;
+    let page_svc = lxapp
+        .get_or_create_page_in_ctx(&ctx, &options.url)
+        .map_err(|e| RongJSError::Error(format!("Failed to ensure target page svc: {}", e)))?;
+    let target_page = page_svc.get_page();
 
+    if let Some(page) = lxapp.get_page(&current_path) {
         page.navigate_to(target_page, NavigationType::Replace)
             .map_err(|e| RongJSError::Error(format!("Failed to redirect: {}", e)))?;
     } else {
@@ -101,11 +104,12 @@ fn switch_tab(ctx: JSContext, options: SwitchTab) -> JSResult<()> {
         .peek_current_page()
         .ok_or_else(|| RongJSError::Error("No current page found".to_string()))?;
 
-    if let Some(page) = lxapp.get_page(&current_path) {
-        let target_page = lxapp
-            .create_page_with_ctx(&ctx, &options.url)
-            .map_err(|e| RongJSError::Error(e.to_string()))?;
+    let page_svc = lxapp
+        .get_or_create_page_in_ctx(&ctx, &options.url)
+        .map_err(|e| RongJSError::Error(format!("Failed to ensure target page svc: {}", e)))?;
+    let target_page = page_svc.get_page();
 
+    if let Some(page) = lxapp.get_page(&current_path) {
         page.navigate_to(target_page, NavigationType::SwitchTab)
             .map_err(|e| RongJSError::Error(format!("Failed to switch tab: {}", e)))?;
     } else {
