@@ -105,8 +105,27 @@ impl LxApp {
 
         let html_str = String::from_utf8_lossy(html_data);
 
-        // Create script tags - first bridge script, then framework script
-        let script_tags = format!("<script>\n{}\n</script>", bridge_script);
+        // Decide bridge method by compile target
+        #[cfg(any(target_os = "ios", target_os = "macos"))]
+        let bridge_method = "webkit";
+        #[cfg(target_os = "android")]
+        let bridge_method = "messageport";
+        #[cfg(all(target_os = "linux", target_env = "ohos"))]
+        let bridge_method = "messageport";
+        #[cfg(not(any(
+            target_os = "ios",
+            target_os = "macos",
+            target_os = "android",
+            all(target_os = "linux", target_env = "ohos")
+        )))]
+        let bridge_method = "unknown";
+
+        // Create script tags: host provides communication method first, then the bridge
+        let prelude = format!(
+            "<script>window.__LX_BRIDGE_METHOD='{}';</script>",
+            bridge_method
+        );
+        let script_tags = format!("{}\n<script>\n{}\n</script>", prelude, bridge_script);
 
         // Try to insert before </head> tag (preferred location)
         if let Some(head_pos) = html_str.to_lowercase().find("</head>") {

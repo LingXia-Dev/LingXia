@@ -43,27 +43,10 @@
   let messagePort = null; // Unified port for MessagePort-based platforms
 
   // Detect communication method based on available APIs
-  function detectCommunicationMethod() {
-    if (
-      window.webkit &&
-      window.webkit.messageHandlers &&
-      window.webkit.messageHandlers[NATIVE_HANDLER_NAME]
-    ) {
-      return "webkit";
-    }
-
-    // MessagePort API available (Android WebView, HarmonyOS ArkWeb)
-    if (
-      typeof MessagePort !== "undefined" &&
-      typeof MessageChannel !== "undefined"
-    ) {
-      return MESSAGE_PORT_TYPE;
-    }
-
-    return "unknown";
-  }
-
-  const communicationMethod = detectCommunicationMethod();
+  // Communication method is provided by host
+  // Expected values: 'webkit' (iOS/macOS), 'messageport' (Android/Harmony)
+  const communicationMethod =
+    (typeof window !== "undefined" && window.__LX_BRIDGE_METHOD) || "unknown";
 
   function log(...args) {
     console.log(LOG_PREFIX, ...args);
