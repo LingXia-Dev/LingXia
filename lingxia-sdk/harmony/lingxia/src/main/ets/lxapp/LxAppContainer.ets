@@ -4,7 +4,7 @@ import { window } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { LxApp } from './LxApp';
 import { LxAppPopup } from './APIs/LxAppPopup';
-import { findWebview, toWebTag, extractWebTag, WebTagParts, addWebViewUiCallback, removeWebViewUiCallback, WebViewInfo } from './WebView';
+import { findWebview, toWebTag, extractWebTag, addWebViewUiCallback, removeWebViewUiCallback, WebViewInfo, getAllWebViewInfos } from './WebView';
 import { NavigationBar, type NavigationBarState, NAVBAR_TOTAL_HEIGHT } from './NavigationBar';
 import { NavigationButton, CapsuleButton } from './LxAppDrawables';
 import { TabBar } from './TabBar';
@@ -182,19 +182,20 @@ export struct LxAppContainer {
       hilog.info(DOMAIN, TAG, `Set animation type to None for page with ${this.tabBarState.items.length} tabs`);
     }
 
-    // Always set currentWebTag for initial page to ensure visibility
+    // Initial currentWebTag will be promoted from the first 'create' event;
+    // do not assume a specific tag format here to keep instance IDs opaque.
+    this.currentWebTag = '';
     const initialWebTag = toWebTag(this.appId, this.path);
-    this.currentWebTag = initialWebTag;
-    hilog.info(DOMAIN, TAG, `Set initial currentWebTag to: ${initialWebTag} (will be visible when WebView is created)`);
 
-    // Try to find existing WebView for the initial page
-    const initialController = findWebview(this.appId, this.path);
-    if (initialController) {
-      this.storeWebViewComponent(initialWebTag, initialController);
-      hilog.info(DOMAIN, TAG, `Found existing WebView for initial page: ${initialWebTag}`);
-    } else {
-      hilog.info(DOMAIN, TAG, `No existing WebView found for initial page: ${initialWebTag}, will create when needed`);
-    }
+    // Explicitly replay existing WebViews for this appId so containers created
+    // after WebViews still receive 'create' events and can mark currentWebTag.
+    const allInfos: WebViewInfo[] = getAllWebViewInfos();
+    allInfos.forEach((info: WebViewInfo) => {
+      const extracted = extractWebTag(info.webtag);
+      if (extracted && extracted.appId === this.appId) {
+        this.handleWebViewUiEvent('create', info);
+      }
+    });
   }
 
   aboutToDisappear() {
@@ -384,31 +385,55 @@ export struct LxAppContainer {
       case 'create':
         // If popup overlay is currently using this webtag, skip attaching in base to avoid double-attach
         const activePopup = LxAppPopup.getActiveLayout && LxAppPopup.getActiveLayout();
-        if (activePopup && info.webtag === toWebTag(activePopup.appId, activePopup.path)) {
-          hilog.info(DOMAIN, TAG, `Skip base attach for popup webtag: ${info.webtag}`);
-          break;
+        if (activePopup) {
+          const popupLogical = toWebTag(activePopup.appId, activePopup.path);
+          if (info.webtag === popupLogical || info.webtag.startsWith(`${popupLogical}#`)) {
+            hilog.info(DOMAIN, TAG, `Skip base attach for popup webtag: ${info.webtag}`);
+            break;
+          }
         }
         this.webViewComponents.set(info.webtag, info.controller);
         this.webViewKeys = Array.from(this.webViewComponents.keys());
         hilog.info(DOMAIN, TAG, `Stored WebView component: ${info.webtag}, total components: ${this.webViewComponents.size}`);
+
+        // If there is no active WebView for this container (e.g. after restart),
+        // automatically promote the first created WebView to current and trigger page show.
+        if (!this.currentWebTag) {
+          this.currentWebTag = info.webtag;
+          hilog.info(DOMAIN, TAG, `No currentWebTag set; promoting ${info.webtag} as current after create`);
+          this.triggerOnPageShowIfNeeded(info.webtag);
+        }
         break;
       case 'destroy':
         this.webViewComponents.delete(info.webtag);
         this.webViewKeys = Array.from(this.webViewComponents.keys());
 
+        // Allow new WebView instances for this webtag to re-ack creation after destroy
+        this.controllerReadyAcked.delete(info.webtag);
+
         // If the destroyed WebView was currently displayed, switch to another one
-        if (this.currentWebTag === info.webtag) {
-          if (this.webViewKeys.length > 0) {
-            // Switch to the first available WebView
-            this.currentWebTag = this.webViewKeys[0];
-            hilog.info(DOMAIN, TAG, `Destroyed current WebView ${info.webtag}, switched to: ${this.currentWebTag}`);
-          } else {
-            // No WebViews left
-            this.currentWebTag = '';
-            hilog.info(DOMAIN, TAG, `Destroyed last WebView: ${info.webtag}`);
+          if (this.currentWebTag === info.webtag) {
+            if (this.webViewKeys.length > 0) {
+              // Switch to the first available WebView
+              this.currentWebTag = this.webViewKeys[0];
+              hilog.info(DOMAIN, TAG, `Destroyed current WebView ${info.webtag}, switched to: ${this.currentWebTag}`);
+            } else {
+              // No WebViews left
+              this.currentWebTag = '';
+              hilog.info(DOMAIN, TAG, `Destroyed last WebView: ${info.webtag}`);
+            }
           }
-        }
-        break;
+
+          // When all WebViews for this LxApp have been destroyed, reset per-container
+          // lifecycle/animation state so the next open behaves like a fresh instance.
+          if (this.webViewKeys.length === 0) {
+            this.previousWebTag = '';
+            this.animationInProgress = false;
+            this.keepAliveTags = [];
+            this.pageShowTriggered.clear();
+            this.controllerReadyAcked.clear();
+          }
+          break;
       case 'popup_show':
         if (info.webtag.startsWith(`${this.appId}-`)) {
           this.webViewComponents.set(info.webtag, info.controller);
@@ -435,18 +460,6 @@ export struct LxAppContainer {
           hilog.info(DOMAIN, TAG, `Popup overlay cleared for ${info.webtag}`);
         }
         break;
-    }
-  }
-
-  storeWebViewComponent(webTag: string, controller: webview.WebviewController) {
-    hilog.info(DOMAIN, TAG, `Storing Web component for webTag: ${webTag}`);
-    this.webViewComponents.set(webTag, controller);
-    this.webViewKeys = Array.from(this.webViewComponents.keys());
-
-    // If this is the current tab, ensure it's set as current
-    if (webTag === toWebTag(this.appId, this.path)) {
-      this.currentWebTag = webTag;
-      hilog.info(DOMAIN, TAG, `Confirmed as current WebView: ${webTag}, will be visible immediately`);
     }
   }
 
@@ -839,19 +852,37 @@ export struct LxAppContainer {
   private navigateToPage(path: string): boolean {
     hilog.info(DOMAIN, TAG, `navigate: ${this.appId}:${path} with type: ${AnimationType[this.currentAnimationType]}`);
 
-    // Find WebView for the new page
-    const newWebTag = toWebTag(this.appId, path);
+    // Find WebView controller for the new page (logical lookup)
     const webViewController = findWebview(this.appId, path);
 
     if (!webViewController) {
-      hilog.warn(DOMAIN, TAG, `WebView not found for page: ${newWebTag}`);
+      const logicalTag = toWebTag(this.appId, path);
+      hilog.warn(DOMAIN, TAG, `WebView not found for page: ${logicalTag}`);
       return false;
+    }
+
+    // Determine the concrete webTag (Ark-facing) for this controller.
+    // Prefer an existing entry from webViewComponents to keep instance IDs opaque.
+    let newWebTag: string = '';
+    const entries = this.webViewComponents.entries();
+    for (let entry of entries) {
+      const tag = entry[0];
+      const controller = entry[1];
+      if (controller === webViewController) {
+        newWebTag = tag;
+        break;
+      }
+    }
+
+    if (!newWebTag) {
+      // Fallback: use logical tag when no prior UI entry exists.
+      newWebTag = toWebTag(this.appId, path);
     }
 
     // Store previous WebView for animation
     const oldWebTag = this.currentWebTag;
 
-    // Store WebView component first
+    // Ensure WebView component is tracked under the resolved tag
     this.webViewComponents.set(newWebTag, webViewController);
     this.webViewKeys = Array.from(this.webViewComponents.keys());
     this.pageShowTriggered.delete(newWebTag);

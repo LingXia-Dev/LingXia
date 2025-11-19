@@ -121,7 +121,11 @@ impl WebViewController for WebView {
 /// Global WebView instances storage
 static WEBVIEW_INSTANCES: OnceLock<Arc<Mutex<HashMap<String, Arc<WebView>>>>> = OnceLock::new();
 
-/// WebView identifier combining appid and path
+/// WebView identifier combining appid and path.
+/// Internally we allow an optional per-instance suffix after a `#`,
+/// e.g. `appid-path#123`. The base form `appid-path` is used as the
+/// logical key for Rust-side lookups; the full string (with suffix)
+/// is used when talking to ArkTS/ArkWeb.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct WebTag(String);
 
@@ -140,15 +144,20 @@ impl WebTag {
         &self.0
     }
 
+    /// Logical key for this tag (appid-path), with any `#instance` suffix stripped.
+    pub fn key(&self) -> &str {
+        self.0.split('#').next().unwrap_or(&self.0)
+    }
+
     /// Extract appid from the webtag
     pub fn extract_appid(&self) -> String {
-        self.0.split('-').next().unwrap_or("").to_string()
+        self.key().split('-').next().unwrap_or("").to_string()
     }
 
     /// Extract appid and path from WebTag
     /// This will always succeed since WebTag is constructed with a valid format
     pub fn extract_parts(&self) -> (String, String) {
-        self.0
+        self.key()
             .split_once('-')
             .map(|(appid, path)| (appid.to_string(), path.to_string()))
             .unwrap()
@@ -169,15 +178,15 @@ pub fn init_webview_manager() {
 /// Create a WebView instance asynchronously with channel sender
 pub fn create_webview(webtag: &WebTag, sender: Sender<Result<Arc<WebView>, WebViewError>>) {
     let (appid, path) = webtag.extract_parts();
-    log::info!("Creating WebView for webtag: {}", webtag.as_str());
+    log::info!("Creating WebView for webtag: {}", webtag.key());
 
     // Get or initialize the global instances map
     let instances = WEBVIEW_INSTANCES.get_or_init(|| Arc::new(Mutex::new(HashMap::new())));
 
     // Check if WebView already exists
     if let Ok(webviews) = instances.lock() {
-        if let Some(existing_webview) = webviews.get(webtag.as_str()) {
-            log::info!("WebView already exists, reusing: {}", webtag.as_str());
+        if let Some(existing_webview) = webviews.get(webtag.key()) {
+            log::info!("WebView already exists, reusing: {}", webtag.key());
             let _ = sender.send(Ok(existing_webview.clone()));
             return;
         }
@@ -191,8 +200,8 @@ pub(crate) fn register_webview(webview: Arc<WebView>) {
     if let Some(instances) = WEBVIEW_INSTANCES.get() {
         if let Ok(mut webviews) = instances.lock() {
             let webtag = webview.webtag();
-            webviews.insert(webtag.as_str().to_string(), webview.clone());
-            log::info!("WebView created and stored: {}", webtag.as_str());
+            webviews.insert(webtag.key().to_string(), webview.clone());
+            log::info!("WebView created and stored: {}", webtag.key());
         }
     }
 }
@@ -201,7 +210,7 @@ pub(crate) fn register_webview(webview: Arc<WebView>) {
 pub fn find_webview(webtag: &WebTag) -> Option<Arc<WebView>> {
     if let Some(instances) = WEBVIEW_INSTANCES.get() {
         if let Ok(webviews) = instances.lock() {
-            webviews.get(webtag.as_str()).cloned()
+            webviews.get(webtag.key()).cloned()
         } else {
             None
         }
@@ -233,7 +242,7 @@ pub fn get_webview_delegate(webtag: &WebTag) -> Option<Arc<dyn WebViewDelegate>>
 pub fn destroy_webview(webtag: &WebTag) {
     if let Some(instances) = WEBVIEW_INSTANCES.get() {
         if let Ok(mut webviews) = instances.lock() {
-            webviews.remove(webtag.as_str());
+            webviews.remove(webtag.key());
         }
     }
 }

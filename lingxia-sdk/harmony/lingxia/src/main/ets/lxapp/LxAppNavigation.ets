@@ -114,8 +114,10 @@ export struct LxAppNavigation {
         hilog.info(DOMAIN, TAG, `Hiding home LxApp: ${appId}`);
         // Home app should never be closed, but if it happens, don't hide the container
       } else if (appId === this.currentModalAppId) {
-        // Don't clear currentModalAppId to preserve the container and WebView
-        hilog.info(DOMAIN, TAG, `Hiding modal LxApp: ${appId}`);
+        // For modal apps, only hide the container so that the underlying WebViews
+        // remain attached (hidden) and can be reused on the next open. Actual
+        // WebView destruction is driven by Rust via destroyWebViewController.
+        hilog.info(DOMAIN, TAG, `Closing modal LxApp and hiding container: ${appId}`);
         this.modalAppVisible = false;
       }
 

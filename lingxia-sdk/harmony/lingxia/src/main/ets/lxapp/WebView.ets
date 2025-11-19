@@ -48,9 +48,13 @@ export class WebViewManager {
    * @returns true if created successfully, false if already exists or creation failed
    */
   static createWebview(webtag: string): boolean {
-    // Check if already exists
-    if (WebViewManager.controllers.has(webtag)) {
-      hilog.warn(DOMAIN, TAG, `WebView already exists: ${webtag}`);
+    // Normalize to logical tag for registry keys (appid-path)
+    const extracted = extractWebTag(webtag);
+    const logicalTag = extracted ? toWebTag(extracted.appId, extracted.path) : webtag;
+
+    // Check if already exists for this logical page
+    if (WebViewManager.controllers.has(logicalTag)) {
+      hilog.warn(DOMAIN, TAG, `WebView already exists for logical tag: ${logicalTag}`);
       return false;
     }
 
@@ -59,7 +63,7 @@ export class WebViewManager {
       const controller = new webview.WebviewController(webtag);
 
       // Store in map
-      WebViewManager.controllers.set(webtag, controller);
+      WebViewManager.controllers.set(logicalTag, controller);
 
       // Create WebView info
       const webViewInfo: WebViewInfo = {
@@ -67,7 +71,7 @@ export class WebViewManager {
         controller,
         visible: false
       };
-      WebViewManager.webViewInfos.set(webtag, webViewInfo);
+      WebViewManager.webViewInfos.set(logicalTag, webViewInfo);
 
       // Notify all UI components to create component
       WebViewManager.uiCallbacks.forEach(callback => {
@@ -78,7 +82,7 @@ export class WebViewManager {
         }
       });
 
-      hilog.info(DOMAIN, TAG, `Created new WebView: ${webtag}`);
+      hilog.info(DOMAIN, TAG, `Created new WebView: ${webtag} (logical: ${logicalTag})`);
       return true;
     } catch (error) {
       hilog.error(DOMAIN, TAG, `Failed to create WebView ${webtag}: ${error}`);
@@ -93,15 +97,27 @@ export class WebViewManager {
    * @returns WebView controller or null if not found
    */
   static findWebview(appId: string, path: string): webview.WebviewController | null {
-    const webtag = toWebTag(appId, path);
-    const controller = WebViewManager.controllers.get(webtag);
+    const logicalTag = toWebTag(appId, path); // appId-path
 
-    if (controller) {
-      hilog.info(DOMAIN, TAG, `Found existing WebView: ${webtag}`);
-      return controller;
+    // Prefer exact match first
+    const direct = WebViewManager.controllers.get(logicalTag);
+    if (direct) {
+      hilog.info(DOMAIN, TAG, `Found existing WebView (direct): ${logicalTag}`);
+      return direct;
     }
 
-    hilog.info(DOMAIN, TAG, `WebView not found: ${webtag}`);
+    // Fallback: match any controller whose tag shares the logical prefix
+    const entries = WebViewManager.controllers.entries();
+    for (let entry of entries) {
+      const tag = entry[0];
+      const controller = entry[1];
+      if (tag === logicalTag || tag.startsWith(`${logicalTag}#`)) {
+        hilog.info(DOMAIN, TAG, `Found existing WebView (instance): ${tag} for logical ${logicalTag}`);
+        return controller;
+      }
+    }
+
+    hilog.info(DOMAIN, TAG, `WebView not found for logical tag: ${logicalTag}`);
     return null;
   }
 
@@ -112,16 +128,19 @@ export class WebViewManager {
    * @returns true if destroyed successfully, false if not found
    */
   static destroyWebview(webtag: string): boolean {
-    const controller = WebViewManager.controllers.get(webtag);
-    const webViewInfo = WebViewManager.webViewInfos.get(webtag);
+    const extracted = extractWebTag(webtag);
+    const logicalTag = extracted ? toWebTag(extracted.appId, extracted.path) : webtag;
+
+    const controller = WebViewManager.controllers.get(logicalTag);
+    const webViewInfo = WebViewManager.webViewInfos.get(logicalTag);
 
     if (!controller || !webViewInfo) {
-      hilog.warn(DOMAIN, TAG, `WebView not found for destroy: ${webtag}`);
+      hilog.warn(DOMAIN, TAG, `WebView not found for destroy: ${webtag} (logical: ${logicalTag})`);
       return false;
     }
 
-    WebViewManager.controllers.delete(webtag);
-    WebViewManager.webViewInfos.delete(webtag);
+    WebViewManager.controllers.delete(logicalTag);
+    WebViewManager.webViewInfos.delete(logicalTag);
     WebViewManager.uiCallbacks.forEach(callback => {
       try {
         callback('destroy', webViewInfo);
@@ -130,8 +149,9 @@ export class WebViewManager {
       }
     });
 
+    // Notify Rust with the full tag used when the controller was created
     onWebviewControllerDestroyed(webtag);
-    hilog.info(DOMAIN, TAG, `WebViewManager.destroyWebview completed -> webtag=${webtag}`);
+    hilog.info(DOMAIN, TAG, `WebViewManager.destroyWebview completed -> webtag=${webtag} (logical: ${logicalTag})`);
     return true;
   }
 
@@ -198,21 +218,14 @@ export class WebViewManager {
   }
 
   /**
-   * Get WebView controller by webtag (internal use)
-   * @param webtag - WebView tag
-   * @returns WebView controller or null
-   */
-  static getController(webtag: string): webview.WebviewController | null {
-    return WebViewManager.controllers.get(webtag) || null;
-  }
-
-  /**
    * Get WebView info by webtag (internal use)
    * @param webtag - WebView tag
    * @returns WebView info or null
    */
   static getWebViewInfo(webtag: string): WebViewInfo | null {
-    return WebViewManager.webViewInfos.get(webtag) || null;
+    const extracted = extractWebTag(webtag);
+    const logicalTag = extracted ? toWebTag(extracted.appId, extracted.path) : webtag;
+    return WebViewManager.webViewInfos.get(logicalTag) || null;
   }
 
   /**
@@ -299,7 +312,7 @@ export interface WebTagParts {
 
 /**
  * Extract appId and path from webtag
- * @param webtag - WebView tag in format "appId-path"
+ * @param webtag - WebView tag in format "appId-path" or "appId-path#instance"
  * @returns Object with appId and path, or null if invalid format
  */
 export function extractWebTag(webtag: string): WebTagParts | null {
@@ -309,7 +322,9 @@ export function extractWebTag(webtag: string): WebTagParts | null {
   }
 
   const appId = webtag.substring(0, dashIndex);
-  const path = webtag.substring(dashIndex + 1);
+  let pathWithInstance = webtag.substring(dashIndex + 1);
+  const hashIndex = pathWithInstance.indexOf('#');
+  const path = hashIndex === -1 ? pathWithInstance : pathWithInstance.substring(0, hashIndex);
   return { appId: appId, path: path };
 }
 
@@ -361,6 +376,14 @@ export function destroyWebViewController(webtag: string): boolean {
  */
 export function getWebViewInfo(webtag: string): WebViewInfo | null {
   return WebViewManager.getWebViewInfo(webtag);
+}
+
+/**
+ * Get all WebView infos (for UI containers that need to replay existing instances)
+ * @returns Array of WebView infos
+ */
+export function getAllWebViewInfos(): WebViewInfo[] {
+  return WebViewManager.getAllWebViewInfos();
 }
 
 /**
