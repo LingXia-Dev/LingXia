@@ -1,6 +1,8 @@
 use lingxia_messaging::invoke_callback;
 use lingxia_platform::harmony::camera;
-use lingxia_webview::{WebTag, get_webview_delegate, tsfn};
+use lingxia_webview::{
+    WebTag, get_webview_delegate, tsfn, webview_controller_created, webview_controller_destroyed,
+};
 use log::LevelFilter;
 use lxapp::log::LogLevel;
 use lxapp::{LxAppDelegate, UiEventType as LxAppUiEventType};
@@ -438,4 +440,25 @@ pub fn camera_start_photo_with_surface(
 #[napi]
 pub fn camera_take_photo() -> bool {
     camera::camera_take_photo().is_ok()
+}
+
+#[napi]
+pub fn on_webview_controller_created(webtag: String) -> bool {
+    match webview_controller_created(&webtag) {
+        Ok(_) => true,
+        Err(e) => {
+            log::error!(
+                "[Harmony] Failed to process webview created callback for {}: {}",
+                webtag,
+                e
+            );
+            false
+        }
+    }
+}
+
+#[napi]
+pub fn on_webview_controller_destroyed(webtag: String) -> bool {
+    webview_controller_destroyed(&webtag);
+    true
 }

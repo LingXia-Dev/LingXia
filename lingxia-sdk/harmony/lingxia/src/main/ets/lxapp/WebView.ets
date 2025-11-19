@@ -1,6 +1,6 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { webview } from '@kit.ArkWeb';
-import { onPageShow } from 'liblingxia.so';
+import { onWebviewControllerDestroyed } from 'liblingxia.so';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.WebView';
@@ -122,7 +122,6 @@ export class WebViewManager {
 
     WebViewManager.controllers.delete(webtag);
     WebViewManager.webViewInfos.delete(webtag);
-
     WebViewManager.uiCallbacks.forEach(callback => {
       try {
         callback('destroy', webViewInfo);
@@ -131,7 +130,8 @@ export class WebViewManager {
       }
     });
 
-    hilog.info(DOMAIN, TAG, `Destroyed WebView: ${webtag}`);
+    onWebviewControllerDestroyed(webtag);
+    hilog.info(DOMAIN, TAG, `WebViewManager.destroyWebview completed -> webtag=${webtag}`);
     return true;
   }
 
@@ -352,7 +352,15 @@ export function findWebview(appId: string, path: string): webview.WebviewControl
  * @returns true if destroyed successfully
  */
 export function destroyWebViewController(webtag: string): boolean {
-  return WebViewManager.destroyWebview(webtag);
+  const result = WebViewManager.destroyWebview(webtag);
+  return result;
+}
+
+/**
+ * Get WebView info by webtag
+ */
+export function getWebViewInfo(webtag: string): WebViewInfo | null {
+  return WebViewManager.getWebViewInfo(webtag);
 }
 
 /**

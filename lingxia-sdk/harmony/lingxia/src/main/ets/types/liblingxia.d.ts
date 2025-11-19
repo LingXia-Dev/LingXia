@@ -252,5 +252,13 @@ declare module 'liblingxia.so' {
    */
   export function cameraVideoOutputStopAndRelease(): boolean;
 
-  
+  /**
+   * Notify native layer that a WebView controller finished creation.
+   */
+  export function onWebviewControllerCreated(webtag: string): boolean;
+
+  /**
+   * Notify native layer that a WebView controller finished destruction.
+   */
+  export function onWebviewControllerDestroyed(webtag: string): boolean;
 }

@@ -9,7 +9,7 @@ import { NavigationBar, type NavigationBarState, NAVBAR_TOTAL_HEIGHT } from './N
 import { NavigationButton, CapsuleButton } from './LxAppDrawables';
 import { TabBar } from './TabBar';
 import { TabBarPosition, type TabBarItem, UiEventType } from 'liblingxia.so';
-import liblingxia, { TabBarState, getNavigationBarState, onPageShow, onUiEvent } from 'liblingxia.so';
+import liblingxia, { TabBarState, getNavigationBarState, onPageShow, onUiEvent, onWebviewControllerCreated } from 'liblingxia.so';
 import { NAVIGATION_ACTION_BACK, NAVIGATION_ACTION_HOME, CAPSULE_ACTION_MORE, CAPSULE_ACTION_CLOSE } from './NativeBridge';
 import { AnimationType } from './LxAppNavigation';
 
@@ -99,6 +99,7 @@ export struct LxAppContainer {
   @State private currentWebViewTranslateX: number = 0
   @State private previousWebViewTranslateX: number = 0
   @State private navbarTranslateX: number = 0
+  private controllerReadyAcked: Set<string> = new Set()
 
 
   private webViewUiCallback = (action: string, info: WebViewInfo) => {
@@ -1044,8 +1045,11 @@ export struct LxAppContainer {
         .onAppear(() => {
           const overlay = this.isOverlayWebView(webTag);
           hilog.info(DOMAIN, TAG, `WebView component appeared for webTag: ${webTag}, overlay: ${overlay}`);
-          if (this.shouldTriggerOnAppear(webTag)) {
-            this.triggerOnPageShowIfNeeded(webTag);
+          // Do not trigger onPageShow here to avoid duplicates; finishTransition will handle it once.
+          // Notify native only when ArkUI Web component is actually attached
+          if (!this.controllerReadyAcked.has(webTag)) {
+            onWebviewControllerCreated(webTag);
+            this.controllerReadyAcked.add(webTag);
           }
         })
         .width(this.getRenderWidth(webTag))
