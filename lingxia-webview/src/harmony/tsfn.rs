@@ -74,34 +74,3 @@ pub fn call_arkts(name: &str, args: &[&str]) -> Result<(), WebViewError> {
         }
     }
 }
-
-/// Helper function for TSFN calls with callback
-pub fn call_arkts_with_callback<F>(
-    name: &str,
-    args: &[&str],
-    callback: F,
-) -> Result<(), WebViewError>
-where
-    F: FnOnce() + Send + 'static,
-{
-    let tsfn = CALLBACK_TSFN
-        .get()
-        .ok_or_else(|| WebViewError::WebView("No callback".to_string()))?;
-
-    let data = format!("{}|{}", name, args.join("|"));
-
-    // Call ArkTS with return value and wait for completion
-    match tsfn.call_with_return_value(
-        data,
-        ThreadsafeFunctionCallMode::Blocking,
-        |_env, _result| {
-            callback();
-            Ok(())
-        },
-    ) {
-        Status::Ok => Ok(()),
-        _ => Err(WebViewError::WebView(
-            "TSFN call_with_return_value failed".to_string(),
-        )),
-    }
-}

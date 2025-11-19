@@ -43,4 +43,7 @@ pub use webview::{
 pub use android::{get_env, initialize_jni};
 
 #[cfg(all(target_os = "linux", target_env = "ohos"))]
-pub use harmony::{schemehandler::register_custom_schemes, tsfn};
+pub use harmony::{
+    schemehandler::register_custom_schemes, tsfn, webview_controller_created,
+    webview_controller_destroyed,
+};

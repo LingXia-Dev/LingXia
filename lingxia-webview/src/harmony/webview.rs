@@ -1,5 +1,5 @@
 use crate::harmony::schemehandler::set_webview_scheme_handler;
-use crate::harmony::tsfn::{call_arkts, call_arkts_with_callback};
+use crate::harmony::tsfn::call_arkts;
 use crate::webview::{WebTag, find_webview, get_webview_delegate, register_webview};
 use crate::{LogLevel, WebViewController, WebViewError};
 use ohos_web_sys::*;
@@ -8,6 +8,16 @@ use std::cell::RefCell;
 use std::ffi::{CStr, CString, c_char, c_void};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, OnceLock};
+
+// Static C strings for proxy object and method names
+static LINGXIA_PROXY_NAME: &[u8] = b"LingXiaProxy\0";
+static LINGXIA_PROXY_GET_PORT: &[u8] = b"getPort\0";
+
+// Keep proxy method array alive for WebView lifetime
+#[repr(C)]
+struct ProxyStorage {
+    method: Box<[ArkWeb_ProxyMethod; 1]>,
+}
 
 /// Wrapper for API pointers to make them Send + Sync
 #[derive(Debug, Clone, Copy)]
@@ -65,6 +75,10 @@ pub struct WebViewInner {
     creation_sender: Mutex<Option<Sender<Result<Arc<crate::WebView>, WebViewError>>>>,
     // Store user_data pointers for cleanup
     user_data_ptrs: RefCell<Vec<*mut c_void>>,
+    // Keep proxy allocations alive for lifetime
+    proxy_allocs: RefCell<Vec<*mut c_void>>,
+    // Whether lifecycle callbacks have been registered with ArkWeb
+    callbacks_registered: RefCell<bool>,
     // Store scheme handlers for cleanup
     scheme_handlers: RefCell<Vec<*mut ohos_web_sys::ArkWeb_SchemeHandler>>,
 }
@@ -88,6 +102,49 @@ impl std::fmt::Display for PortType {
     }
 }
 
+pub fn webview_controller_created(webtag_str: &str) -> Result<(), WebViewError> {
+    let webtag = WebTag::from(webtag_str);
+    let webview = find_webview(&webtag)
+        .ok_or_else(|| WebViewError::WebView(format!("WebView not found: {}", webtag_str)))?;
+
+    // Register lifecycle callbacks now that controller is created
+    if !*webview.inner.callbacks_registered.borrow() {
+        if let Err(e) = register_webview_callbacks(&webtag) {
+            log::error!(
+                "WebView callback registration failed for {}: {:?}",
+                webtag_str,
+                e
+            );
+        } else {
+            *webview.inner.callbacks_registered.borrow_mut() = true;
+            log::info!("Registered ArkWeb lifecycle callbacks for {}", webtag_str);
+        }
+    }
+
+    // Register JS proxy when ArkTS notifies controller created (page UI attached)
+    // This binds the proxy into the actual page JS world.
+    if let Err(e) = register_proxy_for_webtag(&webtag) {
+        log::warn!(
+            "Failed to register LingXiaProxy at created-ack for {}: {}",
+            webtag_str,
+            e
+        );
+    } else {
+        log::info!("Registered LingXiaProxy at created-ack for {}", webtag_str);
+    }
+
+    if let Ok(mut sender_opt) = webview.inner.creation_sender.lock() {
+        if let Some(sender) = sender_opt.take() {
+            let _ = sender.send(Ok(webview.clone()));
+            log::info!("WebView creation acknowledged for {}", webtag_str);
+        }
+    }
+
+    Ok(())
+}
+
+pub fn webview_controller_destroyed(_webtag: &str) {}
+
 /// Register LingXiaProxy for a specific webtag
 fn register_proxy_for_webtag(webtag: &WebTag) -> Result<(), WebViewError> {
     unsafe {
@@ -102,38 +159,63 @@ fn register_proxy_for_webtag(webtag: &WebTag) -> Result<(), WebViewError> {
         }
         let controller = &*(controller_api as *const ArkWeb_ControllerAPI);
 
-        // Create proxy data pointing to webtag string
-        let webtag_string = webtag.as_str().to_string();
-        let proxy_data = Box::new(webtag_string);
-        let proxy_data_ptr = Box::into_raw(proxy_data) as *mut std::ffi::c_void;
-
-        // Track this allocation for cleanup in the WebView
-        if let Some(webview) = find_webview(webtag) {
-            webview.inner.track_user_data(proxy_data_ptr);
-        }
-
-        let object_name_cstr = CString::new("LingXiaProxy").unwrap();
-        let get_port_cstr = CString::new("getPort").unwrap();
-
-        let method_list = [ArkWeb_ProxyMethod {
-            methodName: get_port_cstr.as_ptr(),
-            callback: Some(get_port_callback),
-            userData: proxy_data_ptr,
-        }];
-
-        let proxy_object = ArkWeb_ProxyObject {
-            objName: object_name_cstr.as_ptr(),
-            methodList: method_list.as_ptr(),
-            size: method_list.len(),
-        };
-
         if let Some(register_proxy) = controller.registerJavaScriptProxy {
+            // If storage already exists, reuse it to rebind into current page JS world
+            if let Some(wv) = find_webview(webtag) {
+                let allocs = wv.inner.proxy_allocs.borrow_mut();
+                if let Some(p) = allocs.get(0) {
+                    let storage = *p as *mut ProxyStorage;
+                    let proxy_object = ArkWeb_ProxyObject {
+                        objName: LINGXIA_PROXY_NAME.as_ptr() as *const c_char,
+                        methodList: (*storage).method.as_ptr(),
+                        size: (*storage).method.len(),
+                    };
+                    register_proxy(webtag_cstr.as_ptr(), &proxy_object);
+                    log::info!(
+                        "Re-registered LingXiaProxy for {} (page context)",
+                        webtag.as_str()
+                    );
+                    return Ok(());
+                }
+            }
+
+            // First-time allocation path
+            let webtag_string = webtag.as_str().to_string();
+            let proxy_data = Box::new(webtag_string);
+            let proxy_data_ptr = Box::into_raw(proxy_data) as *mut std::ffi::c_void;
+
+            let storage = Box::new(ProxyStorage {
+                method: Box::new([ArkWeb_ProxyMethod {
+                    methodName: LINGXIA_PROXY_GET_PORT.as_ptr() as *const c_char,
+                    callback: Some(get_port_callback),
+                    userData: proxy_data_ptr,
+                }]),
+            });
+            let storage = Box::into_raw(storage);
+
+            let proxy_object = ArkWeb_ProxyObject {
+                objName: LINGXIA_PROXY_NAME.as_ptr() as *const c_char,
+                methodList: (*storage).method.as_ptr(),
+                size: (*storage).method.len(),
+            };
             register_proxy(webtag_cstr.as_ptr(), &proxy_object);
+
+            // Keep allocations alive for WebView lifetime
+            if let Some(webview) = find_webview(webtag) {
+                webview
+                    .inner
+                    .proxy_allocs
+                    .borrow_mut()
+                    .push(storage as *mut c_void);
+                webview
+                    .inner
+                    .user_data_ptrs
+                    .borrow_mut()
+                    .push(proxy_data_ptr);
+            }
             log::info!("Registered LingXiaProxy for {}", webtag.as_str());
             Ok(())
         } else {
-            // Cleanup manually since registration failed
-            let _ = Box::from_raw(proxy_data_ptr as *mut String);
             Err(WebViewError::WebView(
                 "registerJavaScriptProxy not available".to_string(),
             ))
@@ -149,6 +231,7 @@ unsafe extern "C" fn get_port_callback(
     user_data: *mut std::ffi::c_void,
 ) {
     if user_data.is_null() || data_count < 1 || bridge_data.is_null() {
+        log::warn!("get_port_callback missing user_data or args");
         return;
     }
 
@@ -158,14 +241,46 @@ unsafe extern "C" fn get_port_callback(
         let type_data = &*bridge_data.offset(0);
 
         if let Some(port_type_str) = extract_string_from_bridge_data(type_data) {
-            // Trigger sending the appropriate port
+            // Ensure ports exist; create on-demand if onPageBegin hasn't run yet
             match port_type_str.as_str() {
                 "ConsolePort" => {
+                    let need_setup = find_webview(&webtag)
+                        .map(|wv| wv.inner.webview_console_port.borrow().is_none())
+                        .unwrap_or(true);
+                    if need_setup {
+                        if let Err(e) = setup_webmessage_port_for_webtag(
+                            &webtag,
+                            PortType::Console,
+                            on_console_message_received,
+                        ) {
+                            log::error!(
+                                "On-demand console port setup failed for {}: {}",
+                                webtag.as_str(),
+                                e
+                            );
+                        }
+                    }
                     if let Err(e) = send_port_to_webview_for_webtag(&webtag, PortType::Console) {
                         log::error!("Failed to send console port: {}", e);
                     }
                 }
                 "LingXiaPort" => {
+                    let need_setup = find_webview(&webtag)
+                        .map(|wv| wv.inner.webview_native_port.borrow().is_none())
+                        .unwrap_or(true);
+                    if need_setup {
+                        if let Err(e) = setup_webmessage_port_for_webtag(
+                            &webtag,
+                            PortType::Message,
+                            on_web_message_received,
+                        ) {
+                            log::error!(
+                                "On-demand message port setup failed for {}: {}",
+                                webtag.as_str(),
+                                e
+                            );
+                        }
+                    }
                     if let Err(e) = send_port_to_webview_for_webtag(&webtag, PortType::Message) {
                         log::error!("Failed to send message port: {}", e);
                     }
@@ -220,6 +335,8 @@ impl WebViewInner {
             webview_console_port: RefCell::new(None),
             creation_sender: Mutex::new(Some(sender)),
             user_data_ptrs: RefCell::new(Vec::new()),
+            proxy_allocs: RefCell::new(Vec::new()),
+            callbacks_registered: RefCell::new(false),
             scheme_handlers: RefCell::new(Vec::new()),
         };
 
@@ -231,32 +348,11 @@ impl WebViewInner {
         ));
         register_webview(webview.clone());
 
-        // The real notification happens in `on_controller_attached_callback`.
-        let webtag_for_callback = webtag.clone();
-        let callback = move || {
-            // We must register the callbacks here, after the tsfn has been called
-            if let Err(e) = set_webview_scheme_handler(&webtag_for_callback) {
-                log::error!(
-                    "Failed to set scheme handler for {}: {}",
-                    webtag_for_callback.as_str(),
-                    e
-                );
-            }
-            if let Err(e) = register_webview_callbacks(&webtag_for_callback) {
-                log::error!(
-                    "WebView callback registration failed for {}: {:?}",
-                    webtag_for_callback.as_str(),
-                    e
-                );
-            }
-        };
-
-        // Call ArkTS to create the WebView controller.
-        if let Err(e) =
-            call_arkts_with_callback("createWebViewController", &[webtag.as_str()], callback)
-        {
+        // Call ArkTS to create the WebView controller via TSFN (no callback path).
+        // ArkTS will notify native through onWebviewControllerCreated(webtag)
+        // once the ArkUI Web component is actually attached (onAppear).
+        if let Err(e) = call_arkts("createWebViewController", &[webtag.as_str()]) {
             log::error!("Failed to call createWebViewController: {}", e);
-            // If the call fails, we need to retrieve the sender and notify the caller
             if let Some(webview) = find_webview(&webtag) {
                 if let Ok(mut sender_opt) = webview.inner.creation_sender.lock() {
                     if let Some(s) = sender_opt.take() {
@@ -264,6 +360,16 @@ impl WebViewInner {
                     }
                 }
             }
+            return;
+        }
+
+        // Register scheme handler immediately
+        if let Err(e) = set_webview_scheme_handler(&webtag) {
+            log::error!(
+                "Failed to set scheme handler for {}: {}",
+                webtag.as_str(),
+                e
+            );
         }
     }
 
@@ -322,6 +428,57 @@ impl WebViewInner {
         }
     }
 
+    /// Cleanup WebMessage ports
+    fn cleanup_webmessage_ports(&self) {
+        unsafe {
+            // Get port API if available
+            if let Ok(port_api) = get_port_api() {
+                let mut cleanup_count = 0;
+                let webtag_cstr = CString::new(self.webtag.as_str()).unwrap();
+
+                // Cleanup native message port
+                if let Some(port) = self.native_port.borrow_mut().take() {
+                    if let Some(close_fn) = port_api.close {
+                        close_fn(port, webtag_cstr.as_ptr() as *const u8);
+                        cleanup_count += 1;
+                    }
+                }
+
+                // Cleanup webview message port
+                if let Some(port) = self.webview_native_port.borrow_mut().take() {
+                    if let Some(close_fn) = port_api.close {
+                        close_fn(port, webtag_cstr.as_ptr() as *const u8);
+                        cleanup_count += 1;
+                    }
+                }
+
+                // Cleanup console port
+                if let Some(port) = self.console_port.borrow_mut().take() {
+                    if let Some(close_fn) = port_api.close {
+                        close_fn(port, webtag_cstr.as_ptr() as *const u8);
+                        cleanup_count += 1;
+                    }
+                }
+
+                // Cleanup webview console port
+                if let Some(port) = self.webview_console_port.borrow_mut().take() {
+                    if let Some(close_fn) = port_api.close {
+                        close_fn(port, webtag_cstr.as_ptr() as *const u8);
+                        cleanup_count += 1;
+                    }
+                }
+
+                if cleanup_count > 0 {
+                    log::info!(
+                        "Cleaned up {} WebMessage ports for {}",
+                        cleanup_count,
+                        self.webtag.as_str()
+                    );
+                }
+            }
+        }
+    }
+
     /// Send port to WebView
     pub fn send_port(&self, port_type: PortType) -> Result<(), WebViewError> {
         unsafe {
@@ -335,28 +492,36 @@ impl WebViewInner {
             }
             let controller = &*(controller_api as *const ArkWeb_ControllerAPI);
 
-            let (port, message, port_name) = match port_type {
+            // Use borrow() instead of take() - we need to keep the port reference
+            let (port_opt, message, port_name) = match port_type {
                 PortType::Console => (
-                    self.webview_console_port.borrow_mut().take(),
+                    *self.webview_console_port.borrow(),
                     "LingXia-console-init",
                     "console",
                 ),
                 PortType::Message => (
-                    self.webview_native_port.borrow_mut().take(),
+                    *self.webview_native_port.borrow(),
                     "LingXia-port-init",
                     "message",
                 ),
             };
 
-            if let Some(webview_port) = port {
+            if let Some(webview_port) = port_opt {
+                // Prepare stable CStrings for the call duration
+                let msg_cstr = CString::new(message).unwrap();
+                let target_cstr = CString::new("*").unwrap();
+
+                // Create a mutable copy of the port pointer for the API call
+                let mut port_array = [webview_port];
+
                 let result = controller.postWebMessage.ok_or_else(|| {
                     WebViewError::WebView("postWebMessage not available".to_string())
                 })?(
                     webtag_cstr.as_ptr(),
-                    CString::new(message).unwrap().as_ptr(),
-                    [webview_port].as_mut_ptr(),
+                    msg_cstr.as_ptr(),
+                    port_array.as_mut_ptr(),
                     1,
-                    CString::new("*").unwrap().as_ptr(),
+                    target_cstr.as_ptr(),
                 );
 
                 if result == 0 {
@@ -490,65 +655,100 @@ impl WebViewController for WebViewInner {
         let port = *self.native_port.borrow();
 
         if let Some(port) = port {
-            unsafe {
-                let webtag_cstr = CString::new(self.webtag.as_str()).unwrap();
-                let message_cstr = CString::new(message.clone()).unwrap();
+            let webtag_cstr = CString::new(self.webtag.as_str()).unwrap();
 
-                // Get cached APIs
-                let port_api = get_port_api()?;
-                let message_api = get_message_api()?;
+            let port_api = get_port_api()?;
+            let message_api = get_message_api()?;
 
-                // Create WebMessage
-                let create_fn = message_api.createWebMessage.ok_or_else(|| {
-                    WebViewError::WebView("createWebMessage not available".to_string())
-                })?;
-                let web_message = create_fn();
+            // Create WebMessage
+            let create_fn = message_api.createWebMessage.ok_or_else(|| {
+                WebViewError::WebView("createWebMessage not available".to_string())
+            })?;
+            let web_message = unsafe { create_fn() };
 
-                if web_message.is_null() {
-                    return Err(WebViewError::WebView(
-                        "Failed to create WebMessage".to_string(),
-                    ));
-                }
+            if web_message.is_null() {
+                log::error!(
+                    "post_message: createWebMessage returned null for {}",
+                    self.webtag.as_str()
+                );
+                return Err(WebViewError::WebView(
+                    "Failed to create WebMessage".to_string(),
+                ));
+            }
 
-                // Set message type to string
-                if let Some(set_type) = message_api.setType {
+            // Set message type to string
+            if let Some(set_type) = message_api.setType {
+                unsafe {
                     set_type(web_message, ArkWeb_WebMessageType_ARKWEB_STRING);
                 }
+            } else {
+                log::warn!("setType not available in WebMessage API");
+            }
 
-                // Set message data
-                if let Some(set_data) = message_api.setData {
+            // Build a C string buffer that includes a trailing NUL byte.
+            // Length passed to ArkWeb follows the official C example: len + 1.
+            let c_string = match CString::new(message) {
+                Ok(s) => s,
+                Err(e) => {
+                    log::error!(
+                        "post_message failed to build CString for {}: {:?}",
+                        self.webtag.as_str(),
+                        e
+                    );
+                    return Err(WebViewError::WebView(
+                        "Failed to build CString for message".to_string(),
+                    ));
+                }
+            };
+            let bytes_with_nul = c_string.as_bytes_with_nul();
+            let byte_len_with_nul = bytes_with_nul.len();
+
+            // Set message data with length INCLUDING trailing NUL to match C sample
+            if let Some(set_data) = message_api.setData {
+                unsafe {
                     set_data(
                         web_message,
-                        message_cstr.as_ptr() as *mut std::ffi::c_void,
-                        message.len() + 1,
+                        c_string.as_ptr() as *mut std::ffi::c_void,
+                        byte_len_with_nul,
                     );
                 }
+            } else {
+                log::error!("setData not available in WebMessage API");
+                return Err(WebViewError::WebView("setData not available".to_string()));
+            }
 
-                // Post message using the existing port
-                let result = port_api.postMessage.ok_or_else(|| {
-                    WebViewError::WebView("postMessage not available".to_string())
-                })?(port, webtag_cstr.as_ptr(), web_message);
+            // Post message using the existing port
+            let result = if let Some(post) = port_api.postMessage {
+                unsafe { post(port, webtag_cstr.as_ptr(), web_message) }
+            } else {
+                return Err(WebViewError::WebView(
+                    "postMessage not available".to_string(),
+                ));
+            };
 
-                // Clean up the created message
-                if let Some(destroy_message) = message_api.destroyWebMessage {
-                    let mut msg_ptr = web_message;
+            // Destroy WebMessage after post, mirroring C example
+            if let Some(destroy_message) = message_api.destroyWebMessage {
+                let mut msg_ptr = web_message;
+                unsafe {
                     destroy_message(&mut msg_ptr as *mut *mut ArkWeb_WebMessage);
                 }
-
-                if result != ArkWeb_ErrorCode_ARKWEB_SUCCESS {
-                    return Err(WebViewError::WebView(format!(
-                        "Failed to post message via port: error {:?}",
-                        result
-                    )));
-                }
-
-                // log::info!(
-                //     "Successfully posted message via native WebMessagePort for {}",
-                //     self.webtag
-                // );
-                Ok(())
             }
+
+            if result != ArkWeb_ErrorCode_ARKWEB_SUCCESS {
+                log::error!(
+                    "post_message failed for {}: status={:?}",
+                    self.webtag.as_str(),
+                    result
+                );
+                return Err(WebViewError::WebView(format!(
+                    "Failed to post message via port: error {:?}",
+                    result
+                )));
+            }
+
+            Ok(())
         } else {
+            log::warn!("post_message: no native_port for {}", self.webtag.as_str());
             return Err(WebViewError::WebView(
                 "No native port available for post_message".to_string(),
             ));
@@ -561,9 +761,22 @@ impl Drop for WebViewInner {
         // Cleanup all tracked scheme handlers first
         self.cleanup_scheme_handlers();
 
+        // Cleanup WebMessage ports
+        self.cleanup_webmessage_ports();
+
         // Cleanup all tracked user_data
         self.cleanup_user_data();
 
+        // Free proxy allocations
+        let proxies = self.proxy_allocs.borrow_mut().drain(..).collect::<Vec<_>>();
+        for p in proxies {
+            unsafe {
+                // Recreate to drop method array (ProxyStorage)
+                let _ = Box::from_raw(p as *mut ProxyStorage);
+            }
+        }
+
+        // Ask ArkTS to destroy the controller; ArkTS will notify native via onWebviewControllerDestroyed
         if let Err(e) = call_arkts("destroyWebViewController", &[self.webtag.as_str()]) {
             log::error!("Failed to destroy WebView controller: {:?}", e);
         }
@@ -631,32 +844,7 @@ fn register_webview_callbacks(webtag: &WebTag) -> Result<(), WebViewError> {
 // WebView lifecycle callback functions
 extern "C" fn on_controller_attached_callback(web_tag: *const c_char, _user_data: *mut c_void) {
     if let Ok(webtag_str) = unsafe { CStr::from_ptr(web_tag).to_str() } {
-        let webtag = WebTag::from(webtag_str);
         log::info!("WebView controller attached: {}", webtag_str);
-
-        // Find the webview and send the creation notification
-        if let Some(webview) = find_webview(&webtag) {
-            if let Ok(mut sender_opt) = webview.inner.creation_sender.lock() {
-                if let Some(sender) = sender_opt.take() {
-                    let _ = sender.send(Ok(webview.clone()));
-                    log::info!("Sent WebView creation notification for {}", webtag_str);
-                }
-            }
-
-            // Register LingXiaProxy now that the controller is attached
-            if let Err(e) = register_proxy_for_webtag(&webtag) {
-                log::error!(
-                    "Failed to register LingXiaProxy in onAttach for {}: {}",
-                    webtag_str,
-                    e
-                );
-            }
-        } else {
-            log::error!(
-                "Could not find WebView to send creation notification for {}",
-                webtag_str
-            );
-        }
     }
 }
 
@@ -667,25 +855,10 @@ extern "C" fn on_page_begin_callback(web_tag: *const c_char, user_data: *mut c_v
         let webtag_string = unsafe { &*(user_data as *const String) };
         let webtag = WebTag::from(webtag_string.as_str());
 
-        // Setup ports when page begins loading - WebView is fully ready now
+        // Only inject console interception script; port setup is deferred to get_port_callback
         if !user_data.is_null() {
-            // Setup console and message ports
             if let Err(e) = inject_console_script(&webtag) {
                 log::error!("Failed to inject console script for {}: {}", webtag_str, e);
-            }
-            if let Err(e) = setup_webmessage_port_for_webtag(
-                &webtag,
-                PortType::Console,
-                on_console_message_received,
-            ) {
-                log::error!("Failed to setup console port for {}: {}", webtag_str, e);
-            }
-            if let Err(e) = setup_webmessage_port_for_webtag(
-                &webtag,
-                PortType::Message,
-                on_web_message_received,
-            ) {
-                log::error!("Failed to setup message port for {}: {}", webtag_str, e);
             }
         }
 
@@ -701,6 +874,7 @@ extern "C" fn on_page_end_callback(web_tag: *const c_char, _user_data: *mut c_vo
 
         // Extract app_id and path from webtag
         let webtag = WebTag::from(webtag);
+
         if let Some(delegate) = get_webview_delegate(&webtag) {
             delegate.on_page_finished();
         }
@@ -902,24 +1076,50 @@ extern "C" fn on_web_message_received(
         let message_api =
             OH_ArkWeb_GetNativeAPI(ArkWeb_NativeAPIVariantKind_ARKWEB_NATIVE_WEB_MESSAGE);
         if message_api.is_null() {
+            log::error!("Failed to get WebMessage API in on_web_message_received");
             return;
         }
 
         let api = &*(message_api as *const ArkWeb_WebMessageAPI);
-        let Some(get_data) = api.getData else { return };
+
+        // Check message type first
+        if let Some(get_type) = api.getType {
+            let msg_type = get_type(message);
+            if msg_type != ArkWeb_WebMessageType_ARKWEB_STRING {
+                log::warn!(
+                    "Received non-string message type {:?} for {}",
+                    msg_type,
+                    webtag.as_str()
+                );
+            }
+        }
+
+        let Some(get_data) = api.getData else {
+            log::error!("getData not available in WebMessage API");
+            return;
+        };
 
         let mut data_length: usize = 0;
         let data_ptr = get_data(message, &mut data_length);
         if data_ptr.is_null() || data_length == 0 {
+            log::warn!(
+                "Received empty or null message for {} (ptr={:?}, len={})",
+                webtag.as_str(),
+                data_ptr,
+                data_length
+            );
             return;
         }
 
         let data_slice = std::slice::from_raw_parts(data_ptr as *const u8, data_length);
         let Ok(msg_str) = std::str::from_utf8(data_slice) else {
+            log::error!(
+                "Failed to parse UTF-8 message for {} (len={})",
+                webtag.as_str(),
+                data_length
+            );
             return;
         };
-
-        //log::info!("WebMessage received from {}: {}", webtag, msg_str);
 
         // Forward to delegate
         let webtag = WebTag::new(&appid, &path);
