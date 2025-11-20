@@ -181,7 +181,7 @@ impl LingXiaNavigationDelegate {
         }
     }
     pub fn new(appid: String, path: String, mtm: MainThreadMarker) -> Retained<Self> {
-        let webtag = WebTag::new(&appid, &path);
+        let webtag = WebTag::new(&appid, &path, None);
         let delegate = mtm
             .alloc::<LingXiaNavigationDelegate>()
             .set_ivars(LingXiaNavigationDelegateIvars { webtag });
@@ -195,7 +195,7 @@ pub struct WebViewInner {
     _navigation_delegate: Retained<LingXiaNavigationDelegate>,
     _message_handler: Retained<LingXiaMessageHandler>,
     _scroll_delegate: std::cell::RefCell<Option<Retained<LingXiaScrollDelegate>>>,
-    webtag: WebTag,
+    pub(crate) webtag: WebTag,
 }
 
 impl std::fmt::Debug for WebViewInner {
@@ -218,6 +218,7 @@ impl WebViewInner {
     pub(crate) fn create(
         appid: &str,
         path: &str,
+        session_id: Option<u64>,
         sender: Sender<Result<Arc<crate::WebView>, WebViewError>>,
     ) {
         let appid_owned = appid.to_string();
@@ -226,12 +227,19 @@ impl WebViewInner {
         // Check if we're already on the main thread
         if let Some(mtm) = MainThreadMarker::new() {
             // Already on main thread, create directly
-            Self::create_and_register_sync(&appid_owned, &path_owned, mtm, sender);
+            Self::create_and_register_sync(&appid_owned, &path_owned, session_id, mtm, sender);
         } else {
             // Not on main thread, dispatch to main thread
+            let session_id_copy = session_id;
             DispatchQueue::main().exec_async(move || match MainThreadMarker::new() {
                 Some(mtm) => {
-                    Self::create_and_register_sync(&appid_owned, &path_owned, mtm, sender);
+                    Self::create_and_register_sync(
+                        &appid_owned,
+                        &path_owned,
+                        session_id_copy,
+                        mtm,
+                        sender,
+                    );
                 }
                 None => {
                     let error = WebViewError::WebView(
@@ -253,19 +261,16 @@ impl WebViewInner {
     fn create_and_register_sync(
         appid: &str,
         path: &str,
+        session_id: Option<u64>,
         mtm: MainThreadMarker,
         sender: Sender<Result<Arc<crate::WebView>, WebViewError>>,
     ) {
-        let result = Self::create_with_marker(appid, path, mtm);
+        let result = Self::create_with_marker(appid, path, session_id, mtm);
 
         match result {
             Ok(webview_inner) => {
                 // Wrap WebViewInner in WebView
-                let webview = Arc::new(crate::WebView::new(
-                    webview_inner,
-                    appid.to_string(),
-                    path.to_string(),
-                ));
+                let webview = Arc::new(crate::WebView::new(webview_inner));
 
                 // Register the WebView instance for future lookups
                 crate::webview::register_webview(webview.clone());
@@ -284,6 +289,7 @@ impl WebViewInner {
     fn create_with_marker(
         appid: &str,
         path: &str,
+        session_id: Option<u64>,
         mtm: MainThreadMarker,
     ) -> Result<Self, WebViewError> {
         unsafe {
@@ -322,7 +328,7 @@ impl WebViewInner {
             }
 
             // Register custom scheme handler for lx:// URLs bound to this WebView
-            let webtag = WebTag::new(appid, path);
+            let webtag = WebTag::new(appid, path, session_id);
             if let Some(scheme_handler) =
                 super::schemehandler::LingXiaSchemeHandler::new(webtag.clone())
             {
@@ -391,7 +397,6 @@ impl WebViewInner {
             let message_handler = Self::setup_message_handler(webview, &appid, &path)?;
 
             // Create WebViewInner instance with navigation delegate and message handler
-            let webtag = WebTag::new(appid, path);
             let webview_inner = WebViewInner {
                 webview,
                 _navigation_delegate: navigation_delegate,
@@ -1005,7 +1010,7 @@ impl LingXiaMessageHandler {
     fn handle_bridge_message(&self, message: String) {
         let ivars = self.ivars();
 
-        let webtag = WebTag::new(&ivars.appid, &ivars.path);
+        let webtag = WebTag::new(&ivars.appid, &ivars.path, None);
         if let Some(delegate) = get_webview_delegate(&webtag) {
             delegate.handle_post_message(message);
         }
@@ -1028,7 +1033,7 @@ impl LingXiaMessageHandler {
                     _ => LogLevel::Info,
                 };
 
-                let webtag = WebTag::new(&ivars.appid, &ivars.path);
+                let webtag = WebTag::new(&ivars.appid, &ivars.path, None);
                 if let Some(delegate) = get_webview_delegate(&webtag) {
                     delegate.log(log_level, console_message);
                 }
@@ -1088,7 +1093,7 @@ define_class!(
                 let _max_scroll_y = (content_size.height - frame_size.height).max(0.0) as i32;
 
                 // Call delegate's on_page_scroll_changed
-                let webtag = WebTag::new(&self.ivars().appid, &self.ivars().path);
+                let webtag = WebTag::new(&self.ivars().appid, &self.ivars().path, None);
                 if let Some(delegate) = get_webview_delegate(&webtag) {
                     delegate.on_page_scroll_changed(
                         scroll_x,

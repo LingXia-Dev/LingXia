@@ -16,35 +16,31 @@ use crate::{WebViewController, WebViewDelegate, WebViewError};
 /// WebView type that includes inner implementation and delegate
 pub struct WebView {
     pub(crate) inner: WebViewInner,
-    appid: String,
-    path: String,
     // Hold a strong reference to the delegate; PageInner::drop removes it to break cycles
     delegate: RwLock<Option<Arc<dyn WebViewDelegate>>>,
 }
 
 impl WebView {
-    pub(crate) fn new(inner: WebViewInner, appid: String, path: String) -> Self {
+    pub(crate) fn new(inner: WebViewInner) -> Self {
         Self {
             inner,
-            appid,
-            path,
             delegate: RwLock::new(None),
         }
     }
 
     /// Get the appid
-    pub fn appid(&self) -> &str {
-        &self.appid
+    pub fn appid(&self) -> String {
+        self.inner.webtag.extract_appid()
     }
 
     /// Get the path
-    pub fn path(&self) -> &str {
-        &self.path
+    pub fn path(&self) -> String {
+        self.inner.webtag.extract_parts().1
     }
 
     /// Get the webtag (computed from appid and path)
     pub fn webtag(&self) -> WebTag {
-        WebTag::new(&self.appid, &self.path)
+        self.inner.webtag.clone()
     }
 
     /// Set delegate for this WebView
@@ -122,10 +118,10 @@ impl WebViewController for WebView {
 static WEBVIEW_INSTANCES: OnceLock<Arc<Mutex<HashMap<String, Arc<WebView>>>>> = OnceLock::new();
 
 /// WebView identifier combining appid and path.
-/// Internally we allow an optional per-instance suffix after a `#`,
-/// e.g. `appid-path#123`. The base form `appid-path` is used as the
-/// logical key for Rust-side lookups; the full string (with suffix)
-/// is used when talking to ArkTS/ArkWeb.
+/// Internally we allow an optional suffix after a `#` that encodes the
+/// LxApp session id (e.g. `appid-path#123`). The base form `appid-path`
+/// is used as the logical key for Rust-side lookups; the full string
+/// (with suffix) is used when talking to ArkTS/ArkWeb.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct WebTag(String);
 
@@ -136,8 +132,13 @@ impl std::fmt::Display for WebTag {
 }
 
 impl WebTag {
-    pub fn new(appid: &str, path: &str) -> Self {
-        Self(format!("{}-{}", appid, path))
+    pub fn new(appid: &str, path: &str, session_id: Option<u64>) -> Self {
+        let mut tag = format!("{}-{}", appid, path);
+        if let Some(session) = session_id {
+            tag.push('#');
+            tag.push_str(&session.to_string());
+        }
+        Self(tag)
     }
 
     pub fn as_str(&self) -> &str {
@@ -161,6 +162,14 @@ impl WebTag {
             .split_once('-')
             .map(|(appid, path)| (appid.to_string(), path.to_string()))
             .unwrap()
+    }
+
+    /// Extract session id (if present) from the webtag
+    pub fn session_id(&self) -> Option<u64> {
+        self.0
+            .split('#')
+            .nth(1)
+            .and_then(|raw| raw.parse::<u64>().ok())
     }
 }
 
@@ -193,7 +202,7 @@ pub fn create_webview(webtag: &WebTag, sender: Sender<Result<Arc<WebView>, WebVi
     }
 
     // Delegate WebView creation to the platform-specific implementation
-    WebViewInner::create(&appid, &path, sender);
+    WebViewInner::create(&appid, &path, webtag.session_id(), sender);
 }
 
 pub(crate) fn register_webview(webview: Arc<WebView>) {

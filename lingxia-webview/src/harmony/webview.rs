@@ -6,7 +6,6 @@ use ohos_web_sys::*;
 
 use std::cell::RefCell;
 use std::ffi::{CStr, CString, c_char, c_void};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -29,10 +28,6 @@ unsafe impl<T> Sync for ApiPtr<T> {}
 /// Global cached APIs - initialized once and reused
 static PORT_API: OnceLock<ApiPtr<ArkWeb_WebMessagePortAPI>> = OnceLock::new();
 static MESSAGE_API: OnceLock<ApiPtr<ArkWeb_WebMessageAPI>> = OnceLock::new();
-
-/// Per-process instance ID generator used to disambiguate ArkWeb controller tags
-/// for the same logical (appid, path) across restarts.
-static NEXT_INSTANCE_ID: AtomicU64 = AtomicU64::new(1);
 
 /// Get cached WebMessagePort API
 fn get_port_api() -> Result<&'static ArkWeb_WebMessagePortAPI, WebViewError> {
@@ -72,9 +67,7 @@ fn get_message_api() -> Result<&'static ArkWeb_WebMessageAPI, WebViewError> {
 
 #[derive(Debug)]
 pub struct WebViewInner {
-    webtag: WebTag,
-    /// ArkWeb/ArkTS-facing tag; may include an instance suffix (e.g. appid-path#123)
-    ark_tag: String,
+    pub(crate) webtag: WebTag,
     native_port: RefCell<Option<*mut ArkWeb_WebMessagePort>>,
     console_port: RefCell<Option<*mut ArkWeb_WebMessagePort>>,
     webview_native_port: RefCell<Option<*mut ArkWeb_WebMessagePort>>,
@@ -344,18 +337,21 @@ impl WebViewInner {
     pub fn create(
         appid: &str,
         path: &str,
+        session_id: Option<u64>,
         sender: Sender<Result<Arc<crate::WebView>, WebViewError>>,
     ) {
-        let webtag = WebTag::new(appid, path);
-        // Build an ArkWeb/ArkTS-facing tag with a per-instance suffix so that
-        // multiple lifetimes of the same logical (appid, path) do not collide.
-        let instance_id = NEXT_INSTANCE_ID.fetch_add(1, Ordering::Relaxed);
-        let ark_tag = format!("{}#{}", webtag.as_str(), instance_id);
+        if session_id.is_none() {
+            log::warn!(
+                "Creating Harmony WebView without session id for {}-{}",
+                appid,
+                path
+            );
+        }
+        let webtag = WebTag::new(appid, path, session_id);
 
         // Create WebView instance, storing the sender
         let webview_inner = WebViewInner {
             webtag: webtag.clone(),
-            ark_tag: ark_tag.clone(),
             native_port: RefCell::new(None),
             console_port: RefCell::new(None),
             webview_native_port: RefCell::new(None),
@@ -368,17 +364,13 @@ impl WebViewInner {
         };
 
         // Create WebView wrapper and register it
-        let webview = Arc::new(crate::WebView::new(
-            webview_inner,
-            appid.to_string(),
-            path.to_string(),
-        ));
+        let webview = Arc::new(crate::WebView::new(webview_inner));
         register_webview(webview.clone());
 
         // Call ArkTS to create the WebView controller via TSFN (no callback path).
         // ArkTS will notify native through onWebviewControllerCreated(webtag)
         // once the ArkUI Web component is actually attached (onAppear).
-        if let Err(e) = call_arkts("createWebViewController", &[&ark_tag]) {
+        if let Err(e) = call_arkts("createWebViewController", &[webtag.as_str()]) {
             log::error!("Failed to call createWebViewController: {}", e);
             if let Some(webview) = find_webview(&webtag) {
                 if let Ok(mut sender_opt) = webview.inner.creation_sender.lock() {
@@ -390,14 +382,11 @@ impl WebViewInner {
             return;
         }
 
-        // Register scheme handler immediately
-        // Use the Ark-facing tag when registering scheme handlers so ArkWeb
-        // callbacks carry the same tag string.
-        let ark_webtag = WebTag::from(ark_tag.as_str());
-        if let Err(e) = set_webview_scheme_handler(&ark_webtag) {
+        // Register scheme handler immediately using the Ark-facing tag (webtag)
+        if let Err(e) = set_webview_scheme_handler(&webtag) {
             log::error!(
                 "Failed to set scheme handler for {}: {}",
-                ark_tag.as_str(),
+                webtag.as_str(),
                 e
             );
         }
@@ -513,7 +502,7 @@ impl WebViewInner {
     pub fn send_port(&self, port_type: PortType) -> Result<(), WebViewError> {
         unsafe {
             // Use the Ark-facing tag when talking to ArkWeb
-            let webtag_cstr = CString::new(self.ark_tag.as_str()).unwrap();
+            let webtag_cstr = CString::new(self.webtag.as_str()).unwrap();
             let controller_api =
                 OH_ArkWeb_GetNativeAPI(ArkWeb_NativeAPIVariantKind_ARKWEB_NATIVE_CONTROLLER);
             if controller_api.is_null() {
@@ -580,7 +569,7 @@ impl WebViewInner {
 
 impl WebViewController for WebViewInner {
     fn load_url(&self, url: String) -> Result<(), WebViewError> {
-        call_arkts("loadUrl", &[self.ark_tag.as_str(), &url])
+        call_arkts("loadUrl", &[self.webtag.as_str(), &url])
     }
 
     fn load_data(
@@ -590,7 +579,7 @@ impl WebViewController for WebViewInner {
         history_url: Option<String>,
     ) -> Result<(), WebViewError> {
         unsafe {
-            let webtag_cstr = CString::new(self.ark_tag.as_str()).unwrap();
+            let webtag_cstr = CString::new(self.webtag.as_str()).unwrap();
             let data_cstr = CString::new(data.clone()).unwrap();
             let base_url_cstr = CString::new(base_url.clone()).unwrap();
 
@@ -626,7 +615,7 @@ impl WebViewController for WebViewInner {
 
     fn evaluate_javascript(&self, js: String) -> Result<(), WebViewError> {
         unsafe {
-            let web_tag_cstr = CString::new(self.ark_tag.as_str()).unwrap();
+            let web_tag_cstr = CString::new(self.webtag.as_str()).unwrap();
 
             // Get Controller API
             let controller_api =
@@ -663,11 +652,11 @@ impl WebViewController for WebViewInner {
     }
 
     fn clear_browsing_data(&self) -> Result<(), WebViewError> {
-        call_arkts("clearBrowsingData", &[self.ark_tag.as_str()])
+        call_arkts("clearBrowsingData", &[self.webtag.as_str()])
     }
 
     fn set_user_agent(&self, ua: String) -> Result<(), WebViewError> {
-        call_arkts("setUserAgent", &[self.ark_tag.as_str(), &ua])
+        call_arkts("setUserAgent", &[self.webtag.as_str(), &ua])
     }
 
     fn set_scroll_listener_enabled(
@@ -677,7 +666,7 @@ impl WebViewController for WebViewInner {
     ) -> Result<(), WebViewError> {
         call_arkts(
             "setScrollListenerEnabled",
-            &[self.ark_tag.as_str(), &enabled.to_string()],
+            &[self.webtag.as_str(), &enabled.to_string()],
         )
     }
 
@@ -695,7 +684,7 @@ impl WebViewInner {
 
         if let Some(port) = port {
             // Use Ark-facing tag when posting messages to ArkWeb
-            let webtag_cstr = CString::new(self.ark_tag.as_str()).unwrap();
+            let webtag_cstr = CString::new(self.webtag.as_str()).unwrap();
 
             let port_api = get_port_api()?;
             let message_api = get_message_api()?;
@@ -817,7 +806,7 @@ impl Drop for WebViewInner {
         }
 
         // Ask ArkTS to destroy the controller; ArkTS will notify native via onWebviewControllerDestroyed
-        if let Err(e) = call_arkts("destroyWebViewController", &[self.ark_tag.as_str()]) {
+        if let Err(e) = call_arkts("destroyWebViewController", &[self.webtag.as_str()]) {
             log::error!("Failed to destroy WebView controller: {:?}", e);
         }
         log::info!(
@@ -1111,8 +1100,8 @@ extern "C" fn on_web_message_received(
 
     // Get webtag string from user_data
     let webtag_string = unsafe { &*(user_data as *const String) };
-    let webtag = WebTag::from(webtag_string.as_str());
-    let (appid, path) = webtag.extract_parts();
+    let full_webtag = WebTag::from(webtag_string.as_str());
+    let (appid, path) = full_webtag.extract_parts();
 
     // Extract message data
     unsafe {
@@ -1132,7 +1121,7 @@ extern "C" fn on_web_message_received(
                 log::warn!(
                     "Received non-string message type {:?} for {}",
                     msg_type,
-                    webtag.as_str()
+                    webtag
                 );
             }
         }
@@ -1147,7 +1136,7 @@ extern "C" fn on_web_message_received(
         if data_ptr.is_null() || data_length == 0 {
             log::warn!(
                 "Received empty or null message for {} (ptr={:?}, len={})",
-                webtag.as_str(),
+                webtag,
                 data_ptr,
                 data_length
             );
@@ -1158,20 +1147,19 @@ extern "C" fn on_web_message_received(
         let Ok(msg_str) = std::str::from_utf8(data_slice) else {
             log::error!(
                 "Failed to parse UTF-8 message for {} (len={})",
-                webtag.as_str(),
+                webtag,
                 data_length
             );
             return;
         };
 
         // Forward to delegate
-        let webtag = WebTag::new(&appid, &path);
-        if let Some(delegate) = get_webview_delegate(&webtag) {
+        if let Some(delegate) = get_webview_delegate(&full_webtag) {
             delegate.handle_post_message(msg_str.to_string());
         } else {
             log::warn!(
                 "on_web_message_received: no delegate for {} (appid={}, path={})",
-                webtag.as_str(),
+                full_webtag.as_str(),
                 appid,
                 path
             );
@@ -1222,8 +1210,7 @@ extern "C" fn on_console_message_received(
                 console_msg.get("message").and_then(|v| v.as_str()),
             ) {
                 // Extract appid and path from webtag
-                let webtag = WebTag::from(webtag);
-                let (appid, path) = webtag.extract_parts();
+                let full_webtag = WebTag::from(webtag);
                 // Convert log level for lxapp crate
                 let log_level = match level {
                     "error" => LogLevel::Error,
@@ -1234,8 +1221,7 @@ extern "C" fn on_console_message_received(
                 };
 
                 // Forward to delegate for logging
-                let webtag = WebTag::new(&appid, &path);
-                if let Some(delegate) = get_webview_delegate(&webtag) {
+                if let Some(delegate) = get_webview_delegate(&full_webtag) {
                     delegate.log(log_level, console_message);
                 }
             }

@@ -24,7 +24,7 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handlePostMessage
     let path: String = env.get_string(&path).unwrap().into();
     let message: String = env.get_string(&message).unwrap().into();
 
-    let webtag = WebTag::new(&appid, &path);
+    let webtag = WebTag::new(&appid, &path, None);
     if let Some(delegate) = get_webview_delegate(&webtag) {
         delegate.handle_post_message(message);
     }
@@ -41,7 +41,7 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onPageStarted(
     let appid: String = env.get_string(&appid).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
 
-    let webtag = WebTag::new(&appid, &path);
+    let webtag = WebTag::new(&appid, &path, None);
     if let Some(delegate) = get_webview_delegate(&webtag) {
         delegate.on_page_started();
     }
@@ -58,7 +58,7 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onPageFinished(
     let appid: String = env.get_string(&appid).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
 
-    let webtag = WebTag::new(&appid, &path);
+    let webtag = WebTag::new(&appid, &path, None);
     if let Some(delegate) = get_webview_delegate(&webtag) {
         delegate.on_page_finished();
     }
@@ -143,7 +143,7 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handleRequest<'a>
     };
 
     // Handle request and convert response
-    let webtag = WebTag::new(&appid, &path);
+    let webtag = WebTag::new(&appid, &path, None);
     let response = if let Some(delegate) = get_webview_delegate(&webtag) {
         delegate.handle_request(request)
     } else {
@@ -282,7 +282,7 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onConsoleMessage(
     let path: String = env.get_string(&path).unwrap().into();
     let message: String = env.get_string(&message).unwrap().into();
 
-    let webtag = WebTag::new(&appid, &path);
+    let webtag = WebTag::new(&appid, &path, None);
     let log_level = match level {
         2 => LogLevel::Verbose, // VERBOSE
         3 => LogLevel::Debug,   // DEBUG
@@ -312,7 +312,7 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onScrollChanged(
     let appid: String = env.get_string(&appid).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
 
-    let webtag = WebTag::new(&appid, &path);
+    let webtag = WebTag::new(&appid, &path, None);
     if let Some(delegate) = get_webview_delegate(&webtag) {
         delegate.on_page_scroll_changed(scroll_x, scroll_y, max_scroll_x, max_scroll_y);
     }
@@ -332,7 +332,7 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_notifyWebViewRead
 
     // Retrieve the sender from our global map and send the WebView instance
     if let Some(senders) = WEBVIEW_SENDERS.get() {
-        let webtag = WebTag::new(&appid, &path);
+        let webtag = WebTag::new(&appid, &path, None);
 
         if let Ok(mut senders_map) = senders.lock() {
             if let Some(sender) = senders_map.remove(&webtag.to_string()) {
@@ -344,11 +344,7 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_notifyWebViewRead
                             WebViewInner::from_java_object(global_ref, webtag.clone());
 
                         // Create WebView wrapper
-                        let webview = Arc::new(crate::WebView::new(
-                            webview_inner,
-                            appid.clone(),
-                            path.clone(),
-                        ));
+                        let webview = Arc::new(crate::WebView::new(webview_inner));
 
                         // Register the WebView instance for future lookups
                         register_webview(webview.clone());
