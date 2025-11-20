@@ -220,8 +220,10 @@ pub trait AppRuntime:
     }
     fn exit_app(&self) -> Result<(), PlatformError>;
     fn get_system_locale(&self) -> &str;
-    fn open_lxapp(&self, appid: String, path: String) -> Result<(), PlatformError>;
-    fn close_lxapp(&self, appid: String) -> Result<(), PlatformError>;
+    /// Show the UI container for the given LxApp and route.
+    fn show_lxapp(&self, appid: String, path: String) -> Result<(), PlatformError>;
+    /// Hide the UI container for the given LxApp (does not destroy its runtime state).
+    fn hide_lxapp(&self, appid: String) -> Result<(), PlatformError>;
     fn navigate(
         &self,
         appid: String,

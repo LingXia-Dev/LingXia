@@ -482,14 +482,14 @@ impl AppRuntime for Platform {
         &self.locale
     }
 
-    fn open_lxapp(&self, appid: String, path: String) -> Result<(), PlatformError> {
+    fn show_lxapp(&self, appid: String, path: String) -> Result<(), PlatformError> {
         lingxia_webview::tsfn::call_arkts("openLxApp", &[&appid, &path])
-            .map_err(|e| PlatformError::Platform(format!("Failed to open lxapp: {}", e)))
+            .map_err(|e| PlatformError::Platform(format!("Failed to show lxapp: {}", e)))
     }
 
-    fn close_lxapp(&self, appid: String) -> Result<(), PlatformError> {
+    fn hide_lxapp(&self, appid: String) -> Result<(), PlatformError> {
         lingxia_webview::tsfn::call_arkts("closeLxApp", &[&appid])
-            .map_err(|e| PlatformError::Platform(format!("Failed to close lxapp: {}", e)))
+            .map_err(|e| PlatformError::Platform(format!("Failed to hide lxapp: {}", e)))
     }
 
     fn navigate(

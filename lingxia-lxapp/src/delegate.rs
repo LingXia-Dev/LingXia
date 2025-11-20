@@ -201,8 +201,8 @@ impl LxApp {
                     error!("Failed to clear page stack: {}", e).with_appid(self.appid.clone());
                 }
 
-                // after SDK close it, SDK should call get_current_lxapp to show another lxapp
-                let _ = self.runtime.close_lxapp(self.appid.clone());
+                // after SDK hides it, SDK should call get_current_lxapp to show another lxapp
+                let _ = self.runtime.hide_lxapp(self.appid.clone());
                 return true;
             }
             "minimize" => {
@@ -271,9 +271,9 @@ impl LxApp {
         info!("BackPress trigered, page stack size: {}", stack_size).with_appid(self.appid.clone());
 
         if stack_size <= 1 {
-            // if it's last page, clsoe this lxapp
+            // If it's the last page, hide this LxApp (except home app)
             if !self.is_home_lxapp {
-                let _ = self.runtime.close_lxapp(self.appid.clone());
+                let _ = self.runtime.hide_lxapp(self.appid.clone());
             }
             return true;
         }

@@ -349,7 +349,7 @@ impl LxApp {
         // Close UI window
         let _ = self
             .runtime
-            .close_lxapp(self.appid.clone())
+            .hide_lxapp(self.appid.clone())
             .map_err(LxAppError::from);
 
         // Collect current pages
@@ -724,7 +724,7 @@ impl LxApp {
         page.set_query(startup_options.query);
 
         // Open UI
-        self.runtime.open_lxapp(self.appid.clone(), target_path)?;
+        self.runtime.show_lxapp(self.appid.clone(), target_path)?;
         Ok(())
     }
 
@@ -765,7 +765,7 @@ impl LxApp {
     pub fn navigate_back(&self) -> Result<(), LxAppError> {
         // The on_lxapp_closed delegate will then handle removing it from the navigation stack.
         // The underlying UI framework should detect the app closure and automatically display the new app at the top of the stack.
-        self.runtime.close_lxapp(self.appid.clone())?;
+        self.runtime.hide_lxapp(self.appid.clone())?;
         Ok(())
     }
 

@@ -109,23 +109,23 @@ impl AppRuntime for Platform {
         &self.locale
     }
 
-    fn open_lxapp(&self, appid: String, path: String) -> Result<(), PlatformError> {
+    fn show_lxapp(&self, appid: String, path: String) -> Result<(), PlatformError> {
         if ffi::open_lxapp(&appid, &path) {
             Ok(())
         } else {
             Err(PlatformError::Platform(format!(
-                "Failed to open lxapp: appid={}, path={}",
+                "Failed to show lxapp: appid={}, path={}",
                 appid, path
             )))
         }
     }
 
-    fn close_lxapp(&self, appid: String) -> Result<(), PlatformError> {
+    fn hide_lxapp(&self, appid: String) -> Result<(), PlatformError> {
         if ffi::close_lxapp(&appid) {
             Ok(())
         } else {
             Err(PlatformError::Platform(format!(
-                "Failed to close lxapp: appid={}",
+                "Failed to hide lxapp: appid={}",
                 appid
             )))
         }

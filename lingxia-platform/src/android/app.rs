@@ -318,7 +318,7 @@ impl AppRuntime for Platform {
         &self.locale
     }
 
-    fn open_lxapp(&self, appid: String, path: String) -> Result<(), PlatformError> {
+    fn show_lxapp(&self, appid: String, path: String) -> Result<(), PlatformError> {
         match || -> Result<(), Box<dyn std::error::Error>> {
             let mut env = get_env()?;
 
@@ -341,13 +341,13 @@ impl AppRuntime for Platform {
         }() {
             Ok(_) => Ok(()),
             Err(e) => Err(PlatformError::Platform(format!(
-                "Failed to open lxapp: {}",
+                "Failed to show lxapp: {}",
                 e
             ))),
         }
     }
 
-    fn close_lxapp(&self, appid: String) -> Result<(), PlatformError> {
+    fn hide_lxapp(&self, appid: String) -> Result<(), PlatformError> {
         match || -> Result<(), Box<dyn std::error::Error>> {
             let mut env = get_env()?;
 
@@ -367,7 +367,7 @@ impl AppRuntime for Platform {
         }() {
             Ok(_) => Ok(()),
             Err(e) => Err(PlatformError::Platform(format!(
-                "Failed to close lxapp: {}",
+                "Failed to hide lxapp: {}",
                 e
             ))),
         }
