@@ -59,7 +59,13 @@ impl LxAppDelegate for LxApp {
 
             let page = self.get_or_create_page(&resolved_path);
             if page.is_tabbar_page() {
-                self.with_tabbar_mut(|t| t.set_visible(true));
+                // Ensure TabBar is visible and selected index matches the resolved path.
+                self.with_tabbar_mut(|t| {
+                    t.set_visible(true);
+                    if let Some(index) = t.find_index_by_path(&resolved_path) {
+                        t.set_selected_index(index);
+                    }
+                });
             }
             let _ = self.push_to_page_stack(&resolved_path);
             // Pre-create tab pages (synchronously enqueue); FIFO ordering ensures CreateAppSvc precedes these.
