@@ -1,5 +1,5 @@
 use lingxia_lxapp::{LxApp, lx};
-use rong::{JSContext, JSFunc, JSResult, RongJSError};
+use rong::{JSContext, JSContextService, JSFunc, JSResult, RongJSError};
 use rong_modules::storage::{Storage as RongStorage, StorageOptions};
 use std::sync::Arc;
 
@@ -15,7 +15,27 @@ fn storage_options() -> StorageOptions {
     }
 }
 
+#[derive(Clone)]
+struct LxStorageService {
+    storage: RongStorage,
+}
+
+impl JSContextService for LxStorageService {
+    fn on_shutdown(&self) {
+        // Explicitly close the underlying database so that the process
+        // can safely reopen the same path on the next LxApp restart,
+        // even if JS still holds Storage objects from the old context.
+        self.storage.close();
+    }
+}
+
 fn get_storage(ctx: JSContext) -> JSResult<RongStorage> {
+    // If a Storage instance has already been created for this JSContext,
+    // return a clone so getStorage() can be called multiple times safely.
+    if let Some(existing) = ctx.get_service::<LxStorageService>() {
+        return Ok(existing.storage.clone());
+    }
+
     let lxapp = ctx
         .get_user_data::<Arc<LxApp>>()
         .ok_or_else(|| RongJSError::Error("Missing LxApp context".into()))?;
@@ -27,7 +47,17 @@ fn get_storage(ctx: JSContext) -> JSResult<RongStorage> {
     }
 
     let options = storage_options();
-    RongStorage::open_with_options(lxapp.storage_file_path.clone(), options)
+    let storage = RongStorage::open_with_options(lxapp.storage_file_path.clone(), options)?;
+
+    // Cache Storage instance on JSContext so that:
+    // - Subsequent getStorage() calls reuse the same database handle.
+    // - When JSContext is dropped, JSContextService::on_shutdown is invoked
+    //   and LxStorageService is dropped, closing the database.
+    ctx.set_service::<LxStorageService>(LxStorageService {
+        storage: storage.clone(),
+    });
+
+    Ok(storage)
 }
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
