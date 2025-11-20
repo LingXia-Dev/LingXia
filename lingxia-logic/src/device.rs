@@ -81,19 +81,19 @@ struct MakePhoneCallParams {
 }
 
 pub(crate) fn device_info(ctx: JSContext) -> JSResult<DevInfoObj> {
-    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let lxapp = LxApp::from_ctx(&ctx)?;
     let device_info = lxapp.runtime.device_info();
     Ok(device_info.into())
 }
 
 fn screen_info(ctx: JSContext) -> JSResult<ScreenInfoObj> {
-    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let lxapp = LxApp::from_ctx(&ctx)?;
     let info = lxapp.runtime.screen_info();
     Ok(info.into())
 }
 
 pub(crate) fn vibrate_short(ctx: JSContext) -> JSResult<bool> {
-    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let lxapp = LxApp::from_ctx(&ctx)?;
     match lxapp.runtime.vibrate(false) {
         Ok(_) => Ok(true),
         Err(e) => Err(RongJSError::Error(format!(
@@ -104,7 +104,7 @@ pub(crate) fn vibrate_short(ctx: JSContext) -> JSResult<bool> {
 }
 
 pub(crate) fn vibrate_long(ctx: JSContext) -> JSResult<bool> {
-    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let lxapp = LxApp::from_ctx(&ctx)?;
     match lxapp.runtime.vibrate(true) {
         Ok(_) => Ok(true),
         Err(e) => Err(RongJSError::Error(format!("Failed to vibrate long: {}", e))),
@@ -112,7 +112,7 @@ pub(crate) fn vibrate_long(ctx: JSContext) -> JSResult<bool> {
 }
 
 fn make_phone_call(ctx: JSContext, params: MakePhoneCallParams) -> JSResult<bool> {
-    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let lxapp = LxApp::from_ctx(&ctx)?;
 
     match lxapp.runtime.make_phone_call(&params.phone_number) {
         Ok(()) => Ok(true),

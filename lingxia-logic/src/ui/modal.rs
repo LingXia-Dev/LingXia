@@ -3,7 +3,6 @@ use lingxia_messaging::{CallbackResult, get_callback};
 use lingxia_platform::{ModalOptions, UserFeedback};
 use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
 use serde_json::Value;
-use std::sync::Arc;
 
 /// Modal options from JavaScript (compatible with WeChat mini-program API)
 #[derive(FromJSObj)]
@@ -74,7 +73,7 @@ impl From<CallbackResult> for JSModalResult {
 
 /// Show modal function (async)
 async fn show_modal(ctx: JSContext, options: JSModalOptions) -> JSResult<JSModalResult> {
-    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let lxapp = LxApp::from_ctx(&ctx)?;
     let modal_options: ModalOptions = options.into();
 
     // Do not show UI if app is not opened

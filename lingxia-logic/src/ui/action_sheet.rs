@@ -35,7 +35,7 @@ async fn show_action_sheet(
         return Err(RongJSError::Error("itemList cannot be empty".to_string()));
     }
 
-    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let lxapp = LxApp::from_ctx(&ctx)?;
 
     // Do not show UI if app is not opened
     if !lxapp.is_opened() {

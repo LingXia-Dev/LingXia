@@ -1,9 +1,8 @@
 use lingxia_lxapp::LxApp;
 use rong::{JSContext, JSObject, JSResult};
-use std::sync::Arc;
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
-    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let lxapp = LxApp::from_ctx(ctx)?;
 
     let obj = JSObject::new(ctx);
     obj.set("USER_DATA_PATH", lxapp.user_data_dir.to_str().unwrap())?;

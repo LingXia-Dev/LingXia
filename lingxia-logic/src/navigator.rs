@@ -26,7 +26,7 @@ async fn navigate_to_lxapp(ctx: JSContext, options: NavigateToOptions) -> JSResu
         startup_options = startup_options.set_release_type(release_type);
     }
 
-    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let lxapp = LxApp::from_ctx(&ctx)?;
 
     ensure_first_install(&lxapp, &options.appid, release_type)
         .await
@@ -90,7 +90,7 @@ async fn navigate_to_lxapp(ctx: JSContext, options: NavigateToOptions) -> JSResu
 }
 
 async fn navigate_back_lxapp(ctx: JSContext) -> JSResult<()> {
-    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let lxapp = LxApp::from_ctx(&ctx)?;
     lxapp
         .navigate_back()
         .map_err(|e| RongJSError::Error(format!("Failed to navigate back: {}", e)))?;

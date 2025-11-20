@@ -1,7 +1,6 @@
 use lingxia_lxapp::{LxApp, lx};
 use lingxia_platform::AppRuntime;
 use rong::{IntoJSObj, JSContext, JSFunc, JSResult};
-use std::sync::Arc;
 
 /// AppBase information
 #[derive(Debug, Clone, IntoJSObj)]
@@ -10,7 +9,7 @@ pub struct AppBaseInfo {
 }
 
 pub(crate) fn get_system_locale(ctx: JSContext) -> JSResult<AppBaseInfo> {
-    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let lxapp = LxApp::from_ctx(&ctx)?;
     let locale = lxapp.runtime.get_system_locale();
     Ok(AppBaseInfo {
         language: locale.to_string(),

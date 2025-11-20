@@ -7,17 +7,13 @@ use crate::{error, info};
 use rong::{JSContext, JSObject, JSResult, JSRuntime, RongJSError, Source};
 use rong_modules::{console, fs, http};
 
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::path::Path;
-use std::rc::Rc;
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::Duration;
 
 mod app;
 use crate::event::AppServiceEvent;
-use app::LxAppSvc;
 
 pub mod bridge;
 
@@ -27,15 +23,14 @@ mod page;
 use crate::event::PageServiceEvent;
 pub use page::PageSvc;
 
-// fetch or create UpdateManager instance associated with current JSContext
+mod runtime_ctx;
+use runtime_ctx::{
+    register_app_ctx, remove_app_ctx, set_app_svc_for_ctx, with_app_svc, with_page_svc_map,
+};
+
+/// fetch or create UpdateManager instance associated with current JSContext
 pub fn get_or_create_update_manager(ctx: &JSContext) -> JSResult<JSObject> {
-    if let Some(svc) = ctx.get_user_data::<LxAppSvc>() {
-        svc.get_or_create_update_manager(ctx)
-    } else {
-        Err(RongJSError::Error(
-            "LxAppSvc not loaded in JSContext".to_string(),
-        ))
-    }
+    runtime_ctx::get_or_create_update_manager(ctx)
 }
 
 /// Message type for LxApp service system
@@ -107,22 +102,22 @@ async fn handle_app_service_event(
     event: AppServiceEvent,
     args: Option<String>,
 ) {
-    let svc_opt = ctx.get_user_data::<LxAppSvc>();
-    if svc_opt.is_none() {
-        error!("[Worker {}] App service not loaded", worker_id).with_appid(appid);
-        return;
-    }
-    let svc = svc_opt.unwrap();
+    // Resolve AppSvc from registry via JSContext and clone it for use in this async handler.
+    let svc = match with_app_svc(ctx, |svc| Ok(svc.clone())) {
+        Ok(svc) => svc,
+        Err(e) => {
+            error!("[Worker {}] App service not loaded: {}", worker_id, e).with_appid(appid);
+            return;
+        }
+    };
 
     // Update events: notify only if registered
     match event {
         AppServiceEvent::UpdateReady => {
             svc.notify_update_ready().await;
-            return;
         }
         AppServiceEvent::UpdateFailed => {
             svc.notify_update_failed().await;
-            return;
         }
         AppServiceEvent::OnLaunch | AppServiceEvent::OnShow | AppServiceEvent::OnHide => {
             if let Err(e) = svc.call_event(ctx, event, args.clone()).await {
@@ -183,13 +178,8 @@ pub(crate) async fn lxapp_service_handler(
         ServiceMessage::CreateAppSvc { lxapp } => {
             let ctx = runtime.context();
 
-            // Store the LxApp reference directly in JSContext user data
-            ctx.set_user_data(lxapp.clone());
-
-            // Create a HashMap for PageSvc instances and store it in JSContext
-            let page_svc_map: Rc<RefCell<HashMap<String, PageSvc>>> =
-                Rc::new(RefCell::new(HashMap::new()));
-            ctx.set_user_data(page_svc_map.clone());
+            // Register LxApp runtime context and bind identity to JSContext
+            register_app_ctx(&runtime, &ctx, &lxapp);
 
             // register Page, App and getApp function
             let _ = app::init(&ctx);
@@ -262,6 +252,8 @@ pub(crate) async fn lxapp_service_handler(
                 info!("[Worker {}] Removed LxApp context ", worker_id)
                     .with_appid(lxapp.appid.clone());
             }
+            // Remove runtime context for this app so that all associated resources can be dropped.
+            remove_app_ctx(&runtime, &lxapp.appid);
             // ACK back to the caller that cleanup is complete
             let _ = ack_tx.send(());
         }
@@ -285,25 +277,25 @@ pub(crate) async fn lxapp_service_handler(
         }
         ServiceMessage::TerminatePage { lxapp, path } => {
             if let Some(ctx) = current_ctx.as_ref() {
-                if let Some(ctx_lx) = ctx.get_user_data::<Arc<LxApp>>() {
-                    if !Arc::ptr_eq(&ctx_lx, &lxapp) {
-                        info!(
-                            "[Worker {}] Ignored TerminatePage for different LxApp instance",
-                            worker_id
-                        )
-                        .with_appid(lxapp.appid.clone())
-                        .with_path(path.clone());
-                        return;
-                    }
+                // Ensure this TerminatePage belongs to the same LxApp
+                let same_app = LxApp::from_ctx(ctx)
+                    .map(|ctx_app| Arc::ptr_eq(&ctx_app, &lxapp))
+                    .unwrap_or(false);
+                if !same_app {
+                    info!(
+                        "[Worker {}] Ignored TerminatePage for different LxApp instance",
+                        worker_id
+                    )
+                    .with_appid(lxapp.appid.clone())
+                    .with_path(path.clone());
+                    return;
                 }
-                // Remove page from page_svc map stored in JSContext
-                let page_svc = if let Some(page_svc_map) =
-                    ctx.get_user_data::<Rc<RefCell<HashMap<String, PageSvc>>>>()
-                {
-                    page_svc_map.borrow_mut().remove(&path)
-                } else {
-                    None
-                };
+
+                // Remove page from page_svc map stored in registry
+                let page_svc = with_page_svc_map(ctx, |page_svc_map| {
+                    Ok(page_svc_map.borrow_mut().remove(&path))
+                })
+                .unwrap_or(None);
 
                 if let Some(page_svc) = page_svc {
                     if let Ok(registry) = ctx.global().get::<_, JSObject>("__PAGE_REGISTRY__") {
@@ -318,11 +310,13 @@ pub(crate) async fn lxapp_service_handler(
         }
         ServiceMessage::CallAppSvcEvent { lxapp, event, args } => {
             if let Some(ctx) = current_ctx.as_ref() {
-                if let Some(ctx_lx) = ctx.get_user_data::<Arc<LxApp>>() {
-                    if Arc::ptr_eq(&ctx_lx, &lxapp) {
-                        handle_app_service_event(worker_id, ctx, lxapp.appid.clone(), event, args)
-                            .await;
-                    }
+                // Ensure this event targets the same LxApp bound to ctx
+                let same_app = LxApp::from_ctx(ctx)
+                    .map(|ctx_app| Arc::ptr_eq(&ctx_app, &lxapp))
+                    .unwrap_or(false);
+                if same_app {
+                    handle_app_service_event(worker_id, ctx, lxapp.appid.clone(), event, args)
+                        .await;
                 }
             }
         }
@@ -334,13 +328,10 @@ pub(crate) async fn lxapp_service_handler(
             if let Some(ctx) = current_ctx.as_ref() {
                 match source {
                     PageSvcSource::View { incoming } => {
-                        let page_svc = if let Some(page_svc_map) =
-                            ctx.get_user_data::<Rc<RefCell<HashMap<String, PageSvc>>>>()
-                        {
-                            page_svc_map.borrow().get(&path).cloned()
-                        } else {
-                            None
-                        };
+                        let page_svc = with_page_svc_map(ctx, |page_svc_map| {
+                            Ok(page_svc_map.borrow().get(&path).cloned())
+                        })
+                        .unwrap_or(None);
 
                         if let Some(page_svc) = page_svc {
                             if let Err(e) = handle_view_source(&page_svc, incoming).await {
@@ -359,13 +350,10 @@ pub(crate) async fn lxapp_service_handler(
                         }
                     }
                     PageSvcSource::Native { name, args } => {
-                        let page_svc = if let Some(page_svc_map) =
-                            ctx.get_user_data::<Rc<RefCell<HashMap<String, PageSvc>>>>()
-                        {
-                            page_svc_map.borrow().get(&path).cloned()
-                        } else {
-                            None
-                        };
+                        let page_svc = with_page_svc_map(ctx, |page_svc_map| {
+                            Ok(page_svc_map.borrow().get(&path).cloned())
+                        })
+                        .unwrap_or(None);
 
                         if let Some(page_svc) = page_svc {
                             handle_native_source(&page_svc, lxapp.appid.clone(), name, args).await;
@@ -388,14 +376,11 @@ pub(crate) async fn lxapp_service_handler(
             args,
         } => {
             if let Some(ctx) = current_ctx.as_ref() {
-                // Resolve PageSvc
-                let page_svc = if let Some(page_svc_map) =
-                    ctx.get_user_data::<Rc<RefCell<HashMap<String, PageSvc>>>>()
-                {
-                    page_svc_map.borrow().get(&path).cloned()
-                } else {
-                    None
-                };
+                // Resolve PageSvc from registry
+                let page_svc = with_page_svc_map(ctx, |page_svc_map| {
+                    Ok(page_svc_map.borrow().get(&path).cloned())
+                })
+                .unwrap_or(None);
 
                 if let Some(page_svc) = page_svc {
                     // Enqueue page event via PageSvc API (non-blocking)

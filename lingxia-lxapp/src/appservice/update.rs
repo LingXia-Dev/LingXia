@@ -1,7 +1,6 @@
 use crate::lxapp::LxApp;
 // no core UpdateManager needed here; navigate_to handles apply-downloaded
 use rong::{JSContext, JSFunc, JSResult, JSValue, RongJSError, js_class, js_export, js_method};
-use std::sync::Arc;
 
 /// JS-exposed Update Manager wrapper for AppService layer
 /// Stores pending update info set by native events, and applies it on demand.
@@ -46,9 +45,7 @@ impl JSUpdateManager {
     /// which is called by restart().
     #[js_method(rename = "applyUpdate")]
     fn apply_update(&self, ctx: JSContext) -> JSResult<()> {
-        let lxapp = ctx
-            .get_user_data::<Arc<LxApp>>()
-            .ok_or_else(|| RongJSError::Error("LxApp not found in context".to_string()))?;
+        let lxapp = LxApp::from_ctx(&ctx)?;
         let _ = lxapp.restart();
         Ok(())
     }

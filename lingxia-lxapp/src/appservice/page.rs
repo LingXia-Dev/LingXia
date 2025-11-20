@@ -12,10 +12,8 @@ use rong::{
     js_class, js_export, js_method,
 };
 use rong_modules::event::EventEmitter;
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::sync::Mutex;
 
@@ -128,7 +126,13 @@ impl MessageHandler for PageSvc {
                     }
                     ServiceType::FastAPI(handler) => {
                         // For FastAPI, handle directly and reply
-                        let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap().clone();
+                        let lxapp = match LxApp::from_ctx(&ctx) {
+                            Ok(app) => app,
+                            Err(e) => {
+                                error!("FastAPI call '{}' missing LxApp: {}", name, e);
+                                return;
+                            }
+                        };
 
                         match handler.call(lxapp, args) {
                             Ok(result) => {
@@ -182,7 +186,7 @@ impl MessageHandler for PageSvc {
 impl PageSvc {
     #[js_method(constructor)]
     fn _new(ctx: JSContext, config: JSObject, path: String) -> JSResult<JSObject> {
-        let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+        let lxapp = LxApp::from_ctx(&ctx)?;
 
         // Get the page from LxApp
         let page = lxapp
@@ -226,10 +230,11 @@ impl PageSvc {
         let mut page_svc = binding.borrow_mut::<PageSvc>().unwrap();
         page_svc.this = instance.clone();
 
-        // Register the PageSvc in the JSContext HashMap
-        if let Some(page_svc_map) = ctx.get_user_data::<Rc<RefCell<HashMap<String, PageSvc>>>>() {
+        // Register the PageSvc in the per-app PageSvc map
+        super::with_page_svc_map(&ctx, |page_svc_map| {
             page_svc_map.borrow_mut().insert(path, page_svc.clone());
-        }
+            Ok(())
+        })?;
 
         Ok(instance)
     }
@@ -429,21 +434,21 @@ impl LxApp {
         }
 
         // Fetch PageSvc from registry and return
-        let registry = ctx
-            .get_user_data::<Rc<RefCell<HashMap<String, PageSvc>>>>()
-            .ok_or_else(|| RongJSError::Error("Page service registry not available".to_string()))?;
-
-        registry
-            .borrow()
-            .get(path.as_str())
-            .cloned()
-            .ok_or_else(|| RongJSError::Error("Page service not found after creation".to_string()))
+        super::with_page_svc_map(ctx, |page_svc_map| {
+            page_svc_map
+                .borrow()
+                .get(path.as_str())
+                .cloned()
+                .ok_or_else(|| {
+                    RongJSError::Error("Page service not found after creation".to_string())
+                })
+        })
     }
 }
 
 fn get_current_pages(ctx: JSContext) -> JSResult<Vec<JSObject>> {
     let registry = ctx.global().get::<_, JSObject>("__PAGE_REGISTRY__")?;
-    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let lxapp = LxApp::from_ctx(&ctx)?;
     let paths = lxapp.get_page_stack();
     let mut pages = Vec::new();
     for p in paths {

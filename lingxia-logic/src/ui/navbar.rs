@@ -26,7 +26,7 @@ fn set_navigation_bar_title(
     ctx: JSContext,
     options: SetNavigationBarTitleOptions,
 ) -> JSResult<bool> {
-    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let lxapp = LxApp::from_ctx(&ctx)?;
 
     // Get current page path
     let current_path = lxapp
@@ -55,7 +55,7 @@ fn set_navigation_bar_color(
     ctx: JSContext,
     options: SetNavigationBarColorOptions,
 ) -> JSResult<bool> {
-    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let lxapp = LxApp::from_ctx(&ctx)?;
 
     // Get current page path
     let current_path = lxapp
@@ -89,7 +89,7 @@ fn set_navigation_bar_color(
 
 /// Hide home button
 fn hide_home_button(ctx: JSContext) -> JSResult<bool> {
-    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let lxapp = LxApp::from_ctx(&ctx)?;
 
     // Get current page path
     let current_path = lxapp

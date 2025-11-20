@@ -1,4 +1,4 @@
-use crate::appservice::update::JSUpdateManager;
+use crate::appservice::{set_app_svc_for_ctx, update::JSUpdateManager};
 use crate::event::AppServiceEvent;
 use rong::{
     Class, JSContext, JSFunc, JSObject, JSResult, JSValue, RongJSError, Source, js_class,
@@ -27,7 +27,8 @@ impl LxAppSvc {
         // Extract all functions from the object
         app_svc.assign_funcs(&obj)?;
 
-        ctx.set_user_data(app_svc.clone());
+        // Bind this AppSvc instance to the LxApp runtime context associated with ctx.
+        set_app_svc_for_ctx(&ctx, app_svc.clone())?;
 
         Ok(app_svc)
     }

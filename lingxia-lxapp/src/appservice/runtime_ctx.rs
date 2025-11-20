@@ -1,0 +1,165 @@
+use crate::error;
+use crate::lxapp::LxApp;
+
+use super::app::LxAppSvc;
+use super::page::PageSvc;
+
+use rong::{
+    JSContext, JSContextService, JSObject, JSResult, JSRuntime, JSRuntimeService, RongJSError,
+};
+
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
+use std::sync::{Arc, Weak};
+
+/// Identity of the LxApp bound to a JSContext.
+///
+/// For now we only track `appid`, but this can be extended with
+/// a session identifier in the future.
+#[derive(Clone)]
+pub(crate) struct LxAppIdentity {
+    pub(crate) appid: String,
+}
+
+impl JSContextService for LxAppIdentity {}
+
+/// Per-LxApp runtime context stored in a runtime-level registry.
+///
+/// This keeps JSContext lightweight: it only stores an LxAppIdentity
+/// service; the actual LxApp, AppSvc and PageSvc map live here.
+#[derive(Clone)]
+pub(crate) struct LxAppRuntimeCtx {
+    pub(crate) app: Weak<LxApp>,
+    pub(crate) page_svc_map: Rc<RefCell<HashMap<String, PageSvc>>>,
+    pub(crate) app_svc: Option<LxAppSvc>,
+}
+
+/// Runtime-level registry that tracks all LxApp runtime contexts for a JSRuntime.
+pub(crate) struct LxAppRegistry {
+    pub(crate) apps: RefCell<HashMap<String, LxAppRuntimeCtx>>,
+}
+
+impl Default for LxAppRegistry {
+    fn default() -> Self {
+        Self {
+            apps: RefCell::new(HashMap::new()),
+        }
+    }
+}
+
+impl JSRuntimeService for LxAppRegistry {}
+
+pub(crate) fn register_app_ctx(
+    runtime: &JSRuntime,
+    ctx: &JSContext,
+    lxapp: &Arc<LxApp>,
+) -> Rc<RefCell<HashMap<String, PageSvc>>> {
+    // Bind identity of this LxApp to JSContext for later lookups.
+    ctx.set_service::<LxAppIdentity>(LxAppIdentity {
+        appid: lxapp.appid.clone(),
+    });
+
+    // Create page_svc map and insert runtime context into registry.
+    let page_svc_map: Rc<RefCell<HashMap<String, PageSvc>>> = Rc::new(RefCell::new(HashMap::new()));
+
+    let registry = runtime.get_or_init_service::<LxAppRegistry>();
+    registry.apps.borrow_mut().insert(
+        lxapp.appid.clone(),
+        LxAppRuntimeCtx {
+            app: Arc::downgrade(lxapp),
+            page_svc_map: page_svc_map.clone(),
+            app_svc: None,
+        },
+    );
+
+    page_svc_map
+}
+
+pub(crate) fn remove_app_ctx(runtime: &JSRuntime, appid: &str) {
+    let registry = runtime.get_or_init_service::<LxAppRegistry>();
+    registry.apps.borrow_mut().remove(appid);
+}
+
+fn with_lxapp_ctx<F, R>(ctx: &JSContext, f: F) -> JSResult<R>
+where
+    F: FnOnce(&LxAppRuntimeCtx) -> JSResult<R>,
+{
+    let ident = ctx
+        .get_service::<LxAppIdentity>()
+        .ok_or_else(|| RongJSError::Error("LxAppIdentity not set in JSContext".into()))?;
+
+    let registry = ctx.runtime().get_or_init_service::<LxAppRegistry>();
+    let apps = registry.apps.borrow();
+    let app_ctx = apps
+        .get(&ident.appid)
+        .ok_or_else(|| RongJSError::Error("LxApp runtime context not found".into()))?;
+    f(app_ctx)
+}
+
+fn with_lxapp<F, R>(ctx: &JSContext, f: F) -> JSResult<R>
+where
+    F: FnOnce(&Arc<LxApp>) -> JSResult<R>,
+{
+    with_lxapp_ctx(ctx, |app_ctx| {
+        let app = app_ctx
+            .app
+            .upgrade()
+            .ok_or_else(|| RongJSError::Error("LxApp has been dropped".into()))?;
+        f(&app)
+    })
+}
+
+pub(crate) fn with_app_svc<F, R>(ctx: &JSContext, f: F) -> JSResult<R>
+where
+    F: FnOnce(&LxAppSvc) -> JSResult<R>,
+{
+    with_lxapp_ctx(ctx, |app_ctx| {
+        if let Some(ref svc) = app_ctx.app_svc {
+            f(svc)
+        } else {
+            Err(RongJSError::Error(
+                "LxAppSvc not loaded in LxApp runtime context".to_string(),
+            ))
+        }
+    })
+}
+
+pub(crate) fn set_app_svc_for_ctx(ctx: &JSContext, app_svc: LxAppSvc) -> JSResult<()> {
+    let ident = ctx
+        .get_service::<LxAppIdentity>()
+        .ok_or_else(|| RongJSError::Error("LxAppIdentity not set in JSContext".into()))?;
+
+    let registry = ctx.runtime().get_or_init_service::<LxAppRegistry>();
+    let mut apps = registry.apps.borrow_mut();
+    if let Some(entry) = apps.get_mut(&ident.appid) {
+        entry.app_svc = Some(app_svc);
+        Ok(())
+    } else {
+        Err(RongJSError::Error(
+            "LxApp runtime context not found".to_string(),
+        ))
+    }
+}
+
+pub(crate) fn with_page_svc_map<F, R>(ctx: &JSContext, f: F) -> JSResult<R>
+where
+    F: FnOnce(&Rc<RefCell<HashMap<String, PageSvc>>>) -> JSResult<R>,
+{
+    with_lxapp_ctx(ctx, |app_ctx| f(&app_ctx.page_svc_map))
+}
+
+/// LxApp extension: derive current LxApp from JSContext.
+impl LxApp {
+    pub fn from_ctx(ctx: &JSContext) -> JSResult<Arc<LxApp>> {
+        with_lxapp(ctx, |app| Ok(app.clone()))
+    }
+}
+
+// fetch or create UpdateManager instance associated with current JSContext
+pub(crate) fn get_or_create_update_manager(ctx: &JSContext) -> JSResult<JSObject> {
+    with_app_svc(ctx, |svc| svc.get_or_create_update_manager(ctx)).map_err(|e| {
+        error!("[LxApp] get_or_create_update_manager failed: {}", e);
+        e
+    })
+}

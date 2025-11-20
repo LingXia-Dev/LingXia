@@ -1,7 +1,6 @@
 use lingxia_lxapp::{LxApp, lx};
 use lingxia_platform::{Device, PopupPosition, PopupRequest, ScreenInfo};
 use rong::{FromJSObj, JSContext, JSFunc, JSObject, JSResult, RongJSError};
-use std::sync::Arc;
 
 #[derive(FromJSObj)]
 struct JSPopupOptions {
@@ -105,7 +104,7 @@ fn resolve_popup_ratios(
 }
 
 fn show_popup(ctx: JSContext, options: JSPopupOptions) -> JSResult<JSObject> {
-    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let lxapp = LxApp::from_ctx(&ctx)?;
 
     // Do not show UI if app is not opened
     if !lxapp.is_opened() {
@@ -141,7 +140,7 @@ fn show_popup(ctx: JSContext, options: JSPopupOptions) -> JSResult<JSObject> {
 }
 
 fn hide_popup(ctx: JSContext) -> JSResult<()> {
-    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let lxapp = LxApp::from_ctx(&ctx)?;
 
     if !lxapp.is_opened() {
         return Ok(());

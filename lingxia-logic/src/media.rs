@@ -75,7 +75,7 @@ fn parse_media_kind(value: Option<String>) -> MediaKind {
 }
 
 fn preview_media(ctx: JSContext, options: JSPreviewMediaOptions) -> JSResult<()> {
-    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let lxapp = LxApp::from_ctx(&ctx)?;
     let runtime = &lxapp.runtime;
 
     if options.sources.is_empty() {
@@ -124,7 +124,7 @@ struct JSSaveMediaOptions {
 }
 
 fn save_image_to_photos_album(ctx: JSContext, options: JSSaveMediaOptions) -> JSResult<()> {
-    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let lxapp = LxApp::from_ctx(&ctx)?;
     let runtime = &lxapp.runtime;
 
     let request = SaveMediaRequest {
@@ -137,7 +137,7 @@ fn save_image_to_photos_album(ctx: JSContext, options: JSSaveMediaOptions) -> JS
 }
 
 fn save_video_to_photos_album(ctx: JSContext, options: JSSaveMediaOptions) -> JSResult<()> {
-    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let lxapp = LxApp::from_ctx(&ctx)?;
     let runtime = &lxapp.runtime;
 
     let request = SaveMediaRequest {
@@ -153,7 +153,7 @@ async fn get_image_info_api(
     ctx: JSContext,
     options: JSGetImageInfoOptions,
 ) -> JSResult<JSImageInfoResult> {
-    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let lxapp = LxApp::from_ctx(&ctx)?;
     let runtime = &lxapp.runtime;
 
     let resolved = lxapp
@@ -183,7 +183,7 @@ async fn compress_image_api(
     ctx: JSContext,
     options: JSCompressImageOptions,
 ) -> JSResult<JSCompressImageResult> {
-    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let lxapp = LxApp::from_ctx(&ctx)?;
     let runtime = &lxapp.runtime;
 
     let resolved_source = lxapp
@@ -480,7 +480,7 @@ async fn choose_media(
     ctx: JSContext,
     options: Optional<JSChooseMediaOptions>,
 ) -> JSResult<Vec<ChosenMediaEntry>> {
-    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let lxapp = LxApp::from_ctx(&ctx)?;
 
     let opts = options.as_ref().cloned().unwrap_or(JSChooseMediaOptions {
         count: None,
@@ -614,7 +614,7 @@ async fn choose_media(
 }
 
 async fn scan(ctx: JSContext, options: Optional<JSScanOptions>) -> JSResult<ScanResultObj> {
-    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let lxapp = LxApp::from_ctx(&ctx)?;
     let opts = options.as_ref().cloned().unwrap_or_default();
     let scan_types = parse_scan_types(opts.scan_type)?; // empty vec means all types
     let only_from_camera = opts.only_from_camera.unwrap_or(true);

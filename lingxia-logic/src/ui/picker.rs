@@ -8,7 +8,6 @@ use rong::{
 };
 use serde_json::Value;
 use std::collections::HashMap;
-use std::sync::Arc;
 
 /// Cascading column data structure
 #[derive(Debug, Clone)]
@@ -187,7 +186,7 @@ impl From<CallbackResult> for PickerResult {
 }
 
 fn show_picker(ctx: JSContext, options: JSPickerOptions) -> JSResult<JSObject> {
-    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let lxapp = LxApp::from_ctx(&ctx)?;
 
     // Do not show UI if app is not opened
     if !lxapp.is_opened() {

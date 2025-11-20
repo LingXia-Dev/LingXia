@@ -4,7 +4,6 @@ use lingxia_platform::{Location, LocationRequestConfig};
 use rong::function::Optional;
 use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
 use serde_json::Value;
-use std::sync::Arc;
 
 /// Coordinate conversion: WGS84 to GCJ02 (Mars coordinate system)
 /// Reference: https://github.com/wandergis/coordtransform
@@ -154,7 +153,7 @@ async fn get_location(
     ctx: JSContext,
     options: Optional<JSLocationOptions>,
 ) -> JSResult<LocationObj> {
-    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let lxapp = LxApp::from_ctx(&ctx)?;
 
     // Get callback ID and receiver
     let (callback_id, receiver) = get_callback();

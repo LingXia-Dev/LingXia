@@ -1,7 +1,6 @@
 use lingxia_lxapp::{LxApp, lx};
 use lingxia_platform::{ToastIcon, ToastOptions, ToastPosition, UserFeedback};
 use rong::{FromJSObj, JSContext, JSFunc, JSResult, RongJSError};
-use std::sync::Arc;
 
 /// Toast options from JavaScript
 #[derive(FromJSObj)]
@@ -55,7 +54,7 @@ fn convert_string_to_toast_position(position: &str) -> ToastPosition {
 
 /// Show toast function
 fn show_toast(ctx: JSContext, options: JSToastOptions) -> JSResult<()> {
-    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let lxapp = LxApp::from_ctx(&ctx)?;
     let toast_options: ToastOptions = options.into();
 
     // Do not show UI if app is not opened
@@ -75,7 +74,7 @@ fn show_toast(ctx: JSContext, options: JSToastOptions) -> JSResult<()> {
 
 /// Hide toast function
 fn hide_toast(ctx: JSContext) -> JSResult<()> {
-    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let lxapp = LxApp::from_ctx(&ctx)?;
 
     lxapp
         .runtime

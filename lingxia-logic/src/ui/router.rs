@@ -1,6 +1,5 @@
 use lingxia_lxapp::{LxApp, NavigationType, lx};
 use rong::{FromJSObj, JSContext, JSFunc, JSObject, JSResult, RongJSError};
-use std::sync::Arc;
 
 #[derive(FromJSObj)]
 struct NavigateTo {
@@ -24,7 +23,7 @@ struct SwitchTab {
 
 /// Navigate to a new page (forward navigation)
 fn navigate_to(ctx: JSContext, options: NavigateTo) -> JSResult<JSObject> {
-    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let lxapp = LxApp::from_ctx(&ctx)?;
 
     // Get current page from the page stack
     let current_path = lxapp
@@ -54,7 +53,7 @@ fn navigate_to(ctx: JSContext, options: NavigateTo) -> JSResult<JSObject> {
 
 /// Navigate back to previous page
 fn navigate_back(ctx: JSContext, options: NavigateBack) -> JSResult<()> {
-    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let lxapp = LxApp::from_ctx(&ctx)?;
 
     // Get current page from the page stack
     let current_path = lxapp
@@ -73,7 +72,7 @@ fn navigate_back(ctx: JSContext, options: NavigateBack) -> JSResult<()> {
 
 /// Redirect to a new page (replace current page)
 fn redirect_to(ctx: JSContext, options: RedirectTo) -> JSResult<()> {
-    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let lxapp = LxApp::from_ctx(&ctx)?;
 
     // Get current page from the page stack
     let current_path = lxapp
@@ -97,7 +96,7 @@ fn redirect_to(ctx: JSContext, options: RedirectTo) -> JSResult<()> {
 
 /// Switch to a tab page
 fn switch_tab(ctx: JSContext, options: SwitchTab) -> JSResult<()> {
-    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let lxapp = LxApp::from_ctx(&ctx)?;
 
     // Get current page from the page stack
     let current_path = lxapp

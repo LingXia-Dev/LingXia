@@ -1,7 +1,6 @@
 use lingxia_lxapp::{LxApp, lx};
 use lingxia_platform::{AppRuntime, DocumentInteraction, OpenDocumentRequest};
 use rong::{FromJSObj, JSContext, JSFunc, JSResult, RongJSError};
-use std::sync::Arc;
 
 #[derive(FromJSObj)]
 struct JSOpenDocumentOptions {
@@ -54,7 +53,7 @@ fn map_file_type_to_mime(file_type: Option<String>) -> Option<String> {
 }
 
 fn open_document(ctx: JSContext, options: JSOpenDocumentOptions) -> JSResult<()> {
-    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let lxapp = LxApp::from_ctx(&ctx)?;
     let runtime = &lxapp.runtime;
 
     if options.file_path.is_empty() {
@@ -81,7 +80,7 @@ fn open_document(ctx: JSContext, options: JSOpenDocumentOptions) -> JSResult<()>
 }
 
 fn open_url(ctx: JSContext, options: JSOpenURLOptions) -> JSResult<()> {
-    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let lxapp = LxApp::from_ctx(&ctx)?;
     let runtime = &lxapp.runtime;
 
     if options.url.is_empty() {

@@ -61,7 +61,7 @@ fn is_tabbar_visible(lxapp: &Arc<LxApp>) -> bool {
 
 /// Show TabBar red dot
 fn show_tabbar_red_dot(ctx: JSContext, options: ShowTabBarRedDotOptions) -> JSResult<bool> {
-    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let lxapp = LxApp::from_ctx(&ctx)?;
 
     // Update TabBar item red dot state
     let updated = lxapp
@@ -82,7 +82,7 @@ fn show_tabbar_red_dot(ctx: JSContext, options: ShowTabBarRedDotOptions) -> JSRe
 
 /// Hide TabBar red dot
 fn hide_tabbar_red_dot(ctx: JSContext, options: HideTabBarRedDotOptions) -> JSResult<bool> {
-    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let lxapp = LxApp::from_ctx(&ctx)?;
 
     // Update TabBar item red dot state
     let updated = lxapp
@@ -103,7 +103,7 @@ fn hide_tabbar_red_dot(ctx: JSContext, options: HideTabBarRedDotOptions) -> JSRe
 
 /// Set TabBar badge
 fn set_tabbar_badge(ctx: JSContext, options: SetTabBarBadgeOptions) -> JSResult<bool> {
-    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let lxapp = LxApp::from_ctx(&ctx)?;
 
     // Update TabBar item badge
     let updated = lxapp
@@ -124,7 +124,7 @@ fn set_tabbar_badge(ctx: JSContext, options: SetTabBarBadgeOptions) -> JSResult<
 
 /// Remove TabBar badge
 fn remove_tabbar_badge(ctx: JSContext, options: RemoveTabBarBadgeOptions) -> JSResult<bool> {
-    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let lxapp = LxApp::from_ctx(&ctx)?;
 
     // Update TabBar item badge
     let updated = lxapp
@@ -145,7 +145,7 @@ fn remove_tabbar_badge(ctx: JSContext, options: RemoveTabBarBadgeOptions) -> JSR
 
 /// Show TabBar
 fn show_tabbar(ctx: JSContext) -> JSResult<bool> {
-    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let lxapp = LxApp::from_ctx(&ctx)?;
 
     // Update TabBar visibility
     let updated = lxapp
@@ -169,7 +169,7 @@ fn show_tabbar(ctx: JSContext) -> JSResult<bool> {
 
 /// Hide TabBar
 fn hide_tabbar(ctx: JSContext) -> JSResult<bool> {
-    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let lxapp = LxApp::from_ctx(&ctx)?;
 
     // Update TabBar visibility
     let updated = lxapp
@@ -193,7 +193,7 @@ fn hide_tabbar(ctx: JSContext) -> JSResult<bool> {
 
 /// Set TabBar style
 fn set_tabbar_style(ctx: JSContext, options: SetTabBarStyleOptions) -> JSResult<bool> {
-    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let lxapp = LxApp::from_ctx(&ctx)?;
 
     // Update TabBar style
     let updated = lxapp
@@ -228,7 +228,7 @@ fn set_tabbar_style(ctx: JSContext, options: SetTabBarStyleOptions) -> JSResult<
 
 /// Set TabBar item
 fn set_tabbar_item(ctx: JSContext, options: SetTabBarItemOptions) -> JSResult<bool> {
-    let lxapp = ctx.get_user_data::<Arc<LxApp>>().unwrap();
+    let lxapp = LxApp::from_ctx(&ctx)?;
 
     // Update TabBar item
     let updated = lxapp

@@ -1,7 +1,6 @@
 use lingxia_lxapp::{LxApp, lx};
 use rong::{JSContext, JSContextService, JSFunc, JSResult, RongJSError};
 use rong_modules::storage::{Storage as RongStorage, StorageOptions};
-use std::sync::Arc;
 
 const STORAGE_MAX_KEY_BYTES: u32 = 1024; // match module defaults
 const STORAGE_MAX_VALUE_BYTES: u32 = 5 * 1024 * 1024;
@@ -36,9 +35,7 @@ fn get_storage(ctx: JSContext) -> JSResult<RongStorage> {
         return Ok(existing.storage.clone());
     }
 
-    let lxapp = ctx
-        .get_user_data::<Arc<LxApp>>()
-        .ok_or_else(|| RongJSError::Error("Missing LxApp context".into()))?;
+    let lxapp = LxApp::from_ctx(&ctx)?;
 
     if lxapp.storage_file_path.as_os_str().is_empty() {
         return Err(RongJSError::Error(
