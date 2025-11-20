@@ -256,10 +256,10 @@ impl LxAppExecutor {
         )
     }
 
-    /// Terminate a lxapp service.
-    pub fn terminate_app_svc(&self, appid: String) -> Result<(), LxAppError> {
+    /// Terminate a lxapp service for a specific instance.
+    pub fn terminate_app_svc(&self, lxapp: Arc<crate::lxapp::LxApp>) -> Result<(), LxAppError> {
         crate::appservice::terminate_app_svc(
-            appid,
+            lxapp,
             &self.sender,
             &self.instance_assignments,
             &self.free_workers,

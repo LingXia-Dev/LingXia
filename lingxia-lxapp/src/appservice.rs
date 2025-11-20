@@ -447,13 +447,13 @@ pub(crate) fn create_app_svc(
 
 /// Terminate a mini-app service - breaks 1:1 mapping and returns worker to pool
 pub(crate) fn terminate_app_svc(
-    appid: String,
+    lxapp_arc: Arc<LxApp>,
     sender: &mpsc::Sender<ServiceMessage>,
     instance_assignments: &Arc<Mutex<HashMap<usize, usize>>>,
     free_workers: &Arc<Mutex<VecDeque<usize>>>,
 ) -> Result<(), LxAppError> {
+    let appid = lxapp_arc.appid.clone();
     // Ensure mapping remains during terminate; get current worker_id via instance mapping
-    let lxapp_arc = crate::lxapp::get(appid.clone());
     let key = lxapp_arc.as_ref() as *const _ as usize;
     let worker_id_opt = instance_assignments.lock().unwrap().get(&key).copied();
     if worker_id_opt.is_none() {

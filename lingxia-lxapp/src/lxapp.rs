@@ -95,6 +95,18 @@ impl LxApps {
         new_lxapp
     }
 
+    /// Replace the LxApp instance for a given appid with a brand new instance.
+    /// Used by restart to force a fresh session and runtime state.
+    fn replace_lxapp(&self, appid: String) -> Arc<LxApp> {
+        let new_lxapp = Arc::new(LxApp::new(
+            appid.clone(),
+            self.runtime.clone(),
+            self.executor.clone(),
+        ));
+        self.lxapps.insert(appid, new_lxapp.clone());
+        new_lxapp
+    }
+
     /// Finds and evicts the least recently used LxApp to free up memory.
     /// The least recently used app is determined by the front of the navigation stack.
     fn evict_lru_lxapp(&self) {
@@ -105,13 +117,17 @@ impl LxApps {
                     warn!("Cannot evict the home lxapp").with_appid(appid_to_destroy);
                     return;
                 }
+
+                info!("Evicting least recently used lxapp").with_appid(appid_to_destroy.clone());
+
+                // Explicitly shutdown the app before removing it from the map so that
+                // UI/JSContext/Page/WebView/AppService are cleaned up deterministically.
+                let _ = app_arc.shutdown();
+
+                // Remove from the stack and the main map
+                self.remove_from_stack(&appid_to_destroy);
+                self.lxapps.remove(&appid_to_destroy);
             }
-
-            info!("Evicting least recently used lxapp").with_appid(appid_to_destroy.clone());
-
-            // Remove from the stack and the main map (Drop trait will handle cleanup)
-            self.remove_from_stack(&appid_to_destroy);
-            self.lxapps.remove(&appid_to_destroy);
         }
     }
 
@@ -360,9 +376,10 @@ impl LxApp {
         }
 
         // Terminate AppService (receiver handles its own state)
-        let _ = self.executor.terminate_app_svc(self.appid.clone());
+        let _ = self.executor.terminate_app_svc(self.clone_arc());
         Ok(())
     }
+
     fn _new(appid: String, runtime: Arc<Platform>, executor: Arc<LxAppExecutor>) -> Self {
         let session = LxAppSession::new();
         Self {
@@ -653,6 +670,64 @@ impl LxApp {
             .cloned()
     }
 
+    /// Apply any downloaded update archive for this app + release_type, if present.
+    fn apply_downloaded_update(&self, release_type: ReleaseType) {
+        let lxappid = self.appid.clone();
+        let pre_open_updater = UpdateManager::new(self.clone_arc());
+        match pre_open_updater.has_downloaded_update(&lxappid, release_type) {
+            Ok(Some(info)) => {
+                if let Err(e) = pre_open_updater.apply_update_archive(
+                    &lxappid,
+                    release_type,
+                    &info.version,
+                    &info.archive_path,
+                ) {
+                    error!("Failed to apply downloaded update: {}", e).with_appid(lxappid.clone());
+                }
+            }
+            Ok(None) => {}
+            Err(e) => {
+                error!("Failed to read downloaded update info: {}", e).with_appid(lxappid);
+            }
+        }
+    }
+
+    /// Open a new runtime session for this LxApp instance:
+    /// - Apply any downloaded update for this release_type (if present)
+    /// - Record startup options
+    /// - Ensure AppService exists
+    /// - Create native Page/WebView
+    /// - Open the UI window
+    fn open(&self, options: LxAppStartupOptions) -> Result<(), LxAppError> {
+        let startup_options = options.clone();
+
+        // Apply downloaded-but-not-yet-applied update before starting the session
+        self.apply_downloaded_update(startup_options.release_type);
+
+        // Record startup options on this instance
+        self.state.lock().unwrap().startup_options = options;
+
+        // Ensure the target app's JS worker is created and mapped before creating pages
+        if let Err(e) = self.executor.create_app_svc(self.clone_arc()) {
+            error!("Failed to trigger app service: {}", e).with_appid(self.appid.clone());
+        }
+
+        // Determine initial route
+        let target_path = if startup_options.path.is_empty() {
+            self.config.get_initial_route()
+        } else {
+            startup_options.path.clone()
+        };
+
+        // Create native Page + WebView
+        let page = self.get_or_create_page(&target_path);
+        page.set_query(startup_options.query);
+
+        // Open UI
+        self.runtime.open_lxapp(self.appid.clone(), target_path)?;
+        Ok(())
+    }
+
     /// Navigates to another LxApp (forward navigation).
     ///
     /// If the provided path is empty, it will navigate to the target app's initial route.
@@ -671,29 +746,6 @@ impl LxApp {
         appid: String,
         options: LxAppStartupOptions,
     ) -> Result<(), LxAppError> {
-        // Prepare startup options first
-        let startup_options = options.clone();
-
-        // Always apply any downloaded package for the target app before creating/opening it
-        let pre_open_updater = UpdateManager::new(get(self.appid.clone()));
-        match pre_open_updater.has_downloaded_update(&appid, startup_options.release_type) {
-            Ok(Some(info)) => {
-                // Always apply any downloaded package here; version policy handled elsewhere.
-                if let Err(e) = pre_open_updater.apply_update_archive(
-                    &appid,
-                    startup_options.release_type,
-                    &info.version,
-                    &info.archive_path,
-                ) {
-                    error!("Failed to apply downloaded update: {}", e).with_appid(appid.clone());
-                }
-            }
-            Ok(None) => {}
-            Err(e) => {
-                error!("Failed to read downloaded update info: {}", e).with_appid(appid.clone());
-            }
-        }
-
         if let Some(manager) = get_lxapps_manager() {
             if manager.is_lxapp_stack_full() {
                 warn!(
@@ -704,23 +756,7 @@ impl LxApp {
             }
 
             let app = manager.get_or_init_lxapp(appid.clone());
-            app.state.lock().unwrap().startup_options = options;
-
-            // Ensure the target app's JS worker is created and mapped before creating pages
-            if let Err(e) = app.executor.create_app_svc(app.clone()) {
-                error!("Failed to trigger app service: {}", e).with_appid(appid.clone());
-            }
-
-            let target_path = if startup_options.path.is_empty() {
-                app.config.get_initial_route()
-            } else {
-                startup_options.path.clone()
-            };
-
-            let page = app.get_or_create_page(&target_path);
-            page.set_query(startup_options.query);
-
-            app.runtime.open_lxapp(appid, target_path)?;
+            app.open(options)?;
         }
         Ok(())
     }
@@ -744,12 +780,22 @@ impl LxApp {
         let relaunch_path = self.config.get_initial_route();
         let appid = self.appid.clone();
         let release_type = self.release_type;
-        let app_arc = get(self.appid.clone());
+        let old_app = self.clone_arc();
         let _ = rong::service_executor::spawn_async(async move {
-            let _ = app_arc.shutdown();
-            let options = crate::startup::LxAppStartupOptions::new(&relaunch_path)
-                .set_release_type(release_type);
-            let _ = app_arc.navigate_to(appid, options);
+            // 1) Shutdown current session (UI, JSContext, pages, popup, AppService).
+            let _ = old_app.shutdown();
+
+            // 2) Replace LxApp instance in manager with a brand new one for this appid.
+            if let Some(manager) = get_lxapps_manager() {
+                let new_app = manager.replace_lxapp(appid.clone());
+
+                // 3) Initialize startup options for the new app session and open it.
+                let options =
+                    LxAppStartupOptions::new(&relaunch_path).set_release_type(release_type);
+                if let Err(e) = new_app.open(options) {
+                    error!("Failed to start lxapp after restart: {}", e);
+                }
+            }
             // Status will be driven back to Opened by on_lxapp_opened delegate after reopen.
         });
         Ok(())
@@ -1073,8 +1119,11 @@ impl Drop for LxApp {
         if self.is_home_lxapp {
             return;
         }
-        info!("Dropping LxApp, shutting down").with_appid(self.appid.clone());
-        let _ = self.shutdown();
+        // At this point all strong Arc references have been released. Explicit shutdown
+        // should have been invoked via restart, navigate_back, or LRU eviction paths.
+        // Avoid calling shutdown() here to prevent accidentally targeting a newer
+        // instance with the same appid after restart.
+        info!("Dropping LxApp").with_appid(self.appid.clone());
     }
 }
 
