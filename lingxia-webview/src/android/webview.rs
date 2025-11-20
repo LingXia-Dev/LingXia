@@ -26,11 +26,11 @@ impl WebViewInner {
     pub(crate) fn create(
         appid: &str,
         path: &str,
-        session_id: Option<u64>,
+        _session_id: Option<u64>,
         sender: Sender<Result<Arc<crate::WebView>, WebViewError>>,
     ) {
         // Store sender in global map for callback
-        let webtag = WebTag::new(appid, path, session_id);
+        let webtag = WebTag::new(appid, path, None);
         let senders = WEBVIEW_SENDERS.get_or_init(|| Arc::new(Mutex::new(HashMap::new())));
 
         if let Ok(mut senders_map) = senders.lock() {

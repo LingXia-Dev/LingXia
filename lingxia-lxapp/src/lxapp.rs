@@ -368,7 +368,7 @@ impl LxApp {
             state.pages.lock().unwrap().clear();
         }
         for p in &page_paths {
-            destroy_webview(&WebTag::new(&self.appid, p));
+            destroy_webview(&WebTag::new(&self.appid, p, Some(self.session.id)));
         }
         let _ = self.clear_page_stack();
         if let Ok(mut state) = self.state.lock() {

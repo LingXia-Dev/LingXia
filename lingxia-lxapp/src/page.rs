@@ -127,7 +127,7 @@ impl Page {
         let (sender, receiver) = mpsc::channel();
 
         // Initiate WebView creation asynchronously
-        let webtag = WebTag::new(&appid, &path);
+        let webtag = WebTag::new(&appid, &path, Some(lxapp.session.id));
         create_webview(&webtag, sender);
 
         // Spawn task to wait for WebView creation completion

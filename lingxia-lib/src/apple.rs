@@ -253,7 +253,7 @@ pub fn on_lxapp_opened(appid: &str, path: &str) -> String {
 /// Returns the usize pointer to the WebView, or 0 if not found
 pub fn find_webview(appid: &str, path: &str) -> usize {
     // Create WebTag and use lingxia-webview's find_webview function
-    let webtag = lingxia_webview::WebTag::new(appid, path);
+    let webtag = lingxia_webview::WebTag::new(appid, path, None);
     if let Some(webview) = lingxia_webview::find_webview(&webtag) {
         // WebView exists, return its pointer
         webview.get_swift_webview_ptr()

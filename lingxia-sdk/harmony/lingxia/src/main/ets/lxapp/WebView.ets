@@ -28,6 +28,11 @@ export class WebViewManager {
   // Multiple callbacks for UI component management
   private static uiCallbacks: Set<(action: string, info: WebViewInfo) => void> = new Set();
 
+  private static resolveLogicalTag(webtag: string): string {
+    const extracted = extractWebTag(webtag);
+    return extracted ? toWebTag(extracted.appId, extracted.path) : webtag;
+  }
+
   /**
    * Add UI callback for WebView management
    */
@@ -162,7 +167,8 @@ export class WebViewManager {
    * @returns true if URL loaded successfully, false if WebView not found or load failed
    */
   static loadUrl(webtag: string, url: string): boolean {
-    const controller = WebViewManager.controllers.get(webtag);
+    const logicalTag = WebViewManager.resolveLogicalTag(webtag);
+    const controller = WebViewManager.controllers.get(logicalTag);
     if (!controller) {
       hilog.warn(DOMAIN, TAG, `WebView not found for loadUrl: ${webtag}`);
       return false;
@@ -184,7 +190,8 @@ export class WebViewManager {
    * @returns true if clearing succeeded, false if WebView not found or clearing failed
    */
   static clearBrowsingData(webtag: string): boolean {
-    const controller = WebViewManager.controllers.get(webtag);
+    const logicalTag = WebViewManager.resolveLogicalTag(webtag);
+    const controller = WebViewManager.controllers.get(logicalTag);
     if (!controller) {
       hilog.warn(DOMAIN, TAG, `WebView not found for clearBrowsingData: ${webtag}`);
       return false;
@@ -208,7 +215,8 @@ export class WebViewManager {
    * @returns true if setting succeeded, false if WebView not found or setting failed
    */
   static setUserAgent(webtag: string, userAgent: string): boolean {
-    if (!WebViewManager.controllers.has(webtag)) {
+    const logicalTag = WebViewManager.resolveLogicalTag(webtag);
+    if (!WebViewManager.controllers.has(logicalTag)) {
       hilog.warn(DOMAIN, TAG, `WebView not found for setUserAgent: ${webtag}`);
       return false;
     }
@@ -223,8 +231,7 @@ export class WebViewManager {
    * @returns WebView info or null
    */
   static getWebViewInfo(webtag: string): WebViewInfo | null {
-    const extracted = extractWebTag(webtag);
-    const logicalTag = extracted ? toWebTag(extracted.appId, extracted.path) : webtag;
+    const logicalTag = WebViewManager.resolveLogicalTag(webtag);
     return WebViewManager.webViewInfos.get(logicalTag) || null;
   }
 
@@ -296,10 +303,14 @@ export class WebViewManager {
  * Create webtag from appId and path
  * @param appId - LxApp ID
  * @param path - Page path
- * @returns webtag in format "appId-path"
+ * @returns webtag in format "appId-path" or "appId-path#sessionId"
  */
-export function toWebTag(appId: string, path: string): string {
-  return `${appId}-${path}`;
+export function toWebTag(appId: string, path: string, sessionId?: string | number): string {
+  const base = `${appId}-${path}`;
+  if (sessionId === undefined || sessionId === null) {
+    return base;
+  }
+  return `${base}#${sessionId.toString()}`;
 }
 
 /**
@@ -308,12 +319,13 @@ export function toWebTag(appId: string, path: string): string {
 export interface WebTagParts {
   appId: string;
   path: string;
+  sessionId?: string;
 }
 
 /**
  * Extract appId and path from webtag
  * @param webtag - WebView tag in format "appId-path" or "appId-path#instance"
- * @returns Object with appId and path, or null if invalid format
+ * @returns Object with appId, path, and optional sessionId, or null if invalid format
  */
 export function extractWebTag(webtag: string): WebTagParts | null {
   const dashIndex = webtag.indexOf('-');
@@ -325,7 +337,8 @@ export function extractWebTag(webtag: string): WebTagParts | null {
   let pathWithInstance = webtag.substring(dashIndex + 1);
   const hashIndex = pathWithInstance.indexOf('#');
   const path = hashIndex === -1 ? pathWithInstance : pathWithInstance.substring(0, hashIndex);
-  return { appId: appId, path: path };
+  const sessionId = hashIndex === -1 ? undefined : pathWithInstance.substring(hashIndex + 1) || undefined;
+  return { appId: appId, path: path, sessionId: sessionId };
 }
 
 /**
