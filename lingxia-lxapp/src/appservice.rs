@@ -279,7 +279,7 @@ pub(crate) async fn lxapp_service_handler(
             if let Some(ctx) = current_ctx.as_ref() {
                 // Ensure this TerminatePage belongs to the same LxApp
                 let same_app = LxApp::from_ctx(ctx)
-                    .map(|ctx_app| Arc::ptr_eq(&ctx_app, &lxapp))
+                    .map(|ctx_app| ctx_app.session.id == lxapp.session.id)
                     .unwrap_or(false);
                 if !same_app {
                     info!(
@@ -312,7 +312,7 @@ pub(crate) async fn lxapp_service_handler(
             if let Some(ctx) = current_ctx.as_ref() {
                 // Ensure this event targets the same LxApp bound to ctx
                 let same_app = LxApp::from_ctx(ctx)
-                    .map(|ctx_app| Arc::ptr_eq(&ctx_app, &lxapp))
+                    .map(|ctx_app| ctx_app.session.id == lxapp.session.id)
                     .unwrap_or(false);
                 if same_app {
                     handle_app_service_event(worker_id, ctx, lxapp.appid.clone(), event, args)

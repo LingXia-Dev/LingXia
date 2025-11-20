@@ -1,9 +1,8 @@
 use dashmap::DashMap;
 use lingxia_platform::{AppRuntime, Platform, PopupPresenter, PopupRequest};
-use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, VecDeque};
 use std::fs;
-use std::hash::{Hash, Hasher};
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, mpsc};
@@ -187,9 +186,6 @@ pub(crate) struct LxAppState {
     /// When true, enables additional logging and debugging features
     debug: bool,
 
-    /// Unified lifecycle status
-    status: AtomicU8,
-
     /// Network security configuration for HTTPS domain filtering
     /// Manages which domains this app is allowed to access
     network_security: NetworkSecurity,
@@ -212,7 +208,6 @@ impl LxAppState {
             page_stack: Mutex::new(VecDeque::with_capacity(PAGE_STACK_MAX)),
             last_active_time: Instant::now(),
             debug: false,
-            status: AtomicU8::new(LxAppStatus::Closed as u8),
             network_security: NetworkSecurity::new(),
             tabbar: None,
             startup_options: LxAppStartupOptions::default(),
@@ -236,15 +231,22 @@ pub struct LxApp {
     pub(crate) config: LxAppConfig,
     pub(crate) executor: Arc<LxAppExecutor>,
 
+    /// Current runtime session of this app (id + status)
+    pub(crate) session: LxAppSession,
+
     // Mutable state - protected by mutex for fine-grained locking
     pub(crate) state: Mutex<LxAppState>,
     // Per-app cache for network and media artifacts
     cache: Option<LxAppCache>,
 }
 
+/// Unique id for a single LxApp runtime session within the process.
+pub(crate) type LxAppSessionId = u64;
+
+/// Lifecycle status of a LxApp session (replacing LxAppStatus).
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(u8)]
-pub(crate) enum LxAppStatus {
+pub(crate) enum LxAppSessionStatus {
     Closed = 0,
     Opening = 1,
     Opened = 2,
@@ -252,6 +254,50 @@ pub(crate) enum LxAppStatus {
     Restarting = 4,
 }
 
+/// A single runtime session of a LxApp: id + status.
+pub(crate) struct LxAppSession {
+    pub(crate) id: LxAppSessionId,
+    status: AtomicU8,
+}
+
+impl LxAppSession {
+    pub(crate) fn new() -> Self {
+        // Process-wide monotonically increasing session id.
+        use std::sync::atomic::AtomicU64;
+        static SESSION_SEQ: AtomicU64 = AtomicU64::new(1);
+        let id = SESSION_SEQ.fetch_add(1, Ordering::Relaxed);
+        Self {
+            id,
+            status: AtomicU8::new(LxAppSessionStatus::Closed as u8),
+        }
+    }
+
+    pub(crate) fn status(&self) -> LxAppSessionStatus {
+        match self.status.load(Ordering::SeqCst) {
+            1 => LxAppSessionStatus::Opening,
+            2 => LxAppSessionStatus::Opened,
+            3 => LxAppSessionStatus::Closing,
+            4 => LxAppSessionStatus::Restarting,
+            _ => LxAppSessionStatus::Closed,
+        }
+    }
+
+    pub(crate) fn set_status(&self, s: LxAppSessionStatus) {
+        self.status.store(s as u8, Ordering::SeqCst);
+    }
+
+    pub(crate) fn cas_status(&self, from: LxAppSessionStatus, to: LxAppSessionStatus) -> bool {
+        let current = self.status.load(Ordering::SeqCst);
+        if current == from as u8 {
+            self.status.store(to as u8, Ordering::SeqCst);
+            true
+        } else {
+            false
+        }
+    }
+}
+
+/// Service identity of a LxApp, used for registry and comparisons.
 impl LxApp {
     /// Helper to clone Arc<Self> from within methods needing Arc
     pub(crate) fn clone_arc(&self) -> Arc<LxApp> {
@@ -259,37 +305,16 @@ impl LxApp {
         crate::lxapp::get(self.appid.clone())
     }
 
-    pub(crate) fn status(&self) -> LxAppStatus {
-        match self.state.lock().unwrap().status.load(Ordering::SeqCst) {
-            1 => LxAppStatus::Opening,
-            2 => LxAppStatus::Opened,
-            3 => LxAppStatus::Closing,
-            4 => LxAppStatus::Restarting,
-            _ => LxAppStatus::Closed,
-        }
+    pub(crate) fn status(&self) -> LxAppSessionStatus {
+        self.session.status()
     }
 
-    pub(crate) fn set_status(&self, s: LxAppStatus) {
-        self.state
-            .lock()
-            .unwrap()
-            .status
-            .store(s as u8, Ordering::SeqCst);
+    pub(crate) fn set_status(&self, s: LxAppSessionStatus) {
+        self.session.set_status(s);
     }
 
-    pub(crate) fn cas_status(&self, from: LxAppStatus, to: LxAppStatus) -> bool {
-        let state = &self.state;
-        let current = state.lock().unwrap().status.load(Ordering::SeqCst);
-        if current == from as u8 {
-            state
-                .lock()
-                .unwrap()
-                .status
-                .store(to as u8, Ordering::SeqCst);
-            true
-        } else {
-            false
-        }
+    pub(crate) fn cas_status(&self, from: LxAppSessionStatus, to: LxAppSessionStatus) -> bool {
+        self.session.cas_status(from, to)
     }
     // AppService state subscriptions removed for simplicity; rely on FIFO ordering.
     /// Shutdown this LxApp completely. Idempotent.
@@ -303,7 +328,7 @@ impl LxApp {
     /// 6) Send TerminateAppSvc (receiver handles teardown)
     pub fn shutdown(&self) -> Result<(), LxAppError> {
         // Mark closing to suppress TerminatePage from Page drops
-        self.set_status(LxAppStatus::Closing);
+        self.set_status(LxAppSessionStatus::Closing);
 
         // Close UI window
         let _ = self
@@ -339,6 +364,7 @@ impl LxApp {
         Ok(())
     }
     fn _new(appid: String, runtime: Arc<Platform>, executor: Arc<LxAppExecutor>) -> Self {
+        let session = LxAppSession::new();
         Self {
             appid,
             runtime,
@@ -351,6 +377,7 @@ impl LxApp {
             release_type: ReleaseType::default(),
             config: LxAppConfig::default(),
             executor,
+            session,
             state: Mutex::new(LxAppState::new()),
             cache: None,
         }
@@ -602,7 +629,7 @@ impl LxApp {
     }
 
     pub fn is_opened(&self) -> bool {
-        matches!(self.status(), LxAppStatus::Opened)
+        matches!(self.status(), LxAppSessionStatus::Opened)
     }
 
     /// Check if a domain is allowed for network access
@@ -710,7 +737,7 @@ impl LxApp {
     /// This offloads the sequence to the service executor to avoid blocking JS worker.
     pub fn restart(&self) -> Result<(), LxAppError> {
         // Prevent overlapping restarts
-        if !self.cas_status(LxAppStatus::Opened, LxAppStatus::Restarting) {
+        if !self.cas_status(LxAppSessionStatus::Opened, LxAppSessionStatus::Restarting) {
             return Ok(());
         }
         // Always relaunch to initial route after restart

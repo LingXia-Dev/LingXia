@@ -19,8 +19,6 @@ use std::time::Instant;
 pub(crate) struct PageInner {
     appid: String,
     path: String,
-    // Weak reference to owning LxApp instance to disambiguate sessions (unused for now)
-    _lxapp: std::sync::Weak<LxApp>,
 
     // Reference to the WebView (optional, set when WebView is ready)
     webview: Arc<Mutex<Option<Arc<WebView>>>>,
@@ -118,7 +116,6 @@ impl Page {
         let inner = Arc::new(PageInner {
             appid: appid.clone(),
             path: path.clone(),
-            _lxapp: Arc::downgrade(&lxapp.clone_arc()),
             last_active_time: Arc::new(Mutex::new(Instant::now())),
             state: Arc::new(Mutex::new(page_state)),
             webview: Arc::new(Mutex::new(None)),

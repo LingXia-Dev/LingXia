@@ -1,6 +1,6 @@
 use crate::PageLifecycleEvent;
 use crate::event::AppServiceEvent;
-use crate::lxapp::LxAppStatus;
+use crate::lxapp::LxAppSessionStatus;
 use crate::page::NavigationType;
 use crate::{LxApp, error, info, lxapp};
 use lingxia_platform::AppRuntime;
@@ -73,11 +73,11 @@ impl LxAppDelegate for LxApp {
                     }
                 }
             }
-            self.set_status(LxAppStatus::Opening);
+            self.set_status(LxAppSessionStatus::Opening);
             if let Err(e) = self.appservice_notify(AppServiceEvent::OnLaunch, None) {
                 error!("Failed to trigger onLaunch service: {}", e).with_appid(self.appid.clone());
             }
-            self.set_status(LxAppStatus::Opened);
+            self.set_status(LxAppSessionStatus::Opened);
 
             // Update last_open_at in metadata for this installed app
             let now = std::time::SystemTime::now()
@@ -88,7 +88,7 @@ impl LxAppDelegate for LxApp {
         }
 
         // Ensure status reflects opened (both first open and reopen)
-        self.set_status(LxAppStatus::Opened);
+        self.set_status(LxAppSessionStatus::Opened);
 
         // App-level onShow still fires here (app layer), independent of page service readiness.
         let options = self.state.lock().unwrap().startup_options.clone();
@@ -99,7 +99,7 @@ impl LxAppDelegate for LxApp {
     }
 
     fn on_lxapp_closed(self: &Arc<Self>) {
-        self.set_status(LxAppStatus::Closed);
+        self.set_status(LxAppSessionStatus::Closed);
 
         // Update last active time
         self.state.lock().unwrap().last_active_time = Instant::now();

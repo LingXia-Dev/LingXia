@@ -14,9 +14,6 @@ use std::rc::Rc;
 use std::sync::{Arc, Weak};
 
 /// Identity of the LxApp bound to a JSContext.
-///
-/// For now we only track `appid`, but this can be extended with
-/// a session identifier in the future.
 #[derive(Clone)]
 pub(crate) struct LxAppIdentity {
     pub(crate) appid: String,
