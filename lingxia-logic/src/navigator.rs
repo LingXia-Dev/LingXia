@@ -14,6 +14,12 @@ struct NavigateToOptions {
 }
 
 async fn navigate_to_lxapp(ctx: JSContext, options: NavigateToOptions) -> JSResult<()> {
+    let lxapp = LxApp::from_ctx(&ctx)?;
+
+    if lxapp.appid == options.appid {
+        return Ok(());
+    }
+
     let mut startup_options = LxAppStartupOptions::new(&options.path);
 
     let release_type = options
@@ -25,8 +31,6 @@ async fn navigate_to_lxapp(ctx: JSContext, options: NavigateToOptions) -> JSResu
     if options.env_version.is_some() {
         startup_options = startup_options.set_release_type(release_type);
     }
-
-    let lxapp = LxApp::from_ctx(&ctx)?;
 
     ensure_first_install(&lxapp, &options.appid, release_type)
         .await
