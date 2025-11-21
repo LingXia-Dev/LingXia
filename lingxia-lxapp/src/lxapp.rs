@@ -6,8 +6,9 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tokio::sync::oneshot;
+use tokio::time;
 
 use crate::PageLifecycleEvent;
 use crate::app::AppConfig;
@@ -63,6 +64,9 @@ pub struct LxApps {
     /// Reference to the executor
     /// Handles async task execution for lxapp apps
     pub(crate) executor: Arc<LxAppExecutor>,
+
+    /// Pending delayed-destroy timers keyed by appid
+    pending_destroy: Mutex<HashMap<String, oneshot::Sender<()>>>,
 }
 
 impl LxApps {
@@ -74,6 +78,7 @@ impl LxApps {
             runtime,
             executor,
             lxapp_stack: Mutex::new(VecDeque::with_capacity(LXAPP_STACK_MAX)),
+            pending_destroy: Mutex::new(HashMap::new()),
         }
     }
 
@@ -148,12 +153,46 @@ impl LxApps {
         }
     }
 
-    /// Pops the oldest app from the front of the navigation stack.
-    fn pop_front_lxapp_stack(&self) -> Option<String> {
-        if let Ok(mut stack) = self.lxapp_stack.lock() {
-            stack.pop_front()
-        } else {
-            None
+    /// Schedule a delayed destroy for an app; cancel on reopen.
+    pub(crate) fn schedule_delayed_destroy(self: &Arc<Self>, appid: String) {
+        // cancel existing timer if present
+        if let Ok(mut map) = self.pending_destroy.lock() {
+            if let Some(cancel) = map.remove(&appid) {
+                let _ = cancel.send(());
+            }
+
+            let (tx, rx) = oneshot::channel();
+            map.insert(appid.clone(), tx);
+
+            let mgr_weak = Arc::downgrade(self);
+            let task_appid = appid.clone();
+            let _ = rong::service_executor::spawn_async(async move {
+                let sleep = time::sleep(Duration::from_secs(1800));
+                tokio::pin!(rx);
+                tokio::pin!(sleep);
+                tokio::select! {
+                    _ = &mut sleep => {},
+                    _ = &mut rx => return, // cancelled
+                }
+
+                if let Some(mgr) = mgr_weak.upgrade() {
+                    info!("Delayed destroy triggered after inactivity")
+                        .with_appid(task_appid.clone());
+                    mgr.destroy_lxapp(&task_appid);
+                    if let Ok(mut guard) = mgr.pending_destroy.lock() {
+                        guard.remove(&task_appid);
+                    }
+                }
+            });
+        }
+    }
+
+    /// Cancel any pending delayed destroy for the given app.
+    pub(crate) fn cancel_delayed_destroy(&self, appid: &str) {
+        if let Ok(mut map) = self.pending_destroy.lock() {
+            if let Some(cancel) = map.remove(appid) {
+                let _ = cancel.send(());
+            }
         }
     }
 
@@ -764,6 +803,9 @@ impl LxApp {
         options: LxAppStartupOptions,
     ) -> Result<(), LxAppError> {
         if let Some(manager) = get_lxapps_manager() {
+            // Cancel any pending destroy for the target app since it is about to be opened.
+            manager.cancel_delayed_destroy(&appid);
+
             if manager.is_lxapp_stack_full() {
                 warn!(
                     "LxApp navigation stack is full (capacity: {}). Cannot navigate to app: {}",

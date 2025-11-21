@@ -96,6 +96,11 @@ impl LxAppDelegate for LxApp {
         // Ensure status reflects opened (both first open and reopen)
         self.set_status(LxAppSessionStatus::Opened);
 
+        // Cancel any pending delayed-destroy now that the app is reopened.
+        if let Some(manager) = lxapp::get_lxapps_manager() {
+            manager.cancel_delayed_destroy(&self.appid);
+        }
+
         // App-level onShow still fires here (app layer), independent of page service readiness.
         let options = self.state.lock().unwrap().startup_options.clone();
         let options_str = serde_json::to_string(&options).ok();
@@ -113,6 +118,7 @@ impl LxAppDelegate for LxApp {
         // Remove this LxApp from the navigation stack
         if let Some(manager) = lxapp::get_lxapps_manager() {
             manager.remove_from_stack(&self.appid);
+            manager.schedule_delayed_destroy(self.appid.clone());
         }
 
         // Trigger onHide
