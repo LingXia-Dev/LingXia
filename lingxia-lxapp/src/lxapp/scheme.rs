@@ -279,7 +279,18 @@ impl LxApp {
             // Decide extension from URL or query
             let ext_opt = url_ext_from_uri(uri);
             let ext = ext_opt.as_deref().unwrap_or("bin");
-            match self.cache().resolve_path_with_ext(&url_str, ext) {
+            let cache = match self.cache() {
+                Ok(c) => c,
+                Err(e) => {
+                    return Some(self.create_error_response(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Cache Not Ready",
+                        &format!("Cache unavailable: {}", e),
+                    ));
+                }
+            };
+
+            match cache.resolve_path_with_ext(&url_str, ext) {
                 crate::cache::ResolveResult::Exists(file_path) => {
                     // Cached: serve file path
                     let mime_type = ext_opt

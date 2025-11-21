@@ -581,7 +581,11 @@ async fn choose_media(
                 "video" => "mp4",
                 _ => "jpg",
             };
-            match lxapp.cache().resolve_path_with_ext(&key, ext) {
+            let cache = lxapp
+                .cache()
+                .map_err(|e| RongJSError::Error(format!("cache unavailable: {}", e)))?;
+
+            match cache.resolve_path_with_ext(&key, ext) {
                 lingxia_lxapp::ResolveResult::Exists(path) => path.to_string_lossy().to_string(),
                 lingxia_lxapp::ResolveResult::NonExists(path) => {
                     let media_kind = match kind.as_str() {

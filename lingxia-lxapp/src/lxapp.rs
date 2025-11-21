@@ -83,17 +83,21 @@ impl LxApps {
     }
 
     /// Get or initialize a specific LxApp instance by appid
-    fn get_or_init_lxapp(&self, appid: String) -> Arc<LxApp> {
+    fn get_or_init_lxapp(&self, appid: String, release_type: ReleaseType) -> Arc<LxApp> {
         // If the lxapp already exists, return it directly
         if let Some(app_arc) = self.lxapps.get(&appid) {
             return app_arc.clone();
         }
+
+        // Apply any downloaded update before creating the LxApp instance
+        let _ = UpdateManager::apply_downloaded_update(self.runtime.clone(), &appid, release_type);
 
         // Create new LxApp
         let new_lxapp = Arc::new(LxApp::new(
             appid.clone(),
             self.runtime.clone(),
             self.executor.clone(),
+            release_type,
         ));
 
         // Insert into collection and return
@@ -112,7 +116,7 @@ impl LxApps {
 
     /// Recreate the LxApp instance for a given appid with a brand new instance.
     /// Used by restart to force a fresh session and runtime state.
-    fn recreate_lxapp(&self, appid: String) -> Arc<LxApp> {
+    fn recreate_lxapp(&self, appid: String, release_type: ReleaseType) -> Arc<LxApp> {
         // Clean out old instance + stack entries before inserting a fresh one.
         self.destroy_lxapp(&appid);
 
@@ -120,6 +124,7 @@ impl LxApps {
             appid.clone(),
             self.runtime.clone(),
             self.executor.clone(),
+            release_type,
         ));
         self.lxapps.insert(appid, new_lxapp.clone());
         new_lxapp
@@ -436,7 +441,12 @@ impl LxApp {
         Ok(())
     }
 
-    fn _new(appid: String, runtime: Arc<Platform>, executor: Arc<LxAppExecutor>) -> Self {
+    fn _new(
+        appid: String,
+        runtime: Arc<Platform>,
+        executor: Arc<LxAppExecutor>,
+        release_type: ReleaseType,
+    ) -> Self {
         let session = LxAppSession::new();
         Self {
             appid,
@@ -447,7 +457,7 @@ impl LxApp {
             user_cache_dir: PathBuf::new(),
             fingermark: String::new(),
             is_home_lxapp: false,
-            release_type: ReleaseType::default(),
+            release_type,
             config: LxAppConfig::default(),
             executor,
             session,
@@ -457,8 +467,13 @@ impl LxApp {
     }
 
     /// Create a new regular mini-app (not home app)
-    pub(crate) fn new(appid: String, runtime: Arc<Platform>, executor: Arc<LxAppExecutor>) -> Self {
-        let mut app = Self::_new(appid, runtime, executor);
+    pub(crate) fn new(
+        appid: String,
+        runtime: Arc<Platform>,
+        executor: Arc<LxAppExecutor>,
+        release_type: ReleaseType,
+    ) -> Self {
+        let mut app = Self::_new(appid, runtime, executor, release_type);
         if let Err(e) = app.setup() {
             error!("Setup failed: {}", e).with_appid(&app.appid);
         }
@@ -468,7 +483,7 @@ impl LxApp {
 
     /// Create a new LxApp instance marked as the home lxapp
     fn new_as_home(appid: String, runtime: Arc<Platform>, executor: Arc<LxAppExecutor>) -> Self {
-        let mut app = Self::_new(appid, runtime, executor);
+        let mut app = Self::_new(appid, runtime, executor, ReleaseType::Release);
 
         // Mark as home lxapp
         app.is_home_lxapp = true;
@@ -581,8 +596,10 @@ impl LxApp {
         Ok(())
     }
 
-    pub fn cache(&self) -> &LxAppCache {
-        self.cache.as_ref().expect("cache initialized")
+    pub fn cache(&self) -> Result<&LxAppCache, LxAppError> {
+        self.cache
+            .as_ref()
+            .ok_or_else(|| LxAppError::IoError("cache not initialized".to_string()))
     }
 
     /// Get the current installed version of this app variant from storage
@@ -726,28 +743,6 @@ impl LxApp {
             .cloned()
     }
 
-    /// Apply any downloaded update archive for this app + release_type, if present.
-    fn apply_downloaded_update(&self, release_type: ReleaseType) {
-        let lxappid = self.appid.clone();
-        let pre_open_updater = UpdateManager::new(self.clone_arc());
-        match pre_open_updater.has_downloaded_update(&lxappid, release_type) {
-            Ok(Some(info)) => {
-                if let Err(e) = pre_open_updater.apply_update_archive(
-                    &lxappid,
-                    release_type,
-                    &info.version,
-                    &info.archive_path,
-                ) {
-                    error!("Failed to apply downloaded update: {}", e).with_appid(lxappid.clone());
-                }
-            }
-            Ok(None) => {}
-            Err(e) => {
-                error!("Failed to read downloaded update info: {}", e).with_appid(lxappid);
-            }
-        }
-    }
-
     /// Open a new runtime session for this LxApp instance:
     /// - Apply any downloaded update for this release_type (if present)
     /// - Record startup options
@@ -756,9 +751,6 @@ impl LxApp {
     /// - Open the UI window
     fn open(&self, options: LxAppStartupOptions) -> Result<(), LxAppError> {
         let startup_options = options.clone();
-
-        // Apply downloaded-but-not-yet-applied update before starting the session
-        self.apply_downloaded_update(startup_options.release_type);
 
         // Record startup options on this instance
         self.state.lock().unwrap().startup_options = options;
@@ -814,7 +806,7 @@ impl LxApp {
                 return Ok(());
             }
 
-            let app = manager.get_or_init_lxapp(appid.clone());
+            let app = manager.get_or_init_lxapp(appid.clone(), options.release_type);
             app.open(options)?;
         }
         Ok(())
@@ -842,7 +834,7 @@ impl LxApp {
         let _ = rong::service_executor::spawn_async(async move {
             // 1) Replace LxApp instance in manager with a brand new one for this appid.
             if let Some(manager) = get_lxapps_manager() {
-                let new_app = manager.recreate_lxapp(appid.clone());
+                let new_app = manager.recreate_lxapp(appid.clone(), release_type);
 
                 // 2) Initialize startup options for the new app session and open it.
                 let options =

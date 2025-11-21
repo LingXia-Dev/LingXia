@@ -71,6 +71,53 @@ impl UpdateManager {
         }
     }
 
+    /// Apply a previously downloaded update without requiring an LxApp instance.
+    /// Safe to call before the LxApp object exists (navigation startup).
+    pub(crate) fn apply_downloaded_update(
+        runtime: Arc<Platform>,
+        lxappid: &str,
+        release_type: ReleaseType,
+    ) -> Result<(), LxAppError> {
+        let downloaded = match metadata::downloaded_get(lxappid, release_type)? {
+            Some(rec) => rec,
+            None => return Ok(()),
+        };
+
+        let archive_path = PathBuf::from(&downloaded.zip_path);
+        if !archive_path.exists() {
+            metadata::downloaded_remove(lxappid, release_type)?;
+            return Ok(());
+        }
+
+        // Remember previous install path (if any)
+        let previous_path =
+            metadata::get(lxappid, release_type)?.map(|rec| PathBuf::from(rec.install_path));
+
+        // Install archive using the shared helper
+        let install_path =
+            Self::install_archive_to_dir(&runtime, lxappid, release_type, &archive_path)?;
+
+        // Record install metadata
+        Self::record_install_metadata(
+            lxappid,
+            release_type,
+            &downloaded.version.to_string(),
+            &install_path,
+        )?;
+
+        // Remove previous install if different
+        if let Some(prev) = previous_path {
+            if prev.exists() && prev != install_path {
+                let _ = fs::remove_dir_all(&prev);
+            }
+        }
+
+        // Clean up downloaded record + archive
+        let _ = metadata::downloaded_remove(lxappid, release_type);
+
+        Ok(())
+    }
+
     /// Decide whether we should download/apply the server version for this app variant.
     /// Policy: allow upgrade or downgrade; skip only when server_version equals installed.
     pub fn should_update(&self, server_version: &str) -> bool {
@@ -166,7 +213,7 @@ impl UpdateManager {
 
         // Install into a new hashed directory for this version
         let install_path =
-            self.install_from_archive(lxappid, release_type, _version, archive_path)?;
+            Self::install_archive_to_dir(&self.lxapp.runtime, lxappid, release_type, archive_path)?;
 
         // Write metadata first to allow rollback
         if let Err(e) =
@@ -213,18 +260,15 @@ impl UpdateManager {
         Ok(())
     }
 
-    /// Install from a local tar.zst archive into the correct per-release path.
-    pub fn install_from_archive(
-        &self,
+    /// Core install helper shared by instance and static paths.
+    fn install_archive_to_dir(
+        runtime: &Arc<Platform>,
         lxappid: &str,
         release_type: ReleaseType,
-        _version: &str,
         archive_path: &Path,
     ) -> Result<PathBuf, LxAppError> {
         let dir_name = lxapp_fingermark(lxappid, release_type);
-        let destination = self
-            .lxapp
-            .runtime
+        let destination = runtime
             .app_data_dir()
             .join(LINGXIA_DIR)
             .join(LXAPPS_DIR)
@@ -243,10 +287,7 @@ impl UpdateManager {
 
         fs::create_dir_all(&destination)?;
 
-        // Open the tar.zst file
         let file = File::open(archive_path)?;
-
-        // Create zstd decoder
         let zstd_decoder = ZstdDecoder::new(file).map_err(|e| {
             LxAppError::IoError(format!(
                 "Failed to create zstd decoder for {}: {}",
@@ -254,11 +295,7 @@ impl UpdateManager {
                 e
             ))
         })?;
-
-        // Create tar archive reader
         let mut archive = Archive::new(zstd_decoder);
-
-        // Extract all entries
         archive.unpack(&destination).map_err(|e| {
             LxAppError::IoError(format!(
                 "Failed to extract tar.zst archive {}: {}",
@@ -271,7 +308,7 @@ impl UpdateManager {
     }
 
     /// Uninstall on-disk contents for a specific (lxappid, release_type) and clear metadata.
-    pub fn uninstall_installed(
+    fn uninstall_installed(
         &self,
         lxappid: &str,
         release_type: ReleaseType,
