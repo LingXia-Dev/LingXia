@@ -84,13 +84,18 @@ impl LxApps {
 
     /// Get or initialize a specific LxApp instance by appid
     fn get_or_init_lxapp(&self, appid: String, release_type: ReleaseType) -> Arc<LxApp> {
-        // If the lxapp already exists, return it directly
-        if let Some(app_arc) = self.lxapps.get(&appid) {
+        let has_pending_update = metadata::downloaded_get(&appid, release_type)
+            .map(|opt| opt.is_some())
+            .unwrap_or(false);
+
+        if has_pending_update {
+            // Tear down any existing instance before applying new files
+            self.destroy_lxapp(&appid);
+            let _ =
+                UpdateManager::apply_downloaded_update(self.runtime.clone(), &appid, release_type);
+        } else if let Some(app_arc) = self.lxapps.get(&appid) {
             return app_arc.clone();
         }
-
-        // Apply any downloaded update before creating the LxApp instance
-        let _ = UpdateManager::apply_downloaded_update(self.runtime.clone(), &appid, release_type);
 
         // Create new LxApp
         let new_lxapp = Arc::new(LxApp::new(
@@ -120,14 +125,9 @@ impl LxApps {
         // Clean out old instance + stack entries before inserting a fresh one.
         self.destroy_lxapp(&appid);
 
-        let new_lxapp = Arc::new(LxApp::new(
-            appid.clone(),
-            self.runtime.clone(),
-            self.executor.clone(),
-            release_type,
-        ));
-        self.lxapps.insert(appid, new_lxapp.clone());
-        new_lxapp
+        // Delegate to get_or_init_lxapp so pending downloaded updates are applied
+        // consistently (same path as cold-start navigation).
+        self.get_or_init_lxapp(appid, release_type)
     }
 
     /// Finds and evicts the least recently used LxApp to free up memory.

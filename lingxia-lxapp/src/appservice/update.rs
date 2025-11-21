@@ -41,8 +41,8 @@ impl JSUpdateManager {
     }
 
     /// Apply update: simply restart the app.
-    /// The actual apply of a downloaded package occurs inside LxApp.navigate_to
-    /// which is called by restart().
+    /// The actual apply of a downloaded package happens when restart() recreates
+    /// the native LxApp instance and applies any pending archive.
     #[js_method(rename = "applyUpdate")]
     fn apply_update(&self, ctx: JSContext) -> JSResult<()> {
         let lxapp = LxApp::from_ctx(&ctx)?;

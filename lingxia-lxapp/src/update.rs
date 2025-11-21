@@ -470,11 +470,10 @@ impl UpdateManager {
             .map(|duration| duration.as_secs() as i64)
             .unwrap_or_default();
 
+        let fingermark = lxapp_fingermark(lxappid, release_type);
         let parsed_version = Version::parse(version).map_err(|_| {
             LxAppError::InvalidParameter(format!("Invalid semantic version: {}", version))
         })?;
-
-        let fingermark = lxapp_fingermark(lxappid, release_type);
         let record = LxAppRecord::new(
             lxappid,
             release_type,
