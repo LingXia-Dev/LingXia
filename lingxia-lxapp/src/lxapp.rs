@@ -96,9 +96,21 @@ impl LxApps {
         new_lxapp
     }
 
-    /// Replace the LxApp instance for a given appid with a brand new instance.
+    /// Completely destroy an LxApp (shutdown + removal from manager and stack).
+    fn destroy_lxapp(&self, appid: &str) {
+        if let Some(app_arc) = self.lxapps.get(appid) {
+            let _ = app_arc.shutdown();
+        }
+        self.remove_from_stack(appid);
+        self.lxapps.remove(appid);
+    }
+
+    /// Recreate the LxApp instance for a given appid with a brand new instance.
     /// Used by restart to force a fresh session and runtime state.
-    fn replace_lxapp(&self, appid: String) -> Arc<LxApp> {
+    fn recreate_lxapp(&self, appid: String) -> Arc<LxApp> {
+        // Clean out old instance + stack entries before inserting a fresh one.
+        self.destroy_lxapp(&appid);
+
         let new_lxapp = Arc::new(LxApp::new(
             appid.clone(),
             self.runtime.clone(),
@@ -111,24 +123,28 @@ impl LxApps {
     /// Finds and evicts the least recently used LxApp to free up memory.
     /// The least recently used app is determined by the front of the navigation stack.
     fn evict_lru_lxapp(&self) {
-        if let Some(appid_to_destroy) = self.pop_front_lxapp_stack() {
+        let appid_to_destroy = {
+            if let Ok(stack) = self.lxapp_stack.lock() {
+                stack.front().cloned()
+            } else {
+                None
+            }
+        };
+
+        if let Some(appid_to_destroy) = appid_to_destroy {
             // Check if it's the home app
             if let Some(app_arc) = self.lxapps.get(&appid_to_destroy) {
                 if app_arc.is_home_lxapp {
                     warn!("Cannot evict the home lxapp").with_appid(appid_to_destroy);
                     return;
                 }
-
-                info!("Evicting least recently used lxapp").with_appid(appid_to_destroy.clone());
-
-                // Explicitly shutdown the app before removing it from the map so that
-                // UI/JSContext/Page/WebView/AppService are cleaned up deterministically.
-                let _ = app_arc.shutdown();
-
-                // Remove from the stack and the main map
-                self.remove_from_stack(&appid_to_destroy);
-                self.lxapps.remove(&appid_to_destroy);
             }
+
+            info!("Evicting least recently used lxapp").with_appid(appid_to_destroy.clone());
+
+            // Explicitly shutdown the app before removing it from the map so that
+            // UI/JSContext/Page/WebView/AppService are cleaned up deterministically.
+            self.destroy_lxapp(&appid_to_destroy);
         }
     }
 
@@ -781,16 +797,12 @@ impl LxApp {
         let relaunch_path = self.config.get_initial_route();
         let appid = self.appid.clone();
         let release_type = self.release_type;
-        let old_app = self.clone_arc();
         let _ = rong::service_executor::spawn_async(async move {
-            // 1) Shutdown current session (UI, JSContext, pages, popup, AppService).
-            let _ = old_app.shutdown();
-
-            // 2) Replace LxApp instance in manager with a brand new one for this appid.
+            // 1) Replace LxApp instance in manager with a brand new one for this appid.
             if let Some(manager) = get_lxapps_manager() {
-                let new_app = manager.replace_lxapp(appid.clone());
+                let new_app = manager.recreate_lxapp(appid.clone());
 
-                // 3) Initialize startup options for the new app session and open it.
+                // 2) Initialize startup options for the new app session and open it.
                 let options =
                     LxAppStartupOptions::new(&relaunch_path).set_release_type(release_type);
                 if let Err(e) = new_app.open(options) {
