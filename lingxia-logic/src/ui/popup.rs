@@ -103,7 +103,7 @@ fn resolve_popup_ratios(
     (clamp_ratio(width), clamp_ratio(height))
 }
 
-fn show_popup(ctx: JSContext, options: JSPopupOptions) -> JSResult<JSObject> {
+async fn show_popup(ctx: JSContext, options: JSPopupOptions) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 
     // Do not show UI if app is not opened
@@ -115,6 +115,7 @@ fn show_popup(ctx: JSContext, options: JSPopupOptions) -> JSResult<JSObject> {
 
     let page_svc = lxapp
         .get_or_create_page_in_ctx(&ctx, &options.url)
+        .await
         .map_err(|e| RongJSError::Error(format!("Failed to ensure popup page service: {}", e)))?;
 
     let position = parse_position(options.position);

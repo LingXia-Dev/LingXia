@@ -22,7 +22,7 @@ struct SwitchTab {
 }
 
 /// Navigate to a new page (forward navigation)
-fn navigate_to(ctx: JSContext, options: NavigateTo) -> JSResult<JSObject> {
+async fn navigate_to(ctx: JSContext, options: NavigateTo) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 
     // Get current page from the page stack
@@ -33,6 +33,7 @@ fn navigate_to(ctx: JSContext, options: NavigateTo) -> JSResult<JSObject> {
     // Ensure PageSvc for target page exists in this JSContext
     let page_svc = lxapp
         .get_or_create_page_in_ctx(&ctx, &options.url)
+        .await
         .map_err(|e| RongJSError::Error(format!("Failed to ensure target page svc: {}", e)))?;
 
     // Get the destination native Page from PageSvc
@@ -71,7 +72,7 @@ fn navigate_back(ctx: JSContext, options: NavigateBack) -> JSResult<()> {
 }
 
 /// Redirect to a new page (replace current page)
-fn redirect_to(ctx: JSContext, options: RedirectTo) -> JSResult<()> {
+async fn redirect_to(ctx: JSContext, options: RedirectTo) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 
     // Get current page from the page stack
@@ -81,6 +82,7 @@ fn redirect_to(ctx: JSContext, options: RedirectTo) -> JSResult<()> {
 
     let page_svc = lxapp
         .get_or_create_page_in_ctx(&ctx, &options.url)
+        .await
         .map_err(|e| RongJSError::Error(format!("Failed to ensure target page svc: {}", e)))?;
     let target_page = page_svc.get_page();
 
@@ -95,7 +97,7 @@ fn redirect_to(ctx: JSContext, options: RedirectTo) -> JSResult<()> {
 }
 
 /// Switch to a tab page
-fn switch_tab(ctx: JSContext, options: SwitchTab) -> JSResult<()> {
+async fn switch_tab(ctx: JSContext, options: SwitchTab) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 
     // Get current page from the page stack
@@ -105,6 +107,7 @@ fn switch_tab(ctx: JSContext, options: SwitchTab) -> JSResult<()> {
 
     let page_svc = lxapp
         .get_or_create_page_in_ctx(&ctx, &options.url)
+        .await
         .map_err(|e| RongJSError::Error(format!("Failed to ensure target page svc: {}", e)))?;
     let target_page = page_svc.get_page();
 
