@@ -9,6 +9,24 @@ App({
       this.globalData.ipAddr = error.message;
     }
 
+    const um = lx.getUpdateManager();
+    um.onUpdateReady(async () => {
+      console.log("Update ready; asking user to apply...");
+      const { confirm } = await lx.showModal({
+        title: "Update Available",
+        content: "A new version is ready. Apply now?",
+        showCancel: true,
+        cancelText: "Later",
+        confirmText: "Apply",
+      });
+      if (confirm) {
+        um.applyUpdate();
+      }
+    });
+    um.onUpdateFailed(() => {
+      console.warn("Update failed");
+    });
+
     // Call the registered callback function if available
     if (this.ipReadyCallback) {
       console.log("Calling IP ready callback");
