@@ -1,8 +1,8 @@
 use crate::{WebViewController, WebViewError};
 use jni::objects::{GlobalRef, JObject, JValue};
 use std::collections::HashMap;
-use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, OnceLock};
+use tokio::sync::oneshot::Sender;
 
 // Import JNI environment access from shared utils
 use super::jni_env::{get_env, get_lingxia_webview_class};

@@ -15,7 +15,7 @@ use objc2_web_kit::{
 };
 use std::ptr::NonNull;
 use std::sync::Arc;
-use std::sync::mpsc::Sender;
+use tokio::sync::oneshot::Sender;
 
 use crate::webview::WebTag;
 

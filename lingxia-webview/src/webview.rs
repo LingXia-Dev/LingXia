@@ -1,6 +1,6 @@
 use std::collections::HashMap;
-use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
+use tokio::sync::oneshot::Sender;
 
 #[cfg(target_os = "android")]
 use crate::android::WebViewInner;

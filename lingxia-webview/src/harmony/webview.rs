@@ -6,8 +6,8 @@ use ohos_web_sys::*;
 
 use std::cell::RefCell;
 use std::ffi::{CStr, CString, c_char, c_void};
-use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, OnceLock};
+use tokio::sync::oneshot::Sender;
 
 // Static C strings for proxy object and method names
 static LINGXIA_PROXY_NAME: &[u8] = b"LingXiaProxy\0";
@@ -65,7 +65,6 @@ fn get_message_api() -> Result<&'static ArkWeb_WebMessageAPI, WebViewError> {
     }
 }
 
-#[derive(Debug)]
 pub struct WebViewInner {
     pub(crate) webtag: WebTag,
     native_port: RefCell<Option<*mut ArkWeb_WebMessagePort>>,
@@ -81,6 +80,14 @@ pub struct WebViewInner {
     callbacks_registered: RefCell<bool>,
     // Store scheme handlers for cleanup
     scheme_handlers: RefCell<Vec<*mut ohos_web_sys::ArkWeb_SchemeHandler>>,
+}
+
+impl std::fmt::Debug for WebViewInner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WebViewInner")
+            .field("webtag", &self.webtag)
+            .finish()
+    }
 }
 
 unsafe impl Send for WebViewInner {}
