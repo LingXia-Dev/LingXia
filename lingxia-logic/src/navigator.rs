@@ -8,7 +8,7 @@ use std::sync::Arc;
 struct NavigateToOptions {
     #[rename = "appId"]
     appid: String,
-    path: String,
+    path: Option<String>,
     #[rename = "envVersion"]
     env_version: Option<String>,
 }
@@ -20,7 +20,8 @@ async fn navigate_to_lxapp(ctx: JSContext, options: NavigateToOptions) -> JSResu
         return Ok(());
     }
 
-    let mut startup_options = LxAppStartupOptions::new(&options.path);
+    let path = options.path.as_deref().unwrap_or("");
+    let mut startup_options = LxAppStartupOptions::new(path);
 
     let release_type = options
         .env_version
