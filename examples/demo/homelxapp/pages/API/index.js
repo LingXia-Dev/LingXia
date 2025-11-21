@@ -37,47 +37,47 @@ Page({
   },
 
   // Navigate to UI API page with specific type parameter
-  navigateToUIPage: function (params) {
+  navigateToUIPage: async function (params) {
     const { type = "navigation" } = params || {};
-    lx.navigateTo({
+    await lx.navigateTo({
       url: `pages/ui/index.tsx?type=${type}`,
     });
   },
 
   // Navigate to Device API page with specific type parameter
-  navigateToDevicePage: function (params) {
+  navigateToDevicePage: async function (params) {
     const { type = "device" } = params || {};
-    lx.navigateTo({
+    await lx.navigateTo({
       url: `pages/device/index.tsx?type=${type}`,
     });
   },
 
   // Navigate to System API page with specific type parameter
-  navigateToSystemPage: function (params) {
+  navigateToSystemPage: async function (params) {
     const { type = "appBaseInfo" } = params || {};
-    lx.navigateTo({
+    await lx.navigateTo({
       url: `pages/system/index.tsx?type=${type}`,
     });
   },
 
   // Navigate to Location API page
-  navigateToLocationPage: function () {
-    lx.navigateTo({
+  navigateToLocationPage: async function () {
+    await lx.navigateTo({
       url: `pages/location/index.tsx`,
     });
   },
 
   // Navigate to Media API page with specific type parameter
-  navigateToMediaPage: function (params) {
+  navigateToMediaPage: async function (params) {
     const { type = "Pictures" } = params || {};
-    lx.navigateTo({
+    await lx.navigateTo({
       url: `pages/media/index.tsx?type=${type}`,
     });
   },
 
   // Navigate to Document API page
-  navigateToDocumentPage: function () {
-    lx.navigateTo({
+  navigateToDocumentPage: async function () {
+    await lx.navigateTo({
       url: `pages/document/index.tsx`,
     });
   },

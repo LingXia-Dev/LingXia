@@ -163,26 +163,26 @@ Page({
     console.log("UI page onHide");
   },
 
-  demoNavigateTo: function () {
-    lx.navigateTo({
+  demoNavigateTo: async function () {
+    await lx.navigateTo({
       url: "pages/ui/index.tsx?type=navigation",
     });
   },
 
-  demoNavigateBack: function () {
-    lx.navigateBack({
+  demoNavigateBack: async function () {
+    await lx.navigateBack({
       delta: 1,
     });
   },
 
-  demoSwitchTab: function () {
-    lx.switchTab({
+  demoSwitchTab: async function () {
+    await lx.switchTab({
       url: "pages/home/index.html",
     });
   },
 
-  demoRedirectTo: function () {
-    lx.redirectTo({
+  demoRedirectTo: async function () {
+    await lx.redirectTo({
       url: "pages/ui/index.tsx?type=navigation",
     });
   },
@@ -293,7 +293,7 @@ Page({
     }
   },
 
-  showPopupDemo: function (config) {
+  showPopupDemo: async function (config) {
     const query = `source=ui-page&time=${Date.now()}`;
 
     this.setData({
@@ -311,16 +311,22 @@ Page({
       };
 
       const normalizedPosition =
-        typeof cfg.position === "string" ? cfg.position.trim().toLowerCase() : "";
+        typeof cfg.position === "string"
+          ? cfg.position.trim().toLowerCase()
+          : "";
       const allowedPositions = new Set(["bottom", "center", "left", "right"]);
-      const position = allowedPositions.has(normalizedPosition) ? normalizedPosition : "bottom";
+      const position = allowedPositions.has(normalizedPosition)
+        ? normalizedPosition
+        : "bottom";
 
-      const fallbackWidth = position === "left" || position === "right" ? 0.72 : 0.9;
-      const fallbackHeight = position === "left" || position === "right" ? 0.85 : 0.6;
+      const fallbackWidth =
+        position === "left" || position === "right" ? 0.72 : 0.9;
+      const fallbackHeight =
+        position === "left" || position === "right" ? 0.85 : 0.6;
       const widthRatio = clamp(cfg.widthRatio, fallbackWidth);
       const heightRatio = clamp(cfg.heightRatio, fallbackHeight);
 
-      const popup = lx.showPopup({
+      const popup = await lx.showPopup({
         url: `pages/popup/index.tsx?${query}`,
         position,
         widthRatio,
