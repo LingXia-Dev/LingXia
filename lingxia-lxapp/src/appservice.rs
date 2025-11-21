@@ -11,6 +11,7 @@ use std::collections::{HashMap, VecDeque};
 use std::path::Path;
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::Duration;
+use tokio::sync::oneshot;
 
 mod app;
 use crate::event::AppServiceEvent;
@@ -48,7 +49,7 @@ pub(crate) enum ServiceMessage {
     CreatePage {
         lxapp: Arc<LxApp>,
         path: String,
-        ack_tx: mpsc::Sender<()>,
+        ack_tx: oneshot::Sender<()>,
     },
     // Delete a page service (object-identity safe)
     TerminatePage {

@@ -112,9 +112,10 @@ impl Page {
     }
 
     /// Create a new page in pending state (WebView creation in progress)
-    pub(crate) fn new<F>(appid: String, path: String, lxapp: &LxApp, setup_callback: F) -> Self
+    pub(crate) fn new<F, Fut>(appid: String, path: String, lxapp: &LxApp, setup_callback: F) -> Self
     where
-        F: Fn(&Page) + Send + 'static,
+        F: Fn(&Page) -> Fut + Send + 'static,
+        Fut: std::future::Future<Output = Result<(), String>> + Send + 'static,
     {
         // Build page state from LxApp configuration
         let page_state = Self::build_page_state(lxapp, &path);
@@ -153,10 +154,10 @@ impl Page {
                     webview_controller.set_delegate(Arc::new(page_for_task.clone()));
 
                     // Call setup callback - let external code handle the rest
-                    setup_callback(&page_for_task);
+                    let result = setup_callback(&page_for_task).await;
 
                     // Mark ready after setup completes so waiters are released only once page is usable.
-                    page_for_task.mark_webview_ready(Ok(()));
+                    page_for_task.mark_webview_ready(result);
                 }
                 Ok(Err(e)) => {
                     error!("Failed to create WebView: {}", e)

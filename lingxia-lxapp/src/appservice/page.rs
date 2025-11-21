@@ -422,16 +422,15 @@ impl PageSvc {
 
 impl LxApp {
     /// Create or reuse native Page and ensure PageSvc exists in current JSContext.
-    /// If page is newly created, create PageSvc via JSContext; otherwise read from registry.
-    pub fn get_or_create_page_in_ctx(&self, ctx: &JSContext, url: &str) -> JSResult<PageSvc> {
-        let (page, setup_tx_opt) = self.get_or_create_page_core(url);
-        let path = page.path();
+    /// If page is newly created, create PageSvc via JSContext before unblocking HTML load.
+    pub async fn get_or_create_page_in_ctx(&self, ctx: &JSContext, url: &str) -> JSResult<PageSvc> {
+        let page = self.get_or_create_page(url);
 
-        if let Some(setup_tx) = setup_tx_opt {
-            // Synchronously create PageSvc in this JSContext, then unblock setup
-            PageSvc::create_in_ctx(ctx, &path)?;
-            let _ = setup_tx.send(());
-        }
+        page.wait_webview_ready()
+            .await
+            .map_err(|e| RongJSError::Error(e))?;
+
+        let path = page.path();
 
         // Fetch PageSvc from registry and return
         super::with_page_svc_map(ctx, |page_svc_map| {

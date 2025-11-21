@@ -5,8 +5,9 @@ use std::fs;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU8, Ordering};
-use std::sync::{Arc, Mutex, OnceLock, mpsc};
-use std::time::{Duration, Instant};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Instant;
+use tokio::sync::oneshot;
 
 use crate::PageLifecycleEvent;
 use crate::app::AppConfig;
@@ -873,11 +874,9 @@ impl LxApp {
         self.config.get_lxapp_info()
     }
 
-    /// Get existing page or create a new one (native side only)
-    /// Core path: sets up native Page/WebView and returns a Sender to unblock setup when ready.
-    /// The setup callback waits until the returned Sender is signaled, then runs load_html.
-    /// Does NOT request JS PageSvc creation.
-    pub(crate) fn get_or_create_page_core(&self, url: &str) -> (Page, Option<mpsc::Sender<()>>) {
+    /// Get existing page or create a new one.
+    /// PageSvc creation + HTML load are handled inside Page::new once WebView is ready.
+    pub fn get_or_create_page(&self, url: &str) -> Page {
         let (path, query) = crate::startup::split_path_query(url);
 
         {
@@ -886,32 +885,37 @@ impl LxApp {
                 if let Some(query) = query.clone() {
                     page.set_query(query);
                 }
-                return (page.clone(), None);
+                return page.clone();
             }
         }
 
         let appid = self.appid.clone();
-        // Channel to notify when setup (load_html) can proceed
-        let (setup_tx, setup_rx) = mpsc::channel::<()>();
-        let page = {
-            // Only load HTML after receiving the setup signal; do not create PageSvc here
-            Page::new(appid.clone(), path.to_string(), self, move |page| {
-                // Wait until caller signals it's safe to proceed
-                match setup_rx.recv_timeout(Duration::from_millis(4000)) {
-                    Ok(()) => {}
-                    Err(_) => {
-                        warn!("Timed out waiting for setup signal; proceeding to load HTML")
-                            .with_appid(page.appid())
-                            .with_path(page.path());
-                    }
+
+        // Gate HTML load when create_page_svc is false; caller will unblock after creating PageSvc.
+        let lxapp_arc = self.clone_arc();
+        let page = Page::new(appid.clone(), path.to_string(), self, move |page| {
+            let lxapp_arc = lxapp_arc.clone();
+            let page_clone = page.clone();
+            async move {
+                // Ensure PageSvc exists before loading HTML
+                let (ack_tx, ack_rx) = oneshot::channel();
+                if let Err(e) = lxapp_arc.executor.create_page_svc_with_ack(
+                    lxapp_arc.clone(),
+                    page_clone.path(),
+                    ack_tx,
+                ) {
+                    return Err(e.to_string());
                 }
-                if let Err(e) = page.load_html() {
-                    error!("Failed to load HTML for page: {}", e)
-                        .with_appid(page.appid())
-                        .with_path(page.path());
-                }
-            })
-        };
+
+                ack_rx
+                    .await
+                    .map_err(|e| format!("Page service creation ack failed: {}", e))?;
+
+                page_clone
+                    .load_html()
+                    .map_err(|e| format!("Failed to load HTML for page: {}", e))
+            }
+        });
 
         // Insert the new page first to ensure it's protected
         {
@@ -929,25 +933,6 @@ impl LxApp {
             page.set_query(query);
         }
 
-        (page, Some(setup_tx))
-    }
-
-    /// Get existing page or create a new one; requests JS PageSvc creation and gates HTML load on ACK
-    pub fn get_or_create_page(&self, url: &str) -> Page {
-        let (page, setup_tx_opt) = self.get_or_create_page_core(url);
-        if let Some(setup_tx) = setup_tx_opt {
-            // For newly created page: request JS PageSvc and use setup_tx as the ACK channel
-            let lxapp_arc = self.clone_arc();
-            let path = page.path();
-            if let Err(e) =
-                self.executor
-                    .create_page_svc_with_ack(lxapp_arc, path.clone(), setup_tx)
-            {
-                error!("Failed to request page service creation: {}", e)
-                    .with_appid(page.appid())
-                    .with_path(page.path());
-            }
-        }
         page
     }
 

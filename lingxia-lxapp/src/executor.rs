@@ -6,6 +6,7 @@ use crate::{LxAppError, error, info};
 use rong::{JSContext, Rong, RongJS, Worker, WorkerMessage};
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex, mpsc};
+use tokio::sync::oneshot::Sender;
 
 /// LxApp Async Executor
 ///
@@ -187,7 +188,8 @@ impl LxAppExecutor {
         workers_map: HashMap<usize, Worker<RongJS>>,
     ) {
         loop {
-            match receiver.lock().unwrap().recv() {
+            let msg = receiver.lock().unwrap().recv();
+            match msg {
                 Ok(message) => {
                     Self::dispatch_message(message, &instance_assignments, &workers_map).await;
                 }
@@ -273,7 +275,7 @@ impl LxAppExecutor {
         &self,
         lxapp: Arc<crate::lxapp::LxApp>,
         path: String,
-        ack_tx: mpsc::Sender<()>,
+        ack_tx: Sender<()>,
     ) -> Result<(), LxAppError> {
         self.sender.send(ServiceMessage::CreatePage {
             lxapp,
