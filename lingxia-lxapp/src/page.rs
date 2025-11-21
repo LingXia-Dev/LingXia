@@ -11,8 +11,9 @@ use lingxia_webview::{
 };
 
 use rong::service_executor;
-use std::sync::{Arc, Mutex, mpsc};
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
+use tokio::sync::{oneshot, watch};
 
 /// Inner state of a page that can be shared across threads
 #[derive(Clone)]
@@ -28,6 +29,10 @@ pub(crate) struct PageInner {
 
     // state of Page
     state: Arc<Mutex<PageState>>,
+
+    // notify when WebView wiring is ready (delegate set & setup ran)
+    webview_ready_tx: watch::Sender<Option<Result<(), String>>>,
+    webview_ready_rx: Arc<Mutex<watch::Receiver<Option<Result<(), String>>>>>,
 }
 
 #[derive(Clone, Debug)]
@@ -113,22 +118,23 @@ impl Page {
     {
         // Build page state from LxApp configuration
         let page_state = Self::build_page_state(lxapp, &path);
+        let (ready_tx, ready_rx) = watch::channel(None);
         let inner = Arc::new(PageInner {
             appid: appid.clone(),
             path: path.clone(),
             last_active_time: Arc::new(Mutex::new(Instant::now())),
             state: Arc::new(Mutex::new(page_state)),
             webview: Arc::new(Mutex::new(None)),
+            webview_ready_tx: ready_tx,
+            webview_ready_rx: Arc::new(Mutex::new(ready_rx)),
         });
 
         let page = Self { inner };
 
-        // Create channel for WebView creation notification
-        let (sender, receiver) = mpsc::channel();
-
         // Initiate WebView creation asynchronously
         let webtag = WebTag::new(&appid, &path, Some(lxapp.session.id));
-        create_webview(&webtag, sender);
+        let (ready_tx, ready_rx) = oneshot::channel();
+        create_webview(&webtag, ready_tx);
 
         // Spawn task to wait for WebView creation completion
         // Keep a strong reference to ensure page stays alive during WebView creation
@@ -136,8 +142,8 @@ impl Page {
         let appid_clone = appid.clone();
         let path_clone = path.clone();
 
-        if let Err(e) = service_executor::spawn_blocking(move || {
-            match receiver.recv() {
+        if let Err(e) = service_executor::spawn_async(async move {
+            match ready_rx.await {
                 Ok(Ok(webview_controller)) => {
                     // First attach WebView to page
                     page_for_task.attach_webview(webview_controller.clone());
@@ -148,22 +154,28 @@ impl Page {
 
                     // Call setup callback - let external code handle the rest
                     setup_callback(&page_for_task);
+
+                    // Mark ready after setup completes so waiters are released only once page is usable.
+                    page_for_task.mark_webview_ready(Ok(()));
                 }
                 Ok(Err(e)) => {
                     error!("Failed to create WebView: {}", e)
                         .with_appid(appid_clone)
                         .with_path(path_clone);
+                    page_for_task.mark_webview_ready(Err(e.to_string()));
                 }
-                Err(_) => {
-                    error!("WebView creation channel closed")
+                Err(e) => {
+                    error!("WebView ready signal failed: {}", e)
                         .with_appid(appid_clone)
                         .with_path(path_clone);
+                    page_for_task.mark_webview_ready(Err(e.to_string()));
                 }
             }
         }) {
-            error!("Failed to spawn blocking task for WebView creation: {}", e)
+            error!("Failed to spawn async task for WebView creation: {}", e)
                 .with_appid(appid.clone())
                 .with_path(path.clone());
+            page.mark_webview_ready(Err(e));
         }
 
         page
@@ -326,6 +338,36 @@ impl Page {
         } else {
             None
         }
+    }
+
+    fn mark_webview_ready(&self, result: Result<(), String>) {
+        // Ignore errors; receiver will handle missing updates.
+        let _ = self.inner.webview_ready_tx.send(Some(result));
+    }
+
+    pub async fn wait_webview_ready(&self) -> Result<(), String> {
+        let rx = {
+            // Clone receiver so concurrent waiters don't block each other.
+            self.inner
+                .webview_ready_rx
+                .lock()
+                .map(|r| r.clone())
+                .map_err(|_| "webview ready receiver poisoned".to_string())?
+        };
+
+        // Fast-path: already has a value.
+        if let Some(res) = rx.borrow().clone() {
+            return res;
+        }
+
+        let mut rx = rx;
+        while rx.changed().await.is_ok() {
+            if let Some(res) = rx.borrow().clone() {
+                return res;
+            }
+        }
+
+        Err("webview ready channel closed before result".to_string())
     }
 
     /// Detach and drop the WebView held by this page.
