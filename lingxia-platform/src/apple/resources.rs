@@ -45,7 +45,7 @@ fn detect_spm_bundle_name() -> Option<String> {
             msg_send![&main_bundle, bundleIdentifier];
         if let Some(identifier) = bundle_identifier {
             let identifier_str = identifier.to_string();
-            if let Some(last_component) = identifier_str.split('.').last() {
+            if let Some(last_component) = identifier_str.split('.').next_back() {
                 let spm_bundle_name = format!("{}_{}", last_component, last_component);
 
                 // Verify this bundle exists
@@ -97,8 +97,8 @@ pub fn read_asset_data(path: &str) -> Vec<u8> {
         let bundle = get_resource_bundle();
 
         // Clean the path - remove leading slash if present
-        let clean_path = if path.starts_with('/') {
-            &path[1..]
+        let clean_path = if let Some(stripped) = path.strip_prefix('/') {
+            stripped
         } else {
             path
         };
@@ -146,12 +146,10 @@ pub fn read_asset_data(path: &str) -> Vec<u8> {
             } else {
                 msg_send![&bundle, URLForResource: &*name_ns, withExtension: std::ptr::null::<NSString>(), subdirectory: &*subdir_ns]
             }
+        } else if let Some(ext_ns) = extension_ns {
+            msg_send![&bundle, URLForResource: &*name_ns, withExtension: &*ext_ns]
         } else {
-            if let Some(ext_ns) = extension_ns {
-                msg_send![&bundle, URLForResource: &*name_ns, withExtension: &*ext_ns]
-            } else {
-                msg_send![&bundle, URLForResource: &*name_ns, withExtension: std::ptr::null::<NSString>()]
-            }
+            msg_send![&bundle, URLForResource: &*name_ns, withExtension: std::ptr::null::<NSString>()]
         };
 
         if let Some(url) = resource_url {
@@ -185,8 +183,8 @@ pub fn list_asset_directory(dir_path: &str) -> Vec<String> {
 
         if let Some(resource_path) = bundle_resource_path {
             // Clean the directory path
-            let clean_path = if dir_path.starts_with('/') {
-                &dir_path[1..]
+            let clean_path = if let Some(stripped) = dir_path.strip_prefix('/') {
+                stripped
             } else {
                 dir_path
             };
@@ -195,7 +193,7 @@ pub fn list_asset_directory(dir_path: &str) -> Vec<String> {
             let full_path = if clean_path.is_empty() {
                 resource_path.to_string()
             } else {
-                format!("{}/{}", resource_path.to_string(), clean_path)
+                format!("{}/{}", resource_path, clean_path)
             };
 
             let full_path_ns = NSString::from_str(&full_path);

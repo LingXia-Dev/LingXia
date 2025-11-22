@@ -121,14 +121,11 @@ impl LxAppCache {
 
         // file-based lock: <hash>.lock indicates a download in progress
         let lock_path = self.cache_dir.join(format!("{}.lock", hash_id));
-        let should_spawn = match fs::OpenOptions::new()
+        let should_spawn = fs::OpenOptions::new()
             .write(true)
             .create_new(true)
             .open(&lock_path)
-        {
-            Ok(_) => true,
-            Err(_) => false,
-        };
+            .is_ok();
 
         if should_spawn {
             let final_path = target_path.clone();
@@ -156,24 +153,21 @@ impl LxAppCache {
     fn try_resolve<K: Hash + ?Sized>(&self, key: &K) -> Option<PathBuf> {
         let hash_id = hash_key(key);
         // If we have a complete marker, try to locate a file with any extension
-        if self.ok_marker_exists(&hash_id) {
-            if let Ok(entries) = fs::read_dir(&self.cache_dir) {
-                for entry in entries.flatten() {
-                    if let Some(name) = entry.file_name().to_str() {
-                        // Ignore cache bookkeeping files
-                        if !name.starts_with(&hash_id) {
-                            continue;
-                        }
-                        if name.ends_with(".ok")
-                            || name.ends_with(".lock")
-                            || name.ends_with(".part")
-                        {
-                            continue;
-                        }
-                        // Only return regular files
-                        if entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
-                            return Some(entry.path());
-                        }
+        if self.ok_marker_exists(&hash_id)
+            && let Ok(entries) = fs::read_dir(&self.cache_dir)
+        {
+            for entry in entries.flatten() {
+                if let Some(name) = entry.file_name().to_str() {
+                    // Ignore cache bookkeeping files
+                    if !name.starts_with(&hash_id) {
+                        continue;
+                    }
+                    if name.ends_with(".ok") || name.ends_with(".lock") || name.ends_with(".part") {
+                        continue;
+                    }
+                    // Only return regular files
+                    if entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
+                        return Some(entry.path());
                     }
                 }
             }
@@ -247,14 +241,11 @@ impl LxAppCache {
         }
 
         let lock_path = self.cache_dir.join(format!("{}.lock", hash_id));
-        let acquired = match fs::OpenOptions::new()
+        let acquired = fs::OpenOptions::new()
             .write(true)
             .create_new(true)
             .open(&lock_path)
-        {
-            Ok(_) => true,
-            Err(_) => false,
-        };
+            .is_ok();
 
         if acquired {
             let final_path = target_path.clone();
@@ -317,7 +308,7 @@ fn url_path_ext(url: &str) -> Option<&str> {
     let seg = path.rsplit('/').next().unwrap_or(path);
     let dot = seg.rfind('.')?;
     let ext = &seg[dot + 1..];
-    if ext.len() >= 1 && ext.len() <= 8 {
+    if !ext.is_empty() && ext.len() <= 8 {
         Some(ext)
     } else {
         None

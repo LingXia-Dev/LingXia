@@ -69,14 +69,12 @@ impl LxAppDelegate for LxApp {
             }
             let _ = self.push_to_page_stack(&resolved_path);
             // Pre-create tab pages (synchronously enqueue); FIFO ordering ensures CreateAppSvc precedes these.
-            if !was_already_opened {
-                if let Some(tab_pages) = self.get_tabbar().map(|t| t.get_tabbar_pages()) {
-                    for tab_path in tab_pages {
-                        if tab_path == resolved_path {
-                            continue;
-                        }
-                        let _ = self.get_or_create_page(&tab_path);
+            if let Some(tab_pages) = self.get_tabbar().map(|t| t.get_tabbar_pages()) {
+                for tab_path in tab_pages {
+                    if tab_path == resolved_path {
+                        continue;
                     }
+                    let _ = self.get_or_create_page(&tab_path);
                 }
             }
             self.set_status(LxAppSessionStatus::Opening);
@@ -166,29 +164,26 @@ impl LxApp {
         if let Ok(index) = data.parse::<usize>() {
             info!("TabBar item {} clicked", index).with_appid(self.appid.clone());
 
-            if let Some(tabbar) = self.get_tabbar() {
-                if tabbar.get_selected_index() == index as i32 {
-                    return true; // Already selected, do nothing
-                }
+            if let Some(tabbar) = self.get_tabbar()
+                && tabbar.get_selected_index() == index as i32
+            {
+                return true; // Already selected, do nothing
             }
 
             // Don't set the index here - let page.navigate handle it
             let tab_pages = self
                 .get_tabbar()
                 .map(|t| t.get_tabbar_pages())
-                .unwrap_or_else(Vec::new);
+                .unwrap_or_default();
             if let Some(tab_path) = tab_pages.get(index) {
-                if let Some(current_page_path) = self.peek_current_page() {
-                    if let Some(page) = self.get_page(&current_page_path) {
-                        if let Some(target_page) = self.get_page(tab_path) {
-                            if page
-                                .navigate_to(target_page, NavigationType::SwitchTab)
-                                .is_ok()
-                            {
-                                return true;
-                            }
-                        }
-                    }
+                if let Some(current_page_path) = self.peek_current_page()
+                    && let Some(page) = self.get_page(&current_page_path)
+                    && let Some(target_page) = self.get_page(tab_path)
+                    && page
+                        .navigate_to(target_page, NavigationType::SwitchTab)
+                        .is_ok()
+                {
+                    return true;
                 }
                 // Fallback or error handling if no current page
                 error!("Could not get current page to perform navigation")
@@ -240,11 +235,11 @@ impl LxApp {
 
         match data.as_str() {
             "back" => {
-                if let Some(path) = self.peek_current_page() {
-                    if let Some(page) = self.get_page(path.as_str()) {
-                        let _ = page.navigate_back(1);
-                        return true;
-                    }
+                if let Some(path) = self.peek_current_page()
+                    && let Some(page) = self.get_page(path.as_str())
+                {
+                    let _ = page.navigate_back(1);
+                    return true;
                 }
                 false
             }
@@ -261,12 +256,11 @@ impl LxApp {
                     NavigationType::Launch
                 };
 
-                if let Some(path) = self.peek_current_page() {
-                    if let Some(page) = self.get_page(&path) {
-                        if let Some(target_page) = self.get_page(&home_route) {
-                            let _ = page.navigate_to(target_page, navigate_type);
-                        }
-                    }
+                if let Some(path) = self.peek_current_page()
+                    && let Some(page) = self.get_page(&path)
+                    && let Some(target_page) = self.get_page(&home_route)
+                {
+                    let _ = page.navigate_to(target_page, navigate_type);
                 }
                 true
             }
@@ -290,11 +284,11 @@ impl LxApp {
             return true;
         }
 
-        if let Some(path) = self.peek_current_page() {
-            if let Some(page) = self.get_page(path.as_str()) {
-                let _ = page.navigate_back(1);
-                return true;
-            }
+        if let Some(path) = self.peek_current_page()
+            && let Some(page) = self.get_page(path.as_str())
+        {
+            let _ = page.navigate_back(1);
+            return true;
         }
         false
     }

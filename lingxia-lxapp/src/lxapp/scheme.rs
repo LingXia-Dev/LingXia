@@ -154,9 +154,7 @@ impl LxApp {
 
         let query = uri.query()?;
         for pair in query.split('&') {
-            let mut parts = pair.splitn(2, '=');
-            let key = parts.next()?;
-            let value = parts.next()?;
+            let (key, value) = pair.split_once('=')?;
 
             if key != "url" {
                 continue;
@@ -215,10 +213,10 @@ impl LxApp {
                 let prefix = format!("{}/", base_dir.trim_matches('/'));
                 if normalized.starts_with(&prefix) {
                     let stripped = &normalized[prefix.len()..];
-                    if !stripped.is_empty() {
-                        if let Ok(local_path) = self.resolve_accessible_path(stripped) {
-                            return Ok(local_path);
-                        }
+                    if !stripped.is_empty()
+                        && let Ok(local_path) = self.resolve_accessible_path(stripped)
+                    {
+                        return Ok(local_path);
                     }
                 }
             }
@@ -226,10 +224,10 @@ impl LxApp {
 
         // Case 3: Absolute OS path tunneled via lx://<lxappid>/<absolute-path>
         // Example: lx://${lxappid}/var/mobile/.../image.jpg -> "/var/mobile/.../image.jpg"
-        if decoded_path.starts_with('/') {
-            if let Ok(local_path) = self.resolve_accessible_path(&decoded_path) {
-                return Ok(local_path);
-            }
+        if decoded_path.starts_with('/')
+            && let Ok(local_path) = self.resolve_accessible_path(&decoded_path)
+        {
+            return Ok(local_path);
         }
 
         Err(LxAppError::ResourceNotFound(uri.to_string()))
@@ -537,7 +535,7 @@ impl LxApp {
 
         let file_len = fs::metadata(&file_path)
             .map(|meta| meta.len())
-            .unwrap_or_else(|_| html_content.as_bytes().len() as u64);
+            .unwrap_or_else(|_| html_content.len() as u64);
 
         let mut builder = Response::builder()
             .status(status)
@@ -585,7 +583,7 @@ fn ext_from_segment(path: &str) -> Option<&str> {
     let seg = path.rsplit('/').next().unwrap_or(path);
     let dot = seg.rfind('.')?;
     let ext = &seg[dot + 1..];
-    if ext.len() >= 1 && ext.len() <= 8 {
+    if !ext.is_empty() && ext.len() <= 8 {
         Some(ext)
     } else {
         None

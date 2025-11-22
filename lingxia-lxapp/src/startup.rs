@@ -1,18 +1,13 @@
 use crate::lxapp::ReleaseType;
 use serde::{Deserialize, Serialize, Serializer, ser::SerializeMap};
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Default)]
 pub enum Scene {
+    #[default]
     System = 8000,
     NavigateTo = 8001,
     NavigateBack = 8002,
     AppLink = 8003,
-}
-
-impl Default for Scene {
-    fn default() -> Self {
-        Scene::System
-    }
 }
 
 impl From<i32> for Scene {
@@ -45,11 +40,11 @@ impl serde::Serialize for LxAppStartupOptions {
         map.serialize_entry("path", &self.path)?;
         map.serialize_entry("scene", &(self.scene as u32))?;
 
-        if let Ok(query_value) = parse_query_string(&self.query) {
-            if let Some(query_map) = query_value.as_object() {
-                for (k, v) in query_map {
-                    map.serialize_entry(k, v)?;
-                }
+        if let Ok(query_value) = parse_query_string(&self.query)
+            && let Some(query_map) = query_value.as_object()
+        {
+            for (k, v) in query_map {
+                map.serialize_entry(k, v)?;
             }
         }
 
@@ -70,7 +65,7 @@ pub fn parse_query_string(query_str: &str) -> Result<serde_json::Value, serde_js
             let key = &pair[..eq_pos];
             let value = &pair[eq_pos + 1..];
             let decoded_value =
-                urlencoding::decode(value).unwrap_or_else(|_| std::borrow::Cow::Borrowed(value));
+                urlencoding::decode(value).unwrap_or(std::borrow::Cow::Borrowed(value));
             query_map.insert(
                 key.to_string(),
                 serde_json::Value::String(decoded_value.to_string()),

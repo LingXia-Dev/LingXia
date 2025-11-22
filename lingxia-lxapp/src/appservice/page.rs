@@ -56,10 +56,10 @@ impl MessageTransport for PageSvc {
 impl MessageHandler for PageSvc {
     fn get_service_type(&self, service_name: &str) -> ServiceType {
         // Check if it's a FastAPI call with lx. prefix
-        if let Some(api_name) = service_name.strip_prefix("lx.") {
-            if let Some(handler) = get_fast_api(api_name) {
-                return ServiceType::FastAPI(handler);
-            }
+        if let Some(api_name) = service_name.strip_prefix("lx.")
+            && let Some(handler) = get_fast_api(api_name)
+        {
+            return ServiceType::FastAPI(handler);
         }
 
         // Check page-specific JS functions
@@ -428,7 +428,7 @@ impl LxApp {
 
         page.wait_webview_ready()
             .await
-            .map_err(|e| RongJSError::Error(e))?;
+            .map_err(RongJSError::Error)?;
 
         let path = page.path();
 

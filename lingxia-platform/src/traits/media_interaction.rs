@@ -7,15 +7,9 @@ pub struct PreviewMediaItem {
     pub cover_path: Option<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct PreviewMediaRequest {
     pub items: Vec<PreviewMediaItem>,
-}
-
-impl Default for PreviewMediaRequest {
-    fn default() -> Self {
-        Self { items: Vec::new() }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -22,13 +22,14 @@ impl SystemPipeReader {
     /// Caller becomes responsible for closing it.
     #[cfg(unix)]
     pub fn into_raw_fd(self) -> std::os::fd::RawFd {
-        let fd = self.fd;
-        // Prevent Drop since we are transferring ownership of the fd
-        std::mem::forget(self);
-        fd
+        self.fd
     }
 
-    /// Construct from a raw file descriptor (Unix). Unsafe: caller guarantees it's a valid read end.
+    /// Construct from a raw file descriptor (Unix).
+    ///
+    /// # Safety
+    ///
+    /// Caller guarantees that `fd` is a valid read end of a pipe file descriptor.
     #[cfg(unix)]
     pub unsafe fn from_raw_fd(fd: std::os::fd::RawFd) -> Self {
         Self { fd }

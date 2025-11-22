@@ -188,7 +188,7 @@ impl EventRegistry {
 static EVENT_REGISTRY: OnceLock<EventRegistry> = OnceLock::new();
 
 fn get_event_registry() -> &'static EventRegistry {
-    EVENT_REGISTRY.get_or_init(|| EventRegistry::new())
+    EVENT_REGISTRY.get_or_init(EventRegistry::new)
 }
 
 /// Subscribe to a named event.

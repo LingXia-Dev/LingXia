@@ -3,7 +3,6 @@ use crate::{AppRuntime, AssetFileEntry};
 use jni::objects::{GlobalRef, JClass, JObject, JValue};
 use jni::sys::jobject;
 use lingxia_webview::get_env;
-use ndk_sys;
 use std::ffi::CString;
 use std::io::{Read, Result as IoResult};
 use std::path::{Path, PathBuf};
@@ -31,10 +30,7 @@ impl Read for AssetReader {
         let read =
             unsafe { ndk_sys::AAsset_read(self.asset, buf.as_mut_ptr() as *mut _, buf.len()) };
         if read < 0 {
-            Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "AAsset_read failed",
-            ))
+            Err(std::io::Error::other("AAsset_read failed"))
         } else {
             Ok(read as usize)
         }
@@ -213,7 +209,9 @@ impl<'a> Iterator for RecursiveAssetIterator<'a> {
 }
 
 impl Platform {
-    pub fn from_java(
+    /// # Safety
+    /// Caller must ensure `java_asset_manager_obj` is a valid `android.content.res.AssetManager`.
+    pub unsafe fn from_java(
         jni_env: &mut jni::JNIEnv,
         java_asset_manager_obj: jobject,
         data_dir: String,
@@ -404,14 +402,14 @@ impl AppRuntime for Platform {
             )?;
 
             // Check if navigation was successful
-            if let Ok(success) = result.z() {
-                if !success {
-                    return Err(format!(
-                        "Navigation returned false: appid={}, path={}, animation_type={:?}",
-                        appid, path, animation_type
-                    )
-                    .into());
-                }
+            if let Ok(success) = result.z()
+                && !success
+            {
+                return Err(format!(
+                    "Navigation returned false: appid={}, path={}, animation_type={:?}",
+                    appid, path, animation_type
+                )
+                .into());
             }
             Ok(())
         }() {

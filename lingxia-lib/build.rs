@@ -49,15 +49,14 @@ fn main() {
 
         // Add import CLingXiaLib to the generated Swift files
         let add_import_if_missing = |file_path: &std::path::Path, file_name: &str| {
-            if let Ok(contents) = fs::read_to_string(file_path) {
-                if !contents.contains("import CLingXiaRustAPI") {
-                    let new_contents =
-                        format!("import Foundation\nimport CLingXiaRustAPI\n\n{}", contents);
-                    fs::write(file_path, new_contents).expect(&format!(
-                        "Failed to add import statement to {} file",
-                        file_name
-                    ));
-                }
+            if let Ok(contents) = fs::read_to_string(file_path)
+                && !contents.contains("import CLingXiaRustAPI")
+            {
+                let new_contents =
+                    format!("import Foundation\nimport CLingXiaRustAPI\n\n{}", contents);
+                fs::write(file_path, new_contents).unwrap_or_else(|_| {
+                    panic!("Failed to add import statement to {} file", file_name)
+                });
             }
         };
 

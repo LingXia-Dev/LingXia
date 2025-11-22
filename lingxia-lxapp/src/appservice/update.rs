@@ -18,16 +18,12 @@ impl JSUpdateManager {
         }
     }
 
-    pub(crate) async fn notify_update_ready(&self) {
-        if let Some(cb) = &self.on_ready {
-            let _ = cb.call_async::<_, ()>(None, ()).await;
-        }
+    pub(crate) fn ready_callback(&self) -> Option<JSFunc> {
+        self.on_ready.clone()
     }
 
-    pub(crate) async fn notify_update_failed(&self) {
-        if let Some(cb) = &self.on_failed {
-            let _ = cb.call_async::<_, ()>(None, ()).await;
-        }
+    pub(crate) fn failed_callback(&self) -> Option<JSFunc> {
+        self.on_failed.clone()
     }
 }
 

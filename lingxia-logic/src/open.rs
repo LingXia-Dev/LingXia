@@ -24,16 +24,12 @@ struct JSOpenURLOptions {
     /// - "external": Open in system browser (current behavior)
     /// - "internal": Open in internal webview (future support)
     #[rename = "openIn"]
-    open_in: Option<String>,
+    _open_in: Option<String>,
 }
 
 /// Maps file type string to appropriate MIME type
 fn map_file_type_to_mime(file_type: Option<String>) -> Option<String> {
-    match file_type
-        .unwrap_or_else(|| "".to_string())
-        .to_lowercase()
-        .as_str()
-    {
+    match file_type.unwrap_or_default().to_lowercase().as_str() {
         "pdf" => Some("application/pdf".to_string()),
         "doc" => Some("application/msword".to_string()),
         "docx" => Some(

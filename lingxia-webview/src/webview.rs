@@ -114,8 +114,11 @@ impl WebViewController for WebView {
     }
 }
 
+/// Type alias for WebView instances storage to reduce complexity
+type WebViewInstancesMap = Arc<Mutex<HashMap<String, Arc<WebView>>>>;
+
 /// Global WebView instances storage
-static WEBVIEW_INSTANCES: OnceLock<Arc<Mutex<HashMap<String, Arc<WebView>>>>> = OnceLock::new();
+static WEBVIEW_INSTANCES: OnceLock<WebViewInstancesMap> = OnceLock::new();
 
 /// WebView identifier combining appid and path.
 /// Internally we allow an optional suffix after a `#` that encodes the
@@ -193,12 +196,12 @@ pub fn create_webview(webtag: &WebTag, sender: Sender<Result<Arc<WebView>, WebVi
     let instances = WEBVIEW_INSTANCES.get_or_init(|| Arc::new(Mutex::new(HashMap::new())));
 
     // Check if WebView already exists
-    if let Ok(webviews) = instances.lock() {
-        if let Some(existing_webview) = webviews.get(webtag.key()) {
-            log::info!("WebView already exists, reusing: {}", webtag.key());
-            let _ = sender.send(Ok(existing_webview.clone()));
-            return;
-        }
+    if let Ok(webviews) = instances.lock()
+        && let Some(existing_webview) = webviews.get(webtag.key())
+    {
+        log::info!("WebView already exists, reusing: {}", webtag.key());
+        let _ = sender.send(Ok(existing_webview.clone()));
+        return;
     }
 
     // Delegate WebView creation to the platform-specific implementation
@@ -206,12 +209,12 @@ pub fn create_webview(webtag: &WebTag, sender: Sender<Result<Arc<WebView>, WebVi
 }
 
 pub(crate) fn register_webview(webview: Arc<WebView>) {
-    if let Some(instances) = WEBVIEW_INSTANCES.get() {
-        if let Ok(mut webviews) = instances.lock() {
-            let webtag = webview.webtag();
-            webviews.insert(webtag.key().to_string(), webview.clone());
-            log::info!("WebView created and stored: {}", webtag.key());
-        }
+    if let Some(instances) = WEBVIEW_INSTANCES.get()
+        && let Ok(mut webviews) = instances.lock()
+    {
+        let webtag = webview.webtag();
+        webviews.insert(webtag.key().to_string(), webview.clone());
+        log::info!("WebView created and stored: {}", webtag.key());
     }
 }
 
@@ -249,9 +252,9 @@ pub fn get_webview_delegate(webtag: &WebTag) -> Option<Arc<dyn WebViewDelegate>>
 
 /// Destroy a WebView instance by WebTag and remove it from global storage
 pub fn destroy_webview(webtag: &WebTag) {
-    if let Some(instances) = WEBVIEW_INSTANCES.get() {
-        if let Ok(mut webviews) = instances.lock() {
-            webviews.remove(webtag.key());
-        }
+    if let Some(instances) = WEBVIEW_INSTANCES.get()
+        && let Ok(mut webviews) = instances.lock()
+    {
+        webviews.remove(webtag.key());
     }
 }

@@ -74,9 +74,10 @@ impl LxAppRecord {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum ReleaseType {
+    #[default]
     Release,
     Preview,
     Developer,
@@ -89,12 +90,6 @@ impl ReleaseType {
             ReleaseType::Preview => "preview",
             ReleaseType::Developer => "developer",
         }
-    }
-}
-
-impl Default for ReleaseType {
-    fn default() -> Self {
-        ReleaseType::Release
     }
 }
 
@@ -292,14 +287,14 @@ pub(crate) fn downloaded_remove(
     // Best-effort delete archive file
     if let Some(rec) = record {
         let archive_path = std::path::PathBuf::from(&rec.zip_path);
-        if archive_path.exists() {
-            if let Err(e) = std::fs::remove_file(&archive_path) {
-                crate::warn!(
-                    "Failed to remove archive file at {}: {}. Disk space may be wasted.",
-                    archive_path.display(),
-                    e
-                );
-            }
+        if archive_path.exists()
+            && let Err(e) = std::fs::remove_file(&archive_path)
+        {
+            crate::warn!(
+                "Failed to remove archive file at {}: {}. Disk space may be wasted.",
+                archive_path.display(),
+                e
+            );
         }
     }
 

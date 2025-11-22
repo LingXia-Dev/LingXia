@@ -77,18 +77,13 @@ impl From<i32> for AnimationType {
 }
 
 #[repr(i32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PopupPosition {
     Center = 0,
+    #[default]
     Bottom = 1,
     Left = 2,
     Right = 3,
-}
-
-impl Default for PopupPosition {
-    fn default() -> Self {
-        PopupPosition::Bottom
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -135,21 +130,11 @@ pub trait Device: Send + Sync + 'static {
     fn make_phone_call(&self, phone_number: &str) -> Result<(), PlatformError>;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct LocationRequestConfig {
     pub is_high_accuracy: bool,
     pub high_accuracy_expire_time: Option<u32>,
     pub include_altitude: bool,
-}
-
-impl Default for LocationRequestConfig {
-    fn default() -> Self {
-        Self {
-            is_high_accuracy: false,
-            high_accuracy_expire_time: None,
-            include_altitude: false,
-        }
-    }
 }
 
 pub trait Location: Send + Sync + 'static {
@@ -177,6 +162,7 @@ pub trait UserFeedback: Send + Sync + 'static {
         item_color: String,
         callback_id: u64,
     ) -> Result<(), PlatformError>;
+    #[allow(clippy::too_many_arguments)]
     fn show_picker(
         &self,
         picker_type: PickerType,

@@ -166,7 +166,7 @@ impl MediaRuntime for Platform {
                     info.error
                 }));
             }
-            return Ok(ImageInfo {
+            Ok(ImageInfo {
                 width: info.width,
                 height: info.height,
                 mime_type: if info.mime_type.is_empty() {
@@ -174,7 +174,7 @@ impl MediaRuntime for Platform {
                 } else {
                     Some(info.mime_type)
                 },
-            });
+            })
         }
 
         #[cfg(not(target_os = "ios"))]
@@ -204,7 +204,7 @@ impl MediaRuntime for Platform {
                     result.error
                 }));
             }
-            return Ok(PathBuf::from(result.path));
+            Ok(PathBuf::from(result.path))
         }
 
         #[cfg(not(target_os = "ios"))]
@@ -216,7 +216,6 @@ impl MediaRuntime for Platform {
         }
     }
 }
-#[cfg(target_os = "ios")]
 #[cfg(target_os = "ios")]
 mod ios {
     use super::*;
@@ -256,10 +255,10 @@ mod ios {
                 let created = unsafe {
                     PHAssetCreationRequest::creationRequestForAssetFromImageAtFileURL(&file_url)
                 };
-                if created.is_none() {
-                    if let Ok(mut guard) = error_clone.lock() {
-                        *guard = Some("Failed to create photo asset from image file".to_string());
-                    }
+                if created.is_none()
+                    && let Ok(mut guard) = error_clone.lock()
+                {
+                    *guard = Some("Failed to create photo asset from image file".to_string());
                 }
             }
         });
@@ -288,10 +287,10 @@ mod ios {
                 let created = unsafe {
                     PHAssetCreationRequest::creationRequestForAssetFromVideoAtFileURL(&file_url)
                 };
-                if created.is_none() {
-                    if let Ok(mut guard) = error_clone.lock() {
-                        *guard = Some("Failed to create photo asset from video file".to_string());
-                    }
+                if created.is_none()
+                    && let Ok(mut guard) = error_clone.lock()
+                {
+                    *guard = Some("Failed to create photo asset from video file".to_string());
                 }
             }
         });
@@ -417,7 +416,7 @@ mod ios {
             PlatformError::Platform(format!("Failed to serialize source types: {}", e))
         })?;
 
-        let camera_facing_str = camera_facing.unwrap_or_else(|| "back");
+        let camera_facing_str = camera_facing.unwrap_or("back");
         let max_duration_str = max_duration
             .map(|d| d.to_string())
             .unwrap_or_else(|| "0".to_string());
@@ -426,7 +425,7 @@ mod ios {
                 max_count,
                 mode,
                 &source_types_json,
-                &camera_facing_str,
+                camera_facing_str,
                 &max_duration_str,
                 callback_id,
             )

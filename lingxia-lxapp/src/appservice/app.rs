@@ -57,18 +57,18 @@ impl LxAppSvc {
                     continue;
                 }
 
-                if let Ok(func) = obj.get::<_, JSFunc>(key_string.as_str()) {
-                    if let Some(evt) = AppServiceEvent::from_name(&key_string) {
-                        // Only lifecycle events should be stored here; update events are internal
-                        match evt {
-                            AppServiceEvent::OnLaunch
-                            | AppServiceEvent::OnShow
-                            | AppServiceEvent::OnHide => {
-                                self.event_handlers.insert(evt, func);
-                            }
-                            _ => {
-                                // Ignore update events as JSUpdateManager handles them via callbacks
-                            }
+                if let Ok(func) = obj.get::<_, JSFunc>(key_string.as_str())
+                    && let Some(evt) = AppServiceEvent::from_name(&key_string)
+                {
+                    // Only lifecycle events should be stored here; update events are internal
+                    match evt {
+                        AppServiceEvent::OnLaunch
+                        | AppServiceEvent::OnShow
+                        | AppServiceEvent::OnHide => {
+                            self.event_handlers.insert(evt, func);
+                        }
+                        _ => {
+                            // Ignore update events as JSUpdateManager handles them via callbacks
                         }
                     }
                 }
@@ -112,7 +112,7 @@ impl LxAppSvc {
             return Ok(obj.clone());
         }
 
-        let class = Class::get::<JSUpdateManager>(&ctx)?;
+        let class = Class::get::<JSUpdateManager>(ctx)?;
         let instance = class.instance(JSUpdateManager::new());
         // Cache instance so native update events can notify it later
         self.update_manager.borrow_mut().replace(instance.clone());
@@ -121,10 +121,17 @@ impl LxAppSvc {
 
     // Notify JS update callbacks if a JSUpdateManager is registered; otherwise ignore
     pub(crate) async fn notify_update_ready(&self) {
-        if let Some(obj) = self.update_manager.borrow().as_ref().cloned() {
-            if let Ok(mgr) = obj.borrow::<JSUpdateManager>() {
-                mgr.notify_update_ready().await;
-            }
+        let ready_callback = {
+            let update_manager = self.update_manager.borrow();
+            update_manager.as_ref().and_then(|obj| {
+                obj.borrow::<JSUpdateManager>()
+                    .ok()
+                    .and_then(|mgr| mgr.ready_callback())
+            })
+        };
+
+        if let Some(cb) = ready_callback {
+            let _ = cb.call_async::<_, ()>(None, ()).await;
         } else {
             // Not created yet (lx.getUpdateManager() hasn't been called)
             crate::error!("UpdateManager not initialized");
@@ -132,10 +139,17 @@ impl LxAppSvc {
     }
 
     pub(crate) async fn notify_update_failed(&self) {
-        if let Some(obj) = self.update_manager.borrow().as_ref().cloned() {
-            if let Ok(mgr) = obj.borrow::<JSUpdateManager>() {
-                mgr.notify_update_failed().await;
-            }
+        let failed_callback = {
+            let update_manager = self.update_manager.borrow();
+            update_manager.as_ref().and_then(|obj| {
+                obj.borrow::<JSUpdateManager>()
+                    .ok()
+                    .and_then(|mgr| mgr.failed_callback())
+            })
+        };
+
+        if let Some(cb) = failed_callback {
+            let _ = cb.call_async::<_, ()>(None, ()).await;
         }
     }
 }

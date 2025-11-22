@@ -71,11 +71,10 @@ pub fn spawn_background_update_check(target_appid: String, release_type: Release
                         return;
                     }
 
-                    let already_downloaded_same =
-                        match manager.has_downloaded_update(&target_appid, release_type) {
-                            Ok(Some(info)) if info.version == pkg.version => true,
-                            _ => false,
-                        };
+                    let already_downloaded_same = matches!(
+                        manager.has_downloaded_update(&target_appid, release_type),
+                        Ok(Some(info)) if info.version == pkg.version
+                    );
 
                     if already_downloaded_same {
                         return;

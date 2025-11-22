@@ -550,9 +550,9 @@ impl fs::FileAccessGuard for LxAppCtx {
 
         // Reject relative paths
         if !path.is_absolute() {
-            return Err(RongJSError::Error(format!(
-                "Access denied: relative paths not allowed"
-            )));
+            return Err(RongJSError::Error(
+                "Access denied: relative paths not allowed".to_string(),
+            ));
         }
 
         // Helper function to canonicalize paths
@@ -567,11 +567,11 @@ impl fs::FileAccessGuard for LxAppCtx {
         };
 
         // Get canonical paths
-        let canonical_path = canonicalize(path).map_err(|e| RongJSError::Error(e))?;
+        let canonical_path = canonicalize(path).map_err(RongJSError::Error)?;
         let user_data_canonical =
-            canonicalize(&self.lxapp.user_data_dir).map_err(|e| RongJSError::Error(e))?;
+            canonicalize(&self.lxapp.user_data_dir).map_err(RongJSError::Error)?;
         let user_cache_canonical =
-            canonicalize(&self.lxapp.user_cache_dir).map_err(|e| RongJSError::Error(e))?;
+            canonicalize(&self.lxapp.user_cache_dir).map_err(RongJSError::Error)?;
 
         // Check if path is within allowed directories
         if canonical_path.starts_with(&user_data_canonical)

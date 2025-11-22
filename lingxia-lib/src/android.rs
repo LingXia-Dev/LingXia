@@ -13,13 +13,22 @@ fn parse_color_to_i32(color_str: &str, default_color: i32) -> i32 {
         return 0x00000000;
     }
 
-    if color_str.starts_with('#') && color_str.len() == 7 {
-        if let Ok(rgb) = i32::from_str_radix(&color_str[1..], 16) {
-            return (0xFF000000u32 as i32) | rgb; // Add full alpha
-        }
+    if color_str.starts_with('#')
+        && color_str.len() == 7
+        && let Ok(rgb) = i32::from_str_radix(&color_str[1..], 16)
+    {
+        return (0xFF000000u32 as i32) | rgb; // Add full alpha
     }
 
     default_color
+}
+
+fn init_cached_java_class(env: &mut JNIEnv<'_>, class: CachedClass) {
+    if let Ok(local_class) = env.find_class(class.class_path())
+        && let Ok(global_class) = env.new_global_ref(local_class)
+    {
+        lingxia_platform::init_cached_class(class, global_class);
+    }
 }
 
 #[unsafe(no_mangle)]
@@ -59,86 +68,17 @@ pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> j
 
     // Create global reference to LxApp class for worker threads first
     if let Ok(mut env) = vm.get_env() {
-        if let Ok(local_class) = env.find_class(CachedClass::LxApp.class_path()) {
-            if let Ok(global_class) = env.new_global_ref(local_class) {
-                lingxia_platform::init_cached_class(CachedClass::LxApp, global_class);
-            }
-        }
-
-        if let Ok(media_class) = env.find_class(CachedClass::PreviewMediaPayload.class_path()) {
-            if let Ok(global_media_class) = env.new_global_ref(media_class) {
-                lingxia_platform::init_cached_class(
-                    CachedClass::PreviewMediaPayload,
-                    global_media_class,
-                );
-            }
-        }
-
-        if let Ok(lxapp_media_class) = env.find_class(CachedClass::LxAppMedia.class_path()) {
-            if let Ok(global_lxapp_media_class) = env.new_global_ref(lxapp_media_class) {
-                lingxia_platform::init_cached_class(
-                    CachedClass::LxAppMedia,
-                    global_lxapp_media_class,
-                );
-            }
-        }
-
-        if let Ok(device_class) = env.find_class(CachedClass::LxAppDevice.class_path()) {
-            if let Ok(global_device_class) = env.new_global_ref(device_class) {
-                lingxia_platform::init_cached_class(CachedClass::LxAppDevice, global_device_class);
-            }
-        }
-
-        if let Ok(location_class) = env.find_class(CachedClass::LxAppLocation.class_path()) {
-            if let Ok(global_location_class) = env.new_global_ref(location_class) {
-                lingxia_platform::init_cached_class(
-                    CachedClass::LxAppLocation,
-                    global_location_class,
-                );
-            }
-        }
-
-        if let Ok(popup_class) = env.find_class(CachedClass::LxAppPopup.class_path()) {
-            if let Ok(global_popup_class) = env.new_global_ref(popup_class) {
-                lingxia_platform::init_cached_class(CachedClass::LxAppPopup, global_popup_class);
-            }
-        }
-
-        if let Ok(toast_class) = env.find_class(CachedClass::LxAppToast.class_path()) {
-            if let Ok(global_toast_class) = env.new_global_ref(toast_class) {
-                lingxia_platform::init_cached_class(CachedClass::LxAppToast, global_toast_class);
-            }
-        }
-
-        if let Ok(modal_class) = env.find_class(CachedClass::LxAppModal.class_path()) {
-            if let Ok(global_modal_class) = env.new_global_ref(modal_class) {
-                lingxia_platform::init_cached_class(CachedClass::LxAppModal, global_modal_class);
-            }
-        }
-
-        if let Ok(action_sheet_class) = env.find_class(CachedClass::LxAppActionSheet.class_path()) {
-            if let Ok(global_action_sheet_class) = env.new_global_ref(action_sheet_class) {
-                lingxia_platform::init_cached_class(
-                    CachedClass::LxAppActionSheet,
-                    global_action_sheet_class,
-                );
-            }
-        }
-
-        if let Ok(picker_class) = env.find_class(CachedClass::LxAppPicker.class_path()) {
-            if let Ok(global_picker_class) = env.new_global_ref(picker_class) {
-                lingxia_platform::init_cached_class(CachedClass::LxAppPicker, global_picker_class);
-            }
-        }
-
-        if let Ok(document_class) = env.find_class(CachedClass::LxAppDocument.class_path()) {
-            if let Ok(global_document_class) = env.new_global_ref(document_class) {
-                lingxia_platform::init_cached_class(
-                    CachedClass::LxAppDocument,
-                    global_document_class,
-                );
-            }
-        }
+        init_cached_java_class(&mut env, CachedClass::LxApp);
+        init_cached_java_class(&mut env, CachedClass::PreviewMediaPayload);
+        init_cached_java_class(&mut env, CachedClass::LxAppMedia);
+        init_cached_java_class(&mut env, CachedClass::LxAppDevice);
+        init_cached_java_class(&mut env, CachedClass::LxAppLocation);
+        init_cached_java_class(&mut env, CachedClass::LxAppPopup);
+        init_cached_java_class(&mut env, CachedClass::LxAppToast);
+        init_cached_java_class(&mut env, CachedClass::LxAppModal);
+        init_cached_java_class(&mut env, CachedClass::LxAppActionSheet);
+        init_cached_java_class(&mut env, CachedClass::LxAppPicker);
+        init_cached_java_class(&mut env, CachedClass::LxAppDocument);
     }
 
     // Initialize JNI environment
@@ -168,13 +108,15 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppInited(
         locale
     );
 
-    let app = match lingxia_platform::Platform::from_java(
-        &mut env,
-        asset_manager.as_raw(),
-        data_dir,
-        cache_dir,
-        locale,
-    ) {
+    let app = match unsafe {
+        lingxia_platform::Platform::from_java(
+            &mut env,
+            asset_manager.as_raw(),
+            data_dir,
+            cache_dir,
+            locale,
+        )
+    } {
         Ok(app) => app,
         Err(_) => {
             return JObject::null().into_raw();
@@ -390,7 +332,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getLxAppInfo<'a>(
         Ok(s) => s,
         Err(_) => return JObject::null(),
     };
-    let cache_dir_str = match env.new_string(&lxapp.user_cache_dir.to_string_lossy().into_owned()) {
+    let cache_dir_str = match env.new_string(lxapp.user_cache_dir.to_string_lossy().into_owned()) {
         Ok(s) => s,
         Err(_) => return JObject::null(),
     };
@@ -563,23 +505,22 @@ fn create_tab_bar_item<'a>(
     };
 
     // Create TabBarItem object with actual data
-    match env.new_object(
-        tab_item_class,
-        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZILjava/lang/String;Z)V",
-        &[
-            (&page_path).into(),
-            (&text).into(),
-            (&icon_path).into(),
-            (&selected_icon_path).into(),
-            item.selected.into(),
-            group_int.into(),
-            (&badge_jstring).into(),
-            item.has_red_dot.into(),  // Use actual red dot data from Rust
-        ],
-    ) {
-        Ok(obj) => Some(obj),
-        Err(_) => None,
-    }
+    env
+        .new_object(
+            tab_item_class,
+            "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZILjava/lang/String;Z)V",
+            &[
+                (&page_path).into(),
+                (&text).into(),
+                (&icon_path).into(),
+                (&selected_icon_path).into(),
+                item.selected.into(),
+                group_int.into(),
+                (&badge_jstring).into(),
+                item.has_red_dot.into(), // Use actual red dot data from Rust
+            ],
+        )
+        .ok()
 }
 
 /// Handle DeepLink URL by processing the path without host

@@ -15,6 +15,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tokio::sync::{oneshot, watch};
 
+type WebviewReadyReceiver = Arc<Mutex<watch::Receiver<Option<Result<(), String>>>>>;
+
 /// Inner state of a page that can be shared across threads
 #[derive(Clone)]
 pub(crate) struct PageInner {
@@ -32,7 +34,7 @@ pub(crate) struct PageInner {
 
     // notify when WebView wiring is ready (delegate set & setup ran)
     webview_ready_tx: watch::Sender<Option<Result<(), String>>>,
-    webview_ready_rx: Arc<Mutex<watch::Receiver<Option<Result<(), String>>>>>,
+    webview_ready_rx: WebviewReadyReceiver,
 }
 
 #[derive(Clone, Debug)]
@@ -465,7 +467,7 @@ impl Page {
         if is_tab_switch {
             if let Some(Some(index)) = lxapp.with_tabbar_mut(|t| t.find_index_by_path(&path)) {
                 lxapp.with_tabbar_mut(|t| {
-                    t.set_selected_index(index as i32);
+                    t.set_selected_index(index);
                 });
             }
             lxapp.with_navbar_mut(&path, |navbar| navbar.set_back_button_visibility(false));
@@ -541,10 +543,10 @@ impl Page {
         }
 
         for _ in 0..pages_to_pop {
-            if let Some(path) = lxapp.pop_from_page_stack() {
-                if let Some(page) = lxapp.get_page(path.as_str()) {
-                    page.dispatch_lifecycle_event(PageLifecycleEvent::OnUnload);
-                }
+            if let Some(path) = lxapp.pop_from_page_stack()
+                && let Some(page) = lxapp.get_page(path.as_str())
+            {
+                page.dispatch_lifecycle_event(PageLifecycleEvent::OnUnload);
             }
         }
 
@@ -553,7 +555,7 @@ impl Page {
             // Check if destination is a tabbar page without holding any locks
             let is_tabbar_page = lxapp
                 .get_tabbar()
-                .map_or(false, |tabbar| tabbar.is_tabbar_page(&path));
+                .is_some_and(|tabbar| tabbar.is_tabbar_page(&path));
             lxapp.with_tabbar_mut(|t| t.set_visible(is_tabbar_page));
 
             // Update NavBar back button visibility based on the new stack size

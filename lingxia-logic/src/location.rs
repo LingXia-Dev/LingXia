@@ -9,7 +9,7 @@ use serde_json::Value;
 /// Reference: https://github.com/wandergis/coordtransform
 fn wgs84_to_gcj02(wgs_lat: f64, wgs_lng: f64) -> (f64, f64) {
     const A: f64 = 6378245.0;
-    const EE: f64 = 0.00669342162296594323;
+    const EE: f64 = 0.006_693_421_622_965_943;
 
     if out_of_china(wgs_lat, wgs_lng) {
         return (wgs_lat, wgs_lng);
@@ -27,7 +27,7 @@ fn wgs84_to_gcj02(wgs_lat: f64, wgs_lng: f64) -> (f64, f64) {
 }
 
 fn out_of_china(lat: f64, lng: f64) -> bool {
-    lng < 72.004 || lng > 137.8347 || lat < 0.8293 || lat > 55.8271
+    !(72.004..=137.8347).contains(&lng) || !(0.8293..=55.8271).contains(&lat)
 }
 
 fn transform_lat(lng: f64, lat: f64) -> f64 {

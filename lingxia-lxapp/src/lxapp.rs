@@ -143,11 +143,11 @@ impl LxApps {
 
         if let Some(appid_to_destroy) = appid_to_destroy {
             // Check if it's the home app
-            if let Some(app_arc) = self.lxapps.get(&appid_to_destroy) {
-                if app_arc.is_home_lxapp {
-                    warn!("Cannot evict the home lxapp").with_appid(appid_to_destroy);
-                    return;
-                }
+            if let Some(app_arc) = self.lxapps.get(&appid_to_destroy)
+                && app_arc.is_home_lxapp
+            {
+                warn!("Cannot evict the home lxapp").with_appid(appid_to_destroy);
+                return;
             }
 
             info!("Evicting least recently used lxapp").with_appid(appid_to_destroy.clone());
@@ -161,10 +161,10 @@ impl LxApps {
     /// Schedule a delayed destroy for an app; cancel on reopen.
     pub(crate) fn schedule_delayed_destroy(self: &Arc<Self>, appid: String) {
         // cancel existing timer if present
-        if let Ok(mut map) = self.pending_destroy.lock() {
-            if let Some(cancel) = map.remove(&appid) {
-                let _ = cancel.send(());
-            }
+        if let Ok(mut map) = self.pending_destroy.lock()
+            && let Some(cancel) = map.remove(&appid)
+        {
+            let _ = cancel.send(());
 
             let (tx, rx) = oneshot::channel();
             map.insert(appid.clone(), tx);
@@ -194,10 +194,10 @@ impl LxApps {
 
     /// Cancel any pending delayed destroy for the given app.
     pub(crate) fn cancel_delayed_destroy(&self, appid: &str) {
-        if let Ok(mut map) = self.pending_destroy.lock() {
-            if let Some(cancel) = map.remove(appid) {
-                let _ = cancel.send(());
-            }
+        if let Ok(mut map) = self.pending_destroy.lock()
+            && let Some(cancel) = map.remove(appid)
+        {
+            let _ = cancel.send(());
         }
     }
 
@@ -656,10 +656,10 @@ impl LxApp {
             {
                 let candidate = root.join(rel);
                 let root_canon = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
-                if let Ok(canonical) = candidate.canonicalize() {
-                    if canonical.starts_with(&root_canon) {
-                        return Ok(canonical);
-                    }
+                if let Ok(canonical) = candidate.canonicalize()
+                    && canonical.starts_with(&root_canon)
+                {
+                    return Ok(canonical);
                 }
             }
             return Err(LxAppError::ResourceNotFound(path.to_string()));
@@ -677,18 +677,18 @@ impl LxApp {
 
         let mut trusted_roots: Vec<PathBuf> = Vec::new();
         for dir in [&self.lxapp_dir, &self.user_cache_dir, &self.user_data_dir] {
-            if !dir.as_os_str().is_empty() {
-                if let Ok(c) = dir.canonicalize() {
-                    trusted_roots.push(c);
-                }
+            if !dir.as_os_str().is_empty()
+                && let Ok(c) = dir.canonicalize()
+            {
+                trusted_roots.push(c);
             }
         }
         // Also allow parents of user data/cache roots to support full-path scenarios
         for dir in [&self.user_cache_dir, &self.user_data_dir] {
-            if let Some(parent) = dir.parent() {
-                if let Ok(c) = parent.canonicalize() {
-                    trusted_roots.push(c);
-                }
+            if let Some(parent) = dir.parent()
+                && let Ok(c) = parent.canonicalize()
+            {
+                trusted_roots.push(c);
             }
         }
         // Note: storage path is intentionally not added to allowed static roots.
@@ -1023,11 +1023,11 @@ impl LxApp {
                 continue;
             }
 
-            if let Some(last_active) = page.get_last_active_time() {
-                if oldest_time.is_none() || last_active < oldest_time.unwrap() {
-                    oldest_time = Some(last_active);
-                    oldest_path = Some(path.clone());
-                }
+            if let Some(last_active) = page.get_last_active_time()
+                && oldest_time.is_none_or(|old| last_active < old)
+            {
+                oldest_time = Some(last_active);
+                oldest_path = Some(path.clone());
             }
         }
 
@@ -1218,15 +1218,15 @@ pub fn init(runtime: Platform) -> Option<String> {
             let home_lxapp_appid = config.home_lxapp_appid.clone();
             let home_lxapp_version = &config.home_lxapp_version;
 
-            if !metadata::exists(&home_lxapp_appid, ReleaseType::Release).unwrap_or(false) {
-                if let Err(e) = crate::update::UpdateManager::install_from_assets(
+            if !metadata::exists(&home_lxapp_appid, ReleaseType::Release).unwrap_or(false)
+                && let Err(e) = crate::update::UpdateManager::install_from_assets(
                     runtime_arc.clone(),
                     &home_lxapp_appid,
                     home_lxapp_version,
-                ) {
-                    error!("Failed to install home LxApp: {}", e);
-                    return None;
-                }
+                )
+            {
+                error!("Failed to install home LxApp: {}", e);
+                return None;
             }
 
             let executor = LxAppExecutor::init(LXAPP_STACK_MAX);
@@ -1349,24 +1349,23 @@ pub fn on_low_memory() {
 /// Get the current lxapp from the navigation stack and its current page path
 /// Returns (appid, current_page_path) or empty strings if not found
 pub fn get_current_lxapp() -> (String, String) {
-    if let Some(manager) = LXAPPS_MANAGER.get() {
-        if let Some(current_appid) = manager.peek_lxapp_stack() {
-            if let Some(lxapp) = manager.lxapps.get(&current_appid) {
-                let current_path = lxapp.peek_current_page().unwrap_or_default();
-                info!("Peek {}:{} from lxapp stack", current_appid, current_path);
-                return (current_appid, current_path);
-            }
-        }
+    if let Some(manager) = LXAPPS_MANAGER.get()
+        && let Some(current_appid) = manager.peek_lxapp_stack()
+        && let Some(lxapp) = manager.lxapps.get(&current_appid)
+    {
+        let current_path = lxapp.peek_current_page().unwrap_or_default();
+        info!("Peek {}:{} from lxapp stack", current_appid, current_path);
+        return (current_appid, current_path);
     }
     (String::new(), String::new())
 }
 
 /// Check whether a given appid is currently opened (in-memory and marked opened).
 pub fn is_lxapp_open(lxappid: &str) -> bool {
-    if let Some(manager) = LXAPPS_MANAGER.get() {
-        if let Some(app) = manager.lxapps.get(lxappid) {
-            return app.is_opened();
-        }
+    if let Some(manager) = LXAPPS_MANAGER.get()
+        && let Some(app) = manager.lxapps.get(lxappid)
+    {
+        return app.is_opened();
     }
     false
 }

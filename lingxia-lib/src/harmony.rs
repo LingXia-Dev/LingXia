@@ -17,10 +17,11 @@ fn parse_color_to_u32(color_str: &str, default_color: u32) -> u32 {
         return 0x00000000;
     }
 
-    if color_str.starts_with('#') && color_str.len() == 7 {
-        if let Ok(rgb) = u32::from_str_radix(&color_str[1..], 16) {
-            return 0xFF000000 | rgb; // Add full alpha
-        }
+    if color_str.starts_with('#')
+        && color_str.len() == 7
+        && let Ok(rgb) = u32::from_str_radix(&color_str[1..], 16)
+    {
+        return 0xFF000000 | rgb; // Add full alpha
     }
 
     default_color

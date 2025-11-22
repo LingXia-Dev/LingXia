@@ -71,11 +71,11 @@ impl Device for Platform {
             let bounds: NSRect = unsafe { msg_send![&screen, bounds] };
             let scale: f64 = unsafe { msg_send![&screen, scale] };
 
-            return ScreenInfo {
+            ScreenInfo {
                 width: bounds.size.width,
                 height: bounds.size.height,
                 scale,
-            };
+            }
         }
         #[cfg(target_os = "macos")]
         {
@@ -98,18 +98,19 @@ impl Device for Platform {
             if let Some(screen) = NSScreen::main() {
                 let frame: NSRect = unsafe { msg_send![&screen, frame] };
                 let scale: f64 = unsafe { msg_send![&screen, backingScaleFactor] };
-                return ScreenInfo {
+                ScreenInfo {
                     width: frame.size.width,
                     height: frame.size.height,
                     scale,
-                };
+                }
+            } else {
+                // Fallback when no main screen is detected
+                ScreenInfo {
+                    width: 0.0,
+                    height: 0.0,
+                    scale: 1.0,
+                }
             }
-            // Fallback when no main screen is detected
-            return ScreenInfo {
-                width: 0.0,
-                height: 0.0,
-                scale: 1.0,
-            };
         }
     }
 
@@ -323,7 +324,7 @@ fn get_system_version() -> String {
     {
         let device = UIDevice::current();
         let version = device.system_version();
-        format!("iOS {}", version.to_string())
+        format!("iOS {}", version)
     }
 
     #[cfg(target_os = "macos")]
@@ -446,7 +447,7 @@ type DispatchQueue = *mut std::ffi::c_void;
 
 #[cfg(target_os = "ios")]
 #[link(name = "System", kind = "dylib")]
-#[link(name = "dispatch", kind = "dylib")]
+#[link(name = "dispatch")]
 #[link(name = "AudioToolbox", kind = "framework")]
 unsafe extern "C" {
     fn dispatch_async_f(

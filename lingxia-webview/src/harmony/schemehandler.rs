@@ -141,7 +141,7 @@ unsafe fn send_response(
                     OH_ArkWebResourceHandler_DidReceiveResponse(resource_handler, response);
                     OH_ArkWebResourceHandler_DidReceiveData(
                         resource_handler,
-                        message.as_ptr() as *const u8,
+                        message.as_ptr(),
                         message.as_bytes().len() as i64,
                     );
                     OH_ArkWebResourceHandler_DidFinish(resource_handler);
@@ -153,28 +153,26 @@ unsafe fn send_response(
         WebResourceBody::Pipe(reader) => reader.into_file(),
     };
 
-    if !headers_map.contains_key(http::header::CONTENT_LENGTH) {
-        if let Ok(metadata) = file.metadata() {
-            if let Ok(value) = http::HeaderValue::from_str(&metadata.len().to_string()) {
-                headers_map.insert(http::header::CONTENT_LENGTH, value);
-            }
-        }
+    if !headers_map.contains_key(http::header::CONTENT_LENGTH)
+        && let Ok(metadata) = file.metadata()
+        && let Ok(value) = http::HeaderValue::from_str(&metadata.len().to_string())
+    {
+        headers_map.insert(http::header::CONTENT_LENGTH, value);
     }
 
     // Set headers
     for (key, value) in headers_map.iter() {
-        if let Ok(value_str) = value.to_str() {
-            if let (Ok(key_cstr), Ok(value_cstr)) =
+        if let Ok(value_str) = value.to_str()
+            && let (Ok(key_cstr), Ok(value_cstr)) =
                 (CString::new(key.as_str()), CString::new(value_str))
-            {
-                unsafe {
-                    OH_ArkWebResponse_SetHeaderByName(
-                        response,
-                        key_cstr.as_ptr(),
-                        value_cstr.as_ptr(),
-                        true, // overwrite
-                    );
-                }
+        {
+            unsafe {
+                OH_ArkWebResponse_SetHeaderByName(
+                    response,
+                    key_cstr.as_ptr(),
+                    value_cstr.as_ptr(),
+                    true, // overwrite
+                );
             }
         }
     }

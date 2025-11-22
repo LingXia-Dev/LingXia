@@ -10,10 +10,12 @@ use super::jni_env::{get_env, get_lingxia_webview_class};
 // Import WebTag from the main webview module
 use crate::webview::WebTag;
 
+// Type alias for WebView senders map to reduce complexity
+type WebViewSendersMap =
+    Arc<Mutex<HashMap<String, Sender<Result<Arc<crate::WebView>, WebViewError>>>>>;
+
 // Global map to store senders for WebView creation
-pub(crate) static WEBVIEW_SENDERS: OnceLock<
-    Arc<Mutex<HashMap<String, Sender<Result<Arc<crate::WebView>, WebViewError>>>>>,
-> = OnceLock::new();
+pub(crate) static WEBVIEW_SENDERS: OnceLock<WebViewSendersMap> = OnceLock::new();
 
 #[derive(Debug)]
 pub struct WebViewInner {
@@ -39,10 +41,10 @@ impl WebViewInner {
 
         // Helper function to remove sender and send error
         let remove_and_send_error = |error_msg: String| {
-            if let Ok(mut senders_map) = senders.lock() {
-                if let Some(sender) = senders_map.remove(&webtag.to_string()) {
-                    let _ = sender.send(Err(WebViewError::WebView(error_msg)));
-                }
+            if let Ok(mut senders_map) = senders.lock()
+                && let Some(sender) = senders_map.remove(&webtag.to_string())
+            {
+                let _ = sender.send(Err(WebViewError::WebView(error_msg)));
             }
         };
 

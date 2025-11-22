@@ -59,13 +59,13 @@ async fn scan(ctx: JSContext, options: Optional<JSScanOptions>) -> JSResult<Scan
         .get("scanResult")
         .and_then(Value::as_str)
         .map(|s| s.to_string())
-        .unwrap_or_else(|| "".to_string());
+        .unwrap_or_default();
 
     let scan_type = payload
         .get("scanType")
         .and_then(Value::as_str)
         .map(|s| s.to_string())
-        .unwrap_or_else(|| "".to_string());
+        .unwrap_or_default();
 
     Ok(ScanResultObj {
         scan_result,

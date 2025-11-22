@@ -1,6 +1,5 @@
 use crate::webview::{WebTag, get_webview_delegate, register_webview};
 use crate::{LogLevel, WebResourceBody, WebResourceResponse, WebViewError};
-use http;
 use http::header::{HeaderMap, HeaderName, HeaderValue};
 use http::{Method, Request};
 use jni::JNIEnv;
@@ -98,11 +97,9 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handleRequest<'a>
                             env.get_object_array_element(&headers_array, i),
                             env.get_object_array_element(&headers_array, i + 1),
                         ) {
-                            let key_jstring = JString::try_from(key_obj);
-                            let value_jstring = JString::try_from(value_obj);
+                            let key_jstring = JString::from(key_obj);
+                            let value_jstring = JString::from(value_obj);
 
-                            let (key_jstring, value_jstring) =
-                                (key_jstring.unwrap(), value_jstring.unwrap());
                             if let (Ok(key), Ok(value)) =
                                 (env.get_string(&key_jstring), env.get_string(&value_jstring))
                             {
@@ -334,30 +331,29 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_notifyWebViewRead
     if let Some(senders) = WEBVIEW_SENDERS.get() {
         let webtag = WebTag::new(&appid, &path, None);
 
-        if let Ok(mut senders_map) = senders.lock() {
-            if let Some(sender) = senders_map.remove(&webtag.to_string()) {
-                // Create global reference to the passed WebView object
-                match env.new_global_ref(webview_obj) {
-                    Ok(global_ref) => {
-                        // Create WebViewInner from the Java object
-                        let webview_inner =
-                            WebViewInner::from_java_object(global_ref, webtag.clone());
+        if let Ok(mut senders_map) = senders.lock()
+            && let Some(sender) = senders_map.remove(&webtag.to_string())
+        {
+            // Create global reference to the passed WebView object
+            match env.new_global_ref(webview_obj) {
+                Ok(global_ref) => {
+                    // Create WebViewInner from the Java object
+                    let webview_inner = WebViewInner::from_java_object(global_ref, webtag.clone());
 
-                        // Create WebView wrapper
-                        let webview = Arc::new(crate::WebView::new(webview_inner));
+                    // Create WebView wrapper
+                    let webview = Arc::new(crate::WebView::new(webview_inner));
 
-                        // Register the WebView instance for future lookups
-                        register_webview(webview.clone());
+                    // Register the WebView instance for future lookups
+                    register_webview(webview.clone());
 
-                        // Send the WebView instance through the channel
-                        let _ = sender.send(Ok(webview));
-                    }
-                    Err(e) => {
-                        let _ = sender.send(Err(WebViewError::WebView(format!(
-                            "Failed to create global ref: {:?}",
-                            e
-                        ))));
-                    }
+                    // Send the WebView instance through the channel
+                    let _ = sender.send(Ok(webview));
+                }
+                Err(e) => {
+                    let _ = sender.send(Err(WebViewError::WebView(format!(
+                        "Failed to create global ref: {:?}",
+                        e
+                    ))));
                 }
             }
         }

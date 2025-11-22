@@ -539,7 +539,7 @@ mod image_native {
                         self.0,
                         options.as_ptr(),
                         pixelmap.as_ptr(),
-                        fd as i32,
+                        fd,
                     )
                 },
                 "OH_ImagePackerNative_PackToFileFromPixelmap",
@@ -591,7 +591,7 @@ mod image_native {
             })?;
             let mut mime_string = ImageString {
                 data: c_mime.as_ptr() as *mut c_char,
-                size: mime.as_bytes().len(),
+                size: mime.len(),
             };
             check(
                 unsafe { OH_PackingOptions_SetMimeType(self.0, &mut mime_string) },

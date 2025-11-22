@@ -50,29 +50,27 @@ fn main() {
         let header_file = platform_dir
             .join(package_name)
             .join(format!("{}.h", package_name));
-        if header_file.exists() {
-            if let Ok(contents) = fs::read_to_string(&header_file) {
-                if !contents.contains("#include <stdint.h>") {
-                    let new_contents = contents.replace(
-                        "#include <stdbool.h>",
-                        "#include <stdbool.h>\n#include <stdint.h>",
-                    );
-                    fs::write(&header_file, new_contents).expect("Failed to update header file");
-                }
-            }
+        if header_file.exists()
+            && let Ok(contents) = fs::read_to_string(&header_file)
+            && !contents.contains("#include <stdint.h>")
+        {
+            let new_contents = contents.replace(
+                "#include <stdbool.h>",
+                "#include <stdbool.h>\n#include <stdint.h>",
+            );
+            fs::write(&header_file, new_contents).expect("Failed to update header file");
         }
 
         // Add import CLingXiaPlatform to the generated Swift files
         let add_import_if_missing = |file_path: &std::path::Path, file_name: &str| {
-            if let Ok(contents) = fs::read_to_string(file_path) {
-                if !contents.contains("import CLingXiaSwiftAPI") {
-                    let new_contents =
-                        format!("import Foundation\nimport CLingXiaSwiftAPI\n\n{}", contents);
-                    fs::write(file_path, new_contents).expect(&format!(
-                        "Failed to add import statement to {} file",
-                        file_name
-                    ));
-                }
+            if let Ok(contents) = fs::read_to_string(file_path)
+                && !contents.contains("import CLingXiaSwiftAPI")
+            {
+                let new_contents =
+                    format!("import Foundation\nimport CLingXiaSwiftAPI\n\n{}", contents);
+                fs::write(file_path, new_contents).unwrap_or_else(|_| {
+                    panic!("Failed to add import statement to {} file", file_name)
+                });
             }
         };
 

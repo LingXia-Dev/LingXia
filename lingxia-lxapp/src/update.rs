@@ -106,10 +106,11 @@ impl UpdateManager {
         )?;
 
         // Remove previous install if different
-        if let Some(prev) = previous_path {
-            if prev.exists() && prev != install_path {
-                let _ = fs::remove_dir_all(&prev);
-            }
+        if let Some(prev) = previous_path
+            && prev.exists()
+            && prev != install_path
+        {
+            let _ = fs::remove_dir_all(&prev);
         }
 
         // Clean up downloaded record + archive
@@ -232,18 +233,18 @@ impl UpdateManager {
         }
 
         // Safe to remove previous version
-        if let Some(prev) = previous_path {
-            if prev.exists() && prev != install_path {
-                if let Err(e) = fs::remove_dir_all(&prev) {
-                    // Log warning but don't fail - new version is already committed
-                    crate::warn!(
-                        "Failed to remove old installation at {}: {}. Manual cleanup may be needed.",
-                        prev.display(),
-                        e
-                    )
-                    .with_appid(lxappid);
-                }
-            }
+        if let Some(prev) = previous_path
+            && prev.exists()
+            && prev != install_path
+            && let Err(e) = fs::remove_dir_all(&prev)
+        {
+            // Log warning but don't fail - new version is already committed
+            crate::warn!(
+                "Failed to remove old installation at {}: {}. Manual cleanup may be needed.",
+                prev.display(),
+                e
+            )
+            .with_appid(lxappid);
         }
 
         // Remove download metadata and archive
@@ -412,11 +413,11 @@ impl UpdateManager {
             .map_err(|_| LxAppError::IoError("download task cancelled".to_string()))?
         {
             Ok(()) => {
-                if !checksum_sha256.is_empty() {
-                    if let Err(e) = maybe_verify_sha256(&dest, checksum_sha256) {
-                        let _ = fs::remove_file(&dest);
-                        return Err(e);
-                    }
+                if !checksum_sha256.is_empty()
+                    && let Err(e) = maybe_verify_sha256(&dest, checksum_sha256)
+                {
+                    let _ = fs::remove_file(&dest);
+                    return Err(e);
                 }
                 // Persist pending downloaded update so it can be applied later.
                 // Uses current app context (appid + release_type) and explicit version.

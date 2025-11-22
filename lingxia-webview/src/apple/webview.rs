@@ -58,7 +58,7 @@ define_class!(
             let (appid, path) = webtag.extract_parts();
 
             // Call delegate's on_page_started
-            if let Some(delegate) = get_webview_delegate(&webtag) {
+            if let Some(delegate) = get_webview_delegate(webtag) {
                 delegate.on_page_started();
             }
             log::info!("WebView page started: {} at {}", appid, path);
@@ -70,7 +70,7 @@ define_class!(
             let (appid, path) = webtag.extract_parts();
 
             // Call delegate's on_page_finished
-            if let Some(delegate) = get_webview_delegate(&webtag) {
+            if let Some(delegate) = get_webview_delegate(webtag) {
                 delegate.on_page_finished();
             }
             log::info!("WebView page finished: {} at {}", appid, path);
@@ -127,7 +127,7 @@ define_class!(
             };
 
             // Ask delegate if it wants to handle this HTTPS navigation request
-            let response = if let Some(delegate) = get_webview_delegate(&webtag) {
+            let response = if let Some(delegate) = get_webview_delegate(webtag) {
                 delegate.handle_request(http_request)
             } else {
                 None
@@ -394,7 +394,7 @@ impl WebViewInner {
             let _: () = msg_send![webview, setNavigationDelegate: Some(proto_navigation_delegate)];
 
             // Set up message handler for bridge communication
-            let message_handler = Self::setup_message_handler(webview, &appid, &path)?;
+            let message_handler = Self::setup_message_handler(webview, appid, path)?;
 
             // Create WebViewInner instance with navigation delegate and message handler
             let webview_inner = WebViewInner {

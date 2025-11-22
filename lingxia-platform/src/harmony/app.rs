@@ -96,7 +96,7 @@ fn request_id_to_string(id: &ffi::MediaLibrary_RequestId) -> String {
         if ch == 0 {
             break;
         }
-        bytes.push(ch as u8);
+        bytes.push(ch);
     }
     String::from_utf8_lossy(&bytes).to_string()
 }

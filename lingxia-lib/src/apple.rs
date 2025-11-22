@@ -8,13 +8,11 @@ fn parse_color_to_u32(color_str: &str, default_color: u32) -> u32 {
         return 0x00000000;
     }
 
-    if color_str.starts_with('#') {
-        let hex_part = &color_str[1..];
-        if hex_part.len() == 6 {
-            if let Ok(rgb) = u32::from_str_radix(hex_part, 16) {
-                return 0xFF000000 | rgb; // Add full alpha
-            }
-        }
+    if let Some(hex_part) = color_str.strip_prefix('#')
+        && hex_part.len() == 6
+        && let Ok(rgb) = u32::from_str_radix(hex_part, 16)
+    {
+        return 0xFF000000 | rgb; // Add full alpha
     }
     default_color
 }

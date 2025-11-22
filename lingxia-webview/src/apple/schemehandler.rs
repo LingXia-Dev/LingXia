@@ -242,15 +242,12 @@ impl LingXiaSchemeHandler {
             let content_type_value = NSString::from_str(content_type_with_charset);
             headers.insert(&*content_type_key, &*content_type_value);
 
-            if let WebResourceBody::Path(ref path) = body {
-                if !headers_map.contains_key("content-length") {
-                    if let Ok(metadata) = std::fs::metadata(path) {
-                        if let Ok(value) = http::HeaderValue::from_str(&metadata.len().to_string())
-                        {
-                            headers_map.insert(http::header::CONTENT_LENGTH, value);
-                        }
-                    }
-                }
+            if let WebResourceBody::Path(ref path) = body
+                && !headers_map.contains_key("content-length")
+                && let Ok(metadata) = std::fs::metadata(path)
+                && let Ok(value) = http::HeaderValue::from_str(&metadata.len().to_string())
+            {
+                headers_map.insert(http::header::CONTENT_LENGTH, value);
             }
 
             for (key, value) in headers_map.iter() {
