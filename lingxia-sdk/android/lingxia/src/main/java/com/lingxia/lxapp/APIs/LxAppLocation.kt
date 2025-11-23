@@ -7,14 +7,15 @@ import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
-import android.os.Build
 import android.os.Bundle
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import androidx.core.content.ContextCompat
 import org.json.JSONObject
 import com.lingxia.lxapp.LxApp
+import com.lingxia.lxapp.PermissionManager
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -24,6 +25,10 @@ object LxAppLocation {
     private const val TAG = "LingXia.Location"
     private const val LOCATION_TIMEOUT_MS = 10_000L
     private const val STALE_LOCATION_THRESHOLD_MS = 2 * 60 * 1000L
+    private val LOCATION_PERMISSIONS = arrayOf(
+        Manifest.permission.ACCESS_FINE_LOCATION,
+        Manifest.permission.ACCESS_COARSE_LOCATION,
+    )
 
     @JvmStatic
     fun isLocationEnabled(): Boolean {
@@ -73,7 +78,7 @@ object LxAppLocation {
     ) {
         val locationManager = activity.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
         if (locationManager == null) {
-            sendFailure(callbackId, "Location service unavailable")
+            sendFailure(callbackId, "location_services_unavailable", "Location service unavailable")
             return
         }
 
@@ -88,8 +93,15 @@ object LxAppLocation {
         ) == PackageManager.PERMISSION_GRANTED
 
         if (!hasFinePermission && !hasCoarsePermission) {
-            Log.w(TAG, "Location permission not granted")
-            sendFailure(callbackId, "Location permission not granted")
+            // On the first request, prompt the system permission dialog and
+            // only continue with the location request after the user decides.
+            PermissionManager.ensurePermissions(activity, LOCATION_PERMISSIONS) { granted ->
+                if (granted) {
+                    requestSingleLocationWithConfig(activity, callbackId, isHighAccuracy, includeAltitude, expireTimeMs)
+                } else {
+                    sendFailure(callbackId, "location_permission_denied", "Location permission not granted")
+                }
+            }
             return
         }
 
@@ -117,7 +129,7 @@ object LxAppLocation {
 
         if (providers.isEmpty()) {
             Log.w(TAG, "No enabled location provider")
-            sendFailure(callbackId, "No location provider enabled")
+            sendFailure(callbackId, "location_unavailable", "No location provider enabled")
             return
         }
 
@@ -163,7 +175,7 @@ object LxAppLocation {
         timeoutRunnable = Runnable {
             if (handled.compareAndSet(false, true)) {
                 locationManager.removeUpdates(listener)
-                sendFailure(callbackId, "Location request timed out")
+                sendFailure(callbackId, "location_timeout", "Location request timed out")
             }
         }
 
@@ -198,7 +210,7 @@ object LxAppLocation {
             if (!started && handled.compareAndSet(false, true)) {
                 locationManager.removeUpdates(listener)
                 mainHandler.removeCallbacks(timeoutRunnable)
-                sendFailure(callbackId, "Unable to request location updates")
+                sendFailure(callbackId, "location_unavailable", "Unable to request location updates")
             }
         }
     }
@@ -237,8 +249,9 @@ object LxAppLocation {
         }
     }
 
-    private fun sendFailure(callbackId: Long, message: String) {
+    private fun sendFailure(callbackId: Long, code: String, message: String) {
         val payload = JSONObject().apply {
+            put("code", code)
             put("error", message)
         }
 

@@ -1295,4 +1295,15 @@ class LxAppActivity : AppCompatActivity() {
         // Update layout to adapt to screen orientation changes
         updateLayoutMargins()
     }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        if (PermissionManager.handleRequestPermissionsResult(requestCode, permissions, grantResults)) {
+            return
+        }
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+    }
 }
