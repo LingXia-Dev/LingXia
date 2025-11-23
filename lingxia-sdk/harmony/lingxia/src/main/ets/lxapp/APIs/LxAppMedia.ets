@@ -152,7 +152,11 @@ export class LxAppMedia {
         LxAppMedia.requestCameraPermissions(normalized.mode).then((granted: boolean) => {
           if (!granted) {
             hilog.warn(DOMAIN, TAG, 'Camera permissions not granted; cancelling chooseMedia(camera)');
-            onCallback(normalized.callbackId, false, 'Camera permission denied');
+            const payload = JSON.stringify({
+              code: 'camera_permission_denied',
+              error: 'Camera permission denied'
+            });
+            onCallback(normalized.callbackId, false, payload);
             return;
           }
           CameraCaptureOverlayManager.show(cap);

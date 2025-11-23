@@ -119,22 +119,45 @@ async fn choose_media(
         .map_err(|_| RongJSError::Error("chooseMedia cancelled or failed".to_string()))?;
 
     if !success {
-        // Show a user-friendly toast when chooseMedia fails, especially for
-        // permission-related errors coming from platform-specific UI layers.
-        let lower = data.to_lowercase();
-        let toast_message = if lower.contains("camera permission") {
-            "需要相机权限，请在系统设置中开启"
-        } else if lower.contains("microphone access") {
-            "需要麦克风权限，请在系统设置中开启"
-        } else if lower.contains("photo library access") || lower.contains("photos") {
-            "需要照片访问权限，请在系统设置中开启"
-        } else {
-            ""
+        // Prefer structured error envelopes of the form:
+        // { code: "...", error: "..." }. Fall back to string heuristics
+        // for older platform implementations.
+        let raw = data;
+        let value: Value = serde_json::from_str(&raw).unwrap_or(Value::Null);
+        let mut code = value
+            .get("code")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        let message = value
+            .get("error")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .unwrap_or_else(|| raw.clone());
+
+        if code.is_empty() {
+            let lower = raw.to_lowercase();
+            code = if lower.contains("camera permission") {
+                "camera_permission_denied".to_string()
+            } else if lower.contains("microphone access") {
+                "microphone_permission_denied".to_string()
+            } else if lower.contains("photo library access") || lower.contains("photos") {
+                "photo_permission_denied".to_string()
+            } else {
+                String::new()
+            };
+        }
+
+        let toast_message = match code.as_str() {
+            "camera_permission_denied" => Some("需要相机权限，请在系统设置中开启"),
+            "microphone_permission_denied" => Some("需要麦克风权限，请在系统设置中开启"),
+            "photo_permission_denied" => Some("需要照片访问权限，请在系统设置中开启"),
+            _ => None,
         };
 
-        if !toast_message.is_empty() {
+        if let Some(msg) = toast_message {
             let _ = lxapp.runtime.show_toast(ToastOptions {
-                title: toast_message.to_string(),
+                title: msg.to_string(),
                 icon: ToastIcon::Error,
                 image: None,
                 duration: 2.0,
@@ -143,7 +166,7 @@ async fn choose_media(
             });
         }
 
-        return Err(RongJSError::Error(data));
+        return Err(RongJSError::Error(message));
     }
 
     let parsed: Value = serde_json::from_str(&data)

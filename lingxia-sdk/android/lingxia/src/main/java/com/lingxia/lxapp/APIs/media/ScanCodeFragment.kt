@@ -472,7 +472,13 @@ class ScanCodeFragment : Fragment() {
             return
         }
         hasReportedResult = true
-        NativeApi.onCallback(callbackId, false, message)
+        val payload = org.json.JSONObject().apply {
+            put("error", message)
+            if (message == "Camera permission denied") {
+                put("code", "camera_permission_denied")
+            }
+        }.toString()
+        NativeApi.onCallback(callbackId, false, payload)
         safeClose()
     }
 

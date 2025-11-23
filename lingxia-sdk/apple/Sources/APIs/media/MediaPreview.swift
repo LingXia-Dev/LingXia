@@ -470,7 +470,16 @@ final class ScanCodeViewController: UIViewController {
         hasReported = true
         stopScanLineAnimation()
         stopSession()
-        let _ = onCallback(callbackId, false, message)
+        let code: String
+        if message.contains("Camera permission denied") {
+            code = "camera_permission_denied"
+        } else {
+            code = "scan_error"
+        }
+        let envelope: [String: Any] = ["code": code, "error": message]
+        let jsonData = try? JSONSerialization.data(withJSONObject: envelope, options: [])
+        let jsonString = jsonData.flatMap { String(data: $0, encoding: .utf8) } ?? message
+        let _ = onCallback(callbackId, false, jsonString)
         dismiss(animated: true)
     }
 

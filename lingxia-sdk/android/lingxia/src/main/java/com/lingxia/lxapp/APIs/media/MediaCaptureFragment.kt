@@ -693,14 +693,14 @@ class MediaCaptureFragment : Fragment() {
         pendingCapture = null
         finishButton?.visibility = View.GONE
         updateFinishButtonEnabled(false)
-        NativeApi.onCallback(
-            callbackId,
-            false,
-            JSONObject().apply {
-                put("error", message)
-                if (isCancel) put("cancel", true)
-            }.toString()
-        )
+        val errorPayload = JSONObject().apply {
+            put("error", message)
+            if (isCancel) put("cancel", true)
+            if (message == "Camera permission denied") {
+                put("code", "camera_permission_denied")
+            }
+        }.toString()
+        NativeApi.onCallback(callbackId, false, errorPayload)
         NativeApi.onCallback(
             callbackId,
             true,
