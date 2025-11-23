@@ -6,6 +6,7 @@ import { fileIo } from '@kit.CoreFileKit';
 import { LxApp } from '../LxApp';
 import common from '@ohos.app.ability.common';
 import { onCallback } from 'liblingxia.so';
+import { PermissionManager } from '../PermissionManager';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.Media';
@@ -72,6 +73,25 @@ export class LxAppMedia {
     }
   }
   //
+  private static async requestCameraPermissions(mode?: string): Promise<boolean> {
+    const normalizedMode = (mode || '').toLowerCase();
+    const includeMicrophone =
+      normalizedMode === 'videos' || normalizedMode === 'mix';
+    try {
+      const granted: boolean = await PermissionManager.ensureCameraAccess(
+        includeMicrophone
+      );
+      return granted;
+    } catch (error) {
+      hilog.error(
+        DOMAIN,
+        TAG,
+        `requestCameraPermissions error: ${String(error)}`
+      );
+      return false;
+    }
+  }
+
   public static previewMedia(payload: string): boolean {
     try {
       const decoded = typeof payload === 'string' ? payload.replace(/%7C/g, '|') : '';
@@ -129,7 +149,14 @@ export class LxAppMedia {
           maxDurationSeconds: normalized.maxDurationSeconds,
           cameraFacing: normalized.cameraFacing
         };
-        CameraCaptureOverlayManager.show(cap);
+        LxAppMedia.requestCameraPermissions(normalized.mode).then((granted: boolean) => {
+          if (!granted) {
+            hilog.warn(DOMAIN, TAG, 'Camera permissions not granted; cancelling chooseMedia(camera)');
+            onCallback(normalized.callbackId, false, 'Camera permission denied');
+            return;
+          }
+          CameraCaptureOverlayManager.show(cap);
+        });
         return true;
       }
 
@@ -205,6 +232,13 @@ export class LxAppMedia {
 
   public static async saveMedia(path: string, mediaType: number): Promise<boolean> {
     if (!path || mediaType === undefined || mediaType === null || !LxApp.context) { return false; }
+
+    // Ensure we have write access to media library before creating assets.
+    const hasWriteAccess: boolean = await PermissionManager.ensureMediaWriteAccess();
+    if (!hasWriteAccess) {
+      hilog.warn(DOMAIN, TAG, 'saveMedia: media write permission denied');
+      return false;
+    }
 
     // Deduplicate rapid duplicate requests for the same file/type (2s window)
     const now = Date.now();

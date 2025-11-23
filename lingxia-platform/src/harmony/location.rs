@@ -6,6 +6,8 @@ use std::ffi::c_void;
 
 use crate::error::PlatformError;
 use crate::traits::Location;
+use lingxia_messaging::invoke_callback;
+use lingxia_webview::tsfn;
 
 use super::Platform;
 
@@ -177,10 +179,29 @@ impl Location for Platform {
             if result != LOCATION_SUCCESS {
                 OH_Location_DestroyRequestConfig(request_config);
                 drop(Box::from_raw(context_ptr));
-                return Err(PlatformError::Platform(format!(
-                    "OH_Location_StartLocating failed with code {}",
-                    result
-                )));
+
+                let (code, message) = if result == 201 {
+                    // Permission was not granted when starting location. The
+                    // logic layer can treat this as a permission denial and
+                    // decide how to guide the user.
+                    (
+                        "location_permission_denied",
+                        "Location permission denied".to_string(),
+                    )
+                } else {
+                    (
+                        "location_unavailable",
+                        format!("Location start failed with code {}", result),
+                    )
+                };
+
+                let payload = json!({
+                    "code": code,
+                    "error": message
+                })
+                .to_string();
+                invoke_callback(callback_id, false, payload);
+                return Ok(());
             }
 
             Ok(())

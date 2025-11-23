@@ -1,6 +1,7 @@
 use crate::error::PlatformError;
-use crate::traits::MediaKind;
+use crate::traits::{MediaKind, PermissionKind, PermissionStatus};
 use crate::{AppRuntime, AssetFileEntry, MediaRuntime};
+use lingxia_webview::tsfn;
 use log::warn;
 use napi_ohos::JsValue;
 use napi_ohos::bindgen_prelude::{Env, Object};
@@ -21,6 +22,36 @@ pub struct Platform {
     // Store the original napi values for cloning
     env: Option<napi_ohos::sys::napi_env>,
     js_resource_manager: Option<napi_ohos::sys::napi_value>,
+}
+
+impl crate::traits::Permissions for Platform {
+    fn check_permission(
+        &self,
+        _permission: PermissionKind,
+    ) -> Result<PermissionStatus, PlatformError> {
+        // HarmonyOS permissions are coordinated at the UI layer. The Rust
+        // platform implementation treats the state as unknown and relies on
+        // operation-specific callbacks (or higher-level logic) to expose
+        // failures in a user-friendly way.
+        Ok(PermissionStatus::Unknown)
+    }
+
+    fn request_permission(
+        &self,
+        permission: PermissionKind,
+        callback_id: u64,
+    ) -> Result<(), PlatformError> {
+        match permission {
+            PermissionKind::Location => {
+                let id = callback_id.to_string();
+                tsfn::call_arkts("requestLocationPermission", &[id.as_str()])
+                    .map_err(|e| PlatformError::Platform(e.to_string()))
+            }
+            _ => Err(PlatformError::Platform(
+                "Permission request not implemented for this kind on Harmony".to_string(),
+            )),
+        }
+    }
 }
 
 impl Clone for Platform {

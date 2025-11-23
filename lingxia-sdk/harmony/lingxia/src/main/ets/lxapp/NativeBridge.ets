@@ -1,6 +1,7 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { webview } from '@kit.ArkWeb';
-import { common } from '@kit.AbilityKit';
+import common from '@ohos.app.ability.common';
+import { onCallback } from 'liblingxia.so';
 import { LxApp } from './LxApp';
 import { LxAppToast, ToastIcon, ToastPosition } from './APIs/LxAppToast';
 import { LxAppModal, ModalResult } from './APIs/LxAppModal';
@@ -20,6 +21,7 @@ import {
   setUserAgent
 } from './WebView';
 import { animationTypeFromInt } from './NavigationBar';
+import { PermissionManager } from './PermissionManager';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.NativeBridge';
@@ -283,6 +285,45 @@ class NativeBridge {
 
     this.register('scanCode', (payload: string): boolean => {
       return LxAppScan.scanCode(payload);
+    });
+
+    // Request location permission on HarmonyOS via centralized PermissionManager.
+    // The result is reported back to Rust using the shared callback mechanism
+    // so that the logic layer can decide whether to proceed with the location
+    // request or surface an error.
+    this.register('requestLocationPermission', (callbackId: string): boolean => {
+      const id = String(callbackId ?? '').trim();
+      if (!id) {
+        hilog.warn(DOMAIN, TAG, 'requestLocationPermission: missing callbackId');
+        return false;
+      }
+
+      (async () => {
+        try {
+          const granted: boolean = await PermissionManager.ensureLocationAccess();
+          let payload: string;
+          if (granted) {
+            payload = JSON.stringify({ code: 'ok' });
+          } else {
+            payload = JSON.stringify({
+              code: 'location_permission_denied',
+              error: 'Location permission not granted'
+            });
+          }
+          onCallback(id, granted, payload);
+          hilog.info(DOMAIN, TAG, `requestLocationPermission result: ${granted}`);
+        } catch (error) {
+          const message = String(error);
+          hilog.error(
+            DOMAIN,
+            TAG,
+            `requestLocationPermission failed: ${message}`
+          );
+          onCallback(id, false, message);
+        }
+      })();
+
+      return true;
     });
 
     hilog.info(DOMAIN, TAG, `Registered ${NativeBridge.callbacks.size} default callbacks`);
