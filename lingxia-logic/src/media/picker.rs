@@ -3,7 +3,7 @@ use lingxia_lxapp::{LxApp, lx};
 use lingxia_messaging::{CallbackResult, get_callback};
 use lingxia_platform::{
     AppRuntime, CameraFacing, ChooseMediaMode, ChooseMediaRequest, MediaInteraction, MediaKind,
-    MediaSource,
+    MediaSource, ToastIcon, ToastOptions, ToastPosition, UserFeedback,
 };
 use rong::{
     FromJSObj, JSContext, JSEngineValue, JSFunc, JSObject, JSResult, RongJSError,
@@ -119,6 +119,30 @@ async fn choose_media(
         .map_err(|_| RongJSError::Error("chooseMedia cancelled or failed".to_string()))?;
 
     if !success {
+        // Show a user-friendly toast when chooseMedia fails, especially for
+        // permission-related errors coming from platform-specific UI layers.
+        let lower = data.to_lowercase();
+        let toast_message = if lower.contains("camera permission") {
+            "需要相机权限，请在系统设置中开启"
+        } else if lower.contains("microphone access") {
+            "需要麦克风权限，请在系统设置中开启"
+        } else if lower.contains("photo library access") || lower.contains("photos") {
+            "需要照片访问权限，请在系统设置中开启"
+        } else {
+            ""
+        };
+
+        if !toast_message.is_empty() {
+            let _ = lxapp.runtime.show_toast(ToastOptions {
+                title: toast_message.to_string(),
+                icon: ToastIcon::Error,
+                image: None,
+                duration: 2.0,
+                mask: false,
+                position: ToastPosition::Center,
+            });
+        }
+
         return Err(RongJSError::Error(data));
     }
 

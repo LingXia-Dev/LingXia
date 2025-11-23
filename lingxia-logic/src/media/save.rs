@@ -1,5 +1,7 @@
 use lingxia_lxapp::{LxApp, lx};
-use lingxia_platform::{MediaInteraction, SaveMediaRequest};
+use lingxia_platform::{
+    MediaInteraction, SaveMediaRequest, ToastIcon, ToastOptions, ToastPosition, UserFeedback,
+};
 use rong::{FromJSObj, JSContext, JSFunc, JSResult, RongJSError};
 
 #[derive(FromJSObj)]
@@ -39,12 +41,26 @@ fn save_media(ctx: JSContext, options: JSSaveMediaOptions, image: bool) -> JSRes
         runtime.save_video_to_photos_album(request)
     };
 
-    op.map_err(|e| {
-        let name = if image {
-            "saveImageToPhotosAlbum"
-        } else {
-            "saveVideoToPhotosAlbum"
-        };
-        RongJSError::Error(format!("{} failed: {}", name, e))
-    })
+    match op {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            // Surface a user-visible hint when saving fails, typically due to
+            // missing photo library permissions or storage issues.
+            let _ = runtime.show_toast(ToastOptions {
+                title: "保存失败，请检查照片权限或可用空间".to_string(),
+                icon: ToastIcon::Error,
+                image: None,
+                duration: 2.0,
+                mask: false,
+                position: ToastPosition::Center,
+            });
+
+            let name = if image {
+                "saveImageToPhotosAlbum"
+            } else {
+                "saveVideoToPhotosAlbum"
+            };
+            Err(RongJSError::Error(format!("{} failed: {}", name, e)))
+        }
+    }
 }

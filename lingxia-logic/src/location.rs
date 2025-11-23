@@ -1,9 +1,19 @@
 use lingxia_lxapp::{LxApp, lx};
 use lingxia_messaging::{CallbackResult, get_callback};
-use lingxia_platform::{Location, LocationRequestConfig};
+use lingxia_platform::{
+    Location, LocationRequestConfig, PermissionKind, Permissions, ToastIcon, ToastOptions,
+    ToastPosition, UserFeedback,
+};
 use rong::function::Optional;
 use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
 use serde_json::Value;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+// Tracks whether this process has already observed a location permission denial
+// while trying to perform a location request. Once set, subsequent calls will
+// not start a new native location request and will instead surface a toast
+// directing the user to enable location in system settings.
+static LOCATION_PERMISSION_BLOCKED: AtomicBool = AtomicBool::new(false);
 
 /// Coordinate conversion: WGS84 to GCJ02 (Mars coordinate system)
 /// Reference: https://github.com/wandergis/coordtransform
@@ -154,8 +164,68 @@ async fn get_location(
     options: Optional<JSLocationOptions>,
 ) -> JSResult<LocationObj> {
     let lxapp = LxApp::from_ctx(&ctx)?;
+    let blocked = LOCATION_PERMISSION_BLOCKED.load(Ordering::Relaxed);
+    // If we already know that location permission has been denied in this
+    // process, do not start a new native request. Instead, surface a unified
+    // toast guiding the user to enable location in system settings.
+    if blocked {
+        let _ = lxapp.runtime.show_toast(ToastOptions {
+            title: "需要定位权限，请在系统设置中开启".to_string(),
+            icon: ToastIcon::Error,
+            image: None,
+            duration: 2.0,
+            mask: false,
+            position: ToastPosition::Center,
+        });
+        return Err(RongJSError::Error("Location permission denied".to_string()));
+    }
 
-    // Get callback ID and receiver
+    // Optional permission preflight for platforms that support it (e.g. Harmony).
+    // If the platform returns an error for this preflight request we treat it as
+    // the user denying permission for this call and do not start the location
+    // request itself.
+    let (perm_callback_id, perm_receiver) = get_callback();
+    let permission_preflight_supported = lxapp
+        .runtime
+        .request_permission(PermissionKind::Location, perm_callback_id)
+        .is_ok();
+
+    if permission_preflight_supported {
+        let perm_result = perm_receiver.await.map_err(|_| {
+            RongJSError::Error("Location permission request cancelled or failed".to_string())
+        })?;
+
+        if !perm_result.success {
+            let raw = perm_result.as_str();
+            let value = serde_json::from_str::<Value>(raw).unwrap_or(Value::Null);
+            let code = value
+                .get("code")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            let message = value
+                .get("error")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+                .unwrap_or_else(|| raw.to_string());
+
+            if code == "location_permission_denied" {
+                LOCATION_PERMISSION_BLOCKED.store(true, Ordering::Relaxed);
+                let _ = lxapp.runtime.show_toast(ToastOptions {
+                    title: "需要定位权限，请在系统设置中开启".to_string(),
+                    icon: ToastIcon::Error,
+                    image: None,
+                    duration: 2.0,
+                    mask: false,
+                    position: ToastPosition::Center,
+                });
+            }
+
+            return Err(RongJSError::Error(message));
+        }
+    }
+
+    // Get callback ID and receiver for the actual location request
     let (callback_id, receiver) = get_callback();
 
     // Create location request config from options
@@ -175,6 +245,36 @@ async fn get_location(
             // Wait for result from callback
             match receiver.await {
                 Ok(result) => {
+                    if !result.success {
+                        // Try to extract structured error information from JSON payload.
+                        let raw = result.as_str();
+                        let value = serde_json::from_str::<Value>(raw).unwrap_or(Value::Null);
+                        let code = value
+                            .get("code")
+                            .and_then(Value::as_str)
+                            .unwrap_or_default()
+                            .to_string();
+                        let message = value
+                            .get("error")
+                            .and_then(Value::as_str)
+                            .map(str::to_string)
+                            .unwrap_or_else(|| raw.to_string());
+
+                        if code == "location_permission_denied" {
+                            LOCATION_PERMISSION_BLOCKED.store(true, Ordering::Relaxed);
+                            let _ = lxapp.runtime.show_toast(ToastOptions {
+                                title: "需要定位权限，请在系统设置中开启".to_string(),
+                                icon: ToastIcon::Error,
+                                image: None,
+                                duration: 2.0,
+                                mask: false,
+                                position: ToastPosition::Center,
+                            });
+                        }
+
+                        return Err(RongJSError::Error(message));
+                    }
+
                     let mut location = LocationObj::from(result);
 
                     let requested_type = options

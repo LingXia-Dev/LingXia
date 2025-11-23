@@ -1,6 +1,9 @@
 use lingxia_lxapp::{LxApp, lx};
 use lingxia_messaging::{CallbackResult, get_callback};
-use lingxia_platform::{MediaInteraction, ScanCodeRequest, ScanType};
+use lingxia_platform::{
+    MediaInteraction, ScanCodeRequest, ScanType, ToastIcon, ToastOptions, ToastPosition,
+    UserFeedback,
+};
 use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError, function::Optional};
 use serde_json::Value;
 
@@ -50,6 +53,19 @@ async fn scan(ctx: JSContext, options: Optional<JSScanOptions>) -> JSResult<Scan
         .map_err(|_| RongJSError::Error("scan cancelled or failed".to_string()))?;
 
     if !success {
+        // If the platform reports a camera permission error, surface a unified
+        // toast guiding the user to enable camera access in system settings.
+        let lower = data.to_lowercase();
+        if lower.contains("camera permission") || lower.contains("camera access") {
+            let _ = lxapp.runtime.show_toast(ToastOptions {
+                title: "需要相机权限，请在系统设置中开启".to_string(),
+                icon: ToastIcon::Error,
+                image: None,
+                duration: 2.0,
+                mask: false,
+                position: ToastPosition::Center,
+            });
+        }
         return Err(RongJSError::Error(data));
     }
 
