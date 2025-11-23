@@ -33,13 +33,6 @@ Page({
       this.setData({
         isLoading: false,
       });
-
-      // Show error toast
-      lx.showToast({
-        title: `Location error: ${error.message}`,
-        icon: "none",
-        duration: 3000,
-      });
     }
   },
 
