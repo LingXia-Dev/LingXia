@@ -417,7 +417,7 @@ private class CheckmarkDrawable : Drawable() {
 private class CrossDrawable : Drawable() {
     private val paint = Paint().apply {
         isAntiAlias = true
-        color = Color.WHITE
+        color = Color.parseColor("#F44336")
         strokeWidth = 8f
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
