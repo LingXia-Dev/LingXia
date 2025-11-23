@@ -4,8 +4,9 @@ pub mod media_runtime;
 
 pub use core::{
     AnimationType, AppRuntime, Device, DocumentInteraction, Location, LocationRequestConfig,
-    ModalOptions, OpenDocumentRequest, PickerType, PopupPosition, PopupPresenter, PopupRequest,
-    ToastIcon, ToastOptions, ToastPosition, UIUpdate, UserFeedback,
+    ModalOptions, OpenDocumentRequest, PermissionKind, PermissionStatus, Permissions, PickerType,
+    PopupPosition, PopupPresenter, PopupRequest, ToastIcon, ToastOptions, ToastPosition, UIUpdate,
+    UserFeedback,
 };
 pub use media_interaction::{
     CameraFacing, ChooseMediaMode, ChooseMediaRequest, MediaInteraction, MediaKind, MediaQuality,
