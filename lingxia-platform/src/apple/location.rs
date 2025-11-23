@@ -5,7 +5,7 @@ use crate::error::PlatformError;
 use crate::traits::Location;
 
 #[cfg(target_os = "ios")]
-mod ios {
+pub(crate) mod ios {
     use super::*;
     use dispatch2::DispatchQueue;
     use objc2::define_class;
@@ -202,7 +202,20 @@ mod ios {
             return;
         }
 
-        let payload = json!({ "error": message }).to_string();
+        let mut code = "location_error";
+        if message.contains("permission") {
+            code = "location_permission_denied";
+        } else if message.contains("disabled") {
+            code = "location_services_disabled";
+        } else if message.contains("timed out") || message.contains("timeout") {
+            code = "location_timeout";
+        }
+
+        let payload = json!({
+            "code": code,
+            "error": message
+        })
+        .to_string();
         lingxia_messaging::invoke_callback(callback_id, false, payload);
     }
 
@@ -239,9 +252,30 @@ mod ios {
         }
     }
 
-    pub(super) fn is_location_enabled() -> Result<bool, PlatformError> {
+    pub(crate) fn is_location_enabled() -> Result<bool, PlatformError> {
         let enabled = unsafe { CLLocationManager::locationServicesEnabled_class() };
         Ok(enabled)
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum AuthorizationState {
+        Authorized,
+        Denied,
+        Restricted,
+        NotDetermined,
+    }
+
+    pub(crate) fn current_authorization_status() -> AuthorizationState {
+        #[allow(deprecated)]
+        let status = unsafe { CLLocationManager::authorizationStatus_class() };
+        match status {
+            CLAuthorizationStatus::AuthorizedWhenInUse
+            | CLAuthorizationStatus::AuthorizedAlways => AuthorizationState::Authorized,
+            CLAuthorizationStatus::Denied => AuthorizationState::Denied,
+            CLAuthorizationStatus::Restricted => AuthorizationState::Restricted,
+            CLAuthorizationStatus::NotDetermined => AuthorizationState::NotDetermined,
+            _ => AuthorizationState::NotDetermined,
+        }
     }
 
     pub(super) fn request_location_with_config(
@@ -251,14 +285,14 @@ mod ios {
         let services_enabled = unsafe { CLLocationManager::locationServicesEnabled_class() };
         if !services_enabled {
             log::error!("iOS Location: Services disabled");
-            lingxia_messaging::invoke_callback(
-                callback_id,
-                false,
-                json!({ "error": "Location services are disabled" }).to_string(),
-            );
-            return Err(PlatformError::Platform(
-                "Location services are disabled".into(),
-            ));
+            let payload = json!({
+                "code": "location_services_disabled",
+                "error": "Location services are disabled"
+            })
+            .to_string();
+            lingxia_messaging::invoke_callback(callback_id, false, payload);
+            // Error is fully reported via callback; no additional PlatformError needed.
+            return Ok(());
         }
 
         // Record callback info so delegate can access configuration.
@@ -281,8 +315,10 @@ mod ios {
                 "iOS Location: Authorization denied/restricted before request (status: {:?})",
                 authorization_status
             );
+            // Report permission denial via callback; the logic layer owns user-facing toasts
+            // and error handling decisions.
             deliver_failure(callback_id, "Location permission denied");
-            return Err(PlatformError::Platform("Location permission denied".into()));
+            return Ok(());
         }
 
         DispatchQueue::main().exec_async(move || {

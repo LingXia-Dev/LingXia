@@ -214,22 +214,13 @@ final class ScanCodeViewController: UIViewController {
     }
 
     private func ensureCameraPermission() {
-        switch AVCaptureDevice.authorizationStatus(for: .video) {
-        case .authorized:
-            configureSession()
-        case .notDetermined:
-            AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
-                DispatchQueue.main.async {
-                    guard let self else { return }
-                    if granted {
-                        self.configureSession()
-                    } else {
-                        self.reportFailure("Camera permission denied")
-                    }
-                }
+        PermissionManager.ensureCameraAccess { [weak self] granted in
+            guard let self else { return }
+            if granted {
+                self.configureSession()
+            } else {
+                self.reportFailure("Camera permission denied")
             }
-        default:
-            reportFailure("Camera permission denied")
         }
     }
 

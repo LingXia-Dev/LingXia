@@ -70,7 +70,7 @@ extension LxAppMedia {
             return
         }
 
-        checkCameraPermission { granted in
+        PermissionManager.ensureCameraAccess { granted in
             guard granted else {
                 let _ = onCallback(callbackId, false, "Camera access is required to capture media. Please enable access in Settings > Privacy & Security > Camera.")
                 return
@@ -80,7 +80,7 @@ extension LxAppMedia {
             let desiredFacingFront = cameraFacing.lowercased() == "front"
 
             if modeLowercased == "video" {
-                checkMicrophonePermission { micGranted in
+                PermissionManager.ensureMicrophoneAccess { micGranted in
                     guard micGranted else {
                         let _ = onCallback(callbackId, false, "Microphone access is required to record video. Please enable access in Settings > Privacy & Security > Microphone.")
                         return
@@ -154,42 +154,6 @@ extension LxAppMedia {
         }
     }
 
-    private static func checkCameraPermission(completion: @escaping (Bool) -> Void) {
-        let status = AVCaptureDevice.authorizationStatus(for: .video)
-        switch status {
-        case .authorized:
-            completion(true)
-        case .notDetermined:
-            AVCaptureDevice.requestAccess(for: .video) { granted in
-                DispatchQueue.main.async {
-                    completion(granted)
-                }
-            }
-        case .denied, .restricted:
-            completion(false)
-        @unknown default:
-            completion(false)
-        }
-    }
-
-    private static func checkMicrophonePermission(completion: @escaping (Bool) -> Void) {
-        let audioSession = AVAudioSession.sharedInstance()
-        switch audioSession.recordPermission {
-        case .granted:
-            completion(true)
-        case .denied:
-            completion(false)
-        case .undetermined:
-            audioSession.requestRecordPermission { granted in
-                DispatchQueue.main.async {
-                    completion(granted)
-                }
-            }
-        @unknown default:
-            completion(false)
-        }
-    }
-
     private static func openAlbum(presenter: UIViewController, mode: String, maxCount: UInt32, callbackId: UInt64) {
 
         // Check if PHPickerViewController is available (iOS 14+)
@@ -214,16 +178,12 @@ extension LxAppMedia {
     ) {
         guard #available(iOS 14.0, *) else { return }
 
-        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-
-        switch status {
-        case .authorized, .limited, .notDetermined:
-            // Always present custom picker; it will handle permission acquisition on '+' click if needed
-            presentPhotoPicker(presenter: presenter, mode: mode, maxCount: maxCount, callbackId: callbackId)
-        case .denied, .restricted:
-            let _ = onCallback(callbackId, false, "Photo library access is required to select photos. Please enable access in Settings > Privacy & Security > Photos.")
-        @unknown default:
-            let _ = onCallback(callbackId, false, "Photo library access is required to select photos. Please enable access in Settings > Privacy & Security > Photos.")
+        PermissionManager.ensurePhotoLibraryAccess { granted in
+            if granted {
+                presentPhotoPicker(presenter: presenter, mode: mode, maxCount: maxCount, callbackId: callbackId)
+            } else {
+                let _ = onCallback(callbackId, false, "Photo library access is required to select photos. Please enable access in Settings > Privacy & Security > Photos.")
+            }
         }
     }
 

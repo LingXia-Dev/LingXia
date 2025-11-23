@@ -1,5 +1,6 @@
 use super::ffi;
 use crate::error::PlatformError;
+use crate::traits::{PermissionKind, PermissionStatus, Permissions};
 use crate::{AppRuntime, AssetFileEntry, MediaRuntime};
 use std::io::{Cursor, Read};
 use std::path::PathBuf;
@@ -23,6 +24,55 @@ impl Platform {
             cache_dir,
             locale,
         })
+    }
+}
+
+impl Permissions for Platform {
+    fn check_permission(
+        &self,
+        permission: PermissionKind,
+    ) -> Result<PermissionStatus, PlatformError> {
+        #[cfg(target_os = "ios")]
+        {
+            use crate::traits::PermissionStatus as Status;
+
+            match permission {
+                PermissionKind::Location => {
+                    // Mirror the logic in the iOS location module.
+                    use crate::apple::location::ios;
+                    let enabled = ios::is_location_enabled()?;
+                    if !enabled {
+                        return Ok(Status::Denied);
+                    }
+                    let auth = ios::current_authorization_status();
+                    let status = match auth {
+                        ios::AuthorizationState::Authorized => Status::Granted,
+                        ios::AuthorizationState::Denied => Status::Denied,
+                        ios::AuthorizationState::Restricted => Status::Restricted,
+                        ios::AuthorizationState::NotDetermined => Status::Unknown,
+                    };
+                    Ok(status)
+                }
+                // Other permissions are currently handled at the UI layer on iOS.
+                _ => Ok(PermissionStatus::Unknown),
+            }
+        }
+
+        #[cfg(not(target_os = "ios"))]
+        {
+            let _ = permission;
+            Ok(PermissionStatus::Unknown)
+        }
+    }
+
+    fn request_permission(
+        &self,
+        _permission: PermissionKind,
+        _callback_id: u64,
+    ) -> Result<(), PlatformError> {
+        Err(PlatformError::Platform(
+            "Explicit permission requests are handled in the iOS UI layer".to_string(),
+        ))
     }
 }
 
