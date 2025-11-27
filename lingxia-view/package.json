@@ -1,0 +1,29 @@
+{
+  "name": "@lingxia/view",
+  "version": "0.0.1",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
+    },
+    "./react": {
+      "import": "./src/react/index.ts",
+      "types": "./src/react/index.ts"
+    }
+  },
+  "peerDependencies": {
+    "react": "^19.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && rollup -c"
+  },
+  "devDependencies": {
+    "@rollup/plugin-terser": "^0.4.4",
+    "rollup": "^4.30.0",
+    "typescript": "^5.7.2"
+  }
+}
