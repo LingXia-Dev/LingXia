@@ -313,6 +313,8 @@
       if (callbackId) {
         _sendCallback(callbackId);
       }
+    } else if (name === "samelevel") {
+      handleSameLevelEvent(payload);
     } else {
       warn("Unknown event:", name);
     }
@@ -520,4 +522,98 @@
   }
 
   window.LingXiaBridge = LingXiaBridge;
+
+  function handleSameLevelEvent(msg) {
+    try {
+      const message =
+        typeof msg === "string"
+          ? JSON.parse(msg)
+          : msg && typeof msg === "object"
+            ? msg
+            : null;
+      if (!message || !message.id) {
+        warn("SameLevel receive: invalid message", msg);
+        return;
+      }
+      if (message.action !== "component.event") return;
+
+      const handler = sameLevelHandlers.get(message.id);
+      if (typeof handler !== "function") return;
+      if (isDebugEnabled("proto")) {
+        console.log("[SameLevel] ← native:", message);
+      }
+      handler(message);
+    } catch (e) {
+      error("SameLevel receive error:", e);
+    }
+  }
+
+  // Global registry for native-backed components
+  const sameLevelHandlers = new Map();
+  const sameLevelQueue = [];
+  let sameLevelReady = false;
+
+  function hasSameLevelHandler() {
+    return (
+      communicationMethod === "webkit" &&
+      typeof window !== "undefined" &&
+      window.webkit &&
+      window.webkit.messageHandlers &&
+      window.webkit.messageHandlers.SameLevel
+    );
+  }
+
+  function flushSameLevelQueue() {
+    if (!hasSameLevelHandler() || sameLevelQueue.length === 0) return;
+    sameLevelReady = true;
+    while (sameLevelQueue.length) {
+      const msg = sameLevelQueue.shift();
+      try {
+        if (isDebugEnabled("proto")) {
+          console.log("[SameLevel] flush → native:", msg);
+        }
+        window.webkit.messageHandlers.SameLevel.postMessage(msg);
+      } catch (e) {
+        error("Failed to flush SameLevel message:", e);
+        break;
+      }
+    }
+  }
+
+  function sendSameLevelMessage(message) {
+    try {
+      if (!hasSameLevelHandler()) {
+        if (isDebugEnabled("proto")) {
+          console.log("[SameLevel] queue message (no handler yet):", message);
+        }
+        sameLevelQueue.push(message);
+        return;
+      }
+      if (!sameLevelReady) {
+        flushSameLevelQueue();
+      }
+      if (isDebugEnabled("proto")) {
+        console.log("[SameLevel] → native:", message);
+      }
+      window.webkit.messageHandlers.SameLevel.postMessage(message);
+    } catch (e) {
+      error("Failed to send SameLevel message:", e);
+    }
+  }
+
+  // Expose SameLevel helpers for external packages (e.g., @lingxia/view)
+  LingXiaBridge.sameLevel = {
+    send: sendSameLevelMessage,
+    hasHandler: hasSameLevelHandler,
+    register(id, handler) {
+      if (!id || typeof handler !== "function") return () => {};
+      sameLevelHandlers.set(id, handler);
+      return () => {
+        sameLevelHandlers.delete(id);
+      };
+    },
+    unregister(id) {
+      sameLevelHandlers.delete(id);
+    },
+  };
 })();
