@@ -95,7 +95,7 @@ export default function LocationPage() {
           <button
             onClick={getLocation}
             disabled={isLoading}
-            className="w-full bg-green-500 hover:bg-green-600 disabled:bg-gray-400 text-white font-medium py-4 px-6 rounded-lg transition-colors"
+            className="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 text-white font-medium py-4 px-6 rounded-lg transition-colors"
           >
             {isLoading ? 'Getting Location...' : 'Get Location'}
           </button>

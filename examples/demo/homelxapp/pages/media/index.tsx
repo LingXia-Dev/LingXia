@@ -7,7 +7,6 @@ const SOURCE_OPTIONS = [
   { key: 'either', label: 'Album or Camera' },
 ];
 
-
 const COUNT_OPTIONS = Array.from({ length: 9 }, (_, index) => {
   const value = index + 1;
   return {
@@ -99,7 +98,189 @@ type PageActions = {
 
 declare function useLingXia(): PageActions;
 
+const Card: React.FC<{ children: React.ReactNode; className?: string; noPadding?: boolean }> = ({
+  children,
+  className = '',
+  noPadding = false
+}) => (
+  <div className={`w-full bg-white rounded-2xl shadow-sm border border-gray-100 ${noPadding ? '' : 'p-6'} ${className}`}>
+    {children}
+  </div>
+);
+
+const PageHeader: React.FC<{
+  title: string;
+  subtitle?: string;
+  description?: string;
+}> = ({ title, subtitle, description }) => (
+  <Card className="text-center">
+    <div className="space-y-3">
+      <h1 className="text-xl font-semibold text-gray-800">{title}</h1>
+      {subtitle && (
+        <div className="flex items-center justify-center gap-2">
+          <div className="h-px w-8 bg-gradient-to-r from-transparent via-blue-400 to-transparent" />
+          <p className="text-sm font-medium text-blue-600">{subtitle}</p>
+          <div className="h-px w-8 bg-gradient-to-r from-transparent via-blue-400 to-transparent" />
+        </div>
+      )}
+      {description && (
+        <p className="text-sm text-gray-500 max-w-md mx-auto leading-relaxed">
+          {description}
+        </p>
+      )}
+    </div>
+  </Card>
+);
+
+const SettingRow: React.FC<{
+  label: string;
+  value: string;
+  onPress?: () => void;
+  icon?: string;
+}> = ({ label, value, onPress, icon = '›' }) => {
+  const clickable = typeof onPress === 'function';
+  return (
+    <button
+      type="button"
+      className={`group flex w-full items-center gap-4 px-6 py-4 text-sm transition-all ${
+        clickable
+          ? 'hover:bg-gradient-to-r hover:from-blue-50/50 hover:to-transparent active:scale-[0.99]'
+          : 'cursor-default'
+      }`}
+      onClick={clickable ? onPress : undefined}
+      disabled={!clickable}
+    >
+      <span className="text-gray-600 font-medium flex-shrink-0">{label}</span>
+      <div className="flex-1 border-b border-dashed border-gray-200" />
+      <span className="font-semibold text-gray-800 transition-colors group-hover:text-blue-600">
+        {value}
+      </span>
+      {clickable && (
+        <span className="text-gray-400 text-lg transition-transform group-hover:translate-x-0.5">
+          {icon}
+        </span>
+      )}
+    </button>
+  );
+};
+
+const Button: React.FC<{
+  children: React.ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+  variant?: 'primary' | 'secondary' | 'success' | 'danger';
+  loading?: boolean;
+  fullWidth?: boolean;
+  size?: 'sm' | 'md' | 'lg';
+}> = ({
+  children,
+  onClick,
+  disabled = false,
+  variant = 'primary',
+  loading = false,
+  fullWidth = false,
+  size = 'md'
+}) => {
+  const baseClasses = 'font-medium rounded-xl transition-all duration-200 shadow-sm active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60';
+
+  const sizeClasses = {
+    sm: 'px-4 py-2 text-xs',
+    md: 'px-5 py-3 text-sm',
+    lg: 'px-6 py-4 text-base',
+  };
+
+  const variantClasses = {
+    primary: 'bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white shadow-blue-200',
+    secondary: 'bg-gradient-to-r from-gray-600 to-gray-500 hover:from-gray-500 hover:to-gray-600 text-white shadow-gray-200',
+    success: 'bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-600 text-white shadow-green-200',
+    danger: 'bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-600 text-white shadow-red-200',
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled || loading}
+      className={`${baseClasses} ${sizeClasses[size]} ${variantClasses[variant]} ${fullWidth ? 'w-full' : ''}`}
+    >
+      {loading ? (
+        <span className="flex items-center justify-center gap-2">
+          <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+          </svg>
+          <span>{children}</span>
+        </span>
+      ) : children}
+    </button>
+  );
+};
+
+const InfoCard: React.FC<{
+  title: string;
+  items: { label: string; value: string | number }[];
+  footer?: React.ReactNode;
+}> = ({ title, items, footer }) => (
+  <div className="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-5 space-y-4">
+    <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+      <span className="w-1 h-4 bg-blue-500 rounded-full" />
+      {title}
+    </h3>
+    <div className="space-y-3">
+      {items.map(({ label, value }) => (
+        <div key={label} className="flex items-center justify-between text-sm">
+          <span className="text-gray-600">{label}</span>
+          <span className="font-semibold text-gray-800">{value}</span>
+        </div>
+      ))}
+    </div>
+    {footer && <div className="pt-4 border-t border-gray-200">{footer}</div>}
+  </div>
+);
+
+const Input: React.FC<{
+  type?: 'text' | 'number';
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  placeholder?: string;
+  label?: string;
+  min?: number;
+  max?: number;
+}> = ({ type = 'text', value, onChange, placeholder, label, min, max }) => (
+  <div className="space-y-2">
+    {label && <label className="text-xs font-medium text-gray-700">{label}</label>}
+    <input
+      type={type}
+      value={value}
+      onChange={onChange}
+      placeholder={placeholder}
+      min={min}
+      max={max}
+      className="w-full px-4 py-2.5 text-sm border border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+    />
+  </div>
+);
+
+const EmptyState: React.FC<{ message: string }> = ({ message }) => (
+  <div className="flex flex-col items-center justify-center py-12 text-center">
+    <p className="text-sm text-gray-500">{message}</p>
+  </div>
+);
+
+const formatFileSize = (bytes: number): string => {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
+};
+
 export default function MediaPage() {
+  React.useEffect(() => {
+    document.body.classList.add('api-page');
+    return () => document.body.classList.remove('api-page');
+  }, []);
+
   const {
     data,
     launchMediaDemo,
@@ -130,33 +311,23 @@ export default function MediaPage() {
     : (mediaTypeInput === 'scanCode')
       ? 'scanCode'
       : 'image';
+
   const selectedMedia: MediaItem[] = Array.isArray(data?.selectedMedia)
     ? (data?.selectedMedia as MediaItem[])
     : [];
+
   const isRunning = Boolean(data?.isRunning);
   const sourceKey = data?.sourceKey || SOURCE_OPTIONS[0].key;
   const countKey = data?.countKey || COUNT_OPTIONS[COUNT_OPTIONS.length - 1].key;
   const cameraKey = data?.cameraKey || CAMERA_OPTIONS[0].key;
   const durationKey = data?.durationKey || DURATION_OPTIONS[DURATION_OPTIONS.length - 1].key;
 
-  const sourceOption =
-    SOURCE_OPTIONS.find((option) => option.key === sourceKey) || SOURCE_OPTIONS[0];
-  const countOption =
-    COUNT_OPTIONS.find((option) => option.key === countKey) ||
-    COUNT_OPTIONS[COUNT_OPTIONS.length - 1];
-  const cameraOption =
-    CAMERA_OPTIONS.find((option) => option.key === cameraKey) || CAMERA_OPTIONS[0];
-  const durationOption =
-    DURATION_OPTIONS.find((option) => option.key === durationKey) ||
-    DURATION_OPTIONS[DURATION_OPTIONS.length - 1];
+  const sourceOption = SOURCE_OPTIONS.find((option) => option.key === sourceKey) || SOURCE_OPTIONS[0];
+  const countOption = COUNT_OPTIONS.find((option) => option.key === countKey) || COUNT_OPTIONS[COUNT_OPTIONS.length - 1];
+  const cameraOption = CAMERA_OPTIONS.find((option) => option.key === cameraKey) || CAMERA_OPTIONS[0];
+  const durationOption = DURATION_OPTIONS.find((option) => option.key === durationKey) || DURATION_OPTIONS[DURATION_OPTIONS.length - 1];
 
-  const sourceLabel = sourceOption.label;
-  const countLabel = countOption.label;
-  const cameraLabel = cameraOption.label;
-  const durationLabel = durationOption.label;
-
-  const countLimit =
-  typeof data?.countLimit === 'number' ? data.countLimit : countOption.value ?? 0;
+  const countLimit = typeof data?.countLimit === 'number' ? data.countLimit : countOption.value ?? 0;
   const counterText = countLimit ? `${selectedMedia.length}/${countLimit}` : `${selectedMedia.length}`;
 
   const isPictureMode = mediaType === 'image' && !isImageInfoMode;
@@ -165,21 +336,19 @@ export default function MediaPage() {
 
   const emptyHint = data?.emptyHint || (isPictureMode ? 'Tap + to pick photos.' : 'Tap + to add a video.');
   const previewHint = data?.previewHint || (isPictureMode ? 'Tap a photo to preview.' : 'Tap the clip to preview.');
-  const galleryHint = data?.galleryHint || previewHint;
   const headerSubtitle = data?.headerSubtitle || 'choose/previewMedia';
 
   const scanResult = (typeof data?.scanResult === 'string') ? data?.scanResult : '';
   const scanBusy = Boolean(data?.scanBusy);
 
   const addLabel = data?.addLabel || (isPictureMode ? 'Add Photo' : 'Add Video');
-  const helperText = selectedMedia.length ? previewHint : emptyHint;
-  const enforceLimit = isPictureMode
-    ? countLimit || Number.POSITIVE_INFINITY
-    : 1;
+  const enforceLimit = isPictureMode ? countLimit || Number.POSITIVE_INFINITY : 1;
   const canAddMore = selectedMedia.length < enforceLimit;
+
   const imageInfoResult = data?.imageInfoResult || null;
   const imageInfoError = data?.imageInfoError || '';
   const imageInfoBusy = Boolean(data?.imageInfoBusy);
+
   const rawQuality = data?.compressQuality ?? '80';
   const compressQuality = typeof rawQuality === 'number' ? rawQuality.toString() : rawQuality;
   const rawWidth = data?.compressedWidth ?? '';
@@ -189,15 +358,7 @@ export default function MediaPage() {
   const compressing = Boolean(data?.compressing);
   const compressResult = data?.compressResult || null;
   const compressError = data?.compressError || '';
-
-  // Format file size for display
-  const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
-  };
+  const saveToAlbumBusy = Boolean(data?.saveToAlbumBusy);
 
   const handleChoose = React.useCallback(() => {
     if (!isRunning && canAddMore) {
@@ -213,18 +374,24 @@ export default function MediaPage() {
   );
 
   const renderAddTile = () => {
-    const baseClass = isPictureMode ? 'aspect-square' : 'h-48';
+    const baseClass = isPictureMode ? 'h-32' : 'h-48';
     const disabled = isRunning || !canAddMore;
-    const disabledClasses = disabled ? 'cursor-not-allowed opacity-60' : 'hover:bg-gray-100';
+
     return (
       <button
         type="button"
-        className={`flex w-full flex-col items-center justify-center rounded-lg border border-dashed border-gray-300 bg-gray-50 text-gray-400 ${baseClass} ${disabledClasses}`}
+        className={`group flex w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed transition-all ${baseClass} ${
+          disabled
+            ? 'cursor-not-allowed opacity-40 border-gray-200 bg-gray-50'
+            : 'border-blue-300 bg-gradient-to-br from-blue-50 to-indigo-50 hover:border-blue-400 hover:from-blue-100 hover:to-indigo-100 active:scale-[0.98]'
+        }`}
         onClick={handleChoose}
         disabled={disabled}
       >
-        <span className="text-3xl leading-none">+</span>
-        <span className="mt-2 text-xs uppercase tracking-wide text-gray-400">
+        <span className={`text-5xl leading-none transition-transform group-hover:scale-110 ${disabled ? 'text-gray-400' : 'text-blue-500'}`}>+</span>
+        <span className={`mt-3 text-xs font-medium uppercase tracking-wider ${
+          disabled ? 'text-gray-400' : 'text-blue-600'
+        }`}>
           {addLabel}
         </span>
       </button>
@@ -236,16 +403,19 @@ export default function MediaPage() {
       <button
         type="button"
         key={`${item.path}-${index}`}
-        className="relative aspect-square overflow-hidden rounded-lg border border-gray-200 bg-gray-50"
+        className="group relative h-32 overflow-hidden rounded-2xl border border-gray-200 bg-gray-50 transition-all hover:shadow-lg hover:scale-[1.02] active:scale-[0.98]"
         onClick={() => handlePreview(item)}
       >
         <img
           src={item.path}
           alt=""
-          className="h-full w-full object-cover"
+          className="h-full w-full object-cover transition-transform group-hover:scale-110"
         />
-        <div className="absolute inset-x-0 bottom-0 bg-black/50 px-1 py-0.5 text-[10px] text-white truncate">
-          {item.path}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-3 py-2">
+          <div className="text-[10px] text-white/90 truncate font-medium">
+            Image {index + 1}
+          </div>
         </div>
       </button>
     ));
@@ -254,31 +424,35 @@ export default function MediaPage() {
       tiles.push(<div key="add">{renderAddTile()}</div>);
     }
 
-    return <div className="grid grid-cols-3 gap-2">{tiles}</div>;
+    return <div className="grid grid-cols-3 gap-3">{tiles}</div>;
   };
 
   const renderVideoTiles = () => {
     return (
-      <div className="space-y-3">
+      <div className="space-y-4">
         {selectedMedia.map((item, index) => (
           <button
             type="button"
             key={`${item.path}-${index}`}
-            className="relative h-48 overflow-hidden rounded-lg border border-gray-200 bg-black"
+            className="group relative w-full h-48 overflow-hidden rounded-2xl border border-gray-200 bg-black transition-all hover:shadow-lg active:scale-[0.99]"
             onClick={() => handlePreview(item)}
           >
             <video
               src={item.path}
-              className="h-full w-full object-cover opacity-90"
+              className="h-full w-full object-cover opacity-90 transition-transform group-hover:scale-105"
               muted
             />
             <div className="absolute inset-0 flex items-center justify-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-black/60 text-white">
-                ▶
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-white/20 backdrop-blur-sm text-white shadow-lg transition-all group-hover:scale-110 group-hover:bg-white/30">
+                <svg className="w-6 h-6 ml-1" fill="currentColor" viewBox="0 0 16 16">
+                  <path d="M3 2.5A1.5 1.5 0 014.5 1h11A1.5 1.5 0 0117 2.5v11a1.5 1.5 0 01-1.5 1.5h-11A1.5 1.5 0 013 13.5v-11zm2 0v11h10v-11H5z M6 4l6 4-6 4V4z" />
+                </svg>
               </div>
             </div>
-            <div className="absolute inset-x-0 bottom-0 bg-black/50 px-2 py-1 text-[10px] text-white truncate">
-              {item.path}
+            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-4 py-3">
+              <div className="text-xs text-white/90 truncate font-medium">
+                Video {index + 1}
+              </div>
             </div>
           </button>
         ))}
@@ -287,70 +461,46 @@ export default function MediaPage() {
     );
   };
 
-  const SettingRow: React.FC<{
-    label: string;
-    value: string;
-    onPress?: () => void;
-  }> = ({ label, value, onPress }) => {
-    const clickable = typeof onPress === 'function';
-    return (
-      <button
-        type="button"
-        className={`flex w-full items-center px-5 py-3 text-sm text-left ${
-          clickable ? 'text-gray-700 hover:bg-gray-50' : 'text-gray-600 cursor-default'
-        }`}
-        onClick={clickable ? onPress : undefined}
-        disabled={!clickable}
-      >
-        <span className="text-gray-500 flex-1 pr-3 whitespace-nowrap text-left">{label}</span>
-        <span className="font-medium text-gray-900 max-w-[60%] truncate text-right">{value}</span>
-      </button>
-    );
-  };
-
   const renderImageInfoDemo = () => {
     return (
-      <div className="space-y-4">
-        <button
-          type="button"
+      <div className="space-y-5">
+        <Button
           onClick={() => pickImageForInfo?.()}
           disabled={imageInfoBusy}
-          className={`w-full rounded-lg bg-blue-600 py-3 text-sm font-medium text-white shadow-sm transition hover:bg-blue-500 ${imageInfoBusy ? 'opacity-70 cursor-not-allowed' : ''}`}
+          loading={imageInfoBusy}
+          fullWidth
         >
           {imageInfoBusy ? 'Getting Info…' : 'Pick Image'}
-        </button>
-        {imageInfoError ? (
-          <div className="text-xs text-red-500">{imageInfoError}</div>
-        ) : null}
-        {imageInfoResult ? (
-          <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
-            <div className="text-sm font-medium text-gray-700 mb-2">Result</div>
-            <div className="text-xs text-gray-500 space-y-1">
-              <div className="flex justify-between gap-3">
-                <span>Width</span>
-                <span className="font-semibold text-gray-800">{imageInfoResult.width ?? '--'} px</span>
-              </div>
-              <div className="flex justify-between gap-3">
-                <span>Height</span>
-                <span className="font-semibold text-gray-800">{imageInfoResult.height ?? '--'} px</span>
-              </div>
-              <div className="flex justify-between gap-3">
-                <span>Type</span>
-                <span className="font-semibold text-gray-800 break-all text-right">{imageInfoResult.type || '--'}</span>
-              </div>
-              <div className="flex justify-between gap-3">
-                <span>Size</span>
-                <span className="font-semibold text-gray-800">{formatFileSize(imageInfoResult.size || 0)}</span>
-              </div>
-            </div>
-            {imageInfoResult.path ? (
-              <div className="mt-2 text-[11px] text-gray-500">
-                <span className="font-semibold text-gray-800">Path:</span>
-                <div className="mt-0.5 break-all overflow-hidden">{imageInfoResult.path}</div>
-              </div>
-            ) : null}
+        </Button>
+
+        {imageInfoError && (
+          <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 px-4 py-3 rounded-xl">
+            <span>⚠️</span>
+            <span>{imageInfoError}</span>
           </div>
-        ) : null}
+        )}
+
+        {imageInfoResult && (
+          <InfoCard
+            title="Image Information"
+            items={[
+              { label: 'Width', value: `${imageInfoResult.width ?? '--'} px` },
+              { label: 'Height', value: `${imageInfoResult.height ?? '--'} px` },
+              { label: 'Type', value: imageInfoResult.type || '--' },
+              { label: 'Size', value: formatFileSize(imageInfoResult.size || 0) },
+            ]}
+            footer={
+              imageInfoResult.path ? (
+                <div className="space-y-1">
+                  <div className="text-xs font-medium text-gray-700">Path</div>
+                  <div className="text-[11px] text-gray-500 break-all bg-gray-100 px-3 py-2 rounded-lg">
+                    {imageInfoResult.path}
+                  </div>
+                </div>
+              ) : undefined
+            }
+          />
+        )}
       </div>
     );
   };
@@ -359,128 +509,118 @@ export default function MediaPage() {
     const hasImageInfo = Boolean(imageInfoResult);
 
     return (
-      <div className="space-y-4">
+      <div className="space-y-5">
         {!hasImageInfo ? (
           <>
-            <button
-              type="button"
+            <Button
               onClick={() => pickImageForInfo?.()}
               disabled={imageInfoBusy}
-              className={`w-full rounded-lg bg-blue-600 py-3 text-sm font-medium text-white shadow-sm transition hover:bg-blue-500 ${imageInfoBusy ? 'opacity-70 cursor-not-allowed' : ''}`}
+              loading={imageInfoBusy}
+              fullWidth
             >
               {imageInfoBusy ? 'Loading…' : 'Pick Image'}
-            </button>
-            {imageInfoError ? (
-              <div className="text-xs text-red-500">{imageInfoError}</div>
-            ) : null}
+            </Button>
+
+            {imageInfoError && (
+              <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 px-4 py-3 rounded-xl">
+                <span>⚠️</span>
+                <span>{imageInfoError}</span>
+              </div>
+            )}
           </>
         ) : (
           <>
-            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-              <div className="text-xs font-medium text-gray-700 mb-2">Source Image</div>
-              <div className="text-xs text-gray-600 space-y-1">
-                <div className="flex justify-between gap-2">
-                  <span>Pixel Size:</span>
-                  <span className="font-semibold text-gray-800">{imageInfoResult.width} × {imageInfoResult.height}</span>
-                </div>
-                <div className="flex justify-between gap-2">
-                  <span>Type:</span>
-                  <span className="font-semibold text-gray-800">{imageInfoResult.type || '--'}</span>
-                </div>
-                <div className="flex justify-between gap-2">
-                  <span>File Size:</span>
-                  <span className="font-semibold text-gray-800">{formatFileSize(imageInfoResult.size || 0)}</span>
-                </div>
-              </div>
-              {imageInfoResult.path ? (
-                <div className="mt-2 pt-2 border-t border-gray-200 text-[11px] text-gray-500">
-                  <span className="font-semibold text-gray-700">Path:</span>
-                  <div className="mt-0.5 break-all overflow-hidden">{imageInfoResult.path}</div>
-                </div>
-              ) : null}
-            </div>
+            <InfoCard
+              title="Source Image"
+              items={[
+                { label: 'Dimensions', value: `${imageInfoResult.width} × ${imageInfoResult.height}` },
+                { label: 'Type', value: imageInfoResult.type || '--' },
+                { label: 'File Size', value: formatFileSize(imageInfoResult.size || 0) },
+              ]}
+              footer={
+                imageInfoResult.path ? (
+                  <div className="space-y-1">
+                    <div className="text-xs font-medium text-gray-700">Path</div>
+                    <div className="text-[11px] text-gray-500 break-all bg-gray-100 px-3 py-2 rounded-lg">
+                      {imageInfoResult.path}
+                    </div>
+                  </div>
+                ) : undefined
+              }
+            />
 
             <div className="grid grid-cols-3 gap-3">
-              <div>
-                <div className="text-xs text-gray-600 mb-1">Quality</div>
-                <input
-                  type="number"
-                  min={0}
-                  max={100}
-                  value={compressQuality}
-                  onChange={(event) => onCompressQualityInput?.({ detail: { value: event.target.value } })}
-                  className="w-full px-2 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <div className="text-xs text-gray-600 mb-1">Width</div>
-                <input
-                  type="number"
-                  min={0}
-                  value={compressedWidth}
-                  onChange={(event) => onCompressedWidthInput?.({ detail: { value: event.target.value } })}
-                  placeholder={String(imageInfoResult.width || '')}
-                  className="w-full px-2 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <div className="text-xs text-gray-600 mb-1">Height</div>
-                <input
-                  type="number"
-                  min={0}
-                  value={compressedHeight}
-                  onChange={(event) => onCompressedHeightInput?.({ detail: { value: event.target.value } })}
-                  placeholder={String(imageInfoResult.height || '')}
-                  className="w-full px-2 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
+              <Input
+                type="number"
+                label="Quality"
+                value={compressQuality}
+                onChange={(e) => onCompressQualityInput?.({ detail: { value: e.target.value } })}
+                min={0}
+                max={100}
+              />
+              <Input
+                type="number"
+                label="Width"
+                value={compressedWidth}
+                onChange={(e) => onCompressedWidthInput?.({ detail: { value: e.target.value } })}
+                placeholder={String(imageInfoResult.width || '')}
+                min={0}
+              />
+              <Input
+                type="number"
+                label="Height"
+                value={compressedHeight}
+                onChange={(e) => onCompressedHeightInput?.({ detail: { value: e.target.value } })}
+                placeholder={String(imageInfoResult.height || '')}
+                min={0}
+              />
             </div>
 
-            <button
-              type="button"
+            <Button
               onClick={() => compressSelectedImage?.()}
               disabled={compressing}
-              className={`w-full rounded-lg bg-blue-600 py-3 text-sm font-medium text-white shadow-sm transition hover:bg-blue-500 ${compressing ? 'opacity-70 cursor-not-allowed' : ''}`}
+              loading={compressing}
+              fullWidth
             >
               {compressing ? 'Compressing…' : 'Compress Image'}
-            </button>
+            </Button>
 
-            {compressError ? (
-              <div className="text-xs text-red-500">{compressError}</div>
-            ) : null}
+            {compressError && (
+              <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 px-4 py-3 rounded-xl">
+                <span>⚠️</span>
+                <span>{compressError}</span>
+              </div>
+            )}
 
-            {compressResult ? (
-              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-                <div className="text-xs font-medium text-gray-700 mb-2">Compressed Image</div>
-                <div className="text-xs text-gray-600 space-y-1">
-                  <div className="flex justify-between gap-2">
-                    <span>Pixel Size:</span>
-                    <span className="font-semibold text-gray-800">{compressResult.width} × {compressResult.height}</span>
-                  </div>
-                  <div className="flex justify-between gap-2">
-                    <span>Type:</span>
-                    <span className="font-semibold text-gray-800">{compressResult.type || '--'}</span>
-                  </div>
-                  <div className="flex justify-between gap-2">
-                    <span>File Size:</span>
-                    <span className="font-semibold text-gray-800">{formatFileSize(compressResult.size || 0)}</span>
-                  </div>
-                </div>
-                {compressResult.path ? (
-                  <div className="mt-2 pt-2 border-t border-gray-200 text-[11px] text-gray-500">
-                    <span className="font-semibold text-gray-700">Path:</span>
-                    <div className="mt-0.5 break-all overflow-hidden">{compressResult.path}</div>
-                  </div>
-                ) : null}
-                <button
-                  type="button"
+            {compressResult && (
+              <div className="space-y-4">
+                <InfoCard
+                  title="Compressed Image"
+                  items={[
+                    { label: 'Dimensions', value: `${compressResult.width} × ${compressResult.height}` },
+                    { label: 'Type', value: compressResult.type || '--' },
+                    { label: 'File Size', value: formatFileSize(compressResult.size || 0) },
+                  ]}
+                  footer={
+                    compressResult.path ? (
+                      <div className="space-y-1">
+                        <div className="text-xs font-medium text-gray-700">Path</div>
+                        <div className="text-[11px] text-gray-500 break-all bg-gray-100 px-3 py-2 rounded-lg">
+                          {compressResult.path}
+                        </div>
+                      </div>
+                    ) : undefined
+                  }
+                />
+                <Button
                   onClick={() => previewCompressedImage?.()}
-                  className="mt-3 w-full rounded-lg bg-gray-600 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-gray-500"
+                  variant="secondary"
+                  fullWidth
                 >
                   Preview Image
-                </button>
+                </Button>
               </div>
-            ) : null}
+            )}
           </>
         )}
       </div>
@@ -488,131 +628,178 @@ export default function MediaPage() {
   };
 
   const renderSaveToAlbumDemo = () => {
-    const saveToAlbumBusy = Boolean(data?.saveToAlbumBusy);
-
     return (
-      <div className="space-y-4">
-        <div className="text-sm text-gray-600">
-          Capture photo or video, then save to album. Check your device album to view saved media.
+      <div className="space-y-5">
+        <div className="text-sm text-gray-600 bg-blue-50 px-4 py-3 rounded-xl border border-blue-100">
+          📸 Capture photo or video, then save to album. Check your device album to view saved media.
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <button
-            type="button"
+        <div className="grid grid-cols-2 gap-4">
+          <Button
             onClick={() => captureImageForAlbum?.()}
             disabled={saveToAlbumBusy}
-            className={`rounded-lg bg-blue-600 py-3 text-sm font-medium text-white shadow-sm transition hover:bg-blue-500 ${saveToAlbumBusy ? 'opacity-70 cursor-not-allowed' : ''}`}
+            loading={saveToAlbumBusy}
+            fullWidth
           >
-            {saveToAlbumBusy ? 'Saving...' : 'Capture & Save Image'}
-          </button>
-          <button
-            type="button"
+            {saveToAlbumBusy ? 'Saving...' : 'Capture Image'}
+          </Button>
+          <Button
             onClick={() => captureVideoForAlbum?.()}
             disabled={saveToAlbumBusy}
-            className={`rounded-lg bg-green-600 py-3 text-sm font-medium text-white shadow-sm transition hover:bg-green-500 ${saveToAlbumBusy ? 'opacity-70 cursor-not-allowed' : ''}`}
+            loading={saveToAlbumBusy}
+            variant="success"
+            fullWidth
           >
-            {saveToAlbumBusy ? 'Saving...' : 'Capture & Save Video'}
-          </button>
+            {saveToAlbumBusy ? 'Saving...' : 'Capture Video'}
+          </Button>
         </div>
       </div>
     );
   };
 
-  const scanSourceLabel = data?.scanOnlyCamera ? 'Camera' : 'Camera & Album';
-  const scanTypeKey = data?.scanTypeKey || 'all';
-  // Show raw key directly (no conversion): e.g., barCode, qrCode, pdf417
-  const scanTypeLabel = String(scanTypeKey);
+  const renderScanCodeDemo = () => {
+    const scanSourceLabel = data?.scanOnlyCamera ? 'Camera' : 'Camera & Album';
+    const scanTypeKey = data?.scanTypeKey || 'all';
+    const scanTypeLabel = String(scanTypeKey);
+
+    return (
+      <>
+        <Card noPadding>
+          <div className="divide-y divide-gray-100">
+            <SettingRow label="Source" value={scanSourceLabel} onPress={openScanSourcePicker} />
+            <SettingRow label="Scan Type" value={scanTypeLabel} onPress={openScanTypePicker} />
+          </div>
+        </Card>
+
+        <Card>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                <span className="w-1 h-4 bg-blue-500 rounded-full" />
+                Scan Result
+              </h3>
+              <div className="min-h-[8rem] w-full rounded-xl bg-gradient-to-br from-gray-50 to-gray-100 px-5 py-4 text-base text-gray-900 break-words border border-gray-200 font-mono">
+                {scanResult || <span className="text-gray-400 italic">No result yet</span>}
+              </div>
+              <div className="text-xs text-gray-500 flex items-center gap-2">
+                <span className="font-medium">Type:</span>
+                <span className="px-2 py-1 bg-gray-100 rounded-md">{typeof data?.scanType === 'string' && data?.scanType ? data.scanType : '--'}</span>
+              </div>
+            </div>
+
+            <Button
+              onClick={() => startScan?.()}
+              disabled={scanBusy}
+              loading={scanBusy}
+              fullWidth
+            >
+              {scanBusy ? 'Scanning...' : 'Start Scan'}
+            </Button>
+          </div>
+        </Card>
+      </>
+    );
+  };
 
   const settingRows = isScanMode
-    ? [
-        { label: 'Source', value: scanSourceLabel, action: openScanSourcePicker },
-        { label: 'Scan Type', value: scanTypeLabel, action: openScanTypePicker },
-      ]
+    ? []  // Handled separately in renderScanCodeDemo
     : (isImageInfoMode || isSaveToAlbumMode)
-      ? []  // No settings for ImageInfo/SaveToAlbum
+      ? []
       : isPictureMode
         ? [
-          { label: 'Photo Source', value: sourceLabel, action: openSourcePicker },
-          { label: 'Count Limit', value: countLabel, action: openCountPicker },
+          { label: 'Photo Source', value: sourceOption.label, action: openSourcePicker },
+          { label: 'Count Limit', value: countOption.label, action: openCountPicker },
         ]
         : [
-          { label: 'Video Source', value: sourceLabel, action: openSourcePicker },
-        { label: 'Camera', value: cameraLabel, action: openCameraPicker },
-        { label: 'Duration', value: durationLabel, action: openDurationPicker },
-      ];
+          { label: 'Video Source', value: sourceOption.label, action: openSourcePicker },
+          { label: 'Camera', value: cameraOption.label, action: openCameraPicker },
+          { label: 'Duration', value: durationOption.label, action: openDurationPicker },
+        ];
 
-  const pagePaddingX = (isScanMode || isImageInfoMode || isSaveToAlbumMode || isVideoMode) ? 'px-0' : 'px-4';
+  const getPageInfo = () => {
+    if (isScanMode) {
+      return {
+        title: 'lx.scanCode',
+        subtitle: 'QR & Barcode Scanner',
+        description: 'Scan QR codes and barcodes using camera or album',
+      };
+    }
+    if (isImageInfoMode) {
+      return {
+        title: 'lx.getImageInfo / lx.compressImage',
+        subtitle: 'Image Tools',
+        description: 'Get image info and create compressed copy',
+      };
+    }
+    if (isSaveToAlbumMode) {
+      return {
+        title: 'lx.saveImageToPhotosAlbum / lx.saveVideoToPhotosAlbum',
+        subtitle: 'Save to Album',
+        description: 'Capture photo or video and save to device album',
+      };
+    }
+    return {
+      title: 'Media Manager',
+      subtitle: headerSubtitle,
+      description: undefined,
+    };
+  };
+
+  const pageInfo = getPageInfo();
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      <div className={`${pagePaddingX} py-5 space-y-4`}>
-        <div className="bg-white shadow-sm">
-          <div className="px-5 py-6 text-center space-y-2">
-            <div className="text-base font-medium text-gray-700">
-              {isScanMode ? 'lx.scanCode' : isImageInfoMode ? 'lx.getImageInfo / lx.compressImage' : isSaveToAlbumMode ? 'lx.saveImageToPhotosAlbum / lx.saveVideoToPhotosAlbum' : headerSubtitle}
-            </div>
-            <div className="mx-auto h-0.5 w-12 bg-gray-200" />
-            {(isScanMode || isImageInfoMode || isSaveToAlbumMode) && (
-              <div className="text-xs text-gray-500 max-w-sm mx-auto">
-                {isScanMode
-                  ? 'Scan QR codes and barcodes using camera or album'
-                  : isImageInfoMode
-                    ? 'Get image info and create compressed copy'
-                    : 'Capture photo or video and save to device album'}
-              </div>
-            )}
-          </div>
-          {settingRows.length > 0 && (
-            <div className="border-t border-gray-100">
-              {settingRows.map(({ label, value, action }, index) => (
-                <React.Fragment key={label}>
-                  <SettingRow label={label} value={value} onPress={action} />
-                  {index < settingRows.length - 1 ? <div className="h-px bg-gray-100" /> : null}
-                </React.Fragment>
-              ))}
-            </div>
-          )}
-        </div>
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+      <div className="px-4 py-6 space-y-5">
+        <PageHeader
+          title={pageInfo.title}
+          subtitle={pageInfo.subtitle}
+          description={pageInfo.description}
+        />
 
-        <div className={`space-y-3 bg-white overflow-hidden ${(isScanMode || isImageInfoMode || isSaveToAlbumMode || isVideoMode) ? 'p-6 w-full' : 'rounded-xl border border-gray-200 p-4 shadow-sm'}`}>
-          {isScanMode ? (
-            <>
-              <div className="space-y-2">
-                <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Scan Result</div>
-                <div className="min-h-[7rem] w-full rounded-lg bg-gray-50 px-4 py-3 text-base text-gray-900 break-words">
-                  {scanResult}
+        {isScanMode ? (
+          renderScanCodeDemo()
+        ) : (
+          <>
+            {settingRows.length > 0 && (
+              <Card noPadding>
+                <div className="divide-y divide-gray-100">
+                  {settingRows.map(({ label, value, action }) => (
+                    <SettingRow key={label} label={label} value={value} onPress={action} />
+                  ))}
                 </div>
-                <div className="text-xs text-gray-400">Type: {typeof data?.scanType === 'string' && data?.scanType ? data.scanType : '--'}</div>
-              </div>
+              </Card>
+            )}
 
-              <button
-                type="button"
-                className={`mt-3 w-full rounded-lg bg-blue-600 py-3 text-sm font-medium text-white shadow-sm transition hover:bg-blue-500 ${scanBusy ? 'opacity-70' : ''}`}
-                onClick={() => { startScan(); }}
-                disabled={scanBusy}
-              >
-                {'ScanCode'}
-              </button>
-            </>
-          ) : isImageInfoMode ? (
-            renderCompressDemo()
-          ) : isSaveToAlbumMode ? (
-            renderSaveToAlbumDemo()
-          ) : (
-            <>
-              <div className="flex items-center justify-between text-xs text-gray-500">
-                <span>{helperText}</span>
-              </div>
-              {countLimit ? (
-                <div className="text-xs text-gray-400">Selected {counterText}</div>
-              ) : null}
-              {selectedMedia.length ? (
-                <div className="text-[10px] text-gray-400">{galleryHint}</div>
-              ) : null}
-              {isPictureMode ? renderPictureTiles() : renderVideoTiles()}
-            </>
-          )}
-        </div>
+            <Card>
+              {isImageInfoMode ? (
+                renderImageInfoDemo()
+              ) : isSaveToAlbumMode ? (
+                renderSaveToAlbumDemo()
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm text-gray-600">
+                      {selectedMedia.length ? previewHint : emptyHint}
+                    </div>
+                    {countLimit > 0 && (
+                      <div className="px-3 py-1 bg-blue-50 text-blue-600 text-xs font-semibold rounded-full">
+                        {counterText}
+                      </div>
+                    )}
+                  </div>
+
+                  {selectedMedia.length === 0 ? (
+                    <EmptyState message={emptyHint} />
+                  ) : (
+                    isPictureMode ? renderPictureTiles() : renderVideoTiles()
+                  )}
+
+                  {selectedMedia.length === 0 && renderAddTile()}
+                </div>
+              )}
+            </Card>
+          </>
+        )}
       </div>
     </div>
   );

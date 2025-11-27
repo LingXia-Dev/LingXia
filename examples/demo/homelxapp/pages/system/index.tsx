@@ -6,33 +6,46 @@ export default function SystemPage() {
   const { currentType = 'appBaseInfo', appBaseInfo = null } = data;
 
   React.useEffect(() => {
-    // Reset display when switching type (future-proof for multiple demos)
-  }, [currentType]);
+    document.body.classList.add('api-page');
+    return () => document.body.classList.remove('api-page');
+  }, []);
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      <div className="max-w-md mx-auto pb-10">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+      <div className="px-4 py-6">
         {currentType === 'appBaseInfo' && (
           <>
-            <div className="mt-6 mb-3 px-5 text-sm text-gray-500 font-medium">App Base Info</div>
-            <div className="mx-3 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              <div className="flex items-center px-4 py-4">
-                <div className="text-xl mr-4">🧭</div>
+            <div className="mb-6 text-center">
+              <h1 className="text-2xl font-light text-gray-800 mb-2">getAppBaseInfo</h1>
+              <div className="w-16 h-0.5 bg-gray-400 mx-auto"></div>
+            </div>
+
+            <div className="mb-5 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="flex items-center gap-4 px-5 py-5 border-b border-gray-100">
+                <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50">
+                  <span className="text-2xl">🧭</span>
+                </div>
                 <div className="flex-1">
-                  <div className="text-base text-black mb-0.5 font-medium">Fetch App Base Info</div>
+                  <div className="text-sm text-gray-800 font-semibold">Fetch App Base Info</div>
+                  <div className="text-xs text-gray-500 mt-0.5">Get application language settings</div>
                 </div>
                 <button
                   onClick={getAppBaseInfo}
-                  className="h-7 px-3 text-xs font-medium transition-all duration-200 bg-blue-500 hover:bg-blue-600 text-white border-0 shadow-sm rounded"
+                  className="px-5 py-2.5 text-sm font-medium transition-all duration-200 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
                 >
-                  Get
+                  Get Info
                 </button>
               </div>
 
               {appBaseInfo && (
-                <div className="mx-4 mb-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                  <h4 className="text-sm font-medium text-gray-700 mb-3">Result</h4>
-                  <InfoRow label="Language" value={appBaseInfo.language} />
+                <div className="p-5">
+                  <div className="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-4">
+                    <div className="flex items-center gap-2 mb-4">
+                      <span className="w-1 h-4 bg-blue-500 rounded-full"></span>
+                      <h4 className="text-sm font-semibold text-gray-700">Result</h4>
+                    </div>
+                    <InfoRow label="Language" value={appBaseInfo.language} />
+                  </div>
                 </div>
               )}
             </div>
@@ -49,11 +62,11 @@ interface InfoRowProps {
 }
 
 function InfoRow({ label, value }: InfoRowProps) {
-  const display = value || '-';
+  const display = value || '--';
   return (
-    <div className="flex justify-between items-center py-2 border-b border-gray-100 last:border-b-0">
+    <div className="flex justify-between items-center py-3 border-b border-gray-200 last:border-b-0">
       <span className="text-sm text-gray-600">{label}</span>
-      <span className="text-sm font-medium text-gray-900">{display}</span>
+      <span className="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg">{display}</span>
     </div>
   );
 }

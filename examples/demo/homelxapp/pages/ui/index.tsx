@@ -97,40 +97,49 @@ export default function UIPage() {
   const [borderStyle, setBorderStyle] = React.useState('#EEEEEE');
 
 
+  React.useEffect(() => {
+    document.body.classList.add('api-page');
+    return () => document.body.classList.remove('api-page');
+  }, []);
+
   return (
-    <div className="h-screen bg-gray-100 flex flex-col">
+    <div className="h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col">
       <div className="flex-1 overflow-y-auto">
-        <div className="max-w-md mx-auto pb-6 px-2 pt-2">
+        <div className="pb-6 px-4 pt-6">
 
         {/* Navigation Demo Section */}
         {currentType === 'navigation' && (
           <>
-            <div className="mt-4 mb-3 px-4 text-sm text-gray-500 font-medium">navigateTo/Back, redirectTo</div>
+            <div className="mb-4 text-sm text-gray-600 font-semibold">navigateTo/Back, redirectTo</div>
 
-        <div className="mx-1 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="mb-5 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <div
-            className="flex items-center px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100"
+            className="flex items-center justify-between px-5 py-4 hover:bg-gradient-to-r hover:from-blue-50/50 hover:to-transparent cursor-pointer border-b border-gray-100 transition-all active:scale-[0.99]"
             onClick={demoNavigateTo}
           >
-            <div className="text-base text-black">Navigate to new page</div>
+            <div className="text-sm text-gray-800 font-medium">Navigate to new page</div>
+            <span className="text-gray-400 text-lg">›</span>
           </div>
           <div
-            className="flex items-center px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100"
+            className="flex items-center justify-between px-5 py-4 hover:bg-gradient-to-r hover:from-blue-50/50 hover:to-transparent cursor-pointer border-b border-gray-100 transition-all active:scale-[0.99]"
             onClick={demoNavigateBack}
           >
-            <div className="text-base text-black">Back to previous page</div>
+            <div className="text-sm text-gray-800 font-medium">Back to previous page</div>
+            <span className="text-gray-400 text-lg">›</span>
           </div>
           <div
-            className="flex items-center px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100"
+            className="flex items-center justify-between px-5 py-4 hover:bg-gradient-to-r hover:from-blue-50/50 hover:to-transparent cursor-pointer border-b border-gray-100 transition-all active:scale-[0.99]"
             onClick={demoRedirectTo}
           >
-            <div className="text-base text-black">Open in current page</div>
+            <div className="text-sm text-gray-800 font-medium">Open in current page</div>
+            <span className="text-gray-400 text-lg">›</span>
           </div>
           <div
-            className="flex items-center px-4 py-3 hover:bg-gray-50 cursor-pointer"
+            className="flex items-center justify-between px-5 py-4 hover:bg-gradient-to-r hover:from-blue-50/50 hover:to-transparent cursor-pointer transition-all active:scale-[0.99]"
             onClick={demoSwitchTab}
           >
-            <div className="text-base text-black">Jump to Tab page</div>
+            <div className="text-sm text-gray-800 font-medium">Jump to Tab page</div>
+            <span className="text-gray-400 text-lg">›</span>
           </div>
         </div>
           </>
@@ -519,25 +528,33 @@ export default function UIPage() {
 
         {/* Page Stack Info - Only show for navigation */}
         {currentType === 'navigation' && (
-          <div className="mx-1 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="px-3 py-3">
-              <div className="text-sm font-medium text-gray-700 mb-3">Current Page Stack</div>
-              <div className="max-h-64 overflow-y-auto space-y-2">
+          <div className="mb-5 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="px-5 py-4">
+              <div className="flex items-center gap-2 mb-4">
+                <span className="w-1 h-5 bg-blue-500 rounded-full"></span>
+                <div className="text-sm font-semibold text-gray-700">Current Page Stack</div>
+                <span className="ml-auto px-2 py-1 bg-blue-50 text-blue-600 text-xs font-semibold rounded-full">
+                  {pageStack.length}
+                </span>
+              </div>
+              <div className="space-y-2">
                 {pageStack.map((page, index) => (
-                  <div key={index} className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg">
-                    <div className="flex items-center">
-                      <span className="text-xs font-medium text-blue-600 mr-2">#{page.index + 1}</span>
-                      <span className="text-sm text-gray-700">{page.route}</span>
+                  <div key={index} className="flex flex-col gap-2 py-3 px-4 bg-gradient-to-r from-gray-50 to-white rounded-xl border border-gray-100">
+                    <div className="flex items-center gap-3">
+                      <span className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 text-blue-600 text-xs font-bold">
+                        {page.index + 1}
+                      </span>
+                      <span className="text-sm text-gray-800 font-medium flex-1 truncate">{page.route}</span>
                     </div>
                     {Object.keys(page.options).length > 0 && (
-                      <div className="text-xs text-gray-500">
-                        {JSON.stringify(page.options)}
+                      <div className="ml-9 text-xs text-gray-500 font-mono bg-gray-50 px-3 py-2 rounded-lg break-all">
+                        {JSON.stringify(page.options, null, 2)}
                       </div>
                     )}
                   </div>
                 ))}
                 {pageStack.length === 0 && (
-                  <div className="text-sm text-gray-500 text-center py-2">No page stack available</div>
+                  <div className="text-sm text-gray-500 text-center py-8">No page stack available</div>
                 )}
               </div>
             </div>
