@@ -1,7 +1,6 @@
 #if os(iOS)
 import UIKit
 import AVFoundation
-import AVKit
 import QuartzCore
 import Photos
 import PhotosUI
@@ -12,6 +11,10 @@ import os.log
 
 extension LxAppMedia {
     nonisolated(unsafe) private static let previewLog = OSLog(subsystem: "LingXia", category: "MediaPreview")
+
+    // Strong reference to keep preview window alive
+    @MainActor fileprivate static var previewWindow: UIWindow?
+
     struct PreviewMediaPayload: Codable {
         let path: String
         let media_type: Int32
@@ -39,17 +42,23 @@ extension LxAppMedia {
 
         // Dispatch to main actor for UI operations
         DispatchQueue.main.async {
-            guard let presenter = topViewController() else {
-                os_log(.error, log: previewLog, "Unable to find top view controller for media preview")
-                return
-            }
-
             let previewItems = items.map { PreviewMediaItem(payload: $0) }
             let previewController = MediaPreviewViewController(items: previewItems)
-            previewController.modalPresentationStyle = .fullScreen
-            previewController.modalTransitionStyle = .crossDissolve
 
-            presenter.present(previewController, animated: true)
+            // Create a dedicated window for preview to avoid affecting the main app's orientation
+            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+                let window = UIWindow(windowScene: windowScene)
+                window.windowLevel = .statusBar + 1  // Above status bar, same as SameLevel fullscreen
+                window.backgroundColor = .black
+                window.rootViewController = previewController
+
+                // Keep strong reference to prevent window from being deallocated
+                Task { @MainActor in
+                    Self.previewWindow = window
+                }
+
+                window.makeKeyAndVisible()
+            }
         }
         return true
     }
@@ -708,6 +717,7 @@ private extension ScanCodeViewController {
 private final class MediaPreviewViewController: UIViewController {
     private let items: [PreviewMediaItem]
     private var currentIndex: Int
+
     private lazy var closeButton: UIButton = {
         let button = UIButton(type: .system)
         button.translatesAutoresizingMaskIntoConstraints = false
@@ -746,14 +756,27 @@ private final class MediaPreviewViewController: UIViewController {
         fatalError("init(coder:) has not been implemented")
     }
 
+    override var prefersStatusBarHidden: Bool {
+        return true  // Hide status bar like SameLevel fullscreen
+    }
+
     override var preferredStatusBarStyle: UIStatusBarStyle {
         .lightContent
+    }
+
+    override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
+        return .portrait
+    }
+
+    override var shouldAutorotate: Bool {
+        return false
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
         modalPresentationCapturesStatusBarAppearance = true
+        setNeedsStatusBarAppearanceUpdate()  // Force status bar update
 
         addChild(pageViewController)
         pageViewController.view.translatesAutoresizingMaskIntoConstraints = false
@@ -783,7 +806,7 @@ private final class MediaPreviewViewController: UIViewController {
         closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
         view.addSubview(closeButton)
         NSLayoutConstraint.activate([
-            closeButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
+            closeButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             closeButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
             closeButton.widthAnchor.constraint(equalToConstant: 44),
             closeButton.heightAnchor.constraint(equalToConstant: 44)
@@ -795,6 +818,7 @@ private final class MediaPreviewViewController: UIViewController {
         setPagerInteraction(enabled: true)
         updateIndicator()
     }
+
 
     private func viewController(for index: Int) -> UIViewController? {
         guard items.indices.contains(index) else { return nil }
@@ -829,7 +853,23 @@ private final class MediaPreviewViewController: UIViewController {
     }
 
     @objc private func closeTapped() {
-        dismiss(animated: true)
+        // Hide and clean up the dedicated window
+        Task { @MainActor in
+            // Stop any active video players so playback and observers are torn down
+            pageViewController.viewControllers?.forEach { vc in
+                (vc as? MediaPreviewVideoController)?.teardownPlayer()
+            }
+
+            // Find the main app window and restore it as key window before dismissing
+            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+               let mainWindow = windowScene.windows.first(where: { $0 != LxAppMedia.previewWindow && $0.isKeyWindow == false }) {
+                mainWindow.makeKeyAndVisible()
+            }
+
+            LxAppMedia.previewWindow?.isHidden = true
+            LxAppMedia.previewWindow?.rootViewController = nil
+            LxAppMedia.previewWindow = nil
+        }
     }
 }
 
@@ -900,12 +940,11 @@ private final class MediaPreviewImageController: UIViewController, IndexedPrevie
 private final class MediaPreviewVideoController: UIViewController, IndexedPreviewController {
     let index: Int
     private let item: PreviewMediaItem
+    private let log = OSLog(subsystem: "LingXia", category: "MediaPreview")
 
-    private var playerVC: AVPlayerViewController?
-    private var player: AVPlayer?
-    private var coverOverlay: UIImageView?
-    private var timeObserver: Any?
+    private var player: LxMediaPlayer?
     private var hasStartedPlayback = false
+    private var isLandscapeVideo = false
 
     init(item: PreviewMediaItem, index: Int) {
         self.item = item
@@ -921,93 +960,132 @@ private final class MediaPreviewVideoController: UIViewController, IndexedPrevie
         super.viewDidLoad()
         view.backgroundColor = .black
 
-        // Embed native player inline
+        // Embed LxMediaPlayer inline
         embedPlayerInline()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        // Update player frame on layout changes
+        guard let playerView = player?.view else { return }
+
+        if isLandscapeVideo {
+            // Keep landscape rotation for landscape videos using container bounds
+            let containerBounds = view.bounds
+            playerView.transform = CGAffineTransform(rotationAngle: .pi / 2)
+            playerView.frame = CGRect(x: 0, y: 0, width: containerBounds.height, height: containerBounds.width)
+            player?.setFrame(playerView.bounds)
+        } else {
+            // Portrait video uses normal bounds
+            playerView.frame = view.bounds
+            player?.setFrame(view.bounds)
+        }
     }
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        player?.pause()
-        hasStartedPlayback = false
-        cleanupTimeObserver()
+        // Pause when leaving (e.g., swiping to another page or dismissing)
+        player?.handle(command: .pause)
     }
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        startPlaybackIfNeeded()
+        // Resume playback when returning to this page
+        if hasStartedPlayback {
+            player?.handle(command: .play)
+        }
+    }
+
+    fileprivate func teardownPlayer() {
+        player?.handle(command: .stop)
+        player?.detach()
+        player = nil
     }
 
     private func embedPlayerInline() {
-        let playerItem = AVPlayerItem(url: item.url)
-        let player = AVPlayer(playerItem: playerItem)
-        player.automaticallyWaitsToMinimizeStalling = true
+        let config = LxMediaPlayerConfig(
+            src: item.url,
+            poster: item.coverURL,
+            autoplay: true,
+            controls: true,  // Show all controls
+            showControlsOnInit: true,
+            objectFit: .cover  // Use cover to fill screen like SameLevel fullscreen
+        )
+
+        let player = LxMediaPlayer(eventHandler: { [weak self] event in
+            switch event {
+            case .play:
+                self?.hasStartedPlayback = true
+                os_log("MediaPreview player event: play", log: self?.log ?? .default, type: .info)
+            case .error(let code, let message):
+                os_log("Error: %{public}@ - %{public}@", log: self?.log ?? .default, type: .error, code, message)
+            default:
+                break
+            }
+        })
+
+        player.update(config: config)
+        // Don't show close button - MediaPreviewViewController already has one
+        player.setShowCloseButton(false)
         self.player = player
 
-        let vc = AVPlayerViewController()
-        vc.player = player
-        vc.showsPlaybackControls = true
-        vc.entersFullScreenWhenPlaybackBegins = false
-        vc.exitsFullScreenWhenPlaybackEnds = false
-        vc.view.translatesAutoresizingMaskIntoConstraints = false
-        addChild(vc)
-        view.addSubview(vc.view)
-        NSLayoutConstraint.activate([
-            vc.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            vc.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            vc.view.topAnchor.constraint(equalTo: view.topAnchor),
-            vc.view.bottomAnchor.constraint(equalTo: view.bottomAnchor)
-        ])
-        vc.didMove(toParent: self)
-        playerVC = vc
+        // Add player view
+        let playerView = player.view
+        playerView.translatesAutoresizingMaskIntoConstraints = true  // Allow manual frame control for rotation
+        view.addSubview(playerView)
 
-        // If a local cover is provided, overlay it until playback starts
-        if let coverURL = item.coverURL, coverURL.isFileURL,
-           let image = UIImage(contentsOfFile: coverURL.path) {
-            let overlay = UIImageView(image: image)
-            overlay.translatesAutoresizingMaskIntoConstraints = false
-            overlay.contentMode = .scaleAspectFit
-            overlay.backgroundColor = .black
-            (vc.contentOverlayView ?? vc.view).addSubview(overlay)
-            NSLayoutConstraint.activate([
-                overlay.leadingAnchor.constraint(equalTo: vc.view.leadingAnchor),
-                overlay.trailingAnchor.constraint(equalTo: vc.view.trailingAnchor),
-                overlay.topAnchor.constraint(equalTo: vc.view.topAnchor),
-                overlay.bottomAnchor.constraint(equalTo: vc.view.bottomAnchor)
-            ])
-            coverOverlay = overlay
+        // Detect video orientation and rotate if needed
+        detectVideoOrientation(for: item.url) { [weak self] isLandscape in
+            guard let self = self else { return }
+            self.isLandscapeVideo = isLandscape
 
-            // Hide overlay when playback actually starts
-            timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.1, preferredTimescale: 600), queue: .main) { [weak self] _ in
-                guard let self, let player = self.player else { return }
-                if player.rate > 0 {
-                    self.hideCoverOverlay()
-                }
+            if isLandscape {
+                // Rotate player view 90 degrees for landscape video (like SameLevel fullscreen)
+                let containerBounds = self.view.bounds
+                playerView.transform = CGAffineTransform(rotationAngle: .pi / 2)
+                playerView.frame = CGRect(x: 0, y: 0, width: containerBounds.height, height: containerBounds.width)
+                player.setFrame(playerView.bounds)
+            } else {
+                // Portrait video, no rotation needed
+                playerView.frame = self.view.bounds
+                player.setFrame(self.view.bounds)
             }
         }
     }
 
-    private func hideCoverOverlay() {
-        cleanupTimeObserver()
-    }
+    private func detectVideoOrientation(for url: URL, completion: @escaping (Bool) -> Void) {
+        Task {
+            let asset = AVURLAsset(url: url)
+            guard let track = try? await asset.loadTracks(withMediaType: .video).first else {
+                await MainActor.run { completion(false) }
+                return
+            }
 
-    private func cleanupTimeObserver() {
-        if let overlay = coverOverlay {
-            overlay.removeFromSuperview()
-            coverOverlay = nil
-        }
-        if let observer = timeObserver, let player {
-            player.removeTimeObserver(observer)
-            timeObserver = nil
+            let size = try? await track.load(.naturalSize)
+            let transform = try? await track.load(.preferredTransform)
+
+            await MainActor.run {
+                var videoSize = size ?? .zero
+
+                // Apply transform to get actual display size
+                if let transform = transform {
+                    videoSize = videoSize.applying(transform)
+                }
+
+                let width = abs(videoSize.width)
+                let height = abs(videoSize.height)
+                let isLandscape = width > height
+
+                completion(isLandscape)
+            }
         }
     }
 
     private func startPlaybackIfNeeded() {
-        guard !hasStartedPlayback else { return }
-        guard let player else { return }
+        // Autoplay is enabled in config, so playback starts automatically
+        // This method kept for potential future use
         hasStartedPlayback = true
-        player.play()
     }
-
 }
 
 private final class ZoomableImageView: UIView, UIScrollViewDelegate {

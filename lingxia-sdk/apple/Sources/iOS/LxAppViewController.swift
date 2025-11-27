@@ -259,7 +259,15 @@ public class LxAppViewController: UIViewController, ObservableObject {
     public func handleNavigation(appId: String, path: String, animationType: AnimationType) {
         guard LxAppCore.currentAppId == appId else { return }
 
+        let currentPath = getCurrentPath()
+
+        if let existingWebView = getCurrentWebView(),
+           currentPath != path {
+            SameLevelBridge.notifyPageInactive(for: existingWebView)
+        }
+
         if let targetWebView = iOSLxApp.findWebView(appId: appId, path: path) {
+
             // Handle navigation animations for all cases
             if let existingWebView = getCurrentWebView() {
 
@@ -403,6 +411,9 @@ public class LxAppViewController: UIViewController, ObservableObject {
 
         // Use shared WebViewManager logic which will trigger onPageShow
         WebViewManager.attachWebViewToContainer(webView, container: rootContainer, constraints: constraints)
+
+        // Install SameLevel overlay for native UI components (video, input, etc.)
+        SameLevelBridge.attachIfNeeded(to: webView)
 
         // Store the top constraint reference for future updates
         if let topConstraint = constraints.first(where: { $0.firstAnchor == webView.topAnchor }) {
