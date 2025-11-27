@@ -91,13 +91,10 @@ public class LingXiaWebView extends WebView {
      * Creates WebView asynchronously and notifies Rust via notifyWebViewReady callback
      */
     public static void requestWebView(final String appId, final String path) {
-
-        // Start async WebView creation on main thread
+        // WebView creation must happen on the main thread
         ensureMainThreadStatic(new Runnable() {
             @Override
             public void run() {
-                Log.d(TAG, "Creating WebView on main thread for " + appId + ":" + path);
-
                 try {
                     if (sApplicationContext == null) {
                         throw new RuntimeException("Application context not set. Call LingXiaWebView.setApplicationContext() first.");
@@ -105,31 +102,24 @@ public class LingXiaWebView extends WebView {
 
                     LingXiaWebView webView;
 
+                    // Try to create com.lingxia.lxapp.WebView (which extends LingXiaWebView)
+                    // This allows the SDK to provide a customized WebView subclass
                     try {
-                        // Try to create UI WebView first
                         Class<?> uiWebViewClass = Class.forName("com.lingxia.lxapp.WebView");
-                        Object uiWebView = uiWebViewClass.getConstructor(android.content.Context.class).newInstance(sApplicationContext);
-                        uiWebViewClass.getMethod("initializeWebView", String.class, String.class).invoke(uiWebView, appId, path);
-
-                        // If UI WebView is created successfully, we need to get the underlying LingXiaWebView
-                        // For now, assume it's a LingXiaWebView or has one
-                        if (uiWebView instanceof LingXiaWebView) {
-                            webView = (LingXiaWebView) uiWebView;
-                        } else {
-                            // Fallback to direct creation
-                            webView = new LingXiaWebView(sApplicationContext);
-                            webView.initializeWebView(appId, path);
-                        }
+                        webView = (LingXiaWebView) uiWebViewClass
+                            .getConstructor(android.content.Context.class)
+                            .newInstance(sApplicationContext);
                     } catch (Exception e) {
-                        Log.w(TAG, "Failed to create UI WebView, using fallback: " + e.getMessage());
+                        // Fallback to base LingXiaWebView if SDK class not available
                         webView = new LingXiaWebView(sApplicationContext);
-                        webView.initializeWebView(appId, path);
                     }
 
-                    // Notify Rust that WebView is ready, passing the WebView object directly
+                    webView.initializeWebView(appId, path);
+
+                    // Notify Rust that WebView is ready
                     notifyWebViewReady(appId, path, webView);
                 } catch (Exception e) {
-                    Log.e(TAG, "Failed to create WebView asynchronously", e);
+                    Log.e(TAG, "Failed to create WebView: " + e.getMessage(), e);
                 }
             }
         });
