@@ -201,14 +201,31 @@ export class LxAppScan {
   private static getScanTypeString(type: scanCore.ScanType): string {
     switch (type) {
       case scanCore.ScanType.QR_CODE:
-        return 'qrCode';
+        return 'QR_CODE';
       case scanCore.ScanType.DATAMATRIX_CODE:
-        return 'datamatrix';
+        return 'DATA_MATRIX';
       case scanCore.ScanType.PDF417_CODE:
-        return 'pdf417';
+        return 'PDF_417';
+      case scanCore.ScanType.CODABAR_CODE:
+        return 'CODABAR';
+      case scanCore.ScanType.CODE39_CODE:
+        return 'CODE_39';
+      case scanCore.ScanType.CODE93_CODE:
+        return 'CODE_93';
+      case scanCore.ScanType.CODE128_CODE:
+        return 'CODE_128';
+      case scanCore.ScanType.EAN8_CODE:
+        return 'EAN_8';
+      case scanCore.ScanType.EAN13_CODE:
+        return 'EAN_13';
+      case scanCore.ScanType.ITF14_CODE:
+        return 'ITF';
+      case scanCore.ScanType.UPC_A_CODE:
+        return 'UPC_A';
+      case scanCore.ScanType.UPC_E_CODE:
+        return 'UPC_E';
       default:
-        // Other formats (1D types and others)
-        return 'barCode';
+        return 'UNKNOWN';
     }
   }
 }
