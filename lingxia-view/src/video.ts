@@ -198,18 +198,23 @@ export class LxVideoElement extends HTMLElement {
       (props as any).cornerRadius = cornerRadius;
     }
     const zIndex = parseFloat(this.style.zIndex || "0") || 0;
-    const shouldSend = this.updateState.shouldSend(rect, props, zIndex, !this.mounted);
-    if (!shouldSend) return;
+    const decision = this.updateState.decide(rect, props, zIndex, !this.mounted);
+    if (!decision.shouldSend) return;
 
-    sendSameLevelMessage({
+    const payload: any = {
       action: this.mounted ? "component.update" : "component.mount",
       id: this.componentId,
       type: "video.native",
       rect,
-      props,
       zIndex,
       ...(cornerRadius !== undefined ? { cornerRadius } : {})
-    });
+    };
+    // Only include props when they changed or on first mount
+    if (decision.propsChanged || !this.mounted) {
+      payload.props = props;
+    }
+
+    sendSameLevelMessage(payload);
     this.mounted = true;
   }
 
@@ -218,7 +223,8 @@ export class LxVideoElement extends HTMLElement {
     const { rect } = measureElement(this);
     if (!rect.width || !rect.height) return;
     const zIndex = parseFloat(this.style.zIndex || "0") || 0;
-    if (!this.updateState.shouldSend(rect, null, zIndex)) return;
+    const decision = this.updateState.decide(rect, null, zIndex);
+    if (!decision.shouldSend) return;
     sendSameLevelMessage({
       action: "component.update",
       id: this.componentId,

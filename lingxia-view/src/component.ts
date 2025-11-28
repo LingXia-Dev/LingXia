@@ -37,20 +37,31 @@ export class SameLevelUpdateState {
     this.lastZIndex = null;
   }
 
-  shouldSend(rect: Rect, props: Record<string, unknown> | null, zIndex: number, force = false): boolean {
+  decide(
+    rect: Rect,
+    props: Record<string, unknown> | null,
+    zIndex: number,
+    force = false
+  ): { shouldSend: boolean; propsChanged: boolean; rectChanged: boolean; zChanged: boolean } {
     const propsJson = props === null ? this.lastPropsJson : JSON.stringify(props);
     const rectChanged = !rectEquals(this.lastRect, rect);
-    const propsChanged = props === null ? false : propsJson !== this.lastPropsJson;
+    const propsChanged = props === null ? false : propsJson !== this.lastPropsJson || force;
     const zChanged = this.lastZIndex !== zIndex;
 
-    const changed = force || rectChanged || propsChanged || zChanged;
-    if (!changed) return false;
+    const shouldSend = force || rectChanged || propsChanged || zChanged;
+    if (!shouldSend) {
+      return { shouldSend: false, propsChanged: false, rectChanged: false, zChanged: false };
+    }
 
     if (props !== null) {
       this.lastPropsJson = propsJson;
     }
     this.lastRect = rect;
     this.lastZIndex = zIndex;
-    return true;
+    return { shouldSend: true, propsChanged, rectChanged, zChanged };
+  }
+
+  shouldSend(rect: Rect, props: Record<string, unknown> | null, zIndex: number, force = false): boolean {
+    return this.decide(rect, props, zIndex, force).shouldSend;
   }
 }
