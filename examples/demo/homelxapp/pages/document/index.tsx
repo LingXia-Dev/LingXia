@@ -6,7 +6,8 @@ type PageData = {
   officeUrl?: string;
   officeFileType?: string;
   showMenu?: boolean;
-  isDownloading?: boolean;
+  isPdfDownloading?: boolean;
+  isOfficeDownloading?: boolean;
 };
 
 type PageActions = {
@@ -36,7 +37,8 @@ export default function DocumentPage() {
   const officeUrl = data?.officeUrl || '';
   const officeFileType = data?.officeFileType || '';
   const showMenu = Boolean(data?.showMenu);
-  const isDownloading = Boolean(data?.isDownloading);
+  const isPdfDownloading = Boolean(data?.isPdfDownloading);
+  const isOfficeDownloading = Boolean(data?.isOfficeDownloading);
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -89,14 +91,14 @@ export default function DocumentPage() {
             {/* Open PDF Button */}
             <button
               onClick={openPdf}
-              disabled={isDownloading}
+              disabled={isPdfDownloading}
               className={`w-full py-3 rounded-lg text-white font-medium ${
-                isDownloading
+                isPdfDownloading
                   ? 'bg-gray-400 cursor-not-allowed'
                   : 'bg-blue-500 hover:bg-blue-600 active:bg-blue-700'
               }`}
             >
-              {isDownloading ? 'Downloading...' : 'Open PDF'}
+              {isPdfDownloading ? 'Downloading...' : 'Open PDF'}
             </button>
           </div>
         </div>
@@ -137,14 +139,14 @@ export default function DocumentPage() {
             {/* Open Office Button */}
             <button
               onClick={openOffice}
-              disabled={isDownloading}
+              disabled={isOfficeDownloading}
               className={`w-full py-3 rounded-lg text-white font-medium ${
-                isDownloading
+                isOfficeDownloading
                   ? 'bg-gray-400 cursor-not-allowed'
                   : 'bg-blue-500 hover:bg-blue-600 active:bg-blue-700'
               }`}
             >
-              {isDownloading ? 'Downloading...' : 'Open Document'}
+              {isOfficeDownloading ? 'Downloading...' : 'Open Document'}
             </button>
           </div>
         </div>

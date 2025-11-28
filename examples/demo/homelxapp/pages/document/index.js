@@ -33,7 +33,8 @@ Page({
       "https://example-files.online-convert.com/document/docx/example.docx",
     officeFileType: "docx",
     showMenu: true,
-    isDownloading: false,
+    isPdfDownloading: false,
+    isOfficeDownloading: false,
   },
 
   onLoad: function (options) {
@@ -81,11 +82,11 @@ Page({
       return;
     }
 
-    if (this.data.isDownloading) {
+    if (this.data.isPdfDownloading) {
       return;
     }
 
-    this.setData({ isDownloading: true });
+    this.setData({ isPdfDownloading: true });
 
     try {
       const filename = getFilenameFromUrl(url, "pdf");
@@ -153,7 +154,7 @@ Page({
         icon: "none",
       });
     } finally {
-      this.setData({ isDownloading: false });
+      this.setData({ isPdfDownloading: false });
     }
   },
 
@@ -177,11 +178,11 @@ Page({
       return;
     }
 
-    if (this.data.isDownloading) {
+    if (this.data.isOfficeDownloading) {
       return;
     }
 
-    this.setData({ isDownloading: true });
+    this.setData({ isOfficeDownloading: true });
 
     try {
       const filename = getFilenameFromUrl(url, fileType);
@@ -249,7 +250,7 @@ Page({
         icon: "none",
       });
     } finally {
-      this.setData({ isDownloading: false });
+      this.setData({ isOfficeDownloading: false });
     }
   },
 });
