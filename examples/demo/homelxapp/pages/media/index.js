@@ -87,10 +87,10 @@ const MODE_SETTINGS = {
 function getModeCopy(mediaType) {
   if (mediaType === "video") {
     return {
-      headerSubtitle: "lx.chooseMedia",
+      headerSubtitle: "lx.chooseMedia / lx.previewMedia",
       emptyHint: "Tap + to add a video.",
-      previewHint: "Tap the clip to replay.",
-      galleryHint: "Tap the clip to replay.",
+      previewHint: "Tap Preview for fullscreen playback.",
+      galleryHint: "Tap Preview for fullscreen playback.",
       addLabel: "Add Video",
     };
   }

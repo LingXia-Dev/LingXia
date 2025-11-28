@@ -1,5 +1,6 @@
 import React from 'react';
 import '../../tailwind.css';
+import { LxVideo } from '@lingxia/view/react';
 
 const SOURCE_OPTIONS = [
   { key: 'album', label: 'Album' },
@@ -431,30 +432,39 @@ export default function MediaPage() {
     return (
       <div className="space-y-4">
         {selectedMedia.map((item, index) => (
-          <button
-            type="button"
-            key={`${item.path}-${index}`}
-            className="group relative w-full h-48 overflow-hidden rounded-2xl border border-gray-200 bg-black transition-all hover:shadow-lg active:scale-[0.99]"
-            onClick={() => handlePreview(item)}
-          >
-            <video
+          <Card key={`video-${index}`} noPadding className="overflow-hidden">
+            <LxVideo
+              id={`media-video-${index}`}
               src={item.path}
-              className="h-full w-full object-cover opacity-90 transition-transform group-hover:scale-105"
+              controls
+              autoplay
               muted
+              loop
+              style={{ width: '100%', height: '224px', display: 'block', backgroundColor: 'black' }}
             />
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-white/20 backdrop-blur-sm text-white shadow-lg transition-all group-hover:scale-110 group-hover:bg-white/30">
-                <svg className="w-6 h-6 ml-1" fill="currentColor" viewBox="0 0 16 16">
-                  <path d="M3 2.5A1.5 1.5 0 014.5 1h11A1.5 1.5 0 0117 2.5v11a1.5 1.5 0 01-1.5 1.5h-11A1.5 1.5 0 013 13.5v-11zm2 0v11h10v-11H5z M6 4l6 4-6 4V4z" />
-                </svg>
+            <div className="px-5 py-4 bg-gradient-to-br from-gray-50 to-white">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3 flex-1">
+                  <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50">
+                    <svg className="w-5 h-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zm12.553 1.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold text-gray-800">Video {index + 1}</div>
+                    <div className="text-xs text-gray-500 mt-0.5">Tap to preview fullscreen</div>
+                  </div>
+                </div>
+                <Button
+                  onClick={() => handlePreview(item)}
+                  variant="primary"
+                  size="md"
+                >
+                  Preview
+                </Button>
               </div>
             </div>
-            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-4 py-3">
-              <div className="text-xs text-white/90 truncate font-medium">
-                Video {index + 1}
-              </div>
-            </div>
-          </button>
+          </Card>
         ))}
         {canAddMore ? renderAddTile() : null}
       </div>
