@@ -97,6 +97,7 @@ public struct LxMediaPlayerConfig {
     public var src: URL?
     public var poster: URL?
     public var autoplay: Bool?
+    public var loop: Bool?
     public var muted: Bool?
     public var volume: Double?
     public var controls: Bool?  // Show or hide all playback controls (HTML5 standard)
@@ -111,6 +112,7 @@ public struct LxMediaPlayerConfig {
         src: URL? = nil,
         poster: URL? = nil,
         autoplay: Bool? = nil,
+        loop: Bool? = nil,
         muted: Bool? = nil,
         volume: Double? = nil,
         controls: Bool? = nil,
@@ -124,6 +126,7 @@ public struct LxMediaPlayerConfig {
         self.src = src
         self.poster = poster
         self.autoplay = autoplay
+        self.loop = loop
         self.muted = muted
         self.volume = volume
         self.controls = controls
@@ -142,6 +145,7 @@ public struct LxMediaPlayerConfig {
         if let src { dict["src"] = src.absoluteString }
         if let poster { dict["poster"] = poster.absoluteString }
         if let autoplay { dict["autoplay"] = autoplay }
+        if let loop { dict["loop"] = loop }
         if let muted { dict["muted"] = muted }
         if let volume { dict["volume"] = volume }
         if let controls { dict["controls"] = controls }
@@ -309,6 +313,8 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
     // Config
     private var controlsEnabled = true  // HTML5 standard: show/hide all controls
     private var showCloseButton = false // Only show in preview mode
+    private var showFullscreenButton = true // Show fullscreen button
+    private var loopEnabled = false // Loop playback when video ends
     private var videoGravity: AVLayerVideoGravity = .resizeAspectFill // Default to fill for SameLevel
 
     // State
@@ -334,6 +340,7 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
     private var desiredPlayWhenReady = false
     private var didPerformInitialSeek = false
     private var revealVideoWorkItem: DispatchWorkItem?
+    private var forceRevealAttempts = 0
 
     // UI
     private let overlayView = TapOverlayView()
@@ -441,6 +448,11 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
         updateCloseButtonVisibility()
     }
 
+    public func setShowFullscreenButton(_ show: Bool) {
+        showFullscreenButton = show
+        updateFullscreenButtonVisibility()
+    }
+
     /// Mark the player as being in fullscreen mode (for external fullscreen management)
     /// This is used when the player is displayed in a fullscreen window/controller
     /// managed externally (e.g., MediaPreview)
@@ -492,13 +504,26 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
         }
         replaceActivePipe(with: nextPipe)
 
+        loopEnabled = config.loop ?? false
+        // Always use .pause to receive end notification, handle loop in videoDidEnd
+        player?.actionAtItemEnd = .pause
+
         // Playback flags
         if let autoplay = config.autoplay, autoplay {
             play()
+        } else {
+            updatePlayPauseUI(isPlaying: false)
+            syncCenterPlayButtonVisibility(isPlaying: false)
         }
 
         if let muted = config.muted {
             player?.isMuted = muted
+            // Update UI to reflect muted state
+            if muted {
+                updateVolumeIcon(volume: 0)
+            } else if let vol = player?.volume {
+                updateVolumeIcon(volume: vol)
+            }
         }
 
         if let vol = config.volume {
@@ -575,6 +600,12 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
             updateVolumeIcon(volume: vol)
         case .setMuted(let muted):
             player?.isMuted = muted
+            // Update UI to reflect muted state
+            if muted {
+                updateVolumeIcon(volume: 0)
+            } else if let vol = player?.volume {
+                updateVolumeIcon(volume: vol)
+            }
         case .setPlaybackRate(let rate):
             setPlaybackRate(rate)
         case .enterFullscreen:
@@ -644,6 +675,9 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
         // Cancel any pending reveal work from previous loads
         revealVideoWorkItem?.cancel()
         revealVideoWorkItem = nil
+        forceRevealAttempts = 0
+        desiredPlayWhenReady = false
+        pendingResumeShouldPlay = false
 
         // Clean up observers from previous loads
         timeObserver.flatMap { player?.removeTimeObserver($0) }
@@ -654,9 +688,7 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
         // Keep overlay (controls) and loading indicator above everything
         view.bringSubviewToFront(overlayView)
         overlayView.bringSubviewToFront(loadingIndicator)
-
-        // Show loading indicator ON TOP of current video frame (not on black background)
-        // This gives better user feedback - user sees old video + spinning indicator
+        overlayView.bringSubviewToFront(centerPlayButton)
         loadingIndicator.startAnimating()
 
         // DON'T hide old video or show poster yet - keep current frame visible
@@ -667,7 +699,6 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
         }
 
         waitingForFirstFrame = true
-        desiredPlayWhenReady = pendingResumeShouldPlay
         didPerformInitialSeek = pendingResumeTime == nil
         firstFrameDisplayed = false
 
@@ -698,9 +729,6 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
         item.add(output)
         videoOutput = output
 
-        // Setup CADisplayLink to check for first frame at display refresh rate
-        startDisplayLink(sequence: currentSequence)
-
         let activePlayer: AVPlayer
         if let existing = player {
             existing.replaceCurrentItem(with: item)
@@ -709,6 +737,8 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
             activePlayer = AVPlayer(playerItem: item)
             player = activePlayer
         }
+        // Always use .pause to receive end notification, handle loop in videoDidEnd
+        activePlayer.actionAtItemEnd = .pause
         activePlayer.rate = 0
         activePlayer.automaticallyWaitsToMinimizeStalling = true
         playerLayer.player = activePlayer
@@ -722,7 +752,8 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
                     os_log("MediaPlayer IGNORE stale statusObserver seq=%llu (current=%llu)", log: self.log, type: .debug, currentSequence, self.loadingSequence)
                     return
                 }
-                if item.status == .readyToPlay {
+                switch item.status {
+                case .readyToPlay:
                     os_log("MediaPlayer item ready to play seq=%llu", log: self.log, type: .info, currentSequence)
 
                     // Send loadedmetadata event
@@ -734,9 +765,28 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
 
                     self.applyPendingResumeIfNeeded()
 
-                    // Lightweight fallback: trigger one manual check
-                    // In case displayLink fails on some devices/iOS versions
-                    self.checkPixelBufferAvailability(sequence: currentSequence)
+                    // Start frame detection now that item is ready
+                    if self.waitingForFirstFrame {
+                        self.startDisplayLink(sequence: currentSequence)
+                        self.scheduleRevealTimeout(sequence: currentSequence)
+                        // Lightweight fallback: trigger one manual check
+                        // In case displayLink fails on some devices/iOS versions
+                        self.checkPixelBufferAvailability(sequence: currentSequence)
+                    }
+                case .failed:
+                    let msg = item.error?.localizedDescription ?? "unknown error"
+                    os_log("MediaPlayer item failed seq=%llu error=%{public}@", log: self.log, type: .error, currentSequence, msg)
+                    self.send(.error(code: "load_failed", message: msg))
+                    self.stopDisplayLink()
+                    self.revealVideoWorkItem?.cancel()
+                    self.waitingForFirstFrame = false
+                    self.firstFrameDisplayed = false
+                    self.loadingIndicator.stopAnimating()
+                    if let image = self.posterImageView.image, !image.size.equalTo(.zero) {
+                        self.posterImageView.isHidden = false
+                    }
+                default:
+                    break
                 }
             }
         }
@@ -748,6 +798,25 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
             name: .AVPlayerItemDidPlayToEndTime,
             object: item
         )
+        NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemFailedToPlayToEndTime,
+            object: item,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self = self else { return }
+            guard currentSequence == self.loadingSequence else { return }
+            let error = (notification.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? NSError)?.localizedDescription ?? "unknown error"
+            os_log("MediaPlayer item failed to play to end seq=%llu error=%{public}@", log: self.log, type: .error, currentSequence, error)
+            self.send(.error(code: "play_failed", message: error))
+            self.stopDisplayLink()
+            self.revealVideoWorkItem?.cancel()
+            self.waitingForFirstFrame = false
+            self.firstFrameDisplayed = false
+            self.loadingIndicator.stopAnimating()
+            if let image = self.posterImageView.image, !image.size.equalTo(.zero) {
+                self.posterImageView.isHidden = false
+            }
+        }
 
         // timeupdate event triggers every 250ms
         let interval = CMTime(seconds: 0.25, preferredTimescale: 600)
@@ -762,27 +831,33 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
             }
         }
 
-        // Safety timeout: force reveal after 1.5s if pixelBuffer detection fails
-        // This prevents infinite loading while giving enough time for decoding
-        let work = DispatchWorkItem { [weak self] in
-            guard let self = self else { return }
-            guard currentSequence == self.loadingSequence else {
-                os_log("MediaPlayer IGNORE stale timeout seq=%llu (current=%llu)", log: self.log, type: .debug, currentSequence, self.loadingSequence)
-                return
-            }
-            if self.waitingForFirstFrame {
-                os_log("MediaPlayer force reveal after timeout seq=%llu", log: self.log, type: .info, currentSequence)
-                self.forceRevealVideo(sequence: currentSequence)
-            }
-        }
-        revealVideoWorkItem = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: work)
     }
 
     @objc private func videoDidEnd() {
-        os_log("MediaPlayer video ended", log: OSLog(subsystem: "LingXia", category: "Media"), type: .info)
+        os_log("MediaPlayer video ended (loop=%{public}@)", log: OSLog(subsystem: "LingXia", category: "Media"), type: .info, String(loopEnabled))
+
+        if loopEnabled {
+            // Loop: restart from beginning and continue playing without spinner
+            waitingForFirstFrame = false
+            firstFrameDisplayed = true
+            playerLayer.opacity = 1
+            posterImageView.isHidden = true
+            posterImageView.alpha = 1
+
+            // Seek to beginning and restart playback in completion handler
+            player?.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
+                guard let self = self, finished else { return }
+                Task { @MainActor in
+                    self.startPlaybackNow()
+                }
+            }
+            send(.ended) // still emit ended per semantics
+            return
+        }
+
         // Show play button (pause state) but keep progress at end
         updatePlayPauseUI(isPlaying: false)
+        syncCenterPlayButtonVisibility(isPlaying: false)
         send(.ended)
     }
 
@@ -806,13 +881,17 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
         player.automaticallyWaitsToMinimizeStalling = true
 
         // Ensure playerLayer is visible (may be hidden from screen lock)
-        playerLayer.opacity = 1
         playerLayer.isHidden = false
+        // Keep opacity at 0 while waiting for first frame; revealVideo will animate it
+        if !waitingForFirstFrame {
+            playerLayer.opacity = 1
+        }
+        updatePlayPauseUI(isPlaying: true)
+        syncCenterPlayButtonVisibility(isPlaying: true)
 
         player.playImmediately(atRate: Float(currentPlaybackRate))
         // Poster will be hidden automatically by timeObserver when currentTime > 0.1
         send(.play)
-        updatePlayPauseUI(isPlaying: true)
         // Show controls on first play if configured (e.g., preview mode with autoplay)
         if shouldShowControlsOnFirstPlay {
             shouldShowControlsOnFirstPlay = false  // Only show once
@@ -824,18 +903,16 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
         player?.pause()
         send(.pause)
         updatePlayPauseUI(isPlaying: false)
+        syncCenterPlayButtonVisibility(isPlaying: false)
         showControlsTemporarily()
     }
 
     private func stop() {
         player?.pause()
         player?.seek(to: .zero)
-        // Show poster when stopped
-        if posterImageView.image != nil {
-            posterImageView.isHidden = false
-        }
         send(.stop)
         updatePlayPauseUI(isPlaying: false)
+        syncCenterPlayButtonVisibility(isPlaying: false)
         showControlsTemporarily()
     }
 
@@ -1014,16 +1091,15 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
         fullscreenButton.contentEdgeInsets = UIEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
         bottomBar.addSubview(fullscreenButton)
 
-        // Center play button - add last to be on top
+        // Center play button
         centerPlayButton.setImage(UIImage(systemName: "play.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 32, weight: .medium)), for: .normal)
         centerPlayButton.tintColor = .white
         centerPlayButton.backgroundColor = UIColor.black.withAlphaComponent(0.5)
         centerPlayButton.layer.cornerRadius = 40
         centerPlayButton.clipsToBounds = true
-        centerPlayButton.isUserInteractionEnabled = true
         centerPlayButton.addTarget(self, action: #selector(handlePlayPauseTap), for: .touchUpInside)
         overlayView.addSubview(centerPlayButton)
-        overlayView.bringSubviewToFront(centerPlayButton) // Ensure it's on top
+        overlayView.bringSubviewToFront(centerPlayButton)
 
         // Loading indicator
         loadingIndicator.color = .white
@@ -1041,10 +1117,14 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
         // Initial state - hide controls
         topBar.alpha = 0
         bottomBar.alpha = 0
-        centerPlayButton.alpha = 0
         topGradient.opacity = 0
         bottomGradient.opacity = 0
         controlsVisible = false
+        centerPlayButton.alpha = 0
+        centerPlayButton.isHidden = true
+
+        // Set initial button visibility based on config
+        updateFullscreenButtonVisibility()
 
         // App lifecycle observers (pause/resume UI sync)
         NotificationCenter.default.addObserver(self, selector: #selector(handleAppWillResignActive), name: UIApplication.willResignActiveNotification, object: nil)
@@ -1183,20 +1263,16 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
             settingsButton.frame = .zero
         }
 
-        // Center play button
+        // Loading indicator and center play button centered
         let centerSize: CGFloat = 80
-        centerPlayButton.frame = CGRect(
+        let centerFrame = CGRect(
             x: (bounds.width - centerSize) / 2,
             y: (bounds.height - centerSize) / 2,
             width: centerSize,
             height: centerSize
         )
-
-        // Loading indicator
-        loadingIndicator.frame = centerPlayButton.frame
-
-        // Ensure centerPlayButton is always on top after layout
-        overlayView.bringSubviewToFront(centerPlayButton)
+        loadingIndicator.frame = centerFrame
+        centerPlayButton.frame = centerFrame
 
     }
 
@@ -1204,12 +1280,14 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
         let name = isPlaying ? "pause.fill" : "play.fill"
         playPauseButton.setImage(UIImage(systemName: name), for: .normal)
         centerPlayButton.setImage(UIImage(systemName: name, withConfiguration: UIImage.SymbolConfiguration(pointSize: 32, weight: .medium)), for: .normal)
-        centerPlayButton.isHidden = isPlaying
-
-        // When paused, ensure the button is visible (alpha = 1)
-        // When playing, hide it (but alpha stays 0 from controls hiding)
-        if !isPlaying {
+        if isPlaying {
+            centerPlayButton.alpha = 0
+            centerPlayButton.isHidden = true
+            centerPlayButton.isUserInteractionEnabled = false
+        } else if controlsEnabled {
+            centerPlayButton.isHidden = false
             centerPlayButton.alpha = 1
+            centerPlayButton.isUserInteractionEnabled = true
             overlayView.bringSubviewToFront(centerPlayButton)
         }
     }
@@ -1244,7 +1322,7 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
         let hideControls = !controlsEnabled
         topBar.isHidden = hideControls
         bottomBar.isHidden = hideControls
-        centerPlayButton.isHidden = hideControls
+        syncCenterPlayButtonVisibility(isPlaying: isPlayingNow())
     }
 
     private func updateCloseButtonVisibility() {
@@ -1253,26 +1331,24 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
         backButton.isHidden = !showCloseButton || isFullscreen
     }
 
+    private func updateFullscreenButtonVisibility() {
+        // Fullscreen button hidden if disabled or already in fullscreen
+        fullscreenButton.isHidden = !showFullscreenButton || isFullscreen
+    }
+
     private func showControlsTemporarily() {
         controlsHideWorkItem?.cancel()
-
-        // Ensure centerPlayButton is on top
-        overlayView.bringSubviewToFront(centerPlayButton)
 
         UIView.animate(withDuration: 0.3, delay: 0, options: [.curveEaseOut], animations: {
             self.topBar.alpha = 1
             self.bottomBar.alpha = 1
-            // Only show centerPlayButton if video is not playing (controlled by updatePlayPauseUI)
-            if !self.centerPlayButton.isHidden {
-                self.centerPlayButton.alpha = 1
-            }
             self.topGradient.opacity = 1
             self.bottomGradient.opacity = 1
+            self.syncCenterPlayButtonVisibility(isPlaying: self.isPlayingNow())
         })
 
         topBar.isUserInteractionEnabled = true
         bottomBar.isUserInteractionEnabled = true
-        centerPlayButton.isUserInteractionEnabled = true
         controlsVisible = true
 
         let work = DispatchWorkItem { [weak self] in
@@ -1280,14 +1356,12 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
             UIView.animate(withDuration: 0.3, delay: 0, options: [.curveEaseIn], animations: {
                 self.topBar.alpha = 0
                 self.bottomBar.alpha = 0
-                // DON'T hide centerPlayButton - it should stay visible when paused
-                // It's controlled by updatePlayPauseUI based on playback state
                 self.topGradient.opacity = 0
                 self.bottomGradient.opacity = 0
+                self.syncCenterPlayButtonVisibility(isPlaying: self.isPlayingNow())
             })
             self.topBar.isUserInteractionEnabled = false
             self.bottomBar.isUserInteractionEnabled = false
-            // centerPlayButton stays interactive always
             self.controlsVisible = false
         }
         controlsHideWorkItem = work
@@ -1455,12 +1529,27 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
             return
         }
 
-        // Safety check: at least verify layer is ready before forcing reveal
-        // This reduces (but doesn't eliminate) risk of black frame
+        // Safety check: verify layer readiness; retry a few times before forcing reveal
         if !playerLayer.isReadyForDisplay {
-            os_log("MediaPlayer timeout but layer not ready, waiting longer...", log: log, type: .info)
-            return
+            if forceRevealAttempts < 3 {
+                forceRevealAttempts += 1
+                let delay = 0.2 * Double(forceRevealAttempts)
+                os_log("MediaPlayer timeout but layer not ready, retry %d after %.1fs", log: log, type: .info, forceRevealAttempts, delay)
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                    self?.forceRevealVideo(sequence: sequence)
+                }
+                return
+            } else {
+                os_log("MediaPlayer still not ready after %d retries; keep waiting", log: log, type: .error, forceRevealAttempts)
+                if let image = posterImageView.image, !image.size.equalTo(.zero) {
+                    posterImageView.isHidden = false
+                    posterImageView.alpha = 1
+                }
+                scheduleRevealTimeout(sequence: sequence, delay: 1.0)
+                return
+            }
         }
+        forceRevealAttempts = 0
 
         performRevealVideo(reason: "timeout", sequence: sequence)
     }
@@ -1470,7 +1559,6 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
             os_log("MediaPlayer IGNORE stale performRevealVideo seq=%llu (current=%llu)", log: log, type: .debug, sequence, loadingSequence)
             return
         }
-
         // Stop all frame detection mechanisms
         revealVideoWorkItem?.cancel()
         revealVideoWorkItem = nil
@@ -1504,10 +1592,11 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
             self.posterImageView.isHidden = true
             self.posterImageView.alpha = 1
 
-            // Update UI state if not playing
+            // Update UI state based on playback
             if !shouldPlay {
                 self.updatePlayPauseUI(isPlaying: false)
             }
+            self.syncCenterPlayButtonVisibility(isPlaying: shouldPlay)
         }
     }
 
@@ -1537,7 +1626,7 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
         // If we were waiting for a frame (e.g. after returning from background), re-arm detection
         // so a programmatic play resumes without requiring a tap.
         if waitingForFirstFrame {
-            startDisplayLink(sequence: loadingSequence)
+            armFrameDetection(sequence: loadingSequence)
             checkPixelBufferAvailability(sequence: loadingSequence)
             if playerLayer.isReadyForDisplay {
                 forceRevealVideo(sequence: loadingSequence)
@@ -1575,6 +1664,57 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
         displayLink = nil
     }
 
+    private func isPlayingNow() -> Bool {
+        let status = player?.timeControlStatus
+        let playingStatus = status == .playing || status == .waitingToPlayAtSpecifiedRate
+        return desiredPlayWhenReady || playingStatus || (player?.rate ?? 0) > 0.01
+    }
+
+    private func syncCenterPlayButtonVisibility(isPlaying explicit: Bool? = nil) {
+        let playing = explicit ?? isPlayingNow()
+        let shouldHide = !controlsEnabled || playing
+        if shouldHide {
+            centerPlayButton.alpha = 0
+            centerPlayButton.isHidden = true
+            centerPlayButton.isUserInteractionEnabled = false
+        } else {
+            centerPlayButton.isHidden = false
+            centerPlayButton.alpha = 1
+            centerPlayButton.isUserInteractionEnabled = true
+            overlayView.bringSubviewToFront(centerPlayButton)
+        }
+    }
+
+    private func scheduleRevealTimeout(sequence: UInt64, delay: TimeInterval = 1.5) {
+        revealVideoWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            guard sequence == self.loadingSequence else {
+                os_log("MediaPlayer IGNORE stale timeout seq=%llu (current=%llu)", log: self.log, type: .debug, sequence, self.loadingSequence)
+                return
+            }
+            if self.waitingForFirstFrame {
+                os_log("MediaPlayer force reveal after timeout seq=%llu", log: self.log, type: .info, sequence)
+                self.forceRevealVideo(sequence: sequence)
+            }
+        }
+        revealVideoWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    private func armFrameDetection(sequence: UInt64) {
+        if waitingForFirstFrame {
+            // Already armed for this sequence
+            return
+        }
+        waitingForFirstFrame = true
+        startDisplayLink(sequence: sequence)
+        scheduleRevealTimeout(sequence: sequence)
+        loadingIndicator.startAnimating()
+        overlayView.bringSubviewToFront(loadingIndicator)
+        syncCenterPlayButtonVisibility(isPlaying: true)
+    }
+
     private func startDisplayLink(sequence: UInt64) {
         stopDisplayLink()
         let link = CADisplayLink(target: self, selector: #selector(displayLinkDidRefresh))
@@ -1590,13 +1730,11 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
             UIView.animate(withDuration: 0.3, animations: {
                 self.topBar.alpha = 0
                 self.bottomBar.alpha = 0
-                // DON'T hide centerPlayButton - it should stay visible when paused
                 self.topGradient.opacity = 0
                 self.bottomGradient.opacity = 0
             })
             topBar.isUserInteractionEnabled = false
             bottomBar.isUserInteractionEnabled = false
-            // centerPlayButton stays interactive always
             controlsVisible = false
         } else {
             showControlsTemporarily()
@@ -2122,26 +2260,35 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
     }
 
     @objc private func handleVolumeTap() {
-        let currentVolume = player?.volume ?? 1.0
-        if currentVolume > 0 {
-            // Mute
-            player?.volume = 0
-            volumeSlider.value = 0
+        guard let player = player else { return }
+
+        // Toggle mute state
+        let wasMuted = player.isMuted
+        player.isMuted = !wasMuted
+
+        // Update UI based on mute state
+        if player.isMuted {
             updateVolumeIcon(volume: 0)
         } else {
-            // Unmute to previous volume or 0.7
-            let targetVolume: Float = 0.7
-            player?.volume = targetVolume
-            volumeSlider.value = targetVolume
-            updateVolumeIcon(volume: targetVolume)
+            // Ensure volume is reasonable when unmuting
+            if player.volume < 0.1 {
+                player.volume = 0.7
+                volumeSlider.value = 0.7
+            }
+            updateVolumeIcon(volume: player.volume)
         }
-        send(.volumeChange(volume: Double(player?.volume ?? 0)))
+
+        send(.volumeChange(volume: Double(player.volume)))
         showControlsTemporarily()
     }
 
     @objc private func handleVolumeChange(sender: UISlider) {
         let vol = sender.value
         player?.volume = vol
+        // Unmute when user adjusts volume slider
+        if vol > 0 {
+            player?.isMuted = false
+        }
         updateVolumeIcon(volume: vol)
         send(.volumeChange(volume: Double(vol)))
     }

@@ -1027,6 +1027,8 @@ private final class MediaPreviewVideoController: UIViewController, IndexedPrevie
         player.update(config: config)
         // Don't show close button - MediaPreviewViewController already has one
         player.setShowCloseButton(false)
+        // Don't show fullscreen button - preview is already fullscreen
+        player.setShowFullscreenButton(false)
         self.player = player
 
         // Add player view

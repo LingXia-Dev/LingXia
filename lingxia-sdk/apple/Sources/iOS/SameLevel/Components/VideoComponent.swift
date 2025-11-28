@@ -57,6 +57,16 @@ final class VideoComponent: NSObject, LxNativeComponent {
     }
 
     // MARK: - Helpers
+    private static func url(from string: String) -> URL? {
+        if let url = URL(string: string), url.scheme != nil {
+            return url
+        }
+        if string.hasPrefix("/") {
+            return URL(fileURLWithPath: string)
+        }
+        return nil
+    }
+
     private enum CommandName: String {
         case play
         case pause
@@ -91,16 +101,19 @@ final class VideoComponent: NSObject, LxNativeComponent {
             }
         }
 
-        if config.source == nil, let srcString = props["src"] as? String, let url = URL(string: srcString) {
+        if config.source == nil, let srcString = props["src"] as? String, let url = url(from: srcString) {
             config.src = url
         }
 
-        if let poster = props["poster"] as? String, let url = URL(string: poster) {
+        if let poster = props["poster"] as? String, let url = url(from: poster) {
             config.poster = url
         }
 
         if let autoplay = props["autoplay"] as? Bool {
             config.autoplay = autoplay
+        }
+        if let loop = props["loop"] as? Bool {
+            config.loop = loop
         }
         if let muted = props["muted"] as? Bool {
             config.muted = muted
