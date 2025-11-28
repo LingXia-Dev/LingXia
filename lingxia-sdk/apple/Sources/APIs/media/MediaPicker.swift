@@ -709,17 +709,28 @@ final class MediaPickerViewController: UIViewController, UICollectionViewDataSou
         }
         let asset = assets[indexPath.item]
         let id = asset.localIdentifier
+
+        var indexPathsToReload = [indexPath]
+
         if selected.contains(id) {
             selected.remove(id)
         } else {
             if selected.count >= maxCount {
-                // remove oldest selected
-                if let first = selected.first { selected.remove(first) }
+                // The picker is at capacity. To make room for the new selection,
+                // remove one of the existing items. Since `selected` is a Set,
+                // the item that is removed is not guaranteed to be the "oldest".
+                if let idToRemove = selected.first {
+                    selected.remove(idToRemove)
+                    // We also need to reload the cell for the item that was just removed.
+                    if let index = assets.firstIndex(where: { $0.localIdentifier == idToRemove }) {
+                        indexPathsToReload.append(IndexPath(item: index, section: 0))
+                    }
+                }
             }
             selected.insert(id)
         }
         updateDoneLabel()
-        collectionView.reloadItems(at: [indexPath])
+        collectionView.reloadItems(at: indexPathsToReload)
     }
 
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {

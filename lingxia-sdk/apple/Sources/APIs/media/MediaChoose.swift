@@ -156,12 +156,14 @@ extension LxAppMedia {
 
     private static func openAlbum(presenter: UIViewController, mode: String, maxCount: UInt32, callbackId: UInt64) {
 
+        let selectionLimit = mode.lowercased() == "video" ? 1 : maxCount
+
         // Check if PHPickerViewController is available (iOS 14+)
         if #available(iOS 14.0, *) {
             handlePhotoLibraryAccess(
                 presenter: presenter,
                 mode: mode,
-                maxCount: maxCount,
+                maxCount: selectionLimit,
                 callbackId: callbackId
             )
         } else {
