@@ -12,11 +12,11 @@ import android.view.Gravity
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
-import android.view.MotionEvent
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.ImageView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowInsetsControllerCompat
@@ -24,7 +24,6 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.color.MaterialColors
-import com.lingxia.lxapp.APIs.media.ZoomImageView
 import java.io.File
 import java.io.IOException
 import kotlin.math.roundToInt
@@ -43,6 +42,7 @@ class PdfViewerActivity : AppCompatActivity() {
     private lateinit var toolbar: MaterialToolbar
     private lateinit var rootLayout: LinearLayout
     private lateinit var contentFrame: FrameLayout
+    private lateinit var zoomContainer: ZoomableRecyclerViewContainer
     private lateinit var recyclerView: RecyclerView
     private lateinit var layoutManager: LinearLayoutManager
     private lateinit var overlayContainer: LinearLayout
@@ -54,7 +54,6 @@ class PdfViewerActivity : AppCompatActivity() {
     private var currentIndex: Int = 0
     private var showMenu: Boolean = true
     private var filePath: String = ""
-    private var anyZoomed: Boolean = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -153,23 +152,24 @@ class PdfViewerActivity : AppCompatActivity() {
             )
         }
 
+        // Wrap RecyclerView in ZoomableRecyclerViewContainer for whole-screen zoom
+        zoomContainer = ZoomableRecyclerViewContainer(this).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        }
+
         recyclerView = RecyclerView(this).apply {
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
             )
             overScrollMode = RecyclerView.OVER_SCROLL_IF_CONTENT_SCROLLS
-            // Help child views receive pinch gestures by disallowing parent intercept when multi-touch
-            setOnTouchListener { v, ev ->
-                val multiTouch = ev.pointerCount > 1
-                if (multiTouch || anyZoomed) {
-                    v.parent?.requestDisallowInterceptTouchEvent(true)
-                }
-                false
-            }
         }
 
-        contentFrame.addView(recyclerView)
+        zoomContainer.addView(recyclerView)
+        contentFrame.addView(zoomContainer)
 
         overlayContainer = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -349,16 +349,15 @@ class PdfViewerActivity : AppCompatActivity() {
         override fun getItemCount(): Int = pageCount
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PageVH {
-            val iv = ZoomImageView(parent.context).apply {
+            val iv = ImageView(parent.context).apply {
                 layoutParams = RecyclerView.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 )
-                adjustViewBounds = false
-                scaleType = android.widget.ImageView.ScaleType.MATRIX
+                adjustViewBounds = true
+                scaleType = ImageView.ScaleType.FIT_CENTER
                 contentDescription = "PDF page preview"
                 setBackgroundColor(Color.TRANSPARENT)
-                setOnScaleStateListener { zoomed -> anyZoomed = zoomed }
             }
             return PageVH(iv)
         }
@@ -402,10 +401,9 @@ class PdfViewerActivity : AppCompatActivity() {
         override fun onViewRecycled(holder: PageVH) {
             super.onViewRecycled(holder)
             holder.image.setImageDrawable(null)
-            anyZoomed = false
         }
 
-        inner class PageVH(val image: ZoomImageView) : RecyclerView.ViewHolder(image)
+        inner class PageVH(val image: ImageView) : RecyclerView.ViewHolder(image)
     }
     
 }
