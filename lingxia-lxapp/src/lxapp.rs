@@ -1218,20 +1218,31 @@ pub fn init(runtime: Platform) -> Option<String> {
             let home_lxapp_appid = config.home_lxapp_appid.clone();
             let home_lxapp_version = &config.home_lxapp_version;
 
-            if !metadata::exists(&home_lxapp_appid, ReleaseType::Release).unwrap_or(false)
-                && let Err(e) = crate::update::UpdateManager::install_from_assets(
+            // Check if installation is needed before creating LxApp
+            // This ensures lxapp.json is only loaded once
+            let needs_install = !metadata::exists(&home_lxapp_appid, ReleaseType::Release)
+                .unwrap_or(false)
+                || metadata::get(&home_lxapp_appid, ReleaseType::Release)
+                    .ok()
+                    .flatten()
+                    .map(|rec| rec.version_string())
+                    .as_deref()
+                    != Some(home_lxapp_version);
+
+            if needs_install {
+                if let Err(e) = crate::update::UpdateManager::install_from_assets(
                     runtime_arc.clone(),
                     &home_lxapp_appid,
                     home_lxapp_version,
-                )
-            {
-                error!("Failed to install home LxApp: {}", e);
-                return None;
+                ) {
+                    error!("Failed to install home LxApp: {}", e);
+                    return None;
+                }
             }
 
             let executor = LxAppExecutor::init(LXAPP_STACK_MAX);
 
-            // Create the home LxApp instance
+            // Create the home LxApp instance (loads lxapp.json once)
             let mut home_lxapp = LxApp::new_as_home(
                 home_lxapp_appid.clone(),
                 runtime_arc.clone(),
@@ -1241,26 +1252,17 @@ pub fn init(runtime: Platform) -> Option<String> {
             let initial_route = home_lxapp.config.get_initial_route();
             home_lxapp.state.lock().unwrap().startup_options.path = initial_route;
 
-            // Check if home lxapp needs updating after loading its configuration
-            if home_lxapp.is_debug_enabled()
-                || metadata::get(&home_lxapp_appid, ReleaseType::Release)
-                    .ok()
-                    .flatten()
-                    .map(|rec| rec.version_string())
-                    .as_deref()
-                    != Some(home_lxapp_version)
-            {
+            // In debug mode, always reinstall from assets for hot-reload during development
+            if home_lxapp.is_debug_enabled() {
                 if let Err(e) = crate::update::UpdateManager::install_from_assets(
                     runtime_arc.clone(),
                     &home_lxapp_appid,
                     home_lxapp_version,
                 ) {
-                    error!("Failed to install home LxApp: {}", e);
-                    return None;
+                    error!("Failed to reinstall home LxApp in debug mode: {}", e);
                 }
-                if let Err(e) = home_lxapp.load_config() {
-                    error!("Home LxApp failed to load config: {}", e);
-                }
+                // Reload config after reinstall
+                let _ = home_lxapp.load_config();
             }
 
             // Create LxApps manager

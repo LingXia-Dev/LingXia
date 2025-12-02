@@ -31,8 +31,6 @@ pub struct AppConfig {
     pub home_lxapp_version: String, // Version of the home lx application
 }
 
-static GLOBAL_APP_CONFIG: OnceLock<AppConfig> = OnceLock::new();
-
 impl AppConfig {
     /// Read, parse and validate app.json from the assets directory.
     pub(crate) fn load(controller: Arc<Platform>) -> Result<Self, LxAppError> {
@@ -49,8 +47,6 @@ impl AppConfig {
 
         // Validate the config immediately
         Self::validate_config(&config)?;
-
-        let _ = GLOBAL_APP_CONFIG.set(config.clone());
 
         Ok(config)
     }
@@ -103,9 +99,5 @@ impl AppConfig {
         })?;
 
         Ok(())
-    }
-
-    pub fn global() -> Option<&'static AppConfig> {
-        GLOBAL_APP_CONFIG.get()
     }
 }
