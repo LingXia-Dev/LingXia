@@ -1,16 +1,23 @@
-import { UIAbility, Want } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 import { LxApp, LingxiaBaseAbility } from 'lingxia';
+import { lingxiaRegisterExtensions } from 'liblingxia.so';
 
 const DOMAIN = 0x0000;
 
 export default class EntryAbility extends LingxiaBaseAbility {
+  /**
+   * Register custom native extensions.
+   */
+  protected registerExtensions(): void {
+    lingxiaRegisterExtensions();
+  }
+
   onWindowStageCreate(windowStage: window.WindowStage): void {
-    // Main window is created, set main page for this ability
+    super.onWindowStageCreate(windowStage);
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onWindowStageCreate');
 
-    // Initialize LxApp with context and windowStage (includes status bar setup)
+    // Initialize LxApp with context and windowStage
     LxApp.initialize(this.context, windowStage);
 
     // Enable WebView debugging
@@ -26,7 +33,6 @@ export default class EntryAbility extends LingxiaBaseAbility {
   }
 
   onWindowStageDestroy(): void {
-    // Main window is destroyed, release UI related resources
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onWindowStageDestroy');
   }
 }
