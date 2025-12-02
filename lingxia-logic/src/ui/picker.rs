@@ -1,7 +1,7 @@
 use futures::stream;
-use lingxia_lxapp::{LxApp, lx};
 use lingxia_messaging::{CallbackResult, get_stream_callback, remove_callback};
 use lingxia_platform::{PickerType, UserFeedback};
+use lxapp::{LxApp, lx};
 use rong::{
     FromJSObj, IntoJSAsyncIteratorExt, IntoJSValue, JSContext, JSFunc, JSObject, JSResult, JSValue,
     RongJSError,

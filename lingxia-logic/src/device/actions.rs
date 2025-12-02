@@ -1,6 +1,6 @@
-use lingxia_lxapp::lx::{self, fast_api};
-use lingxia_lxapp::{LxApp, LxAppError};
 use lingxia_platform::Device;
+use lxapp::lx::{self, fast_api};
+use lxapp::{LxApp, LxAppError};
 use rong::{FromJSObj, JSContext, JSFunc, JSResult, RongJSError};
 use serde::Deserialize;
 use std::sync::Arc;

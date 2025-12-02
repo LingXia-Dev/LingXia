@@ -1,5 +1,5 @@
-use lingxia_lxapp::{LxApp, lx};
 use lingxia_platform::{AppRuntime, DocumentInteraction, OpenDocumentRequest};
+use lxapp::{LxApp, lx};
 use rong::{FromJSObj, JSContext, JSFunc, JSResult, RongJSError};
 
 #[derive(FromJSObj)]

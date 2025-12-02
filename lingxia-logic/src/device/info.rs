@@ -1,6 +1,6 @@
-use lingxia_lxapp::LxApp;
-use lingxia_lxapp::lx;
 use lingxia_platform::{Device, DeviceInfo, ScreenInfo};
+use lxapp::LxApp;
+use lxapp::lx;
 use rong::{IntoJSObj, JSContext, JSFunc, JSResult};
 
 #[derive(Debug, Clone, IntoJSObj)]

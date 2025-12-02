@@ -11,7 +11,7 @@ categories = ["web-programming", "api-bindings"]
 rong = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-lingxia-lxapp = { path = "../lingxia-lxapp" }
+lxapp = { path = "../lingxia-lxapp", package = "lingxia-lxapp" }
 lingxia-platform = { path = "../lingxia-platform" }
 lingxia-messaging = { path = "../lingxia-messaging" }
 futures = { workspace = true }

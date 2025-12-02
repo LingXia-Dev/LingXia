@@ -1,5 +1,5 @@
-use lingxia_lxapp::{LxApp, lx};
 use lingxia_platform::{Device, PopupPosition, PopupRequest, ScreenInfo};
+use lxapp::{LxApp, lx};
 use rong::{FromJSObj, JSContext, JSFunc, JSObject, JSResult, RongJSError};
 
 #[derive(FromJSObj)]

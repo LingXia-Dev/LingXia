@@ -1,4 +1,4 @@
-use lingxia_lxapp::LxApp;
+use lxapp::LxApp;
 use rong::{JSContext, JSObject, JSResult};
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {

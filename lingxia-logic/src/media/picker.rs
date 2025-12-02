@@ -1,10 +1,10 @@
 use crate::ui::present_action_sheet;
-use lingxia_lxapp::{LxApp, lx};
 use lingxia_messaging::{CallbackResult, get_callback};
 use lingxia_platform::{
     AppRuntime, CameraFacing, ChooseMediaMode, ChooseMediaRequest, MediaInteraction, MediaKind,
     MediaSource, ToastIcon, ToastOptions, ToastPosition, UserFeedback,
 };
+use lxapp::{LxApp, lx};
 use rong::{
     FromJSObj, JSContext, JSEngineValue, JSFunc, JSObject, JSResult, RongJSError,
     function::Optional,
@@ -214,8 +214,8 @@ async fn choose_media(
                 .map_err(|e| RongJSError::Error(format!("cache unavailable: {}", e)))?;
 
             match cache.resolve_path_with_ext(&key, ext) {
-                lingxia_lxapp::ResolveResult::Exists(path) => path.to_string_lossy().to_string(),
-                lingxia_lxapp::ResolveResult::NonExists(path) => {
+                lxapp::ResolveResult::Exists(path) => path.to_string_lossy().to_string(),
+                lxapp::ResolveResult::NonExists(path) => {
                     let media_kind = match kind.as_str() {
                         "video" => MediaKind::Video,
                         "image" => MediaKind::Image,

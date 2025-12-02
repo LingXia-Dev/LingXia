@@ -1,5 +1,5 @@
-use lingxia_lxapp::{LxApp, lx};
 use lingxia_platform::{CompressImageRequest, MediaRuntime};
+use lxapp::{LxApp, lx};
 use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
 use std::fs;
 use std::path::{Path, PathBuf};

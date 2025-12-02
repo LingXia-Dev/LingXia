@@ -1,4 +1,4 @@
-use lingxia_lxapp::{LxApp, lx};
+use lxapp::{LxApp, lx};
 use rong::{JSContext, JSContextService, JSFunc, JSResult, RongJSError};
 use rong_modules::storage::{Storage as RongStorage, StorageOptions};
 

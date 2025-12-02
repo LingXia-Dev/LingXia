@@ -1,4 +1,4 @@
-use lingxia_lxapp::{LxApp, NavigationType, lx};
+use lxapp::{LxApp, NavigationType, lx};
 use rong::{FromJSObj, JSContext, JSFunc, JSObject, JSResult, RongJSError};
 
 #[derive(FromJSObj)]

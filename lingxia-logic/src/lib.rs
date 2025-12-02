@@ -1,4 +1,4 @@
-use lingxia_lxapp::lx::{LxLogicExtension, register_logic_extension};
+use lxapp::lx::{LxLogicExtension, register_logic_extension};
 use rong::{JSContext, JSResult};
 
 mod device;

@@ -1,5 +1,5 @@
-use lingxia_lxapp::{LxApp, lx};
 use lingxia_platform::AppRuntime;
+use lxapp::{LxApp, lx};
 use rong::{IntoJSObj, JSContext, JSFunc, JSResult};
 
 /// AppBase information

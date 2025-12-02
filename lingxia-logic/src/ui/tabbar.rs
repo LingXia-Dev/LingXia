@@ -1,5 +1,5 @@
-use lingxia_lxapp::{LxApp, lx};
 use lingxia_platform::UIUpdate;
+use lxapp::{LxApp, lx};
 use rong::{FromJSObj, JSContext, JSFunc, JSResult};
 use std::sync::Arc;
 

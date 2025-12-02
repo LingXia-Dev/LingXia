@@ -1,5 +1,5 @@
 use crate::update;
-use lingxia_lxapp::{self, LxApp, LxAppStartupOptions, ReleaseType, lx};
+use lxapp::{self, LxApp, LxAppStartupOptions, ReleaseType, lx};
 use rong::{FromJSObj, JSContext, JSFunc, JSResult, RongJSError};
 
 #[derive(FromJSObj)]
@@ -24,7 +24,7 @@ async fn navigate_to_lxapp(ctx: JSContext, options: NavigateToOptions) -> JSResu
     let release_type = options
         .env_version
         .as_deref()
-        .map(lingxia_lxapp::parse_env_release_type)
+        .map(lxapp::parse_env_release_type)
         .unwrap_or(ReleaseType::Release);
 
     if options.env_version.is_some() {

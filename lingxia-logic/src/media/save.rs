@@ -1,7 +1,7 @@
-use lingxia_lxapp::{LxApp, lx};
 use lingxia_platform::{
     MediaInteraction, SaveMediaRequest, ToastIcon, ToastOptions, ToastPosition, UserFeedback,
 };
+use lxapp::{LxApp, lx};
 use rong::{FromJSObj, JSContext, JSFunc, JSResult, RongJSError};
 
 #[derive(FromJSObj)]
