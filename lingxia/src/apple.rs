@@ -103,11 +103,13 @@ mod bridge {
         #[swift_bridge(swift_name = "onLxappClosed")]
         fn on_lxapp_closed(appid: &str) -> i32;
 
+        /// Note: Returns non-optional because swift-bridge has issues with Option<struct with String fields>
         #[swift_bridge(swift_name = "getLxAppInfo")]
-        fn get_lxapp_info(appid: &str) -> Option<LxAppInfo>;
+        fn get_lxapp_info(appid: &str) -> LxAppInfo;
 
+        /// Note: Returns non-optional because swift-bridge has issues with Option<struct with String fields>
         #[swift_bridge(swift_name = "getNavigationBarState")]
-        fn get_navigation_bar_state(appid: &str, path: &str) -> Option<NavigationBarState>;
+        fn get_navigation_bar_state(appid: &str, path: &str) -> NavigationBarState;
 
         #[swift_bridge(swift_name = "getTabBar")]
         fn get_tab_bar(appid: &str) -> Option<TabBar>;
@@ -265,19 +267,26 @@ pub fn find_webview(appid: &str, path: &str) -> usize {
 }
 
 /// Get LxApp information
-pub fn get_lxapp_info(appid: &str) -> Option<bridge::LxAppInfo> {
-    lxapp::try_get(appid).map(|lxapp| {
+/// Returns default empty values if app not found (swift-bridge Option<struct with String> bug workaround)
+pub fn get_lxapp_info(appid: &str) -> bridge::LxAppInfo {
+    if let Some(lxapp) = lxapp::try_get(appid) {
         let lxapp_info = lxapp.get_lxapp_info();
         bridge::LxAppInfo {
             app_name: lxapp_info.app_name,
             cache_dir: lxapp.user_cache_dir.to_string_lossy().into_owned(),
         }
-    })
+    } else {
+        bridge::LxAppInfo {
+            app_name: String::new(),
+            cache_dir: String::new(),
+        }
+    }
 }
 
 /// Get NavigationBar state
-pub fn get_navigation_bar_state(appid: &str, path: &str) -> Option<bridge::NavigationBarState> {
-    lxapp::try_get(appid).map(|lxapp| {
+/// Returns default values if app not found (swift-bridge Option<struct with String> bug workaround)
+pub fn get_navigation_bar_state(appid: &str, path: &str) -> bridge::NavigationBarState {
+    if let Some(lxapp) = lxapp::try_get(appid) {
         let nav_state = lxapp.get_navbar_state(path);
         let bg_color = parse_color_to_u32(&nav_state.navigationBarBackgroundColor, 0xFFFFFFFF);
 
@@ -289,7 +298,16 @@ pub fn get_navigation_bar_state(appid: &str, path: &str) -> Option<bridge::Navig
             show_back_button: nav_state.show_back_button,
             show_home_button: nav_state.show_home_button,
         }
-    })
+    } else {
+        bridge::NavigationBarState {
+            background_color: 0xFFFFFFFF,
+            text_style: String::new(),
+            title_text: String::new(),
+            show_navbar: true,
+            show_back_button: true,
+            show_home_button: false,
+        }
+    }
 }
 
 /// Get TabBar state
