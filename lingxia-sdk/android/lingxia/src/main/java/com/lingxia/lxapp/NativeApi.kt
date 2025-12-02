@@ -1,6 +1,8 @@
 package com.lingxia.lxapp
 
 import android.content.res.AssetManager
+import android.util.Log
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Centralized Native API declarations
@@ -10,16 +12,27 @@ import android.content.res.AssetManager
  * for the FFI interface.
  */
 object NativeApi {
+    private const val TAG = "NativeApi"
+    private val libraryLoaded = AtomicBoolean(false)
+    private val loadAttempted = AtomicBoolean(false)
 
-    private var isLibraryLoaded = false
-
-    init {
-        synchronized(this) {
-            if (!isLibraryLoaded) {
+    @JvmStatic
+    fun ensureLoaded(): Boolean {
+        if (libraryLoaded.get()) return true
+        if (loadAttempted.compareAndSet(false, true)) {
+            runCatching {
                 System.loadLibrary("lingxia")
-                isLibraryLoaded = true
+                libraryLoaded.set(true)
+                Log.d(TAG, "Native library 'lingxia' loaded")
+            }.onFailure { error ->
+                Log.e(TAG, "Failed to load native library 'lingxia'", error)
             }
         }
+        return libraryLoaded.get()
+    }
+
+    init {
+        ensureLoaded()
     }
 
     // UI Event Type Constants
