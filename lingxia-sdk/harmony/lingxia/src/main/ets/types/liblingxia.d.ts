@@ -261,4 +261,10 @@ declare module 'liblingxia.so' {
    * Notify native layer that a WebView controller finished destruction.
    */
   export function onWebviewControllerDestroyed(webtag: string): boolean;
+
+  /**
+   * Register user extensions (cloud provider, JS extensions, etc.)
+   * Must be called before lxappInit()
+   */
+  export function lingxiaRegisterExtensions(): void;
 }

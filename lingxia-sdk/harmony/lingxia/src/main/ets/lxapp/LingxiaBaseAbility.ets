@@ -43,6 +43,13 @@ const BACK_KEY_CODES: number[] = [2, 4]; // Known back key codes (KEY_BACK, KEYC
 export class LingxiaBaseAbility extends UIAbility {
   private isBackHandling: boolean = false;
   private lastBackHandledAt: number = 0;
+  private static extensionsRegistered: boolean = false;
+
+  /**
+   * Override to register custom native extensions.
+   */
+  protected registerExtensions(): void {
+  }
 
   private handleBackPressInternal(): boolean {
     const now = Date.now();
@@ -104,7 +111,11 @@ export class LingxiaBaseAbility extends UIAbility {
   }
 
   onWindowStageCreate(windowStage: window.WindowStage): void {
-    super.onWindowStageCreate(windowStage);
+    // Register extensions (once only)
+    if (!LingxiaBaseAbility.extensionsRegistered) {
+      this.registerExtensions();
+      LingxiaBaseAbility.extensionsRegistered = true;
+    }
     this.registerWindowBackInterceptor(windowStage);
   }
 
