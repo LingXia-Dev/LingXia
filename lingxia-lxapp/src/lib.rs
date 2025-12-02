@@ -22,7 +22,7 @@ pub use event::{
     PageServiceEvent,
 };
 pub use lxapp::{
-    LxApp, ReleaseType, config::LxAppInfo, get, get_current_lxapp, init, on_low_memory, tabbar,
+    LxApp, ReleaseType, config::LxAppInfo, get_current_lxapp, init, on_low_memory, tabbar, try_get,
 };
 pub use page::NavigationType;
 pub use startup::{LxAppStartupOptions, Scene, parse_env_release_type};

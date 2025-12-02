@@ -1312,29 +1312,22 @@ pub fn init(runtime: Platform) -> Option<String> {
     }
 }
 
-/// Get a specific LxApp instance by appid
-///
-/// If the LxApp with the given appid exists, it returns a reference to it.
-///
-/// # Arguments
-/// * `appid` - The ID of the lxapp to get or create
-///
-/// # Returns
-/// A thread-safe reference to the LxApp
-///
-/// # Panics
-/// Panics if `LxApps` is not initialized or LxApp doesn't exist
-pub fn get(appid: String) -> Arc<LxApp> {
-    let manager = LXAPPS_MANAGER.get().expect("LxApps not initialized");
-    if let Some(app_arc) = manager.lxapps.get(&appid) {
-        return app_arc.clone();
-    }
-    panic!("Not found lxapp '{}'", appid);
-}
-
 /// Get access to the LxApps manager for navigation stack operations
 pub(crate) fn get_lxapps_manager() -> Option<Arc<LxApps>> {
     LXAPPS_MANAGER.get().cloned()
+}
+
+/// Try to get a specific LxApp instance by lxappid
+pub fn try_get(appid: &str) -> Option<Arc<LxApp>> {
+    LXAPPS_MANAGER
+        .get()
+        .and_then(|manager| manager.lxapps.get(appid).map(|lxapp| lxapp.clone()))
+}
+
+/// Internal helper: get LxApp by appid, panics if not found.
+/// Only for use within lingxia-lxapp where LxApp is known to exist.
+pub(crate) fn get(appid: String) -> Arc<LxApp> {
+    try_get(&appid).expect("LxApp not found")
 }
 
 /// Triggers memory cleanup for LxApps.

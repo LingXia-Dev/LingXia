@@ -57,7 +57,13 @@ pub async fn ensure_first_install(
 /// Spawn a background task to check cloud updates for the given app and pre-download newer packages.
 pub fn spawn_background_update_check(target_appid: String, release_type: ReleaseType) {
     let _ = service_executor::spawn_async(async move {
-        let lxapp = lingxia_lxapp::get(target_appid.clone());
+        let Some(lxapp) = lxapp::try_get(&target_appid) else {
+            warn!(
+                "LxApp '{}' not found for background update check",
+                target_appid
+            );
+            return;
+        };
         let manager = UpdateManager::new(lxapp.clone());
 
         let current_version = lxapp.current_version();
