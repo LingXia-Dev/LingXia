@@ -4,7 +4,7 @@ use jni::sys::{jboolean, jint, jlong};
 use jni::{JNIEnv, JavaVM};
 use lingxia_messaging::invoke_callback;
 use lingxia_platform::CachedClass;
-use log::{error, info};
+use log::{error, info, warn};
 use lxapp::{LxAppDelegate, UiEventType, log::LogLevel};
 
 /// Parses a color string (e.g., "#RRGGBB" or "transparent") into an i32 ARGB value for Android.
@@ -108,7 +108,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppInited(
         locale
     );
 
-    let app = match unsafe {
+    let platform = match unsafe {
         lingxia_platform::Platform::from_java(
             &mut env,
             asset_manager.as_raw(),
@@ -117,14 +117,13 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppInited(
             locale,
         )
     } {
-        Ok(app) => app,
+        Ok(platform) => platform,
         Err(_) => {
             return JObject::null().into_raw();
         }
     };
 
-    lingxia_logic::register_logic_runtime();
-    let home_app_id = lxapp::init(app);
+    let home_app_id = crate::init_with_platform(platform);
 
     // Return the home appid
     match home_app_id {
@@ -149,8 +148,9 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onPageShow(
     let appid: String = env.get_string(&appid).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
 
-    let lxapp = lxapp::get(appid);
-    lxapp.on_page_show(path);
+    if let Some(lxapp) = lxapp::try_get(&appid) {
+        lxapp.on_page_show(path);
+    }
 }
 
 #[unsafe(no_mangle)]
@@ -189,7 +189,10 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppClosed(
 ) -> jint {
     let appid: String = env.get_string(&appid).unwrap().into();
 
-    let lxapp = lxapp::get(appid.clone());
+    let Some(lxapp) = lxapp::try_get(&appid) else {
+        warn!("Received close event for unknown lxapp: {}", appid);
+        return 0;
+    };
     lxapp.on_lxapp_closed();
     0
 }
@@ -206,7 +209,9 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getNavigationBarState<'a
     let path: String = env.get_string(&path).unwrap().into();
 
     // Get the lxapp instance
-    let lxapp = lxapp::get(appid.clone());
+    let Some(lxapp) = lxapp::try_get(&appid) else {
+        return JObject::null();
+    };
 
     // Get navigation bar state using new API
     let nav_state = lxapp.get_navbar_state(&path);
@@ -275,7 +280,9 @@ pub extern "C" fn Java_com_lingxia_lxapp_NativeApi_onUiEvent(
         }
     };
 
-    let lxapp = lxapp::get(appid);
+    let Some(lxapp) = lxapp::try_get(&appid) else {
+        return 0;
+    };
     if lxapp.on_ui_event(ui_event_type, data_str) {
         1
     } else {
@@ -294,8 +301,9 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppOpened<'a>(
     let appid: String = env.get_string(&appid).unwrap().into();
     let path: String = env.get_string(&path).unwrap().into();
 
-    let lxapp = lxapp::get(appid.clone());
-    let resolved_path = lxapp.on_lxapp_opened(path);
+    let resolved_path = lxapp::try_get(&appid)
+        .map(|lxapp| lxapp.on_lxapp_opened(path))
+        .unwrap_or_default();
 
     match env.new_string(&resolved_path) {
         Ok(jstring) => jstring,
@@ -317,7 +325,9 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getLxAppInfo<'a>(
     appid: JString<'a>,
 ) -> JObject<'a> {
     let appid: String = env.get_string(&appid).unwrap().into();
-    let lxapp = lxapp::get(appid.clone());
+    let Some(lxapp) = lxapp::try_get(&appid) else {
+        return JObject::null();
+    };
 
     let lxapp_info = lxapp.get_lxapp_info();
 
@@ -356,9 +366,8 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getTabBarState<'a>(
     appid: JString<'a>,
 ) -> JObject<'a> {
     let appid: String = env.get_string(&appid).unwrap().into();
-    let lxapp = lxapp::get(appid.clone());
 
-    let tab_bar_config = match lxapp.get_tabbar() {
+    let tab_bar_config = match lxapp::try_get(&appid).and_then(|lxapp| lxapp.get_tabbar()) {
         Some(config) => config,
         None => {
             return JObject::null();

@@ -1,11 +1,11 @@
 [workspace]
 members = [
-    "lingxia-lib",
     "lingxia-lxapp",
     "lingxia-webview",
     "lingxia-platform",
     "lingxia-logic",
     "lingxia-messaging",
+    "lingxia",
 ]
 resolver = "2"
 
@@ -26,5 +26,7 @@ rong_modules = { path = "../starfire/rong_modules", features=["default", "storag
 
 [profile.release]
 opt-level = 'z'
-lto = true
+# LTO disabled because we need to link to prebuilt static library (lingxia-cloud)
+# that doesn't contain LLVM bitcode. Size optimization still achieved via opt-level.
+lto = false
 codegen-units = 1

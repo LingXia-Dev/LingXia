@@ -104,10 +104,10 @@ mod bridge {
         fn on_lxapp_closed(appid: &str) -> i32;
 
         #[swift_bridge(swift_name = "getLxAppInfo")]
-        fn get_lxapp_info(appid: &str) -> LxAppInfo;
+        fn get_lxapp_info(appid: &str) -> Option<LxAppInfo>;
 
         #[swift_bridge(swift_name = "getNavigationBarState")]
-        fn get_navigation_bar_state(appid: &str, path: &str) -> NavigationBarState;
+        fn get_navigation_bar_state(appid: &str, path: &str) -> Option<NavigationBarState>;
 
         #[swift_bridge(swift_name = "getTabBar")]
         fn get_tab_bar(appid: &str) -> Option<TabBar>;
@@ -201,20 +201,21 @@ pub fn lxapp_init(data_dir: &str, cache_dir: &str, locale: &str) -> Option<Strin
         }
     };
 
-    lingxia_logic::register_logic_runtime();
-    lxapp::init(platform)
+    crate::init_with_platform(platform)
 }
 
 /// Notify that a page is being shown
 pub fn on_page_show(appid: &str, path: &str) {
-    let lxapp = lxapp::get(appid.to_string());
-    lxapp.on_page_show(path.to_string());
+    if let Some(lxapp) = lxapp::try_get(appid) {
+        lxapp.on_page_show(path.to_string());
+    }
 }
 
 /// Notify that LxApp was closed
 pub fn on_lxapp_closed(appid: &str) -> i32 {
-    let lxapp = lxapp::get(appid.to_string());
-    lxapp.on_lxapp_closed();
+    if let Some(lxapp) = lxapp::try_get(appid) {
+        lxapp.on_lxapp_closed();
+    }
     0
 }
 
@@ -227,8 +228,9 @@ pub fn on_ui_event(appid: &str, event_type: bridge::UiEventType, data: &str) -> 
         bridge::UiEventType::BackPress => UiEventType::BackPress,
     };
 
-    let lxapp = lxapp::get(appid.to_string());
-    lxapp.on_ui_event(ui_event_type, data.to_string())
+    lxapp::try_get(appid)
+        .map(|lxapp| lxapp.on_ui_event(ui_event_type, data.to_string()))
+        .unwrap_or(false)
 }
 
 /// Get current active LxApp ID and path from Rust stack
@@ -242,8 +244,9 @@ pub fn get_current_lxapp() -> bridge::CurrentLxApp {
 
 /// Notify that LxApp was opened
 pub fn on_lxapp_opened(appid: &str, path: &str) -> String {
-    let lxapp = lxapp::get(appid.to_string());
-    lxapp.on_lxapp_opened(path.to_string())
+    lxapp::try_get(appid)
+        .map(|lxapp| lxapp.on_lxapp_opened(path.to_string()))
+        .unwrap_or_default()
 }
 
 /// Find a WebView for the specified app and path
@@ -262,70 +265,70 @@ pub fn find_webview(appid: &str, path: &str) -> usize {
 }
 
 /// Get LxApp information
-pub fn get_lxapp_info(appid: &str) -> bridge::LxAppInfo {
-    let lxapp = lxapp::get(appid.to_string());
-    let lxapp_info = lxapp.get_lxapp_info();
-
-    bridge::LxAppInfo {
-        app_name: lxapp_info.app_name,
-        cache_dir: lxapp.user_cache_dir.to_string_lossy().into_owned(),
-    }
+pub fn get_lxapp_info(appid: &str) -> Option<bridge::LxAppInfo> {
+    lxapp::try_get(appid).map(|lxapp| {
+        let lxapp_info = lxapp.get_lxapp_info();
+        bridge::LxAppInfo {
+            app_name: lxapp_info.app_name,
+            cache_dir: lxapp.user_cache_dir.to_string_lossy().into_owned(),
+        }
+    })
 }
 
 /// Get NavigationBar state
-pub fn get_navigation_bar_state(appid: &str, path: &str) -> bridge::NavigationBarState {
-    let lxapp = lxapp::get(appid.to_string());
-    let nav_state = lxapp.get_navbar_state(path);
+pub fn get_navigation_bar_state(appid: &str, path: &str) -> Option<bridge::NavigationBarState> {
+    lxapp::try_get(appid).map(|lxapp| {
+        let nav_state = lxapp.get_navbar_state(path);
+        let bg_color = parse_color_to_u32(&nav_state.navigationBarBackgroundColor, 0xFFFFFFFF);
 
-    let bg_color = parse_color_to_u32(&nav_state.navigationBarBackgroundColor, 0xFFFFFFFF);
-
-    bridge::NavigationBarState {
-        background_color: bg_color,
-        text_style: nav_state.navigationBarTextStyle,
-        title_text: nav_state.navigationBarTitleText,
-        show_navbar: nav_state.show_navbar,
-        show_back_button: nav_state.show_back_button,
-        show_home_button: nav_state.show_home_button,
-    }
+        bridge::NavigationBarState {
+            background_color: bg_color,
+            text_style: nav_state.navigationBarTextStyle,
+            title_text: nav_state.navigationBarTitleText,
+            show_navbar: nav_state.show_navbar,
+            show_back_button: nav_state.show_back_button,
+            show_home_button: nav_state.show_home_button,
+        }
+    })
 }
 
 /// Get TabBar state
 pub fn get_tab_bar(appid: &str) -> Option<bridge::TabBar> {
-    let lxapp = lxapp::get(appid.to_string());
-
-    lxapp.get_tabbar().map(|tabbar| bridge::TabBar {
-        color: parse_color_to_u32(&tabbar.color, 0xFF666666),
-        selected_color: parse_color_to_u32(&tabbar.selectedColor, 0xFF1677FF),
-        background_color: parse_color_to_u32(&tabbar.backgroundColor, 0xFFFFFFFF),
-        border_style: parse_color_to_u32(&tabbar.borderStyle, 0xFFF0F0F0),
-        position: tabbar.position.to_i32(),
-        dimension: tabbar.dimension,
-        items_count: tabbar.list.len() as i32,
-        is_visible: tabbar.is_visible,
-        selected_index: tabbar.selected_index,
+    lxapp::try_get(appid).and_then(|lxapp| {
+        lxapp.get_tabbar().map(|tabbar| bridge::TabBar {
+            color: parse_color_to_u32(&tabbar.color, 0xFF666666),
+            selected_color: parse_color_to_u32(&tabbar.selectedColor, 0xFF1677FF),
+            background_color: parse_color_to_u32(&tabbar.backgroundColor, 0xFFFFFFFF),
+            border_style: parse_color_to_u32(&tabbar.borderStyle, 0xFFF0F0F0),
+            position: tabbar.position.to_i32(),
+            dimension: tabbar.dimension,
+            items_count: tabbar.list.len() as i32,
+            is_visible: tabbar.is_visible,
+            selected_index: tabbar.selected_index,
+        })
     })
 }
 
 /// Get TabBar item by index
 pub fn get_tab_bar_item(appid: &str, index: i32) -> Option<bridge::TabBarItem> {
-    let lxapp = lxapp::get(appid.to_string());
-
-    lxapp.get_tabbar().and_then(|tabbar| {
-        tabbar.get_item(index).map(|item| bridge::TabBarItem {
-            page_path: item.pagePath.clone(),
-            text: item.text.clone().unwrap_or_default(),
-            icon_path: item.iconPath.clone().unwrap_or_default(),
-            selected_icon_path: item.selectedIconPath.clone().unwrap_or_default(),
-            selected: item.selected,
-            group: match &item.group {
-                Some(lxapp::tabbar::TabItemGroup::Start) => bridge::GroupAlignment::Start,
-                Some(lxapp::tabbar::TabItemGroup::End) => bridge::GroupAlignment::End,
-                None => bridge::GroupAlignment::Center,
-            },
-            badge: item.badge.clone().unwrap_or_default(),
-            has_red_dot: item.has_red_dot,
+    lxapp::try_get(appid)
+        .and_then(|lxapp| lxapp.get_tabbar())
+        .and_then(|tabbar| {
+            tabbar.get_item(index).map(|item| bridge::TabBarItem {
+                page_path: item.pagePath.clone(),
+                text: item.text.clone().unwrap_or_default(),
+                icon_path: item.iconPath.clone().unwrap_or_default(),
+                selected_icon_path: item.selectedIconPath.clone().unwrap_or_default(),
+                selected: item.selected,
+                group: match &item.group {
+                    Some(lxapp::tabbar::TabItemGroup::Start) => bridge::GroupAlignment::Start,
+                    Some(lxapp::tabbar::TabItemGroup::End) => bridge::GroupAlignment::End,
+                    None => bridge::GroupAlignment::Center,
+                },
+                badge: item.badge.clone().unwrap_or_default(),
+                has_red_dot: item.has_red_dot,
+            })
         })
-    })
 }
 
 /// Handle AppLink URL by processing the path (Universal Link)

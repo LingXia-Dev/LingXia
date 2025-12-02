@@ -1,32 +1,29 @@
 [package]
-name = "lingxia-lib"
+name = "lingxia"
 version = "0.1.0"
 edition = "2024"
+description = "LingXia framework"
 
 [lib]
-name = "lingxia"
-crate-type = ["staticlib", "cdylib"]
+crate-type = ["rlib", "staticlib"]
 
 [dependencies]
+rong = { workspace = true }
 lxapp = { package = "lingxia-lxapp", path = "../lingxia-lxapp" }
+lingxia-logic = { path = "../lingxia-logic" }
 lingxia-platform = { path = "../lingxia-platform" }
 lingxia-webview = { path = "../lingxia-webview" }
-lingxia-logic = { path = "../lingxia-logic" }
 lingxia-messaging = { path = "../lingxia-messaging" }
-log = "0.4.27"
+log = "0.4"
 
-# Android-specific dependencies (only what's needed for FFI)
 [target.'cfg(target_os = "android")'.dependencies]
 jni = "0.21.1"
 android_logger = "0.15.0"
 
-# Apple-specific dependencies (iOS and macOS)
 [target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
 swift-bridge = "0.1.57"
-log = "0.4.27"
 oslog = "0.2.0"
 
-# HarmonyOS-specific dependencies
 [target.'cfg(target_env = "ohos")'.dependencies]
 ohos_hilog = "0.1.3"
 napi-ohos = "1.1.0"

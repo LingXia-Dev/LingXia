@@ -167,23 +167,22 @@ pub fn lxapp_init(
         return None;
     }
 
-    // Create App instance
-    let app = match lingxia_platform::Platform::new(
+    // Create Platform instance
+    let platform = match lingxia_platform::Platform::new(
         data_dir.to_string(),
         cache_dir.to_string(),
         env,
         resource_manager,
         locale,
     ) {
-        Ok(app) => app,
+        Ok(platform) => platform,
         Err(e) => {
-            log::error!("Failed to create App: {}", e);
+            log::error!("Failed to create Platform: {}", e);
             return None;
         }
     };
 
-    lingxia_logic::register_logic_runtime();
-    lxapp::init(app)
+    crate::init_with_platform(platform)
 }
 
 /// Register custom schemes (must be called before WebEngine initialization)
@@ -200,97 +199,101 @@ pub fn register_custom_schemes() -> bool {
 /// Get LxApp information
 #[napi]
 fn get_lx_app_info(appid: String) -> Option<LxAppInfo> {
-    let lxapp = lxapp::get(appid);
-    let rust_app_info = lxapp.get_lxapp_info();
-
-    Some(LxAppInfo {
-        app_name: rust_app_info.app_name,
-        cache_dir: lxapp.user_cache_dir.to_string_lossy().into_owned(),
+    lxapp::try_get(&appid).map(|lxapp| {
+        let rust_app_info = lxapp.get_lxapp_info();
+        LxAppInfo {
+            app_name: rust_app_info.app_name,
+            cache_dir: lxapp.user_cache_dir.to_string_lossy().into_owned(),
+        }
     })
 }
 
 /// Get complete TabBar state with items array
 #[napi]
 fn get_tab_bar(appid: String) -> Option<TabBarState> {
-    let lxapp = lxapp::get(appid);
+    lxapp::try_get(&appid).and_then(|lxapp| {
+        lxapp.get_tabbar().map(|tabbar| {
+            let items: Vec<TabItem> = tabbar
+                .list
+                .iter()
+                .map(|item| TabItem {
+                    page_path: item.pagePath.clone(),
+                    text: item.text.clone(),
+                    icon_path: item.iconPath.clone(),
+                    selected_icon_path: item.selectedIconPath.clone(),
+                    selected: item.selected,
+                    group: match &item.group {
+                        Some(lxapp::tabbar::TabItemGroup::Start) => 1,
+                        Some(lxapp::tabbar::TabItemGroup::End) => 2,
+                        None => 0,
+                    },
+                    badge: item.badge.clone(),
+                    has_red_dot: Some(item.has_red_dot),
+                })
+                .collect();
 
-    lxapp.get_tabbar().map(|tabbar| {
-        let items: Vec<TabItem> = tabbar
-            .list
-            .iter()
-            .map(|item| TabItem {
-                page_path: item.pagePath.clone(),
-                text: item.text.clone(),
-                icon_path: item.iconPath.clone(),
-                selected_icon_path: item.selectedIconPath.clone(),
-                selected: item.selected,
-                group: match &item.group {
-                    Some(lxapp::tabbar::TabItemGroup::Start) => 1,
-                    Some(lxapp::tabbar::TabItemGroup::End) => 2,
-                    None => 0,
+            TabBarState {
+                color: parse_color_to_u32(&tabbar.color, 0xFF666666),
+                selected_color: parse_color_to_u32(&tabbar.selectedColor, 0xFF1677FF),
+                background_color: parse_color_to_u32(&tabbar.backgroundColor, 0xFFFFFFFF),
+                border_style: parse_color_to_u32(&tabbar.borderStyle, 0xFFF0F0F0),
+                position: match tabbar.position {
+                    lxapp::tabbar::TabBarPosition::Bottom => TabBarPosition::Bottom,
+                    lxapp::tabbar::TabBarPosition::Left => TabBarPosition::Left,
+                    lxapp::tabbar::TabBarPosition::Right => TabBarPosition::Right,
                 },
-                badge: item.badge.clone(),
-                has_red_dot: Some(item.has_red_dot),
-            })
-            .collect();
-
-        TabBarState {
-            color: parse_color_to_u32(&tabbar.color, 0xFF666666),
-            selected_color: parse_color_to_u32(&tabbar.selectedColor, 0xFF1677FF),
-            background_color: parse_color_to_u32(&tabbar.backgroundColor, 0xFFFFFFFF),
-            border_style: parse_color_to_u32(&tabbar.borderStyle, 0xFFF0F0F0),
-            position: match tabbar.position {
-                lxapp::tabbar::TabBarPosition::Bottom => TabBarPosition::Bottom,
-                lxapp::tabbar::TabBarPosition::Left => TabBarPosition::Left,
-                lxapp::tabbar::TabBarPosition::Right => TabBarPosition::Right,
-            },
-            dimension: tabbar.dimension,
-            is_visible: tabbar.is_visible,
-            items,
-            selected_index: tabbar.selected_index,
-        }
+                dimension: tabbar.dimension,
+                is_visible: tabbar.is_visible,
+                items,
+                selected_index: tabbar.selected_index,
+            }
+        })
     })
 }
 
 /// Get page navigation bar state with boolean controls
 #[napi]
-pub fn get_navigation_bar_state(appid: String, path: String) -> NavigationBarState {
-    let lxapp = lxapp::get(appid);
-    let rust_state = lxapp.get_navbar_state(&path);
+pub fn get_navigation_bar_state(appid: String, path: String) -> Option<NavigationBarState> {
+    lxapp::try_get(&appid).map(|lxapp| {
+        let rust_state = lxapp.get_navbar_state(&path);
 
-    NavigationBarState {
-        navigation_bar_background_color: parse_color_to_u32(
-            &rust_state.navigationBarBackgroundColor,
-            0xFFFFFFFF,
-        ),
-        navigation_bar_text_style: rust_state.navigationBarTextStyle,
-        navigation_bar_title_text: rust_state.navigationBarTitleText,
-        show_navbar: rust_state.show_navbar,
-        show_back_button: rust_state.show_back_button,
-        show_home_button: rust_state.show_home_button,
-    }
+        NavigationBarState {
+            navigation_bar_background_color: parse_color_to_u32(
+                &rust_state.navigationBarBackgroundColor,
+                0xFFFFFFFF,
+            ),
+            navigation_bar_text_style: rust_state.navigationBarTextStyle,
+            navigation_bar_title_text: rust_state.navigationBarTitleText,
+            show_navbar: rust_state.show_navbar,
+            show_back_button: rust_state.show_back_button,
+            show_home_button: rust_state.show_home_button,
+        }
+    })
 }
 
 /// Notify that LxApp was opened
 #[napi]
 pub fn on_lxapp_opened(appid: String, path: String) -> String {
-    let lxapp = lxapp::get(appid);
-    lxapp.on_lxapp_opened(path)
+    lxapp::try_get(&appid)
+        .map(|lxapp| lxapp.on_lxapp_opened(path))
+        .unwrap_or_default()
 }
 
 /// Notify that LxApp was closed
 #[napi]
 pub fn on_lxapp_closed(appid: String) -> i32 {
-    let lxapp = lxapp::get(appid);
-    lxapp.on_lxapp_closed();
+    if let Some(lxapp) = lxapp::try_get(&appid) {
+        lxapp.on_lxapp_closed();
+    }
     0
 }
 
 /// Notify that a page is being shown
 #[napi]
 pub fn on_page_show(appid: String, path: String) -> i32 {
-    let lxapp = lxapp::get(appid);
-    lxapp.on_page_show(path);
+    if let Some(lxapp) = lxapp::try_get(&appid) {
+        lxapp.on_page_show(path);
+    }
     0
 }
 
@@ -304,8 +307,9 @@ pub fn on_ui_event(appid: String, event_type: UiEventType, data: String) -> bool
         UiEventType::BackPress => LxAppUiEventType::BackPress,
     };
 
-    let lxapp = lxapp::get(appid);
-    lxapp.on_ui_event(ui_event_type, data)
+    lxapp::try_get(&appid)
+        .map(|lxapp| lxapp.on_ui_event(ui_event_type, data))
+        .unwrap_or(false)
 }
 
 #[napi]
