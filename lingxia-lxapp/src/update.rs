@@ -1,3 +1,4 @@
+use crate::cloud::UpdateCheckResult;
 use crate::error::LxAppError;
 use crate::lxapp::metadata::{LxAppRecord, SemanticVersion};
 use crate::lxapp::{
@@ -14,28 +15,6 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tar::Archive;
 use zstd::stream::read::Decoder as ZstdDecoder;
-
-mod cloud;
-
-/// Information about a downloadable update package from the cloud.
-#[derive(Clone, Debug)]
-pub struct UpdatePackageInfo {
-    /// Semantic version string of the package.
-    pub version: String,
-    /// Download URL for the package.
-    pub url: String,
-    /// SHA-256 checksum (hex).
-    pub checksum_sha256: String,
-}
-
-/// Result of an update check against the server.
-#[derive(Clone, Debug)]
-pub struct UpdateCheckResult {
-    /// Whether a newer package is available.
-    pub has_update: bool,
-    /// When an update is available, contains package information.
-    pub package: Option<UpdatePackageInfo>,
-}
 
 /// Coordinates update preparation, download, and installation for LxApps.
 #[derive(Clone)]
@@ -117,6 +96,25 @@ impl UpdateManager {
         let _ = metadata::downloaded_remove(lxappid, release_type);
 
         Ok(())
+    }
+
+    /// Check for updates using the registered CloudProvider.
+    /// Returns no update if no provider is registered.
+    pub async fn check_update(
+        &self,
+        lxappid: &str,
+        _release_type: ReleaseType,
+        current_version: Option<&str>,
+    ) -> Result<UpdateCheckResult, LxAppError> {
+        let provider = crate::get_cloud_provider();
+
+        provider
+            .check_update(lxappid, current_version)
+            .await
+            .map_err(|e| {
+                crate::error!("check_update failed: {}", e).with_appid(lxappid);
+                LxAppError::Runtime(e.to_string())
+            })
     }
 
     /// Decide whether we should download/apply the server version for this app variant.
