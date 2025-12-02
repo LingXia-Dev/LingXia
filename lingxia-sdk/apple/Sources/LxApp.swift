@@ -189,11 +189,23 @@ public class LxAppCore {
         #endif
     }
 
+    /// Closure to register custom extensions. Set this before calling initialize().
+    nonisolated(unsafe) internal static var registerExtensions: (() -> Void)?
+
+    nonisolated(unsafe) private static var extensionsRegistered = false
+
     /// Initialize the LxApp system (internal core initialization)
     internal static func initializeCore() {
         if instance != nil {
             return
         }
+
+        // Register extensions once before initialization
+        if !extensionsRegistered {
+            registerExtensions?()
+            extensionsRegistered = true
+        }
+
         performInitialization()
     }
 
@@ -292,6 +304,12 @@ public class LxApp {
                 }
             }
         }
+    }
+
+    /// Closure to register custom extensions. Set this before calling initialize().
+    nonisolated(unsafe) public static var registerExtensions: (() -> Void)? {
+        get { LxAppCore.registerExtensions }
+        set { LxAppCore.registerExtensions = newValue }
     }
 
     /// Initialize the LxApp system and automatically open Home LxApp
