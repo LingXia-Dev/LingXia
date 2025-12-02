@@ -1,0 +1,31 @@
+[package]
+name = "lingxia-lib"
+version = "0.1.0"
+edition = "2024"
+description = "Native library for the example app (builds to .so/.a)"
+
+[lib]
+# cdylib for Android/Harmony (.so), staticlib for iOS (.a)
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+lingxia = { path = "../../lingxia" }
+rong = { workspace = true }
+log = "0.4"
+
+# Platform-specific dependencies for FFI
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21.1"
+
+[target.'cfg(target_env = "ohos")'.dependencies]
+napi-ohos = { workspace = true }
+napi-derive-ohos = { workspace = true }
+
+# Cloud provider (optional)
+[dependencies.lingxia-cloud]
+path = "../../lingxia-cloud"
+optional = true
+
+[features]
+default = []
+cloud = ["lingxia-cloud"]
