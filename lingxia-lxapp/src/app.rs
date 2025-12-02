@@ -1,5 +1,5 @@
 use std::io::Read;
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 use crate::error::LxAppError;
 use crate::lxapp::version::Version;

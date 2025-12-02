@@ -7,7 +7,6 @@ use std::ffi::c_void;
 use crate::error::PlatformError;
 use crate::traits::Location;
 use lingxia_messaging::invoke_callback;
-use lingxia_webview::tsfn;
 
 use super::Platform;
 
