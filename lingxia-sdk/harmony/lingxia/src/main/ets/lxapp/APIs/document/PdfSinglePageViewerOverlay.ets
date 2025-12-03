@@ -122,8 +122,11 @@ struct PdfSinglePageContent {
   private hideIndicatorTimer: number = -1; // Timer for auto-hiding indicator
   private scroller: Scroller = new Scroller(); // Scroller controller
 
-  // Zoom state for each page (simplified - no pan, just zoom)
-  @State private pageScales: number[] = []; // Scale for each page
+  // Whole-screen zoom state
+  @State private contentScale: number = 1.0;
+  @State private contentTranslateX: number = 0;
+  @State private contentTranslateY: number = 0;
+  private baseScale: number = 1.0; // Scale at pinch start
   private readonly minScale: number = 1.0;
   private readonly maxScale: number = 4.0;
 
@@ -155,19 +158,43 @@ struct PdfSinglePageContent {
   private loadAllPages(): void {
     if (!this.document) { return; }
     const maps: image.PixelMap[] = [];
-    const scales: number[] = [];
+
+    // Render at 2x resolution for better zoom quality
+    const renderScale = 2.0;
+
     for (let i = 0; i < this.pageCount; i++) {
       try {
         const page = this.document.getPage(i);
-        const map = page.getPagePixelMap();
-        maps.push(map);
-        scales.push(1.0); // Initial scale
+
+        // Try high-resolution rendering using getBox for dimensions
+        try {
+          const box: pdfService.PdfRect = page.getBox(pdfService.BoxType.BOX_MEDIA);
+          // PdfRect uses left, right, top, bottom
+          const pageWidth: number = Math.abs(box.right - box.left);
+          const pageHeight: number = Math.abs(box.bottom - box.top);
+
+          // Create scale matrix with target dimensions (2x resolution)
+          const scaleMatrix = new pdfService.PdfMatrix();
+          scaleMatrix.width = pageWidth * renderScale;
+          scaleMatrix.height = pageHeight * renderScale;
+          scaleMatrix.rotate = 0;
+
+          // Use getCustomPagePixelMap with scale matrix for higher resolution
+          // Parameters: matrix, isGray (false for color), drawAnnotations (true)
+          const map = page.getCustomPagePixelMap(scaleMatrix, false, true);
+          maps.push(map);
+          hilog.info(DOMAIN, TAG, `Page ${i} loaded at ${renderScale}x (${pageWidth}x${pageHeight})`);
+        } catch (highResErr) {
+          // Fallback to standard resolution
+          hilog.warn(DOMAIN, TAG, `Page ${i} high-res failed, using standard: ${highResErr}`);
+          const map = page.getPagePixelMap();
+          maps.push(map);
+        }
       } catch (e) {
         hilog.error(DOMAIN, TAG, `loadPage ${i} failed: ${e}`);
       }
     }
     this.pagePixelMaps = maps;
-    this.pageScales = scales;
     hilog.info(DOMAIN, TAG, `Loaded ${maps.length} pages`);
   }
 
@@ -179,7 +206,18 @@ struct PdfSinglePageContent {
       try { map?.release(); } catch (_) {}
     }
     this.pagePixelMaps = [];
-    this.pageScales = [];
+  }
+
+  private resetZoom(): void {
+    animateTo({ duration: 200, curve: Curve.EaseOut }, () => {
+      this.contentScale = this.minScale;
+      this.contentTranslateX = 0;
+      this.contentTranslateY = 0;
+    });
+  }
+
+  private isZoomed(): boolean {
+    return this.contentScale > this.minScale + 0.1;
   }
 
   private displayPageIndicator(): void {
@@ -217,38 +255,83 @@ struct PdfSinglePageContent {
       .backgroundColor('#F5F5F5')
       .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
     {
-      // PDF content area - continuous scroll with List
-      if (this.pagePixelMaps.length > 0) {
-        List({ scroller: this.scroller }) {
-          ForEach(this.pagePixelMaps, (pixelMap: image.PixelMap, index: number) => {
-            ListItem() {
-              this.renderZoomablePage(pixelMap, index)
-            }
-          }, (pixelMap: image.PixelMap, index: number) => `page_${index}`)
-        }
-        .width('100%')
-        .height('100%')
-        .padding({ top: 92 })
-        .backgroundColor('#F5F5F5')
-        .edgeEffect(EdgeEffect.Spring)
-        .scrollBar(BarState.Off)
-        .onScrollIndex((start: number, end: number) => {
-          this.onScrollIndex(start, end);
-        })
-      } else {
-        // Loading state
-        Column()
+      // Zoomable content container - applies scale/translate to entire content
+      Column() {
+        // PDF content area - continuous scroll with List
+        if (this.pagePixelMaps.length > 0) {
+          List({ scroller: this.scroller }) {
+            ForEach(this.pagePixelMaps, (pixelMap: image.PixelMap, index: number) => {
+              ListItem() {
+                this.renderPage(pixelMap, index)
+              }
+            }, (pixelMap: image.PixelMap, index: number) => `page_${index}`)
+          }
           .width('100%')
           .height('100%')
-          .justifyContent(FlexAlign.Center)
-          .alignItems(HorizontalAlign.Center)
+          .padding({ top: 92 })
           .backgroundColor('#F5F5F5')
-        {
-          LoadingProgress().color('#666666')
+          .edgeEffect(EdgeEffect.Spring)
+          .scrollBar(BarState.Off)
+          .onScrollIndex((start: number, end: number) => {
+            this.onScrollIndex(start, end);
+          })
+        } else {
+          // Loading state
+          Column()
+            .width('100%')
+            .height('100%')
+            .justifyContent(FlexAlign.Center)
+            .alignItems(HorizontalAlign.Center)
+            .backgroundColor('#F5F5F5')
+          {
+            LoadingProgress().color('#666666')
+          }
         }
       }
+      .width('100%')
+      .height('100%')
+      .scale({ x: this.contentScale, y: this.contentScale })
+      .translate({ x: this.contentTranslateX, y: this.contentTranslateY })
+      .gesture(
+        GestureGroup(GestureMode.Exclusive,
+          // Double tap to toggle zoom (2x) - zoom entire screen
+          TapGesture({ count: 2 })
+            .onAction(() => {
+              if (this.isZoomed()) {
+                this.resetZoom();
+              } else {
+                animateTo({ duration: 200, curve: Curve.EaseOut }, () => {
+                  this.contentScale = 2.0;
+                });
+              }
+            }),
+          // Pinch gesture for zooming entire screen content
+          PinchGesture({ fingers: 2, distance: 1 })
+            .onActionStart(() => {
+              this.baseScale = this.contentScale;
+            })
+            .onActionUpdate((event: GestureEvent) => {
+              if (event && event.scale) {
+                this.contentScale = Math.min(this.maxScale, Math.max(this.minScale, this.baseScale * event.scale));
+              }
+            })
+            .onActionEnd(() => {
+              if (this.contentScale <= this.minScale + 0.1) {
+                this.resetZoom();
+              }
+            }),
+          // Pan gesture when zoomed (for moving around the zoomed content)
+          PanGesture()
+            .onActionUpdate((event: GestureEvent) => {
+              if (this.isZoomed() && event) {
+                this.contentTranslateX += event.offsetX;
+                this.contentTranslateY += event.offsetY;
+              }
+            })
+        )
+      )
 
-      // Navigation bar overlay (on top of content)
+      // Navigation bar overlay (on top of content, not affected by zoom)
       this.renderNavigationBar()
 
       // Page indicator overlay (top left, below nav bar) - iOS style
@@ -273,46 +356,13 @@ struct PdfSinglePageContent {
   }
 
   @Builder
-  private renderZoomablePage(pixelMap: image.PixelMap, index: number) {
+  private renderPage(pixelMap: image.PixelMap, index: number) {
+    // Simple page rendering - zoom is handled at container level
     Column() {
       Image(pixelMap)
         .width('100%')
         .objectFit(ImageFit.Contain)
         .backgroundColor('#FFFFFF')
-        .scale({
-          x: this.pageScales[index] ?? 1.0,
-          y: this.pageScales[index] ?? 1.0
-        })
-        .gesture(
-          GestureGroup(GestureMode.Exclusive,
-            // Double tap to toggle zoom (2x)
-            TapGesture({ count: 2 })
-              .onAction(() => {
-                const currentScale = this.pageScales[index] ?? 1.0;
-                if (currentScale > this.minScale + 0.1) {
-                  // Zoomed in, reset to min
-                  this.pageScales[index] = this.minScale;
-                } else {
-                  // Not zoomed, zoom to 2x
-                  this.pageScales[index] = 2.0;
-                }
-              }),
-            // Pinch gesture for zooming (like MediaPreviewOverlay)
-            PinchGesture({ fingers: 2, distance: 1 })
-              .onActionUpdate((event: GestureEvent) => {
-                if (event && event.scale) {
-                  // event.scale is the scale from gesture start (not cumulative)
-                  this.pageScales[index] = Math.min(this.maxScale, Math.max(this.minScale, event.scale));
-                }
-              })
-              .onActionEnd(() => {
-                // Reset to minScale if user zoomed out below threshold
-                if (this.pageScales[index] <= this.minScale + 0.1) {
-                  this.pageScales[index] = this.minScale;
-                }
-              })
-          )
-        )
     }
     .width('100%')
     .margin({ bottom: 8 })
