@@ -28,11 +28,6 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
-import androidx.media3.common.MediaItem
-import androidx.media3.common.PlaybackException
-import androidx.media3.common.Player
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.ui.PlayerView
 import androidx.exifinterface.media.ExifInterface
 import java.io.File
 import java.lang.ref.WeakReference
@@ -149,6 +144,13 @@ class MediaPreviewFragment : Fragment() {
             layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT, Gravity.TOP)
         }
 
+        val dpMargin = TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_DIP,
+            16f,
+            context.resources.displayMetrics
+        ).toInt()
+        val topOffset = statusBarHeight(context) + dpMargin
+
         indicatorText = TextView(context).apply {
             setTextColor(Color.WHITE)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
@@ -157,13 +159,7 @@ class MediaPreviewFragment : Fragment() {
             setShadowLayer(4f, 0f, 0f, Color.parseColor("#66000000"))
             layoutParams = FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply {
                 gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-                val margin = TypedValue.applyDimension(
-                    TypedValue.COMPLEX_UNIT_DIP,
-                    16f,
-                    context.resources.displayMetrics
-                ).toInt()
-                val top = statusBarHeight(context) + margin
-                setMargins(margin, top, margin, margin)
+                setMargins(dpMargin, topOffset, dpMargin, dpMargin)
             }
             visibility = if (itemCount > 1) View.VISIBLE else View.GONE
         }
@@ -297,7 +293,7 @@ private class PreviewPagerAdapter(
 ) : RecyclerView.Adapter<PreviewPagerAdapter.MediaViewHolder>() {
 
     private var viewPager: ViewPager2? = null
-    private var currentPosition: Int = RecyclerView.NO_POSITION
+    private var currentPosition: Int = 0  // Start at 0 for initial page
 
     fun attachToViewPager(pager: ViewPager2) {
         viewPager = pager
@@ -369,12 +365,8 @@ private class PreviewPagerAdapter(
         private val onDismiss: () -> Unit
     ) : RecyclerView.ViewHolder(container) {
         private var currentLoader: Future<*>? = null
-        private var currentPlayer: ExoPlayer? = null
-        private var currentPlayerView: PlayerView? = null
+        private var currentMediaPlayer: LxMediaPlayer? = null
         private var isVideoItem: Boolean = false
-        private var videoThumbnail: ImageView? = null
-        private var videoProgress: ProgressBar? = null
-        private var controlsVisible: Boolean = false
 
         fun bind(item: PreviewItem) {
             reset()
@@ -388,17 +380,9 @@ private class PreviewPagerAdapter(
         fun reset() {
             currentLoader?.cancel(true)
             currentLoader = null
-            currentPlayerView?.player = null
-            currentPlayerView = null
-            currentPlayer?.let { player ->
-                player.clearMediaItems()
-                player.release()
-            }
-            currentPlayer = null
+            currentMediaPlayer?.detach()
+            currentMediaPlayer = null
             isVideoItem = false
-            videoThumbnail = null
-            videoProgress = null
-            controlsVisible = false
         }
 
         private fun bindImage(item: PreviewItem) {
@@ -432,129 +416,66 @@ private class PreviewPagerAdapter(
 
         private fun bindVideo(item: PreviewItem) {
             val context = container.context
-            val playerView = PlayerView(context).apply {
-                layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
-                setBackgroundColor(Color.BLACK)
-                useController = true
-                setControllerShowTimeoutMs(3_000)
-                setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
-                setControllerAutoShow(false)
-            }
-
-            val thumbnailView = ImageView(context).apply {
-                layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
-                scaleType = ImageView.ScaleType.CENTER_CROP
-                setBackgroundColor(Color.BLACK)
-                visibility = View.GONE
-            }
-
-            val progressBar = ProgressBar(context).apply {
-                layoutParams = FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.CENTER)
-                visibility = View.VISIBLE
-            }
-
             val mediaUri = item.uri
 
             if (mediaUri == Uri.EMPTY) {
-                progressBar.visibility = View.GONE
-                thumbnailView.visibility = View.VISIBLE
-                thumbnailView.setImageResource(android.R.drawable.ic_dialog_alert)
+                val errorView = ImageView(context).apply {
+                    layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
+                    setBackgroundColor(Color.BLACK)
+                    setImageResource(android.R.drawable.ic_dialog_alert)
+                    scaleType = ImageView.ScaleType.CENTER
+                }
+                container.addView(errorView)
                 return
             }
 
-            val coverUri = item.coverUri
-            if (coverUri != null && coverUri != Uri.EMPTY) {
-                if (isLocalUri(coverUri)) {
-                    thumbnailView.visibility = View.VISIBLE
-                    thumbnailView.setImageURI(coverUri)
-                } else {
-                    thumbnailView.visibility = View.VISIBLE
-                    currentLoader = ImageLoader.loadRemote(coverUri.toString(), thumbnailView, null)
-                }
+            // Create LxMediaPlayer for video playback
+            val mediaPlayer = LxMediaPlayer(context, eventSink = { /* events ignored in preview */ })
+            mediaPlayer.setShowCloseButton(true)
+            mediaPlayer.setShowFullscreenButton(false)
+            mediaPlayer.setCloseRequestListener {
+                onDismiss()
             }
 
-            val player = ExoPlayer.Builder(context).build().apply {
-                repeatMode = Player.REPEAT_MODE_ALL
-                setMediaItem(MediaItem.fromUri(mediaUri))
-                playWhenReady = false
-                addListener(object : Player.Listener {
-                    override fun onPlaybackStateChanged(playbackState: Int) {
-                        when (playbackState) {
-                            Player.STATE_READY -> {
-                                videoProgress?.visibility = View.GONE
-                                videoThumbnail?.visibility = View.GONE
-                            }
-                            Player.STATE_ENDED -> {
-                                videoProgress?.visibility = View.GONE
-                            }
-                        }
-                    }
+            // Configure the player
+            val config = LxMediaPlayerConfig(
+                src = mediaUri.toString(),
+                poster = item.coverUri?.toString(),
+                autoplay = false,
+                loop = true,
+                controls = true,
+                objectFit = LxMediaObjectFit.CONTAIN
+            )
+            mediaPlayer.update(config)
 
-                    override fun onPlayerError(error: PlaybackException) {
-                        videoProgress?.visibility = View.GONE
-                        videoThumbnail?.visibility = View.VISIBLE
-                    }
-                })
-                prepare()
-            }
-
-            playerView.player = player
-            playerView.setControllerVisibilityListener(
-                PlayerView.ControllerVisibilityListener { visibility ->
-                    controlsVisible = visibility == View.VISIBLE
-                }
+            // Add player view to container
+            container.addView(
+                mediaPlayer.view,
+                FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
             )
 
-            playerView.setOnClickListener {
-                if (controlsVisible) {
-                    return@setOnClickListener
-                }
-                playerView.showController()
-            }
-
-            container.addView(playerView)
-            container.addView(thumbnailView)
-            container.addView(progressBar)
-            container.setOnClickListener(null)
-            currentPlayer = player
-            currentPlayerView = playerView
+            currentMediaPlayer = mediaPlayer
             isVideoItem = true
-            videoThumbnail = thumbnailView
-            videoProgress = progressBar
-            playerView.hideController()
-            controlsVisible = false
+
+            // Auto-enter fullscreen to mirror video component fullscreen behavior in preview
+            container.post {
+                if (!mediaPlayer.isFullscreen()) {
+                    mediaPlayer.enterFullscreen()
+                }
+            }
         }
 
         fun onVisible() {
             if (isVideoItem) {
-                val player = currentPlayer ?: return
-                when (player.playbackState) {
-                    Player.STATE_READY -> {
-                        videoProgress?.visibility = View.GONE
-                        videoThumbnail?.visibility = View.GONE
-                    }
-                    Player.STATE_BUFFERING -> {
-                        videoProgress?.visibility = View.VISIBLE
-                        videoThumbnail?.visibility = View.GONE
-                    }
-                    else -> {
-                        videoProgress?.visibility = View.VISIBLE
-                    }
-                }
-                player.playWhenReady = true
-                player.play()
-                currentPlayerView?.hideController()
-                controlsVisible = false
+                currentMediaPlayer?.play()
             }
         }
 
         fun onHidden() {
             if (isVideoItem) {
-                currentPlayer?.pause()
-                currentPlayer?.seekTo(0)
-                videoThumbnail?.visibility = View.VISIBLE
-                videoProgress?.visibility = View.GONE
-                currentPlayerView?.hideController()
+                currentMediaPlayer?.pause()
+                currentMediaPlayer?.seek(0.0)
+                currentMediaPlayer?.exitFullscreen()
             }
         }
     }

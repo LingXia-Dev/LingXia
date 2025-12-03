@@ -24,6 +24,7 @@ import android.content.Intent
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import android.view.animation.AccelerateDecelerateInterpolator
+import com.lingxia.lxapp.SameLevel.SameLevelBridge
 
 /**
  * Animation type enum for page transitions
@@ -589,6 +590,9 @@ class LxAppActivity : AppCompatActivity() {
                 webViewContainer.addView(view)
             }
 
+            // Attach SameLevel bridge for native component overlay
+            SameLevelBridge.attachIfNeeded(view)
+
             // Resume the WebView's activities
             view.resume()
         } else {
@@ -740,16 +744,19 @@ class LxAppActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         if (!pendingWebViewSetup) {
-
             currentWebView?.visibility = View.VISIBLE // Ensure visibility
             webViewContainer.visibility = View.VISIBLE
             currentWebView?.resume()
         }
+        // Resume SameLevel components
+        currentWebView?.let { SameLevelBridge.notifyPageActive(it) }
     }
 
     override fun onPause() {
         super.onPause()
         currentWebView?.pause()
+        // Pause SameLevel components (e.g., pause video playback)
+        currentWebView?.let { SameLevelBridge.notifyPageInactive(it) }
     }
 
     /**
@@ -762,6 +769,9 @@ class LxAppActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         isDestroyed = true
+
+        // Destroy SameLevel components before pausing WebView
+        currentWebView?.let { SameLevelBridge.notifyPageDestroyed(it) }
 
         // Pause current WebView but don't destroy it
         // WebView destruction is managed by native
@@ -1016,6 +1026,10 @@ class LxAppActivity : AppCompatActivity() {
                 return
             }
 
+            if (oldWebView != null && oldWebView != newWebView) {
+                SameLevelBridge.notifyPageInactive(oldWebView)
+            }
+
             // Get navbar state (use provided or fetch)
             val actualPageConfig = pageConfig ?: getNavBarState(appId, targetPath)
 
@@ -1045,6 +1059,12 @@ class LxAppActivity : AppCompatActivity() {
                     Log.e(TAG, "Error adding WebView to container: ${e.message}")
                     return@apply
                 }
+            }
+
+            SameLevelBridge.attachIfNeeded(newWebView)
+
+            if (oldWebView != newWebView) {
+                SameLevelBridge.notifyPageActive(newWebView)
             }
 
             // Use coordinated WebView transition (handles all animation and onPageShow)
