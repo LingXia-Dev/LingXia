@@ -554,13 +554,45 @@
   let sameLevelReady = false;
 
   function hasSameLevelHandler() {
-    return (
-      communicationMethod === "webkit" &&
-      typeof window !== "undefined" &&
+    if (typeof window === "undefined") return false;
+
+    if (
       window.webkit &&
       window.webkit.messageHandlers &&
       window.webkit.messageHandlers.SameLevel
-    );
+    ) {
+      return true;
+    }
+
+    // Android/HarmonyOS: JavaScriptInterface proxy
+    if (
+      window.SameLevelNative &&
+      typeof window.SameLevelNative.postMessage === "function"
+    ) {
+      return true;
+    }
+
+    return false;
+  }
+
+  function _postSameLevelMessage(message) {
+    if (
+      window.webkit &&
+      window.webkit.messageHandlers &&
+      window.webkit.messageHandlers.SameLevel
+    ) {
+      window.webkit.messageHandlers.SameLevel.postMessage(message);
+      return;
+    }
+
+    if (
+      window.SameLevelNative &&
+      typeof window.SameLevelNative.postMessage === "function"
+    ) {
+      const msgString = _safeStringify(message);
+      window.SameLevelNative.postMessage(msgString);
+      return;
+    }
   }
 
   function flushSameLevelQueue() {
@@ -572,7 +604,7 @@
         if (isDebugEnabled("proto")) {
           console.log("[SameLevel] flush → native:", msg);
         }
-        window.webkit.messageHandlers.SameLevel.postMessage(msg);
+        _postSameLevelMessage(msg);
       } catch (e) {
         error("Failed to flush SameLevel message:", e);
         break;
@@ -582,10 +614,9 @@
 
   function sendSameLevelMessage(message) {
     try {
-      if (!hasSameLevelHandler()) {
-        if (isDebugEnabled("proto")) {
-          console.log("[SameLevel] queue message (no handler yet):", message);
-        }
+      const hasHandler = hasSameLevelHandler();
+      if (!hasHandler) {
+        console.log("[SameLevel] queue message (no handler yet):", message);
         sameLevelQueue.push(message);
         return;
       }
@@ -595,7 +626,7 @@
       if (isDebugEnabled("proto")) {
         console.log("[SameLevel] → native:", message);
       }
-      window.webkit.messageHandlers.SameLevel.postMessage(message);
+      _postSameLevelMessage(message);
     } catch (e) {
       error("Failed to send SameLevel message:", e);
     }
@@ -605,6 +636,7 @@
   LingXiaBridge.sameLevel = {
     send: sendSameLevelMessage,
     hasHandler: hasSameLevelHandler,
+    flush: flushSameLevelQueue,
     register(id, handler) {
       if (!id || typeof handler !== "function") return () => {};
       sameLevelHandlers.set(id, handler);
