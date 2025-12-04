@@ -1,21 +1,75 @@
 #!/bin/bash
 
-# Exit on error
-set -e
+# Build and deploy LingXia Example iOS App
+#
+# Architecture:
+#   SDK (lingxia-sdk/apple/):
+#     - Swift Package: LingXia framework
+#     - Rust .a: liblingxia_lib.a (user extensions + framework core)
+#
+#   App (examples/ios/):
+#     - Swift app using LingXia SDK
+#
+# Usage: ./build_deploy_ios.sh [skip-rust]
+
+set -euo pipefail
+
+# Parse command line arguments
+SKIP_RUST=false
+for arg in "$@"; do
+    case $arg in
+        skip-rust|--skip-rust)
+            SKIP_RUST=true
+            echo "🚀 Skipping Rust compilation"
+            ;;
+        *)
+            echo "Unknown argument: $arg"
+            echo "Usage: $0 [skip-rust]"
+            exit 1
+            ;;
+    esac
+done
 
 # Get the absolute path of the script directory
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 LINGXIA_ROOT="$SCRIPT_DIR/../.."
-WORKSPACE_ROOT="$LINGXIA_ROOT" # Workspace root is the same as LingXia root
+WORKSPACE_ROOT="$LINGXIA_ROOT"
+LXAPP_FEATURES="${LXAPP_FEATURES:-}" # set via env var, e.g. LXAPP_FEATURES=cloud ./build_deploy_ios.sh
 
 # Define the resources directory for iOS
 RESOURCES_DIR="$SCRIPT_DIR/lxapp/Sources/lxapp/Resources"
-echo RESOURCES_DIR: $RESOURCES_DIR
+echo "RESOURCES_DIR: $RESOURCES_DIR"
 
-echo "Building Rust library for iOS with Swift bridge headers..."
-cd "$WORKSPACE_ROOT"
+# Build Rust library for iOS unless skip-rust flag is set
+if [ "$SKIP_RUST" = false ]; then
+    echo "[1/4] Building Rust libraries..."
+    cd "$WORKSPACE_ROOT"
 
-cargo rustc --crate-type=staticlib --release  --target aarch64-apple-ios -p lingxia-lib
+    TARGET="aarch64-apple-ios"
+
+    # Generate Swift bridge bindings (runs swift-bridge-build in lingxia's build.rs)
+    # This creates/updates: lingxia-sdk/apple/Sources/generated/LingXiaRustAPI/
+    echo "  → Generating Swift bridge bindings..."
+    LINGXIA_GENERATE_BRIDGE=1 cargo build -p lingxia --target $TARGET --release 2>&1 | grep -E "Generated|warning:" | head -5 || true
+
+    # Build lingxia-lib as staticlib for iOS (native library + user extensions)
+    # Note: iOS requires staticlib (.a), not cdylib (.dylib)
+    if [ -n "$LXAPP_FEATURES" ]; then
+        echo "  → Building lingxia-lib (staticlib) with features: $LXAPP_FEATURES"
+        cargo rustc --crate-type=staticlib --target $TARGET --release -p lingxia-lib --features "$LXAPP_FEATURES"
+    else
+        echo "  → Building lingxia-lib (staticlib)..."
+        cargo rustc --crate-type=staticlib --target $TARGET --release -p lingxia-lib
+    fi
+
+    # Copy to expected name (liblingxia.a) for Xcode project compatibility
+    cp "$WORKSPACE_ROOT/target/$TARGET/release/liblingxia_lib.a" "$WORKSPACE_ROOT/target/$TARGET/release/liblingxia.a"
+
+    echo "✅ Rust build complete"
+    echo "   .a location: $WORKSPACE_ROOT/target/$TARGET/release/liblingxia.a"
+else
+    echo "⏭️  Skipping Rust compilation (using existing libraries)"
+fi
 
 mkdir -p "$RESOURCES_DIR"
 
