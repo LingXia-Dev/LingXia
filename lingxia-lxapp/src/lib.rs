@@ -15,6 +15,10 @@ mod update;
 
 pub use appservice::PageSvc;
 pub use appservice::get_or_create_update_manager;
+pub use appservice::bridge_events::{
+    emit_app_event, emit_page_event, register_app_handler, register_page_handler,
+    unregister_app_handler, unregister_page_handler,
+};
 pub use cache::{LxAppCache, ResolveResult};
 pub use cloud::{
     BoxFuture, CloudError, CloudProvider, CloudUpdateProvider, UpdateCheckResult,

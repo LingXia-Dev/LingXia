@@ -20,6 +20,8 @@ pub mod bridge;
 
 pub mod update;
 
+pub(crate) mod bridge_events;
+
 mod page;
 use crate::event::PageServiceEvent;
 pub use page::PageSvc;
@@ -74,6 +76,11 @@ pub(crate) enum ServiceMessage {
         path: String,
         event: PageServiceEvent,
         args: Option<String>,
+    },
+    // Native -> JS event dispatch (e.g., video context)
+    DispatchBridgeEvent {
+        lxapp: Arc<LxApp>,
+        event: bridge_events::BridgeEvent,
     },
 }
 
@@ -185,6 +192,7 @@ pub(crate) async fn lxapp_service_handler(
             // register Page, App and getApp function
             let _ = app::init(&ctx);
             let _ = page::init(&ctx);
+            bridge_events::init(&ctx);
 
             // Set console writer
             console::set_writer(Box::new(LxAppCtx::new(lxapp.clone())));
@@ -303,6 +311,8 @@ pub(crate) async fn lxapp_service_handler(
                         registry.del(page_svc.page.path().as_str());
                     }
 
+                    bridge_events::clear_page(ctx, &path);
+
                     info!("[Worker {}] Removed page", worker_id)
                         .with_appid(lxapp.appid.clone())
                         .with_path(path);
@@ -400,6 +410,19 @@ pub(crate) async fn lxapp_service_handler(
                     )
                     .with_appid(lxapp.appid.clone())
                     .with_path(path);
+                }
+            }
+        }
+        ServiceMessage::DispatchBridgeEvent { lxapp, event } => {
+            if let Some(ctx) = current_ctx.as_ref() {
+                let same_app = LxApp::from_ctx(ctx)
+                    .map(|ctx_app| ctx_app.session.id == lxapp.session.id)
+                    .unwrap_or(false);
+                if same_app {
+                    if let Err(e) = bridge_events::dispatch_bridge_event(ctx, &event).await {
+                        error!("[Worker {}] Dispatch bridge event failed: {}", worker_id, e)
+                        .with_appid(lxapp.appid.clone());
+                    }
                 }
             }
         }
