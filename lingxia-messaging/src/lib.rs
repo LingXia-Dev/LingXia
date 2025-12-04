@@ -1,12 +1,13 @@
 //! LingXia Messaging System
 //!
 //! Provides two core functionalities for cross-platform communication:
-//! 1. A flexible callback registry that supports both oneshot and stream callbacks.
+//! 1. A flexible callback registry that supports oneshot, stream, and handler callbacks.
 //! 2. A publish-subscribe system for system-wide events.
 
 use std::collections::HashMap;
+use std::panic;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use tokio::sync::{mpsc, oneshot};
 
 /// Callback result from platform
@@ -31,6 +32,7 @@ impl CallbackResult {
 enum CallbackEntry {
     Oneshot(oneshot::Sender<CallbackResult>),
     Stream(mpsc::Sender<CallbackResult>),
+    Handler(Arc<dyn Fn(CallbackResult) + Send + Sync>),
 }
 
 struct CallbackRegistry {
@@ -70,41 +72,80 @@ impl CallbackRegistry {
         (id, receiver)
     }
 
+    fn register_handler<F>(&self, handler: F) -> u64
+    where
+        F: Fn(CallbackResult) + Send + Sync + 'static,
+    {
+        let id = self.next_id.fetch_add(1, Ordering::SeqCst);
+
+        {
+            let mut callbacks = self.callbacks.lock().unwrap();
+            callbacks.insert(id, CallbackEntry::Handler(Arc::new(handler)));
+        }
+
+        id
+    }
+
     fn unregister(&self, id: u64) -> bool {
         let mut callbacks = self.callbacks.lock().unwrap();
         callbacks.remove(&id).is_some()
     }
 
     fn invoke(&self, id: u64, success: bool, data: String) -> bool {
-        let mut callbacks = self.callbacks.lock().unwrap();
         let result = CallbackResult { success, data };
 
-        match callbacks.get(&id) {
-            Some(CallbackEntry::Oneshot(_)) => {
-                // For oneshot, remove the callback after sending
-                if let Some(CallbackEntry::Oneshot(sender)) = callbacks.remove(&id) {
-                    let _ = sender.send(result);
-                    true
-                } else {
+        enum Action {
+            Oneshot(oneshot::Sender<CallbackResult>),
+            Stream(mpsc::Sender<CallbackResult>),
+            Handler(Arc<dyn Fn(CallbackResult) + Send + Sync>),
+            None,
+        }
+
+        let action = {
+            let mut callbacks = self.callbacks.lock().unwrap();
+            match callbacks.get(&id) {
+                Some(CallbackEntry::Oneshot(_)) => {
+                    if let Some(CallbackEntry::Oneshot(sender)) = callbacks.remove(&id) {
+                        Action::Oneshot(sender)
+                    } else {
+                        Action::None
+                    }
+                }
+                Some(CallbackEntry::Stream(sender)) => Action::Stream(sender.clone()),
+                Some(CallbackEntry::Handler(handler)) => Action::Handler(handler.clone()),
+                None => Action::None,
+            }
+        };
+
+        match action {
+            Action::Oneshot(sender) => {
+                let _ = sender.send(result);
+                true
+            }
+            Action::Stream(sender) => match sender.try_send(result) {
+                Ok(_) => true,
+                Err(mpsc::error::TrySendError::Full(_payload)) => {
+                    // Channel is full; report failure so caller can retry
                     false
                 }
-            }
-            Some(CallbackEntry::Stream(sender)) => {
-                // For stream, keep the callback and try to send
-                match sender.try_send(result) {
-                    Ok(_) => true,
-                    Err(mpsc::error::TrySendError::Full(_payload)) => {
-                        // Channel is full; report failure so caller can retry
-                        false
-                    }
-                    Err(mpsc::error::TrySendError::Closed(_payload)) => {
-                        // Channel is closed, remove the callback
-                        callbacks.remove(&id);
-                        false
-                    }
+                Err(mpsc::error::TrySendError::Closed(_payload)) => {
+                    // Channel is closed, remove the callback
+                    let mut callbacks = self.callbacks.lock().unwrap();
+                    callbacks.remove(&id);
+                    false
+                }
+            },
+            Action::Handler(handler) => {
+                let handled = panic::catch_unwind(panic::AssertUnwindSafe(|| (handler)(result)));
+                if handled.is_err() {
+                    let mut callbacks = self.callbacks.lock().unwrap();
+                    callbacks.remove(&id);
+                    false
+                } else {
+                    true
                 }
             }
-            None => false,
+            Action::None => false,
         }
     }
 }
@@ -125,14 +166,25 @@ pub fn get_stream_callback() -> (u64, mpsc::Receiver<CallbackResult>) {
     get_callback_registry().register_stream()
 }
 
+/// Register a handler callback. The handler is executed immediately on the thread
+/// that calls `invoke_callback` with the returned ID. Use `remove_callback(id)`
+/// to unregister when no longer needed.
+pub fn register_handler<F>(handler: F) -> u64
+where
+    F: Fn(CallbackResult) + Send + Sync + 'static,
+{
+    get_callback_registry().register_handler(handler)
+}
+
 /// Remove callback by ID. This is useful for cancellation or timeout scenarios.
 pub fn remove_callback(id: u64) -> bool {
     get_callback_registry().unregister(id)
 }
 
 /// Invoke callback (called from platform code) to send result back.
-/// For oneshot mode, this removes the callback after sending.
-/// For stream mode, this keeps the callback active for future messages.
+/// - Oneshot: removes the callback after sending.
+/// - Stream: keeps the callback active; returns false if the channel is full or closed.
+/// - Handler: executes immediately on the caller's thread; drops the handler on panic.
 pub fn invoke_callback(id: u64, success: bool, data: impl Into<String>) -> bool {
     get_callback_registry().invoke(id, success, data.into())
 }
