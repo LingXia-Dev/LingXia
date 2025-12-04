@@ -105,25 +105,31 @@ impl LxApp {
 
         let html_str = String::from_utf8_lossy(html_data);
 
-        // Decide bridge method by compile target
+        // Decide bridge config by compile target
         #[cfg(any(target_os = "ios", target_os = "macos"))]
-        let bridge_method = "webkit";
+        let (bridge_os, bridge_method) = (
+            if cfg!(target_os = "macos") {
+                "macOS"
+            } else {
+                "iOS"
+            },
+            "webkit",
+        );
         #[cfg(target_os = "android")]
-        let bridge_method = "messageport";
+        let (bridge_os, bridge_method) = ("Android", "messageport");
         #[cfg(all(target_os = "linux", target_env = "ohos"))]
-        let bridge_method = "messageport";
+        let (bridge_os, bridge_method) = ("Harmony", "messageport");
         #[cfg(not(any(
             target_os = "ios",
             target_os = "macos",
             target_os = "android",
             all(target_os = "linux", target_env = "ohos")
         )))]
-        let bridge_method = "unknown";
+        let (bridge_os, bridge_method) = ("unknown", "unknown");
 
-        // Create script tags: host provides communication method first, then the bridge
         let prelude = format!(
-            "<script>window.__LX_BRIDGE_METHOD='{}';</script>",
-            bridge_method
+            r#"<script>window.__LX_BRIDGE_CFG={{os:"{}",method:"{}"}};</script>"#,
+            bridge_os, bridge_method
         );
         let script_tags = format!("{}\n<script>\n{}\n</script>", prelude, bridge_script);
 

@@ -42,11 +42,14 @@
   const subscriberInitStatus = new WeakMap();
   let messagePort = null; // Unified port for MessagePort-based platforms
 
-  // Detect communication method based on available APIs
-  // Communication method is provided by host
-  // Expected values: 'webkit' (iOS/macOS), 'messageport' (Android/Harmony)
-  const communicationMethod =
-    (typeof window !== "undefined" && window.__LX_BRIDGE_METHOD) || "unknown";
+  // Communication method is provided by host via window.__LX_BRIDGE_CFG
+  const BRIDGE_CONFIG =
+    (typeof window !== "undefined" && window.__LX_BRIDGE_CFG) || {};
+  const communicationMethod = (() => {
+    if (BRIDGE_CONFIG.method === "messageport") return MESSAGE_PORT_TYPE;
+    if (BRIDGE_CONFIG.method === "webkit") return "webkit";
+    return "unknown";
+  })();
 
   function log(...args) {
     console.log(LOG_PREFIX, ...args);
