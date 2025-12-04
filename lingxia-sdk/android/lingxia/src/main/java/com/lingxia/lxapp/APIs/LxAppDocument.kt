@@ -1,19 +1,31 @@
 package com.lingxia.lxapp.APIs
 
+import android.app.Activity
 import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.webkit.MimeTypeMap
+import android.widget.Toast
 import com.lingxia.lxapp.LxApp
 import com.lingxia.lxapp.APIs.document.PdfViewerActivity
 import com.lingxia.lxapp.APIs.document.LingxiaDocumentProvider
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.Locale
 
 internal object LxAppDocument {
     private const val TAG = "LingXia.LxAppDocument"
+    private val WPS_PACKAGES = listOf(
+        "cn.wps.moffice_eng",
+        "cn.wps.moffice_i18n",
+        "cn.wps.moffice_ent"
+    )
 
     @JvmStatic
     fun openDocument(filePath: String, mimeType: String?, showMenu: Boolean): Boolean {
@@ -41,13 +53,22 @@ internal object LxAppDocument {
             return launchInternalPdfViewer(activity, file, showMenu)
         }
 
-        // For non-PDF documents (Office, ZIP, etc.), always open with default app
-        // showMenu parameter is ignored for these file types
+        val wpsPackageName = resolveWpsPackage(activity)
+        val isChineseLocale = isChineseLanguageLocale(activity)
+        if (isChineseLocale && wpsPackageName == null) {
+            Log.w(TAG, "openDocument: WPS is required for domestic users but not installed")
+            promptInstallWps(activity)
+            return true
+        }
+
         val contentUri: Uri = LingxiaDocumentProvider.uriForFile(activity, file)
 
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(contentUri, resolvedMime ?: "*/*")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            if (isChineseLocale && wpsPackageName != null) {
+                `package` = wpsPackageName
+            }
         }
 
         val latch = CountDownLatch(1)
@@ -114,5 +135,51 @@ internal object LxAppDocument {
             }
         }
         return null
+    }
+
+    private fun resolveWpsPackage(context: Context): String? {
+        val packageManager = context.packageManager
+        WPS_PACKAGES.forEach { pkg ->
+            try {
+                packageManager.getPackageInfo(pkg, 0)
+                return pkg
+            } catch (_: Exception) {
+                // Continue checking other package names
+            }
+        }
+        return null
+    }
+
+    private fun isChineseLanguageLocale(context: Context): Boolean {
+        val configuration = context.resources.configuration
+        val locale = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            configuration.locales[0]
+        } else {
+            @Suppress("DEPRECATION")
+            configuration.locale
+        }
+
+        if (locale == null) {
+            return false
+        }
+
+        val language = locale.language.lowercase(Locale.US)
+        return language == "zh"
+    }
+
+    private fun promptInstallWps(context: Context) {
+        val showToast = {
+            Toast.makeText(
+                context,
+                "请安装 WPS Office 以打开此文档",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+
+        if (context is Activity) {
+            context.runOnUiThread { showToast() }
+        } else {
+            Handler(Looper.getMainLooper()).post { showToast() }
+        }
     }
 }
