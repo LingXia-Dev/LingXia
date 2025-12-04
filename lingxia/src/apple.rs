@@ -103,11 +103,9 @@ mod bridge {
         #[swift_bridge(swift_name = "onLxappClosed")]
         fn on_lxapp_closed(appid: &str) -> i32;
 
-        /// Note: Returns non-optional because swift-bridge has issues with Option<struct with String fields>
         #[swift_bridge(swift_name = "getLxAppInfo")]
         fn get_lxapp_info(appid: &str) -> LxAppInfo;
 
-        /// Note: Returns non-optional because swift-bridge has issues with Option<struct with String fields>
         #[swift_bridge(swift_name = "getNavigationBarState")]
         fn get_navigation_bar_state(appid: &str, path: &str) -> NavigationBarState;
 
@@ -222,12 +220,12 @@ pub fn on_lxapp_closed(appid: &str) -> i32 {
 }
 
 /// Handle UI events from Swift
-pub fn on_ui_event(appid: &str, event_type: bridge::UiEventType, data: &str) -> bool {
+pub fn on_ui_event(appid: &str, event_type: self::bridge::UiEventType, data: &str) -> bool {
     let ui_event_type = match event_type {
-        bridge::UiEventType::TabBarClick => UiEventType::TabBarClick,
-        bridge::UiEventType::CapsuleClick => UiEventType::CapsuleClick,
-        bridge::UiEventType::NavigationClick => UiEventType::NavigationClick,
-        bridge::UiEventType::BackPress => UiEventType::BackPress,
+        self::bridge::UiEventType::TabBarClick => UiEventType::TabBarClick,
+        self::bridge::UiEventType::CapsuleClick => UiEventType::CapsuleClick,
+        self::bridge::UiEventType::NavigationClick => UiEventType::NavigationClick,
+        self::bridge::UiEventType::BackPress => UiEventType::BackPress,
     };
 
     lxapp::try_get(appid)
@@ -236,9 +234,9 @@ pub fn on_ui_event(appid: &str, event_type: bridge::UiEventType, data: &str) -> 
 }
 
 /// Get current active LxApp ID and path from Rust stack
-pub fn get_current_lxapp() -> bridge::CurrentLxApp {
+pub fn get_current_lxapp() -> self::bridge::CurrentLxApp {
     let (current_appid, current_path) = lxapp::get_current_lxapp();
-    bridge::CurrentLxApp {
+    self::bridge::CurrentLxApp {
         appid: current_appid,
         path: current_path,
     }
@@ -268,15 +266,15 @@ pub fn find_webview(appid: &str, path: &str) -> usize {
 
 /// Get LxApp information
 /// Returns default empty values if app not found (swift-bridge Option<struct with String> bug workaround)
-pub fn get_lxapp_info(appid: &str) -> bridge::LxAppInfo {
+pub fn get_lxapp_info(appid: &str) -> self::bridge::LxAppInfo {
     if let Some(lxapp) = lxapp::try_get(appid) {
         let lxapp_info = lxapp.get_lxapp_info();
-        bridge::LxAppInfo {
+        self::bridge::LxAppInfo {
             app_name: lxapp_info.app_name,
             cache_dir: lxapp.user_cache_dir.to_string_lossy().into_owned(),
         }
     } else {
-        bridge::LxAppInfo {
+        self::bridge::LxAppInfo {
             app_name: String::new(),
             cache_dir: String::new(),
         }
@@ -285,12 +283,12 @@ pub fn get_lxapp_info(appid: &str) -> bridge::LxAppInfo {
 
 /// Get NavigationBar state
 /// Returns default values if app not found (swift-bridge Option<struct with String> bug workaround)
-pub fn get_navigation_bar_state(appid: &str, path: &str) -> bridge::NavigationBarState {
+pub fn get_navigation_bar_state(appid: &str, path: &str) -> self::bridge::NavigationBarState {
     if let Some(lxapp) = lxapp::try_get(appid) {
         let nav_state = lxapp.get_navbar_state(path);
         let bg_color = parse_color_to_u32(&nav_state.navigationBarBackgroundColor, 0xFFFFFFFF);
 
-        bridge::NavigationBarState {
+        self::bridge::NavigationBarState {
             background_color: bg_color,
             text_style: nav_state.navigationBarTextStyle,
             title_text: nav_state.navigationBarTitleText,
@@ -299,7 +297,7 @@ pub fn get_navigation_bar_state(appid: &str, path: &str) -> bridge::NavigationBa
             show_home_button: nav_state.show_home_button,
         }
     } else {
-        bridge::NavigationBarState {
+        self::bridge::NavigationBarState {
             background_color: 0xFFFFFFFF,
             text_style: String::new(),
             title_text: String::new(),
@@ -311,9 +309,9 @@ pub fn get_navigation_bar_state(appid: &str, path: &str) -> bridge::NavigationBa
 }
 
 /// Get TabBar state
-pub fn get_tab_bar(appid: &str) -> Option<bridge::TabBar> {
+pub fn get_tab_bar(appid: &str) -> Option<self::bridge::TabBar> {
     lxapp::try_get(appid).and_then(|lxapp| {
-        lxapp.get_tabbar().map(|tabbar| bridge::TabBar {
+        lxapp.get_tabbar().map(|tabbar| self::bridge::TabBar {
             color: parse_color_to_u32(&tabbar.color, 0xFF666666),
             selected_color: parse_color_to_u32(&tabbar.selectedColor, 0xFF1677FF),
             background_color: parse_color_to_u32(&tabbar.backgroundColor, 0xFFFFFFFF),
@@ -328,20 +326,20 @@ pub fn get_tab_bar(appid: &str) -> Option<bridge::TabBar> {
 }
 
 /// Get TabBar item by index
-pub fn get_tab_bar_item(appid: &str, index: i32) -> Option<bridge::TabBarItem> {
+pub fn get_tab_bar_item(appid: &str, index: i32) -> Option<self::bridge::TabBarItem> {
     lxapp::try_get(appid)
         .and_then(|lxapp| lxapp.get_tabbar())
         .and_then(|tabbar| {
-            tabbar.get_item(index).map(|item| bridge::TabBarItem {
+            tabbar.get_item(index).map(|item| self::bridge::TabBarItem {
                 page_path: item.pagePath.clone(),
                 text: item.text.clone().unwrap_or_default(),
                 icon_path: item.iconPath.clone().unwrap_or_default(),
                 selected_icon_path: item.selectedIconPath.clone().unwrap_or_default(),
                 selected: item.selected,
                 group: match &item.group {
-                    Some(lxapp::tabbar::TabItemGroup::Start) => bridge::GroupAlignment::Start,
-                    Some(lxapp::tabbar::TabItemGroup::End) => bridge::GroupAlignment::End,
-                    None => bridge::GroupAlignment::Center,
+                    Some(lxapp::tabbar::TabItemGroup::Start) => self::bridge::GroupAlignment::Start,
+                    Some(lxapp::tabbar::TabItemGroup::End) => self::bridge::GroupAlignment::End,
+                    None => self::bridge::GroupAlignment::Center,
                 },
                 badge: item.badge.clone().unwrap_or_default(),
                 has_red_dot: item.has_red_dot,
@@ -356,11 +354,11 @@ pub fn on_applink_received(url: &str) -> i32 {
 }
 
 /// Handle Push Notification Link with trigger context
-pub fn on_pushlink_received(url: &str, trigger: bridge::PushTrigger) -> i32 {
+pub fn on_pushlink_received(url: &str, trigger: self::bridge::PushTrigger) -> i32 {
     let trigger_name = match trigger {
-        bridge::PushTrigger::Background => "Background",
-        bridge::PushTrigger::Tap => "Tap",
-        bridge::PushTrigger::Launch => "Launch",
+        self::bridge::PushTrigger::Background => "Background",
+        self::bridge::PushTrigger::Tap => "Tap",
+        self::bridge::PushTrigger::Launch => "Launch",
     };
 
     log::info!(
@@ -370,10 +368,10 @@ pub fn on_pushlink_received(url: &str, trigger: bridge::PushTrigger) -> i32 {
     );
 
     match trigger {
-        bridge::PushTrigger::Background => {
+        self::bridge::PushTrigger::Background => {
             log::info!("[Apple] Background push link - silent processing");
         }
-        bridge::PushTrigger::Tap | bridge::PushTrigger::Launch => {
+        self::bridge::PushTrigger::Tap | self::bridge::PushTrigger::Launch => {
             log::info!("[Apple] User-initiated push link - navigate to page");
         }
     }
