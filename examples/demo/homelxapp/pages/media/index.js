@@ -314,6 +314,12 @@ Page({
     this.switchMode(options?.type);
   },
 
+  onHide: function () {
+    this.setData({
+      selectedMedia: [],
+    });
+  },
+
   switchMode: function (params) {
     const modeKey = resolveModeKey(params);
     const state = createState(modeKey);
