@@ -1,13 +1,23 @@
 #!/bin/bash
 
+# Build and deploy LingXia Example HarmonyOS App
+# Usage: ./build_deploy_harmony.sh [skip-rust]
+
 set -euo pipefail
 
-# Usage: build_deploy_harmony.sh [skip-rust]
+# Parse command line arguments
 SKIP_RUST=false
 for arg in "$@"; do
   case "$arg" in
-    skip-rust) SKIP_RUST=true; echo "⏭️  Skipping Rust compilation" ;;
-    *) echo "Usage: $0 [skip-rust]" >&2; exit 1 ;;
+    skip-rust)
+      SKIP_RUST=true
+      echo "🚀 Skipping Rust compilation"
+      ;;
+    *)
+      echo "Unknown argument: $arg"
+      echo "Usage: $0 [skip-rust]"
+      exit 1
+      ;;
   esac
 done
 
@@ -16,39 +26,79 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 LINGXIA_ROOT="$SCRIPT_DIR/../.."
 SDK_DIR="$LINGXIA_ROOT/lingxia-sdk/harmony"
 
+# Native library paths
+# Note: SDK HAR does NOT bundle .so; example app directly includes it
+RUST_SO_OUTPUT="$LINGXIA_ROOT/target/aarch64-unknown-linux-ohos/release/liblingxia_lib.so"
+APP_SO_DEST="$SCRIPT_DIR/entry/libs/arm64-v8a/liblingxia.so"
+
+LXAPP_FEATURES="${LXAPP_FEATURES:-}" # set via env var, e.g. LXAPP_FEATURES=cloud ./build_deploy_harmony.sh
+
 # Example app config
 APP_PACKAGE="app.lingxia.lxapp.example"
 APP_ABILITY="EntryAbility"
 HAP_PATH="$SCRIPT_DIR/entry/build/default/outputs/default/entry-default-signed.hap"
 
-# 1) Build/ensure SDK HAR
+# Helpers
+build_rust() {
+  if [ -z "${OHOS_NDK_HOME:-}" ]; then
+    echo "❌ OHOS_NDK_HOME not set; cannot build Rust" >&2
+    exit 1
+  fi
+  echo "Building Rust libraries (aarch64-unknown-linux-ohos)..."
+  TARGET="aarch64-unknown-linux-ohos"
+  export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_OHOS_LINKER="$OHOS_NDK_HOME/native/llvm/bin/aarch64-unknown-linux-ohos-clang"
+  export AR_aarch64_unknown_linux_ohos="$OHOS_NDK_HOME/native/llvm/bin/llvm-ar"
+  export CC_aarch64_unknown_linux_ohos="$OHOS_NDK_HOME/native/llvm/bin/aarch64-unknown-linux-ohos-clang"
+  export CXX_aarch64_unknown_linux_ohos="$OHOS_NDK_HOME/native/llvm/bin/aarch64-unknown-linux-ohos-clang++"
+  SYSROOT="$OHOS_NDK_HOME/native/sysroot"
+  export CPATH="$SYSROOT/usr/include:$SYSROOT/usr/include/aarch64-linux-ohos"
+  export BINDGEN_EXTRA_CLANG_ARGS="--sysroot=$SYSROOT -I$SYSROOT/usr/include -I$SYSROOT/usr/include/aarch64-linux-ohos"
+  cd "$LINGXIA_ROOT"
+  if [ -n "$LXAPP_FEATURES" ]; then
+    echo "  → Building lingxia-lib with features: $LXAPP_FEATURES"
+    cargo build --target $TARGET --release -p lingxia-lib --features "$LXAPP_FEATURES"
+  else
+    echo "  → Building lingxia-lib..."
+    cargo build --target $TARGET --release -p lingxia-lib
+  fi
+  echo "✅ Rust build complete"
+}
+
+stage_so() {
+  if [ ! -f "$RUST_SO_OUTPUT" ]; then
+    echo "❌ Native library not found: $RUST_SO_OUTPUT" >&2
+    exit 1
+  fi
+  mkdir -p "$(dirname "$APP_SO_DEST")"
+  cp "$RUST_SO_OUTPUT" "$APP_SO_DEST"
+  echo "   ✅ Native library staged: $APP_SO_DEST"
+}
+
+# Clean previous HAR/build outputs to ensure a fresh bundle
 HAR_BUNDLE="$LINGXIA_ROOT/target/ohpm/lingxia.har"
 SDK_BUILD_SH="$LINGXIA_ROOT/lingxia-sdk/harmony/build.sh"
+echo "Cleaning previous HAR artifacts..."
+rm -f "$HAR_BUNDLE" 2>/dev/null || true
+rm -rf "$LINGXIA_ROOT/lingxia-sdk/harmony/lingxia/build" 2>/dev/null || true
 
+# 1) Build Rust native library
 if [ "$SKIP_RUST" = false ]; then
-  echo "[0/3] Building SDK HAR (full) ..."
-  if [ -z "${OHOS_NDK_HOME:-}" ]; then
-    echo "❌ OHOS_NDK_HOME not set; cannot build Rust for HAR" >&2; exit 1
-  fi
-  bash "$SDK_BUILD_SH" || { echo "❌ Failed to build SDK HAR" >&2; exit 1; }
+  build_rust
 else
-  if [ ! -f "$HAR_BUNDLE" ]; then
-    echo "[0/3] SDK HAR not found. Building SDK HAR (skip-rust) ..."
-    bash "$SDK_BUILD_SH" skip-rust || { echo "❌ Failed to build SDK HAR (skip-rust)" >&2; exit 1; }
-  fi
+  echo "⏭️  Skipping Rust compilation (using existing .so from target/)"
 fi
+stage_so
+
+# 2) Build SDK HAR (ArkTS only, no native library bundled)
+echo "Building SDK HAR (ArkTS framework only)..."
+bash "$SDK_BUILD_SH" skip-rust || { echo "❌ Failed to build SDK HAR" >&2; exit 1; }
 
 if [ ! -f "$HAR_BUNDLE" ]; then
   echo "❌ HAR not found after build: $HAR_BUNDLE" >&2; exit 1
 fi
 
-# Prevent duplicate native libs in example (SDK HAR already includes liblingxia.so)
-if [ -f "$SCRIPT_DIR/entry/libs/arm64-v8a/liblingxia.so" ]; then
-  rm -f "$SCRIPT_DIR/entry/libs/arm64-v8a/liblingxia.so"
-fi
-
-# 2) Prepare example app assets (app.json + homelxapp)
-echo "[1/3] Preparing example app assets (app.json + homelxapp) ..."
+# 3) Prepare example app assets (app.json + homelxapp)
+echo "Preparing example app assets (app.json + homelxapp) ..."
 RAWFILE_DIR="$SCRIPT_DIR/entry/src/main/resources/rawfile"
 mkdir -p "$RAWFILE_DIR" && rm -rf "$RAWFILE_DIR"/*
 cp "$LINGXIA_ROOT/examples/demo/app.json" "$RAWFILE_DIR/"
@@ -57,10 +107,10 @@ if [ -d "$LINGXIA_ROOT/examples/demo/homelxapp/dist" ]; then
 fi
 
 # 4) Build & install example HAP
-echo "[2/3] Installing ohpm dependencies (local har) ..."
+echo "Installing ohpm dependencies (local har) ..."
 (cd "$SCRIPT_DIR/entry" && ohpm install)
 
-echo "[3/3] Building example HAP ..."
+echo "Building example HAP ..."
 (cd "$SCRIPT_DIR" && hvigorw assembleHap)
 
 echo "Installing HAP ..."
