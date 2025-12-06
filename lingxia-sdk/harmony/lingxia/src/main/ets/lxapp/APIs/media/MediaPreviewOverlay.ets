@@ -1,10 +1,20 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { window } from '@kit.ArkUI';
+import { display, window } from '@kit.ArkUI';
+import {
+  LxNativeVideoPlayer,
+  LxNativeVideoConfig,
+  LxNativeVideoState,
+  VideoErrorDetail
+} from '../../media/LxNativeVideoPlayer';
+import { VideoControlsView, VideoControlSize } from '../../media/VideoControls';
+import { videoPlayerSetVolume } from 'liblingxia.so';
 
 export interface MediaPreviewItem {
   id: string;
   uri: string;
   mediaType?: number; // 0 = image, 1 = video
+  width?: number;  // Video width (optional, will be detected)
+  height?: number; // Video height (optional, will be detected)
 }
 
 export interface MediaPreviewPageParams {
@@ -22,6 +32,8 @@ export class MediaPreviewOverlayManager {
   private static isShowing: boolean = false;
   private static overlayData: MediaPreviewPageParams | null = null;
 
+  private static listeners: Set<() => void> = new Set();
+
   /**
    * Show media preview overlay
    */
@@ -29,6 +41,7 @@ export class MediaPreviewOverlayManager {
     MediaPreviewOverlayManager.overlayData = params;
     MediaPreviewOverlayManager.isShowing = true;
     hilog.info(DOMAIN, TAG, `Showing media preview overlay with ${params.items.length} items`);
+    MediaPreviewOverlayManager.notifyListeners();
   }
 
   /**
@@ -38,6 +51,7 @@ export class MediaPreviewOverlayManager {
     MediaPreviewOverlayManager.isShowing = false;
     MediaPreviewOverlayManager.overlayData = null;
     hilog.info(DOMAIN, TAG, 'Hiding media preview overlay');
+    MediaPreviewOverlayManager.notifyListeners();
   }
 
   /**
@@ -53,6 +67,18 @@ export class MediaPreviewOverlayManager {
   public static getOverlayData(): MediaPreviewPageParams | null {
     return MediaPreviewOverlayManager.overlayData;
   }
+
+  public static registerListener(listener: () => void): void {
+    MediaPreviewOverlayManager.listeners.add(listener);
+  }
+
+  public static unregisterListener(listener: () => void): void {
+    MediaPreviewOverlayManager.listeners.delete(listener);
+  }
+
+  private static notifyListeners(): void {
+    MediaPreviewOverlayManager.listeners.forEach(listener => listener());
+  }
 }
 
 /**
@@ -63,13 +89,57 @@ export class MediaPreviewOverlayManager {
 export struct MediaPreviewOverlay {
   @State private isShowing: boolean = MediaPreviewOverlayManager.isOverlayShowing();
   @State private overlayData: MediaPreviewPageParams | null = MediaPreviewOverlayManager.getOverlayData();
+  
+  private stateChangeListener = () => {
+    const newShowing = MediaPreviewOverlayManager.isOverlayShowing();
+    const newData = MediaPreviewOverlayManager.getOverlayData();
+
+    // Detect show/hide transitions
+    if (newShowing && !this.isShowing && newData) {
+      this.enterFullscreenMode(newData);
+    } else if (!newShowing && this.isShowing) {
+      this.exitFullscreenMode();
+    }
+
+    this.isShowing = newShowing;
+    this.overlayData = newData;
+  }
 
   aboutToAppear() {
-    // Monitor state changes
-    setInterval(() => {
-      this.isShowing = MediaPreviewOverlayManager.isOverlayShowing();
-      this.overlayData = MediaPreviewOverlayManager.getOverlayData();
-    }, 100);
+    MediaPreviewOverlayManager.registerListener(this.stateChangeListener);
+  }
+
+  aboutToDisappear() {
+    MediaPreviewOverlayManager.unregisterListener(this.stateChangeListener);
+  }
+
+  private async enterFullscreenMode(data: MediaPreviewPageParams): Promise<void> {
+    try {
+      const windowClass = await window.getLastWindow(getContext(this));
+      // Hide system bars for immersive experience
+      await windowClass.setWindowSystemBarEnable([]);
+      // Video orientation will be set by MediaViewer based on video dimensions
+      hilog.info(DOMAIN, TAG, 'Entered fullscreen mode, waiting for video orientation detection');
+    } catch (error) {
+      hilog.error(DOMAIN, TAG, `Failed to enter fullscreen mode: ${error}`);
+    }
+  }
+
+  private async exitFullscreenMode(): Promise<void> {
+    try {
+      const windowClass = await window.getLastWindow(getContext(this));
+      // Restore system bars and orientation
+      await windowClass.setWindowSystemBarEnable(['status', 'navigation']);
+      await windowClass.setPreferredOrientation(window.Orientation.UNSPECIFIED);
+      hilog.info(DOMAIN, TAG, 'Exited fullscreen mode, restored orientation');
+    } catch (error) {
+      hilog.error(DOMAIN, TAG, `Failed to exit fullscreen mode: ${error}`);
+    }
+  }
+
+  private handleClose(): void {
+    this.exitFullscreenMode();
+    MediaPreviewOverlayManager.hide();
   }
 
   build() {
@@ -79,15 +149,12 @@ export struct MediaPreviewOverlay {
         Column()
           .width('100%')
           .height('100%')
-          .backgroundColor('rgba(0, 0, 0, 0.9)')
-          .onClick(() => {
-            MediaPreviewOverlayManager.hide();
-          })
+          .backgroundColor(Color.Black)
 
         // Media preview content
         MediaPreviewContent({
           params: this.overlayData,
-          onClose: () => MediaPreviewOverlayManager.hide()
+          onClose: () => this.handleClose()
         })
           .width('100%')
           .height('100%')
@@ -111,7 +178,6 @@ struct MediaPreviewContent {
   @State private currentIndex: number = 0;
   @State private statusBarHeight: number = 44;
   @State private isZoomed: boolean = false;
-  @State private isVideoPlaying: boolean = false;
 
   aboutToAppear() {
     this.currentIndex = this.params.initialIndex || 0;
@@ -176,6 +242,8 @@ struct MediaPreviewContent {
 
 /**
  * Media viewer component (supports both images and videos)
+ * Uses LxNativeVideoPlayer for video playback (same as video component)
+ * Automatically detects video orientation and rotates content for landscape videos
  */
 @Component
 struct MediaViewer {
@@ -184,35 +252,305 @@ struct MediaViewer {
   onDismiss: () => void = () => {};
 
   @State private imageScale: number = 1;
-  @State private showVideoControls: boolean = false;
+  // Video player state
+  @State private videoState: LxNativeVideoState = new LxNativeVideoState();
+  @State private showControls: boolean = true;
+  @State private isSeeking: boolean = false;
+  @State private sliderValue: number = 0;
+  @State private playerId: string = '';
+  @State private videoConfig: LxNativeVideoConfig = new LxNativeVideoConfig();
+  // Screen dimensions and orientation for landscape video rotation
+  @State private screenWidthVp: number = 0;
+  @State private screenHeightVp: number = 0;
+  @State private isLandscapeVideo: boolean = false;
+  @State private orientationDetected: boolean = false;
   private readonly minScale: number = 1;
   private readonly maxScale: number = 3;
   private lastTapTime: number = 0;
+  private controlsTimer: number = -1;
+  private progressTimer: number = -1;
 
   aboutToAppear() {
     // Reset zoom when a new item is displayed
     this.resetZoom();
+    // Initialize screen dimensions for landscape rotation
+    this.initScreenDimensions();
+    // Generate unique player ID and config for videos
+    if (this.item.mediaType === 1) {
+      this.playerId = `preview-video-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+      // Initialize video config once
+      this.videoConfig.src = this.item.uri;
+      this.videoConfig.autoplay = true;
+      this.videoConfig.loop = false;
+      this.videoConfig.muted = false;
+      this.videoConfig.volume = 1.0;
+      this.videoConfig.controls = false; // We use custom controls
+      this.videoConfig.cornerRadius = 0;
+      this.videoConfig.objectFit = 'contain';
+      hilog.info(DOMAIN, TAG, `Video player initialized: playerId=${this.playerId}, src=${this.videoConfig.src}`);
+    }
+  }
+
+  private initScreenDimensions(): void {
+    try {
+      const displayInfo = display.getDefaultDisplaySync();
+      const density = displayInfo.densityPixels || 1;
+      this.screenWidthVp = displayInfo.width / density;
+      this.screenHeightVp = displayInfo.height / density;
+      hilog.info(DOMAIN, TAG, `Screen dimensions: ${this.screenWidthVp}x${this.screenHeightVp} vp`);
+    } catch (error) {
+      hilog.error(DOMAIN, TAG, `Failed to get screen dimensions: ${error}`);
+      // Fallback to reasonable defaults
+      this.screenWidthVp = 360;
+      this.screenHeightVp = 800;
+    }
+  }
+
+  private detectVideoOrientation(): void {
+    if (this.orientationDetected || !this.playerId) {
+      return;
+    }
+    const isLandscape = LxNativeVideoPlayer.isLandscapeVideo(this.playerId);
+    hilog.info(DOMAIN, TAG, `Video orientation detected: isLandscape=${isLandscape}`);
+    this.isLandscapeVideo = isLandscape;
+    this.orientationDetected = true;
+  }
+
+  aboutToDisappear() {
+    // Cleanup timers
+    this.clearControlsTimer();
+    this.stopProgressTimer();
+    // Destroy the video player if it exists
+    if (this.item.mediaType === 1 && this.playerId) {
+      LxNativeVideoPlayer.destroyStatic(this.playerId);
+    }
+  }
+
+  private clearControlsTimer(): void {
+    if (this.controlsTimer !== -1) {
+      clearTimeout(this.controlsTimer);
+      this.controlsTimer = -1;
+    }
+  }
+
+  private resetControlsTimer(): void {
+    this.clearControlsTimer();
+    this.showControls = true;
+    this.controlsTimer = setTimeout(() => {
+      if (this.videoState.isPlaying) {
+        this.showControls = false;
+      }
+    }, 3000);
+  }
+
+  private startProgressTimer(): void {
+    if (this.progressTimer !== -1) {
+      return;
+    }
+    this.progressTimer = setInterval(() => {
+      if (this.videoState.isPlaying && !this.isSeeking && this.playerId) {
+        const currentTime = LxNativeVideoPlayer.getCurrentTimeStatic(this.playerId);
+        const duration = LxNativeVideoPlayer.getDuration(this.playerId);
+        if (currentTime >= 0) {
+          this.videoState.currentTime = currentTime;
+          if (duration > 0) {
+            this.sliderValue = (currentTime / duration) * 100;
+          }
+        }
+        if (duration > 0 && this.videoState.duration !== duration) {
+          this.videoState.duration = duration;
+        }
+      }
+    }, 250);
+  }
+
+  private stopProgressTimer(): void {
+    if (this.progressTimer !== -1) {
+      clearInterval(this.progressTimer);
+      this.progressTimer = -1;
+    }
+  }
+
+  private onVideoEvent(event: string, detail: Object): void {
+    hilog.info(DOMAIN, TAG, `Video event: ${event}`);
+    if (event === 'play') {
+      this.videoState.isPlaying = true;
+      this.videoState.isPaused = false;
+      this.startProgressTimer();
+      this.resetControlsTimer();
+      // Detect video orientation when video starts playing (dimensions available)
+      this.detectVideoOrientation();
+    } else if (event === 'pause') {
+      this.videoState.isPlaying = false;
+      this.videoState.isPaused = true;
+      this.stopProgressTimer();
+    } else if (event === 'prepared') {
+      // Also try to detect orientation when prepared
+      this.detectVideoOrientation();
+    } else if (event === 'error') {
+      const errorDetail = detail as VideoErrorDetail;
+      hilog.error(DOMAIN, TAG, `Video error: ${errorDetail.message}`);
+    }
+  }
+
+  private togglePlayPause(): void {
+    if (this.playerId) {
+      LxNativeVideoPlayer.togglePlayPause(this.playerId);
+      this.videoState.isPlaying = !this.videoState.isPlaying;
+      this.videoState.isPaused = !this.videoState.isPlaying;
+      if (this.videoState.isPlaying) {
+        this.startProgressTimer();
+      } else {
+        this.stopProgressTimer();
+      }
+      this.resetControlsTimer();
+    }
+  }
+
+  @State private volume: number = 0.8;
+  @State private muted: boolean = false;
+
+  @Builder
+  buildVideoControls(): void {
+    VideoControlsView({
+      isPlaying: this.videoState.isPlaying,
+      currentTime: this.videoState.currentTime,
+      duration: this.videoState.duration,
+      sliderValue: this.sliderValue,
+      volume: this.volume,
+      muted: this.muted,
+      controlSize: VideoControlSize.COMPACT,
+      showVolumeSlider: true,
+      showFullscreenButton: false,
+      showExitButton: false,
+      showTimeRemaining: false,
+      onSliderChange: (value: number, mode: SliderChangeMode) => {
+        if (mode === SliderChangeMode.Begin) {
+          this.isSeeking = true;
+          this.sliderValue = value;
+        } else if (mode === SliderChangeMode.Moving) {
+          this.sliderValue = value;
+          if (this.videoState.duration > 0) {
+            this.videoState.currentTime = (value / 100) * this.videoState.duration;
+          }
+        } else if (mode === SliderChangeMode.End) {
+          if (this.videoState.duration > 0 && this.playerId) {
+            const seekTime = (value / 100) * this.videoState.duration;
+            LxNativeVideoPlayer.seekTo(this.playerId, seekTime);
+            this.videoState.currentTime = seekTime;
+            this.sliderValue = value;
+          }
+          setTimeout(() => { this.isSeeking = false; }, 500);
+        }
+      },
+      onPlayPauseClick: () => this.togglePlayPause(),
+      onMuteClick: () => {
+        this.muted = !this.muted;
+        if (this.playerId) {
+          videoPlayerSetVolume(this.playerId, this.muted ? 0 : this.volume);
+        }
+      },
+      onVolumeChange: (value: number) => {
+        this.volume = value / 100;
+        this.muted = value === 0;
+        if (this.playerId) {
+          videoPlayerSetVolume(this.playerId, this.volume);
+        }
+      }
+    })
+  }
+
+  @Builder
+  buildCloseButton(): void {
+    // Close button at top-left - subtle style
+    Row() {
+      Image($r('sys.media.ohos_ic_public_cancel'))
+        .width(20)
+        .height(20)
+        .fillColor('rgba(255,255,255,0.7)')
+    }
+    .width(36)
+    .height(36)
+    .justifyContent(FlexAlign.Center)
+    .borderRadius(18)
+    .backgroundColor('rgba(0,0,0,0.3)')
+    .position({ x: 12, y: 48 })
+    .onClick(() => {
+      this.onDismiss();
+    })
+  }
+
+  @Builder
+  buildCenterPlayButton(): void {
+    Row() {
+      Image($r('sys.media.ohos_ic_public_play'))
+        .width(36)
+        .height(36)
+        .fillColor(Color.White)
+    }
+    .width(72)
+    .height(72)
+    .justifyContent(FlexAlign.Center)
+    .borderRadius(36)
+    .backgroundColor('rgba(0,0,0,0.5)')
+    .align(Alignment.Center)
+    .zIndex(2)
+    .hitTestBehavior(HitTestMode.Block)
+    .onClick(() => {
+      this.togglePlayPause();
+    })
   }
 
   build() {
     Stack({ alignContent: Alignment.Center }) {
       // Check if this is a video (mediaType = 1)
       if (this.item.mediaType === 1) {
-        // For videos, use Video component with toggle controls
-        Video({
-          src: this.item.uri,
-          controller: undefined
+        // Video player using LxNativeVideoPlayer
+        // For landscape videos: rotate content 90 degrees and swap width/height
+        // This avoids changing window orientation while properly displaying landscape videos
+        Stack() {
+          LxNativeVideoPlayer({
+            playerId: this.playerId,
+            config: this.videoConfig,
+            onEvent: (event: string, detail: Object) => {
+              this.onVideoEvent(event, detail);
+            }
+          })
+            .width('100%')
+            .height('100%')
+
+          // Video controls overlay
+          if (this.showControls) {
+            this.buildVideoControls()
+          }
+
+          // Center play button when paused (rendered above controls for easy access)
+          if (!this.videoState.isPlaying) {
+            this.buildCenterPlayButton()
+          }
+
+          // Close button (always visible)
+          this.buildCloseButton()
+        }
+        // For landscape videos: swap width/height so after 90° rotation, content fills screen
+        .width(this.isLandscapeVideo ? this.screenHeightVp : '100%')
+        .height(this.isLandscapeVideo ? this.screenWidthVp : '100%')
+        // Center the rotated content
+        .position(this.isLandscapeVideo ?
+          { x: (this.screenWidthVp - this.screenHeightVp) / 2, y: (this.screenHeightVp - this.screenWidthVp) / 2 } :
+          { x: 0, y: 0 })
+        // Rotate the entire video content for landscape videos
+        .rotate({
+          angle: this.isLandscapeVideo ? 90 : 0,
+          centerX: '50%',
+          centerY: '50%'
         })
-        .width('100%')
-        .height('100%')
-        .objectFit(ImageFit.Contain)
-        .controls(this.showVideoControls)
-        .autoPlay(true)
-        .loop(false)
-        .muted(false)
+        .backgroundColor(Color.Black)
         .onClick(() => {
-          // Toggle video controls visibility
-          this.showVideoControls = !this.showVideoControls;
+          this.showControls = !this.showControls;
+          if (this.showControls) {
+            this.resetControlsTimer();
+          }
         })
       } else {
         // Image viewer (default) - use contain to maintain aspect ratio and fit screen
