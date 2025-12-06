@@ -6,13 +6,15 @@
     "pages/home/index.html",
     "pages/popup/index.tsx",
     "pages/API/index.tsx",
+    "pages/video/index.tsx",
     "pages/media/index.tsx",
     "pages/ui/index.tsx",
     "pages/device/index.tsx",
     "pages/system/index.tsx",
     "pages/location/index.tsx",
     "pages/document/index.tsx",
-    "pages/todo/index.vue"
+    "pages/todo/index.vue",
+    "pages/components/index.tsx"
   ],
   "debug": true,
   "tabBar": {
@@ -33,6 +35,12 @@
         "text": "API",
         "pagePath": "pages/API/index.tsx",
         "iconPath": "images/api.png"
+      },
+      {
+        "text": "Components",
+        "pagePath": "pages/components/index.tsx",
+        "iconPath": "images/component.png",
+        "selectedIconPath": "images/component.png"
       },
       {
         "text": "ToDo",
