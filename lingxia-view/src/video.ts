@@ -1,6 +1,9 @@
 import { sendSameLevelMessage, registerSameLevelHandler } from "./samelevel.js";
 import { measureElement } from "./dom.js";
 import { ensureComponentId, SameLevelUpdateState } from "./component.js";
+import { isHarmony } from "./platform.js";
+
+const HARMONY_PROPS_PREFIX = "data:application/json,";
 
 // Type definitions
 export type LxVideoAttributes = {
@@ -23,6 +26,7 @@ export type LxVideoAttributes = {
   onError?: (e: Event) => void;
   onLoadedMetadata?: (e: Event) => void;
   onFullscreenChange?: (e: Event) => void;
+  onWaiting?: (e: Event) => void;
 };
 
 declare global {
@@ -56,6 +60,8 @@ export class LxVideoElement extends HTMLElement {
   private pendingLayoutFrame: number | null = null;
   private boundUpdatePosition = this.updatePosition.bind(this);
   private _handlers: Record<string, EventListenerOrEventListenerObject> = {};
+  private harmonyEmbed?: HTMLEmbedElement;
+  private lastHarmonyProps?: string;
 
   connectedCallback() {
     this.componentId = ensureComponentId(this, "lx-video", this.componentId);
@@ -68,12 +74,12 @@ export class LxVideoElement extends HTMLElement {
         // Normalize detail based on event type per WeChat Mini Program specs
         let detail = message.detail || message.payload || {};
 
-        // Ensure play/pause/ended have empty detail if not provided
-        if (['play', 'pause', 'ended'].includes(message.event)) {
+        // Ensure play/pause/ended/waiting have empty detail if not provided
+        if (['play', 'pause', 'ended', 'waiting'].includes(message.event)) {
             if (Object.keys(detail).length === 0) detail = {};
         }
 
-                const ev = new CustomEvent(message.event, {
+        const ev = new CustomEvent(message.event, {
                   detail: detail,
                   bubbles: true,
                   cancelable: false
@@ -90,7 +96,7 @@ export class LxVideoElement extends HTMLElement {
   disconnectedCallback() {
     this.updateState.reset();
 
-    if (this.componentId) {
+    if (this.componentId && !isHarmony()) {
       sendSameLevelMessage({
         action: "component.unmount",
         id: this.componentId
@@ -101,6 +107,11 @@ export class LxVideoElement extends HTMLElement {
       this.unregister();
       this.unregister = undefined;
     }
+    if (this.harmonyEmbed && this.contains(this.harmonyEmbed)) {
+      this.removeChild(this.harmonyEmbed);
+    }
+    this.harmonyEmbed = undefined;
+    this.lastHarmonyProps = undefined;
     // Cleanup manually attached property handlers
     Object.keys(this._handlers).forEach(name => {
       this.removeEventListener(name, this._handlers[name]);
@@ -160,6 +171,9 @@ export class LxVideoElement extends HTMLElement {
   set onfullscreenchange(cb: EventListener) { this.setEventHandler('fullscreenchange', cb); }
   get onfullscreenchange() { return this.getEventHandler('fullscreenchange'); }
 
+  set onwaiting(cb: EventListener) { this.setEventHandler('waiting', cb); }
+  get onwaiting() { return this.getEventHandler('waiting'); }
+
   // Internal
   private ensurePlaceholderStyle() {
     if (!this.style.display) this.style.display = "block";
@@ -171,6 +185,7 @@ export class LxVideoElement extends HTMLElement {
     const volumeAttr = this.getAttribute("volume");
     const volume =
       volumeAttr != null ? parseFloat(volumeAttr) : undefined;
+
     return {
       src: this.getAttribute("src") || undefined,
       poster: this.getAttribute("poster") || undefined,
@@ -183,6 +198,10 @@ export class LxVideoElement extends HTMLElement {
   }
 
   private mountOrUpdate() {
+    if (isHarmony()) {
+      this.mountOrUpdateHarmony();
+      return;
+    }
     if (!this.componentId) return;
     const { rect, cornerRadius } = measureElement(this);
     const hasSize = rect.width > 0 && rect.height > 0;
@@ -219,6 +238,10 @@ export class LxVideoElement extends HTMLElement {
   }
 
   private updatePosition() {
+    if (isHarmony()) {
+      this.mountOrUpdateHarmony();
+      return;
+    }
     if (!this.mounted || !this.componentId) return;
     const { rect } = measureElement(this);
     if (!rect.width || !rect.height) return;
@@ -234,6 +257,11 @@ export class LxVideoElement extends HTMLElement {
   }
 
   private startTracking() {
+    if (isHarmony()) {
+      this.startSizeObserver();
+      this.updatePosition();
+      return;
+    }
     window.addEventListener("scroll", this.boundUpdatePosition, { passive: true });
     window.addEventListener("resize", this.boundUpdatePosition);
     this.startSizeObserver();
@@ -241,6 +269,14 @@ export class LxVideoElement extends HTMLElement {
   }
 
   private stopTracking() {
+    if (isHarmony()) {
+      this.stopSizeObserver();
+      if (this.pendingLayoutFrame !== null) {
+        cancelAnimationFrame(this.pendingLayoutFrame);
+        this.pendingLayoutFrame = null;
+      }
+      return;
+    }
     window.removeEventListener("scroll", this.boundUpdatePosition);
     window.removeEventListener("resize", this.boundUpdatePosition);
     this.stopSizeObserver();
@@ -285,6 +321,87 @@ export class LxVideoElement extends HTMLElement {
       this.pendingLayoutFrame = null;
       this.mountOrUpdate();
     });
+  }
+
+  private mountOrUpdateHarmony() {
+    if (!this.componentId) return;
+    const { rect, cornerRadius } = measureElement(this);
+    const hasSize = rect.width > 0 && rect.height > 0;
+    if (!hasSize) {
+      if (!this.mounted) {
+        this.scheduleMountRetry();
+      }
+      return;
+    }
+    const props = this.collectProps();
+    if (cornerRadius !== undefined) {
+      (props as any).cornerRadius = cornerRadius;
+    }
+    const zIndex = parseFloat(this.style.zIndex || "0") || 0;
+    const decision = this.updateState.decide(rect, props, zIndex, !this.mounted);
+    if (!decision.shouldSend) return;
+    this.ensureHarmonyEmbed(rect, props, cornerRadius);
+    this.mounted = true;
+  }
+
+  private ensureHarmonyEmbed(
+    rect: { width: number; height: number },
+    props: Record<string, unknown>,
+    cornerRadius?: number
+  ) {
+    // Create embed element only once - ArkWeb triggers DESTROY+CREATE on attribute changes
+    if (!this.harmonyEmbed) {
+      const embed = document.createElement("embed");
+      embed.setAttribute("type", "native/video");
+      embed.setAttribute("width", `${rect.width}`);
+      embed.setAttribute("height", `${rect.height}`);
+      embed.setAttribute("id", this.componentId!);
+      embed.setAttribute("data-lx-component-id", this.componentId!);
+      embed.style.display = "block";
+      embed.style.width = "100%";
+      embed.style.height = "100%";
+      embed.style.border = "none";
+      if (cornerRadius !== undefined) {
+        embed.style.borderRadius = `${cornerRadius}px`;
+        embed.style.overflow = "hidden";
+      }
+
+      // Set initial props via src attribute
+      const encodedProps = this.encodeHarmonyProps(props);
+      embed.setAttribute("src", encodedProps);
+      embed.setAttribute("data-lx-props", encodedProps);
+      this.lastHarmonyProps = encodedProps;
+
+      this.appendChild(embed);
+      this.harmonyEmbed = embed;
+      return;
+    }
+
+    // Only update props via src if they actually changed
+    // DO NOT modify type/id/width/height - it causes ArkWeb to recreate the component
+    const encodedProps = this.encodeHarmonyProps(props);
+    if (encodedProps !== this.lastHarmonyProps) {
+      this.harmonyEmbed.setAttribute("src", encodedProps);
+      this.harmonyEmbed.setAttribute("data-lx-props", encodedProps);
+      this.lastHarmonyProps = encodedProps;
+    }
+
+    // Ensure embed element matches latest corner radius for clipping
+    if (cornerRadius !== undefined && this.harmonyEmbed.style.borderRadius !== `${cornerRadius}px`) {
+      this.harmonyEmbed.style.borderRadius = `${cornerRadius}px`;
+      this.harmonyEmbed.style.overflow = "hidden";
+    }
+  }
+
+  private encodeHarmonyProps(props: Record<string, unknown>): string {
+    try {
+      const payload = { componentId: this.componentId, ...props };
+      return `${HARMONY_PROPS_PREFIX}${encodeURIComponent(
+        JSON.stringify(payload)
+      )}`;
+    } catch (_e) {
+      return `${HARMONY_PROPS_PREFIX}%7B%7D`;
+    }
   }
 }
 
