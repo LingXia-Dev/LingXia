@@ -113,6 +113,7 @@ sealed class LxMediaEvent {
     object Pause : LxMediaEvent()
     object Stop : LxMediaEvent()
     object Ended : LxMediaEvent()
+    object Waiting : LxMediaEvent()
     data class Seeked(val time: Double) : LxMediaEvent()
     data class TimeUpdate(val currentTime: Double, val duration: Double) : LxMediaEvent()
     data class RateChange(val rate: Double) : LxMediaEvent()
@@ -130,6 +131,7 @@ sealed class LxMediaEvent {
             is Pause -> "pause"
             is Stop -> "stop"
             is Ended -> "ended"
+            is Waiting -> "waiting"
             is Seeked -> "seeked"
             is TimeUpdate -> "timeupdate"
             is RateChange -> "ratechange"
@@ -144,7 +146,7 @@ sealed class LxMediaEvent {
 
     val rawData: Map<String, Any>
         get() = when (this) {
-            is Play, is Pause, is Stop, is Ended -> emptyMap()
+            is Play, is Pause, is Stop, is Ended, is Waiting -> emptyMap()
             is Seeked -> mapOf("time" to time)
             is TimeUpdate -> mapOf("currentTime" to currentTime, "duration" to duration)
             is RateChange -> mapOf("rate" to rate)
@@ -186,10 +188,10 @@ class LxMediaPlayer(
     private var playerView: PlayerView? = null
     private var posterImageView: ImageView? = null
     private var loadingIndicator: ProgressBar? = null
-    private var controlsOverlay: LxMediaControlsOverlay? = null
+  private var controlsOverlay: LxMediaControlsOverlay? = null
 
-    private val mainHandler = Handler(Looper.getMainLooper())
-    private var timeUpdateRunnable: Runnable? = null
+  private val mainHandler = Handler(Looper.getMainLooper())
+  private var timeUpdateRunnable: Runnable? = null
 
     // Config state
     private var controlsEnabled = true
@@ -215,6 +217,8 @@ class LxMediaPlayer(
     private var videoHeight = 0.0
     private var videoRotationDegrees = 0
     private var closeRequestListener: (() -> Unit)? = null
+    private var lastTimeForPoster: Double = -1.0  // Track time progression for poster hiding
+    private var pendingPosterHide = false  // Flag to delay poster hiding until time progresses
 
     // Fullscreen state
     private var fullscreenDialog: android.app.Dialog? = null
@@ -234,13 +238,16 @@ class LxMediaPlayer(
                 Player.STATE_READY -> {
                     loadingIndicator?.visibility = View.GONE
                     if (!firstFrameDisplayed) {
-                        firstFrameDisplayed = true
-                        posterImageView?.visibility = View.GONE
+                        // Don't hide poster immediately - wait for time to progress
+                        // This prevents black screen flash when video is buffering
+                        pendingPosterHide = true
+                        lastTimeForPoster = -1.0
                         emitLoadedMetadata()
                     }
                 }
                 Player.STATE_BUFFERING -> {
                     loadingIndicator?.visibility = View.VISIBLE
+                    emitEvent(LxMediaEvent.Waiting)
                 }
                 Player.STATE_ENDED -> {
                     loadingIndicator?.visibility = View.GONE
@@ -248,6 +255,18 @@ class LxMediaPlayer(
                     if (loopEnabled) {
                         player?.seekTo(0)
                         player?.play()
+                    } else {
+                        // Show poster when video ends (non-loop mode)
+                        // Reset state so poster can show again on next play
+                        firstFrameDisplayed = false
+                        pendingPosterHide = false
+                        if (posterUrl != null) {
+                            posterImageView?.visibility = View.VISIBLE
+                            posterImageView?.bringToFront()  // Ensure poster is above playerView
+                        }
+                        // Bring controls to front AFTER poster so they're visible on top
+                        controlsOverlay?.view?.bringToFront()
+                        controlsOverlay?.showCenterPlayButton(true)
                     }
                 }
                 Player.STATE_IDLE -> {
@@ -556,7 +575,12 @@ class LxMediaPlayer(
                     systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
                 }
                 @Suppress("DEPRECATION")
-                addFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN)
+                addFlags(
+                    android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN or
+                    android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+                    android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                    android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+                )
                 @Suppress("DEPRECATION")
                 decorView.systemUiVisibility = (
                     View.SYSTEM_UI_FLAG_FULLSCREEN or
@@ -573,6 +597,16 @@ class LxMediaPlayer(
                 } else {
                     false
                 }
+            }
+
+            // Handle dialog lifecycle to ensure player surface is maintained
+            setOnShowListener {
+                Log.d(TAG, "Fullscreen dialog shown, ensuring player is attached")
+                playerView?.player = player
+            }
+
+            setOnDismissListener {
+                Log.d(TAG, "Fullscreen dialog dismissed")
             }
 
             show()
@@ -764,6 +798,8 @@ class LxMediaPlayer(
         if (uri == currentSource) return
         currentSource = uri
         firstFrameDisplayed = false
+        pendingPosterHide = false  // Reset poster hide state
+        lastTimeForPoster = -1.0
         posterImageView?.visibility = if (posterUrl != null) View.VISIBLE else View.GONE
         loadingIndicator?.visibility = View.VISIBLE
         player?.apply {
@@ -866,12 +902,27 @@ class LxMediaPlayer(
 
     private fun startTimeUpdates() {
         stopTimeUpdates()
+        lastTimeForPoster = -1.0  // Reset on timer start
         timeUpdateRunnable = object : Runnable {
             override fun run() {
                 player?.let { p ->
                     if (p.isPlaying) {
                         val currentTime = p.currentPosition.toDouble() / 1000.0
                         val duration = p.duration.toDouble() / 1000.0
+
+                        // Hide poster when video is actually rendering frames (time progresses)
+                        // This prevents black screen flash (like HarmonyOS implementation)
+                        if (pendingPosterHide && duration > 0) {
+                            val timeAdvanced = lastTimeForPoster >= 0 && currentTime > lastTimeForPoster
+                            if (currentTime > 0.2 && timeAdvanced) {
+                                Log.d(TAG, "Hiding poster: currentTime=$currentTime, lastTime=$lastTimeForPoster")
+                                pendingPosterHide = false
+                                firstFrameDisplayed = true
+                                posterImageView?.visibility = View.GONE
+                            }
+                            lastTimeForPoster = currentTime
+                        }
+
                         emitEvent(LxMediaEvent.TimeUpdate(currentTime, duration))
                         controlsOverlay?.updateProgress(currentTime, duration)
                     }

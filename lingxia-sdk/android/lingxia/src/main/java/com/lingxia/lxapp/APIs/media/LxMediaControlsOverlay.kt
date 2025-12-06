@@ -91,6 +91,15 @@ internal class LxMediaControlsOverlay(
     }
 
     private fun setupUI() {
+        // Use a GestureDetector to distinguish single tap from other gestures
+        // This prevents accidental triggers during scrolling or quick touches
+        val gestureDetector = android.view.GestureDetector(context, object : android.view.GestureDetector.SimpleOnGestureListener() {
+            override fun onSingleTapConfirmed(e: android.view.MotionEvent): Boolean {
+                toggleControls()
+                return true
+            }
+        })
+
         val tapLayer = View(context).apply {
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -98,7 +107,10 @@ internal class LxMediaControlsOverlay(
             )
             isClickable = true
             isFocusable = true
-            setOnClickListener { toggleControls() }
+            setOnTouchListener { _, event ->
+                gestureDetector.onTouchEvent(event)
+                true
+            }
         }
         view.addView(tapLayer)
 
@@ -190,39 +202,34 @@ internal class LxMediaControlsOverlay(
             alpha = 0f
         }
 
-        val padding = dp(16)
-        val buttonWidth = dp(44)
-        val progressY = dp(16)
-        val timeLabelWidth = dp(60)
+        val padding = dp(12)  // Reduced from 16
+        val buttonWidth = dp(40)  // Reduced from 44
+        val progressTop = dp(6)
+        val progressRowHeight = dp(44)
 
-        timeLabel = TextView(context).apply {
-            layoutParams = FrameLayout.LayoutParams(timeLabelWidth, dp(20)).apply {
-                gravity = Gravity.TOP or Gravity.END
-                rightMargin = padding
-                topMargin = progressY + dp(2)
-            }
-            setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-            typeface = Typeface.MONOSPACE
-            gravity = Gravity.CENTER
-            text = "-0:00"
-            setShadowLayer(dp(2).toFloat(), 0f, dp(1).toFloat(), Color.argb(128, 0, 0, 0))
-        }
-        bar.addView(timeLabel)
-
-        progressSeekBar = SeekBar(context).apply {
+        val progressRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(48)
+                progressRowHeight,
+                Gravity.TOP
             ).apply {
-                gravity = Gravity.TOP
                 leftMargin = padding
-                rightMargin = padding + timeLabelWidth + dp(12)
-                topMargin = progressY - dp(8)
+                rightMargin = padding
+                topMargin = progressTop
+            }
+        }
+
+        progressSeekBar = SeekBar(context).apply {
+            layoutParams = LinearLayout.LayoutParams(0, dp(32), 1f).apply {
+                rightMargin = -dp(8)  // Negative margin to extend into time label space
             }
             max = 1000
             progress = 0
             elevation = dp(4).toFloat()
+            // Reduce right padding to extend progress bar closer to time label
+            setPadding(paddingLeft, paddingTop, 0, paddingBottom)
             thumb = createThumbDrawable()
             progressDrawable = createProgressDrawable()
         }
@@ -264,7 +271,22 @@ internal class LxMediaControlsOverlay(
                 scheduleAutoHide()
             }
         })
-        bar.addView(progressSeekBar)
+
+        timeLabel = TextView(context).apply {
+            layoutParams = LinearLayout.LayoutParams(dp(48), dp(32))  // Reduced width
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            typeface = Typeface.MONOSPACE
+            gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            text = "-0:00"
+            setShadowLayer(dp(2).toFloat(), 0f, dp(1).toFloat(), Color.argb(128, 0, 0, 0))
+            // Add padding to prevent text from being too close to edge
+            setPadding(0, 0, dp(2), 0)
+        }
+
+        progressRow.addView(progressSeekBar)
+        progressRow.addView(timeLabel)
+        bar.addView(progressRow)
 
         val controlY = dp(50)
         val spacing = dp(12)
@@ -286,8 +308,7 @@ internal class LxMediaControlsOverlay(
         playPauseButton = ImageButton(context).apply {
             layoutParams = LinearLayout.LayoutParams(buttonWidth, buttonWidth)
             setBackgroundColor(Color.TRANSPARENT)
-            setImageResource(android.R.drawable.ic_media_play)
-            setColorFilter(Color.WHITE)
+            setImageDrawable(createPlayIconDrawable(dp(24)))
             scaleType = ImageView.ScaleType.CENTER_INSIDE
             setPadding(dp(8), dp(8), dp(8), dp(8))
             setOnClickListener { onPlayPauseClick() }
@@ -376,10 +397,9 @@ internal class LxMediaControlsOverlay(
                 shape = GradientDrawable.OVAL
                 setColor(CENTER_BTN_BG)
             }
-            setImageResource(android.R.drawable.ic_media_play)
-            setColorFilter(Color.WHITE)
+            setImageDrawable(createPlayIconDrawable(dp(40)))
             scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setPadding(dp(24), dp(24), dp(24), dp(24))
+            setPadding(dp(20), dp(20), dp(20), dp(20))
             setOnClickListener { onPlayPauseClick() }
             visibility = View.GONE
             alpha = 0f
@@ -393,11 +413,22 @@ internal class LxMediaControlsOverlay(
 
     fun updatePlayPauseButton() {
         val isPlaying = player.isPlaying()
-        playPauseButton.setImageResource(if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play)
-        centerPlayButton.setImageResource(if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play)
+        val iconSize = dp(24)
+        playPauseButton.setImageDrawable(if (isPlaying) createPauseIconDrawable(iconSize) else createPlayIconDrawable(iconSize))
+        val centerIconSize = dp(40)
+        centerPlayButton.setImageDrawable(if (isPlaying) createPauseIconDrawable(centerIconSize) else createPlayIconDrawable(centerIconSize))
         centerPlayButton.visibility = if (controlsVisible) View.VISIBLE else View.GONE
         updateFullscreenButton()
         updateSettingsButton()
+    }
+
+    fun showCenterPlayButton(show: Boolean) {
+        centerPlayButton.setImageDrawable(createPlayIconDrawable(dp(40)))
+        centerPlayButton.visibility = if (show) View.VISIBLE else View.GONE
+        centerPlayButton.alpha = 1f
+        if (show) {
+            setControlsVisible(true)
+        }
     }
 
     fun updateProgress(currentTime: Double, duration: Double) {
@@ -1134,6 +1165,66 @@ internal class LxMediaControlsOverlay(
                     canvas.drawLine(r - cornerLen, b, r, b, paint)
                     canvas.drawLine(r, b, r, b - cornerLen, paint)
                 }
+            }
+
+            override fun setAlpha(alpha: Int) { paint.alpha = alpha }
+            override fun setColorFilter(cf: android.graphics.ColorFilter?) { paint.colorFilter = cf }
+            override fun getOpacity() = android.graphics.PixelFormat.TRANSLUCENT
+            override fun getIntrinsicWidth() = size
+            override fun getIntrinsicHeight() = size
+        }
+    }
+
+    // Create a play icon drawable (triangle pointing right)
+    private fun createPlayIconDrawable(size: Int, color: Int = Color.WHITE): Drawable {
+        return object : Drawable() {
+            private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                this.color = color
+                style = Paint.Style.FILL
+            }
+
+            override fun draw(canvas: Canvas) {
+                val b = bounds
+                val w = b.width().toFloat()
+                val h = b.height().toFloat()
+                // Draw triangle pointing right
+                val path = android.graphics.Path().apply {
+                    moveTo(w * 0.25f, h * 0.15f)
+                    lineTo(w * 0.25f, h * 0.85f)
+                    lineTo(w * 0.8f, h * 0.5f)
+                    close()
+                }
+                canvas.drawPath(path, paint)
+            }
+
+            override fun setAlpha(alpha: Int) { paint.alpha = alpha }
+            override fun setColorFilter(cf: android.graphics.ColorFilter?) { paint.colorFilter = cf }
+            override fun getOpacity() = android.graphics.PixelFormat.TRANSLUCENT
+            override fun getIntrinsicWidth() = size
+            override fun getIntrinsicHeight() = size
+        }
+    }
+
+    // Create a pause icon drawable (two vertical bars)
+    private fun createPauseIconDrawable(size: Int, color: Int = Color.WHITE): Drawable {
+        return object : Drawable() {
+            private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                this.color = color
+                style = Paint.Style.FILL
+            }
+
+            override fun draw(canvas: Canvas) {
+                val b = bounds
+                val w = b.width().toFloat()
+                val h = b.height().toFloat()
+                val barWidth = w * 0.2f
+                val gap = w * 0.15f
+                val left1 = (w - 2 * barWidth - gap) / 2
+                val left2 = left1 + barWidth + gap
+                val top = h * 0.2f
+                val bottom = h * 0.8f
+                canvas.drawRoundRect(left1, top, left1 + barWidth, bottom, barWidth / 3, barWidth / 3, paint)
+                canvas.drawRoundRect(left2, top, left2 + barWidth, bottom, barWidth / 3, barWidth / 3, paint)
             }
 
             override fun setAlpha(alpha: Int) { paint.alpha = alpha }
