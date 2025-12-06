@@ -51,6 +51,20 @@
     return "unknown";
   })();
 
+  // Platform detection helpers - exposed globally for components
+  function isHarmony() {
+    return BRIDGE_CONFIG.os === "Harmony";
+  }
+  function isIOS() {
+    return BRIDGE_CONFIG.os === "iOS";
+  }
+  function isAndroid() {
+    return BRIDGE_CONFIG.os === "Android";
+  }
+  function getPlatformOS() {
+    return BRIDGE_CONFIG.os || "unknown";
+  }
+
   function log(...args) {
     console.log(LOG_PREFIX, ...args);
   }
@@ -436,9 +450,7 @@
       this.event("LXPortRdy");
     },
 
-    // Internal: Receive message from evaluate_javascript (WebKit platforms)
     _receiveEvaluateMessage: function (messageString) {
-      if (communicationMethod !== "webkit") return;
       try {
         if (!messageString) return;
         const message = JSON.parse(messageString);
@@ -464,6 +476,14 @@
         return false;
       },
     }),
+
+    // Platform detection helpers
+    platform: {
+      isHarmony,
+      isIOS,
+      isAndroid,
+      getOS: getPlatformOS,
+    },
   };
 
   // Create lx proxy object for API interception
@@ -509,9 +529,12 @@
   function _init() {
     log(`Detected communication method: ${communicationMethod}`);
 
+    // Always expose __LingXiaRecvMessage for native runJavaScript calls
+    // This is used by SameLevel events and other native-initiated communications
+    window[GLOBAL_RECEIVER_NAME] = LingXiaBridge._receiveEvaluateMessage;
+
     // Platform-specific initialization
     if (communicationMethod === "webkit") {
-      window[GLOBAL_RECEIVER_NAME] = LingXiaBridge._receiveEvaluateMessage;
       LingXiaBridge.event("LXPortRdy");
     } else if (communicationMethod === MESSAGE_PORT_TYPE) {
       _getMessagePort().catch((e) => {
