@@ -1,10 +1,21 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { webview } from '@kit.ArkWeb';
-import { window } from '@kit.ArkUI';
+import { window, display } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { LxApp } from './LxApp';
 import { LxAppPopup } from './APIs/LxAppPopup';
-import { findWebview, toWebTag, extractWebTag, addWebViewUiCallback, removeWebViewUiCallback, WebViewInfo, getAllWebViewInfos } from './WebView';
+import {
+  findWebview,
+  toWebTag,
+  extractWebTag,
+  addWebViewUiCallback,
+  removeWebViewUiCallback,
+  WebViewInfo,
+  getAllWebViewInfos,
+  getWebViewEmbedManager,
+  pauseWebViewComponents,
+  resumeWebViewComponents
+} from './WebView';
 import { NavigationBar, type NavigationBarState, NAVBAR_TOTAL_HEIGHT } from './NavigationBar';
 import { NavigationButton, CapsuleButton } from './LxAppDrawables';
 import { TabBar } from './TabBar';
@@ -12,6 +23,10 @@ import { TabBarPosition, type TabBarItem, UiEventType } from 'liblingxia.so';
 import liblingxia, { TabBarState, getNavigationBarState, onPageShow, onUiEvent, onWebviewControllerCreated } from 'liblingxia.so';
 import { NAVIGATION_ACTION_BACK, NAVIGATION_ACTION_HOME, CAPSULE_ACTION_MORE, CAPSULE_ACTION_CLOSE } from './NativeBridge';
 import { AnimationType } from './LxAppNavigation';
+import { SameLevelEmbedManager } from './SameLevel/SameLevelEmbed';
+import { setEmbedController, teardownEmbedManager } from './SameLevel/SameLevelBridge';
+import { LxNativeVideoPlayer } from './media/LxNativeVideoPlayer';
+import { LxFullscreenVideoOverlay } from './media/LxFullscreenVideoOverlay';
 
 // Container-specific constants
 const SYSTEM_STATUS_BAR_HEIGHT = 44;     // Default status bar height
@@ -54,6 +69,17 @@ interface CornerRadii {
 interface RenderableWebEntry {
   webTag: string;
   controller: webview.WebviewController;
+}
+
+// Layout snapshot for same-level NodeContainer so we can update attributes without recreating the native view
+interface NodeLayoutState {
+  width: Length;
+  height: Length;
+  position?: Position;
+  zIndex: number;
+  cornerRadius: number;
+  safeAreaTypes: SafeAreaType[];
+  safeAreaEdges: SafeAreaEdge[];
 }
 
 @Component
@@ -101,6 +127,17 @@ export struct LxAppContainer {
   @State private navbarTranslateX: number = 0
   private controllerReadyAcked: Set<string> = new Set()
 
+  // Same-level rendering state
+  private embedManagers: Map<string, SameLevelEmbedManager> = new Map()
+  @State private embedComponentIds: Map<string, string[]> = new Map()
+  @State private fullscreenRefreshKey: number = 0  // Force NodeContainer refresh when fullscreen changes
+
+  // Fullscreen state - when set, only the fullscreen component is rendered
+  @State private fullscreenWebTag: string = ''
+  @State private fullscreenComponentId: string = ''
+
+  // Layout cache keyed by webTag:componentId to drive NodeContainer attributes reactively
+  @State private nodeLayoutCache: Map<string, NodeLayoutState> = new Map()
 
   private webViewUiCallback = (action: string, info: WebViewInfo) => {
     this.handleWebViewUiEvent(action, info);
@@ -307,7 +344,11 @@ export struct LxAppContainer {
   public static updateTabSelection(appId: string, path: string): boolean {
     const container = LxAppContainer.activeContainers.get(appId);
     if (container) {
-      container.updateTabSelection(path);
+      // Check if it's a tab bar item before refreshing, if not, do nothing
+      if (!container.isTabBarItem(path)) {
+        return false;
+      }
+      container.refreshTabBarData();
       return true;
     }
     return false;
@@ -464,62 +505,77 @@ export struct LxAppContainer {
   }
 
   build() {
-    if (this.isTabBarVertical()) {
-
-      Row() {
-        if (this.tabBarState && this.tabBarState.position === TabBarPosition.Left) {
-          this.buildTabBar()
-        }
-
-        Stack() {
-          Column() {
-            if (this.shouldShowCapsuleButton()) {
-              CapsuleButton({
-                statusBarHeight: this.statusBarHeight,
-                standalone: false,
-                onMorePressed: () => this.handleCapsuleMore(),
-                onClosePressed: () => this.handleCapsuleClose()
-              })
-            }
-            // Show NavigationBar only when needed
-            if (this.shouldRenderNavigationBar()) {
-              this.buildInlineNavigationBar()
-            }
-            this.buildWebViewArea()
+    Stack() {
+      // Main content layer
+      if (this.isTabBarVertical()) {
+        Row() {
+          if (this.tabBarState && this.tabBarState.position === TabBarPosition.Left) {
+            this.buildTabBar()
           }
-          .layoutWeight(1)
-          .height('100%')
-        }
 
-        if (this.tabBarState && this.tabBarState.position === TabBarPosition.Right) {
+          Stack() {
+            Column() {
+              if (this.shouldShowCapsuleButton()) {
+                CapsuleButton({
+                  statusBarHeight: this.statusBarHeight,
+                  standalone: false,
+                  onMorePressed: () => this.handleCapsuleMore(),
+                  onClosePressed: () => this.handleCapsuleClose()
+                })
+              }
+              // Show NavigationBar only when needed
+              if (this.shouldRenderNavigationBar()) {
+                this.buildInlineNavigationBar()
+              }
+              this.buildWebViewArea()
+            }
+            .layoutWeight(1)
+            .height('100%')
+          }
+
+          if (this.tabBarState && this.tabBarState.position === TabBarPosition.Right) {
+            this.buildTabBar()
+          }
+        }
+        .width('100%')
+        .height('100%')
+        .backgroundColor(Color.Transparent)
+      } else {
+        Stack({ alignContent: this.getTabBarAlignment() }) {
+          this.buildWebViewArea()
+          this.buildNavigationBar()
           this.buildTabBar()
-        }
-      }
-      .width('100%')
-      .height('100%')
-      .backgroundColor(Color.Transparent)
-      .expandSafeArea(this.shouldExpandSafeAreaForContainer() ? [SafeAreaType.SYSTEM] : [], this.shouldExpandSafeAreaForContainer() ? [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM] : [])
-    } else {
-      Stack({ alignContent: this.getTabBarAlignment() }) {
-        this.buildWebViewArea()
-        this.buildNavigationBar()
-        this.buildTabBar()
 
-        if (this.shouldShowCapsuleButton()) {
-          CapsuleButton({
-            statusBarHeight: this.statusBarHeight,
-            standalone: true,
-            onMorePressed: () => this.handleCapsuleMore(),
-            onClosePressed: () => this.handleCapsuleClose()
-          })
+          if (this.shouldShowCapsuleButton()) {
+            CapsuleButton({
+              statusBarHeight: this.statusBarHeight,
+              standalone: true,
+              onMorePressed: () => this.handleCapsuleMore(),
+              onClosePressed: () => this.handleCapsuleClose()
+            })
+          }
         }
+        .width('100%')
+        .height('100%')
+        .backgroundColor(Color.Transparent)
+        .hitTestBehavior(HitTestMode.Transparent)
       }
-      .width('100%')
-      .height('100%')
-      .backgroundColor(Color.Transparent)
-      .hitTestBehavior(HitTestMode.Transparent)
-      .expandSafeArea(this.shouldExpandSafeAreaForContainer() ? [SafeAreaType.SYSTEM] : [], this.shouldExpandSafeAreaForContainer() ? [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM] : [])
+
+      // Fullscreen overlay layer - rendered above all other UI
+      if (this.hasFullscreenTarget()) {
+        LxFullscreenVideoOverlay({
+          componentId: this.fullscreenComponentId,
+          webTag: this.fullscreenWebTag,
+          onClose: () => {
+            // When overlay closes, cleanup state if needed
+            // Usually native player exitFullscreen trigger will clear state via updateFullscreenState
+          }
+        })
+      }
     }
+    .width('100%')
+    .height('100%')
+    .expandSafeArea(this.shouldExpandSafeAreaForContainer() || this.fullscreenComponentId.length > 0 ? [SafeAreaType.SYSTEM] : [], this.shouldExpandSafeAreaForContainer() || this.fullscreenComponentId.length > 0 ? [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM] : [])
   }
 
   private isHomeLxApp(): boolean {
@@ -533,7 +589,6 @@ export struct LxAppContainer {
    */
   private shouldExpandSafeAreaForContainer(): boolean {
     // Enable safe area expansion for full screen coverage, but use padding to avoid content overlap
-    hilog.info(DOMAIN, TAG, `Safe area expansion for ${this.appId}: true`);
     return true;
   }
 
@@ -745,9 +800,7 @@ export struct LxAppContainer {
    * Home app doesn't show capsule button, other apps do
    */
   private shouldShowCapsuleButton(): boolean {
-    const shouldShow = !this.isHomeLxApp();
-    hilog.info(DOMAIN, TAG, `shouldShowCapsuleButton: appId=${this.appId}, shouldShow=${shouldShow}`);
-    return shouldShow;
+    return !this.isHomeLxApp();
   }
 
   /**
@@ -790,15 +843,16 @@ export struct LxAppContainer {
    * - Only reserve it when the TabBar is opaque to avoid white gaps while the bar is transparent.
    */
   private getWebViewAreaPadding(): Padding {
-    // No flicker: always reserve NAVBAR_TOTAL_HEIGHT at the top; let the Web content handle the bottom padding
-    const top = NAVBAR_TOTAL_HEIGHT;
+    // Only reserve NAVBAR_TOTAL_HEIGHT when the navigation bar is visible; otherwise, there would be a 44vp blank at the top
+    const showNavbar = this.pageConfig?.showNavbar === true;
+    const top = showNavbar ? NAVBAR_TOTAL_HEIGHT : 0;
     const pad: Padding = { top } as Padding;
-    hilog.info(DOMAIN, TAG, `containerPadding -> top=${top}, showNavbar=${this.pageConfig?.showNavbar}`);
     return pad;
   }
 
   private getContainerPadding(): Padding {
-    if (this.overlayActive || this.overlayMaskOpacity > 0) {
+    // Remove padding when fullscreen or overlay is active
+    if (this.overlayActive || this.overlayMaskOpacity > 0 || this.hasFullscreenTarget()) {
       return { top: 0, bottom: 0, left: 0, right: 0 } as Padding;
     }
     return this.getWebViewAreaPadding();
@@ -913,6 +967,11 @@ export struct LxAppContainer {
   private performAnimatedTransition(oldWebTag: string, newWebTag: string, path: string): void {
     hilog.info(DOMAIN, TAG, `Performing animated transition from ${oldWebTag} to ${newWebTag}`);
 
+    // Notify old page becoming inactive (pause SameLevel components)
+    if (oldWebTag) {
+      pauseWebViewComponents(oldWebTag);
+    }
+
     this.animationInProgress = true;
     this.previousWebTag = oldWebTag;
 
@@ -935,7 +994,7 @@ export struct LxAppContainer {
     this.path = path;
 
     // Update tab selection if this is a tab page
-    this.updateTabSelection(path);
+    LxAppContainer.updateTabSelection(this.appId, path);
 
     this.loadNavbarState(path);
     this.loadTabBarState();
@@ -946,7 +1005,7 @@ export struct LxAppContainer {
       curve: ANIMATION_CURVE_EASE_IN_OUT,
       playMode: PlayMode.Normal,
       onFinish: () => {
-        this.finishTransition(newWebTag, path);
+        this.finishTransition(newWebTag, path, oldWebTag);
       }
     }, () => {
       // Animate to final position
@@ -962,24 +1021,30 @@ export struct LxAppContainer {
   private performInstantTransition(newWebTag: string, path: string): void {
     hilog.info(DOMAIN, TAG, `Performing instant transition to ${newWebTag}`);
 
+    // Notify old page becoming inactive if switching pages
+    const oldWebTag = this.currentWebTag;
+    if (oldWebTag && oldWebTag !== newWebTag) {
+      pauseWebViewComponents(oldWebTag);
+    }
+
     // Update current WebView and path immediately
     this.currentWebTag = newWebTag;
     this.path = path;
 
     // Update tab selection if this is a tab page
-    this.updateTabSelection(path);
+    LxAppContainer.updateTabSelection(this.appId, path);
 
     // Load navbar state for instant transitions
     this.loadNavbarState(path);
     this.loadTabBarState();
 
-    this.finishTransition(newWebTag, path);
+    this.finishTransition(newWebTag, path, oldWebTag);
   }
 
   /**
    * Finish transition and trigger necessary callbacks
    */
-  private finishTransition(newWebTag: string, path: string): void {
+  private finishTransition(newWebTag: string, path: string, oldWebTag?: string): void {
     // Reset animation state
     this.animationInProgress = false;
     this.previousWebTag = '';
@@ -988,6 +1053,15 @@ export struct LxAppContainer {
     this.currentWebViewTranslateX = 0;
     this.previousWebViewTranslateX = 0;
     this.navbarTranslateX = 0;
+
+    // Notify new page becoming active (resume SameLevel components)
+    resumeWebViewComponents(newWebTag);
+    // Refresh NodeContainer layouts so properties like cornerRadius re-apply when returning
+    this.embedManagers.forEach((manager: SameLevelEmbedManager, webTag: string) => {
+      this.refreshNodeLayouts(manager, webTag);
+    });
+    // Force NodeContainer attribute refresh
+    this.fullscreenRefreshKey++;
 
     // Trigger onPageShow
     this.triggerOnPageShowIfNeeded(newWebTag);
@@ -1009,20 +1083,6 @@ export struct LxAppContainer {
     if (!this.tabBarState?.items) return -1;
     const index: number = this.tabBarState.items.findIndex((item: TabBarItem) => item.pagePath === path);
     return index >= 0 ? index : -1;
-  }
-
-  /**
-   * Update tab selection for a path (called by navigation layer)
-   * Simply refresh TabBar data from Rust - no local state management needed
-   */
-  public updateTabSelection(path: string): void {
-    if (!this.isTabBarItem(path)) {
-      return;
-    }
-
-    // Just refresh TabBar data from Rust - Rust manages the selected_index
-    this.refreshTabBarData();
-    hilog.info(DOMAIN, TAG, `Updated tab selection for path: ${path}`);
   }
 
   /**
@@ -1065,44 +1125,316 @@ export struct LxAppContainer {
 
   /**
    * Build individual WebView component for a specific webTag with animation support
-  */
+   * Uses official ArkWeb same-level rendering with NodeController
+   */
   @Builder
   buildWebViewComponent(webTag: string, controller: webview.WebviewController): void {
     Column() {
-      Web({ src: '', controller: controller })
-        .visibility(this.getRenderVisibility(webTag))
-        .translate(this.getRenderTranslation(webTag))
-        .margin(this.getRenderMargin(webTag))
-        .onAppear(() => {
-          const overlay = this.isOverlayWebView(webTag);
-          hilog.info(DOMAIN, TAG, `WebView component appeared for webTag: ${webTag}, overlay: ${overlay}`);
-          // Do not trigger onPageShow here to avoid duplicates; finishTransition will handle it once.
-          // Notify native only when ArkUI Web component is actually attached
-          if (!this.controllerReadyAcked.has(webTag)) {
-            onWebviewControllerCreated(webTag);
-            this.controllerReadyAcked.add(webTag);
-          }
-        })
-        .width(this.getRenderWidth(webTag))
-        .height(this.getRenderHeight(webTag))
-        .padding(this.getRenderPadding(webTag))
-        .align(this.getRenderAlignment(webTag))
-        .borderRadius(this.getRenderBorderRadius(webTag))
-        .clip(this.getRenderClip(webTag))
-        .zIndex(this.getRenderZIndex(webTag))
-        .hitTestBehavior(this.getRenderHitTest(webTag))
-        .backgroundColor(COLOR_TRANSPARENT)
-        .domStorageAccess(false)
-        .fileAccess(false)
-        .databaseAccess(false)
-        .mixedMode(MixedMode.None);
+      Stack() {
+        // Same-level native components (rendered via NodeController, MUST be before Web)
+        // Note: We use stable keys (componentId only) to avoid component recreation.
+        // ArkUI doesn't allow reusing the same FrameNode when key changes.
+        // Layout updates are handled through nodeLayoutCache @State variable.
+        ForEach(this.getEmbedComponentIds(webTag), (componentId: string) => {
+          this.buildNodeContainer(webTag, componentId, this.fullscreenRefreshKey)
+        }, (componentId: string) => componentId)
+
+        // Web component with native embed mode enabled
+        Web({ src: '', controller: controller })
+          .visibility(this.getRenderVisibility(webTag))
+          .translate(this.getRenderTranslation(webTag))
+          .margin(this.getRenderMargin(webTag))
+          .onAppear(() => {
+            const overlay = this.isOverlayWebView(webTag);
+            hilog.info(DOMAIN, TAG, `WebView component appeared for webTag: ${webTag}, overlay: ${overlay}`);
+            // Do not trigger onPageShow here to avoid duplicates; finishTransition will handle it once.
+            // Notify native only when ArkUI Web component is actually attached
+            if (!this.controllerReadyAcked.has(webTag)) {
+              onWebviewControllerCreated(webTag);
+              this.controllerReadyAcked.add(webTag);
+            }
+          })
+          .onControllerAttached(() => {
+            // Setup same-level embed manager for this WebView
+            this.setupEmbedManager(webTag, controller);
+            hilog.info(DOMAIN, TAG, `Same-level embed manager setup for webTag: ${webTag}`);
+          })
+          .onDisAppear(() => {
+            // Cleanup same-level components when WebView is destroyed
+            this.cleanupEmbedManager(webTag);
+            hilog.info(DOMAIN, TAG, `Same-level cleanup for webTag: ${webTag}`);
+          })
+          // Enable native embed mode for same-level rendering
+          .enableNativeEmbedMode(true)
+          .onNativeEmbedLifecycleChange((embed) => {
+            this.handleEmbedLifecycle(webTag, embed);
+          })
+          .onNativeEmbedGestureEvent((touch) => {
+            this.handleEmbedGesture(webTag, touch);
+          })
+          .width(this.getRenderWidth(webTag))
+          .height(this.getRenderHeight(webTag))
+          .padding(this.getRenderPadding(webTag))
+          .align(this.getRenderAlignment(webTag))
+          .borderRadius(this.getRenderBorderRadius(webTag))
+          .clip(this.getRenderClip(webTag))
+          .zIndex(this.getRenderZIndex(webTag))
+          .hitTestBehavior(this.getRenderHitTest(webTag))
+          .backgroundColor(COLOR_TRANSPARENT)
+          .domStorageAccess(false)
+          .fileAccess(false)
+          .databaseAccess(false)
+          .mixedMode(MixedMode.None)
+      }
+      .width('100%')
+      .height('100%')
     }
     .width('100%')
     .height('100%')
     .justifyContent(this.getWrapperJustify(webTag))
     .alignItems(this.getWrapperAlign(webTag))
     .hitTestBehavior(HitTestMode.Transparent)
-    .zIndex(this.getRenderZIndex(webTag));
+    .zIndex(this.getRenderZIndex(webTag))
+  }
+
+  @Builder
+  buildNodeContainer(webTag: string, componentId: string, refreshKey: number): void {
+    // Fullscreen uses separate XComponent in renderFullscreenOverlay(); original stays at same-level position
+    if (this.getEmbedManager(webTag) && this.getEmbedManager(webTag)!.getNodeController(componentId)) {
+      NodeContainer(this.getEmbedManager(webTag)!.getNodeController(componentId)!)
+        .width(this.getNodeContainerWidth(webTag, componentId))
+        .height(this.getNodeContainerHeight(webTag, componentId))
+        .borderRadius(this.getNodeContainerCornerRadius(webTag, componentId))
+        .clip(true)
+        .position(this.getNodeContainerPosition(webTag, componentId))
+        .zIndex(this.getNodeContainerZIndex(webTag, componentId))
+    }
+  }
+
+  private getNodeContainerCornerRadius(webTag: string, componentId: string): number {
+    const controller = this.getEmbedManager(webTag)?.getNodeController(componentId);
+    if (controller) {
+      if (controller.getIsFullscreen()) {
+        return 0;
+      }
+      const radius = controller.getCornerRadius();
+      if (radius !== undefined) {
+        return radius;
+      }
+    }
+
+    const layout = this.getNodeLayout(webTag, componentId);
+    return layout?.cornerRadius ?? 0;
+  }
+
+  private getNodeContainerWidth(webTag: string, componentId: string): Length {
+    const layout = this.getNodeLayout(webTag, componentId);
+    if (layout) {
+      return layout.width;
+    }
+    const controller = this.getEmbedManager(webTag)?.getNodeController(componentId);
+    return controller?.getWidth() ?? 0;
+  }
+
+  private getNodeContainerHeight(webTag: string, componentId: string): Length {
+    const layout = this.getNodeLayout(webTag, componentId);
+    if (layout) {
+      return layout.height;
+    }
+    const controller = this.getEmbedManager(webTag)?.getNodeController(componentId);
+    return controller?.getHeight() ?? 0;
+  }
+
+  private getNodeContainerPosition(webTag: string, componentId: string): Position | undefined {
+    const layout = this.getNodeLayout(webTag, componentId);
+    if (layout) {
+      return layout.position;
+    }
+    return undefined;
+  }
+
+  private getNodeContainerZIndex(webTag: string, componentId: string): number {
+    const layout = this.getNodeLayout(webTag, componentId);
+    if (layout) {
+      return layout.zIndex;
+    }
+    return 0;
+  }
+
+  // ============================================================================
+  // Same-Level Rendering Helper Methods
+  // ============================================================================
+
+  /**
+   * Setup embed manager for a WebView
+   */
+  private setupEmbedManager(webTag: string, controller: webview.WebviewController): void {
+    const manager = getWebViewEmbedManager(webTag);
+    manager.setUIContext(this.getUIContext());
+    manager.setOnComponentsChanged(() => {
+      // Update component IDs array to trigger ForEach re-render
+      const newMap = new Map(this.embedComponentIds);
+      newMap.set(webTag, manager.getComponentIds().slice());
+      this.embedComponentIds = newMap;
+
+      // Refresh layout cache so NodeContainer attributes react without recreating native view
+      this.refreshNodeLayouts(manager, webTag);
+
+      // Check for fullscreen state changes
+      this.updateFullscreenState();
+
+      // Increment refresh key to force NodeContainer attribute updates
+      this.fullscreenRefreshKey++;
+    });
+    // Prime layout cache on setup
+    this.refreshNodeLayouts(manager, webTag);
+    this.embedManagers.set(webTag, manager);
+    setEmbedController(webTag, controller);
+  }
+
+  /**
+   * Check all embed managers for fullscreen state and update accordingly
+   */
+  private updateFullscreenState(): void {
+    let foundFullscreen = false;
+
+    this.embedManagers.forEach((manager: SameLevelEmbedManager, webTag: string) => {
+      if (foundFullscreen) return;
+
+      const componentIds = manager.getComponentIds();
+      for (let i = 0; i < componentIds.length; i++) {
+        const componentId = componentIds[i];
+        const controller = manager.getNodeController(componentId);
+        if (controller?.getIsFullscreen()) {
+          if (this.fullscreenComponentId !== componentId) {
+            this.fullscreenWebTag = webTag;
+            this.fullscreenComponentId = componentId;
+          }
+          foundFullscreen = true;
+          return;
+        }
+      }
+    });
+
+    if (!foundFullscreen && this.fullscreenComponentId.length > 0) {
+      // Switch player back to original surface before clearing fullscreen state
+      LxNativeVideoPlayer.savePlaybackState(this.fullscreenComponentId);
+      const success = LxNativeVideoPlayer.switchToOriginalSurface(this.fullscreenComponentId);
+      hilog.info(DOMAIN, TAG, `Switch to original surface result: ${success}`);
+
+      this.fullscreenWebTag = '';
+      this.fullscreenComponentId = '';
+    }
+  }
+
+  /**
+   * Cleanup embed manager for a WebView
+   * Safe to call multiple times
+   */
+  private cleanupEmbedManager(webTag: string): void {
+    if (!this.embedManagers.has(webTag)) {
+      return; // Already cleaned up
+    }
+    teardownEmbedManager(webTag);
+    this.embedManagers.delete(webTag);
+    const newMap = new Map(this.embedComponentIds);
+    newMap.delete(webTag);
+    this.embedComponentIds = newMap;
+
+    // Remove cached layouts for this WebView
+    this.removeNodeLayoutsForWebTag(webTag);
+  }
+
+  /**
+   * Compute and cache layout state for all components of a WebView
+   * This drives NodeContainer attributes without recreating native nodes
+   */
+  private refreshNodeLayouts(manager: SameLevelEmbedManager, webTag: string): void {
+    const next = new Map(this.nodeLayoutCache);
+    const componentIds = manager.getComponentIds();
+    const prefix = `${webTag}:`;
+
+    // Remove stale entries for this webTag
+    next.forEach((_, key: string) => {
+      if (key.startsWith(prefix)) {
+        const id = key.substring(prefix.length);
+        if (!componentIds.includes(id)) {
+          next.delete(key);
+        }
+      }
+    });
+
+    // Update current entries
+    componentIds.forEach((componentId: string) => {
+      const controller = manager.getNodeController(componentId);
+      const isFullscreen = controller?.getIsFullscreen() ?? false;
+      const layout: NodeLayoutState = {
+        width: isFullscreen ? '100%' : (controller?.getWidth() ?? 0),
+        height: isFullscreen ? '100%' : (controller?.getHeight() ?? 0),
+        position: isFullscreen ? { x: 0, y: 0 } : undefined,
+        // Must be higher than backdrop (49999) to appear on top
+        zIndex: isFullscreen ? 50000 : 0,
+        cornerRadius: isFullscreen ? 0 : (controller?.getCornerRadius() ?? 0),
+        safeAreaTypes: isFullscreen ? [SafeAreaType.SYSTEM] : [],
+        safeAreaEdges: isFullscreen ? [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM] : []
+      };
+      next.set(this.getLayoutKey(webTag, componentId), layout);
+    });
+
+    this.nodeLayoutCache = next;
+  }
+
+  /**
+   * Remove cached layouts for a specific WebView
+   */
+  private removeNodeLayoutsForWebTag(webTag: string): void {
+    const prefix = `${webTag}:`;
+    const next = new Map(this.nodeLayoutCache);
+    next.forEach((_, key: string) => {
+      if (key.startsWith(prefix)) {
+        next.delete(key);
+      }
+    });
+    this.nodeLayoutCache = next;
+  }
+
+  private getLayoutKey(webTag: string, componentId: string): string {
+    return `${webTag}:${componentId}`;
+  }
+
+  private getNodeLayout(webTag: string, componentId: string): NodeLayoutState | undefined {
+    return this.nodeLayoutCache.get(this.getLayoutKey(webTag, componentId));
+  }
+
+  private isFullscreenTarget(webTag: string, componentId: string): boolean {
+    return this.fullscreenComponentId.length > 0 &&
+      this.fullscreenWebTag.length > 0 &&
+      this.fullscreenComponentId === componentId &&
+      this.fullscreenWebTag === webTag;
+  }
+
+  private hasFullscreenTarget(): boolean {
+    return this.fullscreenComponentId.length > 0 && this.fullscreenWebTag.length > 0;
+  }
+
+  private getEmbedManager(webTag: string): SameLevelEmbedManager | undefined {
+    return this.embedManagers.get(webTag);
+  }
+  private getEmbedComponentIds(webTag: string): string[] {
+    return this.embedComponentIds.get(webTag) || [];
+  }
+
+  private handleEmbedLifecycle(webTag: string, embed: NativeEmbedDataInfo): void {
+    const manager = this.embedManagers.get(webTag);
+    if (manager) {
+      manager.setUIContext(this.getUIContext());
+      manager.handleLifecycleChange(embed);
+    }
+  }
+
+  private handleEmbedGesture(webTag: string, touch: NativeEmbedTouchInfo): void {
+    const manager = this.embedManagers.get(webTag);
+    if (manager) manager.handleGestureEvent(touch);
   }
 
   private getWrapperJustify(webTag: string): FlexAlign {
@@ -1235,139 +1567,95 @@ export struct LxAppContainer {
     return this.isOverlayWebView(webTag) ? this.getOverlayAlignment() : Alignment.TopStart;
   }
 
-  private getRenderBorderRadius(webTag: string): number | CornerRadii {
-    if (!this.isOverlayWebView(webTag)) {
-      return 0;
+  private getRenderBorderRadius(webTag: string): CornerRadii {
+    if (this.isOverlayWebView(webTag)) {
+      // Adjust corner radius based on overlay position so edges that touch screen edges are not rounded
+      switch (this.overlayPosition) {
+        case 1: // bottom - only top corners rounded
+          return { topLeft: 16, topRight: 16, bottomLeft: 0, bottomRight: 0 };
+        case 2: // left - only right corners rounded
+          return { topLeft: 0, topRight: 16, bottomLeft: 0, bottomRight: 16 };
+        case 3: // right - only left corners rounded
+          return { topLeft: 16, topRight: 0, bottomLeft: 16, bottomRight: 0 };
+        default: // center - all corners rounded
+          return { topLeft: 16, topRight: 16, bottomLeft: 16, bottomRight: 16 };
+      }
     }
-
-    const radius = 16;
-    switch (this.overlayPosition) {
-      case 1:
-        const bottomRadii: CornerRadii = { topLeft: radius, topRight: radius, bottomLeft: 0, bottomRight: 0 };
-        return bottomRadii;
-      case 2:
-        const leftRadii: CornerRadii = { topLeft: 0, topRight: radius, bottomLeft: 0, bottomRight: radius };
-        return leftRadii;
-      case 3:
-        const rightRadii: CornerRadii = { topLeft: radius, topRight: 0, bottomLeft: radius, bottomRight: 0 };
-        return rightRadii;
-      default:
-        return radius;
-    }
+    return { topLeft: 0, topRight: 0, bottomLeft: 0, bottomRight: 0 };
   }
 
   private getRenderClip(webTag: string): boolean {
     return this.isOverlayWebView(webTag);
   }
 
-  private getRenderZIndex(webTag: string): number {
-    return this.isOverlayWebView(webTag) ? 10004 : 0;
-  }
-
   private getRenderHitTest(webTag: string): HitTestMode {
-    return this.isOverlayWebView(webTag) ? HitTestMode.Block : HitTestMode.Transparent;
-  }
-
-  private shouldTriggerOnAppear(webTag: string): boolean {
+    // Overlay WebView uses Block to prevent events from passing through to underlying content
+    // Regular WebViews use Default for normal interaction
     if (this.isOverlayWebView(webTag)) {
-      return true;
+      return HitTestMode.Block;
     }
-    return webTag === this.currentWebTag;
+    return HitTestMode.Default;
   }
 
-  /**
-   * Get WebView visibility based on current state and animation
-   */
+  private getRenderZIndex(webTag: string): number {
+    if (this.isOverlayWebView(webTag)) {
+      return 10005;
+    }
+    return 0;
+  }
+
+  private getWebContentHeight(): string {
+    // Web content always 100% height of the area allocated to it
+    return '100%';
+  }
+
   private getWebViewVisibility(webTag: string): Visibility {
-    if (webTag === this.currentWebTag) {
-      return Visibility.Visible;
+    // Animation logic
+    if (this.animationInProgress) {
+      if (webTag === this.currentWebTag) return Visibility.Visible;
+      if (webTag === this.previousWebTag) return Visibility.Visible;
+      return Visibility.None;
     }
 
-    // Show previous WebView during animation
-    if (this.animationInProgress && webTag === this.previousWebTag) {
+    // Standard visibility
+    return webTag === this.currentWebTag ? Visibility.Visible : this.getHiddenVisibility(webTag);
+  }
+
+  private getHiddenVisibility(webTag: string): Visibility {
+    // Keep alive logic
+    if (this.keepAliveTags.includes(webTag)) {
       return Visibility.Visible;
     }
-
-    // Keep-alive pages remain Visible (moved offscreen) to preserve ArkWeb host
-    if (this.keepAliveTags.indexOf(webTag) >= 0) {
-      return Visibility.Visible;
-    }
-
+    // Pre-render logic could go here
     return Visibility.None;
   }
 
-  /**
-   * Get WebView translation for slide animation
-   */
   private getWebViewTranslation(webTag: string): TranslationOptions {
-    // Translate only on the X axis during transitions; margins handle vertical adjustments to avoid hit-test quirks
-    // If this page is kept alive (not current), move it offscreen vertically to avoid paint while keeping host
-    if (this.keepAliveTags.indexOf(webTag) >= 0 && webTag !== this.currentWebTag && webTag !== this.previousWebTag) {
-      return { x: 0, y: '200%' } as TranslationOptions;
-    }
-
     if (!this.animationInProgress) {
-      return { x: 0, y: 0 } as TranslationOptions;
+      // Ensure active WebView is at 0, others are moved out if kept alive
+      if (webTag === this.currentWebTag) return { x: 0, y: 0 };
+      if (this.keepAliveTags.includes(webTag)) return { x: '100%', y: 0 };
+      return { x: 0, y: 0 };
     }
 
     if (webTag === this.currentWebTag) {
-      // Current WebView uses animated translation value
-      return { x: `${this.currentWebViewTranslateX}%`, y: 0 } as TranslationOptions;
+      return { x: `${this.currentWebViewTranslateX}%`, y: 0 };
     }
-
     if (webTag === this.previousWebTag) {
-      // Previous WebView uses animated translation value
-      return { x: `${this.previousWebViewTranslateX}%`, y: 0 } as TranslationOptions;
+      return { x: `${this.previousWebViewTranslateX}%`, y: 0 };
     }
-
-    return { x: 0, y: 0 } as TranslationOptions;
+    return { x: 0, y: 0 };
   }
 
-  private getRenderableWebKeys(): string[] {
-    // Always return all keys; overlay branch will restyle the popup webtag,
-    // default branch will handle others and skip overlay webtag via the if-branch in buildWebViewComponent
-    return this.webViewKeys;
+  private getWebViewMargin(): MarginOptions {
+    return { top: 0, bottom: 0, left: 0, right: 0 };
   }
 
   private getRenderableWebEntries(): RenderableWebEntry[] {
     const entries: RenderableWebEntry[] = [];
-    const keys = this.getRenderableWebKeys();
-
-    keys.forEach((webTag: string) => {
-      const controller = this.getRenderController(webTag);
-      if (controller) {
-        entries.push({ webTag, controller });
-      }
+    this.webViewComponents.forEach((controller, tag) => {
+      entries.push({ webTag: tag, controller: controller });
     });
-
     return entries;
   }
-
-  private getRenderController(webTag: string): webview.WebviewController | null {
-    // Always return the controller; overlay branch will restyle the popup webTag
-    return this.webViewComponents.get(webTag) || null;
-  }
-
-
-  /**
-   * When the navigation bar is hidden, move the WebView up by NAVBAR_TOTAL_HEIGHT so it visually touches the system top.
-   * Keep the vertical offset at zero when the navigation bar is visible.
-   * This keeps the fixed top padding (no flicker) while preventing pages without a nav bar from showing a white gap.
-   */
-  private getWebViewMargin(): MarginOptions {
-    // Use a negative margin to lift the WebView when the nav bar is hidden; otherwise apply no offset
-    const top = (this.pageConfig?.showNavbar === true) ? 0 : -NAVBAR_TOTAL_HEIGHT;
-    return { top } as MarginOptions;
-  }
-
-  /**
-   * Extend the WebView height when the navigation bar is hidden so the upward shift does not leave a gap; keep 100% height otherwise.
-   */
-  private getWebContentHeight(): string {
-    // Add extra height only when the nav bar is hidden; the Web content handles the bottom padding internally
-    const extraTop = (this.pageConfig?.showNavbar === true) ? 0 : NAVBAR_TOTAL_HEIGHT;
-    const result = extraTop > 0 ? `calc(100% + ${extraTop}vp)` : '100%';
-    return result;
-  }
-
 }

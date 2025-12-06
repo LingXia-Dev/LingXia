@@ -1,6 +1,15 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { webview } from '@kit.ArkWeb';
 import { onWebviewControllerDestroyed } from 'liblingxia.so';
+import {
+  getOrCreateEmbedManager,
+  getEmbedManager,
+  teardownEmbedManager,
+  setEmbedController,
+  pauseAllComponents,
+  resumeAllComponents
+} from './SameLevel/SameLevelBridge';
+import { SameLevelEmbedManager } from './SameLevel/SameLevelEmbed';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.WebView';
@@ -31,6 +40,13 @@ export class WebViewManager {
   private static resolveLogicalTag(webtag: string): string {
     const extracted = extractWebTag(webtag);
     return extracted ? toWebTag(extracted.appId, extracted.path) : webtag;
+  }
+
+  /**
+   * Get controller for a logical tag
+   */
+  static getController(logicalTag: string): webview.WebviewController | undefined {
+    return WebViewManager.controllers.get(logicalTag);
   }
 
   /**
@@ -144,6 +160,9 @@ export class WebViewManager {
       return false;
     }
 
+    // Teardown same-level native components before destroying WebView
+    teardownEmbedManager(logicalTag);
+
     WebViewManager.controllers.delete(logicalTag);
     WebViewManager.webViewInfos.delete(logicalTag);
     WebViewManager.uiCallbacks.forEach(callback => {
@@ -247,6 +266,14 @@ export class WebViewManager {
 
     if (webViewInfo) {
       webViewInfo.visible = visible;
+
+      // Pause/resume same-level native components on visibility change
+      if (visible) {
+        resumeAllComponents(webtag);
+      } else {
+        pauseAllComponents(webtag);
+      }
+
       WebViewManager.uiCallbacks.forEach(callback => {
         try {
           callback('visibility', webViewInfo);
@@ -426,4 +453,46 @@ export function clearBrowsingData(webtag: string): boolean {
  */
 export function setUserAgent(webtag: string, userAgent: string): boolean {
   return WebViewManager.setUserAgent(webtag, userAgent);
+}
+
+/**
+ * Get or create EmbedManager for a WebView
+ * Call this to enable same-level rendering for a WebView
+ * @param webtag - WebView tag
+ * @returns SameLevelEmbedManager instance
+ */
+export function getWebViewEmbedManager(webtag: string): SameLevelEmbedManager {
+  const extracted = extractWebTag(webtag);
+  const logicalTag = extracted ? toWebTag(extracted.appId, extracted.path) : webtag;
+  const manager = getOrCreateEmbedManager(logicalTag);
+
+  // Set controller for event communication
+  const controller = WebViewManager.getController(logicalTag);
+  if (controller) {
+    setEmbedController(logicalTag, controller);
+  }
+
+  return manager;
+}
+
+/**
+ * Pause all same-level native components for a WebView
+ * Call this on page navigate away
+ * @param webtag - WebView tag
+ */
+export function pauseWebViewComponents(webtag: string): void {
+  const extracted = extractWebTag(webtag);
+  const logicalTag = extracted ? toWebTag(extracted.appId, extracted.path) : webtag;
+  pauseAllComponents(logicalTag);
+}
+
+/**
+ * Resume all same-level native components for a WebView
+ * Call this on page navigate back
+ * @param webtag - WebView tag
+ */
+export function resumeWebViewComponents(webtag: string): void {
+  const extracted = extractWebTag(webtag);
+  const logicalTag = extracted ? toWebTag(extracted.appId, extracted.path) : webtag;
+  resumeAllComponents(logicalTag);
 }
