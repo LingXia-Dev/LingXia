@@ -175,6 +175,7 @@ public enum LxMediaEvent {
     case pause
     case stop
     case ended
+    case waiting
     case seeked(time: Double)
     case timeUpdate(currentTime: Double, duration: Double)
     case rateChange(rate: Double)
@@ -192,6 +193,7 @@ public enum LxMediaEvent {
         case .pause: return "pause"
         case .stop: return "stop"
         case .ended: return "ended"
+        case .waiting: return "waiting"
         case .seeked: return "seeked"
         case .timeUpdate: return "timeupdate"
         case .rateChange: return "ratechange"
@@ -207,7 +209,7 @@ public enum LxMediaEvent {
 
     var rawData: [String: Any] {
         switch self {
-        case .play, .pause, .stop, .ended:
+        case .play, .pause, .stop, .ended, .waiting:
             return [:]
         case .seeked(let time):
             return ["time": time]
@@ -341,6 +343,8 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
     private var didPerformInitialSeek = false
     private var revealVideoWorkItem: DispatchWorkItem?
     private var forceRevealAttempts = 0
+    private var pendingPlayEvent = false  // Delay play event until video actually starts
+    private var lastTimeForPlayEvent: Double = -1  // Track time progression for play event
 
     // UI
     private let overlayView = TapOverlayView()
@@ -376,6 +380,8 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
     // Poster state
     private var posterURL: URL?
     private var posterTask: Task<Void, Never>?
+    private var lastTimeForPosterHide: Double = -1  // Track time for poster hiding (like HarmonyOS)
+    private var pendingPosterHide = false  // Flag to delay poster hiding until time progresses
 
     public init(
         eventSink: @escaping ([String: Any]) -> Void,
@@ -836,6 +842,9 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
     @objc private func videoDidEnd() {
         os_log("MediaPlayer video ended (loop=%{public}@)", log: OSLog(subsystem: "LingXia", category: "Media"), type: .info, String(loopEnabled))
 
+        // Cancel pending play event on end
+        pendingPlayEvent = false
+
         if loopEnabled {
             // Loop: restart from beginning and continue playing without spinner
             waitingForFirstFrame = false
@@ -855,9 +864,17 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
             return
         }
 
-        // Show play button (pause state) but keep progress at end
+        // Show play button (pause state) and restore poster
         updatePlayPauseUI(isPlaying: false)
         syncCenterPlayButtonVisibility(isPlaying: false)
+
+        // Show poster when video ends - reset all poster/layer states
+        firstFrameDisplayed = false
+        pendingPosterHide = false
+        posterImageView.alpha = 1
+        posterImageView.isHidden = false
+        playerLayer.opacity = 0  // Hide video layer to show poster
+
         send(.ended)
     }
 
@@ -882,16 +899,23 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
 
         // Ensure playerLayer is visible (may be hidden from screen lock)
         playerLayer.isHidden = false
-        // Keep opacity at 0 while waiting for first frame; revealVideo will animate it
-        if !waitingForFirstFrame {
-            playerLayer.opacity = 1
+        // Keep opacity at 0 - poster will be hidden when time actually progresses (like HarmonyOS)
+        if !firstFrameDisplayed {
+            playerLayer.opacity = 0
+            pendingPosterHide = true
+            lastTimeForPosterHide = -1
         }
         updatePlayPauseUI(isPlaying: true)
         syncCenterPlayButtonVisibility(isPlaying: true)
 
         player.playImmediately(atRate: Float(currentPlaybackRate))
-        // Poster will be hidden automatically by timeObserver when currentTime > 0.1
-        send(.play)
+        // Delay play event until video actually starts playing (time progresses in timeObserver)
+        pendingPlayEvent = true
+        lastTimeForPlayEvent = -1
+        // Emit waiting event if we're waiting for first frame (buffering)
+        if !firstFrameDisplayed {
+            send(.waiting)
+        }
         // Show controls on first play if configured (e.g., preview mode with autoplay)
         if shouldShowControlsOnFirstPlay {
             shouldShowControlsOnFirstPlay = false  // Only show once
@@ -901,6 +925,8 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
 
     private func pause() {
         player?.pause()
+        // Cancel pending play event if pause is called before video started
+        pendingPlayEvent = false
         send(.pause)
         updatePlayPauseUI(isPlaying: false)
         syncCenterPlayButtonVisibility(isPlaying: false)
@@ -910,6 +936,8 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
     private func stop() {
         player?.pause()
         player?.seek(to: .zero)
+        // Cancel pending play event on stop
+        pendingPlayEvent = false
         send(.stop)
         updatePlayPauseUI(isPlaying: false)
         syncCenterPlayButtonVisibility(isPlaying: false)
@@ -962,6 +990,45 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
         guard let duration = player?.currentItem?.duration.seconds,
               duration.isFinite, duration > 0 else { return }
         let currentTime = CMTimeGetSeconds(time)
+
+        // Hide poster when video is actually rendering frames
+        // This prevents black screen flash by waiting for time to progress
+        if pendingPosterHide {
+            let timeAdvanced = lastTimeForPosterHide >= 0 && currentTime > lastTimeForPosterHide
+            if currentTime > 0.2 && timeAdvanced {
+                pendingPosterHide = false
+                firstFrameDisplayed = true
+
+                // Always stop loading indicator when video is ready
+                loadingIndicator.stopAnimating()
+
+                // Show video layer
+                playerLayer.opacity = 1
+
+                // Crossfade poster to video (if poster was visible)
+                if !posterImageView.isHidden {
+                    UIView.animate(withDuration: 0.2, delay: 0, options: [.curveEaseOut]) {
+                        self.posterImageView.alpha = 0
+                    } completion: { _ in
+                        self.posterImageView.isHidden = true
+                        self.posterImageView.alpha = 1
+                    }
+                }
+            }
+            lastTimeForPosterHide = currentTime
+        }
+
+        // Emit play event when video actually starts playing (time progresses)
+        if pendingPlayEvent {
+            let timeAdvanced = lastTimeForPlayEvent >= 0 && currentTime > lastTimeForPlayEvent
+            if currentTime > 0 && timeAdvanced {
+                os_log("MediaPlayer emitting delayed play event, currentTime=%.2f, lastTime=%.2f", log: log, type: .info, currentTime, lastTimeForPlayEvent)
+                pendingPlayEvent = false
+                send(.play)
+            }
+            lastTimeForPlayEvent = currentTime
+        }
+
         send(.timeUpdate(currentTime: currentTime, duration: duration))
     }
 
@@ -1171,39 +1238,40 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
         backButton.frame = CGRect(x: 8 + safeLeading, y: 5, width: 44, height: 40)
         titleLabel.frame = CGRect(x: 60 + safeLeading, y: 5, width: bounds.width - 120 - safeLeading - safeTrailing, height: 40)
 
-        // Bottom bar layout - plyr style with 2 rows
-        let bottomBarHeight: CGFloat = 100
+        // Bottom bar layout - compact 2 rows like HarmonyOS
+        let bottomBarHeight: CGFloat = 80  // Reduced from 100
         bottomBar.frame = CGRect(x: 0, y: bounds.height - bottomBarHeight - safeBottom, width: bounds.width, height: bottomBarHeight)
 
-        let padding: CGFloat = 16 + safeLeading  // Add safe area for fullscreen
-        let buttonWidth: CGFloat = 44
+        let padding: CGFloat = 12 + safeLeading  // Reduced from 16
+        let buttonWidth: CGFloat = 40  // Reduced from 44
 
         // Row 1: Progress slider + Time label
-        let progressY: CGFloat = 16
+        let progressY: CGFloat = 10
         timeLabel.sizeToFit()
-        let timeLabelWidth: CGFloat = 60
+        let timeLabelWidth: CGFloat = 50
+        let timeLabelPadding: CGFloat = 8  // Small padding from edge
 
-        // Time label on the right side of progress bar
+        // Time label on the right side - closer to edge
         timeLabel.frame = CGRect(
-            x: bounds.width - padding - safeTrailing - timeLabelWidth,
-            y: progressY + 2,
+            x: bounds.width - timeLabelPadding - safeTrailing - timeLabelWidth,
+            y: progressY + 1,
             width: timeLabelWidth,
             height: 20
         )
 
-        // Progress slider (leave space for time label)
+        // Progress slider - smaller gap to time label (4px instead of 8)
         progressSlider.frame = CGRect(
             x: padding,
             y: progressY,
-            width: bounds.width - padding * 2 - safeTrailing - timeLabelWidth - 12,
+            width: bounds.width - padding - safeTrailing - timeLabelWidth - timeLabelPadding - 4,
             height: 20
         )
 
         // Row 2: Controls (Play + Volume + Volume Slider ... Settings + Fullscreen)
-        let controlY: CGFloat = 45
-        let spacing: CGFloat = 12
-        let volumeSliderWidth: CGFloat = 80
-        let settingsSize: CGFloat = 36
+        let controlY: CGFloat = 36  // Reduced from 45
+        let spacing: CGFloat = 8  // Reduced from 12
+        let volumeSliderWidth: CGFloat = 60  // Reduced from 80
+        let settingsSize: CGFloat = 32  // Reduced from 36
 
         // Left side: Play + Volume + Volume Slider
         var leftX = padding
@@ -1572,31 +1640,19 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
         CATransaction.commit()
 
         waitingForFirstFrame = false
-        firstFrameDisplayed = true
 
-        // Start playback BEFORE crossfade to avoid black screen
-        // Save the state before calling startPlaybackNow (which clears desiredPlayWhenReady)
+        // Don't set firstFrameDisplayed here - let sendProgress handle it
+        // This ensures poster is only hidden when video time actually progresses
+        // (prevents black screen flash)
+
+        // Start playback - poster hiding will happen in sendProgress when time progresses
         let shouldPlay = desiredPlayWhenReady
         if shouldPlay {
             startPlaybackNow()
-        }
-
-        // Crossfade with video already playing (no black screen!)
-        UIView.animate(withDuration: 0.25, delay: 0, options: [.curveEaseInOut]) {
-            self.playerLayer.opacity = 1
-            self.posterImageView.alpha = 0
-        } completion: { _ in
-            // Hide loading indicator ONLY after animation completes
-            self.loadingIndicator.stopAnimating()
-
-            self.posterImageView.isHidden = true
-            self.posterImageView.alpha = 1
-
-            // Update UI state based on playback
-            if !shouldPlay {
-                self.updatePlayPauseUI(isPlaying: false)
-            }
-            self.syncCenterPlayButtonVisibility(isPlaying: shouldPlay)
+        } else {
+            // If not playing, just enable pending poster hide for when playback starts
+            pendingPosterHide = true
+            lastTimeForPosterHide = -1
         }
     }
 
