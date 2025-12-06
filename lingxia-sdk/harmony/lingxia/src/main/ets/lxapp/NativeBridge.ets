@@ -22,6 +22,7 @@ import {
 } from './WebView';
 import { animationTypeFromInt } from './NavigationBar';
 import { PermissionManager } from './PermissionManager';
+import { LxNativeVideoPlayer } from './media/LxNativeVideoPlayer';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.NativeBridge';
@@ -287,7 +288,23 @@ class NativeBridge {
       return LxAppScan.scanCode(payload);
     });
 
-    // Request location permission on HarmonyOS via centralized PermissionManager.
+    this.register('videoPlayerSeekDone', (componentId: string, positionMs: string): boolean => {
+      const position = parseInt(positionMs, 10);
+      if (isNaN(position)) return false;
+      LxNativeVideoPlayer.onSeekDone(componentId, position);
+      return true;
+    });
+
+    this.register('videoPlayerBuffering', (componentId: string, isBuffering: string): boolean => {
+      LxNativeVideoPlayer.onBufferingChange(componentId, isBuffering === '1');
+      return true;
+    });
+
+    this.register('videoPlayerPrepared', (componentId: string): boolean => {
+      LxNativeVideoPlayer.onPrepared(componentId);
+      return true;
+    });
+
     // The result is reported back to Rust using the shared callback mechanism
     // so that the logic layer can decide whether to proceed with the location
     // request or surface an error.

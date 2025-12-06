@@ -467,3 +467,253 @@ pub fn on_webview_controller_destroyed(webtag: String) -> bool {
     webview_controller_destroyed(&webtag);
     true
 }
+
+// ============================================================================
+// Video Player NAPI exports
+// ============================================================================
+
+/// Create a native video player instance
+/// Returns the player pointer as a BigInt for use with XComponent
+#[napi]
+pub fn video_player_create(component_id: String, callback_id: i64) -> i64 {
+    match lingxia_platform::harmony::video_player::create_player(&component_id, callback_id as u64)
+    {
+        Ok(ptr) => ptr as i64,
+        Err(e) => {
+            log::error!("[Harmony.VideoPlayer] Failed to create player: {}", e);
+            0
+        }
+    }
+}
+
+/// Set media source for the video player (URL or file path)
+#[napi]
+pub fn video_player_set_url(component_id: String, url: String) -> bool {
+    if let Some(player) = lingxia_platform::harmony::video_player::get_player(&component_id) {
+        if let Ok(mut p) = player.lock() {
+            match p.set_source(&url) {
+                Ok(_) => return true,
+                Err(e) => {
+                    log::error!("[Harmony.VideoPlayer] set_source failed: {:?}", e);
+                    return false;
+                }
+            }
+        }
+    }
+    false
+}
+
+/// Set video surface from surface ID
+#[napi]
+pub fn video_player_set_surface(component_id: String, surface_id: String) -> bool {
+    log::info!(
+        "[Harmony.VideoPlayer] video_player_set_surface: component_id={}, surface_id={}",
+        component_id,
+        surface_id
+    );
+    match lingxia_platform::harmony::video_player::set_video_surface_from_id(
+        &component_id,
+        &surface_id,
+    ) {
+        Ok(_) => {
+            log::info!("[Harmony.VideoPlayer] video_player_set_surface: success");
+            true
+        }
+        Err(e) => {
+            log::error!(
+                "[Harmony.VideoPlayer] video_player_set_surface failed: {:?}",
+                e
+            );
+            false
+        }
+    }
+}
+
+/// Rebind surface and resume playback (used for fullscreen swaps)
+#[napi]
+pub fn video_player_rebind_surface(
+    component_id: String,
+    surface_id: String,
+    position_ms: i32,
+    should_play: bool,
+) -> bool {
+    log::info!(
+        "[Harmony.VideoPlayer] video_player_rebind_surface: component_id={}, surface_id={}, pos={}, play={}",
+        component_id,
+        surface_id,
+        position_ms,
+        should_play
+    );
+    match lingxia_platform::harmony::video_player::rebind_surface_from_id(
+        &component_id,
+        &surface_id,
+        position_ms,
+        should_play,
+    ) {
+        Ok(_) => true,
+        Err(e) => {
+            log::error!(
+                "[Harmony.VideoPlayer] video_player_rebind_surface failed: {:?}",
+                e
+            );
+            false
+        }
+    }
+}
+
+/// Prepare the video player
+#[napi]
+pub fn video_player_prepare(component_id: String) -> bool {
+    log::info!(
+        "[Harmony.VideoPlayer] video_player_prepare: component_id={}",
+        component_id
+    );
+    if let Some(player) = lingxia_platform::harmony::video_player::get_player(&component_id) {
+        if let Ok(mut p) = player.lock() {
+            return p.prepare().is_ok();
+        }
+    }
+    false
+}
+
+/// Start playback
+#[napi]
+pub fn video_player_play(component_id: String) -> bool {
+    if let Some(player) = lingxia_platform::harmony::video_player::get_player(&component_id) {
+        if let Ok(mut p) = player.lock() {
+            return p.play().is_ok();
+        }
+    }
+    false
+}
+
+/// Pause playback
+#[napi]
+pub fn video_player_pause(component_id: String) -> bool {
+    if let Some(player) = lingxia_platform::harmony::video_player::get_player(&component_id) {
+        if let Ok(mut p) = player.lock() {
+            return p.pause().is_ok();
+        }
+    }
+    false
+}
+
+/// Stop playback
+#[napi]
+pub fn video_player_stop(component_id: String) -> bool {
+    if let Some(player) = lingxia_platform::harmony::video_player::get_player(&component_id) {
+        if let Ok(mut p) = player.lock() {
+            return p.stop().is_ok();
+        }
+    }
+    false
+}
+
+/// Seek to position in milliseconds
+#[napi]
+pub fn video_player_seek(component_id: String, position_ms: i32) -> bool {
+    log::info!(
+        "[Harmony.VideoPlayer] video_player_seek: component_id={}, position_ms={}",
+        component_id,
+        position_ms
+    );
+    if let Some(player) = lingxia_platform::harmony::video_player::get_player(&component_id) {
+        if let Ok(mut p) = player.lock() {
+            // Use PreviousSync for better compatibility - seeks to nearest keyframe before target
+            // Closest mode might have issues on some devices/video formats
+            return p
+                .seek(
+                    position_ms,
+                    lingxia_platform::harmony::video_player::AVPlayerSeekMode::PreviousSync,
+                )
+                .is_ok();
+        }
+    }
+    false
+}
+
+/// Set volume (0.0 to 1.0)
+#[napi]
+pub fn video_player_set_volume(component_id: String, volume: f64) -> bool {
+    log::info!(
+        "[Harmony.VideoPlayer] video_player_set_volume: component_id={}, volume={}",
+        component_id,
+        volume
+    );
+    if let Some(player) = lingxia_platform::harmony::video_player::get_player(&component_id) {
+        if let Ok(mut p) = player.lock() {
+            return p.set_volume(volume as f32).is_ok();
+        }
+    }
+    false
+}
+
+/// Set looping
+#[napi]
+pub fn video_player_set_loop(component_id: String, looping: bool) -> bool {
+    log::info!(
+        "[Harmony.VideoPlayer] video_player_set_loop: component_id={}, looping={}",
+        component_id,
+        looping
+    );
+    if let Some(player) = lingxia_platform::harmony::video_player::get_player(&component_id) {
+        if let Ok(mut p) = player.lock() {
+            return p.set_looping(looping).is_ok();
+        }
+    }
+    false
+}
+
+/// Get current playback position in milliseconds
+#[napi]
+pub fn video_player_get_current_time(component_id: String) -> i32 {
+    if let Some(player) = lingxia_platform::harmony::video_player::get_player(&component_id) {
+        if let Ok(mut p) = player.lock() {
+            return p.get_current_time().unwrap_or(0);
+        }
+    }
+    0
+}
+
+/// Get duration in milliseconds
+#[napi]
+pub fn video_player_get_duration(component_id: String) -> i32 {
+    if let Some(player) = lingxia_platform::harmony::video_player::get_player(&component_id) {
+        if let Ok(p) = player.lock() {
+            return p.get_duration().unwrap_or(0);
+        }
+    }
+    0
+}
+
+/// Get video width in pixels
+#[napi]
+pub fn video_player_get_video_width(component_id: String) -> i32 {
+    if let Some(player) = lingxia_platform::harmony::video_player::get_player(&component_id) {
+        if let Ok(p) = player.lock() {
+            return p.get_video_size().map(|(w, _)| w).unwrap_or(0);
+        }
+    }
+    0
+}
+
+/// Get video height in pixels
+#[napi]
+pub fn video_player_get_video_height(component_id: String) -> i32 {
+    if let Some(player) = lingxia_platform::harmony::video_player::get_player(&component_id) {
+        if let Ok(p) = player.lock() {
+            return p.get_video_size().map(|(_, h)| h).unwrap_or(0);
+        }
+    }
+    0
+}
+
+/// Destroy the video player
+#[napi]
+pub fn video_player_destroy(component_id: String) -> bool {
+    log::info!(
+        "[Harmony.VideoPlayer] video_player_destroy: component_id={}",
+        component_id
+    );
+    lingxia_platform::harmony::video_player::destroy_player(&component_id).is_ok()
+}
