@@ -1,6 +1,6 @@
 import { sendSameLevelMessage, registerSameLevelHandler } from "./samelevel.js";
 import { measureElement } from "./dom.js";
-import { ensureComponentId, SameLevelUpdateState } from "./component.js";
+import { ensureComponentId, SameLevelUpdateState, iOSSameLevelHelper } from "./component.js";
 import { isHarmony } from "./platform.js";
 
 const HARMONY_PROPS_PREFIX = "data:application/json,";
@@ -62,6 +62,7 @@ export class LxVideoElement extends HTMLElement {
   private _handlers: Record<string, EventListenerOrEventListenerObject> = {};
   private harmonyEmbed?: HTMLEmbedElement;
   private lastHarmonyProps?: string;
+  private iOSHelper?: iOSSameLevelHelper;
 
   connectedCallback() {
     this.componentId = ensureComponentId(this, "lx-video", this.componentId);
@@ -71,7 +72,7 @@ export class LxVideoElement extends HTMLElement {
     this.unregister = registerSameLevelHandler(this.componentId!, (message) => {
       // Handle component events from native
       if (message.event) {
-        // Normalize detail based on event type per WeChat Mini Program specs
+        // Normalize detail based on event type
         let detail = message.detail || message.payload || {};
 
         // Ensure play/pause/ended/waiting have empty detail if not provided
@@ -89,8 +90,27 @@ export class LxVideoElement extends HTMLElement {
       }
     });
     this.ensurePlaceholderStyle();
-    this.mountOrUpdate();
-    this.startTracking();
+
+    // Setup iOS same-level rendering helper (no-op on other platforms)
+    this.iOSHelper = new iOSSameLevelHelper(this, this.componentId);
+    this.iOSHelper.setup();
+
+    // On iOS, delay mount to allow WKWebView to create WKChildScrollView for the scroll container.
+    // WKWebView needs time to render the DOM and create native scroll views.
+    if (this.iOSHelper) {
+      // Use requestAnimationFrame + setTimeout to ensure DOM is rendered and WKChildScrollView is created
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          if (this.isConnected) {
+            this.mountOrUpdate();
+            this.startTracking();
+          }
+        }, 100); // 100ms delay for WKWebView to create WKChildScrollView
+      });
+    } else {
+      this.mountOrUpdate();
+      this.startTracking();
+    }
   }
 
   disconnectedCallback() {
@@ -112,6 +132,11 @@ export class LxVideoElement extends HTMLElement {
     }
     this.harmonyEmbed = undefined;
     this.lastHarmonyProps = undefined;
+
+    // Cleanup iOS helper
+    this.iOSHelper?.cleanup();
+    this.iOSHelper = undefined;
+
     // Cleanup manually attached property handlers
     Object.keys(this._handlers).forEach(name => {
       this.removeEventListener(name, this._handlers[name]);
@@ -177,6 +202,7 @@ export class LxVideoElement extends HTMLElement {
   // Internal
   private ensurePlaceholderStyle() {
     if (!this.style.display) this.style.display = "block";
+    if (!this.style.position) this.style.position = "relative"; // Needed for iOS scroll container
     if (!this.style.backgroundColor) this.style.backgroundColor = "black";
     if (!this.style.aspectRatio) this.style.aspectRatio = "16 / 9";
   }
@@ -228,6 +254,10 @@ export class LxVideoElement extends HTMLElement {
       zIndex,
       ...(cornerRadius !== undefined ? { cornerRadius } : {})
     };
+
+    // Enhance payload with platform-specific data (iOS scroll container rect)
+    this.iOSHelper?.enhancePayload(payload);
+
     // Only include props when they changed or on first mount
     if (decision.propsChanged || !this.mounted) {
       payload.props = props;
