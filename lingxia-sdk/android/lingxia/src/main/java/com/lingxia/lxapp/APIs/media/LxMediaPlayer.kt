@@ -1,7 +1,6 @@
 package com.lingxia.lxapp.APIs.media
 
 import android.content.Context
-import android.content.pm.ActivityInfo
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.net.Uri
@@ -18,6 +17,7 @@ import android.widget.ImageView
 import android.widget.ProgressBar
 import android.widget.SeekBar
 import android.widget.TextView
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -212,7 +212,6 @@ class LxMediaPlayer(
     private var isFullscreen = false
     private var firstFrameDisplayed = false
     private var posterUrl: String? = null
-    private var preferredOrientation: Int? = null
     private var videoWidth = 0.0
     private var videoHeight = 0.0
     private var videoRotationDegrees = 0
@@ -230,6 +229,12 @@ class LxMediaPlayer(
     private var originalLayoutParams: ViewGroup.LayoutParams? = null
     private var originalClipToOutline: Boolean? = null
     private var originalOutlineProvider: android.view.ViewOutlineProvider? = null
+
+    // Track last frame for restoring after fullscreen
+    private var lastFrameX = 0f
+    private var lastFrameY = 0f
+    private var lastFrameWidth = 0f
+    private var lastFrameHeight = 0f
 
     // Player listener - must be declared before init block
     private val playerListener = object : Player.Listener {
@@ -435,11 +440,43 @@ class LxMediaPlayer(
     }
 
     fun setFrame(x: Float, y: Float, width: Float, height: Float) {
-        view.layoutParams = FrameLayout.LayoutParams(width.toInt(), height.toInt()).apply {
-            leftMargin = x.toInt()
-            topMargin = y.toInt()
+        lastFrameX = x
+        lastFrameY = y
+        lastFrameWidth = width
+        lastFrameHeight = height
+
+        if (isFullscreen) {
+            Log.d(TAG, "setFrame ignored because isFullscreen=true")
+            return
         }
-        view.requestLayout()
+
+        val newWidth = width.toInt()
+        val newHeight = height.toInt()
+
+        val existingLp = view.layoutParams as? FrameLayout.LayoutParams
+        var needLayout = existingLp == null
+        val lp = existingLp ?: FrameLayout.LayoutParams(newWidth, newHeight)
+
+        if (lp.width != newWidth || lp.height != newHeight) {
+            lp.width = newWidth
+            lp.height = newHeight
+            needLayout = true
+        }
+
+        // Ensure margins are zero so translation works as absolute coordinates
+        if (lp.leftMargin != 0 || lp.topMargin != 0) {
+            lp.leftMargin = 0
+            lp.topMargin = 0
+            needLayout = true
+        }
+
+        if (needLayout) {
+            view.layoutParams = lp
+            view.requestLayout()
+        }
+
+        view.translationX = x
+        view.translationY = y
     }
 
     fun play() {
@@ -544,14 +581,25 @@ class LxMediaPlayer(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
+            fitsSystemWindows = false
         }
         val contentWrapper = FrameLayout(activityContext).apply {
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
+            fitsSystemWindows = false
+        }
+        ViewCompat.setOnApplyWindowInsetsListener(fullscreenContainer) { v, _ ->
+            v.setPadding(0, 0, 0, 0)
+            WindowInsetsCompat.CONSUMED
+        }
+        ViewCompat.setOnApplyWindowInsetsListener(contentWrapper) { v, _ ->
+            v.setPadding(0, 0, 0, 0)
+            WindowInsetsCompat.CONSUMED
         }
         fullscreenContainer.addView(contentWrapper)
+        ViewCompat.requestApplyInsets(fullscreenContainer)
 
         fullscreenDialog = android.app.Dialog(activityContext, android.R.style.Theme_Black_NoTitleBar_Fullscreen).apply {
             setContentView(fullscreenContainer)
@@ -567,6 +615,8 @@ class LxMediaPlayer(
                 attributes = attributes?.apply {
                     layoutInDisplayCutoutMode = android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
                 }
+                @Suppress("DEPRECATION")
+                addFlags(android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
                 WindowCompat.setDecorFitsSystemWindows(this, false)
                 WindowInsetsControllerCompat(this, decorView).apply {
                     hide(WindowInsetsCompat.Type.systemBars())
@@ -617,12 +667,19 @@ class LxMediaPlayer(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT
         )
+        view.translationX = 0f
+        view.translationY = 0f
         contentWrapper.addView(
             view,
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         )
         fullscreenContainer.also { this.fullscreenContainer = it }
         fullscreenContent = contentWrapper
+        fullscreenLayoutListener = View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            applyFullscreenTransform()
+        }.also { listener ->
+            fullscreenContainer.addOnLayoutChangeListener(listener)
+        }
 
         // Apply transform after layout is ready
         fullscreenContainer.post { applyFullscreenTransform() }
@@ -665,12 +722,18 @@ class LxMediaPlayer(
 
         // Restore to original parent
         originalParent?.let { parent ->
-            view.layoutParams = originalLayoutParams ?: FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
+            // Restore size
+            val width = lastFrameWidth.toInt().takeIf { it > 0 } ?: ViewGroup.LayoutParams.MATCH_PARENT
+            val height = lastFrameHeight.toInt().takeIf { it > 0 } ?: ViewGroup.LayoutParams.MATCH_PARENT
+            
+            view.layoutParams = originalLayoutParams ?: FrameLayout.LayoutParams(width, height)
+            
+            // Restore position
+            view.translationX = lastFrameX
+            view.translationY = lastFrameY
+
             parent.addView(view, originalIndex.coerceIn(0, parent.childCount))
-            Log.d(TAG, "exitFullscreen: view restored to parent, index=$originalIndex")
+            Log.d(TAG, "exitFullscreen: view restored to parent, index=$originalIndex, frame=($lastFrameX, $lastFrameY, $width, $height)")
         }
 
         // Restore rounding state
@@ -746,6 +809,8 @@ class LxMediaPlayer(
             targetHeight.toInt(),
             Gravity.CENTER
         )
+        view.translationX = 0f
+        view.translationY = 0f
         view.pivotX = targetWidth / 2f
         view.pivotY = targetHeight / 2f
         view.rotation = if (rotate) angle else 0f
@@ -882,13 +947,6 @@ class LxMediaPlayer(
         videoWidth = width
         videoHeight = height
         videoRotationDegrees = normalizeRotation(rotationDegrees)
-
-        val (displayWidth, displayHeight) = getDisplayVideoSize()
-        preferredOrientation = when {
-            displayWidth > displayHeight * 1.1 -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-            displayHeight > displayWidth * 1.1 -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
-            else -> ActivityInfo.SCREEN_ORIENTATION_SENSOR
-        }
 
         if (isFullscreen) {
             applyFullscreenTransform()

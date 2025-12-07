@@ -1,11 +1,11 @@
 package com.lingxia.lxapp.SameLevel.Components
 
 import android.graphics.RectF
-import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import com.lingxia.lxapp.APIs.media.LxMediaCommand
+import com.lingxia.lxapp.APIs.media.LxMediaEvent
 import com.lingxia.lxapp.APIs.media.LxMediaObjectFit
 import com.lingxia.lxapp.APIs.media.LxMediaPlayer
 import com.lingxia.lxapp.APIs.media.LxMediaPlayerConfig
@@ -15,24 +15,11 @@ import com.lingxia.lxapp.LxApp
 import com.lingxia.lxapp.SameLevel.LxNativeComponent
 import com.lingxia.lxapp.SameLevel.LxNativeComponentFactory
 
-private const val TAG = "VideoComponent"
-
-/**
- * Factory for creating VideoComponent instances.
- */
 class VideoComponentFactory : LxNativeComponentFactory {
-    override fun make(
-        id: String,
-        initialProps: Map<String, Any?>,
-        eventSink: (Map<String, Any>) -> Unit
-    ): LxNativeComponent {
-        return VideoComponent(id, initialProps, eventSink)
-    }
+    override fun make(id: String, initialProps: Map<String, Any?>, eventSink: (Map<String, Any>) -> Unit) =
+        VideoComponent(id, initialProps, eventSink)
 }
 
-/**
- * VideoComponent wraps LxMediaPlayer for SameLevel rendering.
- */
 class VideoComponent(
     override val id: String,
     initialProps: Map<String, Any?>,
@@ -44,52 +31,35 @@ class VideoComponent(
     private val eventSinkRef = eventSink
     private var lastFrame: RectF? = null
 
-    override val view: View
-        get() = player?.view ?: FrameLayout(context!!)
+    override val view: View get() = player?.view ?: FrameLayout(context!!)
 
     override fun mount(host: ViewGroup) {
-        Log.d(TAG, "mount called, host=$host")
-        val activityContext = LxApp.getCurrentActivity() ?: host.context
-        context = activityContext
-        player = LxMediaPlayer(activityContext, eventSinkRef) { event ->
-            if (event is com.lingxia.lxapp.APIs.media.LxMediaEvent.FullscreenChange && !event.fullScreen) {
-                lastFrame?.let { f ->
-                    player?.setFrame(f.left, f.top, f.width(), f.height())
-                }
+        context = LxApp.getCurrentActivity() ?: host.context
+        player = LxMediaPlayer(context!!, eventSinkRef) { event ->
+            if (event is LxMediaEvent.FullscreenChange && !event.fullScreen) {
+                lastFrame?.let { player?.setFrame(it.left, it.top, it.width(), it.height()) }
             }
         }
         host.addView(player!!.view)
-        Log.d(TAG, "mount complete, player.view added to host")
     }
 
     override fun update(props: Map<String, Any?>) {
-        Log.d(TAG, "update called, props=$props")
-        val config = makeConfig(props)
-        player?.update(config)
+        player?.update(makeConfig(props))
     }
 
     override fun setFrame(frame: RectF) {
-        Log.d(TAG, "setFrame called, frame=$frame (left=${frame.left}, top=${frame.top}, width=${frame.width()}, height=${frame.height()})")
         lastFrame = RectF(frame)
-        if (player?.isFullscreen() == true) {
-            return
+        if (player?.isFullscreen() != true) {
+            player?.setFrame(frame.left, frame.top, frame.width(), frame.height())
         }
-        player?.setFrame(frame.left, frame.top, frame.width(), frame.height())
     }
 
     override fun focus() {
-        // Restore frame when page becomes active again
-        // This ensures the player is visible and correctly positioned after resuming
-        lastFrame?.let { frame ->
-            player?.setFrame(frame.left, frame.top, frame.width(), frame.height())
-        }
+        lastFrame?.let { player?.setFrame(it.left, it.top, it.width(), it.height()) }
         player?.view?.requestLayout()
-        Log.d(TAG, "focus called, restored frame=$lastFrame")
     }
 
-    override fun blur() {
-        Log.d(TAG, "blur called")
-    }
+    override fun blur() {}
 
     override fun handleCommand(name: String, params: Map<String, Any?>?) {
         val command = makeCommand(name, params) ?: return
@@ -104,11 +74,6 @@ class VideoComponent(
     }
 
     companion object {
-        private fun parseUrl(value: String?): String? {
-            if (value.isNullOrEmpty()) return null
-            return value
-        }
-
         fun makeConfig(props: Map<String, Any?>): LxMediaPlayerConfig {
             val config = LxMediaPlayerConfig()
 

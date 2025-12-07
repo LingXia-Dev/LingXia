@@ -3,7 +3,6 @@ package com.lingxia.lxapp.SameLevel
 import android.graphics.Color
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
@@ -14,8 +13,6 @@ import com.lingxia.webview.LingXiaWebView
 import org.json.JSONArray
 import org.json.JSONObject
 import java.lang.ref.WeakReference
-
-private const val TAG = "SameLevelBridge"
 
 /**
  * Bridge between JS component.* messages and native SameLevel components.
@@ -37,38 +34,25 @@ class SameLevelBridge private constructor(
 
     private fun install() {
         val webView = webViewRef.get() ?: return
-
         val host = makeOrFindOverlayHost(webView)
         overlayHost = host
 
         val manager = SameLevelComponentManager(
             hostView = host,
             defaultPageId = pageKey,
-            eventSink = { payload -> sendEventToView(payload) }
+            eventSink = { sendEventToView(it) }
         )
-
-        registeredFactories.forEach { (type, factory) ->
-            manager.register(type, factory)
-        }
-
+        registeredFactories.forEach { (type, factory) -> manager.register(type, factory) }
         componentManager = manager
-        Log.i(TAG, "SameLevelBridge installed for WebView")
     }
 
-    /** JavaScriptInterface exposed to WebView - routes to bridge via webViewId lookup */
     private class JsInterface(webView: LingXiaWebView) {
-        private val webViewRef = WeakReference(webView)
         private val webViewId = System.identityHashCode(webView)
 
         @JavascriptInterface
         fun postMessage(messageJson: String) {
             Handler(Looper.getMainLooper()).post {
-                val bridge = bridgeMap[webViewId]
-                if (bridge != null) {
-                    bridge.handleMessage(messageJson)
-                } else {
-                    Log.w(TAG, "JsInterface.postMessage: no bridge for webViewId=$webViewId, queuing not supported yet")
-                }
+                bridgeMap[webViewId]?.handleMessage(messageJson)
             }
         }
     }
@@ -76,167 +60,85 @@ class SameLevelBridge private constructor(
     private fun makeOrFindOverlayHost(webView: LingXiaWebView): SameLevelOverlayHost {
         val parent = webView.parent as? ViewGroup
 
-        // First check if we already have an overlayHost - reuse it if possible
-        overlayHost?.let { existingHost ->
-            // If existing host is in a different parent, move it to current parent
-            if (existingHost.parent != parent && parent != null) {
-                (existingHost.parent as? ViewGroup)?.removeView(existingHost)
-                val webViewIndex = parent.indexOfChild(webView)
-                val params = FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT
-                )
-                parent.addView(existingHost, webViewIndex + 1, params)
-                Log.d(TAG, "Moved existing overlay host to new parent")
+        overlayHost?.let { existing ->
+            if (existing.parent != parent && parent != null) {
+                (existing.parent as? ViewGroup)?.removeView(existing)
+                addHostToParent(parent, webView, existing)
             }
-            return existingHost
+            return existing
         }
 
-        // Find existing host in current parent by tag
         parent?.let { p ->
             for (i in 0 until p.childCount) {
-                val child = p.getChildAt(i)
-                if (child is SameLevelOverlayHost && child.tag == OVERLAY_TAG) {
-                    return child
-                }
+                (p.getChildAt(i) as? SameLevelOverlayHost)?.takeIf { it.tag == OVERLAY_TAG }?.let { return it }
             }
         }
 
-        // Create new host
         val host = SameLevelOverlayHost(webView.context).apply {
             tag = OVERLAY_TAG
             setBackgroundColor(Color.TRANSPARENT)
             isClickable = false
             isFocusable = false
         }
-
-        // Add host as sibling to WebView, on top
-        parent?.let { p ->
-            val webViewIndex = p.indexOfChild(webView)
-            val params = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-            p.addView(host, webViewIndex + 1, params)
-        }
-
+        parent?.let { addHostToParent(it, webView, host) }
         return host
+    }
+
+    private fun addHostToParent(parent: ViewGroup, webView: LingXiaWebView, host: SameLevelOverlayHost) {
+        val params = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        parent.addView(host, parent.indexOfChild(webView) + 1, params)
     }
 
     fun handleMessage(messageJson: String) {
         try {
-            val json = JSONObject(messageJson)
-            val message = jsonToMap(json)
-
-            val action = message["action"] as? String
-            val id = message["id"] as? String
-            Log.d(TAG, "handleMessage action=$action id=$id")
-
-            var messageWithPage = message.toMutableMap()
-            if (messageWithPage["pageId"] == null) {
-                messageWithPage["pageId"] = pageKey
-            }
-
-            componentManager?.handle(messageWithPage)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to parse message: $messageJson", e)
-        }
+            val message = jsonToMap(JSONObject(messageJson)).toMutableMap()
+            if (message["pageId"] == null) message["pageId"] = pageKey
+            componentManager?.handle(message)
+        } catch (_: Exception) {}
     }
 
     private fun sendEventToView(payload: Map<String, Any>) {
         val webView = webViewRef.get() ?: return
-
         try {
-            val fullMessage = mapOf(
-                "type" to "event",
-                "name" to "samelevel",
-                "payload" to payload
-            )
-            val jsonString = JSONObject(fullMessage).toString()
-            // Escape for safe JS embedding
-            val escaped = JSONArray().put(jsonString).toString()
-            val safeJsLiteral = escaped.substring(1, escaped.length - 1)
-
-            val script = """
-                (function(){
-                  if (typeof window.__LingXiaRecvMessage === 'function') {
-                    try { window.__LingXiaRecvMessage($safeJsLiteral); } catch (e) {}
-                  }
-                })();
-            """.trimIndent()
-
-            mainHandler.post {
-                webView.evaluateJavascript(script, null)
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to send event to JavaScript", e)
-        }
+            val json = JSONObject(mapOf("type" to "event", "name" to "samelevel", "payload" to payload)).toString()
+            val escaped = JSONArray().put(json).toString().let { it.substring(1, it.length - 1) }
+            val script = "(function(){if(typeof window.__LingXiaRecvMessage==='function'){try{window.__LingXiaRecvMessage($escaped);}catch(e){}}})();"
+            mainHandler.post { webView.evaluateJavascript(script, null) }
+        } catch (_: Exception) {}
     }
 
-    /**
-     * Ensure overlay host is attached to the correct parent (WebView's container).
-     */
     fun ensureOverlayHostAttached() {
         val webView = webViewRef.get() ?: return
         val parent = webView.parent as? ViewGroup ?: return
         val host = overlayHost ?: return
-
-        // Check if host needs to be moved to current parent
         if (host.parent != parent) {
             (host.parent as? ViewGroup)?.removeView(host)
-            val webViewIndex = parent.indexOfChild(webView)
-            val params = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-            parent.addView(host, webViewIndex + 1, params)
+            addHostToParent(parent, webView, host)
             host.visibility = View.VISIBLE
-            Log.d(TAG, "ensureOverlayHostAttached: moved overlay host to new parent")
         }
     }
 
     fun markPageInactive() {
-        componentManager?.handle(mapOf(
-            "action" to "page.lifecycle",
-            "state" to "inactive",
-            "pageId" to pageKey
-        ))
+        componentManager?.handle(mapOf("action" to "page.lifecycle", "state" to "inactive", "pageId" to pageKey))
     }
 
     fun markPageActive() {
         refreshPageKeyIfNeeded()
-        // Ensure overlay host is in correct parent before resuming components
         ensureOverlayHostAttached()
-        componentManager?.handle(mapOf(
-            "action" to "page.lifecycle",
-            "state" to "active",
-            "pageId" to pageKey
-        ))
+        componentManager?.handle(mapOf("action" to "page.lifecycle", "state" to "active", "pageId" to pageKey))
     }
 
     fun markPageDestroyed() {
         refreshPageKeyIfNeeded()
-        componentManager?.handle(mapOf(
-            "action" to "page.lifecycle",
-            "state" to "destroyed",
-            "pageId" to pageKey
-        ))
+        componentManager?.handle(mapOf("action" to "page.lifecycle", "state" to "destroyed", "pageId" to pageKey))
         componentManager?.teardownAll()
     }
 
     private fun refreshPageKeyIfNeeded() {
-        val webView = webViewRef.get() ?: return
-        val newKey = makePageKey(webView)
-        if (newKey != pageKey) {
-            pageKey = newKey
-        }
+        webViewRef.get()?.let { pageKey = makePageKey(it) }
     }
 
-    private fun makePageKey(webView: LingXiaWebView): String {
-        val app = webView.appId ?: "app"
-        val path = webView.currentPath ?: "page"
-        return "$app:$path"
-    }
+    private fun makePageKey(webView: LingXiaWebView) = "${webView.appId ?: "app"}:${webView.currentPath ?: "page"}"
 
     private fun jsonToMap(json: JSONObject): Map<String, Any?> {
         val map = mutableMapOf<String, Any?>()
@@ -270,80 +172,47 @@ class SameLevelBridge private constructor(
         private val bridgeMap = mutableMapOf<Int, SameLevelBridge>()
         private val jsInterfaceRegistered = mutableSetOf<Int>()
 
-        /** Register JavaScriptInterface early (called from WebView.onAttachedToWindow) */
         @JvmStatic
         fun registerJsInterface(webView: LingXiaWebView) {
-            val webViewId = System.identityHashCode(webView)
-            if (jsInterfaceRegistered.contains(webViewId)) return
-            jsInterfaceRegistered.add(webViewId)
-            webView.addJavascriptInterface(JsInterface(webView), "SameLevelNative")
-            Log.i(TAG, "SameLevelNative JavaScriptInterface registered for webViewId=$webViewId")
+            val id = System.identityHashCode(webView)
+            if (jsInterfaceRegistered.add(id)) {
+                webView.addJavascriptInterface(JsInterface(webView), "SameLevelNative")
+            }
         }
 
         @JvmStatic
         fun attachIfNeeded(webView: LingXiaWebView) {
-            val webViewId = System.identityHashCode(webView)
-
-            val existingBridge = bridgeMap[webViewId]
-            if (existingBridge != null) {
-                existingBridge.ensureOverlayHostAttached()
-                return
+            val id = System.identityHashCode(webView)
+            bridgeMap[id]?.ensureOverlayHostAttached() ?: run {
+                registerDefaultComponents()
+                bridgeMap[id] = SameLevelBridge(webView).also { it.install() }
             }
-
-            registerDefaultComponents()
-
-            val bridge = SameLevelBridge(webView)
-            bridge.install()
-            bridgeMap[webViewId] = bridge
         }
 
         @JvmStatic
         fun register(type: String, factory: LxNativeComponentFactory) {
             registeredFactories[type] = factory
-            Log.i(TAG, "Registered component type: $type")
         }
 
         private fun registerDefaultComponents() {
             if (defaultsRegistered) return
             defaultsRegistered = true
-
-            if (!registeredFactories.containsKey("video.native")) {
-                registeredFactories["video.native"] = VideoComponentFactory()
-            }
+            registeredFactories.getOrPut("video.native") { VideoComponentFactory() }
         }
 
-        @JvmStatic
-        fun notifyPageInactive(webView: LingXiaWebView?) {
-            webView?.let { bridgeMap[System.identityHashCode(it)]?.markPageInactive() }
-        }
-
-        @JvmStatic
-        fun notifyPageActive(webView: LingXiaWebView?) {
-            webView?.let { bridgeMap[System.identityHashCode(it)]?.markPageActive() }
-        }
+        @JvmStatic fun notifyPageInactive(webView: LingXiaWebView?) { webView?.let { bridgeMap[System.identityHashCode(it)]?.markPageInactive() } }
+        @JvmStatic fun notifyPageActive(webView: LingXiaWebView?) { webView?.let { bridgeMap[System.identityHashCode(it)]?.markPageActive() } }
 
         @JvmStatic
         fun notifyPageDestroyed(webView: LingXiaWebView?) {
             webView?.let {
                 val id = System.identityHashCode(it)
-                bridgeMap[id]?.markPageDestroyed()
-                bridgeMap.remove(id)
+                bridgeMap.remove(id)?.markPageDestroyed()
+                jsInterfaceRegistered.remove(id)
             }
         }
     }
 }
 
-/**
- * Overlay host view that passes through touches to components or WebView.
- */
-class SameLevelOverlayHost(context: android.content.Context) : FrameLayout(context) {
-    override fun onInterceptTouchEvent(ev: MotionEvent?): Boolean {
-        // Don't intercept - let children handle touches
-        return false
-    }
-
-    override fun onTouchEvent(event: MotionEvent?): Boolean {
-        // Don't consume touches - let them pass through to WebView
-        return false
-    }
-}
+/** Overlay host that passes through touches to children or WebView. */
+class SameLevelOverlayHost(context: android.content.Context) : FrameLayout(context)

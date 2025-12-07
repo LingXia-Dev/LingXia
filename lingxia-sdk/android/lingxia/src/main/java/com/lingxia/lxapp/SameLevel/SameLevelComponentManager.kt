@@ -1,12 +1,13 @@
 package com.lingxia.lxapp.SameLevel
 
+import android.graphics.Outline
 import android.graphics.RectF
-import android.util.Log
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewOutlineProvider
 import java.lang.ref.WeakReference
-
-private const val TAG = "SameLevelComponentMgr"
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /**
  * Manages the lifecycle of native components rendered in SameLevel overlay.
@@ -17,24 +18,20 @@ class SameLevelComponentManager(
     private val eventSink: (Map<String, Any>) -> Unit
 ) {
     private val hostViewRef = WeakReference(hostView)
+    private val density = hostView.context.resources.displayMetrics.density
 
     private val components = mutableMapOf<String, LxNativeComponent>()
     private val componentPage = mutableMapOf<String, String>()
+    private val componentRects = mutableMapOf<String, RectF>()
     private val pageComponents = mutableMapOf<String, MutableSet<String>>()
     private val factories = mutableMapOf<String, LxNativeComponentFactory>()
 
     fun register(type: String, factory: LxNativeComponentFactory) {
         factories[type] = factory
-        Log.d(TAG, "Registered component type: $type")
     }
 
     fun handle(message: Map<String, Any?>) {
-        val action = message["action"] as? String ?: return
-        val id = message["id"] as? String
-
-        Log.d(TAG, "handle action=$action id=$id")
-
-        when (action) {
+        when (message["action"] as? String) {
             "component.mount" -> handleMount(message)
             "component.update" -> handleUpdate(message)
             "component.unmount" -> handleUnmount(message)
@@ -49,50 +46,30 @@ class SameLevelComponentManager(
         val id = params["id"] as? String ?: return
         val type = params["type"] as? String ?: return
         val rectDict = params["rect"] as? Map<*, *> ?: return
+        if (components.containsKey(id)) return
+
+        val factory = factories[type] ?: return
+        val host = hostViewRef.get() ?: return
 
         val pageId = resolvePageId(params)
         val props = params["props"].asStringMap()
         val zIndex = (params["zIndex"] as? Number)?.toFloat() ?: 0f
         val cornerRadius = (params["cornerRadius"] as? Number)?.toFloat() ?: 0f
+        val rect = pixelAligned(rectFrom(rectDict))
 
-        val rect = rectFrom(rectDict)
-
-        if (components.containsKey(id)) {
-            Log.w(TAG, "Component $id already mounted, skipping")
-            return
-        }
-
-        val factory = factories[type]
-        if (factory == null) {
-            Log.e(TAG, "No factory registered for type: $type")
-            return
-        }
-
-        val host = hostViewRef.get() ?: return
-
-        val component = factory.make(id, props) { event ->
-            sendEventToWeb(id, event)
-        }
+        val component = factory.make(id, props) { sendEventToWeb(id, it) }
 
         components[id] = component
         componentPage[id] = pageId
+        componentRects[id] = rect
         pageComponents.getOrPut(pageId) { mutableSetOf() }.add(id)
+        VideoPlayerRegistry.registerComponent(id, this)
 
         component.mount(host)
         component.setFrame(rect)
         component.update(props)
-
-        component.view.apply {
-            translationZ = zIndex
-            if (cornerRadius > 0) {
-                clipToOutline = true
-                outlineProvider = android.view.ViewOutlineProvider.BACKGROUND
-            }
-        }
-
-        if (cornerRadius > 0) {
-            component.update(mapOf("cornerRadius" to cornerRadius))
-        }
+        applyCornerRadius(component.view, cornerRadius)
+        component.view.translationZ = zIndex
     }
 
     private fun handleUpdate(params: Map<String, Any?>) {
@@ -100,18 +77,18 @@ class SameLevelComponentManager(
         val component = components[id] ?: return
 
         (params["rect"] as? Map<*, *>)?.let { rectDict ->
-            component.setFrame(rectFrom(rectDict))
+            val newRect = pixelAligned(rectFrom(rectDict))
+            if (shouldUpdateFrame(componentRects[id], newRect)) {
+                componentRects[id] = newRect
+                component.setFrame(newRect)
+            }
         }
 
         params["props"].asStringMap().takeIf { it.isNotEmpty() }?.let { component.update(it) }
-
-        (params["zIndex"] as? Number)?.let { zIndex ->
-            component.view.translationZ = zIndex.toFloat()
-        }
-
-        (params["cornerRadius"] as? Number)?.let { radius ->
-            component.view.clipToOutline = true
-            component.update(mapOf("cornerRadius" to radius.toFloat()))
+        (params["zIndex"] as? Number)?.let { component.view.translationZ = it.toFloat() }
+        (params["cornerRadius"] as? Number)?.toFloat()?.let { radius ->
+            applyCornerRadius(component.view, radius)
+            component.update(mapOf("cornerRadius" to radius))
         }
     }
 
@@ -134,19 +111,14 @@ class SameLevelComponentManager(
     private fun handleCommand(params: Map<String, Any?>) {
         val id = params["id"] as? String ?: return
         val name = params["name"] as? String ?: return
-        val cmdParams = params["params"].asStringMap().ifEmpty { null }
-        Log.d(TAG, "handleCommand name=$name id=$id")
-        components[id]?.handleCommand(name, cmdParams)
+        components[id]?.handleCommand(name, params["params"].asStringMap().ifEmpty { null })
     }
 
     private fun handlePageLifecycle(params: Map<String, Any?>) {
-        val pageId = resolvePageId(params)
-        val state = params["state"] as? String
-        Log.d(TAG, "handlePageLifecycle pageId=$pageId state=$state pageComponents=${pageComponents.keys}")
-        when (state) {
-            "inactive" -> pausePage(pageId)
-            "active" -> resumePage(pageId)
-            "destroyed" -> unmountPage(pageId)
+        when (params["state"] as? String) {
+            "inactive" -> pausePage(resolvePageId(params))
+            "active" -> resumePage(resolvePageId(params))
+            "destroyed" -> unmountPage(resolvePageId(params))
         }
     }
 
@@ -183,8 +155,6 @@ class SameLevelComponentManager(
     }
 
     private fun rectFrom(dict: Map<*, *>): RectF {
-        // Convert CSS pixels to physical pixels using display density
-        val density = hostViewRef.get()?.context?.resources?.displayMetrics?.density ?: 1f
         val x = ((dict["x"] as? Number)?.toFloat() ?: 0f) * density
         val y = ((dict["y"] as? Number)?.toFloat() ?: 0f) * density
         val w = ((dict["width"] as? Number)?.toFloat() ?: 0f) * density
@@ -192,53 +162,65 @@ class SameLevelComponentManager(
         return RectF(x, y, x + w, y + h)
     }
 
+    private fun pixelAligned(rect: RectF): RectF = RectF(
+        rect.left.roundToInt().toFloat(),
+        rect.top.roundToInt().toFloat(),
+        rect.right.roundToInt().toFloat(),
+        rect.bottom.roundToInt().toFloat()
+    )
+
+    private fun shouldUpdateFrame(old: RectF?, new: RectF): Boolean {
+        if (old == null) return true
+        return abs(old.left - new.left) > 0.5f || abs(old.top - new.top) > 0.5f ||
+               abs(old.right - new.right) > 0.5f || abs(old.bottom - new.bottom) > 0.5f
+    }
+
+    private fun applyCornerRadius(view: View, radius: Float) {
+        if (radius > 0) {
+            view.clipToOutline = true
+            view.outlineProvider = object : ViewOutlineProvider() {
+                override fun getOutline(v: View, outline: Outline) {
+                    outline.setRoundRect(0, 0, v.width, v.height, radius * density)
+                }
+            }
+        } else {
+            view.clipToOutline = false
+            view.outlineProvider = null
+        }
+    }
+
     private fun unmountPage(pageId: String) {
-        val ids = pageComponents.remove(pageId) ?: return
-        ids.forEach { id -> unmountComponent(id, pageId) }
+        pageComponents.remove(pageId)?.forEach { unmountComponent(it, pageId) }
     }
 
     private fun pausePage(pageId: String) {
-        Log.d(TAG, "pausePage pageId=$pageId, ids=${pageComponents[pageId]}")
-        val ids = pageComponents[pageId] ?: return
-        ids.forEach { id ->
-            val component = components[id] ?: return@forEach
-            Log.d(TAG, "pausePage: hiding component $id")
-            component.blur()
-            component.view.visibility = View.GONE
-            component.handleCommand("pause", null)
+        pageComponents[pageId]?.forEach { id ->
+            components[id]?.apply {
+                blur()
+                view.visibility = View.GONE
+                handleCommand("pause", null)
+            }
         }
     }
 
     private fun resumePage(pageId: String) {
-        Log.d(TAG, "resumePage pageId=$pageId, ids=${pageComponents[pageId]}")
-        val ids = pageComponents[pageId] ?: return
-        val host = hostViewRef.get()
-        ids.forEach { id ->
-            val component = components[id] ?: return@forEach
-            Log.d(TAG, "resumePage: showing component $id, current visibility=${component.view.visibility}, parent=${component.view.parent}")
-
-            // Ensure view is attached to host (may have been detached during page navigation)
-            if (component.view.parent != host && host != null) {
-                (component.view.parent as? ViewGroup)?.removeView(component.view)
-                host.addView(component.view)
-                Log.d(TAG, "resumePage: re-attached component $id to host")
+        val host = hostViewRef.get() ?: return
+        pageComponents[pageId]?.forEach { id ->
+            components[id]?.apply {
+                if (view.parent != host) {
+                    (view.parent as? ViewGroup)?.removeView(view)
+                    host.addView(view)
+                }
+                view.visibility = View.VISIBLE
+                focus()
             }
-
-            component.view.visibility = View.VISIBLE
-            component.focus()
-            Log.d(TAG, "resumePage: after set visibility=${component.view.visibility}")
         }
     }
 
     private fun unmountComponent(id: String, pageId: String?) {
-        val component = components.remove(id) ?: return
-        component.unmount()
-        pageId?.let { pid ->
-            pageComponents[pid]?.remove(id)
-            if (pageComponents[pid]?.isEmpty() == true) {
-                pageComponents.remove(pid)
-            }
-        }
+        components.remove(id)?.unmount()
+        componentRects.remove(id)
         componentPage.remove(id)
+        pageId?.let { pageComponents[it]?.remove(id) }
     }
 }
