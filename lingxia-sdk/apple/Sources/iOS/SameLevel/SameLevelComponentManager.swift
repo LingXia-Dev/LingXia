@@ -1,5 +1,6 @@
 import Foundation
 import UIKit
+import WebKit
 import OSLog
 
 private let sameLevelComponentLog = OSLog(subsystem: "LingXia", category: "SameLevel")
@@ -37,10 +38,12 @@ protocol LxNativeComponentFactory {
 final class SameLevelComponentManager {
     private weak var scrollView: UIScrollView?
     private weak var hostView: UIView?
+    private weak var webView: WKWebView?
 
     private var components: [String: LxNativeComponent] = [:]
     private var componentPage: [String: String] = [:]
     private var pageComponents: [String: Set<String>] = [:]
+    private var componentWKChildScrollView: [String: UIScrollView] = [:]
     private let defaultPageId: String
     private var factories: [String: LxNativeComponentFactory] = [:]
     private let eventSink: (_ payload: [String: Any]) -> Void
@@ -48,11 +51,13 @@ final class SameLevelComponentManager {
     init(
         scrollView: UIScrollView,
         hostView: UIView,
+        webView: WKWebView,
         defaultPageId: String,
         eventSink: @escaping (_ payload: [String: Any]) -> Void
     ) {
         self.scrollView = scrollView
         self.hostView = hostView
+        self.webView = webView
         self.defaultPageId = defaultPageId
         self.eventSink = eventSink
     }
@@ -60,8 +65,6 @@ final class SameLevelComponentManager {
     func register(type: String, factory: LxNativeComponentFactory) {
         factories[type] = factory
     }
-
-    // MARK: - Message handlers
 
     func handle(message: [String: Any]) {
         guard let action = message["action"] as? String else { return }
@@ -118,11 +121,31 @@ final class SameLevelComponentManager {
         components[id] = component
         componentPage[id] = pageId
         pageComponents[pageId, default: []].insert(id)
+        VideoPlayerRegistry.shared.registerComponent(componentId: id, manager: self)
 
-        guard let host = hostView else { return }
+        // True same-level rendering: mount in WKChildScrollView when available
+        var targetRect = rect
+        if let scrollContainerRectDict = parameters["scrollContainerRect"] as? [String: Any],
+           let wkChildScrollView = resolveWKChildScrollView(rectFrom(dict: scrollContainerRectDict)) {
+            componentWKChildScrollView[id] = wkChildScrollView
+            targetRect = wkChildScrollView.bounds
 
-        component.mount(in: host)
-        component.setFrame(pixelAligned(rect))
+            // Disable scrolling on WKChildScrollView
+            wkChildScrollView.isScrollEnabled = false
+            wkChildScrollView.delaysContentTouches = false
+            wkChildScrollView.canCancelContentTouches = false
+
+            component.mount(in: wkChildScrollView)
+
+            // Register for hit-test passthrough
+            WKContentViewHitTestSwizzler.shared.registerNativeView(component.view, in: wkChildScrollView)
+        } else if let host = hostView {
+            component.mount(in: host)
+        } else {
+            os_log("Failed to mount component %{public}@ (no container)", log: sameLevelComponentLog, type: .error, id)
+            return
+        }
+        component.setFrame(pixelAligned(targetRect))
         component.update(props: props)
         component.view.layer.cornerRadius = cornerRadius
         if #available(iOS 13.0, *) {
@@ -130,7 +153,6 @@ final class SameLevelComponentManager {
         }
         component.view.layer.masksToBounds = true
         component.view.layer.zPosition = zIndex
-        host.bringSubviewToFront(component.view)
 
         if cornerRadius > 0 {
             component.update(props: ["cornerRadius": cornerRadius])
@@ -142,8 +164,16 @@ final class SameLevelComponentManager {
               let component = components[id] else { return }
 
         if let rectDict = parameters["rect"] as? [String: Any] {
-            let rect = rectFrom(dict: rectDict)
-            component.setFrame(pixelAligned(rect))
+            // Check if component is mounted in WKChildScrollView
+            if let superview = component.view.superview,
+               NSStringFromClass(type(of: superview)).contains("WKChildScrollView") {
+                // Use WKChildScrollView's bounds - WebKit auto-updates position
+                component.setFrame(pixelAligned(superview.bounds))
+            } else {
+                // Fallback mode: use the rect from JS
+                let rect = rectFrom(dict: rectDict)
+                component.setFrame(pixelAligned(rect))
+            }
         }
         if let props = parameters["props"] as? [String: Any] {
             component.update(props: props)
@@ -182,7 +212,6 @@ final class SameLevelComponentManager {
         guard let id = parameters["id"] as? String,
               let name = parameters["name"] as? String,
               let component = components[id] else { return }
-        os_log("SameLevelComponentManager handleCommand name=%{public}@ id=%{public}@", log: sameLevelComponentLog, type: .info, name, id)
         let params = parameters["params"] as? [String: Any]
         component.handleCommand(name: name, params: params)
     }
@@ -282,7 +311,10 @@ final class SameLevelComponentManager {
 
     private func unmountComponent(id: String, pageId: String?) {
         guard let component = components.removeValue(forKey: id) else { return }
+        // Unregister from hit-test swizzler before unmount
+        WKContentViewHitTestSwizzler.shared.unregisterNativeView(component.view)
         component.unmount()
+        componentWKChildScrollView.removeValue(forKey: id)
         if let pageId {
             var set = pageComponents[pageId] ?? []
             set.remove(id)
@@ -293,6 +325,114 @@ final class SameLevelComponentManager {
             }
         }
         componentPage.removeValue(forKey: id)
+    }
+
+    /// Convert window-space rect to WKScrollView coords and locate matching WKChildScrollView.
+    private func resolveWKChildScrollView(_ rectInWindow: CGRect) -> UIScrollView? {
+        guard let webView = webView else { return nil }
+        // Ensure subviews are laid out before matching
+        webView.scrollView.layoutIfNeeded()
+
+        let rectInWebView = webView.convert(rectInWindow, from: nil)
+        let rectInScroll = webView.scrollView.convert(rectInWebView, from: webView)
+        return findChildScrollView(in: webView.scrollView, matching: rectInScroll)
+    }
+
+    private func findChildScrollView(in view: UIView,
+                                     matching rect: CGRect,
+                                     originTolerance: CGFloat = 64.0,
+                                     sizeTolerance: CGFloat = 24.0) -> UIScrollView? {
+        let className = NSStringFromClass(type(of: view))
+        if className.contains("WKChildScrollView"),
+           let scrollView = view as? UIScrollView {
+            let frame = scrollView.frame
+            let originMatch = abs(frame.origin.x - rect.origin.x) < originTolerance &&
+                              abs(frame.origin.y - rect.origin.y) < originTolerance
+            let sizeMatch = abs(frame.size.width - rect.size.width) < sizeTolerance &&
+                            abs(frame.size.height - rect.size.height) < sizeTolerance
+            if originMatch && sizeMatch {
+                return scrollView
+            }
+        }
+        for subview in view.subviews {
+            if let found = findChildScrollView(in: subview,
+                                               matching: rect,
+                                               originTolerance: originTolerance,
+                                               sizeTolerance: sizeTolerance) {
+                return found
+            }
+        }
+        return nil
+    }
+}
+
+/// Swizzles WKContentView's hitTest to allow touch events to pass through to native views in WKChildScrollView.
+/// This enables true same-level rendering with working touch interactions.
+@MainActor
+final class WKContentViewHitTestSwizzler {
+    static let shared = WKContentViewHitTestSwizzler()
+
+    private var registeredViews: [ObjectIdentifier: (view: UIView, container: UIScrollView)] = [:]
+    private static var swizzled = false
+
+    private init() {
+        Self.performSwizzle()
+    }
+
+    func registerNativeView(_ view: UIView, in container: UIScrollView) {
+        registeredViews[ObjectIdentifier(view)] = (view, container)
+        os_log("WKContentViewHitTestSwizzler: registered view %{public}@", log: sameLevelComponentLog, type: .debug, String(describing: view))
+    }
+
+    func unregisterNativeView(_ view: UIView) {
+        registeredViews.removeValue(forKey: ObjectIdentifier(view))
+        os_log("WKContentViewHitTestSwizzler: unregistered view", log: sameLevelComponentLog, type: .debug)
+    }
+
+    /// Find registered native view at the given point in WKContentView's coordinate space
+    func nativeView(at point: CGPoint, in contentView: UIView) -> UIView? {
+        for (_, entry) in registeredViews {
+            let view = entry.view
+            guard let superview = view.superview else { continue }
+            // Convert point to the native view's coordinate space
+            let pointInView = contentView.convert(point, to: superview)
+            if view.frame.contains(pointInView) && !view.isHidden && view.alpha > 0.01 {
+                // Return the view that should receive touches
+                return view.hitTest(superview.convert(pointInView, to: view), with: nil) ?? view
+            }
+        }
+        return nil
+    }
+
+    private static func performSwizzle() {
+        guard !swizzled else { return }
+        swizzled = true
+
+        guard let wkContentViewClass = NSClassFromString("WKContentView") else {
+            os_log("WKContentViewHitTestSwizzler: WKContentView class not found", log: sameLevelComponentLog, type: .error)
+            return
+        }
+
+        let originalSelector = #selector(UIView.hitTest(_:with:))
+        let swizzledSelector = #selector(UIView.lx_swizzled_hitTest(_:with:))
+
+        guard let originalMethod = class_getInstanceMethod(wkContentViewClass, originalSelector),
+              let swizzledMethod = class_getInstanceMethod(UIView.self, swizzledSelector) else {
+            os_log("WKContentViewHitTestSwizzler: failed to get methods", log: sameLevelComponentLog, type: .error)
+            return
+        }
+
+        method_exchangeImplementations(originalMethod, swizzledMethod)
+        os_log("WKContentViewHitTestSwizzler: swizzle complete", log: sameLevelComponentLog, type: .info)
+    }
+}
+
+extension UIView {
+    @objc func lx_swizzled_hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        if let nativeView = WKContentViewHitTestSwizzler.shared.nativeView(at: point, in: self) {
+            return nativeView
+        }
+        return lx_swizzled_hitTest(point, with: event)
     }
 }
 

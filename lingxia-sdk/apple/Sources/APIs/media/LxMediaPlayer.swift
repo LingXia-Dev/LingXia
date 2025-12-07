@@ -2362,6 +2362,18 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
         }
         volumeButton.setImage(UIImage(systemName: iconName), for: .normal)
     }
+
+    // MARK: - UIGestureRecognizerDelegate
+
+    /// Prevent tap gesture from firing when touch is on a UIControl (button, slider, etc.)
+    /// This avoids double-triggering handleTap when tapCatcher button is tapped
+    public func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        // If the touch is on a UIControl (button, slider, etc.), let the control handle it
+        if let touchedView = touch.view, touchedView is UIControl {
+            return false
+        }
+        return true
+    }
 }
 
 // MARK: - Fullscreen ViewController

@@ -97,6 +97,7 @@ final class SameLevelBridge: NSObject, WKScriptMessageHandler {
         let manager = SameLevelComponentManager(
             scrollView: webView.scrollView,
             hostView: host,
+            webView: webView,
             defaultPageId: pageKey,
             eventSink: { [weak self] payload in
                 self?.sendEventToJavaScript(payload)
