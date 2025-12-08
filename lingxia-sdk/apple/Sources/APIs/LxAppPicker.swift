@@ -672,7 +672,7 @@ extension LxAppPicker {
             selectionIndicator.heightAnchor.constraint(equalToConstant: itemHeight)
         ])
 
-        // Add WeChat-style double separator lines at top/bottom of selection area
+        // Add separator lines at top/bottom of selection area
         let topLine = UIView(); topLine.translatesAutoresizingMaskIntoConstraints = false; topLine.backgroundColor = UIColor.systemGray3
         let bottomLine = UIView(); bottomLine.translatesAutoresizingMaskIntoConstraints = false; bottomLine.backgroundColor = UIColor.systemGray3
         container.addSubview(topLine); container.addSubview(bottomLine)

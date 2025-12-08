@@ -179,6 +179,14 @@ mod bridge {
             target_height: i32,
             output_path: &str,
         ) -> SwiftCompressImageResult;
+
+        // Video player control (SameLevel-backed)
+        // Note: Rust only binds callback for events; UI manages component lifecycle
+        #[swift_bridge(swift_name = "LxAppVideo.setVideoPlayerCallback")]
+        fn set_video_player_callback(component_id: &str, callback_id: u64) -> bool;
+
+        #[swift_bridge(swift_name = "LxAppVideo.dispatchVideoCommand")]
+        fn dispatch_video_command(component_id: &str, name: &str, params_json: &str) -> bool;
     }
 }
 
@@ -192,5 +200,6 @@ pub use bridge::{
 #[cfg(target_os = "ios")]
 #[allow(unused_imports)]
 pub use bridge::{
-    choose_media, compress_image, copy_album_media_to_file, get_image_info, scan_code,
+    choose_media, compress_image, copy_album_media_to_file, dispatch_video_command, get_image_info,
+    scan_code, set_video_player_callback,
 };

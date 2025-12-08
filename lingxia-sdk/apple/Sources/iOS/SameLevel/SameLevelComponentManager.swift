@@ -164,15 +164,13 @@ final class SameLevelComponentManager {
               let component = components[id] else { return }
 
         if let rectDict = parameters["rect"] as? [String: Any] {
-            // Check if component is mounted in WKChildScrollView
             if let superview = component.view.superview,
                NSStringFromClass(type(of: superview)).contains("WKChildScrollView") {
-                // Use WKChildScrollView's bounds - WebKit auto-updates position
-                component.setFrame(pixelAligned(superview.bounds))
+                // True same-level: WebKit auto-manages position
+                component.setFrame(superview.bounds)
             } else {
-                // Fallback mode: use the rect from JS
-                let rect = rectFrom(dict: rectDict)
-                component.setFrame(pixelAligned(rect))
+                // Fallback overlay mode: use rect from JS
+                component.setFrame(pixelAligned(rectFrom(dict: rectDict)))
             }
         }
         if let props = parameters["props"] as? [String: Any] {
@@ -249,6 +247,7 @@ final class SameLevelComponentManager {
             payload["pageId"] = pageId
         }
         eventSink(payload)
+        VideoPlayerRegistry.shared.emitEventIfNeeded(componentId: componentId, payload: payload)
     }
 
     private func resolvePageId(_ dict: [String: Any]) -> String {
@@ -309,6 +308,12 @@ final class SameLevelComponentManager {
         }
     }
 
+    func dispatchCommand(componentId: String, name: String, params: [String: Any]?) -> Bool {
+        guard let component = components[componentId] else { return false }
+        component.handleCommand(name: name, params: params)
+        return true
+    }
+
     private func unmountComponent(id: String, pageId: String?) {
         guard let component = components.removeValue(forKey: id) else { return }
         // Unregister from hit-test swizzler before unmount
@@ -325,6 +330,7 @@ final class SameLevelComponentManager {
             }
         }
         componentPage.removeValue(forKey: id)
+        VideoPlayerRegistry.shared.unregisterComponent(componentId: id)
     }
 
     /// Convert window-space rect to WKScrollView coords and locate matching WKChildScrollView.

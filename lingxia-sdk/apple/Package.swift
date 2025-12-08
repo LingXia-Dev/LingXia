@@ -18,6 +18,7 @@ let macosLibraryPath = "\(projectRoot)/target/x86_64-apple-darwin/release/liblin
 
 let package = Package(
     name: "lingxia",
+     defaultLocalization: "en",
     platforms: [
         .iOS(.v17),
         .macOS(.v12)

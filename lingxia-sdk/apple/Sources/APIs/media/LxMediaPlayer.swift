@@ -277,28 +277,128 @@ private final class PlayerContainerView: UIView {
     }
 }
 
+/// Custom slider that uses pan gesture to bypass WKScrollView's gesture interference
+private final class DebugSlider: UISlider {
+    private var panGesture: UIPanGestureRecognizer!
+    private var tapGesture: UITapGestureRecognizer!
+    private var initialValue: Float = 0
+    
+    /// Callback for real-time scrubbing (called during pan with throttling)
+    var onScrub: ((Float) -> Void)?
+    /// Callback for final seek (called on pan end or tap)
+    var onSeekComplete: ((Float) -> Void)?
+    /// Callback for scrub start
+    var onScrubStart: (() -> Void)?
+    /// Callback for scrub end
+    var onScrubEnd: (() -> Void)?
+    
+    private var lastScrubTime: TimeInterval = 0
+    
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        setupGestures()
+    }
+    
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        setupGestures()
+    }
+    
+    private func setupGestures() {
+        // Pan gesture for dragging
+        panGesture = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
+        panGesture.cancelsTouchesInView = true
+        panGesture.delaysTouchesBegan = false
+        addGestureRecognizer(panGesture)
+        
+        // Tap gesture for jumping to position
+        tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
+        tapGesture.require(toFail: panGesture)
+        addGestureRecognizer(tapGesture)
+    }
+    
+    @objc private func handleTap(_ gesture: UITapGestureRecognizer) {
+        let location = gesture.location(in: self)
+        let trackRect = self.trackRect(forBounds: bounds)
+        
+        // Calculate value based on tap position
+        let percentage = Float((location.x - trackRect.minX) / trackRect.width)
+        let newValue = min(max(percentage, 0), 1)
+        value = newValue
+        
+        onScrubStart?()
+        sendActions(for: .touchDown)
+        sendActions(for: .valueChanged)
+        onSeekComplete?(newValue)
+        onScrubEnd?()
+        sendActions(for: .touchUpInside)
+    }
+    
+    @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
+        let trackRect = self.trackRect(forBounds: bounds)
+        
+        switch gesture.state {
+        case .began:
+            initialValue = value
+            onScrubStart?()
+            sendActions(for: .touchDown)
+            
+        case .changed:
+            let location = gesture.location(in: self)
+            let percentage = Float((location.x - trackRect.minX) / trackRect.width)
+            let newValue = min(max(percentage, 0), 1)
+            
+            if newValue != value {
+                value = newValue
+                sendActions(for: .valueChanged)
+                
+                // Throttled scrub callback (every 100ms)
+                let now = CACurrentMediaTime()
+                if now - lastScrubTime > 0.1 {
+                    lastScrubTime = now
+                    onScrub?(newValue)
+                }
+            }
+            
+        case .ended, .cancelled:
+            onSeekComplete?(value)
+            onScrubEnd?()
+            sendActions(for: .touchUpInside)
+            
+        default:
+            break
+        }
+    }
+}
+
 private final class TapOverlayView: UIView {
     weak var tapTarget: UIView?
 
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-        let superHit = super.hitTest(point, with: event)
-
-        // If we hit a specific control, use it
-        if let hit = superHit, hit !== self {
+        // First, try standard UIKit hitTest - this handles UISlider correctly
+        let standardHit = super.hitTest(point, with: event)
+        
+        // If we found a control (button, slider, etc.), use it
+        if let hit = standardHit, hit is UIControl {
             return hit
         }
-
-        // Otherwise, use the tap catcher to handle taps on empty areas
+        
+        // If standard hitTest found something other than self, use it
+        if let hit = standardHit, hit !== self {
+            return hit
+        }
+        
+        // Fallback to tap catcher for empty areas (to show/hide controls)
         if let target = tapTarget, bounds.contains(point) {
             return target
         }
-
-        return nil
+        
+        return standardHit
     }
 }
 
 @MainActor
-public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
+public final class LxMediaPlayer: NSObject {
     public let view: UIView
     private let container: PlayerContainerView
     private let log = OSLog(subsystem: "LingXia", category: "Media")
@@ -307,6 +407,7 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
     private var player: AVPlayer?
     private var timeObserver: Any?
     private var statusObserver: NSKeyValueObservation?
+    private var timeControlStatusObserver: NSKeyValueObservation?
     private var videoOutput: AVPlayerItemVideoOutput?
     private var displayLink: CADisplayLink?
     private let rawEventSink: ([String: Any]) -> Void
@@ -333,7 +434,7 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
     // UI state
     private var controlsVisible = false
     private var controlsHideWorkItem: DispatchWorkItem?
-    private var tapRecognizer: UITapGestureRecognizer?
+    // Note: tapRecognizer removed - using tapCatcher button instead
     private var pendingResumeTime: Double?
     private var pendingResumeShouldPlay = false
     private var wasPlayingBeforeBackground = false
@@ -357,7 +458,11 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
     private let backButton = UIButton(type: .system)
     private let titleLabel = UILabel()
     private let timeLabel = UILabel() // Shows remaining or total time
-    private let progressSlider = UISlider()
+    private let progressSlider = DebugSlider()
+    private var isScrubbing = false
+    private var wasPlayingBeforeScrub = false
+    private var lastScrubTime: TimeInterval = 0
+    private var isSeeking = false  // Track JS API seek in progress
     private let volumeSlider = UISlider()
     private let volumeButton = UIButton(type: .system)
     private let settingsButton = UIButton(type: .system)
@@ -420,12 +525,8 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
 
         setupOverlayUI()
 
-        // Add tap recognizer to the root view as well (some hosts may not forward to overlay)
-        let tapRoot = UITapGestureRecognizer(target: self, action: #selector(handleTap))
-        tapRoot.cancelsTouchesInView = true
-        tapRoot.delaysTouchesBegan = false
-        tapRoot.delegate = self
-        view.addGestureRecognizer(tapRoot)
+        // Note: Removed tap gesture recognizer from root view - using tapCatcher button instead
+        // This prevents gesture recognizer from interfering with UISlider drag
     }
 
     public convenience init(eventHandler: @escaping (LxMediaEvent) -> Void) {
@@ -446,6 +547,28 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
         host.bringSubviewToFront(view)
         view.isUserInteractionEnabled = true
         overlayView.isUserInteractionEnabled = true
+        
+        // Find parent WKScrollView and configure its pan gesture to not interfere with slider
+        configureParentScrollViewGestures(from: host)
+    }
+    
+    /// Configure parent scroll view's gestures to allow slider interaction
+    private func configureParentScrollViewGestures(from view: UIView) {
+        // Get slider's pan gesture
+        guard let sliderPanGesture = progressSlider.gestureRecognizers?.first(where: { $0 is UIPanGestureRecognizer }) else {
+            os_log("MediaPlayer: slider pan gesture not found", log: log, type: .error)
+            return
+        }
+        
+        var current: UIView? = view
+        while let parent = current?.superview {
+            // Check if this is a scroll view (WKScrollView, WKChildScrollView, or UIScrollView)
+            if let scrollView = parent as? UIScrollView {
+                // Make scroll view's pan gesture require slider's pan gesture to fail first
+                scrollView.panGestureRecognizer.require(toFail: sliderPanGesture)
+            }
+            current = parent
+        }
     }
 
     /// Configure whether to show close button (for preview scenarios)
@@ -488,6 +611,11 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
     }
 
     public func update(config: LxMediaPlayerConfig) {
+        // Loop flag - only update if explicitly set in config
+        if let loop = config.loop {
+            loopEnabled = loop
+        }
+
         // Poster
         if let poster = config.poster {
             loadPoster(urlString: poster.absoluteString)
@@ -510,7 +638,6 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
         }
         replaceActivePipe(with: nextPipe)
 
-        loopEnabled = config.loop ?? false
         // Always use .pause to receive end notification, handle loop in videoDidEnd
         player?.actionAtItemEnd = .pause
 
@@ -615,10 +742,9 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
         case .setPlaybackRate(let rate):
             setPlaybackRate(rate)
         case .enterFullscreen:
-            // Fullscreen is always allowed
-            send(.fullscreenChange(fullScreen: true, direction: "horizontal"))
+            enterFullscreen()
         case .exitFullscreen:
-            send(.fullscreenChange(fullScreen: false, direction: "vertical"))
+            exitFullscreen()
         }
     }
 
@@ -628,6 +754,8 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
         timeObserver = nil
         statusObserver?.invalidate()
         statusObserver = nil
+        timeControlStatusObserver?.invalidate()
+        timeControlStatusObserver = nil
         stopDisplayLink()
         videoOutput = nil
         posterTask?.cancel()
@@ -690,6 +818,8 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
         timeObserver = nil
         statusObserver?.invalidate()
         statusObserver = nil
+        timeControlStatusObserver?.invalidate()
+        timeControlStatusObserver = nil
 
         // Keep overlay (controls) and loading indicator above everything
         view.bringSubviewToFront(overlayView)
@@ -743,7 +873,8 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
             activePlayer = AVPlayer(playerItem: item)
             player = activePlayer
         }
-        // Always use .pause to receive end notification, handle loop in videoDidEnd
+
+        // Always use .pause so we get end callback and can restart manually
         activePlayer.actionAtItemEnd = .pause
         activePlayer.rate = 0
         activePlayer.automaticallyWaitsToMinimizeStalling = true
@@ -796,6 +927,40 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
                 }
             }
         }
+        
+        // Observe player timeControlStatus for play/pause/buffering state changes
+        timeControlStatusObserver = player?.observe(\.timeControlStatus, options: [.new, .old]) { [weak self] player, change in
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                guard currentSequence == self.loadingSequence else { return }
+                
+                let status = player.timeControlStatus
+                os_log("MediaPlayer timeControlStatus changed to %{public}@", log: self.log, type: .info, 
+                       status == .playing ? "playing" : (status == .paused ? "paused" : "waitingToPlay"))
+                
+                switch status {
+                case .playing:
+                    // Video is playing - stop loading indicator and send play event
+                    self.loadingIndicator.stopAnimating()
+                    self.updatePlayPauseUI(isPlaying: true)
+                    self.syncCenterPlayButtonVisibility(isPlaying: true)
+                    self.send(.play)
+                    
+                case .paused:
+                    self.updatePlayPauseUI(isPlaying: false)
+                    self.syncCenterPlayButtonVisibility(isPlaying: false)
+                    
+                case .waitingToPlayAtSpecifiedRate:
+                    // Buffering - show loading indicator
+                    self.loadingIndicator.startAnimating()
+                    self.centerPlayButton.isHidden = true
+                    self.send(.waiting)
+                    
+                @unknown default:
+                    break
+                }
+            }
+        }
 
         // Listen for video end notification
         NotificationCenter.default.addObserver(
@@ -840,42 +1005,46 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
     }
 
     @objc private func videoDidEnd() {
-        os_log("MediaPlayer video ended (loop=%{public}@)", log: OSLog(subsystem: "LingXia", category: "Media"), type: .info, String(loopEnabled))
+        Task { @MainActor in
+            os_log("MediaPlayer video ended (loop=%{public}@)", log: OSLog(subsystem: "LingXia", category: "Media"), type: .info, String(loopEnabled))
 
-        // Cancel pending play event on end
-        pendingPlayEvent = false
+            // Cancel pending play event on end
+            pendingPlayEvent = false
 
-        if loopEnabled {
-            // Loop: restart from beginning and continue playing without spinner
-            waitingForFirstFrame = false
-            firstFrameDisplayed = true
-            playerLayer.opacity = 1
-            posterImageView.isHidden = true
-            posterImageView.alpha = 1
+            if loopEnabled {
+                // Loop: restart from beginning and continue playing without spinner
+                waitingForFirstFrame = false
+                firstFrameDisplayed = true
+                pendingPosterHide = false
+                playerLayer.opacity = 1
+                playerLayer.isHidden = false
+                posterImageView.isHidden = true
+                posterImageView.alpha = 1
 
-            // Seek to beginning and restart playback in completion handler
-            player?.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
-                guard let self = self, finished else { return }
-                Task { @MainActor in
-                    self.startPlaybackNow()
+                let rate = Float(currentPlaybackRate)
+                player?.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
+                    guard let self = self, finished, self.loopEnabled else { return }
+                    DispatchQueue.main.async {
+                        self.player?.playImmediately(atRate: rate)
+                    }
                 }
+                send(.ended) // still emit ended per semantics
+                return
             }
-            send(.ended) // still emit ended per semantics
-            return
+
+            // Show play button (pause state) and restore poster
+            updatePlayPauseUI(isPlaying: false)
+            syncCenterPlayButtonVisibility(isPlaying: false)
+
+            // Show poster when video ends - reset all poster/layer states
+            firstFrameDisplayed = false
+            pendingPosterHide = false
+            posterImageView.alpha = 1
+            posterImageView.isHidden = false
+            playerLayer.opacity = 0  // Hide video layer to show poster
+
+            send(.ended)
         }
-
-        // Show play button (pause state) and restore poster
-        updatePlayPauseUI(isPlaying: false)
-        syncCenterPlayButtonVisibility(isPlaying: false)
-
-        // Show poster when video ends - reset all poster/layer states
-        firstFrameDisplayed = false
-        pendingPosterHide = false
-        posterImageView.alpha = 1
-        posterImageView.isHidden = false
-        playerLayer.opacity = 0  // Hide video layer to show poster
-
-        send(.ended)
     }
 
     private func play() {
@@ -942,12 +1111,42 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
         updatePlayPauseUI(isPlaying: false)
         syncCenterPlayButtonVisibility(isPlaying: false)
         showControlsTemporarily()
+        
+        // Show poster image on stop and reset progress
+        // Hide playerLayer to reveal poster underneath
+        playerLayer.opacity = 0
+        posterImageView.isHidden = false
+        posterImageView.alpha = 1
+        progressSlider.value = 0
+        firstFrameDisplayed = false
     }
 
     private func seek(to seconds: Double) {
-        let time = CMTime(seconds: seconds, preferredTimescale: 600)
-        player?.seek(to: time)
-        send(.seeked(time: seconds))
+        guard let player = player else { return }
+        guard let duration = player.currentItem?.duration.seconds,
+              duration.isFinite, duration > 0 else { return }
+        
+        let clampedSeconds = max(0, min(seconds, duration))
+        let time = CMTime(seconds: clampedSeconds, preferredTimescale: 600)
+        
+        isSeeking = true
+        
+        // Update slider immediately to target position (prevents visual bounce)
+        progressSlider.value = Float(clampedSeconds / duration)
+        
+        // Use precise seeking with zero tolerance for accurate positioning
+        player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
+            guard let self = self else { return }
+            DispatchQueue.main.async {
+                // Keep isSeeking true briefly to let time observer settle
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    self.isSeeking = false
+                }
+                
+                guard finished else { return }
+                self.send(.seeked(time: clampedSeconds))
+            }
+        }
     }
 
     private func setPlaybackRate(_ rate: Double) {
@@ -1101,8 +1300,26 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
         progressSlider.minimumTrackTintColor = UIColor(red: 0.0, green: 0.48, blue: 1.0, alpha: 1.0)
         progressSlider.maximumTrackTintColor = UIColor.white.withAlphaComponent(0.3)
         progressSlider.setThumbImage(createThumbImage(), for: .normal)
+        progressSlider.isEnabled = true
+        progressSlider.isUserInteractionEnabled = true
+        progressSlider.addTarget(self, action: #selector(handleSliderTouchDown), for: .touchDown)
         progressSlider.addTarget(self, action: #selector(handleSliderChange), for: .valueChanged)
-        progressSlider.addTarget(self, action: #selector(handleSliderTouchUp), for: [.touchUpInside, .touchUpOutside])
+        progressSlider.addTarget(self, action: #selector(handleSliderTouchUp), for: [.touchUpInside, .touchUpOutside, .touchCancel])
+        
+        // Setup direct scrub callbacks for DebugSlider (bypasses target-action for faster response)
+        progressSlider.onScrubStart = { [weak self] in
+            self?.handleSliderScrubStart()
+        }
+        progressSlider.onScrub = { [weak self] value in
+            self?.handleSliderScrub(value: value)
+        }
+        progressSlider.onSeekComplete = { [weak self] value in
+            self?.handleSliderSeekComplete(value: value)
+        }
+        progressSlider.onScrubEnd = { [weak self] in
+            self?.handleSliderScrubEnd()
+        }
+        
         bottomBar.addSubview(progressSlider)
 
         // Time label (shows remaining time)
@@ -1173,17 +1390,14 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
         loadingIndicator.hidesWhenStopped = true
         overlayView.addSubview(loadingIndicator)
 
-        // Gesture recognizer
-        let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap))
-        tap.cancelsTouchesInView = true
-        tap.delaysTouchesBegan = false
-        tap.delegate = self
-        overlayView.addGestureRecognizer(tap)
-        tapRecognizer = tap
+        // Note: Using tapCatcher button instead of gesture recognizer
+        // This prevents interference with UISlider drag operations
 
         // Initial state - hide controls
         topBar.alpha = 0
         bottomBar.alpha = 0
+        topBar.isUserInteractionEnabled = false
+        bottomBar.isUserInteractionEnabled = false
         topGradient.opacity = 0
         bottomGradient.opacity = 0
         controlsVisible = false
@@ -1196,8 +1410,6 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
         // App lifecycle observers (pause/resume UI sync)
         NotificationCenter.default.addObserver(self, selector: #selector(handleAppWillResignActive), name: UIApplication.willResignActiveNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(handleAppDidBecomeActive), name: UIApplication.didBecomeActiveNotification, object: nil)
-
-        os_log("MediaPlayer setupOverlayUI complete", log: OSLog(subsystem: "LingXia", category: "Media"), type: .info)
     }
 
     private func createThumbImage() -> UIImage {
@@ -1363,6 +1575,8 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
     private func updateProgressUI(time: CMTime) {
         // If controls are disabled, no need to update UI
         guard controlsEnabled else { return }
+        // Skip slider update during scrubbing or seeking to avoid overwriting position
+        guard !isScrubbing, !isSeeking else { return }
         guard let durationSeconds = player?.currentItem?.duration.seconds,
               durationSeconds.isFinite,
               durationSeconds > 0 else { return }
@@ -1421,16 +1635,18 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
 
         let work = DispatchWorkItem { [weak self] in
             guard let self = self else { return }
+            self.controlsVisible = false
             UIView.animate(withDuration: 0.3, delay: 0, options: [.curveEaseIn], animations: {
                 self.topBar.alpha = 0
                 self.bottomBar.alpha = 0
                 self.topGradient.opacity = 0
                 self.bottomGradient.opacity = 0
                 self.syncCenterPlayButtonVisibility(isPlaying: self.isPlayingNow())
+            }, completion: { _ in
+                // Only disable interaction after animation completes
+                self.topBar.isUserInteractionEnabled = false
+                self.bottomBar.isUserInteractionEnabled = false
             })
-            self.topBar.isUserInteractionEnabled = false
-            self.bottomBar.isUserInteractionEnabled = false
-            self.controlsVisible = false
         }
         controlsHideWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: work)
@@ -1783,15 +1999,17 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
     @objc private func handleTap() {
         if controlsVisible {
             controlsHideWorkItem?.cancel()
+            controlsVisible = false
             UIView.animate(withDuration: 0.3, animations: {
                 self.topBar.alpha = 0
                 self.bottomBar.alpha = 0
                 self.topGradient.opacity = 0
                 self.bottomGradient.opacity = 0
+            }, completion: { _ in
+                // Only disable interaction after animation completes
+                self.topBar.isUserInteractionEnabled = false
+                self.bottomBar.isUserInteractionEnabled = false
             })
-            topBar.isUserInteractionEnabled = false
-            bottomBar.isUserInteractionEnabled = false
-            controlsVisible = false
         } else {
             showControlsTemporarily()
         }
@@ -2301,17 +2519,98 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
         }
     }
 
-    @objc private func handleSliderChange() {
+    @objc private func handleSliderTouchDown() {
+        isScrubbing = true
+        wasPlayingBeforeScrub = player?.timeControlStatus == .playing
+        player?.pause()
         controlsHideWorkItem?.cancel()
     }
 
-    @objc private func handleSliderTouchUp() {
-        // If controls are disabled, slider shouldn't be interactable anyway
-        guard let durationSeconds = player?.currentItem?.duration.seconds,
-              durationSeconds.isFinite,
-              durationSeconds > 0 else { return }
+    @objc private func handleSliderChange() {
+        controlsHideWorkItem?.cancel()
+        
+        // Real-time scrubbing - seek while dragging with throttling
+        guard isScrubbing,
+              let player = player,
+              let durationSeconds = player.currentItem?.duration.seconds,
+              durationSeconds.isFinite && durationSeconds > 0 else { return }
+        
+        let now = CACurrentMediaTime()
+        // Throttle seeks to every 100ms to avoid overwhelming AVPlayer
+        guard now - lastScrubTime > 0.1 else { return }
+        lastScrubTime = now
+        
         let target = Double(progressSlider.value) * durationSeconds
+        let time = CMTime(seconds: target, preferredTimescale: 600)
+        // Use toleranceBefore/After for faster scrubbing (not frame-accurate)
+        player.seek(to: time, toleranceBefore: CMTime(seconds: 0.5, preferredTimescale: 600),
+                    toleranceAfter: CMTime(seconds: 0.5, preferredTimescale: 600))
+    }
+
+    @objc private func handleSliderTouchUp() {
+        guard isScrubbing else { return }
+        isScrubbing = false
+        
+        guard let player = player,
+              let durationSeconds = player.currentItem?.duration.seconds,
+              durationSeconds.isFinite && durationSeconds > 0 else { return }
+        
+        let target = Double(progressSlider.value) * durationSeconds
+        
+        // Final precise seek on release
         seek(to: target)
+        
+        // Resume playback if was playing before scrub
+        if wasPlayingBeforeScrub {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                self?.player?.play()
+            }
+        }
+        showControlsTemporarily()
+    }
+    
+    // MARK: - Direct Slider Scrub Callbacks (from DebugSlider pan gesture)
+    
+    private func handleSliderScrubStart() {
+        let status = player?.timeControlStatus
+        wasPlayingBeforeScrub = status == .playing
+        isScrubbing = true
+        player?.pause()
+        controlsHideWorkItem?.cancel()
+    }
+    
+    private func handleSliderScrub(value: Float) {
+        guard let player = player,
+              let durationSeconds = player.currentItem?.duration.seconds,
+              durationSeconds.isFinite && durationSeconds > 0 else { return }
+        
+        let target = Double(value) * durationSeconds
+        let time = CMTime(seconds: target, preferredTimescale: 600)
+        // Use toleranceBefore/After for faster scrubbing
+        player.seek(to: time, toleranceBefore: CMTime(seconds: 0.5, preferredTimescale: 600),
+                    toleranceAfter: CMTime(seconds: 0.5, preferredTimescale: 600))
+    }
+    
+    private func handleSliderSeekComplete(value: Float) {
+        guard let player = player,
+              let durationSeconds = player.currentItem?.duration.seconds,
+              durationSeconds.isFinite && durationSeconds > 0 else { return }
+        
+        let target = Double(value) * durationSeconds
+        // Final precise seek
+        seek(to: target)
+    }
+    
+    private func handleSliderScrubEnd() {
+        isScrubbing = false
+        
+        // Resume playback after scrub/seek (user expects video to play after seeking)
+        // timeControlStatusObserver will handle:
+        // - .waitingToPlayAtSpecifiedRate -> show loading, send waiting event
+        // - .playing -> hide loading, update UI
+        player?.play()
+        
+        // Hide controls after delay
         showControlsTemporarily()
     }
 
@@ -2363,17 +2662,6 @@ public final class LxMediaPlayer: NSObject, UIGestureRecognizerDelegate {
         volumeButton.setImage(UIImage(systemName: iconName), for: .normal)
     }
 
-    // MARK: - UIGestureRecognizerDelegate
-
-    /// Prevent tap gesture from firing when touch is on a UIControl (button, slider, etc.)
-    /// This avoids double-triggering handleTap when tapCatcher button is tapped
-    public func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
-        // If the touch is on a UIControl (button, slider, etc.), let the control handle it
-        if let touchedView = touch.view, touchedView is UIControl {
-            return false
-        }
-        return true
-    }
 }
 
 // MARK: - Fullscreen ViewController

@@ -12,6 +12,7 @@ mod popup;
 mod resources;
 mod ui_update;
 mod user_feedback;
+mod video_player;
 
 // Re-export Platform
 pub use app::Platform;
