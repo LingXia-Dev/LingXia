@@ -112,7 +112,7 @@ export default function App() {
               {metadata && <div className="text-xs text-gray-500">{metadata}</div>}
             </div>
           </div>
-          <div className="bg-gray-900 text-green-400 font-mono text-xs px-3 py-1.5 rounded-lg max-w-[180px] truncate">
+          <div className="bg-gray-900 text-green-400 font-mono text-xs px-3 py-1.5 rounded-lg w-[180px] truncate">
             {eventLog}
           </div>
         </div>

@@ -13,4 +13,3 @@ Page({
     console.log("[VideoSameLevel] onHide");
   },
 });
-
