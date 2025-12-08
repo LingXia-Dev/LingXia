@@ -5,8 +5,6 @@ export type MeasuredElement = {
 
 export function measureElement(el: HTMLElement): MeasuredElement {
   const rect = el.getBoundingClientRect();
-  const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
-  const round = (v: number) => Math.round(v * dpr) / dpr;
 
   let cornerRadius: number | undefined;
   const radiusStr = getComputedStyle(el).borderRadius;
@@ -16,12 +14,14 @@ export function measureElement(el: HTMLElement): MeasuredElement {
     if (!Number.isNaN(parsed)) cornerRadius = parsed;
   }
 
+  // Return document coordinates (CSS pixels)
+  // Native layer converts to physical pixels and handles scroll offset
   return {
     rect: {
-      x: round(rect.left + window.scrollX),
-      y: round(rect.top + window.scrollY),
-      width: round(rect.width),
-      height: round(rect.height)
+      x: rect.left + window.scrollX,
+      y: rect.top + window.scrollY,
+      width: rect.width,
+      height: rect.height
     },
     cornerRadius
   };
