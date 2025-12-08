@@ -63,7 +63,11 @@ window.__PAGE_FUNCTIONS.forEach(function(funcName) {
       return true;
     });
 
-    return window.LingXiaBridge.call(funcName, cleanArgs.length === 1 ? cleanArgs[0] : cleanArgs);
+    return window.LingXiaBridge.call(funcName, cleanArgs.length === 1 ? cleanArgs[0] : cleanArgs)
+      .catch(function(e) {
+        console.warn('[PageFunc] ' + funcName + ' failed:', e.message || e);
+        throw e;
+      });
   };
 });`;
   }
