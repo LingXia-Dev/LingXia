@@ -29,6 +29,8 @@ class WebView(context: Context) : LingXiaWebView(context) {
         super.initializeWebView(appId, path)
         // Register SameLevel JavaScriptInterface right after WebView init, before content loads
         SameLevelBridge.registerJsInterface(this)
+        // Disable overscroll glow effect - native components stay fixed at boundaries
+        overScrollMode = OVER_SCROLL_NEVER
     }
 
     fun pause() {

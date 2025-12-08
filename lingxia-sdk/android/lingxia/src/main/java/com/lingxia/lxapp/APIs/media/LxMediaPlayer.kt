@@ -440,43 +440,33 @@ class LxMediaPlayer(
     }
 
     fun setFrame(x: Float, y: Float, width: Float, height: Float) {
-        lastFrameX = x
-        lastFrameY = y
-        lastFrameWidth = width
-        lastFrameHeight = height
-
         if (isFullscreen) {
-            Log.d(TAG, "setFrame ignored because isFullscreen=true")
             return
         }
 
+        // Update immediately for smooth scrolling - use translation for position
+        view.translationX = x
+        view.translationY = y
+
+        // Only update layout params if size changed
         val newWidth = width.toInt()
         val newHeight = height.toInt()
 
         val existingLp = view.layoutParams as? FrameLayout.LayoutParams
-        var needLayout = existingLp == null
-        val lp = existingLp ?: FrameLayout.LayoutParams(newWidth, newHeight)
-
-        if (lp.width != newWidth || lp.height != newHeight) {
+        if (existingLp == null || existingLp.width != newWidth || existingLp.height != newHeight) {
+            val lp = existingLp ?: FrameLayout.LayoutParams(newWidth, newHeight)
             lp.width = newWidth
             lp.height = newHeight
-            needLayout = true
-        }
-
-        // Ensure margins are zero so translation works as absolute coordinates
-        if (lp.leftMargin != 0 || lp.topMargin != 0) {
             lp.leftMargin = 0
             lp.topMargin = 0
-            needLayout = true
-        }
-
-        if (needLayout) {
             view.layoutParams = lp
-            view.requestLayout()
         }
 
-        view.translationX = x
-        view.translationY = y
+        // Save for fullscreen restore (only when not in fullscreen)
+        lastFrameX = x
+        lastFrameY = y
+        lastFrameWidth = width
+        lastFrameHeight = height
     }
 
     fun play() {

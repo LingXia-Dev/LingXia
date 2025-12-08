@@ -3,9 +3,9 @@ package com.lingxia.lxapp.SameLevel
 import android.graphics.Color
 import android.os.Handler
 import android.os.Looper
-import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewTreeObserver
 import android.webkit.JavascriptInterface
 import android.widget.FrameLayout
 import com.lingxia.lxapp.SameLevel.Components.VideoComponentFactory
@@ -27,6 +27,11 @@ class SameLevelBridge private constructor(
     private var pageKey: String
 
     private val mainHandler = Handler(Looper.getMainLooper())
+    
+    // Pre-draw sync for frame-perfect scroll tracking
+    private var preDrawListener: ViewTreeObserver.OnPreDrawListener? = null
+    private var lastSyncedScrollX = Int.MIN_VALUE
+    private var lastSyncedScrollY = Int.MIN_VALUE
 
     init {
         pageKey = makePageKey(webView)
@@ -40,10 +45,30 @@ class SameLevelBridge private constructor(
         val manager = SameLevelComponentManager(
             hostView = host,
             defaultPageId = pageKey,
-            eventSink = { sendEventToView(it) }
+            eventSink = { sendEventToView(it) },
+            webView = webView
         )
         registeredFactories.forEach { (type, factory) -> manager.register(type, factory) }
         componentManager = manager
+
+        // Use OnPreDrawListener for frame-perfect scroll sync
+        // This ensures native components update BEFORE the frame is drawn,
+        // eliminating the 1-frame lag from setOnScrollChangeListener
+        preDrawListener = ViewTreeObserver.OnPreDrawListener {
+            val wv = webViewRef.get()
+            if (wv != null) {
+                val scrollX = wv.scrollX
+                val scrollY = wv.scrollY
+                // Only update if scroll position changed to avoid redundant work
+                if (scrollX != lastSyncedScrollX || scrollY != lastSyncedScrollY) {
+                    lastSyncedScrollX = scrollX
+                    lastSyncedScrollY = scrollY
+                    manager.onWebViewScroll(scrollX, scrollY)
+                }
+            }
+            true // Proceed with drawing
+        }
+        webView.viewTreeObserver.addOnPreDrawListener(preDrawListener)
     }
 
     private class JsInterface(webView: LingXiaWebView) {
@@ -79,14 +104,33 @@ class SameLevelBridge private constructor(
             setBackgroundColor(Color.TRANSPARENT)
             isClickable = false
             isFocusable = false
+            // Enable hardware layer for smoother rendering during scroll
+            setLayerType(View.LAYER_TYPE_HARDWARE, null)
         }
         parent?.let { addHostToParent(it, webView, host) }
         return host
     }
 
     private fun addHostToParent(parent: ViewGroup, webView: LingXiaWebView, host: SameLevelOverlayHost) {
-        val params = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        // Match WebView's exact position and size in parent
+        val params = FrameLayout.LayoutParams(webView.width, webView.height).apply {
+            leftMargin = webView.left
+            topMargin = webView.top
+        }
         parent.addView(host, parent.indexOfChild(webView) + 1, params)
+        
+        // Update overlay position when WebView layout changes
+        webView.addOnLayoutChangeListener { _, left, top, right, bottom, _, _, _, _ ->
+            host.layoutParams = (host.layoutParams as? FrameLayout.LayoutParams)?.apply {
+                width = right - left
+                height = bottom - top
+                leftMargin = left
+                topMargin = top
+            } ?: FrameLayout.LayoutParams(right - left, bottom - top).apply {
+                leftMargin = left
+                topMargin = top
+            }
+        }
     }
 
     fun handleMessage(messageJson: String) {
@@ -132,6 +176,18 @@ class SameLevelBridge private constructor(
         refreshPageKeyIfNeeded()
         componentManager?.handle(mapOf("action" to "page.lifecycle", "state" to "destroyed", "pageId" to pageKey))
         componentManager?.teardownAll()
+        
+        // Clean up pre-draw listener
+        preDrawListener?.let { listener ->
+            webViewRef.get()?.viewTreeObserver?.let { observer ->
+                if (observer.isAlive) {
+                    observer.removeOnPreDrawListener(listener)
+                }
+            }
+        }
+        preDrawListener = null
+        lastSyncedScrollX = Int.MIN_VALUE
+        lastSyncedScrollY = Int.MIN_VALUE
     }
 
     private fun refreshPageKeyIfNeeded() {
