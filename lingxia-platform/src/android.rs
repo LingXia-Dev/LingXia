@@ -9,6 +9,7 @@ mod media;
 mod popup;
 mod ui_update;
 mod user_feedback;
+mod video_player;
 pub use app::Platform;
 
 /// Enumerates the cacheable Java classes we keep as global references.
@@ -26,10 +27,11 @@ pub enum CachedClass {
     LxAppActionSheet = 8,
     LxAppPicker = 9,
     LxAppDocument = 10,
+    LxAppVideo = 11,
 }
 
 impl CachedClass {
-    const COUNT: usize = 11;
+    const COUNT: usize = 12;
 
     pub const fn class_path(self) -> &'static str {
         match self {
@@ -44,6 +46,7 @@ impl CachedClass {
             CachedClass::LxAppActionSheet => "com/lingxia/lxapp/APIs/LxAppActionSheet",
             CachedClass::LxAppPicker => "com/lingxia/lxapp/APIs/LxAppPicker",
             CachedClass::LxAppDocument => "com/lingxia/lxapp/APIs/LxAppDocument",
+            CachedClass::LxAppVideo => "com/lingxia/lxapp/APIs/LxAppVideo",
         }
     }
 
@@ -93,12 +96,17 @@ impl CachedClass {
                 "Global class reference not found: ",
                 "com/lingxia/lxapp/APIs/LxAppDocument"
             ),
+            CachedClass::LxAppVideo => concat!(
+                "Global class reference not found: ",
+                "com/lingxia/lxapp/APIs/LxAppVideo"
+            ),
         }
     }
 }
 
 fn cached_slot(kind: CachedClass) -> &'static OnceLock<GlobalRef> {
     static CLASS_CACHE: [OnceLock<GlobalRef>; CachedClass::COUNT] = [
+        OnceLock::new(),
         OnceLock::new(),
         OnceLock::new(),
         OnceLock::new(),
