@@ -48,8 +48,8 @@ struct SameLevelVideoComponent {
       // Use static method to pause native player directly
       LxNativeVideoPlayer.pauseStatic(this.componentId);
     } else if (command === 'stop') {
-      // Stop means destroy the player completely
-      LxNativeVideoPlayer.destroyStatic(this.componentId);
+      // Stop playback and reset to initial state (show poster, reset progress)
+      LxNativeVideoPlayer.stopStatic(this.componentId);
     } else if (command === 'resume') {
       // Use static method to resume to previous state (only plays if was playing before)
       LxNativeVideoPlayer.resumeStatic(this.componentId);

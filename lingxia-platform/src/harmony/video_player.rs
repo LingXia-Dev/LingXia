@@ -1,5 +1,10 @@
 //! HarmonyOS native video player (OH_AVPlayer C API)
 
+use super::app::Platform;
+use crate::error::PlatformError;
+use crate::traits::{
+    VideoPlayerCommand, VideoPlayerHandle, VideoPlayerHandleImpl, VideoPlayerManager,
+};
 use core::ffi::{c_char, c_void};
 use std::collections::HashMap;
 use std::ffi::CString;
@@ -72,12 +77,18 @@ pub enum AVPlaybackSpeed {
 // Opaque FFI types
 #[repr(C)]
 #[allow(non_camel_case_types)]
-pub struct OH_AVPlayer { _private: [u8; 0] }
+pub struct OH_AVPlayer {
+    _private: [u8; 0],
+}
 #[repr(C)]
-pub struct OHNativeWindow { _private: [u8; 0] }
+pub struct OHNativeWindow {
+    _private: [u8; 0],
+}
 #[repr(C)]
 #[allow(non_camel_case_types)]
-pub struct OH_AVFormat { _private: [u8; 0] }
+pub struct OH_AVFormat {
+    _private: [u8; 0],
+}
 
 struct InfoCallbackData {
     component_id: String,
@@ -103,7 +114,8 @@ extern "C" fn on_info_callback(
         if !info_body.is_null() {
             let key_ptr = unsafe { OH_PLAYER_SEEK_POSITION };
             if !key_ptr.is_null() {
-                let got_value = unsafe { OH_AVFormat_GetIntValue(info_body, key_ptr, &mut seek_position) };
+                let got_value =
+                    unsafe { OH_AVFormat_GetIntValue(info_body, key_ptr, &mut seek_position) };
                 if got_value {
                     log::info!(
                         "[VideoPlayer] on_info_callback: SEEK_DONE component_id={}, position={}",
@@ -171,19 +183,63 @@ extern "C" fn on_info_callback(
             }
         }
 
-        log::info!(
-            "[VideoPlayer] on_info_callback: STATE_CHANGE component_id={}, state={}",
-            component_id,
-            state_value
-        );
+        // Sync native player state to Rust instance
+        if let Some(player) = get_player(component_id) {
+            if let Ok(mut p) = player.lock() {
+                let new_state = match state_value {
+                    0 => AVPlayerState::Idle,
+                    1 => AVPlayerState::Initialized,
+                    2 => AVPlayerState::Prepared,
+                    3 => AVPlayerState::Playing,
+                    4 => AVPlayerState::Paused,
+                    5 => AVPlayerState::Stopped,
+                    6 => AVPlayerState::Completed,
+                    7 => AVPlayerState::Released,
+                    8 => AVPlayerState::Error,
+                    _ => AVPlayerState::Idle,
+                };
+                p.state = new_state;
+            }
+        } else {
+            log::warn!(
+                "[VideoPlayer] STATE_CHANGE: player not found for {}",
+                component_id
+            );
+        }
 
         // When state becomes Prepared (2), notify ArkTS to emit loadedmetadata
         if state_value == AVPlayerState::Prepared as i32 {
-            if let Err(e) = lingxia_webview::tsfn::call_arkts(
-                "videoPlayerPrepared",
-                &[component_id.as_str()],
-            ) {
-                log::error!("[VideoPlayer] Failed to notify ArkTS of prepared state: {:?}", e);
+            if let Err(e) =
+                lingxia_webview::tsfn::call_arkts("videoPlayerPrepared", &[component_id.as_str()])
+            {
+                log::error!(
+                    "[VideoPlayer] Failed to notify ArkTS of prepared state: {:?}",
+                    e
+                );
+            }
+        }
+
+        // When state becomes Playing (3), notify ArkTS to update UI
+        if state_value == AVPlayerState::Playing as i32 {
+            if let Err(e) =
+                lingxia_webview::tsfn::call_arkts("videoPlayerPlaying", &[component_id.as_str()])
+            {
+                log::error!(
+                    "[VideoPlayer] Failed to notify ArkTS of playing state: {:?}",
+                    e
+                );
+            }
+        }
+
+        // When state becomes Stopped (5), notify ArkTS to reset UI
+        if state_value == AVPlayerState::Stopped as i32 {
+            if let Err(e) =
+                lingxia_webview::tsfn::call_arkts("videoPlayerStopped", &[component_id.as_str()])
+            {
+                log::error!(
+                    "[VideoPlayer] Failed to notify ArkTS of stopped state: {:?}",
+                    e
+                );
             }
         }
     }
@@ -208,7 +264,9 @@ impl NativeVideoPlayer {
     pub fn new(component_id: &str, _callback_id: u64) -> Result<Self, PlatformError> {
         let player = unsafe { OH_AVPlayer_Create() };
         if player.is_null() {
-            return Err(PlatformError::Platform("Failed to create OH_AVPlayer".to_string()));
+            return Err(PlatformError::Platform(
+                "Failed to create OH_AVPlayer".to_string(),
+            ));
         }
 
         let callback_data = Box::new(InfoCallbackData {
@@ -219,7 +277,11 @@ impl NativeVideoPlayer {
             OH_AVPlayer_SetOnInfoCallback(player, Some(on_info_callback), callback_data_ptr)
         };
         if result != AV_ERR_OK {
-            log::warn!("[VideoPlayer] Failed to set info callback for {}: {}", component_id, result);
+            log::warn!(
+                "[VideoPlayer] Failed to set info callback for {}: {}",
+                component_id,
+                result
+            );
             return Ok(Self {
                 player,
                 component_id: component_id.to_string(),
@@ -230,8 +292,6 @@ impl NativeVideoPlayer {
                 info_callback_data: None,
             });
         }
-
-        log::info!("[VideoPlayer] Info callback registered for {}", component_id);
 
         Ok(Self {
             player,
@@ -245,7 +305,10 @@ impl NativeVideoPlayer {
     }
 
     pub fn set_source(&mut self, source: &str) -> Result<(), PlatformError> {
-        if source.starts_with("http://") || source.starts_with("https://") || source.starts_with("fd://") {
+        if source.starts_with("http://")
+            || source.starts_with("https://")
+            || source.starts_with("fd://")
+        {
             self.set_url_source(source)
         } else if source.starts_with("file://") {
             self.set_file_source(&source[7..])
@@ -257,9 +320,8 @@ impl NativeVideoPlayer {
     }
 
     fn set_url_source(&mut self, url: &str) -> Result<(), PlatformError> {
-        let c_url = CString::new(url).map_err(|_| {
-            PlatformError::Platform("URL contains invalid characters".to_string())
-        })?;
+        let c_url = CString::new(url)
+            .map_err(|_| PlatformError::Platform("URL contains invalid characters".to_string()))?;
         check_av_result(
             unsafe { OH_AVPlayer_SetURLSource(self.player, c_url.as_ptr()) },
             "OH_AVPlayer_SetURLSource",
@@ -267,21 +329,24 @@ impl NativeVideoPlayer {
     }
 
     fn set_file_source(&mut self, path: &str) -> Result<(), PlatformError> {
-        let c_path = CString::new(path).map_err(|_| {
-            PlatformError::Platform("Path contains invalid characters".to_string())
-        })?;
+        let c_path = CString::new(path)
+            .map_err(|_| PlatformError::Platform("Path contains invalid characters".to_string()))?;
 
         let fd = unsafe { libc::open(c_path.as_ptr(), libc::O_RDONLY) };
         if fd < 0 {
             return Err(PlatformError::Platform(format!(
-                "Failed to open file: {}", path
+                "Failed to open file: {}",
+                path
             )));
         }
 
         let mut stat: libc::stat = unsafe { std::mem::zeroed() };
         if unsafe { libc::fstat(fd, &mut stat) } < 0 {
             unsafe { libc::close(fd) };
-            return Err(PlatformError::Platform(format!("Failed to stat file: {}", path)));
+            return Err(PlatformError::Platform(format!(
+                "Failed to stat file: {}",
+                path
+            )));
         }
 
         check_av_result(
@@ -301,8 +366,12 @@ impl NativeVideoPlayer {
         position_ms: i32,
         should_play: bool,
     ) -> Result<(), PlatformError> {
-        log::info!("[VideoPlayer] rebind_surface: pos={}, should_play={}, state={:?}",
-                   position_ms, should_play, self.state);
+        log::info!(
+            "[VideoPlayer] rebind_surface: pos={}, should_play={}, state={:?}",
+            position_ms,
+            should_play,
+            self.state
+        );
 
         let direct_result = unsafe { OH_AVPlayer_SetVideoSurface(self.player, window) };
 
@@ -323,7 +392,10 @@ impl NativeVideoPlayer {
                 }
             } else if !should_play && self.state == AVPlayerState::Playing {
                 let pause_result = unsafe { OH_AVPlayer_Pause(self.player) };
-                log::info!("[VideoPlayer] rebind_surface: pause result={}", pause_result);
+                log::info!(
+                    "[VideoPlayer] rebind_surface: pause result={}",
+                    pause_result
+                );
                 if pause_result == AV_ERR_OK {
                     self.state = AVPlayerState::Paused;
                 }
@@ -332,7 +404,10 @@ impl NativeVideoPlayer {
             return Ok(());
         }
 
-        log::info!("[VideoPlayer] rebind_surface: direct switch failed (err={}), fallback to Stop/Prepare", direct_result);
+        log::info!(
+            "[VideoPlayer] rebind_surface: direct switch failed (err={}), fallback to Stop/Prepare",
+            direct_result
+        );
 
         if self.state == AVPlayerState::Playing {
             unsafe { OH_AVPlayer_Pause(self.player) };
@@ -350,7 +425,13 @@ impl NativeVideoPlayer {
         std::thread::sleep(std::time::Duration::from_millis(30));
 
         if position_ms > 0 {
-            unsafe { OH_AVPlayer_Seek(self.player, position_ms, AVPlayerSeekMode::PreviousSync as i32) };
+            unsafe {
+                OH_AVPlayer_Seek(
+                    self.player,
+                    position_ms,
+                    AVPlayerSeekMode::PreviousSync as i32,
+                )
+            };
         }
 
         if should_play {
@@ -367,27 +448,52 @@ impl NativeVideoPlayer {
     }
 
     pub fn prepare(&mut self) -> Result<(), PlatformError> {
-        check_av_result(unsafe { OH_AVPlayer_Prepare(self.player) }, "OH_AVPlayer_Prepare")
+        check_av_result(
+            unsafe { OH_AVPlayer_Prepare(self.player) },
+            "OH_AVPlayer_Prepare",
+        )
     }
 
     pub fn play(&mut self) -> Result<(), PlatformError> {
-        check_av_result(unsafe { OH_AVPlayer_Play(self.player) }, "OH_AVPlayer_Play")
+        // Handle states that require prepare before playing
+        match self.state {
+            AVPlayerState::Stopped | AVPlayerState::Idle | AVPlayerState::Initialized => {
+                check_av_result(
+                    unsafe { OH_AVPlayer_Prepare(self.player) },
+                    "OH_AVPlayer_Prepare",
+                )?;
+                self.state = AVPlayerState::Prepared;
+            }
+            _ => {}
+        }
+        let result = check_av_result(unsafe { OH_AVPlayer_Play(self.player) }, "OH_AVPlayer_Play");
+        if result.is_ok() {
+            self.state = AVPlayerState::Playing;
+        }
+        result
     }
 
     pub fn pause(&mut self) -> Result<(), PlatformError> {
-        check_av_result(unsafe { OH_AVPlayer_Pause(self.player) }, "OH_AVPlayer_Pause")
+        let result = check_av_result(
+            unsafe { OH_AVPlayer_Pause(self.player) },
+            "OH_AVPlayer_Pause",
+        );
+        if result.is_ok() {
+            self.state = AVPlayerState::Paused;
+        }
+        result
     }
 
     pub fn stop(&mut self) -> Result<(), PlatformError> {
-        check_av_result(unsafe { OH_AVPlayer_Stop(self.player) }, "OH_AVPlayer_Stop")
+        let result = check_av_result(unsafe { OH_AVPlayer_Stop(self.player) }, "OH_AVPlayer_Stop");
+        if result.is_ok() {
+            self.state = AVPlayerState::Stopped;
+        }
+        result
     }
 
     pub fn seek(&mut self, position_ms: i32, mode: AVPlayerSeekMode) -> Result<(), PlatformError> {
-        let mut before_pos = 0i32;
-        unsafe { OH_AVPlayer_GetCurrentTime(self.player, &mut before_pos) };
-        log::info!("[VideoPlayer] seek: target={}, before_pos={}", position_ms, before_pos);
-        let seek_result = unsafe { OH_AVPlayer_Seek(self.player, position_ms, mode as i32) };
-        log::info!("[VideoPlayer] seek: result={}", seek_result);
+        unsafe { OH_AVPlayer_Seek(self.player, position_ms, mode as i32) };
         Ok(())
     }
 
@@ -446,7 +552,10 @@ impl NativeVideoPlayer {
     pub fn release(&mut self) -> Result<(), PlatformError> {
         if !self.player.is_null() {
             unsafe { OH_AVPlayer_SetOnInfoCallback(self.player, None, ptr::null_mut()) };
-            check_av_result(unsafe { OH_AVPlayer_Release(self.player) }, "OH_AVPlayer_Release")?;
+            check_av_result(
+                unsafe { OH_AVPlayer_Release(self.player) },
+                "OH_AVPlayer_Release",
+            )?;
             self.player = ptr::null_mut();
         }
         if !self.window.is_null() {
@@ -461,7 +570,10 @@ impl NativeVideoPlayer {
         self.player
     }
 
-    fn set_video_surface_internal(&mut self, window: *mut OHNativeWindow) -> Result<(), PlatformError> {
+    fn set_video_surface_internal(
+        &mut self,
+        window: *mut OHNativeWindow,
+    ) -> Result<(), PlatformError> {
         if !self.window.is_null() && self.window != window {
             unsafe { OH_NativeWindow_DestroyNativeWindow(self.window) };
             self.window = ptr::null_mut();
@@ -491,6 +603,14 @@ fn get_player_manager() -> &'static RwLock<HashMap<String, Arc<Mutex<NativeVideo
 }
 
 pub fn create_player(component_id: &str, callback_id: u64) -> Result<i64, PlatformError> {
+    // Check if player already exists (created by native component)
+    if let Some(existing) = get_player(component_id) {
+        if let Ok(p) = existing.lock() {
+            return Ok(p.as_ptr() as i64);
+        }
+    }
+
+    // Create new player if not exists
     let player = NativeVideoPlayer::new(component_id, callback_id)?;
     let ptr = player.as_ptr() as i64;
     let manager = get_player_manager();
@@ -524,7 +644,10 @@ fn check_av_result(code: i32, context: &str) -> Result<(), PlatformError> {
     if code == AV_ERR_OK {
         Ok(())
     } else {
-        Err(PlatformError::Platform(format!("{} failed: {}", context, code)))
+        Err(PlatformError::Platform(format!(
+            "{} failed: {}",
+            context, code
+        )))
     }
 }
 
@@ -571,7 +694,8 @@ unsafe extern "C" {
 
 #[link(name = "native_media_core")]
 unsafe extern "C" {
-    fn OH_AVFormat_GetIntValue(format: *mut OH_AVFormat, key: *const c_char, out: *mut i32) -> bool;
+    fn OH_AVFormat_GetIntValue(format: *mut OH_AVFormat, key: *const c_char, out: *mut i32)
+    -> bool;
 }
 
 #[link(name = "avplayer")]
@@ -585,25 +709,35 @@ unsafe extern "C" {
 
 #[link(name = "native_window")]
 unsafe extern "C" {
-    fn OH_NativeWindow_CreateNativeWindowFromSurfaceId(surface_id: u64, window: *mut *mut OHNativeWindow) -> i32;
+    fn OH_NativeWindow_CreateNativeWindowFromSurfaceId(
+        surface_id: u64,
+        window: *mut *mut OHNativeWindow,
+    ) -> i32;
     fn OH_NativeWindow_DestroyNativeWindow(window: *mut OHNativeWindow);
 }
 
-pub fn create_native_window_from_surface_id(surface_id: &str) -> Result<*mut OHNativeWindow, PlatformError> {
-    let surface_id_u64: u64 = surface_id.parse().map_err(|_| {
-        PlatformError::Platform(format!("Invalid surface ID: {}", surface_id))
-    })?;
+pub fn create_native_window_from_surface_id(
+    surface_id: &str,
+) -> Result<*mut OHNativeWindow, PlatformError> {
+    let surface_id_u64: u64 = surface_id
+        .parse()
+        .map_err(|_| PlatformError::Platform(format!("Invalid surface ID: {}", surface_id)))?;
     let mut window: *mut OHNativeWindow = ptr::null_mut();
-    let result = unsafe { OH_NativeWindow_CreateNativeWindowFromSurfaceId(surface_id_u64, &mut window) };
+    let result =
+        unsafe { OH_NativeWindow_CreateNativeWindowFromSurfaceId(surface_id_u64, &mut window) };
     if result != 0 || window.is_null() {
         return Err(PlatformError::Platform(format!(
-            "Failed to create native window: {}, error: {}", surface_id, result
+            "Failed to create native window: {}, error: {}",
+            surface_id, result
         )));
     }
     Ok(window)
 }
 
-pub fn set_video_surface_from_id(component_id: &str, surface_id: &str) -> Result<(), PlatformError> {
+pub fn set_video_surface_from_id(
+    component_id: &str,
+    surface_id: &str,
+) -> Result<(), PlatformError> {
     let window = create_native_window_from_surface_id(surface_id)?;
     if let Some(player) = get_player(component_id) {
         if let Ok(mut p) = player.lock() {
@@ -611,7 +745,10 @@ pub fn set_video_surface_from_id(component_id: &str, surface_id: &str) -> Result
         }
     }
 
-    Err(PlatformError::Platform(format!("Player not found: {}", component_id)))
+    Err(PlatformError::Platform(format!(
+        "Player not found: {}",
+        component_id
+    )))
 }
 
 pub fn rebind_surface_from_id(
@@ -626,6 +763,84 @@ pub fn rebind_surface_from_id(
             return p.rebind_surface_and_resume(window, position_ms.max(0), should_play);
         }
     }
-    Err(PlatformError::Platform(format!("Player not found: {}", component_id)))
+    Err(PlatformError::Platform(format!(
+        "Player not found: {}",
+        component_id
+    )))
 }
 
+fn dispatch_command_harmony(
+    component_id: &str,
+    command: VideoPlayerCommand,
+) -> Result<(), PlatformError> {
+    let player = get_player(component_id)
+        .ok_or_else(|| PlatformError::Platform(format!("Player not found: {}", component_id)))?;
+    let mut p = player
+        .lock()
+        .map_err(|_| PlatformError::Platform("Failed to acquire player lock".to_string()))?;
+
+    match command {
+        VideoPlayerCommand::Play => p.play(),
+        VideoPlayerCommand::Pause => p.pause(),
+        VideoPlayerCommand::Stop => p.stop(),
+        VideoPlayerCommand::Seek { position } => {
+            p.seek((position * 1000.0) as i32, AVPlayerSeekMode::Closest)
+        }
+        VideoPlayerCommand::EnterFullscreen => {
+            if let Err(e) =
+                lingxia_webview::tsfn::call_arkts("videoPlayerEnterFullscreen", &[component_id])
+            {
+                log::error!(
+                    "[VideoPlayer] Failed to notify ArkTS of enter fullscreen: {:?}",
+                    e
+                );
+            }
+            Ok(())
+        }
+        VideoPlayerCommand::ExitFullscreen => {
+            if let Err(e) =
+                lingxia_webview::tsfn::call_arkts("videoPlayerExitFullscreen", &[component_id])
+            {
+                log::error!(
+                    "[VideoPlayer] Failed to notify ArkTS of exit fullscreen: {:?}",
+                    e
+                );
+            }
+            Ok(())
+        }
+    }
+}
+
+// VideoPlayerManager Implementation
+impl VideoPlayerManager for Platform {
+    fn bind_player(
+        &self,
+        component_id: &str,
+        _event_callback_id: u64,
+    ) -> Result<Box<dyn VideoPlayerHandle>, PlatformError> {
+        // List all registered players for debugging
+        let manager = get_player_manager();
+        if let Ok(players) = manager.read() {
+            let keys: Vec<_> = players.keys().collect();
+            log::info!(
+                "[VideoPlayer] bind_player: looking for '{}', registered players: {:?}",
+                component_id,
+                keys
+            );
+        }
+
+        // Verify player exists (created by native component)
+        if get_player(component_id).is_none() {
+            return Err(PlatformError::Platform(format!(
+                "Player not found: {}. Native component must create player first.",
+                component_id
+            )));
+        }
+        // Note: Harmony events are handled via call_arkts, not callback_id
+
+        let cid = component_id.to_string();
+        let handle =
+            VideoPlayerHandleImpl::new(move |command| dispatch_command_harmony(&cid, command));
+        Ok(Box::new(handle))
+    }
+}

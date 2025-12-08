@@ -305,6 +305,26 @@ class NativeBridge {
       return true;
     });
 
+    this.register('videoPlayerStopped', (componentId: string): boolean => {
+      LxNativeVideoPlayer.onStopped(componentId);
+      return true;
+    });
+
+    this.register('videoPlayerPlaying', (componentId: string): boolean => {
+      LxNativeVideoPlayer.onPlaying(componentId);
+      return true;
+    });
+
+    this.register('videoPlayerEnterFullscreen', (componentId: string): boolean => {
+      LxNativeVideoPlayer.enterFullscreenStatic(componentId);
+      return true;
+    });
+
+    this.register('videoPlayerExitFullscreen', (componentId: string): boolean => {
+      LxNativeVideoPlayer.exitFullscreen(componentId);
+      return true;
+    });
+
     // The result is reported back to Rust using the shared callback mechanism
     // so that the logic layer can decide whether to proceed with the location
     // request or surface an error.

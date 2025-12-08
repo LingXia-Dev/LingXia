@@ -5,6 +5,7 @@ import {
   videoPlayerPrepare,
   videoPlayerPlay,
   videoPlayerPause,
+  videoPlayerStop,
   videoPlayerSeek,
   videoPlayerRebindSurface,
   videoPlayerSetVolume,
@@ -31,6 +32,10 @@ export class VideoFullscreenDetail {
 export class VideoMetadataDetail {
   width: number = 0;
   height: number = 0;
+  duration: number = 0;
+}
+export class VideoTimeUpdateDetail {
+  currentTime: number = 0;
   duration: number = 0;
 }
 export class VideoEmptyDetail {}
@@ -181,6 +186,20 @@ export struct LxNativeVideoPlayer {
     instance ? instance.play() : videoPlayerPlay(componentId);
   }
 
+  static stopStatic(componentId: string): void {
+    const instance = LxNativeVideoPlayer.rebindInstance.get(componentId);
+    if (instance) {
+      instance.stop();
+    } else {
+      videoPlayerStop(componentId);
+      const state = LxNativeVideoPlayer.runtimeState.get(componentId);
+      if (state) {
+        state.isPlaying = false;
+        state.currentTime = 0;
+      }
+    }
+  }
+
   static resumeStatic(componentId: string): void {
     const state = LxNativeVideoPlayer.runtimeState.get(componentId);
     if (state?.isPlaying) LxNativeVideoPlayer.playStatic(componentId);
@@ -222,6 +241,31 @@ export struct LxNativeVideoPlayer {
     LxNativeVideoPlayer.rebindInstance.get(componentId)?.handlePrepared();
   }
 
+  static onStopped(componentId: string): void {
+    const instance = LxNativeVideoPlayer.rebindInstance.get(componentId);
+    if (instance) {
+      instance.handleStopped();
+    } else {
+      const state = LxNativeVideoPlayer.runtimeState.get(componentId);
+      if (state) {
+        state.isPlaying = false;
+        state.currentTime = 0;
+      }
+    }
+  }
+
+  static onPlaying(componentId: string): void {
+    const instance = LxNativeVideoPlayer.rebindInstance.get(componentId);
+    if (instance) {
+      instance.handlePlaying();
+    } else {
+      const state = LxNativeVideoPlayer.runtimeState.get(componentId);
+      if (state) {
+        state.isPlaying = true;
+      }
+    }
+  }
+
   static getDuration(componentId: string): number {
     let duration = LxNativeVideoPlayer.rebindInstance.get(componentId)?.getDuration() ?? 0;
     if (duration <= 0) duration = LxNativeVideoPlayer.runtimeState.get(componentId)?.duration ?? 0;
@@ -232,8 +276,18 @@ export struct LxNativeVideoPlayer {
     return LxNativeVideoPlayer.rebindInstance.get(componentId)?.getCurrentTime() ?? 0;
   }
 
+  static enterFullscreenStatic(componentId: string): void {
+    const instance = LxNativeVideoPlayer.rebindInstance.get(componentId);
+    if (instance && !instance.isFullscreen) {
+      instance.toggleFullscreen();
+    }
+  }
+
   static exitFullscreen(componentId: string): void {
-    LxNativeVideoPlayer.rebindInstance.get(componentId)?.toggleFullscreen();
+    const instance = LxNativeVideoPlayer.rebindInstance.get(componentId);
+    if (instance && instance.isFullscreen) {
+      instance.toggleFullscreen();
+    }
   }
 
   static setVolume(componentId: string, volume: number): void {
@@ -399,6 +453,14 @@ export struct LxNativeVideoPlayer {
         } else {
           this.state.currentTime = currentTime;
           if (duration > 0) this.sliderValue = calculateSliderValue(currentTime, duration);
+          // Emit timeupdate event for JS tracking (enables relative seek)
+          // Convert ms to seconds for consistency with Android/HTML5 video API
+          if (duration > 0) {
+            const timeUpdateDetail = new VideoTimeUpdateDetail();
+            timeUpdateDetail.currentTime = currentTime / 1000;
+            timeUpdateDetail.duration = duration / 1000;
+            this.emitEvent('timeupdate', timeUpdateDetail);
+          }
         }
         if (this.state.isPlaying) this.saveRuntimeState();
       }
@@ -545,6 +607,24 @@ export struct LxNativeVideoPlayer {
     }
   }
 
+  stop(): void {
+    log(`[${this.componentId}] stop() called`);
+    if (videoPlayerStop(this.componentId) as boolean) {
+      // Reset playback state
+      this.state.isPlaying = false;
+      this.state.isPaused = true;
+      this.state.currentTime = 0;
+      this.sliderValue = 0;
+      this.hasEnded = false;
+      this.pendingPlayEvent = false;
+      // Show poster and center play button (reset to initial state)
+      this.showPoster = true;
+      this.stopProgressTimer();
+      this.saveRuntimeState();
+      log(`[${this.componentId}] stop() success, reset to initial state`);
+    }
+  }
+
   seek(time: number): void {
     const timeInt = Math.round(time);
     // Track pending seek for UI sync
@@ -606,6 +686,28 @@ export struct LxNativeVideoPlayer {
     }
   }
 
+  handleStopped(): void {
+    log(`[${this.componentId}] handleStopped: resetting UI to initial state`);
+    this.state.isPlaying = false;
+    this.state.isPaused = true;
+    this.state.currentTime = 0;
+    this.sliderValue = 0;
+    this.hasEnded = false;
+    this.pendingPlayEvent = false;
+    this.showPoster = true;
+    this.stopProgressTimer();
+    this.saveRuntimeState();
+  }
+
+  handlePlaying(): void {
+    log(`[${this.componentId}] handlePlaying: updating UI for playback`);
+    this.state.isPlaying = true;
+    this.state.isPaused = false;
+    this.hasEnded = false;
+    this.startProgressTimer();
+    this.saveRuntimeState();
+  }
+
   getCurrentTime(): number { return videoPlayerGetCurrentTime(this.componentId); }
   getDuration(): number { return videoPlayerGetDuration(this.componentId); }
 
@@ -620,7 +722,7 @@ export struct LxNativeVideoPlayer {
     }
   }
 
-  private emitEvent(event: string, detail: VideoErrorDetail | VideoSeekingDetail | VideoFullscreenDetail | VideoMetadataDetail | VideoEmptyDetail): void {
+  private emitEvent(event: string, detail: VideoErrorDetail | VideoSeekingDetail | VideoFullscreenDetail | VideoMetadataDetail | VideoTimeUpdateDetail | VideoEmptyDetail): void {
     this.onEvent?.(event, detail);
   }
 

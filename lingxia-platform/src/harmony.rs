@@ -7,4 +7,5 @@ mod media;
 mod popup;
 mod ui_update;
 mod user_feedback;
+pub mod video_player;
 pub use app::Platform;
