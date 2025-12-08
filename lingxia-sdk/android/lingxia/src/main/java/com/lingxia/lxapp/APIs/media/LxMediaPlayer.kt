@@ -27,7 +27,9 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.SeekParameters
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.lingxia.lxapp.LxApp
@@ -210,6 +212,7 @@ class LxMediaPlayer(
     // State
     private var currentSource: Uri? = null
     private var isFullscreen = false
+    private var isSeeking = false  // Track seeking state to avoid showing loading indicator
     private var firstFrameDisplayed = false
     private var posterUrl: String? = null
     private var videoWidth = 0.0
@@ -242,6 +245,7 @@ class LxMediaPlayer(
             when (playbackState) {
                 Player.STATE_READY -> {
                     loadingIndicator?.visibility = View.GONE
+                    isSeeking = false  // Seek complete
                     if (!firstFrameDisplayed) {
                         // Don't hide poster immediately - wait for time to progress
                         // This prevents black screen flash when video is buffering
@@ -251,8 +255,11 @@ class LxMediaPlayer(
                     }
                 }
                 Player.STATE_BUFFERING -> {
-                    loadingIndicator?.visibility = View.VISIBLE
-                    emitEvent(LxMediaEvent.Waiting)
+                    // Don't show loading during seek - better UX (frame stays visible)
+                    if (!isSeeking) {
+                        loadingIndicator?.visibility = View.VISIBLE
+                        emitEvent(LxMediaEvent.Waiting)
+                    }
                 }
                 Player.STATE_ENDED -> {
                     loadingIndicator?.visibility = View.GONE
@@ -276,6 +283,7 @@ class LxMediaPlayer(
                 }
                 Player.STATE_IDLE -> {
                     loadingIndicator?.visibility = View.GONE
+                    isSeeking = false
                 }
             }
             controlsOverlay?.updatePlayPauseButton()
@@ -331,7 +339,21 @@ class LxMediaPlayer(
             // Use application context to avoid memory leaks and context issues
             val appContext = context.applicationContext
             Log.d(TAG, "Creating ExoPlayer with context: $appContext")
-            val exoPlayer = ExoPlayer.Builder(appContext).build()
+            
+            // Optimized load control for better seek/buffering experience
+            val loadControl = DefaultLoadControl.Builder()
+                .setBufferDurationsMs(
+                    25000,  // minBufferMs - buffer at least 25s
+                    50000,  // maxBufferMs - buffer up to 50s
+                    1500,   // bufferForPlaybackMs - start playback with 1.5s buffer
+                    3000    // bufferForPlaybackAfterRebufferMs - after rebuffer, need 3s
+                )
+                .build()
+            
+            val exoPlayer = ExoPlayer.Builder(appContext)
+                .setLoadControl(loadControl)
+                .setSeekParameters(SeekParameters.CLOSEST_SYNC)  // Fast seek to nearest keyframe
+                .build()
             Log.d(TAG, "ExoPlayer created: $exoPlayer")
 
             val audioAttributes = AudioAttributes.Builder()
@@ -380,7 +402,9 @@ class LxMediaPlayer(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 Gravity.CENTER
             )
-            indeterminateDrawable?.setTint(android.graphics.Color.rgb(0, 122, 255))
+            // Tech blue - use tintList for reliable coloring
+            val techBlue = android.graphics.Color.rgb(0, 180, 255)
+            indeterminateTintList = android.content.res.ColorStateList.valueOf(techBlue)
             visibility = View.GONE
         }
         view.addView(loadingIndicator)
@@ -470,10 +494,17 @@ class LxMediaPlayer(
     }
 
     fun play() {
-        if (player?.playbackState == Player.STATE_ENDED) {
-            player?.seekTo(0)
+        val p = player ?: return
+        when (p.playbackState) {
+            Player.STATE_ENDED -> {
+                p.seekTo(0)
+            }
+            Player.STATE_IDLE -> {
+                // After stop(), player is in IDLE state and needs prepare() again
+                p.prepare()
+            }
         }
-        player?.play()
+        p.play()
     }
 
     fun pause() {
@@ -481,13 +512,29 @@ class LxMediaPlayer(
     }
 
     fun stop() {
+        // Get duration before stopping
+        val duration = (player?.duration ?: 0L).toDouble() / 1000.0
+        
         player?.stop()
         player?.seekTo(0)
+        
+        // Reset to initial state - show poster and center play button (like video ended)
+        firstFrameDisplayed = false
+        pendingPosterHide = false
+        if (posterUrl != null) {
+            posterImageView?.visibility = View.VISIBLE
+            posterImageView?.bringToFront()
+        }
+        controlsOverlay?.view?.bringToFront()
+        controlsOverlay?.showCenterPlayButton(true)
+        controlsOverlay?.updateProgress(0.0, duration)
+        
         emitEvent(LxMediaEvent.Stop)
     }
 
     fun seek(time: Double) {
         val positionMs = (time * 1000).toLong()
+        isSeeking = true  // Don't show loading indicator during seek
         player?.seekTo(positionMs)
         emitEvent(LxMediaEvent.Seeked(time))
         updateProgressUIAfterSeek(time)
