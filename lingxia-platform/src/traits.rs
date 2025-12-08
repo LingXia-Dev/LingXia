@@ -1,6 +1,7 @@
 pub mod core;
 pub mod media_interaction;
 pub mod media_runtime;
+pub mod video_player;
 
 pub use core::{
     AnimationType, AppRuntime, Device, DocumentInteraction, Location, LocationRequestConfig,
@@ -14,3 +15,6 @@ pub use media_interaction::{
     ScanType,
 };
 pub use media_runtime::{CompressImageRequest, ImageInfo, MediaRuntime};
+pub use video_player::{
+    VideoPlayerCommand, VideoPlayerHandle, VideoPlayerHandleImpl, VideoPlayerManager,
+};

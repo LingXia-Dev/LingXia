@@ -41,6 +41,7 @@ napi-derive-ohos = "1.1.0"
 ohos-raw-sys = "0.1.0"
 serde_json = { workspace = true }
 lingxia-webview = { path = "../lingxia-webview" }
+libc = "0.2"
 
 [build-dependencies]
 swift-bridge-build = "0.1.57"
