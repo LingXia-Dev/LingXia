@@ -3,18 +3,7 @@
  * Uses global LingXiaBridge to detect the current platform.
  */
 
-declare global {
-  interface Window {
-    LingXiaBridge?: {
-      platform?: {
-        isHarmony(): boolean;
-        isIOS(): boolean;
-        isAndroid(): boolean;
-        getOS(): string;
-      };
-    };
-  }
-}
+import './types.js';
 
 /**
  * Check if the current platform is HarmonyOS.

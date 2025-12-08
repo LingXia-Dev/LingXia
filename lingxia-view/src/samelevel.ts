@@ -1,26 +1,5 @@
-export type SameLevelMessage = {
-  action: string;
-  id: string;
-  type?: string;
-  event?: string;
-  detail?: any;
-  payload?: any;
-  rect?: { x: number; y: number; width: number; height: number };
-  props?: Record<string, unknown>;
-  zIndex?: number;
-  cornerRadius?: number;
-};
-
-declare global {
-  interface Window {
-    LingXiaBridge?: {
-      sameLevel?: {
-        send?: (msg: SameLevelMessage) => void;
-        register?: (id: string, handler: (msg: SameLevelMessage) => void) => () => void;
-      };
-    };
-  }
-}
+import type { SameLevelMessage } from './types.js';
+export type { SameLevelMessage };
 
 let warnedNoHandler = false;
 

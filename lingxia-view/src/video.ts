@@ -171,7 +171,7 @@ export class LxVideoElement extends HTMLElement {
   }
 
   private getEventHandler(name: string) {
-    return this._handlers[name] || null;
+    return (this._handlers[name] || null) as any;
   }
 
   // Standard Media Events for React Props (e.g. <lx-video onPlay={...} />)
@@ -187,8 +187,8 @@ export class LxVideoElement extends HTMLElement {
   set ontimeupdate(cb: EventListener) { this.setEventHandler('timeupdate', cb); }
   get ontimeupdate() { return this.getEventHandler('timeupdate'); }
 
-  set onerror(cb: EventListener) { this.setEventHandler('error', cb); }
-  get onerror() { return this.getEventHandler('error'); }
+  // Note: onerror is inherited from HTMLElement with OnErrorEventHandler type.
+  // Use addEventListener('error', handler) for error events instead.
 
   set onloadedmetadata(cb: EventListener) { this.setEventHandler('loadedmetadata', cb); }
   get onloadedmetadata() { return this.getEventHandler('loadedmetadata'); }
@@ -286,6 +286,8 @@ export class LxVideoElement extends HTMLElement {
     });
   }
 
+  private intersectionObserver?: IntersectionObserver;
+
   private startTracking() {
     if (isHarmony()) {
       this.startSizeObserver();
@@ -294,6 +296,13 @@ export class LxVideoElement extends HTMLElement {
     }
     window.addEventListener("scroll", this.boundUpdatePosition, { passive: true });
     window.addEventListener("resize", this.boundUpdatePosition);
+
+    // Also listen on all ancestor scroll containers
+    this.addAncestorScrollListeners();
+
+    // Use IntersectionObserver for more reliable position tracking
+    this.startIntersectionObserver();
+
     this.startSizeObserver();
     this.updatePosition();
   }
@@ -309,10 +318,59 @@ export class LxVideoElement extends HTMLElement {
     }
     window.removeEventListener("scroll", this.boundUpdatePosition);
     window.removeEventListener("resize", this.boundUpdatePosition);
+    this.removeAncestorScrollListeners();
+    this.stopIntersectionObserver();
     this.stopSizeObserver();
     if (this.pendingLayoutFrame !== null) {
       cancelAnimationFrame(this.pendingLayoutFrame);
       this.pendingLayoutFrame = null;
+    }
+  }
+
+  private ancestorScrollHandlers: Array<{ element: Element; handler: EventListener }> = [];
+
+  private addAncestorScrollListeners() {
+    let parent = this.parentElement;
+    while (parent && parent !== document.documentElement) {
+      const style = getComputedStyle(parent);
+      const isScrollable = style.overflow === 'auto' || style.overflow === 'scroll' ||
+                          style.overflowY === 'auto' || style.overflowY === 'scroll' ||
+                          style.overflowX === 'auto' || style.overflowX === 'scroll';
+      if (isScrollable) {
+        const handler = this.boundUpdatePosition;
+        parent.addEventListener('scroll', handler, { passive: true });
+        this.ancestorScrollHandlers.push({ element: parent, handler });
+      }
+      parent = parent.parentElement;
+    }
+  }
+
+  private removeAncestorScrollListeners() {
+    for (const { element, handler } of this.ancestorScrollHandlers) {
+      element.removeEventListener('scroll', handler);
+    }
+    this.ancestorScrollHandlers = [];
+  }
+
+  private startIntersectionObserver() {
+    if (typeof IntersectionObserver === 'undefined') return;
+    if (this.intersectionObserver) return;
+
+    // Use threshold array to detect any movement
+    this.intersectionObserver = new IntersectionObserver(
+      () => {
+        // Position may have changed, update it
+        this.updatePosition();
+      },
+      { threshold: [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1] }
+    );
+    this.intersectionObserver.observe(this);
+  }
+
+  private stopIntersectionObserver() {
+    if (this.intersectionObserver) {
+      this.intersectionObserver.disconnect();
+      this.intersectionObserver = undefined;
     }
   }
 

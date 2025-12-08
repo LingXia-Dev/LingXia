@@ -23,6 +23,7 @@
   },
   "devDependencies": {
     "@rollup/plugin-terser": "^0.4.4",
+    "@types/react": "^19.2.7",
     "rollup": "^4.30.0",
     "typescript": "^5.7.2"
   }
