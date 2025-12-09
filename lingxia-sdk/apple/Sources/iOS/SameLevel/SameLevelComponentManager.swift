@@ -44,6 +44,8 @@ final class SameLevelComponentManager {
     private var componentPage: [String: String] = [:]
     private var pageComponents: [String: Set<String>] = [:]
     private var componentWKChildScrollView: [String: UIScrollView] = [:]
+    // Rust callback IDs for VideoContext event forwarding
+    private var componentCallbacks: [String: UInt64] = [:]
     private let defaultPageId: String
     private var factories: [String: LxNativeComponentFactory] = [:]
     private let eventSink: (_ payload: [String: Any]) -> Void
@@ -121,7 +123,7 @@ final class SameLevelComponentManager {
         components[id] = component
         componentPage[id] = pageId
         pageComponents[pageId, default: []].insert(id)
-        VideoPlayerRegistry.shared.registerComponent(componentId: id, manager: self)
+        ComponentRouter.shared.register(componentId: id, manager: self)
 
         // True same-level rendering: mount in WKChildScrollView when available
         var targetRect = rect
@@ -214,6 +216,16 @@ final class SameLevelComponentManager {
         component.handleCommand(name: name, params: params)
     }
 
+    // MARK: - Public API for Rust FFI
+
+    /// Set Rust callback ID for a component (used by VideoContext).
+    /// Returns true if component exists, false otherwise.
+    func setCallback(componentId: String, callbackId: UInt64) -> Bool {
+        guard components[componentId] != nil else { return false }
+        componentCallbacks[componentId] = callbackId
+        return true
+    }
+
     private func handlePageLifecycle(_ parameters: [String: Any]) {
         let pageId = resolvePageId(parameters)
         guard let state = parameters["state"] as? String else { return }
@@ -247,7 +259,16 @@ final class SameLevelComponentManager {
             payload["pageId"] = pageId
         }
         eventSink(payload)
-        VideoPlayerRegistry.shared.emitEventIfNeeded(componentId: componentId, payload: payload)
+
+        // Also forward to Rust callback if registered (for VideoContext)
+        if let callbackId = componentCallbacks[componentId] {
+            var enriched = payload
+            enriched["componentId"] = componentId
+            if let data = try? JSONSerialization.data(withJSONObject: enriched, options: []),
+               let enrichedJson = String(data: data, encoding: .utf8) {
+                _ = onCallback(callbackId, true, enrichedJson)
+            }
+        }
     }
 
     private func resolvePageId(_ dict: [String: Any]) -> String {
@@ -330,7 +351,8 @@ final class SameLevelComponentManager {
             }
         }
         componentPage.removeValue(forKey: id)
-        VideoPlayerRegistry.shared.unregisterComponent(componentId: id)
+        componentCallbacks.removeValue(forKey: id)
+        ComponentRouter.shared.unregister(componentId: id)
     }
 
     /// Convert window-space rect to WKScrollView coords and locate matching WKChildScrollView.
