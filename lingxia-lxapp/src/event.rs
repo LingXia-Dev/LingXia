@@ -1,16 +1,13 @@
 use std::fmt;
 use std::hash::Hash;
 
-// Unified AppServiceEvent for app-level events (lifecycle + update)
+// Unified AppServiceEvent for app-level events (lifecycle)
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum AppServiceEvent {
     // Lifecycle
     OnLaunch,
     OnShow,
     OnHide,
-    // Update
-    UpdateReady,
-    UpdateFailed,
 }
 
 impl AppServiceEvent {
@@ -19,8 +16,6 @@ impl AppServiceEvent {
             AppServiceEvent::OnLaunch => "onLaunch",
             AppServiceEvent::OnShow => "onShow",
             AppServiceEvent::OnHide => "onHide",
-            AppServiceEvent::UpdateReady => "UpdateReady",
-            AppServiceEvent::UpdateFailed => "UpdateFailed",
         }
     }
 
@@ -29,8 +24,6 @@ impl AppServiceEvent {
             "onLaunch" => Some(AppServiceEvent::OnLaunch),
             "onShow" => Some(AppServiceEvent::OnShow),
             "onHide" => Some(AppServiceEvent::OnHide),
-            "UpdateReady" => Some(AppServiceEvent::UpdateReady),
-            "UpdateFailed" => Some(AppServiceEvent::UpdateFailed),
             _ => None,
         }
     }
@@ -42,7 +35,7 @@ impl fmt::Display for AppServiceEvent {
     }
 }
 
-// App-level events
+// App-level lifecycle events (kept for backwards-compatible helpers)
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum LxAppLifecycleEvent {
     OnLaunch,
@@ -70,48 +63,6 @@ impl LxAppLifecycleEvent {
 }
 
 impl fmt::Display for LxAppLifecycleEvent {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.as_str())
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum LxAppUpdateEvent {
-    UpdateReady,
-    UpdateFailed,
-}
-
-impl LxAppUpdateEvent {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            LxAppUpdateEvent::UpdateReady => "UpdateReady",
-            LxAppUpdateEvent::UpdateFailed => "UpdateFailed",
-        }
-    }
-}
-
-impl fmt::Display for LxAppUpdateEvent {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.as_str())
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum LxAppEvent {
-    Lifecycle(LxAppLifecycleEvent),
-    Update(LxAppUpdateEvent),
-}
-
-impl LxAppEvent {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            LxAppEvent::Lifecycle(l) => l.as_str(),
-            LxAppEvent::Update(u) => u.as_str(),
-        }
-    }
-}
-
-impl fmt::Display for LxAppEvent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.as_str())
     }

@@ -1,7 +1,7 @@
+use crate::appservice::bridge_events::BridgeEvent;
 use crate::appservice::{ServiceMessage, WorkerService, lxapp_service_handler};
 use crate::event::AppServiceEvent;
 use crate::event::PageServiceEvent;
-use crate::appservice::bridge_events::BridgeEvent;
 use crate::{LxAppError, error, info};
 
 use rong::{JSContext, Rong, RongJS, Worker, WorkerMessage};

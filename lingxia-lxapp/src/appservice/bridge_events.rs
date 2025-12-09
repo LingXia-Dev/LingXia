@@ -47,18 +47,17 @@ pub(crate) fn init(ctx: &JSContext) {
 /// Remove all handler registrations for a page (e.g., on unload).
 pub(crate) fn clear_page(ctx: &JSContext, page_path: &str) {
     let registry = ctx.runtime().get_or_init_service::<BridgeRegistry>();
-    registry.handlers.borrow_mut().retain(|scope, _| match scope {
-        Scope::Page(path) => path != page_path,
-        _ => true,
-    });
+    registry
+        .handlers
+        .borrow_mut()
+        .retain(|scope, _| match scope {
+            Scope::Page(path) => path != page_path,
+            _ => true,
+        });
 }
 
 /// Register an app-scoped handler.
-pub fn register_app_handler(
-    ctx: &JSContext,
-    event_name: &str,
-    callback: JSFunc,
-) -> JSResult<()> {
+pub fn register_app_handler(ctx: &JSContext, event_name: &str, callback: JSFunc) -> JSResult<()> {
     if event_name.trim().is_empty() {
         return Err(RongJSError::Error("event_name is required".into()));
     }
@@ -185,10 +184,7 @@ async fn emit_to_handlers(
         JSObject::new(ctx)
     };
 
-    for handler in handlers
-        .into_iter()
-        .filter(|h| h.event_name == event_name)
-    {
+    for handler in handlers.into_iter().filter(|h| h.event_name == event_name) {
         let payload = payload_base.clone();
         let _ = handler.callback.call_async::<_, ()>(None, (payload,)).await;
     }
@@ -197,11 +193,7 @@ async fn emit_to_handlers(
 }
 
 /// Emit an app-scoped event into JS.
-pub fn emit_app_event(
-    appid: &str,
-    event_name: &str,
-    payload_json: Option<String>,
-) -> bool {
+pub fn emit_app_event(appid: &str, event_name: &str, payload_json: Option<String>) -> bool {
     let Some(lxapp) = crate::try_get(appid) else {
         warn!("emit_app_event: unknown appid {}", appid);
         return false;
@@ -213,10 +205,7 @@ pub fn emit_app_event(
         payload_json,
     };
 
-    if let Err(e) = lxapp
-        .executor
-        .dispatch_bridge_event(lxapp.clone(), event)
-    {
+    if let Err(e) = lxapp.executor.dispatch_bridge_event(lxapp.clone(), event) {
         error!("Failed to dispatch app event: {}", e).with_appid(appid.to_string());
         false
     } else {
@@ -247,10 +236,7 @@ pub fn emit_page_event(
         payload_json,
     };
 
-    if let Err(e) = lxapp
-        .executor
-        .dispatch_bridge_event(lxapp.clone(), event)
-    {
+    if let Err(e) = lxapp.executor.dispatch_bridge_event(lxapp.clone(), event) {
         error!("Failed to dispatch page event: {}", e).with_appid(appid.to_string());
         false
     } else {

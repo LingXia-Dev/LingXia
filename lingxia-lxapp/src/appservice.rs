@@ -18,8 +18,6 @@ use crate::event::AppServiceEvent;
 
 pub mod bridge;
 
-pub mod update;
-
 pub(crate) mod bridge_events;
 
 mod page;
@@ -30,11 +28,6 @@ mod runtime_ctx;
 use runtime_ctx::{
     register_app_ctx, remove_app_ctx, set_app_svc_for_ctx, with_app_svc, with_page_svc_map,
 };
-
-/// fetch or create UpdateManager instance associated with current JSContext
-pub fn get_or_create_update_manager(ctx: &JSContext) -> JSResult<JSObject> {
-    runtime_ctx::get_or_create_update_manager(ctx)
-}
 
 /// Message type for LxApp service system
 pub(crate) enum ServiceMessage {
@@ -119,22 +112,16 @@ async fn handle_app_service_event(
         }
     };
 
-    // Update events: notify only if registered
-    match event {
-        AppServiceEvent::UpdateReady => {
-            svc.notify_update_ready().await;
-        }
-        AppServiceEvent::UpdateFailed => {
-            svc.notify_update_failed().await;
-        }
-        AppServiceEvent::OnLaunch | AppServiceEvent::OnShow | AppServiceEvent::OnHide => {
-            if let Err(e) = svc.call_event(ctx, event, args.clone()).await {
-                error!(
-                    "[Worker {}] App service event '{}' failed, Error: {}",
-                    worker_id, event, e
-                )
-                .with_appid(appid);
-            }
+    if matches!(
+        event,
+        AppServiceEvent::OnLaunch | AppServiceEvent::OnShow | AppServiceEvent::OnHide
+    ) {
+        if let Err(e) = svc.call_event(ctx, event, args.clone()).await {
+            error!(
+                "[Worker {}] App service event '{}' failed, Error: {}",
+                worker_id, event, e
+            )
+            .with_appid(appid);
         }
     }
 }
@@ -421,7 +408,7 @@ pub(crate) async fn lxapp_service_handler(
                 if same_app {
                     if let Err(e) = bridge_events::dispatch_bridge_event(ctx, &event).await {
                         error!("[Worker {}] Dispatch bridge event failed: {}", worker_id, e)
-                        .with_appid(lxapp.appid.clone());
+                            .with_appid(lxapp.appid.clone());
                     }
                 }
             }

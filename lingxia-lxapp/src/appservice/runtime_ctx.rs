@@ -1,12 +1,9 @@
-use crate::error;
 use crate::lxapp::LxApp;
 
 use super::app::LxAppSvc;
 use super::page::PageSvc;
 
-use rong::{
-    JSContext, JSContextService, JSObject, JSResult, JSRuntime, JSRuntimeService, RongJSError,
-};
+use rong::{JSContext, JSContextService, JSResult, JSRuntime, JSRuntimeService, RongJSError};
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -151,12 +148,4 @@ impl LxApp {
     pub fn from_ctx(ctx: &JSContext) -> JSResult<Arc<LxApp>> {
         with_lxapp(ctx, |app| Ok(app.clone()))
     }
-}
-
-// fetch or create UpdateManager instance associated with current JSContext
-pub(crate) fn get_or_create_update_manager(ctx: &JSContext) -> JSResult<JSObject> {
-    with_app_svc(ctx, |svc| svc.get_or_create_update_manager(ctx)).map_err(|e| {
-        error!("[LxApp] get_or_create_update_manager failed: {}", e);
-        e
-    })
 }
