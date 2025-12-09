@@ -5,7 +5,9 @@ import android.graphics.RectF
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewOutlineProvider
+import com.lingxia.lxapp.NativeApi
 import com.lingxia.webview.LingXiaWebView
+import org.json.JSONObject
 import java.lang.ref.WeakReference
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -29,6 +31,8 @@ class SameLevelComponentManager(
 
     private val components = mutableMapOf<String, LxNativeComponent>()
     private val componentPage = mutableMapOf<String, String>()
+    // Rust callback IDs for VideoContext event forwarding
+    private val componentCallbacks = mutableMapOf<String, Long>()
     // Content position (document coordinates = viewport + scroll at mount time)
     // This is the stable reference position in the WebView content
     private val componentContentRects = mutableMapOf<String, RectF>()
@@ -80,7 +84,7 @@ class SameLevelComponentManager(
         componentContentRects[id] = contentRect
         componentScreenRects[id] = screenRect
         pageComponents.getOrPut(pageId) { mutableSetOf() }.add(id)
-        VideoPlayerRegistry.registerComponent(id, this)
+        ComponentRouter.register(id, this)
 
         component.mount(host)
         component.setFrame(screenRect)
@@ -175,12 +179,40 @@ class SameLevelComponentManager(
         }
     }
 
+    /**
+     * Set Rust callback ID for a component (used by VideoContext).
+     * Returns true if component exists, false otherwise.
+     */
+    fun setCallback(componentId: String, callbackId: Long): Boolean {
+        if (!components.containsKey(componentId)) return false
+        componentCallbacks[componentId] = callbackId
+        return true
+    }
+
+    /**
+     * Dispatch a command to a component from Rust FFI.
+     * Returns true if component exists and command was dispatched.
+     */
+    fun dispatchCommand(componentId: String, name: String, params: Map<String, Any?>?): Boolean {
+        val component = components[componentId] ?: return false
+        component.handleCommand(name, params)
+        return true
+    }
+
     private fun sendEventToWeb(componentId: String, event: Map<String, Any>) {
         val payload = event.toMutableMap()
         payload["action"] = "component.event"
         payload["id"] = componentId
         componentPage[componentId]?.let { payload["pageId"] = it }
+        
+        // Send to WebView via eventSink
         eventSink(payload)
+        
+        // Also forward to Rust callback if registered (for VideoContext)
+        componentCallbacks[componentId]?.let { callbackId ->
+            payload["componentId"] = componentId
+            NativeApi.onCallback(callbackId, true, JSONObject(payload as Map<*, *>).toString())
+        }
     }
 
     private fun resolvePageId(dict: Map<String, Any?>): String {
@@ -291,6 +323,8 @@ class SameLevelComponentManager(
         componentContentRects.remove(id)
         componentScreenRects.remove(id)
         componentPage.remove(id)
+        componentCallbacks.remove(id)
         pageId?.let { pageComponents[it]?.remove(id) }
+        ComponentRouter.unregister(id)
     }
 }

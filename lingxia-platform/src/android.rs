@@ -27,7 +27,7 @@ pub enum CachedClass {
     LxAppActionSheet = 8,
     LxAppPicker = 9,
     LxAppDocument = 10,
-    LxAppVideo = 11,
+    ComponentRouter = 11,
 }
 
 impl CachedClass {
@@ -46,7 +46,7 @@ impl CachedClass {
             CachedClass::LxAppActionSheet => "com/lingxia/lxapp/APIs/LxAppActionSheet",
             CachedClass::LxAppPicker => "com/lingxia/lxapp/APIs/LxAppPicker",
             CachedClass::LxAppDocument => "com/lingxia/lxapp/APIs/LxAppDocument",
-            CachedClass::LxAppVideo => "com/lingxia/lxapp/APIs/LxAppVideo",
+            CachedClass::ComponentRouter => "com/lingxia/lxapp/SameLevel/ComponentRouter",
         }
     }
 
@@ -96,9 +96,9 @@ impl CachedClass {
                 "Global class reference not found: ",
                 "com/lingxia/lxapp/APIs/LxAppDocument"
             ),
-            CachedClass::LxAppVideo => concat!(
+            CachedClass::ComponentRouter => concat!(
                 "Global class reference not found: ",
-                "com/lingxia/lxapp/APIs/LxAppVideo"
+                "com/lingxia/lxapp/SameLevel/ComponentRouter"
             ),
         }
     }

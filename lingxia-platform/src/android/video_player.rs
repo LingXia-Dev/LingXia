@@ -17,7 +17,7 @@ fn with_env_and_class<T>(
     f: impl FnOnce(&mut JNIEnv, &JClass) -> Result<T, PlatformError>,
 ) -> Result<T, PlatformError> {
     let mut env = get_env().map_err(|e| platform_error(context, e))?;
-    let class: &JClass = super::get_cached_class(super::CachedClass::LxAppVideo)
+    let class: &JClass = super::get_cached_class(super::CachedClass::ComponentRouter)
         .map_err(|e| platform_error(context, e))?
         .as_obj()
         .into();
@@ -114,26 +114,50 @@ impl VideoPlayerManager for Platform {
         component_id: &str,
         event_callback_id: u64,
     ) -> Result<Box<dyn VideoPlayerHandle>, PlatformError> {
-        // Register callback for this component (used by VideoPlayerRegistry for command routing)
+        // Register callback for this component (used by ComponentRouter for command routing)
         let failure_context = format!("setVideoPlayerCallback for component {}", component_id);
 
-        with_env_and_class(&failure_context, |env, lxapp_video_class| {
+        let success = with_env_and_class(&failure_context, |env, component_router_class| {
             let component_id_jstring = env
                 .new_string(component_id)
                 .map_err(|e| platform_error(&failure_context, e))?;
 
-            call_video_static_method(
-                env,
-                lxapp_video_class,
-                "setVideoPlayerCallback",
-                "(Ljava/lang/String;J)V",
-                &[
-                    JValue::Object(&component_id_jstring),
-                    JValue::Long(event_callback_id as i64),
-                ],
-                &failure_context,
-            )
+            // Call setVideoPlayerCallback which returns boolean
+            let result = env
+                .call_static_method(
+                    component_router_class,
+                    "setVideoPlayerCallback",
+                    "(Ljava/lang/String;J)Z",
+                    &[
+                        JValue::Object(&component_id_jstring),
+                        JValue::Long(event_callback_id as i64),
+                    ],
+                )
+                .map_err(|e| platform_error(&failure_context, e))?;
+
+            // Check for Java exceptions
+            if let Some(ex_msg) = extract_exception_message(env) {
+                return Err(platform_error(
+                    &failure_context,
+                    format!("Java exception was thrown: {}", ex_msg),
+                ));
+            }
+
+            // Extract boolean result
+            result.z().map_err(|e| {
+                platform_error(
+                    &failure_context,
+                    format!("Failed to get boolean result: {}", e),
+                )
+            })
         })?;
+
+        if !success {
+            return Err(platform_error(
+                &failure_context,
+                "Component not found or callback registration failed",
+            ));
+        }
 
         let cid = component_id.to_string();
         let handle =
