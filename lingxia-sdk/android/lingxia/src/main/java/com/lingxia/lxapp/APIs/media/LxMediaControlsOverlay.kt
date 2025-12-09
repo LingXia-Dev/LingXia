@@ -463,6 +463,10 @@ internal class LxMediaControlsOverlay(
         if (showCloseButton) topBar.animate().alpha(targetAlpha).setDuration(duration).start()
         bottomBar.animate().alpha(targetAlpha).setDuration(duration).start()
 
+        // Disable interaction when controls are hidden to prevent accidental clicks
+        // on invisible buttons (e.g., fullscreen, progress bar)
+        setControlsInteractionEnabled(visible)
+
         if (visible) {
             centerPlayButton.visibility = View.VISIBLE
             centerPlayButton.animate().alpha(1f).setDuration(duration).start()
@@ -472,6 +476,24 @@ internal class LxMediaControlsOverlay(
                 .withEndAction { centerPlayButton.visibility = View.GONE }.start()
             cancelAutoHide()
         }
+    }
+
+    private fun setControlsInteractionEnabled(enabled: Boolean) {
+        // Top bar controls
+        closeButton.isEnabled = enabled
+        closeButton.isClickable = enabled
+
+        // Bottom bar controls
+        progressSeekBar.isEnabled = enabled
+        playPauseButton.isEnabled = enabled
+        playPauseButton.isClickable = enabled
+        volumeButton.isEnabled = enabled
+        volumeButton.isClickable = enabled
+        volumeSeekBar.isEnabled = enabled
+        settingsButton.isEnabled = enabled
+        settingsButton.isClickable = enabled
+        fullscreenButton.isEnabled = enabled
+        fullscreenButton.isClickable = enabled
     }
 
     private fun scheduleAutoHide() {
