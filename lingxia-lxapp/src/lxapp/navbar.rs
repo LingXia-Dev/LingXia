@@ -1,4 +1,3 @@
-use crate::lxapp::LxApp;
 use serde::{Deserialize, Serialize};
 
 /// Navigation style enum
@@ -15,11 +14,25 @@ pub enum NavigationStyle {
     Custom,
 }
 
-/// NavigationBar state for a specific page
+/// NavigationBar configuration (immutable, from page.json)
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct NavigationBarConfig {
+    #[serde(default)]
+    pub navigation_bar_background_color: String,
+    #[serde(default)]
+    pub navigation_bar_text_style: String,
+    #[serde(default)]
+    pub navigation_bar_title_text: String,
+    #[serde(default)]
+    pub navigation_style: NavigationStyle,
+}
+
+/// NavigationBar runtime state (mutable, derived from config)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[allow(non_snake_case)]
 pub struct NavigationBarState {
-    // Configuration properties (loaded from JSON)
+    // Configuration properties (initialized from NavigationBarConfig)
     #[serde(default)]
     pub navigationBarBackgroundColor: String,
     #[serde(default)]
@@ -38,21 +51,33 @@ pub struct NavigationBarState {
     pub show_home_button: bool,
 }
 
+impl NavigationBarConfig {
+    /// Check if navbar should be shown based on navigation style
+    pub fn should_show_navbar(&self) -> bool {
+        matches!(self.navigation_style, NavigationStyle::Default)
+    }
+}
+
 impl Default for NavigationBarState {
     fn default() -> Self {
-        Self {
-            navigationBarBackgroundColor: String::new(),
-            navigationBarTextStyle: String::new(),
-            navigationBarTitleText: String::new(),
-            navigationStyle: NavigationStyle::Default,
-            show_navbar: true,
-            show_back_button: false,
-            show_home_button: false,
-        }
+        Self::from_config(&NavigationBarConfig::default())
     }
 }
 
 impl NavigationBarState {
+    /// Create NavigationBarState from NavigationBarConfig
+    pub fn from_config(config: &NavigationBarConfig) -> Self {
+        Self {
+            navigationBarBackgroundColor: config.navigation_bar_background_color.clone(),
+            navigationBarTextStyle: config.navigation_bar_text_style.clone(),
+            navigationBarTitleText: config.navigation_bar_title_text.clone(),
+            navigationStyle: config.navigation_style.clone(),
+            show_navbar: config.should_show_navbar(),
+            show_back_button: false,
+            show_home_button: false,
+        }
+    }
+
     /// Set back button visibility
     pub fn set_back_button_visibility(&mut self, show: bool) {
         self.show_back_button = show;
@@ -81,72 +106,5 @@ impl NavigationBarState {
     /// Set text style
     pub fn set_text_style(&mut self, style: String) {
         self.navigationBarTextStyle = style;
-    }
-}
-
-impl NavigationBarState {
-    /// Create NavigationBarState from JSON config file path
-    pub fn from_json(lxapp: &LxApp, path: &str) -> Self {
-        let json_path = path_to_json_path(path);
-        match lxapp.read_json(&json_path) {
-            Ok(json_value) => {
-                match serde_json::from_value::<NavigationBarState>(json_value) {
-                    Ok(mut state) => {
-                        // Set navbar visibility based on navigationStyle
-                        state.show_navbar = match state.navigationStyle {
-                            NavigationStyle::Default => true,
-                            NavigationStyle::Custom => false,
-                        };
-
-                        // Initialize button state (will be updated dynamically)
-                        state.show_back_button = false;
-                        state.show_home_button = false;
-                        state
-                    }
-                    Err(_) => Self::default(),
-                }
-            }
-            Err(_) => Self::default(),
-        }
-    }
-}
-
-/// Convert page path to JSON configuration path (visible within crate)
-fn path_to_json_path(path: &str) -> String {
-    if path.contains('.') {
-        // Has extension: replace it with .json
-        let pos = path.rfind('.').unwrap();
-        format!("{}.json", &path[0..pos])
-    } else {
-        // No extension: append .json
-        format!("{}.json", path)
-    }
-}
-
-/// Extension methods for LxApp to handle NavigationBar state
-impl LxApp {
-    /// Get NavigationBar state for a specific page
-    pub fn get_navbar_state(&self, path: &str) -> NavigationBarState {
-        let state = self.state.lock().unwrap();
-        if let Some(page) = state.pages.lock().unwrap().get(path) {
-            // Always read from page state (initialized in create_page)
-            page.get_navbar_state().unwrap_or_default()
-        } else {
-            // No page exists - fallback to JSON
-            NavigationBarState::from_json(self, path)
-        }
-    }
-
-    /// Update navbar state for a specific page
-    pub fn with_navbar_mut<F>(&self, path: &str, f: F) -> bool
-    where
-        F: FnOnce(&mut NavigationBarState),
-    {
-        let state = self.state.lock().unwrap();
-        if let Some(page) = state.pages.lock().unwrap().get(path) {
-            page.get_navbar_state_mut(f).is_some()
-        } else {
-            false
-        }
     }
 }

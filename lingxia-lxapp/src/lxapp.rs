@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::oneshot;
 use tokio::time;
 
+use self::navbar::NavigationBarState;
 use crate::PageLifecycleEvent;
 use crate::app::AppConfig;
 use crate::cache::LxAppCache;
@@ -27,6 +28,7 @@ mod content;
 pub(crate) mod metadata;
 pub use metadata::ReleaseType;
 pub mod navbar;
+pub mod page_config;
 mod scheme;
 mod security;
 pub mod tabbar;
@@ -741,6 +743,14 @@ impl LxApp {
             .unwrap()
             .get(path)
             .cloned()
+    }
+
+
+    /// Get navigation bar state for a page; returns default if page not found.
+    pub fn get_navbar_state(&self, path: &str) -> NavigationBarState {
+        self.get_page(path)
+            .and_then(|page| page.get_navbar_state())
+            .unwrap_or_default()
     }
 
     /// Open a new runtime session for this LxApp instance:

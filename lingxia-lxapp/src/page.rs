@@ -1,6 +1,6 @@
 use crate::appservice::bridge::IncomingMessage;
 use crate::event::PageLifecycleEvent;
-use crate::lxapp::{self, navbar::NavigationBarState};
+use crate::lxapp::{self, navbar::NavigationBarState, page_config::PageConfig};
 use crate::startup::parse_query_string;
 use crate::{LxApp, LxAppError, error, info};
 use http::StatusCode;
@@ -100,7 +100,9 @@ pub struct Page {
 
 impl Page {
     /// Build PageState from JSON config
+    /// PageConfig is the single source of truth for configuration.
     fn build_page_state(lxapp: &lxapp::LxApp, path: &str) -> PageState {
+        let page_config = PageConfig::from_json(lxapp, path);
         PageState {
             event: PageLifecycleEvent::Unknown,
             render_status: PageRenderStatus::Unstarted,
@@ -108,7 +110,7 @@ impl Page {
             on_load_fired: false,
             on_show_fired: false,
             on_ready_fired: false,
-            navbar_state: NavigationBarState::from_json(lxapp, path),
+            navbar_state: page_config.create_navbar_state(),
             query: serde_json::Value::Null,
         }
     }
@@ -226,7 +228,7 @@ impl Page {
             let mut state = self.inner.state.lock().unwrap();
 
             // OnHide and OnUnload are handled exclusively and do not trigger the main event cascade.
-            if event == PageLifecycleEvent::OnHide || event == PageLifecycleEvent::OnUnload {
+            else if event == PageLifecycleEvent::OnHide || event == PageLifecycleEvent::OnUnload {
                 if state.event != event {
                     events_to_fire.push((event, None));
                     state.event = event;
@@ -323,7 +325,7 @@ impl Page {
     }
 
     /// Get navbar state with mutable access (internal use)
-    pub(crate) fn get_navbar_state_mut<F, R>(&self, f: F) -> Option<R>
+    pub fn get_navbar_state_mut<F, R>(&self, f: F) -> Option<R>
     where
         F: FnOnce(&mut NavigationBarState) -> R,
     {
@@ -470,7 +472,8 @@ impl Page {
                     t.set_selected_index(index);
                 });
             }
-            lxapp.with_navbar_mut(&path, |navbar| navbar.set_back_button_visibility(false));
+            // Reset back button visibility for Launch/SwitchTab
+            target_page.get_navbar_state_mut(|navbar| navbar.set_back_button_visibility(false));
         }
 
         // 3. Handle page stack modifications
@@ -560,9 +563,11 @@ impl Page {
 
             // Update NavBar back button visibility based on the new stack size
             let new_stack_size = lxapp.get_page_stack_size();
-            lxapp.with_navbar_mut(&path, |navbar| {
-                navbar.set_back_button_visibility(new_stack_size > 1);
-            });
+            if let Some(dest_page) = lxapp.get_page(&path) {
+                dest_page.get_navbar_state_mut(|navbar| {
+                    navbar.set_back_button_visibility(new_stack_size > 1);
+                });
+            }
 
             (*lxapp.runtime).navigate(
                 self.appid(),

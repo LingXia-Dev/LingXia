@@ -5,7 +5,30 @@ use std::sync::Arc;
 
 /// Check if NavigationBar is currently visible for the current page
 fn is_navbar_visible(lxapp: &Arc<LxApp>, path: &str) -> bool {
-    lxapp.get_navbar_state(path).show_navbar
+    lxapp
+        .get_page(path)
+        .and_then(|page| page.get_navbar_state())
+        .map(|state| state.show_navbar)
+        .unwrap_or(false)
+}
+
+fn update_current_navbar(
+    ctx: JSContext,
+    mutator: impl FnOnce(&Arc<LxApp>, &str) -> bool,
+) -> JSResult<bool> {
+    let lxapp = LxApp::from_ctx(&ctx)?;
+    let current_path = lxapp
+        .peek_current_page()
+        .ok_or_else(|| RongJSError::Error("No current page found".to_string()))?;
+
+    let updated = mutator(&lxapp, &current_path);
+    if updated && is_navbar_visible(&lxapp, &current_path) {
+        if let Err(e) = lxapp.runtime.update_navbar_ui(lxapp.appid.clone()) {
+            eprintln!("Failed to update navbar UI: {}", e);
+            return Ok(false);
+        }
+    }
+    Ok(updated)
 }
 
 /// Options for setNavigationBarTitle
@@ -26,28 +49,12 @@ fn set_navigation_bar_title(
     ctx: JSContext,
     options: SetNavigationBarTitleOptions,
 ) -> JSResult<bool> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-
-    // Get current page path
-    let current_path = lxapp
-        .peek_current_page()
-        .ok_or_else(|| RongJSError::Error("No current page found".to_string()))?;
-
-    // Update navbar state with new title
-    let updated = lxapp.with_navbar_mut(&current_path, |navbar| {
-        navbar.set_title(options.title);
-    });
-
-    if updated && is_navbar_visible(&lxapp, &current_path) {
-        // Notify UI to update only if navbar is visible
-        if let Err(e) = lxapp.runtime.update_navbar_ui(lxapp.appid.clone()) {
-            eprintln!("Failed to update navbar UI: {}", e);
-            return Ok(false);
-        }
-        Ok(true)
-    } else {
-        Ok(updated)
-    }
+    update_current_navbar(ctx, |lxapp, path| {
+        lxapp
+            .get_page(path)
+            .and_then(|page| page.get_navbar_state_mut(|navbar| navbar.set_title(options.title.clone())))
+            .is_some()
+    })
 }
 
 /// Set navigation bar color
@@ -55,62 +62,33 @@ fn set_navigation_bar_color(
     ctx: JSContext,
     options: SetNavigationBarColorOptions,
 ) -> JSResult<bool> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
+    update_current_navbar(ctx, |lxapp, path| {
+        lxapp
+            .get_page(path)
+            .and_then(|page| {
+                page.get_navbar_state_mut(|navbar| {
+                    navbar.set_background_color(options.background_color.clone());
 
-    // Get current page path
-    let current_path = lxapp
-        .peek_current_page()
-        .ok_or_else(|| RongJSError::Error("No current page found".to_string()))?;
-
-    // Update navbar state with new colors
-    let updated = lxapp.with_navbar_mut(&current_path, |navbar| {
-        navbar.set_background_color(options.background_color);
-
-        // Convert front_color to text_style
-        let style = if options.front_color == "#000000" || options.front_color == "black" {
-            "black".to_string()
-        } else {
-            "white".to_string()
-        };
-        navbar.set_text_style(style);
-    });
-
-    if updated && is_navbar_visible(&lxapp, &current_path) {
-        // Notify UI to update only if navbar is visible
-        if let Err(e) = lxapp.runtime.update_navbar_ui(lxapp.appid.clone()) {
-            eprintln!("Failed to update navbar UI: {}", e);
-            return Ok(false);
-        }
-        Ok(true)
-    } else {
-        Ok(updated)
-    }
+                    let style = if options.front_color == "#000000" || options.front_color == "black" {
+                        "black".to_string()
+                    } else {
+                        "white".to_string()
+                    };
+                    navbar.set_text_style(style);
+                })
+            })
+            .is_some()
+    })
 }
 
 /// Hide home button
 fn hide_home_button(ctx: JSContext) -> JSResult<bool> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-
-    // Get current page path
-    let current_path = lxapp
-        .peek_current_page()
-        .ok_or_else(|| RongJSError::Error("No current page found".to_string()))?;
-
-    // Update navbar state to hide home button
-    let updated = lxapp.with_navbar_mut(&current_path, |navbar| {
-        navbar.set_home_button_visibility(false);
-    });
-
-    if updated && is_navbar_visible(&lxapp, &current_path) {
-        // Notify UI to update only if navbar is visible
-        if let Err(e) = lxapp.runtime.update_navbar_ui(lxapp.appid.clone()) {
-            eprintln!("Failed to update navbar UI: {}", e);
-            return Ok(false);
-        }
-        Ok(true)
-    } else {
-        Ok(updated)
-    }
+    update_current_navbar(ctx, |lxapp, path| {
+        lxapp
+            .get_page(path)
+            .and_then(|page| page.get_navbar_state_mut(|navbar| navbar.set_home_button_visibility(false)))
+            .is_some()
+    })
 }
 
 /// Initialize NavigationBar module
