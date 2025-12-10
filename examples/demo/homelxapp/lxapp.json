@@ -39,8 +39,8 @@
       {
         "text": "Components",
         "pagePath": "pages/components/index.tsx",
-        "iconPath": "images/component.png",
-        "selectedIconPath": "images/component.png"
+        "iconPath": "public/component.png",
+        "selectedIconPath": "public/component.png"
       },
       {
         "text": "ToDo",
