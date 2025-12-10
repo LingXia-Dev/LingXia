@@ -2,6 +2,7 @@ package com.lingxia.lxapp
 
 import android.content.Context
 import android.util.Log
+import android.view.MotionEvent
 import android.webkit.WebView as AndroidWebView
 import com.lingxia.lxapp.SameLevel.SameLevelBridge
 import com.lingxia.webview.LingXiaWebView
@@ -25,12 +26,25 @@ class WebView(context: Context) : LingXiaWebView(context) {
         }
     }
 
+    var pullToRefreshCallback: ((MotionEvent) -> Boolean)? = null
+
     override fun initializeWebView(appId: String, path: String) {
         super.initializeWebView(appId, path)
         // Register SameLevel JavaScriptInterface right after WebView init, before content loads
         SameLevelBridge.registerJsInterface(this)
         // Disable overscroll glow effect - native components stay fixed at boundaries
         overScrollMode = OVER_SCROLL_NEVER
+    }
+
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        // Let pull-to-refresh handler intercept first
+        pullToRefreshCallback?.let { callback ->
+            if (callback(event)) {
+                return true // Event consumed by pull-to-refresh
+            }
+        }
+        // Otherwise, let WebView handle it normally
+        return super.onTouchEvent(event)
     }
 
     fun pause() {

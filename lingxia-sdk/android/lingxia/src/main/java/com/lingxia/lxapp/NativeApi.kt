@@ -40,6 +40,7 @@ object NativeApi {
     const val UI_EVENT_CAPSULE_CLICK = 1
     const val UI_EVENT_NAVIGATION_CLICK = 2
     const val UI_EVENT_BACK_PRESS = 3
+    const val UI_EVENT_PULL_DOWN_REFRESH = 4
 
     // UI Event Data Constants
     const val CAPSULE_ACTION_MORE = "more"
@@ -114,6 +115,15 @@ object NativeApi {
      */
     @JvmStatic
     external fun getNavigationBarState(appId: String, path: String): NavigationBarState?
+
+    /**
+     * Check whether pull-to-refresh is enabled for a specific page/path
+     * @param appId The ID of the app
+     * @param path The page path
+     * @return true if enabled, false otherwise
+     */
+    @JvmStatic
+    external fun isPullDownRefreshEnabled(appId: String, path: String): Boolean
 
     /**
      * Notify native layer that a page is being shown

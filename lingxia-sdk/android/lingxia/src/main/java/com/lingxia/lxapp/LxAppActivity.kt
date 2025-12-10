@@ -201,9 +201,10 @@ class LxAppActivity : AppCompatActivity() {
         }
     }
 
-    private lateinit var appId: String
+    internal lateinit var appId: String
     private lateinit var rootContainer: FrameLayout
     private lateinit var webViewContainer: FrameLayout
+    internal var pullToRefreshHelper: PullToRefreshHelper? = null
     private var tabBar: TabBar? = null
     private var navigationBar: NavigationBar? = null
     private var isDestroyed = false
@@ -571,27 +572,40 @@ class LxAppActivity : AppCompatActivity() {
         }
         if (!isDestroyed) {
 
-
             // Ensure view is visible
             view.visibility = View.VISIBLE
 
-            // Add to webview container if not already added
-            if (view.parent != webViewContainer) {
-                // Remove from existing parent if it has one
-                (view.parent as? ViewGroup)?.removeView(view)
+            val existingWrapper = (view.parent as? ViewGroup)?.takeIf { it.parent == webViewContainer }
 
-                // Set proper layout parameters before adding
+            val container = existingWrapper ?: FrameLayout(this).apply {
+                layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+                tag = "current_webview_container"
+
+                if (view.parent != null && view.parent != this) {
+                    (view.parent as? ViewGroup)?.removeView(view)
+                }
                 view.layoutParams = FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT
                 )
+                addView(view)
+            }
 
-                // Add to webview container
-                webViewContainer.addView(view)
+            if (existingWrapper == null) {
+                webViewContainer.addView(container)
+            } else {
+                webViewContainer.bringChildToFront(container)
+                container.tag = "current_webview_container"
             }
 
             // Attach SameLevel bridge for native component overlay
             SameLevelBridge.attachIfNeeded(view)
+
+            ensurePullToRefreshHelper().attachToWebView(view)
+            updatePullToRefreshEnabledForPath(view.getCurrentPath())
 
             // Resume the WebView's activities
             view.resume()
@@ -623,6 +637,7 @@ class LxAppActivity : AppCompatActivity() {
         if (navbarState != null) {
             updateNavigationBar(navbarState, false, true, currentPath)
         }
+        updatePullToRefreshEnabledForPath(currentPath)
 
         // Trigger onPageShow for initial WebView (this is the single place for initial page show)
         if (webView.getAppId() != null && webView.getCurrentPath() != null) {
@@ -637,10 +652,68 @@ class LxAppActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
+            // Use transparent background to respect page configuration
             setBackgroundColor(Color.TRANSPARENT)
         }
+
         if (webViewContainer.parent == null) {
             rootContainer.addView(webViewContainer)
+        }
+
+        ensurePullToRefreshHelper()
+    }
+
+    private fun ensurePullToRefreshHelper(): PullToRefreshHelper {
+        if (pullToRefreshHelper == null) {
+            pullToRefreshHelper = PullToRefreshHelper(this, webViewContainer) { handlePullToRefresh() }
+        }
+        return pullToRefreshHelper!!
+    }
+
+    private fun normalizePath(rawPath: String?): String {
+        if (rawPath.isNullOrEmpty()) return ""
+        return rawPath.substringBefore('?').substringBefore('#')
+    }
+
+    private fun updatePullToRefreshEnabledForPath(path: String?) {
+        val helper = pullToRefreshHelper ?: return
+
+        val normalized = normalizePath(path)
+        if (normalized.isEmpty()) {
+            helper.setEnabled(true)
+            return
+        }
+
+        val enabled = try {
+            NativeApi.isPullDownRefreshEnabled(appId, normalized)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to read pull-to-refresh config for $path: ${e.message}")
+            true // fall back to enabled if config lookup fails
+        }
+        helper.setEnabled(enabled)
+        Log.d(TAG, "Pull-to-refresh ${if (enabled) "enabled" else "disabled"} for $appId:$normalized")
+    }
+
+    private fun handlePullToRefresh() {
+        val helper = pullToRefreshHelper ?: return
+        if (!helper.isEnabled()) {
+            helper.endRefreshing()
+            return
+        }
+
+        val path = normalizePath(currentWebView?.getCurrentPath())
+        if (path.isEmpty()) {
+            helper.endRefreshing()
+            return
+        }
+
+        // Notify Rust layer via on_ui_event
+        try {
+            Log.i(TAG, "Pull-to-refresh: appId=$appId path=$path")
+            NativeApi.onUiEvent(appId, NativeApi.UI_EVENT_PULL_DOWN_REFRESH, path)
+        } catch (e: Exception) {
+            Log.e(TAG, "onUiEvent pull-to-refresh failed: ${e.message}")
+            helper.endRefreshing()
         }
     }
 
@@ -977,15 +1050,21 @@ class LxAppActivity : AppCompatActivity() {
 
     /**
      * Trigger onPageShow for WebView container
+     * 
+     * IMPORTANT: Post to next frame to ensure all UI components (including pullToRefreshHelper)
+     * are fully initialized before JS onShow is triggered
      */
     private fun triggerOnPageShow(container: FrameLayout) {
-        try {
-            val webView = container.getChildAt(0) as? WebView
-            if (webView?.getAppId() != null && webView.getCurrentPath() != null) {
-                NativeApi.onPageShow(webView.getAppId()!!, webView.getCurrentPath()!!)
+        container.post {
+            try {
+                val webView = container.getChildAt(0) as? WebView
+                if (webView?.getAppId() != null && webView.getCurrentPath() != null) {
+                    Log.d(TAG, "Triggering onPageShow for ${webView.getAppId()}:${webView.getCurrentPath()}")
+                    NativeApi.onPageShow(webView.getAppId()!!, webView.getCurrentPath()!!)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to call nativeOnPageShow in performWebViewTransition: ${e.message}")
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to call nativeOnPageShow in performWebViewTransition: ${e.message}")
         }
     }
 
@@ -1030,11 +1109,7 @@ class LxAppActivity : AppCompatActivity() {
                 SameLevelBridge.notifyPageInactive(oldWebView)
             }
 
-            // Get navbar state (use provided or fetch)
-            val actualPageConfig = pageConfig ?: getNavBarState(appId, targetPath)
-
-            // Get navbar state for synchronized animation
-            val navbarState = NativeApi.getNavigationBarState(appId, targetPath)
+            val navbarState = pageConfig ?: getNavBarState(appId, targetPath)
 
             // Continue with webview setup...
             if (newWebView.parent != null) {
@@ -1062,6 +1137,9 @@ class LxAppActivity : AppCompatActivity() {
             }
 
             SameLevelBridge.attachIfNeeded(newWebView)
+
+            ensurePullToRefreshHelper().attachToWebView(newWebView)
+            updatePullToRefreshEnabledForPath(targetPath)
 
             if (oldWebView != newWebView) {
                 SameLevelBridge.notifyPageActive(newWebView)
@@ -1257,6 +1335,7 @@ class LxAppActivity : AppCompatActivity() {
         // Clear WebView container for new app
         webViewContainer.removeAllViews()
         currentWebView = null
+        pullToRefreshHelper?.setEnabled(false)
 
         // Build tab bar configuration for new app (tabbar is dynamic)
         val tabBarConfig = NativeApi.getTabBarState(appId)
