@@ -55,14 +55,13 @@ fn ensure_update_handlers(ctx: &JSContext) -> JSResult<()> {
     })?;
     register_app_handler(ctx, "UpdateReady", ready_handler)?;
 
-    let failed_handler =
-        JSFunc::new(ctx, |ctx: JSContext, _payload: JSObject| -> JSResult<()> {
-            let (_, failed_cb) = callbacks_from_state(&ctx);
-            if let Some(cb) = failed_cb {
-                let _ = cb.call::<_, ()>(None, ());
-            }
-            Ok(())
-        })?;
+    let failed_handler = JSFunc::new(ctx, |ctx: JSContext, _payload: JSObject| -> JSResult<()> {
+        let (_, failed_cb) = callbacks_from_state(&ctx);
+        if let Some(cb) = failed_cb {
+            let _ = cb.call::<_, ()>(None, ());
+        }
+        Ok(())
+    })?;
     register_app_handler(ctx, "UpdateFailed", failed_handler)?;
 
     with_update_state(ctx, |state| state.handlers_registered = true);

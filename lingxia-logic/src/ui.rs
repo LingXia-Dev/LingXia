@@ -5,6 +5,7 @@ mod modal;
 mod navbar;
 mod picker;
 mod popup;
+mod pull_to_refresh;
 mod router;
 mod tabbar;
 mod toast;
@@ -21,5 +22,6 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     router::init(ctx)?;
     picker::init(ctx)?;
     popup::init(ctx)?;
+    pull_to_refresh::init(ctx)?;
     Ok(())
 }

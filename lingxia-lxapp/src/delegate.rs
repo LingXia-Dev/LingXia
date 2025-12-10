@@ -3,7 +3,7 @@ use crate::event::AppServiceEvent;
 use crate::lxapp::LxAppSessionStatus;
 use crate::page::NavigationType;
 use crate::{LxApp, error, info, lxapp};
-use lingxia_platform::AppRuntime;
+use lingxia_platform::{AppRuntime, PullToRefresh};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -299,15 +299,16 @@ impl LxApp {
     /// Handle pull-to-refresh event
     /// data: page path
     fn handle_pull_down_refresh(self: &Arc<Self>, data: String) -> bool {
-        let path = data
-            .take_if(|s| !s.is_empty())
-            .or_else(|| self.peek_current_page());
-        let Some(path) = path else { return false };
-
-        info!("Pull-to-refresh triggered for page: {}", path).with_appid(self.appid.clone());
+        let path = if data.is_empty() {
+            match self.peek_current_page() {
+                Some(p) => p,
+                None => return false,
+            }
+        } else {
+            data
+        };
 
         if !self.is_pull_down_refresh_enabled(&path) {
-            info!("Pull-to-refresh not enabled for page: {}", path).with_appid(self.appid.clone());
             if let Err(e) = self.runtime.stop_pull_down_refresh(&self.appid, &path) {
                 error!("Failed to stop pull-to-refresh: {}", e).with_appid(self.appid.clone());
             }

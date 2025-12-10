@@ -52,7 +52,9 @@ fn set_navigation_bar_title(
     update_current_navbar(ctx, |lxapp, path| {
         lxapp
             .get_page(path)
-            .and_then(|page| page.get_navbar_state_mut(|navbar| navbar.set_title(options.title.clone())))
+            .and_then(|page| {
+                page.get_navbar_state_mut(|navbar| navbar.set_title(options.title.clone()))
+            })
             .is_some()
     })
 }
@@ -69,11 +71,12 @@ fn set_navigation_bar_color(
                 page.get_navbar_state_mut(|navbar| {
                     navbar.set_background_color(options.background_color.clone());
 
-                    let style = if options.front_color == "#000000" || options.front_color == "black" {
-                        "black".to_string()
-                    } else {
-                        "white".to_string()
-                    };
+                    let style =
+                        if options.front_color == "#000000" || options.front_color == "black" {
+                            "black".to_string()
+                        } else {
+                            "white".to_string()
+                        };
                     navbar.set_text_style(style);
                 })
             })
@@ -86,7 +89,9 @@ fn hide_home_button(ctx: JSContext) -> JSResult<bool> {
     update_current_navbar(ctx, |lxapp, path| {
         lxapp
             .get_page(path)
-            .and_then(|page| page.get_navbar_state_mut(|navbar| navbar.set_home_button_visibility(false)))
+            .and_then(|page| {
+                page.get_navbar_state_mut(|navbar| navbar.set_home_button_visibility(false))
+            })
             .is_some()
     })
 }
