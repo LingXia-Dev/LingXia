@@ -745,6 +745,12 @@ impl LxApp {
             .cloned()
     }
 
+    /// Check if pull-to-refresh is enabled for a specific page
+    pub fn is_pull_down_refresh_enabled(&self, path: &str) -> bool {
+        self.get_page(path)
+            .map(|page| page.is_pull_down_refresh_enabled())
+            .unwrap_or(false)
+    }
 
     /// Get navigation bar state for a page; returns default if page not found.
     pub fn get_navbar_state(&self, path: &str) -> NavigationBarState {
@@ -1363,6 +1369,14 @@ pub fn get_current_lxapp() -> (String, String) {
         return (current_appid, current_path);
     }
     (String::new(), String::new())
+}
+
+/// Check if pull-to-refresh is enabled for a specific page
+/// Returns false if the app or page is not found
+pub fn is_pull_down_refresh_enabled(appid: &str, path: &str) -> bool {
+    try_get(appid)
+        .map(|lxapp| lxapp.is_pull_down_refresh_enabled(path))
+        .unwrap_or(false)
 }
 
 /// Check whether a given appid is currently opened (in-memory and marked opened).

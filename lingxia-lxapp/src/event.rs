@@ -76,6 +76,7 @@ pub enum PageServiceEvent {
     OnReady,
     OnHide,
     OnUnload,
+    OnPullDownRefresh,
 }
 
 impl PageServiceEvent {
@@ -86,6 +87,7 @@ impl PageServiceEvent {
             PageServiceEvent::OnReady => "onReady",
             PageServiceEvent::OnHide => "onHide",
             PageServiceEvent::OnUnload => "onUnload",
+            PageServiceEvent::OnPullDownRefresh => "onPullDownRefresh",
         }
     }
 
@@ -96,6 +98,7 @@ impl PageServiceEvent {
             "onReady" => Some(PageServiceEvent::OnReady),
             "onHide" => Some(PageServiceEvent::OnHide),
             "onUnload" => Some(PageServiceEvent::OnUnload),
+            "onPullDownRefresh" => Some(PageServiceEvent::OnPullDownRefresh),
             _ => None,
         }
     }
@@ -115,6 +118,7 @@ pub enum PageLifecycleEvent {
     OnShow,
     OnHide,
     OnUnload,
+    OnPullDownRefresh,
     Unknown,
 }
 
@@ -126,6 +130,7 @@ impl PageLifecycleEvent {
             PageLifecycleEvent::OnShow => "onShow",
             PageLifecycleEvent::OnHide => "onHide",
             PageLifecycleEvent::OnUnload => "onUnload",
+            PageLifecycleEvent::OnPullDownRefresh => "onPullDownRefresh",
             PageLifecycleEvent::Unknown => "unknown",
         }
     }

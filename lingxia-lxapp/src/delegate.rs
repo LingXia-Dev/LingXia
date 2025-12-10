@@ -18,6 +18,8 @@ pub enum UiEventType {
     NavigationClick = 2,
     /// System back button pressed
     BackPress = 3,
+    /// Pull-to-refresh triggered by user
+    PullDownRefresh = 4,
 }
 
 pub trait LxAppDelegate {
@@ -154,6 +156,7 @@ impl LxAppDelegate for LxApp {
             UiEventType::CapsuleClick => self.handle_capsule_click(data),
             UiEventType::NavigationClick => self.handle_navigation_click(data),
             UiEventType::BackPress => self.handle_back_press(),
+            UiEventType::PullDownRefresh => self.handle_pull_down_refresh(data),
         }
     }
 }
@@ -291,5 +294,35 @@ impl LxApp {
             return true;
         }
         false
+    }
+
+    /// Handle pull-to-refresh event
+    /// data: page path
+    fn handle_pull_down_refresh(self: &Arc<Self>, data: String) -> bool {
+        let path = data
+            .take_if(|s| !s.is_empty())
+            .or_else(|| self.peek_current_page());
+        let Some(path) = path else { return false };
+
+        info!("Pull-to-refresh triggered for page: {}", path).with_appid(self.appid.clone());
+
+        if !self.is_pull_down_refresh_enabled(&path) {
+            info!("Pull-to-refresh not enabled for page: {}", path).with_appid(self.appid.clone());
+            if let Err(e) = self.runtime.stop_pull_down_refresh(&self.appid, &path) {
+                error!("Failed to stop pull-to-refresh: {}", e).with_appid(self.appid.clone());
+            }
+            return false;
+        }
+
+        if let Some(page) = self.get_page(&path) {
+            page.dispatch_lifecycle_event(PageLifecycleEvent::OnPullDownRefresh);
+            true
+        } else {
+            error!("Page not found for pull-to-refresh: {}", path).with_appid(self.appid.clone());
+            if let Err(e) = self.runtime.stop_pull_down_refresh(&self.appid, &path) {
+                error!("Failed to stop pull-to-refresh: {}", e).with_appid(self.appid.clone());
+            }
+            false
+        }
     }
 }

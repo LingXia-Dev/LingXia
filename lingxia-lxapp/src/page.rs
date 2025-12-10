@@ -53,6 +53,8 @@ pub struct PageState {
     on_ready_fired: bool,
     // Navigation bar state
     pub(crate) navbar_state: NavigationBarState,
+    // Pull-to-refresh enabled flag
+    pub(crate) enable_pull_down_refresh: bool,
     // Query parameters
     pub(crate) query: serde_json::Value,
 }
@@ -111,6 +113,7 @@ impl Page {
             on_show_fired: false,
             on_ready_fired: false,
             navbar_state: page_config.create_navbar_state(),
+            enable_pull_down_refresh: page_config.is_pull_down_refresh_enabled(),
             query: serde_json::Value::Null,
         }
     }
@@ -227,6 +230,10 @@ impl Page {
         {
             let mut state = self.inner.state.lock().unwrap();
 
+            // OnPullDownRefresh is a simple event that fires immediately without state tracking
+            if event == PageLifecycleEvent::OnPullDownRefresh {
+                events_to_fire.push((event, None));
+            }
             // OnHide and OnUnload are handled exclusively and do not trigger the main event cascade.
             else if event == PageLifecycleEvent::OnHide || event == PageLifecycleEvent::OnUnload {
                 if state.event != event {
@@ -295,6 +302,9 @@ impl Page {
                     PageLifecycleEvent::OnReady => crate::event::PageServiceEvent::OnReady,
                     PageLifecycleEvent::OnHide => crate::event::PageServiceEvent::OnHide,
                     PageLifecycleEvent::OnUnload => crate::event::PageServiceEvent::OnUnload,
+                    PageLifecycleEvent::OnPullDownRefresh => {
+                        crate::event::PageServiceEvent::OnPullDownRefresh
+                    }
                     PageLifecycleEvent::Unknown => {
                         // Skip unknown
                         continue;
@@ -443,6 +453,16 @@ impl Page {
     /// Get the last active time for LRU eviction
     pub(crate) fn get_last_active_time(&self) -> Option<Instant> {
         self.inner.last_active_time.lock().ok().map(|time| *time)
+    }
+
+    /// Check if pull-to-refresh is enabled for this page
+    pub fn is_pull_down_refresh_enabled(&self) -> bool {
+        self.inner
+            .state
+            .lock()
+            .ok()
+            .map(|state| state.enable_pull_down_refresh)
+            .unwrap_or(false)
     }
 
     /// Check if this page is a TabBar page
