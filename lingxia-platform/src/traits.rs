@@ -1,6 +1,7 @@
 pub mod core;
 pub mod media_interaction;
 pub mod media_runtime;
+pub mod pull_to_refresh;
 pub mod video_player;
 
 pub use core::{
@@ -15,6 +16,7 @@ pub use media_interaction::{
     ScanType,
 };
 pub use media_runtime::{CompressImageRequest, ImageInfo, MediaRuntime};
+pub use pull_to_refresh::PullToRefresh;
 pub use video_player::{
     VideoPlayerCommand, VideoPlayerHandle, VideoPlayerHandleImpl, VideoPlayerManager,
 };

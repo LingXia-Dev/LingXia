@@ -80,6 +80,7 @@ pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> j
         init_cached_java_class(&mut env, CachedClass::LxAppPicker);
         init_cached_java_class(&mut env, CachedClass::LxAppDocument);
         init_cached_java_class(&mut env, CachedClass::ComponentRouter);
+        init_cached_java_class(&mut env, CachedClass::LxAppPullToRefresh);
     }
 
     // Initialize JNI environment
@@ -214,8 +215,11 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getNavigationBarState<'a
         return JObject::null();
     };
 
-    // Get navigation bar state using new API
-    let nav_state = lxapp.get_navbar_state(&path);
+    // Get navigation bar state from page
+    let nav_state = lxapp
+        .get_page(&path)
+        .and_then(|page| page.get_navbar_state())
+        .unwrap_or_default();
 
     // Find the NavigationBarState class
     let nav_bar_class = match env.find_class("com/lingxia/lxapp/NavigationBarState") {
@@ -259,6 +263,24 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getNavigationBarState<'a
     }
 }
 
+/// Check if pull-to-refresh is enabled for a specific page
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_isPullDownRefreshEnabled<'a>(
+    mut env: JNIEnv<'a>,
+    _class: JClass<'a>,
+    appid: JString<'a>,
+    path: JString<'a>,
+) -> jboolean {
+    let appid: String = env.get_string(&appid).unwrap().into();
+    let path: String = env.get_string(&path).unwrap().into();
+
+    if lxapp::is_pull_down_refresh_enabled(&appid, &path) {
+        1
+    } else {
+        0
+    }
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn Java_com_lingxia_lxapp_NativeApi_onUiEvent(
     mut env: JNIEnv,
@@ -275,6 +297,7 @@ pub extern "C" fn Java_com_lingxia_lxapp_NativeApi_onUiEvent(
         1 => UiEventType::CapsuleClick,
         2 => UiEventType::NavigationClick,
         3 => UiEventType::BackPress,
+        4 => UiEventType::PullDownRefresh,
         _ => {
             error!("Unknown UI event type: {}", event_type);
             return 0;
