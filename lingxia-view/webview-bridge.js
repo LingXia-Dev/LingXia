@@ -658,7 +658,7 @@
     }
   }
 
-  // Expose SameLevel helpers for external packages (e.g., @lingxia/view)
+  // Expose SameLevel helpers for external packages (e.g., lingxia-ui)
   LingXiaBridge.sameLevel = {
     send: sendSameLevelMessage,
     hasHandler: hasSameLevelHandler,

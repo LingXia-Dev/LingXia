@@ -1,5 +1,7 @@
 # lingxia-view
 
+> Published on npm as `lingxia-ui`.
+
 ## Contents
 
 - `404.html` - Error page template

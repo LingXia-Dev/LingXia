@@ -2,7 +2,7 @@ import {
   generateTodoId,
   validateTodoText,
   getCurrentTimestamp,
-} from "../../src/lib/todo-utils.js";
+} from "../../shared/lib/todo-utils.js";
 
 function getInitialData() {
   return {

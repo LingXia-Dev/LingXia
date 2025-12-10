@@ -21,11 +21,3 @@ jni = "0.21.1"
 napi-ohos = { workspace = true }
 napi-derive-ohos = { workspace = true }
 
-# Cloud provider (optional)
-[dependencies.lingxia-cloud]
-path = "../../lingxia-cloud"
-optional = true
-
-[features]
-default = []
-cloud = ["lingxia-cloud"]

@@ -1,6 +1,6 @@
 import React from 'react';
 import '../../tailwind.css';
-import { LxVideo } from '@lingxia/view/react';
+import { LxVideo } from 'lingxia-ui/react';
 
 const SOURCE_OPTIONS = [
   { key: 'album', label: 'Album' },

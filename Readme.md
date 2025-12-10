@@ -15,7 +15,7 @@ LingXia/
 ├── lingxia-lxapp/      # Core runtime engine with JS execution
 ├── lingxia-sdk/        # Platform-specific native SDKs
 ├── lingxia-webview/    # WebView integration layer
-├── lingxia-view/       # Static web assets and bridge scripts
+├── lingxia-view/       # Static web assets and bridge scripts (npm: lingxia-ui)
 ├── lingxia-builder/    # Build tools and utilities
 └── examples/           # Sample applications and demos
 ```
@@ -27,4 +27,3 @@ LingXia/
 - **macOS** - Native macOS applications with JavaScriptCore
 - **Android** - Android applications with QuickJS
 - **HarmonyOS** - OpenHarmony applications with QuickJS
-
