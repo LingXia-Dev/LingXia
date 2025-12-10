@@ -9,6 +9,7 @@ mod ffi;
 mod location;
 mod media;
 mod popup;
+mod pull_to_refresh;
 mod resources;
 mod ui_update;
 mod user_feedback;

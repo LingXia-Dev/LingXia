@@ -187,6 +187,13 @@ mod bridge {
 
         #[swift_bridge(swift_name = "LxAppVideo.dispatchVideoCommand")]
         fn dispatch_video_command(component_id: &str, name: &str, params_json: &str) -> bool;
+
+        // Pull-to-refresh functions
+        #[swift_bridge(swift_name = "LxApp.startPullDownRefresh")]
+        fn start_pull_down_refresh(appid: &str, path: &str) -> bool;
+
+        #[swift_bridge(swift_name = "LxApp.stopPullDownRefresh")]
+        fn stop_pull_down_refresh(appid: &str, path: &str) -> bool;
     }
 }
 
@@ -195,7 +202,7 @@ pub use bridge::{
     ActionSheetOptions, ModalOptions, PickerOptions, PopupPositionBridge, ToastIcon, ToastOptions,
     ToastPosition, close_lxapp, hide_popup, hide_toast, launch_with_url, navigate, open_document,
     open_lxapp, preview_media, show_action_sheet, show_modal, show_picker, show_popup, show_toast,
-    update_navbar_ui, update_tabbar_ui,
+    start_pull_down_refresh, stop_pull_down_refresh, update_navbar_ui, update_tabbar_ui,
 };
 #[cfg(target_os = "ios")]
 #[allow(unused_imports)]

@@ -16,6 +16,7 @@ public struct LxAppUIEvent {
     public static var capsuleClick: UiEventType { UiEventType.CapsuleClick }
     public static var navigationClick: UiEventType { UiEventType.NavigationClick }
     public static var backPress: UiEventType { UiEventType.BackPress }
+    public static var pullDownRefresh: UiEventType { UiEventType.PullDownRefresh }
 
     // UI Event Data Constants
     public static let capsuleActionMore = "more"

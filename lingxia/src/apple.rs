@@ -84,6 +84,7 @@ mod bridge {
         CapsuleClick,
         NavigationClick,
         BackPress,
+        PullDownRefresh,
     }
 
     // Current LxApp info from Rust stack
@@ -138,6 +139,9 @@ mod bridge {
 
         #[swift_bridge(swift_name = "onCallback")]
         fn on_callback(id: u64, success: bool, data: &str) -> bool;
+
+        #[swift_bridge(swift_name = "isPullDownRefreshEnabled")]
+        fn is_pull_down_refresh_enabled(appid: &str, path: &str) -> bool;
     }
 }
 
@@ -226,6 +230,7 @@ pub fn on_ui_event(appid: &str, event_type: self::bridge::UiEventType, data: &st
         self::bridge::UiEventType::CapsuleClick => UiEventType::CapsuleClick,
         self::bridge::UiEventType::NavigationClick => UiEventType::NavigationClick,
         self::bridge::UiEventType::BackPress => UiEventType::BackPress,
+        self::bridge::UiEventType::PullDownRefresh => UiEventType::PullDownRefresh,
     };
 
     lxapp::try_get(appid)
@@ -388,4 +393,9 @@ pub fn on_push_token_received(token: &str) -> i32 {
 /// Callback from platform (called from Swift/Objective-C)
 pub fn on_callback(id: u64, success: bool, data: &str) -> bool {
     invoke_callback(id, success, data.to_string())
+}
+
+/// Check if pull-down refresh is enabled for a specific page
+pub fn is_pull_down_refresh_enabled(appid: &str, path: &str) -> bool {
+    lxapp::is_pull_down_refresh_enabled(appid, path)
 }

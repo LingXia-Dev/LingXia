@@ -24,13 +24,14 @@ public class LxAppViewController: UIViewController, ObservableObject {
     public var currentTabBar: LingXiaTabBar?
     private var cancellables = Set<AnyCancellable>()
     private var backEdgePanGesture: UIScreenEdgePanGestureRecognizer?
+    private var pullToRefreshHelper: PullToRefreshHelper?
 
     // Store pending navigation state for deferred NavigationBar initialization
     private var pendingNavigationState: (appId: String, path: String)?
     nonisolated(unsafe) private var closeAppObserver: NSObjectProtocol?
     nonisolated(unsafe) private var tabBarObserver: NSObjectProtocol?
 
-    private func getCurrentWebView() -> WKWebView? {
+    internal func getCurrentWebView() -> WKWebView? {
         return LxAppCore.getCurrentWebView()
     }
 
@@ -377,9 +378,9 @@ public class LxAppViewController: UIViewController, ObservableObject {
             // Always trigger onPageShow for page content changes, even if same WebView
             lingxia.onPageShow(appId, path)
 
-            // Update UI components after onPageShow
             updateNavigationBar(appId: appId, path: path)
             updateTabBar(for: appId, path: path)
+            updatePullToRefreshForCurrentPage()
 
             return
         }
@@ -423,9 +424,9 @@ public class LxAppViewController: UIViewController, ObservableObject {
         // Update current app state AFTER successful attach/switch
         LxAppCore.setCurrentPath(path)
 
-        // Update UI components after WebView attachment and onPageShow
         updateNavigationBar(appId: appId, path: path)
         updateTabBar(for: appId, path: path)
+        updatePullToRefreshForCurrentPage()
     }
 
     /// Calculate the correct top offset for a WebView based on the target page's NavigationBar state
@@ -602,8 +603,10 @@ public class LxAppViewController: UIViewController, ObservableObject {
     }
 
     private func configureWebView(_ webView: WKWebView, transparent: Bool) {
-        let backgroundColor = transparent ? UIColor.clear : UIColor.white
-        let isOpaque = !transparent
+        // Use fixed white to prevent dark mode from turning background black (mismatch with web content)
+        // Also force opaque white even for "transparent" mode (Custom Nav), to prevent black system background from showing
+        let backgroundColor = UIColor(white: 1.0, alpha: 1.0)
+        let isOpaque = true
 
         // Configure WebView
         webView.backgroundColor = backgroundColor
@@ -621,6 +624,32 @@ public class LxAppViewController: UIViewController, ObservableObject {
         webView.scrollView.indicatorStyle = .default
         webView.scrollView.showsVerticalScrollIndicator = true
         webView.scrollView.showsHorizontalScrollIndicator = true
+    }
+
+    private func handlePullToRefresh() {
+        guard let appId = LxAppCore.currentAppId else {
+            pullToRefreshHelper?.endRefreshing()
+            return
+        }
+
+        let currentPath = getCurrentPath()
+        let _ = onUiEvent(appId, LxAppUIEvent.pullDownRefresh, currentPath)
+    }
+
+    private func normalizePath(_ rawPath: String) -> String {
+        if rawPath.isEmpty { return "" }
+        // Remove query params and hash
+        if let queryIndex = rawPath.firstIndex(of: "?") {
+            return String(rawPath[..<queryIndex])
+        }
+        if let hashIndex = rawPath.firstIndex(of: "#") {
+            return String(rawPath[..<hashIndex])
+        }
+        return rawPath
+    }
+
+    private func isPullDownRefreshEnabled(appId: String, path: String) -> Bool {
+        return lingxia.isPullDownRefreshEnabled(appId, path)
     }
 
     private func applyTabBarLayoutParams(tabBar: LingXiaTabBar, config: TabBar, for appId: String) {
@@ -763,6 +792,47 @@ public class LxAppViewController: UIViewController, ObservableObject {
     /// Get current path for the active LxApp - always returns definitive value from Rust
     public func getCurrentPath() -> String {
         return LxAppCore.getCurrentPath()
+    }
+
+    private func setupPullToRefresh(for webView: WKWebView, appId: String, path: String) {
+        let normalizedPath = normalizePath(path)
+        let enabled = isPullDownRefreshEnabled(appId: appId, path: normalizedPath)
+
+        os_log("setupPullToRefresh: appId=%@, path=%@, enabled=%@", log: Self.log, type: .info, appId, normalizedPath, enabled ? "true" : "false")
+
+        if enabled {
+            // Only recreate helper if it doesn't exist or is attached to a different WebView
+            // This prevents killing active animations during redundant configuration calls
+            if pullToRefreshHelper == nil || pullToRefreshHelper?.webView != webView {
+                pullToRefreshHelper = PullToRefreshHelper(webView: webView) { [weak self] in
+                    self?.handlePullToRefresh()
+                }
+            }
+            pullToRefreshHelper?.setEnabled(true)
+        } else {
+            // Disable pull-to-refresh
+            pullToRefreshHelper?.setEnabled(false)
+            pullToRefreshHelper = nil // Clear it to allow garbage collection
+        }
+    }
+
+    /// Update pull-to-refresh for the current page (called after navigation)
+    private func updatePullToRefreshForCurrentPage() {
+        guard let appId = LxAppCore.currentAppId,
+              let webView = getCurrentWebView() else { return }
+
+        let currentPath = getCurrentPath()
+        setupPullToRefresh(for: webView, appId: appId, path: currentPath)
+    }
+
+    /// Start pull-to-refresh programmatically (called from API)
+    internal func startPullDownRefreshProgrammatically() {
+        pullToRefreshHelper?.startRefreshing()
+    }
+
+    /// Stop pull-to-refresh programmatically (called from API)
+    internal func stopPullDownRefreshProgrammatically() {
+        pullToRefreshHelper?.endRefreshing()
     }
 
     private func setupGlobalNavigationBar() {

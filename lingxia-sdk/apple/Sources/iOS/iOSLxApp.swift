@@ -11,7 +11,7 @@ import UserNotifications
 @MainActor
 public class iOSLxApp {
     nonisolated private static let log = OSLog(subsystem: "LingXia", category: "iOSLxApp")
-    private static var instance: iOSLxApp?
+    nonisolated(unsafe) private static var instance: iOSLxApp?
     private let context: UIApplication
 
     /// Single manager instance for all LxApps
@@ -26,6 +26,11 @@ public class iOSLxApp {
         guard let instance = instance else {
             fatalError("iOSLxApp not initialized")
         }
+        return instance
+    }
+    
+    /// Gets the singleton instance in a non-isolated context (for FFI bridges)
+    nonisolated static func getInstanceUnsafe() -> iOSLxApp? {
         return instance
     }
 
@@ -208,3 +213,41 @@ extension iOSLxApp {
 }
 
 #endif
+
+// MARK: - Pull-to-Refresh Bridge Functions
+
+extension LxApp {
+    /// Start pull-to-refresh animation programmatically
+    @objc nonisolated public static func startPullDownRefresh(appid: RustStr, path: RustStr) -> Bool {
+        let appidStr = appid.toString()
+        let pathStr = path.toString()
+        
+        DispatchQueue.main.async {
+            // Access instance through a non-isolated path
+            guard let instance = iOSLxApp.getInstanceUnsafe() else { return }
+            guard let manager = instance.currentLxAppManager else { return }
+            
+            manager.startPullDownRefreshProgrammatically()
+            
+            os_log("startPullDownRefresh called for %@:%@", log: OSLog(subsystem: "LingXia", category: "PullToRefresh"), type: .info, appidStr, pathStr)
+        }
+        return true
+    }
+
+    /// Stop pull-to-refresh animation
+    @objc nonisolated public static func stopPullDownRefresh(appid: RustStr, path: RustStr) -> Bool {
+        let appidStr = appid.toString()
+        let pathStr = path.toString()
+        
+        DispatchQueue.main.async {
+            // Access instance through a non-isolated path
+            guard let instance = iOSLxApp.getInstanceUnsafe() else { return }
+            guard let manager = instance.currentLxAppManager else { return }
+            
+            manager.stopPullDownRefreshProgrammatically()
+            
+            os_log("stopPullDownRefresh called for %@:%@", log: OSLog(subsystem: "LingXia", category: "PullToRefresh"), type: .info, appidStr, pathStr)
+        }
+        return true
+    }
+}

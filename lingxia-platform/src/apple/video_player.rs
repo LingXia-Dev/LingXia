@@ -37,7 +37,7 @@ impl VideoPlayerManager for Platform {
 #[cfg(target_os = "ios")]
 fn map_command_to_ios(command: VideoPlayerCommand) -> (String, String) {
     const EMPTY: &str = "{}";
-    
+
     match command {
         VideoPlayerCommand::Play => ("play".into(), EMPTY.into()),
         VideoPlayerCommand::Pause => ("pause".into(), EMPTY.into()),
