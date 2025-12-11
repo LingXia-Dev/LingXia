@@ -1,7 +1,7 @@
 //! Apple platform device implementation
 use super::Platform;
 use crate::error::PlatformError;
-use crate::traits::Device;
+use crate::traits::{Device, DeviceHardware, DeviceSecureStore};
 use crate::{DeviceInfo, ScreenInfo};
 
 #[cfg(target_os = "ios")]
@@ -483,4 +483,274 @@ unsafe fn main_dispatch_queue() -> DispatchQueue {
     }
 
     std::ptr::addr_of!(_dispatch_main_q) as *const _ as DispatchQueue
+}
+
+impl DeviceSecureStore for Platform {
+    fn secure_store_read(&self, key: &str) -> Result<Option<Vec<u8>>, PlatformError> {
+        keychain_read(key)
+    }
+
+    fn secure_store_write(&self, key: &str, value: &[u8]) -> Result<(), PlatformError> {
+        keychain_write(key, value)
+    }
+
+    fn secure_store_delete(&self, key: &str) -> Result<(), PlatformError> {
+        keychain_delete(key)
+    }
+}
+
+impl DeviceHardware for Platform {
+    fn get_memory_info(&self) -> Result<u64, PlatformError> {
+        get_physical_memory()
+    }
+
+    fn get_cpu_count(&self) -> usize {
+        use std::mem;
+
+        // Use sysctl hw.physicalcpu (or hw.ncpu) to get stable core count
+        unsafe extern "C" {
+            fn sysctlbyname(
+                name: *const i8,
+                oldp: *mut std::ffi::c_void,
+                oldlenp: *mut usize,
+                newp: *mut std::ffi::c_void,
+                newlen: usize,
+            ) -> i32;
+        }
+
+        let mut count: i32 = 0;
+        let mut size = mem::size_of::<i32>();
+
+        // Try hw.physicalcpu first (physical cores, stable)
+        let name = b"hw.physicalcpu\0";
+        let res = unsafe {
+            sysctlbyname(
+                name.as_ptr() as *const i8,
+                &mut count as *mut i32 as *mut std::ffi::c_void,
+                &mut size,
+                std::ptr::null_mut(),
+                0,
+            )
+        };
+
+        if res == 0 && count > 0 {
+            return count as usize;
+        }
+
+        // Fallback to hw.ncpu
+        let name = b"hw.ncpu\0";
+        let res = unsafe {
+            sysctlbyname(
+                name.as_ptr() as *const i8,
+                &mut count as *mut i32 as *mut std::ffi::c_void,
+                &mut size,
+                std::ptr::null_mut(),
+                0,
+            )
+        };
+
+        if res == 0 && count > 0 {
+            return count as usize;
+        }
+
+        // Fallback to 1 for stability
+        1
+    }
+
+    fn get_storage_total_bytes(&self) -> Result<u64, PlatformError> {
+        get_total_storage_bytes()
+    }
+}
+
+// ============================================================================
+// Keychain Implementation
+// ============================================================================
+
+#[cfg(any(target_os = "ios", target_os = "macos"))]
+const KEYCHAIN_SERVICE: &str = "com.lingxia.sdk";
+
+#[cfg(any(target_os = "ios", target_os = "macos"))]
+fn keychain_read(key: &str) -> Result<Option<Vec<u8>>, PlatformError> {
+    use security_framework::passwords::get_generic_password;
+
+    match get_generic_password(KEYCHAIN_SERVICE, key) {
+        Ok(data) => Ok(Some(data.to_vec())),
+        Err(e) if e.code() == -25300 => Ok(None), // errSecItemNotFound
+        Err(e) => Err(PlatformError::Platform(format!(
+            "Keychain read failed: {}",
+            e
+        ))),
+    }
+}
+
+#[cfg(any(target_os = "ios", target_os = "macos"))]
+fn keychain_write(key: &str, value: &[u8]) -> Result<(), PlatformError> {
+    use security_framework::passwords::{delete_generic_password, set_generic_password};
+
+    // Delete existing item first (if any)
+    let _ = delete_generic_password(KEYCHAIN_SERVICE, key);
+
+    set_generic_password(KEYCHAIN_SERVICE, key, value)
+        .map_err(|e| PlatformError::Platform(format!("Keychain write failed: {}", e)))
+}
+
+#[cfg(any(target_os = "ios", target_os = "macos"))]
+fn keychain_delete(key: &str) -> Result<(), PlatformError> {
+    use security_framework::passwords::delete_generic_password;
+
+    match delete_generic_password(KEYCHAIN_SERVICE, key) {
+        Ok(()) => Ok(()),
+        Err(e) if e.code() == -25300 => Ok(()), // errSecItemNotFound - not an error
+        Err(e) => Err(PlatformError::Platform(format!(
+            "Keychain delete failed: {}",
+            e
+        ))),
+    }
+}
+
+#[cfg(not(any(target_os = "ios", target_os = "macos")))]
+fn keychain_read(_key: &str) -> Result<Option<Vec<u8>>, PlatformError> {
+    Err(PlatformError::Platform(
+        "Keychain not available on this platform".to_string(),
+    ))
+}
+
+#[cfg(not(any(target_os = "ios", target_os = "macos")))]
+fn keychain_write(_key: &str, _value: &[u8]) -> Result<(), PlatformError> {
+    Err(PlatformError::Platform(
+        "Keychain not available on this platform".to_string(),
+    ))
+}
+
+#[cfg(not(any(target_os = "ios", target_os = "macos")))]
+fn keychain_delete(_key: &str) -> Result<(), PlatformError> {
+    Err(PlatformError::Platform(
+        "Keychain not available on this platform".to_string(),
+    ))
+}
+
+// ============================================================================
+// Hardware Info Implementation
+// ============================================================================
+
+#[cfg(any(target_os = "ios", target_os = "macos"))]
+fn get_physical_memory() -> Result<u64, PlatformError> {
+    use std::mem;
+
+    unsafe extern "C" {
+        fn sysctl(
+            name: *const i32,
+            namelen: u32,
+            oldp: *mut std::ffi::c_void,
+            oldlenp: *mut usize,
+            newp: *mut std::ffi::c_void,
+            newlen: usize,
+        ) -> i32;
+    }
+
+    // CTL_HW = 6, HW_MEMSIZE = 24
+    // Note: This returns the physical memory available to the OS.
+    // On iOS/SoC devices, this may be less than the advertised RAM (e.g. ~3.76GB on a 4GB device)
+    // because some memory is reserved for hardware (GPU, Secure Enclave, etc.).
+    let mib: [i32; 2] = [6, 24];
+    let mut mem_size: u64 = 0;
+    let mut size = mem::size_of::<u64>();
+
+    let result = unsafe {
+        sysctl(
+            mib.as_ptr(),
+            2,
+            &mut mem_size as *mut u64 as *mut std::ffi::c_void,
+            &mut size,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+
+    if result == 0 {
+        Ok(mem_size)
+    } else {
+        Err(PlatformError::Platform(
+            "Failed to get physical memory".to_string(),
+        ))
+    }
+}
+
+#[cfg(not(any(target_os = "ios", target_os = "macos")))]
+fn get_physical_memory() -> Result<u64, PlatformError> {
+    Err(PlatformError::Platform(
+        "get_physical_memory not implemented".to_string(),
+    ))
+}
+
+#[cfg(any(target_os = "ios", target_os = "macos"))]
+fn get_total_storage_bytes() -> Result<u64, PlatformError> {
+    #[cfg(target_os = "ios")]
+    {
+        use objc2::{ClassType, msg_send};
+        use objc2_foundation::{NSDictionary, NSFileManager, NSString};
+
+        unsafe {
+            let file_manager: *mut NSFileManager =
+                msg_send![NSFileManager::class(), defaultManager];
+            if file_manager.is_null() {
+                return Err(PlatformError::Platform(
+                    "Failed to get NSFileManager".to_string(),
+                ));
+            }
+
+            // Get attributes of root filesystem
+            let path = NSString::from_str("/");
+            let attrs: *mut NSDictionary<NSString, objc2_foundation::NSObject> = msg_send![file_manager, attributesOfFileSystemForPath: &*path, error: std::ptr::null_mut::<*mut objc2_foundation::NSError>()];
+
+            if attrs.is_null() {
+                return Err(PlatformError::Platform(
+                    "Failed to get filesystem attributes".to_string(),
+                ));
+            }
+
+            let size_key = NSString::from_str("NSFileSystemSize");
+            let size_obj: *mut objc2_foundation::NSNumber =
+                msg_send![attrs, objectForKey: &*size_key];
+
+            if size_obj.is_null() {
+                return Err(PlatformError::Platform(
+                    "Failed to get filesystem size".to_string(),
+                ));
+            }
+
+            let total_bytes: u64 = msg_send![size_obj, unsignedLongLongValue];
+            Ok(total_bytes)
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        use std::process::Command;
+
+        let output = Command::new("df")
+            .arg("-k")
+            .arg("/")
+            .output()
+            .map_err(|e| PlatformError::Platform(format!("Failed to run df: {}", e)))?;
+
+        if !output.status.success() {
+            return Err(PlatformError::Platform("df command failed".to_string()));
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        for line in stdout.lines().skip(1) {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 2 {
+                if let Ok(kb) = parts[1].parse::<u64>() {
+                    let total_bytes = kb * 1024;
+                    return Ok(total_bytes);
+                }
+            }
+        }
+
+        Err(PlatformError::Platform(
+            "Failed to parse df output".to_string(),
+        ))
+    }
 }
