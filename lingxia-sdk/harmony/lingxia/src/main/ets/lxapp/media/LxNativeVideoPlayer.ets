@@ -86,6 +86,7 @@ export struct LxNativeVideoPlayer {
   @State private showPoster: boolean = true;  // Show poster until first frame ready
   private cachedPoster: string = '';  // Cache poster URL since config.poster may be lost on rebuild
   private cachedAutoplay: boolean = false;  // Cache autoplay since config may be lost on rebuild
+  private autoplaySuppressed: boolean = false;  // Block autoplay if paused before prepare
   private pendingSeekTime: number = -1;
   private pendingSeekStartTime: number = -1;
   private seekDebounceTimer: number = -1;  // Debounce rapid seeks
@@ -365,6 +366,7 @@ export struct LxNativeVideoPlayer {
     if (this.config.autoplay) {
       this.cachedAutoplay = true;
     }
+    this.autoplaySuppressed = false;
     log(`[${this.componentId}] aboutToAppear: poster=${this.config.poster}, cachedPoster=${this.cachedPoster}, autoplay=${this.config.autoplay}, cachedAutoplay=${this.cachedAutoplay}, showPoster=${this.showPoster}, xComponentId=${this.xComponentId}, playerCreated=${this.playerCreated}, boundSurfaceId=${this.boundSurfaceId}, hasNativePlayer=${LxNativeVideoPlayer.hasNativePlayer(this.componentId)}`);
 
     // Reset state for clean recreation (same-level remount may skip aboutToDisappear)
@@ -583,6 +585,8 @@ export struct LxNativeVideoPlayer {
 
   play(): void {
     log(`[${this.componentId}] play() called, showPoster=${this.showPoster}`);
+    // Explicit play request should override any pending autoplay suppression
+    this.autoplaySuppressed = false;
     if (videoPlayerPlay(this.componentId) as boolean) {
       this.state.isPlaying = true;
       this.state.isPaused = false;
@@ -599,6 +603,7 @@ export struct LxNativeVideoPlayer {
     if (videoPlayerPause(this.componentId) as boolean) {
       this.state.isPlaying = false;
       this.state.isPaused = true;
+      this.autoplaySuppressed = true;
       // Cancel pending play event if pause is called before video started
       this.pendingPlayEvent = false;
       this.stopProgressTimer();
@@ -613,6 +618,7 @@ export struct LxNativeVideoPlayer {
       // Reset playback state
       this.state.isPlaying = false;
       this.state.isPaused = true;
+      this.autoplaySuppressed = true;
       this.state.currentTime = 0;
       this.sliderValue = 0;
       this.hasEnded = false;
@@ -680,7 +686,7 @@ export struct LxNativeVideoPlayer {
     this.emitEvent('loadedmetadata', metadataDetail);
 
     // Trigger autoplay after player is prepared (not before)
-    if (shouldAutoplay && !this.state.isPlaying) {
+    if (shouldAutoplay && !this.autoplaySuppressed && !this.state.isPlaying) {
       log(`[${this.componentId}] handlePrepared: triggering autoplay`);
       this.play();
     }
