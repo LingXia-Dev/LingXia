@@ -5,10 +5,10 @@ pub mod pull_to_refresh;
 pub mod video_player;
 
 pub use core::{
-    AnimationType, AppRuntime, Device, DocumentInteraction, Location, LocationRequestConfig,
-    ModalOptions, OpenDocumentRequest, PermissionKind, PermissionStatus, Permissions, PickerType,
-    PopupPosition, PopupPresenter, PopupRequest, ToastIcon, ToastOptions, ToastPosition, UIUpdate,
-    UserFeedback,
+    AnimationType, AppRuntime, Device, DeviceHardware, DeviceSecureStore, DocumentInteraction,
+    Location, LocationRequestConfig, ModalOptions, OpenDocumentRequest, PermissionKind,
+    PermissionStatus, Permissions, PickerType, PopupPosition, PopupPresenter, PopupRequest,
+    ToastIcon, ToastOptions, ToastPosition, UIUpdate, UserFeedback,
 };
 pub use media_interaction::{
     CameraFacing, ChooseMediaMode, ChooseMediaRequest, MediaInteraction, MediaKind, MediaQuality,
