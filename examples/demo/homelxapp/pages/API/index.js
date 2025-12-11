@@ -92,4 +92,11 @@ Page({
       console.error("navigateToLxApp failed", err);
     }
   },
+
+  // Navigate to PullDownRefresh API page
+  navigateToPullDownRefreshPage: async function () {
+    await lx.navigateTo({
+      url: `pages/pulltorefresh/index.tsx`,
+    });
+  },
 });
