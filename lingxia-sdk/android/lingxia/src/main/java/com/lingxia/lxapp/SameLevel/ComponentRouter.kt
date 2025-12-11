@@ -33,7 +33,7 @@ object ComponentRouter {
      * Returns true if component exists and callback was set.
      */
     @JvmStatic
-    fun setCallback(componentId: String, callbackId: Long): Boolean {
+    fun setVideoPlayerCallback(componentId: String, callbackId: Long): Boolean {
         val manager = managers[componentId]?.get() ?: return false
         return manager.setCallback(componentId, callbackId)
     }
@@ -43,7 +43,7 @@ object ComponentRouter {
      * Posts to main thread since ExoPlayer requires main thread access.
      */
     @JvmStatic
-    fun dispatchCommand(componentId: String, name: String, paramsJson: String) {
+    fun dispatchVideoCommand(componentId: String, name: String, paramsJson: String) {
         mainHandler.post {
             val manager = managers[componentId]?.get() ?: return@post
             val params = parseParams(paramsJson)
