@@ -1,7 +1,7 @@
 use lingxia_messaging::invoke_callback;
 use lingxia_platform::harmony::camera;
 use lingxia_webview::{
-    WebTag, get_webview_delegate, tsfn, webview_controller_created, webview_controller_destroyed,
+    get_webview_delegate, tsfn, webview_controller_created, webview_controller_destroyed,
 };
 use log::LevelFilter;
 use lxapp::log::LogLevel;
