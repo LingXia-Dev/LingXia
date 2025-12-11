@@ -38,7 +38,8 @@ declare module 'liblingxia.so' {
     TabBarClick = 0,
     CapsuleClick = 1,
     NavigationClick = 2,
-    BackPress = 3
+    BackPress = 3,
+    PullDownRefresh = 4
   }
 
   /**
@@ -81,6 +82,11 @@ declare module 'liblingxia.so' {
     showBackButton: boolean;
     showHomeButton: boolean;
   }
+
+  /**
+   * Check if pull-down refresh is enabled for a specific page
+   */
+  export function isPullDownRefreshEnabled(appid: string, path: string): boolean;
 
   /**
    * Register custom schemes (must be called before WebEngine initialization)

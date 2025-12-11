@@ -5,6 +5,7 @@ mod document;
 mod location;
 mod media;
 mod popup;
+mod pull_to_refresh;
 mod ui_update;
 mod user_feedback;
 pub mod video_player;

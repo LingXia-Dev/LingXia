@@ -325,6 +325,17 @@ class NativeBridge {
       return true;
     });
 
+    // Pull-to-Refresh APIs
+    this.register('startPullDownRefresh', (appId: string, path: string): void => {
+      LxAppContainer.startPullRefresh(appId, path);
+      hilog.info(DOMAIN, TAG, `startPullDownRefresh called for ${appId}:${path}`);
+    });
+
+    this.register('stopPullDownRefresh', (appId: string, path: string): void => {
+      LxAppContainer.stopPullRefresh(appId);
+      hilog.info(DOMAIN, TAG, `stopPullDownRefresh called for ${appId}:${path}`);
+    });
+
     // The result is reported back to Rust using the shared callback mechanism
     // so that the logic layer can decide whether to proceed with the location
     // request or surface an error.

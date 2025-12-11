@@ -3,7 +3,7 @@ import { webview } from '@kit.ArkWeb';
 import { window, display } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { LxApp } from './LxApp';
-import { LxAppPopup } from './APIs/LxAppPopup';
+import { LxAppPopup, PopupLayoutConfig } from './APIs/LxAppPopup';
 import {
   findWebview,
   toWebTag,
@@ -16,17 +16,18 @@ import {
   pauseWebViewComponents,
   resumeWebViewComponents
 } from './WebView';
-import { NavigationBar, type NavigationBarState, NAVBAR_TOTAL_HEIGHT } from './NavigationBar';
+import { NavigationBar, NavigationBarState, NAVBAR_TOTAL_HEIGHT } from './NavigationBar';
 import { NavigationButton, CapsuleButton } from './LxAppDrawables';
 import { TabBar } from './TabBar';
-import { TabBarPosition, type TabBarItem, UiEventType } from 'liblingxia.so';
-import liblingxia, { TabBarState, getNavigationBarState, onPageShow, onUiEvent, onWebviewControllerCreated } from 'liblingxia.so';
+import { TabBarPosition, TabBarItem, UiEventType } from 'liblingxia.so';
+import liblingxia, { TabBarState, getNavigationBarState, isPullDownRefreshEnabled, onPageShow, onUiEvent, onWebviewControllerCreated } from 'liblingxia.so';
 import { NAVIGATION_ACTION_BACK, NAVIGATION_ACTION_HOME, CAPSULE_ACTION_MORE, CAPSULE_ACTION_CLOSE } from './NativeBridge';
 import { AnimationType } from './LxAppNavigation';
 import { SameLevelEmbedManager } from './SameLevel/SameLevelEmbed';
 import { setEmbedController, teardownEmbedManager } from './SameLevel/SameLevelBridge';
 import { LxNativeVideoPlayer } from './media/LxNativeVideoPlayer';
 import { LxFullscreenVideoOverlay } from './media/LxFullscreenVideoOverlay';
+import { RefreshHeader } from './RefreshHeader';
 
 // Container-specific constants
 const SYSTEM_STATUS_BAR_HEIGHT = 44;     // Default status bar height
@@ -44,34 +45,12 @@ const ANIMATION_CURVE_EASE_IN_OUT = Curve.EaseInOut;  // Smooth ease in/out curv
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.Container';
 
-/**
- * Translation options for WebView animations
- */
-interface TranslationOptions {
-  x: number | string;
-  y: number | string;
-}
-
-interface MarginOptions {
-  top?: number;
-  bottom?: number;
-  left?: number;
-  right?: number;
-}
-
-interface CornerRadii {
-  topLeft: number;
-  topRight: number;
-  bottomLeft: number;
-  bottomRight: number;
-}
-
 interface RenderableWebEntry {
   webTag: string;
   controller: webview.WebviewController;
 }
 
-// Layout snapshot for same-level NodeContainer so we can update attributes without recreating the native view
+// Layout snapshot for same-level NodeContainer
 interface NodeLayoutState {
   width: Length;
   height: Length;
@@ -135,6 +114,11 @@ export struct LxAppContainer {
   // Fullscreen state - when set, only the fullscreen component is rendered
   @State private fullscreenWebTag: string = ''
   @State private fullscreenComponentId: string = ''
+  
+  // Pull-to-refresh state
+  @State private isRefreshing: boolean = false
+  @State private enablePullDownRefresh: boolean = false
+  @State private refreshingPath: string = ''
 
   // Layout cache keyed by webTag:componentId to drive NodeContainer attributes reactively
   @State private nodeLayoutCache: Map<string, NodeLayoutState> = new Map()
@@ -206,6 +190,8 @@ export struct LxAppContainer {
     this.pageConfig = getNavigationBarState(this.appId, this.path);
     hilog.info(DOMAIN, TAG, `Initial navbar state for ${this.appId}:${this.path}: showNavbar=${this.pageConfig?.showNavbar}, showBack=${this.pageConfig?.showBackButton}, showHome=${this.pageConfig?.showHomeButton}, bgColor=0x${this.pageConfig?.navigationBarBackgroundColor?.toString(16)}, textStyle=${this.pageConfig?.navigationBarTextStyle}`);
 
+    this.loadPullDownRefreshState(this.path);
+
     // Load TabBar data using new data-driven API
     this.loadTabBarState();
     if (this.tabBarState) {
@@ -249,7 +235,7 @@ export struct LxAppContainer {
    */
   private async initStatusBarHeight(): Promise<void> {
     try {
-      const context = getContext();
+      const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
       if (!context) {
         throw new Error('Context not available');
       }
@@ -390,6 +376,32 @@ export struct LxAppContainer {
   }
 
   /**
+   * Stop pull-to-refresh animation programmatically
+   * Called from NativeBridge via static entry
+   */
+  public static stopPullRefresh(appId: string, path?: string): void {
+    const container = LxAppContainer.activeContainers.get(appId);
+    if (container) {
+      container.stopPullDownRefresh(path);
+    } else {
+      hilog.warn(DOMAIN, TAG, `stopPullRefresh: no active container for ${appId}`);
+    }
+  }
+
+  /**
+   * Start pull-to-refresh animation programmatically
+   * Called from NativeBridge via static entry
+   */
+  public static startPullRefresh(appId: string, path: string): void {
+    const container = LxAppContainer.activeContainers.get(appId);
+    if (container) {
+      container.startPullDownRefresh(path);
+    } else {
+      hilog.warn(DOMAIN, TAG, `startPullRefresh: no active container for ${appId}`);
+    }
+  }
+
+  /**
    * Handle external path changes from LxApp.navigate API
    */
   onExternalPathChange() {
@@ -425,7 +437,7 @@ export struct LxAppContainer {
     switch (action) {
       case 'create':
         // If popup overlay is currently using this webtag, skip attaching in base to avoid double-attach
-        const activePopup = LxAppPopup.getActiveLayout && LxAppPopup.getActiveLayout();
+        const activePopup: PopupLayoutConfig | null = LxAppPopup.getActiveLayout();
         if (activePopup) {
           const popupLogical = toWebTag(activePopup.appId, activePopup.path);
           if (info.webtag === popupLogical || info.webtag.startsWith(`${popupLogical}#`)) {
@@ -479,7 +491,7 @@ export struct LxAppContainer {
         if (info.webtag.startsWith(`${this.appId}-`)) {
           this.webViewComponents.set(info.webtag, info.controller);
           this.webViewKeys = Array.from(this.webViewComponents.keys());
-          const layout = LxAppPopup.getActiveLayout && LxAppPopup.getActiveLayout();
+          const layout: PopupLayoutConfig | null = LxAppPopup.getActiveLayout();
       if (layout && layout.appId === this.appId) {
         this.applyOverlayState(info.webtag, true, layout.widthVp, layout.heightVp, layout.position as number, layout.bottomInset, layout.fullWidth, layout.fullHeight);
         hilog.info(DOMAIN, TAG, `Overlay style set for ${info.webtag}: w=${layout.widthVp} h=${layout.heightVp} pos=${layout.position}`);
@@ -804,10 +816,11 @@ export struct LxAppContainer {
   }
 
   /**
-   * Build WebView area
+   * Render the WebStack content (WebViews + Overlay)
+   * Moved to Builder to avoid closure creation in build()
    */
   @Builder
-  buildWebViewArea(): void {
+  private renderWebStackBuilder(): void {
     Stack() {
       // Render all WebView components so they can be associated with controllers
       ForEach(this.getRenderableWebEntries(), (entry: RenderableWebEntry) => {
@@ -830,12 +843,106 @@ export struct LxAppContainer {
     .height('100%')
     .backgroundColor(COLOR_TRANSPARENT)
     .clip(this.navigationMode)
-    // Reserve space for the navigation bar only when the overlay is hidden
+  }
+
+  /**
+   * Custom Refresh Header Builder
+   */
+  @Builder
+  RefreshHeaderBuilder() {
+    RefreshHeader({ isRefreshing: this.isRefreshing })
+  }
+
+  /**
+   * Build WebView area
+   */
+  @Builder
+  buildWebViewArea(): void {
+    // Always use Refresh component to maintain component tree stability and prevent WebView reload
+    Refresh({ refreshing: $$this.isRefreshing, builder: this.RefreshHeaderBuilder() }) {
+      this.renderWebStackBuilder()
+    }
+    .onRefreshing(() => {
+      if (this.enablePullDownRefresh) {
+        this.refreshingPath = this.path;
+        this.handlePullToRefresh()
+      } else {
+        this.isRefreshing = false
+      }
+    })
+    .pullDownRatio(this.enablePullDownRefresh ? 1 : 0) // Disable pull effect if not enabled
+    .width('100%')
+    .height('100%')
     .padding(this.getContainerPadding())
-    // Keep the layout fixed so the WebView bounds never change, removing the root cause of flicker
     .hitTestBehavior(HitTestMode.Transparent)
     .zIndex(this.shouldRenderOverlayMask() ? 10004 : 0)
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+  }
+  
+  /**
+   * Handle pull-to-refresh action
+   */
+  private handlePullToRefresh(path?: string): void {
+    // Notify Rust core about the event
+    const eventPath = path || this.path;
+    let _: boolean = onUiEvent(this.appId, UiEventType.PullDownRefresh, eventPath);
+
+    // Set a safety timeout to stop refreshing if the app doesn't respond
+    setTimeout(() => {
+      if (this.isRefreshing) {
+        hilog.warn(DOMAIN, TAG, 'Pull-to-refresh timed out, stopping automatically')
+        this.isRefreshing = false
+        this.refreshingPath = ''
+        // Restore the correct state for the current page
+        this.loadPullDownRefreshState(this.path);
+      }
+    }, 10000)
+  }
+
+  /**
+   * Stop pull-to-refresh animation programmatically
+   * Called from Rust via FFI
+   */
+  public stopPullDownRefresh(path?: string): void {
+    if (path && this.refreshingPath && path !== this.refreshingPath) {
+      hilog.warn(DOMAIN, TAG, `Ignoring stop for ${path}, current refreshing is ${this.refreshingPath}`);
+      return;
+    }
+    this.isRefreshing = false
+    this.refreshingPath = ''
+    // Restore the correct state for the current page
+    this.loadPullDownRefreshState(this.path);
+  }
+
+  /**
+   * Start pull-to-refresh animation programmatically
+   * Called from Rust via FFI
+   */
+  public startPullDownRefresh(targetPath?: string): void {
+    // If targetPath is provided and differs from current path, check config for targetPath
+    let shouldRefresh = this.enablePullDownRefresh;
+
+    if (targetPath && targetPath !== this.path) {
+      hilog.info(DOMAIN, TAG, `startPullDownRefresh: target path ${targetPath} differs from current ${this.path}`);
+      // Check if target path has refresh enabled
+      shouldRefresh = isPullDownRefreshEnabled(this.appId, targetPath);
+    }
+
+    if (shouldRefresh) {
+      // Force enable immediately to ensure Refresh component accepts the state change
+      // This handles the race condition where navigation from a disabled page to an enabled page
+      // hasn't completed yet, but we need the Refresh component to be active.
+      if (!this.enablePullDownRefresh) {
+        hilog.info(DOMAIN, TAG, 'Forcing enablePullDownRefresh for programmatic start');
+        this.enablePullDownRefresh = true;
+      }
+
+      this.refreshingPath = targetPath || this.path;
+      this.isRefreshing = true
+      this.handlePullToRefresh(targetPath)
+    } else {
+      hilog.warn(DOMAIN, TAG, 'startPullDownRefresh ignored: refresh not enabled for this page')
+    }
   }
 
   /**
@@ -846,8 +953,7 @@ export struct LxAppContainer {
     // Only reserve NAVBAR_TOTAL_HEIGHT when the navigation bar is visible; otherwise, there would be a 44vp blank at the top
     const showNavbar = this.pageConfig?.showNavbar === true;
     const top = showNavbar ? NAVBAR_TOTAL_HEIGHT : 0;
-    const pad: Padding = { top } as Padding;
-    return pad;
+    return { top: top, bottom: 0, left: 0, right: 0 } as Padding;
   }
 
   private getContainerPadding(): Padding {
@@ -866,7 +972,7 @@ export struct LxAppContainer {
   private getWebViewPadding(): Padding {
     // The container handles the top reservation; the bottom is fixed here so opaque TabBars never hide content or trigger flicker when transparency changes
     const bottomPad = this.getWebBottomPadding();
-    return { top: 0, bottom: bottomPad } as Padding;
+    return { top: 0, bottom: bottomPad, left: 0, right: 0 } as Padding;
   }
 
   private getWebBottomPadding(): number {
@@ -901,10 +1007,25 @@ export struct LxAppContainer {
   }
 
   /**
+   * Load pull-down refresh state for a page
+   */
+  private loadPullDownRefreshState(path: string): void {
+    this.enablePullDownRefresh = isPullDownRefreshEnabled(this.appId, path);
+    hilog.info(DOMAIN, TAG, `Pull-down refresh enabled for ${this.appId}:${path}: ${this.enablePullDownRefresh}`);
+  }
+
+  /**
    * Navigate to any page with animation support
    */
   private navigateToPage(path: string): boolean {
     hilog.info(DOMAIN, TAG, `navigate: ${this.appId}:${path} with type: ${AnimationType[this.currentAnimationType]}`);
+
+    // Stop any active refresh when navigating away, unless we are navigating TO the refreshing page
+    if (this.isRefreshing && this.refreshingPath !== path) {
+      hilog.info(DOMAIN, TAG, `Navigating away from ${this.refreshingPath} to ${path}, stopping refresh`);
+      this.isRefreshing = false;
+      this.refreshingPath = '';
+    }
 
     // Find WebView controller for the new page (logical lookup)
     const webViewController = findWebview(this.appId, path);
@@ -997,6 +1118,7 @@ export struct LxAppContainer {
     LxAppContainer.updateTabSelection(this.appId, path);
 
     this.loadNavbarState(path);
+    this.loadPullDownRefreshState(path);
     this.loadTabBarState();
 
     // Start slide animation
@@ -1036,6 +1158,7 @@ export struct LxAppContainer {
 
     // Load navbar state for instant transitions
     this.loadNavbarState(path);
+    this.loadPullDownRefreshState(path);
     this.loadTabBarState();
 
     this.finishTransition(newWebTag, path, oldWebTag);
@@ -1166,10 +1289,10 @@ export struct LxAppContainer {
           })
           // Enable native embed mode for same-level rendering
           .enableNativeEmbedMode(true)
-          .onNativeEmbedLifecycleChange((embed) => {
+          .onNativeEmbedLifecycleChange((embed: NativeEmbedDataInfo) => {
             this.handleEmbedLifecycle(webTag, embed);
           })
-          .onNativeEmbedGestureEvent((touch) => {
+          .onNativeEmbedGestureEvent((touch: NativeEmbedTouchInfo) => {
             this.handleEmbedGesture(webTag, touch);
           })
           .width(this.getRenderWidth(webTag))
@@ -1273,7 +1396,7 @@ export struct LxAppContainer {
     manager.setUIContext(this.getUIContext());
     manager.setOnComponentsChanged(() => {
       // Update component IDs array to trigger ForEach re-render
-      const newMap = new Map(this.embedComponentIds);
+      const newMap = new Map<string, string[]>(this.embedComponentIds);
       newMap.set(webTag, manager.getComponentIds().slice());
       this.embedComponentIds = newMap;
 
@@ -1337,7 +1460,7 @@ export struct LxAppContainer {
     }
     teardownEmbedManager(webTag);
     this.embedManagers.delete(webTag);
-    const newMap = new Map(this.embedComponentIds);
+    const newMap = new Map<string, string[]>(this.embedComponentIds);
     newMap.delete(webTag);
     this.embedComponentIds = newMap;
 
@@ -1350,12 +1473,14 @@ export struct LxAppContainer {
    * This drives NodeContainer attributes without recreating native nodes
    */
   private refreshNodeLayouts(manager: SameLevelEmbedManager, webTag: string): void {
-    const next = new Map(this.nodeLayoutCache);
+    const next = new Map<string, NodeLayoutState>(this.nodeLayoutCache);
     const componentIds = manager.getComponentIds();
     const prefix = `${webTag}:`;
 
     // Remove stale entries for this webTag
-    next.forEach((_, key: string) => {
+    // Convert keys to array to avoid modification during iteration issues if any
+    const keys = Array.from(next.keys());
+    keys.forEach((key: string) => {
       if (key.startsWith(prefix)) {
         const id = key.substring(prefix.length);
         if (!componentIds.includes(id)) {
@@ -1389,8 +1514,9 @@ export struct LxAppContainer {
    */
   private removeNodeLayoutsForWebTag(webTag: string): void {
     const prefix = `${webTag}:`;
-    const next = new Map(this.nodeLayoutCache);
-    next.forEach((_, key: string) => {
+    const next = new Map<string, NodeLayoutState>(this.nodeLayoutCache);
+    // Use Array.from to get keys before iterating to safely modify map
+    Array.from(next.keys()).forEach((key: string) => {
       if (key.startsWith(prefix)) {
         next.delete(key);
       }
@@ -1493,8 +1619,8 @@ export struct LxAppContainer {
     }
   }
 
-  private getOverlayMargin(): MarginOptions {
-    const base: MarginOptions = { top: 0, left: 0, right: 0, bottom: 0 };
+  private getOverlayMargin(): Margin {
+    const base: Margin = { top: 0, left: 0, right: 0, bottom: 0 };
     const horizontalGap = this.overlayFullWidth ? 0 : 16;
     const verticalGap = this.overlayFullHeight ? 0 : 16;
     switch (this.overlayPosition) {
@@ -1534,14 +1660,14 @@ export struct LxAppContainer {
     return this.getWebViewVisibility(webTag);
   }
 
-  private getRenderTranslation(webTag: string): TranslationOptions {
+  private getRenderTranslation(webTag: string): TranslateOptions {
     if (this.isOverlayWebView(webTag)) {
-      return { x: 0, y: 0 } as TranslationOptions;
+      return { x: 0, y: 0 } as TranslateOptions;
     }
     return this.getWebViewTranslation(webTag);
   }
 
-  private getRenderMargin(webTag: string): MarginOptions {
+  private getRenderMargin(webTag: string): Margin {
     if (this.isOverlayWebView(webTag)) {
       return this.getOverlayMargin();
     }
@@ -1567,7 +1693,8 @@ export struct LxAppContainer {
     return this.isOverlayWebView(webTag) ? this.getOverlayAlignment() : Alignment.TopStart;
   }
 
-  private getRenderBorderRadius(webTag: string): CornerRadii {
+  // Helper type for BorderRadiuses
+  private getRenderBorderRadius(webTag: string): BorderRadiuses {
     if (this.isOverlayWebView(webTag)) {
       // Adjust corner radius based on overlay position so edges that touch screen edges are not rounded
       switch (this.overlayPosition) {
@@ -1630,7 +1757,7 @@ export struct LxAppContainer {
     return Visibility.None;
   }
 
-  private getWebViewTranslation(webTag: string): TranslationOptions {
+  private getWebViewTranslation(webTag: string): TranslateOptions {
     if (!this.animationInProgress) {
       // Ensure active WebView is at 0, others are moved out if kept alive
       if (webTag === this.currentWebTag) return { x: 0, y: 0 };
@@ -1647,7 +1774,7 @@ export struct LxAppContainer {
     return { x: 0, y: 0 };
   }
 
-  private getWebViewMargin(): MarginOptions {
+  private getWebViewMargin(): Margin {
     return { top: 0, bottom: 0, left: 0, right: 0 };
   }
 

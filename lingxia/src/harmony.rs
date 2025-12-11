@@ -63,6 +63,7 @@ pub enum UiEventType {
     CapsuleClick = 1,
     NavigationClick = 2,
     BackPress = 3,
+    PullDownRefresh = 4,
 }
 
 /// NAPI-compatible TabItem
@@ -305,6 +306,7 @@ pub fn on_ui_event(appid: String, event_type: UiEventType, data: String) -> bool
         UiEventType::CapsuleClick => LxAppUiEventType::CapsuleClick,
         UiEventType::NavigationClick => LxAppUiEventType::NavigationClick,
         UiEventType::BackPress => LxAppUiEventType::BackPress,
+        UiEventType::PullDownRefresh => LxAppUiEventType::PullDownRefresh,
     };
 
     lxapp::try_get(&appid)
@@ -466,6 +468,11 @@ pub fn on_webview_controller_created(webtag: String) -> bool {
 pub fn on_webview_controller_destroyed(webtag: String) -> bool {
     webview_controller_destroyed(&webtag);
     true
+}
+
+#[napi]
+pub fn is_pull_down_refresh_enabled(appid: String, path: String) -> bool {
+    lxapp::is_pull_down_refresh_enabled(&appid, &path)
 }
 
 // ============================================================================
