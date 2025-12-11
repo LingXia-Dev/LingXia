@@ -13,8 +13,9 @@ Platform entry crate for the LingXia framework. Provides cross-platform FFI bind
 ## Exports
 
 - `register_logic_extension` - Register custom JS logic extensions
-- `register_cloud_provider` - Register cloud service provider
+- `register_provider` - Register provider
 - `LxLogicExtension` - Trait for JS extensions
-- `CloudUpdateProvider` - Trait for cloud update checking
+- `Provider` - Combined provider trait
+- `UpdateProvider` - Trait for update checking
 - `UpdateCheckResult`, `UpdatePackageInfo` - Update result types
 

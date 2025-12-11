@@ -1,10 +1,10 @@
-use crate::cloud::UpdateCheckResult;
 use crate::error::LxAppError;
 use crate::lxapp::metadata::{LxAppRecord, SemanticVersion};
 use crate::lxapp::{
     self, LINGXIA_DIR, LXAPPS_DIR, ReleaseType, STORAGE_DIR, USER_CACHE_DIR, USER_DATA_DIR,
     lxapp_fingermark, metadata, version::Version,
 };
+use crate::provider::UpdateCheckResult;
 use lingxia_platform::{AppRuntime, Platform};
 use ring::digest::{Context, SHA256};
 use rong::service_executor;
@@ -98,7 +98,7 @@ impl UpdateManager {
         Ok(())
     }
 
-    /// Check for updates using the registered CloudProvider.
+    /// Check for updates using the registered Provider.
     /// Returns no update if no provider is registered.
     pub async fn check_update(
         &self,
@@ -106,7 +106,7 @@ impl UpdateManager {
         _release_type: ReleaseType,
         current_version: Option<&str>,
     ) -> Result<UpdateCheckResult, LxAppError> {
-        let provider = crate::get_cloud_provider();
+        let provider = crate::get_provider();
 
         provider
             .check_update(lxappid, current_version)

@@ -2,8 +2,8 @@
 
 pub use lxapp::lx::{LxLogicExtension, register_logic_extension};
 pub use lxapp::{
-    BoxFuture, CloudError, CloudProvider, CloudUpdateProvider, UpdateCheckResult,
-    UpdatePackageInfo, register_cloud_provider,
+    BoxFuture, NoOpProvider, Provider, ProviderError, UpdateCheckResult, UpdatePackageInfo,
+    UpdateProvider, register_provider,
 };
 
 #[cfg(target_os = "android")]
