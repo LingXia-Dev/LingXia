@@ -910,6 +910,9 @@ public class LxAppViewController: UIViewController, ObservableObject {
         updateNavigationBar(appId: appId, path: path)
         updateTabBar(for: appId, path: path)
 
+        // Update pull-to-refresh for the new page
+        setupPullToRefresh(for: webView, appId: appId, path: path)
+
         // Ensure navigation bar transparency after forward/backward navigation
         let shouldUseTransparent = shouldUseTransparentMode(for: appId, path: path)
         if shouldUseTransparent {
