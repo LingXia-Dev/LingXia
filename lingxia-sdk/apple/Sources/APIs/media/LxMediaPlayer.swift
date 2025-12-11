@@ -1096,6 +1096,7 @@ public final class LxMediaPlayer: NSObject {
         player?.pause()
         // Cancel pending play event if pause is called before video started
         pendingPlayEvent = false
+        desiredPlayWhenReady = false
         send(.pause)
         updatePlayPauseUI(isPlaying: false)
         syncCenterPlayButtonVisibility(isPlaying: false)
@@ -1107,6 +1108,7 @@ public final class LxMediaPlayer: NSObject {
         player?.seek(to: .zero)
         // Cancel pending play event on stop
         pendingPlayEvent = false
+        desiredPlayWhenReady = false
         send(.stop)
         updatePlayPauseUI(isPlaying: false)
         syncCenterPlayButtonVisibility(isPlaying: false)
