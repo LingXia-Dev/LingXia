@@ -53,23 +53,30 @@ export class TemplateManager {
     }
 
     const functionList = JSON.stringify(functions);
+    
+    // Generate explicit function wrappers for better debugging and runtime safety
+    const wrappers = functions.map(funcName => `
+window['${funcName}'] = function(...args) {
+  // Filter out React/DOM event objects to prevent circular reference errors
+  const cleanArgs = args.filter(arg => {
+    if (arg && typeof arg === 'object') {
+      return !(arg.nativeEvent || arg.target || arg.currentTarget ||
+               arg instanceof Event || arg.constructor.name.includes('Event'));
+    }
+    return true;
+  });
+
+  return window.LingXiaBridge.call('${funcName}', cleanArgs.length === 1 ? cleanArgs[0] : cleanArgs)
+    .catch(function(e) {
+      console.warn('[PageFunc] ${funcName} failed:', e.message || e);
+      throw e;
+    });
+};`).join('\n');
+
     return `window.__PAGE_FUNCTIONS = ${functionList};
 
 // Generate bridge functions
-window.__PAGE_FUNCTIONS.forEach(function(funcName) {
-  window[funcName] = function(...args) {
-    // Filter out React/DOM event objects to prevent circular reference errors
-    const cleanArgs = args.filter(arg => {
-      if (arg && typeof arg === 'object') {
-        return !(arg.nativeEvent || arg.target || arg.currentTarget ||
-                 arg instanceof Event || arg.constructor.name.includes('Event'));
-      }
-      return true;
-    });
-
-    return window.LingXiaBridge.call(funcName, cleanArgs.length === 1 ? cleanArgs[0] : cleanArgs);
-  };
-});`;
+${wrappers}`;
   }
 
   hasFrameworkTemplate(framework: string): boolean {

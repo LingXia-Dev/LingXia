@@ -43,7 +43,7 @@ export abstract class FrameworkProcessor {
   abstract generateOutput(
     page: Page,
     pageFiles: PageFiles,
-    buildResult: { distDir: string; assetDir?: string },
+    buildResult: { distDir: string; assetDir?: string; entryHtml?: string; entryJs?: string },
     bridgeScript: string
   ): Promise<void>;
 

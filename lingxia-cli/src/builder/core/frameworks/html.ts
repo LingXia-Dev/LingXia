@@ -50,7 +50,7 @@ export class HtmlProcessor extends FrameworkProcessor {
   async generateOutput(
     page: Page,
     pageFiles: PageFiles,
-    buildResult: { distDir: string; assetDir?: string },
+    buildResult: { distDir: string; assetDir?: string; entryHtml?: string; entryJs?: string },
     bridgeScript: string
   ): Promise<void> {
     const pageOutputDir = path.join(this.outputDir, path.dirname(page.path));

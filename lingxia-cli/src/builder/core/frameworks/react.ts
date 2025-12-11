@@ -49,7 +49,7 @@ export class ReactProcessor extends FrameworkProcessor {
   async generateOutput(
     page: Page,
     pageFiles: PageFiles,
-    buildResult: { distDir: string; assetDir?: string },
+    buildResult: { distDir: string; assetDir?: string; entryHtml?: string; entryJs?: string },
     bridgeScript: string
   ): Promise<void> {
     const pageOutputDir = path.join(this.outputDir, path.dirname(page.path));
@@ -58,8 +58,14 @@ export class ReactProcessor extends FrameworkProcessor {
     const assetDir = this.normalizeAssetDir(buildResult.assetDir);
 
     // Copy built assets
-    const builtIndexHtml = path.join(buildResult.distDir, 'index.html');
-    const builtMainJs = path.join(buildResult.distDir, 'main.js');
+    const builtIndexHtml = buildResult.entryHtml 
+      ? path.join(buildResult.distDir, buildResult.entryHtml)
+      : path.join(buildResult.distDir, 'index.html');
+      
+    const builtMainJs = buildResult.entryJs 
+      ? path.join(buildResult.distDir, buildResult.entryJs)
+      : path.join(buildResult.distDir, 'main.js');
+
     let htmlContent = fs.readFileSync(builtIndexHtml, 'utf-8');
 
     // Ensure output directory exists

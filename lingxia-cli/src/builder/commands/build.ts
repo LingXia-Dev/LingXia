@@ -42,6 +42,7 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
     const startTime = Date.now();
 
     const only = process.env.LINGXIA_ONLY?.toLowerCase();
+    
     if (only === 'logic') {
       console.log('▶ Building logic layer only...');
       const logicBuilder = new LogicBuilder(projectPath, outputDir);
@@ -51,14 +52,14 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
       const viewBuilder = new ViewBuilder(projectPath, outputDir);
       await viewBuilder.buildPages(pages, buildOptions);
     } else {
-      
-      console.log('▶ Building logic layer...');
+      console.log('▶ Building logic and view layers in parallel...');
       const logicBuilder = new LogicBuilder(projectPath, outputDir);
-      await logicBuilder.buildLogic(buildOptions);
-
-      console.log('▶ Building view layer...');
       const viewBuilder = new ViewBuilder(projectPath, outputDir);
-      await viewBuilder.buildPages(pages, buildOptions);
+
+      await Promise.all([
+        logicBuilder.buildLogic(buildOptions).then(() => console.log('  ✔ Logic layer built')),
+        viewBuilder.buildPages(pages, buildOptions).then(() => console.log('  ✔ View layer built'))
+      ]);
     }
 
     const endTime = Date.now();
@@ -122,7 +123,6 @@ function cleanupLingxiaBuild(projectPath: string): void {
   const tempDir = path.join(projectPath, '.lingxia-build');
   if (fs.existsSync(tempDir)) {
     fs.rmSync(tempDir, { recursive: true, force: true });
-    console.log(' 🧹 Removed temporary directory: .lingxia-build');
   }
 }
 

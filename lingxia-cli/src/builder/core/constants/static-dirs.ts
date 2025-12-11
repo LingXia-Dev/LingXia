@@ -41,7 +41,7 @@ function expandStaticDirEntry(projectPath: string, entry: string): string[] {
     });
 
     if (matches.length === 0) {
-      console.warn(`⚠️ No directories matched staticDirs glob: ${entry}`);
+      // Silently skip unmatched globs - this is expected when optional static dirs don't exist
       return [];
     }
 

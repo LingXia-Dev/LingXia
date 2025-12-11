@@ -126,46 +126,27 @@ export class PageProcessor {
       await this.fileUtils.copyDirectory(buildAssetsDir, finalAssetsDir);
     }
 
-    // For each entry, normalize files to index.html/main.js temporarily
+    // For each entry, pass explicit file paths to the processor
     for (const { page, pageFiles, pageFunctions } of items) {
       const entryName = entryNameByPagePath[page.path];
-      const entryHtml = path.join(distDir, 'pages', entryName, 'index.html');
-      const entryJs = path.join(distDir, 'pages', entryName, `${entryName}.js`);
+      
+      // Determine relative paths based on Vite output structure
+      const entryHtml = path.join('pages', entryName, 'index.html');
+      const entryJs = path.join('pages', entryName, `${entryName}.js`);
 
-      // Backup existing generic files if present
-      const genericHtml = path.join(distDir, 'index.html');
-      const genericJs = path.join(distDir, 'main.js');
-      const backups: { html?: string; js?: string } = {};
-      if (fs.existsSync(genericHtml)) {
-        backups.html = path.join(distDir, `__index_backup_${Date.now()}.html`);
-        fs.renameSync(genericHtml, backups.html);
-      }
-      if (fs.existsSync(genericJs)) {
-        backups.js = path.join(distDir, `__main_backup_${Date.now()}.js`);
-        fs.renameSync(genericJs, backups.js);
-      }
-
-      // Map entry files to generic names expected by processors
-      fs.copyFileSync(entryHtml, genericHtml);
-      if (fs.existsSync(entryJs)) {
-        fs.copyFileSync(entryJs, genericJs);
-      }
-
-      // Generate bridge and output via existing processor API
+      // Generate bridge and output via updated processor API
       const bridgeScript = this.templateManager.generateFunctionBridge(pageFunctions);
       await processor.generateOutput(
         page,
         pageFiles,
-        { distDir, assetDir },
+        { 
+          distDir, 
+          assetDir,
+          entryHtml,
+          entryJs
+        },
         bridgeScript
       );
-
-      // Cleanup generic files
-      if (fs.existsSync(genericHtml)) fs.unlinkSync(genericHtml);
-      if (fs.existsSync(genericJs)) fs.unlinkSync(genericJs);
-      // Restore backups if any (not strictly needed since next loop overwrites again)
-      if (backups.html && fs.existsSync(backups.html)) fs.unlinkSync(backups.html);
-      if (backups.js && fs.existsSync(backups.js)) fs.unlinkSync(backups.js);
     }
   }
 
