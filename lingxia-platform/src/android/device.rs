@@ -1,10 +1,11 @@
 //! Android platform device implementation
 
 use crate::error::PlatformError;
-use crate::traits::Device;
+use crate::traits::{Device, DeviceHardware, DeviceSecureStore};
 use crate::{DeviceInfo, ScreenInfo};
 use jni::objects::{JObject, JValue};
 use lingxia_webview::get_env;
+use std::fs;
 use std::process::Command;
 
 use super::Platform;
@@ -178,3 +179,186 @@ impl Device for Platform {
         }
     }
 }
+
+/// Helper to get Android ID via JNI (Settings.Secure.ANDROID_ID).
+/// This is exposed for internal crates (like lingxia-cloud) to use without polluting the Device trait.
+pub fn get_android_id() -> Option<String> {
+    use jni::objects::JValue;
+
+    match || -> Result<String, Box<dyn std::error::Error>> {
+        let mut env = get_env()?;
+        let lxapp_class: &jni::objects::JClass =
+            super::get_cached_class(super::CachedClass::LxApp)?
+                .as_obj()
+                .into();
+
+        // Try to get current activity as Context
+        let context_obj = env
+            .call_static_method(
+                lxapp_class,
+                "getCurrentActivity",
+                "()Lcom/lingxia/lxapp/LxAppActivity;",
+                &[],
+            )?
+            .l()?;
+
+        if context_obj.is_null() {
+            return Ok("".to_string());
+        }
+
+        // Get ContentResolver
+        let content_resolver = env
+            .call_method(
+                context_obj,
+                "getContentResolver",
+                "()Landroid/content/ContentResolver;",
+                &[],
+            )?
+            .l()?;
+
+        // Settings.Secure.ANDROID_ID
+        let settings_secure_class = env.find_class("android/provider/Settings$Secure")?;
+        let android_id_key = env.new_string("android_id")?;
+
+        let result = env.call_static_method(
+            settings_secure_class,
+            "getString",
+            "(Landroid/content/ContentResolver;Ljava/lang/String;)Ljava/lang/String;",
+            &[
+                JValue::Object(&content_resolver),
+                JValue::Object(&android_id_key),
+            ],
+        )?;
+
+        let obj = result.l()?;
+        if !obj.is_null() {
+            let jstr: jni::objects::JString = obj.into();
+            let rust_str = env.get_string(&jstr)?;
+            return Ok(rust_str.into());
+        }
+
+        Ok("".to_string())
+    }() {
+        Ok(s) if !s.is_empty() => Some(s),
+        Ok(_) => None, // Handles Ok("") case
+        Err(e) => {
+            log::warn!("Failed to get Android ID via JNI: {}", e);
+            None
+        }
+    }
+}
+
+impl DeviceHardware for Platform {
+    fn get_memory_info(&self) -> Result<u64, PlatformError> {
+        // Read /proc/meminfo
+        if let Ok(contents) = fs::read_to_string("/proc/meminfo") {
+            for line in contents.lines() {
+                if line.starts_with("MemTotal:") {
+                    // Example: MemTotal:        3942548 kB
+                    let parts: Vec<&str> = line.split_whitespace().collect();
+                    if parts.len() >= 2 {
+                        if let Ok(kb) = parts[1].parse::<u64>() {
+                            return Ok(kb * 1024);
+                        }
+                    }
+                }
+            }
+        }
+        Err(PlatformError::Platform(
+            "Failed to read /proc/meminfo".to_string(),
+        ))
+    }
+
+    fn get_cpu_count(&self) -> usize {
+        // Method 1: Check /sys/devices/system/cpu/present (e.g., "0-7")
+        if let Ok(present) = fs::read_to_string("/sys/devices/system/cpu/present") {
+            // Format can be "0-7" or "0-3,4-7"
+            let count = present
+                .trim()
+                .split(',')
+                .map(|range| {
+                    let parts: Vec<&str> = range.split('-').collect();
+                    if parts.len() == 2 {
+                        if let (Ok(start), Ok(end)) =
+                            (parts[0].parse::<usize>(), parts[1].parse::<usize>())
+                        {
+                            if end >= start {
+                                return end - start + 1;
+                            }
+                        }
+                    } else if parts.len() == 1 {
+                        if parts[0].parse::<usize>().is_ok() {
+                            return 1;
+                        }
+                    }
+                    0
+                })
+                .sum::<usize>();
+            if count > 0 {
+                return count;
+            }
+        }
+
+        // Method 2: Count /sys/devices/system/cpu/cpu[0-9]+ directories
+        if let Ok(entries) = fs::read_dir("/sys/devices/system/cpu") {
+            let count = entries
+                .filter_map(|entry| entry.ok())
+                .filter(|entry| {
+                    if let Ok(name) = entry.file_name().into_string() {
+                        name.starts_with("cpu")
+                            && name.len() > 3
+                            && name[3..].chars().all(|c| c.is_ascii_digit())
+                    } else {
+                        false
+                    }
+                })
+                .count();
+            if count > 0 {
+                return count;
+            }
+        }
+
+        // Fallback: Return 1 for stability (do NOT use available_parallelism)
+        1
+    }
+
+    fn get_storage_total_bytes(&self) -> Result<u64, PlatformError> {
+        // Use JNI to get StatFs for data directory
+        match || -> Result<u64, Box<dyn std::error::Error>> {
+            let mut env = get_env()?;
+
+            // Environment.getDataDirectory()
+            let env_class = env.find_class("android/os/Environment")?;
+            let data_dir = env
+                .call_static_method(env_class, "getDataDirectory", "()Ljava/io/File;", &[])?
+                .l()?;
+
+            // file.getPath()
+            let path_str_obj = env
+                .call_method(data_dir, "getPath", "()Ljava/lang/String;", &[])?
+                .l()?;
+            let path_jstr: jni::objects::JString = path_str_obj.into();
+
+            // new StatFs(path)
+            let statfs_class = env.find_class("android/os/StatFs")?;
+            let statfs = env.new_object(
+                statfs_class,
+                "(Ljava/lang/String;)V",
+                &[JValue::Object(&path_jstr)],
+            )?;
+
+            // statfs.getTotalBytes()
+            let total_bytes = env.call_method(statfs, "getTotalBytes", "()J", &[])?.j()?;
+
+            Ok(total_bytes as u64)
+        }() {
+            Ok(bytes) => Ok(bytes),
+            Err(e) => Err(PlatformError::Platform(format!(
+                "Failed to get storage info: {}",
+                e
+            ))),
+        }
+    }
+}
+
+impl DeviceSecureStore for Platform {}

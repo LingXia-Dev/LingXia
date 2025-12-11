@@ -12,6 +12,7 @@ mod ui_update;
 mod user_feedback;
 mod video_player;
 pub use app::Platform;
+pub use device::get_android_id;
 
 /// Enumerates the cacheable Java classes we keep as global references.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
