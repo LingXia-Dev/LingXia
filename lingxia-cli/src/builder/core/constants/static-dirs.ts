@@ -1,0 +1,61 @@
+import fg from 'fast-glob';
+import path from 'path';
+import { loadLingxiaConfig } from '../config/lingxia-config.js';
+
+const FALLBACK_STATIC_DIRS = ['public'] as const;
+
+export const DEFAULT_STATIC_DIRS = [...FALLBACK_STATIC_DIRS];
+
+export function resolveStaticDirs(projectPath: string): string[] {
+  const config = loadLingxiaConfig(projectPath);
+  const dirs = Array.isArray(config?.staticDirs) ? config.staticDirs : null;
+  if (!dirs) return DEFAULT_STATIC_DIRS;
+
+  const normalized = dirs
+    .filter(dir => typeof dir === 'string')
+    .map(dir => dir.trim())
+    .filter(dir => dir.length > 0);
+
+  if (normalized.length === 0) {
+    return DEFAULT_STATIC_DIRS;
+  }
+
+  const expanded = normalized.flatMap(entry => expandStaticDirEntry(projectPath, entry));
+  if (expanded.length === 0) {
+    return DEFAULT_STATIC_DIRS;
+  }
+
+  return Array.from(new Set(expanded));
+}
+
+function expandStaticDirEntry(projectPath: string, entry: string): string[] {
+  if (!looksLikeGlob(entry)) {
+    return [entry];
+  }
+
+  try {
+    const matches = fg.sync(entry, {
+      cwd: projectPath,
+      onlyDirectories: true,
+      dot: false
+    });
+
+    if (matches.length === 0) {
+      console.warn(`⚠️ No directories matched staticDirs glob: ${entry}`);
+      return [];
+    }
+
+    // Normalize to posix-style relative paths regardless of platform separators
+    return matches.map(match => match.split(path.sep).join('/'));
+  } catch (error) {
+    console.warn(
+      `⚠️ Failed to expand staticDirs glob ${entry}:`,
+      error instanceof Error ? error.message : String(error)
+    );
+    return [];
+  }
+}
+
+function looksLikeGlob(value: string): boolean {
+  return /[*?\[\]{}()!+@]/.test(value);
+}

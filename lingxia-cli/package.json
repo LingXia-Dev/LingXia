@@ -1,8 +1,8 @@
 {
   "name": "@lingxia/cli",
-  "version": "0.0.0",
-  "private": true,
-  "description": "LingXia command line interface that wraps lingxia-builder for developers.",
+  "version": "0.0.3",
+  "private": false,
+  "description": "LingXia CLI for scaffolding, building, and packaging mini-apps with LingXia templates and builders.",
   "type": "module",
   "bin": {
     "lingxia": "./bin/lingxia.js"
@@ -10,20 +10,29 @@
   "files": [
     "bin/",
     "dist/",
-    "src/",
+    "templates/",
     "README.md"
   ],
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "test": "vitest run"
   },
   "dependencies": {
+    "@babel/generator": "^7.28.5",
+    "@babel/parser": "^7.28.5",
+    "@vitejs/plugin-react": "^4.6.0",
+    "@vitejs/plugin-vue": "^5.2.1",
+    "cheerio": "^1.1.2",
     "commander": "^14.0.1",
-    "lingxia-builder": "file:../lingxia-builder"
+    "fast-glob": "^3.3.2",
+    "typescript": "^5.0.0",
+    "vite": "^6.0.7"
   },
   "devDependencies": {
-    "typescript": "^5.0.0"
+    "@types/node": "^20.19.7",
+    "vitest": "^4.0.7"
   },
   "engines": {
     "node": ">=18.0.0"

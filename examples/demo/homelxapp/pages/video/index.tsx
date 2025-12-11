@@ -1,6 +1,6 @@
 import React from 'react';
-import './tailwind.css';
-import { LxVideo } from '@lingxia/view/react';
+import '../../tailwind.css';
+import { LxVideo } from 'lingxia-ui/react';
 
 const VIDEO_SRC =
   'https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-576p.mp4';

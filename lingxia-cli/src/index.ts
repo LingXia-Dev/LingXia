@@ -1,12 +1,16 @@
 import { Command } from 'commander';
-import { buildCommand } from 'lingxia-builder';
+import { createRequire } from 'module';
+import { buildCommand } from './builder/index.js';
+import { createCommand } from './commands/create.js';
+
+const { version } = createRequire(import.meta.url)('../package.json');
 
 export function runCLI(): void {
   const program = new Command();
   program
     .name('lingxia')
     .description('LingXia CLI - Build LingXia LxApp projects')
-    .version('0.0.1');
+    .version(version ?? '0.0.0');
 
   program
     .command('build')
@@ -14,6 +18,17 @@ export function runCLI(): void {
     .option('-d, --dev', 'Development build')
     .option('-p, --prod', 'Production build')
     .action(buildCommand);
+
+  program
+    .command('create')
+    .argument('[projectName]', 'Directory name for the new project')
+    .description('Create a new LingXia project from a template')
+    .option('-f, --framework <framework>', 'Pick a framework (react|vue)')
+    .action((projectName: string | undefined, cmdOptions: { framework?: string }) =>
+      createCommand(projectName, {
+        framework: cmdOptions.framework as any
+      })
+    );
 
   program.parse();
 }

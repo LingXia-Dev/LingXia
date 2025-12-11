@@ -177,7 +177,7 @@ Page({
 
   demoSwitchTab: async function () {
     await lx.switchTab({
-      url: "pages/home/index.html",
+      url: "pages/home/index.tsx",
     });
   },
 

@@ -3,7 +3,7 @@
   "lxAppName": "Home LxApp Demo",
   "version": "1.0.0",
   "pages": [
-    "pages/home/index.html",
+    "pages/home/index.tsx",
     "pages/popup/index.tsx",
     "pages/API/index.tsx",
     "pages/video/index.tsx",
@@ -13,8 +13,8 @@
     "pages/system/index.tsx",
     "pages/location/index.tsx",
     "pages/document/index.tsx",
-    "pages/todo/index.vue",
-    "pages/components/index.tsx"
+    "pages/components/index.tsx",
+    "pages/todo/index.tsx"
   ],
   "debug": true,
   "tabBar": {
@@ -26,27 +26,27 @@
     "list": [
       {
         "text": "Home",
-        "pagePath": "pages/home/index.html",
-        "iconPath": "images/home.png",
-        "selectedIconPath": "images/home_selected.png",
+        "pagePath": "pages/home/index.tsx",
+        "iconPath": "public/home.png",
+        "selectedIconPath": "public/home_selected.png",
         "selected": true
       },
       {
         "text": "API",
         "pagePath": "pages/API/index.tsx",
-        "iconPath": "images/api.png"
+        "iconPath": "public/api.png"
       },
       {
         "text": "Components",
         "pagePath": "pages/components/index.tsx",
-        "iconPath": "images/component.png",
-        "selectedIconPath": "images/component.png"
+        "iconPath": "public/component.png",
+        "selectedIconPath": "public/component.png"
       },
       {
         "text": "ToDo",
-        "pagePath": "pages/todo/index.vue",
-        "iconPath": "images/todo.png",
-        "selectedIconPath": "images/todo_selected.png"
+        "pagePath": "pages/todo/index.tsx",
+        "iconPath": "public/todo.png",
+        "selectedIconPath": "public/todo_selected.png"
       }
     ]
   }

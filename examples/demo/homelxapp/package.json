@@ -5,9 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "lingxia build --prod",
-    "dev": "lingxia build --dev",
-    "build:logic": "LINGXIA_ONLY=logic lingxia build",
-    "build:view": "LINGXIA_ONLY=view lingxia build"
+    "dev": "lingxia build --dev"
   },
   "keywords": [
     "lingxia",
@@ -16,18 +14,19 @@
   "author": "LingXia Team",
   "license": "MIT",
   "dependencies": {
-    "@lingxia/view": "file:../../../lingxia-view",
+    "lingxia-ui": "file:../../../lingxia-view",
     "@radix-ui/react-slot": "^1.1.0",
-    "autoprefixer": "^10.4.21",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "lodash-es": "^4.17.21",
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0",
-    "tailwindcss": "^3.4.17",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwindcss": "^3.4.13",
     "vue": "^3.5.13"
   },
   "devDependencies": {
-    "@lingxia/cli": "file:../../../lingxia-cli"
+    "@lingxia/cli": "file:../../../lingxia-cli",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.41"
   }
 }
