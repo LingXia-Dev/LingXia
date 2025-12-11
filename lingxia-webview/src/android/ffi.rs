@@ -296,27 +296,6 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onConsoleMessage(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onScrollChanged(
-    mut env: JNIEnv,
-    _this: JObject,
-    appid: JString,
-    path: JString,
-    scroll_x: jint,
-    scroll_y: jint,
-    max_scroll_x: jint,
-    max_scroll_y: jint,
-) -> jint {
-    let appid: String = env.get_string(&appid).unwrap().into();
-    let path: String = env.get_string(&path).unwrap().into();
-
-    let webtag = WebTag::new(&appid, &path, None);
-    if let Some(delegate) = get_webview_delegate(&webtag) {
-        delegate.on_page_scroll_changed(scroll_x, scroll_y, max_scroll_x, max_scroll_y);
-    }
-    0
-}
-
-#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_notifyWebViewReady(
     mut env: JNIEnv,
     _class: JObject,

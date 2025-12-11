@@ -314,23 +314,6 @@ pub fn on_ui_event(appid: String, event_type: UiEventType, data: String) -> bool
         .unwrap_or(false)
 }
 
-#[napi]
-pub fn on_scroll_changed(
-    appid: String,
-    path: String,
-    scroll_x: i32,
-    scroll_y: i32,
-    max_scroll_x: i32,
-    max_scroll_y: i32,
-) -> i32 {
-    let webtag = WebTag::new(&appid, &path, None);
-    if let Some(delegate) = get_webview_delegate(&webtag) {
-        delegate.on_page_scroll_changed(scroll_x, scroll_y, max_scroll_x, max_scroll_y);
-        return 0;
-    }
-    -1
-}
-
 /// Handle AppLink URL by processing the path without host
 #[napi]
 pub fn on_applink_received(applink_url: String) -> i32 {

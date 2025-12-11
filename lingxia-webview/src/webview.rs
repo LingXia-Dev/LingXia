@@ -104,14 +104,6 @@ impl WebViewController for WebView {
     fn set_user_agent(&self, ua: String) -> Result<(), WebViewError> {
         self.inner.set_user_agent(ua)
     }
-
-    fn set_scroll_listener_enabled(
-        &self,
-        enabled: bool,
-        throttle_ms: Option<u64>,
-    ) -> Result<(), WebViewError> {
-        self.inner.set_scroll_listener_enabled(enabled, throttle_ms)
-    }
 }
 
 /// Type alias for WebView instances storage to reduce complexity

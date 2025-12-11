@@ -32,12 +32,6 @@ public class LingXiaWebView extends WebView {
     private WebMessagePort webviewPort;
     private boolean portsInitialized = false;
 
-    // Scroll event tracking
-    private int lastScrollX = 0;
-    private int lastScrollY = 0;
-    private long scrollEventThrottleMs = 100;  // Throttle scroll events to avoid excessive calls
-    private long lastScrollEventTime = 0;
-
     public static class WebResourceResponseData {
         public final String mimeType;
         public final String encoding;
@@ -509,67 +503,6 @@ public class LingXiaWebView extends WebView {
         });
     }
 
-    /**
-     * Enable or disable scroll event listener with optional throttle time.
-     * When enabled, scroll events will be sent to the native layer via onScrollChanged.
-     *
-     * @param enabled Whether to enable scroll event listening
-     * @param throttleMs Throttle time in milliseconds (minimum 16ms for 60fps), defaults to 100ms
-     */
-    public void setScrollListenerEnabled(boolean enabled, long throttleMs) {
-        ensureMainThread(new Runnable() {
-            @Override
-            public void run() {
-                // Set throttle time first (with validation)
-                scrollEventThrottleMs = Math.max(16, throttleMs);
-
-                if (enabled) {
-                    // Set up scroll listener when enabling
-                    setOnScrollChangeListener(new OnScrollChangeListener() {
-                        @Override
-                        public void onScrollChange(View view, int scrollX, int scrollY, int oldScrollX, int oldScrollY) {
-                            handleScrollChange(scrollX, scrollY, oldScrollX, oldScrollY);
-                        }
-                    });
-                    Log.d(TAG, "Scroll listener enabled with " + scrollEventThrottleMs + "ms throttle");
-                } else {
-                    // Clear scroll listener when disabling
-                    setOnScrollChangeListener(null);
-                    Log.d(TAG, "Scroll listener disabled");
-                }
-            }
-        });
-    }
-
-    /**
-     * Handle scroll change events with throttling
-     */
-    private void handleScrollChange(int scrollX, int scrollY, int oldScrollX, int oldScrollY) {
-        // Throttle scroll events to avoid excessive native calls
-        long currentTime = System.currentTimeMillis();
-        if (currentTime - lastScrollEventTime < scrollEventThrottleMs) {
-            return;
-        }
-        lastScrollEventTime = currentTime;
-
-        // Only send scroll events if WebView is properly initialized and visible
-        if (appId != null && currentPath != null && pageLoaded && getVisibility() == View.VISIBLE) {
-            // Calculate scroll range
-            int maxScrollX = computeHorizontalScrollRange() - getWidth();
-            int maxScrollY = computeVerticalScrollRange() - getHeight();
-
-            // Send scroll event to native layer
-            onScrollChanged(
-                appId,
-                currentPath,
-                scrollX,
-                scrollY,
-                maxScrollX,
-                maxScrollY
-            );
-        }
-    }
-
     public String getAppId() {
         return appId;
     }
@@ -591,6 +524,5 @@ public class LingXiaWebView extends WebView {
     native void onPageFinished(String appId, String path);
     native WebResourceResponseData handleRequest(String appId, String path, String url, String method, String[] headerKeysAndValues);
     native int handlePostMessage(String appId, String path, String message);
-    native void onScrollChanged(String appId, String path, int scrollX, int scrollY, int maxScrollX, int maxScrollY);
     native static void notifyWebViewReady(String appId, String path, Object webView);
 }

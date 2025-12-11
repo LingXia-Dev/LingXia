@@ -667,17 +667,6 @@ impl WebViewController for WebViewInner {
         call_arkts("setUserAgent", &[self.webtag.as_str(), &ua])
     }
 
-    fn set_scroll_listener_enabled(
-        &self,
-        enabled: bool,
-        _throttle_ms: Option<u64>,
-    ) -> Result<(), WebViewError> {
-        call_arkts(
-            "setScrollListenerEnabled",
-            &[self.webtag.as_str(), &enabled.to_string()],
-        )
-    }
-
     fn post_message(&self, message: String) -> Result<(), WebViewError> {
         // Use an internal helper for message posting
         self.post_message_internal(&message, true)

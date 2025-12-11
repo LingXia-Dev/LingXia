@@ -194,7 +194,6 @@ pub struct WebViewInner {
     webview: *mut AnyObject,
     _navigation_delegate: Retained<LingXiaNavigationDelegate>,
     _message_handler: Retained<LingXiaMessageHandler>,
-    _scroll_delegate: std::cell::RefCell<Option<Retained<LingXiaScrollDelegate>>>,
     pub(crate) webtag: WebTag,
 }
 
@@ -205,7 +204,6 @@ impl std::fmt::Debug for WebViewInner {
             .field("webtag", &self.webtag)
             .field("navigation_delegate", &"<LingXiaNavigationDelegate>")
             .field("message_handler", &"<LingXiaMessageHandler>")
-            .field("scroll_delegate", &self._scroll_delegate.borrow().is_some())
             .finish()
     }
 }
@@ -401,7 +399,6 @@ impl WebViewInner {
                 webview,
                 _navigation_delegate: navigation_delegate,
                 _message_handler: message_handler,
-                _scroll_delegate: std::cell::RefCell::new(None), // Will be set when scroll listener is enabled
                 webtag,
             };
 
@@ -642,62 +639,6 @@ impl WebViewInner {
         }
     }
 
-    /// Helper method to set scroll listener on main thread using native UIScrollViewDelegate
-    fn set_scroll_listener_on_main_thread(
-        &self,
-        enabled: bool,
-        throttle_ms: Option<u64>,
-    ) -> Result<(), WebViewError> {
-        unsafe {
-            // Get the scroll view from the WebView
-            let scroll_view: *mut AnyObject = msg_send![self.webview, scrollView];
-            if scroll_view.is_null() {
-                log::error!("Failed to get scroll view from WebView");
-                return Err(WebViewError::WebView(
-                    "Failed to get scroll view".to_string(),
-                ));
-            }
-
-            if enabled {
-                // Create scroll delegate if not already created
-                if self._scroll_delegate.borrow().is_none() {
-                    let throttle = throttle_ms.unwrap_or(100);
-
-                    if let Some(scroll_delegate) = {
-                        let (appid, path) = self.webtag.extract_parts();
-                        LingXiaScrollDelegate::new(appid, path, throttle)
-                    } {
-                        // Set the delegate on the scroll view
-                        let _: () = msg_send![scroll_view, setDelegate: &*scroll_delegate];
-                        *self._scroll_delegate.borrow_mut() = Some(scroll_delegate);
-                        log::info!(
-                            "Native scroll listener enabled with {}ms throttle",
-                            throttle
-                        );
-                    } else {
-                        log::error!("Failed to create scroll delegate");
-                        return Err(WebViewError::WebView(
-                            "Failed to create scroll delegate".to_string(),
-                        ));
-                    }
-                } else {
-                    log::info!("Scroll listener already enabled");
-                }
-            } else {
-                // Disable scroll listener by removing delegate
-                if self._scroll_delegate.borrow().is_some() {
-                    let _: () =
-                        msg_send![scroll_view, setDelegate: std::ptr::null::<*const AnyObject>()];
-                    *self._scroll_delegate.borrow_mut() = None;
-                    log::info!("Native scroll listener disabled");
-                } else {
-                    log::info!("Scroll listener already disabled");
-                }
-            }
-
-            Ok(())
-        }
-    }
 }
 
 impl WebViewController for WebViewInner {
@@ -817,22 +758,6 @@ impl WebViewController for WebViewInner {
         }
     }
 
-    fn set_scroll_listener_enabled(
-        &self,
-        enabled: bool,
-        throttle_ms: Option<u64>,
-    ) -> Result<(), WebViewError> {
-        if MainThreadMarker::new().is_some() {
-            // Already on main thread, execute directly
-            self.set_scroll_listener_on_main_thread(enabled, throttle_ms)
-        } else {
-            // Cross-thread scroll listener setup is complex and requires webtag
-            // For now, return error - this should be called on main thread
-            Err(WebViewError::WebView(
-                "Scroll listener must be set on main thread".to_string(),
-            ))
-        }
-    }
 }
 
 impl Drop for WebViewInner {
@@ -1042,92 +967,6 @@ impl LingXiaMessageHandler {
             }
         } else {
             log::error!("Failed to parse console message JSON: {}", message);
-        }
-    }
-}
-
-// Scroll Delegate Implementation for native scroll monitoring
-#[derive(Debug)]
-pub struct LingXiaScrollDelegateIvars {
-    appid: String,
-    path: String,
-    throttle_ms: u64,
-    last_scroll_time: std::cell::Cell<u64>,
-}
-
-define_class!(
-    #[unsafe(super(NSObject))]
-    #[name = "LingXiaScrollDelegate"]
-    #[thread_kind = MainThreadOnly]
-    #[ivars = LingXiaScrollDelegateIvars]
-    pub struct LingXiaScrollDelegate;
-
-    unsafe impl NSObjectProtocol for LingXiaScrollDelegate {}
-
-    // Implement UIScrollViewDelegate methods
-    impl LingXiaScrollDelegate {
-        #[unsafe(method(scrollViewDidScroll:))]
-        fn scroll_view_did_scroll(&self, scroll_view: *mut AnyObject) {
-            unsafe {
-                // Get current time in milliseconds
-                let now = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_millis() as u64;
-
-                // Check throttling
-                let last_time = self.ivars().last_scroll_time.get();
-                if now - last_time < self.ivars().throttle_ms {
-                    return; // Skip this scroll event due to throttling
-                }
-                self.ivars().last_scroll_time.set(now);
-
-                // Get scroll position
-                let content_offset: NSPoint = msg_send![scroll_view, contentOffset];
-                let content_size: NSSize = msg_send![scroll_view, contentSize];
-                let frame_size: NSSize = msg_send![scroll_view, frame];
-
-                let scroll_x = content_offset.x as i32;
-                let scroll_y = content_offset.y as i32;
-                let _max_scroll_x = (content_size.width - frame_size.width).max(0.0) as i32;
-                let _max_scroll_y = (content_size.height - frame_size.height).max(0.0) as i32;
-
-                // Call delegate's on_page_scroll_changed
-                let webtag = WebTag::new(&self.ivars().appid, &self.ivars().path, None);
-                if let Some(delegate) = get_webview_delegate(&webtag) {
-                    delegate.on_page_scroll_changed(
-                        scroll_x,
-                        scroll_y,
-                        _max_scroll_x,
-                        _max_scroll_y,
-                    );
-                }
-            }
-        }
-    }
-);
-
-impl LingXiaScrollDelegate {
-    /// Create a new LingXiaScrollDelegate
-    pub fn new(appid: String, path: String, throttle_ms: u64) -> Option<Retained<Self>> {
-        let mtm = match MainThreadMarker::new() {
-            Some(marker) => marker,
-            None => {
-                log::error!("Not on main thread when creating scroll delegate");
-                return None;
-            }
-        };
-
-        unsafe {
-            let instance = Self::alloc(mtm);
-            let instance = instance.set_ivars(LingXiaScrollDelegateIvars {
-                appid,
-                path,
-                throttle_ms,
-                last_scroll_time: std::cell::Cell::new(0),
-            });
-            let instance: Retained<Self> = msg_send![super(instance), init];
-            Some(instance)
         }
     }
 }

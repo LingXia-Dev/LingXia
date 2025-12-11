@@ -274,32 +274,4 @@ impl WebViewController for WebViewInner {
             ))
         }
     }
-
-    fn set_scroll_listener_enabled(
-        &self,
-        enabled: bool,
-        throttle_ms: Option<u64>,
-    ) -> Result<(), WebViewError> {
-        let mut env = get_env().unwrap();
-
-        let throttle_value = throttle_ms.unwrap_or(100); // Default to 100ms
-
-        let result = env.call_method(
-            self.java_webview.as_obj(),
-            "setScrollListenerEnabled",
-            "(ZJ)V",
-            &[
-                JValue::Bool(enabled as u8),
-                JValue::Long(throttle_value as i64),
-            ],
-        );
-
-        if result.is_ok() {
-            Ok(())
-        } else {
-            Err(WebViewError::WebView(
-                "Failed to set scroll listener enabled".to_string(),
-            ))
-        }
-    }
 }

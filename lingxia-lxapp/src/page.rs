@@ -636,33 +636,6 @@ impl WebViewDelegate for Page {
         self.dispatch_lifecycle_event(PageLifecycleEvent::OnReady);
     }
 
-    /// Called when scroll position changes
-    fn on_page_scroll_changed(
-        &self,
-        scroll_x: i32,
-        scroll_y: i32,
-        max_scroll_x: i32,
-        max_scroll_y: i32,
-    ) {
-        // Safe division to avoid division by zero
-        let scroll_percent_x = if max_scroll_x > 0 {
-            (scroll_x as f64 / max_scroll_x as f64 * 100.0) as i32
-        } else {
-            0
-        };
-
-        let scroll_percent_y = if max_scroll_y > 0 {
-            (scroll_y as f64 / max_scroll_y as f64 * 100.0) as i32
-        } else {
-            0
-        };
-
-        info!(
-            "Scroll: x={}/{} ({}%), y={}/{} ({}%)",
-            scroll_x, max_scroll_x, scroll_percent_x, scroll_y, max_scroll_y, scroll_percent_y
-        );
-    }
-
     /// Handles a postMessage from the WebView
     fn handle_post_message(&self, msg: String) {
         // Parse the message and forward to executor safely

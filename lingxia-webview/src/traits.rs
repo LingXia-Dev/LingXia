@@ -94,14 +94,6 @@ pub trait WebViewController: Send + Sync {
 
     /// Set the user agent string for the WebView
     fn set_user_agent(&self, ua: String) -> Result<(), WebViewError>;
-
-    /// Enable or disable scroll event listener with optional throttle time
-    /// When enabled, scroll events will be sent to the native layer
-    fn set_scroll_listener_enabled(
-        &self,
-        enabled: bool,
-        throttle_ms: Option<u64>,
-    ) -> Result<(), WebViewError>;
 }
 
 /// WebView delegate trait - focused on WebView events only
@@ -111,15 +103,6 @@ pub trait WebViewDelegate: Send + Sync {
 
     /// Called when the page finishes loading
     fn on_page_finished(&self);
-
-    /// Called when Scroll changed
-    fn on_page_scroll_changed(
-        &self,
-        scroll_x: i32,
-        scroll_y: i32,
-        max_scroll_x: i32,
-        max_scroll_y: i32,
-    );
 
     /// Handles a postMessage from the page View(WebView)
     fn handle_post_message(&self, msg: String);
