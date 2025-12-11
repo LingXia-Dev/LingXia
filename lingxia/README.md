@@ -17,5 +17,6 @@ Platform entry crate for the LingXia framework. Provides cross-platform FFI bind
 - `LxLogicExtension` - Trait for JS extensions
 - `Provider` - Combined provider trait
 - `UpdateProvider` - Trait for update checking
+- `FingerprintProvider` - Trait for device fingerprint
 - `UpdateCheckResult`, `UpdatePackageInfo` - Update result types
 

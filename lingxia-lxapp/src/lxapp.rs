@@ -1139,10 +1139,13 @@ impl LxApp {
 }
 
 /// Compute a stable hash id for lxapp-scoped data separation.
-/// Includes lxappid + release_type  to ensure isolation across variants.
+/// Includes lxappid + release_type + device_fingerprint to ensure isolation across variants and devices.
 pub(crate) fn lxapp_fingermark(lxappid: &str, release_type: ReleaseType) -> String {
-    // Fingermark uses appid + release_type (version excluded)
-    let combined = format!("{}|{}", lxappid, release_type.as_str());
+    // Fingermark uses appid + release_type + device fingerprint (version excluded)
+    let device_fp = crate::provider::get_provider()
+        .get_fingerprint()
+        .unwrap_or_default();
+    let combined = format!("{}|{}|{}", lxappid, release_type.as_str(), device_fp);
     let mut hasher = DefaultHasher::new();
     combined.hash(&mut hasher);
     format!("{:x}", hasher.finish())

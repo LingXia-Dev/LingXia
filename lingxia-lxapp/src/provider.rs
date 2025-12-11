@@ -54,12 +54,21 @@ pub trait UpdateProvider: Send + Sync + 'static {
     ) -> BoxFuture<'a, Result<UpdateCheckResult, ProviderError>>;
 }
 
+/// Trait for device fingerprint.
+pub trait FingerprintProvider: Send + Sync + 'static {
+    /// Get the device fingerprint ID.
+    /// Returns None if fingerprint is not available.
+    fn get_fingerprint(&self) -> Option<String> {
+        None
+    }
+}
+
 /// Combined provider trait.
 /// Implementations must satisfy all component traits.
-pub trait Provider: UpdateProvider {}
+pub trait Provider: UpdateProvider + FingerprintProvider {}
 
-// Blanket implementation: any type implementing UpdateProvider is a Provider
-impl<T: UpdateProvider> Provider for T {}
+// Blanket implementation: any type implementing all sub-traits is a Provider
+impl<T: UpdateProvider + FingerprintProvider> Provider for T {}
 
 /// Default provider with no-op implementations.
 pub struct NoOpProvider;
@@ -73,6 +82,8 @@ impl UpdateProvider for NoOpProvider {
         Box::pin(async { Ok(UpdateCheckResult::default()) })
     }
 }
+
+impl FingerprintProvider for NoOpProvider {}
 
 static PROVIDER: OnceLock<Box<dyn Provider>> = OnceLock::new();
 
