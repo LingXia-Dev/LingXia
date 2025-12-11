@@ -1145,6 +1145,7 @@ pub(crate) fn lxapp_fingermark(lxappid: &str, release_type: ReleaseType) -> Stri
     let device_fp = crate::provider::get_provider()
         .get_fingerprint()
         .unwrap_or_default();
+    info!("Device Fingerprint: {}", device_fp);
     let combined = format!("{}|{}|{}", lxappid, release_type.as_str(), device_fp);
     let mut hasher = DefaultHasher::new();
     combined.hash(&mut hasher);
@@ -1336,6 +1337,12 @@ pub fn init(runtime: Platform) -> Option<String> {
 /// Get access to the LxApps manager for navigation stack operations
 pub(crate) fn get_lxapps_manager() -> Option<Arc<LxApps>> {
     LXAPPS_MANAGER.get().cloned()
+}
+
+/// Get the platform runtime instance.
+/// Returns None if the SDK has not been initialized.
+pub fn get_platform() -> Option<Arc<Platform>> {
+    LXAPPS_MANAGER.get().map(|manager| manager.runtime.clone())
 }
 
 /// Try to get a specific LxApp instance by lxappid
