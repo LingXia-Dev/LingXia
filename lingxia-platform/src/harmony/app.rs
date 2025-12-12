@@ -1,13 +1,14 @@
 use crate::error::PlatformError;
 use crate::traits::{MediaKind, PermissionKind, PermissionStatus};
 use crate::{AppRuntime, AssetFileEntry, MediaRuntime};
+use libc::free;
 use lingxia_webview::tsfn;
 use log::warn;
 use napi_ohos::JsValue;
 use napi_ohos::bindgen_prelude::{Env, Object};
 use ohos_raw_sys::*;
 use std::collections::HashMap;
-use std::ffi::{CString, c_void};
+use std::ffi::{CStr, CString, c_void};
 use std::fs;
 use std::io::{Cursor, Read};
 use std::path::{Path, PathBuf};
@@ -495,6 +496,38 @@ impl AppRuntime for Platform {
         PathBuf::from(&self.cache_dir)
     }
 
+    fn get_app_identifier(&self) -> Result<String, PlatformError> {
+        unsafe {
+            let element = ffi::OH_NativeBundle_GetMainElementName();
+
+            let bundle_ptr = element.bundleName;
+            let module_ptr = element.moduleName;
+            let ability_ptr = element.abilityName;
+
+            // Copy out the bundle name first.
+            let identifier_res = if bundle_ptr.is_null() {
+                Err(PlatformError::Platform(
+                    "Failed to get main element name: bundleName is null".to_string(),
+                ))
+            } else {
+                Ok(CStr::from_ptr(bundle_ptr).to_string_lossy().into_owned())
+            };
+
+            // Free any allocated strings to avoid leaks.
+            if !bundle_ptr.is_null() {
+                free(bundle_ptr as *mut _);
+            }
+            if !module_ptr.is_null() {
+                free(module_ptr as *mut _);
+            }
+            if !ability_ptr.is_null() {
+                free(ability_ptr as *mut _);
+            }
+
+            identifier_res
+        }
+    }
+
     fn copy_album_media_to_file(
         &self,
         uri: &str,
@@ -599,5 +632,18 @@ mod ffi {
         pub fn OH_MediaAssetManager_Release(
             manager: *mut OH_MediaAssetManager,
         ) -> MediaLibrary_ErrorCode;
+    }
+
+    #[repr(C)]
+    #[allow(non_snake_case)]
+    pub struct OH_NativeBundle_ElementName {
+        pub bundleName: *mut c_char,
+        pub moduleName: *mut c_char,
+        pub abilityName: *mut c_char,
+    }
+
+    #[link(name = "bundle_ndk.z")]
+    unsafe extern "C" {
+        pub fn OH_NativeBundle_GetMainElementName() -> OH_NativeBundle_ElementName;
     }
 }

@@ -1,12 +1,14 @@
 use crate::error::PlatformError;
 use crate::traits::{PermissionKind, PermissionStatus, Permissions};
 use crate::{AppRuntime, AssetFileEntry};
-use jni::objects::{GlobalRef, JClass, JObject, JValue};
+use jni::objects::{GlobalRef, JClass, JObject, JString, JValue};
 use jni::sys::jobject;
 use lingxia_webview::get_env;
 use std::ffi::CString;
 use std::io::{Read, Result as IoResult};
 use std::path::{Path, PathBuf};
+
+use super::{CachedClass, get_cached_class};
 
 // Platform for Android
 #[derive(Clone)]
@@ -289,6 +291,42 @@ impl Platform {
             locale,
         })
     }
+
+    fn resolve_app_identifier(jni_env: &mut jni::JNIEnv) -> Result<String, String> {
+        // Use cached LxApp class to obtain the application context and package name.
+        let lxapp_class: &JClass = get_cached_class(CachedClass::LxApp)
+            .map_err(|e| e.to_string())?
+            .as_obj()
+            .into();
+
+        let context = jni_env
+            .call_static_method(
+                lxapp_class,
+                "getApplicationContext",
+                "()Landroid/content/Context;",
+                &[],
+            )
+            .and_then(|val| val.l())
+            .map_err(|e| format!("Failed to get application context: {:?}", e))?;
+        if context.is_null() {
+            return Err("Application context is null".to_string());
+        }
+
+        let package_obj = jni_env
+            .call_method(context, "getPackageName", "()Ljava/lang/String;", &[])
+            .and_then(|val| val.l())
+            .map_err(|e| format!("Failed to get package name: {:?}", e))?;
+        if package_obj.is_null() {
+            return Err("Package name is null".to_string());
+        }
+
+        let package_name: String = jni_env
+            .get_string(&JString::from(package_obj))
+            .map_err(|e| format!("Failed to read package name: {:?}", e))?
+            .into();
+
+        Ok(package_name)
+    }
 }
 
 impl AppRuntime for Platform {
@@ -333,6 +371,19 @@ impl AppRuntime for Platform {
     /// Get cache directory path
     fn app_cache_dir(&self) -> PathBuf {
         PathBuf::from(&self.cache_dir)
+    }
+
+    fn get_app_identifier(&self) -> Result<String, PlatformError> {
+        match || -> Result<String, String> {
+            let mut env = get_env().map_err(|e| e.to_string())?;
+            Platform::resolve_app_identifier(&mut env)
+        }() {
+            Ok(identifier) => Ok(identifier),
+            Err(e) => Err(PlatformError::Platform(format!(
+                "Failed to get app identifier: {}",
+                e
+            ))),
+        }
     }
 
     fn copy_album_media_to_file(

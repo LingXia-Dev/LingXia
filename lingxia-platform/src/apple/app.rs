@@ -85,6 +85,18 @@ impl AppRuntime for Platform {
         PathBuf::from(&self.cache_dir)
     }
 
+    fn get_app_identifier(&self) -> Result<String, PlatformError> {
+        use objc2_foundation::NSBundle;
+        let bundle = NSBundle::mainBundle();
+        if let Some(identifier) = bundle.bundleIdentifier() {
+            Ok(identifier.to_string())
+        } else {
+            Err(PlatformError::Platform(
+                "Failed to get bundle identifier".to_string(),
+            ))
+        }
+    }
+
     /// Copy album media to a local file path
     fn copy_album_media_to_file(
         &self,

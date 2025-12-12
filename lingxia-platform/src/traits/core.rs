@@ -271,13 +271,20 @@ pub trait AppRuntime:
     + UserFeedback
     + 'static
 {
+    /// Reads an asset file as a streaming reader.
     fn read_asset<'a>(&'a self, path: &str) -> Result<Box<dyn Read + 'a>, PlatformError>;
+    /// Iterates over files in an asset directory.
     fn asset_dir_iter<'a>(
         &'a self,
         asset_dir: &str,
     ) -> Box<dyn Iterator<Item = Result<AssetFileEntry<'a>, PlatformError>> + 'a>;
+    /// Returns the app's data directory path.
     fn app_data_dir(&self) -> PathBuf;
+    /// Returns the app's cache directory path.
     fn app_cache_dir(&self) -> PathBuf;
+    /// Obtains the application identifier.
+    fn get_app_identifier(&self) -> Result<String, PlatformError>;
+    /// Copies media from the system album to a local file.
     fn copy_album_media_to_file(
         &self,
         uri: &str,
@@ -286,17 +293,21 @@ pub trait AppRuntime:
     ) -> Result<(), PlatformError> {
         MediaRuntime::copy_album_media_to_file(self, uri, dest_path, kind)
     }
+    /// Requests the host application to exit.
     fn exit_app(&self) -> Result<(), PlatformError>;
+    /// Returns the current system locale.
     fn get_system_locale(&self) -> &str;
     /// Show the UI container for the given LxApp and route.
     fn show_lxapp(&self, appid: String, path: String) -> Result<(), PlatformError>;
     /// Hide the UI container for the given LxApp (does not destroy its runtime state).
     fn hide_lxapp(&self, appid: String) -> Result<(), PlatformError>;
+    /// Navigates within the given LxApp using an animation.
     fn navigate(
         &self,
         appid: String,
         path: String,
         animation_type: AnimationType,
     ) -> Result<(), PlatformError>;
+    /// Launches the given URL in the host environment.
     fn launch_with_url(&self, url: String) -> Result<(), PlatformError>;
 }
