@@ -1,10 +1,12 @@
 use crate::info;
+use crate::warn;
 use http::{Method, Request, Response, StatusCode, Uri};
 use lingxia_webview::{SystemPipeReader, WebResourceResponse};
 use rong::service_executor as net;
 use std::fs;
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use urlencoding::decode;
 
 use crate::error;
@@ -290,6 +292,12 @@ impl LxApp {
 
             match cache.resolve_path_with_ext(&url_str, ext) {
                 crate::cache::ResolveResult::Exists(file_path) => {
+                    info!(
+                        "https cache hit -> url={}, file={}",
+                        url_str,
+                        file_path.display()
+                    )
+                    .with_appid(self.appid.clone());
                     // Cached: serve file path
                     let mime_type = ext_opt
                         .as_deref()
@@ -311,6 +319,168 @@ impl LxApp {
                 crate::cache::ResolveResult::NonExists(dest_path) => {
                     #[cfg(unix)]
                     {
+                        // Coordinate in-flight downloads using a file lock next to cache destination.
+                        let hash_id = dest_path
+                            .file_stem()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or_default()
+                            .to_string();
+                        let lock_path = dest_path
+                            .parent()
+                            .unwrap_or_else(|| std::path::Path::new("."))
+                            .join(format!("{}.lock", hash_id));
+                        let part_path = dest_path.with_extension("part");
+
+                        let try_acquire_lock = || {
+                            fs::OpenOptions::new()
+                                .write(true)
+                                .create_new(true)
+                                .open(&lock_path)
+                                .is_ok()
+                        };
+
+                        let mut acquired_lock = try_acquire_lock();
+
+                        if !acquired_lock {
+                            // Self-heal: stale lock/part can be left behind when the process is killed
+                            // mid-download (common during dev). We treat a lock as stale when:
+                            // - `.part` doesn't exist OR hasn't been modified recently, and
+                            // - the lock itself is older than a small threshold.
+                            const STALE_AFTER: Duration = Duration::from_secs(60);
+                            let now = SystemTime::now();
+
+                            let part_recent = fs::metadata(&part_path)
+                                .and_then(|m| m.modified())
+                                .ok()
+                                .and_then(|t| now.duration_since(t).ok())
+                                .map(|age| age <= STALE_AFTER)
+                                .unwrap_or(false);
+
+                            let lock_old = fs::metadata(&lock_path)
+                                .and_then(|m| m.modified())
+                                .ok()
+                                .and_then(|t| now.duration_since(t).ok())
+                                .map(|age| age > STALE_AFTER)
+                                .unwrap_or(false);
+
+                            if lock_old && !part_recent {
+                                let _ = fs::remove_file(&lock_path);
+                                let _ = fs::remove_file(&part_path);
+                                warn!(
+                                    "https cache: removed stale lock/part -> url={}, dest={}",
+                                    url_str,
+                                    dest_path.display()
+                                )
+                                .with_appid(self.appid.clone());
+                                acquired_lock = try_acquire_lock();
+                            }
+                        }
+
+                        if !acquired_lock {
+                            info!(
+                                "https cache: in-flight lock exists, stream without caching -> url={}",
+                                url_str
+                            )
+                            .with_appid(self.appid.clone());
+                            // Another download is in progress. Serve existing cache file if present,
+                            // otherwise stream a separate download without touching the cache path.
+                            if dest_path.exists() {
+                                let mime_type = ext_opt
+                                    .as_deref()
+                                    .map(Self::infer_mime_type_ext)
+                                    .unwrap_or_else(|| Self::infer_mime_type(uri.path()));
+                                let builder = http::Response::builder()
+                                    .status(StatusCode::OK)
+                                    .header("Content-Type", mime_type)
+                                    .header("Access-Control-Allow-Origin", "null");
+                                let response = builder.body(()).unwrap_or_else(|_| {
+                                    http::Response::builder()
+                                        .status(StatusCode::INTERNAL_SERVER_ERROR)
+                                        .body(())
+                                        .expect("Failed to build cached file response")
+                                });
+                                let (parts, _) = response.into_parts();
+                                return Some((parts, dest_path).into());
+                            }
+
+                            let unique_suffix = SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .map(|d| d.as_millis())
+                                .unwrap_or(0);
+                            let tmp_dest_path = dest_path
+                                .parent()
+                                .unwrap_or_else(|| std::path::Path::new("."))
+                                .join(format!("{}.stream.{}", hash_id, unique_suffix));
+                            let tmp_part_path = tmp_dest_path.with_extension("part");
+
+                            match create_pipe_sink() {
+                                Ok((reader, sink)) => {
+                                    let mime_type = ext_opt
+                                        .as_deref()
+                                        .map(Self::infer_mime_type_ext)
+                                        .unwrap_or_else(|| Self::infer_mime_type(uri.path()));
+                                    let builder = http::Response::builder()
+                                        .status(StatusCode::OK)
+                                        .header("Content-Type", mime_type)
+                                        .header("Access-Control-Allow-Origin", "null");
+
+                                    let response = builder.body(()).unwrap_or_else(|_| {
+                                        http::Response::builder()
+                                            .status(StatusCode::INTERNAL_SERVER_ERROR)
+                                            .body(())
+                                            .expect("Failed to build pipe response")
+                                    });
+                                    let (parts, _) = response.into_parts();
+
+                                    match net::request_download(
+                                        url_str.clone(),
+                                        tmp_dest_path.clone(),
+                                        None,
+                                        Some(sink),
+                                    ) {
+                                        Ok(rx) => {
+                                            let cleanup_tmp_dest_path = tmp_dest_path.clone();
+                                            let cleanup_tmp_part_path = tmp_part_path.clone();
+                                            let spawned = net::spawn_async(async move {
+                                                let _ = rx.await;
+                                                let _ = fs::remove_file(&cleanup_tmp_dest_path);
+                                                let _ = fs::remove_file(&cleanup_tmp_part_path);
+                                            });
+                                            if spawned.is_err() {
+                                                let _ = fs::remove_file(&tmp_dest_path);
+                                                let _ = fs::remove_file(&tmp_part_path);
+                                            }
+                                            return Some((parts, reader).into());
+                                        }
+                                        Err(e) => {
+                                            error!(
+                                                "https cache: failed to start streaming download: url={}, err={}",
+                                                url_str, e
+                                            )
+                                            .with_appid(self.appid.clone());
+                                            return Some(self.create_error_response(
+                                                StatusCode::BAD_GATEWAY,
+                                                "Download Failed",
+                                                &format!("Failed to start download: {}", e),
+                                            ));
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    error!(
+                                        "https cache: failed to create pipe sink: url={}, err={}",
+                                        url_str, e
+                                    )
+                                    .with_appid(self.appid.clone());
+                                    return Some(self.create_error_response(
+                                        StatusCode::INTERNAL_SERVER_ERROR,
+                                        "Pipe Creation Failed",
+                                        &e,
+                                    ));
+                                }
+                            }
+                        }
+
                         match create_pipe_sink() {
                             Ok((reader, sink)) => {
                                 // info!(
@@ -342,15 +512,36 @@ impl LxApp {
                                     None,
                                     Some(sink),
                                 ) {
-                                    Ok(_rx) => {
-                                        info!("https_handler: pipe ready for {}", uri.path())
-                                            .with_appid(self.appid.clone());
+                                    Ok(rx) => {
+                                        let cleanup_lock_path = lock_path.clone();
+                                        let cleanup_part_path = part_path.clone();
+                                        let spawned = net::spawn_async(async move {
+                                            let res = rx
+                                                .await
+                                                .unwrap_or_else(|_| Err("download dropped".to_string()));
+                                            let _ = fs::remove_file(&cleanup_lock_path);
+                                            if res.is_err() {
+                                                let _ = fs::remove_file(&cleanup_part_path);
+                                            }
+                                        });
+                                        if spawned.is_err() {
+                                            let _ = fs::remove_file(&lock_path);
+                                            let _ = fs::remove_file(&part_path);
+                                        }
+                                        info!(
+                                            "https cache: streaming via pipe -> url={}, dest={}",
+                                            url_str,
+                                            dest_path.display()
+                                        )
+                                        .with_appid(self.appid.clone());
                                         return Some((parts, reader).into());
                                     }
                                     Err(e) => {
+                                        let _ = fs::remove_file(&lock_path);
+                                        let _ = fs::remove_file(&part_path);
                                         error!(
-                                            "https_handler: failed to start download task: {}",
-                                            e
+                                            "https cache: failed to start download: url={}, err={}",
+                                            url_str, e
                                         )
                                         .with_appid(self.appid.clone());
                                         return Some(self.create_error_response(
@@ -362,8 +553,12 @@ impl LxApp {
                                 }
                             }
                             Err(e) => {
-                                error!("https_handler: failed to create pipe sink: {}", e)
-                                    .with_appid(self.appid.clone());
+                                let _ = fs::remove_file(&lock_path);
+                                error!(
+                                    "https cache: failed to create pipe sink: url={}, err={}",
+                                    url_str, e
+                                )
+                                .with_appid(self.appid.clone());
                                 return Some(self.create_error_response(
                                     StatusCode::INTERNAL_SERVER_ERROR,
                                     "Pipe Creation Failed",
