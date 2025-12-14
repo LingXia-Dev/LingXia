@@ -16,3 +16,6 @@ lingxia-platform = { path = "../lingxia-platform" }
 lingxia-messaging = { path = "../lingxia-messaging" }
 futures = { workspace = true }
 rong_modules = { workspace = true }
+
+[build-dependencies]
+lingxia-gen = { path = "../tools/lingxia-gen" }

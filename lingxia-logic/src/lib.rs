@@ -3,6 +3,7 @@ use rong::{JSContext, JSResult};
 
 mod device;
 mod env;
+include!(concat!(env!("OUT_DIR"), "/i18n_generated.rs"));
 mod location;
 mod media;
 mod navigator;
