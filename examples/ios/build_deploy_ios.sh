@@ -40,6 +40,17 @@ LXAPP_FEATURES="${LXAPP_FEATURES:-}" # set via env var, e.g. LXAPP_FEATURES=clou
 RESOURCES_DIR="$SCRIPT_DIR/lxapp/Sources/lxapp/Resources"
 echo "RESOURCES_DIR: $RESOURCES_DIR"
 
+# Generate i18n resources and icons for iOS
+echo "Generating i18n resources for iOS..."
+cargo run -p lingxia-gen -- i18n \
+  --input "$LINGXIA_ROOT/i18n" \
+  --ios-out "$LINGXIA_ROOT/lingxia-sdk/apple/Sources/Resources"
+
+echo "Converting shared SVG icons to PDF for iOS bundle..."
+cargo run -p lingxia-gen -- icons \
+  --input "$LINGXIA_ROOT/lingxia-sdk/resources/icons/svg" \
+  --ios-out "$LINGXIA_ROOT/lingxia-sdk/apple/Sources/Resources/icons"
+
 # Build Rust library for iOS unless skip-rust flag is set
 if [ "$SKIP_RUST" = false ]; then
     echo "[1/4] Building Rust libraries..."
