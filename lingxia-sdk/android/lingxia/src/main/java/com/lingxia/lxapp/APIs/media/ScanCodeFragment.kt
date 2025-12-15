@@ -32,6 +32,7 @@ import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
 import com.lingxia.lxapp.NativeApi
+import com.lingxia.lxapp.R
 import org.json.JSONObject
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -209,7 +210,7 @@ class ScanCodeFragment : Fragment() {
             }
             iconWrap.addView(icon)
             val label = TextView(ctx).apply {
-                text = "图库"
+                text = ctx.getString(R.string.lx_album_gallery)
                 setTextColor(Color.WHITE)
                 textSize = 16f
                 layoutParams = LinearLayout.LayoutParams(

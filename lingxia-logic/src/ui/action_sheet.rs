@@ -1,3 +1,4 @@
+use crate::{I18nKey, i18n::t};
 use lingxia_messaging::{CallbackResult, get_callback};
 use lingxia_platform::UserFeedback;
 use lxapp::{LxApp, lx};
@@ -65,7 +66,7 @@ pub(crate) async fn present_action_sheet(
         return Err(RongJSError::Error("itemList cannot be empty".to_string()));
     }
 
-    let cancel_text = cancel_text.unwrap_or_else(|| "Cancel".to_string());
+    let cancel_text = cancel_text.unwrap_or_else(|| t(I18nKey::CommonCancel));
     let item_color = item_color.unwrap_or_else(|| "#007AFF".to_string());
     let item_len = item_list.len();
 

@@ -298,7 +298,7 @@ class MediaPickerFragment : Fragment() {
                 gravity = Gravity.START or Gravity.CENTER_VERTICAL
             }
             setOnClickListener { sendCancel(); removeSelf() }
-            contentDescription = "关闭"
+            contentDescription = getString(com.lingxia.lxapp.R.string.lx_common_close)
         }
         // Center album selector pill
         val selector = LinearLayout(context).apply {
@@ -383,7 +383,7 @@ class MediaPickerFragment : Fragment() {
             gravity = Gravity.CENTER_VERTICAL
         }
         val summaryView = TextView(context).apply {
-            text = "已选 0/$maxSelectable"
+            text = "${getString(com.lingxia.lxapp.R.string.lx_album_selected)} 0/$maxSelectable"
             setTextColor(disabledBlueColor)
             textSize = 15f
             typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
@@ -397,7 +397,7 @@ class MediaPickerFragment : Fragment() {
         }
 
         // Original image option (hidden for video mode, centered)
-        val originalOption = RadioOptionView(context, "原图", techBlueColor).apply {
+        val originalOption = RadioOptionView(context, getString(com.lingxia.lxapp.R.string.lx_album_original_image), techBlueColor).apply {
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
@@ -431,7 +431,7 @@ class MediaPickerFragment : Fragment() {
         }
         sendBtnBackground = sendBackground
         val send = TextView(context).apply {
-            text = "完成"
+            text = getString(com.lingxia.lxapp.R.string.lx_common_done)
             setTextColor(Color.WHITE)
             textSize = 16f
             typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
@@ -556,25 +556,25 @@ class MediaPickerFragment : Fragment() {
         val albumList = ArrayList<AlbumItem>()
         when (lowerMode) {
             "videos" -> {
-                albumList.add(AlbumItem(null, "所有视频", allCount, firstAllCover))
+                albumList.add(AlbumItem(null, getString(com.lingxia.lxapp.R.string.lx_album_all_videos), allCount, firstAllCover))
                 albumList.addAll(systemAlbums)
             }
             "images" -> {
-                albumList.add(AlbumItem(null, "所有图片", allCount, firstAllCover))
+                albumList.add(AlbumItem(null, getString(com.lingxia.lxapp.R.string.lx_album_all_photos), allCount, firstAllCover))
                 albumList.addAll(systemAlbums)
             }
             else -> {
-                albumList.add(AlbumItem(null, "图片和视频", allCount, firstAllCover))
-                albumList.add(AlbumItem(ALBUM_ALL_VIDEOS_ID, "所有视频", videos.size, firstVideoCover))
+                albumList.add(AlbumItem(null, getString(com.lingxia.lxapp.R.string.lx_album_all_media), allCount, firstAllCover))
+                albumList.add(AlbumItem(ALBUM_ALL_VIDEOS_ID, getString(com.lingxia.lxapp.R.string.lx_album_all_videos), videos.size, firstVideoCover))
                 albumList.addAll(systemAlbums)
             }
         }
         albums = albumList
         setupAlbumList()
         val defaultTitle = when (lowerMode) {
-            "videos" -> "所有视频"
-            "images" -> "所有图片"
-            else -> "图片和视频"
+            "videos" -> getString(com.lingxia.lxapp.R.string.lx_album_all_videos)
+            "images" -> getString(com.lingxia.lxapp.R.string.lx_album_all_photos)
+            else -> getString(com.lingxia.lxapp.R.string.lx_album_all_media)
         }
         currentAlbumId = null
         (albumSelectorView?.getChildAt(0) as? TextView)?.text = defaultTitle
@@ -684,7 +684,7 @@ class MediaPickerFragment : Fragment() {
             )
         )
         val message = TextView(context).apply {
-            text = "你仅开启有限访问相册权限，建议允许访问「所有照片」"
+            text = context.getString(com.lingxia.lxapp.R.string.lx_permission_limited_access_warning)
             textSize = 13f
             setTextColor(Color.parseColor("#595959"))
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
@@ -844,14 +844,14 @@ class MediaPickerFragment : Fragment() {
         val enabled = count > 0
         val label = maxSelectable.toString()
         selectionSummaryView?.let { summary ->
-            val txt = "已选 $count/$label"
+            val txt = "${getString(com.lingxia.lxapp.R.string.lx_album_selected)} $count/$label"
             summary.text = txt
             summary.setTextColor(if (enabled) techBlueColor else disabledBlueColor)
         }
 
         sendBtn?.let { btn ->
             btn.isEnabled = enabled
-            btn.text = "完成"
+            btn.text = getString(com.lingxia.lxapp.R.string.lx_common_done)
             btn.alpha = if (enabled) 1f else 0.8f
             val background = sendBtnBackground
             background?.setColor(if (enabled) techBlueColor else lightTechBlueColor)
@@ -944,7 +944,7 @@ class MediaPickerFragment : Fragment() {
                     }
                 }
                 val label = TextView(context).apply {
-                    text = "拍摄"
+                    text = context.getString(com.lingxia.lxapp.R.string.lx_camera_label)
                     setTextColor(Color.parseColor("#1F1F1F"))
                     textSize = 14f
                     gravity = Gravity.CENTER
@@ -1325,9 +1325,9 @@ class MediaPickerFragment : Fragment() {
 
     private fun limitedPlusHintText(): String {
         return when (selectedMode.lowercase()) {
-            "videos" -> "添加更多\n可访问内容"
-            "images" -> "添加更多\n可访问内容"
-            else -> "添加更多\n可访问内容"
+            "videos" -> getString(com.lingxia.lxapp.R.string.lx_album_add_more_videos)
+            "images" -> getString(com.lingxia.lxapp.R.string.lx_album_add_more_photos)
+            else -> getString(com.lingxia.lxapp.R.string.lx_album_add_more_media)
         }
     }
 }

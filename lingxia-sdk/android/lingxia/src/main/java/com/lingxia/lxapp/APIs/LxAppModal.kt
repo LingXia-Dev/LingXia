@@ -22,8 +22,8 @@ data class ModalConfig(
     val title: String = "Alert",
     val content: String = "",
     val showCancel: Boolean = true,
-    val cancelText: String = "Cancel",
-    val confirmText: String = "OK",
+    val cancelText: String? = null,
+    val confirmText: String? = null,
     val confirmColor: String? = null
 )
 
@@ -49,9 +49,9 @@ internal object LxAppModal {
         title: String,
         content: String,
         showCancel: Boolean,
-        cancelText: String,
+        cancelText: String?,
         cancelColor: String?,
-        confirmText: String,
+        confirmText: String?,
         confirmColor: String?,
         callbackId: Long
     ) {
@@ -96,8 +96,8 @@ internal object LxAppModal {
             title = options["title"] as? String ?: "",
             content = options["content"] as? String ?: "",
             showCancel = options["showCancel"] as? Boolean ?: true,
-            cancelText = options["cancelText"] as? String ?: "Cancel",
-            confirmText = options["confirmText"] as? String ?: "OK",
+            cancelText = options["cancelText"] as? String,
+            confirmText = options["confirmText"] as? String,
             confirmColor = options["confirmColor"] as? String
         )
 
@@ -231,7 +231,7 @@ internal object LxAppModal {
                 // Two buttons layout
                 val cancelButton = createButton(
                     context = context,
-                    text = config.cancelText,
+                    text = config.cancelText ?: "",
                     isPrimary = false,
                     onClick = {
                         // Call callback with cancel result
@@ -254,7 +254,7 @@ internal object LxAppModal {
 
                 val confirmButton = createButton(
                     context = context,
-                    text = config.confirmText,
+                    text = config.confirmText ?: "",
                     isPrimary = true,
                     color = config.confirmColor,
                     onClick = {
@@ -272,7 +272,7 @@ internal object LxAppModal {
                 // Single button layout - ensure button has proper width and height
                 val confirmButton = createButton(
                     context = context,
-                    text = config.confirmText,
+                    text = config.confirmText ?: "",
                     isPrimary = true,
                     color = config.confirmColor,
                     onClick = {

@@ -516,9 +516,9 @@ impl LxApp {
                                         let cleanup_lock_path = lock_path.clone();
                                         let cleanup_part_path = part_path.clone();
                                         let spawned = net::spawn_async(async move {
-                                            let res = rx
-                                                .await
-                                                .unwrap_or_else(|_| Err("download dropped".to_string()));
+                                            let res = rx.await.unwrap_or_else(|_| {
+                                                Err("download dropped".to_string())
+                                            });
                                             let _ = fs::remove_file(&cleanup_lock_path);
                                             if res.is_err() {
                                                 let _ = fs::remove_file(&cleanup_part_path);

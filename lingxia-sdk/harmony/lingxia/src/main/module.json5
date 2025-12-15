@@ -15,7 +15,7 @@
       },
       {
         "name": "ohos.permission.LOCATION",
-        "reason": "$string:location_reason",
+        "reason": "$string:lx_permission_location_reason",
         "usedScene": {
           "abilities": [
             "EntryAbility"
@@ -25,7 +25,7 @@
       },
       {
         "name": "ohos.permission.APPROXIMATELY_LOCATION",
-        "reason": "$string:location_reason",
+        "reason": "$string:lx_permission_location_reason",
         "usedScene": {
           "abilities": [
             "EntryAbility"
@@ -35,7 +35,7 @@
       },
       {
         "name": "ohos.permission.CAMERA",
-        "reason": "$string:media_reason",
+        "reason": "$string:lx_permission_media_reason",
         "usedScene": {
           "abilities": [
             "EntryAbility"
@@ -45,7 +45,7 @@
       },
       {
         "name": "ohos.permission.MICROPHONE",
-        "reason": "$string:media_reason",
+        "reason": "$string:lx_permission_media_reason",
         "usedScene": {
           "abilities": [
             "EntryAbility"
@@ -55,7 +55,7 @@
       },
       {
         "name": "ohos.permission.WRITE_IMAGEVIDEO",
-        "reason": "$string:media_reason",
+        "reason": "$string:lx_permission_media_reason",
         "usedScene": {
           "abilities": [
             "EntryAbility"

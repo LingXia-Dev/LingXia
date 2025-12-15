@@ -467,7 +467,7 @@ export struct CameraCaptureOverlay {
   @State private isPreview: boolean = false;
   @State private previewUri: string = '';
   @State private previewType: 'image' | 'video' = 'image';
-  @State private hintText: string = '轻触拍照';
+  @State private hintText: ResourceStr = $r('app.string.lx_camera_tap_to_capture');
   @State private isCapturePressed: boolean = false; // For visual feedback
   @State private captureProgress: number = 0; // For video recording progress
   @State private showTimer: boolean = false;
@@ -882,7 +882,7 @@ export struct CameraCaptureOverlay {
         try { if (resPath) { fileIo.unlinkSync(resPath); } } catch {}
         this.lastVideoPath = '';
         // Show short-duration hint at the hint text location
-        this.hintText = '拍摄时间过短';
+        this.hintText = $r('app.string.lx_error_video_too_short');
         this.showingErrorHint = true;
         if (this.shortHintTimer !== -1) { clearTimeout(this.shortHintTimer); this.shortHintTimer = -1; }
         this.shortHintTimer = setTimeout(() => {
@@ -1048,14 +1048,14 @@ export struct CameraCaptureOverlay {
       return;
     }
     if (this.isRecording) {
-      this.hintText = '松开停止';
+      this.hintText = $r('app.string.lx_camera_release_to_stop');
       return;
     }
     if (activeMode === 'video') {
-      this.hintText = '长按拍摄';
+      this.hintText = $r('app.string.lx_camera_long_press_to_record');
       return;
     }
-    this.hintText = '轻触拍照';
+    this.hintText = $r('app.string.lx_camera_tap_to_capture');
   }
 
   private activeMode(): 'photo' | 'video' {

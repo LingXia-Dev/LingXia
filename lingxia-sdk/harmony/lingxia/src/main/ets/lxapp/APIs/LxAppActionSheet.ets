@@ -121,7 +121,7 @@ export struct ActionSheetManager {
             .backgroundColor('#E0E0E0')
 
           // Cancel button - part of same container, no separate styling
-          Text(this.config?.cancelText || 'Cancel')
+          Text(this.config?.cancelText || '')
             .fontSize(18)
             .fontColor('#666666')
             .textAlign(TextAlign.Center)

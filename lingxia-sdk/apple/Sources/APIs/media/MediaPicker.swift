@@ -181,19 +181,22 @@ final class MediaPickerViewController: UIViewController, UICollectionViewDataSou
     private func rootAlbumTitle() -> String {
         switch mode {
         case "video", "videos":
-            return isLimited ? "可访问的视频" : "所有视频"
+            return isLimited ? "lx_album_add_more_videos".localized : "lx_album_all_videos".localized
         case "image", "images":
-            return isLimited ? "可访问的照片" : "所有照片"
+            return isLimited ? "lx_album_add_more_photos".localized : "lx_album_all_photos".localized
         default:
-            return isLimited ? "可访问的媒体" : "所有媒体"
+            return isLimited ? "lx_album_add_more_media".localized : "lx_album_all_media".localized
         }
     }
 
     private func plusCellHintText() -> String {
         switch mode {
-        case "video", "videos": return "添加更多\n可访问视频"
-        case "image", "images": return "添加更多\n可访问照片"
-        default: return "添加更多\n可访问媒体"
+        case "video", "videos":
+            return "lx_permission_limited_access_add_more_videos".localized
+        case "image", "images":
+            return "lx_permission_limited_access_add_more_photos".localized
+        default:
+            return "lx_permission_limited_access_add_more_media".localized
         }
     }
 
@@ -558,7 +561,7 @@ final class MediaPickerViewController: UIViewController, UICollectionViewDataSou
         icon.translatesAutoresizingMaskIntoConstraints = false
 
         let label = UILabel()
-        label.text = "你仅开启有限访问相册权限，建议允许访问「所有照片」"
+        label.text = "lx_permission_limited_access_warning".localized
         label.font = UIFont.systemFont(ofSize: 12)
         label.textColor = UIColor.darkGray
         label.numberOfLines = 2

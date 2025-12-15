@@ -48,6 +48,8 @@ let package = Package(
                 .copy("Resources/icons/icon_camera_flash_on.pdf"),
                 .copy("Resources/icons/icon_camera_flash_off.pdf"),
                 .copy("Resources/icons/icon_camera_switch.pdf"),
+                .process("Resources/en.lproj"),
+                .process("Resources/zh-Hans.lproj"),
             ],
             publicHeadersPath: nil,
             cSettings: [

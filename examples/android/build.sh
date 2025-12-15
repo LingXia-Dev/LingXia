@@ -122,6 +122,12 @@ build_rust_android() {
     fi
 }
 
+# Generate i18n resources for Android
+echo "Generating i18n resources for Android..."
+cargo run -p lingxia-gen -- i18n \
+  --input "$LINGXIA_ROOT/i18n" \
+  --android-out "$LINGXIA_SDK_ANDROID/lingxia/src/main/res"
+
 if [ "$SKIP_RUST" = false ]; then
     echo "[1/4] Building Rust libraries..."
     cd "$WORKSPACE_ROOT"

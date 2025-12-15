@@ -32,8 +32,8 @@ public class LxAppModal {
         let title = options["title"] as? String ?? ""
         let content = options["content"] as? String ?? ""
         let showCancel = options["showCancel"] as? Bool ?? true
-        let cancelText = options["cancelText"] as? String ?? "Cancel"
-        let confirmText = options["confirmText"] as? String ?? "OK"
+        let cancelText = options["cancelText"] as? String ?? ""
+        let confirmText = options["confirmText"] as? String ?? ""
 
         #if os(macOS)
         // Show macOS modal asynchronously with callback

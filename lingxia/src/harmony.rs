@@ -1,8 +1,6 @@
 use lingxia_messaging::invoke_callback;
 use lingxia_platform::harmony::camera;
-use lingxia_webview::{
-    get_webview_delegate, tsfn, webview_controller_created, webview_controller_destroyed,
-};
+use lingxia_webview::{tsfn, webview_controller_created, webview_controller_destroyed};
 use log::LevelFilter;
 use lxapp::log::LogLevel;
 use lxapp::{LxAppDelegate, UiEventType as LxAppUiEventType};

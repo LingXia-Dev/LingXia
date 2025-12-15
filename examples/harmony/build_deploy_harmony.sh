@@ -81,6 +81,12 @@ echo "Cleaning previous HAR artifacts..."
 rm -f "$HAR_BUNDLE" 2>/dev/null || true
 rm -rf "$LINGXIA_ROOT/lingxia-sdk/harmony/lingxia/build" 2>/dev/null || true
 
+# 0) Generate i18n resources for HarmonyOS
+echo "Generating i18n resources for HarmonyOS..."
+cargo run -p lingxia-gen -- i18n \
+  --input "$LINGXIA_ROOT/i18n" \
+  --harmony-out "$LINGXIA_ROOT/lingxia-sdk/harmony/lingxia/src/main/resources"
+
 # 1) Build Rust native library
 if [ "$SKIP_RUST" = false ]; then
   build_rust

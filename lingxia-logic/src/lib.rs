@@ -4,6 +4,7 @@ use rong::{JSContext, JSResult};
 mod device;
 mod env;
 include!(concat!(env!("OUT_DIR"), "/i18n_generated.rs"));
+pub mod i18n;
 mod location;
 mod media;
 mod navigator;

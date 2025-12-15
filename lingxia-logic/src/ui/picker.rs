@@ -1,3 +1,4 @@
+use crate::{I18nKey, i18n::t};
 use futures::stream;
 use lingxia_messaging::{CallbackResult, get_stream_callback, remove_callback};
 use lingxia_platform::{PickerType, UserFeedback};
@@ -261,7 +262,9 @@ fn show_picker(ctx: JSContext, options: JSPickerOptions) -> JSResult<JSObject> {
     };
 
     let (callback_id, receiver) = get_stream_callback();
-    let cancel_text = options.cancel_text.unwrap_or_else(|| "Cancel".to_string());
+    let cancel_text = options
+        .cancel_text
+        .unwrap_or_else(|| t(I18nKey::CommonCancel));
     let cancel_button_color = options
         .cancel_button_color
         .unwrap_or_else(|| "#F2F2F2".to_string());
@@ -270,7 +273,7 @@ fn show_picker(ctx: JSContext, options: JSPickerOptions) -> JSResult<JSObject> {
         .unwrap_or_else(|| "#007AFF".to_string());
     let confirm_text = options
         .confirm_text
-        .unwrap_or_else(|| "Confirm".to_string());
+        .unwrap_or_else(|| t(I18nKey::CommonConfirm));
     let confirm_button_color = options
         .confirm_button_color
         .unwrap_or_else(|| "#007AFF".to_string());

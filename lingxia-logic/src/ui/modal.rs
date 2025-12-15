@@ -1,3 +1,4 @@
+use crate::{I18nKey, i18n::t};
 use lingxia_messaging::{CallbackResult, get_callback};
 use lingxia_platform::{ModalOptions, UserFeedback};
 use lxapp::{LxApp, lx};
@@ -21,20 +22,18 @@ struct JSModalOptions {
     confirm_color: Option<String>,
 }
 
-impl From<JSModalOptions> for ModalOptions {
-    fn from(js_options: JSModalOptions) -> Self {
+impl JSModalOptions {
+    fn into_modal_options(self) -> ModalOptions {
         ModalOptions {
-            title: js_options.title.unwrap_or_else(|| "Title".to_string()),
-            content: js_options.content.unwrap_or_default(),
-            show_cancel: js_options.show_cancel.unwrap_or(true),
-            cancel_text: js_options
-                .cancel_text
-                .unwrap_or_else(|| "Cancel".to_string()),
-            cancel_color: js_options.cancel_color,
-            confirm_text: js_options
+            title: self.title.unwrap_or_default(),
+            content: self.content.unwrap_or_default(),
+            show_cancel: self.show_cancel.unwrap_or(true),
+            cancel_text: self.cancel_text.unwrap_or_else(|| t(I18nKey::CommonCancel)),
+            cancel_color: self.cancel_color,
+            confirm_text: self
                 .confirm_text
-                .unwrap_or_else(|| "Confirm".to_string()),
-            confirm_color: js_options.confirm_color,
+                .unwrap_or_else(|| t(I18nKey::CommonConfirm)),
+            confirm_color: self.confirm_color,
         }
     }
 }
@@ -74,7 +73,7 @@ impl From<CallbackResult> for JSModalResult {
 /// Show modal function (async)
 async fn show_modal(ctx: JSContext, options: JSModalOptions) -> JSResult<JSModalResult> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    let modal_options: ModalOptions = options.into();
+    let modal_options = options.into_modal_options();
 
     // Do not show UI if app is not opened
     if !lxapp.is_opened() {

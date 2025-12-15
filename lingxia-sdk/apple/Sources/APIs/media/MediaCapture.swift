@@ -570,7 +570,7 @@ private final class PhotoCaptureOverlayView: UIView {
     }
 
     func updateCameraPosition(isFront: Bool) {
-        switchCameraButton.accessibilityLabel = isFront ? "切换到后置摄像头" : "切换到前置摄像头"
+        switchCameraButton.accessibilityLabel = isFront ? "lx_camera_switch_to_back".localized : "lx_camera_switch_to_front".localized
     }
 
     func setFlashAvailable(_ available: Bool) {
@@ -901,7 +901,7 @@ final class VideoCaptureViewController: UIViewController {
             do {
                 try self.configureAudioSession()
             } catch {
-                self.finish(with: .failure("音频会话初始化失败: \(error.localizedDescription)"))
+                self.finish(with: .failure("lx_camera_audio_init_failed".localized))
                 return
             }
 
@@ -909,7 +909,7 @@ final class VideoCaptureViewController: UIViewController {
             self.session.sessionPreset = .high
 
             guard let videoDevice = self.bestVideoDevice(position: self.currentPosition) else {
-                self.finish(with: .failure("无法访问摄像头"))
+                self.finish(with: .failure("lx_camera_access_denied".localized))
                 self.session.commitConfiguration()
                 return
             }
@@ -921,12 +921,12 @@ final class VideoCaptureViewController: UIViewController {
                     self.videoInput = videoInput
         } else {
                     self.session.commitConfiguration()
-                    self.finish(with: .failure("无法添加视频输入"))
+                    self.finish(with: .failure("lx_camera_video_input_failed".localized))
                 return
             }
             } catch {
                 self.session.commitConfiguration()
-                self.finish(with: .failure("摄像头初始化失败: \(error.localizedDescription)"))
+                self.finish(with: .failure("lx_camera_init_failed".localized))
                 return
             }
 
@@ -952,7 +952,7 @@ final class VideoCaptureViewController: UIViewController {
                 self.videoOutput.setSampleBufferDelegate(self.sampleBufferDelegate, queue: self.writerQueue)
             } else {
                 self.session.commitConfiguration()
-                self.finish(with: .failure("无法添加视频输出"))
+                self.finish(with: .failure("lx_camera_video_output_failed".localized))
                 return
             }
 
@@ -1149,7 +1149,7 @@ final class VideoCaptureViewController: UIViewController {
             guard let newDevice = self.bestVideoDevice(position: self.currentPosition) else {
                 self.session.commitConfiguration()
                 DispatchQueue.main.async {
-                    self.overlayView.showHint("无法切换摄像头")
+                    self.overlayView.showHint("lx_camera_switch_failed".localized)
                 }
                 return
             }
@@ -1162,14 +1162,14 @@ final class VideoCaptureViewController: UIViewController {
                 } else {
                     self.session.commitConfiguration()
                     DispatchQueue.main.async {
-                        self.overlayView.showHint("无法切换摄像头")
+                        self.overlayView.showHint("lx_camera_switch_failed".localized)
                     }
                     return
                 }
             } catch {
                 self.session.commitConfiguration()
                 DispatchQueue.main.async {
-                    self.overlayView.showHint("摄像头切换失败")
+                    self.overlayView.showHint("lx_camera_switch_failed".localized)
                 }
                 return
             }
@@ -1215,7 +1215,7 @@ final class VideoCaptureViewController: UIViewController {
         videoWriterInput.expectsMediaDataInRealTime = true
         // Let AVCaptureConnection handle buffer orientation; keep track transform identity
         guard writer.canAdd(videoWriterInput) else {
-            throw NSError(domain: "LingXia.Camera", code: -3002, userInfo: [NSLocalizedDescriptionKey: "无法添加视频输入"])
+            throw NSError(domain: "LingXia.Camera", code: -3002, userInfo: [NSLocalizedDescriptionKey: "lx_camera_video_input_failed".localized])
         }
         writer.add(videoWriterInput)
 
@@ -1719,7 +1719,7 @@ private final class VideoCaptureOverlayView: UIView {
 
     func updateToIdle() {
         recordingActive = false
-        hintLabel.text = "点击录制"
+        hintLabel.text = "lx_camera_tap_to_record".localized
         timerLabel.isHidden = true
         applyCameraButtonState()
         UIView.animate(withDuration: 0.2) {
@@ -1737,7 +1737,7 @@ private final class VideoCaptureOverlayView: UIView {
 
     func updateToRecording() {
         recordingActive = true
-        hintLabel.text = "点击停止"
+        hintLabel.text = "lx_camera_tap_to_stop".localized
         timerLabel.isHidden = false
         cancelButton.backgroundColor = cancelBaseColor
         applyCameraButtonState()
@@ -1745,7 +1745,7 @@ private final class VideoCaptureOverlayView: UIView {
     }
 
     func updateToCancelling() {
-        hintLabel.text = "取消中..."
+        hintLabel.text = "lx_camera_cancelling".localized
         timerLabel.isHidden = true
         applyCameraButtonState()
         cancelButton.alpha = 1.0
@@ -1757,7 +1757,7 @@ private final class VideoCaptureOverlayView: UIView {
     }
 
     func showMaxDurationReached() {
-        hintLabel.text = "已达最长录制时间"
+        hintLabel.text = "lx_camera_max_duration_reached".localized
         timerLabel.isHidden = false
     }
 
@@ -1777,7 +1777,7 @@ private final class VideoCaptureOverlayView: UIView {
         let positions = Set(discovery.devices.map { $0.position })
         cameraSwitchAvailable = positions.contains(.front) && positions.contains(.back)
         applyCameraButtonState()
-        switchCameraButton.accessibilityLabel = isFront ? "切换到后置摄像头" : "切换到前置摄像头"
+        switchCameraButton.accessibilityLabel = isFront ? "lx_camera_switch_to_back".localized : "lx_camera_switch_to_front".localized
     }
 
     private func configureView() {
@@ -1790,7 +1790,7 @@ private final class VideoCaptureOverlayView: UIView {
         captureButton.layer.borderWidth = 4
         captureButton.adjustsImageWhenHighlighted = false
         captureButton.addTarget(self, action: #selector(recordTapped), for: .touchUpInside)
-        captureButton.accessibilityLabel = "录制视频"
+        captureButton.accessibilityLabel = "lx_camera_record_video".localized
         captureButton.accessibilityTraits.insert(.button)
         addSubview(captureButton)
 

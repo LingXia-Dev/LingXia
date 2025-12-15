@@ -112,8 +112,8 @@ enum PhotoCaptureResult {
 }
 
 enum PhotoCaptureHint {
-    static let preparing = "准备相机..."
-    static let ready = "点击拍照"
-    static let switching = "切换摄像头..."
+    static var preparing: String { "lx_camera_preparing".localized }
+    static var ready: String { "lx_camera_tap_to_capture".localized }
+    static var switching: String { "lx_camera_switching".localized }
 }
 #endif

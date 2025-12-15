@@ -163,7 +163,7 @@ export struct ModalManager {
     if (this.config?.showCancel) {
       // Two buttons layout
       Row({ space: 12 }) {
-        Button(this.config.cancelText)
+        Button(this.config?.cancelText || '')
           .layoutWeight(1)
           .height(44)
           .fontSize(16)
@@ -174,7 +174,7 @@ export struct ModalManager {
             this.handleCancel();
           })
 
-        Button(this.config.confirmText)
+        Button(this.config?.confirmText || '')
           .layoutWeight(1)
           .height(44)
           .fontSize(16)
@@ -188,7 +188,7 @@ export struct ModalManager {
       .width('100%')
     } else {
       // Single button layout
-      Button(this.config?.confirmText || "Confirm")
+      Button(this.config?.confirmText || '')
         .width('100%')
         .height(44)
         .fontSize(16)

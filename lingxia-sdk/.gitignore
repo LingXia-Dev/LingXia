@@ -1,1 +1,9 @@
 apple/Sources/Resources/icons/
+
+# Generated i18n files
+android/lingxia/src/main/res/values/strings.xml
+android/lingxia/src/main/res/values-zh-rCN/strings.xml
+apple/Sources/Resources/en.lproj/Localizable.strings
+apple/Sources/Resources/zh-Hans.lproj/Localizable.strings
+harmony/lingxia/src/main/resources/base/element/string.json
+harmony/lingxia/src/main/resources/zh_CN/element/string.json

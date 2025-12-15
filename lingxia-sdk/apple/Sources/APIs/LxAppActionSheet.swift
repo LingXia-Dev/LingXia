@@ -29,7 +29,7 @@ public class LxAppActionSheet {
 
     public static func showActionSheet(_ options: [String: Any], callback_id: UInt64) {
         let optionsArray = options["options"] as? [String] ?? []
-        let cancelText = options["cancelText"] as? String ?? "Cancel"
+        let cancelText = options["cancelText"] as? String ?? ""
         let itemColor = options["itemColor"] as? String ?? "#007AFF"
 
         DispatchQueue.main.async {
@@ -53,7 +53,7 @@ public class LxAppActionSheet {
     @MainActor
     private static func showMacOSActionSheet(options: [String], cancelText: String, itemColor: String, callback_id: UInt64) {
         let alert = NSAlert()
-        alert.messageText = "Select an option"
+        alert.messageText = ""
 
         for option in options {
             alert.addButton(withTitle: option)

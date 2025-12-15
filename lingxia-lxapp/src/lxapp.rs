@@ -1345,6 +1345,15 @@ pub fn get_platform() -> Option<Arc<Platform>> {
     LXAPPS_MANAGER.get().map(|manager| manager.runtime.clone())
 }
 
+/// Get the system locale string.
+/// Returns "en-US" as default if the SDK has not been initialized.
+pub fn get_locale() -> String {
+    LXAPPS_MANAGER
+        .get()
+        .map(|manager| manager.runtime.get_system_locale().to_string())
+        .unwrap_or_else(|| "en-US".to_string())
+}
+
 /// Try to get a specific LxApp instance by lxappid
 pub fn try_get(appid: &str) -> Option<Arc<LxApp>> {
     LXAPPS_MANAGER

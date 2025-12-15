@@ -5,6 +5,13 @@
     <key>CFBundleIdentifier</key>
     <string>app.lingxia.example.lxapp</string>
 
+    <!-- Supported localizations -->
+    <key>CFBundleLocalizations</key>
+    <array>
+        <string>en</string>
+        <string>zh-Hans</string>
+    </array>
+
     <!-- Push Notifications Configuration -->
     <key>UIBackgroundModes</key>
     <array>

@@ -53,6 +53,7 @@ import androidx.core.content.ContextCompat
 import com.lingxia.lxapp.util.ActivityInsets
 import androidx.fragment.app.Fragment
 import com.lingxia.lxapp.NativeApi
+import com.lingxia.lxapp.R
 import android.text.SpannableString
 import android.text.style.ForegroundColorSpan
 import java.io.File
@@ -305,7 +306,7 @@ class MediaCaptureFragment : Fragment() {
             bottomOverlay.addView(hintView)
 
             val backBtn = CutoutChevronButton(context).apply {
-                contentDescription = "取消"
+                contentDescription = context.getString(R.string.lx_common_cancel)
                 visibility = View.VISIBLE
                 setOnClickListener { handleBackButton() }
             }
@@ -339,7 +340,7 @@ class MediaCaptureFragment : Fragment() {
                 background = backgroundDrawable
                 finishButtonBackground = backgroundDrawable
                 setTextColor(Color.WHITE)
-                text = "完成"
+                text = context.getString(R.string.lx_common_done)
                 textSize = 14f
                 visibility = View.GONE
                 setOnClickListener { completeCapture() }
@@ -768,9 +769,9 @@ class MediaCaptureFragment : Fragment() {
         val isVideoMode = isVideoMode()
         captureButton?.setVideoMode(isVideoMode)
         hintText?.text = when {
-            isVideoMode && isRecording -> "松开停止"
-            isVideoMode -> "长按摄像"
-            else -> "轻触拍照"
+            isVideoMode && isRecording -> getString(R.string.lx_camera_release_to_stop)
+            isVideoMode -> getString(R.string.lx_camera_long_press_to_record)
+            else -> getString(R.string.lx_camera_tap_to_capture)
         }
     }
 
@@ -882,7 +883,7 @@ class MediaCaptureFragment : Fragment() {
         // Top-left back arrow inside preview container
         if (previewBackButton == null) {
             previewBackButton = RoundBackArrowButton(requireContext()).apply {
-                contentDescription = "返回"
+                contentDescription = getString(R.string.lx_common_back)
                 setOnClickListener { handleBackButton() }
             }
             container.addView(
@@ -1034,7 +1035,7 @@ class MediaCaptureFragment : Fragment() {
         showingErrorHint = true
         // Ensure hint is visible and has correct text
         hintText?.visibility = View.VISIBLE
-        hintText?.text = "拍摄时间过短"
+        hintText?.text = getString(R.string.lx_error_video_too_short)
         // Reset hint after 1.5 seconds
         handler.postDelayed({
             showingErrorHint = false
