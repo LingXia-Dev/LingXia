@@ -198,7 +198,8 @@ extension LxAppMedia {
             return image
         }
 
-        if let pdfURL = bundle.url(forResource: name, withExtension: "pdf") {
+        // loading PDF from icons subdirectory (Resources/icons)
+        if let pdfURL = bundle.url(forResource: name, withExtension: "pdf", subdirectory: "icons") {
             return renderPDF(at: pdfURL)
         }
 

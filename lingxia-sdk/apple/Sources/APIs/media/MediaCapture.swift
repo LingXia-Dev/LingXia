@@ -385,26 +385,10 @@ private enum ReviewButtonFactory {
         return button
     }
 
-    static func makeRetakeActionButton(target: Any?, action: Selector) -> UIButton {
-        let button = UIButton(type: .system)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        button.setTitle("重新拍摄", for: .normal)
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 17, weight: .semibold)
-        button.setTitleColor(primaryColor, for: .normal)
-        button.backgroundColor = UIColor.white.withAlphaComponent(0.8)
-        button.layer.cornerRadius = 10
-        button.layer.borderWidth = 1
-        button.layer.borderColor = primaryColor.cgColor
-        button.addTarget(target, action: action, for: .touchUpInside)
-        return button
-    }
-
     static func makeBackButton(target: Any?, action: Selector) -> UIButton {
-        let button = UIButton(type: .system)
+        let button = UIButton(type: .custom)
         button.translatesAutoresizingMaskIntoConstraints = false
-        button.tintColor = .white
-        button.contentEdgeInsets = UIEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
-        button.setImage(LxAppMedia.controlImage(named: "icon_back"), for: .normal)
+        button.setImage(LxAppMedia.controlImage(named: "icon_back_curved"), for: .normal)
         button.imageView?.contentMode = .scaleAspectFit
         button.addTarget(target, action: action, for: .touchUpInside)
         return button
@@ -455,15 +439,11 @@ private final class PhotoReviewViewController: UIViewController {
     }
 
     private func configureControls() {
+        //  back button top-left, confirm button bottom-right
         let confirmButton = ReviewButtonFactory.makeConfirmButton(
-            title: "确定",
+            title: "lx_common_done".localized,
             target: self,
             action: #selector(confirmTapped)
-        )
-
-        let retakeActionButton = ReviewButtonFactory.makeRetakeActionButton(
-            target: self,
-            action: #selector(retakeTapped)
         )
 
         let backButton = ReviewButtonFactory.makeBackButton(
@@ -471,27 +451,21 @@ private final class PhotoReviewViewController: UIViewController {
             action: #selector(retakeTapped)
         )
 
-        let buttonStack = UIStackView(arrangedSubviews: [retakeActionButton, confirmButton])
-        buttonStack.translatesAutoresizingMaskIntoConstraints = false
-        buttonStack.axis = .horizontal
-        buttonStack.alignment = .center
-        buttonStack.spacing = 55
-
-        view.addSubview(buttonStack)
+        view.addSubview(confirmButton)
         view.addSubview(backButton)
 
         NSLayoutConstraint.activate([
-            confirmButton.widthAnchor.constraint(equalToConstant: 120),
-            confirmButton.heightAnchor.constraint(equalToConstant: 40),
+            // Confirm button at bottom-right
+            confirmButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -20),
+            confirmButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -20),
+            confirmButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 80),
+            confirmButton.heightAnchor.constraint(equalToConstant: 36),
 
-            retakeActionButton.widthAnchor.constraint(equalToConstant: 120),
-            retakeActionButton.heightAnchor.constraint(equalToConstant: 40),
-
-            buttonStack.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            buttonStack.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -48),
-
+            // Back button at top-left
             backButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
-            backButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16)
+            backButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
+            backButton.widthAnchor.constraint(equalToConstant: 28),
+            backButton.heightAnchor.constraint(equalToConstant: 28)
         ])
     }
 
@@ -506,7 +480,6 @@ private final class PhotoReviewViewController: UIViewController {
             return
         }
 
-        // 如果加载失败，直接视为重拍
         retakeTapped()
     }
 
@@ -533,8 +506,8 @@ private final class PhotoCaptureOverlayView: UIView {
     private let captureButton = UIButton(type: .custom)
     private let captureInnerLayer = CAShapeLayer()
     private let hintLabel = UILabel()
-    private let cancelButton = UIButton(type: .system)
-    private let switchCameraButton = UIButton(type: .system)
+    private let cancelButton = UIButton(type: .custom)
+    private let switchCameraButton = UIButton(type: .custom)
     private let flashButton = UIButton(type: .system)
     private let activityIndicator = UIActivityIndicatorView(style: .large)
     private var flashEnabled = false
@@ -610,24 +583,21 @@ private final class PhotoCaptureOverlayView: UIView {
         hintLabel.font = UIFont.systemFont(ofSize: 16, weight: .medium)
         addSubview(hintLabel)
 
+        // Cancel button at bottom-left, aligned with capture button
         cancelButton.translatesAutoresizingMaskIntoConstraints = false
-        cancelButton.backgroundColor = .clear
-        cancelButton.layer.cornerRadius = 0
-        cancelButton.setImage(LxAppMedia.controlImage(named: "icon_close"), for: .normal)
-        cancelButton.tintColor = .white
-        cancelButton.contentEdgeInsets = .zero
+        cancelButton.setImage(LxAppMedia.controlImage(named: "icon_chevron_down"), for: .normal)
+        cancelButton.imageView?.contentMode = .scaleAspectFit
         cancelButton.addTarget(self, action: #selector(cancelTapped), for: .touchUpInside)
         addSubview(cancelButton)
 
+        // Switch camera button at top-right
         switchCameraButton.translatesAutoresizingMaskIntoConstraints = false
-        switchCameraButton.backgroundColor = .clear
-        switchCameraButton.layer.cornerRadius = 0
         switchCameraButton.setImage(LxAppMedia.controlImage(named: "icon_camera_switch"), for: .normal)
-        switchCameraButton.tintColor = .white
-        switchCameraButton.contentEdgeInsets = .zero
+        switchCameraButton.imageView?.contentMode = .scaleAspectFit
         switchCameraButton.addTarget(self, action: #selector(switchCameraTapped), for: .touchUpInside)
         addSubview(switchCameraButton)
 
+        // Flash button at bottom, between cancel and capture buttons
         flashButton.translatesAutoresizingMaskIntoConstraints = false
         flashButton.backgroundColor = .clear
         flashButton.layer.cornerRadius = 0
@@ -654,18 +624,21 @@ private final class PhotoCaptureOverlayView: UIView {
             hintLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
             hintLabel.bottomAnchor.constraint(equalTo: captureButton.topAnchor, constant: -18),
 
-            cancelButton.leadingAnchor.constraint(equalTo: safeAreaLayoutGuide.leadingAnchor, constant: 16),
-            cancelButton.topAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor, constant: 16),
-            cancelButton.widthAnchor.constraint(equalToConstant: 44),
-            cancelButton.heightAnchor.constraint(equalToConstant: 44),
+            // Cancel button at bottom-left, vertically centered with capture button
+            cancelButton.centerYAnchor.constraint(equalTo: captureButton.centerYAnchor),
+            cancelButton.trailingAnchor.constraint(equalTo: captureButton.leadingAnchor, constant: -32),
+            cancelButton.widthAnchor.constraint(equalToConstant: 32),
+            cancelButton.heightAnchor.constraint(equalToConstant: 32),
 
+            // Flash button between cancel and capture
             flashButton.centerYAnchor.constraint(equalTo: captureButton.centerYAnchor),
-            flashButton.trailingAnchor.constraint(equalTo: captureButton.leadingAnchor, constant: -32),
+            flashButton.leadingAnchor.constraint(equalTo: captureButton.trailingAnchor, constant: 32),
             flashButton.widthAnchor.constraint(equalToConstant: 44),
             flashButton.heightAnchor.constraint(equalToConstant: 44),
 
-            switchCameraButton.centerYAnchor.constraint(equalTo: captureButton.centerYAnchor),
-            switchCameraButton.leadingAnchor.constraint(equalTo: captureButton.trailingAnchor, constant: 32),
+            // Switch camera button at top-right
+            switchCameraButton.topAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor, constant: 24),
+            switchCameraButton.trailingAnchor.constraint(equalTo: safeAreaLayoutGuide.trailingAnchor, constant: -24),
             switchCameraButton.widthAnchor.constraint(equalToConstant: 44),
             switchCameraButton.heightAnchor.constraint(equalToConstant: 44),
 
@@ -872,8 +845,11 @@ final class VideoCaptureViewController: UIViewController {
         overlayView.translatesAutoresizingMaskIntoConstraints = false
         overlayView.setInitialTimer(maxDuration: maxDuration)
         overlayView.updateCameraPosition(isFront: currentPosition == .front)
-        overlayView.onRecordTapped = { [weak self] in
-            self?.handleRecordTapped()
+        overlayView.onRecordStarted = { [weak self] in
+            self?.beginRecording()
+        }
+        overlayView.onRecordStopped = { [weak self] in
+            self?.requestStopRecording()
         }
         overlayView.onCancelTapped = { [weak self] in
             self?.handleCancelTapped()
@@ -1038,19 +1014,6 @@ final class VideoCaptureViewController: UIViewController {
             if available {
                 self.overlayView.setFlashEnabled(self.torchEnabled)
             }
-        }
-    }
-
-    private func handleRecordTapped() {
-        switch recordingState {
-        case .idle:
-            beginRecording()
-        case .recording, .finishing:
-            requestStopRecording()
-        case .preparing:
-            updatePendingActionForPreparing(.stop)
-        case .cancelling:
-            break
         }
     }
 
@@ -1619,15 +1582,11 @@ private final class VideoReviewViewController: UIViewController {
     }
 
     private func configureControls() {
+        // back button top-left, confirm button bottom-right
         let confirmButton = ReviewButtonFactory.makeConfirmButton(
-            title: "确定",
+            title: "lx_common_done".localized,
             target: self,
             action: #selector(confirmTapped)
-        )
-
-        let retakeActionButton = ReviewButtonFactory.makeRetakeActionButton(
-            target: self,
-            action: #selector(retakeTapped)
         )
 
         let backButton = ReviewButtonFactory.makeBackButton(
@@ -1635,27 +1594,21 @@ private final class VideoReviewViewController: UIViewController {
             action: #selector(retakeTapped)
         )
 
-        let buttonStack = UIStackView(arrangedSubviews: [retakeActionButton, confirmButton])
-        buttonStack.translatesAutoresizingMaskIntoConstraints = false
-        buttonStack.axis = .horizontal
-        buttonStack.alignment = .center
-        buttonStack.spacing = 55
-
-        view.addSubview(buttonStack)
+        view.addSubview(confirmButton)
         view.addSubview(backButton)
 
         NSLayoutConstraint.activate([
-            confirmButton.widthAnchor.constraint(equalToConstant: 120),
-            confirmButton.heightAnchor.constraint(equalToConstant: 40),
+            // Confirm button at bottom-right
+            confirmButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -20),
+            confirmButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -20),
+            confirmButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 80),
+            confirmButton.heightAnchor.constraint(equalToConstant: 36),
 
-            retakeActionButton.widthAnchor.constraint(equalToConstant: 120),
-            retakeActionButton.heightAnchor.constraint(equalToConstant: 40),
-
-            buttonStack.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            buttonStack.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -48),
-
+            // Back button at top-left
             backButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
-            backButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16)
+            backButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
+            backButton.widthAnchor.constraint(equalToConstant: 28),
+            backButton.heightAnchor.constraint(equalToConstant: 28)
         ])
     }
 
@@ -1680,7 +1633,8 @@ private final class VideoReviewViewController: UIViewController {
 }
 
 private final class VideoCaptureOverlayView: UIView {
-    var onRecordTapped: (() -> Void)?
+    var onRecordStarted: (() -> Void)?
+    var onRecordStopped: (() -> Void)?
     var onCancelTapped: (() -> Void)?
     var onSwitchCameraTapped: (() -> Void)?
     var onFlashToggle: ((Bool) -> Void)?
@@ -1690,26 +1644,30 @@ private final class VideoCaptureOverlayView: UIView {
     private var cameraSwitchAvailable = false
     private var flashEnabled = false
     private var flashAvailable = false
+    private var longPressTimer: Timer?
+    private let longPressDelay: TimeInterval = 0.28
 
     private let captureButton = UIButton(type: .custom)
-    private let innerCircle = UIView()
-    private let flashButton = UIButton(type: .system)
-    private let hintLabel = UILabel()
+    private let progressRingLayer = CAShapeLayer()
+    private let progressLayer = CAShapeLayer()
+    private let innerCircleLayer = CAShapeLayer()
     private let timerLabel = UILabel()
-    private let cancelButton = UIButton(type: .system)
-    private let switchCameraButton = UIButton(type: .system)
-    private let cancelBaseColor = UIColor.clear
+    private let hintLabel = UILabel()
+    private let cancelButton = UIButton(type: .custom)
+    private let switchCameraButton = UIButton(type: .custom)
+    private let flashButton = UIButton(type: .system)
     private let flashButtonSize: CGFloat = 44
+    private let progressGreenColor = UIColor(red: 7/255, green: 193/255, blue: 96/255, alpha: 1.0)
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         configureView()
     }
-    
+
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
-    
+
     func setInitialTimer(maxDuration: TimeInterval) {
         self.maxDuration = maxDuration
         timerLabel.text = Self.format(time: maxDuration, rounding: .up)
@@ -1719,14 +1677,14 @@ private final class VideoCaptureOverlayView: UIView {
 
     func updateToIdle() {
         recordingActive = false
-        hintLabel.text = "lx_camera_tap_to_record".localized
+        hintLabel.text = "lx_camera_long_press_to_record".localized
         timerLabel.isHidden = true
+        setProgress(0)
         applyCameraButtonState()
         UIView.animate(withDuration: 0.2) {
             self.cancelButton.alpha = 1.0
         }
         animateCaptureShape(isRecording: false)
-        cancelButton.backgroundColor = cancelBaseColor
     }
 
     func updateToIdle(after delay: TimeInterval) {
@@ -1737,9 +1695,8 @@ private final class VideoCaptureOverlayView: UIView {
 
     func updateToRecording() {
         recordingActive = true
-        hintLabel.text = "lx_camera_tap_to_stop".localized
+        hintLabel.text = "lx_camera_release_to_stop".localized
         timerLabel.isHidden = false
-        cancelButton.backgroundColor = cancelBaseColor
         applyCameraButtonState()
         animateCaptureShape(isRecording: true)
     }
@@ -1749,7 +1706,6 @@ private final class VideoCaptureOverlayView: UIView {
         timerLabel.isHidden = true
         applyCameraButtonState()
         cancelButton.alpha = 1.0
-        cancelButton.backgroundColor = cancelBaseColor
     }
 
     func showHint(_ text: String) {
@@ -1766,6 +1722,12 @@ private final class VideoCaptureOverlayView: UIView {
         let remaining = max(maxDuration - elapsed, 0)
         timerLabel.text = Self.format(time: remaining, rounding: .up)
         timerLabel.isHidden = !recordingActive
+        let progress = min(elapsed / maxDuration, 1.0)
+        setProgress(progress)
+    }
+
+    func setProgress(_ progress: Double) {
+        progressLayer.strokeEnd = CGFloat(progress)
     }
 
     func updateCameraPosition(isFront: Bool) {
@@ -1783,48 +1745,44 @@ private final class VideoCaptureOverlayView: UIView {
     private func configureView() {
         backgroundColor = .clear
 
+        // Capture button with progress ring
         captureButton.translatesAutoresizingMaskIntoConstraints = false
         captureButton.backgroundColor = .clear
-        captureButton.layer.cornerRadius = 42
-        captureButton.layer.borderColor = UIColor.white.withAlphaComponent(0.9).cgColor
-        captureButton.layer.borderWidth = 4
         captureButton.adjustsImageWhenHighlighted = false
-        captureButton.addTarget(self, action: #selector(recordTapped), for: .touchUpInside)
+        captureButton.addTarget(self, action: #selector(recordTouchDown), for: .touchDown)
+        captureButton.addTarget(self, action: #selector(recordTouchUp), for: [.touchUpInside, .touchUpOutside, .touchDragExit, .touchCancel])
         captureButton.accessibilityLabel = "lx_camera_record_video".localized
         captureButton.accessibilityTraits.insert(.button)
         addSubview(captureButton)
 
-        innerCircle.translatesAutoresizingMaskIntoConstraints = false
-        innerCircle.backgroundColor = UIColor(red: 0.95, green: 0.12, blue: 0.12, alpha: 1)
-        innerCircle.layer.cornerRadius = 30
-        innerCircle.layer.masksToBounds = true
-        innerCircle.isUserInteractionEnabled = false
-        captureButton.addSubview(innerCircle)
+        // Setup progress ring layers
+        setupProgressRingLayers()
 
         timerLabel.translatesAutoresizingMaskIntoConstraints = false
-        timerLabel.font = UIFont.monospacedDigitSystemFont(ofSize: 22, weight: .medium)
+        timerLabel.font = UIFont.monospacedDigitSystemFont(ofSize: 16, weight: .medium)
         timerLabel.textAlignment = .center
         timerLabel.textColor = .white
         timerLabel.text = "00:00"
         timerLabel.isHidden = true
+        timerLabel.backgroundColor = UIColor.black.withAlphaComponent(0.5)
+        timerLabel.layer.cornerRadius = 16
+        timerLabel.layer.masksToBounds = true
         addSubview(timerLabel)
 
         hintLabel.translatesAutoresizingMaskIntoConstraints = false
         hintLabel.textAlignment = .center
-        hintLabel.textColor = .white
-        hintLabel.font = UIFont.systemFont(ofSize: 16, weight: .medium)
+        hintLabel.textColor = UIColor.white.withAlphaComponent(0.8)
+        hintLabel.font = UIFont.systemFont(ofSize: 14, weight: .medium)
         addSubview(hintLabel)
 
+        // Cancel button at bottom-left
         cancelButton.translatesAutoresizingMaskIntoConstraints = false
-        cancelButton.backgroundColor = cancelBaseColor
-        cancelButton.layer.cornerRadius = 0
-        cancelButton.tintColor = .white
-        cancelButton.setImage(LxAppMedia.controlImage(named: "icon_close"), for: .normal)
-        cancelButton.accessibilityLabel = "关闭"
-        cancelButton.contentEdgeInsets = .zero
+        cancelButton.setImage(LxAppMedia.controlImage(named: "icon_chevron_down"), for: .normal)
+        cancelButton.accessibilityLabel = "lx_common_cancel".localized
         cancelButton.addTarget(self, action: #selector(cancelTapped), for: .touchUpInside)
         addSubview(cancelButton)
 
+        // Flash button between cancel and capture
         flashButton.translatesAutoresizingMaskIntoConstraints = false
         flashButton.backgroundColor = .clear
         flashButton.layer.cornerRadius = 0
@@ -1837,50 +1795,101 @@ private final class VideoCaptureOverlayView: UIView {
         flashButton.alpha = 0.0
         updateFlashButtonImage()
 
+        // Switch camera button at top-right
         switchCameraButton.translatesAutoresizingMaskIntoConstraints = false
-        switchCameraButton.backgroundColor = .clear
-        switchCameraButton.layer.cornerRadius = 0
         switchCameraButton.setImage(LxAppMedia.controlImage(named: "icon_camera_switch"), for: .normal)
-        switchCameraButton.tintColor = .white
-        switchCameraButton.contentEdgeInsets = .zero
         switchCameraButton.alpha = 0.0
         switchCameraButton.addTarget(self, action: #selector(switchCameraTapped), for: .touchUpInside)
         addSubview(switchCameraButton)
 
         NSLayoutConstraint.activate([
             captureButton.centerXAnchor.constraint(equalTo: centerXAnchor),
-            captureButton.bottomAnchor.constraint(equalTo: safeAreaLayoutGuide.bottomAnchor, constant: -28),
-            captureButton.widthAnchor.constraint(equalToConstant: 84),
-            captureButton.heightAnchor.constraint(equalToConstant: 84),
-
-            innerCircle.centerXAnchor.constraint(equalTo: captureButton.centerXAnchor),
-            innerCircle.centerYAnchor.constraint(equalTo: captureButton.centerYAnchor),
-            innerCircle.widthAnchor.constraint(equalToConstant: 60),
-            innerCircle.heightAnchor.constraint(equalToConstant: 60),
+            captureButton.bottomAnchor.constraint(equalTo: safeAreaLayoutGuide.bottomAnchor, constant: -20),
+            captureButton.widthAnchor.constraint(equalToConstant: 88),
+            captureButton.heightAnchor.constraint(equalToConstant: 88),
 
             hintLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
-            hintLabel.bottomAnchor.constraint(equalTo: captureButton.topAnchor, constant: -18),
+            hintLabel.bottomAnchor.constraint(equalTo: captureButton.topAnchor, constant: -45),
 
             timerLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
-            timerLabel.topAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor, constant: 18),
+            timerLabel.topAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor, constant: 38),
+            timerLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 80),
+            timerLabel.heightAnchor.constraint(equalToConstant: 32),
 
-            cancelButton.leadingAnchor.constraint(equalTo: safeAreaLayoutGuide.leadingAnchor, constant: 16),
-            cancelButton.topAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor, constant: 16),
-            cancelButton.widthAnchor.constraint(equalToConstant: 44),
-            cancelButton.heightAnchor.constraint(equalToConstant: 44),
+            // Cancel button at bottom-left, vertically centered with capture button
+            cancelButton.centerYAnchor.constraint(equalTo: captureButton.centerYAnchor),
+            cancelButton.trailingAnchor.constraint(equalTo: captureButton.leadingAnchor, constant: -32),
+            cancelButton.widthAnchor.constraint(equalToConstant: 32),
+            cancelButton.heightAnchor.constraint(equalToConstant: 32),
 
+            // Flash button between cancel and capture
             flashButton.centerYAnchor.constraint(equalTo: captureButton.centerYAnchor),
-            flashButton.trailingAnchor.constraint(equalTo: captureButton.leadingAnchor, constant: -32),
+            flashButton.leadingAnchor.constraint(equalTo: captureButton.trailingAnchor, constant: 32),
             flashButton.widthAnchor.constraint(equalToConstant: flashButtonSize),
             flashButton.heightAnchor.constraint(equalToConstant: flashButtonSize),
 
-            switchCameraButton.centerYAnchor.constraint(equalTo: captureButton.centerYAnchor),
-            switchCameraButton.leadingAnchor.constraint(equalTo: captureButton.trailingAnchor, constant: 32),
+            // Switch camera button at top-right
+            switchCameraButton.topAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor, constant: 24),
+            switchCameraButton.trailingAnchor.constraint(equalTo: safeAreaLayoutGuide.trailingAnchor, constant: -24),
             switchCameraButton.widthAnchor.constraint(equalToConstant: 44),
             switchCameraButton.heightAnchor.constraint(equalToConstant: 44)
         ])
 
         updateToIdle()
+    }
+
+    private func setupProgressRingLayers() {
+        progressRingLayer.fillColor = UIColor.clear.cgColor
+        progressRingLayer.strokeColor = UIColor(white: 0.23, alpha: 0.33).cgColor
+        progressRingLayer.lineCap = .round
+        captureButton.layer.addSublayer(progressRingLayer)
+
+        progressLayer.fillColor = UIColor.clear.cgColor
+        progressLayer.strokeColor = progressGreenColor.cgColor
+        progressLayer.lineWidth = 2
+        progressLayer.lineCap = .round
+        progressLayer.strokeStart = 0
+        progressLayer.strokeEnd = 0
+        captureButton.layer.addSublayer(progressLayer)
+
+        innerCircleLayer.fillColor = UIColor.white.cgColor
+        captureButton.layer.addSublayer(innerCircleLayer)
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        updateProgressRingLayers()
+    }
+
+    private struct CaptureGeometry {
+        let buttonSize: CGFloat
+        let ringStrokeWidth: CGFloat
+        let center: CGPoint
+        let radius: CGFloat
+    }
+
+    private func captureGeometry() -> CaptureGeometry? {
+        let buttonSize = captureButton.bounds.width
+        guard buttonSize > 0 else { return nil }
+
+        let ringStrokeWidth: CGFloat = buttonSize * 0.22
+        let center = CGPoint(x: buttonSize / 2, y: buttonSize / 2)
+        let radius = (buttonSize - ringStrokeWidth) / 2
+        return CaptureGeometry(buttonSize: buttonSize, ringStrokeWidth: ringStrokeWidth, center: center, radius: radius)
+    }
+
+    private func updateProgressRingLayers() {
+        guard let geometry = captureGeometry() else { return }
+
+        let ringPath = UIBezierPath(arcCenter: geometry.center, radius: geometry.radius, startAngle: 0, endAngle: .pi * 2, clockwise: true)
+        progressRingLayer.path = ringPath.cgPath
+        progressRingLayer.lineWidth = geometry.ringStrokeWidth
+
+        let progressPath = UIBezierPath(arcCenter: geometry.center, radius: geometry.buttonSize / 2 - 1, startAngle: -.pi / 2, endAngle: .pi * 1.5, clockwise: true)
+        progressLayer.path = progressPath.cgPath
+
+        let innerRadius = recordingActive ? geometry.radius - geometry.ringStrokeWidth * 0.6 : geometry.radius - 2
+        innerCircleLayer.path = UIBezierPath(arcCenter: geometry.center, radius: innerRadius, startAngle: 0, endAngle: .pi * 2, clockwise: true).cgPath
     }
 
     private static func format(time: TimeInterval, rounding rule: FloatingPointRoundingRule) -> String {
@@ -1896,15 +1905,18 @@ private final class VideoCaptureOverlayView: UIView {
             switchCameraButton.alpha = 0.0
         } else {
             switchCameraButton.isEnabled = !recordingActive
-            switchCameraButton.alpha = recordingActive ? 0.4 : 1.0
+            switchCameraButton.alpha = recordingActive ? 0.0 : 1.0
         }
         flashButton.isHidden = !flashAvailable
         flashButton.isEnabled = flashAvailable && !recordingActive
         if flashAvailable {
-            flashButton.alpha = flashButton.isEnabled ? 1.0 : 0.5
+            flashButton.alpha = flashButton.isEnabled ? 1.0 : 0.0
         } else {
             flashButton.alpha = 0.0
         }
+        // Hide cancel and hint during recording
+        cancelButton.isHidden = recordingActive
+        hintLabel.isHidden = recordingActive
     }
 
     func setFlashAvailable(_ available: Bool) {
@@ -1926,25 +1938,51 @@ private final class VideoCaptureOverlayView: UIView {
         flashButton.accessibilityLabel = flashEnabled ? "关闭闪光灯" : "开启闪光灯"
     }
 
+    private func setInnerCircle(using geometry: CaptureGeometry, radius: CGFloat, fillColor: CGColor, duration: CFTimeInterval) {
+        let innerPath = UIBezierPath(arcCenter: geometry.center, radius: radius, startAngle: 0, endAngle: .pi * 2, clockwise: true).cgPath
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(duration)
+        CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeInEaseOut))
+        innerCircleLayer.path = innerPath
+        innerCircleLayer.fillColor = fillColor
+        CATransaction.commit()
+    }
+
     private func animateCaptureShape(isRecording: Bool) {
-        let targetScale: CGFloat = isRecording ? 0.65 : 1.0
-        let targetCornerRadius: CGFloat = isRecording ? 8 : 30
+        guard let geometry = captureGeometry() else { return }
+        let innerRadius = isRecording ? geometry.radius - geometry.ringStrokeWidth * 0.6 : geometry.radius - 2
+        let fillColor = isRecording ? UIColor(white: 0.88, alpha: 1.0).cgColor : UIColor.white.cgColor
+        setInnerCircle(using: geometry, radius: innerRadius, fillColor: fillColor, duration: 0.18)
+    }
 
-        let cornerAnimation = CABasicAnimation(keyPath: "cornerRadius")
-        cornerAnimation.fromValue = innerCircle.layer.cornerRadius
-        cornerAnimation.toValue = targetCornerRadius
-        cornerAnimation.duration = 0.2
-        cornerAnimation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        innerCircle.layer.add(cornerAnimation, forKey: "cornerRadius")
-        innerCircle.layer.cornerRadius = targetCornerRadius
-
-        UIView.animate(withDuration: 0.2, delay: 0, options: [.curveEaseInOut, .allowUserInteraction]) {
-            self.innerCircle.transform = CGAffineTransform(scaleX: targetScale, y: targetScale)
+    @objc private func recordTouchDown() {
+        // Visual feedback immediately
+        animatePressVisual(pressed: true)
+        // Start long-press timer
+        longPressTimer?.invalidate()
+        longPressTimer = Timer.scheduledTimer(withTimeInterval: longPressDelay, repeats: false) { [weak self] _ in
+            guard let self else { return }
+            self.longPressTimer = nil
+            if !self.recordingActive {
+                self.onRecordStarted?()
+            }
         }
     }
 
-    @objc private func recordTapped() {
-        onRecordTapped?()
+    @objc private func recordTouchUp() {
+        longPressTimer?.invalidate()
+        longPressTimer = nil
+        animatePressVisual(pressed: false)
+        if recordingActive {
+            onRecordStopped?()
+        }
+    }
+
+    private func animatePressVisual(pressed: Bool) {
+        guard let geometry = captureGeometry() else { return }
+        let innerRadius = pressed ? geometry.radius - geometry.ringStrokeWidth * 0.4 : geometry.radius - 2
+        let fillColor = pressed ? UIColor(white: 0.88, alpha: 1.0).cgColor : UIColor.white.cgColor
+        setInnerCircle(using: geometry, radius: innerRadius, fillColor: fillColor, duration: 0.12)
     }
 
     @objc private func cancelTapped() {
