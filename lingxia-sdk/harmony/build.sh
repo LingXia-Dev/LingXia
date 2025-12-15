@@ -17,13 +17,6 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 LINGXIA_ROOT="$SCRIPT_DIR/../.."
 SDK_DIR="$SCRIPT_DIR"
 
-# 1) Copy core assets into HAR resources
-echo "[1/2] Packing core assets into HAR ..."
-SDK_RAW="$SDK_DIR/lingxia/src/main/resources/rawfile"
-mkdir -p "$SDK_RAW"
-cp "$LINGXIA_ROOT/lingxia-view/404.html" "$SDK_RAW/"
-cp "$LINGXIA_ROOT/lingxia-view/webview-bridge.js" "$SDK_RAW/"
-
 # 2) Build HAR and publish to workspace local repo (target/ohpm)
 echo "[2/2] Building HAR ..."
 (cd "$SDK_DIR" && hvigorw assembleHar)

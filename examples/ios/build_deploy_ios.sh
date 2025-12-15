@@ -46,6 +46,11 @@ cargo run -p lingxia-gen -- i18n \
   --input "$LINGXIA_ROOT/i18n" \
   --ios-out "$LINGXIA_ROOT/lingxia-sdk/apple/Sources/Resources"
 
+echo "Generating asset manifests for iOS..."
+cargo run -p lingxia-gen -- assets \
+  --input "$LINGXIA_ROOT/lingxia-sdk/resources/assets" \
+  --ios-out "$LINGXIA_ROOT/lingxia-sdk/apple/Sources/Resources"
+
 echo "Converting shared SVG icons to PDF for iOS bundle..."
 cargo run -p lingxia-gen -- icons \
   --input "$LINGXIA_ROOT/lingxia-sdk/resources/icons/svg" \
@@ -88,10 +93,6 @@ mkdir -p "$RESOURCES_DIR"
 echo "Cleaning resources directory..."
 rm -rf "$RESOURCES_DIR"/*
 
-echo "Copying lingxia-view files to resources..."
-cp "$LINGXIA_ROOT/lingxia-view/404.html" "$RESOURCES_DIR/"
-cp "$LINGXIA_ROOT/lingxia-view/webview-bridge.js" "$RESOURCES_DIR/"
-
 echo "Copying host app configuration..."
 cp "$LINGXIA_ROOT/examples/demo/app.json" "$RESOURCES_DIR/"
 
@@ -111,9 +112,6 @@ else
     echo "Error: package.json not found"
     exit 1
 fi
-
-echo "Converting shared SVG icons to PDF for iOS bundle..."
-"$LINGXIA_ROOT/lingxia-sdk/scripts/convert_svg_icons.sh"
 
 echo "Building and deploying iOS app..."
 cd "$SCRIPT_DIR/lxapp"

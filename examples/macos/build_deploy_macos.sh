@@ -44,10 +44,6 @@ fi
 
 mkdir -p "$RESOURCES_DIR"
 
-echo "Copying lingxia-view files to resources..."
-cp "$LINGXIA_ROOT/lingxia-view/404.html" "$RESOURCES_DIR/"
-cp "$LINGXIA_ROOT/lingxia-view/webview-bridge.js" "$RESOURCES_DIR/"
-
 echo "Copying host app configuration..."
 cp "$LINGXIA_ROOT/examples/demo/app.json" "$RESOURCES_DIR/"
 

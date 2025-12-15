@@ -128,6 +128,12 @@ cargo run -p lingxia-gen -- i18n \
   --input "$LINGXIA_ROOT/i18n" \
   --android-out "$LINGXIA_SDK_ANDROID/lingxia/src/main/res"
 
+# Generate asset manifests for Android
+echo "Generating asset manifests for Android..."
+cargo run -p lingxia-gen -- assets \
+  --input "$LINGXIA_ROOT/lingxia-sdk/resources/assets" \
+  --android-out "$LINGXIA_SDK_ANDROID/lingxia/src/main/assets"
+
 if [ "$SKIP_RUST" = false ]; then
     echo "[1/4] Building Rust libraries..."
     cd "$WORKSPACE_ROOT"
@@ -176,11 +182,6 @@ if [ ! -f "$LINGXIA_WEBVIEW_JAR" ]; then
     fi
 fi
 
-echo "Copying lingxia-view files into SDK AAR assets..."
-SDK_ASSETS_DIR="$LINGXIA_SDK_ANDROID/lingxia/src/main/assets"
-mkdir -p "$SDK_ASSETS_DIR"
-cp "$LINGXIA_ROOT/lingxia-view/404.html" "$SDK_ASSETS_DIR/"
-cp "$LINGXIA_ROOT/lingxia-view/webview-bridge.js" "$SDK_ASSETS_DIR/"
 
 echo "[2/4] Publishing SDK AAR (release) to local Maven ..."
 cd "$LINGXIA_SDK_ANDROID"

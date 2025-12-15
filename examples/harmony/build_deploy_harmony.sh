@@ -87,6 +87,11 @@ cargo run -p lingxia-gen -- i18n \
   --input "$LINGXIA_ROOT/i18n" \
   --harmony-out "$LINGXIA_ROOT/lingxia-sdk/harmony/lingxia/src/main/resources"
 
+echo "Generating asset manifests for HarmonyOS..."
+cargo run -p lingxia-gen -- assets \
+  --input "$LINGXIA_ROOT/lingxia-sdk/resources/assets" \
+  --harmony-out "$LINGXIA_ROOT/lingxia-sdk/harmony/lingxia/src/main/resources/rawfile"
+
 # 1) Build Rust native library
 if [ "$SKIP_RUST" = false ]; then
   build_rust
