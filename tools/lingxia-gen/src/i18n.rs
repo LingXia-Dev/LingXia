@@ -7,7 +7,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 #[derive(Args, Debug, Clone)]
-pub struct GenConfig {
+pub struct I18nConfig {
     /// Path to the i18n source directory containing YAML files
     #[arg(short, long, default_value = "i18n")]
     pub input: PathBuf,
@@ -76,7 +76,7 @@ impl TranslationValue {
 type Translations = BTreeMap<String, TranslationValue>;
 type I18nMap = BTreeMap<String, Translations>;
 
-pub fn run(config: GenConfig) -> Result<()> {
+pub fn run(config: I18nConfig) -> Result<()> {
     println!("Scanning for i18n files in: {:?}", config.input);
 
     let mut i18n_map: I18nMap = BTreeMap::new();

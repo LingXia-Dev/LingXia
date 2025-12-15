@@ -1,7 +1,7 @@
 use crate::I18nKey;
 
 /// Normalize locale string to use hyphens instead of underscores
-/// 
+///
 /// Converts platform-specific locale formats:
 /// - iOS: "zh_CN" -> "zh-CN"
 /// - Android: "zh-rCN" -> "zh-CN"

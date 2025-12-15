@@ -1,4 +1,4 @@
-use lingxia_gen::i18n::{GenConfig, run};
+use lingxia_gen::i18n::{I18nConfig, run};
 use std::env;
 use std::path::PathBuf;
 
@@ -10,7 +10,7 @@ fn main() {
 
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
 
-    let config = GenConfig {
+    let config = I18nConfig {
         input: root.join("../i18n"),
         rust_out: Some(out_dir.join("i18n_generated.rs")),
         android_out: None,
