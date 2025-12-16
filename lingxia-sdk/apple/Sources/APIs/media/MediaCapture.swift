@@ -387,7 +387,7 @@ private enum ReviewButtonFactory {
     static func makeBackButton(target: Any?, action: Selector) -> UIButton {
         let button = UIButton(type: .custom)
         button.translatesAutoresizingMaskIntoConstraints = false
-        button.setImage(LxAppMedia.controlImage(named: "icon_back_curved"), for: .normal)
+        button.setImage(LxIcon.image(named: "icon_back_curved"), for: .normal)
         button.imageView?.contentMode = .scaleAspectFit
         button.addTarget(target, action: action, for: .touchUpInside)
         return button
@@ -584,7 +584,7 @@ private final class PhotoCaptureOverlayView: UIView {
 
         // Cancel button at bottom-left, aligned with capture button
         cancelButton.translatesAutoresizingMaskIntoConstraints = false
-        cancelButton.setImage(LxAppMedia.controlImage(named: "icon_chevron_down"), for: .normal)
+        cancelButton.setImage(LxIcon.image(named: "icon_chevron_down"), for: .normal)
         cancelButton.tintColor = .white
         cancelButton.imageView?.contentMode = .scaleAspectFit
         cancelButton.addTarget(self, action: #selector(cancelTapped), for: .touchUpInside)
@@ -592,7 +592,7 @@ private final class PhotoCaptureOverlayView: UIView {
 
         // Switch camera button at top-right
         switchCameraButton.translatesAutoresizingMaskIntoConstraints = false
-        switchCameraButton.setImage(LxAppMedia.controlImage(named: "icon_camera_switch"), for: .normal)
+        switchCameraButton.setImage(LxIcon.image(named: "icon_camera_switch"), for: .normal)
         switchCameraButton.tintColor = .white
         switchCameraButton.imageView?.contentMode = .scaleAspectFit
         switchCameraButton.addTarget(self, action: #selector(switchCameraTapped), for: .touchUpInside)
@@ -661,7 +661,7 @@ private final class PhotoCaptureOverlayView: UIView {
 
     private func updateFlashButtonImage() {
         let name = flashEnabled ? "icon_camera_flash_on" : "icon_camera_flash_off"
-        flashButton.setImage(LxAppMedia.controlImage(named: name), for: .normal)
+        flashButton.setImage(LxIcon.image(named: name), for: .normal)
         flashButton.accessibilityLabel = flashEnabled ? "关闭闪光灯" : "开启闪光灯"
     }
 
@@ -1785,7 +1785,7 @@ private final class VideoCaptureOverlayView: UIView {
 
         // Cancel button at bottom-left
         cancelButton.translatesAutoresizingMaskIntoConstraints = false
-        cancelButton.setImage(LxAppMedia.controlImage(named: "icon_chevron_down"), for: .normal)
+        cancelButton.setImage(LxIcon.image(named: "icon_chevron_down"), for: .normal)
         cancelButton.tintColor = .white
         cancelButton.accessibilityLabel = "lx_common_cancel".localized
         cancelButton.addTarget(self, action: #selector(cancelTapped), for: .touchUpInside)
@@ -1806,7 +1806,7 @@ private final class VideoCaptureOverlayView: UIView {
 
         // Switch camera button at top-right
         switchCameraButton.translatesAutoresizingMaskIntoConstraints = false
-        switchCameraButton.setImage(LxAppMedia.controlImage(named: "icon_camera_switch"), for: .normal)
+        switchCameraButton.setImage(LxIcon.image(named: "icon_camera_switch"), for: .normal)
         switchCameraButton.tintColor = .white
         switchCameraButton.alpha = 0.0
         switchCameraButton.addTarget(self, action: #selector(switchCameraTapped), for: .touchUpInside)
@@ -1944,7 +1944,7 @@ private final class VideoCaptureOverlayView: UIView {
 
     private func updateFlashButtonImage() {
         let name = flashEnabled ? "icon_camera_flash_on" : "icon_camera_flash_off"
-        flashButton.setImage(LxAppMedia.controlImage(named: name), for: .normal)
+        flashButton.setImage(LxIcon.image(named: name), for: .normal)
         flashButton.accessibilityLabel = flashEnabled ? "关闭闪光灯" : "开启闪光灯"
     }
 

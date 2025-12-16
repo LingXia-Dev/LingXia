@@ -2,9 +2,23 @@ import UIKit
 
 /// Icon loader for LingXia SDK - loads icons from generated assets (PDF from SVG)
 public enum LxIcon {
-    /// Load control icon by name from SDK bundle
+    /// Load control icon by name from SDK bundle, optionally scaled to a specific size
     /// Icons are stored as PDF files generated from SVG sources
-    public static func image(named name: String) -> UIImage? {
+    public static func image(named name: String, size: CGSize? = nil) -> UIImage? {
+        guard let baseImage = loadImage(named: name) else { return nil }
+
+        // If no size specified, return the base image
+        guard let targetSize = size else { return baseImage }
+
+        // Scale to target size
+        let renderer = UIGraphicsImageRenderer(size: targetSize)
+        let scaledImage = renderer.image { _ in
+            baseImage.draw(in: CGRect(origin: .zero, size: targetSize))
+        }
+        return scaledImage.withRenderingMode(.alwaysTemplate)
+    }
+
+    private static func loadImage(named name: String) -> UIImage? {
         #if SWIFT_PACKAGE
         let bundle = Bundle.module
         #else

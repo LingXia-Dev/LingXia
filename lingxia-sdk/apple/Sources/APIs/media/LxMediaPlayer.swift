@@ -1274,7 +1274,7 @@ public final class LxMediaPlayer: NSObject {
         overlayView.addSubview(topBar)
 
         // Close/Back button (controlled by showCloseButton config)
-        backButton.setImage(UIImage(systemName: "xmark"), for: .normal)
+        backButton.setImage(LxIcon.image(named: "icon_close"), for: .normal)
         backButton.tintColor = .white
         backButton.addTarget(self, action: #selector(handleBackTap), for: .touchUpInside)
         backButton.contentEdgeInsets = UIEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
@@ -1329,14 +1329,14 @@ public final class LxMediaPlayer: NSObject {
         bottomBar.addSubview(timeLabel)
 
         // Play/Pause button
-        playPauseButton.setImage(UIImage(systemName: "play.fill"), for: .normal)
+        playPauseButton.setImage(LxIcon.image(named: "icon_play"), for: .normal)
         playPauseButton.tintColor = .white
         playPauseButton.addTarget(self, action: #selector(handlePlayPauseTap), for: .touchUpInside)
         playPauseButton.contentEdgeInsets = UIEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
         bottomBar.addSubview(playPauseButton)
 
         // Volume button
-        volumeButton.setImage(UIImage(systemName: "speaker.wave.2.fill"), for: .normal)
+        volumeButton.setImage(LxIcon.image(named: "icon_volume_on"), for: .normal)
         volumeButton.tintColor = .white
         volumeButton.addTarget(self, action: #selector(handleVolumeTap), for: .touchUpInside)
         volumeButton.contentEdgeInsets = UIEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
@@ -1353,8 +1353,7 @@ public final class LxMediaPlayer: NSObject {
         bottomBar.addSubview(volumeSlider)
 
         // Settings button (collapsed menu for quality/speed)
-        let gearConfig = UIImage.SymbolConfiguration(pointSize: 20, weight: .medium)
-        settingsButton.setImage(UIImage(systemName: "gearshape.fill", withConfiguration: gearConfig), for: .normal)
+        settingsButton.setImage(LxIcon.image(named: "icon_settings"), for: .normal)
         settingsButton.tintColor = .white
         settingsButton.backgroundColor = .clear
         settingsButton.isHidden = true
@@ -1364,14 +1363,15 @@ public final class LxMediaPlayer: NSObject {
         bottomBar.addSubview(settingsButton)
 
         // Fullscreen button
-        fullscreenButton.setImage(UIImage(systemName: "arrow.up.left.and.arrow.down.right"), for: .normal)
+        fullscreenButton.setImage(LxIcon.image(named: "icon_fullscreen_enter"), for: .normal)
         fullscreenButton.tintColor = .white
         fullscreenButton.addTarget(self, action: #selector(handleFullscreenTap), for: .touchUpInside)
         fullscreenButton.contentEdgeInsets = UIEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
         bottomBar.addSubview(fullscreenButton)
 
-        // Center play button
-        centerPlayButton.setImage(UIImage(systemName: "play.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 32, weight: .medium)), for: .normal)
+        // Center play button - use larger icon (36pt) for better visibility
+        let centerIconSize = CGSize(width: 36, height: 36)
+        centerPlayButton.setImage(LxIcon.image(named: "icon_play", size: centerIconSize), for: .normal)
         centerPlayButton.tintColor = .white
         centerPlayButton.backgroundColor = UIColor.black.withAlphaComponent(0.5)
         centerPlayButton.layer.cornerRadius = 40
@@ -1552,9 +1552,10 @@ public final class LxMediaPlayer: NSObject {
     }
 
     private func updatePlayPauseUI(isPlaying: Bool) {
-        let name = isPlaying ? "pause.fill" : "play.fill"
-        playPauseButton.setImage(UIImage(systemName: name), for: .normal)
-        centerPlayButton.setImage(UIImage(systemName: name, withConfiguration: UIImage.SymbolConfiguration(pointSize: 32, weight: .medium)), for: .normal)
+        let iconName = isPlaying ? "icon_pause" : "icon_play"
+        let centerIconSize = CGSize(width: 36, height: 36)
+        playPauseButton.setImage(LxIcon.image(named: iconName), for: .normal)
+        centerPlayButton.setImage(LxIcon.image(named: iconName, size: centerIconSize), for: .normal)
         if isPlaying {
             centerPlayButton.alpha = 0
             centerPlayButton.isHidden = true
@@ -2404,7 +2405,7 @@ public final class LxMediaPlayer: NSObject {
         }
 
         // Update UI
-        fullscreenButton.setImage(UIImage(systemName: "arrow.down.right.and.arrow.up.left"), for: .normal)
+        fullscreenButton.setImage(LxIcon.image(named: "icon_fullscreen_exit"), for: .normal)
         updateCloseButtonVisibility()
         send(.fullscreenChange(fullScreen: true, direction: "horizontal"))
 
@@ -2465,7 +2466,7 @@ public final class LxMediaPlayer: NSObject {
         // Transform is already restored to identity in the restoration code above
 
         // Update UI
-        fullscreenButton.setImage(UIImage(systemName: "arrow.up.left.and.arrow.down.right"), for: .normal)
+        fullscreenButton.setImage(LxIcon.image(named: "icon_fullscreen_enter"), for: .normal)
         updateCloseButtonVisibility()
         send(.fullscreenChange(fullScreen: false, direction: "vertical"))
 
@@ -2609,17 +2610,8 @@ public final class LxMediaPlayer: NSObject {
     }
 
     private func updateVolumeIcon(volume: Float) {
-        let iconName: String
-        if volume == 0 {
-            iconName = "speaker.slash.fill"
-        } else if volume < 0.3 {
-            iconName = "speaker.wave.1.fill"
-        } else if volume < 0.7 {
-            iconName = "speaker.wave.2.fill"
-        } else {
-            iconName = "speaker.wave.3.fill"
-        }
-        volumeButton.setImage(UIImage(systemName: iconName), for: .normal)
+        let iconName = volume == 0 ? "icon_volume_off" : "icon_volume_on"
+        volumeButton.setImage(LxIcon.image(named: iconName), for: .normal)
     }
 
 }

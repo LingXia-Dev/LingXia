@@ -75,7 +75,7 @@ final class ScanCodeViewController: UIViewController {
         let button = UIButton(type: .system)
         button.translatesAutoresizingMaskIntoConstraints = false
         button.tintColor = .white
-        button.setImage(LxAppMedia.controlImage(named: "icon_close"), for: .normal)
+        button.setImage(LxIcon.image(named: "icon_close"), for: .normal)
         button.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
         button.contentEdgeInsets = UIEdgeInsets(top: 6, left: 6, bottom: 6, right: 6)
         return button
@@ -96,7 +96,7 @@ final class ScanCodeViewController: UIViewController {
         
         let iconView = UIImageView()
         iconView.translatesAutoresizingMaskIntoConstraints = false
-        iconView.image = LxAppMedia.controlImage(named: "icon_album")
+        iconView.image = LxIcon.image(named: "icon_album")
         iconView.tintColor = .white
         iconView.contentMode = .scaleAspectFit
         iconWrap.addSubview(iconView)

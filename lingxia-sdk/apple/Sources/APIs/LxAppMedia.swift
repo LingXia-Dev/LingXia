@@ -187,10 +187,6 @@ extension LxAppMedia {
         }
     }
 
-    static func controlImage(named name: String) -> UIImage? {
-        return LxIcon.image(named: name)
-    }
-
     private struct ImageInfoPayload {
         let width: Int
         let height: Int

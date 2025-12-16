@@ -181,7 +181,7 @@ private final class MediaPreviewViewController: UIViewController {
             indicatorLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor)
         ])
 
-            if let backImage = LxAppMedia.controlImage(named: "icon_close")?.withRenderingMode(.alwaysOriginal) {
+            if let backImage = LxIcon.image(named: "icon_close")?.withRenderingMode(.alwaysOriginal) {
             closeButton.setImage(backImage, for: .normal)
             closeButton.tintColor = .clear
         } else {
