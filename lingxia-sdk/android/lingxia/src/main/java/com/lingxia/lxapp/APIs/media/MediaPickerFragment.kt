@@ -36,6 +36,9 @@ import com.lingxia.lxapp.R
 import org.json.JSONObject
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.graphics.drawable.GradientDrawable
+import android.graphics.Bitmap
+import android.util.LruCache
+import java.util.concurrent.Executors
 
 /**
  * Unified custom media picker UI (grid multi-select, confirm), attached to current Activity.
@@ -910,15 +913,30 @@ class MediaPickerFragment : Fragment() {
             private const val TYPE_MEDIA = 0
             private const val TYPE_CAMERA = 1
             private const val TYPE_PLUS = 2
+            private const val THUMB_PLACEHOLDER_COLOR: Int = 0xFFF0F0F0.toInt()
+            private const val THUMB_ERROR_COLOR: Int = 0xFFD9D9D9.toInt()
+            // Shared LruCache for thumbnail bitmaps (max ~20MB)
+            private val cacheLock = Any()
+            private val thumbnailCache: LruCache<Uri, Bitmap> = object : LruCache<Uri, Bitmap>(
+                ((Runtime.getRuntime().maxMemory() / 1024) / 8).toInt().coerceAtMost(20 * 1024)
+            ) {
+                override fun sizeOf(key: Uri, value: Bitmap): Int = value.byteCount / 1024
+            }
         }
 
         private val accentBlue = Color.parseColor("#1677FF")
+        private val thumbnailExecutor = Executors.newFixedThreadPool(2)
 
         private val selected = HashSet<Uri>()
 
         fun setSelected(keys: Collection<Uri>) {
             selected.clear(); selected.addAll(keys)
             notifyDataSetChanged()
+        }
+
+        override fun onDetachedFromRecyclerView(recyclerView: RecyclerView) {
+            super.onDetachedFromRecyclerView(recyclerView)
+            thumbnailExecutor.shutdownNow()
         }
 
         override fun getItemViewType(position: Int): Int {
@@ -1093,12 +1111,34 @@ class MediaPickerFragment : Fragment() {
                 holder.itemView.setOnClickListener { onPlusClick() }
             } else if (holder is MediaVH) {
                 holder.itemView.setOnClickListener { onMediaClick(item) }
-                try {
-                    val bmp = context.contentResolver.loadThumbnail(item.uri, Size(300, 300), null)
-                    holder.image.setImageBitmap(bmp)
-                } catch (_: Exception) {
+                // Async thumbnail loading with cache
+                holder.image.tag = item.uri
+                val cached = synchronized(cacheLock) { thumbnailCache.get(item.uri) }
+                if (cached != null) {
+                    holder.image.background = null
+                    holder.image.setImageBitmap(cached)
+                } else {
                     holder.image.setImageDrawable(null)
-                    holder.image.setBackgroundColor(Color.parseColor("#D9D9D9"))
+                    holder.image.setBackgroundColor(THUMB_PLACEHOLDER_COLOR)
+                    thumbnailExecutor.execute {
+                        try {
+                            val bmp = context.contentResolver.loadThumbnail(item.uri, Size(300, 300), null)
+                            synchronized(cacheLock) { thumbnailCache.put(item.uri, bmp) }
+                            holder.image.post {
+                                if (holder.image.tag == item.uri) {
+                                    holder.image.background = null
+                                    holder.image.setImageBitmap(bmp)
+                                }
+                            }
+                        } catch (_: Exception) {
+                            holder.image.post {
+                                if (holder.image.tag == item.uri) {
+                                    holder.image.setImageDrawable(null)
+                                    holder.image.setBackgroundColor(THUMB_ERROR_COLOR)
+                                }
+                            }
+                        }
+                    }
                 }
                 val isSel = selected.contains(item.uri)
                 holder.overlay.visibility = if (isSel) View.VISIBLE else View.GONE
