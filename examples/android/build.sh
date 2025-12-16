@@ -134,6 +134,12 @@ cargo run -p lingxia-gen -- assets \
   --input "$LINGXIA_ROOT/lingxia-sdk/resources/assets" \
   --android-out "$LINGXIA_SDK_ANDROID/lingxia/src/main/assets"
 
+# Generate Android Vector Drawable XML icons from SVG
+echo "Generating Android icons from SVG..."
+cargo run -p lingxia-gen -- icons \
+  --input "$LINGXIA_ROOT/lingxia-sdk/resources/icons/svg" \
+  --android-out "$LINGXIA_SDK_ANDROID/lingxia/src/main/res/drawable"
+
 if [ "$SKIP_RUST" = false ]; then
     echo "[1/4] Building Rust libraries..."
     cd "$WORKSPACE_ROOT"

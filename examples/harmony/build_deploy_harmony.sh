@@ -81,7 +81,7 @@ echo "Cleaning previous HAR artifacts..."
 rm -f "$HAR_BUNDLE" 2>/dev/null || true
 rm -rf "$LINGXIA_ROOT/lingxia-sdk/harmony/lingxia/build" 2>/dev/null || true
 
-# 0) Generate i18n resources for HarmonyOS
+# 0) Generate resources for HarmonyOS
 echo "Generating i18n resources for HarmonyOS..."
 cargo run -p lingxia-gen -- i18n \
   --input "$LINGXIA_ROOT/i18n" \
@@ -91,6 +91,11 @@ echo "Generating asset manifests for HarmonyOS..."
 cargo run -p lingxia-gen -- assets \
   --input "$LINGXIA_ROOT/lingxia-sdk/resources/assets" \
   --harmony-out "$LINGXIA_ROOT/lingxia-sdk/harmony/lingxia/src/main/resources/rawfile"
+
+echo "Generating icons for HarmonyOS..."
+cargo run -p lingxia-gen -- icons \
+  --input "$LINGXIA_ROOT/lingxia-sdk/resources/icons/svg" \
+  --harmony-out "$LINGXIA_ROOT/lingxia-sdk/harmony/lingxia/src/main/resources/rawfile/icons"
 
 # 1) Build Rust native library
 if [ "$SKIP_RUST" = false ]; then
