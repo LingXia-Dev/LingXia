@@ -309,7 +309,8 @@ internal class LxMediaControlsOverlay(
         playPauseButton = ImageButton(context).apply {
             layoutParams = LinearLayout.LayoutParams(buttonWidth, buttonWidth)
             setBackgroundColor(Color.TRANSPARENT)
-            setImageDrawable(createPlayIconDrawable(dp(24)))
+            setImageResource(R.drawable.icon_play)
+            setColorFilter(Color.WHITE)
             scaleType = ImageView.ScaleType.CENTER_INSIDE
             setPadding(dp(8), dp(8), dp(8), dp(8))
             setOnClickListener { onPlayPauseClick() }
@@ -321,7 +322,7 @@ internal class LxMediaControlsOverlay(
                 marginStart = spacing
             }
             setBackgroundColor(Color.TRANSPARENT)
-            setImageResource(android.R.drawable.ic_lock_silent_mode_off)
+            setImageResource(R.drawable.icon_volume_on)
             setColorFilter(Color.WHITE)
             scaleType = ImageView.ScaleType.CENTER_INSIDE
             setPadding(dp(8), dp(8), dp(8), dp(8))
@@ -367,7 +368,8 @@ internal class LxMediaControlsOverlay(
         settingsButton = ImageButton(context).apply {
             layoutParams = LinearLayout.LayoutParams(dp(36), dp(36))
             setBackgroundColor(Color.TRANSPARENT)
-            setImageDrawable(createGearIcon())
+            setImageResource(R.drawable.icon_settings)
+            setColorFilter(Color.WHITE)
             scaleType = ImageView.ScaleType.CENTER_INSIDE
             visibility = View.GONE
             setOnClickListener { onSettingsClick() }
@@ -379,7 +381,8 @@ internal class LxMediaControlsOverlay(
                 marginStart = spacing
             }
             setBackgroundColor(Color.TRANSPARENT)
-            setImageDrawable(createFullscreenIcon(false))
+            setImageResource(R.drawable.icon_fullscreen_enter)
+            imageTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
             scaleType = ImageView.ScaleType.CENTER_INSIDE
             setPadding(dp(4), dp(4), dp(4), dp(4))
             setOnClickListener { onFullscreenClick() }
@@ -392,15 +395,16 @@ internal class LxMediaControlsOverlay(
 
     private fun createCenterPlayButton(): ImageButton {
         return ImageButton(context).apply {
-            val size = dp(80)
+            val size = dp(64)
             layoutParams = FrameLayout.LayoutParams(size, size, Gravity.CENTER)
             background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
                 setColor(CENTER_BTN_BG)
             }
-            setImageDrawable(createPlayIconDrawable(dp(40)))
+            setImageResource(R.drawable.icon_play)
+            setColorFilter(Color.WHITE)
             scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setPadding(dp(20), dp(20), dp(20), dp(20))
+            setPadding(dp(12), dp(12), dp(12), dp(12))
             setOnClickListener { onPlayPauseClick() }
             visibility = View.GONE
             alpha = 0f
@@ -414,17 +418,15 @@ internal class LxMediaControlsOverlay(
 
     fun updatePlayPauseButton() {
         val isPlaying = player.isPlaying()
-        val iconSize = dp(24)
-        playPauseButton.setImageDrawable(if (isPlaying) createPauseIconDrawable(iconSize) else createPlayIconDrawable(iconSize))
-        val centerIconSize = dp(40)
-        centerPlayButton.setImageDrawable(if (isPlaying) createPauseIconDrawable(centerIconSize) else createPlayIconDrawable(centerIconSize))
+        playPauseButton.setImageResource(if (isPlaying) R.drawable.icon_pause else R.drawable.icon_play)
+        centerPlayButton.setImageResource(if (isPlaying) R.drawable.icon_pause else R.drawable.icon_play)
         centerPlayButton.visibility = if (controlsVisible) View.VISIBLE else View.GONE
         updateFullscreenButton()
         updateSettingsButton()
     }
 
     fun showCenterPlayButton(show: Boolean) {
-        centerPlayButton.setImageDrawable(createPlayIconDrawable(dp(40)))
+        centerPlayButton.setImageResource(R.drawable.icon_play)
         centerPlayButton.visibility = if (show) View.VISIBLE else View.GONE
         centerPlayButton.alpha = 1f
         if (show) {
@@ -560,7 +562,8 @@ internal class LxMediaControlsOverlay(
     }
 
     private fun updateFullscreenButton() {
-        fullscreenButton.setImageDrawable(createFullscreenIcon(player.isFullscreen()))
+        fullscreenButton.setImageResource(if (player.isFullscreen()) R.drawable.icon_fullscreen_exit else R.drawable.icon_fullscreen_enter)
+        fullscreenButton.imageTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
         fullscreenButton.visibility = if (showFullscreenButton) View.VISIBLE else View.GONE
     }
 
@@ -570,8 +573,7 @@ internal class LxMediaControlsOverlay(
     }
 
     internal fun updateVolumeButton(isMuted: Boolean) {
-        volumeButton.setImageResource(if (isMuted) android.R.drawable.ic_lock_silent_mode else android.R.drawable.ic_lock_silent_mode_off)
-        volumeButton.setColorFilter(Color.WHITE)
+        volumeButton.setImageResource(if (isMuted) R.drawable.icon_volume_off else R.drawable.icon_volume_on)
     }
 
     internal fun updateVolumeState(isMuted: Boolean, volume: Double) {
@@ -1087,174 +1089,4 @@ internal class LxMediaControlsOverlay(
         }
     }
 
-    // Custom gear icon for settings
-    private fun createGearIcon(): Drawable {
-        val size = dp(24)
-        return object : Drawable() {
-            private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.WHITE
-                style = Paint.Style.STROKE
-                strokeWidth = dp(2).toFloat()
-                strokeCap = Paint.Cap.ROUND
-            }
-
-            override fun draw(canvas: Canvas) {
-                val cx = bounds.exactCenterX()
-                val cy = bounds.exactCenterY()
-                val outerR = minOf(bounds.width(), bounds.height()) / 2f - dp(2)
-                val innerR = outerR * 0.55f
-                val teethCount = 8
-
-                // Draw center circle
-                canvas.drawCircle(cx, cy, innerR * 0.5f, paint)
-
-                // Draw gear teeth
-                val path = android.graphics.Path()
-                for (i in 0 until teethCount) {
-                    val angle = (i * 360f / teethCount - 90) * Math.PI.toFloat() / 180f
-                    val nextAngle = ((i + 0.5f) * 360f / teethCount - 90) * Math.PI.toFloat() / 180f
-
-                    val x1 = cx + innerR * kotlin.math.cos(angle)
-                    val y1 = cy + innerR * kotlin.math.sin(angle)
-                    val x2 = cx + outerR * kotlin.math.cos(angle)
-                    val y2 = cy + outerR * kotlin.math.sin(angle)
-                    val x3 = cx + outerR * kotlin.math.cos(nextAngle)
-                    val y3 = cy + outerR * kotlin.math.sin(nextAngle)
-                    val x4 = cx + innerR * kotlin.math.cos(nextAngle)
-                    val y4 = cy + innerR * kotlin.math.sin(nextAngle)
-
-                    if (i == 0) path.moveTo(x1, y1)
-                    path.lineTo(x2, y2)
-                    path.lineTo(x3, y3)
-                    path.lineTo(x4, y4)
-                }
-                path.close()
-                canvas.drawPath(path, paint)
-            }
-
-            override fun setAlpha(alpha: Int) { paint.alpha = alpha }
-            override fun setColorFilter(cf: android.graphics.ColorFilter?) { paint.colorFilter = cf }
-            override fun getOpacity() = android.graphics.PixelFormat.TRANSLUCENT
-            override fun getIntrinsicWidth() = size
-            override fun getIntrinsicHeight() = size
-        }
-    }
-
-    // Custom fullscreen icons
-    private fun createFullscreenIcon(isFullscreen: Boolean): Drawable {
-        val size = dp(24)
-        return object : Drawable() {
-            private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.WHITE
-                style = Paint.Style.STROKE
-                strokeWidth = dp(2).toFloat()
-                strokeCap = Paint.Cap.ROUND
-                strokeJoin = Paint.Join.ROUND
-            }
-
-            override fun draw(canvas: Canvas) {
-                val l = bounds.left.toFloat() + dp(4)
-                val t = bounds.top.toFloat() + dp(4)
-                val r = bounds.right.toFloat() - dp(4)
-                val b = bounds.bottom.toFloat() - dp(4)
-                val cornerLen = (r - l) * 0.35f
-
-                if (isFullscreen) {
-                    // Exit fullscreen: arrows pointing inward (corners with inward arrows)
-                    // Top-left corner pointing inward
-                    canvas.drawLine(l, t + cornerLen, l, t, paint)
-                    canvas.drawLine(l, t, l + cornerLen, t, paint)
-                    // Top-right corner pointing inward
-                    canvas.drawLine(r - cornerLen, t, r, t, paint)
-                    canvas.drawLine(r, t, r, t + cornerLen, paint)
-                    // Bottom-left corner pointing inward
-                    canvas.drawLine(l, b - cornerLen, l, b, paint)
-                    canvas.drawLine(l, b, l + cornerLen, b, paint)
-                    // Bottom-right corner pointing inward
-                    canvas.drawLine(r - cornerLen, b, r, b, paint)
-                    canvas.drawLine(r, b, r, b - cornerLen, paint)
-                } else {
-                    // Enter fullscreen: expand corners outward
-                    // Top-left
-                    canvas.drawLine(l, t + cornerLen, l, t, paint)
-                    canvas.drawLine(l, t, l + cornerLen, t, paint)
-                    // Top-right
-                    canvas.drawLine(r - cornerLen, t, r, t, paint)
-                    canvas.drawLine(r, t, r, t + cornerLen, paint)
-                    // Bottom-left
-                    canvas.drawLine(l, b - cornerLen, l, b, paint)
-                    canvas.drawLine(l, b, l + cornerLen, b, paint)
-                    // Bottom-right
-                    canvas.drawLine(r - cornerLen, b, r, b, paint)
-                    canvas.drawLine(r, b, r, b - cornerLen, paint)
-                }
-            }
-
-            override fun setAlpha(alpha: Int) { paint.alpha = alpha }
-            override fun setColorFilter(cf: android.graphics.ColorFilter?) { paint.colorFilter = cf }
-            override fun getOpacity() = android.graphics.PixelFormat.TRANSLUCENT
-            override fun getIntrinsicWidth() = size
-            override fun getIntrinsicHeight() = size
-        }
-    }
-
-    // Create a play icon drawable (triangle pointing right)
-    private fun createPlayIconDrawable(size: Int, color: Int = Color.WHITE): Drawable {
-        return object : Drawable() {
-            private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                this.color = color
-                style = Paint.Style.FILL
-            }
-
-            override fun draw(canvas: Canvas) {
-                val b = bounds
-                val w = b.width().toFloat()
-                val h = b.height().toFloat()
-                // Draw triangle pointing right
-                val path = android.graphics.Path().apply {
-                    moveTo(w * 0.25f, h * 0.15f)
-                    lineTo(w * 0.25f, h * 0.85f)
-                    lineTo(w * 0.8f, h * 0.5f)
-                    close()
-                }
-                canvas.drawPath(path, paint)
-            }
-
-            override fun setAlpha(alpha: Int) { paint.alpha = alpha }
-            override fun setColorFilter(cf: android.graphics.ColorFilter?) { paint.colorFilter = cf }
-            override fun getOpacity() = android.graphics.PixelFormat.TRANSLUCENT
-            override fun getIntrinsicWidth() = size
-            override fun getIntrinsicHeight() = size
-        }
-    }
-
-    // Create a pause icon drawable (two vertical bars)
-    private fun createPauseIconDrawable(size: Int, color: Int = Color.WHITE): Drawable {
-        return object : Drawable() {
-            private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                this.color = color
-                style = Paint.Style.FILL
-            }
-
-            override fun draw(canvas: Canvas) {
-                val b = bounds
-                val w = b.width().toFloat()
-                val h = b.height().toFloat()
-                val barWidth = w * 0.2f
-                val gap = w * 0.15f
-                val left1 = (w - 2 * barWidth - gap) / 2
-                val left2 = left1 + barWidth + gap
-                val top = h * 0.2f
-                val bottom = h * 0.8f
-                canvas.drawRoundRect(left1, top, left1 + barWidth, bottom, barWidth / 3, barWidth / 3, paint)
-                canvas.drawRoundRect(left2, top, left2 + barWidth, bottom, barWidth / 3, barWidth / 3, paint)
-            }
-
-            override fun setAlpha(alpha: Int) { paint.alpha = alpha }
-            override fun setColorFilter(cf: android.graphics.ColorFilter?) { paint.colorFilter = cf }
-            override fun getOpacity() = android.graphics.PixelFormat.TRANSLUCENT
-            override fun getIntrinsicWidth() = size
-            override fun getIntrinsicHeight() = size
-        }
-    }
 }
