@@ -28,6 +28,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
+import com.lingxia.lxapp.R
 import kotlin.math.abs
 
 private const val TAG = "LxMediaControls"
@@ -164,7 +165,7 @@ internal class LxMediaControlsOverlay(
                 topMargin = dp(5)
             }
             setBackgroundColor(Color.TRANSPARENT)
-            setImageResource(android.R.drawable.ic_menu_close_clear_cancel)
+            setImageResource(R.drawable.icon_close)
             setColorFilter(Color.WHITE)
             scaleType = ImageView.ScaleType.CENTER_INSIDE
             setPadding(dp(8), dp(8), dp(8), dp(8))

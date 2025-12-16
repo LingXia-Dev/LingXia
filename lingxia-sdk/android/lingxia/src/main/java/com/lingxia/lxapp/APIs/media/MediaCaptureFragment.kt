@@ -5,14 +5,11 @@ import android.content.Context
 import android.animation.ValueAnimator
 import android.graphics.Color
 import android.graphics.Canvas
-import android.graphics.ColorFilter
 import android.graphics.Paint
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.graphics.RectF
-import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
-import android.graphics.drawable.Drawable
 import android.graphics.Typeface
 import android.net.Uri
 import android.os.Bundle
@@ -31,6 +28,7 @@ import android.widget.ImageView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
@@ -61,11 +59,8 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.concurrent.Executor
 import org.json.JSONObject
-import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.sin
-import kotlin.math.sqrt
 
 class MediaCaptureFragment : Fragment() {
     companion object {
@@ -112,8 +107,11 @@ class MediaCaptureFragment : Fragment() {
     private var previewView: PreviewView? = null
     private var captureButton: ShutterButtonView? = null
     private var hintText: TextView? = null
-    private var switchCameraButton: ImageButton? = null
+    private var switchCameraButton: CameraSwitchButton? = null
+    private var flashButton: FlashButton? = null
     private var backButton: CutoutChevronButton? = null
+    private var flashMode: Int = ImageCapture.FLASH_MODE_OFF
+    private var torchEnabled: Boolean = false
     private var finishButton: TextView? = null
     private var finishButtonBackground: GradientDrawable? = null
     private var timerText: TextView? = null
@@ -123,6 +121,7 @@ class MediaCaptureFragment : Fragment() {
     private var previewBackButton: RoundBackArrowButton? = null
     private var previewPlayer: ExoPlayer? = null
     private var previewPlayerView: PlayerView? = null
+    private var camera: Camera? = null
 
     private fun isVideoMode(): Boolean {
         val value = mode.lowercase(Locale.ROOT)
@@ -212,13 +211,9 @@ class MediaCaptureFragment : Fragment() {
         root.addView(preview)
         root.addView(gradientOverlay)
 
-        val switchButton = ImageButton(context).apply {
-            background = CameraShapeBackgroundDrawable()
+        val switchButton = CameraSwitchButton(context).apply {
             contentDescription = "Switch camera"
-            scaleType = ImageView.ScaleType.CENTER
-            setImageDrawable(CameraSwitchIconDrawable())
             setOnClickListener { toggleCamera() }
-            setPadding(0, 0, 0, 0)
         }
         switchCameraButton = switchButton
         root.addView(
@@ -323,6 +318,25 @@ class MediaCaptureFragment : Fragment() {
             bottomOverlay.addView(backBtn, backParams)  // Back to bottomOverlay
             backButton = backBtn
 
+            // Flash button on the right side of capture button
+            val flashBtn = FlashButton(context).apply {
+                contentDescription = "Toggle flash"
+                setOnClickListener { toggleFlash() }
+            }
+            val flashIconSize = dp(context, 32f)  // Match HarmonyOS ICON_BUTTON_SIZE
+            val flashParams = FrameLayout.LayoutParams(flashIconSize, flashIconSize).apply {
+                gravity = Gravity.END or Gravity.BOTTOM
+                // Mirror position of back button on the right side
+                val screenEdge = dp(context, 20f)
+                val screenWidth = context.resources.displayMetrics.widthPixels
+                val bigCircleRightEdge = (screenWidth / 2) + (captureSize / 2)
+                val availableSpace = screenWidth - screenEdge - bigCircleRightEdge
+                rightMargin = screenEdge + (availableSpace / 2) - (flashIconSize / 2)
+                bottomMargin = shutterBottomMargin + (captureSize - flashIconSize) / 2
+            }
+            bottomOverlay.addView(flashBtn, flashParams)
+            flashButton = flashBtn
+
             val doneButton = TextView(context).apply {
                 layoutParams = FrameLayout.LayoutParams(
                     FrameLayout.LayoutParams.WRAP_CONTENT,
@@ -367,6 +381,7 @@ class MediaCaptureFragment : Fragment() {
         captureButton = null
         hintText = null
         switchCameraButton = null
+        flashButton = null
         backButton = null
         finishButton = null
         finishButtonBackground = null
@@ -445,13 +460,22 @@ class MediaCaptureFragment : Fragment() {
                 .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
                 .setTargetRotation(previewView.display?.rotation ?: android.view.Surface.ROTATION_0)
                 .build()
+            image.flashMode = flashMode
             imageCapture = image
             videoCapture = null
             useCases.add(image)
         }
 
         provider.unbindAll()
-        provider.bindToLifecycle(this, selector, *useCases.toTypedArray())
+        camera = provider.bindToLifecycle(this, selector, *useCases.toTypedArray())
+        if (isVideoMode()) {
+            camera?.cameraControl?.enableTorch(torchEnabled)
+        } else {
+            torchEnabled = false
+            camera?.cameraControl?.enableTorch(false)
+            imageCapture?.flashMode = flashMode
+        }
+        flashButton?.updateFlashState()
         captureButton?.apply {
             resetState()
             setVideoMode(isVideoMode())
@@ -750,7 +774,21 @@ class MediaCaptureFragment : Fragment() {
             resetToIdle()
             return
         }
-        cancelCapture("User cancelled camera", isCancel = true)
+        // User cancelled - return empty result instead of error to avoid toast in JS
+        captureButton?.resetState()
+        stopTimerTicker()
+        timerText?.visibility = View.GONE
+        timerText?.text = "00:00"
+        finishButton?.visibility = View.GONE
+        updateFinishButtonEnabled(false)
+        // Return empty array as success (no media selected)
+        NativeApi.onCallback(callbackId, true, "[]")
+        NativeApi.onCallback(
+            callbackId,
+            true,
+            JSONObject().apply { put("done", true) }.toString()
+        )
+        removeSelf()
     }
 
     private fun toggleCamera() {
@@ -970,6 +1008,8 @@ class MediaCaptureFragment : Fragment() {
         } catch (_: Exception) {
         }
         activeRecording = null
+        camera?.cameraControl?.enableTorch(false)
+        torchEnabled = false
         try {
             previewPlayerView?.player = null
             previewPlayerView = null
@@ -982,6 +1022,7 @@ class MediaCaptureFragment : Fragment() {
         previewBackButton = null
         cameraProvider?.unbindAll()
         cameraProvider = null
+        camera = null
         imageCapture = null
         videoCapture = null
     }
@@ -1343,155 +1384,143 @@ class MediaCaptureFragment : Fragment() {
 
 
 
-    private class CameraShapeBackgroundDrawable : Drawable() {
-        private val whitePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.FILL
+    // Top-left back in preview: smaller white circle with cutout curved arrow
+    // Camera switch button with cutout refresh arrows
+    private inner class CameraSwitchButton(context: Context) : View(context) {
+        private val circlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE
+            style = Paint.Style.FILL
+        }
+        private val cutoutPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.TRANSPARENT
+            style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+            xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
         }
 
-        override fun draw(canvas: Canvas) {
-            val w = bounds.width().toFloat()
-            val h = bounds.height().toFloat()
-            if (w <= 0f || h <= 0f) return
-
-            val cx = bounds.centerX().toFloat()
-            val cy = bounds.centerY().toFloat()
-            val size = min(w, h)
-
-            // Draw simple camera shape - rectangle + trapezoid
-            drawSimpleCameraShape(canvas, cx, cy, size)
+        init {
+            isClickable = true
+            isFocusable = true
+            setLayerType(LAYER_TYPE_SOFTWARE, null)
         }
 
-        private fun drawSimpleCameraShape(canvas: Canvas, cx: Float, cy: Float, size: Float) {
-            // Main rectangle body - even smaller
-            val bodyWidth = size * 0.65f  // Further reduced
-            val bodyHeight = size * 0.4f   // Further reduced
+        override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+            val desired = dp(context, 44f)
+            val resolvedW = resolveSize(desired, widthMeasureSpec)
+            val resolvedH = resolveSize(desired, heightMeasureSpec)
+            val size = min(resolvedW, resolvedH)
+            setMeasuredDimension(size, size)
+        }
+
+        override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+            super.onSizeChanged(w, h, oldw, oldh)
+            cutoutPaint.strokeWidth = (min(w, h) * 0.045f).coerceAtLeast(1.5f)
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            val cx = width / 2f
+            val cy = height / 2f
+            val size = min(width, height).toFloat()
+
+            // Draw camera body (rounded rectangle)
+            val bodyWidth = size * 0.65f
+            val bodyHeight = size * 0.4f
             val bodyLeft = cx - bodyWidth * 0.5f
             val bodyRight = cx + bodyWidth * 0.5f
             val bodyTop = cy - bodyHeight * 0.2f
             val bodyBottom = cy + bodyHeight * 0.8f
             val bodyRadius = size * 0.05f
-
             val bodyRect = RectF(bodyLeft, bodyTop, bodyRight, bodyBottom)
-            canvas.drawRoundRect(bodyRect, bodyRadius, bodyRadius, whitePaint)
+            canvas.drawRoundRect(bodyRect, bodyRadius, bodyRadius, circlePaint)
 
-            // Top trapezoid (viewfinder hump) - draw as trapezoid shape
-            val trapezoidPath = android.graphics.Path().apply {
+            // Draw camera viewfinder hump (trapezoid)
+            val trapPath = android.graphics.Path().apply {
                 val topWidth = bodyWidth * 0.35f
                 val bottomWidth = bodyWidth * 0.45f
                 val trapHeight = bodyHeight * 0.35f
-
                 val topLeft = cx - topWidth * 0.5f
                 val topRight = cx + topWidth * 0.5f
                 val bottomLeft = cx - bottomWidth * 0.5f
                 val bottomRight = cx + bottomWidth * 0.5f
                 val trapTop = bodyTop - trapHeight * 0.8f
                 val trapBottom = bodyTop + trapHeight * 0.2f
-
-                // Draw trapezoid shape
                 moveTo(topLeft, trapTop)
                 lineTo(topRight, trapTop)
                 lineTo(bottomRight, trapBottom)
                 lineTo(bottomLeft, trapBottom)
                 close()
             }
-            canvas.drawPath(trapezoidPath, whitePaint)
-        }
+            canvas.drawPath(trapPath, circlePaint)
 
-        @Suppress("DEPRECATION")
-        override fun setAlpha(alpha: Int) {
-            whitePaint.alpha = alpha
-        }
+            // Draw cutout refresh arrows in the camera body
+            val arrowCenterY = (bodyTop + bodyBottom) / 2f
+            val arrowRadius = bodyHeight * 0.28f
 
-        @Suppress("DEPRECATION")
-        override fun setColorFilter(colorFilter: ColorFilter?) {
-            whitePaint.colorFilter = colorFilter
-        }
+            val arrowPath = android.graphics.Path().apply {
+                // Upper-right arc
+                val arcRect1 = RectF(
+                    cx - arrowRadius, arrowCenterY - arrowRadius,
+                    cx + arrowRadius, arrowCenterY + arrowRadius
+                )
+                arcTo(arcRect1, -90f, 90f, true)
+                // Arrow head for upper-right
+                val endX1 = cx + arrowRadius
+                val endY1 = arrowCenterY
+                moveTo(endX1, endY1)
+                lineTo(endX1 - arrowRadius * 0.4f, endY1 - arrowRadius * 0.3f)
+                moveTo(endX1, endY1)
+                lineTo(endX1 - arrowRadius * 0.3f, endY1 + arrowRadius * 0.4f)
 
-        @Deprecated("Deprecated in Android API")
-        override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
+                // Lower-left arc
+                arcTo(arcRect1, 90f, 90f, true)
+                // Arrow head for lower-left
+                val endX2 = cx - arrowRadius
+                val endY2 = arrowCenterY
+                moveTo(endX2, endY2)
+                lineTo(endX2 + arrowRadius * 0.4f, endY2 + arrowRadius * 0.3f)
+                moveTo(endX2, endY2)
+                lineTo(endX2 + arrowRadius * 0.3f, endY2 - arrowRadius * 0.4f)
+            }
+            canvas.drawPath(arrowPath, cutoutPaint)
+        }
     }
 
-    private class CameraSwitchIconDrawable : Drawable() {
-        private val arrowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeCap = Paint.Cap.ROUND
-            strokeJoin = Paint.Join.ROUND
-            color = Color.TRANSPARENT
-            xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
+    // Flash button using XML drawable icons (matching HarmonyOS style)
+    private inner class FlashButton(context: Context) : ImageButton(context) {
+        init {
+            setBackgroundColor(Color.TRANSPARENT)
+            scaleType = ScaleType.FIT_XY  // Scale to fill container
+            setPadding(0, 0, 0, 0)
+            updateFlashState()
         }
 
-        override fun draw(canvas: Canvas) {
-            val w = bounds.width().toFloat()
-            val h = bounds.height().toFloat()
-            if (w <= 0f || h <= 0f) return
-
-            val cx = bounds.centerX().toFloat()
-            val cy = bounds.centerY().toFloat()
-            val size = min(w, h)
-
-            // Draw very thin curved arrows like in reference image
-            arrowPaint.strokeWidth = size * 0.04f  // Much thinner stroke
-
-            // Draw two curved arrows forming S-like refresh symbol, centered in rectangle
-            val bodyHeight = size * 0.45f
-            val bodyCenter = cy + bodyHeight * 0.3f  // Center of the main rectangle
-            drawCurvedArrow(canvas, cx, bodyCenter, size, true)   // Top curve
-            drawCurvedArrow(canvas, cx, bodyCenter, size, false)  // Bottom curve
-        }
-
-        private fun drawCurvedArrow(canvas: Canvas, cx: Float, cy: Float, size: Float, isTop: Boolean) {
-            val radius = size * 0.15f  // Much smaller
-
-            if (isTop) {
-                // Top curved arrow - smaller arc
-                val arcRect = RectF(cx - radius, cy - radius * 0.8f, cx + radius, cy + radius * 0.8f)
-                canvas.drawArc(arcRect, -30f, 120f, false, arrowPaint)
-
-                // Small arrow head
-                val endAngle = 90f
-                val endX = cx + radius * 0.7f * cos(Math.toRadians(endAngle.toDouble())).toFloat()
-                val endY = cy + radius * 0.7f * sin(Math.toRadians(endAngle.toDouble())).toFloat()
-                drawTinyArrowhead(canvas, endX, endY, endAngle + 30f, size)
+        fun updateFlashState() {
+            val iconRes = if (isVideoMode()) {
+                if (torchEnabled) R.drawable.icon_camera_flash_on else R.drawable.icon_camera_flash_off
             } else {
-                // Bottom curved arrow - smaller arc
-                val arcRect = RectF(cx - radius, cy - radius * 0.8f, cx + radius, cy + radius * 0.8f)
-                canvas.drawArc(arcRect, 150f, 120f, false, arrowPaint)
-
-                // Small arrow head
-                val endAngle = -90f
-                val endX = cx + radius * 0.7f * cos(Math.toRadians(endAngle.toDouble())).toFloat()
-                val endY = cy + radius * 0.7f * sin(Math.toRadians(endAngle.toDouble())).toFloat()
-                drawTinyArrowhead(canvas, endX, endY, endAngle - 30f, size)
+                when (flashMode) {
+                    ImageCapture.FLASH_MODE_OFF -> R.drawable.icon_camera_flash_off
+                    else -> R.drawable.icon_camera_flash_on
+                }
             }
+            setImageResource(iconRes)
         }
+    }
 
-        private fun drawTinyArrowhead(canvas: Canvas, x: Float, y: Float, angle: Float, size: Float) {
-            val arrowSize = size * 0.03f  // Much smaller arrowhead
-            val rad1 = Math.toRadians((angle + 25).toDouble())
-            val rad2 = Math.toRadians((angle - 25).toDouble())
-
-            val x1 = (x + arrowSize * cos(rad1)).toFloat()
-            val y1 = (y + arrowSize * sin(rad1)).toFloat()
-            val x2 = (x + arrowSize * cos(rad2)).toFloat()
-            val y2 = (y + arrowSize * sin(rad2)).toFloat()
-
-            canvas.drawLine(x, y, x1, y1, arrowPaint)
-            canvas.drawLine(x, y, x2, y2, arrowPaint)
+    private fun toggleFlash() {
+        if (isVideoMode()) {
+            torchEnabled = !torchEnabled
+            camera?.cameraControl?.enableTorch(torchEnabled)
+        } else {
+            flashMode = when (flashMode) {
+                ImageCapture.FLASH_MODE_OFF -> ImageCapture.FLASH_MODE_ON
+                ImageCapture.FLASH_MODE_ON -> ImageCapture.FLASH_MODE_AUTO
+                else -> ImageCapture.FLASH_MODE_OFF
+            }
+            imageCapture?.flashMode = flashMode
         }
-
-        @Suppress("DEPRECATION")
-        override fun setAlpha(alpha: Int) {
-            arrowPaint.alpha = alpha
-        }
-
-        @Suppress("DEPRECATION")
-        override fun setColorFilter(colorFilter: ColorFilter?) {
-            arrowPaint.colorFilter = colorFilter
-        }
-
-        @Deprecated("Deprecated in Android API")
-        override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
+        flashButton?.updateFlashState()
     }
 
     // Top-left back in preview: smaller white circle with cutout curved arrow
