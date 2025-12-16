@@ -93,7 +93,7 @@ class ScanCodeFragment : Fragment() {
             if (granted) {
                 startCamera()
             } else {
-                deliverFailure("Camera permission denied")
+                deliverFailure("camera_permission_denied", "Camera permission denied")
             }
         }
 
@@ -343,14 +343,14 @@ class ScanCodeFragment : Fragment() {
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to start camera", e)
-                deliverFailure("Unable to start camera: ${e.message}")
+                deliverFailure("scan_error", "Unable to start camera: ${e.message}")
             }
         }, executor)
     }
 
     private fun openAlbumPicker() {
         val host = activity as? AppCompatActivity ?: run {
-            Toast.makeText(requireContext(), "Host not AppCompatActivity", Toast.LENGTH_SHORT).show()
+            deliverFailure("scan_error", "Host not AppCompatActivity")
             return
         }
         MediaPickerFragment.pick(
@@ -368,18 +368,16 @@ class ScanCodeFragment : Fragment() {
                         if (!barcodes.isNullOrEmpty()) {
                             handleBarcode(barcodes.first())
                         } else {
-                            Toast.makeText(ctx, "No code detected", Toast.LENGTH_SHORT).show()
+                            deliverFailure("scan_no_code", "No code detected")
                         }
                     }
                     ?.addOnFailureListener { error ->
                         Log.e(TAG, "Gallery scan failed", error)
-                        Toast.makeText(ctx, "Failed to scan image", Toast.LENGTH_SHORT).show()
+                        deliverFailure("scan_error", "Failed to scan image")
                     }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to process selected image", e)
-                context?.let {
-                    Toast.makeText(it, "Failed to process image", Toast.LENGTH_SHORT).show()
-                }
+                deliverFailure("scan_error", "Failed to process image")
             }
         }
     }
@@ -464,7 +462,7 @@ class ScanCodeFragment : Fragment() {
         safeClose()
     }
 
-    private fun deliverFailure(message: String) {
+    private fun deliverFailure(code: String, message: String) {
         if (hasReportedResult) {
             safeClose()
             return
@@ -472,9 +470,7 @@ class ScanCodeFragment : Fragment() {
         hasReportedResult = true
         val payload = org.json.JSONObject().apply {
             put("error", message)
-            if (message == "Camera permission denied") {
-                put("code", "camera_permission_denied")
-            }
+            put("code", code)
         }.toString()
         NativeApi.onCallback(callbackId, false, payload)
         safeClose()

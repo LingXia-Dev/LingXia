@@ -210,7 +210,7 @@ final class ScanCodeViewController: UIViewController {
             if granted {
                 self.configureSession()
             } else {
-                self.reportFailure("Camera permission denied")
+                self.reportFailure("Camera permission denied", code: "camera_permission_denied")
             }
         }
     }
@@ -456,17 +456,11 @@ final class ScanCodeViewController: UIViewController {
         dismiss(animated: true)
     }
 
-    private func reportFailure(_ message: String) {
+    private func reportFailure(_ message: String, code: String = "scan_error") {
         guard !hasReported else { return }
         hasReported = true
         stopScanLineAnimation()
         stopSession()
-        let code: String
-        if message.contains("Camera permission denied") {
-            code = "camera_permission_denied"
-        } else {
-            code = "scan_error"
-        }
         let envelope: [String: Any] = ["code": code, "error": message]
         let jsonData = try? JSONSerialization.data(withJSONObject: envelope, options: [])
         let jsonString = jsonData.flatMap { String(data: $0, encoding: .utf8) } ?? message
@@ -502,8 +496,7 @@ final class ScanCodeViewController: UIViewController {
     /// Load image from phasset URI and detect barcode
     private func loadImageAndDetectBarcode(from uri: String) {
         guard uri.hasPrefix("phasset:") else {
-            presentAlert(message: "Invalid URI format")
-            startSession()
+            reportFailure("Invalid URI format", code: "scan_invalid_uri")
             return
         }
 
@@ -511,8 +504,7 @@ final class ScanCodeViewController: UIViewController {
         let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [localIdentifier], options: nil)
 
         guard let asset = fetchResult.firstObject else {
-            presentAlert(message: "Asset not found")
-            startSession()
+            reportFailure("Asset not found", code: "scan_error")
             return
         }
 
@@ -529,8 +521,7 @@ final class ScanCodeViewController: UIViewController {
         ) { [weak self] image, _ in
             guard let self, let image else {
                 DispatchQueue.main.async {
-                    self?.presentAlert(message: "Failed to load image")
-                    self?.startSession()
+                    self?.reportFailure("Failed to load image", code: "scan_error")
                 }
                 return
             }
@@ -616,8 +607,7 @@ private extension ScanCodeViewController {
     func detectBarcode(in image: UIImage) {
         guard let cgImage = image.cgImage else {
             DispatchQueue.main.async {
-                self.presentAlert(message: "Unable to read image")
-                self.startSession()
+                self.reportFailure("Unable to read image", code: "scan_error")
             }
             return
         }
@@ -629,8 +619,7 @@ private extension ScanCodeViewController {
             guard let self else { return }
             if let error {
                 DispatchQueue.main.async {
-                    self.presentAlert(message: "Scan failed: \(error.localizedDescription)")
-                    self.startSession()
+                    self.reportFailure("Scan failed: \(error.localizedDescription)", code: "scan_error")
                 }
                 return
             }
@@ -640,8 +629,7 @@ private extension ScanCodeViewController {
                   }),
                   let value = match.payloadStringValue else {
                 DispatchQueue.main.async {
-                    self.presentAlert(message: "未识别到码")
-                    self.startSession()
+                    self.reportFailure("No code detected", code: "scan_no_code")
                 }
                 return
             }
@@ -660,8 +648,7 @@ private extension ScanCodeViewController {
                 try handler.perform([request])
             } catch {
                 DispatchQueue.main.async {
-                    self.presentAlert(message: "Scan failed: \(error.localizedDescription)")
-                    self.startSession()
+                    self.reportFailure("Scan failed: \(error.localizedDescription)", code: "scan_error")
                 }
             }
         }
@@ -689,11 +676,6 @@ private extension ScanCodeViewController {
         session.startRunning()
     }
 
-    func presentAlert(message: String) {
-        let alert = UIAlertController(title: L10n.string("lx_common_warning"), message: message, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: L10n.string("lx_common_ok"), style: .default))
-        present(alert, animated: true)
-    }
 }
 
 #endif

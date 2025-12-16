@@ -53,39 +53,22 @@ async fn scan(ctx: JSContext, options: Optional<JSScanOptions>) -> JSResult<Scan
         .map_err(|_| RongJSError::Error("scan cancelled or failed".to_string()))?;
 
     if !success {
-        // Prefer structured error envelopes of the form:
-        // { code: "...", error: "..." }. Fall back to string heuristics
-        // for older platform implementations.
         let raw = data;
         let value: Value = serde_json::from_str(&raw).unwrap_or(Value::Null);
-        let mut code = value
-            .get("code")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string();
         let message = value
             .get("error")
             .and_then(Value::as_str)
             .map(str::to_string)
             .unwrap_or_else(|| raw.clone());
 
-        if code.is_empty() {
-            let lower = raw.to_lowercase();
-            if lower.contains("camera permission") || lower.contains("camera access") {
-                code = "camera_permission_denied".to_string();
-            }
-        }
-
-        if code == "camera_permission_denied" {
-            let _ = lxapp.runtime.show_toast(ToastOptions {
-                title: "需要相机权限，请在系统设置中开启".to_string(),
-                icon: ToastIcon::Error,
-                image: None,
-                duration: 2.0,
-                mask: false,
-                position: ToastPosition::Center,
-            });
-        }
+        let _ = lxapp.runtime.show_toast(ToastOptions {
+            title: message.clone(),
+            icon: ToastIcon::Error,
+            image: None,
+            duration: 2.0,
+            mask: false,
+            position: ToastPosition::Center,
+        });
         return Err(RongJSError::Error(message));
     }
 

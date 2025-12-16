@@ -85,8 +85,8 @@ export class LxAppScan {
         const out = JSON.stringify(payload);
         onCallback(String(options.callbackId), true, out);
       } else {
-        // Cancel: success=true with empty payload (consumer treats as empty result)
-        onCallback(String(options.callbackId), true, '');
+        const err = JSON.stringify({ code: 'scan_no_code', error: 'No code detected' });
+        onCallback(String(options.callbackId), false, err);
       }
     } catch (err) {
       const error = err as BusinessError;
@@ -97,7 +97,8 @@ export class LxAppScan {
       } else {
         const message = error.message || (err instanceof Error ? err.message : `${err}`);
         hilog.error(DOMAIN, TAG, `startScan failed: ${message}`);
-        onCallback(String(options.callbackId), false, message);
+        const payload = JSON.stringify({ code: 'scan_error', error: message });
+        onCallback(String(options.callbackId), false, payload);
       }
     }
   }

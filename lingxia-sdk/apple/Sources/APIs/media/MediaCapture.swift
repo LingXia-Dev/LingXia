@@ -585,6 +585,7 @@ private final class PhotoCaptureOverlayView: UIView {
         // Cancel button at bottom-left, aligned with capture button
         cancelButton.translatesAutoresizingMaskIntoConstraints = false
         cancelButton.setImage(LxAppMedia.controlImage(named: "icon_chevron_down"), for: .normal)
+        cancelButton.tintColor = .white
         cancelButton.imageView?.contentMode = .scaleAspectFit
         cancelButton.addTarget(self, action: #selector(cancelTapped), for: .touchUpInside)
         addSubview(cancelButton)
@@ -592,6 +593,7 @@ private final class PhotoCaptureOverlayView: UIView {
         // Switch camera button at top-right
         switchCameraButton.translatesAutoresizingMaskIntoConstraints = false
         switchCameraButton.setImage(LxAppMedia.controlImage(named: "icon_camera_switch"), for: .normal)
+        switchCameraButton.tintColor = .white
         switchCameraButton.imageView?.contentMode = .scaleAspectFit
         switchCameraButton.addTarget(self, action: #selector(switchCameraTapped), for: .touchUpInside)
         addSubview(switchCameraButton)
@@ -626,8 +628,8 @@ private final class PhotoCaptureOverlayView: UIView {
             // Cancel button at bottom-left, vertically centered with capture button
             cancelButton.centerYAnchor.constraint(equalTo: captureButton.centerYAnchor),
             cancelButton.trailingAnchor.constraint(equalTo: captureButton.leadingAnchor, constant: -32),
-            cancelButton.widthAnchor.constraint(equalToConstant: 32),
-            cancelButton.heightAnchor.constraint(equalToConstant: 32),
+            cancelButton.widthAnchor.constraint(equalToConstant: 44),
+            cancelButton.heightAnchor.constraint(equalToConstant: 44),
 
             // Flash button between cancel and capture
             flashButton.centerYAnchor.constraint(equalTo: captureButton.centerYAnchor),
@@ -1784,6 +1786,7 @@ private final class VideoCaptureOverlayView: UIView {
         // Cancel button at bottom-left
         cancelButton.translatesAutoresizingMaskIntoConstraints = false
         cancelButton.setImage(LxAppMedia.controlImage(named: "icon_chevron_down"), for: .normal)
+        cancelButton.tintColor = .white
         cancelButton.accessibilityLabel = "lx_common_cancel".localized
         cancelButton.addTarget(self, action: #selector(cancelTapped), for: .touchUpInside)
         addSubview(cancelButton)
@@ -1804,6 +1807,7 @@ private final class VideoCaptureOverlayView: UIView {
         // Switch camera button at top-right
         switchCameraButton.translatesAutoresizingMaskIntoConstraints = false
         switchCameraButton.setImage(LxAppMedia.controlImage(named: "icon_camera_switch"), for: .normal)
+        switchCameraButton.tintColor = .white
         switchCameraButton.alpha = 0.0
         switchCameraButton.addTarget(self, action: #selector(switchCameraTapped), for: .touchUpInside)
         addSubview(switchCameraButton)
@@ -1825,14 +1829,14 @@ private final class VideoCaptureOverlayView: UIView {
             // Cancel button at bottom-left, vertically centered with capture button
             cancelButton.centerYAnchor.constraint(equalTo: captureButton.centerYAnchor),
             cancelButton.trailingAnchor.constraint(equalTo: captureButton.leadingAnchor, constant: -32),
-            cancelButton.widthAnchor.constraint(equalToConstant: 32),
-            cancelButton.heightAnchor.constraint(equalToConstant: 32),
+            cancelButton.widthAnchor.constraint(equalToConstant: 44),
+            cancelButton.heightAnchor.constraint(equalToConstant: 44),
 
             // Flash button between cancel and capture
             flashButton.centerYAnchor.constraint(equalTo: captureButton.centerYAnchor),
             flashButton.leadingAnchor.constraint(equalTo: captureButton.trailingAnchor, constant: 32),
-            flashButton.widthAnchor.constraint(equalToConstant: flashButtonSize),
-            flashButton.heightAnchor.constraint(equalToConstant: flashButtonSize),
+            flashButton.widthAnchor.constraint(equalToConstant: 44),
+            flashButton.heightAnchor.constraint(equalToConstant: 44),
 
             // Switch camera button at top-right
             switchCameraButton.topAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor, constant: 24),
