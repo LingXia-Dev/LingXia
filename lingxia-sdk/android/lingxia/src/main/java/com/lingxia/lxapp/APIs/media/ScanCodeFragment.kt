@@ -159,19 +159,15 @@ class ScanCodeFragment : Fragment() {
         overlayLayer?.addView(scanLine)
 
         closeButton = ImageButton(ctx).apply {
-            // Circle background with an "x" icon
-            background = android.graphics.drawable.GradientDrawable().apply {
-                shape = android.graphics.drawable.GradientDrawable.OVAL
-                setColor(Color.parseColor("#66000000"))
-            }
-            setImageResource(android.R.drawable.ic_menu_close_clear_cancel)
-            setColorFilter(Color.WHITE)
-            scaleType = android.widget.ImageView.ScaleType.CENTER
+            // Close icon from SVG (background included in SVG)
+            setBackgroundColor(Color.TRANSPARENT)
+            setImageResource(R.drawable.icon_close)
+            scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+            // Add padding  (40dp container - 12dp padding = 28dp icon)
+            val p = dp(6f)
+            setPadding(p, p, p, p)
             contentDescription = "Close"
             setOnClickListener { deliverCancelled() }
-            // Ensure a circular touch target
-            val pad = dp(8f)
-            setPadding(pad, pad, pad, pad)
         }
         val closeParams = FrameLayout.LayoutParams(
             dp(40f),
@@ -204,13 +200,14 @@ class ScanCodeFragment : Fragment() {
                 }
             }
             val icon = ImageView(ctx).apply {
-                setImageResource(android.R.drawable.ic_menu_gallery)
+                setImageResource(R.drawable.icon_album)
                 setColorFilter(Color.WHITE)
+                scaleType = ImageView.ScaleType.FIT_CENTER
                 layoutParams = FrameLayout.LayoutParams(dp(36f), dp(36f), Gravity.CENTER)
             }
             iconWrap.addView(icon)
             val label = TextView(ctx).apply {
-                text = ctx.getString(R.string.lx_album_gallery)
+                text = ctx.getString(R.string.lx_album_label)
                 setTextColor(Color.WHITE)
                 textSize = 16f
                 layoutParams = LinearLayout.LayoutParams(
