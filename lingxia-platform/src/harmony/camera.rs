@@ -1,5 +1,5 @@
 use crate::error::PlatformError;
-use std::ffi::{CString, c_char};
+use std::ffi::{c_char, CString};
 use std::ptr;
 use std::slice;
 use std::sync::{Mutex, OnceLock};
@@ -187,7 +187,21 @@ unsafe extern "C" {
         session: *mut Camera_CaptureSession,
         output: *mut Camera_VideoOutput,
     ) -> i32;
+
+    // Flash mode control
+    fn OH_CaptureSession_HasFlash(session: *mut Camera_CaptureSession, has_flash: *mut bool)
+        -> i32;
+    fn OH_CaptureSession_IsFlashModeSupported(
+        session: *mut Camera_CaptureSession,
+        flash_mode: u32,
+        is_supported: *mut bool,
+    ) -> i32;
+    fn OH_CaptureSession_SetFlashMode(session: *mut Camera_CaptureSession, flash_mode: u32) -> i32;
 }
+
+// Flash mode constants
+const FLASH_MODE_CLOSE: u32 = 0;
+const FLASH_MODE_OPEN: u32 = 1;
 
 struct CamState {
     manager: *mut Camera_Manager,
@@ -421,6 +435,66 @@ pub fn camera_switch_facing(is_back: bool) -> Result<bool, PlatformError> {
     }
     camera_release();
     camera_init(&preview_surface, &new_facing).map(|_| true)
+}
+
+/// Set camera flash mode
+/// flash_on: true to enable flash (FLASH_MODE_OPEN), false to disable (FLASH_MODE_CLOSE)
+pub fn camera_set_flash_mode(flash_on: bool) -> Result<bool, PlatformError> {
+    let st = state().lock().unwrap();
+    unsafe {
+        if st.session.is_null() {
+            log::warn!("[Harmony.Camera] session is null, cannot set flash mode");
+            return Ok(false);
+        }
+
+        // Check if flash is available
+        let mut has_flash = false;
+        let rc = OH_CaptureSession_HasFlash(st.session, &mut has_flash);
+        if rc != 0 || !has_flash {
+            log::info!(
+                "[Harmony.Camera] Flash not available: rc={}, has_flash={}",
+                rc,
+                has_flash
+            );
+            return Ok(false);
+        }
+
+        // Determine target flash mode
+        let target_mode = if flash_on {
+            FLASH_MODE_OPEN
+        } else {
+            FLASH_MODE_CLOSE
+        };
+
+        // Check if mode is supported
+        let mut is_supported = false;
+        let rc = OH_CaptureSession_IsFlashModeSupported(st.session, target_mode, &mut is_supported);
+        if rc != 0 || !is_supported {
+            log::warn!(
+                "[Harmony.Camera] Flash mode {} not supported: rc={}, is_supported={}",
+                target_mode,
+                rc,
+                is_supported
+            );
+            return Ok(false);
+        }
+
+        // Set flash mode
+        let rc = OH_CaptureSession_SetFlashMode(st.session, target_mode);
+        if rc != 0 {
+            log::error!("[Harmony.Camera] SetFlashMode failed: rc={}", rc);
+            return Err(PlatformError::Platform(format!(
+                "SetFlashMode failed: {}",
+                rc
+            )));
+        }
+
+        log::info!(
+            "[Harmony.Camera] Flash mode set to {}",
+            if flash_on { "ON" } else { "OFF" }
+        );
+    }
+    Ok(true)
 }
 
 pub fn camera_take_photo() -> Result<(), PlatformError> {

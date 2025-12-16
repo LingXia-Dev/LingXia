@@ -396,6 +396,11 @@ pub fn camera_switch_facing(is_back: bool) -> bool {
 }
 
 #[napi]
+pub fn camera_set_flash_mode(flash_on: bool) -> bool {
+    camera::camera_set_flash_mode(flash_on).unwrap_or(false)
+}
+
+#[napi]
 pub fn camera_start_video_with_surface(surface_id: String) -> bool {
     camera::camera_start_video_with_surface(&surface_id).unwrap_or(false)
 }

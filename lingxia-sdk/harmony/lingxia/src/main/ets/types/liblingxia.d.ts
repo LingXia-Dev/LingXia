@@ -224,6 +224,13 @@ declare module 'liblingxia.so' {
   export function cameraSwitchFacing(isBack: boolean): boolean;
 
   /**
+   * Set camera flash mode
+   * @param flashOn - true to enable flash, false to disable
+   * @returns true if flash mode was set successfully
+   */
+  export function cameraSetFlashMode(flashOn: boolean): boolean;
+
+  /**
    * Take a photo (notifies via callback when done)
    * @returns true if capture started successfully
    */
