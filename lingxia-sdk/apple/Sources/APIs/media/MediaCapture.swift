@@ -1,7 +1,6 @@
 #if os(iOS)
 import UIKit
 import AVFoundation
-import Photos
 
 typealias CaptureFeedback = LxAppMedia.CaptureFeedback
 
@@ -1085,11 +1084,6 @@ final class VideoCaptureViewController: UIViewController {
         }
     }
 
-    private func updatePendingActionForPreparing(_ action: PendingRecordingAction) {
-        guard case .preparing = recordingState else { return }
-        recordingState = .preparing(pending: action)
-    }
-
     private var isRecordingActive: Bool {
         switch recordingState {
         case .recording, .finishing, .cancelling:
@@ -1658,6 +1652,7 @@ private final class VideoCaptureOverlayView: UIView {
     private let flashButton = UIButton(type: .system)
     private let flashButtonSize: CGFloat = 44
     private let progressGreenColor = UIColor(red: 7/255, green: 193/255, blue: 96/255, alpha: 1.0)
+    private let redDot = "●"
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -1670,7 +1665,7 @@ private final class VideoCaptureOverlayView: UIView {
 
     func setInitialTimer(maxDuration: TimeInterval) {
         self.maxDuration = maxDuration
-        timerLabel.text = Self.format(time: maxDuration, rounding: .up)
+        setTimerText(Self.format(time: maxDuration, rounding: .up))
         timerLabel.isHidden = true
         applyCameraButtonState()
     }
@@ -1712,6 +1707,17 @@ private final class VideoCaptureOverlayView: UIView {
         hintLabel.text = text
     }
 
+    private func setTimerText(_ text: String) {
+        let full = "\(redDot) \(text)"
+        let attr = NSMutableAttributedString(string: full)
+        attr.addAttribute(.foregroundColor, value: UIColor.red, range: NSRange(location: 0, length: 1))
+        if full.count > 2 {
+            attr.addAttribute(.foregroundColor, value: UIColor.white, range: NSRange(location: 2, length: full.count - 2))
+        }
+        timerLabel.attributedText = attr
+        timerLabel.accessibilityLabel = full
+    }
+
     func showMaxDurationReached() {
         hintLabel.text = "lx_camera_max_duration_reached".localized
         timerLabel.isHidden = false
@@ -1720,7 +1726,7 @@ private final class VideoCaptureOverlayView: UIView {
     func updateRecordingProgress(elapsed: TimeInterval, maxDuration: TimeInterval) {
         self.maxDuration = maxDuration
         let remaining = max(maxDuration - elapsed, 0)
-        timerLabel.text = Self.format(time: remaining, rounding: .up)
+        setTimerText(Self.format(time: remaining, rounding: .up))
         timerLabel.isHidden = !recordingActive
         let progress = min(elapsed / maxDuration, 1.0)
         setProgress(progress)
@@ -1762,7 +1768,7 @@ private final class VideoCaptureOverlayView: UIView {
         timerLabel.font = UIFont.monospacedDigitSystemFont(ofSize: 16, weight: .medium)
         timerLabel.textAlignment = .center
         timerLabel.textColor = .white
-        timerLabel.text = "00:00"
+        setTimerText("00:00")
         timerLabel.isHidden = true
         timerLabel.backgroundColor = UIColor.black.withAlphaComponent(0.5)
         timerLabel.layer.cornerRadius = 16

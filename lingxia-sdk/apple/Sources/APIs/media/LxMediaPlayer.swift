@@ -435,13 +435,10 @@ public final class LxMediaPlayer: NSObject {
     private var controlsVisible = false
     private var controlsHideWorkItem: DispatchWorkItem?
     // Note: tapRecognizer removed - using tapCatcher button instead
-    private var pendingResumeTime: Double?
-    private var pendingResumeShouldPlay = false
     private var wasPlayingBeforeBackground = false
     private var firstFrameDisplayed = false
     private var waitingForFirstFrame = false
     private var desiredPlayWhenReady = false
-    private var didPerformInitialSeek = false
     private var revealVideoWorkItem: DispatchWorkItem?
     private var forceRevealAttempts = 0
     private var pendingPlayEvent = false  // Delay play event until video actually starts
@@ -811,7 +808,6 @@ public final class LxMediaPlayer: NSObject {
         revealVideoWorkItem = nil
         forceRevealAttempts = 0
         desiredPlayWhenReady = false
-        pendingResumeShouldPlay = false
 
         // Clean up observers from previous loads
         timeObserver.flatMap { player?.removeTimeObserver($0) }
@@ -835,7 +831,6 @@ public final class LxMediaPlayer: NSObject {
         }
 
         waitingForFirstFrame = true
-        didPerformInitialSeek = pendingResumeTime == nil
         firstFrameDisplayed = false
 
         // Set playerLayer to opacity 0 to pre-render in background
@@ -899,8 +894,6 @@ public final class LxMediaPlayer: NSObject {
                     if duration.isFinite && size.width > 0 {
                          self.send(.loadedMetadata(width: size.width, height: size.height, duration: duration))
                     }
-
-                    self.applyPendingResumeIfNeeded()
 
                     // Start frame detection now that item is ready
                     if self.waitingForFirstFrame {
@@ -1758,36 +1751,6 @@ public final class LxMediaPlayer: NSObject {
         return String(format: "%.2fx", rate)
     }
 
-    private func captureResumeStateForQualitySwitch() {
-        guard let player = player else { return }
-        let currentSeconds = player.currentTime().seconds
-        guard currentSeconds.isFinite else { return }
-        pendingResumeTime = currentSeconds
-        pendingResumeShouldPlay = player.timeControlStatus == .playing || player.rate > 0.01
-        os_log("MediaPlayer captured resume state time=%.2f shouldPlay=%{public}@", log: log, type: .info, currentSeconds, String(pendingResumeShouldPlay))
-    }
-
-    private func applyPendingResumeIfNeeded() {
-        guard let resumeTime = pendingResumeTime else { return }
-        let shouldPlay = pendingResumeShouldPlay
-        pendingResumeTime = nil
-        pendingResumeShouldPlay = false
-
-        let targetTime = CMTime(seconds: resumeTime, preferredTimescale: 600)
-        player?.seek(to: targetTime, toleranceBefore: .zero, toleranceAfter: .zero, completionHandler: { [weak self] _ in
-            guard let self = self else { return }
-            os_log("MediaPlayer resumed at %.2f (shouldPlay=%{public}@)", log: self.log, type: .info, resumeTime, String(shouldPlay))
-            self.didPerformInitialSeek = true
-            self.desiredPlayWhenReady = shouldPlay
-            if !self.waitingForFirstFrame && shouldPlay {
-                self.startPlaybackNow()
-            } else if !shouldPlay {
-                self.player?.pause()
-                self.updatePlayPauseUI(isPlaying: false)
-            }
-        })
-    }
-
     private func revealVideoIfReady(progressTime: Double? = nil, reason: String, sequence: UInt64) {
         guard waitingForFirstFrame else { return }
         guard sequence == loadingSequence else {
@@ -1797,11 +1760,6 @@ public final class LxMediaPlayer: NSObject {
 
         // Only reveal when we have pixel buffer - THE RELIABLE SIGNAL
         guard reason == "pixelBuffer" else {
-            return
-        }
-
-        // Ensure initial seek finished before showing new frame (avoid old frames)
-        if pendingResumeTime != nil && !didPerformInitialSeek {
             return
         }
 
