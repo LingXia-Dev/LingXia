@@ -61,6 +61,7 @@ camera:
 
 # Album & Gallery
 album:
+  label: "Album"
   all_videos: "All Videos"
   all_photos: "All Photos"
   all_media: "Photos & Videos"
@@ -69,7 +70,6 @@ album:
   add_more_photos: "Add more\naccessible photos"
   selected: "Selected"
   original_image: "Original"
-  gallery: "Gallery"
 
 # Video Player
 video:

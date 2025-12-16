@@ -188,43 +188,7 @@ extension LxAppMedia {
     }
 
     static func controlImage(named name: String) -> UIImage? {
-        #if SWIFT_PACKAGE
-        let bundle = Bundle.module
-        #else
-        let bundle = Bundle(for: MediaBundleToken.self)
-        #endif
-
-        if let image = UIImage(named: name, in: bundle, compatibleWith: nil) {
-            return image
-        }
-
-        // loading PDF from icons subdirectory (Resources/icons)
-        if let pdfURL = bundle.url(forResource: name, withExtension: "pdf", subdirectory: "icons") {
-            return renderPDF(at: pdfURL)
-        }
-
-        return nil
-    }
-
-    private static func renderPDF(at url: URL) -> UIImage? {
-        guard
-            let dataProvider = CGDataProvider(url: url as CFURL),
-            let document = CGPDFDocument(dataProvider),
-            let page = document.page(at: 1)
-        else {
-            return nil
-        }
-
-        let pageRect = page.getBoxRect(.mediaBox)
-        let renderer = UIGraphicsImageRenderer(size: pageRect.size)
-        return renderer.image { context in
-            let cgContext = context.cgContext
-            cgContext.saveGState()
-            cgContext.translateBy(x: 0, y: pageRect.height)
-            cgContext.scaleBy(x: 1, y: -1)
-            cgContext.drawPDFPage(page)
-            cgContext.restoreGState()
-        }.withRenderingMode(.alwaysOriginal)
+        return LxIcon.image(named: name)
     }
 
     private struct ImageInfoPayload {

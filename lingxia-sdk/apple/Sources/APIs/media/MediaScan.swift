@@ -81,17 +81,51 @@ final class ScanCodeViewController: UIViewController {
         return button
     }()
 
-    private lazy var albumButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        button.setTitle("从相册选择", for: .normal)
-        button.setTitleColor(.white, for: .normal)
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .medium)
-        button.backgroundColor = UIColor.black.withAlphaComponent(0.45)
-        button.layer.cornerRadius = 20
-        button.contentEdgeInsets = UIEdgeInsets(top: 10, left: 16, bottom: 10, right: 16)
-        button.addTarget(self, action: #selector(openAlbum), for: .touchUpInside)
-        return button
+    private lazy var albumButton: UIView = {
+        let container = UIView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+        container.isUserInteractionEnabled = true
+        let tap = UITapGestureRecognizer(target: self, action: #selector(openAlbum))
+        container.addGestureRecognizer(tap)
+        
+        let iconWrap = UIView()
+        iconWrap.translatesAutoresizingMaskIntoConstraints = false
+        iconWrap.backgroundColor = UIColor.black.withAlphaComponent(0.4)
+        iconWrap.layer.cornerRadius = 36
+        container.addSubview(iconWrap)
+        
+        let iconView = UIImageView()
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+        iconView.image = LxAppMedia.controlImage(named: "icon_album")
+        iconView.tintColor = .white
+        iconView.contentMode = .scaleAspectFit
+        iconWrap.addSubview(iconView)
+        
+        let label = UILabel()
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.text = L10n.string("lx_album_label")
+        label.textColor = .white
+        label.font = UIFont.systemFont(ofSize: 16, weight: .medium)
+        label.textAlignment = .center
+        container.addSubview(label)
+        
+        NSLayoutConstraint.activate([
+            iconWrap.topAnchor.constraint(equalTo: container.topAnchor),
+            iconWrap.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            iconWrap.widthAnchor.constraint(equalToConstant: 72),
+            iconWrap.heightAnchor.constraint(equalToConstant: 72),
+            
+            iconView.centerXAnchor.constraint(equalTo: iconWrap.centerXAnchor),
+            iconView.centerYAnchor.constraint(equalTo: iconWrap.centerYAnchor),
+            iconView.widthAnchor.constraint(equalToConstant: 36),
+            iconView.heightAnchor.constraint(equalToConstant: 36),
+            
+            label.topAnchor.constraint(equalTo: iconWrap.bottomAnchor, constant: 8),
+            label.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            label.bottomAnchor.constraint(equalTo: container.bottomAnchor)
+        ])
+        
+        return container
     }()
 
     init(scanTypes: [Int], onlyFromCamera: Bool, callbackId: UInt64) {
@@ -159,7 +193,9 @@ final class ScanCodeViewController: UIViewController {
             view.addSubview(albumButton)
             NSLayoutConstraint.activate([
                 albumButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-                albumButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -48)
+                albumButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -48),
+                albumButton.widthAnchor.constraint(equalToConstant: 100),
+                albumButton.heightAnchor.constraint(equalToConstant: 100)
             ])
         }
 
@@ -654,8 +690,8 @@ private extension ScanCodeViewController {
     }
 
     func presentAlert(message: String) {
-        let alert = UIAlertController(title: "提示", message: message, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "确定", style: .default))
+        let alert = UIAlertController(title: L10n.string("lx_common_warning"), message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: L10n.string("lx_common_ok"), style: .default))
         present(alert, animated: true)
     }
 }
