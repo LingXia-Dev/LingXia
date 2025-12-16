@@ -1,5 +1,5 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { onCallback, cameraInit, cameraRelease, cameraSwitchFacing, cameraTakePhoto, cameraStartPhotoWithSurface, cameraStartVideoWithSurface, cameraVideoOutputStart, cameraVideoOutputStopAndRelease, getCurrentLxapp, getLxAppInfo, type LxAppInfo, type CurrentLxApp } from 'liblingxia.so';
+import { onCallback, cameraInit, cameraRelease, cameraSwitchFacing, cameraSetFlashMode, cameraTakePhoto, cameraStartPhotoWithSurface, cameraStartVideoWithSurface, cameraVideoOutputStart, cameraVideoOutputStopAndRelease, getCurrentLxapp, getLxAppInfo, type LxAppInfo, type CurrentLxApp } from 'liblingxia.so';
 import { image } from '@kit.ImageKit';
 import { media } from '@kit.MediaKit';
 import { fileIo } from '@kit.CoreFileKit';
@@ -8,11 +8,6 @@ import { promptAction } from '@kit.ArkUI';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.CameraCapture';
-
-// Helper function to convert degrees to radians
-function toRadians(degrees: number): number {
-  return degrees * Math.PI / 180;
-}
 
 // camera UI dimensions and positioning
 const CAMERA_BUTTON_SIZE = 72;
@@ -107,229 +102,9 @@ export class CameraCaptureOverlayManager {
   static getOptions(): CameraCaptureOptions | null { return CameraCaptureOverlayManager.options; }
 }
 
-// V-shaped cutout chevron button - white circle with cutout V
-@Component
-struct CutoutChevronButton {
-  private settings: RenderingContextSettings = new RenderingContextSettings(true);
-  private context: CanvasRenderingContext2D = new CanvasRenderingContext2D(this.settings);
-
-  build() {
-    Canvas(this.context)
-      .width(28)
-      .height(28)
-      .onReady(() => {
-        const ctx = this.context;
-        const size = 28;
-        const cx = size / 2;
-        const cy = size / 2;
-
-        // Draw white circle background
-        ctx.fillStyle = '#FFFFFF';
-        ctx.beginPath();
-        ctx.arc(cx, cy, cx, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Use destination-out to cut out V shape
-        ctx.globalCompositeOperation = 'destination-out';
-        ctx.strokeStyle = '#000000';  // Color doesn't matter
-        ctx.lineWidth = size * 0.055;  // Thinner stroke
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-
-        // Draw V shape (chevron pointing down) - smaller opening, centered
-        const vWidth = size * 0.32;  // Narrower V
-        const vHeight = size * 0.18;  // Shorter height
-        ctx.beginPath();
-        ctx.moveTo(cx - vWidth / 2, cy - vHeight / 2);  // Left top
-        ctx.lineTo(cx, cy + vHeight / 2);               // Bottom center
-        ctx.lineTo(cx + vWidth / 2, cy - vHeight / 2);  // Right top
-        ctx.stroke();
-
-        // Reset composite operation
-        ctx.globalCompositeOperation = 'source-over';
-      })
-  }
-}
-
-// Camera switch icon (Canvas)
-@Component
-struct CameraSwitchIcon {
-  private settings: RenderingContextSettings = new RenderingContextSettings(true);
-  private context: CanvasRenderingContext2D = new CanvasRenderingContext2D(this.settings);
-
-  build() {
-    Canvas(this.context)
-      .width(44)
-      .height(44)
-      .onReady(() => {
-        const ctx = this.context;
-        const size = 44;
-        const cx = size / 2;
-        const cy = size / 2;
-
-        // Draw white camera body (rounded rect)
-        ctx.fillStyle = '#FFFFFF';
-        const bodyWidth = size * 0.65;
-        const bodyHeight = size * 0.40;
-        const bodyLeft = cx - bodyWidth * 0.5;
-        const bodyRight = cx + bodyWidth * 0.5;
-        const bodyTop = cy - bodyHeight * 0.2;
-        const bodyBottom = cy + bodyHeight * 0.8;
-        const bodyRadius = size * 0.05;
-        ctx.beginPath();
-        ctx.moveTo(bodyLeft + bodyRadius, bodyTop);
-        ctx.lineTo(bodyRight - bodyRadius, bodyTop);
-        ctx.arcTo(bodyRight, bodyTop, bodyRight, bodyTop + bodyRadius, bodyRadius);
-        ctx.lineTo(bodyRight, bodyBottom - bodyRadius);
-        ctx.arcTo(bodyRight, bodyBottom, bodyRight - bodyRadius, bodyBottom, bodyRadius);
-        ctx.lineTo(bodyLeft + bodyRadius, bodyBottom);
-        ctx.arcTo(bodyLeft, bodyBottom, bodyLeft, bodyBottom - bodyRadius, bodyRadius);
-        ctx.lineTo(bodyLeft, bodyTop + bodyRadius);
-        ctx.arcTo(bodyLeft, bodyTop, bodyLeft + bodyRadius, bodyTop, bodyRadius);
-        ctx.closePath();
-        ctx.fill();
-
-        // Draw trapezoid viewfinder hump
-        const topWidth = bodyWidth * 0.35;
-        const bottomWidth = bodyWidth * 0.45;
-        const trapHeight = bodyHeight * 0.35;
-        const topLeft = cx - topWidth * 0.5;
-        const topRight = cx + topWidth * 0.5;
-        const bottomLeft = cx - bottomWidth * 0.5;
-        const bottomRight = cx + bottomWidth * 0.5;
-        const trapTop = bodyTop - trapHeight * 0.8;
-        const trapBottom = bodyTop + trapHeight * 0.2;
-        ctx.beginPath();
-        ctx.moveTo(topLeft, trapTop);
-        ctx.lineTo(topRight, trapTop);
-        ctx.lineTo(bottomRight, trapBottom);
-        ctx.lineTo(bottomLeft, trapBottom);
-        ctx.closePath();
-        ctx.fill();
-
-        // Cut-out curved arrows (destination-out)
-        ctx.globalCompositeOperation = 'destination-out';
-        ctx.strokeStyle = '#000000';
-        ctx.lineWidth = size * 0.04;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-
-        const radius = size * 0.15;
-        const bodyCenter = cy + bodyHeight * 0.30;
-
-        // Top curved arrow
-        ctx.beginPath();
-        ctx.arc(cx, bodyCenter, radius * 0.7, toRadians(-30), toRadians(90), false);
-        ctx.stroke();
-        const topEndAngle = 90;
-        const topEndX = cx + radius * 0.7 * Math.cos(toRadians(topEndAngle));
-        const topEndY = bodyCenter + radius * 0.7 * Math.sin(toRadians(topEndAngle));
-        this.drawArrowhead(ctx, topEndX, topEndY, topEndAngle + 30, size);
-
-        // Bottom curved arrow
-        ctx.beginPath();
-        ctx.arc(cx, bodyCenter, radius * 0.7, toRadians(150), toRadians(270), false);
-        ctx.stroke();
-        const bottomEndAngle = -90;
-        const bottomEndX = cx + radius * 0.7 * Math.cos(toRadians(bottomEndAngle));
-        const bottomEndY = bodyCenter + radius * 0.7 * Math.sin(toRadians(bottomEndAngle));
-        this.drawArrowhead(ctx, bottomEndX, bottomEndY, bottomEndAngle - 30, size);
-
-        ctx.globalCompositeOperation = 'source-over';
-      })
-  }
-
-  private drawArrowhead(ctx: CanvasRenderingContext2D, x: number, y: number, angle: number, size: number): void {
-    const arrowSize = size * 0.03;
-    const rad1 = toRadians(angle + 25);
-    const rad2 = toRadians(angle - 25);
-    const x1 = x + arrowSize * Math.cos(rad1);
-    const y1 = y + arrowSize * Math.sin(rad1);
-    const x2 = x + arrowSize * Math.cos(rad2);
-    const y2 = y + arrowSize * Math.sin(rad2);
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lineTo(x1, y1);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lineTo(x2, y2);
-    ctx.stroke();
-  }
-}
-// Round back arrow button for preview  - white circle with cutout curved arrow
-@Component
-struct RoundBackArrowButton {
-  private settings: RenderingContextSettings = new RenderingContextSettings(true);
-  private context: CanvasRenderingContext2D = new CanvasRenderingContext2D(this.settings);
-
-  build() {
-    Canvas(this.context)
-      .width(28)
-      .height(28)
-      .onReady(() => {
-        const ctx = this.context;
-        const size = 28;
-        const cx = size / 2;
-        const cy = size / 2;
-        const r = size / 2;
-
-        // Step 1: Draw white circle background
-        ctx.fillStyle = '#FFFFFF';
-        ctx.beginPath();
-        ctx.arc(cx, cy, r, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Step 2: Use destination-out to cut out curved arrow
-        ctx.globalCompositeOperation = 'destination-out';
-        ctx.strokeStyle = '#000000';
-        ctx.lineWidth = Math.max(size * 0.06, 1.5);
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-
-        // Draw curved return arrow path
-        const chevronTipX = cx - r * 0.4;
-        const chevronY = cy - r * 0.1;
-        const chevronSize = r * 0.2;
-
-        // Left chevron (<)
-        ctx.beginPath();
-        ctx.moveTo(chevronTipX + chevronSize, chevronY - chevronSize * 0.6);
-        ctx.lineTo(chevronTipX, chevronY);
-        ctx.lineTo(chevronTipX + chevronSize, chevronY + chevronSize * 0.6);
-        ctx.stroke();
-
-        // Horizontal line from chevron to the right
-        ctx.beginPath();
-        ctx.moveTo(chevronTipX + chevronSize, chevronY);
-        ctx.lineTo(cx + r * 0.4, chevronY);
-        ctx.stroke();
-
-        // Smooth arc using quadratic curve
-        const arcStartX = cx + r * 0.4;
-        const arcStartY = chevronY;
-        const arcEndX = cx + r * 0.25;
-        const arcEndY = cy + r * 0.25;
-
-        ctx.beginPath();
-        ctx.moveTo(arcStartX, arcStartY);
-        ctx.quadraticCurveTo(
-          arcStartX + r * 0.1, arcEndY,  // Control point
-          arcEndX, arcEndY
-        );
-        ctx.stroke();
-
-        // Short line after the turn
-        ctx.beginPath();
-        ctx.moveTo(arcEndX, arcEndY);
-        ctx.lineTo(cx - r * 0.05, arcEndY);
-        ctx.stroke();
-
-        // Reset composite operation
-        ctx.globalCompositeOperation = 'source-over';
-      })
-  }
-}
+// Icon size constants
+const ICON_BUTTON_SIZE = 32;
+const CAMERA_SWITCH_ICON_SIZE = 44;
 
 // Progress arc canvas that repaints on progress change
 @Component
@@ -473,6 +248,7 @@ export struct CameraCaptureOverlay {
   @State private showTimer: boolean = false;
   @State private timerDisplay: string = '00:00';
   @State private showingErrorHint: boolean = false;
+  @State private flashOn: boolean = false;
   private recordingTimer: number = -1;
   private ctrl: XComponentController = new XComponentController();
   private photoSurfaceId: string = ''; // ArkTS ImageReceiver surface ID
@@ -1042,6 +818,18 @@ export struct CameraCaptureOverlay {
     await NativeCameraBridge.switchFacing(this.facing).catch(() => {});
   }
 
+  private toggleFlash(): void {
+    if (this.isRecording || this.isPreview || this.activeMode() === 'video') return;
+    const newState = !this.flashOn;
+    const success: boolean = cameraSetFlashMode(newState);
+    if (success) {
+      this.flashOn = newState;
+      hilog.info(DOMAIN, TAG, `Flash ${this.flashOn ? 'ON' : 'OFF'}`);
+    } else {
+      hilog.warn(DOMAIN, TAG, `Failed to set flash mode to ${newState ? 'ON' : 'OFF'}`);
+    }
+  }
+
   private updateHint(): void {
     const activeMode = this.isVideoOnly ? 'video' : (this.isImagesOnly ? 'photo' : this.currentMode);
     if (this.showingErrorHint) {
@@ -1118,25 +906,22 @@ export struct CameraCaptureOverlay {
           .hitTestBehavior(HitTestMode.Transparent)
 
         if (this.isPreview) {
-          // Back button using Canvas-drawn component
-          Button({}) {
-            RoundBackArrowButton()
-          }
-          .width(28)
-          .height(28)
-          .padding(0)
-          .backgroundColor(Color.Transparent)
-          .position({ left: 16, top: 44 })
-          .onClick(() => { this.exitPreview(); })
+          // Back button using SVG icon
+          Image($rawfile('icons/icon_back_curved.svg'))
+            .width(ICON_BUTTON_SIZE)
+            .height(ICON_BUTTON_SIZE)
+            .fillColor(Color.White)
+            .position({ left: 16, top: 44 })
+            .onClick(() => { this.exitPreview(); })
 
           Button({}) {
-            Text('完成')
+            Text($r('app.string.lx_common_done'))
               .fontSize(14)
               .fontColor(Color.White)
               .fontWeight(FontWeight.Normal)
           }
           .padding({ left: 16, right: 16, top: 6, bottom: 6 })
-          .backgroundColor('#FF07C160')
+          .backgroundColor('#FF007AFF')
           .borderRadius(18)
           .position({ right: 20, bottom: 20 })
           .onClick(() => {
@@ -1144,16 +929,13 @@ export struct CameraCaptureOverlay {
           })
         } else {
           if (!this.isRecording) {
-            // Camera switch button
-            Button({}) {
-              CameraSwitchIcon()
-            }
-            .width(44)
-            .height(44)
-            .padding(0)
-            .backgroundColor(Color.Transparent)
-            .position({ right: 16, top: 60 })
-            .onClick((): void => { this.switchCamera(); })
+            // Camera switch button using SVG icon
+            Image($rawfile('icons/icon_camera_switch.svg'))
+              .width(CAMERA_SWITCH_ICON_SIZE)
+              .height(CAMERA_SWITCH_ICON_SIZE)
+              .fillColor(Color.White)
+              .position({ right: 24, top: 60 })
+              .onClick((): void => { this.switchCamera(); })
           }
 
         if (this.showTimer) {
@@ -1237,21 +1019,18 @@ export struct CameraCaptureOverlay {
 
             Row({}) {
               if (!this.isRecording) {
-                // V-shaped cutout chevron button
-                Button({}) {
-                  CutoutChevronButton()
-                }
-                .width(28)
-                .height(28)
-                .padding(0)
-                .backgroundColor(Color.Transparent)
-                .onClick(() => {
-                  this.cancel();
-                })
+                // Cancel button using chevron down SVG icon
+                Image($rawfile('icons/icon_chevron_down.svg'))
+                  .width(ICON_BUTTON_SIZE)
+                  .height(ICON_BUTTON_SIZE)
+                  .fillColor(Color.White)
+                  .onClick(() => {
+                    this.cancel();
+                  })
               } else {
                 Blank()
-                  .width(28)
-                  .height(28)
+                  .width(ICON_BUTTON_SIZE)
+                  .height(ICON_BUTTON_SIZE)
               }
 
               ShutterButton({
@@ -1263,9 +1042,20 @@ export struct CameraCaptureOverlay {
               })
               .margin({ left: 36, right: 36 })
 
-              Blank()
-                .width(32)
-                .height(32)
+              if (!this.isRecording && this.activeMode() !== 'video') {
+                // Flash toggle button
+                Image(this.flashOn ? $rawfile('icons/icon_camera_flash_on.svg') : $rawfile('icons/icon_camera_flash_off.svg'))
+                  .width(ICON_BUTTON_SIZE)
+                  .height(ICON_BUTTON_SIZE)
+                  .fillColor(Color.White)
+                  .onClick(() => {
+                    this.toggleFlash();
+                  })
+              } else {
+                Blank()
+                  .width(ICON_BUTTON_SIZE)
+                  .height(ICON_BUTTON_SIZE)
+              }
             }
             .justifyContent(FlexAlign.Center)
             .gesture(
