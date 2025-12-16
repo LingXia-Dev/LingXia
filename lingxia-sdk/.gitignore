@@ -1,4 +1,7 @@
-apple/Sources/Resources/icons/
+# Resource files
+android/lingxia/src/main/res/drawable/
+apple/Sources/Resources/
+harmony/lingxia/src/main/resources/
 
 # Generated i18n files
 android/lingxia/src/main/res/values/strings.xml
