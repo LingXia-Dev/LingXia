@@ -166,6 +166,11 @@ fn svg_to_vector_drawable(svg_content: &str) -> Result<String> {
         if let Some(fill) = path_info.fill {
             xml.push_str(&format!("        android:fillColor=\"{}\"\n", fill));
         }
+        if let Some(ref fill_rule) = path_info.fill_rule {
+            if fill_rule == "evenodd" {
+                xml.push_str("        android:fillType=\"evenOdd\"\n");
+            }
+        }
         if let Some(stroke) = path_info.stroke {
             xml.push_str(&format!("        android:strokeColor=\"{}\"\n", stroke));
         }
@@ -173,6 +178,15 @@ fn svg_to_vector_drawable(svg_content: &str) -> Result<String> {
             xml.push_str(&format!(
                 "        android:strokeWidth=\"{}\"\n",
                 stroke_width
+            ));
+        }
+        if let Some(ref line_cap) = path_info.stroke_line_cap {
+            xml.push_str(&format!("        android:strokeLineCap=\"{}\"\n", line_cap));
+        }
+        if let Some(ref line_join) = path_info.stroke_line_join {
+            xml.push_str(&format!(
+                "        android:strokeLineJoin=\"{}\"\n",
+                line_join
             ));
         }
         xml.push_str(&format!(
@@ -188,24 +202,66 @@ fn svg_to_vector_drawable(svg_content: &str) -> Result<String> {
 struct PathInfo {
     data: String,
     fill: Option<String>,
+    fill_rule: Option<String>,
     stroke: Option<String>,
     stroke_width: Option<String>,
+    stroke_line_cap: Option<String>,
+    stroke_line_join: Option<String>,
 }
 
-fn collect_paths(node: &roxmltree::Node, paths: &mut Vec<PathInfo>) {
-    if node.tag_name().name() != "path" {
-        // continue
-    } else if let Some(d) = node.attribute("d") {
-        let fill = node.attribute("fill").map(normalize_color);
-        let stroke = node.attribute("stroke").map(normalize_color);
-        let stroke_width = node.attribute("stroke-width").map(ToString::to_string);
+/// Elements that should be skipped during path collection (definitions, masks, etc.)
+const SKIP_ELEMENTS: &[&str] = &["defs", "mask", "clipPath", "symbol", "pattern", "filter"];
 
-        paths.push(PathInfo {
-            data: d.to_string(),
-            fill,
-            stroke,
-            stroke_width,
-        });
+fn collect_paths(node: &roxmltree::Node, paths: &mut Vec<PathInfo>) {
+    let tag = node.tag_name().name();
+
+    // Skip definition elements and their children
+    if SKIP_ELEMENTS.contains(&tag) {
+        return;
+    }
+
+    // Skip elements with mask attribute (they reference masks we can't render)
+    if node.attribute("mask").is_some() {
+        // Still process children but skip this element's own rendering
+    }
+
+    match tag {
+        "path" => {
+            if let Some(d) = node.attribute("d") {
+                paths.push(extract_path_info(node, d.to_string()));
+            }
+        }
+        "rect" => {
+            if let Some(path_data) = rect_to_path(node) {
+                paths.push(extract_path_info(node, path_data));
+            }
+        }
+        "circle" => {
+            if let Some(path_data) = circle_to_path(node) {
+                paths.push(extract_path_info(node, path_data));
+            }
+        }
+        "ellipse" => {
+            if let Some(path_data) = ellipse_to_path(node) {
+                paths.push(extract_path_info(node, path_data));
+            }
+        }
+        "polygon" => {
+            if let Some(path_data) = polygon_to_path(node) {
+                paths.push(extract_path_info(node, path_data));
+            }
+        }
+        "polyline" => {
+            if let Some(path_data) = polyline_to_path(node) {
+                paths.push(extract_path_info(node, path_data));
+            }
+        }
+        "line" => {
+            if let Some(path_data) = line_to_path(node) {
+                paths.push(extract_path_info(node, path_data));
+            }
+        }
+        _ => {}
     }
 
     for child in node.children() {
@@ -213,6 +269,180 @@ fn collect_paths(node: &roxmltree::Node, paths: &mut Vec<PathInfo>) {
             collect_paths(&child, paths);
         }
     }
+}
+
+fn extract_path_info(node: &roxmltree::Node, data: String) -> PathInfo {
+    PathInfo {
+        data,
+        fill: node.attribute("fill").map(normalize_color),
+        fill_rule: node.attribute("fill-rule").map(|s| s.to_string()),
+        stroke: node.attribute("stroke").map(normalize_color),
+        stroke_width: node.attribute("stroke-width").map(ToString::to_string),
+        stroke_line_cap: node.attribute("stroke-linecap").map(|s| s.to_string()),
+        stroke_line_join: node.attribute("stroke-linejoin").map(|s| s.to_string()),
+    }
+}
+
+/// Convert <rect> to path data
+fn rect_to_path(node: &roxmltree::Node) -> Option<String> {
+    let x: f64 = node
+        .attribute("x")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0.0);
+    let y: f64 = node
+        .attribute("y")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0.0);
+    let w: f64 = node.attribute("width").and_then(|s| s.parse().ok())?;
+    let h: f64 = node.attribute("height").and_then(|s| s.parse().ok())?;
+    let rx: f64 = node
+        .attribute("rx")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0.0);
+    let ry: f64 = node
+        .attribute("ry")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(rx);
+
+    if rx > 0.0 || ry > 0.0 {
+        // Rounded rectangle
+        let rx = rx.min(w / 2.0);
+        let ry = ry.min(h / 2.0);
+        Some(format!(
+            "M{} {} H{} A{} {} 0 0 1 {} {} V{} A{} {} 0 0 1 {} {} H{} A{} {} 0 0 1 {} {} V{} A{} {} 0 0 1 {} {} Z",
+            x + rx,
+            y,
+            x + w - rx,
+            rx,
+            ry,
+            x + w,
+            y + ry,
+            y + h - ry,
+            rx,
+            ry,
+            x + w - rx,
+            y + h,
+            x + rx,
+            rx,
+            ry,
+            x,
+            y + h - ry,
+            y + ry,
+            rx,
+            ry,
+            x + rx,
+            y
+        ))
+    } else {
+        // Simple rectangle
+        Some(format!("M{} {} H{} V{} H{} Z", x, y, x + w, y + h, x))
+    }
+}
+
+/// Convert <circle> to path data
+fn circle_to_path(node: &roxmltree::Node) -> Option<String> {
+    let cx: f64 = node
+        .attribute("cx")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0.0);
+    let cy: f64 = node
+        .attribute("cy")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0.0);
+    let r: f64 = node.attribute("r").and_then(|s| s.parse().ok())?;
+
+    // Circle as two arcs
+    Some(format!(
+        "M{} {} A{} {} 0 1 0 {} {} A{} {} 0 1 0 {} {} Z",
+        cx - r,
+        cy,
+        r,
+        r,
+        cx + r,
+        cy,
+        r,
+        r,
+        cx - r,
+        cy
+    ))
+}
+
+/// Convert <ellipse> to path data
+fn ellipse_to_path(node: &roxmltree::Node) -> Option<String> {
+    let cx: f64 = node
+        .attribute("cx")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0.0);
+    let cy: f64 = node
+        .attribute("cy")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0.0);
+    let rx: f64 = node.attribute("rx").and_then(|s| s.parse().ok())?;
+    let ry: f64 = node.attribute("ry").and_then(|s| s.parse().ok())?;
+
+    Some(format!(
+        "M{} {} A{} {} 0 1 0 {} {} A{} {} 0 1 0 {} {} Z",
+        cx - rx,
+        cy,
+        rx,
+        ry,
+        cx + rx,
+        cy,
+        rx,
+        ry,
+        cx - rx,
+        cy
+    ))
+}
+
+/// Convert <polygon> to path data
+fn polygon_to_path(node: &roxmltree::Node) -> Option<String> {
+    let points = node.attribute("points")?;
+    let coords: Vec<&str> = points.split_whitespace().collect();
+    if coords.is_empty() {
+        return None;
+    }
+    let mut path = format!("M{}", coords[0]);
+    for coord in &coords[1..] {
+        path.push_str(&format!(" L{}", coord));
+    }
+    path.push_str(" Z");
+    Some(path)
+}
+
+/// Convert <polyline> to path data
+fn polyline_to_path(node: &roxmltree::Node) -> Option<String> {
+    let points = node.attribute("points")?;
+    let coords: Vec<&str> = points.split_whitespace().collect();
+    if coords.is_empty() {
+        return None;
+    }
+    let mut path = format!("M{}", coords[0]);
+    for coord in &coords[1..] {
+        path.push_str(&format!(" L{}", coord));
+    }
+    Some(path)
+}
+
+/// Convert <line> to path data
+fn line_to_path(node: &roxmltree::Node) -> Option<String> {
+    let x1: f64 = node
+        .attribute("x1")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0.0);
+    let y1: f64 = node
+        .attribute("y1")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0.0);
+    let x2: f64 = node
+        .attribute("x2")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0.0);
+    let y2: f64 = node
+        .attribute("y2")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0.0);
+    Some(format!("M{} {} L{} {}", x1, y1, x2, y2))
 }
 
 fn normalize_color(color: &str) -> String {
