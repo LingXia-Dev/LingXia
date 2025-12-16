@@ -1262,6 +1262,16 @@ pub fn init(runtime: Platform) -> Option<String> {
 
             let executor = LxAppExecutor::init(LXAPP_STACK_MAX);
 
+            // Create LxApps manager BEFORE creating home_lxapp
+            // This ensures get_platform() is available ASAP
+            let lxapps_manager = Arc::new(LxApps::new(runtime, executor.clone()));
+
+            // Set global instance early so get_platform() works
+            if LXAPPS_MANAGER.set(lxapps_manager.clone()).is_err() {
+                error!("LxApps manager singleton had been initialized by another instance");
+                return None;
+            }
+
             // Create the home LxApp instance (loads lxapp.json once)
             let mut home_lxapp = LxApp::new_as_home(
                 home_lxapp_appid.clone(),
@@ -1285,20 +1295,11 @@ pub fn init(runtime: Platform) -> Option<String> {
                 let _ = home_lxapp.load_config();
             }
 
-            // Create LxApps manager
-            let lxapps_manager = Arc::new(LxApps::new(runtime, executor));
-
             // Add home lxapp to the manager
             let home_lxapp_arc = Arc::new(home_lxapp);
             lxapps_manager
                 .lxapps
                 .insert(home_lxapp_appid.clone(), home_lxapp_arc.clone());
-
-            // Set global instance
-            if LXAPPS_MANAGER.set(lxapps_manager).is_err() {
-                error!("LxApps manager singleton had been initialized by another instance");
-                return None;
-            }
 
             // Pre-create JS worker for home lxapp
             if let Err(e) = home_lxapp_arc
