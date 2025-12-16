@@ -275,7 +275,9 @@ final class MediaPickerViewController: UIViewController, UICollectionViewDataSou
     }
 
     private func setupNav() {
-        if #available(iOS 13.0, *) {
+        if let closeImage = LxIcon.image(named: "icon_close_x")?.withRenderingMode(.alwaysOriginal) {
+            navigationItem.leftBarButtonItem = UIBarButtonItem(image: closeImage, style: .plain, target: self, action: #selector(onCancel))
+        } else if #available(iOS 13.0, *) {
             navigationItem.leftBarButtonItem = UIBarButtonItem(barButtonSystemItem: .close, target: self, action: #selector(onCancel))
         } else {
             navigationItem.leftBarButtonItem = UIBarButtonItem(title: "×", style: .plain, target: self, action: #selector(onCancel))

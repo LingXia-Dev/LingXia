@@ -32,6 +32,7 @@ import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.lingxia.lxapp.NativeApi
+import com.lingxia.lxapp.R
 import org.json.JSONObject
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.graphics.drawable.GradientDrawable
@@ -290,13 +291,17 @@ class MediaPickerFragment : Fragment() {
             ).apply { gravity = Gravity.TOP }
             ViewCompat.setElevation(this, dp(context, 2).toFloat())
         }
-        // Custom drawn close "X" for better visual integration
-        val backBtn = CloseXView(context).apply {
-            isClickable = true
-            isFocusable = true
+        // Use icon_close_x for consistent cross-platform close button
+        val backBtn = ImageView(context).apply {
             layoutParams = FrameLayout.LayoutParams(dp(context, 48), dp(context, 48)).apply {
                 gravity = Gravity.START or Gravity.CENTER_VERTICAL
             }
+            setImageResource(R.drawable.icon_close_x)
+            setColorFilter(Color.parseColor("#1F1F1F"))
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(dp(context, 12), dp(context, 12), dp(context, 12), dp(context, 12))
+            isClickable = true
+            isFocusable = true
             setOnClickListener { sendCancel(); removeSelf() }
             contentDescription = getString(com.lingxia.lxapp.R.string.lx_common_close)
         }
@@ -1394,34 +1399,6 @@ private class CheckMarkView(context: Context, color: Int, private val stroke: Fl
         path.lineTo(midX, midY)
         path.lineTo(endX, endY)
         canvas.drawPath(path, paint)
-    }
-}
-
-// Custom-drawn close X view
-private class CloseXView(context: Context) : View(context) {
-    private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#1F1F1F")
-        style = Paint.Style.STROKE
-        strokeCap = Paint.Cap.ROUND
-        strokeJoin = Paint.Join.ROUND
-        strokeWidth = dp(context, 2).toFloat()
-    }
-    private val pressPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#1A000000")
-        style = Paint.Style.FILL
-    }
-    override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
-        val w = width.toFloat()
-        val h = height.toFloat()
-        // Smaller X by increasing inner padding proportionally
-        val pad = (minOf(w, h) * 0.42f)
-        if (isPressed) {
-            val r = kotlin.math.min(w, h) * 0.45f
-            canvas.drawCircle(w / 2f, h / 2f, r, pressPaint)
-        }
-        canvas.drawLine(pad, pad, w - pad, h - pad, linePaint)
-        canvas.drawLine(w - pad, pad, pad, h - pad, linePaint)
     }
 }
 
