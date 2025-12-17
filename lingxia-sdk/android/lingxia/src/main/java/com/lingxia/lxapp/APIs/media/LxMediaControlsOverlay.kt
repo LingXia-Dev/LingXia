@@ -337,7 +337,9 @@ internal class LxMediaControlsOverlay(
             }
             max = 100
             progress = 100
-            setPadding(0, 0, 0, 0)
+            // Add horizontal padding to prevent thumb clipping at min/max
+            val thumbPadding = dp(6)
+            setPadding(thumbPadding, 0, thumbPadding, 0)
             thumb = createVolumeThumbDrawable()
             progressDrawable = createVolumeProgressDrawable()
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
