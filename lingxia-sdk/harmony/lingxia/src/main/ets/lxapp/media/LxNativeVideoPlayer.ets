@@ -17,7 +17,7 @@ import {
   videoPlayerDestroy
 } from 'liblingxia.so';
 import { calculateSliderValue } from './VideoUtils';
-import { VideoControlsView, CenterPlayButton, VideoControlSize } from './VideoControls';
+import { VideoControlsView, VideoControlSize } from './VideoControls';
 
 const TAG = 'LingXia.NativeVideoPlayer';
 function log(message: string): void { console.info(`${TAG}: ${message}`); }
@@ -821,11 +821,6 @@ export struct LxNativeVideoPlayer {
     })
   }
 
-  @Builder
-  buildCenterPlayButton(): void {
-    CenterPlayButton({ buttonSize: 72, onButtonClick: () => { this.play(); this.resetControlsTimer(); } })
-  }
-
   private getPosterUrl(): string {
     // Use cachedPoster first, fallback to config.poster
     return this.cachedPoster || this.config.poster || '';
@@ -876,7 +871,6 @@ export struct LxNativeVideoPlayer {
           .onClick(() => { this.showControls = true; this.resetControlsTimer(); })
       }
 
-      if (!this.state.isPlaying && this.config.controls) { this.buildCenterPlayButton() }
       if (this.showControls && this.config.controls) { this.buildControls() }
     }
     .width('100%').height('100%')

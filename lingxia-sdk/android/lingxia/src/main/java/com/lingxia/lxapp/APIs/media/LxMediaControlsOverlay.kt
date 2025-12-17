@@ -1,9 +1,5 @@
 package com.lingxia.lxapp.APIs.media
 
-import android.animation.Animator
-import android.animation.AnimatorListenerAdapter
-import android.animation.AnimatorSet
-import android.animation.ObjectAnimator
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
@@ -61,7 +57,6 @@ internal class LxMediaControlsOverlay(
         val ACCENT_BLUE = Color.rgb(0, 122, 255)
         val ACCENT_BLUE_ALPHA = Color.argb(51, 0, 122, 255)
         val TRACK_BG = Color.argb(77, 255, 255, 255)
-        val CENTER_BTN_BG = Color.argb(128, 0, 0, 0)
         val POPUP_BG = Color.argb(247, 46, 46, 46)
         val POPUP_BORDER = Color.argb(38, 255, 255, 255)
         val TEXT_SECONDARY = Color.argb(153, 255, 255, 255)
@@ -73,7 +68,6 @@ internal class LxMediaControlsOverlay(
     private lateinit var bottomGradient: View
     private lateinit var topBar: FrameLayout
     private lateinit var bottomBar: FrameLayout
-    private lateinit var centerPlayButton: ImageButton
     private lateinit var closeButton: ImageButton
     private lateinit var titleLabel: TextView
     private lateinit var progressSeekBar: SeekBar
@@ -144,9 +138,6 @@ internal class LxMediaControlsOverlay(
 
         bottomBar = createBottomBar()
         view.addView(bottomBar)
-
-        centerPlayButton = createCenterPlayButton()
-        view.addView(centerPlayButton)
     }
 
     private fun createTopBar(): FrameLayout {
@@ -395,24 +386,6 @@ internal class LxMediaControlsOverlay(
         return bar
     }
 
-    private fun createCenterPlayButton(): ImageButton {
-        return ImageButton(context).apply {
-            val size = dp(64)
-            layoutParams = FrameLayout.LayoutParams(size, size, Gravity.CENTER)
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(CENTER_BTN_BG)
-            }
-            setImageResource(R.drawable.icon_play)
-            setColorFilter(Color.WHITE)
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setPadding(dp(12), dp(12), dp(12), dp(12))
-            setOnClickListener { onPlayPauseClick() }
-            visibility = View.GONE
-            alpha = 0f
-        }
-    }
-
     fun setVisible(visible: Boolean) {
         isEnabled = visible
         if (!visible) setControlsVisible(false)
@@ -421,16 +394,11 @@ internal class LxMediaControlsOverlay(
     fun updatePlayPauseButton() {
         val isPlaying = player.isPlaying()
         playPauseButton.setImageResource(if (isPlaying) R.drawable.icon_pause else R.drawable.icon_play)
-        centerPlayButton.setImageResource(if (isPlaying) R.drawable.icon_pause else R.drawable.icon_play)
-        centerPlayButton.visibility = if (controlsVisible) View.VISIBLE else View.GONE
         updateFullscreenButton()
         updateSettingsButton()
     }
 
     fun showCenterPlayButton(show: Boolean) {
-        centerPlayButton.setImageResource(R.drawable.icon_play)
-        centerPlayButton.visibility = if (show) View.VISIBLE else View.GONE
-        centerPlayButton.alpha = 1f
         if (show) {
             setControlsVisible(true)
         }
@@ -473,12 +441,8 @@ internal class LxMediaControlsOverlay(
         setControlsInteractionEnabled(visible)
 
         if (visible) {
-            centerPlayButton.visibility = View.VISIBLE
-            centerPlayButton.animate().alpha(1f).setDuration(duration).start()
             scheduleAutoHide()
         } else {
-            centerPlayButton.animate().alpha(0f).setDuration(duration)
-                .withEndAction { centerPlayButton.visibility = View.GONE }.start()
             cancelAutoHide()
         }
     }

@@ -464,7 +464,6 @@ public final class LxMediaPlayer: NSObject {
     private let volumeButton = UIButton(type: .system)
     private let settingsButton = UIButton(type: .system)
     private let loadingIndicator = UIActivityIndicatorView(style: .large)
-    private let centerPlayButton = UIButton(type: .system)
     private let tapCatcher = UIButton(type: .custom)
     private let posterImageView = UIImageView()
 
@@ -643,7 +642,6 @@ public final class LxMediaPlayer: NSObject {
             play()
         } else {
             updatePlayPauseUI(isPlaying: false)
-            syncCenterPlayButtonVisibility(isPlaying: false)
         }
 
         if let muted = config.muted {
@@ -820,7 +818,6 @@ public final class LxMediaPlayer: NSObject {
         // Keep overlay (controls) and loading indicator above everything
         view.bringSubviewToFront(overlayView)
         overlayView.bringSubviewToFront(loadingIndicator)
-        overlayView.bringSubviewToFront(centerPlayButton)
         loadingIndicator.startAnimating()
 
         // DON'T hide old video or show poster yet - keep current frame visible
@@ -936,17 +933,14 @@ public final class LxMediaPlayer: NSObject {
                     // Video is playing - stop loading indicator and send play event
                     self.loadingIndicator.stopAnimating()
                     self.updatePlayPauseUI(isPlaying: true)
-                    self.syncCenterPlayButtonVisibility(isPlaying: true)
                     self.send(.play)
                     
                 case .paused:
                     self.updatePlayPauseUI(isPlaying: false)
-                    self.syncCenterPlayButtonVisibility(isPlaying: false)
                     
                 case .waitingToPlayAtSpecifiedRate:
                     // Buffering - show loading indicator
                     self.loadingIndicator.startAnimating()
-                    self.centerPlayButton.isHidden = true
                     self.send(.waiting)
                     
                 @unknown default:
@@ -1027,7 +1021,6 @@ public final class LxMediaPlayer: NSObject {
 
             // Show play button (pause state) and restore poster
             updatePlayPauseUI(isPlaying: false)
-            syncCenterPlayButtonVisibility(isPlaying: false)
 
             // Show poster when video ends - reset all poster/layer states
             firstFrameDisplayed = false
@@ -1068,7 +1061,6 @@ public final class LxMediaPlayer: NSObject {
             lastTimeForPosterHide = -1
         }
         updatePlayPauseUI(isPlaying: true)
-        syncCenterPlayButtonVisibility(isPlaying: true)
 
         player.playImmediately(atRate: Float(currentPlaybackRate))
         // Delay play event until video actually starts playing (time progresses in timeObserver)
@@ -1092,7 +1084,6 @@ public final class LxMediaPlayer: NSObject {
         desiredPlayWhenReady = false
         send(.pause)
         updatePlayPauseUI(isPlaying: false)
-        syncCenterPlayButtonVisibility(isPlaying: false)
         showControlsTemporarily()
     }
 
@@ -1104,7 +1095,6 @@ public final class LxMediaPlayer: NSObject {
         desiredPlayWhenReady = false
         send(.stop)
         updatePlayPauseUI(isPlaying: false)
-        syncCenterPlayButtonVisibility(isPlaying: false)
         showControlsTemporarily()
         
         // Show poster image on stop and reset progress
@@ -1369,17 +1359,6 @@ public final class LxMediaPlayer: NSObject {
         fullscreenButton.contentEdgeInsets = UIEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
         bottomBar.addSubview(fullscreenButton)
 
-        // Center play button - use larger icon (36pt) for better visibility
-        let centerIconSize = CGSize(width: 36, height: 36)
-        centerPlayButton.setImage(LxIcon.image(named: "icon_play", size: centerIconSize), for: .normal)
-        centerPlayButton.tintColor = .white
-        centerPlayButton.backgroundColor = UIColor.black.withAlphaComponent(0.5)
-        centerPlayButton.layer.cornerRadius = 40
-        centerPlayButton.clipsToBounds = true
-        centerPlayButton.addTarget(self, action: #selector(handlePlayPauseTap), for: .touchUpInside)
-        overlayView.addSubview(centerPlayButton)
-        overlayView.bringSubviewToFront(centerPlayButton)
-
         // Loading indicator
         loadingIndicator.color = .white
         loadingIndicator.hidesWhenStopped = true
@@ -1396,8 +1375,6 @@ public final class LxMediaPlayer: NSObject {
         topGradient.opacity = 0
         bottomGradient.opacity = 0
         controlsVisible = false
-        centerPlayButton.alpha = 0
-        centerPlayButton.isHidden = true
 
         // Set initial button visibility based on config
         updateFullscreenButtonVisibility()
@@ -1547,25 +1524,11 @@ public final class LxMediaPlayer: NSObject {
             height: centerSize
         )
         loadingIndicator.frame = centerFrame
-        centerPlayButton.frame = centerFrame
-
     }
 
     private func updatePlayPauseUI(isPlaying: Bool) {
         let iconName = isPlaying ? "icon_pause" : "icon_play"
-        let centerIconSize = CGSize(width: 36, height: 36)
         playPauseButton.setImage(LxIcon.image(named: iconName), for: .normal)
-        centerPlayButton.setImage(LxIcon.image(named: iconName, size: centerIconSize), for: .normal)
-        if isPlaying {
-            centerPlayButton.alpha = 0
-            centerPlayButton.isHidden = true
-            centerPlayButton.isUserInteractionEnabled = false
-        } else if controlsEnabled {
-            centerPlayButton.isHidden = false
-            centerPlayButton.alpha = 1
-            centerPlayButton.isUserInteractionEnabled = true
-            overlayView.bringSubviewToFront(centerPlayButton)
-        }
     }
 
     private func updateProgressUI(time: CMTime) {
@@ -1600,7 +1563,6 @@ public final class LxMediaPlayer: NSObject {
         let hideControls = !controlsEnabled
         topBar.isHidden = hideControls
         bottomBar.isHidden = hideControls
-        syncCenterPlayButtonVisibility(isPlaying: isPlayingNow())
     }
 
     private func updateCloseButtonVisibility() {
@@ -1622,7 +1584,6 @@ public final class LxMediaPlayer: NSObject {
             self.bottomBar.alpha = 1
             self.topGradient.opacity = 1
             self.bottomGradient.opacity = 1
-            self.syncCenterPlayButtonVisibility(isPlaying: self.isPlayingNow())
         })
 
         topBar.isUserInteractionEnabled = true
@@ -1637,7 +1598,6 @@ public final class LxMediaPlayer: NSObject {
                 self.bottomBar.alpha = 0
                 self.topGradient.opacity = 0
                 self.bottomGradient.opacity = 0
-                self.syncCenterPlayButtonVisibility(isPlaying: self.isPlayingNow())
             }, completion: { _ in
                 // Only disable interaction after animation completes
                 self.topBar.isUserInteractionEnabled = false
@@ -1897,27 +1857,6 @@ public final class LxMediaPlayer: NSObject {
         displayLink = nil
     }
 
-    private func isPlayingNow() -> Bool {
-        let status = player?.timeControlStatus
-        let playingStatus = status == .playing || status == .waitingToPlayAtSpecifiedRate
-        return desiredPlayWhenReady || playingStatus || (player?.rate ?? 0) > 0.01
-    }
-
-    private func syncCenterPlayButtonVisibility(isPlaying explicit: Bool? = nil) {
-        let playing = explicit ?? isPlayingNow()
-        let shouldHide = !controlsEnabled || playing
-        if shouldHide {
-            centerPlayButton.alpha = 0
-            centerPlayButton.isHidden = true
-            centerPlayButton.isUserInteractionEnabled = false
-        } else {
-            centerPlayButton.isHidden = false
-            centerPlayButton.alpha = 1
-            centerPlayButton.isUserInteractionEnabled = true
-            overlayView.bringSubviewToFront(centerPlayButton)
-        }
-    }
-
     private func scheduleRevealTimeout(sequence: UInt64, delay: TimeInterval = 1.5) {
         revealVideoWorkItem?.cancel()
         let work = DispatchWorkItem { [weak self] in
@@ -1945,7 +1884,6 @@ public final class LxMediaPlayer: NSObject {
         scheduleRevealTimeout(sequence: sequence)
         loadingIndicator.startAnimating()
         overlayView.bringSubviewToFront(loadingIndicator)
-        syncCenterPlayButtonVisibility(isPlaying: true)
     }
 
     private func startDisplayLink(sequence: UInt64) {
