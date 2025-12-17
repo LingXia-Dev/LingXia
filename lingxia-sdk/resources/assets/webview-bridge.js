@@ -484,6 +484,39 @@
       isAndroid,
       getOS: getPlatformOS,
     },
+
+    // DOM helpers for native evaluateJavascript calls (SameLevel rect sync, etc.)
+    dom: {
+      /**
+       * Measure an element by id.
+       * Returns document coordinates in CSS pixels: [x, y, width, height, cornerRadius]
+       */
+      measureById: function (id) {
+        try {
+          if (!id || typeof id !== "string") return null;
+          const el = document.getElementById(id);
+          if (!el) return null;
+          const r = el.getBoundingClientRect();
+
+          let cornerRadius = 0;
+          try {
+            const radiusStr = getComputedStyle(el).borderRadius;
+            const parsed = parseFloat(radiusStr);
+            if (!Number.isNaN(parsed)) cornerRadius = parsed;
+          } catch (_e) {}
+
+          return [
+            r.left + window.scrollX,
+            r.top + window.scrollY,
+            r.width,
+            r.height,
+            cornerRadius,
+          ];
+        } catch (_e) {
+          return null;
+        }
+      },
+    },
   };
 
   // Create lx proxy object for API interception
