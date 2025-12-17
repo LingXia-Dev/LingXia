@@ -106,7 +106,7 @@ export struct VideoControlsView {
         Row() {
           // Play/Pause button
           Row() {
-            Image(this.isPlaying ? $r('sys.media.ohos_ic_public_pause') : $r('sys.media.ohos_ic_public_play'))
+            Image(this.isPlaying ? $rawfile('icons/icon_pause.svg') : $rawfile('icons/icon_play.svg'))
               .width(this.getDim().iconSize)
               .height(this.getDim().iconSize)
               .fillColor(Color.White)
@@ -118,7 +118,7 @@ export struct VideoControlsView {
 
           // Volume icon
           Row() {
-            Image(this.muted ? $r('sys.media.ohos_ic_public_sound_off') : $r('sys.media.ohos_ic_public_sound'))
+            Image(this.muted ? $rawfile('icons/icon_volume_off.svg') : $rawfile('icons/icon_volume_on.svg'))
               .width(this.getDim().iconSize - 4)
               .height(this.getDim().iconSize - 4)
               .fillColor(Color.White)
@@ -145,7 +145,7 @@ export struct VideoControlsView {
           // Exit button (fullscreen mode)
           if (this.showExitButton) {
             Row() {
-              Image($r('sys.media.ohos_ic_public_restore'))
+              Image($rawfile('icons/icon_fullscreen_exit.svg'))
                 .width(this.getDim().iconSize)
                 .height(this.getDim().iconSize)
                 .fillColor(Color.White)
@@ -159,7 +159,7 @@ export struct VideoControlsView {
           // Fullscreen button (inline mode)
           if (this.showFullscreenButton && !this.showExitButton) {
             Row() {
-              Image($r('sys.media.ohos_ic_public_scan'))
+              Image($rawfile('icons/icon_fullscreen_enter.svg'))
                 .width(this.getDim().iconSize)
                 .height(this.getDim().iconSize)
                 .fillColor(Color.White)
@@ -200,7 +200,7 @@ export struct CenterPlayButton {
 
   build() {
     Row() {
-      Image($r('sys.media.ohos_ic_public_play'))
+      Image($rawfile('icons/icon_play.svg'))
         .width(this.buttonSize / 2)
         .height(this.buttonSize / 2)
         .fillColor(Color.White)
