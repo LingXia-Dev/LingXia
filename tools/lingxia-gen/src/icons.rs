@@ -166,10 +166,8 @@ fn svg_to_vector_drawable(svg_content: &str) -> Result<String> {
         if let Some(fill) = path_info.fill {
             xml.push_str(&format!("        android:fillColor=\"{}\"\n", fill));
         }
-        if let Some(ref fill_rule) = path_info.fill_rule {
-            if fill_rule == "evenodd" {
-                xml.push_str("        android:fillType=\"evenOdd\"\n");
-            }
+        if path_info.fill_rule.as_deref() == Some("evenodd") {
+            xml.push_str("        android:fillType=\"evenOdd\"\n");
         }
         if let Some(stroke) = path_info.stroke {
             xml.push_str(&format!("        android:strokeColor=\"{}\"\n", stroke));
@@ -212,12 +210,48 @@ struct PathInfo {
 /// Elements that should be skipped during path collection (definitions, masks, etc.)
 const SKIP_ELEMENTS: &[&str] = &["defs", "mask", "clipPath", "symbol", "pattern", "filter"];
 
+/// Inherited style attributes from parent elements
+#[derive(Default, Clone)]
+struct InheritedStyle {
+    stroke: Option<String>,
+    stroke_width: Option<String>,
+    stroke_line_cap: Option<String>,
+    stroke_line_join: Option<String>,
+    fill: Option<String>,
+}
+
 fn collect_paths(node: &roxmltree::Node, paths: &mut Vec<PathInfo>) {
+    collect_paths_with_style(node, paths, &InheritedStyle::default());
+}
+
+fn collect_paths_with_style(
+    node: &roxmltree::Node,
+    paths: &mut Vec<PathInfo>,
+    inherited: &InheritedStyle,
+) {
     let tag = node.tag_name().name();
 
     // Skip definition elements and their children
     if SKIP_ELEMENTS.contains(&tag) {
         return;
+    }
+
+    // Build inherited style for children (merge current node's attributes)
+    let mut child_style = inherited.clone();
+    if let Some(s) = node.attribute("stroke") {
+        child_style.stroke = Some(s.to_string());
+    }
+    if let Some(s) = node.attribute("stroke-width") {
+        child_style.stroke_width = Some(s.to_string());
+    }
+    if let Some(s) = node.attribute("stroke-linecap") {
+        child_style.stroke_line_cap = Some(s.to_string());
+    }
+    if let Some(s) = node.attribute("stroke-linejoin") {
+        child_style.stroke_line_join = Some(s.to_string());
+    }
+    if let Some(s) = node.attribute("fill") {
+        child_style.fill = Some(s.to_string());
     }
 
     // Skip elements with mask attribute (they reference masks we can't render)
@@ -228,37 +262,65 @@ fn collect_paths(node: &roxmltree::Node, paths: &mut Vec<PathInfo>) {
     match tag {
         "path" => {
             if let Some(d) = node.attribute("d") {
-                paths.push(extract_path_info(node, d.to_string()));
+                paths.push(extract_path_info_with_inherited(
+                    node,
+                    d.to_string(),
+                    &child_style,
+                ));
             }
         }
         "rect" => {
             if let Some(path_data) = rect_to_path(node) {
-                paths.push(extract_path_info(node, path_data));
+                paths.push(extract_path_info_with_inherited(
+                    node,
+                    path_data,
+                    &child_style,
+                ));
             }
         }
         "circle" => {
             if let Some(path_data) = circle_to_path(node) {
-                paths.push(extract_path_info(node, path_data));
+                paths.push(extract_path_info_with_inherited(
+                    node,
+                    path_data,
+                    &child_style,
+                ));
             }
         }
         "ellipse" => {
             if let Some(path_data) = ellipse_to_path(node) {
-                paths.push(extract_path_info(node, path_data));
+                paths.push(extract_path_info_with_inherited(
+                    node,
+                    path_data,
+                    &child_style,
+                ));
             }
         }
         "polygon" => {
             if let Some(path_data) = polygon_to_path(node) {
-                paths.push(extract_path_info(node, path_data));
+                paths.push(extract_path_info_with_inherited(
+                    node,
+                    path_data,
+                    &child_style,
+                ));
             }
         }
         "polyline" => {
             if let Some(path_data) = polyline_to_path(node) {
-                paths.push(extract_path_info(node, path_data));
+                paths.push(extract_path_info_with_inherited(
+                    node,
+                    path_data,
+                    &child_style,
+                ));
             }
         }
         "line" => {
             if let Some(path_data) = line_to_path(node) {
-                paths.push(extract_path_info(node, path_data));
+                paths.push(extract_path_info_with_inherited(
+                    node,
+                    path_data,
+                    &child_style,
+                ));
             }
         }
         _ => {}
@@ -266,20 +328,46 @@ fn collect_paths(node: &roxmltree::Node, paths: &mut Vec<PathInfo>) {
 
     for child in node.children() {
         if child.is_element() {
-            collect_paths(&child, paths);
+            collect_paths_with_style(&child, paths, &child_style);
         }
     }
 }
 
-fn extract_path_info(node: &roxmltree::Node, data: String) -> PathInfo {
+fn extract_path_info_with_inherited(
+    node: &roxmltree::Node,
+    data: String,
+    inherited: &InheritedStyle,
+) -> PathInfo {
+    // Element's own attributes override inherited ones
+    let fill = node
+        .attribute("fill")
+        .map(|s| s.to_string())
+        .or_else(|| inherited.fill.clone());
+    let stroke = node
+        .attribute("stroke")
+        .map(|s| s.to_string())
+        .or_else(|| inherited.stroke.clone());
+    let stroke_width = node
+        .attribute("stroke-width")
+        .map(|s| s.to_string())
+        .or_else(|| inherited.stroke_width.clone());
+    let stroke_line_cap = node
+        .attribute("stroke-linecap")
+        .map(|s| s.to_string())
+        .or_else(|| inherited.stroke_line_cap.clone());
+    let stroke_line_join = node
+        .attribute("stroke-linejoin")
+        .map(|s| s.to_string())
+        .or_else(|| inherited.stroke_line_join.clone());
+
     PathInfo {
         data,
-        fill: node.attribute("fill").map(normalize_color),
+        fill: fill.map(|s| normalize_color(&s)),
         fill_rule: node.attribute("fill-rule").map(|s| s.to_string()),
-        stroke: node.attribute("stroke").map(normalize_color),
-        stroke_width: node.attribute("stroke-width").map(ToString::to_string),
-        stroke_line_cap: node.attribute("stroke-linecap").map(|s| s.to_string()),
-        stroke_line_join: node.attribute("stroke-linejoin").map(|s| s.to_string()),
+        stroke: stroke.map(|s| normalize_color(&s)),
+        stroke_width,
+        stroke_line_cap,
+        stroke_line_join,
     }
 }
 
@@ -398,13 +486,13 @@ fn ellipse_to_path(node: &roxmltree::Node) -> Option<String> {
 /// Convert <polygon> to path data
 fn polygon_to_path(node: &roxmltree::Node) -> Option<String> {
     let points = node.attribute("points")?;
-    let coords: Vec<&str> = points.split_whitespace().collect();
+    let coords = parse_points(points)?;
     if coords.is_empty() {
         return None;
     }
-    let mut path = format!("M{}", coords[0]);
-    for coord in &coords[1..] {
-        path.push_str(&format!(" L{}", coord));
+    let mut path = format!("M{},{}", coords[0].0, coords[0].1);
+    for (x, y) in &coords[1..] {
+        path.push_str(&format!(" L{},{}", x, y));
     }
     path.push_str(" Z");
     Some(path)
@@ -413,15 +501,45 @@ fn polygon_to_path(node: &roxmltree::Node) -> Option<String> {
 /// Convert <polyline> to path data
 fn polyline_to_path(node: &roxmltree::Node) -> Option<String> {
     let points = node.attribute("points")?;
-    let coords: Vec<&str> = points.split_whitespace().collect();
+    let coords = parse_points(points)?;
     if coords.is_empty() {
         return None;
     }
-    let mut path = format!("M{}", coords[0]);
-    for coord in &coords[1..] {
-        path.push_str(&format!(" L{}", coord));
+    let mut path = format!("M{},{}", coords[0].0, coords[0].1);
+    for (x, y) in &coords[1..] {
+        path.push_str(&format!(" L{},{}", x, y));
     }
     Some(path)
+}
+
+/// Parse SVG points attribute (handles both "x,y x,y" and "x y x y" formats)
+fn parse_points(points: &str) -> Option<Vec<(f64, f64)>> {
+    let mut result = Vec::new();
+    // First try comma-separated pairs: "x1,y1 x2,y2"
+    if points.contains(',') {
+        for pair in points.split_whitespace() {
+            let mut parts = pair.split(',');
+            let x: f64 = parts.next()?.parse().ok()?;
+            let y: f64 = parts.next()?.parse().ok()?;
+            result.push((x, y));
+        }
+    } else {
+        // Space-separated: "x1 y1 x2 y2"
+        let nums: Vec<f64> = points
+            .split_whitespace()
+            .filter_map(|s| s.parse().ok())
+            .collect();
+        for chunk in nums.chunks(2) {
+            if chunk.len() == 2 {
+                result.push((chunk[0], chunk[1]));
+            }
+        }
+    }
+    if result.is_empty() {
+        None
+    } else {
+        Some(result)
+    }
 }
 
 /// Convert <line> to path data
