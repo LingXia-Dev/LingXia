@@ -202,6 +202,7 @@ private final class MediaPreviewViewController: UIViewController {
         }
         setPagerInteraction(enabled: true)
         updateIndicator()
+        updateCloseButtonVisibility()
     }
 
 
@@ -214,7 +215,7 @@ private final class MediaPreviewViewController: UIViewController {
         case .image, .unknown:
             return MediaPreviewImageController(item: item, index: index, zoomStateChanged: { [weak self] zoomed in
                 self?.setPagerInteraction(enabled: !zoomed)
-            }, dismissHandler: { [weak self] in self?.dismiss(animated: true) })
+            }, dismissHandler: { [weak self] in self?.closeTapped() })
         }
     }
 
@@ -235,6 +236,13 @@ private final class MediaPreviewViewController: UIViewController {
             indicatorLabel.isHidden = false
             indicatorLabel.text = "\(currentIndex + 1)/\(items.count)"
         }
+    }
+
+    private func updateCloseButtonVisibility() {
+        // Hide close button for images (tap to dismiss), show for videos
+        guard items.indices.contains(currentIndex) else { return }
+        let currentItem = items[currentIndex]
+        closeButton.isHidden = currentItem.type != .video
     }
 
     @objc private func closeTapped() {
@@ -275,6 +283,7 @@ extension MediaPreviewViewController: UIPageViewControllerDataSource, UIPageView
         guard completed, let current = pageViewController.viewControllers?.first as? IndexedPreviewController else { return }
         currentIndex = current.index
         updateIndicator()
+        updateCloseButtonVisibility()
     }
 }
 
