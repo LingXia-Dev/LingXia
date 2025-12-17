@@ -35,11 +35,11 @@ class VideoComponent(
 
     override fun mount(host: ViewGroup) {
         context = LxApp.getCurrentActivity() ?: host.context
-        player = LxMediaPlayer(context!!, eventSinkRef) { event ->
+        player = LxMediaPlayer(context!!, eventSinkRef, typedEventSink = { event ->
             if (event is LxMediaEvent.FullscreenChange && !event.fullScreen) {
                 lastFrame?.let { player?.setFrame(it.left, it.top, it.width(), it.height()) }
             }
-        }
+        }, componentId = id)
         host.addView(player!!.view)
     }
 

@@ -34,6 +34,7 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.lingxia.lxapp.LxApp
 import com.lingxia.lxapp.R
+import com.lingxia.lxapp.SameLevel.ComponentRouter
 import java.io.File
 
 private const val TAG = "LxMediaPlayer"
@@ -178,9 +179,9 @@ sealed class LxMediaEvent {
 class LxMediaPlayer(
     private val context: Context,
     private val eventSink: (Map<String, Any>) -> Unit,
-    private val typedEventSink: ((LxMediaEvent) -> Unit)? = null
+    private val typedEventSink: ((LxMediaEvent) -> Unit)? = null,
+    private val componentId: String? = null
 ) {
-
     val view: FrameLayout = FrameLayout(context).apply {
         setBackgroundColor(Color.BLACK)
         clipToOutline = true
@@ -190,10 +191,10 @@ class LxMediaPlayer(
     private var playerView: PlayerView? = null
     private var posterImageView: ImageView? = null
     private var loadingIndicator: ProgressBar? = null
-  private var controlsOverlay: LxMediaControlsOverlay? = null
+    private var controlsOverlay: LxMediaControlsOverlay? = null
 
-  private val mainHandler = Handler(Looper.getMainLooper())
-  private var timeUpdateRunnable: Runnable? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var timeUpdateRunnable: Runnable? = null
 
     // Config state
     private var controlsEnabled = true
@@ -238,6 +239,8 @@ class LxMediaPlayer(
     private var lastFrameY = 0f
     private var lastFrameWidth = 0f
     private var lastFrameHeight = 0f
+    private var rectSyncScheduledAtMs: Long = 0
+    private var rectSyncRunnable: Runnable? = null
 
     // Player listener - must be declared before init block
     private val playerListener = object : Player.Listener {
@@ -252,6 +255,7 @@ class LxMediaPlayer(
                         pendingPosterHide = true
                         lastTimeForPoster = -1.0
                         emitLoadedMetadata()
+                        scheduleRectSync(doublePass = true)
                     }
                 }
                 Player.STATE_BUFFERING -> {
@@ -293,6 +297,7 @@ class LxMediaPlayer(
             if (isPlaying) {
                 emitEvent(LxMediaEvent.Play)
                 startTimeUpdates()
+                scheduleRectSync(doublePass = false)
             } else {
                 emitEvent(LxMediaEvent.Pause)
                 stopTimeUpdates()
@@ -457,6 +462,8 @@ class LxMediaPlayer(
 
     fun detach() {
         stopTimeUpdates()
+        rectSyncRunnable?.let { mainHandler.removeCallbacks(it) }
+        rectSyncRunnable = null
         player?.stop()
         player?.release()
         player = null
@@ -468,29 +475,47 @@ class LxMediaPlayer(
             return
         }
 
-        // Update immediately for smooth scrolling - use translation for position
-        view.translationX = x
-        view.translationY = y
-
-        // Only update layout params if size changed
         val newWidth = width.toInt()
         val newHeight = height.toInt()
 
         val existingLp = view.layoutParams as? FrameLayout.LayoutParams
         if (existingLp == null || existingLp.width != newWidth || existingLp.height != newHeight) {
-            val lp = existingLp ?: FrameLayout.LayoutParams(newWidth, newHeight)
-            lp.width = newWidth
-            lp.height = newHeight
-            lp.leftMargin = 0
-            lp.topMargin = 0
-            view.layoutParams = lp
+            view.layoutParams = FrameLayout.LayoutParams(newWidth, newHeight)
         }
+
+        // Update immediately for smooth scrolling - use translation for position
+        view.translationX = x
+        view.translationY = y
 
         // Save for fullscreen restore (only when not in fullscreen)
         lastFrameX = x
         lastFrameY = y
         lastFrameWidth = width
         lastFrameHeight = height
+    }
+
+    private fun scheduleRectSync(doublePass: Boolean) {
+        if (isFullscreen) return
+        val id = componentId ?: return
+        val now = android.os.SystemClock.uptimeMillis()
+        // Avoid piling up requests if multiple events fire quickly.
+        if (now - rectSyncScheduledAtMs < 200) return
+        rectSyncScheduledAtMs = now
+
+        rectSyncRunnable?.let { mainHandler.removeCallbacks(it) }
+        rectSyncRunnable = Runnable {
+            requestRectSync(id)
+            if (doublePass) {
+                // Second pass to catch async React layout updates triggered by event handlers.
+                mainHandler.postDelayed({ requestRectSync(id) }, 250)
+            }
+        }
+        // Give JS a moment to handle the event and for layout to settle.
+        mainHandler.postDelayed(rectSyncRunnable!!, 80)
+    }
+
+    private fun requestRectSync(id: String) {
+        ComponentRouter.requestRectSync(id)
     }
 
     fun play() {

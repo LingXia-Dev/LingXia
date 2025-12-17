@@ -29,6 +29,16 @@ object ComponentRouter {
     }
 
     /**
+     * Ask the component's manager to re-measure its DOM rect via evaluateJavascript and update
+     * native overlay position (used as a fallback when JS doesn't send component.update).
+     */
+    internal fun requestRectSync(componentId: String): Boolean {
+        val manager = managers[componentId]?.get() ?: return false
+        mainHandler.post { manager.requestRectSyncFromNative(componentId) }
+        return true
+    }
+
+    /**
      * Set callback for a component. Called from Rust FFI.
      * Returns true if component exists and callback was set.
      */

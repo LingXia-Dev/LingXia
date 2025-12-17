@@ -180,6 +180,60 @@ class SameLevelComponentManager(
     }
 
     /**
+     * Update a component's content rect from native code (document coordinates in physical pixels).
+     * Useful as a fallback when the WebView layout shifts without a scroll event and JS doesn't
+     * send a component.update (e.g. DOM reflow triggered by state updates).
+     */
+    internal fun updateContentRectFromNative(componentId: String, contentRectPx: RectF): Boolean {
+        val component = components[componentId] ?: return false
+        val aligned = pixelAligned(contentRectPx)
+        componentContentRects[componentId] = aligned
+        val screenRect = componentScreenRects.getOrPut(componentId) { RectF() }
+        updateScreenRect(screenRect, aligned)
+        component.setFrame(screenRect)
+        return true
+    }
+
+    internal fun requestRectSyncFromNative(componentId: String) {
+        val webView = webViewRef?.get() ?: return
+
+        val escapedId = componentId
+            .replace("\\", "\\\\")
+            .replace("'", "\\'")
+
+        val script = """
+            (function(){
+              try {
+                return window.LingXiaBridge.dom.measureById('$escapedId');
+              } catch (e) { return null; }
+            })()
+        """.trimIndent()
+
+        webView.evaluateJavascript(script) { value ->
+            try {
+                if (value == null || value == "null" || value == "\"null\"") return@evaluateJavascript
+                val v = value.trim()
+                if (!v.startsWith("[") || !v.endsWith("]")) return@evaluateJavascript
+                val parts = v.substring(1, v.length - 1).split(',')
+                if (parts.size < 4) return@evaluateJavascript
+                val xCss = parts[0].trim().toDouble()
+                val yCss = parts[1].trim().toDouble()
+                val wCss = parts[2].trim().toDouble()
+                val hCss = parts[3].trim().toDouble()
+                if (wCss <= 0.0 || hCss <= 0.0) return@evaluateJavascript
+
+                val rectPx = RectF(
+                    (xCss * density).toFloat(),
+                    (yCss * density).toFloat(),
+                    ((xCss + wCss) * density).toFloat(),
+                    ((yCss + hCss) * density).toFloat()
+                )
+                updateContentRectFromNative(componentId, rectPx)
+            } catch (_: Exception) {}
+        }
+    }
+
+    /**
      * Set Rust callback ID for a component (used by VideoContext).
      * Returns true if component exists, false otherwise.
      */
