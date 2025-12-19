@@ -28,6 +28,11 @@ object ComponentRouter {
         managers.remove(componentId)
     }
 
+    @JvmStatic
+    fun hasComponent(componentId: String): Boolean {
+        return managers[componentId]?.get() != null
+    }
+
     /**
      * Ask the component's manager to re-measure its DOM rect via evaluateJavascript and update
      * native overlay position (used as a fallback when JS doesn't send component.update).

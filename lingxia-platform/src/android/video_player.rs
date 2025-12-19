@@ -109,54 +109,39 @@ fn dispatch_command_android(
 }
 
 impl VideoPlayerManager for Platform {
-    fn bind_player(
-        &self,
-        component_id: &str,
-        event_callback_id: u64,
-    ) -> Result<Box<dyn VideoPlayerHandle>, PlatformError> {
-        // Register callback for this component (used by ComponentRouter for command routing)
-        let failure_context = format!("setVideoPlayerCallback for component {}", component_id);
-
-        let success = with_env_and_class(&failure_context, |env, component_router_class| {
+    fn bind_player(&self, component_id: &str) -> Result<Box<dyn VideoPlayerHandle>, PlatformError> {
+        let failure_context = format!("hasComponent for component {}", component_id);
+        let exists = with_env_and_class(&failure_context, |env, component_router_class| {
             let component_id_jstring = env
                 .new_string(component_id)
                 .map_err(|e| platform_error(&failure_context, e))?;
 
-            // Call setVideoPlayerCallback which returns boolean
             let result = env
                 .call_static_method(
                     component_router_class,
-                    "setVideoPlayerCallback",
-                    "(Ljava/lang/String;J)Z",
-                    &[
-                        JValue::Object(&component_id_jstring),
-                        JValue::Long(event_callback_id as i64),
-                    ],
+                    "hasComponent",
+                    "(Ljava/lang/String;)Z",
+                    &[JValue::Object(&component_id_jstring)],
                 )
                 .map_err(|e| platform_error(&failure_context, e))?;
 
-            // Check for Java exceptions
             if let Some(ex_msg) = extract_exception_message(env) {
                 return Err(platform_error(
                     &failure_context,
-                    format!("Java exception was thrown: {}", ex_msg),
+                    format!("Java exception: {}", ex_msg),
                 ));
             }
 
-            // Extract boolean result
-            result.z().map_err(|e| {
-                platform_error(
-                    &failure_context,
-                    format!("Failed to get boolean result: {}", e),
-                )
-            })
+            result
+                .z()
+                .map_err(|e| platform_error(&failure_context, format!("Bad result: {}", e)))
         })?;
 
-        if !success {
-            return Err(platform_error(
-                &failure_context,
-                "Component not found or callback registration failed",
-            ));
+        if !exists {
+            return Err(PlatformError::Platform(format!(
+                "Video component not found: {}",
+                component_id
+            )));
         }
 
         let cid = component_id.to_string();

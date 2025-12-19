@@ -181,7 +181,7 @@ mod bridge {
         ) -> SwiftCompressImageResult;
 
         // Video player control (SameLevel-backed)
-        // Note: Rust only binds callback for events; UI manages component lifecycle
+        // Note: UI manages component lifecycle; Rust only dispatches commands.
         #[swift_bridge(swift_name = "LxAppVideo.setVideoPlayerCallback")]
         fn set_video_player_callback(component_id: &str, callback_id: u64) -> bool;
 

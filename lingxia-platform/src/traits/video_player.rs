@@ -57,12 +57,7 @@ where
 pub trait VideoPlayerManager: Send + Sync + 'static {
     /// Bind to an existing native player.
     ///
-    /// Establishes a binding relationship: registers event callback and returns
-    /// a handle for dispatching commands to the player.
+    /// Returns a handle for dispatching commands to the player.
     /// The native player must already be created by the UI layer (native component).
-    fn bind_player(
-        &self,
-        component_id: &str,
-        event_callback_id: u64,
-    ) -> Result<Box<dyn VideoPlayerHandle>, PlatformError>;
+    fn bind_player(&self, component_id: &str) -> Result<Box<dyn VideoPlayerHandle>, PlatformError>;
 }

@@ -832,7 +832,6 @@ impl VideoPlayerManager for Platform {
     fn bind_player(
         &self,
         component_id: &str,
-        _event_callback_id: u64,
     ) -> Result<Box<dyn VideoPlayerHandle>, PlatformError> {
         // List all registered players for debugging
         let manager = get_player_manager();
