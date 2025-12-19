@@ -16,7 +16,19 @@ const AST_PARSE_OPTIONS: ParserOptions = {
   ]
 };
 
-export const injectPagePath = (logicContent: string, pagePath: string): string => {
+export interface InjectPagePathOptions {
+  pluginId?: string;
+}
+
+export const injectPagePath = (
+  logicContent: string,
+  pagePath: string,
+  options?: InjectPagePathOptions
+): string => {
+  // Add @plugin/<pluginId>/ prefix for plugin mode
+  const finalPath = options?.pluginId
+    ? `@plugin/${options.pluginId}/${pagePath}`
+    : pagePath;
   const ast = parse(logicContent, AST_PARSE_OPTIONS);
   let modified = false;
 
@@ -35,7 +47,7 @@ export const injectPagePath = (logicContent: string, pagePath: string): string =
       return;
     }
 
-    node.arguments = [...args, stringLiteral(pagePath)];
+    node.arguments = [...args, stringLiteral(finalPath)];
     modified = true;
   });
 

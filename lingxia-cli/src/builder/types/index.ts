@@ -37,6 +37,14 @@ export interface Page {
 export interface BuildOptions {
   dev?: boolean;
   prod?: boolean;
+  plugin?: boolean;
+}
+
+export interface LxPluginConfig {
+  lxPluginId: string;
+  version: string;
+  main?: string;
+  pages: Record<string, string>;
 }
 
 export interface BuildResult {

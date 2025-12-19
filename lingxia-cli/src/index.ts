@@ -14,9 +14,10 @@ export function runCLI(): void {
 
   program
     .command('build')
-    .description('Build LingXia project')
+    .description('Build LingXia project or plugin')
     .option('-d, --dev', 'Development build')
     .option('-p, --prod', 'Production build')
+    .option('--plugin', 'Build as plugin package')
     .action(buildCommand);
 
   program

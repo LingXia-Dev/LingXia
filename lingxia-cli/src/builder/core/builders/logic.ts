@@ -20,19 +20,23 @@ export class LogicBuilder {
   private configManager: ConfigManager;
   private alias: Record<string, string>;
   private sourceDirs: string[];
+  private isPlugin: boolean;
+  private pluginId?: string;
 
-  constructor(projectPath: string, outputDir: string) {
+  constructor(projectPath: string, outputDir: string, pluginId?: string) {
     this.projectPath = projectPath;
     this.outputDir = outputDir;
     this.fileUtils = new FileUtils();
     this.configManager = new ConfigManager(projectPath);
     this.alias = resolveAliasMap(projectPath);
     this.sourceDirs = resolveSourceDirs(projectPath) ?? DEFAULT_SOURCE_DIRS;
+    this.isPlugin = pluginId !== undefined;
+    this.pluginId = pluginId;
   }
 
   async buildLogic(options: BuildOptions = {}): Promise<void> {
     // Get page configurations from ConfigManager
-    const pages = this.configManager.getPages();
+    const pages = this.configManager.getPages({ plugin: this.isPlugin });
     const logicFiles = this.discoverLogicFiles(pages);
 
     if (logicFiles.length === 0) {
@@ -146,7 +150,9 @@ export class LogicBuilder {
     const targetPath = path.join(destDir, targetBase);
 
     const content = fs.readFileSync(sourceFile, 'utf-8');
-    const transformedContent = injectPagePath(content, pagePath);
+    const transformedContent = injectPagePath(content, pagePath, {
+      pluginId: this.pluginId
+    });
     fs.writeFileSync(targetPath, transformedContent);
     const posixDir =
       relativeDir && relativeDir !== '.'

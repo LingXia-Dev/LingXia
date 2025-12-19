@@ -12,27 +12,37 @@ const fileUtils = new FileUtils();
 
 export async function buildCommand(options: BuildOptions): Promise<void> {
   const projectPath = process.cwd();
-  const outputDir = path.join(projectPath, 'dist');
   const configManager = new ConfigManager(projectPath);
 
-  // Map CLI options to BuildOptions
-  const buildOptions: BuildOptions = {
-    dev: options.dev,
-    prod: options.prod
-  };
+  const isPluginMode = Boolean(options.plugin);
+  const outputDir = path.join(projectPath, isPluginMode ? 'dist-plugin' : 'dist');
 
-  console.log('🚀 Starting LingXia build...');
+  const buildOptions: BuildOptions = { ...options, plugin: isPluginMode };
+
+  console.log(`🚀 Starting LingXia ${isPluginMode ? 'plugin' : 'project'} build...`);
   console.log(` Project: ${projectPath}`);
   console.log(` Output: ${outputDir}`);
   console.log(` View bundler: Vite`);
 
   try {
+    const pluginConfig = isPluginMode ? configManager.getLxpluginConfig() : null;
+    if (isPluginMode && !pluginConfig) {
+      throw new Error(
+        'lxplugin.json not found (required for plugin build). Create a lxplugin.json file in the project root.'
+      );
+    }
+    if (isPluginMode && !pluginConfig?.lxPluginId?.trim()) {
+      throw new Error('lxplugin.json is missing a valid "lxPluginId".');
+    }
+    const pluginId = pluginConfig?.lxPluginId?.trim();
+
     // Clean and prepare output directory
     fileUtils.cleanDirectory(outputDir);
 
     // Discover pages
-    const pages = discoverPages(projectPath, configManager);
-    console.log(` Found ${pages.length} pages: ${pages.map(p => p.name).join(', ')}`);
+    const pages = discoverPages(projectPath, configManager, isPluginMode);
+    const pageNames = pages.map(p => p.name).join(', ');
+    console.log(` Found ${pages.length} pages: ${pageNames}`);
 
     if (pages.length === 0) {
       console.warn('⚠️ No pages found in the project');
@@ -42,10 +52,10 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
     const startTime = Date.now();
 
     const only = process.env.LINGXIA_ONLY?.toLowerCase();
-    
+
     if (only === 'logic') {
       console.log('▶ Building logic layer only...');
-      const logicBuilder = new LogicBuilder(projectPath, outputDir);
+      const logicBuilder = new LogicBuilder(projectPath, outputDir, pluginId);
       await logicBuilder.buildLogic(buildOptions);
     } else if (only === 'view') {
       console.log('▶ Building view layer only...');
@@ -53,12 +63,16 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
       await viewBuilder.buildPages(pages, buildOptions);
     } else {
       console.log('▶ Building logic and view layers in parallel...');
-      const logicBuilder = new LogicBuilder(projectPath, outputDir);
+      const logicBuilder = new LogicBuilder(projectPath, outputDir, pluginId);
       const viewBuilder = new ViewBuilder(projectPath, outputDir);
 
       await Promise.all([
-        logicBuilder.buildLogic(buildOptions).then(() => console.log('  ✔ Logic layer built')),
-        viewBuilder.buildPages(pages, buildOptions).then(() => console.log('  ✔ View layer built'))
+        logicBuilder
+          .buildLogic(buildOptions)
+          .then(() => console.log('  ✔ Logic layer built')),
+        viewBuilder
+          .buildPages(pages, buildOptions)
+          .then(() => console.log('  ✔ View layer built')),
       ]);
     }
 
@@ -66,8 +80,22 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
     const buildTime = ((endTime - startTime) / 1000).toFixed(2);
 
     cleanupLingxiaBuild(projectPath);
+
+    // Copy configuration file to output
+    if (pluginConfig) {
+      const pluginConfigSrc = path.join(projectPath, 'lxplugin.json');
+      const pluginConfigDest = path.join(outputDir, 'lxplugin.json');
+      fs.copyFileSync(pluginConfigSrc, pluginConfigDest);
+      console.log('  ✔ Copied lxplugin.json to output');
+    }
+
     const packageInfo = readPackageInfo(projectPath);
-    const packagePath = await packageDist(outputDir, projectPath, packageInfo);
+    const packagePath = await packageDist(
+      outputDir,
+      projectPath,
+      packageInfo,
+      isPluginMode
+    );
     const relativePackagePath =
       path.relative(projectPath, packagePath) || packagePath;
 
@@ -77,13 +105,20 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
     console.log(` 📦 Package: ${relativePackagePath}`);
 
   } catch (error) {
-    console.error('❌ Build failed:', error instanceof Error ? error.message : String(error));
+    console.error(
+      '❌ Build failed:',
+      error instanceof Error ? error.message : String(error)
+    );
     process.exit(1);
   }
 }
 
-function discoverPages(projectPath: string, configManager: ConfigManager): Page[] {
-  const pagesPaths = configManager.getPages();
+function discoverPages(
+  projectPath: string,
+  configManager: ConfigManager,
+  isPluginMode: boolean
+): Page[] {
+  const pagesPaths = configManager.getPages({ plugin: isPluginMode });
 
   const pages: Page[] = [];
 
@@ -151,14 +186,16 @@ function readPackageInfo(projectPath: string): PackageInfo {
 async function packageDist(
   distDir: string,
   projectPath: string,
-  pkgInfo: PackageInfo
+  pkgInfo: PackageInfo,
+  isPluginMode: boolean = false
 ): Promise<string> {
   if (!fs.existsSync(distDir)) {
     throw new Error('Dist directory not found, cannot package build output.');
   }
 
-  const baseName = sanitizeName(pkgInfo.name ?? 'lingxia-app');
-  const version = sanitizeVersion(pkgInfo.version ?? '0.0.0');
+  const defaultName = isPluginMode ? 'lingxia-plugin' : 'lingxia-app';
+  const baseName = sanitizeName(pkgInfo.name, defaultName);
+  const version = sanitizeVersion(pkgInfo.version);
   const archiveName = `${baseName}-${version}.tar.zstd`;
   const archivePath = path.join(projectPath, archiveName);
 
@@ -171,8 +208,7 @@ async function packageDist(
   return archivePath;
 }
 
-function sanitizeName(name: string): string {
-  const fallback = 'lingxia-app';
+function sanitizeName(name: unknown, fallback: string): string {
   if (!name || typeof name !== 'string') {
     return fallback;
   }
@@ -180,7 +216,7 @@ function sanitizeName(name: string): string {
   return cleaned.length > 0 ? cleaned : fallback;
 }
 
-function sanitizeVersion(version: string): string {
+function sanitizeVersion(version: unknown): string {
   const fallback = '0.0.0';
   if (!version || typeof version !== 'string') {
     return fallback;
