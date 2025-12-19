@@ -132,7 +132,7 @@ export struct LxNativeVideoPlayer {
   private static rebindInstance: Map<string, LxNativeVideoPlayer> = new Map();
   private static originalSurfaceIds: Map<string, string> = new Map();
   private static instanceCounter: number = 0;  // Global counter to generate unique XComponent IDs
-  onEvent?: (event: string, detail: Object) => void;
+  onEvent?: (event: string, detail: object) => void;
 
   static setKeepAlive(componentId: string, keepAlive: boolean): void {
     if (!componentId) return;

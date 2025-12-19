@@ -371,7 +371,7 @@ struct MediaViewer {
     }
   }
 
-  private onVideoEvent(event: string, detail: Object): void {
+  private onVideoEvent(event: string, detail: object): void {
     hilog.info(DOMAIN, TAG, `Video event: ${event}`);
     if (event === 'play') {
       this.videoState.isPlaying = true;
@@ -512,7 +512,7 @@ struct MediaViewer {
           LxNativeVideoPlayer({
             playerId: this.playerId,
             config: this.videoConfig,
-            onEvent: (event: string, detail: Object) => {
+            onEvent: (event: string, detail: object) => {
               this.onVideoEvent(event, detail);
             }
           })

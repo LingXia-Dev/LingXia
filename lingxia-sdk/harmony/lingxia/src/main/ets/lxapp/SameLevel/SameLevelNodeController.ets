@@ -15,7 +15,7 @@
  *   XComponent surface is preserved, and video continues playing seamlessly.
  */
 import { BuilderNode, FrameNode, NodeController, NodeRenderType } from '@kit.ArkUI';
-import { sameLevelError } from './SameLevelTypes';
+import { SameLevelRecord, SameLevelValue, sameLevelError } from './SameLevelTypes';
 
 /**
  * Parameters for component rendering
@@ -25,7 +25,7 @@ export interface SameLevelParams {
   height: number;
   componentId: string;
   componentType: string;
-  props: Record<string, Object>;
+  props: SameLevelRecord;
 }
 
 /**
@@ -39,7 +39,7 @@ export interface NodeControllerParams {
   width: number;
   height: number;
   componentId: string;
-  props: Record<string, Object>;
+  props: SameLevelRecord;
 }
 
 /**
@@ -71,7 +71,7 @@ export class SameLevelNodeController extends NodeController {
   private componentHeight: number = 0;
   private componentType: string = '';
   private componentId: string = '';
-  private props: Record<string, Object> = {};
+  private props: SameLevelRecord = new SameLevelRecord();
 
   // Fullscreen state - only tracks state, does NOT trigger rebuild
   private isFullscreen: boolean = false;
@@ -80,31 +80,6 @@ export class SameLevelNodeController extends NodeController {
   private fullscreenWidth: number = 0;
   private fullscreenHeight: number = 0;
   private fullscreenCallback?: () => void;
-
-  /**
-   * Normalize incoming props (e.g., coerce numeric types)
-   */
-  private normalizeProps(props: Record<string, Object>): Record<string, Object> {
-    const normalized: Record<string, Object> = new Object() as Record<string, Object>;
-    if (!props) {
-      return normalized;
-    }
-    Object.keys(props).forEach((key: string) => {
-      let value = props[key];
-      if (key === 'cornerRadius') {
-        if (typeof value === 'string') {
-          // Accept formats like "12", "12px", "12.5px"
-          const parsed = parseFloat(value);
-          value = isNaN(parsed) ? 0 : parsed;
-        } else {
-          const parsedNum = Number(value);
-          value = isNaN(parsedNum) ? 0 : parsedNum;
-        }
-      }
-      normalized[key] = value;
-    });
-    return normalized;
-  }
 
   /**
    * Set render options from embed lifecycle event
@@ -117,7 +92,7 @@ export class SameLevelNodeController extends NodeController {
     this.componentHeight = params.height;
     this.componentType = params.type;
     this.componentId = params.componentId;
-    this.props = this.normalizeProps(params.props);
+    this.props = params.props;
     // Store original dimensions for fullscreen restore
     this.originalWidth = params.width;
     this.originalHeight = params.height;
@@ -137,32 +112,27 @@ export class SameLevelNodeController extends NodeController {
       this.originalHeight = params.height;
     }
     if (params.props !== undefined) {
-      const nextProps: Record<string, Object> = new Object() as Record<string, Object>;
-      const currentProps = this.props || {};
-      const incomingProps = this.normalizeProps(params.props || {});
-
-      // Copy existing props
-      Object.keys(currentProps).forEach((key: string) => {
-        nextProps[key] = currentProps[key];
+      const incomingProps = params.props || new SameLevelRecord();
+      const nextProps = new SameLevelRecord();
+      this.props.forEach((key: string, value: SameLevelValue) => {
+        nextProps.set(key, value);
       });
-
-      // Overlay with incoming props
-      Object.keys(incomingProps).forEach((key: string) => {
-        nextProps[key] = incomingProps[key];
+      incomingProps.forEach((key: string, value: SameLevelValue) => {
+        nextProps.set(key, value);
       });
-
       this.props = nextProps;
     }
 
     // Push updated params into the builder without recreating the node
     if (this.rootNode) {
-      this.rootNode.update({
+      const updated: SameLevelParams = {
         width: this.componentWidth,
         height: this.componentHeight,
         componentId: this.componentId,
         componentType: this.componentType,
         props: this.props
-      } as SameLevelParams);
+      };
+      this.rootNode.update(updated);
     }
   }
 
@@ -191,13 +161,14 @@ export class SameLevelNodeController extends NodeController {
       type: this.renderType
     });
 
-    this.rootNode.build(builder, {
+    const initialParams: SameLevelParams = {
       width: this.componentWidth,
       height: this.componentHeight,
       componentId: this.componentId,
       componentType: this.componentType,
       props: this.props
-    });
+    };
+    this.rootNode.build(builder, initialParams);
 
     return this.rootNode.getFrameNode();
   }
@@ -219,7 +190,7 @@ export class SameLevelNodeController extends NodeController {
   /**
    * Update node with new parameters
    */
-  updateNode(arg: Object): void {
+  updateNode(arg: object): void {
     this.rootNode?.update(arg);
   }
 
@@ -258,7 +229,8 @@ export class SameLevelNodeController extends NodeController {
     if (this.isFullscreen) {
       return 0;
     }
-    return this.props['cornerRadius'] as number || 0;
+    const cornerRadius = this.props.get('cornerRadius');
+    return (typeof cornerRadius === 'number') ? cornerRadius : 0;
   }
 
   /**

@@ -4,7 +4,7 @@
  */
 import { display, window } from '@kit.ArkUI';
 import { SameLevelParams, registerSameLevelBuilder } from '../SameLevelNodeController';
-import { sameLevelError } from '../SameLevelTypes';
+import { SameLevelRecord, sameLevelError } from '../SameLevelTypes';
 import { getNodeControllerByComponentId } from '../SameLevelBridge';
 import {
   LxNativeVideoPlayer,
@@ -12,7 +12,10 @@ import {
   LxMediaQuality
 } from '../../media/LxNativeVideoPlayer';
 
-type QualityProp = Record<string, Object>;
+interface QualityProp {
+  label?: string;
+  url?: string;
+}
 
 /**
  * Video component wrapper for same-level rendering
@@ -21,7 +24,7 @@ type QualityProp = Record<string, Object>;
 @Component
 struct SameLevelVideoComponent {
   @Prop @Watch('onParamsChange') params: SameLevelParams;
-  private eventSink?: (event: Record<string, Object>) => void;
+  private eventSink?: (event: SameLevelRecord) => void;
   private componentId: string = '';
   private initialized: boolean = false;
   private cachedConfig: LxNativeVideoConfig | null = null;
@@ -37,9 +40,7 @@ struct SameLevelVideoComponent {
     if (this.params) {
       this.componentId = this.params.componentId || '';
       const props = this.params.props;
-      if (props) {
-        this.eventSink = props['__eventSink'] as ((event: Record<string, Object>) => void) | undefined;
-      }
+      this.eventSink = props.get('__eventSink') as ESObject as ((event: SameLevelRecord) => void) | undefined;
     }
   }
 
@@ -69,40 +70,48 @@ struct SameLevelVideoComponent {
     const config: LxNativeVideoConfig = new LxNativeVideoConfig();
 
     // Parse source
-    if (props['src']) {
-      config.src = props['src'] as string;
-    }
+    const src = props.get('src');
+    if (typeof src === 'string') config.src = src;
 
-    if (props['poster']) config.poster = props['poster'] as string;
-    if (props['autoplay'] !== undefined) config.autoplay = props['autoplay'] as boolean;
-    if (props['loop'] !== undefined) config.loop = props['loop'] as boolean;
-    if (props['muted'] !== undefined) config.muted = props['muted'] as boolean;
-    if (props['volume'] !== undefined) config.volume = props['volume'] as number;
-    if (props['controls'] !== undefined) config.controls = props['controls'] as boolean;
-    if (props['cornerRadius'] !== undefined) {
-      const radiusVal = props['cornerRadius'];
-      const parsed = typeof radiusVal === 'string' ? parseFloat(radiusVal) : Number(radiusVal);
-      config.cornerRadius = isNaN(parsed) ? 0 : parsed;
-    }
-    if (props['objectFit']) config.objectFit = props['objectFit'] as string;
+    const poster = props.get('poster');
+    if (typeof poster === 'string') config.poster = poster;
+
+    const autoplay = props.get('autoplay');
+    if (typeof autoplay === 'boolean') config.autoplay = autoplay;
+
+    const loop = props.get('loop');
+    if (typeof loop === 'boolean') config.loop = loop;
+
+    const muted = props.get('muted');
+    if (typeof muted === 'boolean') config.muted = muted;
+
+    const volume = props.get('volume');
+    if (typeof volume === 'number') config.volume = volume;
+
+    const controls = props.get('controls');
+    if (typeof controls === 'boolean') config.controls = controls;
+
+    const cornerRadius = props.get('cornerRadius');
+    if (typeof cornerRadius === 'number') config.cornerRadius = cornerRadius;
+
+    const objectFit = props.get('objectFit');
+    if (typeof objectFit === 'string') config.objectFit = objectFit;
 
     // Parse qualities
-    if (props['qualities']) {
-      const qualitiesList = props['qualities'] as Array<QualityProp>;
-      config.qualities = qualitiesList.map((entry: QualityProp): LxMediaQuality => {
+    const qualities = props.get('qualities');
+    if (Array.isArray(qualities)) {
+      config.qualities = qualities.map((entry: ESObject): LxMediaQuality => {
         const quality = new LxMediaQuality();
-        const label = entry['label'];
-        const url = entry['url'];
-        if (typeof label === 'string') quality.label = label;
-        if (typeof url === 'string') quality.url = url;
+        if (typeof entry.label === 'string') quality.label = entry.label;
+        if (typeof entry.url === 'string') quality.url = entry.url;
         return quality;
       }).filter((q: LxMediaQuality): boolean => q.label.length > 0);
     }
 
     // Parse playbackRates (first is default)
-    if (props['playbackRates']) {
-      const ratesList = props['playbackRates'] as Array<number>;
-      config.playbackRates = ratesList.filter((r: number): boolean => !isNaN(r));
+    const playbackRates = props.get('playbackRates');
+    if (Array.isArray(playbackRates)) {
+      config.playbackRates = playbackRates.filter((r: number): boolean => typeof r === 'number' && !isNaN(r));
     }
 
     // Cache the valid config
@@ -110,7 +119,7 @@ struct SameLevelVideoComponent {
     return config;
   }
 
-  private handleEvent(event: string, detail: Object): void {
+  private handleEvent(event: string, detail: object): void {
     // Handle fullscreen by toggling NodeController state
     if (event === 'fullscreenchange') {
       // Keep native player alive while we rebuild into fullscreen/display mode
@@ -120,11 +129,12 @@ struct SameLevelVideoComponent {
 
     // Forward event to JS
     if (this.eventSink) {
-      const payload: Record<string, Object> = new Object() as Record<string, Object>;
-      payload['action'] = 'component.event';
-      payload['id'] = this.componentId;
-      payload['event'] = event;
-      payload['detail'] = detail;
+      const payload = new SameLevelRecord();
+      payload.set('action', 'component.event');
+      payload.set('id', this.componentId);
+      payload.set('event', event);
+      payload.set('detail', detail);
+      payload.set('componentId', this.componentId);
       this.eventSink(payload);
     }
   }
@@ -165,7 +175,7 @@ struct SameLevelVideoComponent {
     LxNativeVideoPlayer({
       playerId: this.componentId,
       config: this.buildConfig(),
-      onEvent: (event: string, detail: Object) => {
+      onEvent: (event: string, detail: object) => {
         this.handleEvent(event, detail);
       }
     })

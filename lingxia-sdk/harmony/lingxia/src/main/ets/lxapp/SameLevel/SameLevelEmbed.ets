@@ -4,7 +4,7 @@
  */
 import { NodeRenderType } from '@kit.ArkUI';
 import { webview } from '@kit.ArkWeb';
-import { sameLevelError } from './SameLevelTypes';
+import { SameLevelRecord, sameLevelError } from './SameLevelTypes';
 import { SameLevelNodeController, NodeControllerParams } from './SameLevelNodeController';
 
 const PROPS_DATA_PREFIX: string = 'data:application/json,';
@@ -29,9 +29,9 @@ export class SameLevelEmbedManager {
   private componentIdArr: string[] = [];
   private uiContext: UIContext | null = null;
   private onComponentsChanged?: () => void;
-  private eventDispatcher?: (payload: Record<string, Object>) => void;
+  private eventDispatcher?: (payload: SameLevelRecord) => void;
 
-  constructor(webTag: string, eventDispatcher?: (payload: Record<string, Object>) => void) {
+  constructor(webTag: string, eventDispatcher?: (payload: SameLevelRecord) => void) {
     this.webTag = webTag;
     this.eventDispatcher = eventDispatcher;
   }
@@ -53,7 +53,7 @@ export class SameLevelEmbedManager {
   /**
    * Set dispatcher used to forward native events back to JavaScript
    */
-  setEventDispatcher(dispatcher?: (payload: Record<string, Object>) => void): void {
+  setEventDispatcher(dispatcher?: (payload: SameLevelRecord) => void): void {
     this.eventDispatcher = dispatcher;
   }
 
@@ -108,7 +108,7 @@ export class SameLevelEmbedManager {
     const props = this.parseEmbedProps(embed);
     const eventSink = this.buildEventSink(componentId);
     if (eventSink) {
-      props['__eventSink'] = eventSink as Object;
+      props.set('__eventSink', eventSink as object);
     }
 
     const widthPx = embed.info?.width || 0;
@@ -149,7 +149,7 @@ export class SameLevelEmbedManager {
     const props = this.parseEmbedProps(embed);
     const eventSink = this.buildEventSink(componentId);
     if (eventSink) {
-      props['__eventSink'] = eventSink as Object;
+      props.set('__eventSink', eventSink as object);
     }
 
     // Update layout sizes (vp) when embed dimensions change
@@ -206,47 +206,22 @@ export class SameLevelEmbedManager {
     return embedType;
   }
 
-  private parseEmbedProps(embed: NativeEmbedDataInfo): Record<string, Object> {
-    // Parse props from embed info - implementation depends on how props are passed
-    // This could be from data attributes or tag content
-    const props: Record<string, Object> = {};
-    const info = embed.info as Record<string, Object> | undefined;
-
-    // Add basic info as props
-    if (info && info['tag']) {
-      props['tag'] = info['tag'] as Object;
-    }
-
-    const rawProps = info ? this.extractPropsString(info) : '';
-    const parsed = rawProps ? this.decodeProps(rawProps) : null;
+  private parseEmbedProps(embed: NativeEmbedDataInfo): SameLevelRecord {
+    const props = new SameLevelRecord();
+    const info: ESObject | undefined = embed.info as ESObject | undefined;
+    const rawProps: string | undefined = info?.get('src') as string | undefined;
+    const propsString: string = rawProps ?? '';
+    const parsed = propsString ? this.decodeProps(propsString) : null;
     if (parsed) {
-      const parsedKeys = Object.keys(parsed);
-      for (let i = 0; i < parsedKeys.length; i++) {
-        const key = parsedKeys[i];
-        props[key] = parsed[key];
-      }
+      parsed.forEach((key, value) => {
+        props.set(key, value);
+      });
     }
 
     return props;
   }
 
-  private extractPropsString(info: Record<string, Object>): string {
-    const rawSrc = info['src'];
-    if (typeof rawSrc === 'string' && rawSrc.length > 0) {
-      return rawSrc;
-    }
-    const dataLxProps = info['data-lx-props'];
-    if (typeof dataLxProps === 'string' && dataLxProps.length > 0) {
-      return dataLxProps;
-    }
-    const dataLxPropsAlt = info['dataLxProps'];
-    if (typeof dataLxPropsAlt === 'string' && dataLxPropsAlt.length > 0) {
-      return dataLxPropsAlt;
-    }
-    return '';
-  }
-
-  private decodeProps(raw: string): Record<string, Object> | null {
+  private decodeProps(raw: string): SameLevelRecord | null {
     if (!raw) {
       return null;
     }
@@ -255,8 +230,9 @@ export class SameLevelEmbedManager {
       if (raw.startsWith(PROPS_DATA_PREFIX)) {
         normalized = decodeURIComponent(raw.substring(PROPS_DATA_PREFIX.length));
       }
-      if (normalized.startsWith('{') || normalized.startsWith('[')) {
-        return JSON.parse(normalized) as Record<string, Object>;
+      if (normalized.startsWith('{')) {
+        const parsed: ESObject = JSON.parse(normalized) as ESObject;
+        return SameLevelRecord.fromESObject(parsed);
       }
     } catch (e) {
       sameLevelError(`Failed to parse embed props: ${e}`);
@@ -264,25 +240,22 @@ export class SameLevelEmbedManager {
     return null;
   }
 
-  private buildEventSink(componentId: string): ((event: Record<string, Object>) => void) | undefined {
+  private buildEventSink(componentId: string): ((event: SameLevelRecord) => void) | undefined {
     if (!this.eventDispatcher) {
       return undefined;
     }
-    return (event: Record<string, Object>) => {
-      const payload: Record<string, Object> = new Object() as Record<string, Object>;
-      if (event) {
-        Object.keys(event).forEach((key: string) => {
-          payload[key] = event[key];
-        });
-      }
-      payload['action'] = 'component.event';
-      payload['id'] = componentId;
-      if (!payload['componentId']) {
-        payload['componentId'] = componentId;
-      }
-      this.eventDispatcher!(payload);
+    return (event: SameLevelRecord) => {
+      const payload = new SameLevelRecord();
+      event.forEach((key, value) => {
+        payload.set(key, value);
+      });
+      payload.set('action', 'component.event');
+      payload.set('id', componentId);
+      payload.set('componentId', componentId);
+      this.eventDispatcher?.(payload);
     };
   }
+
 
   /**
    * Pause all native components (e.g., on page navigate away)

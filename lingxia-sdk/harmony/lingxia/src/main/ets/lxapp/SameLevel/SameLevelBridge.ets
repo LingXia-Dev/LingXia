@@ -3,7 +3,7 @@
  * Uses official ArkWeb same-level rendering pattern with NodeController
  */
 import { webview } from '@kit.ArkWeb';
-import { sameLevelError } from './SameLevelTypes';
+import { SameLevelRecord, sameLevelError } from './SameLevelTypes';
 import { SameLevelEmbedManager } from './SameLevelEmbed';
 import { SameLevelNodeController } from './SameLevelNodeController';
 import { registerVideoBuilder } from './Builders/VideoBuilder';
@@ -32,7 +32,7 @@ function registerDefaultBuilders(): void {
  */
 export function getOrCreateEmbedManager(webTag: string): SameLevelEmbedManager {
   let manager = webViewEmbedManagers.get(webTag);
-  const dispatcher = (payload: Record<string, Object>) => {
+  const dispatcher = (payload: SameLevelRecord) => {
     sendEventToJavaScript(webTag, payload);
   };
   if (!manager) {
@@ -80,7 +80,7 @@ export function setEmbedController(webTag: string, controller: webview.WebviewCo
   // Ensure existing manager has dispatcher available
   const manager = webViewEmbedManagers.get(webTag);
   if (manager) {
-    manager.setEventDispatcher((payload: Record<string, Object>) => {
+    manager.setEventDispatcher((payload: SameLevelRecord) => {
       sendEventToJavaScript(webTag, payload);
     });
   }
@@ -89,20 +89,15 @@ export function setEmbedController(webTag: string, controller: webview.WebviewCo
 /**
  * Send event to JavaScript for a webTag
  */
-export function sendEventToJavaScript(webTag: string, payload: Record<string, Object>): void {
+export function sendEventToJavaScript(webTag: string, payload: SameLevelRecord): void {
   const controller = webViewControllers.get(webTag);
   if (!controller) {
     sameLevelError(`No controller for webTag: ${webTag}`);
     return;
   }
 
-  const fullMessage: Record<string, Object> = new Object() as Record<string, Object>;
-  fullMessage['type'] = 'event';
-  fullMessage['name'] = 'samelevel';
-  fullMessage['payload'] = payload;
-
   try {
-    const jsonString = JSON.stringify(fullMessage);
+    const jsonString = `{"type":"event","name":"samelevel","payload":${payload.toJSONString()}}`;
     const script = `
       (function(){
         if (typeof window.__LingXiaRecvMessage === 'function') {
@@ -152,5 +147,3 @@ export function getNodeControllerByComponentId(componentId: string): SameLevelNo
   }
   return undefined;
 }
-
-
