@@ -203,8 +203,20 @@ async function packageDist(
     fs.rmSync(archivePath, { force: true });
   }
 
-  const distRelative = path.relative(projectPath, distDir) || distDir;
-  await runTar(['--zstd', '-cf', archivePath, distRelative], projectPath);
+  // Package from inside the dist directory so extracted files don't have dist/ prefix
+  // Exclude macOS metadata files (._* and .DS_Store) and other hidden files
+  // Note: --exclude must come before -cf for proper filtering
+  await runTar(
+    [
+      '--exclude=._*',
+      '--exclude=.DS_Store',
+      '--zstd',
+      '-cf',
+      archivePath,
+      '.'
+    ],
+    distDir
+  );
   return archivePath;
 }
 
@@ -227,7 +239,12 @@ function sanitizeVersion(version: unknown): string {
 
 function runTar(args: string[], cwd: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn('tar', args, { cwd, stdio: 'inherit' });
+    // COPYFILE_DISABLE=1 prevents macOS tar from adding ._* metadata files
+    const child = spawn('tar', args, {
+      cwd,
+      stdio: 'inherit',
+      env: { ...process.env, COPYFILE_DISABLE: '1' }
+    });
     child.on('error', err => reject(err));
     child.on('exit', code => {
       if (code === 0) {
