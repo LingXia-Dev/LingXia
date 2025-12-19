@@ -657,6 +657,12 @@ pub fn video_player_set_loop(component_id: String, looping: bool) -> bool {
     false
 }
 
+/// Set playback speed
+#[napi]
+pub fn video_player_set_speed(component_id: String, rate: f64) -> bool {
+    lingxia_platform::harmony::video_player::set_speed_from_rate(&component_id, rate).is_ok()
+}
+
 /// Get current playback position in milliseconds
 #[napi]
 pub fn video_player_get_current_time(component_id: String) -> i32 {

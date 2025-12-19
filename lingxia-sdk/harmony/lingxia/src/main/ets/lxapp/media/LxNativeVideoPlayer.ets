@@ -10,6 +10,7 @@ import {
   videoPlayerRebindSurface,
   videoPlayerSetVolume,
   videoPlayerSetLoop,
+  videoPlayerSetSpeed,
   videoPlayerGetCurrentTime,
   videoPlayerGetDuration,
   videoPlayerGetVideoWidth,
@@ -39,6 +40,19 @@ export class VideoTimeUpdateDetail {
   duration: number = 0;
 }
 export class VideoEmptyDetail {}
+export class LxMediaQualityChangeDetail {
+  quality: string = '';
+  url?: string = '';
+}
+export class LxMediaRateChangeDetail {
+  rate: number = 1.0;
+}
+
+// Quality structure
+export class LxMediaQuality {
+  label: string = '';
+  url?: string = '';
+}
 
 // Configuration
 export class LxNativeVideoConfig {
@@ -51,6 +65,8 @@ export class LxNativeVideoConfig {
   controls: boolean = true;
   cornerRadius: number = 0;
   objectFit: string = 'contain';
+  qualities: LxMediaQuality[] = []; // Available quality options
+  playbackRates: number[] = [];     // Available playback rates
 }
 
 // State
@@ -65,6 +81,8 @@ export class LxNativeVideoState {
   videoWidth: number = 0;
   videoHeight: number = 0;
   error?: string;
+  currentQuality: string = '';       // Currently selected quality
+  currentPlaybackRate: number = 1.0; // Current playback rate
 }
 
 class LxNativeVideoRuntimeSnapshot {
@@ -87,12 +105,17 @@ export struct LxNativeVideoPlayer {
   private cachedPoster: string = '';  // Cache poster URL since config.poster may be lost on rebuild
   private cachedAutoplay: boolean = false;  // Cache autoplay since config may be lost on rebuild
   private autoplaySuppressed: boolean = false;  // Block autoplay if paused before prepare
+  private isPausedByUser: boolean = false;  // Track if user explicitly paused (vs buffering)
   private pendingSeekTime: number = -1;
   private pendingSeekStartTime: number = -1;
   private seekDebounceTimer: number = -1;  // Debounce rapid seeks
   private hasEnded: boolean = false;  // Track if video has ended (to prevent re-trigger)
   private pendingPlayEvent: boolean = false;  // Delay play event until video actually starts
   private lastTimeForPlayEvent: number = -1;  // Track time progression for play event
+  
+  // State restoration for quality switching
+  private pendingQualitySwitchTime: number = -1;
+  private pendingQualitySwitchPlaying: boolean = false;
 
   private componentId: string = '';
   @State private xComponentId: string = '';  // Unique ID for XComponent to force recreation
@@ -139,7 +162,15 @@ export struct LxNativeVideoPlayer {
     }
 
     const snapshot = LxNativeVideoPlayer.runtimeState.get(componentId);
-    return videoPlayerRebindSurface(componentId, fullscreenSurfaceId, snapshot?.currentTime ?? 0, snapshot?.isPlaying ?? true) as boolean;
+    const success = videoPlayerRebindSurface(componentId, fullscreenSurfaceId, snapshot?.currentTime ?? 0, snapshot?.isPlaying ?? true) as boolean;
+
+    // Update instance's boundSurfaceId so quality switching works in fullscreen
+    if (success && instance) {
+      instance.boundSurfaceId = fullscreenSurfaceId;
+      log(`[${componentId}] switched to fullscreen surface: ${fullscreenSurfaceId}`);
+    }
+
+    return success;
   }
 
   static switchToOriginalSurface(componentId: string): boolean {
@@ -153,6 +184,8 @@ export struct LxNativeVideoPlayer {
       // Force sync slider state on the instance after exiting fullscreen
       const instance = LxNativeVideoPlayer.rebindInstance.get(componentId);
       if (instance) {
+        instance.boundSurfaceId = originalSurfaceId;
+        log(`[${componentId}] switched back to original surface: ${originalSurfaceId}`);
         instance.syncSliderFromNative();
       }
     }
@@ -267,6 +300,18 @@ export struct LxNativeVideoPlayer {
     }
   }
 
+  static onPaused(componentId: string): void {
+    const instance = LxNativeVideoPlayer.rebindInstance.get(componentId);
+    if (instance) {
+      instance.handlePaused();
+    } else {
+      const state = LxNativeVideoPlayer.runtimeState.get(componentId);
+      if (state) {
+        state.isPlaying = false;
+      }
+    }
+  }
+
   static getDuration(componentId: string): number {
     let duration = LxNativeVideoPlayer.rebindInstance.get(componentId)?.getDuration() ?? 0;
     if (duration <= 0) duration = LxNativeVideoPlayer.runtimeState.get(componentId)?.duration ?? 0;
@@ -306,6 +351,81 @@ export struct LxNativeVideoPlayer {
   static getPoster(componentId: string): string {
     const instance = LxNativeVideoPlayer.rebindInstance.get(componentId);
     return instance?.cachedPoster || instance?.config.poster || '';
+  }
+
+  static getConfig(componentId: string): LxNativeVideoConfig | undefined {
+    return LxNativeVideoPlayer.rebindInstance.get(componentId)?.config;
+  }
+
+  static selectQuality(componentId: string, qualityLabel: string): void {
+    const instance = LxNativeVideoPlayer.rebindInstance.get(componentId);
+    if (instance) {
+      instance.handleQualitySelect(qualityLabel);
+    }
+  }
+
+  static selectPlaybackRate(componentId: string, rate: number): void {
+    const instance = LxNativeVideoPlayer.rebindInstance.get(componentId);
+    if (instance) {
+      instance.handlePlaybackRateSelect(rate);
+    }
+  }
+
+  static getCurrentQuality(componentId: string): string {
+    const instance = LxNativeVideoPlayer.rebindInstance.get(componentId);
+    return instance?.state.currentQuality || '';
+  }
+
+  static getCurrentPlaybackRate(componentId: string): number {
+    const instance = LxNativeVideoPlayer.rebindInstance.get(componentId);
+    return instance?.state.currentPlaybackRate || 1.0;
+  }
+
+  private handleQualitySelect(qualityLabel: string): void {
+    this.state.currentQuality = qualityLabel;
+
+    const selectedQuality = this.config.qualities.find((q: LxMediaQuality) => q.label === qualityLabel);
+    const surface = this.boundSurfaceId || this.surfaceId;
+
+    if (selectedQuality?.url && surface) {
+      const currentTime = this.getCurrentTime();
+      const wasPlaying = this.state.isPlaying;
+
+      // Destroy existing player to reset state (SetURLSource requires IDLE state)
+      videoPlayerDestroy(this.componentId);
+
+      // Re-create player
+      const createResult = videoPlayerCreate(this.componentId, 0) as number;
+      if (createResult !== 0) {
+        LxNativeVideoPlayer.setNativePlayerExists(this.componentId, true);
+        videoPlayerSetUrl(this.componentId, selectedQuality.url);
+        videoPlayerSetSurface(this.componentId, surface);
+
+        if (this.config.volume !== undefined) videoPlayerSetVolume(this.componentId, this.config.volume);
+        videoPlayerSetLoop(this.componentId, this.config.loop);
+        if (this.state.currentPlaybackRate !== 1.0) videoPlayerSetSpeed(this.componentId, this.state.currentPlaybackRate);
+
+        this.pendingQualitySwitchTime = currentTime;
+        this.pendingQualitySwitchPlaying = wasPlaying;
+        videoPlayerPrepare(this.componentId);
+      } else {
+        log(`[${this.componentId}] ERROR: failed to recreate player for quality switch, result=${createResult}`);
+      }
+    }
+
+    const detail = new LxMediaQualityChangeDetail();
+    detail.quality = qualityLabel;
+    detail.url = selectedQuality?.url;
+    this.emitEvent('qualitychange', detail);
+  }
+
+  private handlePlaybackRateSelect(rate: number): void {
+    this.state.currentPlaybackRate = rate;
+    videoPlayerSetSpeed(this.componentId, rate);
+
+    const detail = new LxMediaRateChangeDetail();
+    detail.rate = rate;
+    this.emitEvent('playbackratechange', detail);
   }
 
   static getVideoWidth(componentId: string): number {
@@ -367,7 +487,11 @@ export struct LxNativeVideoPlayer {
       this.cachedAutoplay = true;
     }
     this.autoplaySuppressed = false;
-    log(`[${this.componentId}] aboutToAppear: poster=${this.config.poster}, cachedPoster=${this.cachedPoster}, autoplay=${this.config.autoplay}, cachedAutoplay=${this.cachedAutoplay}, showPoster=${this.showPoster}, xComponentId=${this.xComponentId}, playerCreated=${this.playerCreated}, boundSurfaceId=${this.boundSurfaceId}, hasNativePlayer=${LxNativeVideoPlayer.hasNativePlayer(this.componentId)}`);
+    // Initialize currentQuality from config if not already set
+    if (!this.state.currentQuality && this.config.qualities.length > 0) {
+      this.state.currentQuality = this.config.qualities[0].label;
+    }
+    log(`[${this.componentId}] aboutToAppear: poster=${this.config.poster}, cachedPoster=${this.cachedPoster}, autoplay=${this.config.autoplay}, cachedAutoplay=${this.cachedAutoplay}, showPoster=${this.showPoster}, xComponentId=${this.xComponentId}, playerCreated=${this.playerCreated}, boundSurfaceId=${this.boundSurfaceId}, hasNativePlayer=${LxNativeVideoPlayer.hasNativePlayer(this.componentId)}, currentQuality=${this.state.currentQuality}, hasOnEvent=${!!this.onEvent}`);
 
     // Reset state for clean recreation (same-level remount may skip aboutToDisappear)
     this.playerCreated = false;
@@ -587,6 +711,7 @@ export struct LxNativeVideoPlayer {
     log(`[${this.componentId}] play() called, showPoster=${this.showPoster}`);
     // Explicit play request should override any pending autoplay suppression
     this.autoplaySuppressed = false;
+    this.isPausedByUser = false;  // User wants to play
     if (videoPlayerPlay(this.componentId) as boolean) {
       this.state.isPlaying = true;
       this.state.isPaused = false;
@@ -600,9 +725,11 @@ export struct LxNativeVideoPlayer {
   }
 
   pause(): void {
+    this.isPausedByUser = true;  // User explicitly paused
     if (videoPlayerPause(this.componentId) as boolean) {
       this.state.isPlaying = false;
       this.state.isPaused = true;
+      this.state.isBuffering = false;  // Hide buffering indicator immediately
       this.autoplaySuppressed = true;
       // Cancel pending play event if pause is called before video started
       this.pendingPlayEvent = false;
@@ -660,16 +787,26 @@ export struct LxNativeVideoPlayer {
   }
 
   handleBufferingChange(isBuffering: boolean): void {
-    log(`[${this.componentId}] handleBufferingChange: isBuffering=${isBuffering}, isPlaying=${this.state.isPlaying}`);
+    log(`[${this.componentId}] handleBufferingChange: isBuffering=${isBuffering}, isPlaying=${this.state.isPlaying}, isPaused=${this.state.isPaused}`);
     this.state.isBuffering = isBuffering;
+
     if (isBuffering) {
-      // Emit waiting event when buffering starts
-      log(`[${this.componentId}] handleBufferingChange: emitting waiting event`);
-      this.emitEvent('waiting', new VideoEmptyDetail());
-    } else if (this.state.isPlaying) {
-      // Emit play event when buffering ends and video resumes (HTML5 "playing" event equivalent)
-      log(`[${this.componentId}] handleBufferingChange: emitting play event (buffering ended)`);
-      this.emitEvent('play', new VideoEmptyDetail());
+      // Only emit waiting event if player is in playing state (not paused by user)
+      if (this.state.isPlaying && !this.isPausedByUser) {
+        log(`[${this.componentId}] handleBufferingChange: emitting waiting event`);
+        this.emitEvent('waiting', new VideoEmptyDetail());
+      }
+    } else {
+      // Buffering ended - emit appropriate event based on current state
+      if (this.state.isPlaying) {
+        // Emit play event when buffering ends and video resumes (HTML5 "playing" event equivalent)
+        log(`[${this.componentId}] handleBufferingChange: emitting play event (buffering ended)`);
+        this.emitEvent('play', new VideoEmptyDetail());
+      } else if (this.state.isPaused) {
+        // Buffering ended but paused - re-emit pause to clear buffering status
+        log(`[${this.componentId}] handleBufferingChange: emitting pause event (buffering ended)`);
+        this.emitEvent('pause', new VideoEmptyDetail());
+      }
     }
   }
 
@@ -684,6 +821,18 @@ export struct LxNativeVideoPlayer {
     metadataDetail.duration = videoPlayerGetDuration(this.componentId);
     log(`[${this.componentId}] handlePrepared: metadata width=${metadataDetail.width}, height=${metadataDetail.height}, duration=${metadataDetail.duration}`);
     this.emitEvent('loadedmetadata', metadataDetail);
+
+    // Handle quality switch restoration (Highest Priority)
+    if (this.pendingQualitySwitchTime >= 0) {
+        log(`[${this.componentId}] handlePrepared: restoring quality switch state, time=${this.pendingQualitySwitchTime}, playing=${this.pendingQualitySwitchPlaying}`);
+        this.seek(this.pendingQualitySwitchTime);
+        if (this.pendingQualitySwitchPlaying) {
+            this.play();
+        }
+        this.pendingQualitySwitchTime = -1;
+        this.pendingQualitySwitchPlaying = false;
+        return;
+    }
 
     // Trigger autoplay after player is prepared (not before)
     if (shouldAutoplay && !this.autoplaySuppressed && !this.state.isPlaying) {
@@ -709,9 +858,23 @@ export struct LxNativeVideoPlayer {
     log(`[${this.componentId}] handlePlaying: updating UI for playback`);
     this.state.isPlaying = true;
     this.state.isPaused = false;
+    this.state.isBuffering = false;  // Clear buffering when playing resumes
     this.hasEnded = false;
     this.startProgressTimer();
     this.saveRuntimeState();
+    // Emit play event to JS
+    this.emitEvent('play', new VideoEmptyDetail());
+  }
+
+  handlePaused(): void {
+    log(`[${this.componentId}] handlePaused: updating UI for paused state`);
+    this.state.isPlaying = false;
+    this.state.isPaused = true;
+    this.state.isBuffering = false;  // Clear buffering when paused
+    this.stopProgressTimer();
+    this.saveRuntimeState();
+    // Emit pause event to JS
+    this.emitEvent('pause', new VideoEmptyDetail());
   }
 
   getCurrentTime(): number { return videoPlayerGetCurrentTime(this.componentId); }
@@ -728,7 +891,7 @@ export struct LxNativeVideoPlayer {
     }
   }
 
-  private emitEvent(event: string, detail: VideoErrorDetail | VideoSeekingDetail | VideoFullscreenDetail | VideoMetadataDetail | VideoTimeUpdateDetail | VideoEmptyDetail): void {
+  private emitEvent(event: string, detail: VideoErrorDetail | VideoSeekingDetail | VideoFullscreenDetail | VideoMetadataDetail | VideoTimeUpdateDetail | VideoEmptyDetail | LxMediaQualityChangeDetail | LxMediaRateChangeDetail): void {
     this.onEvent?.(event, detail);
   }
 
@@ -789,6 +952,10 @@ export struct LxNativeVideoPlayer {
       showFullscreenButton: !this.isFullscreen,
       showExitButton: this.isFullscreen,
       showTimeRemaining: true,
+      qualities: this.config.qualities.map((q: LxMediaQuality) => q.label),
+      currentQuality: this.state.currentQuality || (this.config.qualities.length > 0 ? this.config.qualities[0].label : ''),
+      playbackRates: this.config.playbackRates,
+      currentPlaybackRate: this.state.currentPlaybackRate,
       onSliderChange: (value: number, mode: SliderChangeMode) => {
         if (mode === SliderChangeMode.Begin) {
           this.clearSeekTimer(); this.isSeeking = true; this.pendingSeekTime = -1; this.sliderValue = value;
@@ -817,7 +984,9 @@ export struct LxNativeVideoPlayer {
         videoPlayerSetVolume(this.componentId, this.config.volume);
       },
       onFullscreenClick: () => this.toggleFullscreen(),
-      onExitClick: () => this.toggleFullscreen()
+      onExitClick: () => this.toggleFullscreen(),
+      onQualitySelect: (qualityLabel: string) => this.handleQualitySelect(qualityLabel),
+      onPlaybackRateSelect: (rate: number) => this.handlePlaybackRateSelect(rate)
     })
   }
 
@@ -874,7 +1043,8 @@ export struct LxNativeVideoPlayer {
       if (this.showControls && this.config.controls) { this.buildControls() }
     }
     .width('100%').height('100%')
-    .borderRadius(this.isFullscreen ? 0 : this.appliedCornerRadius).clip(true)
+    .borderRadius(this.isFullscreen ? 0 : this.appliedCornerRadius)
+    .clip(this.isFullscreen ? false : true) // Don't clip in fullscreen to allow settings overlay
     .backgroundColor(Color.Black).hitTestBehavior(HitTestMode.Transparent)
   }
 }

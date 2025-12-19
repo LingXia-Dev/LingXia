@@ -8,8 +8,11 @@ import { sameLevelError } from '../SameLevelTypes';
 import { getNodeControllerByComponentId } from '../SameLevelBridge';
 import {
   LxNativeVideoPlayer,
-  LxNativeVideoConfig
+  LxNativeVideoConfig,
+  LxMediaQuality
 } from '../../media/LxNativeVideoPlayer';
+
+type QualityProp = Record<string, Object>;
 
 /**
  * Video component wrapper for same-level rendering
@@ -21,6 +24,7 @@ struct SameLevelVideoComponent {
   private eventSink?: (event: Record<string, Object>) => void;
   private componentId: string = '';
   private initialized: boolean = false;
+  private cachedConfig: LxNativeVideoConfig | null = null;
 
   aboutToAppear(): void {
     // Only initialize once to avoid duplicate events
@@ -37,8 +41,6 @@ struct SameLevelVideoComponent {
         this.eventSink = props['__eventSink'] as ((event: Record<string, Object>) => void) | undefined;
       }
     }
-
-    // Log params for debugging
   }
 
   onParamsChange(): void {
@@ -58,11 +60,13 @@ struct SameLevelVideoComponent {
 
   private buildConfig(): LxNativeVideoConfig {
     const props = this.params?.props;
-    const config: LxNativeVideoConfig = new LxNativeVideoConfig();
-
+    
+    // If props are missing but we have a cache, use it to prevent state loss
     if (!props) {
-      return config;
+      return this.cachedConfig ?? new LxNativeVideoConfig();
     }
+
+    const config: LxNativeVideoConfig = new LxNativeVideoConfig();
 
     // Parse source
     if (props['src']) {
@@ -82,6 +86,27 @@ struct SameLevelVideoComponent {
     }
     if (props['objectFit']) config.objectFit = props['objectFit'] as string;
 
+    // Parse qualities
+    if (props['qualities']) {
+      const qualitiesList = props['qualities'] as Array<QualityProp>;
+      config.qualities = qualitiesList.map((entry: QualityProp): LxMediaQuality => {
+        const quality = new LxMediaQuality();
+        const label = entry['label'];
+        const url = entry['url'];
+        if (typeof label === 'string') quality.label = label;
+        if (typeof url === 'string') quality.url = url;
+        return quality;
+      }).filter((q: LxMediaQuality): boolean => q.label.length > 0);
+    }
+
+    // Parse playbackRates (first is default)
+    if (props['playbackRates']) {
+      const ratesList = props['playbackRates'] as Array<number>;
+      config.playbackRates = ratesList.filter((r: number): boolean => !isNaN(r));
+    }
+
+    // Cache the valid config
+    this.cachedConfig = config;
     return config;
   }
 

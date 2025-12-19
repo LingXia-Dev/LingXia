@@ -94,6 +94,16 @@ struct InfoCallbackData {
     component_id: String,
 }
 
+fn notify_arkts(component_id: &str, handler: &str) {
+    if let Err(e) = lingxia_webview::tsfn::call_arkts(handler, &[component_id]) {
+        log::error!(
+            "[VideoPlayer] Failed to notify ArkTS: handler={}, err={:?}",
+            handler,
+            e
+        );
+    }
+}
+
 extern "C" fn on_info_callback(
     _player: *mut OH_AVPlayer,
     info_type: i32,
@@ -207,40 +217,20 @@ extern "C" fn on_info_callback(
             );
         }
 
-        // When state becomes Prepared (2), notify ArkTS to emit loadedmetadata
-        if state_value == AVPlayerState::Prepared as i32 {
-            if let Err(e) =
-                lingxia_webview::tsfn::call_arkts("videoPlayerPrepared", &[component_id.as_str()])
-            {
-                log::error!(
-                    "[VideoPlayer] Failed to notify ArkTS of prepared state: {:?}",
-                    e
-                );
+        match state_value {
+            x if x == AVPlayerState::Prepared as i32 => {
+                notify_arkts(component_id, "videoPlayerPrepared")
             }
-        }
-
-        // When state becomes Playing (3), notify ArkTS to update UI
-        if state_value == AVPlayerState::Playing as i32 {
-            if let Err(e) =
-                lingxia_webview::tsfn::call_arkts("videoPlayerPlaying", &[component_id.as_str()])
-            {
-                log::error!(
-                    "[VideoPlayer] Failed to notify ArkTS of playing state: {:?}",
-                    e
-                );
+            x if x == AVPlayerState::Playing as i32 => {
+                notify_arkts(component_id, "videoPlayerPlaying")
             }
-        }
-
-        // When state becomes Stopped (5), notify ArkTS to reset UI
-        if state_value == AVPlayerState::Stopped as i32 {
-            if let Err(e) =
-                lingxia_webview::tsfn::call_arkts("videoPlayerStopped", &[component_id.as_str()])
-            {
-                log::error!(
-                    "[VideoPlayer] Failed to notify ArkTS of stopped state: {:?}",
-                    e
-                );
+            x if x == AVPlayerState::Paused as i32 => {
+                notify_arkts(component_id, "videoPlayerPaused")
             }
+            x if x == AVPlayerState::Stopped as i32 => {
+                notify_arkts(component_id, "videoPlayerStopped")
+            }
+            _ => {}
         }
     }
 }
@@ -513,6 +503,13 @@ impl NativeVideoPlayer {
         )
     }
 
+    pub fn set_speed(&mut self, speed: AVPlaybackSpeed) -> Result<(), PlatformError> {
+        check_av_result(
+            unsafe { OH_AVPlayer_SetPlaybackSpeed(self.player, speed as i32) },
+            "OH_AVPlayer_SetPlaybackSpeed",
+        )
+    }
+
     pub fn get_current_time(&mut self) -> Result<i32, PlatformError> {
         let mut position = 0i32;
         check_av_result(
@@ -769,6 +766,39 @@ pub fn rebind_surface_from_id(
     )))
 }
 
+/// Map playback rate (f64) to AVPlaybackSpeed enum
+fn rate_to_speed(rate: f64) -> AVPlaybackSpeed {
+    // Round to nearest supported speed
+    if rate <= 0.625 {
+        AVPlaybackSpeed::Speed0_50X
+    } else if rate <= 0.875 {
+        AVPlaybackSpeed::Speed0_75X
+    } else if rate <= 1.125 {
+        AVPlaybackSpeed::Speed1_00X
+    } else if rate <= 1.375 {
+        AVPlaybackSpeed::Speed1_25X
+    } else if rate <= 1.625 {
+        AVPlaybackSpeed::Speed1_50X
+    } else if rate <= 1.875 {
+        AVPlaybackSpeed::Speed1_75X
+    } else {
+        AVPlaybackSpeed::Speed2_00X
+    }
+}
+
+pub fn set_speed_from_rate(component_id: &str, rate: f64) -> Result<(), PlatformError> {
+    let speed = rate_to_speed(rate);
+    if let Some(player) = get_player(component_id) {
+        if let Ok(mut p) = player.lock() {
+            return p.set_speed(speed);
+        }
+    }
+    Err(PlatformError::Platform(format!(
+        "Player not found: {}",
+        component_id
+    )))
+}
+
 fn dispatch_command_harmony(
     component_id: &str,
     command: VideoPlayerCommand,
@@ -787,25 +817,11 @@ fn dispatch_command_harmony(
             p.seek((position * 1000.0) as i32, AVPlayerSeekMode::Closest)
         }
         VideoPlayerCommand::EnterFullscreen => {
-            if let Err(e) =
-                lingxia_webview::tsfn::call_arkts("videoPlayerEnterFullscreen", &[component_id])
-            {
-                log::error!(
-                    "[VideoPlayer] Failed to notify ArkTS of enter fullscreen: {:?}",
-                    e
-                );
-            }
+            notify_arkts(component_id, "videoPlayerEnterFullscreen");
             Ok(())
         }
         VideoPlayerCommand::ExitFullscreen => {
-            if let Err(e) =
-                lingxia_webview::tsfn::call_arkts("videoPlayerExitFullscreen", &[component_id])
-            {
-                log::error!(
-                    "[VideoPlayer] Failed to notify ArkTS of exit fullscreen: {:?}",
-                    e
-                );
-            }
+            notify_arkts(component_id, "videoPlayerExitFullscreen");
             Ok(())
         }
     }

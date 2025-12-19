@@ -64,6 +64,12 @@ export struct VideoControlsView {
   @Prop showFullscreenButton: boolean = false;
   @Prop showExitButton: boolean = false;
   @Prop showTimeRemaining: boolean = false;
+  @Prop qualities: string[] = [];           // Available quality options
+  @Prop currentQuality: string = '';        // Currently selected quality
+  @Prop playbackRates: number[] = [];       // Available playback rates
+  @Prop currentPlaybackRate: number = 1.0;  // Current playback rate
+  @State showSettingsMenu: boolean = false;
+  @State settingsMenuType: string = '';     // 'main', 'quality', 'speed'
 
   onSliderChange: (value: number, mode: SliderChangeMode) => void = () => {};
   onPlayPauseClick: () => void = () => {};
@@ -71,13 +77,173 @@ export struct VideoControlsView {
   onVolumeChange: (value: number) => void = () => {};
   onFullscreenClick: () => void = () => {};
   onExitClick: () => void = () => {};
+  onQualitySelect: (quality: string) => void = () => {};
+  onPlaybackRateSelect: (rate: number) => void = () => {};
 
   private getDim(): ControlDimensions {
     return this.controlSize === VideoControlSize.STANDARD ? getStandardDimensions() : getCompactDimensions();
   }
 
+  private hasSettings(): boolean {
+    return this.qualities.length > 0 || this.playbackRates.length > 0;
+  }
+
+  private closeSettingsMenu(): void {
+    this.showSettingsMenu = false;
+    this.settingsMenuType = '';
+  }
+
+  private formatRate(rate: number): string {
+    return rate === Math.floor(rate) ? `${Math.floor(rate)}x` : `${rate}x`;
+  }
+
+  @Builder
+  buildSettingsOverlay() {
+    // Use Column as container - menu positioned at bottom-right via alignment
+    Column() {
+      // Spacer to push menu to bottom
+      Blank()
+        .layoutWeight(1)
+        .onClick(() => this.closeSettingsMenu())
+
+      // Bottom row: spacer + menu
+      Row() {
+        // Left spacer (click to dismiss)
+        Blank()
+          .layoutWeight(1)
+          .onClick(() => this.closeSettingsMenu())
+
+        // Menu Content - use Scroll for many items
+        Scroll() {
+          Column() {
+            if (this.settingsMenuType === 'main') {
+              // Main menu with Quality and Speed options
+              if (this.qualities.length > 0) {
+                Row() {
+                  Column() {
+                    Text($r('app.string.lx_video_quality'))
+                      .fontSize(14)
+                      .fontColor(Color.White)
+                      .textAlign(TextAlign.Start)
+                      .width('100%')
+                    Text(this.currentQuality || this.qualities[0] || 'Auto')
+                      .fontSize(12)
+                      .fontColor('rgba(255,255,255,0.6)')
+                      .textAlign(TextAlign.Start)
+                      .width('100%')
+                      .margin({ top: 2 })
+                  }
+                  .layoutWeight(1)
+                  .alignItems(HorizontalAlign.Start)
+
+                  Text('›')
+                    .fontSize(16)
+                    .fontColor('rgba(255,255,255,0.4)')
+                    .margin({ left: 4 })
+                }
+                .width('100%')
+                .height(44)
+                .padding({ left: 12, right: 12 })
+                .onClick(() => { this.settingsMenuType = 'quality'; })
+              }
+              if (this.playbackRates.length > 0) {
+                Row() {
+                  Column() {
+                    Text($r('app.string.lx_video_speed'))
+                      .fontSize(14)
+                      .fontColor(Color.White)
+                      .textAlign(TextAlign.Start)
+                      .width('100%')
+                    Text(this.formatRate(this.currentPlaybackRate))
+                      .fontSize(12)
+                      .fontColor('rgba(255,255,255,0.6)')
+                      .textAlign(TextAlign.Start)
+                      .width('100%')
+                      .margin({ top: 2 })
+                  }
+                  .layoutWeight(1)
+                  .alignItems(HorizontalAlign.Start)
+
+                  Text('›')
+                    .fontSize(16)
+                    .fontColor('rgba(255,255,255,0.4)')
+                    .margin({ left: 4 })
+                }
+                .width('100%')
+                .height(44)
+                .padding({ left: 12, right: 12 })
+                .onClick(() => { this.settingsMenuType = 'speed'; })
+              }
+            } else if (this.settingsMenuType === 'quality') {
+              // Quality submenu
+              ForEach(this.qualities, (quality: string) => {
+                Row() {
+                  Text(quality)
+                    .fontSize(14)
+                    .fontColor(Color.White)
+                    .layoutWeight(1)
+                  if (quality === (this.currentQuality || this.qualities[0])) {
+                    Text('✓')
+                      .fontSize(14)
+                      .fontColor('#007AFF')
+                  }
+                }
+                .width('100%')
+                .height(36)
+                .padding({ left: 12, right: 12 })
+                .backgroundColor(quality === (this.currentQuality || this.qualities[0]) ? 'rgba(0,122,255,0.2)' : Color.Transparent)
+                .borderRadius(8)
+                .onClick(() => {
+                  this.onQualitySelect(quality);
+                  this.closeSettingsMenu();
+                })
+              })
+            } else if (this.settingsMenuType === 'speed') {
+              // Speed submenu
+              ForEach(this.playbackRates, (rate: number) => {
+                Row() {
+                  Text(this.formatRate(rate))
+                    .fontSize(14)
+                    .fontColor(Color.White)
+                    .layoutWeight(1)
+                  if (rate === this.currentPlaybackRate) {
+                    Text('✓')
+                      .fontSize(14)
+                      .fontColor('#007AFF')
+                  }
+                }
+                .width('100%')
+                .height(36)
+                .padding({ left: 12, right: 12 })
+                .backgroundColor(rate === this.currentPlaybackRate ? 'rgba(0,122,255,0.2)' : Color.Transparent)
+                .borderRadius(8)
+                .onClick(() => {
+                  this.onPlaybackRateSelect(rate);
+                  this.closeSettingsMenu();
+                })
+              })
+            }
+          }
+          .width('100%')
+        }
+        .width(180)
+        .constraintSize({ maxHeight: 200 })
+        .padding(8)
+        .backgroundColor('rgba(46,46,46,0.97)')
+        .borderRadius(12)
+        .scrollBar(BarState.Off)
+        .margin({ right: this.getDim().paddingRight })
+      }
+      .width('100%')
+      .alignItems(VerticalAlign.Bottom)
+      .margin({ bottom: this.getDim().controlHeight + this.getDim().paddingBottom + 12 })
+    }
+    .width('100%')
+    .height('100%')
+  }
+
   build() {
-    Stack({ alignContent: Alignment.Bottom }) {
+    Stack({ alignContent: Alignment.BottomEnd }) {
       Column() {
         // Progress bar row
         Row() {
@@ -142,6 +308,22 @@ export struct VideoControlsView {
 
           Blank().layoutWeight(1)
 
+          // Settings button (if has qualities or playback rates)
+          if (this.hasSettings()) {
+            Row() {
+              Image($rawfile('icons/icon_settings.svg'))
+                .width(this.getDim().iconSize - 2)
+                .height(this.getDim().iconSize - 2)
+            }
+            .width(this.getDim().buttonSize - 4)
+            .height(this.getDim().controlHeight)
+            .justifyContent(FlexAlign.Center)
+            .onClick(() => {
+              this.showSettingsMenu = !this.showSettingsMenu;
+              this.settingsMenuType = this.showSettingsMenu ? 'main' : '';
+            })
+          }
+
           // Exit button (fullscreen mode)
           if (this.showExitButton) {
             Row() {
@@ -186,6 +368,10 @@ export struct VideoControlsView {
         direction: GradientDirection.Bottom,
         colors: [['rgba(0,0,0,0)', 0], ['rgba(0,0,0,0.7)', 1]]
       })
+
+      if (this.showSettingsMenu) {
+        this.buildSettingsOverlay()
+      }
     }
     .width('100%')
     .height('100%')
@@ -215,4 +401,3 @@ export struct CenterPlayButton {
     .onClick(() => this.onButtonClick())
   }
 }
-

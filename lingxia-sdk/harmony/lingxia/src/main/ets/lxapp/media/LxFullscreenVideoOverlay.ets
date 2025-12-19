@@ -32,6 +32,10 @@ export struct LxFullscreenVideoOverlay {
   @State private isBuffering: boolean = false;
   @State private screenWidthVp: number = 0;
   @State private screenHeightVp: number = 0;
+  @State private qualities: string[] = [];
+  @State private currentQuality: string = '';
+  @State private playbackRates: number[] = [];
+  @State private currentPlaybackRate: number = 1.0;
 
   private controlsTimer: number = -1;
   private progressTimer: number = -1;
@@ -99,6 +103,17 @@ export struct LxFullscreenVideoOverlay {
     this.volume = LxNativeVideoPlayer.getVolume(this.componentId);
     this.muted = LxNativeVideoPlayer.getMuted(this.componentId);
     this.sliderValue = calculateSliderValue(this.currentTime, this.duration);
+
+    // Get quality and playback rate settings from the player config
+    const config = LxNativeVideoPlayer.getConfig(this.componentId);
+    if (config) {
+      this.qualities = config.qualities?.map((q) => q.label) ?? [];
+      this.playbackRates = config.playbackRates ?? [];
+    }
+    // Get actual current quality and playback rate from player state
+    this.currentQuality = LxNativeVideoPlayer.getCurrentQuality(this.componentId) ||
+                          (this.qualities.length > 0 ? this.qualities[0] : '');
+    this.currentPlaybackRate = LxNativeVideoPlayer.getCurrentPlaybackRate(this.componentId);
   }
 
   private startProgressTimer(): void {
@@ -122,6 +137,12 @@ export struct LxFullscreenVideoOverlay {
           } else {
             return;
           }
+        }
+
+        // Sync play/pause state from native player
+        const playbackState = LxNativeVideoPlayer.getPlaybackState(this.componentId);
+        if (playbackState) {
+          this.isPlaying = playbackState.isPlaying;
         }
 
         this.currentTime = currentTime;
@@ -193,6 +214,10 @@ export struct LxFullscreenVideoOverlay {
       showFullscreenButton: false,
       showExitButton: true,
       showTimeRemaining: false,
+      qualities: this.qualities,
+      currentQuality: this.currentQuality,
+      playbackRates: this.playbackRates,
+      currentPlaybackRate: this.currentPlaybackRate,
       onSliderChange: (value: number, mode: SliderChangeMode) => {
         if (mode === SliderChangeMode.Begin) {
           this.clearSeekTimer();
@@ -222,8 +247,11 @@ export struct LxFullscreenVideoOverlay {
       },
       onPlayPauseClick: () => {
         LxNativeVideoPlayer.togglePlayPause(this.componentId);
-        this.isPlaying = !this.isPlaying;
-        if (this.isPlaying) {
+        // State will be synced from native player in progress timer
+        // Optimistically update for immediate UI feedback
+        const willBePlaying = !this.isPlaying;
+        this.isPlaying = willBePlaying;
+        if (willBePlaying) {
           this.showPoster = false;
           this.startProgressTimer();
         }
@@ -246,6 +274,17 @@ export struct LxFullscreenVideoOverlay {
         LxNativeVideoPlayer.exitFullscreen(this.componentId);
         this.restoreFromFullscreen();
         this.onClose();
+      },
+      onQualitySelect: (quality: string) => {
+        this.currentQuality = quality;
+        // Call the player's quality switch logic
+        LxNativeVideoPlayer.selectQuality(this.componentId, quality);
+        this.resetControlsTimer();
+      },
+      onPlaybackRateSelect: (rate: number) => {
+        this.currentPlaybackRate = rate;
+        LxNativeVideoPlayer.selectPlaybackRate(this.componentId, rate);
+        this.resetControlsTimer();
       }
     })
   }

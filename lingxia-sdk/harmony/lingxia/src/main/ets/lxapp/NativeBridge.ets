@@ -315,6 +315,11 @@ class NativeBridge {
       return true;
     });
 
+    this.register('videoPlayerPaused', (componentId: string): boolean => {
+      LxNativeVideoPlayer.onPaused(componentId);
+      return true;
+    });
+
     this.register('videoPlayerEnterFullscreen', (componentId: string): boolean => {
       LxNativeVideoPlayer.enterFullscreenStatic(componentId);
       return true;

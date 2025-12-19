@@ -1,5 +1,5 @@
 use crate::error::PlatformError;
-use std::ffi::{c_char, CString};
+use std::ffi::{CString, c_char};
 use std::ptr;
 use std::slice;
 use std::sync::{Mutex, OnceLock};
@@ -190,7 +190,7 @@ unsafe extern "C" {
 
     // Flash mode control
     fn OH_CaptureSession_HasFlash(session: *mut Camera_CaptureSession, has_flash: *mut bool)
-        -> i32;
+    -> i32;
     fn OH_CaptureSession_IsFlashModeSupported(
         session: *mut Camera_CaptureSession,
         flash_mode: u32,
