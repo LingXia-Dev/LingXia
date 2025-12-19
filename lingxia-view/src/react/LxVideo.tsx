@@ -28,7 +28,7 @@ export const LxVideo = forwardRef<HTMLElement, LxVideoProps>((props, ref) => {
     }
   };
 
-  // Handle events manually to bypass React synthetic event issues with Custom Elements; diff to avoid re-binding unchanged handlers
+  // Handle events manually to bypass React synthetic event issues with Custom Elements
   useEffect(() => {
     const el = innerRef.current;
     if (!el) return;
@@ -40,10 +40,8 @@ export const LxVideo = forwardRef<HTMLElement, LxVideoProps>((props, ref) => {
       if (!key.startsWith("on") || typeof value !== "function") continue;
       const eventName = key.substring(2).toLowerCase();
       next.set(eventName, value);
-      if (prev.get(eventName) === value) continue;
-      if (prev.has(eventName)) {
-        el.removeEventListener(eventName, prev.get(eventName)!);
-      }
+      const prevHandler = prev.get(eventName);
+      if (prevHandler) el.removeEventListener(eventName, prevHandler);
       el.addEventListener(eventName, value);
     }
 
@@ -66,7 +64,10 @@ export const LxVideo = forwardRef<HTMLElement, LxVideoProps>((props, ref) => {
   for (const [key, value] of Object.entries(props)) {
     if (key.startsWith("on") && typeof value === "function") continue;
     if (key === "children" || key === "dangerouslySetInnerHTML" || key === "ref") continue;
-    domProps[key] = value;
+    const attrName = key === "playbackRates" ? "playback-rates" : key;
+    domProps[attrName] = (key === "qualities" || key === "playbackRates") && Array.isArray(value)
+      ? JSON.stringify(value)
+      : value;
   }
   domProps.id = resolvedId;
 

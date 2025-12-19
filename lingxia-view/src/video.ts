@@ -6,6 +6,8 @@ import { isHarmony, isIOS } from "./platform.js";
 const HARMONY_PROPS_PREFIX = "data:application/json,";
 
 // Type definitions
+export type LxVideoQuality = { label: string; url?: string };
+
 export type LxVideoAttributes = {
   id?: string;
   src?: string;
@@ -15,6 +17,8 @@ export type LxVideoAttributes = {
   muted?: boolean;
   controls?: boolean;
   volume?: string | number;
+  qualities?: LxVideoQuality[];  // First is default
+  playbackRates?: number[];      // First is default
   className?: string;
   style?: any;
   ref?: any;
@@ -27,6 +31,8 @@ export type LxVideoAttributes = {
   onLoadedMetadata?: (e: Event) => void;
   onFullscreenChange?: (e: Event) => void;
   onWaiting?: (e: Event) => void;
+  onQualityChange?: (e: Event) => void;
+  onPlaybackRateChange?: (e: Event) => void;
 };
 
 declare global {
@@ -48,7 +54,9 @@ export class LxVideoElement extends HTMLElement {
       "loop",
       "muted",
       "controls",
-      "volume"
+      "volume",
+      "qualities",
+      "playback-rates"
     ];
   }
 
@@ -85,7 +93,6 @@ export class LxVideoElement extends HTMLElement {
                   bubbles: true,
                   cancelable: false
                 });
-        // console.log(`[LxVideo] Dispatching event: ${message.event}`, detail);
         this.dispatchEvent(ev);
       }
     });
@@ -197,6 +204,12 @@ export class LxVideoElement extends HTMLElement {
   set onwaiting(cb: EventListener) { this.setEventHandler('waiting', cb); }
   get onwaiting() { return this.getEventHandler('waiting'); }
 
+  set onqualitychange(cb: EventListener) { this.setEventHandler('qualitychange', cb); }
+  get onqualitychange() { return this.getEventHandler('qualitychange'); }
+
+  set onplaybackratechange(cb: EventListener) { this.setEventHandler('playbackratechange', cb); }
+  get onplaybackratechange() { return this.getEventHandler('playbackratechange'); }
+
   // Internal
   private ensurePlaceholderStyle() {
     if (!this.style.display) this.style.display = "block";
@@ -210,6 +223,32 @@ export class LxVideoElement extends HTMLElement {
     const volume =
       volumeAttr != null ? parseFloat(volumeAttr) : undefined;
 
+    // JSON-encoded arrays (React wrapper sets these via JSON.stringify)
+    const qualitiesAttr = this.getAttribute("qualities");
+    let qualities: LxVideoQuality[] | undefined;
+    if (qualitiesAttr) {
+      try {
+        const parsed = JSON.parse(qualitiesAttr);
+        if (Array.isArray(parsed)) {
+          qualities = parsed.filter((q): q is LxVideoQuality =>
+            q && typeof q === "object" && typeof (q as { label?: unknown }).label === "string"
+          );
+        }
+      } catch {}
+    }
+
+    // Parse playbackRates array from JSON attribute
+    const playbackRatesAttr = this.getAttribute("playback-rates");
+    let playbackRates: number[] | undefined;
+    if (playbackRatesAttr) {
+      try {
+        const parsed = JSON.parse(playbackRatesAttr);
+        if (Array.isArray(parsed)) {
+          playbackRates = parsed.filter((n): n is number => typeof n === "number");
+        }
+      } catch {}
+    }
+
     return {
       src: this.getAttribute("src") || undefined,
       poster: this.getAttribute("poster") || undefined,
@@ -217,7 +256,9 @@ export class LxVideoElement extends HTMLElement {
       loop: this.hasAttribute("loop"),
       muted: this.hasAttribute("muted"),
       controls: this.hasAttribute("controls"),
-      volume: !Number.isNaN(volume ?? NaN) ? volume : undefined
+      volume: !Number.isNaN(volume ?? NaN) ? volume : undefined,
+      qualities,
+      playbackRates
     };
   }
 
