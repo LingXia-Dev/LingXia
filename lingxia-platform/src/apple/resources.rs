@@ -1,6 +1,6 @@
 use objc2::rc::Retained;
 use objc2::runtime::NSObject;
-use objc2::{msg_send, ClassType};
+use objc2::{ClassType, msg_send};
 use objc2_foundation::{NSBundle, NSData, NSFileManager, NSString, NSURL};
 use std::path::Path;
 use std::sync::OnceLock;

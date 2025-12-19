@@ -102,8 +102,8 @@ public struct LxMediaPlayerConfig {
     public var volume: Double?
     public var controls: Bool?  // Show or hide all playback controls (HTML5 standard)
     public var cornerRadius: Double?
-    public var qualities: [LxMediaQuality]?
-    public var speeds: [Double]?
+    public var qualities: [LxMediaQuality]?  // First is default
+    public var speeds: [Double]?             // First is default (playbackRates)
     public var showControlsOnInit: Bool?
     public var objectFit: LxMediaObjectFit?
 
@@ -182,8 +182,7 @@ public enum LxMediaEvent {
     case volumeChange(volume: Double)
     case fullscreenChange(fullScreen: Bool, direction: String)
     case loadedMetadata(width: Double, height: Double, duration: Double)
-    case qualityRequest(available: [LxMediaQuality], current: String?)
-    case speedRequest(available: [Double], current: Double?)
+    case qualityChange(quality: String, url: String?)
     case error(code: String, message: String)
     case raw(name: String, data: [String: Any])
 
@@ -196,12 +195,11 @@ public enum LxMediaEvent {
         case .waiting: return "waiting"
         case .seeked: return "seeked"
         case .timeUpdate: return "timeupdate"
-        case .rateChange: return "ratechange"
+        case .rateChange: return "playbackratechange"
         case .volumeChange: return "volumechange"
         case .fullscreenChange: return "fullscreenchange"
         case .loadedMetadata: return "loadedmetadata"
-        case .qualityRequest: return "qualityrequest"
-        case .speedRequest: return "speedrequest"
+        case .qualityChange: return "qualitychange"
         case .error: return "error"
         case .raw(let name, _): return name
         }
@@ -223,18 +221,8 @@ public enum LxMediaEvent {
             return ["fullScreen": fullScreen, "direction": direction]
         case .loadedMetadata(let width, let height, let duration):
             return ["width": width, "height": height, "duration": duration]
-        case .qualityRequest(let available, let current):
-            var dict: [String: Any] = [
-                "availableQualities": available.map { $0.bridgeValue }
-            ]
-            if let current { dict["currentQuality"] = current }
-            return dict
-        case .speedRequest(let available, let current):
-            var dict: [String: Any] = [
-                "availableRates": available
-            ]
-            if let current { dict["currentRate"] = current }
-            return dict
+        case .qualityChange(let quality, let url):
+            return ["quality": quality, "url": url ?? ""]
         case .error(let code, let message):
             return ["code": code, "message": message]
         case .raw(_, let data):
@@ -430,12 +418,14 @@ public final class LxMediaPlayer: NSObject {
     private var currentQuality: String?
     private var availablePlaybackRates: [Double] = []
     private var currentPlaybackRate: Double = 1.0
+    private var pendingRestoreAfterLoad: (time: CMTime, play: Bool)?
 
     // UI state
     private var controlsVisible = false
     private var controlsHideWorkItem: DispatchWorkItem?
     // Note: tapRecognizer removed - using tapCatcher button instead
     private var wasPlayingBeforeBackground = false
+    private var isPausedByUser = false  // Track if user explicitly paused (vs buffering)
     private var firstFrameDisplayed = false
     private var waitingForFirstFrame = false
     private var desiredPlayWhenReady = false
@@ -460,6 +450,7 @@ public final class LxMediaPlayer: NSObject {
     private var wasPlayingBeforeScrub = false
     private var lastScrubTime: TimeInterval = 0
     private var isSeeking = false  // Track JS API seek in progress
+    private var suppressWaitingUntil: TimeInterval = 0
     private let volumeSlider = UISlider()
     private let volumeButton = UIButton(type: .system)
     private let settingsButton = UIButton(type: .system)
@@ -892,6 +883,14 @@ public final class LxMediaPlayer: NSObject {
                          self.send(.loadedMetadata(width: size.width, height: size.height, duration: duration))
                     }
 
+                    if let pending = self.pendingRestoreAfterLoad {
+                        self.pendingRestoreAfterLoad = nil
+                        self.player?.seek(to: pending.time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+                            guard pending.play else { return }
+                            self?.play()
+                        }
+                    }
+
                     // Start frame detection now that item is ready
                     if self.waitingForFirstFrame {
                         self.startDisplayLink(sequence: currentSequence)
@@ -923,26 +922,30 @@ public final class LxMediaPlayer: NSObject {
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
                 guard currentSequence == self.loadingSequence else { return }
-                
-                let status = player.timeControlStatus
-                os_log("MediaPlayer timeControlStatus changed to %{public}@", log: self.log, type: .info, 
-                       status == .playing ? "playing" : (status == .paused ? "paused" : "waitingToPlay"))
-                
-                switch status {
+
+                switch player.timeControlStatus {
                 case .playing:
                     // Video is playing - stop loading indicator and send play event
                     self.loadingIndicator.stopAnimating()
                     self.updatePlayPauseUI(isPlaying: true)
+                    self.suppressWaitingUntil = 0
                     self.send(.play)
-                    
+
                 case .paused:
+                    // Don't send pause event here - it's sent explicitly in pause() method
                     self.updatePlayPauseUI(isPlaying: false)
-                    
+
                 case .waitingToPlayAtSpecifiedRate:
-                    // Buffering - show loading indicator
-                    self.loadingIndicator.startAnimating()
-                    self.send(.waiting)
-                    
+                    // Buffering - show loading indicator only if user didn't pause
+                    if !self.isPausedByUser {
+                        self.loadingIndicator.startAnimating()
+                        // During user scrub/seek buffering we keep status as "playing" (no waiting event),
+                        // but still show the native loading indicator.
+                        if !self.isScrubbing && CACurrentMediaTime() >= self.suppressWaitingUntil {
+                            self.send(.waiting)
+                        }
+                    }
+
                 @unknown default:
                     break
                 }
@@ -1034,6 +1037,7 @@ public final class LxMediaPlayer: NSObject {
     }
 
     private func play() {
+        isPausedByUser = false  // User wants to play
         if waitingForFirstFrame {
             desiredPlayWhenReady = true
             return
@@ -1078,10 +1082,13 @@ public final class LxMediaPlayer: NSObject {
     }
 
     private func pause() {
+        isPausedByUser = true  // User explicitly paused
         player?.pause()
         // Cancel pending play event if pause is called before video started
         pendingPlayEvent = false
         desiredPlayWhenReady = false
+        // Always stop loading indicator when user explicitly pauses
+        loadingIndicator.stopAnimating()
         send(.pause)
         updatePlayPauseUI(isPlaying: false)
         showControlsTemporarily()
@@ -1115,6 +1122,7 @@ public final class LxMediaPlayer: NSObject {
         let time = CMTime(seconds: clampedSeconds, preferredTimescale: 600)
         
         isSeeking = true
+        suppressWaitingUntil = CACurrentMediaTime() + 1.5
         
         // Update slider immediately to target position (prevents visual bounce)
         progressSlider.value = Float(clampedSeconds / duration)
@@ -1141,10 +1149,10 @@ public final class LxMediaPlayer: NSObject {
 
         // Improve audio quality when speeding up
         if #available(iOS 15.0, *) {
-        player.currentItem?.audioTimePitchAlgorithm = .timeDomain
-    } else {
-        player.currentItem?.audioTimePitchAlgorithm = .lowQualityZeroLatency
-    }
+            player.currentItem?.audioTimePitchAlgorithm = .timeDomain
+        } else {
+            player.currentItem?.audioTimePitchAlgorithm = .lowQualityZeroLatency
+        }
         player.currentItem?.preferredForwardBufferDuration = 2
         player.automaticallyWaitsToMinimizeStalling = true
 
@@ -1634,7 +1642,7 @@ public final class LxMediaPlayer: NSObject {
                 }
             }
             let qualitySection = UIMenu(
-                title: "Quality",
+                title: L10n.string("lx_video_quality"),
                 image: UIImage(systemName: "video.fill"),
                 options: [.singleSelection],
                 children: qualityActions
@@ -1652,7 +1660,7 @@ public final class LxMediaPlayer: NSObject {
                 }
             }
             let speedSection = UIMenu(
-                title: "Playback Speed",
+                title: L10n.string("lx_video_speed"),
                 image: UIImage(systemName: "gauge.with.dots.needle.50percent"),
                 options: [.singleSelection],
                 children: speedActions
@@ -1684,32 +1692,32 @@ public final class LxMediaPlayer: NSObject {
     private func handleQualitySelection(label: String) {
         currentQuality = label
         os_log("MediaPlayer quality selected: %{public}@", log: log, type: .info, label)
-        sendQualityRequestEvent()
+        
+        let selectedQuality = availableQualities.first(where: { $0.label == label })
+        let switchedUrl = selectedQuality?.url?.absoluteString
+
+        if let url = selectedQuality?.url, let player {
+            os_log("MediaPlayer switching to internal URL: %{public}@", log: log, type: .info, url.absoluteString)
+            pendingRestoreAfterLoad = (player.currentTime(), player.rate > 0)
+            loadVideo(url: url)
+        }
+	        
+        send(.qualityChange(quality: label, url: switchedUrl))
         updateSettingsMenu()
     }
 
     private func handleSpeedSelection(rate: Double) {
-        currentPlaybackRate = rate
-        os_log("MediaPlayer speed selected: %.2fx", log: log, type: .info, rate)
-        sendSpeedRequestEvent()
-        updateSettingsMenu()
-    }
-
-    private func sendQualityRequestEvent() {
-        guard !availableQualities.isEmpty else { return }
-        send(.qualityRequest(available: availableQualities, current: currentQuality))
-    }
-
-    private func sendSpeedRequestEvent() {
-        guard !availablePlaybackRates.isEmpty else { return }
-        send(.speedRequest(available: availablePlaybackRates, current: currentPlaybackRate))
+        // Just set the rate - setPlaybackRate handles the logic and event emission
+        setPlaybackRate(rate)
+        // Note: setPlaybackRate emits .rateChange
     }
 
     private func formattedRate(_ rate: Double) -> String {
         if rate.truncatingRemainder(dividingBy: 1) == 0 {
             return String(format: "%.0fx", rate)
         }
-        return String(format: "%.2fx", rate)
+        // Use %g to remove trailing zeros (1.5x instead of 1.50x)
+        return String(format: "%gx", rate)
     }
 
     private func revealVideoIfReady(progressTime: Double? = nil, reason: String, sequence: UInt64) {
@@ -1996,9 +2004,8 @@ public final class LxMediaPlayer: NSObject {
         if hasQuality {
             let currentQualityText = currentQuality ?? "Auto"
             let button = createMainMenuButton(
-                title: "Quality",
+                title: L10n.string("lx_video_quality"),
                 subtitle: currentQualityText,
-                icon: "video.fill",
                 action: #selector(handleShowQualitySubmenu)
             )
             button.frame = CGRect(x: 8, y: yOffset, width: menuWidth - 16, height: 44)
@@ -2009,9 +2016,8 @@ public final class LxMediaPlayer: NSObject {
         // Speed option
         if hasSpeed {
             let button = createMainMenuButton(
-                title: "Speed",
+                title: L10n.string("lx_video_speed"),
                 subtitle: formattedRate(currentPlaybackRate),
-                icon: "gauge.with.dots.needle.50percent",
                 action: #selector(handleShowSpeedSubmenu)
             )
             button.frame = CGRect(x: 8, y: yOffset, width: menuWidth - 16, height: 44)
@@ -2072,25 +2078,18 @@ public final class LxMediaPlayer: NSObject {
         }
     }
 
-    private func createMainMenuButton(title: String, subtitle: String, icon: String, action: Selector) -> UIButton {
+    private func createMainMenuButton(title: String, subtitle: String, action: Selector) -> UIButton {
         let button = UIButton(type: .custom)
         button.addTarget(self, action: action, for: .touchUpInside)
         button.backgroundColor = UIColor.white.withAlphaComponent(0.08)
         button.layer.cornerRadius = 10
-
-        // Icon
-        let iconView = UIImageView(image: UIImage(systemName: icon, withConfiguration: UIImage.SymbolConfiguration(pointSize: 16, weight: .medium)))
-        iconView.tintColor = .white
-        iconView.frame = CGRect(x: 12, y: 12, width: 20, height: 20)
-        iconView.isUserInteractionEnabled = false
-        button.addSubview(iconView)
 
         // Title
         let titleLabel = UILabel()
         titleLabel.text = title
         titleLabel.font = UIFont.systemFont(ofSize: 15, weight: .medium)
         titleLabel.textColor = .white
-        titleLabel.frame = CGRect(x: 40, y: 8, width: 100, height: 18)
+        titleLabel.frame = CGRect(x: 12, y: 8, width: 100, height: 18)
         titleLabel.isUserInteractionEnabled = false
         button.addSubview(titleLabel)
 
@@ -2099,7 +2098,7 @@ public final class LxMediaPlayer: NSObject {
         subtitleLabel.text = subtitle
         subtitleLabel.font = UIFont.systemFont(ofSize: 12, weight: .regular)
         subtitleLabel.textColor = UIColor.white.withAlphaComponent(0.6)
-        subtitleLabel.frame = CGRect(x: 40, y: 24, width: 100, height: 14)
+        subtitleLabel.frame = CGRect(x: 12, y: 24, width: 100, height: 14)
         subtitleLabel.isUserInteractionEnabled = false
         button.addSubview(subtitleLabel)
 
@@ -2420,6 +2419,7 @@ public final class LxMediaPlayer: NSObject {
 
     @objc private func handleSliderTouchDown() {
         isScrubbing = true
+        suppressWaitingUntil = .greatestFiniteMagnitude
         wasPlayingBeforeScrub = player?.timeControlStatus == .playing
         player?.pause()
         controlsHideWorkItem?.cancel()
@@ -2449,6 +2449,7 @@ public final class LxMediaPlayer: NSObject {
     @objc private func handleSliderTouchUp() {
         guard isScrubbing else { return }
         isScrubbing = false
+        suppressWaitingUntil = CACurrentMediaTime() + 1.5
         
         guard let player = player,
               let durationSeconds = player.currentItem?.duration.seconds,
@@ -2474,6 +2475,7 @@ public final class LxMediaPlayer: NSObject {
         let status = player?.timeControlStatus
         wasPlayingBeforeScrub = status == .playing
         isScrubbing = true
+        suppressWaitingUntil = .greatestFiniteMagnitude
         player?.pause()
         controlsHideWorkItem?.cancel()
     }
@@ -2502,6 +2504,7 @@ public final class LxMediaPlayer: NSObject {
     
     private func handleSliderScrubEnd() {
         isScrubbing = false
+        suppressWaitingUntil = CACurrentMediaTime() + 1.5
         
         // Resume playback after scrub/seek (user expects video to play after seeking)
         // timeControlStatusObserver will handle:

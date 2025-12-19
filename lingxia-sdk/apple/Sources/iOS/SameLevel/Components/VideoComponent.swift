@@ -134,8 +134,8 @@ final class VideoComponent: NSObject, LxNativeComponent {
                 return LxMediaQuality(label: label, url: url)
             }
         }
-        if let speeds = props["speeds"] as? [Double] {
-            config.speeds = speeds
+        if let playbackRates = props["playbackRates"] as? [Any] {
+            config.speeds = playbackRates.compactMap { ($0 as? NSNumber)?.doubleValue ?? ($0 as? Double) }
         }
         if let showControlsOnInit = props["showControlsOnInit"] as? Bool {
             config.showControlsOnInit = showControlsOnInit
