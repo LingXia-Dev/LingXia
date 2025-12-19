@@ -208,8 +208,24 @@ export class SameLevelEmbedManager {
 
   private parseEmbedProps(embed: NativeEmbedDataInfo): SameLevelRecord {
     const props = new SameLevelRecord();
-    const info: ESObject | undefined = embed.info as ESObject | undefined;
-    const rawProps: string | undefined = info?.get('src') as string | undefined;
+    interface EmbedInfo {
+      get?: (key: string) => string | undefined;
+      src?: string;
+    }
+
+    const info = embed.info as EmbedInfo | undefined;
+    let rawProps: string | undefined;
+    if (info) {
+      if (typeof info.get === 'function') {
+        const fromGet = info.get('src');
+        if (typeof fromGet === 'string') {
+          rawProps = fromGet;
+        }
+      }
+      if (!rawProps && typeof info.src === 'string') {
+        rawProps = info.src;
+      }
+    }
     const propsString: string = rawProps ?? '';
     const parsed = propsString ? this.decodeProps(propsString) : null;
     if (parsed) {
