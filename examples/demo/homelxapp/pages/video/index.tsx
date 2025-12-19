@@ -2,67 +2,48 @@ import React from 'react';
 import '../../tailwind.css';
 import { LxVideo } from 'lingxia-ui/react';
 
-const VIDEO_SRC =
-  'https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-576p.mp4';
-const VIDEO_POSTER =
-  'https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-HD.jpg';
+type LxVideoEvent<TDetail> = { detail?: TDetail };
+
+type VideoConfig = {
+  id: string;
+  src: string;
+  poster?: string;
+  qualities?: Array<{ label: string; url?: string }>;
+  playbackRates?: number[];
+};
+
+type PageData = {
+  videos?: VideoConfig[];
+};
 
 type PageActions = {
-  data: Record<string, unknown>;
+  data: PageData;
   play(): void;
   pause(): void;
   stop(): void;
   seek(position: number): void;
   requestFullScreen(): void;
-  exitFullScreen(): void;
+  onQualityChange(payload: { videoId: string; detail: unknown }): void;
+  onPlaybackRateChange(payload: { videoId: string; detail: unknown }): void;
 };
 
 declare function useLingXia(): PageActions;
 
-// Memoized video component to prevent re-renders when parent state changes
-const MemoizedVideo = React.memo(function MemoizedVideo({
-  onPlay,
-  onPause,
-  onEnded,
-  onWaiting,
-  onTimeUpdate,
-  onFullscreenChange,
-  onLoadedMetadata,
-}: {
-  onPlay: () => void;
-  onPause: () => void;
-  onEnded: () => void;
-  onWaiting: () => void;
-  onTimeUpdate: (e: any) => void;
-  onFullscreenChange: (e: any) => void;
-  onLoadedMetadata: (e: any) => void;
-}) {
-  return (
-    <LxVideo
-      id="lx-video"
-      src={VIDEO_SRC}
-      poster={VIDEO_POSTER}
-      autoplay
-      controls
-      volume="0.8"
-      className="block w-full rounded-lg bg-black"
-      style={{ aspectRatio: '16 / 9', borderRadius: 12 }}
-      onPlay={onPlay}
-      onPause={onPause}
-      onEnded={onEnded}
-      onWaiting={onWaiting}
-      onTimeUpdate={onTimeUpdate}
-      onFullscreenChange={onFullscreenChange}
-      onLoadedMetadata={onLoadedMetadata}
-    />
-  );
-});
+const SEEK_STEP_SECONDS = 10;
 
 export default function App() {
-  const { play, pause, stop, seek, requestFullScreen } = useLingXia();
-
-  const [eventLog, setEventLog] = React.useState('Waiting for events...');
-  const [metadata, setMetadata] = React.useState('');
+  const {
+    data,
+    play,
+    pause,
+    stop,
+    seek,
+    requestFullScreen,
+    onQualityChange,
+    onPlaybackRateChange,
+  } = useLingXia();
+  const video = data?.videos?.[0];
+  const [eventLog, setEventLog] = React.useState('Ready');
   const currentTimeRef = React.useRef(0);
   const durationRef = React.useRef(0);
 
@@ -71,71 +52,86 @@ export default function App() {
     return () => document.body.classList.remove('api-page');
   }, []);
 
-  // Use useCallback to prevent creating new function references on each render
-  const onPlay = React.useCallback(() => {
-    console.log('[VideoPage] Play event');
-    setEventLog('▶️ Playing');
+  const onPlayHandler = React.useCallback(() => {
+    setEventLog('Playing');
   }, []);
 
-  const onPause = React.useCallback(() => {
-    console.log('[VideoPage] Pause event');
-    setEventLog('⏸️ Paused');
+  const onPauseHandler = React.useCallback(() => {
+    setEventLog('Paused');
   }, []);
 
-  const onEnded = React.useCallback(() => {
-    console.log('[VideoPage] Ended event');
-    setEventLog('🏁 Ended');
+  const onWaitingHandler = React.useCallback(() => {
+    setEventLog('Buffering...');
   }, []);
 
-  const onWaiting = React.useCallback(() => {
-    console.log('[VideoPage] Waiting event');
-    setEventLog('⏳ Buffering...');
-  }, []);
+  const onTimeUpdateHandler = React.useCallback(
+    (e: LxVideoEvent<{ currentTime?: number; duration?: number }>) => {
+      const currentTime = e.detail?.currentTime;
+      const duration = e.detail?.duration;
+      if (typeof currentTime === 'number') currentTimeRef.current = currentTime;
+      if (typeof duration === 'number') durationRef.current = duration;
+    },
+    [],
+  );
 
-  const onTimeUpdate = React.useCallback((e: any) => {
-    const detail = e.detail || {};
-    if (typeof detail.currentTime === 'number') {
-      currentTimeRef.current = detail.currentTime;
-    }
-    if (typeof detail.duration === 'number') {
-      durationRef.current = detail.duration;
-    }
-  }, []);
+  const onFullscreenChangeHandler = React.useCallback(
+    (e: LxVideoEvent<{ fullScreen?: boolean }>) => {
+      setEventLog(`Fullscreen: ${e.detail?.fullScreen ? 'on' : 'off'}`);
+    },
+    [],
+  );
 
-  const onFullscreenChange = React.useCallback((e: any) => {
-    console.log('[VideoPage] FullscreenChange detail:', e.detail);
-    setEventLog(`📺 Fullscreen: ${e.detail?.fullScreen} (${e.detail?.direction})`);
-  }, []);
+  const onQualityChangeHandler = React.useCallback(
+    (e: LxVideoEvent<{ quality?: string }>) => {
+      if (!video) return;
+      setEventLog(`Quality: ${e.detail?.quality ?? ''}`);
+      onQualityChange({ videoId: video.id, detail: e.detail });
+    },
+    [onQualityChange, video],
+  );
 
-  const onLoadedMetadata = React.useCallback((e: any) => {
-    console.log('[VideoPage] LoadedMetadata detail:', e.detail);
-    const detail = e.detail || {};
-    const width = detail.width || '?';
-    const height = detail.height || '?';
-    const duration = detail.duration ? Number(detail.duration).toFixed(1) : '?';
-    if (typeof detail.duration === 'number') {
-      durationRef.current = detail.duration;
-    }
-    const metadataText = `${width}×${height}, ${duration}s`;
-    setMetadata(metadataText);
-    setEventLog(`ℹ️ Metadata loaded: ${metadataText}`);
-  }, []);
+  const onPlaybackRateChangeHandler = React.useCallback(
+    (e: LxVideoEvent<{ rate?: number }>) => {
+      if (!video) return;
+      setEventLog(`Rate: ${e.detail?.rate ?? ''}`);
+      onPlaybackRateChange({ videoId: video.id, detail: e.detail });
+    },
+    [onPlaybackRateChange, video],
+  );
 
   // Relative seek helpers
-  const seekBackward = React.useCallback((seconds: number) => {
-    const newTime = Math.max(0, currentTimeRef.current - seconds);
-    seek(newTime);
-  }, [seek]);
+  const seekBackward = React.useCallback(
+    (seconds: number) => {
+      const newTime = Math.max(0, currentTimeRef.current - seconds);
+      currentTimeRef.current = newTime; // Optimistic update
+      seek(newTime);
+    },
+    [seek],
+  );
 
-  const seekForward = React.useCallback((seconds: number) => {
-    const newTime = Math.min(durationRef.current, currentTimeRef.current + seconds);
-    seek(newTime);
-  }, [seek]);
+  const seekForward = React.useCallback(
+    (seconds: number) => {
+      const maxTime =
+        durationRef.current > 0 ? durationRef.current : Number.POSITIVE_INFINITY;
+      const newTime = Math.min(maxTime, currentTimeRef.current + seconds);
+      currentTimeRef.current = newTime; // Optimistic update
+      seek(newTime);
+    },
+    [seek],
+  );
+
+  if (!video) {
+    return (
+      <div className="bg-gray-100 min-h-screen flex items-center justify-center">
+        <div className="text-gray-500">Loading video...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-gray-100 min-h-screen">
       <div className="px-4 py-4 space-y-3 pb-6">
-        {/* Compact Header */}
+        {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
@@ -145,7 +141,6 @@ export default function App() {
             </div>
             <div>
               <div className="text-base font-semibold text-gray-900">Native Video</div>
-              {metadata && <div className="text-xs text-gray-500">{metadata}</div>}
             </div>
           </div>
           <div className="bg-gray-900 text-green-400 font-mono text-xs px-3 py-1.5 rounded-lg w-[180px] truncate">
@@ -153,36 +148,43 @@ export default function App() {
           </div>
         </div>
 
-        {/* Video Player */}
         <div className="bg-black rounded-xl overflow-hidden">
-          <MemoizedVideo
-            onPlay={onPlay}
-            onPause={onPause}
-            onEnded={onEnded}
-            onWaiting={onWaiting}
-            onTimeUpdate={onTimeUpdate}
-            onFullscreenChange={onFullscreenChange}
-            onLoadedMetadata={onLoadedMetadata}
+          <LxVideo
+            id={video.id}
+            src={video.src}
+            poster={video.poster}
+            qualities={video.qualities}
+            playbackRates={video.playbackRates}
+            autoplay
+            controls
+            volume="0.8"
+            className="block w-full rounded-lg bg-black"
+            style={{ aspectRatio: '16 / 9', borderRadius: 12 }}
+            onPlay={onPlayHandler}
+            onPause={onPauseHandler}
+            onWaiting={onWaitingHandler}
+            onTimeUpdate={onTimeUpdateHandler}
+            onFullscreenChange={onFullscreenChangeHandler}
+            onQualityChange={onQualityChangeHandler}
+            onPlaybackRateChange={onPlaybackRateChangeHandler}
           />
         </div>
 
+        {/* Controls */}
         <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-lg border border-white/20 p-5">
           <div className="text-xs text-gray-400 uppercase tracking-wider mb-4 font-semibold">Playback Controls</div>
 
-          {/* Main Controls Row */}
           <div className="flex items-center justify-center gap-4 mb-5">
-            {/* Seek Back 10s */}
             <button
-              onClick={() => seekBackward(10)}
+              onClick={() => seekBackward(SEEK_STEP_SECONDS)}
               className="w-12 h-12 rounded-full bg-gray-100 hover:bg-gray-200 active:scale-95 transition-all flex items-center justify-center"
             >
               <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-gray-600">
                 <path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z" fill="currentColor" />
-                <text x="12" y="14" textAnchor="middle" fontSize="6" fill="currentColor" fontWeight="bold">10</text>
+                <text x="12" y="14" textAnchor="middle" fontSize="5" fill="currentColor" fontWeight="bold">{SEEK_STEP_SECONDS}</text>
               </svg>
             </button>
 
-            {/* Play Button - Large */}
             <button
               onClick={() => play()}
               className="w-16 h-16 rounded-full bg-gradient-to-b from-green-400 to-green-600 hover:from-green-500 hover:to-green-700 active:scale-95 transition-all flex items-center justify-center shadow-lg shadow-green-500/30"
@@ -192,7 +194,6 @@ export default function App() {
               </svg>
             </button>
 
-            {/* Pause Button */}
             <button
               onClick={() => pause()}
               className="w-14 h-14 rounded-full bg-gradient-to-b from-gray-700 to-gray-900 hover:from-gray-600 hover:to-gray-800 active:scale-95 transition-all flex items-center justify-center shadow-lg shadow-gray-900/30"
@@ -203,19 +204,17 @@ export default function App() {
               </svg>
             </button>
 
-            {/* Seek Forward 10s */}
             <button
-              onClick={() => seekForward(10)}
+              onClick={() => seekForward(SEEK_STEP_SECONDS)}
               className="w-12 h-12 rounded-full bg-gray-100 hover:bg-gray-200 active:scale-95 transition-all flex items-center justify-center"
             >
               <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-gray-600">
                 <path d="M12 5V1l5 5-5 5V7c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6h2c0 4.42-3.58 8-8 8s-8-3.58-8-8 3.58-8 8-8z" fill="currentColor" />
-                <text x="12" y="14" textAnchor="middle" fontSize="6" fill="currentColor" fontWeight="bold">10</text>
+                <text x="12" y="14" textAnchor="middle" fontSize="5" fill="currentColor" fontWeight="bold">{SEEK_STEP_SECONDS}</text>
               </svg>
             </button>
           </div>
 
-          {/* Secondary Controls */}
           <div className="flex items-center justify-center gap-3">
             <button
               onClick={() => stop()}
@@ -249,7 +248,8 @@ export default function App() {
               </svg>
             </div>
             <div className="text-xs text-blue-700 leading-relaxed">
-              <code className="bg-blue-100 px-1 py-0.5 rounded text-blue-800">&lt;LxVideo&gt;</code> uses native players (AVPlayer on iOS, ExoPlayer on Android, OH_AVPlayer on HarmonyOS) for optimal performance.
+              Video config comes from <code className="bg-blue-100 px-1 py-0.5 rounded text-blue-800">data.videos</code> in <code className="bg-blue-100 px-1 py-0.5 rounded text-blue-800">pages/video/index.js</code>.
+              Quality and playbackRate are passed to the native player.
             </div>
           </div>
         </div>

@@ -1,87 +1,86 @@
 Page({
-  data: {},
+  data: { videos: [] },
   videoContext: null,
 
   onLoad: function (options) {
     console.log("[VideoSameLevel] onLoad options:", options);
+
+    this.setData({
+      videos: [
+        {
+          id: "lx-video-1",
+          src: "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-576p.mp4",
+          poster:
+            "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-HD.jpg",
+          qualities: [
+            {
+              label: "1080P",
+              url: "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-1080p.mp4",
+            },
+            {
+              label: "720P",
+              url: "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-720p.mp4",
+            },
+            {
+              label: "576P",
+              url: "https://cdn.plyr.io/static/demo/View_From_A_Blue_Moon_Trailer-576p.mp4",
+            },
+          ],
+          playbackRates: [1.0, 0.5, 1.5, 2.0],
+        },
+      ],
+    });
   },
 
-  onShow: function () {
-    console.log("[VideoSameLevel] onShow");
-  },
+  _getContext: function () {
+    if (this.videoContext) return this.videoContext;
+    const videoId = this.data?.videos?.[0]?.id;
+    if (!videoId) return null;
 
-  onHide: function () {
-    console.log("[VideoSameLevel] onHide");
-  },
-
-  // Ensure videoContext exists, create if needed
-  _ensureContext: function () {
-    if (!this.videoContext) {
-      try {
-        this.videoContext = lx.createVideoContext("lx-video");
-        console.log("[VideoSameLevel] createVideoContext success");
-      } catch (e) {
-        console.error("[VideoSameLevel] createVideoContext failed:", e.message);
-        return null;
-      }
+    try {
+      this.videoContext = lx.createVideoContext(videoId);
+      console.log("[VideoSameLevel] createVideoContext success:", videoId);
+      return this.videoContext;
+    } catch (e) {
+      console.error(
+        "[VideoSameLevel] createVideoContext failed:",
+        e.message || e,
+      );
+      return null;
     }
-    return this.videoContext;
   },
 
   play: function () {
-    console.log("[VideoSameLevel] play");
-    try {
-      this._ensureContext()?.play();
-    } catch (e) {
-      console.error("[VideoSameLevel] play failed:", e.message || e);
-    }
+    this._getContext()?.play();
   },
 
   pause: function () {
-    console.log("[VideoSameLevel] pause");
-    try {
-      this._ensureContext()?.pause();
-    } catch (e) {
-      console.error("[VideoSameLevel] pause failed:", e.message || e);
-    }
+    this._getContext()?.pause();
   },
 
   stop: function () {
-    console.log("[VideoSameLevel] stop");
-    try {
-      this._ensureContext()?.stop();
-    } catch (e) {
-      console.error("[VideoSameLevel] stop failed:", e.message || e);
-    }
+    this._getContext()?.stop();
   },
 
   seek: function (position) {
-    console.log("[VideoSameLevel] seek to:", position);
-    try {
-      this._ensureContext()?.seek(position);
-    } catch (e) {
-      console.error("[VideoSameLevel] seek failed:", e.message || e);
-    }
+    const time =
+      typeof position === "number" ? position : Number(position) || 0;
+    this._getContext()?.seek(time);
   },
 
   requestFullScreen: function () {
-    console.log("[VideoSameLevel] requestFullScreen");
-    try {
-      this._ensureContext()?.requestFullScreen();
-    } catch (e) {
-      console.error(
-        "[VideoSameLevel] requestFullScreen failed:",
-        e.message || e,
-      );
-    }
+    this._getContext()?.requestFullScreen();
   },
 
   exitFullScreen: function () {
-    console.log("[VideoSameLevel] exitFullScreen");
-    try {
-      this._ensureContext()?.exitFullScreen();
-    } catch (e) {
-      console.error("[VideoSameLevel] exitFullScreen failed:", e.message || e);
-    }
+    this._getContext()?.exitFullScreen();
+  },
+
+  onQualityChange: function ({ videoId, detail } = {}) {
+    console.log("[VideoSameLevel] onQualityChange:", { videoId, detail });
+  },
+
+  onPlaybackRateChange: function ({ videoId, detail } = {}) {
+    console.log("[VideoSameLevel] onPlaybackRateChange:", { videoId, detail });
   },
 });
