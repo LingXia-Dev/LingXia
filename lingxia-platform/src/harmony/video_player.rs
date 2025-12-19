@@ -94,11 +94,19 @@ struct InfoCallbackData {
     component_id: String,
 }
 
-fn notify_arkts(component_id: &str, handler: &str) {
-    if let Err(e) = lingxia_webview::tsfn::call_arkts(handler, &[component_id]) {
+fn notify_arkts(component_id: &str, event: &str, payload: Option<&str>) {
+    let result = match payload {
+        Some(payload) => {
+            lingxia_webview::tsfn::call_arkts("videoPlayerEvent", &[component_id, event, payload])
+        }
+        None => lingxia_webview::tsfn::call_arkts("videoPlayerEvent", &[component_id, event]),
+    };
+
+    if let Err(e) = result {
         log::error!(
-            "[VideoPlayer] Failed to notify ArkTS: handler={}, err={:?}",
-            handler,
+            "[VideoPlayer] Failed to notify ArkTS: component_id={}, event={}, err={:?}",
+            component_id,
+            event,
             e
         );
     }
@@ -146,12 +154,7 @@ extern "C" fn on_info_callback(
         }
 
         let position_str = seek_position.to_string();
-        if let Err(e) = lingxia_webview::tsfn::call_arkts(
-            "videoPlayerSeekDone",
-            &[component_id.as_str(), &position_str],
-        ) {
-            log::error!("[VideoPlayer] Failed to notify ArkTS of seek done: {:?}", e);
-        }
+        notify_arkts(component_id, "seekDone", Some(&position_str));
     } else if info_type == AVPlayerOnInfoType::BufferingUpdate as i32 {
         let mut buffering_type = 0;
         if !info_body.is_null() {
@@ -177,12 +180,7 @@ extern "C" fn on_info_callback(
                 buffering_type,
                 status
             );
-            if let Err(e) = lingxia_webview::tsfn::call_arkts(
-                "videoPlayerBuffering",
-                &[component_id.as_str(), status],
-            ) {
-                log::error!("[VideoPlayer] Failed to notify ArkTS of buffering: {:?}", e);
-            }
+            notify_arkts(component_id, "buffering", Some(status));
         }
     } else if info_type == AVPlayerOnInfoType::StateChange as i32 {
         let mut state_value: i32 = 0;
@@ -219,17 +217,11 @@ extern "C" fn on_info_callback(
 
         match state_value {
             x if x == AVPlayerState::Prepared as i32 => {
-                notify_arkts(component_id, "videoPlayerPrepared")
+                notify_arkts(component_id, "prepared", None)
             }
-            x if x == AVPlayerState::Playing as i32 => {
-                notify_arkts(component_id, "videoPlayerPlaying")
-            }
-            x if x == AVPlayerState::Paused as i32 => {
-                notify_arkts(component_id, "videoPlayerPaused")
-            }
-            x if x == AVPlayerState::Stopped as i32 => {
-                notify_arkts(component_id, "videoPlayerStopped")
-            }
+            x if x == AVPlayerState::Playing as i32 => notify_arkts(component_id, "playing", None),
+            x if x == AVPlayerState::Paused as i32 => notify_arkts(component_id, "paused", None),
+            x if x == AVPlayerState::Stopped as i32 => notify_arkts(component_id, "stopped", None),
             _ => {}
         }
     }
@@ -817,11 +809,11 @@ fn dispatch_command_harmony(
             p.seek((position * 1000.0) as i32, AVPlayerSeekMode::Closest)
         }
         VideoPlayerCommand::EnterFullscreen => {
-            notify_arkts(component_id, "videoPlayerEnterFullscreen");
+            notify_arkts(component_id, "enterFullscreen", None);
             Ok(())
         }
         VideoPlayerCommand::ExitFullscreen => {
-            notify_arkts(component_id, "videoPlayerExitFullscreen");
+            notify_arkts(component_id, "exitFullscreen", None);
             Ok(())
         }
     }
@@ -829,10 +821,7 @@ fn dispatch_command_harmony(
 
 // VideoPlayerManager Implementation
 impl VideoPlayerManager for Platform {
-    fn bind_player(
-        &self,
-        component_id: &str,
-    ) -> Result<Box<dyn VideoPlayerHandle>, PlatformError> {
+    fn bind_player(&self, component_id: &str) -> Result<Box<dyn VideoPlayerHandle>, PlatformError> {
         // List all registered players for debugging
         let manager = get_player_manager();
         if let Ok(players) = manager.read() {

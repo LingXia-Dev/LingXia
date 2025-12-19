@@ -288,46 +288,39 @@ class NativeBridge {
       return LxAppScan.scanCode(payload);
     });
 
-    this.register('videoPlayerSeekDone', (componentId: string, positionMs: string): boolean => {
-      const position = parseInt(positionMs, 10);
-      if (isNaN(position)) return false;
-      LxNativeVideoPlayer.onSeekDone(componentId, position);
-      return true;
-    });
-
-    this.register('videoPlayerBuffering', (componentId: string, isBuffering: string): boolean => {
-      LxNativeVideoPlayer.onBufferingChange(componentId, isBuffering === '1');
-      return true;
-    });
-
-    this.register('videoPlayerPrepared', (componentId: string): boolean => {
-      LxNativeVideoPlayer.onPrepared(componentId);
-      return true;
-    });
-
-    this.register('videoPlayerStopped', (componentId: string): boolean => {
-      LxNativeVideoPlayer.onStopped(componentId);
-      return true;
-    });
-
-    this.register('videoPlayerPlaying', (componentId: string): boolean => {
-      LxNativeVideoPlayer.onPlaying(componentId);
-      return true;
-    });
-
-    this.register('videoPlayerPaused', (componentId: string): boolean => {
-      LxNativeVideoPlayer.onPaused(componentId);
-      return true;
-    });
-
-    this.register('videoPlayerEnterFullscreen', (componentId: string): boolean => {
-      LxNativeVideoPlayer.enterFullscreenStatic(componentId);
-      return true;
-    });
-
-    this.register('videoPlayerExitFullscreen', (componentId: string): boolean => {
-      LxNativeVideoPlayer.exitFullscreen(componentId);
-      return true;
+    this.register('videoPlayerEvent', (componentId: string, event: string, payload?: string): boolean => {
+      switch (event) {
+        case 'seekDone': {
+          const position = parseInt(payload ?? '', 10);
+          if (isNaN(position)) return false;
+          LxNativeVideoPlayer.onSeekDone(componentId, position);
+          return true;
+        }
+        case 'buffering':
+          LxNativeVideoPlayer.onBufferingChange(componentId, (payload ?? '') === '1');
+          return true;
+        case 'prepared':
+          LxNativeVideoPlayer.onPrepared(componentId);
+          return true;
+        case 'stopped':
+          LxNativeVideoPlayer.onStopped(componentId);
+          return true;
+        case 'playing':
+          LxNativeVideoPlayer.onPlaying(componentId);
+          return true;
+        case 'paused':
+          LxNativeVideoPlayer.onPaused(componentId);
+          return true;
+        case 'enterFullscreen':
+          LxNativeVideoPlayer.enterFullscreenStatic(componentId);
+          return true;
+        case 'exitFullscreen':
+          LxNativeVideoPlayer.exitFullscreen(componentId);
+          return true;
+        default:
+          hilog.warn(DOMAIN, TAG, `videoPlayerEvent: unknown event=${event}`);
+          return false;
+      }
     });
 
     // Pull-to-Refresh APIs

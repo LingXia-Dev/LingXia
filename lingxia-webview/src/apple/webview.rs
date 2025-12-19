@@ -638,7 +638,6 @@ impl WebViewInner {
             Ok(())
         }
     }
-
 }
 
 impl WebViewController for WebViewInner {
@@ -757,7 +756,6 @@ impl WebViewController for WebViewInner {
             Ok(())
         }
     }
-
 }
 
 impl Drop for WebViewInner {
