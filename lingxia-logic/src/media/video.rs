@@ -26,7 +26,7 @@ impl JSVideoContext {
         let lxapp = LxApp::from_ctx(ctx)?;
         let runtime: &dyn VideoPlayerManager = lxapp.runtime.as_ref();
         let handle = runtime
-            .bind_player(&component_id, 0)
+            .bind_player(&component_id)
             .map_err(|e| RongJSError::Error(e.to_string()))?;
 
         Ok(Self {
