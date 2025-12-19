@@ -63,6 +63,7 @@ export class LxNativeVideoConfig {
   muted: boolean = false;
   volume: number = 1.0;
   controls: boolean = true;
+  progressBar: boolean = true;
   cornerRadius: number = 0;
   objectFit: string = 'contain';
   qualities: LxMediaQuality[] = []; // Available quality options
@@ -491,7 +492,7 @@ export struct LxNativeVideoPlayer {
     if (!this.state.currentQuality && this.config.qualities.length > 0) {
       this.state.currentQuality = this.config.qualities[0].label;
     }
-    log(`[${this.componentId}] aboutToAppear: poster=${this.config.poster}, cachedPoster=${this.cachedPoster}, autoplay=${this.config.autoplay}, cachedAutoplay=${this.cachedAutoplay}, showPoster=${this.showPoster}, xComponentId=${this.xComponentId}, playerCreated=${this.playerCreated}, boundSurfaceId=${this.boundSurfaceId}, hasNativePlayer=${LxNativeVideoPlayer.hasNativePlayer(this.componentId)}, currentQuality=${this.state.currentQuality}, hasOnEvent=${!!this.onEvent}`);
+    log(`[${this.componentId}] aboutToAppear: poster=${this.config.poster}, cachedPoster=${this.cachedPoster}, autoplay=${this.config.autoplay}, cachedAutoplay=${this.cachedAutoplay}, progressBar=${this.config.progressBar}, showPoster=${this.showPoster}, xComponentId=${this.xComponentId}, playerCreated=${this.playerCreated}, boundSurfaceId=${this.boundSurfaceId}, hasNativePlayer=${LxNativeVideoPlayer.hasNativePlayer(this.componentId)}, currentQuality=${this.state.currentQuality}, hasOnEvent=${!!this.onEvent}`);
 
     // Reset state for clean recreation (same-level remount may skip aboutToDisappear)
     this.playerCreated = false;
@@ -948,6 +949,7 @@ export struct LxNativeVideoPlayer {
       volume: this.config.volume,
       muted: this.config.muted,
       controlSize: VideoControlSize.COMPACT,
+      showProgressBar: this.config.progressBar,
       showVolumeSlider: true,
       showFullscreenButton: !this.isFullscreen,
       showExitButton: this.isFullscreen,

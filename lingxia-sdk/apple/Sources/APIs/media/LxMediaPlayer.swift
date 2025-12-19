@@ -101,6 +101,7 @@ public struct LxMediaPlayerConfig {
     public var muted: Bool?
     public var volume: Double?
     public var controls: Bool?  // Show or hide all playback controls (HTML5 standard)
+    public var progressBar: Bool? // Show or hide just the progress bar
     public var cornerRadius: Double?
     public var qualities: [LxMediaQuality]?  // First is default
     public var speeds: [Double]?             // First is default (playbackRates)
@@ -116,6 +117,7 @@ public struct LxMediaPlayerConfig {
         muted: Bool? = nil,
         volume: Double? = nil,
         controls: Bool? = nil,
+        progressBar: Bool? = nil,
         cornerRadius: Double? = nil,
         qualities: [LxMediaQuality]? = nil,
         speeds: [Double]? = nil,
@@ -130,6 +132,7 @@ public struct LxMediaPlayerConfig {
         self.muted = muted
         self.volume = volume
         self.controls = controls
+        self.progressBar = progressBar
         self.cornerRadius = cornerRadius
         self.qualities = qualities
         self.speeds = speeds
@@ -149,6 +152,7 @@ public struct LxMediaPlayerConfig {
         if let muted { dict["muted"] = muted }
         if let volume { dict["volume"] = volume }
         if let controls { dict["controls"] = controls }
+        if let progressBar { dict["progressBar"] = progressBar }
         if let cornerRadius { dict["cornerRadius"] = cornerRadius }
         if let qualities { dict["qualities"] = qualities.map { $0.bridgeValue } }
         if let speeds { dict["speeds"] = speeds }
@@ -403,6 +407,7 @@ public final class LxMediaPlayer: NSObject {
 
     // Config
     private var controlsEnabled = true  // HTML5 standard: show/hide all controls
+    private var showProgressBar = true  // Show/hide progress bar
     private var showCloseButton = false // Only show in preview mode
     private var showFullscreenButton = true // Show fullscreen button
     private var loopEnabled = false // Loop playback when video ends
@@ -652,8 +657,16 @@ public final class LxMediaPlayer: NSObject {
             updateVolumeIcon(volume: volume)
         }
 
+        var shouldUpdateControlsVisibility = false
         if let controls = config.controls {
             controlsEnabled = controls
+            shouldUpdateControlsVisibility = true
+        }
+        if let progressBar = config.progressBar {
+            showProgressBar = progressBar
+            shouldUpdateControlsVisibility = true
+        }
+        if shouldUpdateControlsVisibility {
             updateControlsVisibility()
         }
 
@@ -1571,6 +1584,13 @@ public final class LxMediaPlayer: NSObject {
         let hideControls = !controlsEnabled
         topBar.isHidden = hideControls
         bottomBar.isHidden = hideControls
+        updateProgressBarVisibility()
+    }
+
+    private func updateProgressBarVisibility() {
+        let hideProgress = !controlsEnabled || !showProgressBar
+        progressSlider.isHidden = hideProgress
+        timeLabel.isHidden = hideProgress
     }
 
     private func updateCloseButtonVisibility() {

@@ -50,6 +50,7 @@ internal class LxMediaControlsOverlay(
     private var showCloseButton = false
     private var showFullscreenButton = true
     private var showSettingsButton = false
+    private var showProgressBar = true
     private var isSeeking = false
     private var lockedSeekSeconds: Double? = null
 
@@ -70,6 +71,7 @@ internal class LxMediaControlsOverlay(
     private lateinit var bottomBar: FrameLayout
     private lateinit var closeButton: ImageButton
     private lateinit var titleLabel: TextView
+    private lateinit var progressRow: LinearLayout
     private lateinit var progressSeekBar: SeekBar
     private lateinit var timeLabel: TextView
     private lateinit var playPauseButton: ImageButton
@@ -199,7 +201,7 @@ internal class LxMediaControlsOverlay(
         val progressTop = dp(6)
         val progressRowHeight = dp(44)
 
-        val progressRow = LinearLayout(context).apply {
+        progressRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             layoutParams = FrameLayout.LayoutParams(
@@ -212,6 +214,7 @@ internal class LxMediaControlsOverlay(
                 topMargin = progressTop
             }
         }
+        updateProgressRowVisibility()
 
         progressSeekBar = SeekBar(context).apply {
             layoutParams = LinearLayout.LayoutParams(0, dp(32), 1f).apply {
@@ -531,6 +534,17 @@ internal class LxMediaControlsOverlay(
         fullscreenButton.setImageResource(if (player.isFullscreen()) R.drawable.icon_fullscreen_exit else R.drawable.icon_fullscreen_enter)
         fullscreenButton.imageTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
         fullscreenButton.visibility = if (showFullscreenButton) View.VISIBLE else View.GONE
+    }
+
+    fun setShowProgressBar(show: Boolean) {
+        if (showProgressBar == show) return
+        showProgressBar = show
+        updateProgressRowVisibility()
+    }
+
+    private fun updateProgressRowVisibility() {
+        if (!::progressRow.isInitialized) return
+        progressRow.visibility = if (showProgressBar) View.VISIBLE else View.GONE
     }
 
     fun updateSettingsButton() {

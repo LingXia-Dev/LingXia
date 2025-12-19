@@ -103,6 +103,7 @@ class VideoComponent(
             (props["muted"] as? Boolean)?.let { config.muted = it }
             (props["volume"] as? Number)?.let { config.volume = it.toDouble() }
             (props["controls"] as? Boolean)?.let { config.controls = it }
+            (props["progressBar"] as? Boolean)?.let { config.progressBar = it }
             (props["cornerRadius"] as? Number)?.let { config.cornerRadius = it.toDouble() }
 
             config.qualities = parseQualities(props["qualities"])

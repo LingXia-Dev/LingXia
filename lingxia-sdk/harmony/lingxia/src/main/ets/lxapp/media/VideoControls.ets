@@ -60,6 +60,7 @@ export struct VideoControlsView {
   @Prop volume: number = 0.8;
   @Prop muted: boolean = false;
   @Prop controlSize: string = VideoControlSize.COMPACT;  // renamed from 'size' to avoid ArkTS reserved property
+  @Prop showProgressBar: boolean = true;
   @Prop showVolumeSlider: boolean = true;
   @Prop showFullscreenButton: boolean = false;
   @Prop showExitButton: boolean = false;
@@ -246,27 +247,29 @@ export struct VideoControlsView {
     Stack({ alignContent: Alignment.BottomEnd }) {
       Column() {
         // Progress bar row
-        Row() {
-          Slider({ value: this.sliderValue, min: 0, max: 100, step: 0.1 })
-            .layoutWeight(1)
-            .blockColor(Color.White)
-            .trackColor('rgba(255,255,255,0.3)')
-            .selectedColor(Color.White)
-            .trackThickness(this.getDim().trackThickness)
-            .blockSize({ width: this.getDim().blockSize, height: this.getDim().blockSize })
-            .sliderInteractionMode(SliderInteraction.SLIDE_AND_CLICK)
-            .onChange((value: number, mode: SliderChangeMode) => this.onSliderChange(value, mode))
+        if (this.showProgressBar) {
+          Row() {
+            Slider({ value: this.sliderValue, min: 0, max: 100, step: 0.1 })
+              .layoutWeight(1)
+              .blockColor(Color.White)
+              .trackColor('rgba(255,255,255,0.3)')
+              .selectedColor(Color.White)
+              .trackThickness(this.getDim().trackThickness)
+              .blockSize({ width: this.getDim().blockSize, height: this.getDim().blockSize })
+              .sliderInteractionMode(SliderInteraction.SLIDE_AND_CLICK)
+              .onChange((value: number, mode: SliderChangeMode) => this.onSliderChange(value, mode))
 
-          Text(this.showTimeRemaining
-            ? `-${formatVideoTime(Math.max(0, this.duration - this.currentTime))}`
-            : formatVideoTime(this.duration))
-            .fontSize(this.getDim().fontSize)
-            .fontColor(Color.White)
-            .margin({ left: 6 })
+            Text(this.showTimeRemaining
+              ? `-${formatVideoTime(Math.max(0, this.duration - this.currentTime))}`
+              : formatVideoTime(this.duration))
+              .fontSize(this.getDim().fontSize)
+              .fontColor(Color.White)
+              .margin({ left: 6 })
+          }
+          .width('100%')
+          .height(this.getDim().progressHeight)
+          .alignItems(VerticalAlign.Center)
         }
-        .width('100%')
-        .height(this.getDim().progressHeight)
-        .alignItems(VerticalAlign.Center)
 
         // Control buttons row
         Row() {

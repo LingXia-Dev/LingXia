@@ -91,6 +91,9 @@ struct SameLevelVideoComponent {
     const controls = props.get('controls');
     if (typeof controls === 'boolean') config.controls = controls;
 
+    const progressBar = props.get('progressBar');
+    if (typeof progressBar === 'boolean') config.progressBar = progressBar;
+
     const cornerRadius = props.get('cornerRadius');
     if (typeof cornerRadius === 'number') config.cornerRadius = cornerRadius;
 

@@ -91,6 +91,7 @@ data class LxMediaPlayerConfig(
     var muted: Boolean? = null,
     var volume: Double? = null,
     var controls: Boolean? = null,
+    var progressBar: Boolean? = null,
     var cornerRadius: Double? = null,
     var qualities: List<LxMediaQuality>? = null,
     var speeds: List<Double>? = null,
@@ -451,6 +452,7 @@ class LxMediaPlayer(
         config.muted?.let { setMuted(it) }
         config.volume?.let { setVolume(it) }
         config.controls?.let { controlsEnabled = it; controlsOverlay?.setVisible(it) }
+        config.progressBar?.let { controlsOverlay?.setShowProgressBar(it) }
         config.cornerRadius?.let { setCornerRadius(it) }
         config.qualities?.let { qualities ->
             availableQualities = qualities
