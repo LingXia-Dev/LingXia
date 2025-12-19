@@ -16,6 +16,7 @@ export type LxVideoAttributes = {
   loop?: boolean;
   muted?: boolean;
   controls?: boolean;
+  progressBar?: boolean;
   volume?: string | number;
   qualities?: LxVideoQuality[];  // First is default
   playbackRates?: number[];      // First is default
@@ -54,6 +55,7 @@ export class LxVideoElement extends HTMLElement {
       "loop",
       "muted",
       "controls",
+      "progress-bar",
       "volume",
       "qualities",
       "playback-rates"
@@ -256,6 +258,7 @@ export class LxVideoElement extends HTMLElement {
       loop: this.hasAttribute("loop"),
       muted: this.hasAttribute("muted"),
       controls: this.hasAttribute("controls"),
+      progressBar: this.getAttribute("progress-bar") !== "false",
       volume: !Number.isNaN(volume ?? NaN) ? volume : undefined,
       qualities,
       playbackRates

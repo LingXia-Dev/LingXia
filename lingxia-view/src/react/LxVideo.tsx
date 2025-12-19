@@ -64,7 +64,16 @@ export const LxVideo = forwardRef<HTMLElement, LxVideoProps>((props, ref) => {
   for (const [key, value] of Object.entries(props)) {
     if (key.startsWith("on") && typeof value === "function") continue;
     if (key === "children" || key === "dangerouslySetInnerHTML" || key === "ref") continue;
-    const attrName = key === "playbackRates" ? "playback-rates" : key;
+
+    let attrName = key;
+    if (key === "playbackRates") attrName = "playback-rates";
+    if (key === "progressBar") {
+      if (value === false) {
+        domProps["progress-bar"] = "false";
+      }
+      continue;
+    }
+
     domProps[attrName] = (key === "qualities" || key === "playbackRates") && Array.isArray(value)
       ? JSON.stringify(value)
       : value;
