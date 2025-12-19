@@ -36,6 +36,7 @@ import com.lingxia.lxapp.LxApp
 import com.lingxia.lxapp.R
 import com.lingxia.lxapp.SameLevel.ComponentRouter
 import java.io.File
+import kotlin.math.max
 
 private const val TAG = "LxMediaPlayer"
 
@@ -123,8 +124,7 @@ sealed class LxMediaEvent {
     data class VolumeChange(val volume: Double) : LxMediaEvent()
     data class FullscreenChange(val fullScreen: Boolean, val direction: String) : LxMediaEvent()
     data class LoadedMetadata(val width: Double, val height: Double, val duration: Double) : LxMediaEvent()
-    data class QualityRequest(val available: List<LxMediaQuality>, val current: String?) : LxMediaEvent()
-    data class SpeedRequest(val available: List<Double>, val current: Double?) : LxMediaEvent()
+    data class QualityChange(val quality: String, val url: String?) : LxMediaEvent()
     data class Error(val code: String, val message: String) : LxMediaEvent()
     data class Raw(val name: String, val data: Map<String, Any>) : LxMediaEvent()
 
@@ -137,12 +137,11 @@ sealed class LxMediaEvent {
             is Waiting -> "waiting"
             is Seeked -> "seeked"
             is TimeUpdate -> "timeupdate"
-            is RateChange -> "ratechange"
+            is RateChange -> "playbackratechange"
             is VolumeChange -> "volumechange"
             is FullscreenChange -> "fullscreenchange"
             is LoadedMetadata -> "loadedmetadata"
-            is QualityRequest -> "qualityrequest"
-            is SpeedRequest -> "speedrequest"
+            is QualityChange -> "qualitychange"
             is Error -> "error"
             is Raw -> name
         }
@@ -156,14 +155,7 @@ sealed class LxMediaEvent {
             is VolumeChange -> mapOf("volume" to volume)
             is FullscreenChange -> mapOf("fullScreen" to fullScreen, "direction" to direction)
             is LoadedMetadata -> mapOf("width" to width, "height" to height, "duration" to duration)
-            is QualityRequest -> buildMap {
-                put("availableQualities", available.map { mapOf("label" to it.label, "url" to (it.url ?: "")) })
-                current?.let { put("currentQuality", it) }
-            }
-            is SpeedRequest -> buildMap {
-                put("availableRates", available)
-                current?.let { put("currentRate", it) }
-            }
+            is QualityChange -> mapOf("quality" to quality, "url" to (url ?: ""))
             is Error -> mapOf("code" to code, "message" to message)
             is Raw -> data
         }
@@ -213,7 +205,8 @@ class LxMediaPlayer(
     // State
     private var currentSource: Uri? = null
     private var isFullscreen = false
-    private var isSeeking = false  // Track seeking state to avoid showing loading indicator
+    private var suppressWaitingUntilMs: Long = 0
+    private var isPausedByUser = false  // Track if user explicitly paused (vs buffering)
     private var firstFrameDisplayed = false
     private var posterUrl: String? = null
     private var videoWidth = 0.0
@@ -222,6 +215,9 @@ class LxMediaPlayer(
     private var closeRequestListener: (() -> Unit)? = null
     private var lastTimeForPoster: Double = -1.0  // Track time progression for poster hiding
     private var pendingPosterHide = false  // Flag to delay poster hiding until time progresses
+    
+    // State restoration for quality switching: (seekToMs, shouldPlay)
+    private var pendingRestoreAfterLoad: Pair<Long, Boolean>? = null
 
     // Fullscreen state
     private var fullscreenDialog: android.app.Dialog? = null
@@ -248,7 +244,19 @@ class LxMediaPlayer(
             when (playbackState) {
                 Player.STATE_READY -> {
                     loadingIndicator?.visibility = View.GONE
-                    isSeeking = false  // Seek complete
+                    clearWaitingSuppression()
+                    
+                    // Handle state restoration (e.g. after quality switch)
+                    pendingRestoreAfterLoad?.let { (seekToMs, shouldPlay) ->
+                        Log.d(TAG, "Restoring state: seekTo=$seekToMs, play=$shouldPlay")
+                        pendingRestoreAfterLoad = null
+                        suppressWaitingFor(1500) // Prevent Waiting event during seek
+                        player?.seekTo(seekToMs)
+                        if (shouldPlay) {
+                            player?.play()
+                        }
+                    }
+                    
                     if (!firstFrameDisplayed) {
                         // Don't hide poster immediately - wait for time to progress
                         // This prevents black screen flash when video is buffering
@@ -257,16 +265,27 @@ class LxMediaPlayer(
                         emitLoadedMetadata()
                         scheduleRectSync(doublePass = true)
                     }
+
+                    // Ensure buffering status is cleared
+                    if (player?.isPlaying == true) {
+                        emitEvent(LxMediaEvent.Play)
+                    } else {
+                        emitEvent(LxMediaEvent.Pause)
+                    }
                 }
                 Player.STATE_BUFFERING -> {
+                    val now = android.os.SystemClock.uptimeMillis()
+                    val suppressWaiting = now < suppressWaitingUntilMs
                     // Don't show loading during seek - better UX (frame stays visible)
-                    if (!isSeeking) {
+                    // Also don't show loading if user explicitly paused
+                    if (!suppressWaiting && !isPausedByUser) {
                         loadingIndicator?.visibility = View.VISIBLE
                         emitEvent(LxMediaEvent.Waiting)
                     }
                 }
                 Player.STATE_ENDED -> {
                     loadingIndicator?.visibility = View.GONE
+                    clearWaitingSuppression()
                     emitEvent(LxMediaEvent.Ended)
                     if (loopEnabled) {
                         player?.seekTo(0)
@@ -287,7 +306,7 @@ class LxMediaPlayer(
                 }
                 Player.STATE_IDLE -> {
                     loadingIndicator?.visibility = View.GONE
-                    isSeeking = false
+                    clearWaitingSuppression()
                 }
             }
             controlsOverlay?.updatePlayPauseButton()
@@ -299,7 +318,8 @@ class LxMediaPlayer(
                 startTimeUpdates()
                 scheduleRectSync(doublePass = false)
             } else {
-                emitEvent(LxMediaEvent.Pause)
+                // Don't emit pause here - isPlaying=false can be due to buffering
+                // Pause event is emitted explicitly in pause() method
                 stopTimeUpdates()
             }
             controlsOverlay?.updatePlayPauseButton()
@@ -427,14 +447,29 @@ class LxMediaPlayer(
         }
 
         config.poster?.let { posterUrl = it; loadPoster(it) }
-        config.autoplay?.let { if (it) player?.playWhenReady = true }
         config.loop?.let { loopEnabled = it }
         config.muted?.let { setMuted(it) }
         config.volume?.let { setVolume(it) }
         config.controls?.let { controlsEnabled = it; controlsOverlay?.setVisible(it) }
         config.cornerRadius?.let { setCornerRadius(it) }
-        config.qualities?.let { availableQualities = it }
-        availablePlaybackRates = config.speeds ?: emptyList()
+        config.qualities?.let { qualities ->
+            availableQualities = qualities
+            val existing = currentQuality
+            currentQuality = when {
+                existing != null && qualities.any { it.label == existing } -> existing
+                else -> qualities.firstOrNull()?.label
+            }
+        }
+        config.speeds?.let { rates ->
+            availablePlaybackRates = rates
+            val current = currentPlaybackRate.toDouble()
+            currentPlaybackRate = when {
+                rates.any { it == current } -> current.toFloat()
+                else -> rates.firstOrNull()?.toFloat() ?: 1.0f
+            }
+            player?.setPlaybackSpeed(currentPlaybackRate)
+        }
+        config.autoplay?.let { if (it) player?.playWhenReady = true }
         config.objectFit?.let { setObjectFit(it) }
         controlsOverlay?.updateSettingsButton()
     }
@@ -520,6 +555,7 @@ class LxMediaPlayer(
 
     fun play() {
         val p = player ?: return
+        isPausedByUser = false  // User wants to play
         when (p.playbackState) {
             Player.STATE_ENDED -> {
                 p.seekTo(0)
@@ -529,16 +565,25 @@ class LxMediaPlayer(
                 p.prepare()
             }
         }
+        p.setPlaybackSpeed(currentPlaybackRate)
         p.play()
     }
 
     fun pause() {
+        isPausedByUser = true  // User explicitly paused
+        clearWaitingSuppression()
         player?.pause()
+        // Always emit pause event when user explicitly pauses
+        // (onIsPlayingChanged no longer sends pause to avoid confusion with buffering)
+        emitEvent(LxMediaEvent.Pause)
+        stopTimeUpdates()
+        loadingIndicator?.visibility = View.GONE
     }
 
     fun stop() {
         // Get duration before stopping
         val duration = (player?.duration ?: 0L).toDouble() / 1000.0
+        clearWaitingSuppression()
         
         player?.stop()
         player?.seekTo(0)
@@ -559,7 +604,7 @@ class LxMediaPlayer(
 
     fun seek(time: Double) {
         val positionMs = (time * 1000).toLong()
-        isSeeking = true  // Don't show loading indicator during seek
+        suppressWaitingFor(1500) // Don't show loading indicator during seek
         player?.seekTo(positionMs)
         emitEvent(LxMediaEvent.Seeked(time))
         updateProgressUIAfterSeek(time)
@@ -585,8 +630,6 @@ class LxMediaPlayer(
         currentPlaybackRate = rate.toFloat()
         player?.setPlaybackSpeed(currentPlaybackRate)
         emitEvent(LxMediaEvent.RateChange(rate))
-        // Also emit SpeedRequest event to update any listeners
-        emitEvent(LxMediaEvent.SpeedRequest(availablePlaybackRates, rate))
     }
 
     fun setShowCloseButton(show: Boolean) {
@@ -1062,6 +1105,7 @@ class LxMediaPlayer(
     internal fun getCurrentPosition(): Long = player?.currentPosition ?: 0
     internal fun getDuration(): Long = player?.duration ?: 0
     internal fun getAvailableQualities(): List<LxMediaQuality> = availableQualities
+    internal fun getCurrentQuality(): String? = currentQuality
     internal fun getAvailableSpeeds(): List<Double> = availablePlaybackRates
     internal fun getCurrentSpeed(): Double = currentPlaybackRate.toDouble()
     internal fun isFullscreen(): Boolean = isFullscreen
@@ -1073,34 +1117,20 @@ class LxMediaPlayer(
         closeRequestListener?.invoke()
     }
 
-    internal fun emitQualityRequest(selectedLabel: String) {
+    internal fun emitQualityChange(selectedLabel: String) {
         currentQuality = selectedLabel
-        Log.d(TAG, "Quality request: $selectedLabel, available: ${availableQualities.map { it.label }}")
+        val switchedUrl = availableQualities
+            .firstOrNull { it.label == selectedLabel }
+            ?.url
+            ?.takeIf { it.isNotBlank() }
 
-        // Find the selected quality and switch to its URL if available
-        val selectedQuality = availableQualities.find { it.label == selectedLabel }
-        selectedQuality?.url?.let { url ->
-            if (url.isNotEmpty()) {
-                Log.d(TAG, "Switching to quality URL: $url")
-                // Remember current position and playing state
-                val currentPosition = player?.currentPosition ?: 0L
-                val wasPlaying = player?.isPlaying == true
-
-                // Load the new source
-                loadSource(Uri.parse(url))
-
-                // Seek to previous position after a short delay to allow buffering
-                mainHandler.postDelayed({
-                    player?.seekTo(currentPosition)
-                    if (wasPlaying) {
-                        player?.play()
-                    }
-                    Log.d(TAG, "Resumed at position: ${currentPosition}ms, playing: $wasPlaying")
-                }, 500)
-            }
+        val switchedUri = switchedUrl?.let(Uri::parse)
+        if (switchedUri != null && switchedUri != currentSource) {
+            pendingRestoreAfterLoad = (player?.currentPosition ?: 0L) to (player?.isPlaying == true)
+            loadSource(switchedUri)
         }
 
-        emitEvent(LxMediaEvent.QualityRequest(availableQualities, currentQuality))
+        emitEvent(LxMediaEvent.QualityChange(selectedLabel, switchedUrl))
     }
 
     private fun isLandscapeVideo(): Boolean {
@@ -1125,5 +1155,14 @@ class LxMediaPlayer(
         val durationMs = player?.duration ?: return
         if (durationMs <= 0) return
         controlsOverlay?.updateProgress(positionSeconds, durationMs.toDouble() / 1000.0)
+    }
+
+    private fun suppressWaitingFor(durationMs: Long) {
+        val now = android.os.SystemClock.uptimeMillis()
+        suppressWaitingUntilMs = max(suppressWaitingUntilMs, now + durationMs)
+    }
+
+    private fun clearWaitingSuppression() {
+        suppressWaitingUntilMs = 0
     }
 }

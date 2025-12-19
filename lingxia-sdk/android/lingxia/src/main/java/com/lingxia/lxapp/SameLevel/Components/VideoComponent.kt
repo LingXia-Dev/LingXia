@@ -22,7 +22,7 @@ class VideoComponentFactory : LxNativeComponentFactory {
 
 class VideoComponent(
     override val id: String,
-    initialProps: Map<String, Any?>,
+    private val initialProps: Map<String, Any?>,
     eventSink: (Map<String, Any>) -> Unit
 ) : LxNativeComponent {
 
@@ -40,6 +40,7 @@ class VideoComponent(
                 lastFrame?.let { player?.setFrame(it.left, it.top, it.width(), it.height()) }
             }
         }, componentId = id)
+        player?.update(makeConfig(initialProps))
         host.addView(player!!.view)
     }
 
@@ -104,25 +105,32 @@ class VideoComponent(
             (props["controls"] as? Boolean)?.let { config.controls = it }
             (props["cornerRadius"] as? Number)?.let { config.cornerRadius = it.toDouble() }
 
-            // Parse qualities
-            (props["qualities"] as? List<*>)?.let { qualitiesList ->
-                config.qualities = qualitiesList.mapNotNull { entry ->
-                    val map = entry as? Map<*, *> ?: return@mapNotNull null
-                    val label = map["label"] as? String ?: return@mapNotNull null
-                    val url = map["url"] as? String
-                    LxMediaQuality(label, url)
-                }
-            }
-
-            // Parse speeds
-            (props["speeds"] as? List<*>)?.let { speedsList ->
-                config.speeds = speedsList.mapNotNull { (it as? Number)?.toDouble() }
-            }
+            config.qualities = parseQualities(props["qualities"])
+            config.speeds = parseRates(props["playbackRates"])
 
             (props["showControlsOnInit"] as? Boolean)?.let { config.showControlsOnInit = it }
             (props["objectFit"] as? String)?.let { config.objectFit = LxMediaObjectFit.fromString(it) }
 
             return config
+        }
+
+        private fun parseQualities(value: Any?): List<LxMediaQuality>? {
+            val list = (value as? List<*>)?.mapNotNull(::parseQualityEntry).orEmpty()
+            return list.takeIf { it.isNotEmpty() }
+        }
+
+        private fun parseQualityEntry(entry: Any?): LxMediaQuality? = when (entry) {
+            is Map<*, *> -> {
+                val label = entry["label"] as? String ?: return null
+                val url = entry["url"] as? String
+                LxMediaQuality(label, url)
+            }
+            else -> null
+        }
+
+        private fun parseRates(value: Any?): List<Double>? {
+            val list = (value as? List<*>)?.mapNotNull { (it as? Number)?.toDouble() }.orEmpty()
+            return list.takeIf { it.isNotEmpty() }
         }
 
         fun makeCommand(name: String, params: Map<String, Any?>?): LxMediaCommand? {

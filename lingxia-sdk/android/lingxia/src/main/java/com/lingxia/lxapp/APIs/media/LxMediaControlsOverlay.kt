@@ -359,7 +359,7 @@ internal class LxMediaControlsOverlay(
         }
 
         settingsButton = ImageButton(context).apply {
-            layoutParams = LinearLayout.LayoutParams(dp(36), dp(36))
+            layoutParams = LinearLayout.LayoutParams(buttonWidth, buttonWidth)
             setBackgroundColor(Color.TRANSPARENT)
             setImageResource(R.drawable.icon_settings)
             setColorFilter(Color.WHITE)
@@ -583,94 +583,51 @@ internal class LxMediaControlsOverlay(
         return "%d:%02d".format(minutes, seconds)
     }
 
-    private fun formatRate(rate: Double): String {
-        return if (rate == rate.toLong().toDouble()) {
-            "${rate.toLong()}x"
-        } else {
-            "${rate}x"
+    private fun formatRate(rate: Double): String =
+        if (rate == rate.toLong().toDouble()) "${rate.toLong()}x" else "${rate}x"
+
+    private fun dp(value: Int): Int = TypedValue.applyDimension(
+        TypedValue.COMPLEX_UNIT_DIP,
+        value.toFloat(),
+        context.resources.displayMetrics
+    ).toInt()
+
+    private fun createPopupContainer(): FrameLayout = FrameLayout(context).apply {
+        tag = POPUP_MENU_TAG
+        background = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = dp(13).toFloat()
+            setColor(POPUP_BG)
+            setStroke(1, POPUP_BORDER)
         }
+        elevation = dp(12).toFloat()
     }
 
-    private fun dp(value: Int): Int {
-        return TypedValue.applyDimension(
-            TypedValue.COMPLEX_UNIT_DIP,
-            value.toFloat(),
-            context.resources.displayMetrics
-        ).toInt()
+    private fun createPopupOverlay(): View = View(context).apply {
+        tag = POPUP_OVERLAY_TAG
+        layoutParams = FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        )
+        setBackgroundColor(Color.argb((0.3 * 255).toInt(), 0, 0, 0))
+        setOnClickListener { dismissSettingsPopup() }
+        alpha = 0f
     }
 
-    private fun showSettingsPopup() {
-        val qualities = player.getAvailableQualities()
-        val speeds = player.getAvailableSpeeds()
-        val currentQuality = qualities.firstOrNull()?.label
-        val currentSpeed = player.getCurrentSpeed()
+    private fun showPopup(menuWidth: Int, content: View) {
+        val popup = createPopupContainer().apply { addView(content) }
 
-        val menuWidth = dp(180)
-        var yOffset = dp(8)
-
-        // Create popup container
-        val popup = FrameLayout(context).apply {
-            tag = POPUP_MENU_TAG
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = dp(13).toFloat()
-                setColor(POPUP_BG)
-                setStroke(1, POPUP_BORDER)
-            }
-            elevation = dp(12).toFloat()
-        }
-
-        val content = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-            setPadding(dp(8), dp(8), dp(8), dp(8))
-        }
-
-        // Quality option
-        if (qualities.isNotEmpty()) {
-            val qualityButton = createMainMenuButton(
-                title = "Quality",
-                subtitle = currentQuality ?: "Auto",
-                iconRes = android.R.drawable.ic_menu_gallery
-            ) { showQualitySubmenu() }
-            content.addView(qualityButton)
-        }
-
-        // Speed option
-        if (speeds.isNotEmpty()) {
-            val speedButton = createMainMenuButton(
-                title = "Speed",
-                subtitle = formatRate(currentSpeed),
-                iconRes = android.R.drawable.ic_menu_manage
-            ) { showSpeedSubmenu() }
-            content.addView(speedButton)
-        }
-
-        popup.addView(content)
-
-        // Measure popup
         popup.measure(
             View.MeasureSpec.makeMeasureSpec(menuWidth, View.MeasureSpec.EXACTLY),
             View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
         )
         val popupHeight = popup.measuredHeight
 
-        // Position near settings button
-        val settingsLoc = IntArray(2)
-        settingsButton.getLocationOnScreen(settingsLoc)
-        val viewLoc = IntArray(2)
-        view.getLocationOnScreen(viewLoc)
-
-        val settingsX = settingsLoc[0] - viewLoc[0]
-        val settingsY = settingsLoc[1] - viewLoc[1]
+        val (settingsX, settingsY) = locationInOverlay(settingsButton)
 
         var popupX = settingsX + settingsButton.width / 2 - menuWidth / 2
         var popupY = settingsY - popupHeight - dp(12)
 
-        // Keep within bounds
         val minX = dp(12)
         val maxX = maxOf(minX, view.width - menuWidth - dp(12))
         val minY = dp(12)
@@ -681,24 +638,13 @@ internal class LxMediaControlsOverlay(
         popup.layoutParams = FrameLayout.LayoutParams(menuWidth, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
             leftMargin = popupX
             topMargin = popupY
+            gravity = Gravity.TOP or Gravity.START
         }
 
-        // Add tap-to-dismiss overlay
-        val overlay = View(context).apply {
-            tag = POPUP_OVERLAY_TAG
-            layoutParams = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-            setBackgroundColor(Color.argb((0.3 * 255).toInt(), 0, 0, 0))
-            setOnClickListener { dismissSettingsPopup() }
-            alpha = 0f
-        }
-
+        val overlay = createPopupOverlay()
         view.addView(overlay)
         view.addView(popup)
 
-        // Animate in
         popup.alpha = 0f
         popup.scaleX = 0.8f
         popup.scaleY = 0.8f
@@ -716,14 +662,50 @@ internal class LxMediaControlsOverlay(
         overlay.animate().alpha(1f).setDuration(200).start()
     }
 
+    private fun showSettingsPopup() {
+        val qualities = player.getAvailableQualities()
+        val speeds = player.getAvailableSpeeds()
+        val currentQuality = player.getCurrentQuality() ?: qualities.firstOrNull()?.label
+        val currentSpeed = player.getCurrentSpeed()
+
+        val content = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+        }
+
+        // Quality option
+        if (qualities.isNotEmpty()) {
+            val qualityButton = createMainMenuButton(
+                title = context.getString(R.string.lx_video_quality),
+                subtitle = currentQuality ?: "Auto"
+            ) { showQualitySubmenu() }
+            content.addView(qualityButton)
+        }
+
+        // Speed option
+        if (speeds.isNotEmpty()) {
+            val speedButton = createMainMenuButton(
+                title = context.getString(R.string.lx_video_speed),
+                subtitle = formatRate(currentSpeed)
+            ) { showSpeedSubmenu() }
+            content.addView(speedButton)
+        }
+
+        showPopup(dp(180), content)
+    }
+
     private fun showQualitySubmenu() {
         dismissSettingsPopup()
         val qualities = player.getAvailableQualities()
-        val currentQuality = qualities.firstOrNull()?.label
-        showSubmenu("Quality", qualities.map { it.label }, currentQuality) { selected ->
+        val currentQuality = player.getCurrentQuality() ?: qualities.firstOrNull()?.label
+        showSubmenu(qualities.map { it.label }, currentQuality) { selected ->
             Log.d(TAG, "Quality selected: $selected")
-            // Emit quality request event
-            player.emitQualityRequest(selected)
+            // Emit quality change event
+            player.emitQualityChange(selected)
         }
     }
 
@@ -731,27 +713,14 @@ internal class LxMediaControlsOverlay(
         dismissSettingsPopup()
         val speeds = player.getAvailableSpeeds()
         val currentSpeed = player.getCurrentSpeed()
-        showSubmenu("Speed", speeds.map { formatRate(it) }, formatRate(currentSpeed)) { selected ->
+        showSubmenu(speeds.map { formatRate(it) }, formatRate(currentSpeed)) { selected ->
             val rate = selected.removeSuffix("x").toDoubleOrNull() ?: 1.0
             Log.d(TAG, "Speed selected: $rate")
             player.setPlaybackRate(rate)
         }
     }
 
-    private fun showSubmenu(title: String, items: List<String>, current: String?, onSelect: (String) -> Unit) {
-        val menuWidth = dp(200)
-
-        val popup = FrameLayout(context).apply {
-            tag = POPUP_MENU_TAG
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = dp(13).toFloat()
-                setColor(POPUP_BG)
-                setStroke(1, POPUP_BORDER)
-            }
-            elevation = dp(12).toFloat()
-        }
-
+    private fun showSubmenu(items: List<String>, current: String?, onSelect: (String) -> Unit) {
         val content = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = FrameLayout.LayoutParams(
@@ -770,72 +739,10 @@ internal class LxMediaControlsOverlay(
             }
             content.addView(button)
         }
-
-        popup.addView(content)
-
-        // Measure and position
-        popup.measure(
-            View.MeasureSpec.makeMeasureSpec(menuWidth, View.MeasureSpec.EXACTLY),
-            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
-        )
-        val popupHeight = popup.measuredHeight
-
-        val settingsLoc = IntArray(2)
-        settingsButton.getLocationOnScreen(settingsLoc)
-        val viewLoc = IntArray(2)
-        view.getLocationOnScreen(viewLoc)
-
-        val settingsX = settingsLoc[0] - viewLoc[0]
-        val settingsY = settingsLoc[1] - viewLoc[1]
-
-        var popupX = settingsX + settingsButton.width / 2 - menuWidth / 2
-        var popupY = settingsY - popupHeight - dp(12)
-
-        // Keep within bounds
-        val minX = dp(12)
-        val maxX = maxOf(minX, view.width - menuWidth - dp(12))
-        val minY = dp(12)
-        val maxY = maxOf(minY, view.height - popupHeight - dp(12))
-        popupX = popupX.coerceIn(minX, maxX)
-        popupY = popupY.coerceIn(minY, maxY)
-
-        popup.layoutParams = FrameLayout.LayoutParams(menuWidth, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-            leftMargin = popupX
-            topMargin = popupY
-        }
-
-        val overlay = View(context).apply {
-            tag = POPUP_OVERLAY_TAG
-            layoutParams = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-            setBackgroundColor(Color.argb((0.3 * 255).toInt(), 0, 0, 0))
-            setOnClickListener { dismissSettingsPopup() }
-            alpha = 0f
-        }
-
-        view.addView(overlay)
-        view.addView(popup)
-
-        popup.alpha = 0f
-        popup.scaleX = 0.8f
-        popup.scaleY = 0.8f
-        popup.pivotX = menuWidth / 2f
-        popup.pivotY = popupHeight.toFloat()
-
-        popup.animate()
-            .alpha(1f)
-            .scaleX(1f)
-            .scaleY(1f)
-            .setDuration(300)
-            .setInterpolator(OvershootInterpolator(0.8f))
-            .start()
-
-        overlay.animate().alpha(1f).setDuration(200).start()
+        showPopup(dp(200), content)
     }
 
-    private fun createMainMenuButton(title: String, subtitle: String, iconRes: Int, onClick: () -> Unit): LinearLayout {
+    private fun createMainMenuButton(title: String, subtitle: String, onClick: () -> Unit): LinearLayout {
         return LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -843,29 +750,16 @@ internal class LxMediaControlsOverlay(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 dp(44)
             )
-            background = GradientDrawable().apply {
-                cornerRadius = dp(10).toFloat()
-                setColor(Color.argb((0.08 * 255).toInt(), 255, 255, 255))
-            }
+            setBackgroundColor(Color.TRANSPARENT)
             setPadding(dp(12), 0, dp(12), 0)
             isClickable = true
             isFocusable = true
             setOnClickListener { onClick() }
 
-            // Icon
-            val icon = ImageView(context).apply {
-                layoutParams = LinearLayout.LayoutParams(dp(20), dp(20))
-                setImageResource(iconRes)
-                setColorFilter(Color.WHITE)
-            }
-            addView(icon)
-
             // Text container
             val textContainer = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
-                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
-                    marginStart = dp(8)
-                }
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             }
 
             val titleView = TextView(context).apply {
@@ -893,6 +787,14 @@ internal class LxMediaControlsOverlay(
             }
             addView(chevron)
         }
+    }
+
+    private fun locationInOverlay(anchor: View): Pair<Int, Int> {
+        val anchorLoc = IntArray(2)
+        val viewLoc = IntArray(2)
+        anchor.getLocationInWindow(anchorLoc)
+        view.getLocationInWindow(viewLoc)
+        return (anchorLoc[0] - viewLoc[0]) to (anchorLoc[1] - viewLoc[1])
     }
 
     private fun createSubmenuButton(title: String, isSelected: Boolean, onClick: () -> Unit): LinearLayout {
