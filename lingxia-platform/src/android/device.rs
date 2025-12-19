@@ -10,6 +10,40 @@ use std::process::Command;
 
 use super::Platform;
 
+fn get_lxapp_context<'a>(
+    env: &mut jni::JNIEnv<'a>,
+) -> Result<JObject<'a>, Box<dyn std::error::Error>> {
+    let lxapp_class: &jni::objects::JClass = super::get_cached_class(super::CachedClass::LxApp)?
+        .as_obj()
+        .into();
+
+    let mut context_obj = env
+        .call_static_method(
+            lxapp_class,
+            "getCurrentActivity",
+            "()Lcom/lingxia/lxapp/LxAppActivity;",
+            &[],
+        )?
+        .l()?;
+
+    if context_obj.is_null() {
+        context_obj = env
+            .call_static_method(
+                lxapp_class,
+                "applicationContext",
+                "()Landroid/content/Context;",
+                &[],
+            )?
+            .l()?;
+    }
+
+    if context_obj.is_null() {
+        return Err("LxApp context not available".into());
+    }
+
+    Ok(context_obj)
+}
+
 /// Get Android system property using getprop command
 fn get_system_property(key: &str) -> Option<String> {
     Command::new("getprop")
@@ -181,30 +215,12 @@ impl Device for Platform {
 }
 
 /// Helper to get Android ID via JNI (Settings.Secure.ANDROID_ID).
-/// This is exposed for internal crates (like lingxia-cloud) to use without polluting the Device trait.
 pub fn get_android_id() -> Option<String> {
     use jni::objects::JValue;
 
     match || -> Result<String, Box<dyn std::error::Error>> {
         let mut env = get_env()?;
-        let lxapp_class: &jni::objects::JClass =
-            super::get_cached_class(super::CachedClass::LxApp)?
-                .as_obj()
-                .into();
-
-        // Try to get current activity as Context
-        let context_obj = env
-            .call_static_method(
-                lxapp_class,
-                "getCurrentActivity",
-                "()Lcom/lingxia/lxapp/LxAppActivity;",
-                &[],
-            )?
-            .l()?;
-
-        if context_obj.is_null() {
-            return Ok("".to_string());
-        }
+        let context_obj = get_lxapp_context(&mut env)?;
 
         // Get ContentResolver
         let content_resolver = env
@@ -234,13 +250,15 @@ pub fn get_android_id() -> Option<String> {
         if !obj.is_null() {
             let jstr: jni::objects::JString = obj.into();
             let rust_str = env.get_string(&jstr)?;
-            return Ok(rust_str.into());
+            let android_id = rust_str.to_string_lossy().trim().to_string();
+            if !android_id.is_empty() {
+                return Ok(android_id);
+            }
         }
 
-        Ok("".to_string())
+        Err("Settings.Secure.getString(android_id) returned empty".into())
     }() {
-        Ok(s) if !s.is_empty() => Some(s),
-        Ok(_) => None, // Handles Ok("") case
+        Ok(s) => Some(s),
         Err(e) => {
             log::warn!("Failed to get Android ID via JNI: {}", e);
             None
