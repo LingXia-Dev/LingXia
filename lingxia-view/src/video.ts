@@ -437,7 +437,6 @@ export class LxVideoElement extends HTMLElement {
       // Set initial props via src attribute
       const encodedProps = this.encodeHarmonyProps(props);
       embed.setAttribute("src", encodedProps);
-      embed.setAttribute("data-lx-props", encodedProps);
       this.lastHarmonyProps = encodedProps;
 
       this.appendChild(embed);
@@ -450,7 +449,6 @@ export class LxVideoElement extends HTMLElement {
     const encodedProps = this.encodeHarmonyProps(props);
     if (encodedProps !== this.lastHarmonyProps) {
       this.harmonyEmbed.setAttribute("src", encodedProps);
-      this.harmonyEmbed.setAttribute("data-lx-props", encodedProps);
       this.lastHarmonyProps = encodedProps;
     }
 
