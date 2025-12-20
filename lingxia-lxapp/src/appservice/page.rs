@@ -403,7 +403,9 @@ impl PageSvc {
 
 impl PageSvc {
     /// Create the JS PageSvc unconditionally without checking the registry.
-    pub fn create_in_ctx(ctx: &JSContext, path: &str) -> JSResult<()> {
+    pub async fn create_in_ctx(ctx: &JSContext, path: &str) -> JSResult<()> {
+        super::plugin::ensure_plugin_logic_loaded_for_page_path(ctx, path).await?;
+
         let create_page = ctx
             .global()
             .get::<_, JSFunc>("__CREATE_PAGE__")

@@ -1,5 +1,6 @@
 mod app;
 mod appservice;
+mod archive;
 mod cache;
 mod delegate;
 mod error;
@@ -9,7 +10,9 @@ pub mod log;
 pub mod lx;
 mod lxapp;
 mod page;
+pub(crate) mod plugin;
 pub mod provider;
+mod route;
 pub mod startup;
 mod update;
 

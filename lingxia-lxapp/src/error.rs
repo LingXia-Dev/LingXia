@@ -46,6 +46,14 @@ pub enum LxAppError {
     /// Error for Rong runtime
     #[error("Rong Error: {0}")]
     RongJS(String),
+
+    /// Error when plugin is not configured in lxapp.json
+    #[error("Plugin not configured: {0}")]
+    PluginNotConfigured(String),
+
+    /// Error when plugin download fails
+    #[error("Plugin download failed: {0}")]
+    PluginDownloadFailed(String),
 }
 
 impl From<io::Error> for LxAppError {

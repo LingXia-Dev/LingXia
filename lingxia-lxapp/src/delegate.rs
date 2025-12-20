@@ -40,13 +40,25 @@ pub trait LxAppDelegate {
 
 impl LxAppDelegate for LxApp {
     fn on_lxapp_opened(self: Arc<Self>, path: String) -> String {
-        // Resolve the actual path to use - if empty, use initial route
-        let resolved_path = if path.is_empty() {
+        let raw_url = if path.is_empty() {
             self.config.get_initial_route()
         } else {
             path
         };
 
+        let resolved = crate::route::resolve_route(&self, &raw_url).unwrap_or_else(|e| {
+            error!("Failed to resolve page url '{}': {}", raw_url, e)
+                .with_appid(self.appid.clone());
+            crate::route::ResolvedRoute {
+                original: raw_url.clone(),
+                query: None,
+                target: crate::route::RouteTarget::Normal {
+                    path: raw_url.clone(),
+                },
+            }
+        });
+
+        let resolved_path = resolved.internal_path();
         let was_already_opened = self.is_opened();
 
         info!("LxApp opened (already_opened: {})", was_already_opened)
@@ -60,6 +72,9 @@ impl LxAppDelegate for LxApp {
             }
 
             let page = self.get_or_create_page(&resolved_path);
+            if let Some(query) = resolved.query.clone() {
+                page.set_query(query);
+            }
             if page.is_tabbar_page() {
                 // Ensure TabBar is visible and selected index matches the resolved path.
                 self.with_tabbar_mut(|t| {

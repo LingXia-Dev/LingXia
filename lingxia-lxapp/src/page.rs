@@ -481,6 +481,18 @@ impl Page {
     ) -> Result<Page, LxAppError> {
         let lxapp = lxapp::get(self.appid());
 
+        // Normalize through LxApp to ensure consistent canonical paths (e.g. plugin routes).
+        let target_page = lxapp.get_or_create_page(&target_page.path());
+        self.navigate_to_internal(target_page, nav_type, &lxapp)
+    }
+
+    /// Internal navigation logic shared by regular and plugin navigation
+    fn navigate_to_internal(
+        &self,
+        target_page: Page,
+        nav_type: NavigationType,
+        lxapp: &Arc<LxApp>,
+    ) -> Result<Page, LxAppError> {
         let path = target_page.path();
 
         // 2. Handle UI state based on navigation type (TabBar, NavBar)

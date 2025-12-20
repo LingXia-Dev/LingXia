@@ -1,4 +1,5 @@
 use crate::info;
+use crate::plugin;
 use crate::warn;
 use http::{Method, Request, Response, StatusCode, Uri};
 use lingxia_webview::{SystemPipeReader, WebResourceResponse};
@@ -185,6 +186,7 @@ impl LxApp {
         // Case 1: Direct package-root path (e.g., pages/... or images/...)
         // Case 2: Page-relative expanded path (e.g., pages/home/images/1.jpg -> strip base once)
         // Case 3: Absolute OS path tunneled via lx://<lxappid>/<absolute-path>
+        // Case 4: Plugin path (@plugin/pluginName/pages/...)
         let decoded_path = decode(path_str)
             .map(|c| c.to_string())
             .unwrap_or_else(|_| path_str.to_string());
@@ -198,6 +200,16 @@ impl LxApp {
             return Err(LxAppError::ResourceNotFound(uri.to_string()));
         }
         let normalized = raw_path.trim_matches('/').to_string();
+
+        // Case 4: Handle @plugin/ prefix - resolve from plugins directory
+        if let Some((plugin_name, relative_path)) = plugin::parse_plugin_page_path(&normalized) {
+            return plugin::resolve_plugin_resource_path(
+                &self.runtime,
+                &self.config.plugins,
+                &plugin_name,
+                &relative_path,
+            );
+        }
 
         // Case 1: Direct package-root path (e.g., pages/home/index.css, images/1.jpg)
         // Try the request path as-is relative to allowed roots

@@ -1,3 +1,4 @@
+use crate::archive;
 use crate::error::LxAppError;
 use crate::lxapp::metadata::{LxAppRecord, SemanticVersion};
 use crate::lxapp::{
@@ -6,15 +7,11 @@ use crate::lxapp::{
 };
 use crate::provider::UpdateCheckResult;
 use lingxia_platform::{AppRuntime, Platform};
-use ring::digest::{Context, SHA256};
 use rong::service_executor;
-use std::fs::{self, File};
-use std::io::Read;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tar::Archive;
-use zstd::stream::read::Decoder as ZstdDecoder;
 
 /// Coordinates update preparation, download, and installation for LxApps.
 #[derive(Clone)]
@@ -273,36 +270,7 @@ impl UpdateManager {
             .join(LXAPPS_DIR)
             .join(dir_name);
 
-        // Ensure clean destination to avoid mixing versions
-        if destination.exists() {
-            fs::remove_dir_all(&destination).map_err(|e| {
-                LxAppError::IoError(format!(
-                    "Failed to clean existing installation at {}: {}",
-                    destination.display(),
-                    e
-                ))
-            })?;
-        }
-
-        fs::create_dir_all(&destination)?;
-
-        let file = File::open(archive_path)?;
-        let zstd_decoder = ZstdDecoder::new(file).map_err(|e| {
-            LxAppError::IoError(format!(
-                "Failed to create zstd decoder for {}: {}",
-                archive_path.display(),
-                e
-            ))
-        })?;
-        let mut archive = Archive::new(zstd_decoder);
-        archive.unpack(&destination).map_err(|e| {
-            LxAppError::IoError(format!(
-                "Failed to extract tar.zst archive {}: {}",
-                archive_path.display(),
-                e
-            ))
-        })?;
-
+        archive::extract_tar_zst(archive_path, &destination)?;
         Ok(destination)
     }
 
@@ -411,11 +379,11 @@ impl UpdateManager {
             .map_err(|_| LxAppError::IoError("download task cancelled".to_string()))?
         {
             Ok(()) => {
-                if !checksum_sha256.is_empty()
-                    && let Err(e) = maybe_verify_sha256(&dest, checksum_sha256)
-                {
-                    let _ = fs::remove_file(&dest);
-                    return Err(e);
+                if !checksum_sha256.is_empty() {
+                    if let Err(e) = archive::verify_sha256(&dest, checksum_sha256) {
+                        let _ = fs::remove_file(&dest);
+                        return Err(e);
+                    }
                 }
                 // Persist pending downloaded update so it can be applied later.
                 // Uses current app context (appid + release_type) and explicit version.
@@ -497,53 +465,5 @@ fn filename_from_url_or_hash(url: &str) -> String {
     } else {
         // default to hash.tar.zst
         format!("{}.tar.zst", UpdateManager::hash_url(url))
-    }
-}
-
-/// Compute SHA-256 of a file and return lowercase hex string.
-fn compute_sha256_hex(path: &Path) -> Result<String, LxAppError> {
-    let mut file = File::open(path)?;
-    let mut ctx = Context::new(&SHA256);
-    let mut buf = vec![0u8; 256 * 1024];
-    loop {
-        let n = file.read(&mut buf)?;
-        if n == 0 {
-            break;
-        }
-        ctx.update(&buf[..n]);
-    }
-    let digest = ctx.finish();
-    Ok(hex_lower(digest.as_ref()))
-}
-
-fn maybe_verify_sha256(path: &Path, expected_hex: &str) -> Result<(), LxAppError> {
-    if expected_hex.is_empty() {
-        return Ok(());
-    }
-    let actual = compute_sha256_hex(path)?;
-    if actual.eq_ignore_ascii_case(expected_hex) {
-        Ok(())
-    } else {
-        Err(LxAppError::IoError(format!(
-            "checksum mismatch: expected {}, got {}",
-            expected_hex, actual
-        )))
-    }
-}
-
-fn hex_lower(bytes: &[u8]) -> String {
-    let mut s = String::with_capacity(bytes.len() * 2);
-    for b in bytes {
-        s.push(hex_char((b >> 4) & 0x0f));
-        s.push(hex_char(b & 0x0f));
-    }
-    s
-}
-
-#[inline]
-fn hex_char(n: u8) -> char {
-    match n {
-        0..=9 => (b'0' + n) as char,
-        _ => (b'a' + (n - 10)) as char,
     }
 }

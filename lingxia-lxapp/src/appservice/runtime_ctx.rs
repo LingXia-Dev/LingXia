@@ -6,7 +6,7 @@ use super::page::PageSvc;
 use rong::{JSContext, JSContextService, JSResult, JSRuntime, JSRuntimeService, RongJSError};
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::sync::{Arc, Weak};
 
@@ -27,6 +27,8 @@ pub(crate) struct LxAppRuntimeCtx {
     pub(crate) app: Weak<LxApp>,
     pub(crate) page_svc_map: Rc<RefCell<HashMap<String, PageSvc>>>,
     pub(crate) app_svc: Option<LxAppSvc>,
+    /// Tracks which plugin logic.js files have been loaded
+    pub(crate) loaded_plugins: Rc<RefCell<HashSet<String>>>,
 }
 
 /// Runtime-level registry that tracks all LxApp runtime contexts for a JSRuntime.
@@ -64,6 +66,7 @@ pub(crate) fn register_app_ctx(
             app: Arc::downgrade(lxapp),
             page_svc_map: page_svc_map.clone(),
             app_svc: None,
+            loaded_plugins: Rc::new(RefCell::new(HashSet::new())),
         },
     );
 
@@ -141,6 +144,27 @@ where
     F: FnOnce(&Rc<RefCell<HashMap<String, PageSvc>>>) -> JSResult<R>,
 {
     with_lxapp_ctx(ctx, |app_ctx| f(&app_ctx.page_svc_map))
+}
+
+/// Check if a plugin's logic.js has been loaded, and mark it as loaded if not.
+/// Returns true if the plugin was NOT loaded before (i.e., needs loading now).
+pub(crate) fn mark_plugin_loaded_if_new(ctx: &JSContext, plugin_name: &str) -> JSResult<bool> {
+    with_lxapp_ctx(ctx, |app_ctx| {
+        let mut loaded = app_ctx.loaded_plugins.borrow_mut();
+        if loaded.contains(plugin_name) {
+            Ok(false)
+        } else {
+            loaded.insert(plugin_name.to_string());
+            Ok(true)
+        }
+    })
+}
+
+pub(crate) fn unmark_plugin_loaded(ctx: &JSContext, plugin_name: &str) -> JSResult<()> {
+    with_lxapp_ctx(ctx, |app_ctx| {
+        app_ctx.loaded_plugins.borrow_mut().remove(plugin_name);
+        Ok(())
+    })
 }
 
 /// LxApp extension: derive current LxApp from JSContext.

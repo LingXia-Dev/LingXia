@@ -39,6 +39,7 @@ use lingxia_webview::{WebTag, destroy_webview};
 /// Constants for lxapp storage layout
 pub(crate) const LINGXIA_DIR: &str = "lingxia";
 pub(crate) const LXAPPS_DIR: &str = "lxapps";
+pub(crate) const PLUGINS_DIR: &str = "plugins";
 pub(crate) const STORAGE_DIR: &str = "storage";
 pub(crate) const USER_DATA_DIR: &str = "userdata";
 pub(crate) const USER_CACHE_DIR: &str = "usercache";
@@ -616,11 +617,24 @@ impl LxApp {
 
     // Reads binary data from the specified relative path
     fn read_bytes(&self, relative_path: &str) -> Result<Vec<u8>, LxAppError> {
-        let file_path = self.lxapp_dir.join(relative_path);
+        let file_path = match crate::plugin::resolve_plugin_resource_path_from_internal_path(
+            &self.runtime,
+            &self.config.plugins,
+            relative_path,
+        )? {
+            Some(path) => path,
+            None => self.lxapp_dir.join(relative_path),
+        };
 
         // Try to read from the filesystem
-        fs::read(file_path)
-            .map_err(|e| LxAppError::ResourceNotFound(format!("{}:{}", relative_path, e)))
+        fs::read(&file_path).map_err(|e| {
+            LxAppError::ResourceNotFound(format!(
+                "{}:{} (resolved: {})",
+                relative_path,
+                e,
+                file_path.display()
+            ))
+        })
     }
 
     /// Resolve an "allowed" lxapp path (package dir, user data, user cache) to a canonical path.
@@ -766,29 +780,49 @@ impl LxApp {
     /// - Create native Page/WebView
     /// - Open the UI window
     fn open(&self, options: LxAppStartupOptions) -> Result<(), LxAppError> {
-        let startup_options = options.clone();
+        let mut startup_options = options;
 
         // Record startup options on this instance
-        self.state.lock().unwrap().startup_options = options;
+        // Resolve path early so we can keep native/view/AppService consistent.
+        let raw_url = if startup_options.path.is_empty() {
+            self.config.get_initial_route()
+        } else {
+            startup_options.path.clone()
+        };
+
+        let resolved = crate::route::resolve_route(self, &raw_url).unwrap_or_else(|e| {
+            error!("Failed to resolve startup url '{}': {}", raw_url, e)
+                .with_appid(self.appid.clone());
+            crate::route::ResolvedRoute {
+                original: raw_url.clone(),
+                query: None,
+                target: crate::route::RouteTarget::Normal {
+                    path: raw_url.clone(),
+                },
+            }
+        });
+
+        startup_options.path = resolved.internal_path();
+        if startup_options.query.is_empty()
+            && let Some(query) = resolved.query.clone()
+        {
+            startup_options.query = query;
+        }
+
+        self.state.lock().unwrap().startup_options = startup_options.clone();
 
         // Ensure the target app's JS worker is created and mapped before creating pages
         if let Err(e) = self.executor.create_app_svc(self.clone_arc()) {
             error!("Failed to trigger app service: {}", e).with_appid(self.appid.clone());
         }
 
-        // Determine initial route
-        let target_path = if startup_options.path.is_empty() {
-            self.config.get_initial_route()
-        } else {
-            startup_options.path.clone()
-        };
-
         // Create native Page + WebView
-        let page = self.get_or_create_page(&target_path);
-        page.set_query(startup_options.query);
+        let page = self.get_or_create_page(&startup_options.path);
+        page.set_query(startup_options.query.clone());
 
         // Open UI
-        self.runtime.show_lxapp(self.appid.clone(), target_path)?;
+        self.runtime
+            .show_lxapp(self.appid.clone(), startup_options.path)?;
         Ok(())
     }
 
@@ -874,14 +908,9 @@ impl LxApp {
 
         request.app_id = self.appid.clone();
 
-        let (path, query_str) = if let Some(idx) = request.path.find('?') {
-            (
-                request.path[..idx].to_string(),
-                request.path[idx + 1..].to_string(),
-            )
-        } else {
-            (request.path.clone(), String::new())
-        };
+        let resolved = crate::route::resolve_route(self, &request.path)?;
+        let path = resolved.internal_path();
+        let query_str = resolved.query.unwrap_or_default();
 
         let popup_page = self.get_or_create_page(&path);
 
@@ -939,7 +968,18 @@ impl LxApp {
     /// Get existing page or create a new one.
     /// PageSvc creation + HTML load are handled inside Page::new once WebView is ready.
     pub fn get_or_create_page(&self, url: &str) -> Page {
-        let (path, query) = crate::startup::split_path_query(url);
+        let resolved = crate::route::resolve_route(self, url).unwrap_or_else(|e| {
+            error!("Failed to resolve page url '{}': {}", url, e).with_appid(self.appid.clone());
+            let (path, query) = crate::startup::split_path_query(url);
+            crate::route::ResolvedRoute {
+                original: url.to_string(),
+                query,
+                target: crate::route::RouteTarget::Normal { path },
+            }
+        });
+
+        let path = resolved.internal_path();
+        let query = resolved.query;
 
         {
             let state = self.state.lock().unwrap();
@@ -959,7 +999,7 @@ impl LxApp {
             let lxapp_arc = lxapp_arc.clone();
             let page_clone = page.clone();
             async move {
-                // Ensure PageSvc exists before loading HTML
+                // Ensure PageSvc exists before loading HTML (for both regular and plugin pages)
                 let (ack_tx, ack_rx) = oneshot::channel();
                 if let Err(e) = lxapp_arc.executor.create_page_svc_with_ack(
                     lxapp_arc.clone(),
@@ -1186,6 +1226,7 @@ fn prepare_directory_structure(runtime: Arc<Platform>) -> Result<(), LxAppError>
     // Create required directories
     let dirs = [
         data_dir.join(LINGXIA_DIR).join(LXAPPS_DIR),
+        data_dir.join(LINGXIA_DIR).join(PLUGINS_DIR),
         data_dir.join(LINGXIA_DIR).join(USER_DATA_DIR),
         data_dir.join(LINGXIA_DIR).join(STORAGE_DIR),
         cache_dir.join(LINGXIA_DIR).join(LXAPPS_DIR),
@@ -1263,7 +1304,7 @@ pub fn init(runtime: Platform) -> Option<String> {
             let executor = LxAppExecutor::init(LXAPP_STACK_MAX);
 
             // Create LxApps manager BEFORE creating home_lxapp
-            // This ensures get_platform() is available ASAP
+            // This makes get_platform() available as early as possible
             let lxapps_manager = Arc::new(LxApps::new(runtime, executor.clone()));
 
             // Set global instance early so get_platform() works
@@ -1311,6 +1352,7 @@ pub fn init(runtime: Platform) -> Option<String> {
             }
 
             info!("LxApps initialized successfully");
+
             Some(home_lxapp_appid)
         }
 

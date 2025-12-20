@@ -24,6 +24,8 @@ mod page;
 use crate::event::PageServiceEvent;
 pub use page::PageSvc;
 
+mod plugin;
+
 mod runtime_ctx;
 use runtime_ctx::{
     register_app_ctx, remove_app_ctx, set_app_svc_for_ctx, with_app_svc, with_page_svc_map,
@@ -179,6 +181,7 @@ pub(crate) async fn lxapp_service_handler(
             // register Page, App and getApp function
             let _ = app::init(&ctx);
             let _ = page::init(&ctx);
+            let _ = plugin::init(&ctx);
             bridge_events::init(&ctx);
 
             // Set console writer
@@ -259,7 +262,7 @@ pub(crate) async fn lxapp_service_handler(
             ack_tx,
         } => {
             if let Some(ctx) = current_ctx.as_ref() {
-                match PageSvc::create_in_ctx(ctx, &path) {
+                match PageSvc::create_in_ctx(ctx, &path).await {
                     Ok(()) => {
                         let _ = ack_tx.send(());
                     }
