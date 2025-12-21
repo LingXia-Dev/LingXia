@@ -396,20 +396,15 @@ struct PdfSinglePageContent {
         })
       {
       // Back button
-      Button({ type: ButtonType.Normal }) {
-        Text('←')
-          .fontSize(18)
-          .fontColor('#333333')
-          .fontWeight(FontWeight.Medium)
-      }
-      .width(32)
-      .height(32)
-      .backgroundColor('#EEEEEE')
-      .borderRadius(16)
-      .onClick(() => {
-        hilog.info(DOMAIN, TAG, 'Back button clicked');
-        this.onClose();
-      })
+      Image($rawfile('icons/icon_back.svg'))
+        .width(20)
+        .height(20)
+        .fillColor('#333333')
+        .margin({ left: 4 })
+        .onClick(() => {
+          hilog.info(DOMAIN, TAG, 'Back button clicked');
+          this.onClose();
+        })
 
       // Title
       Text(this.title)
@@ -424,22 +419,17 @@ struct PdfSinglePageContent {
 
       // Share button
       if (this.showMenu) {
-        Button({ type: ButtonType.Normal }) {
-          Text('分享')
-            .fontSize(11)
-            .fontColor('#333333')
-            .fontWeight(FontWeight.Medium)
-        }
-        .width(40)
-        .height(32)
-        .backgroundColor('#EEEEEE')
-        .borderRadius(16)
-        .onClick(() => {
-          hilog.info(DOMAIN, TAG, 'Share button clicked');
-          this.onShare();
-        })
+        Image($rawfile('icons/icon_share.svg'))
+          .width(20)
+          .height(20)
+          .fillColor('#333333')
+          .margin({ right: 4 })
+          .onClick(() => {
+            hilog.info(DOMAIN, TAG, 'Share button clicked');
+            this.onShare();
+          })
       } else {
-        Row().width(40).height(32)
+        Row().width(20).height(20).margin({ right: 4 })
       }
       }
     }

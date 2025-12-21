@@ -15,8 +15,9 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.LinearLayout
-import android.widget.TextView
+import android.widget.ImageButton
 import android.widget.ImageView
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowInsetsControllerCompat
@@ -27,6 +28,8 @@ import com.google.android.material.color.MaterialColors
 import java.io.File
 import java.io.IOException
 import kotlin.math.roundToInt
+import androidx.core.content.ContextCompat
+import com.lingxia.lxapp.R
 
 class PdfViewerActivity : AppCompatActivity() {
     companion object {
@@ -73,6 +76,9 @@ class PdfViewerActivity : AppCompatActivity() {
         setSupportActionBar(toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         supportActionBar?.setHomeButtonEnabled(true)
+        val backIcon = ContextCompat.getDrawable(this, R.drawable.icon_back)?.mutate()
+        toolbar.navigationIcon = backIcon
+        styleNavigationButton()
         toolbar.setNavigationOnClickListener { onBackPressedDispatcher.onBackPressed() }
 
         applyChromeStyling()
@@ -100,7 +106,7 @@ class PdfViewerActivity : AppCompatActivity() {
         }
 
         menu.add(Menu.NONE, MENU_ID_SHARE, Menu.NONE, "Share").apply {
-            setIcon(android.R.drawable.ic_menu_share)
+            setIcon(R.drawable.icon_share)
             setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
         }
 
@@ -139,9 +145,13 @@ class PdfViewerActivity : AppCompatActivity() {
         toolbar = MaterialToolbar(this).apply {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                actionBarSize()
+                dp(44)
             )
-            elevation = dp(4).toFloat()
+            elevation = dp(1).toFloat()
+            contentInsetStartWithNavigation = dp(8)
+            contentInsetEndWithActions = dp(8)
+            setContentInsetsRelative(dp(8), dp(8))
+            isTitleCentered = true
         }
 
         contentFrame = FrameLayout(this).apply {
@@ -271,46 +281,35 @@ class PdfViewerActivity : AppCompatActivity() {
     }
 
     private fun applyChromeStyling() {
-        val surfaceColor = MaterialColors.getColor(
-            toolbar,
-            com.google.android.material.R.attr.colorSurface,
-            Color.WHITE
-        )
-        val onSurfaceColor = MaterialColors.getColor(
-            toolbar,
-            com.google.android.material.R.attr.colorOnSurface,
-            Color.BLACK
-        )
-        val backgroundColor = MaterialColors.getColor(
-            rootLayout,
-            android.R.attr.colorBackground,
-            Color.WHITE
-        )
+        val navBarColor = Color.parseColor("#F8F8F8")
+        val titleColor = Color.parseColor("#000000")
+        val iconColor = Color.parseColor("#333333")
+        val contentBgColor = Color.parseColor("#F5F5F5")
 
-        rootLayout.setBackgroundColor(backgroundColor)
-        contentFrame.setBackgroundColor(backgroundColor)
-        recyclerView.setBackgroundColor(backgroundColor)
+        rootLayout.setBackgroundColor(contentBgColor)
+        contentFrame.setBackgroundColor(contentBgColor)
+        recyclerView.setBackgroundColor(contentBgColor)
 
-        toolbar.setBackgroundColor(surfaceColor)
-        toolbar.setTitleTextColor(onSurfaceColor)
-        toolbar.navigationIcon?.setTint(onSurfaceColor)
+        toolbar.setBackgroundColor(navBarColor)
+        toolbar.setTitleTextColor(titleColor)
+        toolbar.setTitleTextAppearance(this, android.R.style.TextAppearance_Medium)
+        toolbar.navigationIcon?.setTint(iconColor)
 
         overlayContainer.background = createOverlayBackground(
-            androidx.core.graphics.ColorUtils.setAlphaComponent(surfaceColor, (0.92f * 255).toInt())
+            Color.argb((0.85f * 255).toInt(), 0, 0, 0)
         )
-        pageIndicator.setTextColor(onSurfaceColor)
-        overlayContainer.alpha = 0.95f
+        pageIndicator.setTextColor(Color.WHITE)
+        overlayContainer.alpha = 1f
 
-        window.statusBarColor = surfaceColor
-        window.navigationBarColor = surfaceColor
+        window.statusBarColor = navBarColor
+        window.navigationBarColor = navBarColor
 
         WindowInsetsControllerCompat(window, window.decorView).apply {
-            val lightBars = MaterialColors.isColorLight(surfaceColor)
-            isAppearanceLightStatusBars = lightBars
-            isAppearanceLightNavigationBars = lightBars
+            isAppearanceLightStatusBars = true
+            isAppearanceLightNavigationBars = true
         }
 
-        tintToolbarMenuIcons(onSurfaceColor)
+        tintToolbarMenuIcons(iconColor)
     }
 
     private fun dp(value: Int): Int =
@@ -319,13 +318,6 @@ class PdfViewerActivity : AppCompatActivity() {
             value.toFloat(),
             resources.displayMetrics
         ).roundToInt()
-
-    private fun actionBarSize(): Int {
-        val styledAttributes = obtainStyledAttributes(intArrayOf(android.R.attr.actionBarSize))
-        val size = styledAttributes.getDimensionPixelSize(0, dp(56))
-        styledAttributes.recycle()
-        return size
-    }
 
     private fun tintToolbarMenuIcons(colorOverride: Int? = null) {
         val tintColor = colorOverride ?: MaterialColors.getColor(
@@ -336,6 +328,18 @@ class PdfViewerActivity : AppCompatActivity() {
         for (i in 0 until toolbar.menu.size()) {
             toolbar.menu.getItem(i).icon?.mutate()?.setTint(tintColor)
         }
+    }
+
+    private fun styleNavigationButton() {
+        val contentDesc = toolbar.navigationContentDescription
+        val navButton = (0 until toolbar.childCount)
+            .map { toolbar.getChildAt(it) }
+            .filterIsInstance<ImageButton>()
+            .firstOrNull { contentDesc == null || it.contentDescription == contentDesc }
+            ?: return
+
+        navButton.scaleType = ImageView.ScaleType.CENTER_INSIDE
+        navButton.setPadding(dp(12), dp(12), dp(12), dp(12))
     }
 
     private fun createOverlayBackground(color: Int): GradientDrawable {
