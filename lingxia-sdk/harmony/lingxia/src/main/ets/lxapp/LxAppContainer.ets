@@ -1308,7 +1308,7 @@ export struct LxAppContainer {
           .databaseAccess(false)
           .mixedMode(MixedMode.None)
       }
-      .width('100%')
+      .width(this.getStackWidth(webTag))
       .height(this.getStackHeight(webTag))
     }
     .width('100%')
@@ -1630,13 +1630,13 @@ export struct LxAppContainer {
         break;
       case 2:
         base.left = 0;
-        base.right = horizontalGap;
+        base.right = 0;
         base.top = verticalGap;
         base.bottom = verticalGap;
         break;
       case 3:
         base.right = 0;
-        base.left = horizontalGap;
+        base.left = 0;
         base.top = verticalGap;
         base.bottom = verticalGap;
         break;
@@ -1686,6 +1686,17 @@ export struct LxAppContainer {
     // so that Column's justifyContent can properly align it (e.g., to bottom)
     if (this.isOverlayWebView(webTag)) {
       return this.getOverlayHeight();
+    }
+    return '100%';
+  }
+
+  private getStackWidth(webTag: string): string {
+    // For left/right overlay WebViews, Stack width should match content width
+    // so the popup can be flush with screen edges
+    if (this.isOverlayWebView(webTag)) {
+      if (this.overlayPosition === 2 || this.overlayPosition === 3) {
+        return this.getOverlayWidth();
+      }
     }
     return '100%';
   }
