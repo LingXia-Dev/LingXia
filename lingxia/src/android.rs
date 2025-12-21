@@ -605,6 +605,11 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getCurrentLxApp<'a>(
 }
 
 /// Callback from platform (called from Kotlin via NativeAPI)
+///
+/// # Parameters
+/// - `id`: Callback ID for correlating with pending operation
+/// - `success`: Whether the operation completed successfully
+/// - `data`: When `success=true`, contains JSON payload; when `success=false`, contains error code string (see i18n/err_code)
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onCallback(
     mut env: JNIEnv,
@@ -624,9 +629,11 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onCallback(
         }
     };
 
-    if invoke_callback(id, success, data_str) {
-        1
+    let result = if success {
+        Ok(data_str)
     } else {
-        0
-    }
+        Err(data_str.parse::<u32>().unwrap_or(1000))
+    };
+
+    if invoke_callback(id, result) { 1 } else { 0 }
 }

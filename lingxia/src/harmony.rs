@@ -354,6 +354,11 @@ fn get_current_lxapp() -> CurrentLxApp {
 }
 
 /// Callback from platform (called from ArkTS)
+///
+/// # Parameters
+/// - `id`: Callback ID as string for correlating with pending operation
+/// - `success`: Whether the operation completed successfully
+/// - `data`: When `success=true`, contains JSON payload; when `success=false`, contains error code string (see i18n/err_code)
 #[napi]
 fn on_callback(id: String, success: bool, data: String) -> bool {
     let id = match id.parse::<u64>() {
@@ -363,7 +368,15 @@ fn on_callback(id: String, success: bool, data: String) -> bool {
             return false;
         }
     };
-    invoke_callback(id, success, data)
+
+    let result = if success {
+        Ok(data)
+    } else {
+        // Parse data as u32 error code, default to 1000 (unknown error) if failed
+        Err(data.parse::<u32>().unwrap_or(1000))
+    };
+
+    invoke_callback(id, result)
 }
 
 #[napi]

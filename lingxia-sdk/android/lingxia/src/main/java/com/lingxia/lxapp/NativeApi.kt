@@ -159,9 +159,9 @@ object NativeApi {
 
     /**
      * Callback function for async operations
-     * @param id Callback ID
-     * @param success Whether the operation was successful
-     * @param data Result data as JSON string
+     * @param id Callback ID for correlating with pending operation
+     * @param success Whether the operation completed successfully
+     * @param data When success=true: JSON payload; when success=false: error code string
      * @return true if callback was handled, false otherwise
      */
     @JvmStatic

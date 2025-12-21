@@ -391,8 +391,19 @@ pub fn on_push_token_received(token: &str) -> i32 {
 }
 
 /// Callback from platform (called from Swift/Objective-C)
+///
+/// # Parameters
+/// - `id`: Callback ID for correlating with pending operation
+/// - `success`: Whether the operation completed successfully
+/// - `data`: When `success=true`, contains JSON payload; when `success=false`, contains error code string (see i18n/err_code)
 pub fn on_callback(id: u64, success: bool, data: &str) -> bool {
-    invoke_callback(id, success, data.to_string())
+    let result = if success {
+        Ok(data.to_string())
+    } else {
+        // Parse data as u32 error code, default to 1000 (unknown error) if failed
+        Err(data.parse::<u32>().unwrap_or(1000))
+    };
+    invoke_callback(id, result)
 }
 
 /// Check if pull-down refresh is enabled for a specific page
