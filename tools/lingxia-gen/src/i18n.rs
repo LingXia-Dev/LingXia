@@ -171,7 +171,12 @@ fn flatten_yaml(value: &serde_yaml_ng::Value, prefix: Option<String>) -> Transla
             } else {
                 // Regular nesting
                 for (k, v) in m {
-                    let key_str = k.as_str().unwrap().to_string();
+                    // Handle both string and number keys
+                    let key_str = match k {
+                        serde_yaml_ng::Value::String(s) => s.clone(),
+                        serde_yaml_ng::Value::Number(n) => n.to_string(),
+                        _ => continue, // Skip unsupported key types
+                    };
                     let new_prefix = match &prefix {
                         Some(p) => format!("{}_{}", p, key_str),
                         None => key_str,
