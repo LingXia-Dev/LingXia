@@ -1298,7 +1298,6 @@ export struct LxAppContainer {
           .width(this.getRenderWidth(webTag))
           .height(this.getRenderHeight(webTag))
           .padding(this.getRenderPadding(webTag))
-          .align(this.getRenderAlignment(webTag))
           .borderRadius(this.getRenderBorderRadius(webTag))
           .clip(this.getRenderClip(webTag))
           .zIndex(this.getRenderZIndex(webTag))
@@ -1310,7 +1309,7 @@ export struct LxAppContainer {
           .mixedMode(MixedMode.None)
       }
       .width('100%')
-      .height('100%')
+      .height(this.getStackHeight(webTag))
     }
     .width('100%')
     .height('100%')
@@ -1680,6 +1679,15 @@ export struct LxAppContainer {
 
   private getRenderHeight(webTag: string): string {
     return this.isOverlayWebView(webTag) ? this.getOverlayHeight() : this.getWebContentHeight();
+  }
+
+  private getStackHeight(webTag: string): string {
+    // For overlay WebViews, Stack height should match content height
+    // so that Column's justifyContent can properly align it (e.g., to bottom)
+    if (this.isOverlayWebView(webTag)) {
+      return this.getOverlayHeight();
+    }
+    return '100%';
   }
 
   private getRenderPadding(webTag: string): Padding {
