@@ -20,18 +20,24 @@ This pattern supports oneshot, stream, and handler callbacks:
   `invoke_callback(id, ...)` is called. Useful when you want immediate dispatch (no receiver
   polling) and will manage unregistration manually.
 
-All callback types use unified string payloads for simplicity and flexibility.
+All callback types use `CallbackResult`, which is an enum that separates success data from error codes for improved type safety and easier i18n handling.
 
 Example (handler callback):
 ```rust
-use lingxia_messaging::{register_handler, invoke_callback, remove_callback};
+use lingxia_messaging::{register_handler, invoke_callback, remove_callback, CallbackResult};
 
 let callback_id = register_handler(|result| {
-    println!("Got callback: success={}, data={}", result.success, result.data);
+    match result {
+        CallbackResult::Success(data) => println!("Got success: {}", data),
+        CallbackResult::Error(code) => println!("Got error code: {}", code),
+    }
 });
 
 // Somewhere else (e.g., platform thread):
-let _ = invoke_callback(callback_id, true, "{\"foo\":\"bar\"}");
+let _ = invoke_callback(callback_id, Ok("{\"foo\":\"bar\"}".to_string()));
+
+// Or for errors:
+// let _ = invoke_callback(callback_id, Err(1001));
 
 // When done:
 let _ = remove_callback(callback_id);

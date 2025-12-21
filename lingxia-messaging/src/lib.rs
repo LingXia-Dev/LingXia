@@ -12,20 +12,20 @@ use tokio::sync::{mpsc, oneshot};
 
 /// Callback result from platform
 #[derive(Debug, Clone)]
-pub struct CallbackResult {
-    pub success: bool,
-    pub data: String,
+pub enum CallbackResult {
+    /// Success with JSON payload
+    Success(String),
+    /// Error with a specific error code (defined in i18n)
+    Error(u32),
 }
 
 impl CallbackResult {
-    /// Borrow the callback payload as a string slice.
-    pub fn as_str(&self) -> &str {
-        &self.data
-    }
-
-    /// Consume the result and return the underlying string payload.
-    pub fn into_string(self) -> String {
-        self.data
+    /// Convert to a Result for easier handling in logic crate
+    pub fn into_result(self) -> Result<String, u32> {
+        match self {
+            CallbackResult::Success(data) => Ok(data),
+            CallbackResult::Error(code) => Err(code),
+        }
     }
 }
 
@@ -91,9 +91,7 @@ impl CallbackRegistry {
         callbacks.remove(&id).is_some()
     }
 
-    fn invoke(&self, id: u64, success: bool, data: String) -> bool {
-        let result = CallbackResult { success, data };
-
+    fn invoke(&self, id: u64, result: CallbackResult) -> bool {
         enum Action {
             Oneshot(oneshot::Sender<CallbackResult>),
             Stream(mpsc::Sender<CallbackResult>),
@@ -185,8 +183,12 @@ pub fn remove_callback(id: u64) -> bool {
 /// - Oneshot: removes the callback after sending.
 /// - Stream: keeps the callback active; returns false if the channel is full or closed.
 /// - Handler: executes immediately on the caller's thread; drops the handler on panic.
-pub fn invoke_callback(id: u64, success: bool, data: impl Into<String>) -> bool {
-    get_callback_registry().invoke(id, success, data.into())
+pub fn invoke_callback(id: u64, result: Result<String, u32>) -> bool {
+    let cb_result = match result {
+        Ok(data) => CallbackResult::Success(data),
+        Err(code) => CallbackResult::Error(code),
+    };
+    get_callback_registry().invoke(id, cb_result)
 }
 
 /// Represents a system-wide event.
