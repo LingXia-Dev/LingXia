@@ -31,8 +31,8 @@ pub use lxapp::{
 };
 pub use page::NavigationType;
 pub use provider::{
-    BoxFuture, FingerprintProvider, NoOpProvider, Provider, ProviderError, UpdateCheckResult,
-    UpdatePackageInfo, UpdateProvider, register_provider,
+    BoxFuture, FingerprintProvider, NoOpProvider, Provider, ProviderError, UpdatePackageInfo,
+    UpdateProvider, UpdateTarget, register_provider,
 };
 pub use startup::{LxAppStartupOptions, Scene, parse_env_release_type};
 pub use update::{DownloadedUpdateInfo, UpdateManager};

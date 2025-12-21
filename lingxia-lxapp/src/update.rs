@@ -5,7 +5,7 @@ use crate::lxapp::{
     self, LINGXIA_DIR, LXAPPS_DIR, ReleaseType, STORAGE_DIR, USER_CACHE_DIR, USER_DATA_DIR,
     lxapp_fingermark, metadata, version::Version,
 };
-use crate::provider::UpdateCheckResult;
+use crate::provider::{UpdatePackageInfo, UpdateTarget};
 use lingxia_platform::{AppRuntime, Platform};
 use rong::service_executor;
 use std::fs;
@@ -102,16 +102,17 @@ impl UpdateManager {
         lxappid: &str,
         _release_type: ReleaseType,
         current_version: Option<&str>,
-    ) -> Result<UpdateCheckResult, LxAppError> {
+    ) -> Result<Option<UpdatePackageInfo>, LxAppError> {
         let provider = crate::get_provider();
+        let target = UpdateTarget::LxApp {
+            id: lxappid.to_string(),
+            current_version: current_version.map(|v| v.to_string()),
+        };
 
-        provider
-            .check_update(lxappid, current_version)
-            .await
-            .map_err(|e| {
-                crate::error!("check_update failed: {}", e).with_appid(lxappid);
-                LxAppError::Runtime(e.to_string())
-            })
+        provider.check_update(target).await.map_err(|e| {
+            crate::error!("check_update failed: {}", e).with_appid(lxappid);
+            LxAppError::Runtime(e.to_string())
+        })
     }
 
     /// Decide whether we should download/apply the server version for this app variant.

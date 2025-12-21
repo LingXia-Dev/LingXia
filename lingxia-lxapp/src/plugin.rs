@@ -18,7 +18,7 @@ use crate::archive;
 use crate::error::LxAppError;
 use crate::lxapp::config::LxPlugin;
 use crate::lxapp::{LINGXIA_DIR, PLUGINS_DIR};
-use crate::provider::UpdateCheckResult;
+use crate::provider::UpdateTarget;
 use crate::warn;
 use dashmap::DashMap;
 use lingxia_platform::{AppRuntime, Platform};
@@ -433,21 +433,22 @@ async fn download_and_install_internal(
     let plugin_id = &config.lx_plugin_id;
     let required_version = &config.version;
 
-    // 1. Check for update using the lx_plugin_id
     let provider = crate::get_provider();
-    let check_result: UpdateCheckResult = provider
-        .check_update(plugin_id, Some(required_version))
+    let target = UpdateTarget::Plugin {
+        id: plugin_id.to_string(),
+        version: required_version.to_string(),
+    };
+    let package = provider
+        .check_update(target)
         .await
-        .map_err(|e| LxAppError::IoError(format!("Plugin update check failed: {}", e)))?;
+        .map_err(|e| LxAppError::IoError(format!("Plugin update check failed: {}", e)))?
+        .ok_or_else(|| {
+            LxAppError::IoError(format!(
+                "Plugin {} (lxPluginId: {}) not found on server",
+                plugin_name, plugin_id
+            ))
+        })?;
 
-    let package = check_result.package.ok_or_else(|| {
-        LxAppError::IoError(format!(
-            "Plugin {} (lxPluginId: {}) not found on server",
-            plugin_name, plugin_id
-        ))
-    })?;
-
-    // 2. Download the archive
     let plugins_dir = get_plugins_dir(&runtime);
     let download_dir = plugins_dir.join("download");
     fs::create_dir_all(&download_dir)?;

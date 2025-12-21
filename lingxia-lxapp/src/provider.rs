@@ -7,15 +7,22 @@ use std::sync::OnceLock;
 /// Boxed future type for dyn compatibility.
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
-/// Result of an update check.
-#[derive(Clone, Debug, Default)]
-pub struct UpdateCheckResult {
-    pub has_update: bool,
-    pub package: Option<UpdatePackageInfo>,
+/// Update query target.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum UpdateTarget {
+    /// Host application.
+    App { current_version: Option<String> },
+    /// Miniapp.
+    LxApp {
+        id: String,
+        current_version: Option<String>,
+    },
+    /// Plugin extension (specific version).
+    Plugin { id: String, version: String },
 }
 
-/// Update package information.
-#[derive(Clone, Debug, Default)]
+/// Update package metadata.
+#[derive(Clone, Debug)]
 pub struct UpdatePackageInfo {
     pub version: String,
     pub url: String,
@@ -46,12 +53,13 @@ impl std::error::Error for ProviderError {}
 
 /// Trait for update checking.
 pub trait UpdateProvider: Send + Sync + 'static {
-    /// Check if an update is available for the given lxapp.
+    /// Returns Some(package) when available, None when already up to date.
+    /// For App/LxApp, current_version=None requests the latest package.
+    /// For Plugin, version is required and targets a specific package.
     fn check_update<'a>(
         &'a self,
-        lxappid: &'a str,
-        current_version: Option<&'a str>,
-    ) -> BoxFuture<'a, Result<UpdateCheckResult, ProviderError>>;
+        target: UpdateTarget,
+    ) -> BoxFuture<'a, Result<Option<UpdatePackageInfo>, ProviderError>>;
 }
 
 /// Trait for device fingerprint.
@@ -76,10 +84,9 @@ pub struct NoOpProvider;
 impl UpdateProvider for NoOpProvider {
     fn check_update<'a>(
         &'a self,
-        _lxappid: &'a str,
-        _current_version: Option<&'a str>,
-    ) -> BoxFuture<'a, Result<UpdateCheckResult, ProviderError>> {
-        Box::pin(async { Ok(UpdateCheckResult::default()) })
+        _target: UpdateTarget,
+    ) -> BoxFuture<'a, Result<Option<UpdatePackageInfo>, ProviderError>> {
+        Box::pin(async { Ok(None) })
     }
 }
 

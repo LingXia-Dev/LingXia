@@ -165,17 +165,16 @@ pub async fn ensure_first_install(
         return Ok(());
     }
 
-    let check = manager
+    let pkg = manager
         .check_update(target_appid, release_type, None)
         .await
-        .map_err(|e| RongJSError::Error(e.to_string()))?;
-
-    let pkg = check.package.ok_or_else(|| {
-        RongJSError::Error(format!(
-            "No package available for first install of {}",
-            target_appid
-        ))
-    })?;
+        .map_err(|e| RongJSError::Error(e.to_string()))?
+        .ok_or_else(|| {
+            RongJSError::Error(format!(
+                "No package available for first install of {}",
+                target_appid
+            ))
+        })?;
 
     manager
         .download_archive_with_checksum(
@@ -208,37 +207,38 @@ pub fn spawn_background_update_check(target_appid: String, release_type: Release
             .check_update(&target_appid, release_type, Some(current_version.as_str()))
             .await
         {
-            Ok(check) => {
-                if let Some(pkg) = check.package {
-                    if !manager.should_update(&pkg.version) {
-                        return;
-                    }
-
-                    let already_downloaded_same = matches!(
-                        manager.has_downloaded_update(&target_appid, release_type),
-                        Ok(Some(info)) if info.version == pkg.version
-                    );
-
-                    if already_downloaded_same {
-                        return;
-                    }
-
-                    let download_res = manager
-                        .download_archive_with_checksum(
-                            &target_appid,
-                            release_type,
-                            &pkg.url,
-                            &pkg.checksum_sha256,
-                            &pkg.version,
-                        )
-                        .await;
-
-                    if download_res.is_ok() {
-                        let _ = emit_app_event(&target_appid, "UpdateReady", None);
-                    } else {
-                        let _ = emit_app_event(&target_appid, "UpdateFailed", None);
-                    }
+            Ok(Some(pkg)) => {
+                if !manager.should_update(&pkg.version) {
+                    return;
                 }
+
+                let already_downloaded_same = matches!(
+                    manager.has_downloaded_update(&target_appid, release_type),
+                    Ok(Some(info)) if info.version == pkg.version
+                );
+
+                if already_downloaded_same {
+                    return;
+                }
+
+                let download_res = manager
+                    .download_archive_with_checksum(
+                        &target_appid,
+                        release_type,
+                        &pkg.url,
+                        &pkg.checksum_sha256,
+                        &pkg.version,
+                    )
+                    .await;
+
+                if download_res.is_ok() {
+                    let _ = emit_app_event(&target_appid, "UpdateReady", None);
+                } else {
+                    let _ = emit_app_event(&target_appid, "UpdateFailed", None);
+                }
+            }
+            Ok(None) => {
+                // No update available
             }
             Err(_) => {
                 // Ignore check errors in background
