@@ -93,7 +93,7 @@ class ScanCodeFragment : Fragment() {
             if (granted) {
                 startCamera()
             } else {
-                deliverFailure("camera_permission_denied", "Camera permission denied")
+                deliverFailure(3001, "Camera permission denied")
             }
         }
 
@@ -343,14 +343,14 @@ class ScanCodeFragment : Fragment() {
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to start camera", e)
-                deliverFailure("scan_error", "Unable to start camera: ${e.message}")
+                deliverFailure(1001, "Unable to start camera: ${e.message}")
             }
         }, executor)
     }
 
     private fun openAlbumPicker() {
         val host = activity as? AppCompatActivity ?: run {
-            deliverFailure("scan_error", "Host not AppCompatActivity")
+            deliverFailure(1000, "Host not AppCompatActivity")
             return
         }
         MediaPickerFragment.pick(
@@ -368,16 +368,16 @@ class ScanCodeFragment : Fragment() {
                         if (!barcodes.isNullOrEmpty()) {
                             handleBarcode(barcodes.first())
                         } else {
-                            deliverFailure("scan_no_code", "No code detected")
+                            deliverFailure(1001, "No code detected")
                         }
                     }
                     ?.addOnFailureListener { error ->
                         Log.e(TAG, "Gallery scan failed", error)
-                        deliverFailure("scan_error", "Failed to scan image")
+                        deliverFailure(1001, "Failed to scan image")
                     }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to process selected image", e)
-                deliverFailure("scan_error", "Failed to process image")
+                deliverFailure(1001, "Failed to process image")
             }
         }
     }
@@ -458,21 +458,18 @@ class ScanCodeFragment : Fragment() {
             return
         }
         hasReportedResult = true
-        NativeApi.onCallback(callbackId, true, "")
+        NativeApi.onCallback(callbackId, false, "2000")
         safeClose()
     }
 
-    private fun deliverFailure(code: String, message: String) {
+    private fun deliverFailure(code: Int, message: String) {
         if (hasReportedResult) {
             safeClose()
             return
         }
         hasReportedResult = true
-        val payload = org.json.JSONObject().apply {
-            put("error", message)
-            put("code", code)
-        }.toString()
-        NativeApi.onCallback(callbackId, false, payload)
+        Log.e(TAG, "scanCode failed ($code): $message")
+        NativeApi.onCallback(callbackId, false, code.toString())
         safeClose()
     }
 

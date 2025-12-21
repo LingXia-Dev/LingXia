@@ -188,7 +188,7 @@ pub(crate) mod ios {
             "iOS Location: Delivering success result for callback {}",
             callback_id
         );
-        lingxia_messaging::invoke_callback(callback_id, true, payload);
+        lingxia_messaging::invoke_callback(callback_id, Ok(payload));
     }
 
     fn deliver_failure(callback_id: u64, message: &str) {
@@ -202,21 +202,16 @@ pub(crate) mod ios {
             return;
         }
 
-        let mut code = "location_error";
+        let mut code: u32 = 1001; // Generic location_error
         if message.contains("permission") {
-            code = "location_permission_denied";
+            code = 3002; // location_permission_denied
         } else if message.contains("disabled") {
-            code = "location_services_disabled";
+            code = 4001; // location_services_disabled
         } else if message.contains("timed out") || message.contains("timeout") {
-            code = "location_timeout";
+            code = 5002; // location_timeout
         }
 
-        let payload = json!({
-            "code": code,
-            "error": message
-        })
-        .to_string();
-        lingxia_messaging::invoke_callback(callback_id, false, payload);
+        lingxia_messaging::invoke_callback(callback_id, Err(code));
     }
 
     fn build_location_payload(location: &CLLocation, include_altitude: bool) -> String {
@@ -285,12 +280,7 @@ pub(crate) mod ios {
         let services_enabled = unsafe { CLLocationManager::locationServicesEnabled_class() };
         if !services_enabled {
             log::error!("iOS Location: Services disabled");
-            let payload = json!({
-                "code": "location_services_disabled",
-                "error": "Location services are disabled"
-            })
-            .to_string();
-            lingxia_messaging::invoke_callback(callback_id, false, payload);
+            lingxia_messaging::invoke_callback(callback_id, Err(202));
             // Error is fully reported via callback; no additional PlatformError needed.
             return Ok(());
         }
@@ -351,8 +341,7 @@ pub(crate) mod ios {
                     );
                     DispatchQueue::main().exec_async(move || {
                         cleanup_request(callback_id);
-                        let payload = json!({ "error": "Location request timed out" }).to_string();
-                        lingxia_messaging::invoke_callback(callback_id, false, payload);
+                        lingxia_messaging::invoke_callback(callback_id, Err(203));
                     });
                 }
             });
@@ -437,8 +426,7 @@ impl Location for Platform {
             let _ = config;
             let _ = lingxia_messaging::invoke_callback(
                 callback_id,
-                false,
-                "Location services are not supported on this platform".to_string(),
+                Err(1),
             );
             Err(PlatformError::Platform(
                 "Location not available on this platform".into(),

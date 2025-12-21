@@ -42,6 +42,10 @@ public class LxAppActionSheet {
     }
 
     internal static func sendResult(callback_id: UInt64, tapIndex: Int) {
+        if tapIndex < 0 {
+            _ = onCallback(callback_id, false, "2000")
+            return
+        }
         let result = ["tapIndex": tapIndex]
         if let jsonData = try? JSONSerialization.data(withJSONObject: result),
            let jsonString = String(data: jsonData, encoding: .utf8) {

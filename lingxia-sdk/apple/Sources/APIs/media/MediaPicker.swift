@@ -643,7 +643,7 @@ final class MediaPickerViewController: UIViewController, UICollectionViewDataSou
             handler([])
         } else {
             // Use callback ID for Rust FFI
-            let _ = onCallback(callbackId, true, "{\"cancel\":true}")
+            let _ = onCallback(callbackId, false, "2000")
         }
         dismiss(animated: true)
     }
@@ -676,7 +676,7 @@ final class MediaPickerViewController: UIViewController, UICollectionViewDataSou
                 let json = String(data: data, encoding: .utf8) ?? "[]"
                 let _ = onCallback(callbackId, true, json)
             } catch {
-                let _ = onCallback(callbackId, false, "Failed to serialize selection")
+                let _ = onCallback(callbackId, false, "1000")
             }
             dismiss(animated: true)
         }

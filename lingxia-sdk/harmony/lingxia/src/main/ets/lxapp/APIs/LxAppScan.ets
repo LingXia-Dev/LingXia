@@ -51,7 +51,7 @@ export class LxAppScan {
   private static async startScan(options: ScanCodePayload): Promise<void> {
     try {
       if (!LxApp.context) {
-        onCallback(String(options.callbackId), false, 'No context');
+        onCallback(String(options.callbackId), false, '1000');
         return;
       }
 
@@ -85,20 +85,17 @@ export class LxAppScan {
         const out = JSON.stringify(payload);
         onCallback(String(options.callbackId), true, out);
       } else {
-        const err = JSON.stringify({ code: 'scan_no_code', error: 'No code detected' });
-        onCallback(String(options.callbackId), false, err);
+        onCallback(String(options.callbackId), false, '1001');
       }
     } catch (err) {
       const error = err as BusinessError;
       // Handle cancel case
       if (error.code === scanCore.ScanErrorCode.SCAN_SERVICE_CANCELED) {
-        // Cancel: success=true with empty payload
-        onCallback(String(options.callbackId), true, '');
+        onCallback(String(options.callbackId), false, '2000');
       } else {
         const message = error.message || (err instanceof Error ? err.message : `${err}`);
         hilog.error(DOMAIN, TAG, `startScan failed: ${message}`);
-        const payload = JSON.stringify({ code: 'scan_error', error: message });
-        onCallback(String(options.callbackId), false, payload);
+        onCallback(String(options.callbackId), false, '1001');
       }
     }
   }

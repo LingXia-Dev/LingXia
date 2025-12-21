@@ -234,12 +234,8 @@ internal object LxAppModal {
                     text = config.cancelText ?: "",
                     isPrimary = false,
                     onClick = {
-                        // Call callback with cancel result
-                        val result = JSONObject().apply {
-                            put("confirm", false)
-                            put("cancel", true)
-                        }
-                        NativeApi.onCallback(callbackId, true, result.toString())
+                        // Call callback with cancel result (user cancelled = error 2000)
+                        NativeApi.onCallback(callbackId, false, "2000")
                         hideModalInternal()
                     }
                 )

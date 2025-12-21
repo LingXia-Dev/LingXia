@@ -1,4 +1,5 @@
 use lingxia_messaging::{CallbackResult, get_callback};
+use crate::i18n::err_code_message;
 use lingxia_platform::{
     MediaInteraction, ScanCodeRequest, ScanType, ToastIcon, ToastOptions, ToastPosition,
     UserFeedback,
@@ -48,29 +49,34 @@ async fn scan(ctx: JSContext, options: Optional<JSScanOptions>) -> JSResult<Scan
         .scan_code(request)
         .map_err(|e| RongJSError::Error(format!("scan failed to start: {}", e)))?;
 
-    let CallbackResult { success, data } = receiver
+    let result = receiver
         .await
         .map_err(|_| RongJSError::Error("scan cancelled or failed".to_string()))?;
 
-    if !success {
-        let raw = data;
-        let value: Value = serde_json::from_str(&raw).unwrap_or(Value::Null);
-        let message = value
-            .get("error")
-            .and_then(Value::as_str)
-            .map(str::to_string)
-            .unwrap_or_else(|| raw.clone());
+    let data = match result {
+        CallbackResult::Success(data) => data,
+        CallbackResult::Error(code) => {
+            // 2000 = user cancelled, return empty result
+            if code == 2000 {
+                return Ok(ScanResultObj {
+                    scan_result: String::new(),
+                    scan_type: String::new(),
+                });
+            }
 
-        let _ = lxapp.runtime.show_toast(ToastOptions {
-            title: message.clone(),
-            icon: ToastIcon::Error,
-            image: None,
-            duration: 2.0,
-            mask: false,
-            position: ToastPosition::Center,
-        });
-        return Err(RongJSError::Error(message));
-    }
+            let message = err_code_message(code)
+                .unwrap_or_else(|| format!("Scan error: {}", code));
+            let _ = lxapp.runtime.show_toast(ToastOptions {
+                title: message.clone(),
+                icon: ToastIcon::Error,
+                image: None,
+                duration: 2.0,
+                mask: false,
+                position: ToastPosition::Center,
+            });
+            return Err(RongJSError::Error(message));
+        }
+    };
 
     let payload: Value = serde_json::from_str(&data).unwrap_or(Value::Null);
 

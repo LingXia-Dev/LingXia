@@ -1,3 +1,4 @@
+use crate::{I18nKey, i18n::err_code_message};
 use lingxia_messaging::{CallbackResult, get_callback};
 use lingxia_platform::{
     Location, LocationRequestConfig, PermissionKind, Permissions, ToastIcon, ToastOptions,
@@ -14,6 +15,37 @@ use std::sync::atomic::{AtomicBool, Ordering};
 // not start a new native location request and will instead surface a toast
 // directing the user to enable location in system settings.
 static LOCATION_PERMISSION_BLOCKED: AtomicBool = AtomicBool::new(false);
+
+fn is_location_permission_denied(code: u32) -> bool {
+    code == 3002 || code == 201
+}
+
+fn show_location_permission_toast(lxapp: &LxApp) {
+    let _ = lxapp.runtime.show_toast(ToastOptions {
+        title: crate::i18n::t(I18nKey::PermissionLocationDenied),
+        icon: ToastIcon::Error,
+        image: None,
+        duration: 2.0,
+        mask: false,
+        position: ToastPosition::Center,
+    });
+}
+
+fn location_error_message(code: u32) -> String {
+    if is_location_permission_denied(code) {
+        err_code_message(3002).unwrap_or_else(|| crate::i18n::t(I18nKey::PermissionLocationDenied))
+    } else {
+        err_code_message(code).unwrap_or_else(|| format!("Location error: {}", code))
+    }
+}
+
+fn handle_location_error(lxapp: &LxApp, code: u32) -> RongJSError {
+    if is_location_permission_denied(code) {
+        LOCATION_PERMISSION_BLOCKED.store(true, Ordering::Relaxed);
+        show_location_permission_toast(lxapp);
+    }
+    RongJSError::Error(location_error_message(code))
+}
 
 /// Coordinate conversion: WGS84 to GCJ02 (Mars coordinate system)
 /// Reference: https://github.com/wandergis/coordtransform
@@ -111,11 +143,12 @@ pub struct LocationObj {
 
 impl From<CallbackResult> for LocationObj {
     fn from(result: CallbackResult) -> Self {
-        if !result.success {
-            return default_location();
-        }
+        let data = match result {
+            CallbackResult::Success(data) => data,
+            CallbackResult::Error(_) => return default_location(),
+        };
 
-        let parsed: Value = match serde_json::from_str(&result.data) {
+        let parsed: Value = match serde_json::from_str(&data) {
             Ok(value) => value,
             Err(_) => return default_location(),
         };
@@ -169,15 +202,7 @@ async fn get_location(
     // process, do not start a new native request. Instead, surface a unified
     // toast guiding the user to enable location in system settings.
     if blocked {
-        let _ = lxapp.runtime.show_toast(ToastOptions {
-            title: "需要定位权限，请在系统设置中开启".to_string(),
-            icon: ToastIcon::Error,
-            image: None,
-            duration: 2.0,
-            mask: false,
-            position: ToastPosition::Center,
-        });
-        return Err(RongJSError::Error("Location permission denied".to_string()));
+        return Err(handle_location_error(&lxapp, 3002));
     }
 
     // Optional permission preflight for platforms that support it (e.g. Harmony).
@@ -195,33 +220,11 @@ async fn get_location(
             RongJSError::Error("Location permission request cancelled or failed".to_string())
         })?;
 
-        if !perm_result.success {
-            let raw = perm_result.as_str();
-            let value = serde_json::from_str::<Value>(raw).unwrap_or(Value::Null);
-            let code = value
-                .get("code")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_string();
-            let message = value
-                .get("error")
-                .and_then(Value::as_str)
-                .map(str::to_string)
-                .unwrap_or_else(|| raw.to_string());
-
-            if code == "location_permission_denied" {
-                LOCATION_PERMISSION_BLOCKED.store(true, Ordering::Relaxed);
-                let _ = lxapp.runtime.show_toast(ToastOptions {
-                    title: "需要定位权限，请在系统设置中开启".to_string(),
-                    icon: ToastIcon::Error,
-                    image: None,
-                    duration: 2.0,
-                    mask: false,
-                    position: ToastPosition::Center,
-                });
+        match perm_result {
+            CallbackResult::Error(code) => {
+                return Err(handle_location_error(&lxapp, code));
             }
-
-            return Err(RongJSError::Error(message));
+            CallbackResult::Success(_) => {}
         }
     }
 
@@ -245,52 +248,29 @@ async fn get_location(
             // Wait for result from callback
             match receiver.await {
                 Ok(result) => {
-                    if !result.success {
-                        // Try to extract structured error information from JSON payload.
-                        let raw = result.as_str();
-                        let value = serde_json::from_str::<Value>(raw).unwrap_or(Value::Null);
-                        let code = value
-                            .get("code")
-                            .and_then(Value::as_str)
-                            .unwrap_or_default()
-                            .to_string();
-                        let message = value
-                            .get("error")
-                            .and_then(Value::as_str)
-                            .map(str::to_string)
-                            .unwrap_or_else(|| raw.to_string());
-
-                        if code == "location_permission_denied" {
-                            LOCATION_PERMISSION_BLOCKED.store(true, Ordering::Relaxed);
-                            let _ = lxapp.runtime.show_toast(ToastOptions {
-                                title: "需要定位权限，请在系统设置中开启".to_string(),
-                                icon: ToastIcon::Error,
-                                image: None,
-                                duration: 2.0,
-                                mask: false,
-                                position: ToastPosition::Center,
-                            });
+                    match result {
+                        CallbackResult::Error(code) => {
+                            return Err(handle_location_error(&lxapp, code));
                         }
+                        CallbackResult::Success(data) => {
+                            let mut location = LocationObj::from(CallbackResult::Success(data));
 
-                        return Err(RongJSError::Error(message));
+                            let requested_type = options
+                                .as_ref()
+                                .and_then(|opts| opts.coordinate_type.as_deref())
+                                .unwrap_or("wgs84");
+
+                            // If GCJ02 coordinate system is requested, perform coordinate conversion
+                            if requested_type == "gcj02" {
+                                let (gcj_lat, gcj_lng) =
+                                    wgs84_to_gcj02(location.latitude, location.longitude);
+                                location.latitude = gcj_lat;
+                                location.longitude = gcj_lng;
+                            }
+
+                            Ok(location)
+                        }
                     }
-
-                    let mut location = LocationObj::from(result);
-
-                    let requested_type = options
-                        .as_ref()
-                        .and_then(|opts| opts.coordinate_type.as_deref())
-                        .unwrap_or("wgs84");
-
-                    // If GCJ02 coordinate system is requested, perform coordinate conversion
-                    if requested_type == "gcj02" {
-                        let (gcj_lat, gcj_lng) =
-                            wgs84_to_gcj02(location.latitude, location.longitude);
-                        location.latitude = gcj_lat;
-                        location.longitude = gcj_lng;
-                    }
-
-                    Ok(location)
                 }
                 Err(_) => Err(RongJSError::Error(
                     "Location callback timeout or cancelled".to_string(),

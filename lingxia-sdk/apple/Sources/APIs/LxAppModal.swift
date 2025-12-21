@@ -154,17 +154,8 @@ public class LxAppModal {
     // Add cancel action if needed
     if showCancel {
         let cancelAction = UIAlertAction(title: cancelText, style: .cancel) { _ in
-
-            // Call callback with cancel result
-            let result: [String: Any] = [
-                "confirm": false,
-                "cancel": true
-            ]
-
-            if let jsonData = try? JSONSerialization.data(withJSONObject: result),
-               let jsonString = String(data: jsonData, encoding: .utf8) {
-                _ = onCallback(callback_id, true, jsonString)
-            }
+            // User cancelled = error 2000
+            _ = onCallback(callback_id, false, "2000")
         }
         alert.addAction(cancelAction)
     }

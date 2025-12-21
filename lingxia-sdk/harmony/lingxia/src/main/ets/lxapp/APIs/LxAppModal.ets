@@ -217,12 +217,8 @@ export struct ModalManager {
   private handleCancel(): void {
     hilog.info(DOMAIN, TAG, 'Modal cancelled');
 
-    // Call callback with cancel result
-    const result = JSON.stringify({
-      confirm: false,
-      cancel: true
-    });
-    onCallback(this.callbackId, true, result);
+    // Call callback with cancel result (user cancelled = error 2000)
+    onCallback(this.callbackId, false, '2000');
 
     this.hideModal();
   }

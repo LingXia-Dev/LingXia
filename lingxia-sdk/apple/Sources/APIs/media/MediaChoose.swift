@@ -22,14 +22,14 @@ extension LxAppMedia {
 
         DispatchQueue.main.async {
             guard let presenter = topViewController() else {
-                let _ = onCallback(callback_id, false, "Unable to find top view controller")
+                let _ = onCallback(callback_id, false, "1000")
                 return
             }
 
             // Parse source types
             guard let sourceTypesData = sourceTypesJson.data(using: .utf8),
                   let sourceTypes = try? JSONDecoder().decode([String].self, from: sourceTypesData) else {
-                let _ = onCallback(callback_id, false, "Failed to parse source types")
+                let _ = onCallback(callback_id, false, "1002")
                 return
             }
 
@@ -47,7 +47,7 @@ extension LxAppMedia {
             } else if allowAlbum {
                 openAlbum(presenter: presenter, mode: modeStr, maxCount: max_count, callbackId: callback_id)
             } else {
-                let _ = onCallback(callback_id, false, "No supported source types")
+                let _ = onCallback(callback_id, false, "1002")
             }
         }
         return true
@@ -55,6 +55,10 @@ extension LxAppMedia {
 
     nonisolated private static func sendDone(_ callbackId: UInt64) {
         let _ = onCallback(callbackId, true, "{\"done\":true}")
+    }
+
+    nonisolated private static func sendError(_ callbackId: UInt64, _ code: Int) {
+        let _ = onCallback(callbackId, false, "\(code)")
     }
 
     private static func openCamera(
@@ -66,13 +70,13 @@ extension LxAppMedia {
     ) {
 
         guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
-            let _ = onCallback(callbackId, false, "Camera is not available on this device")
+            let _ = onCallback(callbackId, false, "6001")
             return
         }
 
         PermissionManager.ensureCameraAccess { granted in
             guard granted else {
-                let _ = onCallback(callbackId, false, "Camera access is required to capture media. Please enable access in Settings > Privacy & Security > Camera.")
+                let _ = onCallback(callbackId, false, "3001")
                 return
             }
 
@@ -82,7 +86,7 @@ extension LxAppMedia {
             if modeLowercased == "video" {
                 PermissionManager.ensureMicrophoneAccess { micGranted in
                     guard micGranted else {
-                        let _ = onCallback(callbackId, false, "Microphone access is required to record video. Please enable access in Settings > Privacy & Security > Microphone.")
+                        let _ = onCallback(callbackId, false, "3003")
                         return
                     }
 
@@ -95,10 +99,10 @@ extension LxAppMedia {
                     ) { result in
                         switch result {
                         case .cancelled:
-                            let _ = onCallback(callbackId, true, "{\"cancel\":true}")
+                            let _ = onCallback(callbackId, false, "2000")
                             sendDone(callbackId)
-                        case .failure(let message):
-                            let _ = onCallback(callbackId, false, message)
+                        case .failure(_):
+                            let _ = onCallback(callbackId, false, "1001")
                             sendDone(callbackId)
                         case .success(let fileURL):
                             let jsonItem: [String: Any] = [
@@ -112,7 +116,7 @@ extension LxAppMedia {
                                 let _ = onCallback(callbackId, true, jsonString)
                                 sendDone(callbackId)
                             } else {
-                                let _ = onCallback(callbackId, false, "Failed to serialize camera capture result")
+                                let _ = onCallback(callbackId, false, "1000")
                                 sendDone(callbackId)
                             }
                             return
@@ -128,10 +132,10 @@ extension LxAppMedia {
             let photoController = PhotoCaptureViewController(initialCameraPosition: initialPosition) { result in
                 switch result {
                 case .cancelled:
-                    let _ = onCallback(callbackId, true, "{\"cancel\":true}")
+                    let _ = onCallback(callbackId, false, "2000")
                     sendDone(callbackId)
-                case .failure(let message):
-                    let _ = onCallback(callbackId, false, message)
+                case .failure(_):
+                    let _ = onCallback(callbackId, false, "1001")
                     sendDone(callbackId)
                 case .success(let fileURL):
                     let jsonItem: [String: Any] = [
@@ -145,7 +149,7 @@ extension LxAppMedia {
                         let _ = onCallback(callbackId, true, jsonString)
                         sendDone(callbackId)
                     } else {
-                        let _ = onCallback(callbackId, false, "Failed to serialize camera capture result")
+                        let _ = onCallback(callbackId, false, "1000")
                         sendDone(callbackId)
                     }
                 }
@@ -168,7 +172,7 @@ extension LxAppMedia {
             )
         } else {
             // For iOS 13 and below, we would need to use UIImagePickerController with permission checks
-            let _ = onCallback(callbackId, false, "Photo picker requires iOS 14.0 or later")
+            let _ = onCallback(callbackId, false, "6002")
         }
     }
 
@@ -184,7 +188,7 @@ extension LxAppMedia {
             if granted {
                 presentPhotoPicker(presenter: presenter, mode: mode, maxCount: maxCount, callbackId: callbackId)
             } else {
-                let _ = onCallback(callbackId, false, "Photo library access is required to select photos. Please enable access in Settings > Privacy & Security > Photos.")
+                let _ = onCallback(callbackId, false, "3004")
             }
         }
     }

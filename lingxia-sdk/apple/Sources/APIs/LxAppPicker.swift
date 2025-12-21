@@ -75,7 +75,7 @@ public class LxAppPicker {
             confirmTextColor: confirmTextColor
         ) else {
             os_log("Failed to parse picker configuration", log: log, type: .error)
-            sendPickerResult(callback_id: callbackID, buttonType: "cancel", selectedIndices: [])
+            sendPickerError(callback_id: callbackID, code: 1002)
             return
         }
 
@@ -83,7 +83,7 @@ public class LxAppPicker {
         showIOSPicker(configuration: configuration, callbackID: callbackID)
         #else
         os_log("macOS picker not implemented", log: log, type: .error)
-        sendPickerResult(callback_id: callbackID, buttonType: "cancel", selectedIndices: [])
+        sendPickerError(callback_id: callbackID, code: 6000)
         #endif
     }
 
@@ -106,8 +106,12 @@ public class LxAppPicker {
     }
 
     // Specific methods for cancel and confirm to match Android implementation
-    internal static func sendPickerResultCancel(callback_id: UInt64, selectedIndices: [Int]) {
-        sendPickerResult(callback_id: callback_id, buttonType: "cancel", selectedIndices: selectedIndices)
+    internal static func sendPickerResultCancel(callback_id: UInt64) {
+        _ = onCallback(callback_id, false, "2000")
+    }
+
+    internal static func sendPickerError(callback_id: UInt64, code: Int) {
+        _ = onCallback(callback_id, false, "\(code)")
     }
 
     internal static func sendPickerResultConfirm(callback_id: UInt64, selectedIndices: [Int]) {
@@ -136,7 +140,7 @@ extension LxAppPicker {
               let window = windowScene.windows.first(where: { $0.isKeyWindow }) ?? windowScene.windows.first,
               let rootViewController = window.rootViewController else {
             os_log("Unable to locate window or root view controller", log: log, type: .error)
-            sendPickerResult(callback_id: callbackID, buttonType: "cancel", selectedIndices: [0])
+            sendPickerError(callback_id: callbackID, code: 1000)
             return
         }
 
@@ -226,7 +230,7 @@ extension LxAppPicker {
                     os_log("No picker data available for cancel", log: LxAppPicker.log, type: .error)
                     return
                 }
-                LxAppPicker.sendPickerResultCancel(callback_id: pickerData.callbackID, selectedIndices: pickerData.currentSelection)
+                LxAppPicker.sendPickerResultCancel(callback_id: pickerData.callbackID)
                 LxAppPicker.dismissPicker(expectedID: instanceID)
             }
         }, for: .touchUpInside)

@@ -683,7 +683,7 @@ export struct CameraCaptureOverlay {
           await this.waitFileStable(resPath, 6, 100);
           setTimeout(() => { this.enterPreviewMode(resPath, 'video'); }, 200);
       } else {
-          onCallback(cb, true, '{"cancel":true}');
+          onCallback(cb, false, '2000');
           CameraCaptureOverlayManager.hide();
           await NativeCameraBridge.release().catch(() => {});
         }
@@ -698,7 +698,7 @@ export struct CameraCaptureOverlay {
 
   private cancel(): void {
     const cb = this.options?.callbackId || '';
-    if (cb) { onCallback(cb, true, '{"cancel":true}'); }
+    if (cb) { onCallback(cb, false, '2000'); }
     this.clearLongPressTimer();
     this.stopRecordingTimer();
     this.captureProgress = 0;

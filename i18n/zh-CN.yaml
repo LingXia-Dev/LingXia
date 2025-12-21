@@ -90,10 +90,50 @@ error:
   save_failed: "保存失败，请检查照片权限或可用空间"
   video_too_short: "拍摄时间过短"
 
-# Update
-update:
-  new_version_available: "发现新版本"
-  update_now: "立即更新"
-  later: "稍后"
-  checking_for_updates: "正在检查更新..."
-  already_latest_version: "当前已是最新版本"
+# Error Codes (4-digit: Xyyy where X=category, yyy=specific)
+# 1xxx: General errors
+# 2xxx: User actions
+# 3xxx: Permission errors
+# 4xxx: Service/System errors
+# 5xxx: Network errors
+# 6xxx: Feature limitations
+err_code:
+  # 1xxx - General errors
+  1000: "未知错误"
+  1001: "操作失败"
+  1002: "参数无效"
+  1003: "资源不存在"
+  1004: "初始化失败"
+  1005: "内部错误"
+
+  # 2xxx - User actions
+  2000: "用户取消"
+  2001: "用户拒绝"
+
+  # 3xxx - Permission errors
+  3000: "权限被拒绝"
+  3001: "相机权限被拒绝"
+  3002: "定位权限被拒绝"
+  3003: "麦克风权限被拒绝"
+  3004: "相册权限被拒绝"
+  3005: "存储权限被拒绝"
+  3006: "通知权限被拒绝"
+  3007: "蓝牙权限被拒绝"
+
+  # 4xxx - Service/System errors
+  4000: "服务不可用"
+  4001: "定位服务未开启"
+  4002: "蓝牙未开启"
+  4003: "NFC未开启"
+
+  # 5xxx - Network errors
+  5000: "网络错误"
+  5001: "网络不可用"
+  5002: "请求超时"
+  5003: "服务器错误"
+  5004: "连接失败"
+
+  # 6xxx - Feature limitations
+  6000: "功能不支持"
+  6001: "设备不支持"
+  6002: "系统版本过低"

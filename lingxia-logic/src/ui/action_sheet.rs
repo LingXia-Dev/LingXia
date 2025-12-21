@@ -77,13 +77,14 @@ pub(crate) async fn present_action_sheet(
         .show_action_sheet(item_list, cancel_text, item_color, callback_id)
         .map_err(|e| RongJSError::Error(format!("Failed to show action sheet: {}", e)))?;
 
-    let CallbackResult { success, data } = receiver.await.map_err(|_| {
+    let result = receiver.await.map_err(|_| {
         RongJSError::Error("Action sheet callback timeout or cancelled".to_string())
     })?;
 
-    if !success {
-        return Ok(None);
-    }
+    let data = match result {
+        CallbackResult::Success(data) => data,
+        CallbackResult::Error(_) => return Ok(None),
+    };
 
     let index = serde_json::from_str::<Value>(&data)
         .ok()

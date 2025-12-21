@@ -47,20 +47,25 @@ struct JSModalResult {
 
 impl From<CallbackResult> for JSModalResult {
     fn from(result: CallbackResult) -> Self {
-        if !result.success {
-            return JSModalResult {
-                confirm: false,
-                cancel: true,
-            };
-        }
+        let data = match result {
+            CallbackResult::Success(data) => data,
+            // Error code 2000 = user cancelled
+            CallbackResult::Error(_) => {
+                return JSModalResult {
+                    confirm: false,
+                    cancel: true,
+                };
+            }
+        };
 
-        match serde_json::from_str::<Value>(&result.data) {
+        // Success callback contains confirm result
+        match serde_json::from_str::<Value>(&data) {
             Ok(json) => JSModalResult {
                 confirm: json
                     .get("confirm")
                     .and_then(Value::as_bool)
-                    .unwrap_or(false),
-                cancel: json.get("cancel").and_then(Value::as_bool).unwrap_or(false),
+                    .unwrap_or(true),
+                cancel: false,
             },
             Err(_) => JSModalResult {
                 confirm: true,

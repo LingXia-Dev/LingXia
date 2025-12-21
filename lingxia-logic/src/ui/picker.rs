@@ -139,22 +139,22 @@ fn generate_time_columns() -> (Vec<String>, Vec<String>) {
 
 impl From<CallbackResult> for PickerResult {
     fn from(result: CallbackResult) -> Self {
-        if !result.success {
-            return PickerResult {
-                index: vec![],
-                cancelled: true,
-                confirmed: false,
-            };
-        }
+        let data = match result {
+            CallbackResult::Success(data) => data,
+            // Error code 2000 = user cancelled
+            CallbackResult::Error(_) => {
+                return PickerResult {
+                    index: vec![],
+                    cancelled: true,
+                    confirmed: false,
+                };
+            }
+        };
 
-        match serde_json::from_str::<Value>(&result.data) {
+        match serde_json::from_str::<Value>(&data) {
             Ok(json) => {
                 let cancelled = json.get("cancel").and_then(Value::as_bool).unwrap_or(false);
-                let confirmed = json
-                    .get("confirm")
-                    .and_then(Value::as_bool)
-                    .unwrap_or(false);
-
+                let confirmed = json.get("confirm").and_then(Value::as_bool).unwrap_or(false);
                 let index = match json.get("index") {
                     Some(index_value) if index_value.is_i64() => {
                         vec![index_value.as_i64().unwrap_or_default() as i32]

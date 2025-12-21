@@ -1,4 +1,4 @@
-use crate::ui::present_action_sheet;
+use crate::{I18nKey, i18n::err_code_message, ui::present_action_sheet};
 use lingxia_messaging::{CallbackResult, get_callback};
 use lingxia_platform::{
     AppRuntime, CameraFacing, ChooseMediaMode, ChooseMediaRequest, MediaInteraction, MediaKind,
@@ -54,6 +54,15 @@ struct MediaKey {
     kind: String,
     #[serde(rename = "isOriginal", default = "default_is_original")]
     is_original: bool,
+}
+
+fn permission_toast_key(code: u32) -> Option<I18nKey> {
+    match code {
+        3001 => Some(I18nKey::PermissionCameraDenied),
+        3003 => Some(I18nKey::PermissionMicrophoneDenied),
+        3004 => Some(I18nKey::PermissionPhotoDenied),
+        _ => None,
+    }
 }
 
 pub fn init(ctx: &JSContext) -> JSResult<()> {
@@ -114,60 +123,34 @@ async fn choose_media(
         .choose_media(request)
         .map_err(|e| RongJSError::Error(format!("chooseMedia failed to start: {}", e)))?;
 
-    let CallbackResult { success, data } = receiver
+    let result = receiver
         .await
         .map_err(|_| RongJSError::Error("chooseMedia cancelled or failed".to_string()))?;
 
-    if !success {
-        // Prefer structured error envelopes of the form:
-        // { code: "...", error: "..." }. Fall back to string heuristics
-        // for older platform implementations.
-        let raw = data;
-        let value: Value = serde_json::from_str(&raw).unwrap_or(Value::Null);
-        let mut code = value
-            .get("code")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string();
-        let message = value
-            .get("error")
-            .and_then(Value::as_str)
-            .map(str::to_string)
-            .unwrap_or_else(|| raw.clone());
+    let data = match result {
+        CallbackResult::Success(data) => data,
+        CallbackResult::Error(code) => {
+            // 2000 = user cancelled, return empty result
+            if code == 2000 {
+                return Ok(Vec::new());
+            }
 
-        if code.is_empty() {
-            let lower = raw.to_lowercase();
-            code = if lower.contains("camera permission") {
-                "camera_permission_denied".to_string()
-            } else if lower.contains("microphone access") {
-                "microphone_permission_denied".to_string()
-            } else if lower.contains("photo library access") || lower.contains("photos") {
-                "photo_permission_denied".to_string()
-            } else {
-                String::new()
-            };
+            if let Some(key) = permission_toast_key(code) {
+                let _ = lxapp.runtime.show_toast(ToastOptions {
+                    title: crate::i18n::t(key),
+                    icon: ToastIcon::Error,
+                    image: None,
+                    duration: 2.0,
+                    mask: false,
+                    position: ToastPosition::Center,
+                });
+            }
+
+            let message = err_code_message(code)
+                .unwrap_or_else(|| format!("chooseMedia error: {}", code));
+            return Err(RongJSError::Error(message));
         }
-
-        let toast_message = match code.as_str() {
-            "camera_permission_denied" => Some("需要相机权限，请在系统设置中开启"),
-            "microphone_permission_denied" => Some("需要麦克风权限，请在系统设置中开启"),
-            "photo_permission_denied" => Some("需要照片访问权限，请在系统设置中开启"),
-            _ => None,
-        };
-
-        if let Some(msg) = toast_message {
-            let _ = lxapp.runtime.show_toast(ToastOptions {
-                title: msg.to_string(),
-                icon: ToastIcon::Error,
-                image: None,
-                duration: 2.0,
-                mask: false,
-                position: ToastPosition::Center,
-            });
-        }
-
-        return Err(RongJSError::Error(message));
-    }
+    };
 
     let parsed: Value = serde_json::from_str(&data)
         .map_err(|_| RongJSError::Error("chooseMedia invalid payload".to_string()))?;
@@ -176,10 +159,7 @@ async fn choose_media(
         return Ok(Vec::new());
     }
 
-    if let Some(obj) = parsed.as_object() {
-        if obj.get("cancel").and_then(Value::as_bool).unwrap_or(false) {
-            return Ok(Vec::new());
-        }
+    if parsed.as_object().is_some() {
         return Err(RongJSError::Error(
             "chooseMedia invalid payload".to_string(),
         ));

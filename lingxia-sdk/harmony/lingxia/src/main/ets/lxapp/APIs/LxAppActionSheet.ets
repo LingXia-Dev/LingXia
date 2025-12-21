@@ -153,11 +153,8 @@ export struct ActionSheetManager {
   }
 
   private handleCancel(): void {
-    const result: ActionSheetResult = {
-      tapIndex: -1
-    };
-
-    onCallback(this.callbackId, true, JSON.stringify(result));
+    // User cancelled = error 2000
+    onCallback(this.callbackId, false, '2000');
 
     this.hideActionSheet();
   }

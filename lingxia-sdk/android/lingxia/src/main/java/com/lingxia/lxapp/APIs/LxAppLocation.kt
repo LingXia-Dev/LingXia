@@ -45,8 +45,7 @@ object LxAppLocation {
         val activity = LxApp.getCurrentActivity()
         if (activity == null) {
             Log.e(TAG, "requestLocation: current activity is null")
-            val payload = JSONObject().apply { put("error", "No active activity") }
-            com.lingxia.lxapp.NativeApi.onCallback(callbackId, false, payload.toString())
+            com.lingxia.lxapp.NativeApi.onCallback(callbackId, false, "1000")
             return
         }
         activity.runOnUiThread {
@@ -78,7 +77,7 @@ object LxAppLocation {
     ) {
         val locationManager = activity.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
         if (locationManager == null) {
-            sendFailure(callbackId, "location_services_unavailable", "Location service unavailable")
+            sendFailure(callbackId, 4000)
             return
         }
 
@@ -99,7 +98,7 @@ object LxAppLocation {
                 if (granted) {
                     requestSingleLocationWithConfig(activity, callbackId, isHighAccuracy, includeAltitude, expireTimeMs)
                 } else {
-                    sendFailure(callbackId, "location_permission_denied", "Location permission not granted")
+                    sendFailure(callbackId, 3002)
                 }
             }
             return
@@ -129,7 +128,7 @@ object LxAppLocation {
 
         if (providers.isEmpty()) {
             Log.w(TAG, "No enabled location provider")
-            sendFailure(callbackId, "location_unavailable", "No location provider enabled")
+            sendFailure(callbackId, 4001)
             return
         }
 
@@ -175,7 +174,7 @@ object LxAppLocation {
         timeoutRunnable = Runnable {
             if (handled.compareAndSet(false, true)) {
                 locationManager.removeUpdates(listener)
-                sendFailure(callbackId, "location_timeout", "Location request timed out")
+                sendFailure(callbackId, 5002)
             }
         }
 
@@ -210,7 +209,7 @@ object LxAppLocation {
             if (!started && handled.compareAndSet(false, true)) {
                 locationManager.removeUpdates(listener)
                 mainHandler.removeCallbacks(timeoutRunnable)
-                sendFailure(callbackId, "location_unavailable", "Unable to request location updates")
+                sendFailure(callbackId, 4000)
             }
         }
     }
@@ -249,13 +248,8 @@ object LxAppLocation {
         }
     }
 
-    private fun sendFailure(callbackId: Long, code: String, message: String) {
-        val payload = JSONObject().apply {
-            put("code", code)
-            put("error", message)
-        }
-
-        val success = com.lingxia.lxapp.NativeApi.onCallback(callbackId, false, payload.toString())
+    private fun sendFailure(callbackId: Long, code: Int) {
+        val success = com.lingxia.lxapp.NativeApi.onCallback(callbackId, false, code.toString())
         if (!success) {
             Log.w(TAG, "Failed to deliver location error for callback $callbackId")
         }

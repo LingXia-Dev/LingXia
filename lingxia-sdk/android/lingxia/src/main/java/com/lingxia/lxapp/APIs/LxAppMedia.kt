@@ -331,8 +331,7 @@ internal object LxAppMedia {
         val activity = LxApp.getCurrentActivity()
         if (activity == null) {
             Log.w(TAG, "chooseMedia: current activity is null")
-            val payload = org.json.JSONObject().apply { put("error", "No current activity available") }
-            com.lingxia.lxapp.NativeApi.onCallback(callbackId, false, payload.toString())
+            com.lingxia.lxapp.NativeApi.onCallback(callbackId, false, "1000")
             return
         }
 
@@ -342,8 +341,7 @@ internal object LxAppMedia {
 
         val appCompat = activity as? AppCompatActivity
         if (appCompat == null) {
-            val payload = org.json.JSONObject().apply { put("error", "Activity is not AppCompatActivity") }
-            com.lingxia.lxapp.NativeApi.onCallback(callbackId, false, payload.toString())
+            com.lingxia.lxapp.NativeApi.onCallback(callbackId, false, "1000")
             return
         }
 
@@ -373,8 +371,7 @@ internal object LxAppMedia {
                     cameraFacing
                 )
             } else {
-                val payload = org.json.JSONObject().apply { put("error", "No valid source (album/camera)") }
-                com.lingxia.lxapp.NativeApi.onCallback(callbackId, false, payload.toString())
+                com.lingxia.lxapp.NativeApi.onCallback(callbackId, false, "1002")
             }
         }
     }
@@ -383,14 +380,12 @@ internal object LxAppMedia {
     fun scanCode(scanTypes: IntArray, onlyFromCamera: Boolean, callbackId: Long) {
         val activity = LxApp.getCurrentActivity()
         if (activity == null) {
-            val payload = JSONObject().apply { put("error", "No current activity available") }
-            NativeApi.onCallback(callbackId, false, payload.toString())
+            NativeApi.onCallback(callbackId, false, "1000")
             return
         }
         val appCompat = activity as? AppCompatActivity
         if (appCompat == null) {
-            val payload = JSONObject().apply { put("error", "Activity is not AppCompatActivity") }
-            NativeApi.onCallback(callbackId, false, payload.toString())
+            NativeApi.onCallback(callbackId, false, "1000")
             return
         }
 
@@ -400,11 +395,7 @@ internal object LxAppMedia {
                 ScanCodeFragment.start(appCompat, normalizedTypes, onlyFromCamera, callbackId)
             } catch (e: Exception) {
                 Log.e(TAG, "scanCode failed", e)
-                NativeApi.onCallback(
-                    callbackId,
-                    false,
-                    e.message ?: "Failed to start scan"
-                )
+                NativeApi.onCallback(callbackId, false, "1001")
             }
         }
     }

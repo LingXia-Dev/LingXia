@@ -187,7 +187,7 @@ class MediaPickerFragment : Fragment() {
             PermissionState.NONE -> {
                 limitedModeActive = false
                 pendingLimitedReload = false
-                sendFailure("Permission denied")
+                sendFailure(3004)
                 removeSelf()
                 return@registerForActivityResult
             }
@@ -830,7 +830,7 @@ class MediaPickerFragment : Fragment() {
         if (!allowCamera) return
         val host = activity as? AppCompatActivity
         if (host == null) {
-            sendFailure("Activity is not AppCompatActivity")
+            sendFailure(1000)
             removeSelf()
             return
         }
@@ -1316,15 +1316,14 @@ class MediaPickerFragment : Fragment() {
         }
     }
 
-    private fun sendFailure(message: String) {
+    private fun sendFailure(code: Int) {
         resultListener?.let {
             // For embedded flows, just dismiss
             activity?.runOnUiThread { removeSelf() }
             return
         }
         try {
-            val payload = JSONObject().apply { put("error", message) }
-            NativeApi.onCallback(callbackId, false, payload.toString())
+            NativeApi.onCallback(callbackId, false, code.toString())
         } catch (_: Exception) { }
     }
 
@@ -1335,8 +1334,7 @@ class MediaPickerFragment : Fragment() {
             return
         }
         try {
-            val payload = JSONObject().apply { put("cancel", true) }
-            NativeApi.onCallback(callbackId, true, payload.toString())
+            NativeApi.onCallback(callbackId, false, "2000")
         } catch (_: Exception) { }
     }
 

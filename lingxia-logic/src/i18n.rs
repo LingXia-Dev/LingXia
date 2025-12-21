@@ -33,3 +33,7 @@ pub fn t(key: I18nKey) -> String {
     let normalized = normalize_locale(&locale);
     key.get(&normalized).to_string()
 }
+
+pub fn err_code_message(code: u32) -> Option<String> {
+    I18nKey::from_err_code(code).map(t)
+}

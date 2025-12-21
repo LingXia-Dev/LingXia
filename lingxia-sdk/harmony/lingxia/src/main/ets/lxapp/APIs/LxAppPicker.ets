@@ -182,11 +182,8 @@ export struct PickerManager {
    * Handle cancel button click
    */
   private onCancel(): void {
-    const result: PickerResult = {
-      cancel: true
-    };
-
-    onCallback(this.callbackId, true, JSON.stringify(result));
+    // User cancelled = error 2000
+    onCallback(this.callbackId, false, '2000');
     this.hidePicker();
   }
 

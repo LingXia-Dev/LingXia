@@ -128,7 +128,7 @@ unsafe extern "C" fn handle_location_update(location: *mut Location_Info, user_d
     }
     unsafe { OH_Location_DestroyRequestConfig(ctx.request_config) };
 
-    if !lingxia_messaging::invoke_callback(ctx.callback_id, true, payload_str) {
+    if !lingxia_messaging::invoke_callback(ctx.callback_id, Ok(payload_str)) {
         warn!(
             "Location callback {callback_id} not found",
             callback_id = ctx.callback_id
@@ -179,27 +179,13 @@ impl Location for Platform {
                 OH_Location_DestroyRequestConfig(request_config);
                 drop(Box::from_raw(context_ptr));
 
-                let (code, message) = if result == 201 {
-                    // Permission was not granted when starting location. The
-                    // logic layer can treat this as a permission denial and
-                    // decide how to guide the user.
-                    (
-                        "location_permission_denied",
-                        "Location permission denied".to_string(),
-                    )
+                let error_code: u32 = if result == 201 {
+                    3002 // Permission denied
                 } else {
-                    (
-                        "location_unavailable",
-                        format!("Location start failed with code {}", result),
-                    )
+                    1001 // General failure
                 };
 
-                let payload = json!({
-                    "code": code,
-                    "error": message
-                })
-                .to_string();
-                invoke_callback(callback_id, false, payload);
+                invoke_callback(callback_id, Err(error_code));
                 return Ok(());
             }
 

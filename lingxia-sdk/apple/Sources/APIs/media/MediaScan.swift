@@ -17,11 +17,11 @@ extension LxAppMedia {
         let typesJson = scan_types_json.toString()
         DispatchQueue.main.async {
             guard #available(iOS 13.0, *) else {
-                let _ = onCallback(callback_id, false, "scanCode requires iOS 13.0 or later")
+                let _ = onCallback(callback_id, false, "6002")
                 return
             }
             guard let presenter = topViewController() else {
-                let _ = onCallback(callback_id, false, "Unable to find top view controller")
+                let _ = onCallback(callback_id, false, "1000")
                 return
             }
 
@@ -210,7 +210,7 @@ final class ScanCodeViewController: UIViewController {
             if granted {
                 self.configureSession()
             } else {
-                self.reportFailure("Camera permission denied", code: "camera_permission_denied")
+                self.reportFailure(3001)
             }
         }
     }
@@ -221,7 +221,7 @@ final class ScanCodeViewController: UIViewController {
 
         guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) ??
             AVCaptureDevice.default(for: .video) else {
-            reportFailure("Camera is not available on this device")
+            reportFailure(6001)
             return
         }
 
@@ -230,11 +230,11 @@ final class ScanCodeViewController: UIViewController {
             if session.canAddInput(input) {
                 session.addInput(input)
             } else {
-                reportFailure("Unable to add camera input")
+                reportFailure(1001)
                 return
             }
         } catch {
-            reportFailure("Failed to access camera: \(error.localizedDescription)")
+            reportFailure(1001)
             return
         }
 
@@ -243,7 +243,7 @@ final class ScanCodeViewController: UIViewController {
             session.addOutput(metadataOutput)
             metadataOutput.setMetadataObjectsDelegate(self, queue: metadataQueue)
         } else {
-            reportFailure("Unable to configure metadata output")
+            reportFailure(1001)
             return
         }
 
@@ -452,19 +452,16 @@ final class ScanCodeViewController: UIViewController {
         hasReported = true
         stopScanLineAnimation()
         stopSession()
-        let _ = onCallback(callbackId, true, "{\"cancel\":true}")
+        let _ = onCallback(callbackId, false, "2000")
         dismiss(animated: true)
     }
 
-    private func reportFailure(_ message: String, code: String = "scan_error") {
+    private func reportFailure(_ code: Int) {
         guard !hasReported else { return }
         hasReported = true
         stopScanLineAnimation()
         stopSession()
-        let envelope: [String: Any] = ["code": code, "error": message]
-        let jsonData = try? JSONSerialization.data(withJSONObject: envelope, options: [])
-        let jsonString = jsonData.flatMap { String(data: $0, encoding: .utf8) } ?? message
-        let _ = onCallback(callbackId, false, jsonString)
+        let _ = onCallback(callbackId, false, "\(code)")
         dismiss(animated: true)
     }
 
@@ -496,7 +493,7 @@ final class ScanCodeViewController: UIViewController {
     /// Load image from phasset URI and detect barcode
     private func loadImageAndDetectBarcode(from uri: String) {
         guard uri.hasPrefix("phasset:") else {
-            reportFailure("Invalid URI format", code: "scan_invalid_uri")
+            reportFailure(1002)
             return
         }
 
@@ -504,7 +501,7 @@ final class ScanCodeViewController: UIViewController {
         let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [localIdentifier], options: nil)
 
         guard let asset = fetchResult.firstObject else {
-            reportFailure("Asset not found", code: "scan_error")
+            reportFailure(1003)
             return
         }
 
@@ -521,7 +518,7 @@ final class ScanCodeViewController: UIViewController {
         ) { [weak self] image, _ in
             guard let self, let image else {
                 DispatchQueue.main.async {
-                    self?.reportFailure("Failed to load image", code: "scan_error")
+                    self?.reportFailure(1001)
                 }
                 return
             }
@@ -607,7 +604,7 @@ private extension ScanCodeViewController {
     func detectBarcode(in image: UIImage) {
         guard let cgImage = image.cgImage else {
             DispatchQueue.main.async {
-                self.reportFailure("Unable to read image", code: "scan_error")
+                self.reportFailure(1001)
             }
             return
         }
@@ -619,7 +616,7 @@ private extension ScanCodeViewController {
             guard let self else { return }
             if let error {
                 DispatchQueue.main.async {
-                    self.reportFailure("Scan failed: \(error.localizedDescription)", code: "scan_error")
+                    self.reportFailure(1001)
                 }
                 return
             }
@@ -629,7 +626,7 @@ private extension ScanCodeViewController {
                   }),
                   let value = match.payloadStringValue else {
                 DispatchQueue.main.async {
-                    self.reportFailure("No code detected", code: "scan_no_code")
+                    self.reportFailure(1001)
                 }
                 return
             }
@@ -648,7 +645,7 @@ private extension ScanCodeViewController {
                 try handler.perform([request])
             } catch {
                 DispatchQueue.main.async {
-                    self.reportFailure("Scan failed: \(error.localizedDescription)", code: "scan_error")
+                    self.reportFailure(1001)
                 }
             }
         }

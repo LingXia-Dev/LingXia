@@ -482,17 +482,7 @@ object LxAppPicker {
     }
 
     private fun sendPickerResultCancel(callbackId: Long) {
-        val result = JSONObject().apply {
-            if (currentMode == "selector") {
-                // Single column: return single number
-                put("index", currentSelectedIndices.firstOrNull() ?: 0)
-            } else {
-                // Multi column: return array
-                put("index", JSONArray(currentSelectedIndices))
-            }
-            put("cancel", true)
-        }
-        NativeApi.onCallback(callbackId, true, result.toString())
+        NativeApi.onCallback(callbackId, false, "2000")
     }
 
     private fun sendPickerResultConfirm(callbackId: Long) {

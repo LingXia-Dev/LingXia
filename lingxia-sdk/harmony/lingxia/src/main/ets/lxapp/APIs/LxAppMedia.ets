@@ -152,11 +152,7 @@ export class LxAppMedia {
         LxAppMedia.requestCameraPermissions(normalized.mode).then((granted: boolean) => {
           if (!granted) {
             hilog.warn(DOMAIN, TAG, 'Camera permissions not granted; cancelling chooseMedia(camera)');
-            const payload = JSON.stringify({
-              code: 'camera_permission_denied',
-              error: 'Camera permission denied'
-            });
-            onCallback(normalized.callbackId, false, payload);
+            onCallback(normalized.callbackId, false, "3001");
             return;
           }
           CameraCaptureOverlayManager.show(cap);
@@ -167,7 +163,7 @@ export class LxAppMedia {
       // Use official system photo picker to avoid restricted READ_IMAGEVIDEO access.
       const ctx = LxApp.context as common.UIAbilityContext | null;
       if (!ctx) {
-        onCallback(normalized.callbackId, false, 'No context');
+        onCallback(normalized.callbackId, false, "1000");
         return false;
       }
 
@@ -199,7 +195,7 @@ export class LxAppMedia {
           const isOriginalPick: boolean = (res && (res as photoAccessHelper.PhotoSelectResult).isOriginalPhoto === true);
 
           if (!uris || uris.length === 0) {
-            onCallback(normalized.callbackId, true, '{"cancel":true}');
+            onCallback(normalized.callbackId, false, '2000');
             return;
           }
 
@@ -215,7 +211,7 @@ export class LxAppMedia {
             results.push({ uri, fileType, isOriginal: isOriginalPick });
           }
           if (results.length === 0) {
-            onCallback(normalized.callbackId, true, '{"cancel":true}');
+            onCallback(normalized.callbackId, false, '2000');
             return;
           }
           onCallback(normalized.callbackId, true, JSON.stringify(results));

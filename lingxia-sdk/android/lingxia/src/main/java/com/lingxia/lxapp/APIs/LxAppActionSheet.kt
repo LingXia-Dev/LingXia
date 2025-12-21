@@ -8,7 +8,6 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
-import androidx.core.view.ViewCompat
 import com.lingxia.lxapp.LxApp
 import android.graphics.drawable.GradientDrawable
 import com.lingxia.lxapp.NativeApi
@@ -28,7 +27,7 @@ internal object LxAppActionSheet {
         val activity = LxApp.getCurrentActivity()
         if (activity == null) {
             Log.e(TAG, "showActionSheet: current activity is null")
-            sendActionSheetResult(callbackId, -1)
+            sendActionSheetError(callbackId, 1000)
             return
         }
         activity.runOnUiThread {
@@ -49,10 +48,12 @@ internal object LxAppActionSheet {
     fun showActionSheet(context: Context, options: List<String>, cancelText: String, itemColor: String, callbackId: Long) {
         val activity = context as? Activity ?: run {
             Log.e(TAG, "showActionSheet: context is not an Activity")
+            sendActionSheetError(callbackId, 1000)
             return
         }
         val rootView = activity.findViewById<ViewGroup>(android.R.id.content) ?: run {
             Log.e(TAG, "showActionSheet: rootView is null")
+            sendActionSheetError(callbackId, 1000)
             return
         }
 
@@ -62,7 +63,7 @@ internal object LxAppActionSheet {
         // Create mask
         currentMaskView = createMaskView(activity) {
             // Cancel on mask click
-            sendActionSheetResult(callbackId, -1)
+            sendActionSheetCancel(callbackId)
             hideActionSheetInternal()
         }
         rootView.addView(currentMaskView)
@@ -138,7 +139,7 @@ internal object LxAppActionSheet {
 
         // Add cancel button
         val cancelButton = createCancelButton(context, cancelText) {
-            sendActionSheetResult(callbackId, -1)
+            sendActionSheetCancel(callbackId)
             hideActionSheetInternal()
         }
         actionSheetContent.addView(cancelButton)
@@ -221,6 +222,14 @@ internal object LxAppActionSheet {
             put("tapIndex", tapIndex)
         }
         NativeApi.onCallback(callbackId, true, result.toString())
+    }
+
+    private fun sendActionSheetCancel(callbackId: Long) {
+        NativeApi.onCallback(callbackId, false, "2000")
+    }
+
+    private fun sendActionSheetError(callbackId: Long, code: Int) {
+        NativeApi.onCallback(callbackId, false, code.toString())
     }
 
     private fun hideActionSheetInternal() {

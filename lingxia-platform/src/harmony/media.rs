@@ -107,7 +107,7 @@ impl MediaInteraction for Platform {
 
         lingxia_webview::tsfn::call_arkts("chooseMedia", &[payload_json.as_str()]).map_err(|e| {
             let message = format!("Failed to start chooseMedia flow: {}", e);
-            lingxia_messaging::invoke_callback(request.callback_id, false, message.clone());
+            lingxia_messaging::invoke_callback(request.callback_id, Err(1));
             PlatformError::Platform(message)
         })
     }
@@ -136,7 +136,7 @@ impl MediaInteraction for Platform {
 
         lingxia_webview::tsfn::call_arkts("scanCode", &[payload_json.as_str()]).map_err(|e| {
             let message = format!("Failed to start scanCode flow: {}", e);
-            lingxia_messaging::invoke_callback(request.callback_id, false, message.clone());
+            lingxia_messaging::invoke_callback(request.callback_id, Err(1));
             PlatformError::Platform(message)
         })
     }

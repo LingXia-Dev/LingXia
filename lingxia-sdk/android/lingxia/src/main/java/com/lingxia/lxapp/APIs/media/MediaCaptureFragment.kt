@@ -160,7 +160,7 @@ class MediaCaptureFragment : Fragment() {
         if (grants.values.all { it }) {
             startCamera()
         } else {
-            cancelCapture("Camera permission denied")
+            cancelCapture(3001)
         }
     }
 
@@ -430,7 +430,7 @@ class MediaCaptureFragment : Fragment() {
                 resetToIdle()
             } catch (e: Exception) {
                 Log.e(TAG, "startCamera: failed to bind use cases", e)
-                cancelCapture(e.message ?: "Unable to start camera preview")
+                cancelCapture(1000)
             }
         }, mainExecutor)
     }
@@ -530,7 +530,7 @@ class MediaCaptureFragment : Fragment() {
     private fun capturePhoto() {
         val imageCapture = imageCapture
         if (imageCapture == null) {
-            cancelCapture("Camera not ready")
+            cancelCapture(1000)
             return
         }
         captureButton?.isEnabled = false
@@ -544,7 +544,7 @@ class MediaCaptureFragment : Fragment() {
 
             override fun onError(exception: ImageCaptureException) {
                 Log.e(TAG, "capturePhoto: failed", exception)
-                cancelCapture(exception.message ?: "Failed to capture photo")
+                cancelCapture(1000)
             }
         })
     }
@@ -552,7 +552,7 @@ class MediaCaptureFragment : Fragment() {
     private fun startRecording() {
         val videoCapture = videoCapture
         if (videoCapture == null) {
-            cancelCapture("Video capture not available")
+            cancelCapture(1000)
             return
         }
         val file = createOutputFile(".mp4")
@@ -628,9 +628,8 @@ class MediaCaptureFragment : Fragment() {
                         timerText?.visibility = View.GONE
                         activeRecording = null
                         if (event.hasError()) {
-                            val errorMsg = event.cause?.message ?: "Video capture error"
                             Log.e(TAG, "startRecording: finalize error ${event.error}", event.cause)
-                            cancelCapture(errorMsg)
+                            cancelCapture(1000) // Unknown error
                         } else {
                             onCaptureSuccess(file, "video")
                         }
@@ -709,7 +708,7 @@ class MediaCaptureFragment : Fragment() {
         enterPreviewState(PendingCapture(file, fileType))
     }
 
-    private fun cancelCapture(message: String, isCancel: Boolean = false) {
+    private fun cancelCapture(errorCode: Int) {
         captureButton?.resetState()
         stopTimerTicker()
         timerText?.visibility = View.GONE
@@ -718,14 +717,7 @@ class MediaCaptureFragment : Fragment() {
         pendingCapture = null
         finishButton?.visibility = View.GONE
         updateFinishButtonEnabled(false)
-        val errorPayload = JSONObject().apply {
-            put("error", message)
-            if (isCancel) put("cancel", true)
-            if (message == "Camera permission denied") {
-                put("code", "camera_permission_denied")
-            }
-        }.toString()
-        NativeApi.onCallback(callbackId, false, errorPayload)
+        NativeApi.onCallback(callbackId, false, errorCode.toString())
         NativeApi.onCallback(
             callbackId,
             true,
@@ -740,7 +732,7 @@ class MediaCaptureFragment : Fragment() {
         try {
             if (!pending.file.exists()) {
                 updateFinishButtonEnabled(true)
-                cancelCapture("Captured file missing")
+                cancelCapture(1000) // Unknown error - file missing
                 return
             }
             // Return JS array with single item (uri + fileType), no fd
@@ -762,7 +754,7 @@ class MediaCaptureFragment : Fragment() {
         } catch (e: Exception) {
             Log.e(TAG, "completeCapture: failed", e)
             updateFinishButtonEnabled(true)
-            cancelCapture(e.message ?: "Failed to complete capture")
+            cancelCapture(1000) // Unknown error
         }
     }
 
@@ -774,15 +766,14 @@ class MediaCaptureFragment : Fragment() {
             resetToIdle()
             return
         }
-        // User cancelled - return empty result instead of error to avoid toast in JS
+        // User cancelled
         captureButton?.resetState()
         stopTimerTicker()
         timerText?.visibility = View.GONE
         timerText?.text = "00:00"
         finishButton?.visibility = View.GONE
         updateFinishButtonEnabled(false)
-        // Return empty array as success (no media selected)
-        NativeApi.onCallback(callbackId, true, "[]")
+        NativeApi.onCallback(callbackId, false, "2000")
         NativeApi.onCallback(
             callbackId,
             true,
