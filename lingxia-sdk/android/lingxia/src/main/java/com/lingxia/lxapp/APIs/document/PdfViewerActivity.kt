@@ -15,7 +15,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.LinearLayout
-import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
@@ -28,7 +27,7 @@ import com.google.android.material.color.MaterialColors
 import java.io.File
 import java.io.IOException
 import kotlin.math.roundToInt
-import androidx.core.content.ContextCompat
+import com.lingxia.lxapp.LxAppDrawables
 import com.lingxia.lxapp.R
 
 class PdfViewerActivity : AppCompatActivity() {
@@ -76,9 +75,7 @@ class PdfViewerActivity : AppCompatActivity() {
         setSupportActionBar(toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         supportActionBar?.setHomeButtonEnabled(true)
-        val backIcon = ContextCompat.getDrawable(this, R.drawable.icon_back)?.mutate()
-        toolbar.navigationIcon = backIcon
-        styleNavigationButton()
+        LxAppDrawables.configureToolbarBackButton(toolbar)
         toolbar.setNavigationOnClickListener { onBackPressedDispatcher.onBackPressed() }
 
         applyChromeStyling()
@@ -328,18 +325,6 @@ class PdfViewerActivity : AppCompatActivity() {
         for (i in 0 until toolbar.menu.size()) {
             toolbar.menu.getItem(i).icon?.mutate()?.setTint(tintColor)
         }
-    }
-
-    private fun styleNavigationButton() {
-        val contentDesc = toolbar.navigationContentDescription
-        val navButton = (0 until toolbar.childCount)
-            .map { toolbar.getChildAt(it) }
-            .filterIsInstance<ImageButton>()
-            .firstOrNull { contentDesc == null || it.contentDescription == contentDesc }
-            ?: return
-
-        navButton.scaleType = ImageView.ScaleType.CENTER_INSIDE
-        navButton.setPadding(dp(12), dp(12), dp(12), dp(12))
     }
 
     private fun createOverlayBackground(color: Int): GradientDrawable {

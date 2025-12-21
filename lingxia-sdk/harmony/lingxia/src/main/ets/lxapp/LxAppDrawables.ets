@@ -4,9 +4,8 @@
 
 // Custom icon drawing constants
 const CUSTOM_ICON_CANVAS_SIZE = 36;
-const CUSTOM_ICON_STROKE_WIDTH = 1.8; // Thinner
-const CUSTOM_ICON_BACK_ARROW_SIZE = 6; // Much smaller arrow opening
-const CUSTOM_ICON_HOME_ICON_SIZE = 16; // Smaller home icon
+const CUSTOM_ICON_STROKE_WIDTH = 1.8;
+const CUSTOM_ICON_HOME_ICON_SIZE = 16;
 
 // Capsule button constants
 const CAPSULE_BUTTON_TOTAL_WIDTH = 102;
@@ -30,61 +29,6 @@ const ANIMATION_CURVE_EASE_IN_OUT = Curve.EaseInOut;  // Smooth ease in/out curv
 
 // System constants
 const SYSTEM_STATUS_BAR_HEIGHT = 44;
-
-/**
- * Custom back arrow component using Canvas for precise drawing
- */
-@Component
-export struct BackArrowIcon {
-  @Prop color: ResourceColor = COLOR_BLACK
-  @Prop iconSize: number = CUSTOM_ICON_BACK_ARROW_SIZE
-  @State private refreshKey: number = 0
-
-  build() {
-    Canvas(this.canvasContext)
-      .width(CUSTOM_ICON_CANVAS_SIZE)
-      .height(CUSTOM_ICON_CANVAS_SIZE)
-      .onReady(() => {
-        this.drawBackArrow()
-      })
-      .onAreaChange(() => {
-        // Force redraw when area changes
-        this.refreshKey++
-        this.drawBackArrow()
-      })
-  }
-
-  private canvasContext = new CanvasRenderingContext2D(new RenderingContextSettings(true))
-
-  private drawBackArrow() {
-    const ctx = this.canvasContext
-
-    // Clear canvas
-    ctx.clearRect(0, 0, CUSTOM_ICON_CANVAS_SIZE, CUSTOM_ICON_CANVAS_SIZE)
-
-    // Set arrow style
-    ctx.strokeStyle = COLOR_ICON_STROKE
-    ctx.lineWidth = CUSTOM_ICON_STROKE_WIDTH
-    ctx.lineCap = 'round'
-    ctx.lineJoin = 'round'
-
-    const centerX = CUSTOM_ICON_CANVAS_SIZE / 2 - 4 // Move more to the left
-    const centerY = CUSTOM_ICON_CANVAS_SIZE / 2
-    const chevronSize = CUSTOM_ICON_CANVAS_SIZE * 0.4
-    const tipX = centerX - chevronSize * 0.3 //  tip position
-    const baseX = centerX + chevronSize * 0.2 // base position
-    const offsetY = chevronSize * 0.45 // vertical offset
-
-    ctx.beginPath()
-    // Arrow pointing left: <
-    ctx.moveTo(baseX, centerY - offsetY)  // Top arm start
-    ctx.lineTo(tipX, centerY)             // To tip
-    ctx.moveTo(tipX, centerY)             // From tip
-    ctx.lineTo(baseX, centerY + offsetY)  // Bottom arm end
-
-    ctx.stroke()
-  }
-}
 
 /**
  * Custom home icon component - simple and clean outline
@@ -160,13 +104,13 @@ export struct NavigationButton {
   build() {
     Column() {
       if (this.isBackButton) {
-        BackArrowIcon({
-          color: COLOR_BLACK, // Fixed color
-          iconSize: CUSTOM_ICON_BACK_ARROW_SIZE
-        })
+        Image($rawfile('icons/icon_back.svg'))
+          .width(20)
+          .height(20)
+          .objectFit(ImageFit.Contain)
       } else {
         HomeIcon({
-          color: COLOR_BLACK, // Fixed color
+          color: COLOR_BLACK,
           iconSize: CUSTOM_ICON_HOME_ICON_SIZE
        })
       }
@@ -374,4 +318,3 @@ export struct CapsuleButton {
     .position({ x: 0, y: 0 }) // Position absolutely
   }
 }
-

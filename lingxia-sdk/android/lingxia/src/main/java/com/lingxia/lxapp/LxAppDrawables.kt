@@ -1,34 +1,56 @@
 package com.lingxia.lxapp
 
-/**
- * Centralized drawable factory for all LingXia UI components
- *
- * Contains reusable drawable implementations for:
- * - Navigation buttons (Home, Back)
- * - Capsule button elements (More dots, Close)
- * - Other common UI elements
- */
-
 import android.content.res.Resources
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.drawable.Drawable
+import android.widget.ImageButton
+import android.widget.ImageView
+import androidx.appcompat.widget.Toolbar
+import androidx.core.content.ContextCompat
 
-/**
- * Shared drawable classes for navigation buttons to eliminate code duplication
- * between NavigationBar and NavigationButton classes
- */
 object LxAppDrawables {
 
-    // Common UI constants
     object Constants {
         const val BUTTON_SIZE_DP = 32
         const val FROSTED_GLASS_ALPHA = 50
         const val MARGIN_START_DP = 12
         const val ANIMATION_DURATION_MS = 300L
         const val HOME_STROKE_WIDTH_FACTOR = 2.8f
-        const val BACK_STROKE_WIDTH_FACTOR = 2.5f
+        const val BACK_ICON_PADDING_DP = 6
+    }
+
+    fun configureBackButton(imageView: ImageView, paddingDp: Int = Constants.BACK_ICON_PADDING_DP) {
+        val context = imageView.context
+        val density = context.resources.displayMetrics.density
+        val paddingPx = (paddingDp * density).toInt()
+
+        imageView.apply {
+            setImageResource(R.drawable.icon_back)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(paddingPx, paddingPx, paddingPx, paddingPx)
+        }
+    }
+
+    fun configureToolbarBackButton(toolbar: Toolbar, paddingDp: Int = 12) {
+        val context = toolbar.context
+        val density = context.resources.displayMetrics.density
+        val paddingPx = (paddingDp * density).toInt()
+        ContextCompat.getDrawable(context, R.drawable.icon_back)?.mutate()?.let {
+            toolbar.navigationIcon = it
+        }
+
+        for (i in 0 until toolbar.childCount) {
+            val child = toolbar.getChildAt(i)
+            if (child is ImageButton) {
+                child.apply {
+                    scaleType = ImageView.ScaleType.CENTER_INSIDE
+                    setPadding(paddingPx, paddingPx, paddingPx, paddingPx)
+                }
+                break
+            }
+        }
     }
 
     /**
@@ -131,61 +153,6 @@ object LxAppDrawables {
         fun updateColor(color: Int) {
             currentFrontColor = color
             strokePaint.color = color
-            invalidateSelf()
-        }
-    }
-
-    /**
-     * Back Button Drawable
-     */
-    class BackButtonDrawable(
-        private val resources: Resources,
-        private var currentFrontColor: Int = Color.BLACK
-    ) : Drawable() {
-
-        private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeCap = Paint.Cap.ROUND
-            strokeJoin = Paint.Join.ROUND
-        }
-
-        override fun draw(canvas: Canvas) {
-            val width = bounds.width()
-            val height = bounds.height()
-            val centerY = height / 2f
-
-            val wechatGray = Color.rgb(102, 102, 102)
-            paint.color = wechatGray
-            paint.strokeWidth = 2.0f * resources.displayMetrics.density // Thinner line
-            paint.strokeCap = Paint.Cap.ROUND
-
-            val chevronSize = minOf(width, height) * 0.4f // Arrow size - slightly larger
-            val centerX = width / 2f
-            val tipX = centerX - chevronSize * 0.3f // Arrow tip position
-            val baseX = centerX + chevronSize * 0.2f // Arrow base position
-            val offsetY = chevronSize * 0.45f // Vertical offset for opening - slightly larger
-
-            // Draw chevron lines (< shape)
-            canvas.drawLine(baseX, centerY - offsetY, tipX, centerY, paint) // Top arm
-            canvas.drawLine(tipX, centerY, baseX, centerY + offsetY, paint) // Bottom arm
-        }
-
-        override fun setAlpha(alpha: Int) {
-            paint.alpha = alpha
-            invalidateSelf()
-        }
-
-        override fun setColorFilter(colorFilter: android.graphics.ColorFilter?) {
-            paint.colorFilter = colorFilter
-            invalidateSelf()
-        }
-
-        @Deprecated("Deprecated in Java")
-        override fun getOpacity(): Int = android.graphics.PixelFormat.TRANSLUCENT
-
-        fun updateColor(color: Int) {
-            currentFrontColor = color
-            paint.color = color
             invalidateSelf()
         }
     }
@@ -294,9 +261,6 @@ object LxAppDrawables {
      */
     fun createHomeButton(resources: Resources, color: Int = Color.BLACK) =
         HomeButtonDrawable(resources, color)
-
-    fun createBackButton(resources: Resources, color: Int = Color.BLACK) =
-        BackButtonDrawable(resources, color)
 
     fun createMoreDots(color: Int = Color.BLACK) =
         MoreDotsDrawable(color)

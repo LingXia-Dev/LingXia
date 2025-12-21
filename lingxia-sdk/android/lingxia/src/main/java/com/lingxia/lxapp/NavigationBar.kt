@@ -108,10 +108,6 @@ class NavigationBar @JvmOverloads constructor(
     // Callbacks
     private var onBackClickListener: (() -> Unit)? = null
 
-    // Use shared drawable from LxAppDrawables
-    private var backButtonDrawable: LxAppDrawables.BackButtonDrawable? = null
-
-    // Use shared drawable from LxAppDrawables
     private var homeButtonDrawable: LxAppDrawables.HomeButtonDrawable? = null
 
     init {
@@ -129,22 +125,17 @@ class NavigationBar @JvmOverloads constructor(
 
         setBackgroundColor(currentBackgroundColor)
 
-        // Initialize shared drawables
-        backButtonDrawable = LxAppDrawables.createBackButton(resources, currentFrontColor)
         homeButtonDrawable = LxAppDrawables.createHomeButton(resources, currentFrontColor)
 
-        // Back Button setup
         backButton = ImageView(context).apply {
             layoutParams = LayoutParams(buttonSizePx, buttonSizePx).apply {
                 gravity = Gravity.START or Gravity.CENTER_VERTICAL
                 marginStart = (4 * density).toInt()
             }
-            scaleType = ImageView.ScaleType.CENTER // Center the drawable but don't scale
-            adjustViewBounds = false
-            setImageDrawable(backButtonDrawable)
             contentDescription = "Back"
             visibility = View.GONE
         }
+        LxAppDrawables.configureBackButton(backButton)
         addView(backButton)
 
         // Home Button setup (same position as back button since only one shows at a time)
@@ -251,8 +242,7 @@ class NavigationBar @JvmOverloads constructor(
         // Update loading indicator color
         loadingIndicator.updateProgressColor(currentFrontColor)
 
-        // Update shared drawable colors
-        backButtonDrawable?.updateColor(currentFrontColor)
+        // Update home button drawable color
         homeButtonDrawable?.updateColor(currentFrontColor)
     }
 

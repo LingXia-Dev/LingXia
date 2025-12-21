@@ -77,15 +77,17 @@ public struct NavigationButton: View {
 
     public var body: some View {
         Button(action: action) {
-            // Direct SwiftUI drawing - no background, fully integrated with navbar
-            Canvas { context, size in
-                if isBackButton {
-                    drawBackArrow(context: context, size: size)
-                } else {
+            if isBackButton {
+                Image("icon_back", bundle: LxAppCore.resourceBundle)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 20, height: 20)
+            } else {
+                Canvas { context, size in
                     drawHomeIcon(context: context, size: size)
                 }
+                .frame(width: 20, height: 20)
             }
-            .frame(width: 20, height: 20)
         }
         .frame(width: 44, height: 44)
         .buttonStyle(.plain)
@@ -97,19 +99,6 @@ public struct NavigationButton: View {
     }
 
     @State private var isPressed = false
-
-    private func drawBackArrow(context: GraphicsContext, size: CGSize) {
-        let centerX = size.width / 2
-        let centerY = size.height / 2
-        let arrowSize: CGFloat = 12
-
-        var path = Path()
-        path.move(to: CGPoint(x: centerX + arrowSize/3, y: centerY - arrowSize/2))
-        path.addLine(to: CGPoint(x: centerX - arrowSize/3, y: centerY))
-        path.addLine(to: CGPoint(x: centerX + arrowSize/3, y: centerY + arrowSize/2))
-
-        context.stroke(path, with: .color(.gray), style: StrokeStyle(lineWidth: 2.0, lineCap: .round, lineJoin: .round))
-    }
 
     private func drawHomeIcon(context: GraphicsContext, size: CGSize) {
         let centerX = size.width / 2
