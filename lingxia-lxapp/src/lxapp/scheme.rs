@@ -27,32 +27,48 @@ impl LxApp {
         page: &Page,
         req: Request<Vec<u8>>,
     ) -> Option<WebResourceResponse> {
-        let uri = req.uri().clone();
-
-        if uri.host() == Some(lx_uri::HOST_PROXY) {
-            let target_uri = match Self::extract_proxy_target(&uri) {
-                Some(target_uri) => target_uri,
-                None => {
-                    return Some(self.create_error_response(
-                        StatusCode::BAD_REQUEST,
-                        "Invalid Proxy URL",
-                        "Proxy URL must be lx://proxy/<base64-https-url>.",
-                    ));
-                }
-            };
-            return self.handle_lingxia_proxy(target_uri);
+        let uri = req.uri();
+        match uri.host() {
+            Some(lx_uri::HOST_PROXY) => {
+                let target_uri = match Self::extract_proxy_target(uri) {
+                    Some(target_uri) => target_uri,
+                    None => {
+                        return Some(self.create_error_response(
+                            StatusCode::BAD_REQUEST,
+                            "Invalid Proxy URL",
+                            "Proxy URL must be lx://proxy/<base64-https-url>.",
+                        ));
+                    }
+                };
+                return self.handle_lingxia_proxy(target_uri);
+            }
+            Some(lx_uri::HOST_ASSETS) => {
+                return self.handle_sdk_asset(uri);
+            }
+            Some(lx_uri::HOST_LXAPP) | Some(lx_uri::HOST_PLUGIN) => {}
+            Some(other) => {
+                error!("Unknown lx host: {}", other).with_appid(self.appid.clone());
+                return Some(self.create_error_response(
+                    StatusCode::BAD_REQUEST,
+                    "Unknown Host",
+                    &format!("Unknown lx host '{}'.", other),
+                ));
+            }
+            None => {
+                error!("lx request missing host: {}", uri).with_appid(self.appid.clone());
+                return Some(self.create_error_response(
+                    StatusCode::BAD_REQUEST,
+                    "Invalid URL",
+                    "The URL is missing a host component and cannot be processed.",
+                ));
+            }
         }
 
-        if uri.host() == Some(lx_uri::HOST_ASSETS) {
-            return self.handle_sdk_asset(&uri);
-        }
-
-        let asset_path = match self.resolve_lx_uri(page, &uri) {
+        let asset_path = match self.resolve_lx_uri(page, uri) {
             Ok(path) => path,
             Err(e) => {
                 error!("resolve_lx_uri failed for {}: {}", uri.path(), e)
                     .with_appid(self.appid.clone());
-                error!("Asset not found: {} - {}", uri.path(), e).with_appid(self.appid.clone());
                 return Some(self.create_error_response(
                     StatusCode::NOT_FOUND,
                     "Asset Not Found",
@@ -158,31 +174,7 @@ impl LxApp {
         });
 
         let (parts, _) = response.into_parts();
-        match create_pipe_sink() {
-            Ok((reader, mut sink)) => {
-                let result = sink.write(&data);
-                sink.close(&result);
-                if let Err(e) = result {
-                    error!("Failed to write sdk asset {}: {}", path, e)
-                        .with_appid(self.appid.clone());
-                    return Some(self.create_error_response(
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        "Asset Read Error",
-                        "Failed to stream asset data.",
-                    ));
-                }
-                Some((parts, reader).into())
-            }
-            Err(e) => {
-                error!("Failed to create pipe for asset {}: {}", path, e)
-                    .with_appid(self.appid.clone());
-                Some(self.create_error_response(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "Pipe Creation Failed",
-                    &e,
-                ))
-            }
-        }
+        Some((parts, data).into())
     }
 
     fn handle_lingxia_proxy(&self, target_uri: Uri) -> Option<WebResourceResponse> {
@@ -195,34 +187,6 @@ impl LxApp {
                 StatusCode::BAD_REQUEST,
                 "Unsupported Scheme",
                 "Only https URLs are allowed in proxy requests.",
-            ));
-        }
-
-        let host = match target_uri.host() {
-            Some(host) => host,
-            None => {
-                return Some(self.create_error_response(
-                    StatusCode::BAD_REQUEST,
-                    "Invalid URL",
-                    "Proxy target is missing host component.",
-                ));
-            }
-        };
-
-        if !self
-            .state
-            .lock()
-            .unwrap()
-            .network_security
-            .is_domain_allowed(host)
-        {
-            return Some(self.create_error_response(
-                StatusCode::FORBIDDEN,
-                "Domain Access Denied",
-                &format!(
-                    "Access to domain '{}' is not allowed by the security policy.",
-                    host
-                ),
             ));
         }
 

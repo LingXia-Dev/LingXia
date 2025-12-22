@@ -242,12 +242,17 @@ impl LingXiaSchemeHandler {
             let content_type_value = NSString::from_str(content_type_with_charset);
             headers.insert(&*content_type_key, &*content_type_value);
 
-            if let WebResourceBody::Path(ref path) = body
-                && !headers_map.contains_key("content-length")
-                && let Ok(metadata) = std::fs::metadata(path)
-                && let Ok(value) = http::HeaderValue::from_str(&metadata.len().to_string())
-            {
-                headers_map.insert(http::header::CONTENT_LENGTH, value);
+            if !headers_map.contains_key("content-length") {
+                let content_len = match &body {
+                    WebResourceBody::Path(path) => std::fs::metadata(path).ok().map(|m| m.len()),
+                    WebResourceBody::Bytes(data) => Some(data.len() as u64),
+                    WebResourceBody::Pipe(_) => None,
+                };
+                if let Some(len) = content_len
+                    && let Ok(value) = http::HeaderValue::from_str(&len.to_string())
+                {
+                    headers_map.insert(http::header::CONTENT_LENGTH, value);
+                }
             }
 
             for (key, value) in headers_map.iter() {
@@ -273,21 +278,63 @@ impl LingXiaSchemeHandler {
 
             let _: () = msg_send![task, didReceiveResponse: response_result];
 
-            let mut reader: Box<dyn std::io::Read> = match body {
-                WebResourceBody::Path(path) => match File::open(&path) {
-                    Ok(file) => Box::new(file),
-                    Err(e) => {
-                        log::error!("Failed to open response file {}: {}", path.display(), e);
-                        self.fail_task_with_error(task, "Failed to open response file");
-                        return;
+            match body {
+                WebResourceBody::Path(path) => {
+                    let mut reader: Box<dyn std::io::Read> = match File::open(&path) {
+                        Ok(file) => Box::new(file),
+                        Err(e) => {
+                            log::error!("Failed to open response file {}: {}", path.display(), e);
+                            self.fail_task_with_error(task, "Failed to open response file");
+                            return;
+                        }
+                    };
+
+                    let mut buffer = [0u8; 64 * 1024];
+                    loop {
+                        match reader.read(&mut buffer) {
+                            Ok(0) => {
+                                let _: () = msg_send![task, didFinish];
+                                break;
+                            }
+                            Ok(read_bytes) => {
+                                let chunk = NSData::from_vec(buffer[..read_bytes].to_vec());
+                                let _: () = msg_send![task, didReceiveData: &*chunk];
+                            }
+                            Err(e) => {
+                                log::error!("Failed while streaming response data: {}", e);
+                                self.fail_task_with_error(task, "Failed to read response data");
+                                return;
+                            }
+                        }
                     }
-                },
+                }
                 WebResourceBody::Pipe(pipe) => {
                     #[cfg(unix)]
                     {
-                        let fd = pipe.into_raw_fd();
-                        let file = std::fs::File::from_raw_fd(fd);
-                        Box::new(file)
+                        let mut reader: Box<dyn std::io::Read> = {
+                            let fd = pipe.into_raw_fd();
+                            let file = unsafe { File::from_raw_fd(fd) };
+                            Box::new(file)
+                        };
+
+                        let mut buffer = [0u8; 64 * 1024];
+                        loop {
+                            match reader.read(&mut buffer) {
+                                Ok(0) => {
+                                    let _: () = msg_send![task, didFinish];
+                                    break;
+                                }
+                                Ok(read_bytes) => {
+                                    let chunk = NSData::from_vec(buffer[..read_bytes].to_vec());
+                                    let _: () = msg_send![task, didReceiveData: &*chunk];
+                                }
+                                Err(e) => {
+                                    log::error!("Failed while streaming response data: {}", e);
+                                    self.fail_task_with_error(task, "Failed to read response data");
+                                    return;
+                                }
+                            }
+                        }
                     }
                     #[cfg(not(unix))]
                     {
@@ -296,24 +343,12 @@ impl LingXiaSchemeHandler {
                         return;
                     }
                 }
-            };
-
-            let mut buffer = [0u8; 64 * 1024];
-            loop {
-                match reader.read(&mut buffer) {
-                    Ok(0) => {
-                        let _: () = msg_send![task, didFinish];
-                        break;
-                    }
-                    Ok(read_bytes) => {
-                        let chunk = NSData::from_vec(buffer[..read_bytes].to_vec());
+                WebResourceBody::Bytes(data) => {
+                    if !data.is_empty() {
+                        let chunk = NSData::from_vec(data);
                         let _: () = msg_send![task, didReceiveData: &*chunk];
                     }
-                    Err(e) => {
-                        log::error!("Failed while streaming response data: {}", e);
-                        self.fail_task_with_error(task, "Failed to read response data");
-                        return;
-                    }
+                    let _: () = msg_send![task, didFinish];
                 }
             }
         }

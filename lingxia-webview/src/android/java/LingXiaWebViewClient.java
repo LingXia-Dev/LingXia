@@ -6,12 +6,13 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.os.ParcelFileDescriptor;
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.InputStream;
 import java.lang.ref.WeakReference;
-import android.os.ParcelFileDescriptor;
 
 /**
  * WebViewClient implementation for LingXia WebView
@@ -126,9 +127,10 @@ public class LingXiaWebViewClient extends WebViewClient {
             try {
                 InputStream inputStream = null;
                 if (response.pipeFd > 0) {
-                    // Use pipe fd provided by native side
                     ParcelFileDescriptor pfd = ParcelFileDescriptor.adoptFd(response.pipeFd);
                     inputStream = new ParcelFileDescriptor.AutoCloseInputStream(pfd);
+                } else if (response.data != null) {
+                    inputStream = new ByteArrayInputStream(response.data);
                 } else if (response.filePath != null && !response.filePath.isEmpty()) {
                     File file = new File(response.filePath);
                     inputStream = new FileInputStream(file);

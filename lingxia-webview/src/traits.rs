@@ -8,6 +8,8 @@ pub enum WebResourceBody {
     Path(PathBuf),
     /// Serve data from a system pipe (read end)
     Pipe(SystemPipeReader),
+    /// Serve data directly from memory
+    Bytes(Vec<u8>),
 }
 
 /// Cross‑platform system pipe reader (read end)
@@ -114,7 +116,7 @@ pub trait WebViewDelegate: Send + Sync {
     fn log(&self, level: LogLevel, message: &str);
 }
 
-/// Represents an HTTP response whose body is provided by either a file path or a system pipe.
+/// Represents an HTTP response whose body is provided by a file path, pipe, or in-memory bytes.
 #[derive(Debug)]
 pub struct WebResourceResponse {
     parts: http::response::Parts,
@@ -149,6 +151,16 @@ impl From<(http::response::Parts, SystemPipeReader)> for WebResourceResponse {
         WebResourceResponse {
             parts: value.0,
             body: WebResourceBody::Pipe(value.1),
+        }
+    }
+}
+
+/// Convenience conversion from (Parts, Vec<u8>)
+impl From<(http::response::Parts, Vec<u8>)> for WebResourceResponse {
+    fn from(value: (http::response::Parts, Vec<u8>)) -> Self {
+        WebResourceResponse {
+            parts: value.0,
+            body: WebResourceBody::Bytes(value.1),
         }
     }
 }

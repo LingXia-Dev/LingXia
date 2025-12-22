@@ -124,40 +124,17 @@ unsafe fn send_response(
         OH_ArkWebResponse_SetStatus(response, parts.status.as_u16() as c_int);
     }
 
-    let mut file = match body {
-        WebResourceBody::Path(path) => match File::open(&path) {
-            Ok(f) => f,
-            Err(e) => {
-                log::error!(
-                    "Failed to open response file for Harmony webview: {} ({})",
-                    path.display(),
-                    e
-                );
-                unsafe {
-                    OH_ArkWebResponse_SetStatus(response, 500);
-                }
-                let message = CString::new("Internal Server Error").unwrap();
-                unsafe {
-                    OH_ArkWebResourceHandler_DidReceiveResponse(resource_handler, response);
-                    OH_ArkWebResourceHandler_DidReceiveData(
-                        resource_handler,
-                        message.as_ptr(),
-                        message.as_bytes().len() as i64,
-                    );
-                    OH_ArkWebResourceHandler_DidFinish(resource_handler);
-                    OH_ArkWeb_DestroyResponse(response);
-                }
-                return;
-            }
-        },
-        WebResourceBody::Pipe(reader) => reader.into_file(),
-    };
-
-    if !headers_map.contains_key(http::header::CONTENT_LENGTH)
-        && let Ok(metadata) = file.metadata()
-        && let Ok(value) = http::HeaderValue::from_str(&metadata.len().to_string())
-    {
-        headers_map.insert(http::header::CONTENT_LENGTH, value);
+    if !headers_map.contains_key(http::header::CONTENT_LENGTH) {
+        let content_len = match &body {
+            WebResourceBody::Path(path) => std::fs::metadata(path).ok().map(|m| m.len()),
+            WebResourceBody::Bytes(data) => Some(data.len() as u64),
+            WebResourceBody::Pipe(_) => None,
+        };
+        if let Some(len) = content_len
+            && let Ok(value) = http::HeaderValue::from_str(&len.to_string())
+        {
+            headers_map.insert(http::header::CONTENT_LENGTH, value);
+        }
     }
 
     // Set headers
@@ -182,24 +159,89 @@ unsafe fn send_response(
         OH_ArkWebResourceHandler_DidReceiveResponse(resource_handler, response);
     }
 
-    // Send response body
-    let mut buffer = [0u8; 64 * 1024];
-    loop {
-        match file.read(&mut buffer) {
-            Ok(0) => break,
-            Ok(read_bytes) => unsafe {
-                OH_ArkWebResourceHandler_DidReceiveData(
-                    resource_handler,
-                    buffer.as_ptr(),
-                    read_bytes as i64,
-                );
-            },
-            Err(e) => {
-                log::error!(
-                    "Failed while streaming response data for Harmony webview: {}",
-                    e
-                );
-                break;
+    match body {
+        WebResourceBody::Path(path) => {
+            let mut file = match File::open(&path) {
+                Ok(f) => f,
+                Err(e) => {
+                    log::error!(
+                        "Failed to open response file for Harmony webview: {} ({})",
+                        path.display(),
+                        e
+                    );
+                    unsafe {
+                        OH_ArkWebResponse_SetStatus(response, 500);
+                    }
+                    let message = CString::new("Internal Server Error").unwrap();
+                    unsafe {
+                        OH_ArkWebResourceHandler_DidReceiveResponse(resource_handler, response);
+                        OH_ArkWebResourceHandler_DidReceiveData(
+                            resource_handler,
+                            message.as_ptr(),
+                            message.as_bytes().len() as i64,
+                        );
+                        OH_ArkWebResourceHandler_DidFinish(resource_handler);
+                        OH_ArkWeb_DestroyResponse(response);
+                    }
+                    return;
+                }
+            };
+
+            // Send response body
+            let mut buffer = [0u8; 64 * 1024];
+            loop {
+                match file.read(&mut buffer) {
+                    Ok(0) => break,
+                    Ok(read_bytes) => unsafe {
+                        OH_ArkWebResourceHandler_DidReceiveData(
+                            resource_handler,
+                            buffer.as_ptr(),
+                            read_bytes as i64,
+                        );
+                    },
+                    Err(e) => {
+                        log::error!(
+                            "Failed while streaming response data for Harmony webview: {}",
+                            e
+                        );
+                        break;
+                    }
+                }
+            }
+        }
+        WebResourceBody::Pipe(reader) => {
+            let mut file = reader.into_file();
+
+            let mut buffer = [0u8; 64 * 1024];
+            loop {
+                match file.read(&mut buffer) {
+                    Ok(0) => break,
+                    Ok(read_bytes) => unsafe {
+                        OH_ArkWebResourceHandler_DidReceiveData(
+                            resource_handler,
+                            buffer.as_ptr(),
+                            read_bytes as i64,
+                        );
+                    },
+                    Err(e) => {
+                        log::error!(
+                            "Failed while streaming response data for Harmony webview: {}",
+                            e
+                        );
+                        break;
+                    }
+                }
+            }
+        }
+        WebResourceBody::Bytes(data) => {
+            if !data.is_empty() {
+                unsafe {
+                    OH_ArkWebResourceHandler_DidReceiveData(
+                        resource_handler,
+                        data.as_ptr(),
+                        data.len() as i64,
+                    );
+                }
             }
         }
     }
