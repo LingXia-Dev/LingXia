@@ -343,6 +343,9 @@ fn extract_path_info_with_inherited(
         .attribute("fill")
         .map(|s| s.to_string())
         .or_else(|| inherited.fill.clone());
+    let fill_opacity = node
+        .attribute("fill-opacity")
+        .and_then(|s| s.parse::<f64>().ok());
     let stroke = node
         .attribute("stroke")
         .map(|s| s.to_string())
@@ -362,7 +365,7 @@ fn extract_path_info_with_inherited(
 
     PathInfo {
         data,
-        fill: fill.map(|s| normalize_color(&s)),
+        fill: fill.map(|s| normalize_color_with_opacity(&s, fill_opacity)),
         fill_rule: node.attribute("fill-rule").map(|s| s.to_string()),
         stroke: stroke.map(|s| normalize_color(&s)),
         stroke_width,
@@ -564,20 +567,43 @@ fn line_to_path(node: &roxmltree::Node) -> Option<String> {
 }
 
 fn normalize_color(color: &str) -> String {
+    normalize_color_with_opacity(color, None)
+}
+
+fn normalize_color_with_opacity(color: &str, opacity: Option<f64>) -> String {
     if color == "none" {
         return "#00000000".to_string();
     }
-    if color.starts_with('#') {
-        return color.to_uppercase();
-    }
-    // Handle named colors
-    match color.to_lowercase().as_str() {
-        "white" => "#FFFFFF".to_string(),
-        "black" => "#000000".to_string(),
-        "red" => "#FF0000".to_string(),
-        "green" => "#00FF00".to_string(),
-        "blue" => "#0000FF".to_string(),
-        _ => color.to_string(),
+
+    // Get base color in #RRGGBB format
+    let base_color = if color.starts_with('#') {
+        color.to_uppercase()
+    } else {
+        // Handle named colors
+        match color.to_lowercase().as_str() {
+            "white" => "#FFFFFF".to_string(),
+            "black" => "#000000".to_string(),
+            "red" => "#FF0000".to_string(),
+            "green" => "#00FF00".to_string(),
+            "blue" => "#0000FF".to_string(),
+            _ => return color.to_string(),
+        }
+    };
+
+    // If no opacity or fully opaque, return as-is
+    let opacity = match opacity {
+        Some(o) if o < 1.0 => o,
+        _ => return base_color,
+    };
+
+    // Convert opacity to alpha hex and prepend to color
+    // Android uses #AARRGGBB format
+    let alpha = (opacity * 255.0).round() as u8;
+    if base_color.len() == 7 {
+        // #RRGGBB -> #AARRGGBB
+        format!("#{:02X}{}", alpha, &base_color[1..])
+    } else {
+        base_color
     }
 }
 
