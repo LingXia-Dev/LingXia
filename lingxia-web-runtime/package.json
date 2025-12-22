@@ -1,0 +1,24 @@
+{
+  "name": "lingxia-web-runtime",
+  "version": "1.0.0",
+  "description": "LingXia Web Runtime - Bridge, boot, and error handling for WebView",
+  "type": "module",
+  "main": "dist/runtime.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "rollup -c",
+    "dev": "rollup -c -w",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "@rollup/plugin-terser": "^0.4.4",
+    "@rollup/plugin-typescript": "^12.3.0",
+    "rollup": "^4.54.0",
+    "tslib": "^2.6.2",
+    "typescript": "^5.3.0"
+  },
+  "files": [
+    "dist"
+  ],
+  "license": "MIT"
+}
