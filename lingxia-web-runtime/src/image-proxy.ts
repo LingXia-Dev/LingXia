@@ -1,7 +1,6 @@
 const PROXY_PREFIX = 'lx://proxy/';
 
-function shouldProxyImageUrl(url: string): boolean {
-  const trimmed = url.trim();
+function shouldProxyImageUrl(trimmed: string): boolean {
   if (trimmed.length === 0) {
     return false;
   }
@@ -11,9 +10,6 @@ function shouldProxyImageUrl(url: string): boolean {
     trimmed.startsWith('blob:') ||
     trimmed.startsWith('file:')
   ) {
-    return false;
-  }
-  if (trimmed.startsWith(PROXY_PREFIX)) {
     return false;
   }
   return trimmed.startsWith('http://') || trimmed.startsWith('https://');
@@ -26,8 +22,9 @@ function toProxyUrl(url: string): string {
 }
 
 function proxyImageUrl(url: string): string {
-  if (!shouldProxyImageUrl(url)) return url;
-  return toProxyUrl(url);
+  const trimmed = url.trim();
+  if (!shouldProxyImageUrl(trimmed)) return url;
+  return toProxyUrl(trimmed);
 }
 
 export function setupImageProxy(): void {
@@ -73,7 +70,7 @@ export function setupImageProxy(): void {
       if (!src) return;
       const proxied = proxyImageUrl(src);
       if (proxied !== src) {
-        img.setAttribute('src', proxied);
+        originalSetAttribute.call(img, 'src', proxied);
       }
     });
   };
