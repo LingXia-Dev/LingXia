@@ -47,11 +47,6 @@ export default function App() {
   const currentTimeRef = React.useRef(0);
   const durationRef = React.useRef(0);
 
-  React.useEffect(() => {
-    document.body.classList.add('api-page');
-    return () => document.body.classList.remove('api-page');
-  }, []);
-
   const onPlayHandler = React.useCallback(() => {
     setEventLog('Playing');
   }, []);

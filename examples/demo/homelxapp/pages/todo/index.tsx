@@ -94,8 +94,9 @@ export default function TodoPage() {
   const hasTodos = todos.length > 0;
 
   return (
-    <section className="todoapp">
-      <h1>todos</h1>
+    <div className="todo-page">
+      <section className="todoapp">
+        <h1>todos</h1>
       <input
         className="new-todo"
         placeholder="What needs to be done?"
@@ -188,6 +189,7 @@ export default function TodoPage() {
           )}
         </footer>
       )}
-    </section>
+      </section>
+    </div>
   );
 }

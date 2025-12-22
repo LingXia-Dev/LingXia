@@ -97,13 +97,8 @@ export default function UIPage() {
   const [borderStyle, setBorderStyle] = React.useState('#EEEEEE');
 
 
-  React.useEffect(() => {
-    document.body.classList.add('api-page');
-    return () => document.body.classList.remove('api-page');
-  }, []);
-
   return (
-    <div className="h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col">
+    <div className="h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col overflow-y-auto">
       <div className="flex-1 overflow-y-auto">
         <div className="pb-6 px-4 pt-6">
 

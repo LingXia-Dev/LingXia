@@ -5,13 +5,6 @@ export default function ComponentsPage() {
   const { data, toggleSection, navigateToVideoDemo } = useLingXia();
   const { expandedSections = { media: true } } = data;
 
-  React.useEffect(() => {
-    document.body.classList.add('api-page');
-    return () => {
-      document.body.classList.remove('api-page');
-    };
-  }, []);
-
   return (
     <div className="min-h-screen bg-gray-100">
       <div className="px-3 py-2 pb-12 space-y-2">

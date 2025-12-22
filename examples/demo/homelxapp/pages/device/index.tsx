@@ -22,11 +22,6 @@ export default function DevicePage() {
   const [phoneNumber, setPhoneNumber] = React.useState('');
 
   React.useEffect(() => {
-    document.body.classList.add('api-page');
-    return () => document.body.classList.remove('api-page');
-  }, []);
-
-  React.useEffect(() => {
     setPhoneNumber('');
   }, [currentType]);
 

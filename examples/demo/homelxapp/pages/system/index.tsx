@@ -5,11 +5,6 @@ export default function SystemPage() {
   const { data, getAppBaseInfo } = useLingXia();
   const { currentType = 'appBaseInfo', appBaseInfo = null } = data;
 
-  React.useEffect(() => {
-    document.body.classList.add('api-page');
-    return () => document.body.classList.remove('api-page');
-  }, []);
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <div className="px-4 py-6">

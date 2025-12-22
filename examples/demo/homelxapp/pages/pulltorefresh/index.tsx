@@ -14,11 +14,6 @@ export default function PullDownRefreshPage() {
     isRefreshing = false,
   } = data;
 
-  React.useEffect(() => {
-    document.body.classList.add('api-page');
-    return () => document.body.classList.remove('api-page');
-  }, []);
-
   return (
     <div className="min-h-screen bg-gray-100">
       <div className="px-4 py-6 pb-12 space-y-4">

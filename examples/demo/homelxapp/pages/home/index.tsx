@@ -111,10 +111,11 @@ export default function HomePage() {
         {/* IP Address Badge - Below Card */}
         {ipAddress && (
           <div className="mt-4 flex justify-center">
-            <span className="inline-flex items-center gap-2 px-3 py-1.5 bg-black/20 backdrop-blur-md rounded-full text-xs text-white/90 font-mono">
+            <div className="inline-flex items-center gap-2 px-4 py-2 bg-black/20 backdrop-blur-md rounded-full text-white/90">
               <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
-              {ipAddress}
-            </span>
+              <span className="text-xs font-medium tracking-wide">My IP </span>
+              <span className="text-xs font-mono">{ipAddress}</span>
+            </div>
           </div>
         )}
       </div>

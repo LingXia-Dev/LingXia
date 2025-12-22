@@ -17,15 +17,8 @@ export default function APIPage() {
   } = useLingXia();
   const { expandedSections = { interface: false, device: false, system: false, navigation: false, media: false, document: false } } = data;
 
-  React.useEffect(() => {
-    document.body.classList.add('api-page');
-    return () => {
-      document.body.classList.remove('api-page');
-    };
-  }, []);
-
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-gray-100 overflow-y-auto">
       <div className="px-3 py-2 pb-12 space-y-2">
 
         {/* Header Card - Description */}

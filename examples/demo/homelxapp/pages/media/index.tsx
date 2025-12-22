@@ -277,11 +277,6 @@ const formatFileSize = (bytes: number): string => {
 };
 
 export default function MediaPage() {
-  React.useEffect(() => {
-    document.body.classList.add('api-page');
-    return () => document.body.classList.remove('api-page');
-  }, []);
-
   const {
     data,
     launchMediaDemo,
