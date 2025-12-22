@@ -1,6 +1,7 @@
 use crate::appservice::bridge::IncomingMessage;
 use crate::event::PageLifecycleEvent;
 use crate::lxapp::{self, navbar::NavigationBarState, page_config::PageConfig};
+use crate::plugin;
 use crate::startup::parse_query_string;
 use crate::{LxApp, LxAppError, error, info};
 use http::StatusCode;
@@ -438,9 +439,15 @@ impl Page {
         self.inner.appid.clone()
     }
 
-    /// Returns the base URL used when loading this page's HTML (lx://appid/<path>)
+    /// Returns the base URL used when loading this page's HTML.
     pub fn base_url(&self) -> String {
-        format!("lx://{}/{}", self.appid(), self.path())
+        if let Some((plugin_name, page_path)) = plugin::parse_plugin_page_path(&self.path()) {
+            if page_path.is_empty() {
+                return format!("lx://plugin/{}", plugin_name);
+            }
+            return format!("lx://plugin/{}/{}", plugin_name, page_path);
+        }
+        format!("lx://lxapp/{}/{}", self.appid(), self.path())
     }
 
     /// Update the last active time to now

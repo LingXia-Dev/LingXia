@@ -17,6 +17,7 @@
 use crate::archive;
 use crate::error::LxAppError;
 use crate::lxapp::config::LxPlugin;
+use crate::lxapp::uri as lx_uri;
 use crate::lxapp::{LINGXIA_DIR, PLUGINS_DIR};
 use crate::provider::UpdateTarget;
 use crate::warn;
@@ -29,8 +30,6 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 use tokio::sync::watch;
 
-const PLUGIN_URL_SCHEME: &str = "plugin://";
-const PLUGIN_PAGE_PATH_PREFIX: &str = "@plugin/";
 fn plugin_key(name: &str, version: &str) -> String {
     format!("{}@{}", name, version)
 }
@@ -118,71 +117,29 @@ pub fn wait_for_download(
     get_tracker().get_download_receiver(&plugin_key(plugin_name, version))
 }
 
-/// Parse a plugin:// URL into (plugin_name, page_path).
+/// Parse a lx://plugin/<name>/<path> URL into (plugin_name, page_path).
 ///
 /// # Example
 /// ```
-/// let url = "plugin://myPlugin/pages/index";
+/// let url = "lx://plugin/myPlugin/pages/index";
 /// let (name, path) = parse_plugin_url(url).unwrap();
 /// assert_eq!(name, "myPlugin");
 /// assert_eq!(path, "pages/index");
 /// ```
 pub fn parse_plugin_url(url: &str) -> Option<(String, String)> {
-    if !url.starts_with(PLUGIN_URL_SCHEME) {
-        return None;
-    }
-
-    let rest = &url[PLUGIN_URL_SCHEME.len()..];
-    let (plugin_name, page_path) = if let Some(idx) = rest.find('/') {
-        (rest[..idx].to_string(), rest[idx + 1..].to_string())
-    } else {
-        (rest.to_string(), String::new())
-    };
-
-    if plugin_name.is_empty() {
-        return None;
-    }
-
-    // Clean up the path (trim leading/trailing whitespace)
-    let page_path = page_path
-        .trim_start_matches('/')
-        .trim_end_matches(&[' ', '\t'][..])
-        .to_string();
-
-    Some((plugin_name, page_path))
+    lx_uri::parse_plugin_url(url)
 }
 
-/// Parse an internal plugin page path: `@plugin/<name>/<path>`.
+/// Parse an internal plugin page path: `plugin/<name>/<path>`.
 ///
 /// Returns `(plugin_name, page_path)` where `page_path` may be empty.
 pub fn parse_plugin_page_path(path: &str) -> Option<(String, String)> {
-    if !path.starts_with(PLUGIN_PAGE_PATH_PREFIX) {
-        return None;
-    }
-
-    let rest = &path[PLUGIN_PAGE_PATH_PREFIX.len()..];
-    let (plugin_name, page_path) = if let Some(idx) = rest.find('/') {
-        (rest[..idx].to_string(), rest[idx + 1..].to_string())
-    } else {
-        (rest.to_string(), String::new())
-    };
-
-    if plugin_name.is_empty() {
-        return None;
-    }
-
-    Some((plugin_name, page_path.trim_start_matches('/').to_string()))
+    lx_uri::parse_plugin_page_path(path)
 }
 
-/// Build an internal plugin page path: `@plugin/<name>` or `@plugin/<name>/<path>`.
+/// Build an internal plugin page path: `plugin/<name>` or `plugin/<name>/<path>`.
 pub fn build_plugin_page_path(plugin_name: &str, page_path: &str) -> String {
-    let name = plugin_name.trim_matches('/');
-    let path = page_path.trim_matches('/');
-    if path.is_empty() {
-        format!("{}{}", PLUGIN_PAGE_PATH_PREFIX, name)
-    } else {
-        format!("{}{}/{}", PLUGIN_PAGE_PATH_PREFIX, name, path)
-    }
+    lx_uri::build_plugin_page_path(plugin_name, page_path)
 }
 
 /// Resolve a page alias to the actual internal path using plugin's pages mapping.
@@ -346,7 +303,7 @@ pub fn resolve_plugin_resource_path(
     }
 
     Err(LxAppError::ResourceNotFound(format!(
-        "Plugin resource not found: @plugin/{}/{}",
+        "Plugin resource not found: plugin/{}/{}",
         plugin_name, relative_path
     )))
 }

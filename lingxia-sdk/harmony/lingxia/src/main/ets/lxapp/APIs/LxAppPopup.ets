@@ -7,20 +7,6 @@ import { onPageShow } from 'liblingxia.so';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.Popup';
-const PLUGIN_URL_SCHEME = 'plugin://';
-
-/**
- * Transform plugin:// URL to @plugin/ path format
- * plugin://pluginName/pages/index -> @plugin/pluginName/pages/index
- */
-function transformPluginUrl(path: string): string {
-  if (!path.startsWith(PLUGIN_URL_SCHEME)) {
-    return path;
-  }
-  const rest = path.substring(PLUGIN_URL_SCHEME.length);
-  return `@plugin/${rest}`;
-}
-
 export enum PopupPosition {
   Center = 0,
   Bottom = 1,
@@ -84,12 +70,6 @@ export class LxAppPopup {
       return false;
     }
 
-    // Transform plugin:// URL to @plugin/ path format
-    const transformedPath = transformPluginUrl(path);
-    if (transformedPath !== path) {
-      hilog.info(DOMAIN, TAG, `Transformed plugin URL: ${path} -> ${transformedPath}`);
-    }
-
     const widthRatio = parseRatio(widthRatioValue);
     const heightRatio = parseRatio(heightRatioValue);
     const position = normalizePosition(positionValue);
@@ -100,7 +80,7 @@ export class LxAppPopup {
 
     LxAppPopup.activeLayout = {
       appId: appId,
-      path: transformedPath,
+      path: path,
       widthVp: dimensions.widthVp,
       heightVp: dimensions.heightVp,
       position: position,
@@ -111,7 +91,7 @@ export class LxAppPopup {
 
     const success = LxAppPopup.managerRef.showPopup({
       appId: appId,
-      path: transformedPath,
+      path: path,
       widthVp: dimensions.widthVp,
       heightVp: dimensions.heightVp,
       position: position,
@@ -120,11 +100,11 @@ export class LxAppPopup {
       fullHeight: dimensions.fullHeight
     });
 
-    hilog.info(DOMAIN, TAG, `showPopup result=${success} for ${appId}:${transformedPath}`);
+    hilog.info(DOMAIN, TAG, `showPopup result=${success} for ${appId}:${path}`);
     if (success) {
       LxAppContainer.setOverlay(
         appId,
-        transformedPath,
+        path,
         true,
         dimensions.widthVp,
         dimensions.heightVp,
@@ -133,8 +113,8 @@ export class LxAppPopup {
         dimensions.fullWidth,
         dimensions.fullHeight
       );
-      WebViewManager.notifyPopupState(appId, transformedPath, true);
-      onPageShow(appId, transformedPath);
+      WebViewManager.notifyPopupState(appId, path, true);
+      onPageShow(appId, path);
     } else {
       LxAppPopup.activeLayout = null;
     }

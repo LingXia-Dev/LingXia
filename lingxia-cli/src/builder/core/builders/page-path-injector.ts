@@ -25,9 +25,9 @@ export const injectPagePath = (
   pagePath: string,
   options?: InjectPagePathOptions
 ): string => {
-  // Add @plugin/<pluginId>/ prefix for plugin mode
+  // Add plugin/<pluginId>/ prefix for plugin mode
   const finalPath = options?.pluginId
-    ? `@plugin/${options.pluginId}/${pagePath}`
+    ? `plugin/${options.pluginId}/${pagePath}`
     : pagePath;
   const ast = parse(logicContent, AST_PARSE_OPTIONS);
   let modified = false;

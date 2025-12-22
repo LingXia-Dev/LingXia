@@ -32,6 +32,7 @@ pub mod page_config;
 mod scheme;
 mod security;
 pub mod tabbar;
+pub(crate) mod uri;
 pub(crate) mod version;
 use crate::event::AppServiceEvent;
 use lingxia_webview::{WebTag, destroy_webview};

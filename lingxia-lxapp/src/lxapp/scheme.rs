@@ -1,14 +1,18 @@
+use super::uri as lx_uri;
 use crate::info;
 use crate::plugin;
 use crate::warn;
+use base64::Engine;
+use base64::engine::general_purpose;
 use http::{Method, Request, Response, StatusCode, Uri};
+use lingxia_platform::AppRuntime;
 use lingxia_webview::{SystemPipeReader, WebResourceResponse};
 use rong::service_executor as net;
 use std::fs;
+use std::io::Read;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use urlencoding::decode;
 
 use crate::error;
 use crate::error::LxAppError;
@@ -16,8 +20,6 @@ use crate::lxapp::LxApp;
 use crate::page::Page;
 
 impl LxApp {
-    const PROXY_SEGMENT: &'static str = "_LINGXIA_";
-
     /// Handler for lx:// scheme requests to access static app assets (images, CSS, JS, etc.)
     /// HTML files are handled separately through generate_page_html and load_data
     pub(crate) fn lingxia_handler(
@@ -27,8 +29,22 @@ impl LxApp {
     ) -> Option<WebResourceResponse> {
         let uri = req.uri().clone();
 
-        if let Some(target_uri) = Self::extract_proxy_target(&uri) {
+        if uri.host() == Some(lx_uri::HOST_PROXY) {
+            let target_uri = match Self::extract_proxy_target(&uri) {
+                Some(target_uri) => target_uri,
+                None => {
+                    return Some(self.create_error_response(
+                        StatusCode::BAD_REQUEST,
+                        "Invalid Proxy URL",
+                        "Proxy URL must be lx://proxy/<base64-https-url>.",
+                    ));
+                }
+            };
             return self.handle_lingxia_proxy(target_uri);
+        }
+
+        if uri.host() == Some(lx_uri::HOST_ASSETS) {
+            return self.handle_sdk_asset(&uri);
         }
 
         let asset_path = match self.resolve_lx_uri(page, &uri) {
@@ -83,6 +99,90 @@ impl LxApp {
 
         let (parts, _) = response.into_parts();
         Some((parts, asset_path).into())
+    }
+
+    fn handle_sdk_asset(&self, uri: &Uri) -> Option<WebResourceResponse> {
+        let path = uri.path().trim_start_matches('/');
+        if path.is_empty() {
+            return Some(self.create_error_response(
+                StatusCode::BAD_REQUEST,
+                "Invalid Asset Path",
+                "Asset path is empty.",
+            ));
+        }
+        if lx_uri::has_invalid_segment(path) {
+            return Some(self.create_error_response(
+                StatusCode::BAD_REQUEST,
+                "Invalid Asset Path",
+                "Asset path contains invalid segments.",
+            ));
+        }
+
+        let mut reader = match self.runtime.read_asset(path) {
+            Ok(reader) => reader,
+            Err(e) => {
+                error!("Failed to read sdk asset {}: {}", path, e).with_appid(self.appid.clone());
+                return Some(self.create_error_response(
+                    StatusCode::NOT_FOUND,
+                    "Asset Not Found",
+                    &format!("The requested asset '{}' could not be found.", path),
+                ));
+            }
+        };
+
+        let mut data = Vec::new();
+        if let Err(e) = reader.read_to_end(&mut data) {
+            error!("Failed to read sdk asset {}: {}", path, e).with_appid(self.appid.clone());
+            return Some(self.create_error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Asset Read Error",
+                "Failed to read asset data.",
+            ));
+        }
+
+        let mime_type = Self::infer_mime_type(path);
+        let mut builder = Response::builder()
+            .status(StatusCode::OK)
+            .header("Content-Type", mime_type)
+            .header("Access-Control-Allow-Origin", "null");
+
+        if let Ok(value) = http::HeaderValue::from_str(&data.len().to_string()) {
+            builder = builder.header("Content-Length", value);
+        }
+
+        let response = builder.body(()).unwrap_or_else(|_| {
+            Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body(())
+                .expect("Failed to build fallback empty response")
+        });
+
+        let (parts, _) = response.into_parts();
+        match create_pipe_sink() {
+            Ok((reader, mut sink)) => {
+                let result = sink.write(&data);
+                sink.close(&result);
+                if let Err(e) = result {
+                    error!("Failed to write sdk asset {}: {}", path, e)
+                        .with_appid(self.appid.clone());
+                    return Some(self.create_error_response(
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Asset Read Error",
+                        "Failed to stream asset data.",
+                    ));
+                }
+                Some((parts, reader).into())
+            }
+            Err(e) => {
+                error!("Failed to create pipe for asset {}: {}", path, e)
+                    .with_appid(self.appid.clone());
+                Some(self.create_error_response(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Pipe Creation Failed",
+                    &e,
+                ))
+            }
+        }
     }
 
     fn handle_lingxia_proxy(&self, target_uri: Uri) -> Option<WebResourceResponse> {
@@ -151,100 +251,112 @@ impl LxApp {
     }
 
     fn extract_proxy_target(uri: &Uri) -> Option<Uri> {
-        if !uri.path().contains(Self::PROXY_SEGMENT) {
+        if uri.host() != Some(lx_uri::HOST_PROXY) {
             return None;
         }
 
-        let query = uri.query()?;
-        for pair in query.split('&') {
-            let (key, value) = pair.split_once('=')?;
-
-            if key != "url" {
-                continue;
-            }
-
-            let decoded = decode(value).ok()?;
-            let decoded_str = decoded.trim();
-
-            if !decoded_str.starts_with("https://") {
-                return None;
-            }
-
-            return Uri::from_str(decoded_str).ok();
+        let encoded = uri.path().trim_start_matches('/');
+        if encoded.is_empty() {
+            return None;
         }
 
-        None
+        let decoded = general_purpose::URL_SAFE_NO_PAD
+            .decode(encoded)
+            .or_else(|_| general_purpose::URL_SAFE.decode(encoded))
+            .ok()?;
+        let decoded_str = std::str::from_utf8(&decoded).ok()?.trim();
+        if !decoded_str.starts_with("https://") {
+            return None;
+        }
+
+        Uri::from_str(decoded_str).ok()
     }
 
     fn resolve_lx_uri(&self, page: &Page, uri: &Uri) -> Result<PathBuf, LxAppError> {
-        if uri.host() != Some(self.appid.as_str()) {
-            return Err(LxAppError::ResourceNotFound(uri.to_string()));
+        match uri.host() {
+            Some(lx_uri::HOST_LXAPP) => self.resolve_lxapp_uri(page, uri),
+            Some(lx_uri::HOST_PLUGIN) => self.resolve_plugin_uri(page, uri),
+            _ => Err(LxAppError::ResourceNotFound(uri.to_string())),
         }
+    }
 
-        let path_str = uri.path();
-        // Decode any percent-encodings in the path. We handle three cases in order:
-        // Case 1: Direct package-root path (e.g., pages/... or images/...)
-        // Case 2: Page-relative expanded path (e.g., pages/home/images/1.jpg -> strip base once)
-        // Case 3: Absolute OS path tunneled via lx://<lxappid>/<absolute-path>
-        // Case 4: Plugin path (@plugin/pluginName/pages/...)
-        let decoded_path = decode(path_str)
-            .map(|c| c.to_string())
-            .unwrap_or_else(|_| path_str.to_string());
+    fn resolve_lxapp_uri(&self, page: &Page, uri: &Uri) -> Result<PathBuf, LxAppError> {
+        let decoded_path = lx_uri::decode_lx_path(uri.path());
         let raw_path = decoded_path.trim_start_matches('/');
-        if raw_path.is_empty() {
+        let (appid, rest) = raw_path
+            .split_once('/')
+            .ok_or_else(|| LxAppError::ResourceNotFound(uri.to_string()))?;
+        if appid != self.appid.as_str() {
             return Err(LxAppError::ResourceNotFound(uri.to_string()));
         }
 
-        // Reject any path containing '.' or '..' segments
-        if raw_path.split('/').any(|s| s == "." || s == "..") {
+        let normalized = rest.trim_matches('/');
+        if normalized.is_empty() {
             return Err(LxAppError::ResourceNotFound(uri.to_string()));
         }
-        let normalized = raw_path.trim_matches('/').to_string();
-
-        // Case 4: Handle @plugin/ prefix - resolve from plugins directory
-        if let Some((plugin_name, relative_path)) = plugin::parse_plugin_page_path(&normalized) {
-            return plugin::resolve_plugin_resource_path(
-                &self.runtime,
-                &self.config.plugins,
-                &plugin_name,
-                &relative_path,
-            );
+        if lx_uri::has_invalid_segment(normalized) {
+            return Err(LxAppError::ResourceNotFound(uri.to_string()));
         }
 
-        // Case 1: Direct package-root path (e.g., pages/home/index.css, images/1.jpg)
-        // Try the request path as-is relative to allowed roots
-        if let Ok(local_path) = self.resolve_accessible_path(&normalized) {
+        if let Ok(local_path) = self.resolve_accessible_path(normalized) {
             return Ok(local_path);
         }
 
-        // Case 2: Requested URL expanded by WebView as page-relative
-        // If the request path begins with the current page's base directory,
-        // strip that base directory once and try resolving the remainder.
-        if let Ok(base_uri) = Uri::from_str(&page.base_url()) {
-            let base_path = base_uri.path().trim_start_matches('/');
-            if let Some(idx) = base_path.rfind('/') {
-                let base_dir = &base_path[..idx]; // e.g., pages/home
-                let prefix = format!("{}/", base_dir.trim_matches('/'));
-                if normalized.starts_with(&prefix) {
-                    let stripped = &normalized[prefix.len()..];
-                    if !stripped.is_empty()
-                        && let Ok(local_path) = self.resolve_accessible_path(stripped)
-                    {
-                        return Ok(local_path);
-                    }
-                }
+        if let Some(stripped) = lx_uri::strip_base_dir(page, normalized, lx_uri::HOST_LXAPP, appid)
+        {
+            if let Ok(local_path) = self.resolve_accessible_path(&stripped) {
+                return Ok(local_path);
             }
         }
 
-        // Case 3: Absolute OS path tunneled via lx://<lxappid>/<absolute-path>
-        // Example: lx://${lxappid}/var/mobile/.../image.jpg -> "/var/mobile/.../image.jpg"
-        if decoded_path.starts_with('/')
-            && let Ok(local_path) = self.resolve_accessible_path(&decoded_path)
-        {
+        let absolute_path = format!("/{}", normalized);
+        if let Ok(local_path) = self.resolve_accessible_path(&absolute_path) {
             return Ok(local_path);
         }
 
         Err(LxAppError::ResourceNotFound(uri.to_string()))
+    }
+
+    fn resolve_plugin_uri(&self, page: &Page, uri: &Uri) -> Result<PathBuf, LxAppError> {
+        let decoded_path = lx_uri::decode_lx_path(uri.path());
+        let raw_path = decoded_path.trim_start_matches('/');
+        let (plugin_name, rest) = raw_path
+            .split_once('/')
+            .ok_or_else(|| LxAppError::ResourceNotFound(uri.to_string()))?;
+
+        let normalized = rest.trim_matches('/');
+        if normalized.is_empty() {
+            return Err(LxAppError::ResourceNotFound(uri.to_string()));
+        }
+        if lx_uri::has_invalid_segment(normalized) {
+            return Err(LxAppError::ResourceNotFound(uri.to_string()));
+        }
+
+        let mut last_err = match plugin::resolve_plugin_resource_path(
+            &self.runtime,
+            &self.config.plugins,
+            plugin_name,
+            normalized,
+        ) {
+            Ok(local_path) => return Ok(local_path),
+            Err(e) => e,
+        };
+
+        if let Some(stripped) =
+            lx_uri::strip_base_dir(page, normalized, lx_uri::HOST_PLUGIN, plugin_name)
+        {
+            match plugin::resolve_plugin_resource_path(
+                &self.runtime,
+                &self.config.plugins,
+                plugin_name,
+                &stripped,
+            ) {
+                Ok(local_path) => return Ok(local_path),
+                Err(e) => last_err = e,
+            }
+        }
+
+        Err(last_err)
     }
 
     /// Handler for HTTPS requests:

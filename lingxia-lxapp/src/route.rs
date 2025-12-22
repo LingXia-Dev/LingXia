@@ -1,5 +1,6 @@
 use crate::error::LxAppError;
 use crate::lxapp::LxApp;
+use crate::lxapp::uri as lx_uri;
 use crate::{plugin, startup};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -34,7 +35,19 @@ pub(crate) fn resolve_route(lxapp: &LxApp, url: &str) -> Result<ResolvedRoute, L
     let original = url.to_string();
     let (path, query) = startup::split_path_query(url);
 
-    // Try plugin:// scheme first, then @plugin/ prefix
+    if let Some((appid, page_path)) = lx_uri::parse_lxapp_url(&path) {
+        if appid != lxapp.appid {
+            return Err(LxAppError::ResourceNotFound(path));
+        }
+
+        return Ok(ResolvedRoute {
+            original,
+            query,
+            target: RouteTarget::Normal { path: page_path },
+        });
+    }
+
+    // Try lx://plugin scheme first, then plugin/ prefix
     let plugin_info =
         plugin::parse_plugin_url(&path).or_else(|| plugin::parse_plugin_page_path(&path));
 
