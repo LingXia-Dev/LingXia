@@ -1,14 +1,12 @@
+use crate::error;
 use crate::error::LxAppError;
+use crate::info;
 use crate::lxapp::LxApp;
-use crate::{error, info};
-use lingxia_platform::AppRuntime;
-use std::io::Read;
 
 impl LxApp {
-    /// Generate processed HTML content for a page with script and CSS injection
+    /// Generate processed HTML content for a page
     ///
-    /// This reads the HTML file and injects necessary scripts and styles
-    /// If the file cannot be read, returns a 404 page for better user experience
+    /// This reads the HTML file. If it cannot be read, returns a 404 page.
     ///
     /// # Arguments
     /// * `path` - The page path (e.g., "pages/home/index.html")
@@ -31,14 +29,7 @@ impl LxApp {
             }
         };
 
-        // Inject bridge script
-        let mut injected_data = match self.inject_bridge_script(&data) {
-            Ok(data) => data,
-            Err(e) => {
-                error!("Failed to inject bridge script: {}", e).with_appid(self.appid.clone());
-                data
-            }
-        };
+        let mut injected_data = self.inject_bridge_config(&data);
 
         // Inject global app.css if it exists (optional)
         if let Ok(app_css_data) = self.read_bytes("lxapp.css") {
@@ -57,108 +48,58 @@ impl LxApp {
 
     /// Get 404 page content with path injection
     fn get_404_page(&self, failed_path: &str) -> Vec<u8> {
-        match self.runtime.read_asset("404.html") {
-            Ok(mut r) => {
-                let mut data = Vec::new();
-                match r.read_to_end(&mut data) {
-                    Ok(_) => {
-                        // Replace placeholder with actual failed path
-                        let html_str = String::from_utf8_lossy(&data);
-                        let updated_html = html_str.replace("{{FAILED_PATH}}", failed_path);
-                        updated_html.into_bytes()
-                    }
-                    Err(_) => {
-                        format!(
-                            "<!DOCTYPE html><html><head><title>404</title></head><body><h1>404 - Page Not Found</h1><p>Path: {}</p></body></html>",
-                            failed_path
-                        ).as_bytes().to_vec()
-                    }
-                }
-            }
-            Err(_) => {
-                format!(
-                    "<!DOCTYPE html><html><head><title>404</title></head><body><h1>404 - Page Not Found</h1><p>Path: {}</p></body></html>",
-                    failed_path
-                ).as_bytes().to_vec()
-            }
-        }
+        let escaped_path = escape_js_string(failed_path);
+        let bridge_script = build_bridge_config_script();
+        let html = format!(
+            r#"<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>404</title>
+  </head>
+  <body>
+    {}
+    <script>
+      window.__LX_RUNTIME_CONFIG = {{
+        error: {{ failedPath: "{}", reason: "not_found" }}
+      }};
+    </script>
+    <script src="lx://assets/runtime.js"></script>
+  </body>
+</html>"#,
+            bridge_script, escaped_path
+        );
+        html.into_bytes()
     }
 
-    /// Inject WebView bridge script and framework integration into HTML content
-    fn inject_bridge_script(&self, html_data: &[u8]) -> Result<Vec<u8>, LxAppError> {
-        // Load the bridge script from assets
-        let bridge_script = match self.runtime.read_asset("webview-bridge.js") {
-            Ok(mut reader) => {
-                let mut script_data = Vec::new();
-                reader.read_to_end(&mut script_data).map_err(|e| {
-                    LxAppError::IoError(format!("Failed to read bridge script: {}", e))
-                })?;
-                String::from_utf8_lossy(&script_data).to_string()
-            }
-            Err(e) => {
-                return Err(LxAppError::IoError(format!(
-                    "Failed to open bridge script: {}",
-                    e
-                )));
-            }
-        };
-
+    fn inject_bridge_config(&self, html_data: &[u8]) -> Vec<u8> {
         let html_str = String::from_utf8_lossy(html_data);
-
-        // Decide bridge config by compile target
-        #[cfg(any(target_os = "ios", target_os = "macos"))]
-        let (bridge_os, bridge_method) = (
-            if cfg!(target_os = "macos") {
-                "macOS"
-            } else {
-                "iOS"
-            },
-            "webkit",
-        );
-        #[cfg(target_os = "android")]
-        let (bridge_os, bridge_method) = ("Android", "messageport");
-        #[cfg(all(target_os = "linux", target_env = "ohos"))]
-        let (bridge_os, bridge_method) = ("Harmony", "messageport");
-        #[cfg(not(any(
-            target_os = "ios",
-            target_os = "macos",
-            target_os = "android",
-            all(target_os = "linux", target_env = "ohos")
-        )))]
-        let (bridge_os, bridge_method) = ("unknown", "unknown");
-
-        let prelude = format!(
-            r#"<script>window.__LX_BRIDGE_CFG={{os:"{}",method:"{}"}};</script>"#,
-            bridge_os, bridge_method
-        );
-        let script_tags = format!("{}\n<script>\n{}\n</script>", prelude, bridge_script);
-
-        // Try to insert before </head> tag (preferred location)
-        if let Some(head_pos) = html_str.to_lowercase().find("</head>") {
-            let (before, after) = html_str.split_at(head_pos);
-            info!("Injected scripts before </head>").with_appid(self.appid.clone());
-            return Ok(format!("{}{}{}", before, script_tags, after).into_bytes());
+        if html_str.contains("__LX_BRIDGE_CFG") {
+            return html_data.to_vec();
         }
-        // If no </head> tag, try to insert at the beginning of <body> tag
-        else if let Some(body_pos) = html_str.to_lowercase().find("<body") {
+
+        let script_tag = build_bridge_config_script();
+
+        let lower = html_str.to_lowercase();
+        if let Some(src_pos) = lower.find("lx://assets/runtime.js") {
+            if let Some(script_start) = lower[..src_pos].rfind("<script") {
+                let (before, after) = html_str.split_at(script_start);
+                return format!("{}{}\n{}", before, script_tag, after).into_bytes();
+            }
+        }
+        if let Some(head_pos) = lower.find("</head>") {
+            let (before, after) = html_str.split_at(head_pos);
+            return format!("{}{}\n{}", before, script_tag, after).into_bytes();
+        }
+        if let Some(body_pos) = lower.find("<body") {
             if let Some(body_end) = html_str[body_pos..].find('>') {
                 let insert_pos = body_pos + body_end + 1;
                 let (before, after) = html_str.split_at(insert_pos);
-                info!("Injected scripts after <body>").with_appid(self.appid.clone());
-                return Ok(format!("{}{}{}", before, script_tags, after).into_bytes());
+                return format!("{}{}\n{}", before, script_tag, after).into_bytes();
             }
         }
-        // If neither tag is found, insert at the beginning of the HTML
-        else {
-            info!("Injected scripts at beginning of HTML (fallback)")
-                .with_appid(self.appid.clone());
-            return Ok(format!("{}{}", script_tags, html_str).into_bytes());
-        }
 
-        // If all injection attempts failed, return the original data
-        error!("All injection attempts failed, returning original HTML")
-            .with_appid(self.appid.clone());
-        Ok(html_data.to_vec())
+        format!("{}\n{}", script_tag, html_str).into_bytes()
     }
 
     /// Inject CSS into HTML content
@@ -202,4 +143,41 @@ impl LxApp {
             .with_appid(self.appid.clone());
         Ok(html_data.to_vec())
     }
+}
+
+fn build_bridge_config_script() -> String {
+    #[cfg(any(target_os = "ios", target_os = "macos"))]
+    let (bridge_os, bridge_method) = (
+        if cfg!(target_os = "macos") {
+            "macOS"
+        } else {
+            "iOS"
+        },
+        "webkit",
+    );
+    #[cfg(target_os = "android")]
+    let (bridge_os, bridge_method) = ("Android", "messageport");
+    #[cfg(all(target_os = "linux", target_env = "ohos"))]
+    let (bridge_os, bridge_method) = ("Harmony", "messageport");
+    #[cfg(not(any(
+        target_os = "ios",
+        target_os = "macos",
+        target_os = "android",
+        all(target_os = "linux", target_env = "ohos")
+    )))]
+    let (bridge_os, bridge_method) = ("unknown", "unknown");
+
+    format!(
+        r#"<script>window.__LX_BRIDGE_CFG={{os:"{}",method:"{}"}};</script>"#,
+        bridge_os, bridge_method
+    )
+}
+
+fn escape_js_string(value: &str) -> String {
+    value
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
+        .replace('\t', "\\t")
 }
