@@ -313,7 +313,7 @@ impl LingXiaSchemeHandler {
                     {
                         let mut reader: Box<dyn std::io::Read> = {
                             let fd = pipe.into_raw_fd();
-                            let file = unsafe { File::from_raw_fd(fd) };
+                            let file = File::from_raw_fd(fd);
                             Box::new(file)
                         };
 

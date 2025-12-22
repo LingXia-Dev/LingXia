@@ -10,7 +10,7 @@ use lingxia_webview::{SystemPipeReader, WebResourceResponse};
 use rong::service_executor as net;
 use std::fs;
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -246,6 +246,11 @@ impl LxApp {
 
     fn resolve_lxapp_uri(&self, page: &Page, uri: &Uri) -> Result<PathBuf, LxAppError> {
         let decoded_path = lx_uri::decode_lx_path(uri.path());
+        if Path::new(&decoded_path).is_absolute() {
+            if let Ok(local_path) = self.resolve_accessible_path(&decoded_path) {
+                return Ok(local_path);
+            }
+        }
         let raw_path = decoded_path.trim_start_matches('/');
         let (appid, rest) = raw_path
             .split_once('/')
