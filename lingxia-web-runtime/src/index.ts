@@ -19,4 +19,6 @@ export { renderErrorUI, hasError, getErrorInfo } from './error';
 export { boot, bootWhenReady } from './boot';
 
 import { bootWhenReady } from './boot';
+import { setupImageProxy } from './image-proxy';
+setupImageProxy();
 bootWhenReady();

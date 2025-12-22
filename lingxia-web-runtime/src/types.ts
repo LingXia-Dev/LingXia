@@ -1,6 +1,6 @@
 export interface BridgeConfig {
   method?: 'messageport' | 'webkit';
-  os?: 'Harmony' | 'iOS' | 'Android';
+  os?: 'Harmony' | 'iOS' | 'Android' | 'macOS';
 }
 
 export interface RuntimeConfig {
