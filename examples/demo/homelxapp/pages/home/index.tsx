@@ -44,7 +44,7 @@ export default function HomePage() {
   };
 
   return (
-    <div className="relative min-h-screen w-full">
+    <div className="fixed inset-0 w-screen h-screen overflow-hidden">
       {/* Background Image - Full Screen */}
       {imageUrl && (
         <img
@@ -58,7 +58,7 @@ export default function HomePage() {
       <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-transparent to-black/40" />
 
       {/* Content Container - Centered */}
-      <div className="relative z-10 min-h-screen flex flex-col justify-center items-center px-5 py-16">
+      <div className="relative z-10 w-full h-full flex flex-col justify-center items-center px-5 py-16">
         {/* Main Card - Apple Style Frosted Glass */}
         <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-lg border border-white/20 p-6">
           <div className="text-center mb-6">
