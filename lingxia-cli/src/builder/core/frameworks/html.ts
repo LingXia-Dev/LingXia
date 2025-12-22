@@ -62,6 +62,7 @@ export class HtmlProcessor extends FrameworkProcessor {
     // Process page title
     const pageTitle = getPageTitle(page, pageFiles);
     htmlContent = this.processHtmlPageTitle(htmlContent, pageTitle);
+    htmlContent = this.injectRuntimeScript(htmlContent);
 
     // Inject page function bridge
     htmlContent = htmlContent.replace(

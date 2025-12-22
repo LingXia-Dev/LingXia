@@ -86,4 +86,29 @@ export abstract class FrameworkProcessor {
     const normalized = (dir ?? 'assets').replace(/^\/+/, '').replace(/\/+$/, '');
     return normalized.length > 0 ? normalized : 'assets';
   }
+
+  protected injectRuntimeScript(htmlContent: string): string {
+    const runtimeSrc = 'lx://assets/runtime.js';
+    if (htmlContent.toLowerCase().includes(runtimeSrc)) {
+      return htmlContent;
+    }
+
+    const scriptTag = `<script src="${runtimeSrc}"></script>`;
+    const lower = htmlContent.toLowerCase();
+    const headIndex = lower.indexOf('</head>');
+    if (headIndex !== -1) {
+      return `${htmlContent.slice(0, headIndex)}${scriptTag}\n${htmlContent.slice(headIndex)}`;
+    }
+
+    const bodyIndex = lower.indexOf('<body');
+    if (bodyIndex !== -1) {
+      const bodyEnd = htmlContent.indexOf('>', bodyIndex);
+      if (bodyEnd !== -1) {
+        const insertPos = bodyEnd + 1;
+        return `${htmlContent.slice(0, insertPos)}${scriptTag}\n${htmlContent.slice(insertPos)}`;
+      }
+    }
+
+    return `${scriptTag}\n${htmlContent}`;
+  }
 }

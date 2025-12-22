@@ -88,6 +88,7 @@ export class VueProcessor extends FrameworkProcessor {
       .split(path.sep)
       .join('/');
     htmlContent = this.fixHtmlPaths(htmlContent, baseName, assetDir, assetRelativePath);
+    htmlContent = this.injectRuntimeScript(htmlContent);
     htmlContent = htmlContent.replace(
       '</body>',
       `<script>\n${bridgeScript}\n</script>\n</body>`
