@@ -159,7 +159,6 @@ internal class LxMediaControlsOverlay(
             }
             setBackgroundColor(Color.TRANSPARENT)
             setImageResource(R.drawable.icon_close)
-            setColorFilter(Color.WHITE)
             scaleType = ImageView.ScaleType.CENTER_INSIDE
             setPadding(dp(8), dp(8), dp(8), dp(8))
             visibility = View.GONE
