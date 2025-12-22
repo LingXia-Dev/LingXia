@@ -108,8 +108,6 @@ class NavigationBar @JvmOverloads constructor(
     // Callbacks
     private var onBackClickListener: (() -> Unit)? = null
 
-    private var homeButtonDrawable: LxAppDrawables.HomeButtonDrawable? = null
-
     init {
         val density = resources.displayMetrics.density
 
@@ -119,13 +117,9 @@ class NavigationBar @JvmOverloads constructor(
 
         val navBarHeightDp = if (isTablet) DEFAULT_TABLET_HEIGHT_DP else LxAppActivity.DEFAULT_NAV_BAR_HEIGHT_DP
 
-        val heightPx = (navBarHeightDp * density).toInt()
         val buttonSizePx = (LxAppDrawables.Constants.BUTTON_SIZE_DP * density).toInt()
-        val topMarginPx = (42 * density).toInt()
 
         setBackgroundColor(currentBackgroundColor)
-
-        homeButtonDrawable = LxAppDrawables.createHomeButton(resources, currentFrontColor)
 
         backButton = ImageView(context).apply {
             layoutParams = LayoutParams(buttonSizePx, buttonSizePx).apply {
@@ -145,10 +139,10 @@ class NavigationBar @JvmOverloads constructor(
                 marginStart = (8 * density).toInt()
             }
             setBackgroundColor(Color.TRANSPARENT)
-            setImageDrawable(homeButtonDrawable)
             contentDescription = "Home"
             visibility = View.GONE
         }
+        LxAppDrawables.configureHomeButton(homeButton)
         addView(homeButton)
 
         // Calculate dynamic font size for title
@@ -242,8 +236,9 @@ class NavigationBar @JvmOverloads constructor(
         // Update loading indicator color
         loadingIndicator.updateProgressColor(currentFrontColor)
 
-        // Update home button drawable color
-        homeButtonDrawable?.updateColor(currentFrontColor)
+        // Update button icon colors
+        backButton.setColorFilter(currentFrontColor)
+        homeButton.setColorFilter(currentFrontColor)
     }
 
     /**

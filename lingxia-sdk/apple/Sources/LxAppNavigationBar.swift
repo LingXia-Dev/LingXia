@@ -70,23 +70,19 @@ public protocol NavigationBarProtocol: AnyObject {
     func getCalculatedContentHeight() -> CGFloat
 }
 
+#if os(iOS)
 /// Embedded navigation button for navbar
 public struct NavigationButton: View {
     let isBackButton: Bool
+    let tintColor: Color
     let action: () -> Void
 
     public var body: some View {
         Button(action: action) {
-            if isBackButton {
-                Image("icon_back", bundle: LxAppCore.resourceBundle)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 20, height: 20)
-            } else {
-                Canvas { context, size in
-                    drawHomeIcon(context: context, size: size)
-                }
-                .frame(width: 20, height: 20)
+            if let uiImage = LxIcon.image(named: isBackButton ? "icon_back" : "icon_home", size: CGSize(width: 20, height: 20)) {
+                Image(uiImage: uiImage)
+                    .renderingMode(.template)
+                    .foregroundColor(tintColor)
             }
         }
         .frame(width: 44, height: 44)
@@ -99,25 +95,8 @@ public struct NavigationButton: View {
     }
 
     @State private var isPressed = false
-
-    private func drawHomeIcon(context: GraphicsContext, size: CGSize) {
-        let centerX = size.width / 2
-        let centerY = size.height / 2
-        let houseSize: CGFloat = 14
-
-        // House roof
-        var roofPath = Path()
-        roofPath.move(to: CGPoint(x: centerX, y: centerY - houseSize/2))
-        roofPath.addLine(to: CGPoint(x: centerX - houseSize/2, y: centerY))
-        roofPath.addLine(to: CGPoint(x: centerX + houseSize/2, y: centerY))
-        roofPath.closeSubpath()
-        context.fill(roofPath, with: .color(.gray))
-
-        // House base
-        let baseRect = CGRect(x: centerX - houseSize/3, y: centerY, width: houseSize * 2/3, height: houseSize/2)
-        context.fill(Path(baseRect), with: .color(.gray))
-    }
 }
+#endif
 
 /// Pure declarative SwiftUI Navigation Bar
 /// Automatically renders based on NavigationBarState - no manual updates needed
@@ -180,11 +159,16 @@ public struct macOSNavigationBarView: View {
         if let state = state {
             // Show button when navbar is visible AND button is needed
             if state.show_navbar && (state.show_back_button || state.show_home_button) {
+                #if os(iOS)
                 if state.show_back_button {
-                    NavigationButton(isBackButton: true, action: onBackTapped)
+                    NavigationButton(isBackButton: true, tintColor: textColor, action: onBackTapped)
                 } else if state.show_home_button {
-                    NavigationButton(isBackButton: false, action: onHomeTapped)
+                    NavigationButton(isBackButton: false, tintColor: textColor, action: onHomeTapped)
                 }
+                #else
+                // macOS uses WindowController's own navigation buttons
+                Color.clear.frame(width: 44, height: 44)
+                #endif
             } else {
                 Color.clear.frame(width: 44, height: 44)
             }

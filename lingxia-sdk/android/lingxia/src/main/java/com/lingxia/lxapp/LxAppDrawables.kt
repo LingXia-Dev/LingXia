@@ -14,23 +14,32 @@ object LxAppDrawables {
 
     object Constants {
         const val BUTTON_SIZE_DP = 32
-        const val FROSTED_GLASS_ALPHA = 50
-        const val MARGIN_START_DP = 12
         const val ANIMATION_DURATION_MS = 300L
-        const val HOME_STROKE_WIDTH_FACTOR = 2.8f
         const val BACK_ICON_PADDING_DP = 6
     }
 
-    fun configureBackButton(imageView: ImageView, paddingDp: Int = Constants.BACK_ICON_PADDING_DP) {
+    private fun configureNavButton(
+        imageView: ImageView,
+        iconResId: Int,
+        paddingDp: Int
+    ) {
         val context = imageView.context
         val density = context.resources.displayMetrics.density
         val paddingPx = (paddingDp * density).toInt()
 
         imageView.apply {
-            setImageResource(R.drawable.icon_back)
+            setImageResource(iconResId)
             scaleType = ImageView.ScaleType.CENTER_INSIDE
             setPadding(paddingPx, paddingPx, paddingPx, paddingPx)
         }
+    }
+
+    fun configureBackButton(imageView: ImageView, paddingDp: Int = Constants.BACK_ICON_PADDING_DP) {
+        configureNavButton(imageView, R.drawable.icon_back, paddingDp)
+    }
+
+    fun configureHomeButton(imageView: ImageView, paddingDp: Int = Constants.BACK_ICON_PADDING_DP) {
+        configureNavButton(imageView, R.drawable.icon_home, paddingDp)
     }
 
     fun configureToolbarBackButton(toolbar: Toolbar, paddingDp: Int = 12) {
@@ -53,109 +62,6 @@ object LxAppDrawables {
         }
     }
 
-    /**
-     * Home Button Drawable with frosted glass effect
-     */
-    class HomeButtonDrawable(
-        private val resources: Resources,
-        private var currentFrontColor: Int = Color.BLACK
-    ) : Drawable() {
-
-        private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeJoin = Paint.Join.ROUND
-            strokeCap = Paint.Cap.ROUND
-        }
-
-        override fun draw(canvas: Canvas) {
-            val width = bounds.width()
-            val height = bounds.height()
-            val centerX = width / 2f
-            val centerY = height / 2f
-
-            // Draw perfect circle background (frosted glass effect)
-            val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.argb(Constants.FROSTED_GLASS_ALPHA, 255, 255, 255) // Semi-transparent white
-                style = Paint.Style.FILL
-            }
-
-            val radius = (minOf(width, height) / 2f) - (2f * resources.displayMetrics.density)
-            canvas.drawCircle(centerX, centerY, radius, backgroundPaint)
-
-            // Update paint colors for the icon
-            strokePaint.color = currentFrontColor
-            strokePaint.strokeWidth = Constants.HOME_STROKE_WIDTH_FACTOR * resources.displayMetrics.density
-            strokePaint.strokeCap = Paint.Cap.ROUND
-            strokePaint.strokeJoin = Paint.Join.ROUND
-
-            // Draw refined home icon with better proportions
-            val iconSize = minOf(width, height) * 0.5f
-            val houseWidth = iconSize * 0.7f
-            val houseHeight = iconSize * 0.45f
-            val roofHeight = iconSize * 0.32f
-
-            // Calculate positions for better centering
-            val totalHeight = houseHeight + roofHeight
-            val iconTop = centerY - totalHeight / 2f
-            val iconBottom = centerY + totalHeight / 2f
-
-            val left = centerX - houseWidth / 2f
-            val right = centerX + houseWidth / 2f
-            val bottom = iconBottom
-            val houseTop = iconBottom - houseHeight
-            val roofPeak = iconTop
-
-            // Draw house outline
-            val housePath = android.graphics.Path().apply {
-                moveTo(left, bottom)
-                lineTo(left, houseTop)
-                lineTo(centerX, roofPeak)
-                lineTo(right, houseTop)
-                lineTo(right, bottom)
-                close()
-            }
-            canvas.drawPath(housePath, strokePaint)
-
-            // Draw door with better proportions
-            val doorWidth = houseWidth * 0.18f
-            val doorHeight = houseHeight * 0.55f
-            val doorLeft = centerX - doorWidth / 2f
-            val doorRight = centerX + doorWidth / 2f
-            val doorTop = bottom - doorHeight
-
-            // Draw door with rounded top
-            val doorPath = android.graphics.Path().apply {
-                val cornerRadius = doorWidth * 0.1f
-                moveTo(doorLeft, bottom)
-                lineTo(doorLeft, doorTop + cornerRadius)
-                quadTo(doorLeft, doorTop, doorLeft + cornerRadius, doorTop)
-                lineTo(doorRight - cornerRadius, doorTop)
-                quadTo(doorRight, doorTop, doorRight, doorTop + cornerRadius)
-                lineTo(doorRight, bottom)
-                close()
-            }
-            canvas.drawPath(doorPath, strokePaint)
-        }
-
-        override fun setAlpha(alpha: Int) {
-            strokePaint.alpha = alpha
-            invalidateSelf()
-        }
-
-        override fun setColorFilter(colorFilter: android.graphics.ColorFilter?) {
-            strokePaint.colorFilter = colorFilter
-            invalidateSelf()
-        }
-
-        @Deprecated("Deprecated in Java")
-        override fun getOpacity(): Int = android.graphics.PixelFormat.TRANSLUCENT
-
-        fun updateColor(color: Int) {
-            currentFrontColor = color
-            strokePaint.color = color
-            invalidateSelf()
-        }
-    }
 
     /**
      * More Dots Drawable for capsule button
@@ -259,9 +165,6 @@ object LxAppDrawables {
     /**
      * Factory methods for creating drawable instances
      */
-    fun createHomeButton(resources: Resources, color: Int = Color.BLACK) =
-        HomeButtonDrawable(resources, color)
-
     fun createMoreDots(color: Int = Color.BLACK) =
         MoreDotsDrawable(color)
 

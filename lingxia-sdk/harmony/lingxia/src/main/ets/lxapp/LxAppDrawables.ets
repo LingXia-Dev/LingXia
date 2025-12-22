@@ -3,9 +3,7 @@
  */
 
 // Custom icon drawing constants
-const CUSTOM_ICON_CANVAS_SIZE = 36;
 const CUSTOM_ICON_STROKE_WIDTH = 1.8;
-const CUSTOM_ICON_HOME_ICON_SIZE = 16;
 
 // Capsule button constants
 const CAPSULE_BUTTON_TOTAL_WIDTH = 102;
@@ -16,81 +14,13 @@ const CAPSULE_BUTTON_BORDER_WIDTH = 0.5;
 const CAPSULE_BUTTON_Z_INDEX = 9999;
 
 // Common colors
-const COLOR_WHITE = '#ffffff';
 const COLOR_BLACK = '#000000';
 const COLOR_TRANSPARENT = Color.Transparent;
 const COLOR_LIGHT_BORDER = '#DDDDDD';
-const COLOR_ICON_STROKE = '#666666';
-
-// Animation constants
-const ANIMATION_DURATION_FAST = 100;
-const ANIMATION_BUTTON_PRESS_SCALE = 0.95;
-const ANIMATION_CURVE_EASE_IN_OUT = Curve.EaseInOut;  // Smooth ease in/out curve
 
 // System constants
 const SYSTEM_STATUS_BAR_HEIGHT = 44;
 
-/**
- * Custom home icon component - simple and clean outline
- * Back to the working original design with hollow effect
- */
-@Component
-export struct HomeIcon {
-  @Prop color: ResourceColor = COLOR_BLACK
-  @Prop iconSize: number = CUSTOM_ICON_HOME_ICON_SIZE
-
-  build() {
-    // Use Canvas for precise home icon drawing with larger size for clarity
-    Canvas(this.canvasContext)
-      .width(CUSTOM_ICON_CANVAS_SIZE)
-      .height(CUSTOM_ICON_CANVAS_SIZE)
-      .onReady(() => {
-        this.drawHomeIcon()
-      })
-  }
-
-  private canvasContext = new CanvasRenderingContext2D(new RenderingContextSettings(true))
-
-  private drawHomeIcon() {
-    const ctx = this.canvasContext
-
-    // Clear canvas
-    ctx.clearRect(0, 0, CUSTOM_ICON_CANVAS_SIZE, CUSTOM_ICON_CANVAS_SIZE)
-
-    // Draw house outline only (no background circle)
-    ctx.strokeStyle = COLOR_ICON_STROKE // Black outline
-    ctx.lineWidth = CUSTOM_ICON_STROKE_WIDTH
-    ctx.lineCap = 'round'
-    ctx.lineJoin = 'round'
-
-    // Draw house outline centered in 36x36 canvas
-    ctx.beginPath()
-    // Start from roof peak
-    ctx.moveTo(18, 6)    // peak (centered)
-    // Right roof slope
-    ctx.lineTo(28, 14)   // right roof corner
-    // Right wall down
-    ctx.lineTo(28, 28)   // right bottom
-    // Bottom right to door right
-    ctx.lineTo(21, 28)   // door right bottom
-    // Door right side up
-    ctx.lineTo(21, 21)   // door right top
-    // Door top
-    ctx.lineTo(15, 21)   // door left top
-    // Door left side down
-    ctx.lineTo(15, 28)   // door left bottom
-    // Bottom left
-    ctx.lineTo(8, 28)    // left bottom
-    // Left wall up
-    ctx.lineTo(8, 14)    // left roof corner
-    // Left roof slope back to peak
-    ctx.lineTo(18, 6)    // back to peak
-    ctx.closePath()
-
-    // Draw only the outline (no fill)
-    ctx.stroke()
-  }
-}
 
 /**
  * Navigation button component
@@ -103,17 +33,10 @@ export struct NavigationButton {
 
   build() {
     Column() {
-      if (this.isBackButton) {
-        Image($rawfile('icons/icon_back.svg'))
-          .width(20)
-          .height(20)
-          .objectFit(ImageFit.Contain)
-      } else {
-        HomeIcon({
-          color: COLOR_BLACK,
-          iconSize: CUSTOM_ICON_HOME_ICON_SIZE
-       })
-      }
+      Image($rawfile(this.isBackButton ? 'icons/icon_back.svg' : 'icons/icon_home.svg'))
+        .width(20)
+        .height(20)
+        .objectFit(ImageFit.Contain)
     }
     .width('100%')
     .height('100%')
@@ -140,7 +63,7 @@ export struct NavigationButton {
         this.onPressed()
       }
     })
-    .hitTestBehavior(HitTestMode.Block) // Ensure this component blocks and handles clicks
+    .hitTestBehavior(HitTestMode.Block)
   }
 }
 
