@@ -46,9 +46,9 @@ cargo run -p lingxia-gen -- i18n \
   --input "$LINGXIA_ROOT/i18n" \
   --ios-out "$LINGXIA_ROOT/lingxia-sdk/apple/Sources/Resources"
 
-echo "Generating asset manifests for iOS..."
+echo "Generating runtime assets for iOS..."
 cargo run -p lingxia-gen -- assets \
-  --input "$LINGXIA_ROOT/lingxia-sdk/resources/assets" \
+  --input "$LINGXIA_ROOT/lingxia-web-runtime/dist" \
   --ios-out "$LINGXIA_ROOT/lingxia-sdk/apple/Sources/Resources"
 
 echo "Converting shared SVG icons to PDF for iOS bundle..."

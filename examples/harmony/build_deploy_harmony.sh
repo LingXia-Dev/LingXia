@@ -87,9 +87,9 @@ cargo run -p lingxia-gen -- i18n \
   --input "$LINGXIA_ROOT/i18n" \
   --harmony-out "$LINGXIA_ROOT/lingxia-sdk/harmony/lingxia/src/main/resources"
 
-echo "Generating asset manifests for HarmonyOS..."
+echo "Generating runtime assets for HarmonyOS..."
 cargo run -p lingxia-gen -- assets \
-  --input "$LINGXIA_ROOT/lingxia-sdk/resources/assets" \
+  --input "$LINGXIA_ROOT/lingxia-web-runtime/dist" \
   --harmony-out "$LINGXIA_ROOT/lingxia-sdk/harmony/lingxia/src/main/resources/rawfile"
 
 echo "Generating icons for HarmonyOS..."

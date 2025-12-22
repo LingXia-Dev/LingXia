@@ -129,9 +129,9 @@ cargo run -p lingxia-gen -- i18n \
   --android-out "$LINGXIA_SDK_ANDROID/lingxia/src/main/res"
 
 # Generate asset manifests for Android
-echo "Generating asset manifests for Android..."
+echo "Generating runtime assets for Android..."
 cargo run -p lingxia-gen -- assets \
-  --input "$LINGXIA_ROOT/lingxia-sdk/resources/assets" \
+  --input "$LINGXIA_ROOT/lingxia-web-runtime/dist" \
   --android-out "$LINGXIA_SDK_ANDROID/lingxia/src/main/assets"
 
 # Generate Android Vector Drawable XML icons from SVG
