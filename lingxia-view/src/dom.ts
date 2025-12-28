@@ -6,12 +6,40 @@ export type MeasuredElement = {
 export function measureElement(el: HTMLElement): MeasuredElement {
   const rect = el.getBoundingClientRect();
 
-  let cornerRadius: number | undefined;
-  const radiusStr = getComputedStyle(el).borderRadius;
-  const match = radiusStr && radiusStr.match(/^([0-9.]+)px/);
-  if (match) {
+  const parseRadius = (radiusStr: string): number | undefined => {
+    const match = radiusStr && radiusStr.match(/^([0-9.]+)px/);
+    if (!match) return undefined;
     const parsed = parseFloat(match[1]);
-    if (!Number.isNaN(parsed)) cornerRadius = parsed;
+    return Number.isNaN(parsed) ? undefined : parsed;
+  };
+
+  let cornerRadius = parseRadius(getComputedStyle(el).borderRadius);
+  if (cornerRadius === undefined) {
+    const rectMatches = (a: DOMRect, b: DOMRect, epsilon = 0.5) =>
+      Math.abs(a.left - b.left) <= epsilon &&
+      Math.abs(a.top - b.top) <= epsilon &&
+      Math.abs(a.width - b.width) <= epsilon &&
+      Math.abs(a.height - b.height) <= epsilon;
+
+    let parent = el.parentElement;
+    while (parent) {
+      const style = getComputedStyle(parent);
+      const overflowHidden =
+        style.overflow === "hidden" ||
+        style.overflow === "clip" ||
+        style.overflowX === "hidden" ||
+        style.overflowX === "clip" ||
+        style.overflowY === "hidden" ||
+        style.overflowY === "clip";
+      if (overflowHidden && rectMatches(parent.getBoundingClientRect(), rect)) {
+        const parentRadius = parseRadius(style.borderRadius);
+        if (parentRadius !== undefined) {
+          cornerRadius = parentRadius;
+          break;
+        }
+      }
+      parent = parent.parentElement;
+    }
   }
 
   // Return document coordinates (CSS pixels)
