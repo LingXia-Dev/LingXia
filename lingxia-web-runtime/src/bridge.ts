@@ -47,6 +47,13 @@ let pageData: Record<string, unknown> = {};
 const dataSubscribers = new Set<DataSubscriber>();
 const subscriberInitStatus = new WeakMap<DataSubscriber, boolean>();
 let messagePort: MessagePort | null = null;
+const portInitState = {
+  listenerInstalled: false,
+  promise: null as Promise<MessagePort> | null,
+  resolve: null as ((port: MessagePort) => void) | null,
+  reject: null as ((err: unknown) => void) | null,
+  timer: null as number | null,
+};
 
 const BRIDGE_CONFIG: BridgeConfig =
   (typeof window !== 'undefined' && window.__LX_BRIDGE_CFG) || {};
@@ -56,6 +63,10 @@ const communicationMethod = ((): string => {
   if (BRIDGE_CONFIG.method === 'webkit') return 'webkit';
   return 'unknown';
 })();
+
+if (typeof window !== 'undefined' && communicationMethod === MESSAGE_PORT_TYPE) {
+  installMessagePortInitListener();
+}
 
 function isHarmony(): boolean {
   return BRIDGE_CONFIG.os === 'Harmony';
@@ -208,6 +219,9 @@ function sendMessageToNative(message: BridgeMessage): void {
     } else if (communicationMethod === MESSAGE_PORT_TYPE && messagePort) {
       const messageString = safeStringify(message);
       messagePort.postMessage(messageString);
+    } else if (communicationMethod === MESSAGE_PORT_TYPE) {
+      // Lazy (re)connect: if native repaired/recreated ports, JS must request a fresh port.
+      void getMessagePort().catch((e) => warn('MessagePort init failed:', e));
     } else {
       warn('Bridge not ready for sending');
     }
@@ -216,21 +230,59 @@ function sendMessageToNative(message: BridgeMessage): void {
   }
 }
 
-function getMessagePort(): Promise<MessagePort> {
-  return new Promise((resolve) => {
-    window.LingXiaProxy?.getPort('LingXiaPort');
+function installMessagePortInitListener(): void {
+  if (portInitState.listenerInstalled) return;
+  portInitState.listenerInstalled = true;
 
-    const handlePortInit = (event: MessageEvent): void => {
-      if (event.data === 'LingXia-port-init') {
-        window.removeEventListener('message', handlePortInit);
-        const port = event.ports[0];
-        LingXiaBridge._connectWebMessagePort(port);
-        resolve(port);
-      }
-    };
-
-    window.addEventListener('message', handlePortInit);
+  window.addEventListener('message', (event: MessageEvent) => {
+    if (event.data !== 'LingXia-port-init') return;
+    const port = event.ports?.[0];
+    if (!port) return;
+    LingXiaBridge._connectWebMessagePort(port);
+    portInitState.resolve?.(port);
   });
+}
+
+function getMessagePort(): Promise<MessagePort> {
+  if (messagePort) return Promise.resolve(messagePort);
+  if (portInitState.promise) return portInitState.promise;
+
+  const timeoutMs = 5000;
+  installMessagePortInitListener();
+
+  portInitState.promise = new Promise<MessagePort>((resolve, reject) => {
+    portInitState.resolve = (port: MessagePort): void => {
+      cleanupPortInit();
+      resolve(port);
+    };
+    portInitState.reject = (err: unknown): void => {
+      cleanupPortInit();
+      reject(err);
+    };
+    portInitState.timer = window.setTimeout(() => {
+      portInitState.reject?.(
+        new Error(`MessagePort init timed out after ${timeoutMs}ms`)
+      );
+    }, timeoutMs);
+
+    try {
+      window.LingXiaProxy?.getPort('LingXiaPort');
+    } catch (e) {
+      portInitState.reject?.(e);
+    }
+  });
+
+  return portInitState.promise;
+}
+
+function cleanupPortInit(): void {
+  if (portInitState.timer !== null) {
+    window.clearTimeout(portInitState.timer);
+    portInitState.timer = null;
+  }
+  portInitState.resolve = null;
+  portInitState.reject = null;
+  portInitState.promise = null;
 }
 
 function handleReply(replyMessage: BridgeMessage): void {
@@ -505,6 +557,14 @@ export const LingXiaBridge: LingXiaBridgeInterface = {
     if (communicationMethod !== MESSAGE_PORT_TYPE) return;
 
     log('Connecting WebMessage port...');
+    if (messagePort && messagePort !== port) {
+      try {
+        messagePort.onmessage = null;
+        messagePort.close();
+      } catch {
+        // ignore
+      }
+    }
     messagePort = port;
 
     port.onmessage = (event: MessageEvent) => {
