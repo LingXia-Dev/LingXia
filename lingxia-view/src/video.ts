@@ -17,6 +17,7 @@ export type LxVideoAttributes = {
   muted?: boolean;
   controls?: boolean;
   progressBar?: boolean;
+  live?: boolean;
   volume?: string | number;
   qualities?: LxVideoQuality[];  // First is default
   playbackRates?: number[];      // First is default
@@ -56,6 +57,7 @@ export class LxVideoElement extends HTMLElement {
       "muted",
       "controls",
       "progress-bar",
+      "live",
       "volume",
       "qualities",
       "playback-rates"
@@ -72,6 +74,8 @@ export class LxVideoElement extends HTMLElement {
   private _handlers: Record<string, EventListenerOrEventListenerObject> = {};
   private harmonyEmbed?: HTMLEmbedElement;
   private lastHarmonyProps?: string;
+  private lastHarmonyQualities?: string;
+  private lastHarmonyPlaybackRates?: string;
   private iOSHelper?: iOSSameLevelHelper;
 
   connectedCallback() {
@@ -251,6 +255,13 @@ export class LxVideoElement extends HTMLElement {
       } catch {}
     }
 
+    const isLive = this.hasAttribute("live");
+    // When live, default progressBar to false unless explicitly enabled.
+    const progressBarAttr = this.getAttribute("progress-bar");
+    const progressBar = isLive
+      ? (progressBarAttr !== null && progressBarAttr !== "false")
+      : (progressBarAttr !== "false");
+
     return {
       src: this.getAttribute("src") || undefined,
       poster: this.getAttribute("poster") || undefined,
@@ -258,7 +269,8 @@ export class LxVideoElement extends HTMLElement {
       loop: this.hasAttribute("loop"),
       muted: this.hasAttribute("muted"),
       controls: this.hasAttribute("controls"),
-      progressBar: this.getAttribute("progress-bar") !== "false",
+      progressBar,
+      live: isLive,
       volume: !Number.isNaN(volume ?? NaN) ? volume : undefined,
       qualities,
       playbackRates
@@ -420,6 +432,23 @@ export class LxVideoElement extends HTMLElement {
     props: Record<string, unknown>,
     cornerRadius?: number
   ) {
+    const nextQualities = JSON.stringify((props as { qualities?: unknown }).qualities ?? []);
+    const nextPlaybackRates = JSON.stringify((props as { playbackRates?: unknown }).playbackRates ?? []);
+    const shouldRecreate =
+      this.harmonyEmbed &&
+      (nextQualities !== this.lastHarmonyQualities ||
+        nextPlaybackRates !== this.lastHarmonyPlaybackRates);
+
+    if (shouldRecreate && this.harmonyEmbed) {
+      if (this.contains(this.harmonyEmbed)) {
+        this.removeChild(this.harmonyEmbed);
+      }
+      this.harmonyEmbed = undefined;
+      this.lastHarmonyProps = undefined;
+    }
+    this.lastHarmonyQualities = nextQualities;
+    this.lastHarmonyPlaybackRates = nextPlaybackRates;
+
     // Create embed element only once - ArkWeb triggers DESTROY+CREATE on attribute changes
     if (!this.harmonyEmbed) {
       const embed = document.createElement("embed");
