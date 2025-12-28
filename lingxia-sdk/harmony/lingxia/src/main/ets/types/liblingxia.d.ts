@@ -204,6 +204,29 @@ declare module 'liblingxia.so' {
   export function onPushlinkReceived(url: string, trigger: number): number;
 
   /**
+   * Store video surface ID without creating/updating AVPlayer (streaming mode)
+   * @param componentId - Video component ID
+   * @param surfaceId - XComponent surface ID
+   * @returns true if stored successfully
+   */
+  export function videoPlayerStoreSurface(componentId: string, surfaceId: string): boolean;
+
+  /**
+   * Clear stored video surface ID
+   * @param componentId - Video component ID
+   * @returns true if cleared
+   */
+  export function videoPlayerClearSurface(componentId: string): boolean;
+
+  /**
+   * Rebind stream decoder surface (streaming mode)
+   * @param componentId - Video component ID
+   * @param surfaceId - XComponent surface ID
+   * @returns true if rebound successfully
+   */
+  export function videoPlayerRebindStreamSurface(componentId: string, surfaceId: string): boolean;
+
+  /**
    * Initialize camera with surface ID and facing preference
    * @param surfaceId - XComponent surface ID for camera preview
    * @param facing - Camera facing preference ("front" or "back")
@@ -235,7 +258,6 @@ declare module 'liblingxia.so' {
    * @returns true if capture started successfully
    */
   export function cameraTakePhoto(): boolean;
-
 
   /**
    * Start photo capture with dedicated surface, callback and cache dir

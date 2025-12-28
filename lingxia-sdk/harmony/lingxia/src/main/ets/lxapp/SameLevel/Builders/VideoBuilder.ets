@@ -61,7 +61,7 @@ struct SameLevelVideoComponent {
 
   private buildConfig(): LxNativeVideoConfig {
     const props = this.params?.props;
-    
+
     // If props are missing but we have a cache, use it to prevent state loss
     if (!props) {
       return this.cachedConfig ?? new LxNativeVideoConfig();
@@ -103,7 +103,7 @@ struct SameLevelVideoComponent {
     // Parse qualities
     const qualities = props.get('qualities');
     if (Array.isArray(qualities)) {
-      config.qualities = qualities.map((entry: ESObject): LxMediaQuality => {
+      config.qualities = qualities.map((entry: QualityProp): LxMediaQuality => {
         const quality = new LxMediaQuality();
         if (typeof entry.label === 'string') quality.label = entry.label;
         if (typeof entry.url === 'string') quality.url = entry.url;

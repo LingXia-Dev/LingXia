@@ -27,6 +27,11 @@ import { LxNativeVideoPlayer } from './media/LxNativeVideoPlayer';
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.NativeBridge';
 
+class StreamVideoConfig {
+  width?: number;
+  height?: number;
+}
+
 // UI Event Constants
 export const UI_EVENT_TABBAR_CLICK = 0;
 export const UI_EVENT_CAPSULE_CLICK = 1;
@@ -311,6 +316,20 @@ class NativeBridge {
         case 'paused':
           LxNativeVideoPlayer.onPaused(componentId);
           return true;
+        case 'streamConfig': {
+          if (!payload) return false;
+          try {
+            const config = JSON.parse(payload) as StreamVideoConfig;
+            const width = Number(config?.width ?? 0);
+            const height = Number(config?.height ?? 0);
+            if (!Number.isFinite(width) || !Number.isFinite(height)) return false;
+            LxNativeVideoPlayer.setStreamVideoSize(componentId, width, height);
+            return true;
+          } catch (error) {
+            hilog.warn(DOMAIN, TAG, `videoPlayerEvent: streamConfig parse error=${error}`);
+            return false;
+          }
+        }
         case 'enterFullscreen':
           LxNativeVideoPlayer.enterFullscreenStatic(componentId);
           return true;
@@ -322,6 +341,7 @@ class NativeBridge {
           return false;
       }
     });
+
 
     // Pull-to-Refresh APIs
     this.register('startPullDownRefresh', (appId: string, path: string): void => {

@@ -2,6 +2,9 @@ import {
   videoPlayerCreate,
   videoPlayerSetUrl,
   videoPlayerSetSurface,
+  videoPlayerStoreSurface,
+  videoPlayerClearSurface,
+  videoPlayerRebindStreamSurface,
   videoPlayerPrepare,
   videoPlayerPlay,
   videoPlayerPause,
@@ -86,6 +89,16 @@ export class LxNativeVideoState {
   currentPlaybackRate: number = 1.0; // Current playback rate
 }
 
+class StreamVideoSize {
+  width: number = 0;
+  height: number = 0;
+
+  constructor(width: number, height: number) {
+    this.width = width;
+    this.height = height;
+  }
+}
+
 class LxNativeVideoRuntimeSnapshot {
   isPlaying: boolean = false;
   currentTime: number = 0;
@@ -124,14 +137,17 @@ export struct LxNativeVideoPlayer {
   private controlsTimer: number = -1;
   private progressTimer: number = -1;
   private seekTimer: number = -1;
+  private clearSurfaceTimer: number = -1;  // Delay surface clear to allow reattach
   private surfaceId: string = '';
   private playerCreated: boolean = false;
   private boundSurfaceId: string = '';
+  private streamVideoSize?: StreamVideoSize;
   private static keepAliveIds: Set<string> = new Set();
   private static runtimeState: Map<string, LxNativeVideoRuntimeSnapshot> = new Map();
   private static nativePlayerExists: Set<string> = new Set();
   private static rebindInstance: Map<string, LxNativeVideoPlayer> = new Map();
   private static originalSurfaceIds: Map<string, string> = new Map();
+  private static streamVideoSizes: Map<string, StreamVideoSize> = new Map();
   private static instanceCounter: number = 0;  // Global counter to generate unique XComponent IDs
   onEvent?: (event: string, detail: object) => void;
 
@@ -153,9 +169,38 @@ export struct LxNativeVideoPlayer {
     exists ? LxNativeVideoPlayer.nativePlayerExists.add(componentId) : LxNativeVideoPlayer.nativePlayerExists.delete(componentId);
   }
 
+  static setStreamVideoSize(componentId: string, width: number, height: number): void {
+    if (!componentId) return;
+    if (width <= 0 || height <= 0) {
+      LxNativeVideoPlayer.clearStreamVideoSize(componentId);
+      return;
+    }
+    const size = new StreamVideoSize(width, height);
+    LxNativeVideoPlayer.streamVideoSizes.set(componentId, size);
+    const instance = LxNativeVideoPlayer.rebindInstance.get(componentId);
+    if (instance) {
+      instance.streamVideoSize = size;
+    }
+  }
+
+  static clearStreamVideoSize(componentId: string): void {
+    if (!componentId) return;
+    LxNativeVideoPlayer.streamVideoSizes.delete(componentId);
+    const instance = LxNativeVideoPlayer.rebindInstance.get(componentId);
+    if (instance) {
+      instance.streamVideoSize = undefined;
+    }
+  }
+
+  static getStreamVideoSize(componentId: string): StreamVideoSize | undefined {
+    const instance = LxNativeVideoPlayer.rebindInstance.get(componentId);
+    return instance?.streamVideoSize || LxNativeVideoPlayer.streamVideoSizes.get(componentId);
+  }
+
   // Switch player to fullscreen surface
   static switchToFullscreenSurface(componentId: string, fullscreenSurfaceId: string): boolean {
-    if (!componentId || !fullscreenSurfaceId || !LxNativeVideoPlayer.hasNativePlayer(componentId)) return false;
+    if (!componentId || !fullscreenSurfaceId) return false;
+    const hasNative = LxNativeVideoPlayer.hasNativePlayer(componentId);
 
     const instance = LxNativeVideoPlayer.rebindInstance.get(componentId);
     if (instance?.surfaceId) {
@@ -163,7 +208,9 @@ export struct LxNativeVideoPlayer {
     }
 
     const snapshot = LxNativeVideoPlayer.runtimeState.get(componentId);
-    const success = videoPlayerRebindSurface(componentId, fullscreenSurfaceId, snapshot?.currentTime ?? 0, snapshot?.isPlaying ?? true) as boolean;
+    const success = hasNative
+      ? (videoPlayerRebindSurface(componentId, fullscreenSurfaceId, snapshot?.currentTime ?? 0, snapshot?.isPlaying ?? true) as boolean)
+      : (videoPlayerRebindStreamSurface(componentId, fullscreenSurfaceId) as boolean);
 
     // Update instance's boundSurfaceId so quality switching works in fullscreen
     if (success && instance) {
@@ -176,10 +223,13 @@ export struct LxNativeVideoPlayer {
 
   static switchToOriginalSurface(componentId: string): boolean {
     const originalSurfaceId = LxNativeVideoPlayer.originalSurfaceIds.get(componentId);
-    if (!componentId || !originalSurfaceId || !LxNativeVideoPlayer.hasNativePlayer(componentId)) return false;
+    if (!componentId || !originalSurfaceId) return false;
+    const hasNative = LxNativeVideoPlayer.hasNativePlayer(componentId);
 
     const snapshot = LxNativeVideoPlayer.runtimeState.get(componentId);
-    const success = videoPlayerRebindSurface(componentId, originalSurfaceId, snapshot?.currentTime ?? 0, snapshot?.isPlaying ?? true) as boolean;
+    const success = hasNative
+      ? (videoPlayerRebindSurface(componentId, originalSurfaceId, snapshot?.currentTime ?? 0, snapshot?.isPlaying ?? true) as boolean)
+      : (videoPlayerRebindStreamSurface(componentId, originalSurfaceId) as boolean);
     if (success) {
       LxNativeVideoPlayer.originalSurfaceIds.delete(componentId);
       // Force sync slider state on the instance after exiting fullscreen
@@ -278,6 +328,7 @@ export struct LxNativeVideoPlayer {
 
   static onStopped(componentId: string): void {
     const instance = LxNativeVideoPlayer.rebindInstance.get(componentId);
+    LxNativeVideoPlayer.clearStreamVideoSize(componentId);
     if (instance) {
       instance.handleStopped();
     } else {
@@ -438,8 +489,15 @@ export struct LxNativeVideoPlayer {
   }
 
   static isLandscapeVideo(componentId: string): boolean {
-    const width = LxNativeVideoPlayer.getVideoWidth(componentId);
-    const height = LxNativeVideoPlayer.getVideoHeight(componentId);
+    let width = LxNativeVideoPlayer.getVideoWidth(componentId);
+    let height = LxNativeVideoPlayer.getVideoHeight(componentId);
+    if (width <= 0 || height <= 0) {
+      const streamSize = LxNativeVideoPlayer.getStreamVideoSize(componentId);
+      if (streamSize) {
+        width = streamSize.width;
+        height = streamSize.height;
+      }
+    }
     return width > 0 && height > 0 && width > height;
   }
 
@@ -518,6 +576,7 @@ export struct LxNativeVideoPlayer {
     this.clearCornerRadiusTimer();
     this.clearSeekTimer();
     this.clearSeekDebounceTimer();
+    this.cancelPendingSurfaceClear();
     this.appliedCornerRadius = 0;
     LxNativeVideoPlayer.rebindInstance.delete(this.componentId);
     if (this.playerCreated) this.destroyPlayer();
@@ -624,18 +683,55 @@ export struct LxNativeVideoPlayer {
   }
 
   private onSurfaceCreated(surfaceId: string): void {
+    // Cancel any pending surface clear operation since a new surface was created
+    this.cancelPendingSurfaceClear();
+
     this.boundSurfaceId = surfaceId;
     this.surfaceId = surfaceId;
+    if (!this.hasSource()) {
+      videoPlayerStoreSurface(this.componentId, surfaceId);
+      videoPlayerRebindStreamSurface(this.componentId, surfaceId);
+      return;
+    }
     if (!LxNativeVideoPlayer.hasNativePlayer(this.componentId)) {
       this.ensurePlayer(surfaceId, false, undefined);
     }
   }
 
   private onSurfaceDestroyed(surfaceId: string): void {
-    if (this.boundSurfaceId === surfaceId) this.boundSurfaceId = '';
+    // XComponent surfaces can be recreated; ArkUI may report onDestroy for an old surface after a new
+    // one is already created/bound. Only clear the stored surface when the destroyed surface is the
+    // currently bound surface; otherwise we can accidentally clear the active surface and break
+    // stream playback (Surface not set).
+    const isCurrentSurface = this.surfaceId === surfaceId || this.boundSurfaceId === surfaceId;
+    if (!isCurrentSurface) return;
+
+    // Clear any existing pending clear operation
+    this.cancelPendingSurfaceClear();
+
+    // Delay clearing to allow temporary detach/reattach (similar to Android's 900ms pattern)
+    // This improves robustness during navigation or layout changes
+    this.clearSurfaceTimer = setTimeout(() => {
+      // Double-check that the surface is still the one we expect to clear
+      // (a new surface might have been created and bound during the delay)
+      const stillCurrentSurface = this.surfaceId === surfaceId || this.boundSurfaceId === surfaceId;
+      if (stillCurrentSurface) {
+        log(`[${this.componentId}] surface detached for 800ms, clearing: ${surfaceId}`);
+        if (this.boundSurfaceId === surfaceId) this.boundSurfaceId = '';
+        if (this.surfaceId === surfaceId) this.surfaceId = '';
+        videoPlayerClearSurface(this.componentId);
+      } else {
+        log(`[${this.componentId}] surface reattached during delay, skipping clear: ${surfaceId}`);
+      }
+      this.clearSurfaceTimer = -1;
+    }, 800) as number;  // 800ms delay (slightly less than Android's 900ms for Harmony's faster reattach)
   }
 
   private ensurePlayer(surfaceId: string, wasKeepAlive: boolean = false, snapshot?: LxNativeVideoRuntimeSnapshot): void {
+    if (!this.hasSource()) {
+      if (surfaceId) videoPlayerStoreSurface(this.componentId, surfaceId);
+      return;
+    }
     if (wasKeepAlive || LxNativeVideoPlayer.isKeepAlive(this.componentId)) {
       this.playerCreated = true;
       this.rebindSurface(surfaceId, snapshot);
@@ -653,6 +749,10 @@ export struct LxNativeVideoPlayer {
   }
 
   private createPlayer(surfaceId?: string): void {
+    if (!this.hasSource()) {
+      if (surfaceId) videoPlayerStoreSurface(this.componentId, surfaceId);
+      return;
+    }
     const playerPtr = videoPlayerCreate(this.componentId, 0) as number;
     if (playerPtr === 0) {
       this.emitEvent('error', { message: 'Failed to create native player' } as VideoErrorDetail);
@@ -679,7 +779,9 @@ export struct LxNativeVideoPlayer {
 
     if (this.config.volume !== undefined) videoPlayerSetVolume(this.componentId, this.config.volume);
     videoPlayerSetLoop(this.componentId, this.config.loop ?? false);
-    videoPlayerPrepare(this.componentId);
+    if (this.config.src) {
+      videoPlayerPrepare(this.componentId);
+    }
     // Note: loadedmetadata and autoplay will be triggered in handlePrepared() callback when player is ready
 
     log(`[${this.componentId}] createPlayer done, autoplay=${this.config.autoplay}, showPoster=${this.showPoster}`);
@@ -861,6 +963,9 @@ export struct LxNativeVideoPlayer {
     this.state.isPaused = false;
     this.state.isBuffering = false;  // Clear buffering when playing resumes
     this.hasEnded = false;
+    if (!this.config?.src || this.config.src.trim().length === 0) {
+      this.showPoster = false;
+    }
     this.startProgressTimer();
     this.saveRuntimeState();
     // Emit play event to JS
@@ -901,7 +1006,24 @@ export struct LxNativeVideoPlayer {
     this.state.isFullscreen = this.isFullscreen;
     const fsDetail = new VideoFullscreenDetail();
     fsDetail.fullScreen = this.isFullscreen;
-    fsDetail.direction = 'horizontal';
+
+    // Determine orientation based on video aspect ratio
+    let videoWidth = videoPlayerGetVideoWidth(this.componentId) as number;
+    let videoHeight = videoPlayerGetVideoHeight(this.componentId) as number;
+
+    // If in stream mode (no native player), get dimensions from stream config cache
+    if ((videoWidth === 0 || videoHeight === 0) && !this.hasSource()) {
+      const streamSize = LxNativeVideoPlayer.getStreamVideoSize(this.componentId);
+      if (streamSize) {
+        videoWidth = streamSize.width;
+        videoHeight = streamSize.height;
+      }
+    }
+
+    const isLandscape = videoWidth > 0 && videoHeight > 0 && videoWidth > videoHeight;
+    fsDetail.direction = isLandscape ? 'horizontal' : 'vertical';
+
+    log(`[${this.componentId}] toggleFullscreen: fullscreen=${this.isFullscreen}, videoWidth=${videoWidth}, videoHeight=${videoHeight}, direction=${fsDetail.direction}`);
     this.emitEvent('fullscreenchange', fsDetail);
   }
 
@@ -927,12 +1049,25 @@ export struct LxNativeVideoPlayer {
     if (this.seekDebounceTimer !== -1) { clearTimeout(this.seekDebounceTimer); this.seekDebounceTimer = -1; }
   }
 
+  private cancelPendingSurfaceClear(): void {
+    if (this.clearSurfaceTimer !== -1) { clearTimeout(this.clearSurfaceTimer); this.clearSurfaceTimer = -1; }
+  }
+
   private startSeekTimer(): void {
     this.clearSeekTimer();
     this.seekTimer = setTimeout(() => { this.isSeeking = false; this.seekTimer = -1; }, 300);
   }
 
-  private getXComponentType(): XComponentType { return XComponentType.TEXTURE; }
+  private getXComponentType(): XComponentType {
+    if (!this.hasSource()) {
+      return XComponentType.SURFACE;
+    }
+    return XComponentType.TEXTURE;
+  }
+
+  private hasSource(): boolean {
+    return typeof this.config?.src === 'string' && this.config.src.trim().length > 0;
+  }
 
   private togglePlayPause(): void {
     this.state.isPlaying ? this.pause() : this.play();
@@ -997,11 +1132,24 @@ export struct LxNativeVideoPlayer {
     return this.cachedPoster || this.config.poster || '';
   }
 
+  private lastPosterLogState: string = '';
+
   private shouldShowPoster(): boolean {
     const posterUrl = this.getPosterUrl();
     const show = !!(posterUrl && this.showPoster);
-    log(`[${this.componentId}] shouldShowPoster: posterUrl=${posterUrl ? 'set' : 'empty'}, showPoster=${this.showPoster}, result=${show}`);
+
+    // 只在状态变化时打印日志，避免日志刷屏
+    const currentState = `${posterUrl ? 'set' : 'empty'}:${this.showPoster}:${show}`;
+    if (currentState !== this.lastPosterLogState) {
+      log(`[${this.componentId}] shouldShowPoster: posterUrl=${posterUrl ? 'set' : 'empty'}, showPoster=${this.showPoster}, result=${show}`);
+      this.lastPosterLogState = currentState;
+    }
+
     return show;
+  }
+
+  private isStreamMode(): boolean {
+    return !this.hasSource();
   }
 
   @Builder
@@ -1031,7 +1179,8 @@ export struct LxNativeVideoPlayer {
         .onLoad(() => this.onSurfaceCreated(this.xComponentController.getXComponentSurfaceId()))
         .onDestroy(() => this.onSurfaceDestroyed(this.surfaceId))
         .width('100%').height('100%')
-        .borderRadius(this.isFullscreen ? 0 : this.appliedCornerRadius).clip(true)
+        .borderRadius((this.isFullscreen || this.isStreamMode()) ? 0 : this.appliedCornerRadius)
+        .clip(!this.isFullscreen && !this.isStreamMode())
         .hitTestBehavior(HitTestMode.Transparent).zIndex(0)
 
       this.buildPoster()
@@ -1045,8 +1194,8 @@ export struct LxNativeVideoPlayer {
       if (this.showControls && this.config.controls) { this.buildControls() }
     }
     .width('100%').height('100%')
-    .borderRadius(this.isFullscreen ? 0 : this.appliedCornerRadius)
-    .clip(this.isFullscreen ? false : true) // Don't clip in fullscreen to allow settings overlay
+    .borderRadius((this.isFullscreen || this.isStreamMode()) ? 0 : this.appliedCornerRadius)
+    .clip(this.isFullscreen ? false : !this.isStreamMode()) // Don't clip in fullscreen to allow settings overlay
     .backgroundColor(Color.Black).hitTestBehavior(HitTestMode.Transparent)
   }
 }
