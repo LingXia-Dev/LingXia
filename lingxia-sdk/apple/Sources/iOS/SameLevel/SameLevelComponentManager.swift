@@ -226,6 +226,18 @@ final class SameLevelComponentManager {
         return true
     }
 
+    func componentView(componentId: String) -> UIView? {
+        return components[componentId]?.view
+    }
+
+    func emitComponentEvent(componentId: String, event: String, detail: [String: Any] = [:]) {
+        sendEventToWeb(componentId: componentId, event: ["event": event, "detail": detail])
+    }
+
+    func setStreamDecoderActive(componentId: String, active: Bool) {
+        (components[componentId] as? VideoComponent)?.setStreamDecoderActive(active)
+    }
+
     private func handlePageLifecycle(_ parameters: [String: Any]) {
         let pageId = resolvePageId(parameters)
         guard let state = parameters["state"] as? String else { return }

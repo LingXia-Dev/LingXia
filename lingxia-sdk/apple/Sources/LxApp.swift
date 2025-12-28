@@ -142,6 +142,13 @@ public class LxAppViewHierarchyHelper {
 @MainActor
 public class LxAppCore {
     private static let log = OSLog(subsystem: "LingXia", category: "LxAppCore")
+    public static var resourceBundle: Bundle {
+#if SWIFT_PACKAGE
+        return Bundle.module
+#else
+        return Bundle(for: LxAppCore.self)
+#endif
+    }
 
     /// Singleton instance
     private static var instance: LxAppCore?

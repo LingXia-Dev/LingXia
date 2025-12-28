@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 #if os(iOS)
 
@@ -25,6 +26,7 @@ final class ComponentRouter {
     
     func unregister(componentId: String) {
         managers.removeValue(forKey: componentId)
+        StreamDecoderRegistry.shared.stop(componentId: componentId)
     }
     
     /// Set callback for a component. Called from Rust FFI.
@@ -36,10 +38,31 @@ final class ComponentRouter {
     
     /// Dispatch a command to a component. Called from Rust FFI.
     func dispatchCommand(componentId: String, name: String, params: [String: Any]?) -> Bool {
+        if name != "enterFullscreen" && name != "exitFullscreen" {
+            if StreamDecoderRegistry.shared.handleCommand(
+                componentId: componentId,
+                name: name,
+                params: params
+            ) {
+                return true
+            }
+        }
+
         guard let manager = managers[componentId]?.value else { return false }
         return manager.dispatchCommand(componentId: componentId, name: name, params: params)
+    }
+
+    func componentView(componentId: String) -> UIView? {
+        return managers[componentId]?.value?.componentView(componentId: componentId)
+    }
+
+    func emitComponentEvent(componentId: String, event: String, detail: [String: Any]) {
+        managers[componentId]?.value?.emitComponentEvent(componentId: componentId, event: event, detail: detail)
+    }
+
+    func setStreamDecoderActive(componentId: String, active: Bool) {
+        managers[componentId]?.value?.setStreamDecoderActive(componentId: componentId, active: active)
     }
 }
 
 #endif
-

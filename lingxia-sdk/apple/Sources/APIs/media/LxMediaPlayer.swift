@@ -2,54 +2,11 @@ import Foundation
 import UIKit
 import AVFoundation
 import OSLog
-import Darwin
-
 #if os(iOS)
-
-public struct LxMediaPipe: @unchecked Sendable {
-    public let id: String
-    public let url: URL
-    public let writeHandle: FileHandle?
-    fileprivate let shouldUnlinkOnClose: Bool
-
-    /// Create a named pipe owned by the player. Returns the write handle for native/Rust to push bytes.
-    public static func make() throws -> LxMediaPipe {
-        let id = UUID().uuidString
-        let path = (NSTemporaryDirectory() as NSString).appendingPathComponent("lxpipe-\(id)")
-        let mode: mode_t = 0o600
-        if mkfifo(path, mode) != 0 && errno != EEXIST {
-            throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: [
-                NSLocalizedDescriptionKey: "mkfifo failed with errno \(errno)"
-            ])
-        }
-        let fd = Darwin.open(path, O_RDWR | O_NONBLOCK)
-        guard fd >= 0 else {
-            throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: [
-                NSLocalizedDescriptionKey: "open pipe failed with errno \(errno)"
-            ])
-        }
-        let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
-        return LxMediaPipe(id: id, url: URL(fileURLWithPath: path), writeHandle: handle, shouldUnlinkOnClose: true)
-    }
-
-    /// Wrap an external pipe path (e.g., provided by JS); no writer and no cleanup.
-    public static func external(path: String) -> LxMediaPipe? {
-        let url = URL(fileURLWithPath: path)
-        return LxMediaPipe(id: url.lastPathComponent, url: url, writeHandle: nil, shouldUnlinkOnClose: false)
-    }
-
-    public func close() {
-        try? writeHandle?.close()
-        if shouldUnlinkOnClose {
-            try? FileManager.default.removeItem(at: url)
-        }
-    }
-}
 
 public enum LxMediaSource {
     case url(URL)
     case file(path: String)
-    case pipe(LxMediaPipe)
 
     var bridgeValue: [String: Any] {
         switch self {
@@ -57,8 +14,6 @@ public enum LxMediaSource {
             return ["type": "url", "value": url.absoluteString]
         case .file(let path):
             return ["type": "file", "value": path]
-        case .pipe(let pipe):
-            return ["type": "pipe", "value": pipe.url.path]
         }
     }
 }
@@ -472,13 +427,16 @@ public final class LxMediaPlayer: NSObject {
     private var isTransitioningFullscreen = false  // Flag to ignore updates during transition
     private var fullscreenWindow: UIWindow?
     private var fullscreenViewController: FullscreenPlayerViewController?
-    private var activePipe: LxMediaPipe?
 
     // Poster state
     private var posterURL: URL?
     private var posterTask: Task<Void, Never>?
     private var lastTimeForPosterHide: Double = -1  // Track time for poster hiding (like HarmonyOS)
     private var pendingPosterHide = false  // Flag to delay poster hiding until time progresses
+    private var streamDecoderActive = false
+    private var streamCommandHandler: ((String, [String: Any]) -> Bool)?
+    private var streamVolume: Float = 1.0
+    private var streamMuted = false
 
     public init(
         eventSink: @escaping ([String: Any]) -> Void,
@@ -523,13 +481,6 @@ public final class LxMediaPlayer: NSObject {
 
     public convenience init(eventHandler: @escaping (LxMediaEvent) -> Void) {
         self.init(eventSink: { _ in }, typedEventSink: eventHandler)
-    }
-
-    deinit {
-        // Safe cleanup even if called off the main actor
-        if let pipe = activePipe, pipe.shouldUnlinkOnClose {
-            pipe.close()
-        }
     }
 
     // MARK: Public API
@@ -614,21 +565,16 @@ public final class LxMediaPlayer: NSObject {
         }
 
         // Source
-        var nextPipe: LxMediaPipe?
         if let source = config.source {
             switch source {
             case .url(let url):
                 loadVideo(url: url)
             case .file(let path):
                 loadVideo(url: URL(fileURLWithPath: path))
-            case .pipe(let pipe):
-                nextPipe = pipe
-                loadVideo(url: pipe.url)
             }
         } else if let src = config.src {
             loadVideo(url: src)
         }
-        replaceActivePipe(with: nextPipe)
 
         // Always use .pause to receive end notification, handle loop in videoDidEnd
         player?.actionAtItemEnd = .pause
@@ -641,18 +587,30 @@ public final class LxMediaPlayer: NSObject {
         }
 
         if let muted = config.muted {
-            player?.isMuted = muted
-            // Update UI to reflect muted state
-            if muted {
-                updateVolumeIcon(volume: 0)
-            } else if let vol = player?.volume {
-                updateVolumeIcon(volume: vol)
+            if streamDecoderActive {
+                streamMuted = muted
+                streamCommandHandler?("setMuted", ["muted": muted])
+                updateVolumeIcon(volume: muted ? 0 : streamVolume)
+            } else {
+                player?.isMuted = muted
+                if muted {
+                    updateVolumeIcon(volume: 0)
+                } else if let vol = player?.volume {
+                    updateVolumeIcon(volume: vol)
+                }
             }
         }
 
         if let vol = config.volume {
             let volume = Float(vol)
-            player?.volume = volume
+            if streamDecoderActive {
+                streamVolume = volume
+                streamMuted = volume == 0
+                streamCommandHandler?("setVolume", ["volume": Double(volume)])
+                streamCommandHandler?("setMuted", ["muted": streamMuted])
+            } else {
+                player?.volume = volume
+            }
             volumeSlider.value = volume
             updateVolumeIcon(volume: volume)
         }
@@ -727,16 +685,28 @@ public final class LxMediaPlayer: NSObject {
         case .seek(let time): seek(to: time)
         case .setVolume(let volume):
             let vol = Float(volume)
-            player?.volume = vol
+            if streamDecoderActive {
+                streamVolume = vol
+                streamMuted = vol == 0
+                streamCommandHandler?("setVolume", ["volume": Double(vol)])
+                streamCommandHandler?("setMuted", ["muted": streamMuted])
+            } else {
+                player?.volume = vol
+            }
             volumeSlider.value = vol
             updateVolumeIcon(volume: vol)
         case .setMuted(let muted):
-            player?.isMuted = muted
-            // Update UI to reflect muted state
-            if muted {
-                updateVolumeIcon(volume: 0)
-            } else if let vol = player?.volume {
-                updateVolumeIcon(volume: vol)
+            if streamDecoderActive {
+                streamMuted = muted
+                streamCommandHandler?("setMuted", ["muted": muted])
+                updateVolumeIcon(volume: muted ? 0 : streamVolume)
+            } else {
+                player?.isMuted = muted
+                if muted {
+                    updateVolumeIcon(volume: 0)
+                } else if let vol = player?.volume {
+                    updateVolumeIcon(volume: vol)
+                }
             }
         case .setPlaybackRate(let rate):
             setPlaybackRate(rate)
@@ -744,6 +714,20 @@ public final class LxMediaPlayer: NSObject {
             enterFullscreen()
         case .exitFullscreen:
             exitFullscreen()
+        }
+    }
+
+    public func setStreamDecoderActive(_ active: Bool, commandHandler: ((String, [String: Any]) -> Bool)?) {
+        streamDecoderActive = active
+        streamCommandHandler = commandHandler
+        if active {
+            streamVolume = volumeSlider.value
+            streamMuted = streamVolume == 0
+            streamCommandHandler?("setVolume", ["volume": Double(streamVolume)])
+            streamCommandHandler?("setMuted", ["muted": streamMuted])
+            updateVolumeIcon(volume: streamMuted ? 0 : streamVolume)
+        } else if let vol = player?.volume {
+            updateVolumeIcon(volume: vol)
         }
     }
 
@@ -764,7 +748,6 @@ public final class LxMediaPlayer: NSObject {
         NotificationCenter.default.removeObserver(self)
         player = nil
         view.removeFromSuperview()
-        replaceActivePipe(with: nil)
     }
 
     // MARK: Player core
@@ -1242,13 +1225,6 @@ public final class LxMediaPlayer: NSObject {
         typedEventSink?(event)
     }
 
-    private func replaceActivePipe(with pipe: LxMediaPipe?) {
-        if let existing = activePipe, existing.shouldUnlinkOnClose, existing.url != pipe?.url {
-            existing.close()
-        }
-        activePipe = pipe
-    }
-
     // MARK: Overlay UI
 
     private func setupOverlayUI() {
@@ -1715,6 +1691,12 @@ public final class LxMediaPlayer: NSObject {
         
         let selectedQuality = availableQualities.first(where: { $0.label == label })
         let switchedUrl = selectedQuality?.url?.absoluteString
+
+        if streamDecoderActive {
+            send(.qualityChange(quality: label, url: switchedUrl))
+            updateSettingsMenu()
+            return
+        }
 
         if let url = selectedQuality?.url, let player {
             os_log("MediaPlayer switching to internal URL: %{public}@", log: log, type: .info, url.absoluteString)
@@ -2537,17 +2519,28 @@ public final class LxMediaPlayer: NSObject {
     }
 
     @objc private func handleVolumeTap() {
+        if streamDecoderActive {
+            streamMuted.toggle()
+            if !streamMuted && streamVolume < 0.1 {
+                streamVolume = 0.7
+                volumeSlider.value = 0.7
+            }
+            streamCommandHandler?("setMuted", ["muted": streamMuted])
+            streamCommandHandler?("setVolume", ["volume": Double(streamVolume)])
+            updateVolumeIcon(volume: streamMuted ? 0 : streamVolume)
+            send(.volumeChange(volume: Double(streamMuted ? 0 : streamVolume)))
+            showControlsTemporarily()
+            return
+        }
+
         guard let player = player else { return }
 
-        // Toggle mute state
         let wasMuted = player.isMuted
         player.isMuted = !wasMuted
 
-        // Update UI based on mute state
         if player.isMuted {
             updateVolumeIcon(volume: 0)
         } else {
-            // Ensure volume is reasonable when unmuting
             if player.volume < 0.1 {
                 player.volume = 0.7
                 volumeSlider.value = 0.7
@@ -2561,8 +2554,17 @@ public final class LxMediaPlayer: NSObject {
 
     @objc private func handleVolumeChange(sender: UISlider) {
         let vol = sender.value
+        if streamDecoderActive {
+            streamVolume = vol
+            streamMuted = vol == 0
+            streamCommandHandler?("setMuted", ["muted": streamMuted])
+            streamCommandHandler?("setVolume", ["volume": Double(vol)])
+            updateVolumeIcon(volume: vol)
+            send(.volumeChange(volume: Double(vol)))
+            return
+        }
+
         player?.volume = vol
-        // Unmute when user adjusts volume slider
         if vol > 0 {
             player?.isMuted = false
         }

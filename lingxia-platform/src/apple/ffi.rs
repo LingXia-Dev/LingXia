@@ -188,6 +188,30 @@ mod bridge {
         #[swift_bridge(swift_name = "LxAppVideo.dispatchVideoCommand")]
         fn dispatch_video_command(component_id: &str, name: &str, params_json: &str) -> bool;
 
+        #[swift_bridge(swift_name = "LxAppVideo.createStreamDecoder")]
+        fn create_stream_decoder(component_id: &str) -> bool;
+
+        #[swift_bridge(swift_name = "LxAppVideo.configureStreamVideo")]
+        fn configure_stream_video(component_id: &str, config_json: &str) -> bool;
+
+        #[swift_bridge(swift_name = "LxAppVideo.configureStreamAudio")]
+        fn configure_stream_audio(component_id: &str, config_json: &str) -> bool;
+
+        #[swift_bridge(swift_name = "LxAppVideo.pushStreamVideo")]
+        fn push_stream_video(
+            component_id: &str,
+            data: Vec<u8>,
+            dts_ms: u32,
+            pts_ms: u32,
+            keyframe: bool,
+        ) -> bool;
+
+        #[swift_bridge(swift_name = "LxAppVideo.pushStreamAudio")]
+        fn push_stream_audio(component_id: &str, data: Vec<u8>, dts_ms: u32, pts_ms: u32) -> bool;
+
+        #[swift_bridge(swift_name = "LxAppVideo.stopStreamDecoder")]
+        fn stop_stream_decoder(component_id: &str) -> bool;
+
         // Pull-to-refresh functions
         #[swift_bridge(swift_name = "LxApp.startPullDownRefresh")]
         fn start_pull_down_refresh(appid: &str, path: &str) -> bool;
@@ -207,6 +231,8 @@ pub use bridge::{
 #[cfg(target_os = "ios")]
 #[allow(unused_imports)]
 pub use bridge::{
-    choose_media, compress_image, copy_album_media_to_file, dispatch_video_command, get_image_info,
-    scan_code, set_video_player_callback,
+    choose_media, compress_image, configure_stream_audio, configure_stream_video,
+    copy_album_media_to_file, create_stream_decoder, dispatch_video_command, get_image_info,
+    push_stream_audio, push_stream_video, scan_code, set_video_player_callback,
+    stop_stream_decoder,
 };

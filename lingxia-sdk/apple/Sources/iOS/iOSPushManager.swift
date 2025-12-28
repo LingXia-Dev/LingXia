@@ -11,7 +11,7 @@ public class iOSPushManager: NSObject {
 
     public static let shared = iOSPushManager()
 
-    nonisolated(unsafe) private static let log = OSLog(subsystem: "LingXia", category: "Push")
+    nonisolated private static let log = OSLog(subsystem: "LingXia", category: "Push")
 
     private var deviceToken: String?
 

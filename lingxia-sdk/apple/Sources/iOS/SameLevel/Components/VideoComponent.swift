@@ -52,6 +52,21 @@ final class VideoComponent: NSObject, LxNativeComponent {
         player.handle(command: command)
     }
 
+    func setStreamDecoderActive(_ active: Bool) {
+        if active {
+            player.setStreamDecoderActive(true) { [weak self] name, params in
+                guard let self = self else { return false }
+                return StreamDecoderRegistry.shared.handleCommand(
+                    componentId: self.id,
+                    name: name,
+                    params: params
+                )
+            }
+        } else {
+            player.setStreamDecoderActive(false, commandHandler: nil)
+        }
+    }
+
     func unmount() {
         player.detach()
     }
@@ -92,10 +107,6 @@ final class VideoComponent: NSObject, LxNativeComponent {
                 }
             case "file":
                 config.source = .file(path: value)
-            case "pipe":
-                if let pipe = LxMediaPipe.external(path: value) {
-                    config.source = .pipe(pipe)
-                }
             default:
                 break
             }
