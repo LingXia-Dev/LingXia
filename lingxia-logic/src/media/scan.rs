@@ -1,5 +1,5 @@
-use lingxia_messaging::{CallbackResult, get_callback};
 use crate::i18n::err_code_message;
+use lingxia_messaging::{CallbackResult, get_callback};
 use lingxia_platform::{
     MediaInteraction, ScanCodeRequest, ScanType, ToastIcon, ToastOptions, ToastPosition,
     UserFeedback,
@@ -64,8 +64,7 @@ async fn scan(ctx: JSContext, options: Optional<JSScanOptions>) -> JSResult<Scan
                 });
             }
 
-            let message = err_code_message(code)
-                .unwrap_or_else(|| format!("Scan error: {}", code));
+            let message = err_code_message(code).unwrap_or_else(|| format!("Scan error: {}", code));
             let _ = lxapp.runtime.show_toast(ToastOptions {
                 title: message.clone(),
                 icon: ToastIcon::Error,

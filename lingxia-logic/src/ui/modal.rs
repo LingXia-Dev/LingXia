@@ -61,10 +61,7 @@ impl From<CallbackResult> for JSModalResult {
         // Success callback contains confirm result
         match serde_json::from_str::<Value>(&data) {
             Ok(json) => JSModalResult {
-                confirm: json
-                    .get("confirm")
-                    .and_then(Value::as_bool)
-                    .unwrap_or(true),
+                confirm: json.get("confirm").and_then(Value::as_bool).unwrap_or(true),
                 cancel: false,
             },
             Err(_) => JSModalResult {

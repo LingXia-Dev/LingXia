@@ -2,6 +2,8 @@ use crate::error::PlatformError;
 use crate::traits::PullToRefresh;
 
 use super::Platform;
+
+#[cfg(target_os = "ios")]
 use super::ffi::{start_pull_down_refresh, stop_pull_down_refresh};
 
 #[cfg(target_os = "ios")]

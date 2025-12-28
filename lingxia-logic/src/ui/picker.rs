@@ -154,7 +154,10 @@ impl From<CallbackResult> for PickerResult {
         match serde_json::from_str::<Value>(&data) {
             Ok(json) => {
                 let cancelled = json.get("cancel").and_then(Value::as_bool).unwrap_or(false);
-                let confirmed = json.get("confirm").and_then(Value::as_bool).unwrap_or(false);
+                let confirmed = json
+                    .get("confirm")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
                 let index = match json.get("index") {
                     Some(index_value) if index_value.is_i64() => {
                         vec![index_value.as_i64().unwrap_or_default() as i32]

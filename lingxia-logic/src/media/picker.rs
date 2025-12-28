@@ -146,8 +146,8 @@ async fn choose_media(
                 });
             }
 
-            let message = err_code_message(code)
-                .unwrap_or_else(|| format!("chooseMedia error: {}", code));
+            let message =
+                err_code_message(code).unwrap_or_else(|| format!("chooseMedia error: {}", code));
             return Err(RongJSError::Error(message));
         }
     };

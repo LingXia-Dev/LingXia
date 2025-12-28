@@ -424,10 +424,7 @@ impl Location for Platform {
         #[cfg(not(target_os = "ios"))]
         {
             let _ = config;
-            let _ = lingxia_messaging::invoke_callback(
-                callback_id,
-                Err(1),
-            );
+            let _ = lingxia_messaging::invoke_callback(callback_id, Err(1));
             Err(PlatformError::Platform(
                 "Location not available on this platform".into(),
             ))

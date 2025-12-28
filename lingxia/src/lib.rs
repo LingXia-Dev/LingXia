@@ -5,7 +5,6 @@ pub use lxapp::{
     BoxFuture, FingerprintProvider, NoOpProvider, Provider, ProviderError, UpdatePackageInfo,
     UpdateProvider, UpdateTarget, register_provider,
 };
-};
 
 #[cfg(target_os = "android")]
 pub mod android;
