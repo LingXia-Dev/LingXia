@@ -1,5 +1,7 @@
 //! LingXia framework.
 
+pub use lxapp::{FrameSink, StreamError, StreamProvider, StreamSession, register_stream_provider};
+
 pub use lxapp::lx::{LxLogicExtension, register_logic_extension};
 pub use lxapp::{
     BoxFuture, FingerprintProvider, NoOpProvider, Provider, ProviderError, UpdatePackageInfo,

@@ -14,6 +14,7 @@ pub(crate) mod plugin;
 pub mod provider;
 mod route;
 pub mod startup;
+pub mod stream_source;
 mod update;
 
 pub use appservice::PageSvc;
@@ -35,6 +36,9 @@ pub use provider::{
     UpdateProvider, UpdateTarget, register_provider,
 };
 pub use startup::{LxAppStartupOptions, Scene, parse_env_release_type};
+pub use stream_source::{
+    FrameSink, StreamError, StreamProvider, StreamSession, register_stream_provider,
+};
 pub use update::{DownloadedUpdateInfo, UpdateManager};
 
 // Re-export for internal crate usage
