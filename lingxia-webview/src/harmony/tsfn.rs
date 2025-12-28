@@ -66,7 +66,7 @@ pub fn call_arkts(name: &str, args: &[&str]) -> Result<(), WebViewError> {
     let data = format!("{}|{}", name, args.join("|"));
     // log::info!("Calling TSFN with data: {}", data);
 
-    match tsfn.call(data, ThreadsafeFunctionCallMode::Blocking) {
+    match tsfn.call(data, ThreadsafeFunctionCallMode::NonBlocking) {
         Status::Ok => Ok(()),
         status => {
             log::error!("TSFN call failed for {}: {:?}", name, status);
