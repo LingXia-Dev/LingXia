@@ -6,11 +6,14 @@ import android.graphics.drawable.ColorDrawable
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.util.DisplayMetrics
 import android.util.Log
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.TextureView
+import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.ImageView
@@ -33,8 +36,10 @@ import androidx.media3.exoplayer.SeekParameters
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.lingxia.lxapp.LxApp
+import com.lingxia.lxapp.NavigationBar
 import com.lingxia.lxapp.R
 import com.lingxia.lxapp.SameLevel.ComponentRouter
+import com.lingxia.lxapp.TabBar
 import java.io.File
 import kotlin.math.max
 
@@ -44,12 +49,10 @@ private const val TAG = "LxMediaPlayer"
 sealed class LxMediaSource {
     data class Url(val url: String) : LxMediaSource()
     data class FilePath(val path: String) : LxMediaSource()
-    data class Pipe(val path: String) : LxMediaSource()
 
     fun toUri(): Uri? = when (this) {
         is Url -> Uri.parse(url)
         is FilePath -> Uri.fromFile(File(path))
-        is Pipe -> Uri.fromFile(File(path))
     }
 }
 
@@ -182,9 +185,16 @@ class LxMediaPlayer(
 
     private var player: ExoPlayer? = null
     private var playerView: PlayerView? = null
+    private var streamTextureView: TextureView? = null
     private var posterImageView: ImageView? = null
     private var loadingIndicator: ProgressBar? = null
     private var controlsOverlay: LxMediaControlsOverlay? = null
+
+    private var streamDecoderMode = false
+    private var streamIsPlaying = false
+    private var posterVisibilityBeforeStream: Int? = null
+    private var loadingVisibilityBeforeStream: Int? = null
+    private var shutterColorBeforeStream: Int? = null
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var timeUpdateRunnable: Runnable? = null
@@ -216,7 +226,7 @@ class LxMediaPlayer(
     private var closeRequestListener: (() -> Unit)? = null
     private var lastTimeForPoster: Double = -1.0  // Track time progression for poster hiding
     private var pendingPosterHide = false  // Flag to delay poster hiding until time progresses
-    
+
     // State restoration for quality switching: (seekToMs, shouldPlay)
     private var pendingRestoreAfterLoad: Pair<Long, Boolean>? = null
 
@@ -225,6 +235,25 @@ class LxMediaPlayer(
     private var fullscreenContainer: FrameLayout? = null
     private var fullscreenContent: FrameLayout? = null
     private var fullscreenLayoutListener: View.OnLayoutChangeListener? = null
+    private var inlineFullscreenParent: ViewGroup? = null
+    private var inlineFullscreenLayoutListener: View.OnLayoutChangeListener? = null
+    private var originalSystemUiVisibility: Int? = null
+    private var originalWindowFlags: Int? = null
+    private var originalDecorFitsSystemWindows: Boolean? = null
+    private var originalStatusBarColor: Int? = null
+    private var originalNavigationBarColor: Int? = null
+    private var originalNavBarContrastEnforced: Boolean? = null
+    private var originalCutoutMode: Int? = null
+    private var inlineFullscreenConsumesInsets: Boolean = false
+    private var fallbackHiddenViews: MutableList<Pair<View, Int>>? = null
+    private var fallbackOverlayLayoutParams: ViewGroup.LayoutParams? = null
+    private var fallbackOverlayTranslationX: Float = 0f
+    private var fallbackOverlayTranslationY: Float = 0f
+    private var fallbackOverlayView: View? = null
+    private var fallbackWebViewContainer: ViewGroup? = null
+    private var fallbackWebViewContainerLayoutParams: FrameLayout.LayoutParams? = null
+    private var fallbackCurrentWebViewContainer: ViewGroup? = null
+    private var fallbackCurrentWebViewTranslationY: Float = 0f
     private var originalParent: ViewGroup? = null
     private var originalIndex: Int = 0
     private var originalLayoutParams: ViewGroup.LayoutParams? = null
@@ -242,14 +271,16 @@ class LxMediaPlayer(
     // Player listener - must be declared before init block
     private val playerListener = object : Player.Listener {
         override fun onPlaybackStateChanged(playbackState: Int) {
+            if (streamDecoderMode) {
+                return
+            }
             when (playbackState) {
                 Player.STATE_READY -> {
                     loadingIndicator?.visibility = View.GONE
                     clearWaitingSuppression()
-                    
+
                     // Handle state restoration (e.g. after quality switch)
                     pendingRestoreAfterLoad?.let { (seekToMs, shouldPlay) ->
-                        Log.d(TAG, "Restoring state: seekTo=$seekToMs, play=$shouldPlay")
                         pendingRestoreAfterLoad = null
                         suppressWaitingFor(1500) // Prevent Waiting event during seek
                         player?.seekTo(seekToMs)
@@ -257,7 +288,7 @@ class LxMediaPlayer(
                             player?.play()
                         }
                     }
-                    
+
                     if (!firstFrameDisplayed) {
                         // Don't hide poster immediately - wait for time to progress
                         // This prevents black screen flash when video is buffering
@@ -314,6 +345,9 @@ class LxMediaPlayer(
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
+            if (streamDecoderMode) {
+                return
+            }
             if (isPlaying) {
                 emitEvent(LxMediaEvent.Play)
                 startTimeUpdates()
@@ -336,6 +370,9 @@ class LxMediaPlayer(
         }
 
         override fun onVideoSizeChanged(videoSize: VideoSize) {
+            if (streamDecoderMode) {
+                return
+            }
             val w = videoSize.width.toDouble()
             val h = videoSize.height.toDouble()
             if (w > 0 && h > 0) {
@@ -351,12 +388,12 @@ class LxMediaPlayer(
         // Ensure video output is ready when view is attached
         view.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
             override fun onViewAttachedToWindow(v: View) {
-                Log.d(TAG, "View attached to window, re-setting player to PlayerView")
+                if (streamDecoderMode) {
+                    return
+                }
                 playerView?.player = player
             }
-            override fun onViewDetachedFromWindow(v: View) {
-                Log.d(TAG, "View detached from window")
-            }
+            override fun onViewDetachedFromWindow(v: View) = Unit
         })
     }
 
@@ -364,8 +401,7 @@ class LxMediaPlayer(
         try {
             // Use application context to avoid memory leaks and context issues
             val appContext = context.applicationContext
-            Log.d(TAG, "Creating ExoPlayer with context: $appContext")
-            
+
             // Optimized load control for better seek/buffering experience
             val loadControl = DefaultLoadControl.Builder()
                 .setBufferDurationsMs(
@@ -375,12 +411,11 @@ class LxMediaPlayer(
                     3000    // bufferForPlaybackAfterRebufferMs - after rebuffer, need 3s
                 )
                 .build()
-            
+
             val exoPlayer = ExoPlayer.Builder(appContext)
                 .setLoadControl(loadControl)
                 .setSeekParameters(SeekParameters.CLOSEST_SYNC)  // Fast seek to nearest keyframe
                 .build()
-            Log.d(TAG, "ExoPlayer created: $exoPlayer")
 
             val audioAttributes = AudioAttributes.Builder()
                 .setUsage(C.USAGE_MEDIA)
@@ -392,7 +427,6 @@ class LxMediaPlayer(
             exoPlayer.addListener(playerListener)
             player = exoPlayer
             playerView?.player = exoPlayer
-            Log.d(TAG, "ExoPlayer setup complete, playerView.player assigned")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to create ExoPlayer", e)
         }
@@ -409,6 +443,18 @@ class LxMediaPlayer(
             resizeMode = objectFit.toResizeMode()
         }
         view.addView(playerView)
+
+        // Dedicated TextureView for stream decoding.
+        // Using PlayerView's internal surface view is fragile (shutter/background overlays can cover it
+        // during rebind/mount transitions). A dedicated TextureView avoids "audio only / black video".
+        streamTextureView = TextureView(context).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            visibility = View.GONE
+        }
+        view.addView(streamTextureView)
 
         // Poster ImageView
         posterImageView = ImageView(context).apply {
@@ -490,6 +536,48 @@ class LxMediaPlayer(
         }
     }
 
+    fun acquireStreamTextureView(): TextureView? {
+        if (!streamDecoderMode) {
+            streamDecoderMode = true
+            posterVisibilityBeforeStream = posterImageView?.visibility
+            loadingVisibilityBeforeStream = loadingIndicator?.visibility
+
+            shutterColorBeforeStream = Color.BLACK
+            playerView?.setShutterBackgroundColor(Color.TRANSPARENT)
+        }
+        streamIsPlaying = false
+        posterImageView?.visibility = View.GONE
+        loadingIndicator?.visibility = View.GONE
+        streamTextureView?.visibility = View.VISIBLE
+        playerView?.visibility = View.GONE
+        player?.pause()
+        player?.clearVideoSurface()
+        playerView?.player = null
+        val view = streamTextureView
+        if (view == null) {
+            Log.w(TAG, "Stream decoder: TextureView not available")
+        }
+        return view
+    }
+
+    fun releaseStreamTextureView() {
+        if (streamDecoderMode) {
+            streamDecoderMode = false
+            streamIsPlaying = false
+            posterVisibilityBeforeStream?.let { posterImageView?.visibility = it }
+            loadingVisibilityBeforeStream?.let { loadingIndicator?.visibility = it }
+            posterVisibilityBeforeStream = null
+            loadingVisibilityBeforeStream = null
+
+            val color = shutterColorBeforeStream ?: Color.BLACK
+            playerView?.setShutterBackgroundColor(color)
+            shutterColorBeforeStream = null
+        }
+        streamTextureView?.visibility = View.GONE
+        playerView?.visibility = View.VISIBLE
+        playerView?.player = player
+    }
+
     fun attach(to: ViewGroup) {
         if (view.parent != to) {
             (view.parent as? ViewGroup)?.removeView(view)
@@ -556,6 +644,22 @@ class LxMediaPlayer(
     }
 
     fun play() {
+        if (streamDecoderMode && componentId != null) {
+            isPausedByUser = false
+            streamIsPlaying = true
+            posterImageView?.visibility = View.GONE
+            loadingIndicator?.visibility = View.GONE
+            com.lingxia.lxapp.SameLevel.ComponentRouter.dispatchVideoCommand(
+                componentId,
+                "play",
+                "{}"
+            )
+            // In stream mode, PlayerView doesn't drive layout updates; request a rect sync so the
+            // native view stays aligned with DOM changes (e.g. switching live <-> playback UI).
+            scheduleRectSync(doublePass = true)
+            controlsOverlay?.updatePlayPauseButton()
+            return
+        }
         val p = player ?: return
         isPausedByUser = false  // User wants to play
         when (p.playbackState) {
@@ -572,6 +676,19 @@ class LxMediaPlayer(
     }
 
     fun pause() {
+        if (streamDecoderMode && componentId != null) {
+            isPausedByUser = true
+            streamIsPlaying = false
+            clearWaitingSuppression()
+            com.lingxia.lxapp.SameLevel.ComponentRouter.dispatchVideoCommand(
+                componentId,
+                "pause",
+                "{}"
+            )
+            loadingIndicator?.visibility = View.GONE
+            controlsOverlay?.updatePlayPauseButton()
+            return
+        }
         isPausedByUser = true  // User explicitly paused
         clearWaitingSuppression()
         player?.pause()
@@ -583,13 +700,29 @@ class LxMediaPlayer(
     }
 
     fun stop() {
+        if (streamDecoderMode && componentId != null) {
+            streamIsPlaying = false
+            clearWaitingSuppression()
+            com.lingxia.lxapp.SameLevel.ComponentRouter.dispatchVideoCommand(componentId, "pause", "{}")
+            com.lingxia.lxapp.SameLevel.ComponentRouter.dispatchVideoCommand(
+                componentId,
+                "resetStream",
+                """{"hard":true}"""
+            )
+            posterImageView?.visibility = View.GONE
+            controlsOverlay?.view?.bringToFront()
+            controlsOverlay?.showCenterPlayButton(true)
+            controlsOverlay?.updatePlayPauseButton()
+            emitEvent(LxMediaEvent.Stop)
+            return
+        }
         // Get duration before stopping
         val duration = (player?.duration ?: 0L).toDouble() / 1000.0
         clearWaitingSuppression()
-        
+
         player?.stop()
         player?.seekTo(0)
-        
+
         // Reset to initial state - show poster and center play button (like video ended)
         firstFrameDisplayed = false
         pendingPosterHide = false
@@ -600,7 +733,7 @@ class LxMediaPlayer(
         controlsOverlay?.view?.bringToFront()
         controlsOverlay?.showCenterPlayButton(true)
         controlsOverlay?.updateProgress(0.0, duration)
-        
+
         emitEvent(LxMediaEvent.Stop)
     }
 
@@ -614,21 +747,44 @@ class LxMediaPlayer(
 
     fun setVolume(volume: Double) {
         currentVolume = volume.coerceIn(0.0, 1.0)
-        if (!isMuted) {
-            player?.volume = currentVolume.toFloat()
+
+        if (streamDecoderMode && componentId != null) {
+            // In stream mode, dispatch to StreamDecoderSession
+            com.lingxia.lxapp.SameLevel.ComponentRouter.dispatchVideoCommand(
+                componentId,
+                "setVolume",
+                """{"volume":$currentVolume}"""
+            )
+        } else {
+            // Normal mode: control ExoPlayer
+            if (!isMuted) {
+                player?.volume = currentVolume.toFloat()
+            }
         }
+
         emitEvent(LxMediaEvent.VolumeChange(currentVolume))
         controlsOverlay?.updateVolumeState(isMuted, currentVolume)
     }
 
     fun setMuted(muted: Boolean) {
         isMuted = muted
-        player?.volume = if (muted) 0f else currentVolume.toFloat()
+
+        if (streamDecoderMode && componentId != null) {
+            // In stream mode, dispatch to StreamDecoderSession
+            com.lingxia.lxapp.SameLevel.ComponentRouter.dispatchVideoCommand(
+                componentId,
+                "setMuted",
+                """{"muted":$muted}"""
+            )
+        } else {
+            // Normal mode: control ExoPlayer
+            player?.volume = if (muted) 0f else currentVolume.toFloat()
+        }
+
         controlsOverlay?.updateVolumeState(isMuted, currentVolume)
     }
 
     fun setPlaybackRate(rate: Double) {
-        Log.d(TAG, "setPlaybackRate: $rate")
         currentPlaybackRate = rate.toFloat()
         player?.setPlaybackSpeed(currentPlaybackRate)
         emitEvent(LxMediaEvent.RateChange(rate))
@@ -649,6 +805,13 @@ class LxMediaPlayer(
     fun enterFullscreen() {
         if (isFullscreen) return
 
+        // Stream decoder mode should avoid Dialog re-parenting (it causes a Surface swap + black flash).
+        // Inline fullscreen keeps the TextureView attached, improving UX.
+        if (streamDecoderMode) {
+            enterInlineFullscreen()
+            return
+        }
+
         // Get Activity context - required for Dialog
         val activityContext = getActivityContext() ?: run {
             Log.w(TAG, "enterFullscreen: Cannot get Activity context")
@@ -656,6 +819,15 @@ class LxMediaPlayer(
         }
 
         isFullscreen = true
+
+        val hostActivity = (activityContext as? com.lingxia.lxapp.LxAppActivity)
+            ?: (LxApp.getCurrentActivity() as? com.lingxia.lxapp.LxAppActivity)
+        if (hostActivity == null) {
+            Log.w(TAG, "enterFullscreen: host activity not found; using overlay fallback")
+            hideOverlayViewsFallback(view.rootView)
+        } else {
+            hostActivity.enterMediaFullscreen()
+        }
 
         // Save original parent and layout params
         originalParent = view.parent as? ViewGroup
@@ -674,12 +846,10 @@ class LxMediaPlayer(
                 }
             }
         }
-        Log.d(TAG, "enterFullscreen: videoWidth=$videoWidth, videoHeight=$videoHeight")
 
         // Determine if video is landscape
         val isLandscapeVideo = isLandscapeVideo()
         val direction = if (isLandscapeVideo) "horizontal" else "vertical"
-        Log.d(TAG, "enterFullscreen: isLandscapeVideo=$isLandscapeVideo, direction=$direction")
 
         // Create container to ensure full coverage
         val fullscreenContainer = FrameLayout(activityContext).apply {
@@ -689,6 +859,8 @@ class LxMediaPlayer(
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
             fitsSystemWindows = false
+            clipChildren = false
+            clipToPadding = false
         }
         val contentWrapper = FrameLayout(activityContext).apply {
             layoutParams = FrameLayout.LayoutParams(
@@ -696,6 +868,8 @@ class LxMediaPlayer(
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
             fitsSystemWindows = false
+            clipChildren = false
+            clipToPadding = false
         }
         ViewCompat.setOnApplyWindowInsetsListener(fullscreenContainer) { v, _ ->
             v.setPadding(0, 0, 0, 0)
@@ -717,8 +891,12 @@ class LxMediaPlayer(
             window?.apply {
                 setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                 setBackgroundDrawable(ColorDrawable(Color.BLACK))
-                statusBarColor = Color.BLACK
-                navigationBarColor = Color.BLACK
+                addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+                statusBarColor = Color.TRANSPARENT
+                navigationBarColor = Color.TRANSPARENT
+                if (android.os.Build.VERSION.SDK_INT >= 29) {
+                    isNavigationBarContrastEnforced = false
+                }
                 attributes = attributes?.apply {
                     layoutInDisplayCutoutMode = android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
                 }
@@ -740,10 +918,13 @@ class LxMediaPlayer(
                 )
                 @Suppress("DEPRECATION")
                 decorView.systemUiVisibility = (
-                    View.SYSTEM_UI_FLAG_FULLSCREEN or
-                    View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
-                    View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                )
+                    View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+                        View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                        View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+                        View.SYSTEM_UI_FLAG_FULLSCREEN or
+                        View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                        View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                    )
             }
 
             // Handle back press - exit fullscreen instead of dismiss
@@ -758,12 +939,22 @@ class LxMediaPlayer(
 
             // Handle dialog lifecycle to ensure player surface is maintained
             setOnShowListener {
-                Log.d(TAG, "Fullscreen dialog shown, ensuring player is attached")
-                playerView?.player = player
-            }
-
-            setOnDismissListener {
-                Log.d(TAG, "Fullscreen dialog dismissed")
+                if (streamDecoderMode) {
+                } else {
+                    playerView?.player = player
+                }
+                if (streamDecoderMode && componentId != null) {
+                    com.lingxia.lxapp.SameLevel.ComponentRouter.dispatchVideoCommand(
+                        componentId,
+                        "rebindSurface",
+                        "{}"
+                    )
+                    com.lingxia.lxapp.SameLevel.ComponentRouter.dispatchVideoCommand(
+                        componentId,
+                        "play",
+                        "{}"
+                    )
+                }
             }
 
             show()
@@ -803,8 +994,19 @@ class LxMediaPlayer(
 
     fun exitFullscreen() {
         if (!isFullscreen) return
-        Log.d(TAG, "exitFullscreen: starting")
+        if (streamDecoderMode && fullscreenDialog == null) {
+            exitInlineFullscreen()
+            return
+        }
         isFullscreen = false
+        val hostContext = getActivityContext()
+        val hostActivity = (hostContext as? com.lingxia.lxapp.LxAppActivity)
+            ?: (LxApp.getCurrentActivity() as? com.lingxia.lxapp.LxAppActivity)
+        if (hostActivity == null) {
+            restoreOverlayViewsFallback()
+        } else {
+            hostActivity.exitMediaFullscreen()
+        }
 
         // Dismiss dialog and restore view
         fullscreenDialog?.let { dialog ->
@@ -832,15 +1034,14 @@ class LxMediaPlayer(
             // Restore size
             val width = lastFrameWidth.toInt().takeIf { it > 0 } ?: ViewGroup.LayoutParams.MATCH_PARENT
             val height = lastFrameHeight.toInt().takeIf { it > 0 } ?: ViewGroup.LayoutParams.MATCH_PARENT
-            
+
             view.layoutParams = originalLayoutParams ?: FrameLayout.LayoutParams(width, height)
-            
+
             // Restore position
             view.translationX = lastFrameX
             view.translationY = lastFrameY
 
             parent.addView(view, originalIndex.coerceIn(0, parent.childCount))
-            Log.d(TAG, "exitFullscreen: view restored to parent, index=$originalIndex, frame=($lastFrameX, $lastFrameY, $width, $height)")
         }
 
         // Restore rounding state
@@ -851,6 +1052,225 @@ class LxMediaPlayer(
 
         controlsOverlay?.onFullscreenChanged(false)
         emitEvent(LxMediaEvent.FullscreenChange(false, "vertical"))
+    }
+
+    private fun enterInlineFullscreen() {
+        if (isFullscreen) return
+        val activityContext = getActivityContext() ?: run {
+            Log.w(TAG, "enterFullscreen: Cannot get Activity context")
+            return
+        }
+
+        isFullscreen = true
+        val hostActivity = (activityContext as? com.lingxia.lxapp.LxAppActivity)
+            ?: (LxApp.getCurrentActivity() as? com.lingxia.lxapp.LxAppActivity)
+        if (hostActivity == null) {
+            Log.w(TAG, "enterFullscreen: host activity not found; using overlay fallback")
+            hideOverlayViewsFallback(view.rootView)
+        } else {
+            hostActivity.enterMediaFullscreen()
+        }
+
+        originalParent = view.parent as? ViewGroup
+        originalIndex = originalParent?.indexOfChild(view) ?: 0
+        originalLayoutParams = view.layoutParams
+
+        if (videoWidth <= 0 || videoHeight <= 0) {
+            player?.videoFormat?.let { format ->
+                if (format.width > 0 && format.height > 0) {
+                    videoWidth = format.width.toDouble()
+                    videoHeight = format.height.toDouble()
+                }
+            }
+        }
+
+        val isLandscapeVideo = isLandscapeVideo()
+        val direction = if (isLandscapeVideo) "horizontal" else "vertical"
+
+        val parent = originalParent ?: return
+        inlineFullscreenParent = parent
+        applyInlineFullscreenUi(activityContext)
+        applyOverlayFullscreenFallback(view.rootView)
+        applyWebViewContainerFullscreenFallback(view.rootView)
+
+        if (!inlineFullscreenConsumesInsets) {
+            inlineFullscreenConsumesInsets = true
+            ViewCompat.setOnApplyWindowInsetsListener(view) { v, _ ->
+                v.setPadding(0, 0, 0, 0)
+                WindowInsetsCompat.CONSUMED
+            }
+        }
+        ViewCompat.requestApplyInsets(view)
+
+        view.layoutParams = FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            Gravity.CENTER
+        )
+        view.translationX = 0f
+        view.translationY = 0f
+        view.bringToFront()
+
+        inlineFullscreenLayoutListener = View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            applyInlineFullscreenTransform()
+        }.also { listener ->
+            parent.addOnLayoutChangeListener(listener)
+        }
+
+        applyInlineFullscreenTransform()
+
+        originalClipToOutline = view.clipToOutline
+        originalOutlineProvider = view.outlineProvider
+        view.clipToOutline = false
+        view.outlineProvider = null
+
+        controlsOverlay?.onFullscreenChanged(true)
+        emitEvent(LxMediaEvent.FullscreenChange(true, direction))
+    }
+
+    private fun exitInlineFullscreen() {
+        if (!isFullscreen) return
+        isFullscreen = false
+
+        val hostContext = getActivityContext()
+        val hostActivity = (hostContext as? com.lingxia.lxapp.LxAppActivity)
+            ?: (LxApp.getCurrentActivity() as? com.lingxia.lxapp.LxAppActivity)
+        if (hostActivity == null) {
+            Log.w(TAG, "exitFullscreen: host activity not found; using overlay fallback")
+            restoreOverlayViewsFallback()
+        } else {
+            hostActivity.exitMediaFullscreen()
+        }
+
+        if (hostContext != null) {
+            restoreInlineFullscreenUi(hostContext)
+        }
+        restoreOverlayFullscreenFallback()
+        restoreWebViewContainerFullscreenFallback()
+        if (inlineFullscreenConsumesInsets) {
+            inlineFullscreenConsumesInsets = false
+            ViewCompat.setOnApplyWindowInsetsListener(view, null)
+            view.setPadding(0, 0, 0, 0)
+        }
+
+        inlineFullscreenParent?.let { parent ->
+            inlineFullscreenLayoutListener?.let { parent.removeOnLayoutChangeListener(it) }
+        }
+        inlineFullscreenLayoutListener = null
+        inlineFullscreenParent = null
+
+        resetChildViewTransforms()
+
+        val width = lastFrameWidth.toInt().takeIf { it > 0 } ?: ViewGroup.LayoutParams.MATCH_PARENT
+        val height = lastFrameHeight.toInt().takeIf { it > 0 } ?: ViewGroup.LayoutParams.MATCH_PARENT
+        view.layoutParams = originalLayoutParams ?: FrameLayout.LayoutParams(width, height)
+        view.translationX = lastFrameX
+        view.translationY = lastFrameY
+
+        originalClipToOutline?.let { view.clipToOutline = it }
+        view.outlineProvider = originalOutlineProvider
+        originalClipToOutline = null
+        originalOutlineProvider = null
+
+        controlsOverlay?.onFullscreenChanged(false)
+        emitEvent(LxMediaEvent.FullscreenChange(false, "vertical"))
+    }
+
+    private fun applyInlineFullscreenUi(activity: android.app.Activity) {
+        val window = activity.window ?: return
+        if (originalSystemUiVisibility == null) {
+            originalSystemUiVisibility = window.decorView.systemUiVisibility
+        }
+        if (originalWindowFlags == null) {
+            originalWindowFlags = window.attributes.flags
+        }
+        if (originalDecorFitsSystemWindows == null) {
+            originalDecorFitsSystemWindows = ViewCompat.getFitsSystemWindows(window.decorView)
+        }
+        if (originalStatusBarColor == null) {
+            originalStatusBarColor = window.statusBarColor
+        }
+        if (originalNavigationBarColor == null) {
+            originalNavigationBarColor = window.navigationBarColor
+        }
+        if (originalNavBarContrastEnforced == null && android.os.Build.VERSION.SDK_INT >= 29) {
+            originalNavBarContrastEnforced = window.isNavigationBarContrastEnforced
+        }
+        if (originalCutoutMode == null) {
+            originalCutoutMode = window.attributes.layoutInDisplayCutoutMode
+        }
+
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        val decorView = window.decorView
+        decorView.systemUiVisibility = (
+            View.SYSTEM_UI_FLAG_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+            )
+
+        WindowInsetsControllerCompat(window, decorView).apply {
+            hide(WindowInsetsCompat.Type.systemBars())
+            isAppearanceLightStatusBars = false
+            isAppearanceLightNavigationBars = false
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
+        window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN)
+        window.addFlags(
+            android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS or
+            android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN or
+            android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+            android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+        )
+        window.attributes = window.attributes.apply {
+            layoutInDisplayCutoutMode =
+                android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        }
+        window.statusBarColor = Color.TRANSPARENT
+        window.navigationBarColor = Color.TRANSPARENT
+        if (android.os.Build.VERSION.SDK_INT >= 29) {
+            window.isNavigationBarContrastEnforced = false
+        }
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            window.insetsController?.hide(
+                android.view.WindowInsets.Type.statusBars() or
+                    android.view.WindowInsets.Type.navigationBars()
+            )
+        }
+        decorView.post {
+            WindowInsetsControllerCompat(window, decorView).hide(WindowInsetsCompat.Type.systemBars())
+        }
+    }
+
+    private fun restoreInlineFullscreenUi(activity: android.app.Activity) {
+        val window = activity.window ?: return
+        originalSystemUiVisibility?.let { window.decorView.systemUiVisibility = it }
+        originalSystemUiVisibility = null
+
+        originalDecorFitsSystemWindows?.let { WindowCompat.setDecorFitsSystemWindows(window, it) }
+        originalDecorFitsSystemWindows = null
+
+        originalWindowFlags?.let { flags ->
+            window.attributes = window.attributes.apply { this.flags = flags }
+        }
+        originalWindowFlags = null
+        originalStatusBarColor?.let { window.statusBarColor = it }
+        originalStatusBarColor = null
+        originalNavigationBarColor?.let { window.navigationBarColor = it }
+        originalNavigationBarColor = null
+        if (android.os.Build.VERSION.SDK_INT >= 29) {
+            originalNavBarContrastEnforced?.let { window.isNavigationBarContrastEnforced = it }
+        }
+        originalNavBarContrastEnforced = null
+
+        originalCutoutMode?.let { mode ->
+            window.attributes = window.attributes.apply { layoutInDisplayCutoutMode = mode }
+        }
+        originalCutoutMode = null
+
+        WindowInsetsControllerCompat(window, window.decorView).show(WindowInsetsCompat.Type.systemBars())
     }
 
     private fun resetChildViewTransforms() {
@@ -883,12 +1303,38 @@ class LxMediaPlayer(
         controlsOverlay?.view?.let { resetView(it) }
     }
 
+    private fun getRealDisplaySizePx(context: Context): Pair<Float, Float> {
+        val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+            ?: return context.resources.displayMetrics.run {
+                widthPixels.toFloat() to heightPixels.toFloat()
+            }
+
+        return if (android.os.Build.VERSION.SDK_INT >= 30) {
+            val bounds = windowManager.currentWindowMetrics.bounds
+            bounds.width().toFloat() to bounds.height().toFloat()
+        } else {
+            @Suppress("DEPRECATION")
+            val display = windowManager.defaultDisplay
+            val dm = DisplayMetrics()
+            @Suppress("DEPRECATION")
+            display.getRealMetrics(dm)
+            dm.widthPixels.toFloat() to dm.heightPixels.toFloat()
+        }
+    }
+
     private fun applyFullscreenTransform() {
         val container = fullscreenContent ?: return
-        val host = fullscreenContainer
-        val dm = container.context.resources.displayMetrics
-        val screenW = (host?.width?.takeIf { it > 0 } ?: container.width.takeIf { it > 0 } ?: dm.widthPixels).toFloat()
-        val screenH = (host?.height?.takeIf { it > 0 } ?: container.height.takeIf { it > 0 } ?: dm.heightPixels).toFloat()
+        val (screenW, screenH) = getRealDisplaySizePx(container.context)
+        applyFullscreenTransformFor(screenW, screenH)
+    }
+
+    private fun applyInlineFullscreenTransform() {
+        val parent = inlineFullscreenParent ?: return
+        val (screenW, screenH) = getRealDisplaySizePx(parent.context)
+        applyFullscreenTransformFor(screenW, screenH)
+    }
+
+    private fun applyFullscreenTransformFor(screenW: Float, screenH: Float) {
 
         if (videoWidth <= 0 || videoHeight <= 0) {
             player?.videoFormat?.let { format ->
@@ -953,6 +1399,128 @@ class LxMediaPlayer(
         view.requestLayout()
     }
 
+    private fun hideOverlayViewsFallback(root: View?) {
+        if (root == null) return
+        val hidden = mutableListOf<Pair<View, Int>>()
+
+        fun visit(node: View) {
+            if (node is NavigationBar || node is TabBar) {
+                hidden.add(node to node.visibility)
+                node.visibility = View.GONE
+            }
+            if (node is ViewGroup) {
+                for (i in 0 until node.childCount) {
+                    visit(node.getChildAt(i))
+                }
+            }
+        }
+
+        visit(root)
+        if (hidden.isNotEmpty()) {
+            fallbackHiddenViews = hidden
+        }
+    }
+
+    private fun restoreOverlayViewsFallback() {
+        fallbackHiddenViews?.forEach { (view, visibility) ->
+            view.visibility = visibility
+        }
+        fallbackHiddenViews = null
+    }
+
+    private fun applyOverlayFullscreenFallback(root: View?) {
+        if (root == null) return
+        val overlay = findOverlayHost(root) ?: return
+        if (fallbackOverlayView == null) {
+            fallbackOverlayView = overlay
+            fallbackOverlayLayoutParams = when (val params = overlay.layoutParams) {
+                is FrameLayout.LayoutParams -> FrameLayout.LayoutParams(params)
+                is ViewGroup.LayoutParams -> ViewGroup.LayoutParams(params)
+                else -> overlay.layoutParams
+            }
+            fallbackOverlayTranslationX = overlay.translationX
+            fallbackOverlayTranslationY = overlay.translationY
+        }
+
+        overlay.layoutParams = FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        ).apply {
+            leftMargin = 0
+            topMargin = 0
+            rightMargin = 0
+            bottomMargin = 0
+        }
+        overlay.translationX = 0f
+        overlay.translationY = 0f
+        overlay.requestLayout()
+    }
+
+    private fun restoreOverlayFullscreenFallback() {
+        val overlay = fallbackOverlayView ?: return
+        fallbackOverlayLayoutParams?.let { overlay.layoutParams = it }
+        overlay.translationX = fallbackOverlayTranslationX
+        overlay.translationY = fallbackOverlayTranslationY
+        overlay.requestLayout()
+        fallbackOverlayLayoutParams = null
+        fallbackOverlayView = null
+    }
+
+    private fun findOverlayHost(root: View): View? {
+        if (root.tag == "SameLevelOverlay") return root
+        if (root is ViewGroup) {
+            for (i in 0 until root.childCount) {
+                val found = findOverlayHost(root.getChildAt(i))
+                if (found != null) return found
+            }
+        }
+        return null
+    }
+
+    private fun applyWebViewContainerFullscreenFallback(root: View?) {
+        if (root !is ViewGroup) return
+        val currentContainer = root.findViewWithTag<View>("current_webview_container") as? ViewGroup
+            ?: return
+        val webViewContainer = currentContainer.parent as? ViewGroup ?: return
+        val lp = webViewContainer.layoutParams as? FrameLayout.LayoutParams ?: return
+
+        if (fallbackWebViewContainer == null) {
+            fallbackWebViewContainer = webViewContainer
+            fallbackWebViewContainerLayoutParams = FrameLayout.LayoutParams(lp)
+        }
+        if (fallbackCurrentWebViewContainer == null) {
+            fallbackCurrentWebViewContainer = currentContainer
+            fallbackCurrentWebViewTranslationY = currentContainer.translationY
+        }
+
+        webViewContainer.layoutParams = FrameLayout.LayoutParams(lp).apply {
+            width = ViewGroup.LayoutParams.MATCH_PARENT
+            height = ViewGroup.LayoutParams.MATCH_PARENT
+            topMargin = 0
+            bottomMargin = 0
+            leftMargin = 0
+            rightMargin = 0
+        }
+        webViewContainer.requestLayout()
+        currentContainer.translationY = 0f
+        currentContainer.requestLayout()
+    }
+
+    private fun restoreWebViewContainerFullscreenFallback() {
+        fallbackWebViewContainer?.let { container ->
+            fallbackWebViewContainerLayoutParams?.let { container.layoutParams = FrameLayout.LayoutParams(it) }
+            container.requestLayout()
+        }
+        fallbackCurrentWebViewContainer?.let { current ->
+            current.translationY = fallbackCurrentWebViewTranslationY
+            current.requestLayout()
+        }
+        fallbackWebViewContainer = null
+        fallbackWebViewContainerLayoutParams = null
+        fallbackCurrentWebViewContainer = null
+        fallbackCurrentWebViewTranslationY = 0f
+    }
+
     private fun getActivityContext(): android.app.Activity? {
         var ctx: Context? = context
         while (ctx != null) {
@@ -995,7 +1563,6 @@ class LxMediaPlayer(
                         val bitmap = android.graphics.BitmapFactory.decodeStream(input)
                         mainHandler.post {
                             posterImageView?.setImageBitmap(bitmap)
-                            Log.d(TAG, "loadPoster: network image loaded")
                         }
                     } catch (e: Exception) {
                         Log.w(TAG, "Failed to load network poster: $url", e)
@@ -1056,7 +1623,11 @@ class LxMediaPlayer(
         videoRotationDegrees = normalizeRotation(rotationDegrees)
 
         if (isFullscreen) {
-            applyFullscreenTransform()
+            if (inlineFullscreenParent != null) {
+                applyInlineFullscreenTransform()
+            } else {
+                applyFullscreenTransform()
+            }
         }
     }
 
@@ -1076,16 +1647,15 @@ class LxMediaPlayer(
                         val duration = p.duration.toDouble() / 1000.0
 
                         // Hide poster when video is actually rendering frames (time progresses)
-                        // This prevents black screen flash (like HarmonyOS implementation)
-                        if (pendingPosterHide && duration > 0) {
-                            val timeAdvanced = lastTimeForPoster >= 0 && currentTime > lastTimeForPoster
-                            if (currentTime > 0.2 && timeAdvanced) {
-                                Log.d(TAG, "Hiding poster: currentTime=$currentTime, lastTime=$lastTimeForPoster")
-                                pendingPosterHide = false
-                                firstFrameDisplayed = true
-                                posterImageView?.visibility = View.GONE
-                            }
-                            lastTimeForPoster = currentTime
+                            // This prevents black screen flash.
+                            if (pendingPosterHide && duration > 0) {
+                                val timeAdvanced = lastTimeForPoster >= 0 && currentTime > lastTimeForPoster
+                                if (currentTime > 0.2 && timeAdvanced) {
+                                    pendingPosterHide = false
+                                    firstFrameDisplayed = true
+                                    posterImageView?.visibility = View.GONE
+                                }
+                                lastTimeForPoster = currentTime
                         }
 
                         emitEvent(LxMediaEvent.TimeUpdate(currentTime, duration))
@@ -1103,7 +1673,7 @@ class LxMediaPlayer(
         timeUpdateRunnable = null
     }
 
-    internal fun isPlaying(): Boolean = player?.isPlaying == true
+    internal fun isPlaying(): Boolean = if (streamDecoderMode) streamIsPlaying else player?.isPlaying == true
     internal fun getCurrentPosition(): Long = player?.currentPosition ?: 0
     internal fun getDuration(): Long = player?.duration ?: 0
     internal fun getAvailableQualities(): List<LxMediaQuality> = availableQualities

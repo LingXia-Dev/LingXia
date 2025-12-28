@@ -323,7 +323,7 @@ class MediaCaptureFragment : Fragment() {
                 contentDescription = "Toggle flash"
                 setOnClickListener { toggleFlash() }
             }
-            val flashIconSize = dp(context, 32f)  // Match HarmonyOS ICON_BUTTON_SIZE
+            val flashIconSize = dp(context, 32f)
             val flashParams = FrameLayout.LayoutParams(flashIconSize, flashIconSize).apply {
                 gravity = Gravity.END or Gravity.BOTTOM
                 // Mirror position of back button on the right side
@@ -1477,7 +1477,7 @@ class MediaCaptureFragment : Fragment() {
         }
     }
 
-    // Flash button using XML drawable icons (matching HarmonyOS style)
+    // Flash button using XML drawable icons
     private inner class FlashButton(context: Context) : ImageButton(context) {
         init {
             setBackgroundColor(Color.TRANSPARENT)

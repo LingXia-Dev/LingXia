@@ -7,6 +7,10 @@ import android.view.ViewGroup
 import android.view.ViewOutlineProvider
 import com.lingxia.lxapp.NativeApi
 import com.lingxia.webview.LingXiaWebView
+import com.lingxia.lxapp.SameLevel.Components.VideoComponent
+import android.os.Handler
+import android.os.Looper
+import android.util.Log
 import org.json.JSONObject
 import java.lang.ref.WeakReference
 import kotlin.math.abs
@@ -25,9 +29,11 @@ class SameLevelComponentManager(
     private val eventSink: (Map<String, Any>) -> Unit,
     webView: LingXiaWebView? = null
 ) {
+    private val logTag = "SameLevelComponentManager"
     private val hostViewRef = WeakReference(hostView)
     private val webViewRef = webView?.let { WeakReference(it) }
     private val density = hostView.context.resources.displayMetrics.density
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     private val components = mutableMapOf<String, LxNativeComponent>()
     private val componentPage = mutableMapOf<String, String>()
@@ -40,6 +46,11 @@ class SameLevelComponentManager(
     private val componentScreenRects = mutableMapOf<String, RectF>()
     private val pageComponents = mutableMapOf<String, MutableSet<String>>()
     private val factories = mutableMapOf<String, LxNativeComponentFactory>()
+
+    // When DOM is transitioning (e.g. switching live <-> playback), measureById can temporarily
+    // return 0-size. Keep retrying a few times so the native overlay catches the final layout.
+    private val rectSyncRetries = mutableMapOf<String, Int>()
+    private val rectSyncRetryRunnables = mutableMapOf<String, Runnable>()
 
     fun register(type: String, factory: LxNativeComponentFactory) {
         factories[type] = factory
@@ -100,6 +111,13 @@ class SameLevelComponentManager(
         (params["rect"] as? Map<*, *>)?.let { rectDict ->
             // JS sends document coordinates (content position)
             val newContentRect = pixelAligned(rectFrom(rectDict))
+            // During DOM transitions (e.g. switching live <-> playback), React can transiently
+            // report 0-size rects. Applying them would make the native overlay disappear and
+            // it may never recover if no further update is emitted.
+            if (newContentRect.width() <= 1f || newContentRect.height() <= 1f) {
+                scheduleRectSyncRetry(id, "ignored 0-size update rect: $newContentRect")
+                return@let
+            }
             
             if (shouldUpdateFrame(componentContentRects[id], newContentRect)) {
                 componentContentRects[id] = newContentRect
@@ -187,6 +205,10 @@ class SameLevelComponentManager(
     internal fun updateContentRectFromNative(componentId: String, contentRectPx: RectF): Boolean {
         val component = components[componentId] ?: return false
         val aligned = pixelAligned(contentRectPx)
+        if (aligned.width() <= 1f || aligned.height() <= 1f) {
+            scheduleRectSyncRetry(componentId, "ignored 0-size native rect: $aligned")
+            return false
+        }
         componentContentRects[componentId] = aligned
         val screenRect = componentScreenRects.getOrPut(componentId) { RectF() }
         updateScreenRect(screenRect, aligned)
@@ -220,7 +242,10 @@ class SameLevelComponentManager(
                 val yCss = parts[1].trim().toDouble()
                 val wCss = parts[2].trim().toDouble()
                 val hCss = parts[3].trim().toDouble()
-                if (wCss <= 0.0 || hCss <= 0.0) return@evaluateJavascript
+                if (wCss <= 0.0 || hCss <= 0.0) {
+                    scheduleRectSyncRetry(componentId, "zero-size rect from JS: $v")
+                    return@evaluateJavascript
+                }
 
                 val rectPx = RectF(
                     (xCss * density).toFloat(),
@@ -228,9 +253,33 @@ class SameLevelComponentManager(
                     ((xCss + wCss) * density).toFloat(),
                     ((yCss + hCss) * density).toFloat()
                 )
+                rectSyncRetries.remove(componentId)
+                rectSyncRetryRunnables.remove(componentId)?.let { mainHandler.removeCallbacks(it) }
                 updateContentRectFromNative(componentId, rectPx)
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                scheduleRectSyncRetry(componentId, "parse error: ${e.message}")
+            }
         }
+    }
+
+    private fun scheduleRectSyncRetry(componentId: String, reason: String) {
+        val attempts = (rectSyncRetries[componentId] ?: 0) + 1
+        rectSyncRetries[componentId] = attempts
+        if (attempts > 10) {
+            clearRectSyncRetry(componentId)
+            Log.w(logTag, "requestRectSyncFromNative retry exhausted for $componentId ($reason)")
+            return
+        }
+
+        rectSyncRetryRunnables[componentId]?.let { mainHandler.removeCallbacks(it) }
+        val task = Runnable { requestRectSyncFromNative(componentId) }
+        rectSyncRetryRunnables[componentId] = task
+        mainHandler.postDelayed(task, 120L)
+    }
+
+    private fun clearRectSyncRetry(componentId: String) {
+        rectSyncRetries.remove(componentId)
+        rectSyncRetryRunnables.remove(componentId)?.let { mainHandler.removeCallbacks(it) }
     }
 
     /**
@@ -251,6 +300,18 @@ class SameLevelComponentManager(
         val component = components[componentId] ?: return false
         component.handleCommand(name, params)
         return true
+    }
+
+    internal fun getVideoComponent(componentId: String): VideoComponent? {
+        return components[componentId] as? VideoComponent
+    }
+
+    internal fun emitComponentEvent(
+        componentId: String,
+        event: String,
+        detail: Map<String, Any?> = emptyMap()
+    ) {
+        sendEventToWeb(componentId, mapOf("event" to event, "detail" to detail))
     }
 
     private fun sendEventToWeb(componentId: String, event: Map<String, Any>) {
@@ -373,6 +434,11 @@ class SameLevelComponentManager(
     }
 
     private fun unmountComponent(id: String, pageId: String?) {
+        // If a stream decoder session exists, stop it when the component is unmounted.
+        // Otherwise we can end up with orphaned AudioTrack playback (audio-only) and a decoder
+        // still bound to an old/detached TextureView after React remounts the component.
+        ComponentRouter.stopStreamDecoder(id)
+        clearRectSyncRetry(id)
         components.remove(id)?.unmount()
         componentContentRects.remove(id)
         componentScreenRects.remove(id)

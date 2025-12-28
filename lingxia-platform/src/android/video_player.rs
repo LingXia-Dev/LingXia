@@ -1,10 +1,14 @@
 use crate::error::PlatformError;
 use crate::traits::{
+    AudioCodec, AudioFrame, AudioStreamConfig, VideoCodec, VideoFormat, VideoFrame,
     VideoPlayerCommand, VideoPlayerHandle, VideoPlayerHandleImpl, VideoPlayerManager,
+    VideoStreamConfig, VideoStreamDecoderHandle, VideoStreamDecoderManager,
 };
 use jni::JNIEnv;
 use jni::objects::{JClass, JThrowable, JValue};
+use jni::sys::jboolean;
 use lingxia_webview::get_env;
+use serde_json::json;
 
 use super::Platform;
 
@@ -71,6 +75,54 @@ fn call_video_static_method(
     Ok(())
 }
 
+fn call_component_router_bool(
+    env: &mut JNIEnv,
+    lxapp_video_class: &JClass,
+    method: &str,
+    signature: &str,
+    args: &[JValue],
+    failure_context: &str,
+) -> Result<bool, PlatformError> {
+    let result = env
+        .call_static_method(lxapp_video_class, method, signature, args)
+        .map_err(|e| platform_error(failure_context, e))?;
+
+    if let Some(ex_msg) = extract_exception_message(env) {
+        return Err(platform_error(
+            failure_context,
+            format!("Java exception: {}", ex_msg),
+        ));
+    }
+
+    result
+        .z()
+        .map_err(|e| platform_error(failure_context, format!("Bad result: {}", e)))
+}
+
+fn ensure_component_ok(component_id: &str, method: &str, ok: bool) -> Result<(), PlatformError> {
+    if ok {
+        Ok(())
+    } else {
+        Err(PlatformError::Platform(format!(
+            "{} rejected for {}",
+            method, component_id
+        )))
+    }
+}
+
+fn with_component_id<T>(
+    component_id: &str,
+    context: &str,
+    f: impl FnOnce(&mut JNIEnv, &JClass, &jni::objects::JString) -> Result<T, PlatformError>,
+) -> Result<T, PlatformError> {
+    with_env_and_class(context, |env, lxapp_video_class| {
+        let component_id_jstring = env
+            .new_string(component_id)
+            .map_err(|e| platform_error(context, e))?;
+        f(env, lxapp_video_class, &component_id_jstring)
+    })
+}
+
 fn dispatch_command_android(
     component_id: &str,
     command: VideoPlayerCommand,
@@ -82,30 +134,217 @@ fn dispatch_command_android(
         component_id, name
     );
 
-    with_env_and_class(&failure_context, |env, lxapp_video_class| {
-        let component_id_jstring = env
-            .new_string(component_id)
-            .map_err(|e| platform_error(&failure_context, e))?;
-        let name_jstring = env
-            .new_string(&name)
-            .map_err(|e| platform_error(&failure_context, e))?;
-        let params_jstring = env
-            .new_string(&params_json)
-            .map_err(|e| platform_error(&failure_context, e))?;
+    dispatch_video_command(component_id, &name, &params_json, &failure_context)
+}
 
-        call_video_static_method(
-            env,
-            lxapp_video_class,
-            "dispatchVideoCommand",
-            "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
-            &[
-                JValue::Object(&component_id_jstring),
-                JValue::Object(&name_jstring),
-                JValue::Object(&params_jstring),
-            ],
+fn json_video_config(config: &VideoStreamConfig) -> Result<String, PlatformError> {
+    let codec = match config.codec {
+        VideoCodec::H264 => "h264",
+        VideoCodec::H265 => "h265",
+    };
+    let format = match config.format {
+        VideoFormat::AnnexB => "annexb",
+        VideoFormat::Avcc => "avcc",
+    };
+    serde_json::to_string(&json!({
+        "codec": codec,
+        "format": format,
+        "sps": config.sps,
+        "pps": config.pps,
+        "vps": config.vps,
+        "nalLengthSize": config.nal_length_size,
+        "width": config.width,
+        "height": config.height,
+    }))
+    .map_err(|e| PlatformError::Platform(format!("Failed to serialize video config: {}", e)))
+}
+
+fn json_audio_config(config: &AudioStreamConfig) -> Result<String, PlatformError> {
+    let codec = match config.codec {
+        AudioCodec::Aac => "aac",
+        AudioCodec::PcmS16le => "pcm_s16le",
+    };
+    serde_json::to_string(&json!({
+        "codec": codec,
+        "audioSpecificConfig": config.audio_specific_config,
+        "sampleRate": config.sample_rate,
+        "channels": config.channels,
+        "aacIsAdts": config.aac_is_adts,
+    }))
+    .map_err(|e| PlatformError::Platform(format!("Failed to serialize audio config: {}", e)))
+}
+
+fn to_i32(value: u32, field: &str) -> Result<i32, PlatformError> {
+    i32::try_from(value).map_err(|_| {
+        PlatformError::Platform(format!("Stream decoder {} out of range: {}", field, value))
+    })
+}
+
+struct AndroidStreamDecoderHandle {
+    component_id: String,
+}
+
+impl VideoStreamDecoderHandle for AndroidStreamDecoderHandle {
+    fn supports_soft_reset(&self) -> bool {
+        true
+    }
+
+    fn reset_stream(&self, hard: bool) -> Result<(), PlatformError> {
+        let params_json = serde_json::to_string(&json!({"hard": hard})).map_err(|e| {
+            PlatformError::Platform(format!("Failed to serialize reset params: {}", e))
+        })?;
+        let failure_context = format!(
+            "dispatchVideoCommand(resetStream) for component {}",
+            self.component_id
+        );
+        dispatch_video_command(
+            &self.component_id,
+            "resetStream",
+            &params_json,
             &failure_context,
         )
-    })
+    }
+
+    fn configure_video(&self, config: VideoStreamConfig) -> Result<(), PlatformError> {
+        let config_json = json_video_config(&config)?;
+        let method = "configureStreamVideo";
+        let ok = with_component_id(
+            &self.component_id,
+            method,
+            |env, lxapp_video_class, component_id_jstring| {
+                let config_jstring = env
+                    .new_string(&config_json)
+                    .map_err(|e| platform_error(method, e))?;
+                call_component_router_bool(
+                    env,
+                    lxapp_video_class,
+                    method,
+                    "(Ljava/lang/String;Ljava/lang/String;)Z",
+                    &[
+                        JValue::Object(component_id_jstring),
+                        JValue::Object(&config_jstring),
+                    ],
+                    method,
+                )
+            },
+        )?;
+        ensure_component_ok(&self.component_id, method, ok)
+    }
+
+    fn configure_audio(&self, config: AudioStreamConfig) -> Result<(), PlatformError> {
+        let config_json = json_audio_config(&config)?;
+        let method = "configureStreamAudio";
+        let ok = with_component_id(
+            &self.component_id,
+            method,
+            |env, lxapp_video_class, component_id_jstring| {
+                let config_jstring = env
+                    .new_string(&config_json)
+                    .map_err(|e| platform_error(method, e))?;
+                call_component_router_bool(
+                    env,
+                    lxapp_video_class,
+                    method,
+                    "(Ljava/lang/String;Ljava/lang/String;)Z",
+                    &[
+                        JValue::Object(component_id_jstring),
+                        JValue::Object(&config_jstring),
+                    ],
+                    method,
+                )
+            },
+        )?;
+        ensure_component_ok(&self.component_id, method, ok)
+    }
+
+    fn push_video(&self, frame: VideoFrame) -> Result<(), PlatformError> {
+        let VideoFrame {
+            data,
+            dts_ms,
+            pts_ms,
+            keyframe,
+        } = frame;
+        let dts_ms = to_i32(dts_ms, "dts_ms")?;
+        let pts_ms = to_i32(pts_ms, "pts_ms")?;
+        let method = "pushStreamVideo";
+        let ok = with_component_id(
+            &self.component_id,
+            method,
+            |env, lxapp_video_class, component_id_jstring| {
+                let data_array = env
+                    .byte_array_from_slice(&data)
+                    .map_err(|e| platform_error(method, e))?;
+                call_component_router_bool(
+                    env,
+                    lxapp_video_class,
+                    method,
+                    "(Ljava/lang/String;[BIIZ)Z",
+                    &[
+                        JValue::Object(component_id_jstring),
+                        JValue::Object(&data_array),
+                        JValue::Int(dts_ms),
+                        JValue::Int(pts_ms),
+                        JValue::Bool(jboolean::from(keyframe)),
+                    ],
+                    method,
+                )
+            },
+        )?;
+        ensure_component_ok(&self.component_id, method, ok)
+    }
+
+    fn push_audio(&self, frame: AudioFrame) -> Result<(), PlatformError> {
+        let AudioFrame {
+            data,
+            dts_ms,
+            pts_ms,
+        } = frame;
+        let dts_ms = to_i32(dts_ms, "dts_ms")?;
+        let pts_ms = to_i32(pts_ms, "pts_ms")?;
+        let method = "pushStreamAudio";
+        let ok = with_component_id(
+            &self.component_id,
+            method,
+            |env, lxapp_video_class, component_id_jstring| {
+                let data_array = env
+                    .byte_array_from_slice(&data)
+                    .map_err(|e| platform_error(method, e))?;
+                call_component_router_bool(
+                    env,
+                    lxapp_video_class,
+                    method,
+                    "(Ljava/lang/String;[BII)Z",
+                    &[
+                        JValue::Object(component_id_jstring),
+                        JValue::Object(&data_array),
+                        JValue::Int(dts_ms),
+                        JValue::Int(pts_ms),
+                    ],
+                    method,
+                )
+            },
+        )?;
+        ensure_component_ok(&self.component_id, method, ok)
+    }
+
+    fn stop(&self) -> Result<(), PlatformError> {
+        let method = "stopStreamDecoder";
+        let ok = with_component_id(
+            &self.component_id,
+            method,
+            |env, lxapp_video_class, component_id_jstring| {
+                call_component_router_bool(
+                    env,
+                    lxapp_video_class,
+                    method,
+                    "(Ljava/lang/String;)Z",
+                    &[JValue::Object(component_id_jstring)],
+                    method,
+                )
+            },
+        )?;
+        ensure_component_ok(&self.component_id, method, ok)
+    }
 }
 
 impl VideoPlayerManager for Platform {
@@ -152,8 +391,6 @@ impl VideoPlayerManager for Platform {
 }
 
 fn map_command_to_android(command: VideoPlayerCommand) -> (String, String) {
-    use serde_json::json;
-
     match command {
         VideoPlayerCommand::Play => ("play".to_string(), "{}".to_string()),
         VideoPlayerCommand::Pause => ("pause".to_string(), "{}".to_string()),
@@ -164,4 +401,67 @@ fn map_command_to_android(command: VideoPlayerCommand) -> (String, String) {
         VideoPlayerCommand::EnterFullscreen => ("enterFullscreen".to_string(), "{}".to_string()),
         VideoPlayerCommand::ExitFullscreen => ("exitFullscreen".to_string(), "{}".to_string()),
     }
+}
+
+impl VideoStreamDecoderManager for Platform {
+    fn create_stream_decoder(
+        &self,
+        component_id: &str,
+    ) -> Result<Box<dyn VideoStreamDecoderHandle>, PlatformError> {
+        let ok = with_component_id(
+            component_id,
+            "createStreamDecoder",
+            |env, lxapp_video_class, component_id_jstring| {
+                call_component_router_bool(
+                    env,
+                    lxapp_video_class,
+                    "createStreamDecoder",
+                    "(Ljava/lang/String;)Z",
+                    &[JValue::Object(component_id_jstring)],
+                    "createStreamDecoder",
+                )
+            },
+        )?;
+        if !ok {
+            return Err(PlatformError::Platform(format!(
+                "Failed to create stream decoder for {}",
+                component_id
+            )));
+        }
+        Ok(Box::new(AndroidStreamDecoderHandle {
+            component_id: component_id.to_string(),
+        }))
+    }
+}
+
+fn dispatch_video_command(
+    component_id: &str,
+    name: &str,
+    params_json: &str,
+    failure_context: &str,
+) -> Result<(), PlatformError> {
+    with_env_and_class(failure_context, |env, lxapp_video_class| {
+        let component_id_jstring = env
+            .new_string(component_id)
+            .map_err(|e| platform_error(failure_context, e))?;
+        let name_jstring = env
+            .new_string(name)
+            .map_err(|e| platform_error(failure_context, e))?;
+        let params_jstring = env
+            .new_string(params_json)
+            .map_err(|e| platform_error(failure_context, e))?;
+
+        call_video_static_method(
+            env,
+            lxapp_video_class,
+            "dispatchVideoCommand",
+            "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
+            &[
+                JValue::Object(&component_id_jstring),
+                JValue::Object(&name_jstring),
+                JValue::Object(&params_jstring),
+            ],
+            failure_context,
+        )
+    })
 }

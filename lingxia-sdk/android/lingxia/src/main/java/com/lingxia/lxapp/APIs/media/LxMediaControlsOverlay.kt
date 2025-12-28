@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Rect
 import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
@@ -12,7 +13,6 @@ import android.graphics.drawable.ShapeDrawable
 import android.graphics.drawable.shapes.OvalShape
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
@@ -41,6 +41,17 @@ internal class LxMediaControlsOverlay(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT
         )
+    }
+
+    init {
+        // If the overlay view gets detached (e.g. fullscreen transition), ongoing animations may not
+        // complete, leaving the dim overlay/popup stuck on top of the video (audio plays, video looks black).
+        view.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(v: View) = Unit
+            override fun onViewDetachedFromWindow(v: View) {
+                dismissSettingsPopup(immediate = true)
+            }
+        })
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -716,7 +727,6 @@ internal class LxMediaControlsOverlay(
         val qualities = player.getAvailableQualities()
         val currentQuality = player.getCurrentQuality() ?: qualities.firstOrNull()?.label
         showSubmenu(qualities.map { it.label }, currentQuality) { selected ->
-            Log.d(TAG, "Quality selected: $selected")
             // Emit quality change event
             player.emitQualityChange(selected)
         }
@@ -728,7 +738,6 @@ internal class LxMediaControlsOverlay(
         val currentSpeed = player.getCurrentSpeed()
         showSubmenu(speeds.map { formatRate(it) }, formatRate(currentSpeed)) { selected ->
             val rate = selected.removeSuffix("x").toDoubleOrNull() ?: 1.0
-            Log.d(TAG, "Speed selected: $rate")
             player.setPlaybackRate(rate)
         }
     }
@@ -803,10 +812,21 @@ internal class LxMediaControlsOverlay(
     }
 
     private fun locationInOverlay(anchor: View): Pair<Int, Int> {
+        // Prefer descendant-rect conversion: robust against fullscreen dialog re-parenting,
+        // translations, and nested view offsets.
+        try {
+            val rect = Rect()
+            anchor.getDrawingRect(rect)
+            view.offsetDescendantRectToMyCoords(anchor, rect)
+            return rect.left to rect.top
+        } catch (_: Throwable) {
+            // Fall back to screen coordinates.
+        }
+
         val anchorLoc = IntArray(2)
         val viewLoc = IntArray(2)
-        anchor.getLocationInWindow(anchorLoc)
-        view.getLocationInWindow(viewLoc)
+        anchor.getLocationOnScreen(anchorLoc)
+        view.getLocationOnScreen(viewLoc)
         return (anchorLoc[0] - viewLoc[0]) to (anchorLoc[1] - viewLoc[1])
     }
 
@@ -851,11 +871,17 @@ internal class LxMediaControlsOverlay(
         }
     }
 
-    private fun dismissSettingsPopup() {
+    private fun dismissSettingsPopup(immediate: Boolean = false) {
         val overlay = view.findViewWithTag<View>(POPUP_OVERLAY_TAG)
         val popup = view.findViewWithTag<View>(POPUP_MENU_TAG)
 
         if (overlay == null && popup == null) return
+
+        if (immediate || !view.isAttachedToWindow) {
+            if (popup != null) view.removeView(popup)
+            if (overlay != null) view.removeView(overlay)
+            return
+        }
 
         popup?.animate()
             ?.alpha(0f)

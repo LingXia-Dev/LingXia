@@ -2,9 +2,14 @@ package com.lingxia.lxapp.SameLevel
 
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
+import android.view.TextureView
+import com.lingxia.lxapp.SameLevel.Components.VideoComponent
 import org.json.JSONObject
 import java.lang.ref.WeakReference
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /**
  * Global router for dispatching commands from Rust FFI to native components.
@@ -17,8 +22,52 @@ import java.util.concurrent.ConcurrentHashMap
  * to native code.
  */
 object ComponentRouter {
+    private const val TAG = "ComponentRouter"
     private val managers = ConcurrentHashMap<String, WeakReference<SameLevelComponentManager>>()
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val streamDecoders = ConcurrentHashMap<String, StreamDecoderSession>()
+    private val streamDecoderLock = Any()
+
+    private data class DesiredAudioState(val volume: Float, val muted: Boolean)
+
+    private val desiredAudioStates = ConcurrentHashMap<String, DesiredAudioState>()
+
+    private fun updateDesiredAudioState(componentId: String, name: String, paramsJson: String) {
+        if (name != "setVolume" && name != "setMuted") return
+        try {
+            val obj = JSONObject(paramsJson)
+            val prev = desiredAudioStates[componentId] ?: DesiredAudioState(volume = 1.0f, muted = false)
+            val next = when (name) {
+                "setVolume" -> {
+                    val v = obj.optDouble("volume", prev.volume.toDouble()).toFloat().coerceIn(0f, 1f)
+                    prev.copy(volume = v)
+                }
+                "setMuted" -> {
+                    if (obj.has("muted") && !obj.isNull("muted")) {
+                        prev.copy(muted = obj.optBoolean("muted", prev.muted))
+                    } else {
+                        prev
+                    }
+                }
+                else -> prev
+            }
+            desiredAudioStates[componentId] = next
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun ensureStreamDecoderExists(componentId: String, reason: String): StreamDecoderSession? {
+        streamDecoders[componentId]?.let { return it }
+        synchronized(streamDecoderLock) {
+            streamDecoders[componentId]?.let { return it }
+            val ok = createStreamDecoder(componentId)
+            if (!ok) {
+                Log.w(TAG, "ensureStreamDecoderExists($reason): create failed: $componentId")
+                return null
+            }
+            return streamDecoders[componentId]
+        }
+    }
 
     fun register(componentId: String, manager: SameLevelComponentManager) {
         managers[componentId] = WeakReference(manager)
@@ -26,6 +75,10 @@ object ComponentRouter {
 
     fun unregister(componentId: String) {
         managers.remove(componentId)
+        // Don't remove decoder here - let it persist for component remount scenarios.
+        // The decoder will be cleaned up when:
+        // 1. stopStreamDecoder is explicitly called (hard reset path)
+        // 2. A new decoder is created with the same component ID (in createStreamDecoder)
     }
 
     @JvmStatic
@@ -59,10 +112,207 @@ object ComponentRouter {
      */
     @JvmStatic
     fun dispatchVideoCommand(componentId: String, name: String, paramsJson: String) {
+        val shouldUseStreamDecoder =
+            name == "play" ||
+                name == "pause" ||
+                name == "stop" ||
+                name == "resetStream" ||
+                name == "rebindSurface" ||
+                name == "setVolume" ||
+                name == "setMuted"
+
+        updateDesiredAudioState(componentId, name, paramsJson)
+
+        var session = streamDecoders[componentId]
+        if (shouldUseStreamDecoder) {
+            if (session == null) {
+                session = ensureStreamDecoderExists(componentId, "dispatchVideoCommand:$name")
+            } else if (!session.isTextureViewAttached()) {
+                // Avoid blocking JNI threads on view/TextureView transitions; refresh asynchronously.
+                mainHandler.post { createStreamDecoder(componentId) }
+            }
+        }
+        if (session != null && name != "enterFullscreen" && name != "exitFullscreen") {
+            if (session.handleCommand(name, paramsJson)) {
+                return
+            }
+        }
+
         mainHandler.post {
             val manager = managers[componentId]?.get() ?: return@post
             val params = parseParams(paramsJson)
             manager.dispatchCommand(componentId, name, params)
+        }
+    }
+
+    @JvmStatic
+    fun createStreamDecoder(componentId: String): Boolean {
+        val manager = managers[componentId]?.get()
+        if (manager == null) {
+            Log.e(TAG, "createStreamDecoder: component not found: $componentId")
+            return false
+        }
+
+        val isMainThread = Looper.myLooper() == Looper.getMainLooper()
+        if (isMainThread) {
+            val component = manager.getVideoComponent(componentId)
+            if (component == null) {
+                Log.e(TAG, "createStreamDecoder: video component not found: $componentId")
+                return false
+            }
+            val textureView = component.acquireStreamTextureView()
+            if (textureView == null) {
+                Log.e(TAG, "createStreamDecoder: TextureView not available: $componentId")
+                component.releaseStreamTextureView()
+                return false
+            }
+
+            val existing = streamDecoders[componentId]
+            if (existing != null && existing.usesTextureView(textureView)) {
+                existing.rebindSurface()
+                component.releaseStreamTextureView()
+                return true
+            }
+
+            streamDecoders.remove(componentId)?.let { oldDecoder ->
+                oldDecoder.stop()
+            }
+
+            val session = StreamDecoderSession(
+                componentId = componentId,
+                textureView = textureView,
+                eventEmitter = { event, detail -> emitStreamEvent(componentId, event, detail) }
+            )
+            desiredAudioStates[componentId]?.let { session.applyDesiredAudioState(it.volume, it.muted) }
+            streamDecoders[componentId] = session
+            return true
+        }
+
+        val latch = CountDownLatch(1)
+        var textureView: TextureView? = null
+        var component: VideoComponent? = null
+        mainHandler.post {
+            component = manager.getVideoComponent(componentId)
+            if (component == null) {
+                Log.e(TAG, "createStreamDecoder: video component not found: $componentId")
+                latch.countDown()
+                return@post
+            }
+            textureView = component?.acquireStreamTextureView()
+            latch.countDown()
+        }
+
+        val ready = try {
+            latch.await(5000, TimeUnit.MILLISECONDS)
+        } catch (e: InterruptedException) {
+            Log.e(TAG, "createStreamDecoder: interrupted while waiting: $componentId", e)
+            // Release texture view if it was acquired before interruption
+            mainHandler.post { component?.releaseStreamTextureView() }
+            return false
+        }
+
+        if (!ready) {
+            Log.e(TAG, "createStreamDecoder: timeout waiting for TextureView: $componentId")
+            // Release texture view if it was acquired but we timed out
+            mainHandler.post { component?.releaseStreamTextureView() }
+            return false
+        }
+
+        if (textureView == null) {
+            Log.e(TAG, "createStreamDecoder: TextureView not available: $componentId")
+            mainHandler.post { component?.releaseStreamTextureView() }
+            return false
+        }
+
+        val existing = streamDecoders[componentId]
+        if (existing != null && existing.usesTextureView(textureView!!)) {
+            existing.rebindSurface()
+            mainHandler.post { component?.releaseStreamTextureView() }
+            return true
+        }
+
+        // Clean up any existing decoder before creating new one
+        streamDecoders.remove(componentId)?.let { oldDecoder ->
+            oldDecoder.stop()
+        }
+
+        val session = StreamDecoderSession(
+            componentId = componentId,
+            textureView = textureView!!,
+            eventEmitter = { event, detail -> emitStreamEvent(componentId, event, detail) }
+        )
+        desiredAudioStates[componentId]?.let { session.applyDesiredAudioState(it.volume, it.muted) }
+        streamDecoders[componentId] = session
+        return true
+    }
+
+    @JvmStatic
+    fun configureStreamVideo(componentId: String, configJson: String): Boolean {
+        createStreamDecoder(componentId)
+        val decoder = streamDecoders[componentId]
+        if (decoder == null) {
+            Log.w(TAG, "configureStreamVideo: decoder not found: $componentId")
+            return false
+        }
+        return decoder.configureVideo(configJson)
+    }
+
+    @JvmStatic
+    fun configureStreamAudio(componentId: String, configJson: String): Boolean {
+        createStreamDecoder(componentId)
+        val decoder = streamDecoders[componentId]
+        if (decoder == null) {
+            Log.w(TAG, "configureStreamAudio: decoder not found: $componentId")
+            return false
+        }
+        return decoder.configureAudio(configJson)
+    }
+
+    @JvmStatic
+    fun pushStreamVideo(
+        componentId: String,
+        data: ByteArray,
+        dtsMs: Int,
+        ptsMs: Int,
+        keyframe: Boolean
+    ): Boolean {
+        val decoder = streamDecoders[componentId]
+        if (decoder == null) {
+            Log.w(TAG, "pushStreamVideo: decoder not found: $componentId")
+            return false
+        }
+        return decoder.pushVideo(data, dtsMs, ptsMs, keyframe)
+    }
+
+    @JvmStatic
+    fun pushStreamAudio(
+        componentId: String,
+        data: ByteArray,
+        dtsMs: Int,
+        ptsMs: Int
+    ): Boolean {
+        val decoder = streamDecoders[componentId]
+        if (decoder == null) {
+            Log.w(TAG, "pushStreamAudio: decoder not found: $componentId")
+            return false
+        }
+        return decoder.pushAudio(data, dtsMs, ptsMs)
+    }
+
+    @JvmStatic
+    fun stopStreamDecoder(componentId: String): Boolean {
+        val decoder = streamDecoders.remove(componentId) ?: return false
+        decoder.stop()
+        mainHandler.post {
+            managers[componentId]?.get()?.getVideoComponent(componentId)?.releaseStreamTextureView()
+        }
+        return true
+    }
+
+    private fun emitStreamEvent(componentId: String, event: String, detail: Map<String, Any?>) {
+        mainHandler.post {
+            val manager = managers[componentId]?.get() ?: return@post
+            manager.emitComponentEvent(componentId, event, detail)
         }
     }
 

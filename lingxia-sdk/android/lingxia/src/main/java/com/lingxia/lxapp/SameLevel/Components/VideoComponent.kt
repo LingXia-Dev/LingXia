@@ -4,6 +4,7 @@ import android.graphics.RectF
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.view.TextureView
 import com.lingxia.lxapp.APIs.media.LxMediaCommand
 import com.lingxia.lxapp.APIs.media.LxMediaEvent
 import com.lingxia.lxapp.APIs.media.LxMediaObjectFit
@@ -67,6 +68,14 @@ class VideoComponent(
         player?.handle(command)
     }
 
+    fun acquireStreamTextureView(): TextureView? {
+        return player?.acquireStreamTextureView()
+    }
+
+    fun releaseStreamTextureView() {
+        player?.releaseStreamTextureView()
+    }
+
     override fun unmount() {
         player?.pause()
         player?.exitFullscreen()
@@ -86,7 +95,6 @@ class VideoComponent(
                     config.source = when (type) {
                         "url" -> LxMediaSource.Url(value)
                         "file" -> LxMediaSource.FilePath(value)
-                        "pipe" -> LxMediaSource.Pipe(value)
                         else -> null
                     }
                 }

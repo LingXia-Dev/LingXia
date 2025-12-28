@@ -80,6 +80,19 @@ data class NavigationState(
 )
 
 class LxAppActivity : AppCompatActivity() {
+    private data class MediaFullscreenState(
+        val tabBarVisibility: Int,
+        val navigationBarVisibility: Int,
+        val navigationBarIndex: Int,
+        val navigationBarLayoutParams: ViewGroup.LayoutParams?,
+        val overlayLayoutParams: FrameLayout.LayoutParams?,
+        val overlayTranslationX: Float,
+        val overlayTranslationY: Float,
+        val rootPaddingLeft: Int,
+        val rootPaddingTop: Int,
+        val rootPaddingRight: Int,
+        val rootPaddingBottom: Int
+    )
     companion object {
         private const val TAG = "LingXia.WebView"
         const val EXTRA_APP_ID = "appId"
@@ -214,6 +227,11 @@ class LxAppActivity : AppCompatActivity() {
     // Tracks the currently visible WebView instance
     private var currentWebView: com.lingxia.lxapp.WebView? = null
     private var systemBottomInset: Int = 0
+    private var isMediaFullscreen = false
+    private var mediaFullscreenState: MediaFullscreenState? = null
+    private var pendingTabBarVisibility: Int? = null
+    private var pendingNavBarVisibility: Int? = null
+    private var shouldRestoreOverlayOrder = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -276,6 +294,10 @@ class LxAppActivity : AppCompatActivity() {
 
         // Setup window insets listener
         ViewCompat.setOnApplyWindowInsetsListener(rootContainer) { view, insets ->
+            if (isMediaFullscreen) {
+                view.setPadding(0, 0, 0, 0)
+                return@setOnApplyWindowInsetsListener WindowInsetsCompat.CONSUMED
+            }
             val sysBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             systemBottomInset = resolveContentBottomInset(insets)
 
@@ -500,6 +522,22 @@ class LxAppActivity : AppCompatActivity() {
     }
 
     private fun updateLayoutMargins() {
+        if (isMediaFullscreen) {
+            navigationBar?.visibility = View.GONE
+            tabBar?.visibility = View.GONE
+            (webViewContainer.layoutParams as FrameLayout.LayoutParams).apply {
+                topMargin = 0
+                bottomMargin = 0
+                leftMargin = 0
+                rightMargin = 0
+                webViewContainer.layoutParams = this
+                webViewContainer.requestLayout()
+            }
+            val container = webViewContainer.findViewWithTag<ViewGroup>("current_webview_container")
+            container?.translationY = 0f
+            container?.requestLayout()
+            return
+        }
         val isTabBarVisible = tabBar?.visibility == View.VISIBLE
         val tabBarHeight = tabBar?.layoutParams?.height ?: 0
         val tabBarWidth = tabBar?.layoutParams?.width ?: 0
@@ -691,7 +729,6 @@ class LxAppActivity : AppCompatActivity() {
             true // fall back to enabled if config lookup fails
         }
         helper.setEnabled(enabled)
-        Log.d(TAG, "Pull-to-refresh ${if (enabled) "enabled" else "disabled"} for $appId:$normalized")
     }
 
     private fun handlePullToRefresh() {
@@ -709,7 +746,6 @@ class LxAppActivity : AppCompatActivity() {
 
         // Notify Rust layer via on_ui_event
         try {
-            Log.i(TAG, "Pull-to-refresh: appId=$appId path=$path")
             NativeApi.onUiEvent(appId, NativeApi.UI_EVENT_PULL_DOWN_REFRESH, path)
         } catch (e: Exception) {
             Log.e(TAG, "onUiEvent pull-to-refresh failed: ${e.message}")
@@ -902,7 +938,120 @@ class LxAppActivity : AppCompatActivity() {
     }
 
     private fun showTabBar(show: Boolean) {
+        if (isMediaFullscreen) {
+            pendingTabBarVisibility = if (show) View.VISIBLE else View.GONE
+            tabBar?.visibility = View.GONE
+            return
+        }
         tabBar?.visibility = if (show) View.VISIBLE else View.GONE
+    }
+
+    fun enterMediaFullscreen() {
+        if (isMediaFullscreen) return
+        val navBar = navigationBar
+        val tab = tabBar
+        val navParent = navBar?.parent as? ViewGroup
+        val navIndex = navParent?.indexOfChild(navBar) ?: -1
+        val overlayHost = rootContainer.findViewWithTag<View>("SameLevelOverlay")
+        val overlayParams = overlayHost?.layoutParams as? FrameLayout.LayoutParams
+        mediaFullscreenState = MediaFullscreenState(
+            tabBarVisibility = tab?.visibility ?: View.GONE,
+            navigationBarVisibility = navBar?.visibility ?: View.GONE,
+            navigationBarIndex = navIndex,
+            navigationBarLayoutParams = navBar?.layoutParams,
+            overlayLayoutParams = overlayParams?.let { FrameLayout.LayoutParams(it) },
+            overlayTranslationX = overlayHost?.translationX ?: 0f,
+            overlayTranslationY = overlayHost?.translationY ?: 0f,
+            rootPaddingLeft = rootContainer.paddingLeft,
+            rootPaddingTop = rootContainer.paddingTop,
+            rootPaddingRight = rootContainer.paddingRight,
+            rootPaddingBottom = rootContainer.paddingBottom
+        )
+        pendingTabBarVisibility = null
+        pendingNavBarVisibility = null
+        isMediaFullscreen = true
+        if (overlayHost != null && rootContainer.indexOfChild(overlayHost) != rootContainer.childCount - 1) {
+            shouldRestoreOverlayOrder = true
+            rootContainer.bringChildToFront(overlayHost)
+        }
+        if (overlayHost != null) {
+            overlayHost.layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            ).apply {
+                leftMargin = 0
+                topMargin = 0
+                rightMargin = 0
+                bottomMargin = 0
+            }
+            overlayHost.translationX = 0f
+            overlayHost.translationY = 0f
+            overlayHost.requestLayout()
+        }
+        if (rootContainer.indexOfChild(webViewContainer) != rootContainer.childCount - 1) {
+            shouldRestoreOverlayOrder = true
+            rootContainer.bringChildToFront(webViewContainer)
+        }
+        if (navParent != null && navIndex >= 0) {
+            navParent.removeView(navBar)
+        } else {
+            navBar?.visibility = View.GONE
+        }
+        navBar?.visibility = View.GONE
+        tab?.visibility = View.GONE
+        rootContainer.setPadding(0, 0, 0, 0)
+        updateLayoutMargins()
+        rootContainer.requestApplyInsets()
+    }
+
+    fun exitMediaFullscreen() {
+        if (!isMediaFullscreen) return
+        isMediaFullscreen = false
+        mediaFullscreenState?.let { state ->
+            val tabVisibility = pendingTabBarVisibility ?: state.tabBarVisibility
+            val navVisibility = pendingNavBarVisibility ?: state.navigationBarVisibility
+            tabBar?.visibility = tabVisibility
+            navigationBar?.visibility = navVisibility
+            rootContainer.setPadding(
+                state.rootPaddingLeft,
+                state.rootPaddingTop,
+                state.rootPaddingRight,
+                state.rootPaddingBottom
+            )
+            val navBar = navigationBar
+            if (navBar != null && navBar.parent == null && state.navigationBarIndex >= 0) {
+                val params = state.navigationBarLayoutParams ?: FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+                rootContainer.addView(navBar, state.navigationBarIndex, params)
+                navBar.visibility = navVisibility
+            }
+            val overlayHost = rootContainer.findViewWithTag<View>("SameLevelOverlay")
+            if (overlayHost != null) {
+                state.overlayLayoutParams?.let { overlayHost.layoutParams = FrameLayout.LayoutParams(it) }
+                overlayHost.translationX = state.overlayTranslationX
+                overlayHost.translationY = state.overlayTranslationY
+                overlayHost.requestLayout()
+            }
+        }
+        mediaFullscreenState = null
+        pendingTabBarVisibility = null
+        pendingNavBarVisibility = null
+        if (shouldRestoreOverlayOrder) {
+            navigationBar?.let { rootContainer.bringChildToFront(it) }
+            tabBar?.let { rootContainer.bringChildToFront(it) }
+            rootContainer.findViewWithTag<View>("capsule_button")?.let { rootContainer.bringChildToFront(it) }
+            shouldRestoreOverlayOrder = false
+        }
+        updateLayoutMargins()
+        rootContainer.requestApplyInsets()
+        // Ensure WebView top margin is recalculated after NavigationBar has been re-attached/measured.
+        rootContainer.post {
+            if (isMediaFullscreen) return@post
+            updateLayoutMargins()
+            rootContainer.requestApplyInsets()
+        }
     }
 
     /**
@@ -1059,7 +1208,6 @@ class LxAppActivity : AppCompatActivity() {
             try {
                 val webView = container.getChildAt(0) as? WebView
                 if (webView?.getAppId() != null && webView.getCurrentPath() != null) {
-                    Log.d(TAG, "Triggering onPageShow for ${webView.getAppId()}:${webView.getCurrentPath()}")
                     NativeApi.onPageShow(webView.getAppId()!!, webView.getCurrentPath()!!)
                 }
             } catch (e: Exception) {
@@ -1161,6 +1309,9 @@ class LxAppActivity : AppCompatActivity() {
     private fun animateNavBar(navbarState: NavigationBarState, isBackNavigation: Boolean) {
         if (!navbarState.showNavbar) {
             navigationBar?.visibility = View.GONE
+            if (isMediaFullscreen) {
+                pendingNavBarVisibility = View.GONE
+            }
             return
         }
 
@@ -1175,11 +1326,18 @@ class LxAppActivity : AppCompatActivity() {
                 disableAnimation = false
             )
         }
+        if (isMediaFullscreen) {
+            pendingNavBarVisibility = View.VISIBLE
+            navigationBar?.visibility = View.GONE
+        }
     }
 
     private fun updateNavBar(navbarState: NavigationBarState) {
         if (!navbarState.showNavbar) {
             navigationBar?.visibility = View.GONE
+            if (isMediaFullscreen) {
+                pendingNavBarVisibility = View.GONE
+            }
             return
         }
 
@@ -1191,6 +1349,10 @@ class LxAppActivity : AppCompatActivity() {
                 onHomeClickListener = { handleHomeButtonClick() },
                 disableAnimation = true
             )
+        }
+        if (isMediaFullscreen) {
+            pendingNavBarVisibility = View.VISIBLE
+            navigationBar?.visibility = View.GONE
         }
     }
 
@@ -1237,9 +1399,19 @@ class LxAppActivity : AppCompatActivity() {
                 onHomeClickListener = { handleHomeButtonClick() },
                 disableAnimation = disableAnimation
             )
+            if (isMediaFullscreen) {
+                val shouldShow = navbarState.showNavbar ||
+                    navbarState.showBackButton ||
+                    navbarState.showHomeButton
+                pendingNavBarVisibility = if (shouldShow) View.VISIBLE else View.GONE
+                navigationBar?.visibility = View.GONE
+            }
         } else {
             // Hide navbar completely
             navigationBar?.visibility = View.GONE
+            if (isMediaFullscreen) {
+                pendingNavBarVisibility = View.GONE
+            }
         }
 
         updateLayoutMargins()
@@ -1291,10 +1463,8 @@ class LxAppActivity : AppCompatActivity() {
         // Get next LxApp from Rust stack and open it
         val currentLxApp = NativeApi.getCurrentLxApp()
         if (currentLxApp != null && currentLxApp.isValid()) {
-            Log.i(TAG, "Opening next LxApp from stack: ${currentLxApp.appId}:${currentLxApp.path}")
             openLxApp(currentLxApp.appId, currentLxApp.path)
         } else {
-            Log.i(TAG, "No more LxApps in stack, activity will remain empty")
         }
     }
 
