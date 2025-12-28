@@ -27,6 +27,7 @@ swift-bridge = "0.1.57"
 log = "0.4.27"
 oslog = "0.2.0"
 serde_json = { workspace = true }
+base64 = { workspace = true }
 percent-encoding = "2.3"
 security-framework = "3.5.1"
 

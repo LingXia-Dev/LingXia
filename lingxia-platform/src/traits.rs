@@ -2,6 +2,7 @@ pub mod core;
 pub mod media_interaction;
 pub mod media_runtime;
 pub mod pull_to_refresh;
+pub mod stream_decoder;
 pub mod video_player;
 
 pub use core::{
@@ -17,6 +18,10 @@ pub use media_interaction::{
 };
 pub use media_runtime::{CompressImageRequest, ImageInfo, MediaRuntime};
 pub use pull_to_refresh::PullToRefresh;
+pub use stream_decoder::{
+    AudioCodec, AudioFrame, AudioStreamConfig, VideoCodec, VideoFormat, VideoFrame,
+    VideoStreamConfig, VideoStreamDecoderHandle, VideoStreamDecoderManager,
+};
 pub use video_player::{
     VideoPlayerCommand, VideoPlayerHandle, VideoPlayerHandleImpl, VideoPlayerManager,
 };
