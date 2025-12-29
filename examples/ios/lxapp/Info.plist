@@ -40,5 +40,15 @@
     <string>Allow LingXia to capture photos and videos through the camera.</string>
     <key>NSMicrophoneUsageDescription</key>
     <string>Allow LingXia to record audio when capturing videos.</string>
+
+    <!-- Disable rotation -->
+    <key>UISupportedInterfaceOrientations</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+    </array>
+    <key>UISupportedInterfaceOrientations~ipad</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+    </array>
 </dict>
 </plist>
