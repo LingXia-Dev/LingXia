@@ -110,19 +110,24 @@ impl MessageHandler for PageSvc {
                             _ => (rong::JsInvokePriority::Normal, None),
                         };
                         // Enqueue (non-blocking); Bridge for Call already replied success
-                        if let Err(e) = rong::enqueue_js_invoke(
-                            &ctx,
-                            js_func.clone(),
-                            Some(page_svc_clone.this.clone()),
-                            args_obj,
-                            prio,
-                            dedup,
-                            false,
-                        )
-                        .await
-                        {
-                            error!("JS invocation '{}' failed: {}", name_owned, e);
-                        }
+                        let this_obj = page_svc_clone.this.clone();
+                        let name_for_log = name_owned.clone();
+                        let task = async move {
+                            if let Err(e) = rong::enqueue_js_invoke(
+                                &ctx,
+                                js_func.clone(),
+                                Some(this_obj),
+                                args_obj,
+                                prio,
+                                dedup,
+                                false,
+                            )
+                            .await
+                            {
+                                error!("JS invocation '{}' failed: {}", name_for_log, e);
+                            }
+                        };
+                        rong::spawn(task);
                     }
                     ServiceType::FastAPI(handler) => {
                         // For FastAPI, handle directly and reply
