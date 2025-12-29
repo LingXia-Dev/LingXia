@@ -50,6 +50,9 @@ final class SameLevelComponentManager {
     private var factories: [String: LxNativeComponentFactory] = [:]
     private let eventSink: (_ payload: [String: Any]) -> Void
 
+    private var webOverlayCoverageRestore: [String: Bool] = [:]
+    private var scrollBounceRestore: (bounces: Bool, alwaysBounceVertical: Bool)? = nil
+
     init(
         scrollView: UIScrollView,
         hostView: UIView,
@@ -91,6 +94,8 @@ final class SameLevelComponentManager {
             handleBlur(message)
         case "component.command":
             handleCommand(message)
+        case "component.coverage":
+            handleCoverage(message)
         case "page.lifecycle":
             handlePageLifecycle(message)
         default:
@@ -349,6 +354,10 @@ final class SameLevelComponentManager {
 
     private func unmountComponent(id: String, pageId: String?) {
         guard let component = components.removeValue(forKey: id) else { return }
+        if component is VideoComponent {
+            webOverlayCoverageRestore.removeValue(forKey: id)
+            updateScrollBounceSuppression()
+        }
         // Unregister from hit-test swizzler before unmount
         WKContentViewHitTestSwizzler.shared.unregisterNativeView(component.view)
         component.unmount()
@@ -365,6 +374,54 @@ final class SameLevelComponentManager {
         componentPage.removeValue(forKey: id)
         componentCallbacks.removeValue(forKey: id)
         ComponentRouter.shared.unregister(componentId: id)
+    }
+
+    private func handleCoverage(_ parameters: [String: Any]) {
+        guard let id = parameters["id"] as? String,
+              let covered = parameters["covered"] as? Bool else { return }
+        setWebOverlayCoverage(componentId: id, covered: covered)
+    }
+
+    func setWebOverlayCoverage(componentId: String, covered: Bool) {
+        guard let component = components[componentId] as? VideoComponent else { return }
+        let view = component.view
+
+        if covered {
+            if webOverlayCoverageRestore[componentId] == nil {
+                webOverlayCoverageRestore[componentId] = view.isUserInteractionEnabled
+            }
+            view.isUserInteractionEnabled = false
+            updateScrollBounceSuppression()
+            return
+        }
+
+        let restore = webOverlayCoverageRestore.removeValue(forKey: componentId)
+        if let restore {
+            view.isUserInteractionEnabled = restore
+        }
+        updateScrollBounceSuppression()
+    }
+
+    private func updateScrollBounceSuppression() {
+        guard let scrollView else { return }
+        let suppress = !webOverlayCoverageRestore.isEmpty
+
+        if suppress {
+            if scrollBounceRestore == nil {
+                scrollBounceRestore = (
+                    bounces: scrollView.bounces,
+                    alwaysBounceVertical: scrollView.alwaysBounceVertical
+                )
+            }
+            scrollView.bounces = false
+            scrollView.alwaysBounceVertical = false
+            return
+        }
+
+        guard let restore = scrollBounceRestore else { return }
+        scrollView.bounces = restore.bounces
+        scrollView.alwaysBounceVertical = restore.alwaysBounceVertical
+        scrollBounceRestore = nil
     }
 
     /// Convert window-space rect to WKScrollView coords and locate matching WKChildScrollView.
@@ -436,7 +493,7 @@ final class WKContentViewHitTestSwizzler {
             guard let superview = view.superview else { continue }
             // Convert point to the native view's coordinate space
             let pointInView = contentView.convert(point, to: superview)
-            if view.frame.contains(pointInView) && !view.isHidden && view.alpha > 0.01 {
+            if view.frame.contains(pointInView) && !view.isHidden && view.alpha > 0.01 && view.isUserInteractionEnabled {
                 // Return the view that should receive touches
                 return view.hitTest(superview.convert(pointInView, to: view), with: nil) ?? view
             }

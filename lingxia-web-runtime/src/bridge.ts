@@ -7,6 +7,7 @@ import type {
   ReplyPayload,
   SameLevelMessage,
 } from './types';
+import { installSameLevelCoverageMonitor } from './samelevel/coverage-monitor';
 
 const NATIVE_HANDLER_NAME = 'LingXia';
 const GLOBAL_RECEIVER_NAME = '__LingXiaRecvMessage';
@@ -383,7 +384,6 @@ function sendSameLevelMessage(message: SameLevelMessage): void {
   try {
     const hasHandler = hasSameLevelHandler();
     if (!hasHandler) {
-      console.log('[SameLevel] queue message (no handler yet):', message);
       sameLevelQueue.push(message);
       return;
     }
@@ -711,6 +711,7 @@ export function initBridge(): void {
 
   window.LingXiaBridge = LingXiaBridge;
   window.lx = lx;
+  installSameLevelCoverageMonitor({ os: getPlatformOS(), send: sendSameLevelMessage });
 
   log('LingXia Bridge initialization completed');
 }

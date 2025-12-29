@@ -47,6 +47,8 @@ class SameLevelComponentManager(
     private val pageComponents = mutableMapOf<String, MutableSet<String>>()
     private val factories = mutableMapOf<String, LxNativeComponentFactory>()
 
+    private val webOverlayCoverageRestore: MutableMap<String, Int> = mutableMapOf()
+
     // When DOM is transitioning (e.g. switching live <-> playback), measureById can temporarily
     // return 0-size. Keep retrying a few times so the native overlay catches the final layout.
     private val rectSyncRetries = mutableMapOf<String, Int>()
@@ -64,8 +66,32 @@ class SameLevelComponentManager(
             "component.focus" -> handleFocus(message)
             "component.blur" -> handleBlur(message)
             "component.command" -> handleCommand(message)
+            "component.coverage" -> handleCoverage(message)
             "page.lifecycle" -> handlePageLifecycle(message)
         }
+    }
+
+    private fun handleCoverage(params: Map<String, Any?>) {
+        val id = params["id"] as? String ?: return
+        val covered = params["covered"] as? Boolean ?: return
+        setWebOverlayCoverage(componentId = id, covered = covered)
+    }
+
+    private fun setWebOverlayCoverage(componentId: String, covered: Boolean) {
+        val component = components[componentId] as? VideoComponent ?: return
+        val view = component.view
+
+        if (covered) {
+            if (view.visibility == View.INVISIBLE && webOverlayCoverageRestore.containsKey(componentId)) {
+                return
+            }
+            webOverlayCoverageRestore.putIfAbsent(componentId, view.visibility)
+            view.visibility = View.INVISIBLE
+            return
+        }
+
+        val restore = webOverlayCoverageRestore.remove(componentId) ?: return
+        view.visibility = restore
     }
 
     private fun handleMount(params: Map<String, Any?>) {
@@ -434,6 +460,7 @@ class SameLevelComponentManager(
     }
 
     private fun unmountComponent(id: String, pageId: String?) {
+        webOverlayCoverageRestore.remove(id)
         // If a stream decoder session exists, stop it when the component is unmounted.
         // Otherwise we can end up with orphaned AudioTrack playback (audio-only) and a decoder
         // still bound to an old/detached TextureView after React remounts the component.
