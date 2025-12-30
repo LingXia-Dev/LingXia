@@ -52,6 +52,10 @@ final class VideoComponent: NSObject, LxNativeComponent {
         player.handle(command: command)
     }
 
+    func handleStreamDecoderEvent(_ event: String) {
+        player.handleStreamDecoderEvent(event)
+    }
+
     func setStreamDecoderActive(_ active: Bool) {
         if active {
             player.setStreamDecoderActive(true) { [weak self] name, params in

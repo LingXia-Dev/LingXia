@@ -236,6 +236,9 @@ final class SameLevelComponentManager {
     }
 
     func emitComponentEvent(componentId: String, event: String, detail: [String: Any] = [:]) {
+        if event == "waiting" || event == "play" || event == "pause" || event == "stop" {
+            (components[componentId] as? VideoComponent)?.handleStreamDecoderEvent(event)
+        }
         sendEventToWeb(componentId: componentId, event: ["event": event, "detail": detail])
     }
 

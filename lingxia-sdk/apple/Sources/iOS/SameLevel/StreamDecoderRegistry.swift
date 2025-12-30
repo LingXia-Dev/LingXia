@@ -55,13 +55,7 @@ final class StreamDecoderRegistry {
 
     func pushVideo(componentId: String, data: Data, dtsMs: UInt32, ptsMs: UInt32, keyframe: Bool) -> Bool {
         if stopping.contains(componentId) {
-            os_log(
-                "pushVideo dropped for %{public}@ (stopping)",
-                log: log,
-                type: .info,
-                componentId
-            )
-            return true
+            stopping.remove(componentId)
         }
 
         guard let session = ensureSession(componentId: componentId, reason: "pushVideo") else {
@@ -81,13 +75,7 @@ final class StreamDecoderRegistry {
 
     func pushAudio(componentId: String, data: Data, dtsMs: UInt32, ptsMs: UInt32) -> Bool {
         if stopping.contains(componentId) {
-            os_log(
-                "pushAudio dropped for %{public}@ (stopping)",
-                log: log,
-                type: .info,
-                componentId
-            )
-            return true
+            stopping.remove(componentId)
         }
 
         guard let session = ensureSession(componentId: componentId, reason: "pushAudio") else {
@@ -127,7 +115,9 @@ final class StreamDecoderRegistry {
     }
 
     func handleCommand(componentId: String, name: String, params: [String: Any]?) -> Bool {
-        guard let session = sessions[componentId] else { return false }
+        guard let session = ensureSession(componentId: componentId, reason: "handleCommand") else {
+            return false
+        }
         return session.handleCommand(name: name, params: params)
     }
 
@@ -203,6 +193,13 @@ private final class StreamVideoLayerView: UIView {
 }
 
 private final class StreamDecoderSession {
+    private final class WeakRef<T: AnyObject> {
+        weak var value: T?
+        init(_ value: T) {
+            self.value = value
+        }
+    }
+
     private let componentId: String
     private weak var containerView: UIView?
     private let log: OSLog
@@ -233,11 +230,13 @@ private final class StreamDecoderSession {
     private var streamMuted = false
     private var waitingForVideoKeyframe = false
     private var resumeAfterVideoKeyframe = false
-    private var suppressedLayers: [CALayer] = []
-    private var suppressedViews: [UIView] = []
+    private var playRequested = false
+    private var gateAudioUntilVideo = false
+    private var suppressedLayers: [WeakRef<CALayer>] = []
+    private var suppressedViews: [WeakRef<UIView>] = []
     private var appObservers: [NSObjectProtocol] = []
     private var wasPlayingBeforeBackground = false
-
+    private var pendingVideoKeyframe: (data: Data, dtsMs: UInt32, ptsMs: UInt32)?
     @MainActor
     init(componentId: String, containerView: UIView, log: OSLog) {
         self.componentId = componentId
@@ -284,7 +283,6 @@ private final class StreamDecoderSession {
         }
         videoConfig = config
         
-        // Update corner radius after video configuration (in case it was set after initialization)
         updateCornerRadius()
         
         decodeQueue.async { [weak self] in
@@ -327,16 +325,18 @@ private final class StreamDecoderSession {
         decodeQueue.async { [weak self] in
             guard let self = self else { return }
             if self.waitingForVideoKeyframe {
-                if !keyframe {
+                let inferredKeyframe = keyframe || self.inferKeyframe(data: data)
+                if !inferredKeyframe {
                     return
                 }
                 if self.videoFormatDescription == nil {
+                    self.pendingVideoKeyframe = (data: data, dtsMs: dtsMs, ptsMs: ptsMs)
                     return
                 }
                 self.waitingForVideoKeyframe = false
                 if self.resumeAfterVideoKeyframe {
                     self.resumeAfterVideoKeyframe = false
-                    if self.renderSynchronizer.rate == 0.0 {
+                    if self.playRequested && self.renderSynchronizer.rate == 0.0 {
                         self.renderSynchronizer.rate = 1.0
                     }
                 }
@@ -351,8 +351,9 @@ private final class StreamDecoderSession {
                 ptsMs: normalizedPts
             ) else { return }
             self.videoLayerView.displayLayer.enqueue(sampleBuffer)
-            if !self.isPlaying {
+            if !self.isPlaying && self.playRequested {
                 self.isPlaying = true
+                self.gateAudioUntilVideo = false
                 let componentId = self.componentId
                 DispatchQueue.main.async {
                     ComponentRouter.shared.emitComponentEvent(
@@ -362,7 +363,7 @@ private final class StreamDecoderSession {
                     )
                 }
             }
-            if self.renderSynchronizer.rate == 0.0 {
+            if self.playRequested && self.renderSynchronizer.rate == 0.0 && !self.waitingForVideoKeyframe {
                 self.renderSynchronizer.rate = 1.0
             }
         }
@@ -371,6 +372,9 @@ private final class StreamDecoderSession {
     func pushAudio(data: Data, dtsMs: UInt32, ptsMs: UInt32) {
         decodeQueue.async { [weak self] in
             guard let self = self else { return }
+            if self.gateAudioUntilVideo || self.waitingForVideoKeyframe {
+                return
+            }
             guard let format = self.audioFormatDescription else { return }
             if self.usePcmAudioEngine, let audioFormat = self.pcmAudioFormat {
                 self.enqueuePcmAudio(data: data, format: audioFormat)
@@ -403,7 +407,12 @@ private final class StreamDecoderSession {
             }
             guard let sampleBuffer else { return }
             self.audioRenderer.enqueue(sampleBuffer)
-            if self.renderSynchronizer.rate == 0.0 && self.isPlaying {
+            if self.renderSynchronizer.rate == 0.0
+                && self.isPlaying
+                && self.playRequested
+                && !self.waitingForVideoKeyframe
+                && !self.gateAudioUntilVideo
+            {
                 self.renderSynchronizer.rate = 1.0
             }
         }
@@ -413,21 +422,29 @@ private final class StreamDecoderSession {
     func handleCommand(name: String, params: [String: Any]?) -> Bool {
         switch name {
         case "play":
-            renderSynchronizer.rate = 1.0
+            playRequested = true
             if let view = containerView {
                 suppressNativePlayback(in: view)
             }
-            // Ensure corner radius is applied when playback starts
             updateCornerRadius()
-            ComponentRouter.shared.emitComponentEvent(componentId: componentId, event: "play", detail: [:])
+            if waitingForVideoKeyframe || !isPlaying {
+                gateAudioUntilVideo = true
+                resumeAfterVideoKeyframe = true
+                renderSynchronizer.rate = 0.0
+                ComponentRouter.shared.emitComponentEvent(componentId: componentId, event: "waiting", detail: [:])
+            } else {
+                renderSynchronizer.rate = 1.0
+                ComponentRouter.shared.emitComponentEvent(componentId: componentId, event: "play", detail: [:])
+            }
             return true
         case "pause":
+            playRequested = false
             renderSynchronizer.rate = 0.0
             isPlaying = false
             ComponentRouter.shared.emitComponentEvent(componentId: componentId, event: "pause", detail: [:])
             return true
         case "stop":
-            stop()
+            stopPlayback()
             ComponentRouter.shared.emitComponentEvent(componentId: componentId, event: "stop", detail: [:])
             return true
         case "resetStream":
@@ -463,13 +480,47 @@ private final class StreamDecoderSession {
     }
 
     @MainActor
+    private func stopPlayback() {
+        renderSynchronizer.rate = 0.0
+        isPlaying = false
+        waitingForVideoKeyframe = false
+        resumeAfterVideoKeyframe = false
+        playRequested = false
+        gateAudioUntilVideo = false
+        pendingVideoKeyframe = nil
+
+        videoBaseTimeMs = nil
+        audioBaseTimeMs = nil
+        lastVideoPtsMs = nil
+        lastVideoDtsMs = nil
+        lastAudioPtsMs = nil
+        pcmAudioPtsMs = 0
+
+        decodeQueue.async { [weak self] in
+            self?.videoLayerView.displayLayer.flushAndRemoveImage()
+            self?.audioRenderer.flush()
+        }
+
+        stopPcmAudioEngine()
+        restoreNativePlayback()
+    }
+
+    @MainActor
     private func resetStream(hard: Bool) {
-        let wasRunning = renderSynchronizer.rate != 0.0 || isPlaying
+        let wasRunning = playRequested || renderSynchronizer.rate != 0.0 || isPlaying
         renderSynchronizer.rate = 0.0
         isPlaying = false
 
+        if wasRunning { playRequested = true }
+
         waitingForVideoKeyframe = true
         resumeAfterVideoKeyframe = wasRunning
+        gateAudioUntilVideo = wasRunning
+        pendingVideoKeyframe = nil
+
+        if wasRunning {
+            ComponentRouter.shared.emitComponentEvent(componentId: componentId, event: "waiting", detail: [:])
+        }
 
         videoBaseTimeMs = nil
         audioBaseTimeMs = nil
@@ -520,19 +571,10 @@ private final class StreamDecoderSession {
 
     @MainActor
     func stop() {
-        renderSynchronizer.rate = 0.0
-        isPlaying = false
-        waitingForVideoKeyframe = false
-        resumeAfterVideoKeyframe = false
-        decodeQueue.async { [weak self] in
-            self?.videoLayerView.displayLayer.flushAndRemoveImage()
-            self?.audioRenderer.flush()
-        }
+        stopPlayback()
         videoLayerView.removeFromSuperview()
         renderSynchronizer.removeRenderer(videoLayerView.displayLayer, at: .zero)
         renderSynchronizer.removeRenderer(audioRenderer, at: .zero)
-        stopPcmAudioEngine()
-        restoreNativePlayback()
         for token in appObservers {
             NotificationCenter.default.removeObserver(token)
         }
@@ -549,7 +591,6 @@ private final class StreamDecoderSession {
         
         view.insertSubview(videoLayerView, at: 0)
         
-        // Apply corner radius after adding to view
         updateCornerRadius()
     }
     
@@ -558,18 +599,15 @@ private final class StreamDecoderSession {
         guard let view = containerView else { return }
         let radius = view.layer.cornerRadius
 
-        // Always update, even if radius is 0 (to reset if needed)
         videoLayerView.layer.cornerRadius = radius
         videoLayerView.layer.masksToBounds = radius > 0
         videoLayerView.clipsToBounds = radius > 0
         videoLayerView.backgroundColor = .clear
         
-        // Ensure the display layer matches the video layer view's frame and corner radius
         videoLayerView.displayLayer.frame = videoLayerView.bounds
         videoLayerView.displayLayer.cornerRadius = radius
         videoLayerView.displayLayer.masksToBounds = radius > 0
         
-        // Force layout update
         videoLayerView.setNeedsLayout()
         videoLayerView.layoutIfNeeded()
     }
@@ -593,6 +631,44 @@ private final class StreamDecoderSession {
                 return
             }
             videoFormatDescription = format
+        }
+
+        if waitingForVideoKeyframe,
+           let pending = pendingVideoKeyframe,
+           let format = videoFormatDescription
+        {
+            pendingVideoKeyframe = nil
+            waitingForVideoKeyframe = false
+            if resumeAfterVideoKeyframe {
+                resumeAfterVideoKeyframe = false
+                if playRequested && renderSynchronizer.rate == 0.0 {
+                    renderSynchronizer.rate = 1.0
+                }
+            }
+            let (normalizedDts, normalizedPts) = normalizeVideoTimes(dtsMs: pending.dtsMs, ptsMs: pending.ptsMs)
+            let sampleData = convertVideoData(pending.data)
+            guard let sampleBuffer = makeSampleBuffer(
+                data: sampleData,
+                formatDescription: format,
+                dtsMs: normalizedDts,
+                ptsMs: normalizedPts
+            ) else { return }
+            videoLayerView.displayLayer.enqueue(sampleBuffer)
+            if !isPlaying && playRequested {
+                isPlaying = true
+                gateAudioUntilVideo = false
+                let componentId = self.componentId
+                DispatchQueue.main.async {
+                    ComponentRouter.shared.emitComponentEvent(
+                        componentId: componentId,
+                        event: "play",
+                        detail: [:]
+                    )
+                }
+            }
+            if playRequested && renderSynchronizer.rate == 0.0 {
+                renderSynchronizer.rate = 1.0
+            }
         }
     }
 
@@ -745,6 +821,75 @@ private final class StreamDecoderSession {
         return normalized
     }
 
+    private func inferKeyframe(data: Data) -> Bool {
+        guard let config = videoConfig else { return false }
+        let codec = config.codec.lowercased()
+        let format = config.format.lowercased()
+        let nalLengthSize = config.nalLengthSize ?? 4
+
+        if format == "avcc" {
+            return inferKeyframeAvcc(data: data, codec: codec, nalLengthSize: nalLengthSize)
+        }
+        return inferKeyframeAnnexB(data: data, codec: codec)
+    }
+
+    private func inferKeyframeAvcc(data: Data, codec: String, nalLengthSize: Int) -> Bool {
+        let lengthSize = max(1, min(4, nalLengthSize))
+        var offset = 0
+        while offset + lengthSize <= data.count {
+            var nalLen: Int = 0
+            for i in 0..<lengthSize {
+                nalLen = (nalLen << 8) | Int(data[offset + i])
+            }
+            offset += lengthSize
+            if nalLen <= 0 || offset + nalLen > data.count {
+                break
+            }
+            if let header = data[offset..<(offset + 1)].first {
+                if isKeyframeNalHeader(codec: codec, header: header) {
+                    return true
+                }
+            }
+            offset += nalLen
+        }
+        return false
+    }
+
+    private func inferKeyframeAnnexB(data: Data, codec: String) -> Bool {
+        let bytes = [UInt8](data)
+        var i = 0
+        while i + 4 < bytes.count {
+            var startCodeLen = 0
+            if bytes[i] == 0 && bytes[i + 1] == 0 && bytes[i + 2] == 1 {
+                startCodeLen = 3
+            } else if bytes[i] == 0 && bytes[i + 1] == 0 && bytes[i + 2] == 0 && bytes[i + 3] == 1 {
+                startCodeLen = 4
+            }
+            if startCodeLen == 0 {
+                i += 1
+                continue
+            }
+            let nalStart = i + startCodeLen
+            if nalStart >= bytes.count {
+                break
+            }
+            let header = bytes[nalStart]
+            if isKeyframeNalHeader(codec: codec, header: header) {
+                return true
+            }
+            i = nalStart + 1
+        }
+        return false
+    }
+
+    private func isKeyframeNalHeader(codec: String, header: UInt8) -> Bool {
+        if codec == "h265" || codec == "hevc" {
+            let nalType = (header >> 1) & 0x3F
+            return nalType >= 16 && nalType <= 21
+        }
+        return (header & 0x1F) == 5
+    }
+
     private func makeAudioSampleBuffer(
         data: Data,
         formatDescription: CMFormatDescription,
@@ -818,25 +963,33 @@ private final class StreamDecoderSession {
 
     @MainActor
     private func suppressNativePlayback(in view: UIView) {
-        guard suppressedLayers.isEmpty, suppressedViews.isEmpty else { return }
+        suppressedLayers = suppressedLayers.filter { $0.value != nil }
+        suppressedViews = suppressedViews.filter { $0.value != nil }
+
+        let trackedLayers = Set(suppressedLayers.compactMap { $0.value }.map { ObjectIdentifier($0) })
+        let trackedViews = Set(suppressedViews.compactMap { $0.value }.map { ObjectIdentifier($0) })
         if let layers = view.layer.sublayers {
             for layer in layers where layer is AVPlayerLayer {
                 layer.isHidden = true
-                suppressedLayers.append(layer)
+                if !trackedLayers.contains(ObjectIdentifier(layer)) {
+                    suppressedLayers.append(WeakRef(layer))
+                }
             }
         }
         for subview in view.subviews where subview is UIImageView {
             subview.isHidden = true
-            suppressedViews.append(subview)
+            if !trackedViews.contains(ObjectIdentifier(subview)) {
+                suppressedViews.append(WeakRef(subview))
+            }
         }
     }
 
     @MainActor
     private func restoreNativePlayback() {
-        for layer in suppressedLayers {
+        for layer in suppressedLayers.compactMap({ $0.value }) {
             layer.isHidden = false
         }
-        for view in suppressedViews {
+        for view in suppressedViews.compactMap({ $0.value }) {
             view.isHidden = false
         }
         suppressedLayers.removeAll()
@@ -873,16 +1026,7 @@ private final class StreamDecoderSession {
     @MainActor
     private func ensureNativePlaybackSuppressed() {
         guard let view = containerView else { return }
-        if suppressedLayers.isEmpty && suppressedViews.isEmpty {
-            suppressNativePlayback(in: view)
-            return
-        }
-        for layer in suppressedLayers where !layer.isHidden {
-            layer.isHidden = true
-        }
-        for view in suppressedViews where !view.isHidden {
-            view.isHidden = true
-        }
+        suppressNativePlayback(in: view)
     }
 
     @MainActor
@@ -984,7 +1128,6 @@ private final class StreamDecoderSession {
         if let engine = audioEngine {
             engine.mainMixerNode.outputVolume = effective
         }
-        // Best-effort for non-PCM renderer without hard dependency.
         audioRenderer.setValue(NSNumber(value: effective), forKey: "volume")
     }
 

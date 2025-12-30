@@ -731,6 +731,20 @@ public final class LxMediaPlayer: NSObject {
         }
     }
 
+    public func handleStreamDecoderEvent(_ event: String) {
+        guard streamDecoderActive else { return }
+        switch event {
+        case "waiting":
+            if !isPausedByUser {
+                loadingIndicator.startAnimating()
+            }
+        case "play", "pause", "stop":
+            loadingIndicator.stopAnimating()
+        default:
+            break
+        }
+    }
+
     public func detach() {
         stop()
         timeObserver.flatMap { player?.removeTimeObserver($0) }
@@ -1033,6 +1047,13 @@ public final class LxMediaPlayer: NSObject {
     }
 
     private func play() {
+        if streamDecoderActive {
+            isPausedByUser = false
+            _ = streamCommandHandler?("play", [:])
+            updatePlayPauseUI(isPlaying: true)
+            showControlsTemporarily()
+            return
+        }
         isPausedByUser = false  // User wants to play
         if waitingForFirstFrame {
             desiredPlayWhenReady = true
@@ -1078,6 +1099,15 @@ public final class LxMediaPlayer: NSObject {
     }
 
     private func pause() {
+        if streamDecoderActive {
+            isPausedByUser = true
+            _ = streamCommandHandler?("pause", [:])
+            loadingIndicator.stopAnimating()
+            updatePlayPauseUI(isPlaying: false)
+            showControlsTemporarily()
+            send(.pause)
+            return
+        }
         isPausedByUser = true  // User explicitly paused
         player?.pause()
         // Cancel pending play event if pause is called before video started
@@ -1091,6 +1121,25 @@ public final class LxMediaPlayer: NSObject {
     }
 
     private func stop() {
+        if streamDecoderActive {
+            isPausedByUser = true
+            _ = streamCommandHandler?("pause", [:])
+            _ = streamCommandHandler?("resetStream", ["hard": true])
+            loadingIndicator.stopAnimating()
+            updatePlayPauseUI(isPlaying: false)
+            showControlsTemporarily()
+            send(.stop)
+            
+            // Show poster image on stop and reset progress
+            // Hide playerLayer to reveal poster underneath
+            playerLayer.opacity = 0
+            posterImageView.isHidden = false
+            posterImageView.alpha = 1
+            progressSlider.value = 0
+            firstFrameDisplayed = false
+            return
+        }
+        isPausedByUser = true // Stopped by user
         player?.pause()
         player?.seek(to: .zero)
         // Cancel pending play event on stop
