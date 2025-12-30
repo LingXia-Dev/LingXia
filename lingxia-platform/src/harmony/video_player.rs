@@ -2602,7 +2602,13 @@ impl VideoStreamDecoderHandle for HarmonyStreamDecoderHandle {
         true
     }
 
+    fn supports_in_place_hard_reset(&self) -> bool {
+        false
+    }
+
     fn reset_stream(&self, hard: bool) -> Result<(), PlatformError> {
+        notify_arkts(&self.component_id, "waiting", None);
+
         match self.state.try_lock() {
             Ok(mut state) => {
                 if hard {

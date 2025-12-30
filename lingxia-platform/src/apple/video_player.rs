@@ -108,6 +108,10 @@ impl VideoStreamDecoderHandle for IosStreamDecoderHandle {
         true
     }
 
+    fn supports_in_place_hard_reset(&self) -> bool {
+        true
+    }
+
     fn reset_stream(&self, hard: bool) -> Result<(), PlatformError> {
         let params_json = serde_json::to_string(&json!({ "hard": hard })).map_err(|e| {
             PlatformError::Platform(format!("Failed to serialize reset params: {}", e))

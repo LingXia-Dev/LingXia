@@ -259,7 +259,10 @@ impl JSVideoContext {
             None => self.ensure_stream_decoder()?,
         };
 
-        let reuse_decoder = decoder.supports_soft_reset() && !force_hard;
+        let supports_soft_reset = decoder.supports_soft_reset();
+        let supports_in_place_hard_reset = decoder.supports_in_place_hard_reset();
+        let reuse_decoder = supports_soft_reset && (!force_hard || supports_in_place_hard_reset);
+        let hard_reset_in_place = force_hard && supports_in_place_hard_reset;
         info!(
             "setStreamSource component_id={} provider_type={} epoch={} reuse_decoder={}",
             self.component_id, &provider_type, epoch, reuse_decoder
@@ -267,34 +270,30 @@ impl JSVideoContext {
 
         if reuse_decoder {
             self.abort_stream_session_async()?;
-            if let Err(err) = decoder.reset_stream(false) {
-                // Soft reset is best-effort. If the decoder is transiently busy, starting the new
-                // stream session is still preferable to hard-recreating the decoder (which tends
-                // to cause more visible flicker). The next config/frame will naturally converge.
+            if let Err(err) = decoder.reset_stream(hard_reset_in_place) {
                 warn!(
-                    "setStreamSource soft reset skipped for {}: {}",
-                    self.component_id, err
+                    "setStreamSource reset_stream failed component_id={} hard_reset_in_place={} err={}",
+                    self.component_id, hard_reset_in_place, err
                 );
 
-                // Retry in the background a few times to ensure we eventually flush the old stream
-                // buffers; this prevents "camera switched but picture doesn't change" symptoms
-                // when the decoder lock is momentarily busy.
-                let decoder_retry = decoder.clone();
-                thread::spawn(move || {
-                    for _ in 0..20 {
-                        thread::sleep(Duration::from_millis(10));
-                        if decoder_retry.reset_stream(false).is_ok() {
-                            break;
+                if !hard_reset_in_place {
+                    let decoder_retry = decoder.clone();
+                    let epoch_token = self.stream_epoch.clone();
+                    let expected_epoch = epoch;
+                    thread::spawn(move || {
+                        for _ in 0..20 {
+                            thread::sleep(Duration::from_millis(10));
+                            if epoch_token.load(Ordering::Relaxed) != expected_epoch {
+                                break;
+                            }
+                            if decoder_retry.reset_stream(false).is_ok() {
+                                break;
+                            }
                         }
-                    }
-                });
+                    });
+                }
             }
-        }
-
-        if !reuse_decoder {
-            // Do not block the JS worker thread while tearing down the previous stream.
-            // Harmony UI rebuilds can interleave calls; blocking here causes view->native calls to
-            // time out (e.g. selectPlaybackSegment) even though the UI is still responsive.
+        } else {
             self.stop_stream_session_async()?;
             if had_existing_decoder {
                 let old_decoder = {
@@ -318,6 +317,12 @@ impl JSVideoContext {
                 }
 
                 decoder = self.ensure_stream_decoder()?;
+            }
+            if let Err(err) = decoder.reset_stream(false) {
+                warn!(
+                    "setStreamSource failed to reset decoder component_id={} provider_type={} epoch={} err={}",
+                    self.component_id, &provider_type, epoch, err
+                );
             }
         }
 

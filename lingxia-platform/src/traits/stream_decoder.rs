@@ -59,6 +59,10 @@ pub trait VideoStreamDecoderHandle: Send + Sync {
         false
     }
 
+    fn supports_in_place_hard_reset(&self) -> bool {
+        false
+    }
+
     fn reset_stream(&self, _hard: bool) -> Result<(), PlatformError> {
         Ok(())
     }
