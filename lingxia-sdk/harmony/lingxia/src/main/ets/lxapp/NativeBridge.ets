@@ -311,10 +311,14 @@ class NativeBridge {
           LxNativeVideoPlayer.onStopped(componentId);
           return true;
         case 'playing':
+          LxNativeVideoPlayer.onBufferingChange(componentId, false);
           LxNativeVideoPlayer.onPlaying(componentId);
           return true;
         case 'paused':
           LxNativeVideoPlayer.onPaused(componentId);
+          return true;
+        case 'waiting':
+          LxNativeVideoPlayer.onBufferingChange(componentId, true);
           return true;
         case 'streamConfig': {
           if (!payload) return false;
