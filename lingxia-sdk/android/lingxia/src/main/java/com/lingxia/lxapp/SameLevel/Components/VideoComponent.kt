@@ -68,6 +68,10 @@ class VideoComponent(
         player?.handle(command)
     }
 
+    internal fun handleStreamDecoderEvent(event: String) {
+        player?.handleStreamDecoderEvent(event)
+    }
+
     fun acquireStreamTextureView(): TextureView? {
         return player?.acquireStreamTextureView()
     }

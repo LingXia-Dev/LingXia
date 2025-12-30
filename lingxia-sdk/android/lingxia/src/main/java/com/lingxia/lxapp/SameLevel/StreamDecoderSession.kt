@@ -38,7 +38,9 @@ internal class StreamDecoderSession(
     private val audioQueue = ArrayBlockingQueue<AudioFrame>(MAX_AUDIO_QUEUE)
 
     private var videoConfig: VideoConfig? = null
+    @Volatile private var lastVideoConfigJson: String? = null
     @Volatile private var audioConfig: AudioConfig? = null
+    @Volatile private var lastAudioConfigJson: String? = null
 
     private var videoDecoder: MediaCodec? = null
     private var audioDecoder: MediaCodec? = null
@@ -132,7 +134,15 @@ internal class StreamDecoderSession(
 
     fun configureVideo(configJson: String): Boolean {
         return try {
+            val shouldReconfigure = configJson != lastVideoConfigJson
             videoConfig = VideoConfig.fromJson(configJson)
+            lastVideoConfigJson = configJson
+            if (shouldReconfigure) {
+                needKeyframe = true
+                playNotified = false
+                pendingVideoReconfigure = true
+                eventEmitter("waiting", emptyMap())
+            }
             handler.post {
                 updateSurfaceBufferSize()
                 ensureVideoDecoder()
@@ -146,8 +156,13 @@ internal class StreamDecoderSession(
 
     fun configureAudio(configJson: String): Boolean {
         return try {
+            val shouldReconfigure = configJson != lastAudioConfigJson
             val config = AudioConfig.fromJson(configJson)
             audioConfig = config
+            lastAudioConfigJson = configJson
+            if (shouldReconfigure) {
+                pendingAudioReconfigure = true
+            }
             audioHandler.post { ensureAudioDecoder() }
             true
         } catch (e: Exception) {
@@ -214,14 +229,13 @@ internal class StreamDecoderSession(
                     audioTrack?.play()
                     scheduleAudioDrain()
                 }
-                eventEmitter("play", emptyMap())
+                val event = if (!surfaceReady || needKeyframe) "waiting" else "play"
+                eventEmitter(event, emptyMap())
                 return true
             }
             "pause" -> {
                 paused = true
                 pendingPlay = false
-                handler.post {
-                }
                 audioHandler.post {
                     audioTrack?.pause()
                     audioTrack?.flush()
@@ -276,23 +290,31 @@ internal class StreamDecoderSession(
     }
 
     fun stop() {
+        paused = true
         pendingPlay = false
-        surfaceReady = false
         surfaceGeneration.incrementAndGet()
+
         handler.post {
-            try {
-                handler.removeCallbacks(detachReleaseRunnable)
-            } catch (_: Exception) {
-            }
             releaseVideoDecoder()
             videoQueue.clear()
-            videoSurface?.release()
-            videoSurface = null
         }
         audioHandler.post {
             releaseAudioDecoder()
             releaseAudioTrack()
             audioQueue.clear()
+        }
+    }
+
+    fun release() {
+        stop()
+        surfaceReady = false
+        handler.post {
+            try {
+                handler.removeCallbacks(detachReleaseRunnable)
+            } catch (_: Exception) {
+            }
+            videoSurface?.release()
+            videoSurface = null
         }
         mainHandler.post { restoreTextureListener() }
         mainHandler.post { textureView.removeOnAttachStateChangeListener(attachStateListener) }
@@ -305,13 +327,13 @@ internal class StreamDecoderSession(
         playNotified = false
         metadataNotified = false
         needKeyframe = true
-        pendingVideoReconfigure = true
-        pendingAudioReconfigure = true
+        eventEmitter("waiting", emptyMap())
+        pendingVideoReconfigure = hard
+        pendingAudioReconfigure = hard
         surfaceGeneration.incrementAndGet()
         requestRectSync("reset")
 
         handler.post {
-            // Clear video queue and reset timing
             videoQueue.clear()
             videoBasePtsUs = null
             videoBaseNanoTime = null
@@ -328,7 +350,6 @@ internal class StreamDecoderSession(
             }
         }
         audioHandler.post {
-            // Clear audio queue
             audioQueue.clear()
             pcmPending = null
             pcmPendingOffset = 0
@@ -346,15 +367,16 @@ internal class StreamDecoderSession(
                 }
             }
         }
-        // Clear configs so new stream can reconfigure
-        videoConfig = null
-        audioConfig = null
+        if (hard) {
+            videoConfig = null
+            audioConfig = null
+            lastVideoConfigJson = null
+            lastAudioConfigJson = null
+        }
     }
 
     private fun attachTextureView() {
         mainHandler.post {
-            // Some host views (e.g. PlayerView) may temporarily hide the underlying TextureView
-            // when detaching the player. Stream decoding needs it visible.
             textureView.visibility = View.VISIBLE
             textureView.alpha = 1.0f
             if (textureView.surfaceTextureListener != this) {
@@ -568,7 +590,6 @@ internal class StreamDecoderSession(
         while (videoQueue.remainingCapacity() == 0) {
             val removed = videoQueue.poll() ?: break
             dropped++
-            // Ensure we resume from a keyframe to avoid long decoder stalls.
             while (videoQueue.isNotEmpty() && videoQueue.peek()?.keyframe == false) {
                 videoQueue.poll()
                 dropped++
@@ -731,8 +752,6 @@ internal class StreamDecoderSession(
                 outputIndex = decoder.dequeueOutputBuffer(info, 0)
             }
 
-            // Keep draining even if queue becomes empty: MediaCodec may output later than input enqueue.
-            // Also keep draining for a short keep-alive period after feeding input.
             if (!paused && surfaceReady && surfaceGeneration.get() == drainGeneration &&
                 (renderedAny || videoQueue.isNotEmpty())) {
                 scheduleVideoDrain(nextDelayMs ?: 5L)
@@ -759,8 +778,6 @@ internal class StreamDecoderSession(
             ensurePcmAudioTrack(config)
             val track = audioTrack ?: return
 
-            // Write small chunks per tick to avoid long blocking calls, but do not drop data
-            // due to non-blocking short writes (which can cause silence on some devices).
             val maxBytesPerTick = 32768
             var remainingBudget = maxBytesPerTick
 
@@ -788,7 +805,6 @@ internal class StreamDecoderSession(
                         remainingBudget -= written
                         continue
                     }
-                    // Can't write now; retry later.
                     break
                 }
 

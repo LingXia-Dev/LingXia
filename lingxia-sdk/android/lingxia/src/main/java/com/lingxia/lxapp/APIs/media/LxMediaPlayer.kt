@@ -268,6 +268,9 @@ class LxMediaPlayer(
     private var rectSyncScheduledAtMs: Long = 0
     private var rectSyncRunnable: Runnable? = null
 
+    private var streamLoadingShownAtMs: Long = 0
+    private var streamLoadingHideRunnable: Runnable? = null
+
     // Player listener - must be declared before init block
     private val playerListener = object : Player.Listener {
         override fun onPlaybackStateChanged(playbackState: Int) {
@@ -469,14 +472,9 @@ class LxMediaPlayer(
         view.addView(posterImageView)
 
         loadingIndicator = ProgressBar(context).apply {
-            layoutParams = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.CENTER
-            )
-            // Tech blue - use tintList for reliable coloring
-            val techBlue = android.graphics.Color.rgb(0, 180, 255)
-            indeterminateTintList = android.content.res.ColorStateList.valueOf(techBlue)
+            val size = (28 * context.resources.displayMetrics.density).toInt()
+            layoutParams = FrameLayout.LayoutParams(size, size, Gravity.CENTER)
+            indeterminateTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
             visibility = View.GONE
         }
         view.addView(loadingIndicator)
@@ -700,6 +698,7 @@ class LxMediaPlayer(
     }
 
     fun stop() {
+        isPausedByUser = true  // Stopped by user
         if (streamDecoderMode && componentId != null) {
             streamIsPlaying = false
             clearWaitingSuppression()
@@ -739,7 +738,7 @@ class LxMediaPlayer(
 
     fun seek(time: Double) {
         val positionMs = (time * 1000).toLong()
-        suppressWaitingFor(1500) // Don't show loading indicator during seek
+        suppressWaitingFor(1500)
         player?.seekTo(positionMs)
         emitEvent(LxMediaEvent.Seeked(time))
         updateProgressUIAfterSeek(time)
@@ -805,8 +804,6 @@ class LxMediaPlayer(
     fun enterFullscreen() {
         if (isFullscreen) return
 
-        // Stream decoder mode should avoid Dialog re-parenting (it causes a Surface swap + black flash).
-        // Inline fullscreen keeps the TextureView attached, improving UX.
         if (streamDecoderMode) {
             enterInlineFullscreen()
             return
@@ -1674,6 +1671,52 @@ class LxMediaPlayer(
     }
 
     internal fun isPlaying(): Boolean = if (streamDecoderMode) streamIsPlaying else player?.isPlaying == true
+    internal fun handleStreamDecoderEvent(event: String) {
+        if (!streamDecoderMode) return
+
+        when (event) {
+            "waiting" -> {
+                if (!isPausedByUser) {
+                    streamIsPlaying = false
+                    streamLoadingHideRunnable?.let { mainHandler.removeCallbacks(it) }
+                    streamLoadingHideRunnable = null
+                    streamLoadingShownAtMs = android.os.SystemClock.uptimeMillis()
+                    loadingIndicator?.visibility = View.VISIBLE
+                    loadingIndicator?.bringToFront()
+                    controlsOverlay?.updatePlayPauseButton()
+                }
+            }
+            "play" -> {
+                streamIsPlaying = true
+                hideStreamLoadingWithMinimumDuration()
+                clearWaitingSuppression()
+                controlsOverlay?.updatePlayPauseButton()
+            }
+            "pause", "stop" -> {
+                streamIsPlaying = false
+                hideStreamLoadingWithMinimumDuration()
+                clearWaitingSuppression()
+                controlsOverlay?.updatePlayPauseButton()
+            }
+        }
+    }
+
+    private fun hideStreamLoadingWithMinimumDuration() {
+        val indicator = loadingIndicator ?: return
+        if (indicator.visibility != View.VISIBLE) return
+
+        val now = android.os.SystemClock.uptimeMillis()
+        val elapsed = now - streamLoadingShownAtMs
+        val remaining = (60L - elapsed).coerceAtLeast(0L)
+        if (remaining == 0L) {
+            indicator.visibility = View.GONE
+            return
+        }
+        streamLoadingHideRunnable?.let { mainHandler.removeCallbacks(it) }
+        streamLoadingHideRunnable = Runnable {
+            loadingIndicator?.visibility = View.GONE
+        }.also { mainHandler.postDelayed(it, remaining) }
+    }
     internal fun getCurrentPosition(): Long = player?.currentPosition ?: 0
     internal fun getDuration(): Long = player?.duration ?: 0
     internal fun getAvailableQualities(): List<LxMediaQuality> = availableQualities

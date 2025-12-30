@@ -75,10 +75,6 @@ object ComponentRouter {
 
     fun unregister(componentId: String) {
         managers.remove(componentId)
-        // Don't remove decoder here - let it persist for component remount scenarios.
-        // The decoder will be cleaned up when:
-        // 1. stopStreamDecoder is explicitly called (hard reset path)
-        // 2. A new decoder is created with the same component ID (in createStreamDecoder)
     }
 
     @JvmStatic
@@ -128,7 +124,6 @@ object ComponentRouter {
             if (session == null) {
                 session = ensureStreamDecoderExists(componentId, "dispatchVideoCommand:$name")
             } else if (!session.isTextureViewAttached()) {
-                // Avoid blocking JNI threads on view/TextureView transitions; refresh asynchronously.
                 mainHandler.post { createStreamDecoder(componentId) }
             }
         }
@@ -153,6 +148,13 @@ object ComponentRouter {
             return false
         }
 
+        streamDecoders[componentId]?.let { existing ->
+            if (existing.isTextureViewAttached()) {
+                existing.rebindSurface()
+                return true
+            }
+        }
+
         val isMainThread = Looper.myLooper() == Looper.getMainLooper()
         if (isMainThread) {
             val component = manager.getVideoComponent(componentId)
@@ -170,12 +172,11 @@ object ComponentRouter {
             val existing = streamDecoders[componentId]
             if (existing != null && existing.usesTextureView(textureView)) {
                 existing.rebindSurface()
-                component.releaseStreamTextureView()
                 return true
             }
 
             streamDecoders.remove(componentId)?.let { oldDecoder ->
-                oldDecoder.stop()
+                oldDecoder.release()
             }
 
             val session = StreamDecoderSession(
@@ -206,14 +207,12 @@ object ComponentRouter {
             latch.await(5000, TimeUnit.MILLISECONDS)
         } catch (e: InterruptedException) {
             Log.e(TAG, "createStreamDecoder: interrupted while waiting: $componentId", e)
-            // Release texture view if it was acquired before interruption
             mainHandler.post { component?.releaseStreamTextureView() }
             return false
         }
 
         if (!ready) {
             Log.e(TAG, "createStreamDecoder: timeout waiting for TextureView: $componentId")
-            // Release texture view if it was acquired but we timed out
             mainHandler.post { component?.releaseStreamTextureView() }
             return false
         }
@@ -227,13 +226,11 @@ object ComponentRouter {
         val existing = streamDecoders[componentId]
         if (existing != null && existing.usesTextureView(textureView!!)) {
             existing.rebindSurface()
-            mainHandler.post { component?.releaseStreamTextureView() }
             return true
         }
 
-        // Clean up any existing decoder before creating new one
         streamDecoders.remove(componentId)?.let { oldDecoder ->
-            oldDecoder.stop()
+            oldDecoder.release()
         }
 
         val session = StreamDecoderSession(
@@ -302,7 +299,7 @@ object ComponentRouter {
     @JvmStatic
     fun stopStreamDecoder(componentId: String): Boolean {
         val decoder = streamDecoders.remove(componentId) ?: return false
-        decoder.stop()
+        decoder.release()
         mainHandler.post {
             managers[componentId]?.get()?.getVideoComponent(componentId)?.releaseStreamTextureView()
         }

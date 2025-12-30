@@ -337,6 +337,9 @@ class SameLevelComponentManager(
         event: String,
         detail: Map<String, Any?> = emptyMap()
     ) {
+        if (event == "waiting" || event == "play" || event == "pause" || event == "stop") {
+            (components[componentId] as? VideoComponent)?.handleStreamDecoderEvent(event)
+        }
         sendEventToWeb(componentId, mapOf("event" to event, "detail" to detail))
     }
 
