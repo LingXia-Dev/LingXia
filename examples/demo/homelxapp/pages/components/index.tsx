@@ -2,8 +2,7 @@ import React from 'react';
 import '../../tailwind.css';
 
 export default function ComponentsPage() {
-  const { data, toggleSection, navigateToVideoDemo } = useLingXia();
-  const { expandedSections = { media: true } } = data;
+  const { navigateTo } = useLingXia();
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -25,62 +24,54 @@ export default function ComponentsPage() {
           </div>
         </div>
 
-        {/* Media Components - Dropdown */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        {/* Component List */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden divide-y divide-gray-100">
+          {/* Video */}
           <div
-            className="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-gray-50 active:bg-gray-100 transition-colors"
-            onClick={() => toggleSection({ section: 'media' })}
+            className="px-4 py-3.5 hover:bg-gray-50 cursor-pointer flex items-center justify-between group transition-colors"
+            onClick={() => navigateTo({ url: 'pages/video/index.tsx' })}
           >
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-pink-500 to-rose-500 rounded-lg flex items-center justify-center">
+              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-lg flex items-center justify-center">
                 <svg viewBox="0 0 24 24" fill="white" className="w-5 h-5">
-                  <path d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" />
-                  <path d="M10 9l5 3-5 3V9z" fill="currentColor" opacity="0.8" />
+                  <polygon points="5 3 19 12 5 21 5 3" />
                 </svg>
               </div>
               <div>
-                <div className="text-base font-semibold text-gray-900">Media Components</div>
-                <div className="text-xs text-gray-500">Video, Audio & Image</div>
+                <div className="text-sm font-medium text-gray-900">Video Player</div>
+                <div className="text-xs text-gray-500">Native video with controls</div>
               </div>
             </div>
-            <div className="w-6 h-6 text-gray-400">
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                className={`transform transition-transform duration-200 ${expandedSections.media ? 'rotate-180' : ''}`}
-              >
-                <path d="M6 9l6 6 6-6" />
+            <div className="w-5 h-5 text-gray-400 group-hover:text-blue-500 transition-colors">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M9 18l6-6-6-6" />
               </svg>
             </div>
           </div>
 
-          {expandedSections.media && (
-            <div className="border-t border-gray-100 bg-gray-50/50">
-              <div
-                className="px-4 py-3.5 hover:bg-white cursor-pointer flex items-center justify-between group transition-colors"
-                onClick={navigateToVideoDemo}
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-lg flex items-center justify-center">
-                    <svg viewBox="0 0 24 24" fill="white" className="w-4 h-4">
-                      <polygon points="5 3 19 12 5 21 5 3" />
-                    </svg>
-                  </div>
-                  <div>
-                    <div className="text-sm font-medium text-gray-900">Video Player</div>
-                    <div className="text-xs text-gray-500">Native video with controls</div>
-                  </div>
-                </div>
-                <div className="w-5 h-5 text-gray-400 group-hover:text-blue-500 transition-colors">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M9 18l6-6-6-6" />
-                  </svg>
-                </div>
+          {/* Picker */}
+          <div
+            className="px-4 py-3.5 hover:bg-gray-50 cursor-pointer flex items-center justify-between group transition-colors"
+            onClick={() => navigateTo({ url: 'pages/picker/index.tsx' })}
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg flex items-center justify-center">
+                <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" className="w-5 h-5">
+                  <rect x="4" y="6" width="16" height="12" rx="2" />
+                  <line x1="12" y1="6" x2="12" y2="18" />
+                </svg>
+              </div>
+              <div>
+                <div className="text-sm font-medium text-gray-900">Picker</div>
+                <div className="text-xs text-gray-500">Native picker with value/onChange</div>
               </div>
             </div>
-          )}
+            <div className="w-5 h-5 text-gray-400 group-hover:text-purple-500 transition-colors">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M9 18l6-6-6-6" />
+              </svg>
+            </div>
+          </div>
         </div>
 
       </div>

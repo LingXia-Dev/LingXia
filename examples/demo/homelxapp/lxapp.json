@@ -15,7 +15,8 @@
     "pages/document/index.tsx",
     "pages/components/index.tsx",
     "pages/pulltorefresh/index.tsx",
-    "pages/todo/index.tsx"
+    "pages/todo/index.tsx",
+    "pages/picker/index.tsx"
   ],
   "debug": true,
   "tabBar": {
