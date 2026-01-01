@@ -718,9 +718,13 @@ extension LxAppPicker {
     @MainActor
     internal static func applySelection(columnIndex: Int, selectedIndex: Int, scrollView: UIScrollView?, emitScroll: Bool = true) {
         guard let pickerData = LxAppPicker.currentPickerData else { return }
+        
+        // Update model and send event
+        updateSelection(columnIndex: columnIndex, selectedIndex: selectedIndex, emitEvent: emitScroll)
+        
+        // Retrieve clamped index again in case updateSelection modified it (though it currently doesn't)
         while pickerData.currentSelection.count <= columnIndex { pickerData.currentSelection.append(0) }
-        let clamped = max(0, min(selectedIndex, max(0, pickerData.configuration.columns[columnIndex].count - 1)))
-        pickerData.currentSelection[columnIndex] = clamped
+        let clamped = pickerData.currentSelection[columnIndex]
 
         // Cascading: update second column when first changes
         if columnIndex == 0, pickerData.configuration.isCascading,
@@ -760,9 +764,25 @@ extension LxAppPicker {
             let paddingHeight = CGFloat(5 / 2) * itemHeight
             let targetY = paddingHeight + CGFloat(clamped) * itemHeight - (sv.frame.height / 2) + (itemHeight / 2)
             sv.setContentOffset(CGPoint(x: 0, y: max(0, targetY)), animated: true)
-            if emitScroll {
-                LxAppPicker.sendPickerResultScroll(callback_id: pickerData.callbackID, selectedIndices: pickerData.currentSelection)
-            }
+        }
+    }
+    
+    @MainActor
+    internal static func updateSelection(columnIndex: Int, selectedIndex: Int, emitEvent: Bool) {
+        guard let pickerData = LxAppPicker.currentPickerData else { return }
+        while pickerData.currentSelection.count <= columnIndex { pickerData.currentSelection.append(0) }
+        
+        let cols = pickerData.configuration.columns
+        let count = (columnIndex >= 0 && columnIndex < cols.count) ? cols[columnIndex].count : 0
+        let clamped = max(0, min(selectedIndex, max(0, count - 1)))
+        
+        // Only update and emit if changed (optional optimization, but good for reducing noise)
+        // But applySelection might want to force scroll even if index is same.
+        // So we update anyway.
+        pickerData.currentSelection[columnIndex] = clamped
+        
+        if emitEvent {
+            LxAppPicker.sendPickerResultScroll(callback_id: pickerData.callbackID, selectedIndices: pickerData.currentSelection)
         }
     }
 
@@ -797,6 +817,9 @@ extension LxAppPicker {
 internal class ColumnScrollDelegate: NSObject, UIScrollViewDelegate {
     let columnIndex: Int
     init(columnIndex: Int) { self.columnIndex = columnIndex }
+    
+    // Track last emitted index to avoid duplicates during scroll
+    private var lastEmittedIndex: Int = -1
 
     private func snap(_ sv: UIScrollView) {
         let itemHeight: CGFloat = 44
@@ -806,7 +829,31 @@ internal class ColumnScrollDelegate: NSObject, UIScrollViewDelegate {
         let cols = LxAppPicker.currentPickerData?.configuration.columns ?? []
         let count = (columnIndex >= 0 && columnIndex < cols.count) ? cols[columnIndex].count : 0
         let clamped = max(0, min(raw, max(0, count - 1)))
+        
+        // applySelection handles scrolling and cascading
         LxAppPicker.applySelection(columnIndex: columnIndex, selectedIndex: clamped, scrollView: sv)
+        lastEmittedIndex = clamped
+    }
+
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        // Calculate current index based on offset
+        let itemHeight: CGFloat = 44
+        let paddingHeight = CGFloat(5 / 2) * itemHeight
+        let midY = scrollView.contentOffset.y + scrollView.bounds.height / 2
+        let raw = Int(round((midY - paddingHeight - itemHeight / 2) / itemHeight))
+        
+        // Validate against data
+        guard let pickerData = LxAppPicker.currentPickerData else { return }
+        let cols = pickerData.configuration.columns
+        let count = (columnIndex >= 0 && columnIndex < cols.count) ? cols[columnIndex].count : 0
+        let clamped = max(0, min(raw, max(0, count - 1)))
+        
+        // If index changed, update model and emit event
+        if clamped != lastEmittedIndex {
+            // Do NOT call applySelection here because it sets contentOffset and cascades
+            LxAppPicker.updateSelection(columnIndex: columnIndex, selectedIndex: clamped, emitEvent: true)
+            lastEmittedIndex = clamped
+        }
     }
 
     func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
