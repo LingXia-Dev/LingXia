@@ -10,8 +10,9 @@ use rong::{
     js_method,
 };
 use serde_json::Value;
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock, Weak};
 use std::thread;
 use std::time::Duration;
 
@@ -45,16 +46,58 @@ pub struct JSVideoContext {
     component_id: String,
     player_handle: Arc<dyn VideoPlayerHandle>,
     runtime: Arc<Platform>,
-    stream_session: Arc<Mutex<Option<Box<dyn StreamSession>>>>,
-    stream_decoder: Arc<Mutex<Option<Arc<dyn VideoStreamDecoderHandle>>>>,
-    stream_epoch: Arc<AtomicU64>,
-    last_stream_source: Arc<Mutex<Option<StreamSourceState>>>,
+    shared: Arc<VideoContextSharedState>,
 }
 
 #[derive(Debug, Clone)]
 struct StreamSourceState {
     provider_type: String,
     params: Value,
+}
+
+struct VideoContextSharedState {
+    stream_session: Mutex<Option<Box<dyn StreamSession>>>,
+    stream_decoder: Mutex<Option<Arc<dyn VideoStreamDecoderHandle>>>,
+    stream_epoch: Arc<AtomicU64>,
+    last_stream_source: Mutex<Option<StreamSourceState>>,
+}
+
+impl VideoContextSharedState {
+    fn new() -> Self {
+        Self {
+            stream_session: Mutex::new(None),
+            stream_decoder: Mutex::new(None),
+            stream_epoch: Arc::new(AtomicU64::new(0)),
+            last_stream_source: Mutex::new(None),
+        }
+    }
+}
+
+type VideoContextRegistryKey = (usize, String);
+
+fn video_context_registry()
+-> &'static Mutex<HashMap<VideoContextRegistryKey, Weak<VideoContextSharedState>>> {
+    static REGISTRY: OnceLock<
+        Mutex<HashMap<VideoContextRegistryKey, Weak<VideoContextSharedState>>>,
+    > = OnceLock::new();
+    REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn shared_state_for(runtime: &Arc<Platform>, component_id: &str) -> Arc<VideoContextSharedState> {
+    let key: VideoContextRegistryKey = (Arc::as_ptr(runtime) as usize, component_id.to_string());
+    let mut guard = video_context_registry()
+        .lock()
+        .expect("VideoContext registry lock poisoned");
+
+    guard.retain(|_, weak| weak.upgrade().is_some());
+
+    if let Some(existing) = guard.get(&key).and_then(|weak| weak.upgrade()) {
+        return existing;
+    }
+
+    let state = Arc::new(VideoContextSharedState::new());
+    guard.insert(key, Arc::downgrade(&state));
+    state
 }
 
 impl JSVideoContext {
@@ -69,14 +112,12 @@ impl JSVideoContext {
             .bind_player(&component_id)
             .map_err(|e| RongJSError::Error(e.to_string()))?;
 
+        let shared = shared_state_for(&runtime, &component_id);
         Ok(Self {
             component_id,
             player_handle: handle.into(),
             runtime,
-            stream_session: Arc::new(Mutex::new(None)),
-            stream_decoder: Arc::new(Mutex::new(None)),
-            stream_epoch: Arc::new(AtomicU64::new(0)),
-            last_stream_source: Arc::new(Mutex::new(None)),
+            shared,
         })
     }
 
@@ -92,7 +133,7 @@ impl JSVideoContext {
         expected_epoch: u64,
     ) -> JSResult<()> {
         let handle = self.player_handle.clone();
-        let epoch_token = self.stream_epoch.clone();
+        let epoch_token = self.shared.stream_epoch.clone();
         if epoch_token.load(Ordering::Relaxed) != expected_epoch {
             warn!(
                 "Skipping async video player command due to epoch change (expected={}, current={})",
@@ -119,6 +160,7 @@ impl JSVideoContext {
 
     fn stop_stream_session_async(&self) -> JSResult<()> {
         let mut guard = self
+            .shared
             .stream_session
             .lock()
             .map_err(|_| RongJSError::Error("Stream session lock poisoned".into()))?;
@@ -137,6 +179,7 @@ impl JSVideoContext {
 
     fn abort_stream_session_async(&self) -> JSResult<()> {
         let mut guard = self
+            .shared
             .stream_session
             .lock()
             .map_err(|_| RongJSError::Error("Stream session lock poisoned".into()))?;
@@ -155,6 +198,7 @@ impl JSVideoContext {
 
     fn ensure_stream_decoder(&self) -> JSResult<Arc<dyn VideoStreamDecoderHandle>> {
         let mut guard = self
+            .shared
             .stream_decoder
             .lock()
             .map_err(|_| RongJSError::Error("Stream decoder lock poisoned".into()))?;
@@ -191,7 +235,7 @@ impl JSVideoContext {
 
     #[js_method]
     fn stop(&self) -> JSResult<()> {
-        let epoch = self.stream_epoch.load(Ordering::Relaxed);
+        let epoch = self.shared.stream_epoch.load(Ordering::Relaxed);
         self.stop_stream_session_async()?;
         self.dispatch_async_if_epoch(VideoPlayerCommand::Stop, epoch)
     }
@@ -225,6 +269,7 @@ impl JSVideoContext {
 
         let force_hard = {
             let guard = self
+                .shared
                 .last_stream_source
                 .lock()
                 .map_err(|_| RongJSError::Error("Stream source lock poisoned".into()))?;
@@ -243,10 +288,11 @@ impl JSVideoContext {
 
         // Increment the epoch before switching, so any in-flight work from the previous
         // session cannot configure/push/stop the decoder after this point.
-        let epoch = self.stream_epoch.fetch_add(1, Ordering::Relaxed) + 1;
+        let epoch = self.shared.stream_epoch.fetch_add(1, Ordering::Relaxed) + 1;
 
         let existing_decoder = {
             let guard = self
+                .shared
                 .stream_decoder
                 .lock()
                 .map_err(|_| RongJSError::Error("Stream decoder lock poisoned".into()))?;
@@ -278,7 +324,7 @@ impl JSVideoContext {
 
                 if !hard_reset_in_place {
                     let decoder_retry = decoder.clone();
-                    let epoch_token = self.stream_epoch.clone();
+                    let epoch_token = self.shared.stream_epoch.clone();
                     let expected_epoch = epoch;
                     thread::spawn(move || {
                         for _ in 0..20 {
@@ -297,10 +343,10 @@ impl JSVideoContext {
             self.stop_stream_session_async()?;
             if had_existing_decoder {
                 let old_decoder = {
-                    let mut guard = self
-                        .stream_decoder
-                        .lock()
-                        .map_err(|_| RongJSError::Error("Stream decoder lock poisoned".into()))?;
+                    let mut guard =
+                        self.shared.stream_decoder.lock().map_err(|_| {
+                            RongJSError::Error("Stream decoder lock poisoned".into())
+                        })?;
                     guard.take()
                 };
 
@@ -326,7 +372,7 @@ impl JSVideoContext {
             }
         }
 
-        let sink = FrameSink::from_arc_with_epoch(decoder, self.stream_epoch.clone(), epoch);
+        let sink = FrameSink::from_arc_with_epoch(decoder, self.shared.stream_epoch.clone(), epoch);
 
         let session = provider.start(params.clone(), sink).map_err(|err| {
             warn!(
@@ -337,6 +383,7 @@ impl JSVideoContext {
         })?;
 
         let mut guard = self
+            .shared
             .stream_session
             .lock()
             .map_err(|_| RongJSError::Error("Stream session lock poisoned".into()))?;
@@ -344,6 +391,7 @@ impl JSVideoContext {
 
         // Update stream source after successfully starting the new session.
         let mut source_guard = self
+            .shared
             .last_stream_source
             .lock()
             .map_err(|_| RongJSError::Error("Stream source lock poisoned".into()))?;
