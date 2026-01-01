@@ -54,9 +54,7 @@ final class StreamDecoderRegistry {
     }
 
     func pushVideo(componentId: String, data: Data, dtsMs: UInt32, ptsMs: UInt32, keyframe: Bool) -> Bool {
-        if stopping.contains(componentId) {
-            stopping.remove(componentId)
-        }
+        stopping.remove(componentId)
 
         guard let session = ensureSession(componentId: componentId, reason: "pushVideo") else {
             return false
@@ -74,9 +72,7 @@ final class StreamDecoderRegistry {
     }
 
     func pushAudio(componentId: String, data: Data, dtsMs: UInt32, ptsMs: UInt32) -> Bool {
-        if stopping.contains(componentId) {
-            stopping.remove(componentId)
-        }
+        stopping.remove(componentId)
 
         guard let session = ensureSession(componentId: componentId, reason: "pushAudio") else {
             return false
@@ -95,7 +91,7 @@ final class StreamDecoderRegistry {
 
     func stop(componentId: String) -> Bool {
         stopping.insert(componentId)
-        guard let session = sessions.removeValue(forKey: componentId) else { return false }
+        let session = sessions.removeValue(forKey: componentId)
         let shouldForget = ComponentRouter.shared.componentView(componentId: componentId) == nil
         if shouldForget {
             lastVideoConfigJson.removeValue(forKey: componentId)
@@ -109,12 +105,13 @@ final class StreamDecoderRegistry {
             componentId,
             String(shouldForget)
         )
-        session.stop()
+        session?.stop()
         ComponentRouter.shared.setStreamDecoderActive(componentId: componentId, active: false)
         return true
     }
 
     func handleCommand(componentId: String, name: String, params: [String: Any]?) -> Bool {
+        stopping.remove(componentId)
         guard let session = ensureSession(componentId: componentId, reason: "handleCommand") else {
             return false
         }
@@ -237,6 +234,7 @@ private final class StreamDecoderSession {
     private var appObservers: [NSObjectProtocol] = []
     private var wasPlayingBeforeBackground = false
     private var pendingVideoKeyframe: (data: Data, dtsMs: UInt32, ptsMs: UInt32)?
+
     @MainActor
     init(componentId: String, containerView: UIView, log: OSLog) {
         self.componentId = componentId
@@ -349,7 +347,19 @@ private final class StreamDecoderSession {
                 formatDescription: format,
                 dtsMs: normalizedDts,
                 ptsMs: normalizedPts
-            ) else { return }
+            ) else {
+                os_log(
+                    "makeSampleBuffer(video) failed codec=%{public}@ format=%{public}@ data_len=%{public}@ pts=%{public}@ dts=%{public}@",
+                    log: self.log,
+                    type: .error,
+                    self.videoConfig?.codec ?? "unknown",
+                    self.videoConfig?.format ?? "unknown",
+                    String(sampleData.count),
+                    String(normalizedPts),
+                    String(normalizedDts)
+                )
+                return
+            }
             self.videoLayerView.displayLayer.enqueue(sampleBuffer)
             if !self.isPlaying && self.playRequested {
                 self.isPlaying = true
@@ -405,7 +415,18 @@ private final class StreamDecoderSession {
                     ptsMs: normalizedDts
                 )
             }
-            guard let sampleBuffer else { return }
+            guard let sampleBuffer else {
+                os_log(
+                    "makeSampleBuffer(audio) failed codec=%{public}@ data_len=%{public}@ dts=%{public}@ pts=%{public}@",
+                    log: self.log,
+                    type: .error,
+                    self.audioConfig?.codec ?? "unknown",
+                    String(data.count),
+                    String(dtsMs),
+                    String(ptsMs)
+                )
+                return
+            }
             self.audioRenderer.enqueue(sampleBuffer)
             if self.renderSynchronizer.rate == 0.0
                 && self.isPlaying
@@ -613,7 +634,7 @@ private final class StreamDecoderSession {
     }
 
     private func buildVideoFormat(config: VideoConfig) {
-        let nalLength = config.nalLengthSize ?? 4
+        let nalLength = max(1, min(4, config.nalLengthSize ?? 4))
         switch config.codec {
         case "h265":
             guard #available(iOS 11.0, *) else {
@@ -672,18 +693,89 @@ private final class StreamDecoderSession {
         }
     }
 
+    private func sanitizeParameterSet(_ data: Data, codec: String, expectedNalType: Int) -> Data {
+        if data.isEmpty { return data }
+
+        var start = 0
+        var end = data.count
+
+        while end > start, data[end - 1] == 0 {
+            end -= 1
+        }
+
+        func nalType(of bytes: Data, at offset: Int) -> Int? {
+            guard offset < bytes.count else { return nil }
+            let first = bytes[offset]
+            if codec == "h265" || codec == "hevc" {
+                return Int((first >> 1) & 0x3F)
+            }
+            return Int(first & 0x1F)
+        }
+
+        // Strip AnnexB start codes.
+        if end - start >= 4,
+           data[start] == 0, data[start + 1] == 0, data[start + 2] == 0, data[start + 3] == 1
+        {
+            start += 4
+        } else if end - start >= 3,
+                  data[start] == 0, data[start + 1] == 0, data[start + 2] == 1
+        {
+            start += 3
+        }
+
+        // Strip a single length prefix if the buffer looks like <len><nal>.
+        for lengthSize in [4, 3, 2, 1] {
+            if end - start <= lengthSize { continue }
+            var nalLen = 0
+            for i in 0..<lengthSize {
+                nalLen = (nalLen << 8) | Int(data[start + i])
+            }
+            if nalLen != (end - start - lengthSize) { continue }
+            let candidateStart = start + lengthSize
+            if nalType(of: data, at: candidateStart) == expectedNalType {
+                start = candidateStart
+                break
+            }
+        }
+
+        if start >= end { return Data() }
+        return data.subdata(in: start..<end)
+    }
+
+    private func bytesPrefixHex(_ data: Data, count: Int) -> String {
+        if data.isEmpty { return "" }
+        let n = min(count, data.count)
+        return data.prefix(n).map { String(format: "%02x", $0) }.joined()
+    }
+
+    private func logFormatFailure(_ label: String, status: OSStatus, sets: [(String, Data)]) {
+        let details = sets
+            .map { "\($0.0)=\($0.1.count)(\(bytesPrefixHex($0.1, count: 8)))" }
+            .joined(separator: " ")
+        os_log(
+            "%{public}@ failed status=%d %{public}@",
+            log: log,
+            type: .error,
+            label,
+            status,
+            details
+        )
+    }
+
     private func buildH264Format(config: VideoConfig, nalLength: Int) -> CMFormatDescription? {
-        guard !config.sps.isEmpty, !config.pps.isEmpty else { return nil }
+        let sps = sanitizeParameterSet(config.sps, codec: "h264", expectedNalType: 7)
+        let pps = sanitizeParameterSet(config.pps, codec: "h264", expectedNalType: 8)
+        guard !sps.isEmpty, !pps.isEmpty else { return nil }
         var format: CMFormatDescription?
-        config.sps.withUnsafeBytes { spsPtr in
-            config.pps.withUnsafeBytes { ppsPtr in
+        sps.withUnsafeBytes { spsPtr in
+            pps.withUnsafeBytes { ppsPtr in
                 guard let spsBase = spsPtr.bindMemory(to: UInt8.self).baseAddress,
                       let ppsBase = ppsPtr.bindMemory(to: UInt8.self).baseAddress else {
                     return
                 }
                 var parameterSetPointers: [UnsafePointer<UInt8>] = [spsBase, ppsBase]
-                var parameterSetSizes = [config.sps.count, config.pps.count]
-                CMVideoFormatDescriptionCreateFromH264ParameterSets(
+                var parameterSetSizes = [sps.count, pps.count]
+                let status = CMVideoFormatDescriptionCreateFromH264ParameterSets(
                     allocator: kCFAllocatorDefault,
                     parameterSetCount: 2,
                     parameterSetPointers: &parameterSetPointers,
@@ -691,6 +783,13 @@ private final class StreamDecoderSession {
                     nalUnitHeaderLength: Int32(nalLength),
                     formatDescriptionOut: &format
                 )
+                if status != noErr {
+                    logFormatFailure(
+                        "buildH264Format",
+                        status: status,
+                        sets: [("sps", sps), ("pps", pps)]
+                    )
+                }
             }
         }
         return format
@@ -698,19 +797,22 @@ private final class StreamDecoderSession {
 
     @available(iOS 11.0, *)
     private func buildHevcFormat(config: VideoConfig, nalLength: Int) -> CMFormatDescription? {
-        guard !config.vps.isEmpty, !config.sps.isEmpty, !config.pps.isEmpty else { return nil }
+        let vps = sanitizeParameterSet(config.vps, codec: "h265", expectedNalType: 32)
+        let sps = sanitizeParameterSet(config.sps, codec: "h265", expectedNalType: 33)
+        let pps = sanitizeParameterSet(config.pps, codec: "h265", expectedNalType: 34)
+        guard !vps.isEmpty, !sps.isEmpty, !pps.isEmpty else { return nil }
         var format: CMFormatDescription?
-        config.vps.withUnsafeBytes { vpsPtr in
-            config.sps.withUnsafeBytes { spsPtr in
-                config.pps.withUnsafeBytes { ppsPtr in
+        vps.withUnsafeBytes { vpsPtr in
+            sps.withUnsafeBytes { spsPtr in
+                pps.withUnsafeBytes { ppsPtr in
                     guard let vpsBase = vpsPtr.bindMemory(to: UInt8.self).baseAddress,
                           let spsBase = spsPtr.bindMemory(to: UInt8.self).baseAddress,
                           let ppsBase = ppsPtr.bindMemory(to: UInt8.self).baseAddress else {
                         return
                     }
                     var parameterSetPointers: [UnsafePointer<UInt8>] = [vpsBase, spsBase, ppsBase]
-                    var parameterSetSizes = [config.vps.count, config.sps.count, config.pps.count]
-                    CMVideoFormatDescriptionCreateFromHEVCParameterSets(
+                    var parameterSetSizes = [vps.count, sps.count, pps.count]
+                    let status = CMVideoFormatDescriptionCreateFromHEVCParameterSets(
                         allocator: kCFAllocatorDefault,
                         parameterSetCount: 3,
                         parameterSetPointers: &parameterSetPointers,
@@ -719,6 +821,13 @@ private final class StreamDecoderSession {
                         extensions: nil,
                         formatDescriptionOut: &format
                     )
+                    if status != noErr {
+                        logFormatFailure(
+                            "buildHevcFormat",
+                            status: status,
+                            sets: [("vps", vps), ("sps", sps), ("pps", pps)]
+                        )
+                    }
                 }
             }
         }
@@ -794,8 +903,9 @@ private final class StreamDecoderSession {
         let base = videoBaseTimeMs ?? min(dtsMs, ptsMs)
         var normalizedDts = dtsMs >= base ? dtsMs - base : 0
         var normalizedPts = ptsMs >= base ? ptsMs - base : normalizedDts
-        if let lastPts = lastVideoPtsMs, normalizedPts < lastPts {
-            normalizedPts = lastPts
+        if let lastPts = lastVideoPtsMs, normalizedPts <= lastPts {
+            let (next, overflow) = lastPts.addingReportingOverflow(1)
+            normalizedPts = overflow ? lastPts : next
         }
         if let lastDts = lastVideoDtsMs, normalizedDts < lastDts {
             normalizedDts = lastDts
@@ -1203,6 +1313,13 @@ private final class StreamDecoderSession {
             blockBufferOut: &blockBuffer
         )
         if status != kCMBlockBufferNoErr || blockBuffer == nil {
+            os_log(
+                "CMBlockBufferCreateWithMemoryBlock failed status=%{public}@ len=%{public}@",
+                log: log,
+                type: .error,
+                String(status),
+                String(data.count)
+            )
             return nil
         }
         data.withUnsafeBytes { ptr in
@@ -1233,6 +1350,15 @@ private final class StreamDecoderSession {
             sampleBufferOut: &sampleBuffer
         )
         if sampleStatus != noErr {
+            os_log(
+                "CMSampleBufferCreateReady failed status=%{public}@ len=%{public}@ pts=%{public}@ dts=%{public}@",
+                log: log,
+                type: .error,
+                String(sampleStatus),
+                String(data.count),
+                String(ptsMs),
+                String(dtsMs)
+            )
             return nil
         }
         return sampleBuffer

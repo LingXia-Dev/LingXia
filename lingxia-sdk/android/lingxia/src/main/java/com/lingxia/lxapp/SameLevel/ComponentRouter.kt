@@ -27,6 +27,8 @@ object ComponentRouter {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val streamDecoders = ConcurrentHashMap<String, StreamDecoderSession>()
     private val streamDecoderLock = Any()
+    private val cachedVideoConfigJson = ConcurrentHashMap<String, String>()
+    private val cachedAudioConfigJson = ConcurrentHashMap<String, String>()
 
     private data class DesiredAudioState(val volume: Float, val muted: Boolean)
 
@@ -75,6 +77,9 @@ object ComponentRouter {
 
     fun unregister(componentId: String) {
         managers.remove(componentId)
+        cachedVideoConfigJson.remove(componentId)
+        cachedAudioConfigJson.remove(componentId)
+        desiredAudioStates.remove(componentId)
     }
 
     @JvmStatic
@@ -245,6 +250,7 @@ object ComponentRouter {
 
     @JvmStatic
     fun configureStreamVideo(componentId: String, configJson: String): Boolean {
+        cachedVideoConfigJson[componentId] = configJson
         createStreamDecoder(componentId)
         val decoder = streamDecoders[componentId]
         if (decoder == null) {
@@ -256,6 +262,7 @@ object ComponentRouter {
 
     @JvmStatic
     fun configureStreamAudio(componentId: String, configJson: String): Boolean {
+        cachedAudioConfigJson[componentId] = configJson
         createStreamDecoder(componentId)
         val decoder = streamDecoders[componentId]
         if (decoder == null) {
@@ -273,11 +280,20 @@ object ComponentRouter {
         ptsMs: Int,
         keyframe: Boolean
     ): Boolean {
-        val decoder = streamDecoders[componentId]
+        val decoder = ensureStreamDecoderExists(componentId, "pushStreamVideo")
         if (decoder == null) {
             Log.w(TAG, "pushStreamVideo: decoder not found: $componentId")
             return false
         }
+
+        val videoConfigJson = cachedVideoConfigJson[componentId]
+        if (videoConfigJson == null) {
+            Log.w(TAG, "pushStreamVideo: missing cached video config: $componentId")
+            return false
+        }
+        decoder.configureVideo(videoConfigJson)
+        cachedAudioConfigJson[componentId]?.let { decoder.configureAudio(it) }
+
         return decoder.pushVideo(data, dtsMs, ptsMs, keyframe)
     }
 
@@ -288,20 +304,31 @@ object ComponentRouter {
         dtsMs: Int,
         ptsMs: Int
     ): Boolean {
-        val decoder = streamDecoders[componentId]
+        val decoder = ensureStreamDecoderExists(componentId, "pushStreamAudio")
         if (decoder == null) {
             Log.w(TAG, "pushStreamAudio: decoder not found: $componentId")
             return false
         }
+
+        val audioConfigJson = cachedAudioConfigJson[componentId]
+        if (audioConfigJson == null) {
+            Log.w(TAG, "pushStreamAudio: missing cached audio config: $componentId")
+            return false
+        }
+        decoder.configureAudio(audioConfigJson)
+        cachedVideoConfigJson[componentId]?.let { decoder.configureVideo(it) }
+
         return decoder.pushAudio(data, dtsMs, ptsMs)
     }
 
     @JvmStatic
     fun stopStreamDecoder(componentId: String): Boolean {
-        val decoder = streamDecoders.remove(componentId) ?: return false
-        decoder.release()
-        mainHandler.post {
-            managers[componentId]?.get()?.getVideoComponent(componentId)?.releaseStreamTextureView()
+        val decoder = streamDecoders.remove(componentId)
+        if (decoder != null) {
+            decoder.release()
+            mainHandler.post {
+                managers[componentId]?.get()?.getVideoComponent(componentId)?.releaseStreamTextureView()
+            }
         }
         return true
     }

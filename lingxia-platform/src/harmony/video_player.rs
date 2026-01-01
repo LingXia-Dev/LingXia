@@ -2530,6 +2530,10 @@ fn dispatch_command_harmony(
             }
         }
     }
+    if matches!(command, VideoPlayerCommand::Stop) && get_player(component_id).is_none() {
+        // Stream-only mode: stopping is idempotent even when no player/decoder is registered.
+        return Ok(());
+    }
     let player = get_player(component_id)
         .ok_or_else(|| PlatformError::Platform(format!("Player not found: {}", component_id)))?;
     let mut p = player

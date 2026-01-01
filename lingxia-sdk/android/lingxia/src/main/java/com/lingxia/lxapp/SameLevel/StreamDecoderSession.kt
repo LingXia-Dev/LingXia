@@ -133,16 +133,14 @@ internal class StreamDecoderSession(
     }
 
     fun configureVideo(configJson: String): Boolean {
+        if (configJson == lastVideoConfigJson) return true
         return try {
-            val shouldReconfigure = configJson != lastVideoConfigJson
             videoConfig = VideoConfig.fromJson(configJson)
             lastVideoConfigJson = configJson
-            if (shouldReconfigure) {
-                needKeyframe = true
-                playNotified = false
-                pendingVideoReconfigure = true
-                eventEmitter("waiting", emptyMap())
-            }
+            needKeyframe = true
+            playNotified = false
+            pendingVideoReconfigure = true
+            eventEmitter("waiting", emptyMap())
             handler.post {
                 updateSurfaceBufferSize()
                 ensureVideoDecoder()
@@ -155,14 +153,12 @@ internal class StreamDecoderSession(
     }
 
     fun configureAudio(configJson: String): Boolean {
+        if (configJson == lastAudioConfigJson) return true
         return try {
-            val shouldReconfigure = configJson != lastAudioConfigJson
             val config = AudioConfig.fromJson(configJson)
             audioConfig = config
             lastAudioConfigJson = configJson
-            if (shouldReconfigure) {
-                pendingAudioReconfigure = true
-            }
+            pendingAudioReconfigure = true
             audioHandler.post { ensureAudioDecoder() }
             true
         } catch (e: Exception) {
