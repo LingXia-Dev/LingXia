@@ -137,3 +137,12 @@ err_code:
   6000: "Feature not supported"
   6001: "Device not supported"
   6002: "System version too low"
+
+# Date Range Picker
+date:
+  last_7_days: "Last 7 Days"
+  last_30_days: "Last 30 Days"
+  this_week: "This Week"
+  last_week: "Last Week"
+  this_month: "This Month"
+  last_month: "Last Month"

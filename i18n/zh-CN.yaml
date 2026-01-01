@@ -137,3 +137,12 @@ err_code:
   6000: "功能不支持"
   6001: "设备不支持"
   6002: "系统版本过低"
+
+# Date Range Picker
+date:
+  last_7_days: "近7日"
+  last_30_days: "近30日"
+  this_week: "本周"
+  last_week: "上周"
+  this_month: "本月"
+  last_month: "上月"
