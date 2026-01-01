@@ -7,6 +7,7 @@ import { SameLevelRecord, sameLevelError } from './SameLevelTypes';
 import { SameLevelEmbedManager } from './SameLevelEmbed';
 import { SameLevelNodeController } from './SameLevelNodeController';
 import { registerVideoBuilder } from './Builders/VideoBuilder';
+import { registerPickerBuilder } from './Builders/PickerBuilder';
 
 // Embed managers by webTag
 const webViewEmbedManagers: Map<string, SameLevelEmbedManager> = new Map();
@@ -21,6 +22,7 @@ function registerDefaultBuilders(): void {
   if (defaultsRegistered) return;
   defaultsRegistered = true;
   registerVideoBuilder();
+  registerPickerBuilder();
 }
 
 // ============================================================================

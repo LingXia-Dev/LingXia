@@ -8,6 +8,11 @@ public class LxAppPicker {
 
     internal static let log = OSLog(subsystem: "LingXia", category: "Picker")
 
+    // Local callback registry for SameLevel components
+    // Key is callback ID, value is (success, data) -> Void
+    @MainActor
+    public static var localCallbacks: [UInt64: (Bool, String) -> Void] = [:]
+
     // Static variables to track picker state
     @MainActor
     internal static var backgroundView: UIView?
@@ -102,21 +107,42 @@ public class LxAppPicker {
 
         let jsonData = try! JSONSerialization.data(withJSONObject: payload)
         let jsonString = String(data: jsonData, encoding: .utf8)!
-        _ = onCallback(callback_id, true, jsonString)
+
+        // Check for local callback first (SameLevel components)
+        Task { @MainActor in
+            if let localCallback = localCallbacks[callback_id] {
+                localCallback(true, jsonString)
+                return
+            }
+            _ = onCallback(callback_id, true, jsonString)
+        }
     }
 
     // Specific methods for cancel and confirm to match Android implementation
     internal static func sendPickerResultCancel(callback_id: UInt64) {
-        _ = onCallback(callback_id, false, "2000")
+        Task { @MainActor in
+            if let localCallback = localCallbacks[callback_id] {
+                localCallback(false, "2000")
+                return
+            }
+            _ = onCallback(callback_id, false, "2000")
+        }
     }
 
     internal static func sendPickerError(callback_id: UInt64, code: Int) {
-        _ = onCallback(callback_id, false, "\(code)")
+        Task { @MainActor in
+            if let localCallback = localCallbacks[callback_id] {
+                localCallback(false, "\(code)")
+                return
+            }
+            _ = onCallback(callback_id, false, "\(code)")
+        }
     }
 
     internal static func sendPickerResultConfirm(callback_id: UInt64, selectedIndices: [Int]) {
         sendPickerResult(callback_id: callback_id, buttonType: "confirm", selectedIndices: selectedIndices)
     }
+
     internal static func sendPickerResultScroll(callback_id: UInt64, selectedIndices: [Int]) {
         var payload: [String: Any] = [:]
         if selectedIndices.count == 1 {
@@ -127,7 +153,14 @@ public class LxAppPicker {
 
         let jsonData = try! JSONSerialization.data(withJSONObject: payload)
         if let jsonString = String(data: jsonData, encoding: .utf8) {
-            _ = onCallback(callback_id, true, jsonString)
+            // Check for local callback first (SameLevel components)
+            Task { @MainActor in
+                if let localCallback = localCallbacks[callback_id] {
+                    localCallback(true, jsonString)
+                    return
+                }
+                _ = onCallback(callback_id, true, jsonString)
+            }
         }
     }
 }

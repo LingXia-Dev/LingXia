@@ -37,6 +37,10 @@ data class PickerConfig(
 object LxAppPicker {
     private const val TAG = "LingXia.LxAppPicker"
 
+    // Local callback registry for SameLevel components
+    // Key is callback ID, value is (success, data) -> Unit
+    val localCallbacks = mutableMapOf<Long, (Boolean, String) -> Unit>()
+
     private var currentPickerView: View? = null
     private var currentMaskView: View? = null
     private var currentSelectedIndices = mutableListOf<Int>()
@@ -482,6 +486,11 @@ object LxAppPicker {
     }
 
     private fun sendPickerResultCancel(callbackId: Long) {
+        // Check for local callback first (SameLevel components)
+        localCallbacks[callbackId]?.let { callback ->
+            callback(false, "2000")
+            return
+        }
         NativeApi.onCallback(callbackId, false, "2000")
     }
 
@@ -496,7 +505,13 @@ object LxAppPicker {
             }
             put("confirm", true)
         }
-        NativeApi.onCallback(callbackId, true, result.toString())
+        val resultStr = result.toString()
+        // Check for local callback first (SameLevel components)
+        localCallbacks[callbackId]?.let { callback ->
+            callback(true, resultStr)
+            return
+        }
+        NativeApi.onCallback(callbackId, true, resultStr)
     }
 
     private fun sendPickerResultScroll(callbackId: Long) {
@@ -509,7 +524,13 @@ object LxAppPicker {
                 put("index", JSONArray(currentSelectedIndices))
             }
         }
-        NativeApi.onCallback(callbackId, true, result.toString())
+        val resultStr = result.toString()
+        // Check for local callback first (SameLevel components)
+        localCallbacks[callbackId]?.let { callback ->
+            callback(true, resultStr)
+            return
+        }
+        NativeApi.onCallback(callbackId, true, resultStr)
     }
 
     private fun hidePickerInternal() {

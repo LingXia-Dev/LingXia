@@ -269,6 +269,9 @@ extension SameLevelBridge {
         if registeredFactories["video.native"] == nil {
             registeredFactories["video.native"] = VideoComponentFactory()
         }
+        if registeredFactories["picker.native"] == nil {
+            registeredFactories["picker.native"] = PickerComponentFactory()
+        }
     }
 
     private static func makePageKey(for webView: WKWebView) -> String {

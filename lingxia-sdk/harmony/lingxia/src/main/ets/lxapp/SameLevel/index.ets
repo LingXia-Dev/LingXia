@@ -25,3 +25,4 @@ export {
 } from './SameLevelBridge';
 
 export { registerVideoBuilder } from './Builders/VideoBuilder';
+export { registerPickerBuilder } from './Builders/PickerBuilder';

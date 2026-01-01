@@ -41,6 +41,9 @@ const TAG = 'LingXia.Picker';
 export class LxAppPicker {
   private static pickerManagerRef: PickerManager | null = null;
 
+  // Local callback registry for SameLevel components
+  public static localCallbacks: Map<string, (success: boolean, result: string) => void> = new Map();
+
   /**
    * Show picker with individual parameters (matching Rust interface)
    */
@@ -124,7 +127,7 @@ export struct PickerManager {
   @State selectedIndices: number[] = [];
   @State refreshKey: number = 0;
   private scrollDebounceTimer: number | null = null;
-  private readonly SCROLL_DEBOUNCE_DELAY = 300;
+  private readonly SCROLL_DEBOUNCE_DELAY = 20;
   private isInitializing: boolean = false;
   private callbackId: string = "";
 
@@ -166,7 +169,7 @@ export struct PickerManager {
 
     setTimeout(() => {
       this.isInitializing = false;
-    }, 100);
+    }, 20);
   }
 
   /**
@@ -182,9 +185,20 @@ export struct PickerManager {
    * Handle cancel button click
    */
   private onCancel(): void {
-    // User cancelled = error 2000
-    onCallback(this.callbackId, false, '2000');
-    this.hidePicker();
+    const localCallback = LxAppPicker.localCallbacks.get(this.callbackId);
+    try {
+      if (localCallback) {
+        const result: PickerResult = { cancel: true };
+        localCallback(false, JSON.stringify(result));
+        LxAppPicker.localCallbacks.delete(this.callbackId);
+      } else {
+        onCallback(this.callbackId, false, '2000');
+      }
+    } catch (err) {
+      hilog.error(DOMAIN, TAG, `onCancel callback failed: ${err}`);
+    } finally {
+      this.hidePicker();
+    }
   }
 
   /**
@@ -203,8 +217,20 @@ export struct PickerManager {
       confirm: true
     };
 
-    onCallback(this.callbackId, true, JSON.stringify(result));
-    this.hidePicker();
+    const resultJSON: string = JSON.stringify(result);
+    const localCallback = LxAppPicker.localCallbacks.get(this.callbackId);
+    try {
+      if (localCallback) {
+        localCallback(true, resultJSON);
+        LxAppPicker.localCallbacks.delete(this.callbackId);
+      } else {
+        onCallback(this.callbackId, true, resultJSON);
+      }
+    } catch (err) {
+      hilog.error(DOMAIN, TAG, `onConfirm callback failed: ${err}`);
+    } finally {
+      this.hidePicker();
+    }
   }
 
   /**
@@ -243,8 +269,13 @@ export struct PickerManager {
       index: index
     };
 
-    //hilog.info(DOMAIN, TAG, `Scroll result: ${JSON.stringify(result)}`);
-    onCallback(this.callbackId, true, JSON.stringify(result));
+    const resultJSON: string = JSON.stringify(result);
+    const localCallback = LxAppPicker.localCallbacks.get(this.callbackId);
+    if (localCallback) {
+      localCallback(true, resultJSON);
+    } else {
+      onCallback(this.callbackId, true, resultJSON);
+    }
   }
 
   build() {
@@ -283,43 +314,49 @@ export struct PickerManager {
       // Bottom buttons container
       Row() {
         // Cancel button with gray background like Android
-        Text(this.config?.cancelText || 'Cancel')
-          .fontSize(18)
-          .fontColor(this.config?.cancelTextColor || '#007AFF')
-          .fontWeight(FontWeight.Normal)
-          .textAlign(TextAlign.Center)
-          .width(120)
-          .height(44)
-          .backgroundColor(this.config?.cancelButtonColor || '#F2F2F2')
-          .borderRadius(8)
-          .onClick(() => {
-            this.onCancel();
-          })
+        Button({ type: ButtonType.Normal, stateEffect: true }) {
+          Text(this.config?.cancelText || 'Cancel')
+            .fontSize(18)
+            .fontColor(this.config?.cancelTextColor || '#007AFF')
+            .fontWeight(FontWeight.Normal)
+            .textAlign(TextAlign.Center)
+            .width('100%')
+        }
+        .width(120)
+        .height(44)
+        .backgroundColor(this.config?.cancelButtonColor || '#F2F2F2')
+        .borderRadius(8)
+        .onClick(() => {
+          this.onCancel();
+        })
 
         // Spacer
         Column()
           .width(16)
 
         // Confirm button with blue background like Android
-        Text(this.config?.confirmText || 'Confirm')
-          .fontSize(18)
-          .fontColor(this.config?.confirmTextColor || '#FFFFFF')
-          .fontWeight(FontWeight.Medium)
-          .textAlign(TextAlign.Center)
-          .width(120)
-          .height(44)
-          .backgroundColor(this.config?.confirmButtonColor || '#007AFF')
-          .borderRadius(8)
-          .onClick(() => {
-            this.onConfirm();
-          })
+        Button({ type: ButtonType.Normal, stateEffect: true }) {
+          Text(this.config?.confirmText || 'Confirm')
+            .fontSize(18)
+            .fontColor(this.config?.confirmTextColor || '#FFFFFF')
+            .fontWeight(FontWeight.Medium)
+            .textAlign(TextAlign.Center)
+            .width('100%')
+        }
+        .width(120)
+        .height(44)
+        .backgroundColor(this.config?.confirmButtonColor || '#007AFF')
+        .borderRadius(8)
+        .onClick(() => {
+          this.onConfirm();
+        })
       }
       .width('100%')
-      .height(80)
+      .height(100)
       .backgroundColor('#FFFFFF')
       .justifyContent(FlexAlign.Center)
-      .alignItems(VerticalAlign.Center)
-      .padding({ left: 20, right: 20 })
+      .alignItems(VerticalAlign.Top)
+      .padding({ left: 20, right: 20, top: 16, bottom: 40 })
     }
     .width('100%')
     .backgroundColor(Color.White)

@@ -9,6 +9,7 @@ import android.view.ViewTreeObserver
 import android.webkit.JavascriptInterface
 import android.widget.FrameLayout
 import com.lingxia.lxapp.SameLevel.Components.VideoComponentFactory
+import com.lingxia.lxapp.SameLevel.Components.PickerComponentFactory
 import com.lingxia.webview.LingXiaWebView
 import org.json.JSONArray
 import org.json.JSONObject
@@ -254,6 +255,7 @@ class SameLevelBridge private constructor(
             if (defaultsRegistered) return
             defaultsRegistered = true
             registeredFactories.getOrPut("video.native") { VideoComponentFactory() }
+            registeredFactories.getOrPut("picker.native") { PickerComponentFactory() }
         }
 
         @JvmStatic fun notifyPageInactive(webView: LingXiaWebView?) { webView?.let { bridgeMap[System.identityHashCode(it)]?.markPageInactive() } }
