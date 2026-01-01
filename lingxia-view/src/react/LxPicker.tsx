@@ -12,7 +12,11 @@ export interface LxPickerProps {
   style?: React.CSSProperties;
   disabled?: boolean;
   cancelText?: string;
+  cancelTextColor?: string;
+  cancelButtonColor?: string;
   confirmText?: string;
+  confirmTextColor?: string;
+  confirmButtonColor?: string;
   children?: React.ReactNode;
 }
 
@@ -22,7 +26,8 @@ if (typeof window !== "undefined") {
 
 export const LxPicker = forwardRef<HTMLElement, LxPickerProps>(({
   columns, value, onConfirm, onCancel, onScroll, placeholder = 'Please select',
-  className, style, disabled, cancelText, confirmText, children
+  className, style, disabled, cancelText, cancelTextColor, cancelButtonColor,
+  confirmText, confirmTextColor, confirmButtonColor, children
 }, ref) => {
   const [visible, setVisible] = useState(false);
   const reactId = useId();
@@ -120,7 +125,11 @@ export const LxPicker = forwardRef<HTMLElement, LxPickerProps>(({
     'default-index': JSON.stringify(getIndexFromValue()),
   };
   if (cancelText) pickerProps['cancel-text'] = cancelText;
+  if (cancelTextColor) pickerProps['cancel-text-color'] = cancelTextColor;
+  if (cancelButtonColor) pickerProps['cancel-button-color'] = cancelButtonColor;
   if (confirmText) pickerProps['confirm-text'] = confirmText;
+  if (confirmTextColor) pickerProps['confirm-text-color'] = confirmTextColor;
+  if (confirmButtonColor) pickerProps['confirm-button-color'] = confirmButtonColor;
 
   return (
     <>

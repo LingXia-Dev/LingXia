@@ -96,11 +96,11 @@ final class PickerComponent: NSObject, LxNativeComponent {
         LxAppPicker.showPicker(
             columns: columnsJSON,
             cancelText: props["cancelText"] as? String ?? "Cancel",
-            cancelButtonColor: "",
-            cancelTextColor: "",
+            cancelButtonColor: props["cancelButtonColor"] as? String ?? "",
+            cancelTextColor: props["cancelTextColor"] as? String ?? "",
             confirmText: props["confirmText"] as? String ?? "OK",
-            confirmButtonColor: "",
-            confirmTextColor: "",
+            confirmButtonColor: props["confirmButtonColor"] as? String ?? "",
+            confirmTextColor: props["confirmTextColor"] as? String ?? "",
             callbackID: currentCallbackId
         )
     }

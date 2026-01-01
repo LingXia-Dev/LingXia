@@ -42,7 +42,7 @@ export default function PickerPage() {
           </div>
         </div>
 
-        {/* Cascading */}
+        {/* Cascading - with custom button colors and Chinese text */}
         <div className="bg-white rounded-xl p-4 space-y-3">
           <div className="text-sm font-medium text-gray-900">Cascading (with onScroll)</div>
           <LxPicker
@@ -50,7 +50,13 @@ export default function PickerPage() {
             value={location}
             onConfirm={(v) => setLocation({ value: v })}
             onScroll={(v) => setLocation({ value: v })}
-            placeholder="Select location"
+            placeholder="Select location(选择地点)"
+            cancelText="取消"
+            cancelTextColor="#FF6B6B"
+            cancelButtonColor="#FFF0F0"
+            confirmText="确定"
+            confirmTextColor="#ffffff"
+            confirmButtonColor="#10B981"
           />
           <div className="flex items-center gap-2 text-xs text-gray-500">
             <span>value:</span>
