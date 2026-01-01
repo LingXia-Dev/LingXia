@@ -2,21 +2,37 @@ import React, { forwardRef, useCallback, useId, useRef, useState } from 'react';
 import { registerPickerComponent } from '../picker.js';
 
 export interface LxPickerProps {
-  columns: string[][] | [string[], Record<string, string[]>];
+  // For selector/multiSelector/cascading mode
+  columns?: string[][] | [string[], Record<string, string[]>];
+
+  // For date/time mode
+  mode?: 'date' | 'time';
+  start?: string;   // Valid date range start: 'YYYY-MM-DD'
+  end?: string;     // Valid date range end: 'YYYY-MM-DD'
+  fields?: 'year' | 'month' | 'day' | 'range';
+
+  // Value (type depends on mode)
   value?: string | string[];
+
+  // Callbacks
   onConfirm?: (value: string | string[]) => void;
   onCancel?: () => void;
   onScroll?: (value: string | string[]) => void;
+
+  // UI
   placeholder?: string;
   className?: string;
   style?: React.CSSProperties;
   disabled?: boolean;
+
+  // Button customization
   cancelText?: string;
   cancelTextColor?: string;
   cancelButtonColor?: string;
   confirmText?: string;
   confirmTextColor?: string;
   confirmButtonColor?: string;
+
   children?: React.ReactNode;
 }
 
@@ -25,7 +41,7 @@ if (typeof window !== "undefined") {
 }
 
 export const LxPicker = forwardRef<HTMLElement, LxPickerProps>(({
-  columns, value, onConfirm, onCancel, onScroll, placeholder = 'Please select',
+  columns, mode, start, end, fields, value, onConfirm, onCancel, onScroll, placeholder = 'Please select',
   className, style, disabled, cancelText, cancelTextColor, cancelButtonColor,
   confirmText, confirmTextColor, confirmButtonColor, children
 }, ref) => {
@@ -40,10 +56,12 @@ export const LxPicker = forwardRef<HTMLElement, LxPickerProps>(({
   // Track if we've bound listeners to avoid duplicates
   const boundRef = useRef<HTMLElement | null>(null);
 
-  const isCascading = columns.length === 2 && typeof columns[1] === 'object' && !Array.isArray(columns[1]);
-  const isSingle = columns.length === 1;
+  const isDateMode = mode === 'date' || mode === 'time';
+  const isCascading = columns && columns.length === 2 && typeof columns[1] === 'object' && !Array.isArray(columns[1]);
+  const isSingle = columns && columns.length === 1;
 
   const getIndexFromValue = (): number | number[] => {
+    if (!columns) return 0;
     if (isSingle) {
       if (!value || typeof value !== 'string') return 0;
       const idx = (columns[0] as string[]).indexOf(value);
@@ -64,6 +82,7 @@ export const LxPicker = forwardRef<HTMLElement, LxPickerProps>(({
   };
 
   const getValueFromIndex = (cols: typeof columns, index: number | number[]): string | string[] => {
+    if (!cols) return '';
     const cascading = cols.length === 2 && typeof cols[1] === 'object' && !Array.isArray(cols[1]);
     if (typeof index === 'number') return (cols[0] as string[])[index] ?? '';
     if (cascading) {
@@ -76,6 +95,9 @@ export const LxPicker = forwardRef<HTMLElement, LxPickerProps>(({
 
   const displayText = (): string => {
     if (!value) return '';
+    if (fields === 'range' && Array.isArray(value)) {
+      return `${value[0]} ~ ${value[1]}`;
+    }
     return typeof value === 'string' ? value : value.join(' - ');
   };
 
@@ -85,45 +107,67 @@ export const LxPicker = forwardRef<HTMLElement, LxPickerProps>(({
     if (!detail) return;
 
     if (detail.confirmed) {
-      setVisible(false);
-      if (detail.index !== undefined) {
+      if (mode === 'date' || mode === 'time') {
+        propsRef.current.onConfirm?.(detail.value);
+      } else if (detail.index !== undefined) {
         propsRef.current.onConfirm?.(getValueFromIndex(propsRef.current.columns, detail.index));
       }
-    } else if (detail.cancelled) {
       setVisible(false);
+    } else if (detail.cancelled) {
       propsRef.current.onCancel?.();
+      setVisible(false);
+    }
+  }, [mode]);
+
+  const handleScroll = useCallback((e: Event) => {
+    const detail = (e as CustomEvent).detail;
+    if (!detail) return;
+
+    if (detail.value !== undefined) {
+      propsRef.current.onScroll?.(detail.value);
     } else if (detail.index !== undefined) {
       propsRef.current.onScroll?.(getValueFromIndex(propsRef.current.columns, detail.index));
     }
-  }, []);
+  }, [mode]);
 
   // Stable ref callback - only binds/unbinds when element changes
   const pickerRefCallback = useCallback((el: HTMLElement | null) => {
-    // Forward ref
     if (typeof ref === 'function') ref(el);
     else if (ref) (ref as React.MutableRefObject<HTMLElement | null>).current = el;
 
-    // Unbind from old element
     if (boundRef.current && boundRef.current !== el) {
       boundRef.current.removeEventListener('change', handleChange);
+      boundRef.current.removeEventListener('scroll', handleScroll);
       boundRef.current = null;
     }
 
-    // Bind to new element
     if (el && boundRef.current !== el) {
       el.addEventListener('change', handleChange);
+      el.addEventListener('scroll', handleScroll);
       boundRef.current = el;
     }
-  }, [ref, handleChange]);
+  }, [ref, handleChange, handleScroll]);
 
   const handleClick = () => !disabled && setVisible(true);
 
   const pickerProps: Record<string, string> = {
     id: pickerId,
-    mode: isCascading ? 'cascading' : (isSingle ? 'selector' : 'multiSelector'),
-    columns: JSON.stringify(columns),
-    'default-index': JSON.stringify(getIndexFromValue()),
   };
+
+  // Date mode
+  if (isDateMode) {
+    pickerProps.mode = mode!;
+    if (fields) pickerProps.fields = fields;
+    if (value) pickerProps.value = typeof value === 'string' ? value : JSON.stringify(value);
+    if (start) pickerProps.start = start;
+    if (end) pickerProps.end = end;
+  } else {
+    pickerProps.mode = isCascading ? 'cascading' : (isSingle ? 'selector' : 'multiSelector');
+    pickerProps.columns = JSON.stringify(columns ?? []);
+    pickerProps['default-index'] = JSON.stringify(getIndexFromValue());
+  }
+
+  // Common button props
   if (cancelText) pickerProps['cancel-text'] = cancelText;
   if (cancelTextColor) pickerProps['cancel-text-color'] = cancelTextColor;
   if (cancelButtonColor) pickerProps['cancel-button-color'] = cancelButtonColor;

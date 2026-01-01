@@ -10,7 +10,8 @@ export type LxPickerColumn = string[];
 export type LxPickerCascadingColumns = [string[], Record<string, string[]>];
 
 export interface LxPickerEventDetail {
-  index: number | number[];
+  index?: number | number[];
+  value?: string | string[];
   confirmed?: boolean;
   cancelled?: boolean;
 }
@@ -21,9 +22,13 @@ export interface LxPickerEvent extends CustomEvent<LxPickerEventDetail> {
 
 export type LxPickerAttributes = {
   id?: string;
-  mode?: 'selector' | 'multiSelector' | 'cascading';
+  mode?: 'selector' | 'multiSelector' | 'cascading' | 'date' | 'time';
   columns?: LxPickerColumn[] | LxPickerCascadingColumns;
   defaultIndex?: number | number[];
+  value?: string;
+  start?: string;
+  end?: string;
+  fields?: 'year' | 'month' | 'day' | 'range';
   cancelText?: string;
   confirmText?: string;
   cancelButtonColor?: string;
@@ -52,6 +57,10 @@ export class LxPickerElement extends HTMLElement {
       "mode",
       "columns",
       "default-index",
+      "value",
+      "start",
+      "end",
+      "fields",
       "cancel-text",
       "confirm-text",
       "cancel-button-color",
@@ -72,7 +81,6 @@ export class LxPickerElement extends HTMLElement {
     this.componentId = ensureComponentId(this, "lx-picker", this.componentId);
     if (!this.componentId) return;
 
-    // Register handler for native events
     this.unregister = registerSameLevelHandler(this.componentId!, (message) => {
       if (typeof message.event === "string") {
         this.dispatchEvent(new CustomEvent(message.event, { detail: message.detail ?? {}, bubbles: true }));
@@ -98,7 +106,7 @@ export class LxPickerElement extends HTMLElement {
     }
     this.harmonyEmbed = undefined;
     this.lastHarmonyProps = undefined;
-    // Cleanup event handlers
+    this.mounted = false;
     Object.keys(this._handlers).forEach(name => {
       this.removeEventListener(name, this._handlers[name]);
     });
@@ -128,10 +136,12 @@ export class LxPickerElement extends HTMLElement {
   }
 
   private collectProps() {
-    return {
-      mode: this.getAttr("mode", "selector"),
-      columns: this.getJsonAttr("columns"),
-      defaultIndex: this.getJsonAttr("default-index"),
+    const mode = this.getAttr("mode", "selector");
+    const isDateMode = mode === "date" || mode === "time";
+    const fields = this.getAttr("fields");
+
+    const props: Record<string, any> = {
+      mode,
       cancelText: this.getAttr("cancel-text", "Cancel"),
       confirmText: this.getAttr("confirm-text", "OK"),
       cancelButtonColor: this.getAttr("cancel-button-color"),
@@ -139,6 +149,25 @@ export class LxPickerElement extends HTMLElement {
       cancelTextColor: this.getAttr("cancel-text-color"),
       confirmTextColor: this.getAttr("confirm-text-color")
     };
+
+    if (isDateMode) {
+      if (fields) props.fields = fields;
+      const value = this.getAttr("value");
+      if (value) {
+        props.value = fields === "range" ? this.getJsonAttr("value") : value;
+      }
+
+      const start = this.getAttr("start");
+      if (start) props.start = start;
+
+      const end = this.getAttr("end");
+      if (end) props.end = end;
+    } else {
+      props.columns = this.getJsonAttr("columns");
+      props.defaultIndex = this.getJsonAttr("default-index");
+    }
+
+    return props;
   }
 
   private mountPicker() {
