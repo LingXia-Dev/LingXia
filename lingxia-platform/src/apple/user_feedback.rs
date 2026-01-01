@@ -1,9 +1,7 @@
 use super::app::Platform;
 use super::ffi;
 use crate::error::PlatformError;
-use crate::traits::{
-    ModalOptions, PickerType, ToastIcon, ToastOptions, ToastPosition, UserFeedback,
-};
+use crate::traits::{ModalOptions, ToastIcon, ToastOptions, ToastPosition, UserFeedback};
 
 impl UserFeedback for Platform {
     fn show_toast(&self, options: ToastOptions) -> Result<(), PlatformError> {
@@ -62,59 +60,6 @@ impl UserFeedback for Platform {
 
         // Call the Swift FFI function with callback ID
         ffi::show_action_sheet(ffi_options, callback_id);
-
-        Ok(())
-    }
-
-    fn show_picker(
-        &self,
-        picker_type: PickerType,
-        cancel_text: String,
-        cancel_button_color: String,
-        cancel_text_color: String,
-        confirm_text: String,
-        confirm_button_color: String,
-        confirm_text_color: String,
-        callback_id: u64,
-    ) -> Result<(), PlatformError> {
-        // Convert PickerType to JSON string for Swift
-        let columns_json = match picker_type {
-            PickerType::SingleColumn { items } => {
-                serde_json::to_string(&vec![items]).map_err(|e| {
-                    PlatformError::Platform(format!("Failed to serialize single column: {}", e))
-                })?
-            }
-            PickerType::DualColumn {
-                first_column,
-                second_column,
-            } => serde_json::to_string(&vec![first_column, second_column]).map_err(|e| {
-                PlatformError::Platform(format!("Failed to serialize dual columns: {}", e))
-            })?,
-            PickerType::DualColumnCascading {
-                first_column,
-                cascading_data,
-            } => {
-                // For cascading, send first column and cascading data as JSON
-                let cascading_structure = serde_json::json!([first_column, cascading_data]);
-                serde_json::to_string(&cascading_structure).map_err(|e| {
-                    PlatformError::Platform(format!("Failed to serialize cascading columns: {}", e))
-                })?
-            }
-        };
-
-        // Convert our options to the FFI PickerOptions
-        let ffi_options = ffi::PickerOptions {
-            columns_json,
-            cancel_text,
-            cancel_button_color,
-            cancel_text_color,
-            confirm_text,
-            confirm_button_color,
-            confirm_text_color,
-        };
-
-        // Call the Swift FFI function with callback ID
-        ffi::show_picker(ffi_options, callback_id);
 
         Ok(())
     }

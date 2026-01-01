@@ -1,87 +1,9 @@
 const app = getApp();
 
-const SINGLE_COLUMN_ITEMS = [
-  "Espresso",
-  "Latte",
-  "Cappuccino",
-  "Flat White",
-  "Matcha Latte",
-];
-
-const CASCADING_COLUMNS = {
-  Asia: ["Beijing", "Shanghai", "Singapore"],
-  Europe: ["London", "Berlin", "Paris"],
-  America: ["New York", "San Francisco", "Austin"],
-};
-
-const CASCADING_FIRST_COLUMN = Object.keys(CASCADING_COLUMNS);
-
-const TIME_HOURS = Array.from({ length: 24 }, (_, index) =>
-  index.toString().padStart(2, "0"),
-);
-const TIME_MINUTES = Array.from({ length: 60 }, (_, index) =>
-  index.toString().padStart(2, "0"),
-);
-
-const PICKER_OPTIONS = {
-  single: { mode: "selector", items: SINGLE_COLUMN_ITEMS },
-  cascading: {
-    mode: "multiSelector",
-    columns: [CASCADING_FIRST_COLUMN, CASCADING_COLUMNS],
-  },
-  time: { mode: "time" },
-};
-
-const formatIndexLabel = (indexes) => {
-  if (!Array.isArray(indexes) || indexes.length === 0) {
-    return "--";
-  }
-  return indexes.length === 1 ? `${indexes[0]}` : `[${indexes.join(", ")}]`;
-};
-
-const PICKER_LABEL_FORMATTERS = {
-  single: ([first = 0] = []) => SINGLE_COLUMN_ITEMS[first] || "--",
-  cascading: ([first = 0, second = 0] = []) => {
-    const region = CASCADING_FIRST_COLUMN[first] || "--";
-    const city = (CASCADING_COLUMNS[region] || [])[second] || "--";
-    return `${region} · ${city}`;
-  },
-  time: ([hourIndex = 0, minuteIndex = 0] = []) => {
-    const hour = TIME_HOURS[hourIndex] || "00";
-    const minute = TIME_MINUTES[minuteIndex] || "00";
-    return `${hour}:${minute}`;
-  },
-};
-
-const formatPickerLabel = (variant, indexes) => {
-  const formatter = PICKER_LABEL_FORMATTERS[variant];
-  if (!formatter) {
-    return "--";
-  }
-  return formatter(indexes);
-};
-
-const createPickerEntry = (label = "--", index = "--", status = "Ready") => ({
-  label,
-  index,
-  status,
-});
-
-const ensurePickerDemo = (page) => {
-  const state = (page.data && page.data.pickerDemo) || {};
-  return {
-    streamingKey: state.streamingKey || "",
-    single: state.single || createPickerEntry(),
-    cascading: state.cascading || createPickerEntry(),
-    time: state.time || createPickerEntry(),
-  };
-};
-
 const NAV_TITLE_MAP = {
   navigation: "Navigation Demo",
   toast: "Toast Demo",
   actionsheet: "Action Sheet Demo",
-  showpicker: "Picker Demo",
   modal: "Modal Demo",
   navbar: "Navigation Bar Demo",
   tabbar: "Tab Bar Demo",
@@ -108,12 +30,6 @@ Page({
       { label: "Center", value: "center" },
       { label: "Bottom", value: "bottom" },
     ],
-    pickerDemo: {
-      streamingKey: "",
-      single: createPickerEntry(),
-      cascading: createPickerEntry(),
-      time: createPickerEntry(),
-    },
     popupDemo: {
       message: "",
     },
@@ -361,108 +277,6 @@ Page({
         icon: "none",
       });
     }
-  },
-
-  startShowPickerDemo: async function (params) {
-    const variant = (params && params.variant) || "single";
-    const options = PICKER_OPTIONS[variant];
-    if (!options) {
-      return;
-    }
-
-    const currentKey =
-      (this.data &&
-        this.data.pickerDemo &&
-        this.data.pickerDemo.streamingKey) ||
-      "";
-    if (currentKey && currentKey !== variant) {
-      lx.showToast({
-        title: "Finish the active picker first.",
-        icon: "none",
-        duration: 2000,
-      });
-      return;
-    }
-    if (currentKey === variant) {
-      return;
-    }
-
-    let pickerState = ensurePickerDemo(this);
-    pickerState = {
-      ...pickerState,
-      streamingKey: variant,
-      [variant]: createPickerEntry("--", "--", "Listening..."),
-    };
-    this.setData({ pickerDemo: pickerState });
-
-    try {
-      for await (const event of lx.showPicker(options)) {
-        const raw = event && event.index;
-        const indexes = Array.isArray(raw)
-          ? raw.map((value) => Number(value) || 0)
-          : raw !== undefined
-            ? [Number(raw) || 0]
-            : [];
-
-        const label = formatPickerLabel(variant, indexes);
-        const indexLabel = formatIndexLabel(indexes);
-        const status =
-          event && event.confirmed
-            ? "Confirmed"
-            : event && event.cancelled
-              ? "Cancelled"
-              : "Selecting...";
-
-        pickerState = {
-          ...pickerState,
-          [variant]: createPickerEntry(label, indexLabel, status),
-        };
-        this.setData({ pickerDemo: pickerState });
-
-        if (event && (event.confirmed || event.cancelled)) {
-          break;
-        }
-      }
-    } catch (error) {
-      const message = error && error.message ? error.message : "Picker failed";
-      lx.showToast({ title: message, icon: "error", duration: 2000 });
-      const previous = pickerState[variant] || createPickerEntry();
-      pickerState = {
-        ...pickerState,
-        [variant]: createPickerEntry(previous.label, previous.index, "Error"),
-      };
-      this.setData({ pickerDemo: pickerState });
-    } finally {
-      pickerState = {
-        ...pickerState,
-        streamingKey: "",
-      };
-      this.setData({ pickerDemo: pickerState });
-    }
-  },
-
-  resetShowPickerDemo: function (params) {
-    const variant = params && params.variant;
-    if (!variant || !PICKER_OPTIONS[variant]) {
-      return;
-    }
-
-    const currentKey =
-      (this.data &&
-        this.data.pickerDemo &&
-        this.data.pickerDemo.streamingKey) ||
-      "";
-    if (currentKey === variant) {
-      return;
-    }
-
-    const current = ensurePickerDemo(this);
-    this.setData({
-      pickerDemo: {
-        ...current,
-        [variant]: createPickerEntry(),
-      },
-    });
   },
 
   // Show modal with custom parameters

@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
@@ -21,21 +20,6 @@ pub enum ToastPosition {
     Top,
     Center,
     Bottom,
-}
-
-#[derive(Debug, Clone)]
-pub enum PickerType {
-    SingleColumn {
-        items: Vec<String>,
-    },
-    DualColumn {
-        first_column: Vec<String>,
-        second_column: Vec<String>,
-    },
-    DualColumnCascading {
-        first_column: Vec<String>,
-        cascading_data: HashMap<String, Vec<String>>,
-    },
 }
 
 #[derive(Debug, Clone)]
@@ -239,18 +223,6 @@ pub trait UserFeedback: Send + Sync + 'static {
         options: Vec<String>,
         cancel_text: String,
         item_color: String,
-        callback_id: u64,
-    ) -> Result<(), PlatformError>;
-    #[allow(clippy::too_many_arguments)]
-    fn show_picker(
-        &self,
-        picker_type: PickerType,
-        cancel_text: String,
-        cancel_button_color: String,
-        cancel_text_color: String,
-        confirm_text: String,
-        confirm_button_color: String,
-        confirm_text_color: String,
         callback_id: u64,
     ) -> Result<(), PlatformError>;
 }

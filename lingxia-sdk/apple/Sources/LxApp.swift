@@ -521,11 +521,6 @@ extension LxApp {
         LxAppActionSheet.showActionSheet(options, callback_id: callback_id)
     }
 
-    /// Show picker
-    nonisolated public static func showPicker(options: PickerOptions, callback_id: UInt64) {
-        LxAppPicker.showPicker(options: options, callback_id: callback_id)
-    }
-
     /// Show popup overlay
     nonisolated public static func showPopup(
         appid: RustStr,

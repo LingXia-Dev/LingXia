@@ -1,7 +1,6 @@
 import Foundation
 import os.log
 import UIKit
-import CLingXiaSwiftAPI
 import CLingXiaRustAPI
 
 public class LxAppPicker {
@@ -35,29 +34,6 @@ public class LxAppPicker {
     // Retain scroll delegates (UIScrollView keeps a weak delegate)
     @MainActor
     internal static var scrollDelegates: [ColumnScrollDelegate] = []
-
-    public static func showPicker(options: PickerOptions, callback_id: UInt64) {
-        let columns = options.columns_json.toString()
-        let cancelText = options.cancel_text.toString()
-        let cancelButtonColor = options.cancel_button_color.toString()
-        let cancelTextColor = options.cancel_text_color.toString()
-        let confirmText = options.confirm_text.toString()
-        let confirmButtonColor = options.confirm_button_color.toString()
-        let confirmTextColor = options.confirm_text_color.toString()
-
-        Task { @MainActor in
-            showPicker(
-                columns: columns,
-                cancelText: cancelText,
-                cancelButtonColor: cancelButtonColor,
-                cancelTextColor: cancelTextColor,
-                confirmText: confirmText,
-                confirmButtonColor: confirmButtonColor,
-                confirmTextColor: confirmTextColor,
-                callbackID: callback_id
-            )
-        }
-    }
 
     @MainActor
     public static func showPicker(

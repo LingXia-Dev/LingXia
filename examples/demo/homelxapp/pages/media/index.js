@@ -209,37 +209,22 @@ async function pickOption(options, currentKey) {
     return null;
   }
 
-  const pickerConfig = {
-    mode: "selector",
-    items: options.map((option) => option.label),
-  };
-  const defaultIndex = options.findIndex((option) => option.key === currentKey);
-  if (defaultIndex >= 0) {
-    pickerConfig.defaultIndex = defaultIndex;
-  }
-
   try {
-    for await (const event of lx.showPicker(pickerConfig)) {
-      if (event?.cancelled) {
-        break;
-      }
-      const rawIndex = Array.isArray(event?.index)
-        ? event?.index?.[0]
-        : event?.index;
-      const index = Number(rawIndex);
-      if (Number.isNaN(index) || index < 0 || index >= options.length) {
-        continue;
-      }
-      if (event?.confirmed) {
-        return options[index];
-      }
+    const result = await lx.showActionSheet({
+      itemList: options.map((option) => option.label),
+    });
+    if (typeof result?.tapIndex === "number" && result.tapIndex >= 0 && result.tapIndex < options.length) {
+      return options[result.tapIndex];
     }
   } catch (error) {
-    console.error("[media-demo] showPicker failed:", error);
-    lx.showToast({
-      title: error?.message || "Operation failed",
-      icon: "none",
-    });
+    // User cancelled or error
+    if (error?.errMsg && !error.errMsg.includes("cancel")) {
+      console.error("[media-demo] showActionSheet failed:", error);
+      lx.showToast({
+        title: error?.message || "Operation failed",
+        icon: "none",
+      });
+    }
   }
   return null;
 }

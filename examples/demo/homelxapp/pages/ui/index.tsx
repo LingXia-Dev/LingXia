@@ -27,8 +27,6 @@ export default function UIPage() {
     chooseToastPosition,
     showDemoActionSheet,
     showPopupDemo,
-    startShowPickerDemo,
-    resetShowPickerDemo,
   } = useLingXia();
   const {
     currentType = 'navigation',
@@ -40,16 +38,8 @@ export default function UIPage() {
     toastPosition = 'center',
     toastPositionLabel = 'Center',
     toastPositionOptions = [],
-    pickerDemo = {},
     popupDemo = {},
   } = data;
-
-  const pickerStreamingKey = pickerDemo.streamingKey || '';
-  const pickerCards = React.useMemo(() => ([
-    { key: 'single', title: 'Single Column' },
-    { key: 'cascading', title: 'Cascading Dual Columns' },
-    { key: 'time', title: 'Time Picker' }
-  ]), []);
 
   const toastIconDisplay = React.useMemo(() => {
     const match = toastIconOptions.find((option) => option.value === toastIcon);
@@ -345,65 +335,6 @@ export default function UIPage() {
               Show Action Sheet
             </div>
           </div>
-        )}
-
-        {/* Picker Demo Section */}
-        {currentType === 'showpicker' && (
-          <>
-            <div className="mt-4 mb-6 px-4 text-center">
-              <h1 className="text-2xl font-light text-gray-800 mb-2">showPicker</h1>
-              <div className="w-16 h-0.5 bg-gray-400 mx-auto"></div>
-            </div>
-
-            <div className="mx-1 mb-4 text-sm text-gray-600 bg-white rounded-xl px-4 py-3 border border-gray-200">
-              Tap any card to open a picker. Scroll updates stream into the view until confirm or cancel.
-            </div>
-
-            {pickerCards.map((card) => {
-              const pickerMap = pickerDemo as Record<string, { label?: string; index?: string; status?: string }>;
-              const entry = pickerMap[card.key] || { label: '--', index: '--', status: 'Ready' };
-              const isRunning = pickerStreamingKey === card.key;
-              const isBusy = pickerStreamingKey !== '' && pickerStreamingKey !== card.key;
-              const statusColor = entry.status === 'Confirmed'
-                ? 'text-green-600'
-                : entry.status === 'Cancelled' || entry.status === 'Error'
-                  ? 'text-red-500'
-                  : 'text-gray-500';
-              const startButtonClass = `${isRunning || isBusy ? 'bg-gray-100 text-gray-400' : 'bg-blue-500 text-white hover:bg-blue-600'} py-2 text-sm font-medium`;
-              const resetButtonClass = `${isRunning ? 'bg-gray-100 text-gray-400' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'} py-2 text-sm font-medium`;
-
-              return (
-                <div key={card.key} className="mx-1 mb-3 bg-white rounded-lg border border-gray-200 overflow-hidden">
-                  <div className="px-4 py-3 border-b border-gray-100">
-                    <div className="flex items-center justify-between">
-                      <div className="text-base font-medium text-gray-900">{card.title}</div>
-                      <div className={`text-xs font-medium ${statusColor}`}>{entry.status}</div>
-                    </div>
-                    <div className="text-xs text-gray-500 mt-2">Current: <span className="text-gray-900">{entry.label}</span></div>
-                    <div className="text-xs text-gray-500">Indices: <span className="text-gray-900">{entry.index}</span></div>
-                  </div>
-                  <div className="grid grid-cols-2 border-t border-gray-100 divide-x divide-gray-100">
-                    <button
-                      type="button"
-                      className={startButtonClass}
-                      onClick={() => startShowPickerDemo({ variant: card.key })}
-                      disabled={isRunning || isBusy}
-                    >
-                      {isRunning ? 'Streaming...' : 'Open Picker'}
-                    </button>
-                    <button
-                      type="button"
-                      className={resetButtonClass}
-                      onClick={() => resetShowPickerDemo({ variant: card.key })}
-                      disabled={isRunning}
-                    >
-                      Reset
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </>
         )}
 
         {/* Modal Demo Section */}

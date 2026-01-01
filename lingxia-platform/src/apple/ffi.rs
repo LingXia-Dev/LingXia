@@ -53,18 +53,6 @@ mod bridge {
         pub cancel: bool,
     }
 
-    // Picker configuration for Swift
-    #[swift_bridge(swift_repr = "struct")]
-    pub struct PickerOptions {
-        pub columns_json: String,
-        pub cancel_text: String,
-        pub cancel_button_color: String,
-        pub cancel_text_color: String,
-        pub confirm_text: String,
-        pub confirm_button_color: String,
-        pub confirm_text_color: String,
-    }
-
     pub enum PopupPositionBridge {
         Center,
         Bottom,
@@ -127,10 +115,6 @@ mod bridge {
         // Action sheet functions (synchronous with callback)
         #[swift_bridge(swift_name = "LxApp.showActionSheet")]
         fn show_action_sheet(options: ActionSheetOptions, callback_id: u64);
-
-        // Picker functions (synchronous with callback)
-        #[swift_bridge(swift_name = "LxApp.showPicker")]
-        fn show_picker(options: PickerOptions, callback_id: u64);
 
         #[swift_bridge(swift_name = "LxApp.showPopup")]
         fn show_popup(
@@ -223,10 +207,10 @@ mod bridge {
 
 // Re-export the bridge functions for use in other modules
 pub use bridge::{
-    ActionSheetOptions, ModalOptions, PickerOptions, PopupPositionBridge, ToastIcon, ToastOptions,
-    ToastPosition, close_lxapp, hide_popup, hide_toast, launch_with_url, navigate, open_document,
-    open_lxapp, preview_media, show_action_sheet, show_modal, show_picker, show_popup, show_toast,
-    start_pull_down_refresh, stop_pull_down_refresh, update_navbar_ui, update_tabbar_ui,
+    ActionSheetOptions, ModalOptions, PopupPositionBridge, ToastIcon, ToastOptions, ToastPosition,
+    close_lxapp, hide_popup, hide_toast, launch_with_url, navigate, open_document, open_lxapp,
+    preview_media, show_action_sheet, show_modal, show_popup, show_toast, start_pull_down_refresh,
+    stop_pull_down_refresh, update_navbar_ui, update_tabbar_ui,
 };
 #[cfg(target_os = "ios")]
 #[allow(unused_imports)]

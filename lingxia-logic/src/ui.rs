@@ -3,7 +3,6 @@ use rong::{JSContext, JSResult};
 mod action_sheet;
 mod modal;
 mod navbar;
-mod picker;
 mod popup;
 mod pull_to_refresh;
 mod router;
@@ -20,7 +19,6 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     navbar::init(ctx)?;
     tabbar::init(ctx)?;
     router::init(ctx)?;
-    picker::init(ctx)?;
     popup::init(ctx)?;
     pull_to_refresh::init(ctx)?;
     Ok(())
