@@ -187,6 +187,11 @@ extension LxAppPicker {
         objc_setAssociatedObject(backgroundView, "pickerInstanceID", NSNumber(value: instanceID), .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
         LxAppPicker.backgroundView = backgroundView
 
+        // Add tap gesture to dismiss on background tap
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(backgroundTapped))
+        tapGesture.delegate = PickerBackgroundTapDelegate.shared
+        backgroundView.addGestureRecognizer(tapGesture)
+
         // Container for picker content
         let containerView = UIView()
         containerView.backgroundColor = UIColor.white
@@ -318,6 +323,14 @@ extension LxAppPicker {
     }
 
     @MainActor
+    @objc private static func backgroundTapped() {
+        if let pickerData = currentPickerData {
+            sendPickerResultCancel(callback_id: pickerData.callbackID)
+        }
+        dismissPicker()
+    }
+
+    @MainActor
     internal static func dismissPicker(expectedID: UInt64? = nil) {
         var window: UIWindow? = currentWindow
 
@@ -373,6 +386,18 @@ extension LxAppPicker {
         }
     }
 
+}
+
+// MARK: - Background Tap Delegate (only triggers on actual background, not container)
+private class PickerBackgroundTapDelegate: NSObject, UIGestureRecognizerDelegate {
+    static let shared = PickerBackgroundTapDelegate()
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        guard let backgroundView = gestureRecognizer.view,
+              let container = backgroundView.subviews.first else { return true }
+        let location = touch.location(in: backgroundView)
+        return !container.frame.contains(location)
+    }
 }
 
 // Simple data source for UIPickerView

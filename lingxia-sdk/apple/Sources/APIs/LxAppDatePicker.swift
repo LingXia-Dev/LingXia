@@ -18,6 +18,7 @@ final class DateRangePickerView: UIView, UICollectionViewDataSource, UICollectio
     var isSingleSelection = false
     var showQuickSelect = true
     var onSelectionStateChange: ((Bool) -> Void)?
+    var onValueChange: ((Any) -> Void)?
 
     private var hasCompletedRangeSelection = false
 
@@ -118,6 +119,20 @@ final class DateRangePickerView: UIView, UICollectionViewDataSource, UICollectio
         hasCompletedRangeSelection = singleSelection
         setupUI()
         updateMonth()
+    }
+
+    private func emitValueChange() {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+
+        if isSingleSelection {
+            guard let date = selectedDate else { return }
+            onValueChange?(formatter.string(from: date))
+            return
+        }
+
+        guard let range = selectedRange else { return }
+        onValueChange?([formatter.string(from: range.start), formatter.string(from: range.end)])
     }
 
     func setInitialDate(_ date: Date) {
@@ -267,8 +282,7 @@ final class DateRangePickerView: UIView, UICollectionViewDataSource, UICollectio
             let weekday = calendar.component(.weekday, from: today)
             let daysFromStart = (weekday - firstWeekday + 7) % 7
             let startOfWeek = calendar.date(byAdding: .day, value: -daysFromStart, to: today) ?? today
-            let endOfWeek = calendar.date(byAdding: .day, value: 6 - daysFromStart, to: today) ?? today
-            range = (startOfWeek, endOfWeek)
+            range = (startOfWeek, today)
         case .lastWeek:
             let weekday = calendar.component(.weekday, from: today)
             let daysFromStart = (weekday - firstWeekday + 7) % 7
@@ -279,9 +293,7 @@ final class DateRangePickerView: UIView, UICollectionViewDataSource, UICollectio
         case .thisMonth:
             let components = calendar.dateComponents([.year, .month], from: today)
             let startOfMonth = calendar.date(from: components) ?? today
-            let nextMonth = calendar.date(byAdding: .month, value: 1, to: startOfMonth) ?? today
-            let endOfMonth = calendar.date(byAdding: .day, value: -1, to: nextMonth) ?? today
-            range = (startOfMonth, endOfMonth)
+            range = (startOfMonth, today)
         case .lastMonth:
             let components = calendar.dateComponents([.year, .month], from: today)
             let startOfThisMonth = calendar.date(from: components) ?? today
@@ -295,6 +307,7 @@ final class DateRangePickerView: UIView, UICollectionViewDataSource, UICollectio
         tempStartDate = nil
         hasCompletedRangeSelection = true
         onSelectionStateChange?(true)
+        emitValueChange()
         currentMonth = range.0
         updateMonth()
     }
@@ -422,6 +435,7 @@ final class DateRangePickerView: UIView, UICollectionViewDataSource, UICollectio
             selectedDate = date
             hasCompletedRangeSelection = true
             onSelectionStateChange?(true)
+            emitValueChange()
         } else {
             if isSelectingStart {
                 tempStartDate = date
@@ -429,6 +443,7 @@ final class DateRangePickerView: UIView, UICollectionViewDataSource, UICollectio
                 isSelectingStart = false
                 hasCompletedRangeSelection = false
                 onSelectionStateChange?(false)
+                emitValueChange()
             } else {
                 guard let start = tempStartDate else {
                     tempStartDate = date
@@ -444,6 +459,7 @@ final class DateRangePickerView: UIView, UICollectionViewDataSource, UICollectio
                 tempStartDate = nil
                 hasCompletedRangeSelection = true
                 onSelectionStateChange?(true)
+                emitValueChange()
             }
         }
 
@@ -581,7 +597,14 @@ private class CalendarDayCell: UICollectionViewCell {
 @MainActor
 final class YearPickerView: UIView, UIPickerViewDataSource, UIPickerViewDelegate {
     var selectedYear: Int {
-        didSet { pickerView.selectRow(selectedYear - minYear, inComponent: 0, animated: false) }
+        didSet {
+            let clamped = max(minYear, min(selectedYear, maxYear))
+            if clamped != selectedYear {
+                selectedYear = clamped
+                return
+            }
+            pickerView.selectRow(clamped - minYear, inComponent: 0, animated: false)
+        }
     }
 
     private let minYear: Int
@@ -634,10 +657,24 @@ final class YearPickerView: UIView, UIPickerViewDataSource, UIPickerViewDelegate
 @MainActor
 final class YearMonthPickerView: UIView, UIPickerViewDataSource, UIPickerViewDelegate {
     var selectedYear: Int {
-        didSet { pickerView.selectRow(selectedYear - minYear, inComponent: 0, animated: false) }
+        didSet {
+            let clamped = max(minYear, min(selectedYear, maxYear))
+            if clamped != selectedYear {
+                selectedYear = clamped
+                return
+            }
+            pickerView.selectRow(clamped - minYear, inComponent: 0, animated: false)
+        }
     }
     var selectedMonth: Int {
-        didSet { pickerView.selectRow(selectedMonth - 1, inComponent: 1, animated: false) }
+        didSet {
+            let clamped = max(1, min(selectedMonth, 12))
+            if clamped != selectedMonth {
+                selectedMonth = clamped
+                return
+            }
+            pickerView.selectRow(clamped - 1, inComponent: 1, animated: false)
+        }
     }
 
     private let minYear: Int
@@ -1089,6 +1126,9 @@ public class LxAppDatePicker {
             }
 
             pickerView.setupForMode(singleSelection: false, showQuick: true)
+            pickerView.onValueChange = { value in
+                sendResultScroll(callback_id: callbackID, value: value)
+            }
 
             if let valueArray = value as? [String], valueArray.count == 2,
                let startDate = dateFormatter.date(from: valueArray[0]),
@@ -1108,6 +1148,9 @@ public class LxAppDatePicker {
             }
 
             pickerView.setupForMode(singleSelection: true, showQuick: true)
+            pickerView.onValueChange = { value in
+                sendResultScroll(callback_id: callbackID, value: value)
+            }
 
             if let dateString = value as? String, let date = dateFormatter.date(from: dateString) {
                 pickerView.setInitialDate(date)
@@ -1158,6 +1201,9 @@ public class LxAppDatePicker {
             }
 
             pickerView.setupForMode(singleSelection: true, showQuick: true)
+            pickerView.onValueChange = { value in
+                sendResultScroll(callback_id: callbackID, value: value)
+            }
 
             if let dateString = value as? String, let date = dateFormatter.date(from: dateString) {
                 pickerView.setInitialDate(date)
