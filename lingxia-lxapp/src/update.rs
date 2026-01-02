@@ -35,7 +35,7 @@ impl UpdateManager {
     pub fn new(lxapp: Arc<lxapp::LxApp>) -> Self {
         let downloads_dir = lxapp
             .runtime
-            .app_data_dir()
+            .app_cache_dir()
             .join(LINGXIA_DIR)
             .join(LXAPPS_DIR)
             .join("download");
@@ -319,6 +319,7 @@ impl UpdateManager {
                 .runtime
                 .app_cache_dir()
                 .join(LINGXIA_DIR)
+                .join(LXAPPS_DIR)
                 .join(USER_CACHE_DIR)
                 .join(&dir_name);
             if cache_dir.exists() {

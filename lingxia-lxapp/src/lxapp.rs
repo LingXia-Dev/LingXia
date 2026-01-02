@@ -546,6 +546,7 @@ impl LxApp {
             .runtime
             .app_cache_dir()
             .join(LINGXIA_DIR)
+            .join(LXAPPS_DIR)
             .join(USER_CACHE_DIR);
 
         self.user_cache_dir = cache_base_dir.join(&dir_name);
