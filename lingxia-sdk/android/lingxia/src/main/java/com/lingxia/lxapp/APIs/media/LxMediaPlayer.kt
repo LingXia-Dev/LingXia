@@ -192,6 +192,7 @@ class LxMediaPlayer(
 
     private var streamDecoderMode = false
     private var streamIsPlaying = false
+    private var streamHasOutput = false
     private var posterVisibilityBeforeStream: Int? = null
     private var loadingVisibilityBeforeStream: Int? = null
     private var shutterColorBeforeStream: Int? = null
@@ -537,6 +538,7 @@ class LxMediaPlayer(
     fun acquireStreamTextureView(): TextureView? {
         if (!streamDecoderMode) {
             streamDecoderMode = true
+            streamHasOutput = false
             posterVisibilityBeforeStream = posterImageView?.visibility
             loadingVisibilityBeforeStream = loadingIndicator?.visibility
 
@@ -562,6 +564,7 @@ class LxMediaPlayer(
         if (streamDecoderMode) {
             streamDecoderMode = false
             streamIsPlaying = false
+            streamHasOutput = false
             posterVisibilityBeforeStream?.let { posterImageView?.visibility = it }
             loadingVisibilityBeforeStream?.let { loadingIndicator?.visibility = it }
             posterVisibilityBeforeStream = null
@@ -701,6 +704,7 @@ class LxMediaPlayer(
         isPausedByUser = true  // Stopped by user
         if (streamDecoderMode && componentId != null) {
             streamIsPlaying = false
+            streamHasOutput = false
             clearWaitingSuppression()
             com.lingxia.lxapp.SameLevel.ComponentRouter.dispatchVideoCommand(componentId, "pause", "{}")
             com.lingxia.lxapp.SameLevel.ComponentRouter.dispatchVideoCommand(
@@ -1677,6 +1681,10 @@ class LxMediaPlayer(
         when (event) {
             "waiting" -> {
                 if (!isPausedByUser) {
+                    val wasPlaying = streamIsPlaying
+                    if (streamHasOutput && wasPlaying) {
+                        return
+                    }
                     streamIsPlaying = false
                     streamLoadingHideRunnable?.let { mainHandler.removeCallbacks(it) }
                     streamLoadingHideRunnable = null
@@ -1688,12 +1696,16 @@ class LxMediaPlayer(
             }
             "play" -> {
                 streamIsPlaying = true
+                streamHasOutput = true
                 hideStreamLoadingWithMinimumDuration()
                 clearWaitingSuppression()
                 controlsOverlay?.updatePlayPauseButton()
             }
             "pause", "stop" -> {
                 streamIsPlaying = false
+                if (event == "stop") {
+                    streamHasOutput = false
+                }
                 hideStreamLoadingWithMinimumDuration()
                 clearWaitingSuppression()
                 controlsOverlay?.updatePlayPauseButton()

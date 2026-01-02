@@ -1065,6 +1065,10 @@ internal class StreamDecoderSession(
 
     override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {
         previousListener?.onSurfaceTextureUpdated(surface)
+        if (!paused && surfaceReady && !playNotified) {
+            playNotified = true
+            eventEmitter("play", emptyMap())
+        }
     }
 
     private data class VideoConfig(
