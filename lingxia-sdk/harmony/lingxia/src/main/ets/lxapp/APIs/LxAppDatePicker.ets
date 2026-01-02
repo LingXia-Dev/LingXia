@@ -1250,7 +1250,7 @@ export struct DatePickerManager {
 
               .fontSize(15)
 
-              .fontColor(props.isDisabled ? '#C7C7CC' : (props.isSelected ? '#FFFFFF' : (props.isInCurrentMonth ? '#111111' : '#C7C7CC')))
+              .fontColor(props.isDisabled ? '#C7C7CC' : (props.isSelected ? '#FFFFFF' : (props.isInCurrentMonth ? '#111111' : '#636366')))
 
               .fontWeight(FontWeight.Medium)
 
@@ -1260,7 +1260,7 @@ export struct DatePickerManager {
 
           .height(34)
 
-          .opacity(props.isDisabled ? 0.45 : 1)
+          .opacity(props.isDisabled ? 0.3 : 1)
 
           .onClick(() => {
 

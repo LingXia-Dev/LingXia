@@ -538,13 +538,16 @@ class CustomCalendarView @JvmOverloads constructor(
                 canvas.drawCircle(centerX, centerY, radius, paint)
             }
 
-            // Draw day number
+            // Draw day number with appropriate styling
             textPaint.color = when {
-                isDisabled -> android.graphics.Color.parseColor("#CCCCCC")
-                isSelected -> android.graphics.Color.WHITE
-                !isCurrentMonth -> android.graphics.Color.parseColor("#CCCCCC")
-                else -> android.graphics.Color.parseColor("#333333")
+                isDisabled -> android.graphics.Color.parseColor("#CCCCCC")  // Disabled: light gray
+                isSelected -> android.graphics.Color.WHITE  // Selected: white
+                !isCurrentMonth -> android.graphics.Color.parseColor("#666666")  // Not in month: lighter gray (brighter)
+                else -> android.graphics.Color.parseColor("#333333")  // Normal: dark gray
             }
+
+            // Apply alpha: disabled dates are more faded
+            textPaint.alpha = if (isDisabled) (255 * 0.3).toInt() else 255
 
             val textY = centerY - (textPaint.descent() + textPaint.ascent()) / 2
             canvas.drawText(day.toString(), centerX, textY, textPaint)

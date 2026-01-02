@@ -411,7 +411,9 @@ final class DateRangePickerView: UIView, UICollectionViewDataSource, UICollectio
             range: isSingleSelection ? nil : selectedRange,
             selectedDate: isSingleSelection ? selectedDate : nil,
             isToday: date.map { calendar.isDateInToday($0) } ?? false,
-            calendar: calendar
+            calendar: calendar,
+            minimumDate: minimumDate,
+            maximumDate: maximumDate
         )
         return cell
     }
@@ -514,7 +516,7 @@ private class CalendarDayCell: UICollectionViewCell {
         ])
     }
 
-    func configure(date: Date?, isInCurrentMonth: Bool, range: (start: Date, end: Date)?, selectedDate: Date? = nil, isToday: Bool, calendar: Calendar) {
+    func configure(date: Date?, isInCurrentMonth: Bool, range: (start: Date, end: Date)?, selectedDate: Date? = nil, isToday: Bool, calendar: Calendar, minimumDate: Date? = nil, maximumDate: Date? = nil) {
         guard let date = date else {
             dayLabel.text = ""
             selectionBackground.isHidden = true
@@ -523,7 +525,21 @@ private class CalendarDayCell: UICollectionViewCell {
         }
 
         dayLabel.text = "\(calendar.component(.day, from: date))"
-        dayLabel.textColor = isInCurrentMonth ? .label : .tertiaryLabel
+
+        // Check if date is outside allowed range
+        let isDisabled = (minimumDate.map { date < $0 } ?? false) || (maximumDate.map { date > $0 } ?? false)
+
+        // Apply styling based on state
+        if isDisabled {
+            // Disabled dates: very light gray + low opacity
+            dayLabel.textColor = .quaternaryLabel
+            dayLabel.alpha = 0.3
+        } else {
+            // Enabled dates: darker color based on current month
+            dayLabel.textColor = isInCurrentMonth ? .label : .secondaryLabel
+            dayLabel.alpha = 1.0
+        }
+
         selectionBackground.layer.borderWidth = 0
         rangeBackground.isHidden = true
 
