@@ -5,6 +5,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import com.lingxia.lxapp.APIs.LxAppPicker
+import com.lingxia.lxapp.APIs.LxAppDatePicker
 import com.lingxia.lxapp.LxApp
 import com.lingxia.lxapp.SameLevel.LxNativeComponent
 import com.lingxia.lxapp.SameLevel.LxNativeComponentFactory
@@ -71,11 +72,15 @@ class PickerComponent(
     }
 
     override fun unmount() {
-        // Remove callback and cleanup
+        val mode = initialProps["mode"] as? String ?: "selector"
+        if (mode == "date" || mode == "time") {
+            LxAppDatePicker.hideDatePicker()
+        } else {
+            LxAppPicker.hidePicker()
+        }
         if (currentCallbackId != 0L) {
             LxAppPicker.localCallbacks.remove(currentCallbackId)
         }
-        LxAppPicker.hidePicker()
         placeholderView?.let { view ->
             (view.parent as? ViewGroup)?.removeView(view)
         }
@@ -83,11 +88,7 @@ class PickerComponent(
     }
 
     private fun showPickerWithProps(props: Map<String, Any?>) {
-        val columnsJSON: String = when (val columns = props["columns"]) {
-            is String -> columns
-            is List<*> -> JSONArray(columns).toString()
-            else -> "[]"
-        }
+        val mode = props["mode"] as? String ?: "selector"
 
         nextCallbackId++
         currentCallbackId = nextCallbackId
@@ -98,7 +99,40 @@ class PickerComponent(
             if (isTerminal) {
                 LxAppPicker.localCallbacks.remove(currentCallbackId)
             }
-            handlePickerCallback(success, data)
+            handlePickerCallback(success, data, mode)
+        }
+
+        // Date/Time picker
+        if (mode == "date" || mode == "time") {
+            val fields = props["fields"] as? String ?: "day"
+            val value = when (val v = props["value"]) {
+                is String -> v
+                is List<*> -> JSONArray(v).toString()
+                else -> ""
+            }
+
+            LxAppDatePicker.showDatePicker(
+                mode = mode,
+                fields = fields,
+                value = value,
+                start = props["start"] as? String ?: "",
+                end = props["end"] as? String ?: "",
+                cancelText = props["cancelText"] as? String ?: "Cancel",
+                cancelButtonColor = props["cancelButtonColor"] as? String ?: "#F2F2F2",
+                cancelTextColor = props["cancelTextColor"] as? String ?: "#007AFF",
+                confirmText = props["confirmText"] as? String ?: "OK",
+                confirmButtonColor = props["confirmButtonColor"] as? String ?: "#007AFF",
+                confirmTextColor = props["confirmTextColor"] as? String ?: "#FFFFFF",
+                callbackId = currentCallbackId
+            )
+            return
+        }
+
+        // Regular picker
+        val columnsJSON: String = when (val columns = props["columns"]) {
+            is String -> columns
+            is List<*> -> JSONArray(columns).toString()
+            else -> "[]"
         }
 
         // Parse columns to determine picker type
@@ -183,7 +217,7 @@ class PickerComponent(
         eventSink(mapOf("event" to event, "detail" to detail))
     }
 
-    private fun handlePickerCallback(success: Boolean, data: String) {
+    private fun handlePickerCallback(success: Boolean, data: String, mode: String) {
         if (!success) {
             sendEvent("change", mapOf("cancelled" to true))
             return
@@ -193,27 +227,45 @@ class PickerComponent(
             val result = JSONObject(data)
             val detail = mutableMapOf<String, Any>()
 
-            if (result.has("index")) {
-                val index = result.get("index")
-                detail["index"] = when (index) {
-                    is JSONArray -> {
-                        val list = mutableListOf<Int>()
-                        for (i in 0 until index.length()) {
-                            list.add(index.getInt(i))
+            if (mode == "date" || mode == "time") {
+                if (result.has("value")) {
+                    val value = result.get("value")
+                    detail["value"] = when (value) {
+                        is JSONArray -> {
+                            val list = mutableListOf<String>()
+                            for (i in 0 until value.length()) {
+                                list.add(value.getString(i))
+                            }
+                            list
                         }
-                        list
+                        else -> value
                     }
-                    else -> index
+                }
+            } else {
+                if (result.has("index")) {
+                    val index = result.get("index")
+                    detail["index"] = when (index) {
+                        is JSONArray -> {
+                            val list = mutableListOf<Int>()
+                            for (i in 0 until index.length()) {
+                                list.add(index.getInt(i))
+                            }
+                            list
+                        }
+                        else -> index
+                    }
                 }
             }
 
             if (result.optBoolean("confirm", false)) {
                 detail["confirmed"] = true
+                sendEvent("change", detail)
             } else if (result.optBoolean("cancel", false)) {
                 detail["cancelled"] = true
+                sendEvent("change", detail)
+            } else {
+                sendEvent("scroll", detail)
             }
-
-            sendEvent("change", detail)
         } catch (e: Exception) {
             android.util.Log.e("PickerComponent", "Failed to parse callback data: $data", e)
         }
