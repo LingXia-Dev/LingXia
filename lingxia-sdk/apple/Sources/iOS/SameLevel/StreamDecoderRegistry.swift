@@ -112,10 +112,14 @@ final class StreamDecoderRegistry {
 
     func handleCommand(componentId: String, name: String, params: [String: Any]?) -> Bool {
         stopping.remove(componentId)
-        guard let session = ensureSession(componentId: componentId, reason: "handleCommand") else {
+        guard let session = sessions[componentId] else {
             return false
         }
         return session.handleCommand(name: name, params: params)
+    }
+
+    func hasSession(componentId: String) -> Bool {
+        return sessions[componentId] != nil
     }
 
     private func ensureSession(componentId: String, reason: StaticString) -> StreamDecoderSession? {

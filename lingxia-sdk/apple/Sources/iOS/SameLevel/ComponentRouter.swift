@@ -39,12 +39,14 @@ final class ComponentRouter {
     /// Dispatch a command to a component. Called from Rust FFI.
     func dispatchCommand(componentId: String, name: String, params: [String: Any]?) -> Bool {
         if name != "enterFullscreen" && name != "exitFullscreen" {
-            if StreamDecoderRegistry.shared.handleCommand(
-                componentId: componentId,
-                name: name,
-                params: params
-            ) {
-                return true
+            if StreamDecoderRegistry.shared.hasSession(componentId: componentId) {
+                if StreamDecoderRegistry.shared.handleCommand(
+                    componentId: componentId,
+                    name: name,
+                    params: params
+                ) {
+                    return true
+                }
             }
         }
 

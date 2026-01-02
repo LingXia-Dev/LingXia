@@ -124,13 +124,9 @@ object ComponentRouter {
 
         updateDesiredAudioState(componentId, name, paramsJson)
 
-        var session = streamDecoders[componentId]
-        if (shouldUseStreamDecoder) {
-            if (session == null) {
-                session = ensureStreamDecoderExists(componentId, "dispatchVideoCommand:$name")
-            } else if (!session.isTextureViewAttached()) {
-                mainHandler.post { createStreamDecoder(componentId) }
-            }
+        val session = streamDecoders[componentId]
+        if (shouldUseStreamDecoder && session != null && !session.isTextureViewAttached()) {
+            mainHandler.post { createStreamDecoder(componentId) }
         }
         if (session != null && name != "enterFullscreen" && name != "exitFullscreen") {
             if (session.handleCommand(name, paramsJson)) {
