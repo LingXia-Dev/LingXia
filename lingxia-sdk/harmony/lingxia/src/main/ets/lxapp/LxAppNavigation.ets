@@ -5,6 +5,7 @@ import { onLxappOpened, onLxappClosed, getTabBar, TabBarItem, TabBarState, getCu
 import { ToastManager } from './APIs/LxAppToast';
 import { ModalManager } from './APIs/LxAppModal';
 import { PickerManager } from './APIs/LxAppPicker';
+import { DatePickerManager } from './APIs/LxAppDatePicker';
 import { ActionSheetManager } from './APIs/LxAppActionSheet';
 import { PopupManager } from './APIs/LxAppPopup';
 import { MediaPreviewOverlayManager, MediaPreviewOverlay } from './APIs/media/MediaPreviewOverlay';
@@ -281,6 +282,9 @@ export struct LxAppNavigation {
         .zIndex(10002)
 
       PickerManager()
+        .zIndex(10003)
+
+      DatePickerManager()
         .zIndex(10003)
 
       PopupManager()

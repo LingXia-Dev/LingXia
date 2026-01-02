@@ -5,12 +5,14 @@
 import { SameLevelParams, registerSameLevelBuilder } from '../SameLevelNodeController';
 import { SameLevelRecord } from '../SameLevelTypes';
 import { LxAppPicker, PickerResult } from '../../APIs/LxAppPicker';
+import { LxAppDatePicker, LxDatePickerResult } from '../../APIs/LxAppDatePicker';
 
 // Prevent picker from showing multiple times for the same component instance
 const showingComponents: Set<string> = new Set();
 
 interface PickerEventDetail {
   index?: number | number[];
+  value?: string | string[];
   confirmed?: boolean;
   cancelled?: boolean;
 }
@@ -47,9 +49,9 @@ struct SameLevelPickerComponent {
   }
 
   aboutToDisappear(): void {
-    // Cleanup callback and tracking flag on unmount
     if (this.callbackId) {
       LxAppPicker.localCallbacks.delete(this.callbackId);
+      LxAppDatePicker.localCallbacks.delete(this.callbackId);
     }
     if (this.componentId) {
       showingComponents.delete(this.componentId);
@@ -66,76 +68,120 @@ struct SameLevelPickerComponent {
   }
 
   private showPickerWithProps(props: SameLevelRecord): void {
-    // Prevent duplicate picker show for same component
     if (showingComponents.has(this.componentId)) {
       return;
     }
     showingComponents.add(this.componentId);
 
-    const columnsRaw = props.get('columns');
-    let columnsJSON: string;
-    if (typeof columnsRaw === 'string') {
-      columnsJSON = columnsRaw;
-    } else if (columnsRaw !== undefined) {
-      columnsJSON = JSON.stringify(columnsRaw);
-    } else {
-      columnsJSON = '[]';
-    }
+    const mode = this.getStringProp(props, 'mode', 'selector');
 
-    // Generate unique callback ID
     SameLevelPickerComponent.nextId++;
     this.callbackId = `picker-${this.componentId}-${SameLevelPickerComponent.nextId}`;
 
-    // Register callback - LxAppPicker manages callback lifecycle
     const componentId = this.componentId;
-    LxAppPicker.localCallbacks.set(this.callbackId, (success: boolean, resultJSON: string) => {
-      this.handlePickerCallback(success, resultJSON);
-
-      // Clean up showingComponents on terminal events with delay
-      // Delay ensures picker UI is fully hidden before allowing re-show
-      const isTerminal = resultJSON.includes('"confirm"') || resultJSON.includes('"cancel"');
+    const callback = (success: boolean, resultJSON: string) => {
+      const isTerminal = this.handlePickerCallback(success, resultJSON, mode);
       if (isTerminal) {
         setTimeout(() => {
           showingComponents.delete(componentId);
         }, 300);
       }
-    });
+    };
 
-    LxAppPicker.showPicker(
-      columnsJSON,
-      this.getStringProp(props, 'cancelText', 'Cancel'),
-      this.getStringProp(props, 'cancelButtonColor', ''),
-      this.getStringProp(props, 'cancelTextColor', ''),
-      this.getStringProp(props, 'confirmText', 'OK'),
-      this.getStringProp(props, 'confirmButtonColor', ''),
-      this.getStringProp(props, 'confirmTextColor', ''),
-      this.callbackId
-    );
+    if (mode === 'date' || mode === 'time') {
+      LxAppDatePicker.localCallbacks.set(this.callbackId, callback);
+
+      const fields = this.getStringProp(props, 'fields', 'day');
+      const valueRaw = props.get('value');
+      let value = '';
+      if (typeof valueRaw === 'string') {
+        value = valueRaw;
+      } else if (valueRaw !== undefined) {
+        value = JSON.stringify(valueRaw);
+      }
+
+      LxAppDatePicker.showDatePicker(
+        mode,
+        fields,
+        value,
+        this.getStringProp(props, 'start', ''),
+        this.getStringProp(props, 'end', ''),
+        this.getStringProp(props, 'cancelText', 'Cancel'),
+        this.getStringProp(props, 'cancelButtonColor', ''),
+        this.getStringProp(props, 'cancelTextColor', ''),
+        this.getStringProp(props, 'confirmText', 'OK'),
+        this.getStringProp(props, 'confirmButtonColor', ''),
+        this.getStringProp(props, 'confirmTextColor', ''),
+        this.callbackId
+      );
+    } else {
+      LxAppPicker.localCallbacks.set(this.callbackId, callback);
+
+      const columnsRaw = props.get('columns');
+      let columnsJSON: string;
+      if (typeof columnsRaw === 'string') {
+        columnsJSON = columnsRaw;
+      } else if (columnsRaw !== undefined) {
+        columnsJSON = JSON.stringify(columnsRaw);
+      } else {
+        columnsJSON = '[]';
+      }
+
+      LxAppPicker.showPicker(
+        columnsJSON,
+        this.getStringProp(props, 'cancelText', 'Cancel'),
+        this.getStringProp(props, 'cancelButtonColor', ''),
+        this.getStringProp(props, 'cancelTextColor', ''),
+        this.getStringProp(props, 'confirmText', 'OK'),
+        this.getStringProp(props, 'confirmButtonColor', ''),
+        this.getStringProp(props, 'confirmTextColor', ''),
+        this.callbackId
+      );
+    }
   }
 
-  private handlePickerCallback(success: boolean, resultJSON: string): void {
+  private handlePickerCallback(success: boolean, resultJSON: string, mode: string): boolean {
     if (!success) {
       this.sendEvent('change', { cancelled: true });
-      return;
+      return true;
     }
 
     try {
-      const result: PickerResult = JSON.parse(resultJSON);
       const detail: PickerEventDetail = {};
+      let isTerminal = false;
 
-      if (result.index !== undefined) {
-        detail.index = result.index;
-      }
-      if (result.confirm === true) {
-        detail.confirmed = true;
-      } else if (result.cancel === true) {
-        detail.cancelled = true;
+      if (mode === 'date' || mode === 'time') {
+        const result: LxDatePickerResult = JSON.parse(resultJSON);
+        if (result.value !== undefined) {
+          detail.value = result.value;
+        }
+        if (result.confirm === true) {
+          detail.confirmed = true;
+          isTerminal = true;
+        } else if (result.cancel === true) {
+          detail.cancelled = true;
+          isTerminal = true;
+        }
+      } else {
+        const result: PickerResult = JSON.parse(resultJSON);
+        if (result.index !== undefined) {
+          detail.index = result.index;
+        }
+        if (result.confirm === true) {
+          detail.confirmed = true;
+          isTerminal = true;
+        } else if (result.cancel === true) {
+          detail.cancelled = true;
+          isTerminal = true;
+        }
       }
 
-      this.sendEvent('change', detail);
+      this.sendEvent(isTerminal ? 'change' : 'scroll', detail);
+      return isTerminal;
     } catch (error) {
       // Ignore parse errors
     }
+    return false;
   }
 
   private sendEvent(event: string, detail: PickerEventDetail): void {
