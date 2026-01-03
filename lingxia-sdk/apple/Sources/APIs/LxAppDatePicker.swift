@@ -997,7 +997,8 @@ public class LxAppDatePicker {
         buttonStack.translatesAutoresizingMaskIntoConstraints = false
 
         let cancelButton = UIButton(type: .system)
-        cancelButton.setTitle(cancelText, for: .normal)
+        let cancelButtonText = cancelText.isEmpty ? L10n.string("lx_common_cancel") : cancelText
+        cancelButton.setTitle(cancelButtonText, for: .normal)
         if !cancelButtonColor.isEmpty {
             cancelButton.backgroundColor = resolveColor(cancelButtonColor, fallback: .secondarySystemBackground)
         } else {
@@ -1013,7 +1014,8 @@ public class LxAppDatePicker {
         cancelButton.translatesAutoresizingMaskIntoConstraints = false
 
         let confirmButton = UIButton(type: .system)
-        confirmButton.setTitle(confirmText, for: .normal)
+        let confirmButtonText = confirmText.isEmpty ? L10n.string("lx_common_confirm") : confirmText
+        confirmButton.setTitle(confirmButtonText, for: .normal)
         if !confirmButtonColor.isEmpty {
             confirmButton.backgroundColor = resolveColor(confirmButtonColor, fallback: .systemBlue)
         } else {

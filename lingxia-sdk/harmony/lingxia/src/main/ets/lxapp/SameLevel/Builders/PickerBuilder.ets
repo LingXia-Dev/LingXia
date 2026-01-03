@@ -106,10 +106,10 @@ struct SameLevelPickerComponent {
         value,
         this.getStringProp(props, 'start', ''),
         this.getStringProp(props, 'end', ''),
-        this.getStringProp(props, 'cancelText', 'Cancel'),
+        this.getStringProp(props, 'cancelText', ''),
         this.getStringProp(props, 'cancelButtonColor', ''),
         this.getStringProp(props, 'cancelTextColor', ''),
-        this.getStringProp(props, 'confirmText', 'OK'),
+        this.getStringProp(props, 'confirmText', ''),
         this.getStringProp(props, 'confirmButtonColor', ''),
         this.getStringProp(props, 'confirmTextColor', ''),
         this.callbackId
@@ -129,10 +129,10 @@ struct SameLevelPickerComponent {
 
       LxAppPicker.showPicker(
         columnsJSON,
-        this.getStringProp(props, 'cancelText', 'Cancel'),
+        this.getStringProp(props, 'cancelText', ''),
         this.getStringProp(props, 'cancelButtonColor', ''),
         this.getStringProp(props, 'cancelTextColor', ''),
-        this.getStringProp(props, 'confirmText', 'OK'),
+        this.getStringProp(props, 'confirmText', ''),
         this.getStringProp(props, 'confirmButtonColor', ''),
         this.getStringProp(props, 'confirmTextColor', ''),
         this.callbackId

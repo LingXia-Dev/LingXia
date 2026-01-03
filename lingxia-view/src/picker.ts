@@ -142,8 +142,8 @@ export class LxPickerElement extends HTMLElement {
 
     const props: Record<string, any> = {
       mode,
-      cancelText: this.getAttr("cancel-text", "Cancel"),
-      confirmText: this.getAttr("confirm-text", "OK"),
+      cancelText: this.getAttr("cancel-text", ""),
+      confirmText: this.getAttr("confirm-text", ""),
       cancelButtonColor: this.getAttr("cancel-button-color"),
       confirmButtonColor: this.getAttr("confirm-button-color"),
       cancelTextColor: this.getAttr("cancel-text-color"),

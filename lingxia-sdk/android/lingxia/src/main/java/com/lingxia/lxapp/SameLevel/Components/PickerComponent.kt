@@ -117,10 +117,10 @@ class PickerComponent(
                 value = value,
                 start = props["start"] as? String ?: "",
                 end = props["end"] as? String ?: "",
-                cancelText = props["cancelText"] as? String ?: "Cancel",
+                cancelText = props["cancelText"] as? String ?: "",
                 cancelButtonColor = props["cancelButtonColor"] as? String ?: "#F2F2F2",
                 cancelTextColor = props["cancelTextColor"] as? String ?: "#007AFF",
-                confirmText = props["confirmText"] as? String ?: "OK",
+                confirmText = props["confirmText"] as? String ?: "",
                 confirmButtonColor = props["confirmButtonColor"] as? String ?: "#007AFF",
                 confirmTextColor = props["confirmTextColor"] as? String ?: "#FFFFFF",
                 callbackId = currentCallbackId
@@ -158,10 +158,10 @@ class PickerComponent(
                         firstColumn = firstColumnArray,
                         keys = firstColumnArray,
                         values = values.toTypedArray(),
-                        cancelText = props["cancelText"] as? String ?: "Cancel",
+                        cancelText = props["cancelText"] as? String ?: "",
                         cancelButtonColor = props["cancelButtonColor"] as? String ?: "#F2F2F2",
                         cancelTextColor = props["cancelTextColor"] as? String ?: "#007AFF",
-                        confirmText = props["confirmText"] as? String ?: "OK",
+                        confirmText = props["confirmText"] as? String ?: "",
                         confirmButtonColor = props["confirmButtonColor"] as? String ?: "#007AFF",
                         confirmTextColor = props["confirmTextColor"] as? String ?: "#FFFFFF",
                         callbackId = currentCallbackId
@@ -181,10 +181,10 @@ class PickerComponent(
                     LxAppPicker.showDualColumnPicker(
                         firstColumn = firstArray,
                         secondColumn = secondArray,
-                        cancelText = props["cancelText"] as? String ?: "Cancel",
+                        cancelText = props["cancelText"] as? String ?: "",
                         cancelButtonColor = props["cancelButtonColor"] as? String ?: "#F2F2F2",
                         cancelTextColor = props["cancelTextColor"] as? String ?: "#007AFF",
-                        confirmText = props["confirmText"] as? String ?: "OK",
+                        confirmText = props["confirmText"] as? String ?: "",
                         confirmButtonColor = props["confirmButtonColor"] as? String ?: "#007AFF",
                         confirmTextColor = props["confirmTextColor"] as? String ?: "#FFFFFF",
                         callbackId = currentCallbackId
@@ -198,10 +198,10 @@ class PickerComponent(
 
                     LxAppPicker.showSingleColumnPicker(
                         options = columnArray,
-                        cancelText = props["cancelText"] as? String ?: "Cancel",
+                        cancelText = props["cancelText"] as? String ?: "",
                         cancelButtonColor = props["cancelButtonColor"] as? String ?: "#F2F2F2",
                         cancelTextColor = props["cancelTextColor"] as? String ?: "#007AFF",
-                        confirmText = props["confirmText"] as? String ?: "OK",
+                        confirmText = props["confirmText"] as? String ?: "",
                         confirmButtonColor = props["confirmButtonColor"] as? String ?: "#007AFF",
                         confirmTextColor = props["confirmTextColor"] as? String ?: "#FFFFFF",
                         callbackId = currentCallbackId

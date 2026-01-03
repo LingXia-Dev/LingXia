@@ -97,10 +97,10 @@ final class PickerComponent: NSObject, LxNativeComponent {
                 value: props["value"],
                 start: props["start"] as? String,
                 end: props["end"] as? String,
-                cancelText: props["cancelText"] as? String ?? "Cancel",
+                cancelText: props["cancelText"] as? String ?? "",
                 cancelButtonColor: props["cancelButtonColor"] as? String ?? "",
                 cancelTextColor: props["cancelTextColor"] as? String ?? "",
-                confirmText: props["confirmText"] as? String ?? "OK",
+                confirmText: props["confirmText"] as? String ?? "",
                 confirmButtonColor: props["confirmButtonColor"] as? String ?? "",
                 confirmTextColor: props["confirmTextColor"] as? String ?? "",
                 callbackID: currentCallbackId
@@ -115,10 +115,10 @@ final class PickerComponent: NSObject, LxNativeComponent {
             
             LxAppPicker.showPicker(
                 columns: columnsJSON,
-                cancelText: props["cancelText"] as? String ?? "Cancel",
+                cancelText: props["cancelText"] as? String ?? "",
                 cancelButtonColor: props["cancelButtonColor"] as? String ?? "",
                 cancelTextColor: props["cancelTextColor"] as? String ?? "",
-                confirmText: props["confirmText"] as? String ?? "OK",
+                confirmText: props["confirmText"] as? String ?? "",
                 confirmButtonColor: props["confirmButtonColor"] as? String ?? "",
                 confirmTextColor: props["confirmTextColor"] as? String ?? "",
                 callbackID: currentCallbackId

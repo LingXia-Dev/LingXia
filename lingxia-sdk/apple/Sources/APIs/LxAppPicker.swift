@@ -215,7 +215,8 @@ extension LxAppPicker {
 
         // Create cancel button with proper styling
         let cancelButton = UIButton(type: .system)
-        cancelButton.setTitle(configuration.cancelText, for: .normal)
+        let cancelText = configuration.cancelText.isEmpty ? L10n.string("lx_common_cancel") : configuration.cancelText
+        cancelButton.setTitle(cancelText, for: .normal)
         cancelButton.backgroundColor = resolveColor(configuration.cancelButtonColor, fallback: UIColor.systemGray5)
         cancelButton.setTitleColor(resolveColor(configuration.cancelTextColor, fallback: UIColor.label), for: .normal)
         cancelButton.titleLabel?.font = UIFont.systemFont(ofSize: 17)
@@ -226,7 +227,8 @@ extension LxAppPicker {
 
         // Create confirm button with configurable colors
         let confirmButton = UIButton(type: .system)
-        confirmButton.setTitle(configuration.confirmText, for: .normal)
+        let confirmText = configuration.confirmText.isEmpty ? L10n.string("lx_common_ok") : configuration.confirmText
+        confirmButton.setTitle(confirmText, for: .normal)
         confirmButton.backgroundColor = resolveColor(configuration.confirmButtonColor, fallback: UIColor.systemBlue)
         confirmButton.setTitleColor(resolveColor(configuration.confirmTextColor, fallback: UIColor.white), for: .normal)
         confirmButton.titleLabel?.font = UIFont.boldSystemFont(ofSize: 17)

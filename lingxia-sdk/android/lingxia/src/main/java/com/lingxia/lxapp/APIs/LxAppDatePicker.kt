@@ -10,6 +10,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.*
 import com.lingxia.lxapp.LxApp
+import com.lingxia.lxapp.R
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
@@ -490,7 +491,7 @@ object LxAppDatePicker {
             )
 
             val cancelButton = TextView(context).apply {
-                text = config.cancelText
+                text = if (config.cancelText.isNotEmpty()) config.cancelText else context.getString(R.string.lx_common_cancel)
                 textSize = 18f
                 try {
                     setTextColor(Color.parseColor(config.cancelTextColor))
@@ -534,7 +535,7 @@ object LxAppDatePicker {
             })
 
             val confirmButton = TextView(context).apply {
-                text = config.confirmText
+                text = if (config.confirmText.isNotEmpty()) config.confirmText else context.getString(R.string.lx_common_confirm)
                 textSize = 18f
                 try {
                     setTextColor(Color.parseColor(config.confirmTextColor))

@@ -12,6 +12,7 @@ import android.widget.*
 import androidx.core.view.ViewCompat
 import com.lingxia.lxapp.LxApp
 import com.lingxia.lxapp.NativeApi
+import com.lingxia.lxapp.R
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -303,7 +304,7 @@ object LxAppPicker {
             )
 
             val cancelButton = TextView(context).apply {
-                text = config.cancelText
+                text = if (config.cancelText.isNotEmpty()) config.cancelText else context.getString(R.string.lx_common_cancel)
                 textSize = 18f
 
                 try {
@@ -357,7 +358,7 @@ object LxAppPicker {
             addView(spacer)
 
             val confirmButton = TextView(context).apply {
-                text = config.confirmText
+                text = if (config.confirmText.isNotEmpty()) config.confirmText else context.getString(R.string.lx_common_ok)
                 textSize = 18f
 
                 try {

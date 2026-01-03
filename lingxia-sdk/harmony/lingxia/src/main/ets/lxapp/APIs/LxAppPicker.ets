@@ -315,7 +315,7 @@ export struct PickerManager {
       Row() {
         // Cancel button with gray background like Android
         Button({ type: ButtonType.Normal, stateEffect: true }) {
-          Text(this.config?.cancelText || 'Cancel')
+          Text(this.config?.cancelText || $r('app.string.lx_common_cancel'))
             .fontSize(18)
             .fontColor(this.config?.cancelTextColor || '#007AFF')
             .fontWeight(FontWeight.Normal)
@@ -336,7 +336,7 @@ export struct PickerManager {
 
         // Confirm button with blue background like Android
         Button({ type: ButtonType.Normal, stateEffect: true }) {
-          Text(this.config?.confirmText || 'Confirm')
+          Text(this.config?.confirmText || $r('app.string.lx_common_ok'))
             .fontSize(18)
             .fontColor(this.config?.confirmTextColor || '#FFFFFF')
             .fontWeight(FontWeight.Medium)
