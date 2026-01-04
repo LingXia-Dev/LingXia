@@ -999,6 +999,7 @@ class LxAppActivity : AppCompatActivity() {
         }
         navBar?.visibility = View.GONE
         tab?.visibility = View.GONE
+        updateCapsuleButton()
         rootContainer.setPadding(0, 0, 0, 0)
         updateLayoutMargins()
         rootContainer.requestApplyInsets()
@@ -1038,6 +1039,7 @@ class LxAppActivity : AppCompatActivity() {
         mediaFullscreenState = null
         pendingTabBarVisibility = null
         pendingNavBarVisibility = null
+        updateCapsuleButton()
         if (shouldRestoreOverlayOrder) {
             navigationBar?.let { rootContainer.bringChildToFront(it) }
             tabBar?.let { rootContainer.bringChildToFront(it) }
@@ -1539,7 +1541,7 @@ class LxAppActivity : AppCompatActivity() {
     private fun updateCapsuleButton() {
         rootContainer.post {
             val capsule = rootContainer.findViewWithTag<View>("capsule_button")
-            if (isDisplayingHomeLxApp) {
+            if (isDisplayingHomeLxApp || isMediaFullscreen) {
                 capsule?.visibility = View.GONE
             } else {
                 if (capsule == null) {
