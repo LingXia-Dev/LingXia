@@ -803,6 +803,10 @@ impl NativeVideoPlayer {
                 component_id,
                 result
             );
+            // Free the leaked Box to prevent memory leak
+            unsafe {
+                Box::from_raw(callback_data_ptr as *mut InfoCallbackData);
+            }
             return Ok(Self {
                 player,
                 component_id: component_id.to_string(),

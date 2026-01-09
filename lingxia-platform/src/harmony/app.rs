@@ -15,15 +15,36 @@ use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex, mpsc};
 use std::time::Duration;
 
+/// HarmonyOS Platform implementation
+///
+/// # Resource Manager Lifetime
+///
+/// The `resource_manager` field holds a pointer to a HarmonyOS NativeResourceManager.
+/// According to HarmonyOS documentation:
+/// - The NativeResourceManager is owned by the JS layer
+/// - `OH_ResourceManager_InitNativeResourceManager` only creates a native wrapper
+/// around the existing JS ResourceManager object
+/// - There is NO corresponding `OH_ResourceManager_Release` function
+/// - The JS garbage collector handles the actual cleanup
+///
+/// Therefore, we do NOT free the resource_manager pointer in Drop - it's a borrowed
+/// reference that remains valid as long as the JS ResourceManager object is alive.
 pub struct Platform {
     pub data_dir: String,
     pub cache_dir: String,
     pub locale: String,
+    /// Pointer to HarmonyOS NativeResourceManager (owned by JS layer, do not free)
     resource_manager: Option<*mut NativeResourceManager>,
     // Store the original napi values for cloning
     env: Option<napi_ohos::sys::napi_env>,
     js_resource_manager: Option<napi_ohos::sys::napi_value>,
 }
+
+// Note: No Drop impl needed for Platform because:
+// 1. resource_manager is borrowed from JS layer (no manual cleanup needed)
+// 2. All other fields are simple types (String, Option) that auto-drop
+// 3. If JS ResourceManager is destroyed, the native pointer becomes invalid but
+//    that's fine because Platform should be destroyed before JS cleanup anyway
 
 impl crate::traits::Permissions for Platform {
     fn check_permission(
