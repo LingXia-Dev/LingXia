@@ -25,6 +25,7 @@ export type LxVideoAttributes = {
   style?: any;
   ref?: any;
   // Event handlers
+  onPlayRequest?: (e: Event) => void;
   onPlay?: (e: Event) => void;
   onPause?: (e: Event) => void;
   onEnded?: (e: Event) => void;
@@ -89,8 +90,8 @@ export class LxVideoElement extends HTMLElement {
         // Normalize detail based on event type
         let detail = message.detail || message.payload || {};
 
-        // Ensure play/pause/ended/waiting have empty detail if not provided
-        if (['play', 'pause', 'ended', 'waiting'].includes(message.event)) {
+        // Ensure common state events have empty detail if not provided
+        if (['playrequest', 'play', 'pause', 'stop', 'ended', 'waiting'].includes(message.event)) {
             if (Object.keys(detail).length === 0) detail = {};
         }
 
@@ -186,6 +187,9 @@ export class LxVideoElement extends HTMLElement {
   }
 
   // Standard Media Events for React Props (e.g. <lx-video onPlay={...} />)
+  set onplayrequest(cb: EventListener) { this.setEventHandler('playrequest', cb); }
+  get onplayrequest() { return this.getEventHandler('playrequest'); }
+
   set onplay(cb: EventListener) { this.setEventHandler('play', cb); }
   get onplay() { return this.getEventHandler('play'); }
 

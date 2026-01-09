@@ -3,7 +3,10 @@ import { registerVideoComponent, type LxVideoAttributes } from '../video.js';
 
 export interface LxVideoProps
   extends LxVideoAttributes,
-    Omit<React.HTMLAttributes<HTMLElement>, keyof LxVideoAttributes | "children" | "dangerouslySetInnerHTML" | "ref"> {}
+    Omit<
+      React.HTMLAttributes<HTMLElement>,
+      keyof LxVideoAttributes | "children" | "dangerouslySetInnerHTML" | "ref" | "onPlaying"
+    > {}
 
 // Ensure the custom element is registered exactly once when running in a browser
 if (typeof window !== "undefined") {
