@@ -37,10 +37,9 @@ impl From<PlatformError> for StreamError {
 
 pub trait StreamSession: Send + Sync {
     fn stop(&self) -> Result<(), StreamError>;
-
-    fn abort(&self) -> Result<(), StreamError> {
-        self.stop()
-    }
+    fn pause(&self) -> Result<(), StreamError>;
+    fn resume(&self) -> Result<(), StreamError>;
+    fn seek(&self, position: f64) -> Result<(), StreamError>;
 }
 
 pub trait StreamProvider: Send + Sync {
@@ -57,6 +56,9 @@ pub struct FrameSink {
     decoder: Arc<dyn VideoStreamDecoderHandle>,
     epoch_token: Option<Arc<AtomicU64>>,
     epoch: u64,
+    stale_logged: Arc<std::sync::atomic::AtomicBool>,
+    component_id: Option<String>,
+    duration_reporter: Option<Arc<dyn Fn(u64) + Send + Sync>>,
 }
 
 impl FrameSink {
@@ -65,6 +67,9 @@ impl FrameSink {
             decoder: decoder.into(),
             epoch_token: None,
             epoch: 0,
+            stale_logged: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            component_id: None,
+            duration_reporter: None,
         }
     }
 
@@ -73,6 +78,9 @@ impl FrameSink {
             decoder,
             epoch_token: None,
             epoch: 0,
+            stale_logged: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            component_id: None,
+            duration_reporter: None,
         }
     }
 
@@ -85,18 +93,56 @@ impl FrameSink {
             decoder,
             epoch_token: Some(epoch_token),
             epoch,
+            stale_logged: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            component_id: None,
+            duration_reporter: None,
         }
     }
 
-    fn is_current(&self) -> bool {
-        match &self.epoch_token {
-            Some(token) => token.load(Ordering::Relaxed) == self.epoch,
-            None => true,
+    pub fn with_component_id(mut self, component_id: impl Into<String>) -> Self {
+        self.component_id = Some(component_id.into());
+        self
+    }
+
+    pub fn with_duration_reporter<F>(mut self, reporter: F) -> Self
+    where
+        F: Fn(u64) + Send + Sync + 'static,
+    {
+        self.duration_reporter = Some(Arc::new(reporter));
+        self
+    }
+
+    pub fn component_id(&self) -> Option<&str> {
+        self.component_id.as_deref()
+    }
+
+    fn is_current(&self, op: &'static str) -> bool {
+        let Some(token) = &self.epoch_token else {
+            return true;
+        };
+        let current = token.load(Ordering::Relaxed);
+        if current == self.epoch {
+            return true;
         }
+        if self
+            .stale_logged
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+        {
+            let component_id = self.component_id.as_deref().unwrap_or("-");
+            crate::warn!(
+                "FrameSink dropped stale {}: component_id={} sink_epoch={} current_epoch={}",
+                op,
+                component_id,
+                self.epoch,
+                current
+            );
+        }
+        false
     }
 
     pub fn configure_video(&self, config: VideoStreamConfig) -> Result<(), StreamError> {
-        if !self.is_current() {
+        if !self.is_current("configure_video") {
             return Ok(());
         }
         self.decoder
@@ -105,7 +151,7 @@ impl FrameSink {
     }
 
     pub fn configure_audio(&self, config: AudioStreamConfig) -> Result<(), StreamError> {
-        if !self.is_current() {
+        if !self.is_current("configure_audio") {
             return Ok(());
         }
         self.decoder
@@ -114,24 +160,36 @@ impl FrameSink {
     }
 
     pub fn push_video(&self, frame: VideoFrame) -> Result<(), StreamError> {
-        if !self.is_current() {
+        if !self.is_current("push_video") {
             return Ok(());
         }
         self.decoder.push_video(frame).map_err(StreamError::from)
     }
 
     pub fn push_audio(&self, frame: AudioFrame) -> Result<(), StreamError> {
-        if !self.is_current() {
+        if !self.is_current("push_audio") {
             return Ok(());
         }
         self.decoder.push_audio(frame).map_err(StreamError::from)
     }
 
     pub fn stop(&self) -> Result<(), StreamError> {
-        if !self.is_current() {
+        if !self.is_current("stop") {
             return Ok(());
         }
         self.decoder.stop().map_err(StreamError::from)
+    }
+
+    pub fn report_duration_ms(&self, duration_ms: u64) {
+        if duration_ms == 0 {
+            return;
+        }
+        if !self.is_current("report_duration_ms") {
+            return;
+        }
+        if let Some(reporter) = &self.duration_reporter {
+            reporter(duration_ms);
+        }
     }
 }
 
@@ -152,4 +210,74 @@ pub fn get_stream_provider(name: &str) -> Option<Arc<dyn StreamProvider>> {
         .get()
         .and_then(|registry| registry.lock().ok())
         .and_then(|providers| providers.get(name).cloned())
+}
+
+// Stream seek callback registry - allows FFI layer to seek without depending on logic layer
+type SeekCallback = Arc<dyn Fn(f64) -> bool + Send + Sync>;
+type SeekCallbackRegistry = HashMap<String, SeekCallback>;
+
+static STREAM_SEEK_CALLBACKS: OnceLock<Mutex<SeekCallbackRegistry>> = OnceLock::new();
+
+fn seek_callback_registry() -> &'static Mutex<SeekCallbackRegistry> {
+    STREAM_SEEK_CALLBACKS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Register a stream seek callback for a component.
+/// The callback takes position in seconds and returns true if seek was successful.
+pub fn register_stream_seek_callback<F>(component_id: &str, callback: F)
+where
+    F: Fn(f64) -> bool + Send + Sync + 'static,
+{
+    if let Ok(mut registry) = seek_callback_registry().lock() {
+        crate::info!(
+            "[StreamSource] register_stream_seek_callback: component_id={}",
+            component_id
+        );
+        registry.insert(component_id.to_string(), Arc::new(callback));
+    }
+}
+
+/// Unregister a stream seek callback.
+pub fn unregister_stream_seek_callback(component_id: &str) {
+    if let Ok(mut registry) = seek_callback_registry().lock() {
+        registry.remove(component_id);
+    }
+}
+
+/// Seek stream session by component_id. Returns true if seek was successful.
+pub fn seek_stream_session(component_id: &str, position_seconds: f64) -> bool {
+    crate::info!(
+        "[StreamSource] seek_stream_session: component_id={} position_seconds={}",
+        component_id,
+        position_seconds
+    );
+
+    // Clone the Arc callback while holding the lock, then call it outside the lock
+    let callback = {
+        let Ok(registry) = seek_callback_registry().lock() else {
+            crate::warn!(
+                "[StreamSource] seek_stream_session: failed to lock registry for component_id={}",
+                component_id
+            );
+            return false;
+        };
+        let cb = registry.get(component_id).cloned();
+        if cb.is_none() {
+            crate::warn!(
+                "[StreamSource] seek_stream_session: no callback found for component_id={}, registered_ids={:?}",
+                component_id,
+                registry.keys().collect::<Vec<_>>()
+            );
+        }
+        cb
+    };
+
+    if let Some(cb) = callback {
+        crate::info!(
+            "[StreamSource] seek_stream_session: invoking callback for component_id={}",
+            component_id
+        );
+        return cb(position_seconds);
+    }
+    false
 }
