@@ -21,12 +21,16 @@ final class VideoComponent: NSObject, LxNativeComponent {
     let view: UIView
 
     private let player: LxMediaPlayer
+    private var lastPropsVolume: Double?
+    private var lastPropsMuted: Bool?
 
     init(id: String, initialProps: [String: Any], eventSink: @escaping ([String: Any]) -> Void) {
         self.id = id
         self.player = LxMediaPlayer(eventSink: eventSink)
         self.view = player.view
         super.init()
+        lastPropsVolume = Self.double(from: initialProps["volume"])
+        lastPropsMuted = Self.bool(from: initialProps["muted"])
         player.update(config: Self.makeConfig(from: initialProps))
     }
 
@@ -35,7 +39,27 @@ final class VideoComponent: NSObject, LxNativeComponent {
     }
 
     func update(props: [String: Any]) {
-        player.update(config: Self.makeConfig(from: props))
+        var config = Self.makeConfig(from: props)
+
+        let nextVolume = Self.double(from: props["volume"])
+        if let nextVolume {
+            if let lastVolume = lastPropsVolume, abs(nextVolume - lastVolume) < 0.000_1 {
+                config.volume = nil
+            } else {
+                lastPropsVolume = nextVolume
+            }
+        } else {
+            config.volume = nil
+        }
+
+        let nextMuted = Self.bool(from: props["muted"])
+        if nextMuted == nil || nextMuted == lastPropsMuted {
+            config.muted = nil
+        } else {
+            lastPropsMuted = nextMuted
+        }
+
+        player.update(config: config)
     }
 
     func setFrame(_ frame: CGRect) {
@@ -46,6 +70,11 @@ final class VideoComponent: NSObject, LxNativeComponent {
     func blur() { }
 
     func handleCommand(name: String, params: [String: Any]?) {
+        if name == "setDuration" {
+            let duration = Self.double(from: params?["duration"])
+            player.setExternalDurationSeconds(duration)
+            return
+        }
         guard let command = Self.makeCommand(name: name, params: params) else {
             return
         }
@@ -58,7 +87,7 @@ final class VideoComponent: NSObject, LxNativeComponent {
 
     func setStreamDecoderActive(_ active: Bool) {
         if active {
-            player.setStreamDecoderActive(true) { [weak self] name, params in
+            player.setStreamDecoderActive(true, componentId: id) { [weak self] name, params in
                 guard let self = self else { return false }
                 return StreamDecoderRegistry.shared.handleCommand(
                     componentId: self.id,
@@ -67,7 +96,7 @@ final class VideoComponent: NSObject, LxNativeComponent {
                 )
             }
         } else {
-            player.setStreamDecoderActive(false, commandHandler: nil)
+            player.setStreamDecoderActive(false, componentId: nil, commandHandler: nil)
         }
     }
 
@@ -83,6 +112,20 @@ final class VideoComponent: NSObject, LxNativeComponent {
         if string.hasPrefix("/") {
             return URL(fileURLWithPath: string)
         }
+        return nil
+    }
+
+    private static func double(from value: Any?) -> Double? {
+        if let value = value as? Double { return value }
+        if let value = value as? Float { return Double(value) }
+        if let value = value as? Int { return Double(value) }
+        if let value = value as? NSNumber { return value.doubleValue }
+        return nil
+    }
+
+    private static func bool(from value: Any?) -> Bool? {
+        if let value = value as? Bool { return value }
+        if let value = value as? NSNumber { return value.boolValue }
         return nil
     }
 
@@ -124,16 +167,23 @@ final class VideoComponent: NSObject, LxNativeComponent {
             config.poster = url
         }
 
+        // Duration (playback segment) - seconds preferred; also accept milliseconds.
+        if let duration = Self.double(from: props["duration"]), duration > 0 {
+            config.duration = duration
+        } else if let durationMs = Self.double(from: props["durationMs"]), durationMs > 0 {
+            config.duration = durationMs / 1000.0
+        }
+
         if let autoplay = props["autoplay"] as? Bool {
             config.autoplay = autoplay
         }
         if let loop = props["loop"] as? Bool {
             config.loop = loop
         }
-        if let muted = props["muted"] as? Bool {
+        if let muted = Self.bool(from: props["muted"]) {
             config.muted = muted
         }
-        if let volume = props["volume"] as? Double {
+        if let volume = Self.double(from: props["volume"]) {
             config.volume = volume
         }
         if let controls = props["controls"] as? Bool {

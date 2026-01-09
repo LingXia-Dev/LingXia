@@ -51,6 +51,7 @@ public struct LxMediaPlayerConfig {
     public var source: LxMediaSource?
     public var src: URL?
     public var poster: URL?
+    public var duration: Double?
     public var autoplay: Bool?
     public var loop: Bool?
     public var muted: Bool?
@@ -67,6 +68,7 @@ public struct LxMediaPlayerConfig {
         source: LxMediaSource? = nil,
         src: URL? = nil,
         poster: URL? = nil,
+        duration: Double? = nil,
         autoplay: Bool? = nil,
         loop: Bool? = nil,
         muted: Bool? = nil,
@@ -82,6 +84,7 @@ public struct LxMediaPlayerConfig {
         self.source = source
         self.src = src
         self.poster = poster
+        self.duration = duration
         self.autoplay = autoplay
         self.loop = loop
         self.muted = muted
@@ -102,6 +105,7 @@ public struct LxMediaPlayerConfig {
         }
         if let src { dict["src"] = src.absoluteString }
         if let poster { dict["poster"] = poster.absoluteString }
+        if let duration { dict["duration"] = duration }
         if let autoplay { dict["autoplay"] = autoplay }
         if let loop { dict["loop"] = loop }
         if let muted { dict["muted"] = muted }
@@ -229,7 +233,7 @@ private final class DebugSlider: UISlider {
     private var panGesture: UIPanGestureRecognizer!
     private var tapGesture: UITapGestureRecognizer!
     private var initialValue: Float = 0
-    
+
     /// Callback for real-time scrubbing (called during pan with throttling)
     var onScrub: ((Float) -> Void)?
     /// Callback for final seek (called on pan end or tap)
@@ -238,41 +242,41 @@ private final class DebugSlider: UISlider {
     var onScrubStart: (() -> Void)?
     /// Callback for scrub end
     var onScrubEnd: (() -> Void)?
-    
+
     private var lastScrubTime: TimeInterval = 0
-    
+
     override init(frame: CGRect) {
         super.init(frame: frame)
         setupGestures()
     }
-    
+
     required init?(coder: NSCoder) {
         super.init(coder: coder)
         setupGestures()
     }
-    
+
     private func setupGestures() {
         // Pan gesture for dragging
         panGesture = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
         panGesture.cancelsTouchesInView = true
         panGesture.delaysTouchesBegan = false
         addGestureRecognizer(panGesture)
-        
+
         // Tap gesture for jumping to position
         tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
         tapGesture.require(toFail: panGesture)
         addGestureRecognizer(tapGesture)
     }
-    
+
     @objc private func handleTap(_ gesture: UITapGestureRecognizer) {
         let location = gesture.location(in: self)
         let trackRect = self.trackRect(forBounds: bounds)
-        
+
         // Calculate value based on tap position
         let percentage = Float((location.x - trackRect.minX) / trackRect.width)
         let newValue = min(max(percentage, 0), 1)
         value = newValue
-        
+
         onScrubStart?()
         sendActions(for: .touchDown)
         sendActions(for: .valueChanged)
@@ -280,25 +284,25 @@ private final class DebugSlider: UISlider {
         onScrubEnd?()
         sendActions(for: .touchUpInside)
     }
-    
+
     @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
         let trackRect = self.trackRect(forBounds: bounds)
-        
+
         switch gesture.state {
         case .began:
             initialValue = value
             onScrubStart?()
             sendActions(for: .touchDown)
-            
+
         case .changed:
             let location = gesture.location(in: self)
             let percentage = Float((location.x - trackRect.minX) / trackRect.width)
             let newValue = min(max(percentage, 0), 1)
-            
+
             if newValue != value {
                 value = newValue
                 sendActions(for: .valueChanged)
-                
+
                 // Throttled scrub callback (every 100ms)
                 let now = CACurrentMediaTime()
                 if now - lastScrubTime > 0.1 {
@@ -306,12 +310,12 @@ private final class DebugSlider: UISlider {
                     onScrub?(newValue)
                 }
             }
-            
+
         case .ended, .cancelled:
             onSeekComplete?(value)
             onScrubEnd?()
             sendActions(for: .touchUpInside)
-            
+
         default:
             break
         }
@@ -324,22 +328,22 @@ private final class TapOverlayView: UIView {
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         // First, try standard UIKit hitTest - this handles UISlider correctly
         let standardHit = super.hitTest(point, with: event)
-        
+
         // If we found a control (button, slider, etc.), use it
         if let hit = standardHit, hit is UIControl {
             return hit
         }
-        
+
         // If standard hitTest found something other than self, use it
         if let hit = standardHit, hit !== self {
             return hit
         }
-        
+
         // Fallback to tap catcher for empty areas (to show/hide controls)
         if let target = tapTarget, bounds.contains(point) {
             return target
         }
-        
+
         return standardHit
     }
 }
@@ -387,6 +391,8 @@ public final class LxMediaPlayer: NSObject {
     private var wasPlayingBeforeBackground = false
     private var isPausedByUser = false  // Track if user explicitly paused (vs buffering)
     private var firstFrameDisplayed = false
+    // Once true, poster should NEVER show again (cold start only). Only stop() resets this.
+    private var hasEverRenderedFrame = false
     private var waitingForFirstFrame = false
     private var desiredPlayWhenReady = false
     private var revealVideoWorkItem: DispatchWorkItem?
@@ -407,11 +413,11 @@ public final class LxMediaPlayer: NSObject {
     private let timeLabel = UILabel() // Shows remaining or total time
     private let progressSlider = DebugSlider()
     private var isScrubbing = false
-    private var wasPlayingBeforeScrub = false
     private var lastScrubTime: TimeInterval = 0
     private var isSeeking = false  // Track JS API seek in progress
     private var suppressWaitingUntil: TimeInterval = 0
-    private let volumeSlider = UISlider()
+    // Use DebugSlider to bypass WKScrollView pan-gesture interference (same reason as progressSlider).
+    private let volumeSlider = DebugSlider()
     private let volumeButton = UIButton(type: .system)
     private let settingsButton = UIButton(type: .system)
     private let loadingIndicator = UIActivityIndicatorView(style: .large)
@@ -437,6 +443,19 @@ public final class LxMediaPlayer: NSObject {
     private var streamCommandHandler: ((String, [String: Any]) -> Bool)?
     private var streamVolume: Float = 1.0
     private var streamMuted = false
+    private var streamIsPlaying = false
+    private var streamHasEnded = false
+    // Stream intent latch for "src is empty but user pressed play" before stream source is configured.
+    private var pendingStreamPlayRequest = false
+    private var pendingStreamSeekedSeconds: Double?
+    private var streamComponentId: String?
+    private var streamProgressTimer: DispatchSourceTimer?
+    private var streamPlaybackBaseOffsetSeconds: Double = 0
+
+    // Optional duration override for playback clips (seconds).
+    // Used when the underlying player/stream does not report a reliable finite duration.
+    private var overrideDurationSeconds: Double?
+    private var hasExternalDurationOverride = false
 
     public init(
         eventSink: @escaping ([String: Any]) -> Void,
@@ -451,7 +470,9 @@ public final class LxMediaPlayer: NSObject {
 
         // Ensure audio plays even in silent mode
         do {
-            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback, options: [.allowAirPlay, .allowBluetooth])
+            // `.allowBluetooth` is only valid for some categories (e.g. `.playAndRecord`); using it
+            // with `.playback` can fail on some iOS versions/devices (OSStatus -50).
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback, options: [.allowAirPlay])
             try AVAudioSession.sharedInstance().setActive(true)
         } catch {
             os_log("MediaPlayer failed to set audio session: %{public}@", log: OSLog(subsystem: "LingXia", category: "Media"), type: .error, error.localizedDescription)
@@ -490,25 +511,30 @@ public final class LxMediaPlayer: NSObject {
         host.bringSubviewToFront(view)
         view.isUserInteractionEnabled = true
         overlayView.isUserInteractionEnabled = true
-        
+
         // Find parent WKScrollView and configure its pan gesture to not interfere with slider
         configureParentScrollViewGestures(from: host)
     }
-    
+
     /// Configure parent scroll view's gestures to allow slider interaction
     private func configureParentScrollViewGestures(from view: UIView) {
-        // Get slider's pan gesture
-        guard let sliderPanGesture = progressSlider.gestureRecognizers?.first(where: { $0 is UIPanGestureRecognizer }) else {
-            os_log("MediaPlayer: slider pan gesture not found", log: log, type: .error)
+        let sliderPanGestures = [
+            progressSlider.gestureRecognizers?.first(where: { $0 is UIPanGestureRecognizer }),
+            volumeSlider.gestureRecognizers?.first(where: { $0 is UIPanGestureRecognizer })
+        ].compactMap { $0 }
+        if sliderPanGestures.isEmpty {
+            os_log("MediaPlayer: slider pan gestures not found", log: log, type: .error)
             return
         }
-        
+
         var current: UIView? = view
         while let parent = current?.superview {
             // Check if this is a scroll view (WKScrollView, WKChildScrollView, or UIScrollView)
             if let scrollView = parent as? UIScrollView {
                 // Make scroll view's pan gesture require slider's pan gesture to fail first
-                scrollView.panGestureRecognizer.require(toFail: sliderPanGesture)
+                for sliderPanGesture in sliderPanGestures {
+                    scrollView.panGestureRecognizer.require(toFail: sliderPanGesture)
+                }
             }
             current = parent
         }
@@ -557,6 +583,13 @@ public final class LxMediaPlayer: NSObject {
         // Loop flag - only update if explicitly set in config
         if let loop = config.loop {
             loopEnabled = loop
+        }
+
+        if !hasExternalDurationOverride,
+           let duration = config.duration,
+           duration.isFinite,
+           duration > 0 {
+            overrideDurationSeconds = duration
         }
 
         // Poster
@@ -675,6 +708,22 @@ public final class LxMediaPlayer: NSObject {
         }
 
         updateSettingsMenu()
+        updateSeekability()
+        startStreamProgressTimerIfNeeded()
+    }
+
+    public func setExternalDurationSeconds(_ seconds: Double?) {
+        if let seconds, seconds.isFinite, seconds > 0 {
+            overrideDurationSeconds = seconds
+            hasExternalDurationOverride = true
+        } else {
+            overrideDurationSeconds = nil
+            hasExternalDurationOverride = false
+        }
+        streamPlaybackBaseOffsetSeconds = 0
+        updateSeekability()
+        updateProgressBarVisibility()
+        startStreamProgressTimerIfNeeded()
     }
 
     public func handle(command: LxMediaCommand) {
@@ -717,10 +766,37 @@ public final class LxMediaPlayer: NSObject {
         }
     }
 
-    public func setStreamDecoderActive(_ active: Bool, commandHandler: ((String, [String: Any]) -> Bool)?) {
+    public func setStreamDecoderActive(
+        _ active: Bool,
+        componentId: String?,
+        commandHandler: ((String, [String: Any]) -> Bool)?
+    ) {
         streamDecoderActive = active
         streamCommandHandler = commandHandler
+        streamComponentId = componentId
+        if !active {
+            streamIsPlaying = false
+            streamPlaybackBaseOffsetSeconds = 0
+            overrideDurationSeconds = nil
+            hasExternalDurationOverride = false
+            stopStreamProgressTimer()
+        }
         if active {
+            // Keep poster visible until the first rendered stream frame arrives.
+            firstFrameDisplayed = false
+            pendingPosterHide = false
+            playerLayer.opacity = 0
+            // Only show poster if we've never rendered a frame (cold start only)
+            if !hasEverRenderedFrame, let image = posterImageView.image, !image.size.equalTo(.zero) {
+                posterImageView.isHidden = false
+                posterImageView.alpha = 1
+            }
+
+            streamPlaybackBaseOffsetSeconds = 0
+            if !hasExternalDurationOverride {
+                // Avoid leaking a previous (props-based) override into stream-decoder mode.
+                overrideDurationSeconds = nil
+            }
             streamVolume = volumeSlider.value
             streamMuted = streamVolume == 0
             streamCommandHandler?("setVolume", ["volume": Double(streamVolume)])
@@ -729,6 +805,8 @@ public final class LxMediaPlayer: NSObject {
         } else if let vol = player?.volume {
             updateVolumeIcon(volume: vol)
         }
+        updateSeekability()
+        startStreamProgressTimerIfNeeded()
     }
 
     public func handleStreamDecoderEvent(_ event: String) {
@@ -738,8 +816,59 @@ public final class LxMediaPlayer: NSObject {
             if !isPausedByUser {
                 loadingIndicator.startAnimating()
             }
-        case "play", "pause", "stop":
+            streamIsPlaying = false
+            stopStreamProgressTimer()
+            // Only show poster on cold start (never rendered a frame)
+            if !hasEverRenderedFrame, let image = posterImageView.image, !image.size.equalTo(.zero) {
+                posterImageView.isHidden = false
+                posterImageView.alpha = 1
+            }
+        case "play":
             loadingIndicator.stopAnimating()
+            streamIsPlaying = true
+            streamHasEnded = false
+            markFirstFrameRendered()
+            posterImageView.alpha = 1
+            updatePlayPauseUI(isPlaying: true)
+            startStreamProgressTimerIfNeeded()
+            if let sought = pendingStreamSeekedSeconds {
+                pendingStreamSeekedSeconds = nil
+                send(.seeked(time: sought))
+            }
+        case "pause":
+            loadingIndicator.stopAnimating()
+            streamIsPlaying = false
+            // Only update play button if not already ended (ended state handles its own UI)
+            if !streamHasEnded {
+                updatePlayPauseUI(isPlaying: false)
+            }
+            stopStreamProgressTimer()
+        case "stop":
+            loadingIndicator.stopAnimating()
+            streamIsPlaying = false
+            streamHasEnded = false
+            pendingStreamSeekedSeconds = nil
+            updatePlayPauseUI(isPlaying: false)
+            stopStreamProgressTimer()
+            // Stop resets to cold start state - allow poster to show
+            firstFrameDisplayed = false
+            hasEverRenderedFrame = false
+            if let image = posterImageView.image, !image.size.equalTo(.zero) {
+                posterImageView.isHidden = false
+                posterImageView.alpha = 1
+            }
+        case "ended":
+            // Stream ended naturally from decoder - handle ended state
+            // Last frame stays visible (decoder keeps it displayed)
+            loadingIndicator.stopAnimating()
+            streamHasEnded = true
+            streamIsPlaying = false
+            stopStreamProgressTimer()
+            updatePlayPauseUI(isPlaying: false)
+            // Keep firstFrameDisplayed true and poster hidden to preserve last frame
+            markFirstFrameRendered()
+            send(.ended)
+            showControlsTemporarily()
         default:
             break
         }
@@ -747,6 +876,7 @@ public final class LxMediaPlayer: NSObject {
 
     public func detach() {
         stop()
+        stopStreamProgressTimer()
         timeObserver.flatMap { player?.removeTimeObserver($0) }
         timeObserver = nil
         statusObserver?.invalidate()
@@ -762,6 +892,17 @@ public final class LxMediaPlayer: NSObject {
         NotificationCenter.default.removeObserver(self)
         player = nil
         view.removeFromSuperview()
+    }
+
+    // MARK: - Poster State Management
+    
+    /// Mark first frame as rendered - centralized poster state management.
+    /// Call this when video first renders. Poster will never show again until stop() resets.
+    private func markFirstFrameRendered() {
+        guard !hasEverRenderedFrame else { return }  // Already marked
+        hasEverRenderedFrame = true
+        firstFrameDisplayed = true
+        posterImageView.isHidden = true
     }
 
     // MARK: Player core
@@ -785,7 +926,10 @@ public final class LxMediaPlayer: NSObject {
                 let (data, _) = try await URLSession.shared.data(from: url)
                 guard !Task.isCancelled, let image = UIImage(data: data) else { return }
                 posterImageView.image = image
-                posterImageView.isHidden = false
+                // Only show poster if we've never rendered a frame (cold start only)
+                if !hasEverRenderedFrame {
+                    posterImageView.isHidden = false
+                }
                 os_log("MediaPlayer loaded poster", log: OSLog(subsystem: "LingXia", category: "Media"), type: .info)
             } catch {
                 if (error as? URLError)?.code == .cancelled || error is CancellationError { return }
@@ -823,8 +967,8 @@ public final class LxMediaPlayer: NSObject {
 
         // DON'T hide old video or show poster yet - keep current frame visible
         // This prevents black screen during switching
-        // Only show poster if there's no current video playing
-        if !firstFrameDisplayed && posterImageView.image != nil {
+        // Only show poster on cold start (never rendered a frame)
+        if !hasEverRenderedFrame && posterImageView.image != nil {
             posterImageView.isHidden = false
         }
 
@@ -918,7 +1062,8 @@ public final class LxMediaPlayer: NSObject {
                     self.waitingForFirstFrame = false
                     self.firstFrameDisplayed = false
                     self.loadingIndicator.stopAnimating()
-                    if let image = self.posterImageView.image, !image.size.equalTo(.zero) {
+                    // Only show poster on cold start (never rendered a frame)
+                    if !self.hasEverRenderedFrame, let image = self.posterImageView.image, !image.size.equalTo(.zero) {
                         self.posterImageView.isHidden = false
                     }
                 default:
@@ -926,7 +1071,7 @@ public final class LxMediaPlayer: NSObject {
                 }
             }
         }
-        
+
         // Observe player timeControlStatus for play/pause/buffering state changes
         timeControlStatusObserver = player?.observe(\.timeControlStatus, options: [.new, .old]) { [weak self] player, change in
             Task { @MainActor [weak self] in
@@ -984,7 +1129,8 @@ public final class LxMediaPlayer: NSObject {
             self.waitingForFirstFrame = false
             self.firstFrameDisplayed = false
             self.loadingIndicator.stopAnimating()
-            if let image = self.posterImageView.image, !image.size.equalTo(.zero) {
+            // Only show poster on cold start (never rendered a frame)
+            if !self.hasEverRenderedFrame, let image = self.posterImageView.image, !image.size.equalTo(.zero) {
                 self.posterImageView.isHidden = false
             }
         }
@@ -1014,7 +1160,7 @@ public final class LxMediaPlayer: NSObject {
             if loopEnabled {
                 // Loop: restart from beginning and continue playing without spinner
                 waitingForFirstFrame = false
-                firstFrameDisplayed = true
+                markFirstFrameRendered()
                 pendingPosterHide = false
                 playerLayer.opacity = 1
                 playerLayer.isHidden = false
@@ -1032,15 +1178,17 @@ public final class LxMediaPlayer: NSObject {
                 return
             }
 
-            // Show play button (pause state) and restore poster
+            // Show play button (pause state) while keeping the last rendered frame visible.
             updatePlayPauseUI(isPlaying: false)
 
-            // Show poster when video ends - reset all poster/layer states
-            firstFrameDisplayed = false
+            // Don't show poster on ended; keep the last frame
+            waitingForFirstFrame = false
+            markFirstFrameRendered()
             pendingPosterHide = false
+            playerLayer.opacity = 1
+            playerLayer.isHidden = false
+            posterImageView.isHidden = true
             posterImageView.alpha = 1
-            posterImageView.isHidden = false
-            playerLayer.opacity = 0  // Hide video layer to show poster
 
             send(.ended)
         }
@@ -1049,11 +1197,51 @@ public final class LxMediaPlayer: NSObject {
     private func play() {
         if streamDecoderActive {
             isPausedByUser = false
+            if streamHasEnded {
+                // Always reset progress bar when replaying from ended state
+                progressSlider.value = 0
+                streamPlaybackBaseOffsetSeconds = 0
+                seek(to: 0)
+            } else if let durationSeconds = effectiveDurationSeconds(),
+                      let componentId = streamComponentId,
+                      durationSeconds > 0,
+                      let relativeSeconds = StreamDecoderRegistry.shared.playbackPositionSeconds(componentId: componentId)
+            {
+                let current = streamPlaybackBaseOffsetSeconds + relativeSeconds
+                if current >= durationSeconds - 0.25 {
+                    progressSlider.value = 0
+                    streamPlaybackBaseOffsetSeconds = 0
+                    seek(to: 0)
+                }
+            }
+            streamHasEnded = false
             _ = streamCommandHandler?("play", [:])
+            // Re-apply stream volume/mute on resume; iOS audio output can get muted after pause/resume
+            // when AVAudioSession route changes.
+            _ = streamCommandHandler?("setVolume", ["volume": Double(streamVolume)])
+            _ = streamCommandHandler?("setMuted", ["muted": streamMuted])
             updatePlayPauseUI(isPlaying: true)
             showControlsTemporarily()
             return
         }
+
+        // No AVPlayer item yet (src empty). Emit play intent so JS can lazily call setStreamSource().
+        if player == nil {
+            if pendingStreamPlayRequest {
+                return
+            }
+            isPausedByUser = false
+            desiredPlayWhenReady = false
+            pendingPlayEvent = false
+            pendingStreamPlayRequest = true
+            loadingIndicator.startAnimating()
+            updatePlayPauseUI(isPlaying: true)
+            showControlsTemporarily()
+            send(.raw(name: "playrequest", data: [:]))
+            send(.waiting)
+            return
+        }
+
         isPausedByUser = false  // User wants to play
         if waitingForFirstFrame {
             desiredPlayWhenReady = true
@@ -1075,6 +1263,28 @@ public final class LxMediaPlayer: NSObject {
 
         // Ensure playerLayer is visible (may be hidden from screen lock)
         playerLayer.isHidden = false
+
+        let durationSeconds = player.currentItem?.duration.seconds ?? 0
+        let currentSeconds = player.currentTime().seconds
+        let shouldRestartFromBeginning =
+            durationSeconds.isFinite && durationSeconds > 0 &&
+            currentSeconds.isFinite && currentSeconds >= durationSeconds - 0.25
+        if shouldRestartFromBeginning {
+            // Replay: seek to start then play (AVPlayer won't restart automatically at end).
+            progressSlider.value = 0
+            updatePlayPauseUI(isPlaying: true)
+            player.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
+                guard let self else { return }
+                guard finished else { return }
+                DispatchQueue.main.async {
+                    player.playImmediately(atRate: Float(self.currentPlaybackRate))
+                    self.pendingPlayEvent = true
+                    self.lastTimeForPlayEvent = -1
+                }
+            }
+            return
+        }
+
         // Keep opacity at 0 - poster will be hidden when time actually progresses (like HarmonyOS)
         if !firstFrameDisplayed {
             playerLayer.opacity = 0
@@ -1101,13 +1311,24 @@ public final class LxMediaPlayer: NSObject {
     private func pause() {
         if streamDecoderActive {
             isPausedByUser = true
-            _ = streamCommandHandler?("pause", [:])
+            streamIsPlaying = false
+            var params: [String: Any] = [:]
+            if let componentId = streamComponentId,
+               let relativeSeconds = StreamDecoderRegistry.shared.playbackPositionSeconds(componentId: componentId)
+            {
+                let currentSeconds = streamPlaybackBaseOffsetSeconds + relativeSeconds
+                if currentSeconds.isFinite, currentSeconds >= 0 {
+                    params["currentTime"] = currentSeconds
+                }
+            }
+            _ = streamCommandHandler?("pause", params)
             loadingIndicator.stopAnimating()
             updatePlayPauseUI(isPlaying: false)
             showControlsTemporarily()
             send(.pause)
             return
         }
+        pendingStreamPlayRequest = false
         isPausedByUser = true  // User explicitly paused
         player?.pause()
         // Cancel pending play event if pause is called before video started
@@ -1123,22 +1344,26 @@ public final class LxMediaPlayer: NSObject {
     private func stop() {
         if streamDecoderActive {
             isPausedByUser = true
+            streamIsPlaying = false
+            streamPlaybackBaseOffsetSeconds = 0
             _ = streamCommandHandler?("pause", [:])
             _ = streamCommandHandler?("resetStream", ["hard": true])
             loadingIndicator.stopAnimating()
             updatePlayPauseUI(isPlaying: false)
             showControlsTemporarily()
             send(.stop)
-            
-            // Show poster image on stop and reset progress
+
+            // Show poster image on stop and reset progress (cold start state)
             // Hide playerLayer to reveal poster underneath
             playerLayer.opacity = 0
             posterImageView.isHidden = false
             posterImageView.alpha = 1
             progressSlider.value = 0
             firstFrameDisplayed = false
+            hasEverRenderedFrame = false
             return
         }
+        pendingStreamPlayRequest = false
         isPausedByUser = true // Stopped by user
         player?.pause()
         player?.seek(to: .zero)
@@ -1148,30 +1373,61 @@ public final class LxMediaPlayer: NSObject {
         send(.stop)
         updatePlayPauseUI(isPlaying: false)
         showControlsTemporarily()
-        
-        // Show poster image on stop and reset progress
+
+        // Show poster image on stop and reset progress (cold start state)
         // Hide playerLayer to reveal poster underneath
         playerLayer.opacity = 0
         posterImageView.isHidden = false
         posterImageView.alpha = 1
         progressSlider.value = 0
         firstFrameDisplayed = false
+        hasEverRenderedFrame = false
     }
 
     private func seek(to seconds: Double) {
+        if streamDecoderActive {
+            guard let duration = effectiveDurationSeconds() else { return }
+            let clampedSeconds = max(0, min(seconds, duration))
+            isSeeking = true
+            pendingStreamSeekedSeconds = clampedSeconds
+
+            // Update UI immediately; actual seek is handled by Rust stream session (via seeked event).
+            let remaining = duration - clampedSeconds
+            timeLabel.text = "-" + formatTime(remaining)
+            progressSlider.value = Float(clampedSeconds / duration)
+            streamPlaybackBaseOffsetSeconds = clampedSeconds
+
+            // Reset decoder timeline before seeking the provider session; after a reconnect,
+            // stream timestamps typically restart from 0, and without a reset iOS may not emit
+            // a new `play` event to clear loading/progress state.
+            _ = streamCommandHandler?("resetStream", ["hard": false])
+
+            // Avoid spinning forever when seeking while paused.
+            if !isPausedByUser {
+                loadingIndicator.startAnimating()
+            } else {
+                loadingIndicator.stopAnimating()
+            }
+            send(.raw(name: "seeking", data: ["time": clampedSeconds]))
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+                self?.isSeeking = false
+            }
+            return
+        }
+
         guard let player = player else { return }
-        guard let duration = player.currentItem?.duration.seconds,
-              duration.isFinite, duration > 0 else { return }
-        
+        guard let duration = effectiveDurationSeconds() else { return }
+
         let clampedSeconds = max(0, min(seconds, duration))
         let time = CMTime(seconds: clampedSeconds, preferredTimescale: 600)
-        
+
         isSeeking = true
         suppressWaitingUntil = CACurrentMediaTime() + 1.5
-        
+
         // Update slider immediately to target position (prevents visual bounce)
         progressSlider.value = Float(clampedSeconds / duration)
-        
+
         // Use precise seeking with zero tolerance for accurate positioning
         player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
             guard let self = self else { return }
@@ -1180,7 +1436,7 @@ public final class LxMediaPlayer: NSObject {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                     self.isSeeking = false
                 }
-                
+
                 guard finished else { return }
                 self.send(.seeked(time: clampedSeconds))
             }
@@ -1234,7 +1490,7 @@ public final class LxMediaPlayer: NSObject {
             let timeAdvanced = lastTimeForPosterHide >= 0 && currentTime > lastTimeForPosterHide
             if currentTime > 0.2 && timeAdvanced {
                 pendingPosterHide = false
-                firstFrameDisplayed = true
+                markFirstFrameRendered()
 
                 // Always stop loading indicator when video is ready
                 loadingIndicator.stopAnimating()
@@ -1336,7 +1592,7 @@ public final class LxMediaPlayer: NSObject {
         progressSlider.addTarget(self, action: #selector(handleSliderTouchDown), for: .touchDown)
         progressSlider.addTarget(self, action: #selector(handleSliderChange), for: .valueChanged)
         progressSlider.addTarget(self, action: #selector(handleSliderTouchUp), for: [.touchUpInside, .touchUpOutside, .touchCancel])
-        
+
         // Setup direct scrub callbacks for DebugSlider (bypasses target-action for faster response)
         progressSlider.onScrubStart = { [weak self] in
             self?.handleSliderScrubStart()
@@ -1350,7 +1606,7 @@ public final class LxMediaPlayer: NSObject {
         progressSlider.onScrubEnd = { [weak self] in
             self?.handleSliderScrubEnd()
         }
-        
+
         bottomBar.addSubview(progressSlider)
 
         // Time label (shows remaining time)
@@ -1577,19 +1833,123 @@ public final class LxMediaPlayer: NSObject {
         playPauseButton.setImage(LxIcon.image(named: iconName), for: .normal)
     }
 
+    private func effectiveDurationSeconds() -> Double? {
+        // For standard URL/AVPlayer playback, prefer the timeline extracted by AVPlayer itself.
+        // Only fall back to an override when AVPlayer duration is not yet available/finite.
+        if !streamDecoderActive {
+            if let seconds = player?.currentItem?.duration.seconds,
+               seconds.isFinite,
+               seconds > 0 {
+                return seconds
+            }
+            if let override = overrideDurationSeconds, override.isFinite, override > 0 {
+                return override
+            }
+            return nil
+        }
+
+        // For stream-decoder mode, duration is external metadata (playback segment duration).
+        if let override = overrideDurationSeconds, override.isFinite, override > 0 {
+            return override
+        }
+        guard let seconds = player?.currentItem?.duration.seconds,
+              seconds.isFinite,
+              seconds > 0 else {
+            return nil
+        }
+        return seconds
+    }
+
     private func updateProgressUI(time: CMTime) {
         // If controls are disabled, no need to update UI
         guard controlsEnabled else { return }
         // Skip slider update during scrubbing or seeking to avoid overwriting position
         guard !isScrubbing, !isSeeking else { return }
-        guard let durationSeconds = player?.currentItem?.duration.seconds,
-              durationSeconds.isFinite,
-              durationSeconds > 0 else { return }
-        let current = CMTimeGetSeconds(time)
+        guard let durationSeconds = effectiveDurationSeconds() else { return }
+        let current = min(max(0, CMTimeGetSeconds(time)), durationSeconds)
         let remaining = durationSeconds - current
         // Show remaining time with minus sign
         timeLabel.text = "-" + formatTime(remaining)
         progressSlider.value = Float(current / durationSeconds)
+    }
+
+    private func updateSeekability() {
+        let hasDuration = effectiveDurationSeconds() != nil
+        let isLiveStream = streamDecoderActive && !hasDuration
+        let canShowProgress = (showProgressBar && !isLiveStream) || (streamDecoderActive && hasDuration)
+        let canSeek = hasDuration && controlsEnabled && canShowProgress
+        progressSlider.isEnabled = canSeek
+        progressSlider.isUserInteractionEnabled = canSeek
+    }
+
+    private func startStreamProgressTimerIfNeeded() {
+        guard streamDecoderActive else {
+            stopStreamProgressTimer()
+            return
+        }
+        guard streamIsPlaying else {
+            stopStreamProgressTimer()
+            return
+        }
+        let hasDuration = effectiveDurationSeconds() != nil
+        let isLiveStream = !hasDuration
+        let canShowProgress = (showProgressBar && !isLiveStream) || hasDuration
+        guard controlsEnabled, canShowProgress, hasDuration else {
+            stopStreamProgressTimer()
+            return
+        }
+        guard streamProgressTimer == nil else { return }
+
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now(), repeating: .milliseconds(250))
+        timer.setEventHandler { [weak self] in
+            self?.tickStreamProgress()
+        }
+        streamProgressTimer = timer
+        timer.resume()
+    }
+
+    private func stopStreamProgressTimer() {
+        streamProgressTimer?.cancel()
+        streamProgressTimer = nil
+    }
+
+    private func tickStreamProgress() {
+        guard streamDecoderActive else { return }
+        guard !isScrubbing, !isSeeking else { return }
+        guard let componentId = streamComponentId else { return }
+        guard let durationSeconds = effectiveDurationSeconds() else { return }
+        guard let relativeSeconds = StreamDecoderRegistry.shared.playbackPositionSeconds(componentId: componentId) else {
+            return
+        }
+        let currentSeconds = streamPlaybackBaseOffsetSeconds + relativeSeconds
+        let endEpsilonSeconds = 0.5  // Increased tolerance for end detection
+        let current = min(max(0, currentSeconds), durationSeconds)
+        
+        // Check for end-of-stream (either while playing OR if we've reached the end while paused)
+        let reachedEnd = currentSeconds >= durationSeconds - endEpsilonSeconds
+        if !loopEnabled && reachedEnd && !streamHasEnded {
+            streamHasEnded = true
+            streamIsPlaying = false
+            stopStreamProgressTimer()
+            updatePlayPauseUI(isPlaying: false)
+            // Stop decoding without emitting a pause event; ended is the public signal.
+            // The decoder should keep the last frame visible (pause doesn't clear the frame).
+            _ = streamCommandHandler?("pause", ["currentTime": durationSeconds, "reason": "ended", "emitEvent": false])
+            // Keep firstFrameDisplayed true and poster hidden to preserve last frame
+            markFirstFrameRendered()
+            send(.ended)
+            showControlsTemporarily()
+            return
+        }
+        let remaining = durationSeconds - current
+        timeLabel.text = "-" + formatTime(remaining)
+        if streamIsPlaying && !streamHasEnded && durationSeconds > 0 {
+            progressSlider.value = Float(min(current, max(0, durationSeconds - endEpsilonSeconds)) / durationSeconds)
+        } else {
+            progressSlider.value = Float(current / durationSeconds)
+        }
+        send(.timeUpdate(currentTime: current, duration: durationSeconds))
     }
 
     private func formatTime(_ seconds: Double) -> String {
@@ -1613,7 +1973,12 @@ public final class LxMediaPlayer: NSObject {
     }
 
     private func updateProgressBarVisibility() {
-        let hideProgress = !controlsEnabled || !showProgressBar
+        let hasDuration = effectiveDurationSeconds() != nil
+        // Only show progress bar if explicitly enabled OR in stream mode with valid seekable duration
+        // Don't show for live streams (duration == nil)
+        let isLiveStream = streamDecoderActive && !hasDuration
+        let canShowProgress = (showProgressBar && !isLiveStream) || (streamDecoderActive && hasDuration)
+        let hideProgress = !controlsEnabled || !canShowProgress
         progressSlider.isHidden = hideProgress
         timeLabel.isHidden = hideProgress
     }
@@ -1737,7 +2102,7 @@ public final class LxMediaPlayer: NSObject {
     private func handleQualitySelection(label: String) {
         currentQuality = label
         os_log("MediaPlayer quality selected: %{public}@", log: log, type: .info, label)
-        
+
         let selectedQuality = availableQualities.first(where: { $0.label == label })
         let switchedUrl = selectedQuality?.url?.absoluteString
 
@@ -1752,7 +2117,7 @@ public final class LxMediaPlayer: NSObject {
             pendingRestoreAfterLoad = (player.currentTime(), player.rate > 0)
             loadVideo(url: url)
         }
-	        
+
         send(.qualityChange(quality: label, url: switchedUrl))
         updateSettingsMenu()
     }
@@ -1805,7 +2170,8 @@ public final class LxMediaPlayer: NSObject {
                 return
             } else {
                 os_log("MediaPlayer still not ready after %d retries; keep waiting", log: log, type: .error, forceRevealAttempts)
-                if let image = posterImageView.image, !image.size.equalTo(.zero) {
+                // Only show poster on cold start (never rendered a frame)
+                if !hasEverRenderedFrame, let image = posterImageView.image, !image.size.equalTo(.zero) {
                     posterImageView.isHidden = false
                     posterImageView.alpha = 1
                 }
@@ -1853,36 +2219,26 @@ public final class LxMediaPlayer: NSObject {
     }
 
     @objc private func handleAppWillResignActive() {
-        wasPlayingBeforeBackground = (player?.timeControlStatus == .playing) || ((player?.rate ?? 0) > 0.01)
+        wasPlayingBeforeBackground = (player?.timeControlStatus == .playing) || ((player?.rate ?? 0) > 0.01) || (streamDecoderActive && streamIsPlaying)
         if wasPlayingBeforeBackground {
             pause()
         } else {
             updatePlayPauseUI(isPlaying: false)
         }
-        firstFrameDisplayed = false
-        waitingForFirstFrame = true
+        // Do NOT reset firstFrameDisplayed or show poster on app background.
+        // Poster should only show on cold start (before any playback).
+        // Keep the last rendered frame visible when returning from background.
         desiredPlayWhenReady = wasPlayingBeforeBackground
-        playerLayer.isHidden = false
-        playerLayer.opacity = 0
-        if posterImageView.image != nil {
-            posterImageView.isHidden = false
-            posterImageView.alpha = 1
-        }
     }
 
     @objc private func handleAppDidBecomeActive() {
-        let isPlaying = (player?.timeControlStatus == .playing) || ((player?.rate ?? 0) > 0.01)
+        let isPlaying = (player?.timeControlStatus == .playing) || ((player?.rate ?? 0) > 0.01) || (streamDecoderActive && streamIsPlaying)
         updatePlayPauseUI(isPlaying: isPlaying)
-        wasPlayingBeforeBackground = false
 
-        // If we were waiting for a frame (e.g. after returning from background), re-arm detection
-        // so a programmatic play resumes without requiring a tap.
-        if waitingForFirstFrame {
-            armFrameDetection(sequence: loadingSequence)
-            checkPixelBufferAvailability(sequence: loadingSequence)
-            if playerLayer.isReadyForDisplay {
-                forceRevealVideo(sequence: loadingSequence)
-            }
+        // Auto-resume playback if it was playing before background
+        if wasPlayingBeforeBackground {
+            wasPlayingBeforeBackground = false
+            play()
         }
     }
 
@@ -1974,25 +2330,44 @@ public final class LxMediaPlayer: NSObject {
     }
 
     @objc private func handlePlayPauseTap() {
+        if streamDecoderActive {
+            if streamIsPlaying {
+                pause()
+            } else {
+                // Stream-mode play intent: allow JS/Rust to lazily start/resume the stream session.
+                send(.raw(name: "playrequest", data: [:]))
+                play()
+            }
+            return
+        }
+
+        // Stream-mode placeholder: src is empty so AVPlayer isn't created yet. Treat tap as a
+        // play request intent and allow toggling (tap again cancels).
+        if player == nil, pendingStreamPlayRequest {
+            pause()
+            return
+        }
+
         if player?.timeControlStatus == .playing {
             pause()
-        } else {
-            // User explicitly tapped play - always allow playback
-            // Reset waiting state if player has valid item loaded
-            if player?.currentItem != nil {
-                waitingForFirstFrame = false
-            }
-
-            // Check if video ended (at the end position)
-            if let duration = player?.currentItem?.duration,
-               let currentTime = player?.currentTime(),
-               duration.isValid && !duration.isIndefinite,
-               abs(CMTimeGetSeconds(currentTime) - CMTimeGetSeconds(duration)) < 0.5 {
-                // Video ended, restart from beginning
-                player?.seek(to: .zero)
-            }
-            play()
+            return
         }
+
+        // User explicitly tapped play - always allow playback
+        // Reset waiting state if player has valid item loaded
+        if player?.currentItem != nil {
+            waitingForFirstFrame = false
+        }
+
+        // Check if video ended (at the end position)
+        if let duration = player?.currentItem?.duration,
+           let currentTime = player?.currentTime(),
+           duration.isValid && !duration.isIndefinite,
+           abs(CMTimeGetSeconds(currentTime) - CMTimeGetSeconds(duration)) < 0.5 {
+            // Video ended, restart from beginning
+            player?.seek(to: .zero)
+        }
+        play()
     }
 
     @objc private func handleFullscreenTap() {
@@ -2471,25 +2846,31 @@ public final class LxMediaPlayer: NSObject {
     @objc private func handleSliderTouchDown() {
         isScrubbing = true
         suppressWaitingUntil = .greatestFiniteMagnitude
-        wasPlayingBeforeScrub = player?.timeControlStatus == .playing
-        player?.pause()
+        if !streamDecoderActive {
+            player?.pause()
+        }
         controlsHideWorkItem?.cancel()
     }
 
     @objc private func handleSliderChange() {
         controlsHideWorkItem?.cancel()
-        
+
         // Real-time scrubbing - seek while dragging with throttling
-        guard isScrubbing,
-              let player = player,
-              let durationSeconds = player.currentItem?.duration.seconds,
-              durationSeconds.isFinite && durationSeconds > 0 else { return }
-        
+        guard isScrubbing, let durationSeconds = effectiveDurationSeconds() else { return }
+
+        if streamDecoderActive {
+            let target = Double(progressSlider.value) * durationSeconds
+            let remaining = durationSeconds - target
+            timeLabel.text = "-" + formatTime(max(0, remaining))
+            return
+        }
+        guard let player = player else { return }
+
         let now = CACurrentMediaTime()
         // Throttle seeks to every 100ms to avoid overwhelming AVPlayer
         guard now - lastScrubTime > 0.1 else { return }
         lastScrubTime = now
-        
+
         let target = Double(progressSlider.value) * durationSeconds
         let time = CMTime(seconds: target, preferredTimescale: 600)
         // Use toleranceBefore/After for faster scrubbing (not frame-accurate)
@@ -2501,68 +2882,68 @@ public final class LxMediaPlayer: NSObject {
         guard isScrubbing else { return }
         isScrubbing = false
         suppressWaitingUntil = CACurrentMediaTime() + 1.5
-        
-        guard let player = player,
-              let durationSeconds = player.currentItem?.duration.seconds,
-              durationSeconds.isFinite && durationSeconds > 0 else { return }
-        
+
+        guard let durationSeconds = effectiveDurationSeconds() else { return }
         let target = Double(progressSlider.value) * durationSeconds
-        
+
         // Final precise seek on release
         seek(to: target)
-        
-        // Resume playback if was playing before scrub
-        if wasPlayingBeforeScrub {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-                self?.player?.play()
-            }
+
+        // releasing the scrubber starts playback.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            self?.play()
         }
         showControlsTemporarily()
     }
-    
+
     // MARK: - Direct Slider Scrub Callbacks (from DebugSlider pan gesture)
-    
+
     private func handleSliderScrubStart() {
-        let status = player?.timeControlStatus
-        wasPlayingBeforeScrub = status == .playing
         isScrubbing = true
         suppressWaitingUntil = .greatestFiniteMagnitude
-        player?.pause()
         controlsHideWorkItem?.cancel()
-    }
-    
-    private func handleSliderScrub(value: Float) {
-        guard let player = player,
-              let durationSeconds = player.currentItem?.duration.seconds,
-              durationSeconds.isFinite && durationSeconds > 0 else { return }
         
+        // Pause playback during scrub for both AVPlayer and stream modes
+        if streamDecoderActive {
+            if streamIsPlaying {
+                _ = streamCommandHandler?("pause", ["reason": "scrub", "emitEvent": false])
+                // Don't update streamIsPlaying here - we'll restore it on scrub end
+            }
+        } else {
+            player?.pause()
+        }
+    }
+
+    private func handleSliderScrub(value: Float) {
+        guard let durationSeconds = effectiveDurationSeconds() else { return }
         let target = Double(value) * durationSeconds
+        if streamDecoderActive {
+            let remaining = durationSeconds - target
+            timeLabel.text = "-" + formatTime(max(0, remaining))
+            return
+        }
+        guard let player = player else { return }
+
         let time = CMTime(seconds: target, preferredTimescale: 600)
         // Use toleranceBefore/After for faster scrubbing
         player.seek(to: time, toleranceBefore: CMTime(seconds: 0.5, preferredTimescale: 600),
                     toleranceAfter: CMTime(seconds: 0.5, preferredTimescale: 600))
     }
-    
+
     private func handleSliderSeekComplete(value: Float) {
-        guard let player = player,
-              let durationSeconds = player.currentItem?.duration.seconds,
-              durationSeconds.isFinite && durationSeconds > 0 else { return }
-        
+        guard let durationSeconds = effectiveDurationSeconds() else { return }
         let target = Double(value) * durationSeconds
         // Final precise seek
         seek(to: target)
     }
-    
+
     private func handleSliderScrubEnd() {
         isScrubbing = false
         suppressWaitingUntil = CACurrentMediaTime() + 1.5
-        
-        // Resume playback after scrub/seek (user expects video to play after seeking)
-        // timeControlStatusObserver will handle:
-        // - .waitingToPlayAtSpecifiedRate -> show loading, send waiting event
-        // - .playing -> hide loading, update UI
-        player?.play()
-        
+
+        // Resume playback after scrub ends
+        play()
+
         // Hide controls after delay
         showControlsTemporarily()
     }

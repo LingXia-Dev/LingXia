@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 import UIKit
 
 #if os(iOS)
@@ -11,6 +12,7 @@ import UIKit
 @MainActor
 final class ComponentRouter {
     static let shared = ComponentRouter()
+    private let log = OSLog(subsystem: "LingXia", category: "SameLevel")
     
     private struct WeakManager {
         weak var value: SameLevelComponentManager?
@@ -33,13 +35,20 @@ final class ComponentRouter {
     /// Returns true if component exists and callback was set.
     func setCallback(componentId: String, callbackId: UInt64) -> Bool {
         guard let manager = managers[componentId]?.value else { return false }
+        os_log(
+            "ComponentRouter setCallback componentId=%{public}@ callbackId=%{public}@",
+            log: log,
+            type: .debug,
+            componentId,
+            String(callbackId)
+        )
         return manager.setCallback(componentId: componentId, callbackId: callbackId)
     }
     
     /// Dispatch a command to a component. Called from Rust FFI.
     func dispatchCommand(componentId: String, name: String, params: [String: Any]?) -> Bool {
         if name != "enterFullscreen" && name != "exitFullscreen" {
-            if StreamDecoderRegistry.shared.hasSession(componentId: componentId) {
+            if StreamDecoderRegistry.shared.shouldHandleCommand(componentId: componentId) {
                 if StreamDecoderRegistry.shared.handleCommand(
                     componentId: componentId,
                     name: name,

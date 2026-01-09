@@ -224,9 +224,8 @@ final class SameLevelComponentManager {
     // MARK: - Public API for Rust FFI
 
     /// Set Rust callback ID for a component (used by VideoContext).
-    /// Returns true if component exists, false otherwise.
+    /// Returns true once stored (component may not exist yet).
     func setCallback(componentId: String, callbackId: UInt64) -> Bool {
-        guard components[componentId] != nil else { return false }
         componentCallbacks[componentId] = callbackId
         return true
     }
@@ -236,7 +235,7 @@ final class SameLevelComponentManager {
     }
 
     func emitComponentEvent(componentId: String, event: String, detail: [String: Any] = [:]) {
-        if event == "waiting" || event == "play" || event == "pause" || event == "stop" {
+        if event == "waiting" || event == "playrequest" || event == "play" || event == "pause" || event == "stop" || event == "ended" {
             (components[componentId] as? VideoComponent)?.handleStreamDecoderEvent(event)
         }
         sendEventToWeb(componentId: componentId, event: ["event": event, "detail": detail])
@@ -281,13 +280,39 @@ final class SameLevelComponentManager {
         eventSink(payload)
 
         // Also forward to Rust callback if registered (for VideoContext)
-        if let callbackId = componentCallbacks[componentId] {
+        let eventName = payload["event"] as? String
+        let shouldForwardToCallback: Bool = {
+            switch eventName {
+            case "waiting", "playrequest", "play", "pause", "stop", "ended", "error", "seeked", "seeking":
+                return true
+            default:
+                return false
+            }
+        }()
+
+        if shouldForwardToCallback, let callbackId = componentCallbacks[componentId] {
             var enriched = payload
             enriched["componentId"] = componentId
             if let data = try? JSONSerialization.data(withJSONObject: enriched, options: []),
                let enrichedJson = String(data: data, encoding: .utf8) {
+                os_log(
+                    "SameLevel callback event componentId=%{public}@ event=%{public}@ callbackId=%{public}@",
+                    log: sameLevelComponentLog,
+                    type: .debug,
+                    componentId,
+                    String(enriched["event"] as? String ?? ""),
+                    String(callbackId)
+                )
                 _ = onCallback(callbackId, true, enrichedJson)
             }
+        } else if componentCallbacks[componentId] == nil {
+            os_log(
+                "SameLevel callback missing for componentId=%{public}@ event=%{public}@",
+                log: sameLevelComponentLog,
+                type: .debug,
+                componentId,
+                String(payload["event"] as? String ?? "")
+            )
         }
     }
 
@@ -360,6 +385,19 @@ final class SameLevelComponentManager {
         if component is VideoComponent {
             webOverlayCoverageRestore.removeValue(forKey: id)
             updateScrollBounceSuppression()
+        }
+        if let callbackId = componentCallbacks[id] {
+            let payload: [String: Any] = [
+                "action": "component.event",
+                "id": id,
+                "componentId": id,
+                "event": "unmount",
+                "detail": [:]
+            ]
+            if let data = try? JSONSerialization.data(withJSONObject: payload, options: []),
+               let json = String(data: data, encoding: .utf8) {
+                _ = onCallback(callbackId, true, json)
+            }
         }
         // Unregister from hit-test swizzler before unmount
         WKContentViewHitTestSwizzler.shared.unregisterNativeView(component.view)
