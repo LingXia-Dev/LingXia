@@ -27,9 +27,8 @@ export struct LxFullscreenVideoOverlay {
   @State private isSeeking: boolean = false;
   @State private sliderValue: number = 0;
   @State private isLandscape: boolean = false;
-  @State private showPoster: boolean = false;
-  @State private posterUrl: string = '';
   @State private isBuffering: boolean = false;
+  @State private hasEnded: boolean = false;  // Track if playback ended (show replay button)
   @State private screenWidthVp: number = 0;
   @State private screenHeightVp: number = 0;
   @State private qualities: string[] = [];
@@ -42,6 +41,9 @@ export struct LxFullscreenVideoOverlay {
   private seekTimer: number = -1;
   private pendingSeekTime: number = -1;
   private pendingSeekStartTime: number = -1;
+  private surfaceRefreshTimer1: number = -1;
+  private surfaceRefreshTimer2: number = -1;
+  private wasPlayingOnEnter: boolean = false;
 
   aboutToAppear() {
     this.initScreenDimensions();
@@ -69,8 +71,40 @@ export struct LxFullscreenVideoOverlay {
     this.stopProgressTimer();
     this.clearControlsTimer();
     this.clearSeekTimer();
+    this.cancelSurfaceRefreshTimers();
     // Ensure system bar is restored when component is removed (e.g., parent removes overlay directly)
     this.restoreFromFullscreen();
+  }
+
+  private cancelSurfaceRefreshTimers(): void {
+    if (this.surfaceRefreshTimer1 !== -1) {
+      clearTimeout(this.surfaceRefreshTimer1);
+      this.surfaceRefreshTimer1 = -1;
+    }
+    if (this.surfaceRefreshTimer2 !== -1) {
+      clearTimeout(this.surfaceRefreshTimer2);
+      this.surfaceRefreshTimer2 = -1;
+    }
+  }
+
+  private scheduleSurfaceRefresh(): void {
+    if (!this.componentId || !this.surfaceId) return;
+    this.cancelSurfaceRefreshTimers();
+
+    const expectedSurfaceId = this.surfaceId;
+    this.surfaceRefreshTimer1 = setTimeout(() => {
+      this.surfaceRefreshTimer1 = -1;
+      if (this.surfaceId !== expectedSurfaceId) return;
+      LxNativeVideoPlayer.switchToFullscreenSurface(this.componentId, expectedSurfaceId);
+      hilog.info(DOMAIN, TAG, `Surface refresh 1: componentId=${this.componentId}, surfaceId=${expectedSurfaceId}`);
+    }, 180) as number;
+
+    this.surfaceRefreshTimer2 = setTimeout(() => {
+      this.surfaceRefreshTimer2 = -1;
+      if (this.surfaceId !== expectedSurfaceId) return;
+      LxNativeVideoPlayer.switchToFullscreenSurface(this.componentId, expectedSurfaceId);
+      hilog.info(DOMAIN, TAG, `Surface refresh 2: componentId=${this.componentId}, surfaceId=${expectedSurfaceId}`);
+    }, 800) as number;
   }
 
   private enterFullscreenMode(): void {
@@ -103,6 +137,7 @@ export struct LxFullscreenVideoOverlay {
     this.volume = LxNativeVideoPlayer.getVolume(this.componentId);
     this.muted = LxNativeVideoPlayer.getMuted(this.componentId);
     this.sliderValue = calculateSliderValue(this.currentTime, this.duration);
+    hilog.info(DOMAIN, TAG, `initFullscreenState: isPlaying=${this.isPlaying}, hasEnded=${this.hasEnded}, currentTime=${this.currentTime}, duration=${this.duration}`);
 
     // Get quality and playback rate settings from the player config
     const config = LxNativeVideoPlayer.getConfig(this.componentId);
@@ -120,7 +155,9 @@ export struct LxFullscreenVideoOverlay {
     if (this.progressTimer !== -1) return;
     this.progressTimer = setInterval(() => {
       if (!this.isSeeking) {
-        const currentTime = LxNativeVideoPlayer.getCurrentTimeStatic(this.componentId);
+        // Get currentTime from main player's state (handles stream mode time anchor correctly)
+        const state = LxNativeVideoPlayer.getPlaybackState(this.componentId);
+        const currentTime = state?.currentTime ?? 0;
 
         if (this.pendingSeekTime >= 0) {
           const tolerance = 500;
@@ -139,10 +176,12 @@ export struct LxFullscreenVideoOverlay {
           }
         }
 
-        // Sync play/pause state from native player
-        const playbackState = LxNativeVideoPlayer.getPlaybackState(this.componentId);
-        if (playbackState) {
-          this.isPlaying = playbackState.isPlaying;
+        // Sync play/pause state from native player (but don't override if ended)
+        if (!this.hasEnded) {
+          const playbackState = LxNativeVideoPlayer.getPlaybackState(this.componentId);
+          if (playbackState) {
+            this.isPlaying = playbackState.isPlaying;
+          }
         }
 
         this.currentTime = currentTime;
@@ -159,9 +198,13 @@ export struct LxFullscreenVideoOverlay {
   }
 
   private onPlaybackEnded(): void {
-    if (this.showPoster) return;
+    if (this.hasEnded) return;
     this.isPlaying = false;
-    this.showPoster = true;
+    this.hasEnded = true;
+    if (this.duration > 0) {
+      this.currentTime = this.duration;
+      this.sliderValue = 100;
+    }
     this.showControls = true;
     this.stopProgressTimer();
     LxNativeVideoPlayer.pauseStatic(this.componentId);
@@ -252,7 +295,7 @@ export struct LxFullscreenVideoOverlay {
         const willBePlaying = !this.isPlaying;
         this.isPlaying = willBePlaying;
         if (willBePlaying) {
-          this.showPoster = false;
+          this.hasEnded = false;
           this.startProgressTimer();
         }
         this.resetControlsTimer();
@@ -296,43 +339,49 @@ export struct LxFullscreenVideoOverlay {
 
       XComponent({
         id: `fullscreen-${this.componentId}`,
-        type: XComponentType.SURFACE,
+        type: XComponentType.TEXTURE,
         controller: this.xComponentController
       })
         .onLoad(() => {
           this.surfaceId = this.xComponentController.getXComponentSurfaceId();
           this.xComponentReady = true;
 
-          this.posterUrl = LxNativeVideoPlayer.getPoster(this.componentId);
-          const hasEnded = LxNativeVideoPlayer.hasEndedStatic(this.componentId);
-          this.showPoster = hasEnded;
-
+          // Save state BEFORE switching surface to capture current playback state
           LxNativeVideoPlayer.savePlaybackState(this.componentId);
+          const snapshot = LxNativeVideoPlayer.getPlaybackState(this.componentId);
+          this.wasPlayingOnEnter = snapshot?.isPlaying ?? false;
+          this.hasEnded = LxNativeVideoPlayer.hasEndedStatic(this.componentId);
+          hilog.info(DOMAIN, TAG, `onLoad: hasEnded=${this.hasEnded}, wasPlaying=${this.wasPlayingOnEnter}, isPlaying=${this.isPlaying}`);
+
           LxNativeVideoPlayer.switchToFullscreenSurface(this.componentId, this.surfaceId);
+          // Schedule surface refresh with delays to ensure decoder binds correctly
+          this.scheduleSurfaceRefresh();
 
           this.isLandscape = LxNativeVideoPlayer.isLandscapeVideo(this.componentId);
 
           this.enterFullscreenMode();
           this.initFullscreenState();
-          if (!hasEnded) {
-            this.startProgressTimer();
-          }
+          // Always start progress timer in fullscreen (even if ended, user might replay)
+          this.startProgressTimer();
           this.resetControlsTimer();
+
+          // For stream mode, explicitly resume playback if it was playing when entering fullscreen.
+          // The surface switch may have interrupted the decoder, so we need to ensure it resumes.
+          if (this.wasPlayingOnEnter) {
+            hilog.info(DOMAIN, TAG, `Resuming playback after fullscreen enter: componentId=${this.componentId}`);
+            LxNativeVideoPlayer.playStatic(this.componentId);
+            this.isPlaying = true;
+          }
         })
         .onDestroy(() => {
           this.xComponentReady = false;
           this.surfaceId = '';
           this.stopProgressTimer();
           this.clearControlsTimer();
+          this.cancelSurfaceRefreshTimers();
         })
         .width('100%')
         .height('100%')
-
-      if (this.posterUrl && this.showPoster) {
-        Image(this.posterUrl)
-          .width('100%').height('100%').objectFit(ImageFit.Cover)
-          .hitTestBehavior(HitTestMode.Transparent)
-      }
 
       // Buffering indicator
       if (this.isBuffering && this.isPlaying) {
@@ -343,21 +392,7 @@ export struct LxFullscreenVideoOverlay {
         .hitTestBehavior(HitTestMode.Transparent)
       }
 
-      if (this.showPoster && !this.isPlaying) {
-        Row() {
-          Image($r('sys.media.ohos_ic_public_play'))
-            .width(40).height(40).fillColor(Color.White)
-        }
-        .width(72).height(72).justifyContent(FlexAlign.Center).borderRadius(36)
-        .backgroundColor('rgba(0,0,0,0.5)')
-        .onClick(() => {
-          this.showPoster = false;
-          this.isPlaying = true;
-          LxNativeVideoPlayer.playStatic(this.componentId);
-          this.startProgressTimer();
-          this.resetControlsTimer();
-        })
-      }
+
 
       if (this.showControls) {
         this.buildControls()

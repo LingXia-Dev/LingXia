@@ -649,22 +649,56 @@ pub fn video_player_stop(component_id: String) -> bool {
 
 /// Seek to position in milliseconds
 #[napi]
-pub fn video_player_seek(component_id: String, position_ms: i32) -> bool {
+pub fn video_player_seek(component_id: String, position_ms: f64) -> bool {
+    // Sanity check: Prevent massive values (e.g. i64::MAX or timestamps) that cause logic layer overflow.
+    // Limit seek to ~100 years (valid playback range). 3e12 ms.
+    const MAX_SEEK_MS: f64 = 3_000_000_000_000.0; 
+    
+    // Prevent NaN, Infinite, negative, or massive values
+    if !position_ms.is_finite() || position_ms < 0.0 || position_ms > MAX_SEEK_MS {
+        log::error!(
+            "[Harmony.VideoPlayer] video_player_seek: invalid/out-of-range position_ms={} for component_id={}",
+            position_ms,
+            component_id
+        );
+        return false;
+    }
+
     log::info!(
         "[Harmony.VideoPlayer] video_player_seek: component_id={}, position_ms={}",
         component_id,
         position_ms
     );
+    
     if lingxia_platform::harmony::video_player::has_stream_decoder(&component_id) {
-        return false;
+        let position_s = position_ms / 1000.0;
+
+        // Call lxapp layer to perform actual stream seek (via registered callback)
+        let seek_result = lxapp::stream_source::seek_stream_session(&component_id, position_s);
+        if !seek_result {
+            log::warn!(
+                "[Harmony.VideoPlayer] video_player_seek: stream seek failed, no callback registered for component_id={}",
+                component_id
+            );
+        }
+
+        // Also dispatch to platform layer for UI sync (emits seeked event)
+        let _ = lingxia_platform::harmony::video_player::dispatch_command(
+            &component_id,
+            VideoPlayerCommand::Seek { position: position_s },
+        );
+
+        return seek_result;
     }
     if let Some(player) = lingxia_platform::harmony::video_player::get_player(&component_id) {
         if let Ok(mut p) = player.lock() {
             // Use PreviousSync for better compatibility - seeks to nearest keyframe before target
             // Closest mode might have issues on some devices/video formats
+            // Clamp to i32 range for AVPlayer
+            let pos_i32 = position_ms.clamp(i32::MIN as f64, i32::MAX as f64) as i32;
             return p
                 .seek(
-                    position_ms,
+                    pos_i32,
                     lingxia_platform::harmony::video_player::AVPlayerSeekMode::PreviousSync,
                 )
                 .is_ok();
@@ -721,12 +755,18 @@ pub fn video_player_set_speed(component_id: String, rate: f64) -> bool {
 /// Get current playback position in milliseconds
 #[napi]
 pub fn video_player_get_current_time(component_id: String) -> i32 {
+    // Try native AVPlayer first (for URL/file playback)
     if let Some(player) = lingxia_platform::harmony::video_player::get_player(&component_id) {
         if let Ok(mut p) = player.lock() {
-            return p.get_current_time().unwrap_or(0);
+            if let Ok(position) = p.get_current_time() {
+                // Return AVPlayer position if valid (>= 0), including 0 which is a valid time
+                return position;
+            }
         }
     }
-    0
+    // Fallback to stream decoder position (for stream mode)
+    lingxia_platform::harmony::video_player::get_stream_decoder_position_ms(&component_id)
+        .unwrap_or(0)
 }
 
 /// Get duration in milliseconds
@@ -734,7 +774,10 @@ pub fn video_player_get_current_time(component_id: String) -> i32 {
 pub fn video_player_get_duration(component_id: String) -> i32 {
     if let Some(player) = lingxia_platform::harmony::video_player::get_player(&component_id) {
         if let Ok(p) = player.lock() {
-            return p.get_duration().unwrap_or(0);
+            let duration = p.get_duration().unwrap_or(0);
+            if duration > 0 {
+                return duration;
+            }
         }
     }
     0

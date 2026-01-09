@@ -9,8 +9,11 @@ import { getNodeControllerByComponentId } from '../SameLevelBridge';
 import {
   LxNativeVideoPlayer,
   LxNativeVideoConfig,
-  LxMediaQuality
+  LxMediaQuality,
+  VideoEventDetail
 } from '../../media/LxNativeVideoPlayer';
+import { onCallback } from 'liblingxia.so';
+import { getComponentCallback } from '../SameLevelCallbackRegistry';
 
 interface QualityProp {
   label?: string;
@@ -122,7 +125,7 @@ struct SameLevelVideoComponent {
     return config;
   }
 
-  private handleEvent(event: string, detail: object): void {
+  private handleEvent(event: string, detail: VideoEventDetail): void {
     // Handle fullscreen by toggling NodeController state
     if (event === 'fullscreenchange') {
       // Keep native player alive while we rebuild into fullscreen/display mode
@@ -139,6 +142,21 @@ struct SameLevelVideoComponent {
       payload.set('detail', detail);
       payload.set('componentId', this.componentId);
       this.eventSink(payload);
+
+      const callbackId = getComponentCallback(this.componentId);
+      const shouldForwardToCallback =
+        event === 'waiting' ||
+        event === 'playrequest' ||
+        event === 'play' ||
+        event === 'pause' ||
+        event === 'stop' ||
+        event === 'seeking' ||
+        event === 'seeked' ||
+        event === 'ended' ||
+        event === 'error';
+      if (callbackId && shouldForwardToCallback) {
+        onCallback(callbackId, true, payload.toJSONString());
+      }
     }
   }
 
@@ -178,7 +196,7 @@ struct SameLevelVideoComponent {
     LxNativeVideoPlayer({
       playerId: this.componentId,
       config: this.buildConfig(),
-      onEvent: (event: string, detail: object) => {
+      onEvent: (event: string, detail: VideoEventDetail) => {
         this.handleEvent(event, detail);
       }
     })

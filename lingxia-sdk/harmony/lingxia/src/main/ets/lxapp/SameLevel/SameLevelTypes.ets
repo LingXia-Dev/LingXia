@@ -65,6 +65,8 @@ export class SameLevelRecord {
   }
 }
 
+export class SameLevelEmptyDetail {}
+
 /**
  * Log helper
  */

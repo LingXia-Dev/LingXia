@@ -286,6 +286,21 @@ export class WebViewManager {
   }
 
   /**
+   * Pause all same-level native components for all WebViews of an appId
+   * Call this when lxapp goes to background (e.g., closeLxApp)
+   */
+  static pauseAllComponentsByAppId(appId: string): void {
+    hilog.info(DOMAIN, TAG, `pauseAllComponentsByAppId: ${appId}`);
+    WebViewManager.webViewInfos.forEach((info: WebViewInfo, webtag: string) => {
+      const extracted = extractWebTag(webtag);
+      if (extracted && extracted.appId === appId) {
+        hilog.info(DOMAIN, TAG, `Pausing components for webtag: ${webtag}`);
+        pauseAllComponents(webtag);
+      }
+    });
+  }
+
+  /**
    * Notify UI that a WebView is being reused by the popup overlay.
    * When `active` is true the base container should hide the WebView; when false it should restore it.
    */
@@ -495,4 +510,13 @@ export function resumeWebViewComponents(webtag: string): void {
   const extracted = extractWebTag(webtag);
   const logicalTag = extracted ? toWebTag(extracted.appId, extracted.path) : webtag;
   resumeAllComponents(logicalTag);
+}
+
+/**
+ * Pause all same-level native components for all WebViews of an appId
+ * Call this when lxapp goes to background (e.g., closeLxApp)
+ * @param appId - App ID
+ */
+export function pauseAllComponentsByAppId(appId: string): void {
+  WebViewManager.pauseAllComponentsByAppId(appId);
 }

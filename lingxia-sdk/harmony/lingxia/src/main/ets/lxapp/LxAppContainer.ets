@@ -222,6 +222,11 @@ export struct LxAppContainer {
   }
 
   aboutToDisappear() {
+    // Pause all SameLevel components before cleanup
+    this.embedManagers.forEach((manager: SameLevelEmbedManager) => {
+      manager.pauseAll();
+    });
+
     // Unregister this container
     LxAppContainer.activeContainers.delete(this.appId);
 
@@ -1330,6 +1335,10 @@ export struct LxAppContainer {
         .clip(true)
         .position(this.getNodeContainerPosition(webTag, componentId))
         .zIndex(this.getNodeContainerZIndex(webTag, componentId))
+        // Keep Web interactions working even when the native node is rendered above the Web node.
+        // Same-level gesture routing is driven by Web.onNativeEmbedGestureEvent, so the Web must
+        // continue to receive touch events.
+        .hitTestBehavior(HitTestMode.Transparent)
     }
   }
 
@@ -1497,7 +1506,8 @@ export struct LxAppContainer {
         height: isFullscreen ? '100%' : (controller?.getHeight() ?? 0),
         position: isFullscreen ? { x: 0, y: 0 } : undefined,
         // Must be higher than backdrop (49999) to appear on top
-        zIndex: isFullscreen ? 50000 : 0,
+        // Ensure same-level native nodes are above the Web node in the Stack (Web is rendered later).
+        zIndex: isFullscreen ? 50000 : 1,
         cornerRadius: isFullscreen ? 0 : (controller?.getCornerRadius() ?? 0),
         safeAreaTypes: isFullscreen ? [SafeAreaType.SYSTEM] : [],
         safeAreaEdges: isFullscreen ? [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM] : []

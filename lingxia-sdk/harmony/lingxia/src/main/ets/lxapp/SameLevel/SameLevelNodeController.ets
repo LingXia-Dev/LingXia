@@ -20,26 +20,36 @@ import { SameLevelRecord, SameLevelValue, sameLevelError } from './SameLevelType
 /**
  * Parameters for component rendering
  */
-export interface SameLevelParams {
-  width: number;
-  height: number;
-  componentId: string;
-  componentType: string;
-  props: SameLevelRecord;
+export class SameLevelParams {
+  width: number = 0;
+  height: number = 0;
+  componentId: string = '';
+  componentType: string = '';
+  props: SameLevelRecord = new SameLevelRecord();
 }
 
 /**
  * Parameters for NodeController initialization
  */
-export interface NodeControllerParams {
-  surfaceId: string;
-  type: string;
-  renderType: NodeRenderType;
-  embedId: string;
-  width: number;
-  height: number;
-  componentId: string;
-  props: SameLevelRecord;
+export class NodeControllerParams {
+  surfaceId: string = '';
+  type: string = '';
+  renderType: NodeRenderType = NodeRenderType.RENDER_TYPE_DISPLAY;
+  embedId: string = '';
+  width: number = 0;
+  height: number = 0;
+  componentId: string = '';
+  props: SameLevelRecord = new SameLevelRecord();
+}
+
+/**
+ * Parameters for updating render options without rebuilding.
+ * Keep this as an explicitly-declared type to satisfy ArkTS lint rules.
+ */
+export class NodeControllerUpdateParams {
+  width?: number;
+  height?: number;
+  props?: SameLevelRecord;
 }
 
 /**
@@ -102,7 +112,7 @@ export class SameLevelNodeController extends NodeController {
    * Update render options without rebuilding the node
    * Keeps the XComponent surface alive while refreshing layout/props
    */
-  updateRenderOption(params: Partial<NodeControllerParams>): void {
+  updateRenderOption(params: NodeControllerUpdateParams): void {
     if (params.width !== undefined) {
       this.componentWidth = params.width;
       this.originalWidth = params.width;
@@ -125,13 +135,12 @@ export class SameLevelNodeController extends NodeController {
 
     // Push updated params into the builder without recreating the node
     if (this.rootNode) {
-      const updated: SameLevelParams = {
-        width: this.componentWidth,
-        height: this.componentHeight,
-        componentId: this.componentId,
-        componentType: this.componentType,
-        props: this.props
-      };
+      const updated = new SameLevelParams();
+      updated.width = this.componentWidth;
+      updated.height = this.componentHeight;
+      updated.componentId = this.componentId;
+      updated.componentType = this.componentType;
+      updated.props = this.props;
       this.rootNode.update(updated);
     }
   }
@@ -161,13 +170,12 @@ export class SameLevelNodeController extends NodeController {
       type: this.renderType
     });
 
-    const initialParams: SameLevelParams = {
-      width: this.componentWidth,
-      height: this.componentHeight,
-      componentId: this.componentId,
-      componentType: this.componentType,
-      props: this.props
-    };
+    const initialParams = new SameLevelParams();
+    initialParams.width = this.componentWidth;
+    initialParams.height = this.componentHeight;
+    initialParams.componentId = this.componentId;
+    initialParams.componentType = this.componentType;
+    initialParams.props = this.props;
     this.rootNode.build(builder, initialParams);
 
     return this.rootNode.getFrameNode();
@@ -206,6 +214,13 @@ export class SameLevelNodeController extends NodeController {
    */
   getComponentId(): string {
     return this.componentId;
+  }
+
+  /**
+   * Get component type (e.g. video.native)
+   */
+  getComponentType(): string {
+    return this.componentType;
   }
 
   /**

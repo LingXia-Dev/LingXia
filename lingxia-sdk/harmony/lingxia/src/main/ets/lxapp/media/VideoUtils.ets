@@ -8,13 +8,13 @@ export function formatVideoTime(ms: number): string {
 
 // Calculate slider percentage (0-100) from time values
 export function calculateSliderValue(currentTime: number, duration: number): number {
-  if (duration <= 0) return 0;
-  return (currentTime / duration) * 100;
+  if (duration <= 0 || !isFinite(duration) || !isFinite(currentTime)) return 0;
+  return Math.min(100, Math.max(0, (currentTime / duration) * 100));
 }
 
 // Calculate time from slider percentage
 export function calculateTimeFromSlider(sliderValue: number, duration: number): number {
-  if (duration <= 0) return 0;
-  return Math.round((sliderValue / 100) * duration);
+  if (duration <= 0 || !isFinite(duration) || !isFinite(sliderValue)) return 0;
+  const clamped = Math.min(100, Math.max(0, sliderValue));
+  return Math.round((clamped / 100) * duration);
 }
-

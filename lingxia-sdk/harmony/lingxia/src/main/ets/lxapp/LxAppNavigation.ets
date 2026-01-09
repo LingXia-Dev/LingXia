@@ -1,6 +1,7 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { LxApp } from './LxApp';
 import { LxAppContainer } from './LxAppContainer';
+import { pauseAllComponentsByAppId } from './WebView';
 import { onLxappOpened, onLxappClosed, getTabBar, TabBarItem, TabBarState, getCurrentLxapp, CurrentLxApp } from 'liblingxia.so';
 import { ToastManager } from './APIs/LxAppToast';
 import { ModalManager } from './APIs/LxAppModal';
@@ -107,6 +108,9 @@ export struct LxAppNavigation {
     hilog.info(DOMAIN, TAG, `Closing lxapp: ${appId}`);
 
     try {
+      // Pause SameLevel components (video players, etc.) before closing
+      pauseAllComponentsByAppId(appId);
+
       // Call native close handler first - this removes the app from Rust stack
       onLxappClosed(appId);
 

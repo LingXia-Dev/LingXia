@@ -4,8 +4,11 @@
  */
 import { NodeRenderType } from '@kit.ArkUI';
 import { webview } from '@kit.ArkWeb';
-import { SameLevelRecord, sameLevelError } from './SameLevelTypes';
-import { SameLevelNodeController, NodeControllerParams } from './SameLevelNodeController';
+import { SameLevelEmptyDetail, SameLevelRecord, sameLevelError, sameLevelLog } from './SameLevelTypes';
+import { getComponentCallback, removeComponentCallback } from './SameLevelCallbackRegistry';
+import { onCallback } from 'liblingxia.so';
+import { SameLevelNodeController, NodeControllerParams, NodeControllerUpdateParams } from './SameLevelNodeController';
+import { LxNativeVideoPlayer } from '../media/LxNativeVideoPlayer';
 
 const PROPS_DATA_PREFIX: string = 'data:application/json,';
 
@@ -30,6 +33,7 @@ export class SameLevelEmbedManager {
   private uiContext: UIContext | null = null;
   private onComponentsChanged?: () => void;
   private eventDispatcher?: (payload: SameLevelRecord) => void;
+  private pendingUnmountTimers: Map<string, number> = new Map();
 
   constructor(webTag: string, eventDispatcher?: (payload: SameLevelRecord) => void) {
     this.webTag = webTag;
@@ -92,6 +96,7 @@ export class SameLevelEmbedManager {
   }
 
   private handleCreate(componentId: string, embed: NativeEmbedDataInfo): void {
+    this.cancelPendingUnmount(componentId);
     // Check if component already exists - avoid duplicate creation
     if (this.nodeControllerMap.has(componentId)) {
       this.handleUpdate(componentId, embed);
@@ -116,18 +121,24 @@ export class SameLevelEmbedManager {
     const widthVp = this.uiContext?.px2vp(widthPx) || 0;
     const heightVp = this.uiContext?.px2vp(heightPx) || 0;
 
-    const params: NodeControllerParams = {
-      surfaceId: embed.surfaceId || '',
-      type: componentType,
-      renderType: NodeRenderType.RENDER_TYPE_TEXTURE,
-      embedId: embed.embedId || '',
-      width: widthVp,
-      height: heightVp,
-      componentId: componentId,
-      props: props
-    };
+    const params = new NodeControllerParams();
+    params.surfaceId = embed.surfaceId || '';
+    params.type = componentType;
+    // Use TEXTURE render type to preserve ArkWeb same-level semantics and coordinate mapping.
+    // (DISPLAY may break overlay/layout for same-level components.)
+    params.renderType = NodeRenderType.RENDER_TYPE_TEXTURE;
+    params.embedId = embed.embedId || '';
+    params.width = widthVp;
+    params.height = heightVp;
+    params.componentId = componentId;
+    params.props = props;
 
     nodeController.setRenderOption(params);
+    if (componentType === 'video.native') {
+      sameLevelLog(
+        `embed create(video): componentId=${componentId} embedId=${params.embedId} surfaceId=${params.surfaceId} renderType=${params.renderType} size=${widthVp}x${heightVp}`
+      );
+    }
 
     // Set fullscreen callback to trigger UI update
     nodeController.setFullscreenCallback(() => {
@@ -143,6 +154,7 @@ export class SameLevelEmbedManager {
   }
 
   private handleUpdate(componentId: string, embed: NativeEmbedDataInfo): void {
+    this.cancelPendingUnmount(componentId);
     const nodeController = this.nodeControllerMap.get(componentId);
     if (!nodeController) return;
 
@@ -158,11 +170,14 @@ export class SameLevelEmbedManager {
     const widthVp = this.uiContext?.px2vp(widthPx) || 0;
     const heightVp = this.uiContext?.px2vp(heightPx) || 0;
 
-    nodeController.updateRenderOption({
-      width: widthVp,
-      height: heightVp,
-      props: props
-    });
+    const updateParams = new NodeControllerUpdateParams();
+    updateParams.width = widthVp;
+    updateParams.height = heightVp;
+    updateParams.props = props;
+    nodeController.updateRenderOption(updateParams);
+    if (nodeController.getComponentType() === 'video.native') {
+      sameLevelLog(`embed update(video): componentId=${componentId} embedId=${embed.embedId || ''} size=${widthVp}x${heightVp}`);
+    }
 
     // Notify listeners so NodeContainer layout refreshes
     this.onComponentsChanged?.();
@@ -172,9 +187,17 @@ export class SameLevelEmbedManager {
     const nodeController = this.nodeControllerMap.get(componentId);
     if (!nodeController) return;
 
+    // NativeEmbedStatus.DESTROY can happen during transient rebuilds (e.g. props/layout updates)
+    // where the same componentId is recreated immediately after. Debounce teardown so we don't
+    // stop a live stream mid-startup and end up in "loading forever".
+    this.scheduleUnmount(componentId);
+    if (nodeController.getComponentType() === 'video.native') {
+      sameLevelLog(`embed destroy(video): componentId=${componentId}`);
+    }
+
     nodeController.setBuilderNode(null);
     nodeController.rebuild();
-    
+
     this.nodeControllerMap.delete(componentId);
     const index = this.componentIdArr.indexOf(componentId);
     if (index > -1) {
@@ -182,6 +205,44 @@ export class SameLevelEmbedManager {
     }
 
     this.onComponentsChanged?.();
+  }
+
+  private cancelPendingUnmount(componentId: string): void {
+    const timerId = this.pendingUnmountTimers.get(componentId);
+    if (timerId !== undefined) {
+      clearTimeout(timerId);
+      this.pendingUnmountTimers.delete(componentId);
+    }
+  }
+
+  private scheduleUnmount(componentId: string): void {
+    this.cancelPendingUnmount(componentId);
+    const delayMs = LxNativeVideoPlayer.isKeepAlive(componentId) ? 4000 : 1500;
+    const timerId = setTimeout(() => {
+      this.pendingUnmountTimers.delete(componentId);
+      // If the component was recreated quickly, treat this destroy as a surface swap, not an unmount.
+      if (this.nodeControllerMap.has(componentId)) return;
+
+      // During fullscreen enter/exit, ArkWeb can DESTROY the embed and recreate it with the same
+      // componentId after a longer layout pass. Don't tear down the stream in that window.
+      if (LxNativeVideoPlayer.isKeepAlive(componentId)) {
+        this.scheduleUnmount(componentId);
+        return;
+      }
+
+      const callbackId = getComponentCallback(componentId);
+      if (!callbackId) return;
+
+      const payload = new SameLevelRecord();
+      payload.set('action', 'component.event');
+      payload.set('id', componentId);
+      payload.set('componentId', componentId);
+      payload.set('event', 'unmount');
+      payload.set('detail', new SameLevelEmptyDetail());
+      onCallback(callbackId, true, payload.toJSONString());
+      removeComponentCallback(componentId);
+    }, delayMs);
+    this.pendingUnmountTimers.set(componentId, timerId);
   }
 
   /**

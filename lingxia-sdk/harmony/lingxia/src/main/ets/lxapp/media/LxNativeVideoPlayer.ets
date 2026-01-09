@@ -20,15 +20,18 @@ import {
   videoPlayerGetVideoHeight,
   videoPlayerDestroy
 } from 'liblingxia.so';
-import { calculateSliderValue } from './VideoUtils';
+import { calculateSliderValue, calculateTimeFromSlider } from './VideoUtils';
 import { VideoControlsView, VideoControlSize } from './VideoControls';
 
 const TAG = 'LingXia.NativeVideoPlayer';
 function log(message: string): void { console.info(`${TAG}: ${message}`); }
+type StreamPlaybackState = 'idle' | 'waiting' | 'playing' | 'ended';
 
 // Event detail types
-export class VideoErrorDetail { message: string = ''; }
-export class VideoSeekingDetail { currentTime: number = 0; }
+// NOTE: All time values in event details use SECONDS (not milliseconds) for cross-platform Rust callback contract.
+// Internal UI state (state.currentTime, sliderValue) uses milliseconds for precision.
+export class VideoErrorDetail { code: string = ''; message: string = ''; }
+export class VideoSeekingDetail { currentTime: number = 0; } // seconds
 export class VideoFullscreenDetail {
   fullScreen: boolean = false;
   direction: string = 'horizontal';
@@ -36,13 +39,15 @@ export class VideoFullscreenDetail {
 export class VideoMetadataDetail {
   width: number = 0;
   height: number = 0;
-  duration: number = 0;
+  duration: number = 0; // seconds
 }
 export class VideoTimeUpdateDetail {
-  currentTime: number = 0;
-  duration: number = 0;
+  currentTime: number = 0; // seconds
+  duration: number = 0;    // seconds
 }
 export class VideoEmptyDetail {}
+export class VideoWaitingDetail { reason: string = ''; }
+export class VideoControlDetail { reason: string = ''; currentTime: number = 0; } // seconds
 export class LxMediaQualityChangeDetail {
   quality: string = '';
   url?: string = '';
@@ -50,6 +55,23 @@ export class LxMediaQualityChangeDetail {
 export class LxMediaRateChangeDetail {
   rate: number = 1.0;
 }
+
+interface NativeErrorPayload {
+  code?: string;
+  message?: string;
+}
+
+export type VideoEventDetail =
+  | VideoErrorDetail
+  | VideoSeekingDetail
+  | VideoFullscreenDetail
+  | VideoMetadataDetail
+  | VideoTimeUpdateDetail
+  | VideoEmptyDetail
+  | VideoWaitingDetail
+  | VideoControlDetail
+  | LxMediaQualityChangeDetail
+  | LxMediaRateChangeDetail;
 
 // Quality structure
 export class LxMediaQuality {
@@ -101,8 +123,11 @@ class StreamVideoSize {
 
 class LxNativeVideoRuntimeSnapshot {
   isPlaying: boolean = false;
+  isBuffering: boolean = false;
   currentTime: number = 0;
   duration: number = 0;
+  hasRenderedFirstFrame: boolean = false;
+  hasEverPlayed: boolean = false;
 }
 
 @Component
@@ -110,23 +135,30 @@ export struct LxNativeVideoPlayer {
   @Prop playerId: string = '';
   @Prop config: LxNativeVideoConfig = new LxNativeVideoConfig();
   @State state: LxNativeVideoState = new LxNativeVideoState();
-  @State showControls: boolean = true;
+  @State showControls: boolean = false;
   @State isFullscreen: boolean = false;
   @State private appliedCornerRadius: number = 0;
   @State private isSeeking: boolean = false;
   @State private sliderValue: number = 0;
-  @State private showPoster: boolean = true;  // Show poster until first frame ready
+  @State private hasRenderedFirstFrame: boolean = false;  // Poster shows only when this is false
+  private hasEverPlayed: boolean = false; // Persistent lock for poster
   private cachedPoster: string = '';  // Cache poster URL since config.poster may be lost on rebuild
   private cachedAutoplay: boolean = false;  // Cache autoplay since config may be lost on rebuild
   private autoplaySuppressed: boolean = false;  // Block autoplay if paused before prepare
   private isPausedByUser: boolean = false;
+  private lastLoadingIndicatorShown: boolean = false;
+  private lastSeekTimestamp: number = 0;
+  private wasPlayingOnDragStart: boolean = false;
   private pendingSeekTime: number = -1;
   private pendingSeekStartTime: number = -1;
   private seekDebounceTimer: number = -1;  // Debounce rapid seeks
-  private hasEnded: boolean = false;  // Track if video has ended (to prevent re-trigger)
+  @State private hasEnded: boolean = false;  // Track if video has ended - @State for poster UI binding
   private pendingPlayEvent: boolean = false;  // Delay play event until video actually starts
   private lastTimeForPlayEvent: number = -1;  // Track time progression for play event
-  
+  private streamState: StreamPlaybackState = 'idle';
+  private streamTimeAnchorMs: number = -1;
+  private streamTimeAnchorPositionMs: number = 0;
+
   // State restoration for quality switching
   private pendingQualitySwitchTime: number = -1;
   private pendingQualitySwitchPlaying: boolean = false;
@@ -138,7 +170,12 @@ export struct LxNativeVideoPlayer {
   private progressTimer: number = -1;
   private seekTimer: number = -1;
   private clearSurfaceTimer: number = -1;  // Delay surface clear to allow reattach
+  private streamSurfaceRefreshTimer1: number = -1;
+  private streamSurfaceRefreshTimer2: number = -1;
+  private streamSurfaceWarmupTimer: number = -1;
+  private streamSurfaceWarmupDone: boolean = false;
   private surfaceId: string = '';
+  private lastSurfaceCreatedAt: number = 0;
   private playerCreated: boolean = false;
   private boundSurfaceId: string = '';
   private streamVideoSize?: StreamVideoSize;
@@ -149,7 +186,10 @@ export struct LxNativeVideoPlayer {
   private static originalSurfaceIds: Map<string, string> = new Map();
   private static streamVideoSizes: Map<string, StreamVideoSize> = new Map();
   private static instanceCounter: number = 0;  // Global counter to generate unique XComponent IDs
-  onEvent?: (event: string, detail: object) => void;
+  // Global registry of componentIds that have ever rendered a frame.
+  // Once a frame is rendered, poster should NEVER show again (cold start only).
+  private static hasEverRenderedFrame: Set<string> = new Set();
+  onEvent?: (event: string, detail: VideoEventDetail) => void;
 
   static setKeepAlive(componentId: string, keepAlive: boolean): void {
     if (!componentId) return;
@@ -207,7 +247,12 @@ export struct LxNativeVideoPlayer {
       LxNativeVideoPlayer.originalSurfaceIds.set(componentId, instance.surfaceId);
     }
 
+    // Mark as remounting to prevent poster flash during transition
     const snapshot = LxNativeVideoPlayer.runtimeState.get(componentId);
+    if (snapshot) {
+      snapshot.hasEverPlayed = true; // Ensure this is locked before transition
+    }
+
     const success = hasNative
       ? (videoPlayerRebindSurface(componentId, fullscreenSurfaceId, snapshot?.currentTime ?? 0, snapshot?.isPlaying ?? true) as boolean)
       : (videoPlayerRebindStreamSurface(componentId, fullscreenSurfaceId) as boolean);
@@ -227,6 +272,10 @@ export struct LxNativeVideoPlayer {
     const hasNative = LxNativeVideoPlayer.hasNativePlayer(componentId);
 
     const snapshot = LxNativeVideoPlayer.runtimeState.get(componentId);
+    if (snapshot) {
+      snapshot.hasEverPlayed = true; // Ensure this is locked before transition
+    }
+
     const success = hasNative
       ? (videoPlayerRebindSurface(componentId, originalSurfaceId, snapshot?.currentTime ?? 0, snapshot?.isPlaying ?? true) as boolean)
       : (videoPlayerRebindStreamSurface(componentId, originalSurfaceId) as boolean);
@@ -319,7 +368,16 @@ export struct LxNativeVideoPlayer {
   }
 
   static onBufferingChange(componentId: string, isBuffering: boolean): void {
-    LxNativeVideoPlayer.rebindInstance.get(componentId)?.handleBufferingChange(isBuffering);
+    const instance = LxNativeVideoPlayer.rebindInstance.get(componentId);
+    if (instance) {
+      if (isBuffering && instance.isStreamMode()) {
+        log(`[${componentId}] static onBufferingChange: buffering start`);
+        instance.hasEnded = false;
+      }
+      instance.handleBufferingChange(isBuffering);
+    } else {
+      log(`[${componentId}] static onBufferingChange: no instance found`);
+    }
   }
 
   static onPrepared(componentId: string): void {
@@ -364,9 +422,96 @@ export struct LxNativeVideoPlayer {
     }
   }
 
+  static onDuration(componentId: string, durationMs: number): void {
+    const duration = Math.max(0, Math.round(durationMs));
+    const instance = LxNativeVideoPlayer.rebindInstance.get(componentId);
+    if (instance) {
+      instance.state.duration = duration;
+      if (duration > 0) {
+        if (instance.isStreamMode()) {
+          // If we are seeking, don't reset state to beginning just because duration arrived
+          const isRecentSeek = Date.now() - instance.lastSeekTimestamp < 2000;
+          // Also don't reset if video has already started playing (late duration event)
+          // This prevents UI from flashing back to 0 when duration arrives after playback began
+          const hasAlreadyStarted = instance.hasRenderedFirstFrame || instance.hasEverPlayed || instance.state.currentTime > 0;
+          if (!isRecentSeek && !hasAlreadyStarted) {
+            instance.state.currentTime = 0;
+            instance.sliderValue = 0;
+            instance.hasEnded = false;
+            instance.pendingPlayEvent = false;
+            instance.lastTimeForPlayEvent = -1;
+            instance.lastCurrentTimeForBuffering = -1;
+            instance.lastCurrentTimeForPoster = -1;
+            instance.streamTimeAnchorMs = Date.now();
+            instance.streamTimeAnchorPositionMs = 0;
+            if (instance.isPausedByUser) {
+              instance.setStreamState('idle', 'duration');
+            } else {
+              instance.setStreamState('waiting', 'duration');
+              instance.traceLoadingIndicator('duration:segment_switch');
+            }
+            instance.startProgressTimer();
+          } else {
+             log(`[${componentId}] onDuration: skipping state reset (recentSeek=${isRecentSeek}, alreadyStarted=${hasAlreadyStarted})`);
+          }
+        } else {
+          instance.state.currentTime = Math.min(instance.state.currentTime, duration);
+          instance.sliderValue = calculateSliderValue(instance.state.currentTime, duration);
+        }
+      }
+      instance.saveRuntimeState();
+    } else {
+      const state = LxNativeVideoPlayer.runtimeState.get(componentId);
+      if (state) {
+        state.duration = duration;
+        state.currentTime = Math.min(state.currentTime, duration);
+      }
+    }
+  }
+
+  static onError(componentId: string, message?: string): void {
+    const instance = LxNativeVideoPlayer.rebindInstance.get(componentId);
+    let code = 'native_error';
+    let msg = message ?? '';
+    if (msg) {
+      try {
+        const parsed = JSON.parse(msg) as NativeErrorPayload;
+        if (parsed && typeof parsed === 'object') {
+          if (typeof parsed.code === 'string' && parsed.code.trim().length > 0) {
+            code = parsed.code.trim();
+          }
+          if (typeof parsed.message === 'string') {
+            msg = parsed.message;
+          }
+        }
+      } catch (_) {
+        // Plain string payload; treat as message.
+      }
+    }
+    if (instance) {
+      instance.handleError(code, msg);
+      return;
+    }
+    const detail = new VideoErrorDetail();
+    detail.code = code;
+    detail.message = msg;
+    const state = LxNativeVideoPlayer.runtimeState.get(componentId);
+    if (state) {
+      state.isPlaying = false;
+      state.isBuffering = false;
+    }
+    // No instance to emit to; the JS side will see the error once component remounts.
+    log(`[${componentId}] static onError: no instance, code=${detail.code} message=${detail.message}`);
+  }
+
   static getDuration(componentId: string): number {
-    let duration = LxNativeVideoPlayer.rebindInstance.get(componentId)?.getDuration() ?? 0;
+    const instance = LxNativeVideoPlayer.rebindInstance.get(componentId);
+    if (instance?.isStreamMode()) {
+      return instance.state.duration;
+    }
+    let duration = instance?.state.duration ?? 0;
     if (duration <= 0) duration = LxNativeVideoPlayer.runtimeState.get(componentId)?.duration ?? 0;
+    if (duration <= 0) duration = videoPlayerGetDuration(componentId);
     return duration;
   }
 
@@ -513,8 +658,12 @@ export struct LxNativeVideoPlayer {
     if (!this.componentId) return;
     const snapshot = new LxNativeVideoRuntimeSnapshot();
     snapshot.isPlaying = this.state.isPlaying;
-    snapshot.currentTime = this.getCurrentTime();
+    // Use state.currentTime which is the calculated effectiveTime in progress timer,
+    // not native time (which doesn't account for stream mode time anchor)
+    snapshot.currentTime = this.state.currentTime;
     snapshot.duration = this.state.duration;
+    snapshot.hasRenderedFirstFrame = this.hasRenderedFirstFrame;
+    snapshot.hasEverPlayed = this.hasEverPlayed || this.hasRenderedFirstFrame || (this.state.currentTime > 0);
     LxNativeVideoPlayer.runtimeState.set(this.componentId, snapshot);
   }
 
@@ -523,10 +672,20 @@ export struct LxNativeVideoPlayer {
     const snapshot = LxNativeVideoPlayer.runtimeState.get(this.componentId);
     if (snapshot) {
       this.state.isPlaying = snapshot.isPlaying;
-      this.state.currentTime = snapshot.currentTime;
+      let restoredTime = snapshot.currentTime;
+      // Sanitize restored time to prevent "poisoned" state loop
+      if (!isFinite(restoredTime) || restoredTime < 0 || restoredTime > 3000000000000) {
+          log(`[${this.componentId}] restoreRuntimeState: sanitizing invalid currentTime=${restoredTime}`);
+          restoredTime = 0;
+      }
+      this.state.currentTime = restoredTime;
       this.state.duration = snapshot.duration;
+      // Restore hasRenderedFirstFrame from snapshot OR global Set (whichever is true)
+      this.hasRenderedFirstFrame = snapshot.hasRenderedFirstFrame || LxNativeVideoPlayer.hasEverRenderedFrame.has(this.componentId);
+      this.hasEverPlayed = snapshot.hasEverPlayed || this.hasRenderedFirstFrame;
+      log(`[${this.componentId}] restoreRuntimeState: hasRenderedFirstFrame=${this.hasRenderedFirstFrame}, hasEverPlayed=${this.hasEverPlayed}, currentTime=${restoredTime}`);
       // Also restore slider value to prevent stale display
-      this.sliderValue = calculateSliderValue(snapshot.currentTime, snapshot.duration);
+      this.sliderValue = calculateSliderValue(restoredTime, snapshot.duration);
       if (snapshot.isPlaying) this.startProgressTimer();
     }
   }
@@ -550,17 +709,25 @@ export struct LxNativeVideoPlayer {
     if (!this.state.currentQuality && this.config.qualities.length > 0) {
       this.state.currentQuality = this.config.qualities[0].label;
     }
-    log(`[${this.componentId}] aboutToAppear: poster=${this.config.poster}, cachedPoster=${this.cachedPoster}, autoplay=${this.config.autoplay}, cachedAutoplay=${this.cachedAutoplay}, progressBar=${this.config.progressBar}, showPoster=${this.showPoster}, xComponentId=${this.xComponentId}, playerCreated=${this.playerCreated}, boundSurfaceId=${this.boundSurfaceId}, hasNativePlayer=${LxNativeVideoPlayer.hasNativePlayer(this.componentId)}, currentQuality=${this.state.currentQuality}, hasOnEvent=${!!this.onEvent}`);
+    log(`[${this.componentId}] aboutToAppear: poster=${this.config.poster}, cachedPoster=${this.cachedPoster}, autoplay=${this.config.autoplay}, cachedAutoplay=${this.cachedAutoplay}, progressBar=${this.config.progressBar}, xComponentId=${this.xComponentId}, playerCreated=${this.playerCreated}, boundSurfaceId=${this.boundSurfaceId}, hasNativePlayer=${LxNativeVideoPlayer.hasNativePlayer(this.componentId)}, currentQuality=${this.state.currentQuality}, hasOnEvent=${!!this.onEvent}`);
 
     // Reset state for clean recreation (same-level remount may skip aboutToDisappear)
     this.playerCreated = false;
     this.boundSurfaceId = '';
     LxNativeVideoPlayer.setNativePlayerExists(this.componentId, false);
     LxNativeVideoPlayer.setKeepAlive(this.componentId, false);
-    LxNativeVideoPlayer.runtimeState.delete(this.componentId);
+    // LxNativeVideoPlayer.runtimeState.delete(this.componentId); // Do not delete state, we need to restore it!
 
     this.restoreRuntimeState();
     LxNativeVideoPlayer.rebindInstance.set(this.componentId, this);
+    
+    // CRITICAL: Final gate to prevent poster flash on component remount (e.g. fullscreen toggle).
+    // If the video was already playing, has ended, or is at any position other than start,
+    // we MUST consider the first frame as already rendered.
+    if (this.state.currentTime > 0 || this.hasEnded || this.state.isPlaying || this.hasEverPlayed || LxNativeVideoPlayer.hasEverRenderedFrame.has(this.componentId)) {
+      log(`[${this.componentId}] aboutToAppear: forcing hasRenderedFirstFrame=true to match previous state`);
+      this.markFirstFrameRendered();
+    }
 
     this.appliedCornerRadius = 0;
     if (this.config.cornerRadius > 0) {
@@ -577,76 +744,139 @@ export struct LxNativeVideoPlayer {
     this.clearSeekTimer();
     this.clearSeekDebounceTimer();
     this.cancelPendingSurfaceClear();
+    this.cancelStreamSurfaceRefreshTimers();
+    this.cancelStreamSurfaceWarmupTimer();
     this.appliedCornerRadius = 0;
-    LxNativeVideoPlayer.rebindInstance.delete(this.componentId);
+    if (LxNativeVideoPlayer.rebindInstance.get(this.componentId) === this) {
+      LxNativeVideoPlayer.rebindInstance.delete(this.componentId);
+      log(`[${this.componentId}] aboutToDisappear: removed instance from registry`);
+    } else {
+      log(`[${this.componentId}] aboutToDisappear: instance registry mismatch (already replaced?), skipping remove`);
+    }
     if (this.playerCreated) this.destroyPlayer();
   }
 
   private lastCurrentTimeForPoster: number = -1;
+  private lastCurrentTimeForBuffering: number = -1;
 
   private startProgressTimer(): void {
     if (this.progressTimer !== -1) return;
     this.lastCurrentTimeForPoster = -1;  // Reset on timer start
     this.lastTimeForPlayEvent = -1;  // Reset for play event detection
+    this.lastCurrentTimeForBuffering = -1;  // Reset for buffering auto-clear
     this.progressTimer = setInterval(() => {
       const currentTime = this.getCurrentTime();
+      const nativeTime = currentTime;
       const duration = this.getDuration();
+      let effectiveTime = currentTime;
+      const endEpsilonMs = 30;
 
-      if (!this.config.loop && !this.hasEnded && duration > 0 && currentTime >= duration - 500) {
-        log(`[${this.componentId}] progressTimer: detected playback end, currentTime=${currentTime}, duration=${duration}`);
+      if (this.isStreamMode() && duration > 0) {
+        let streamTime = currentTime;
+
+        // IMPORTANT: In stream mode, native time (from stream decoder) is relative to
+        // stream start (from 0), NOT absolute playback position including seek offset.
+        // We NEVER use native time to overwrite anchor directly. Instead, we use
+        // wall-clock extrapolation from the anchor point set during seek/play.
+        // Native time is only used to verify playback is progressing (not frozen).
+
+        // Extrapolate from anchor if playing
+        if (this.streamState === 'playing' && this.streamTimeAnchorMs > 0) {
+           const elapsed = Date.now() - this.streamTimeAnchorMs;
+           streamTime = Math.min(duration, this.streamTimeAnchorPositionMs + elapsed);
+        }
+
+        effectiveTime = this.streamState === 'playing' ? streamTime : this.state.currentTime;
+      }
+
+      if (duration > 0 && effectiveTime >= duration - 500) {
+        // Just before end, make sure we consider it rendered
+        this.markFirstFrameRendered();
+      }
+      if (!this.config.loop && !this.hasEnded && duration > 0 && effectiveTime >= duration - endEpsilonMs) {
+        if (this.isStreamMode() && this.streamState !== 'playing') {
+          return;
+        }
+        log(`[${this.componentId}] progressTimer: detected playback end, currentTime=${effectiveTime}, duration=${duration}`);
         this.onPlaybackEnded();
         return;  // Don't process further after ended
       }
 
       // Emit play event when video actually starts playing (time progresses)
       if (this.pendingPlayEvent && duration > 0) {
-        const timeAdvanced = this.lastTimeForPlayEvent >= 0 && currentTime > this.lastTimeForPlayEvent;
-        if (currentTime > 0 && timeAdvanced) {
-          log(`[${this.componentId}] progressTimer: emitting delayed play event, currentTime=${currentTime}, lastTime=${this.lastTimeForPlayEvent}`);
+        const timeAdvanced = this.lastTimeForPlayEvent >= 0 && effectiveTime > this.lastTimeForPlayEvent;
+        if (effectiveTime > 0 && timeAdvanced) {
+          log(`[${this.componentId}] progressTimer: emitting delayed play event, currentTime=${effectiveTime}, lastTime=${this.lastTimeForPlayEvent}`);
           this.pendingPlayEvent = false;
           this.emitEvent('play', new VideoEmptyDetail());
         }
-        this.lastTimeForPlayEvent = currentTime;
+        this.lastTimeForPlayEvent = effectiveTime;
       }
 
-      // Hide poster when video is rendering frames (prevents black screen flash)
-      if (this.showPoster && this.state.isPlaying && duration > 0) {
-        const timeAdvanced = this.lastCurrentTimeForPoster >= 0 && currentTime > this.lastCurrentTimeForPoster;
-        if (currentTime > 200 && timeAdvanced) {
-          log(`[${this.componentId}] progressTimer: hiding poster, currentTime=${currentTime}, lastTime=${this.lastCurrentTimeForPoster}, duration=${duration}`);
-          this.showPoster = false;
+      if (this.isStreamMode() && this.state.isBuffering && !this.isPausedByUser) {
+        const timeAdvanced = this.lastCurrentTimeForBuffering >= 0 && effectiveTime > this.lastCurrentTimeForBuffering;
+        if (effectiveTime > 0 && timeAdvanced) {
+          log(`[${this.componentId}] progressTimer: clearing buffering on time advance, currentTime=${effectiveTime}, lastTime=${this.lastCurrentTimeForBuffering}`);
+          this.state.isBuffering = false;
+          this.traceLoadingIndicator('progressTimer:time_advanced');
         }
-        this.lastCurrentTimeForPoster = currentTime;
+        this.lastCurrentTimeForBuffering = effectiveTime;
+      }
+
+      // Record when first frame is rendered
+      // For stream mode, duration might be 0 (live stream), so we just check if time is advancing
+      const canDetectFrame = this.isStreamMode() || (this.state.isPlaying && duration > 0);
+      if (!this.hasRenderedFirstFrame && canDetectFrame) {
+        const timeAdvanced = this.lastCurrentTimeForPoster >= 0 && effectiveTime > this.lastCurrentTimeForPoster;
+        if (effectiveTime > 200 && timeAdvanced) {
+          log(`[${this.componentId}] progressTimer: first frame rendered, currentTime=${effectiveTime}`);
+          this.markFirstFrameRendered();
+        }
+        this.lastCurrentTimeForPoster = effectiveTime;
       }
 
       if (duration > 0 && this.state.duration !== duration) {
         this.state.duration = duration;
       }
 
-      if (!this.isSeeking && currentTime >= 0) {
-        // Wait for pending seek to complete (native callback or timeout fallback)
-        if (this.pendingSeekTime >= 0 && duration > 0) {
-          const elapsed = Date.now() - this.pendingSeekStartTime;
-          if (this.pendingSeekStartTime > 0 && elapsed > 8000) {
-            log(`[${this.componentId}] progress: seek timed out, syncing to native=${currentTime}`);
-            this.pendingSeekTime = -1;
-            this.pendingSeekStartTime = -1;
-            this.state.currentTime = currentTime;
-            this.sliderValue = calculateSliderValue(currentTime, duration);
-          } else {
-            return; // Keep slider at target position until seek completes
-          }
+      // Pending seek protection: keep slider at target position until seek completes.
+      // This MUST run even while isSeeking=true to prevent slider snap-back on release.
+      if (this.pendingSeekTime >= 0) {
+        const elapsed = Date.now() - this.pendingSeekStartTime;
+        const target = this.pendingSeekTime;
+        const closeEnough = duration > 0 && nativeTime >= 0 && Math.abs(nativeTime - target) <= 800;
+        if (closeEnough) {
+          // Seek completed, clear pending state and sync to native time
+          this.pendingSeekTime = -1;
+          this.pendingSeekStartTime = -1;
+          effectiveTime = nativeTime;
+          // Fall through to normal update logic
+        } else if (this.pendingSeekStartTime > 0 && elapsed > 8000) {
+          // Seek timed out, sync to native time
+          log(`[${this.componentId}] progress: seek timed out, syncing to native=${effectiveTime}`);
+          this.pendingSeekTime = -1;
+          this.pendingSeekStartTime = -1;
+          this.state.currentTime = effectiveTime;
+          if (duration > 0) this.sliderValue = calculateSliderValue(effectiveTime, duration);
+          return;
         } else {
-          this.state.currentTime = currentTime;
-          if (duration > 0) this.sliderValue = calculateSliderValue(currentTime, duration);
-          // Emit timeupdate event for JS tracking (enables relative seek)
-          // Convert ms to seconds for consistency with Android/HTML5 video API
-          if (duration > 0) {
-            const timeUpdateDetail = new VideoTimeUpdateDetail();
-            timeUpdateDetail.currentTime = currentTime / 1000;
-            timeUpdateDetail.duration = duration / 1000;
-            this.emitEvent('timeupdate', timeUpdateDetail);
-          }
+          // Keep slider at target position until seek completes
+          this.state.currentTime = target;
+          if (duration > 0) this.sliderValue = calculateSliderValue(target, duration);
+          return;
+        }
+      }
+
+      // Normal progress update (only when not actively seeking via slider)
+      if (!this.isSeeking && effectiveTime >= 0) {
+        this.state.currentTime = effectiveTime;
+        if (duration > 0) this.sliderValue = calculateSliderValue(effectiveTime, duration);
+        // Emit timeupdate event for JS tracking (enables relative seek)
+        if (duration > 0) {
+          const timeUpdateDetail = new VideoTimeUpdateDetail();
+          timeUpdateDetail.currentTime = effectiveTime / 1000;
+          timeUpdateDetail.duration = duration / 1000;
+          this.emitEvent('timeupdate', timeUpdateDetail);
         }
         if (this.state.isPlaying) this.saveRuntimeState();
       }
@@ -656,14 +886,30 @@ export struct LxNativeVideoPlayer {
   private onPlaybackEnded(): void {
     log(`[${this.componentId}] onPlaybackEnded() called, loop=${this.config.loop}, hasEnded=${this.hasEnded}`);
     if (this.config.loop || this.hasEnded) return;
+    if (this.isStreamMode()) {
+      // Enforce real stop in stream mode: without this the progress can reach 100% while audio/video continues.
+      const ok = videoPlayerPause(this.componentId) as boolean;
+      if (!ok) {
+        log(`[${this.componentId}] onPlaybackEnded: videoPlayerPause returned false in stream mode; continuing UI end state`);
+      }
+    }
     this.hasEnded = true;
-
-    this.state.isPlaying = false;
-    this.state.isPaused = true;
+    // Ended should keep the last rendered frame visible (never show poster on ended).
+    this.markFirstFrameRendered();
+    if (this.state.duration > 0) {
+      this.state.currentTime = this.state.duration;
+      this.sliderValue = 100;
+    }
+    if (this.isStreamMode()) {
+      this.setStreamState('ended', 'ended');
+    } else {
+      this.state.isPlaying = false;
+      this.state.isPaused = true;
+      this.state.isBuffering = false;
+    }
     // Cancel pending play event on end
     this.pendingPlayEvent = false;
-    this.showPoster = true;  // Show poster again when video ends
-    log(`[${this.componentId}] onPlaybackEnded() showPoster=true`);
+    log(`[${this.componentId}] onPlaybackEnded()`);
     this.stopProgressTimer();
     this.saveRuntimeState();  // Save ended state
     this.emitEvent('ended', new VideoEmptyDetail());
@@ -672,7 +918,7 @@ export struct LxNativeVideoPlayer {
   static hasEndedStatic(componentId: string): boolean {
     const instance = LxNativeVideoPlayer.rebindInstance.get(componentId);
     if (!instance) return false;
-    return instance.hasEnded || (instance.showPoster && !instance.state.isPlaying);
+    return instance.hasEnded || (!instance.hasRenderedFirstFrame && !instance.state.isPlaying);
   }
 
   private stopProgressTimer(): void {
@@ -685,12 +931,17 @@ export struct LxNativeVideoPlayer {
   private onSurfaceCreated(surfaceId: string): void {
     // Cancel any pending surface clear operation since a new surface was created
     this.cancelPendingSurfaceClear();
+    this.cancelStreamSurfaceRefreshTimers();
 
+    this.lastSurfaceCreatedAt = Date.now();
     this.boundSurfaceId = surfaceId;
     this.surfaceId = surfaceId;
     if (!this.hasSource()) {
+      log(`[${this.componentId}] onSurfaceCreated(stream): surfaceId=${surfaceId}, xType=${this.getXComponentType()}, xId=${this.xComponentId}`);
       videoPlayerStoreSurface(this.componentId, surfaceId);
-      videoPlayerRebindStreamSurface(this.componentId, surfaceId);
+      const ok = videoPlayerRebindStreamSurface(this.componentId, surfaceId) as boolean;
+      log(`[${this.componentId}] videoPlayerRebindStreamSurface: ok=${ok}, surfaceId=${surfaceId}`);
+      this.scheduleStreamSurfaceRefresh();
       return;
     }
     if (!LxNativeVideoPlayer.hasNativePlayer(this.componentId)) {
@@ -699,12 +950,29 @@ export struct LxNativeVideoPlayer {
   }
 
   private onSurfaceDestroyed(surfaceId: string): void {
+    // Stream-only mode: surfaces are frequently detached/reattached by ArkUI. Clearing the stored
+    // surface ID here is unsafe because onDestroy may fire for an old XComponent after a new one is
+    // already created and bound, which would cause a black screen. Rebind on next onLoad instead.
+    if (!this.hasSource()) {
+      log(`[${this.componentId}] stream mode surface destroyed, skipping clear: ${surfaceId}`);
+      this.cancelStreamSurfaceRefreshTimers();
+      this.cancelStreamSurfaceWarmupTimer();
+      return;
+    }
+
     // XComponent surfaces can be recreated; ArkUI may report onDestroy for an old surface after a new
     // one is already created/bound. Only clear the stored surface when the destroyed surface is the
     // currently bound surface; otherwise we can accidentally clear the active surface and break
     // stream playback (Surface not set).
     const isCurrentSurface = this.surfaceId === surfaceId || this.boundSurfaceId === surfaceId;
     if (!isCurrentSurface) return;
+
+    // Extra guard: if we very recently created/bound a surface, treat this destroy as a transient
+    // detach (likely for the previous instance) and skip clearing to avoid black screens.
+    if (Date.now() - this.lastSurfaceCreatedAt < 1200) {
+      log(`[${this.componentId}] surface destroyed soon after create, skipping clear: ${surfaceId}`);
+      return;
+    }
 
     // Clear any existing pending clear operation
     this.cancelPendingSurfaceClear();
@@ -716,6 +984,10 @@ export struct LxNativeVideoPlayer {
       // (a new surface might have been created and bound during the delay)
       const stillCurrentSurface = this.surfaceId === surfaceId || this.boundSurfaceId === surfaceId;
       if (stillCurrentSurface) {
+        if (this.isFullscreen || LxNativeVideoPlayer.isKeepAlive(this.componentId)) {
+          log(`[${this.componentId}] surface detach during fullscreen/keepAlive, skipping clear: ${surfaceId}`);
+          return;
+        }
         log(`[${this.componentId}] surface detached for 800ms, clearing: ${surfaceId}`);
         if (this.boundSurfaceId === surfaceId) this.boundSurfaceId = '';
         if (this.surfaceId === surfaceId) this.surfaceId = '';
@@ -755,7 +1027,10 @@ export struct LxNativeVideoPlayer {
     }
     const playerPtr = videoPlayerCreate(this.componentId, 0) as number;
     if (playerPtr === 0) {
-      this.emitEvent('error', { message: 'Failed to create native player' } as VideoErrorDetail);
+      const detail = new VideoErrorDetail();
+      detail.code = 'create_failed';
+      detail.message = 'Failed to create native player';
+      this.emitEvent('error', detail);
       return;
     }
     this.playerCreated = true;
@@ -763,7 +1038,10 @@ export struct LxNativeVideoPlayer {
 
     if (this.config.src) {
       if (!(videoPlayerSetUrl(this.componentId, this.config.src) as boolean)) {
-        this.emitEvent('error', { message: 'Failed to set URL source' } as VideoErrorDetail);
+        const detail = new VideoErrorDetail();
+        detail.code = 'set_url_failed';
+        detail.message = 'Failed to set URL source';
+        this.emitEvent('error', detail);
         return;
       }
     }
@@ -771,7 +1049,10 @@ export struct LxNativeVideoPlayer {
     const targetSurface = surfaceId || this.boundSurfaceId || this.surfaceId;
     if (targetSurface) {
       if (!(videoPlayerSetSurface(this.componentId, targetSurface) as boolean)) {
-        this.emitEvent('error', { message: 'Failed to set video surface' } as VideoErrorDetail);
+        const detail = new VideoErrorDetail();
+        detail.code = 'set_surface_failed';
+        detail.message = 'Failed to set video surface';
+        this.emitEvent('error', detail);
         return;
       }
       this.boundSurfaceId = targetSurface;
@@ -784,7 +1065,7 @@ export struct LxNativeVideoPlayer {
     }
     // Note: loadedmetadata and autoplay will be triggered in handlePrepared() callback when player is ready
 
-    log(`[${this.componentId}] createPlayer done, autoplay=${this.config.autoplay}, showPoster=${this.showPoster}`);
+    log(`[${this.componentId}] createPlayer done, autoplay=${this.config.autoplay}`);
   }
 
   private rebindSurface(surfaceId: string, snapshot?: LxNativeVideoRuntimeSnapshot): void {
@@ -811,105 +1092,328 @@ export struct LxNativeVideoPlayer {
   }
 
   play(): void {
-    log(`[${this.componentId}] play() called, showPoster=${this.showPoster}`);
+    log(`[${this.componentId}] play() called`);
     // Explicit play request should override any pending autoplay suppression
     this.autoplaySuppressed = false;
     this.isPausedByUser = false;
-    if (videoPlayerPlay(this.componentId) as boolean) {
-      this.state.isPlaying = true;
+
+    if (this.isStreamMode()) {
+      // If playback has ended (or currentTime is at/past duration), seek to beginning first.
+      // This prevents "endTime > beginTime" errors when resume() tries to reconnect near the
+      // end of the playback segment.
+      const duration = this.getDuration();
+      const shouldSeekToStart = this.hasEnded ||
+        (duration > 0 && this.state.currentTime >= duration - 500);
+      if (shouldSeekToStart) {
+        log(`[${this.componentId}] play(): playback ended or at end, seeking to start first`);
+        this.state.currentTime = 0;
+        this.sliderValue = 0;
+        this.streamTimeAnchorMs = Date.now();
+        this.streamTimeAnchorPositionMs = 0;
+        // Seek to 0 before play - this ensures the stream session starts from the beginning
+        videoPlayerSeek(this.componentId, 0);
+      }
+
+      // Stream decoder mode: update UI state *before* calling native play to avoid a race where
+      // the native `play` event arrives before we set `isBuffering=true` (which would leave
+      // the loading indicator stuck).
+      this.setStreamState('waiting', 'play');
+      this.hasEnded = false;
+      // DON'T set streamTimeAnchorMs here - only set the position.
+      // The time anchor will be set in handlePlaying() when video actually starts.
+      // This prevents progress bar from advancing before video is actually playing.
+      // Exception: if we just seeked, preserve the anchor so progress continues from seek point.
+      if (Date.now() - this.lastSeekTimestamp > 2000) {
+        this.streamTimeAnchorMs = 0;
+      }
+      this.streamTimeAnchorPositionMs = Math.max(0, this.state.currentTime);
+      this.saveRuntimeState();
+      this.traceLoadingIndicator('play(stream):ui_state_set');
+      this.startProgressTimer();
+      const ok = videoPlayerPlay(this.componentId) as boolean;
+      if (!ok) {
+        log(`[${this.componentId}] videoPlayerPlay returned false in stream mode; updating UI state anyway`);
+      }
+
+      // IMPORTANT: Emit the play request after unpausing the native decoder. Otherwise the stream
+      // session might start pushing frames while the decoder is still paused, dropping the first
+      // keyframe and leaving the loading indicator stuck until the next keyframe.
+      this.emitEvent('playrequest', new VideoEmptyDetail());
+
+      const waitingDetail = new VideoWaitingDetail();
+      waitingDetail.reason = 'buffering';
+      this.emitEvent('waiting', waitingDetail);
+      return;
+    }
+
+    const ok = videoPlayerPlay(this.componentId) as boolean;
+    if (ok) {
+      // Don't set isPlaying=true yet. Wait for native 'play' event.
+      // This prevents the progress bar from moving while the video is still loading/buffering.
       this.state.isPaused = false;
       this.hasEnded = false;
-      // Delay play event until video actually starts playing (time progresses)
       this.pendingPlayEvent = true;
       this.lastTimeForPlayEvent = -1;
-      log(`[${this.componentId}] play() success, showPoster=${this.showPoster} (play event will emit when time progresses)`);
-      this.startProgressTimer();
+      log(`[${this.componentId}] play() success (waiting for native 'play' event to start progress)`);
+      // this.startProgressTimer(); // Removed: started in handlePlaying
     }
   }
 
   pause(): void {
+    log(`[${this.componentId}] pause() called`);
     this.isPausedByUser = true;
-    if (videoPlayerPause(this.componentId) as boolean) {
-      this.state.isPlaying = false;
-      this.state.isPaused = true;
-      this.state.isBuffering = false;  // Hide buffering indicator immediately
+    const ok = videoPlayerPause(this.componentId) as boolean;
+    if (this.isStreamMode() || ok) {
+      if (this.isStreamMode() && !ok) {
+        log(`[${this.componentId}] videoPlayerPause returned false in stream mode; updating UI state anyway`);
+      }
+      if (this.isStreamMode()) {
+        this.setStreamState('idle', 'pause');
+      } else {
+        this.state.isPlaying = false;
+        this.state.isPaused = true;
+        this.state.isBuffering = false;  // Hide buffering indicator immediately
+        this.pendingPlayEvent = false;
+      }
       this.autoplaySuppressed = true;
-      // Cancel pending play event if pause is called before video started
-      this.pendingPlayEvent = false;
       this.stopProgressTimer();
       this.saveRuntimeState();
-      this.emitEvent('pause', new VideoEmptyDetail());
+      this.traceLoadingIndicator('pause()');
+      if (this.isStreamMode()) {
+        const detail = new VideoControlDetail();
+        detail.reason = 'user';
+        detail.currentTime = Math.max(0, this.state.currentTime) / 1000.0;
+        this.emitEvent('pause', detail);
+      } else {
+        this.emitEvent('pause', new VideoEmptyDetail());
+      }
     }
   }
 
   stop(): void {
     log(`[${this.componentId}] stop() called`);
     this.isPausedByUser = true;
-    if (videoPlayerStop(this.componentId) as boolean) {
+    // Reset seek timestamp so that next source change will properly reset progress bar
+    this.lastSeekTimestamp = 0;
+    const ok = videoPlayerStop(this.componentId) as boolean;
+    if (this.isStreamMode() || ok) {
       // Reset playback state
       this.state.isPlaying = false;
       this.state.isPaused = true;
       this.autoplaySuppressed = true;
       this.state.currentTime = 0;
+      // Keep duration for stream VOD so the progress bar stays consistent across stop/replay.
+      if (!this.isStreamMode()) {
+        this.state.duration = 0;
+      }
       this.sliderValue = 0;
       this.hasEnded = false;
       this.pendingPlayEvent = false;
-      // Show poster and center play button (reset to initial state)
-      this.showPoster = true;
+      // Show poster and center play button (reset to initial state / cold start)
+      this.hasRenderedFirstFrame = false;
+      this.hasEverPlayed = false;
+      LxNativeVideoPlayer.hasEverRenderedFrame.delete(this.componentId);
       this.stopProgressTimer();
       this.saveRuntimeState();
       log(`[${this.componentId}] stop() success, reset to initial state`);
+      if (this.isStreamMode()) {
+        const detail = new VideoControlDetail();
+        detail.reason = 'user';
+        detail.currentTime = 0;
+        this.emitEvent('stop', detail);
+      } else {
+        this.emitEvent('stop', new VideoEmptyDetail());
+      }
     }
   }
 
   seek(time: number): void {
+    if (isNaN(time) || time < 0) {
+      log(`[${this.componentId}] seek ignored: invalid time=${time}`);
+      return;
+    }
     const timeInt = Math.round(time);
-    // Track pending seek for UI sync
+    log(`[${this.componentId}] seek: time=${time} timeInt=${timeInt} streamMode=${this.isStreamMode()} duration=${this.state.duration}`);
+    // Track pending seek for UI sync (non-stream mode only)
+    // In stream mode, we clear it immediately below.
     this.pendingSeekTime = timeInt;
     this.pendingSeekStartTime = Date.now();
+
+    // Stream mode: update time anchor immediately because native seekDone callback
+    // won't be received (stream seek reopens the connection instead of using AVPlayer seek)
+    if (this.isStreamMode()) {
+      log(`[${this.componentId}] seek: stream mode, updating time anchor to ${timeInt}ms`);
+      // Use Date.now() to ensure timer moves immediately using wall-clock fallback if native time is 0/stale
+      this.streamTimeAnchorMs = Date.now();
+      this.streamTimeAnchorPositionMs = timeInt;
+      this.lastSeekTimestamp = Date.now();
+      this.state.currentTime = timeInt;
+      const duration = this.getDuration();
+      if (duration > 0) this.sliderValue = calculateSliderValue(timeInt, duration);
+
+      // Clear pending seek immediately for stream mode because native seekDone/play events
+      // are not reliable triggers to unblock the progress timer.
+      this.pendingSeekTime = -1;
+      this.pendingSeekStartTime = -1;
+    }
+
+    log(`[${this.componentId}] seek: calling videoPlayerSeek with timeInt=${timeInt}`);
     if (videoPlayerSeek(this.componentId, timeInt) as boolean) {
-      const seekDetail = new VideoSeekingDetail();
-      seekDetail.currentTime = timeInt;
-      this.emitEvent('seeking', seekDetail);
+      // In stream mode, FFI layer handles seek via callback - don't emit events that trigger duplicate seeks
+      if (!this.isStreamMode()) {
+        const seekDetail = new VideoSeekingDetail();
+        // Convert ms to seconds for the event (Rust handler expects seconds)
+        seekDetail.currentTime = timeInt / 1000;
+        this.emitEvent('seeking', seekDetail);
+      }
     }
   }
 
   handleSeekDone(positionMs: number): void {
     log(`[${this.componentId}] handleSeekDone: position=${positionMs}, pending=${this.pendingSeekTime}`);
-    this.pendingSeekTime = -1;
-    this.pendingSeekStartTime = -1;
 
     let actualPosition = positionMs > 0 ? positionMs : this.getCurrentTime();
+
+    if (this.isStreamMode()) {
+      // In stream mode, prefer the pending seek target over native position to avoid snap-back.
+      // The native callback often arrives with positionMs=0 before the stream has seeked.
+      if (this.pendingSeekTime >= 0) {
+        actualPosition = this.pendingSeekTime;
+      }
+
+      const timeSinceSeek = Date.now() - this.lastSeekTimestamp;
+      if (timeSinceSeek < 2000) {
+         log(`[${this.componentId}] handleSeekDone: ignoring callback in stream mode (recent manual seek), actualPosition=${actualPosition}`);
+         // We trust seek() to have set the anchor correctly.
+         // Just clear the pending state and return.
+         this.pendingSeekTime = -1;
+         this.pendingSeekStartTime = -1;
+         this.finishSeeking();
+         return;
+      }
+
+      // Anchor the current wall-clock time (now) to the playback position from the seek.
+      this.streamTimeAnchorMs = Date.now();
+      this.streamTimeAnchorPositionMs = Math.max(0, actualPosition);
+
+      // NOW clear pending seek - we've used it to set actualPosition
+      this.pendingSeekTime = -1;
+      this.pendingSeekStartTime = -1;
+    } else {
+      this.pendingSeekTime = -1;
+      this.pendingSeekStartTime = -1;
+    }
+
     this.state.currentTime = actualPosition;
     const duration = this.getDuration();
     if (duration > 0) this.sliderValue = calculateSliderValue(actualPosition, duration);
 
+    // Clear isSeeking state now that seek is complete
+    this.finishSeeking();
+
     const seekDetail = new VideoSeekingDetail();
-    seekDetail.currentTime = actualPosition;
+    // Convert ms to seconds for the event
+    seekDetail.currentTime = actualPosition / 1000;
     this.emitEvent('seeked', seekDetail);
     this.saveRuntimeState();
+  }
+
+  private setStreamState(next: StreamPlaybackState, _reason: string): void {
+    if (!this.isStreamMode()) return;
+    if (this.streamState === next) return;
+    this.streamState = next;
+    switch (next) {
+      case 'idle':
+        this.state.isPlaying = false;
+        this.state.isPaused = true;
+        this.state.isBuffering = false;
+        // Note: don't touch hasRenderedFirstFrame - poster only shows before first frame
+        this.hasEnded = false;
+        this.pendingPlayEvent = false;
+        break;
+      case 'waiting':
+        this.state.isPlaying = true;
+        this.state.isPaused = false;
+        this.state.isBuffering = true;
+        this.hasEnded = false;
+        this.pendingPlayEvent = false;
+        this.isPausedByUser = false;
+        break;
+      case 'playing':
+        this.state.isPlaying = true;
+        this.state.isPaused = false;
+        this.state.isBuffering = false;
+        this.hasEnded = false;
+        this.pendingPlayEvent = false;
+        this.isPausedByUser = false;
+        // Always reset wall-clock anchor to now when playback actually starts.
+        // This ensures we don't count buffering/loading time as playback time.
+        // Preserve streamTimeAnchorPositionMs if it was set by a recent seek,
+        // otherwise use current state time.
+        this.streamTimeAnchorMs = Date.now();
+        if (this.streamTimeAnchorPositionMs <= 0) {
+          this.streamTimeAnchorPositionMs = this.state.currentTime;
+        }
+        break;
+      case 'ended':
+        this.state.isPlaying = false;
+        this.state.isPaused = true;
+        this.state.isBuffering = false;
+        // Note: don't touch hasRenderedFirstFrame - poster only shows before first frame
+        this.hasEnded = true;
+        this.pendingPlayEvent = false;
+        break;
+    }
   }
 
   handleBufferingChange(isBuffering: boolean): void {
     log(`[${this.componentId}] handleBufferingChange: isBuffering=${isBuffering}, isPlaying=${this.state.isPlaying}, isPaused=${this.state.isPaused}`);
     this.state.isBuffering = isBuffering;
+    this.traceLoadingIndicator(`handleBufferingChange(${isBuffering})`);
+
+    // Stream decoder mode uses `waiting` + `playing` to manage the loading indicator.
+    // Avoid emitting extra play/pause events here, which can cause incorrect UI transitions.
+    if (this.isStreamMode()) {
+      if (isBuffering) {
+        if (this.state.duration > 0 && this.state.currentTime >= this.state.duration - 500) {
+          // New segment is starting; reset local timeline so we don't auto-end immediately.
+          this.state.currentTime = 0;
+          this.sliderValue = 0;
+          this.hasEnded = false;
+          this.streamTimeAnchorMs = Date.now();
+          this.streamTimeAnchorPositionMs = 0;
+        }
+        if (!this.isPausedByUser) {
+          this.setStreamState('waiting', 'buffering');
+          // Force poster hidden logic is now handled by !hasRenderedFirstFrame (which should be true by now)
+          this.hasEnded = false;
+          log(`[${this.componentId}] handleBufferingChange: emitting waiting event`);
+          const waitingDetail = new VideoWaitingDetail();
+          waitingDetail.reason = 'buffering';
+          this.emitEvent('waiting', waitingDetail);
+        }
+      } else {
+        if (this.streamState === 'waiting' && !this.isPausedByUser) {
+          log(`[${this.componentId}] handleBufferingChange: buffering ended, transitioning to playing`);
+          this.setStreamState('playing', 'buffering_end');
+        }
+      }
+      return;
+    }
 
     if (isBuffering) {
       // Only emit waiting event if player is in playing state (not paused by user)
       if (this.state.isPlaying && !this.isPausedByUser) {
         log(`[${this.componentId}] handleBufferingChange: emitting waiting event`);
-        this.emitEvent('waiting', new VideoEmptyDetail());
+        const waitingDetail = new VideoWaitingDetail();
+        waitingDetail.reason = 'buffering';
+        this.emitEvent('waiting', waitingDetail);
       }
     } else {
       // Buffering ended - emit appropriate event based on current state
       if (this.state.isPlaying) {
-        // Emit play event when buffering ends and video resumes (HTML5 "playing" event equivalent)
         log(`[${this.componentId}] handleBufferingChange: emitting play event (buffering ended)`);
         this.emitEvent('play', new VideoEmptyDetail());
-      } else if (this.state.isPaused) {
-        // Buffering ended but paused - re-emit pause to clear buffering status
-        log(`[${this.componentId}] handleBufferingChange: emitting pause event (buffering ended)`);
-        this.emitEvent('pause', new VideoEmptyDetail());
       }
     }
   }
@@ -922,8 +1426,16 @@ export struct LxNativeVideoPlayer {
     const metadataDetail = new VideoMetadataDetail();
     metadataDetail.width = videoPlayerGetVideoWidth(this.componentId);
     metadataDetail.height = videoPlayerGetVideoHeight(this.componentId);
-    metadataDetail.duration = videoPlayerGetDuration(this.componentId);
+    // For stream mode, only report duration if it has been set by onDuration callback.
+    // Avoid reporting 0 or uninitialized values which may cause incorrect UI display.
+    const durationMs = this.isStreamMode() ? (this.state.duration > 0 ? this.state.duration : 0) : this.getDuration();
+    // Convert ms to seconds for the event
+    metadataDetail.duration = durationMs / 1000;
     log(`[${this.componentId}] handlePrepared: metadata width=${metadataDetail.width}, height=${metadataDetail.height}, duration=${metadataDetail.duration}`);
+    if (durationMs > 0 && !this.isStreamMode()) {
+      this.state.duration = durationMs;
+    }
+    // Only emit loadedmetadata if we have valid dimensions or duration, or if not in stream mode
     this.emitEvent('loadedmetadata', metadataDetail);
 
     // Handle quality switch restoration (Highest Priority)
@@ -953,23 +1465,41 @@ export struct LxNativeVideoPlayer {
     this.sliderValue = 0;
     this.hasEnded = false;
     this.pendingPlayEvent = false;
-    this.showPoster = true;
     this.stopProgressTimer();
+    this.cancelStreamSurfaceRefreshTimers();
+    this.cancelStreamSurfaceWarmupTimer();
+    this.streamSurfaceWarmupDone = false;
     this.saveRuntimeState();
+    this.traceLoadingIndicator('handleStopped');
   }
 
   handlePlaying(): void {
     log(`[${this.componentId}] handlePlaying: updating UI for playback`);
-    this.state.isPlaying = true;
-    this.state.isPaused = false;
-    this.state.isBuffering = false;  // Clear buffering when playing resumes
-    this.hasEnded = false;
+    if (this.isStreamMode()) {
+      this.setStreamState('playing', 'play');
+      this.markFirstFrameRendered();
+      // Force critical state flags even if setStreamState guard returned early
+      // (e.g. state was already 'playing' due to concurrent calls or XComponent recreation).
+      // This ensures replay after 'ended' always hides the poster and resets hasEnded.
+      this.hasEnded = false;
+      this.state.isBuffering = false;
+      this.pendingSeekTime = -1;
+      this.pendingSeekStartTime = -1;
+    } else {
+      this.state.isPlaying = true;
+      this.state.isPaused = false;
+      this.isPausedByUser = false;
+      this.hasEnded = false;
+      this.state.isBuffering = false;  // Clear buffering when playing resumes
+    }
     if (!this.config?.src || this.config.src.trim().length === 0) {
-      this.showPoster = false;
+      // No src, do nothing specific for poster as it depends on shouldShowPoster
     }
     this.startProgressTimer();
     this.saveRuntimeState();
-    // Emit play event to JS
+    this.traceLoadingIndicator('handlePlaying');
+    this.scheduleStreamSurfaceRefresh();
+    this.scheduleStreamSurfaceWarmupRecreate();
     this.emitEvent('play', new VideoEmptyDetail());
   }
 
@@ -980,12 +1510,33 @@ export struct LxNativeVideoPlayer {
     this.state.isBuffering = false;  // Clear buffering when paused
     this.stopProgressTimer();
     this.saveRuntimeState();
+    this.traceLoadingIndicator('handlePaused');
     // Emit pause event to JS
     this.emitEvent('pause', new VideoEmptyDetail());
   }
 
+  private handleError(code: string, message: string): void {
+    log(`[${this.componentId}] handleError: code=${code} message=${message}`);
+    this.stopProgressTimer();
+    this.pendingPlayEvent = false;
+    this.hasEnded = false;
+    this.state.isBuffering = false;
+    if (this.isStreamMode()) {
+      this.setStreamState('idle', 'error');
+    } else {
+      this.state.isPlaying = false;
+      this.state.isPaused = true;
+    }
+    this.saveRuntimeState();
+    this.traceLoadingIndicator('handleError');
+    const detail = new VideoErrorDetail();
+    detail.code = code || 'unknown';
+    detail.message = message || 'unknown error';
+    this.emitEvent('error', detail);
+  }
+
   getCurrentTime(): number { return videoPlayerGetCurrentTime(this.componentId); }
-  getDuration(): number { return videoPlayerGetDuration(this.componentId); }
+  getDuration(): number { return LxNativeVideoPlayer.getDuration(this.componentId); }
 
   syncSliderFromNative(): void {
     const currentTime = this.getCurrentTime();
@@ -998,7 +1549,14 @@ export struct LxNativeVideoPlayer {
     }
   }
 
-  private emitEvent(event: string, detail: VideoErrorDetail | VideoSeekingDetail | VideoFullscreenDetail | VideoMetadataDetail | VideoTimeUpdateDetail | VideoEmptyDetail | LxMediaQualityChangeDetail | LxMediaRateChangeDetail): void {
+  private emitEvent(event: string, detail: VideoEventDetail): void {
+    if (event === 'waiting' || event === 'play' || event === 'pause') {
+      let extra = '';
+      if (event === 'waiting') {
+        extra = ` reason=${(detail as VideoWaitingDetail)?.reason ?? ''}`;
+      }
+      log(`[${this.componentId}] emitEvent: ${event} hasOnEvent=${typeof this.onEvent === 'function'}${extra}`);
+    }
     this.onEvent?.(event, detail);
   }
 
@@ -1054,15 +1612,94 @@ export struct LxNativeVideoPlayer {
     if (this.clearSurfaceTimer !== -1) { clearTimeout(this.clearSurfaceTimer); this.clearSurfaceTimer = -1; }
   }
 
+  private cancelStreamSurfaceRefreshTimers(): void {
+    if (this.streamSurfaceRefreshTimer1 !== -1) { clearTimeout(this.streamSurfaceRefreshTimer1); this.streamSurfaceRefreshTimer1 = -1; }
+    if (this.streamSurfaceRefreshTimer2 !== -1) { clearTimeout(this.streamSurfaceRefreshTimer2); this.streamSurfaceRefreshTimer2 = -1; }
+  }
+
+  private cancelStreamSurfaceWarmupTimer(): void {
+    if (this.streamSurfaceWarmupTimer !== -1) { clearTimeout(this.streamSurfaceWarmupTimer); this.streamSurfaceWarmupTimer = -1; }
+  }
+
+  private scheduleStreamSurfaceRefresh(): void {
+    if (this.hasSource()) return;
+    if (!this.componentId) return;
+    const surfaceId = this.boundSurfaceId || this.surfaceId;
+    if (!surfaceId) return;
+    if (this.streamSurfaceRefreshTimer1 !== -1 || this.streamSurfaceRefreshTimer2 !== -1) return;
+
+    const expectedSurfaceId = surfaceId;
+    this.streamSurfaceRefreshTimer1 = setTimeout(() => {
+      this.streamSurfaceRefreshTimer1 = -1;
+      if (this.hasSource()) return;
+      if (!this.componentId) return;
+      if (this.boundSurfaceId !== expectedSurfaceId && this.surfaceId !== expectedSurfaceId) return;
+      const ok = videoPlayerRebindStreamSurface(this.componentId, expectedSurfaceId) as boolean;
+      log(`[${this.componentId}] videoPlayerRebindStreamSurface(delayed): ok=${ok}, surfaceId=${expectedSurfaceId}, delayMs=180`);
+    }, 180);
+
+    this.streamSurfaceRefreshTimer2 = setTimeout(() => {
+      this.streamSurfaceRefreshTimer2 = -1;
+      if (this.hasSource()) return;
+      if (!this.componentId) return;
+      if (this.boundSurfaceId !== expectedSurfaceId && this.surfaceId !== expectedSurfaceId) return;
+      const ok = videoPlayerRebindStreamSurface(this.componentId, expectedSurfaceId) as boolean;
+      log(`[${this.componentId}] videoPlayerRebindStreamSurface(delayed): ok=${ok}, surfaceId=${expectedSurfaceId}, delayMs=800`);
+    }, 800);
+  }
+
+  private scheduleStreamSurfaceWarmupRecreate(): void {
+    if (this.hasSource()) return;
+    if (!this.componentId) return;
+    if (this.streamSurfaceWarmupDone) return;
+    const expectedSurfaceId = this.boundSurfaceId || this.surfaceId;
+    if (!expectedSurfaceId) return;
+
+    this.streamSurfaceWarmupDone = true;
+    this.cancelStreamSurfaceWarmupTimer();
+    this.streamSurfaceWarmupTimer = setTimeout(() => {
+      this.streamSurfaceWarmupTimer = -1;
+      if (this.hasSource()) return;
+      if (!this.componentId) return;
+      if (this.isFullscreen) return;
+      if (this.boundSurfaceId !== expectedSurfaceId && this.surfaceId !== expectedSurfaceId) return;
+
+      // Force XComponent recreation to obtain a fresh SurfaceId; this mirrors the effect of the
+      // fullscreen surface swap without changing UI state.
+      LxNativeVideoPlayer.instanceCounter++;
+      const nextId = `${this.componentId}-xc-${LxNativeVideoPlayer.instanceCounter}`;
+      log(`[${this.componentId}] stream surface warmup: forcing XComponent recreation: ${this.xComponentId} -> ${nextId}`);
+      this.xComponentId = nextId;
+    }, 900);
+  }
+
   private startSeekTimer(): void {
     this.clearSeekTimer();
-    this.seekTimer = setTimeout(() => { this.isSeeking = false; this.seekTimer = -1; }, 300);
+    // Clear isSeeking after a short delay to allow seek to complete
+    // This prevents progressTimer from overwriting slider value during seek
+    this.seekTimer = setTimeout(() => {
+      this.isSeeking = false;
+      this.seekTimer = -1;
+    }, 300);
+  }
+
+  private finishSeeking(): void {
+    this.clearSeekTimer();
+    this.isSeeking = false;
+  }
+
+  /**
+   * Mark first frame as rendered - centralized poster state management.
+   * Call this when video first renders. Poster will never show again until stop() resets.
+   */
+  private markFirstFrameRendered(): void {
+    if (this.hasRenderedFirstFrame) return;  // Already marked
+    this.hasRenderedFirstFrame = true;
+    this.hasEverPlayed = true;
+    LxNativeVideoPlayer.hasEverRenderedFrame.add(this.componentId);
   }
 
   private getXComponentType(): XComponentType {
-    if (!this.hasSource()) {
-      return XComponentType.SURFACE;
-    }
     return XComponentType.TEXTURE;
   }
 
@@ -1085,7 +1722,9 @@ export struct LxNativeVideoPlayer {
       volume: this.config.volume,
       muted: this.config.muted,
       controlSize: VideoControlSize.COMPACT,
-      showProgressBar: this.config.progressBar,
+      // Only show progress bar if explicitly enabled OR in stream mode with valid seekable duration
+      // Don't show for live streams (duration == 0 or not set)
+      showProgressBar: (this.config.progressBar && !(this.isStreamMode() && this.state.duration <= 0)) || (this.isStreamMode() && this.state.duration > 0),
       showVolumeSlider: true,
       showFullscreenButton: !this.isFullscreen,
       showExitButton: this.isFullscreen,
@@ -1096,18 +1735,48 @@ export struct LxNativeVideoPlayer {
       currentPlaybackRate: this.state.currentPlaybackRate,
       onSliderChange: (value: number, mode: SliderChangeMode) => {
         if (mode === SliderChangeMode.Begin) {
-          this.clearSeekTimer(); this.isSeeking = true; this.pendingSeekTime = -1; this.sliderValue = value;
+          this.clearSeekTimer();
+          this.isSeeking = true;
+          this.pendingSeekTime = -1;
+          this.sliderValue = value;
+
+          // Pause on drag start.
+          // This ensures visual feedback and reliable seek state (Stop -> Seek -> Play).
+          // If playback has ended, treat it as "was playing" so drag-release resumes playback.
+          this.wasPlayingOnDragStart = this.state.isPlaying || this.hasEnded;
+          // Force pause if playing, to stop stream buffer consumption and prepare for seek
+          if (this.state.isPlaying) {
+             this.pause();
+          }
         } else if (mode === SliderChangeMode.Moving) {
           this.clearSeekTimer(); this.isSeeking = true; this.sliderValue = value;
-          if (this.state.duration > 0) this.state.currentTime = (value / 100) * this.state.duration;
+          if (this.state.duration > 0) this.state.currentTime = calculateTimeFromSlider(value, this.state.duration);
         } else if (mode === SliderChangeMode.End || mode === SliderChangeMode.Click) {
           this.clearSeekTimer(); this.isSeeking = true;
+          // Click mode doesn't trigger Begin, so capture playing state here
+          if (mode === SliderChangeMode.Click) {
+            this.wasPlayingOnDragStart = this.state.isPlaying || this.hasEnded;
+            if (this.state.isPlaying) {
+              this.pause();
+            }
+          }
           if (this.state.duration > 0) {
-            const seekTime = Math.round((value / 100) * this.state.duration);
+            const seekTime = calculateTimeFromSlider(value, this.state.duration);
             this.pendingSeekTime = seekTime; this.pendingSeekStartTime = Date.now();
             this.state.currentTime = seekTime; this.sliderValue = value;
             if (this.seekDebounceTimer !== -1) clearTimeout(this.seekDebounceTimer);
-            this.seekDebounceTimer = setTimeout(() => { this.seekDebounceTimer = -1; this.seek(seekTime); }, 100) as number;
+
+            // Resume if it was playing before drag started, OR if playback had ended (user wants to replay from new position)
+            const shouldAutoPlay = this.wasPlayingOnDragStart || this.hasEnded;
+
+            this.seekDebounceTimer = setTimeout(() => {
+              this.seekDebounceTimer = -1;
+              log(`[${this.componentId}] onSliderDragEnd position=${seekTime} wasPlaying=${this.wasPlayingOnDragStart} videoSource=${this.config.src}`);
+              this.seek(seekTime);
+              if (shouldAutoPlay) {
+                this.play();
+              }
+            }, 100) as number;
           }
           this.startSeekTimer();
         }
@@ -1133,29 +1802,36 @@ export struct LxNativeVideoPlayer {
     return this.cachedPoster || this.config.poster || '';
   }
 
-  private lastPosterLogState: string = '';
-
-  private shouldShowPoster(): boolean {
-    const posterUrl = this.getPosterUrl();
-    const show = !!(posterUrl && this.showPoster);
-
-    // 只在状态变化时打印日志，避免日志刷屏
-    const currentState = `${posterUrl ? 'set' : 'empty'}:${this.showPoster}:${show}`;
-    if (currentState !== this.lastPosterLogState) {
-      log(`[${this.componentId}] shouldShowPoster: posterUrl=${posterUrl ? 'set' : 'empty'}, showPoster=${this.showPoster}, result=${show}`);
-      this.lastPosterLogState = currentState;
-    }
-
-    return show;
-  }
-
   private isStreamMode(): boolean {
     return !this.hasSource();
   }
 
+  private traceLoadingIndicator(reason: string): void {
+    const shouldShow =
+      this.state.isBuffering && !this.isPausedByUser && (this.isStreamMode() || this.state.isPlaying);
+    if (shouldShow !== this.lastLoadingIndicatorShown) {
+      this.lastLoadingIndicatorShown = shouldShow;
+      log(
+        `[${this.componentId}] loadingIndicator: shown=${shouldShow} reason=${reason} buffering=${this.state.isBuffering} playing=${this.state.isPlaying} paused=${this.state.isPaused} pausedByUser=${this.isPausedByUser} streamMode=${this.isStreamMode()}`
+      );
+    }
+  }
+
   @Builder
   buildPoster(): void {
-    if (this.shouldShowPoster()) {
+    // Poster shows in two scenarios:
+    // 1. Cold start (before any frame has ever been rendered)
+    // 2. After playback ended AND in fullscreen mode (hasEnded && isFullscreen)
+    //
+    // PLATFORM DIFFERENCE - Why we show poster on ended+fullscreen (HarmonyOS only):
+    // - Android TextureView and iOS CALayer retain the last rendered frame in GPU memory
+    // - HarmonyOS XComponent does NOT retain frames - when fullscreen toggles, the component
+    //   is destroyed and recreated, and the stream decoder has no frame to re-render
+    // - In NON-fullscreen mode, ended keeps the last rendered frame visible (no XComponent rebuild)
+    // - In FULLSCREEN mode after ended, XComponent is rebuilt with no frame → BLACK SCREEN
+    // - The poster provides a fallback image when the last frame cannot be preserved
+    // - If no poster is configured, black screen is unavoidable (XComponent limitation)
+    if (this.getPosterUrl() && (!this.hasRenderedFirstFrame || (this.hasEnded && this.isFullscreen))) {
       Image(this.getPosterUrl())
         .width('100%').height('100%').objectFit(ImageFit.Cover)
         .borderRadius(this.isFullscreen ? 0 : this.appliedCornerRadius)
@@ -1192,7 +1868,13 @@ export struct LxNativeVideoPlayer {
           .onClick(() => { this.showControls = true; this.resetControlsTimer(); })
       }
 
-      if (this.showControls && this.config.controls) { this.buildControls() }
+      if (this.showControls && this.config.controls) {
+        Stack() {
+          this.buildControls()
+        }
+        .width('100%').height('100%')
+        .zIndex(6)
+      }
     }
     .width('100%').height('100%')
     .borderRadius((this.isFullscreen || this.isStreamMode()) ? 0 : this.appliedCornerRadius)

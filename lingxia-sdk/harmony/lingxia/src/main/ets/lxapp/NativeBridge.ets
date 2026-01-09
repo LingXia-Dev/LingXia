@@ -2,6 +2,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { webview } from '@kit.ArkWeb';
 import common from '@ohos.app.ability.common';
 import { onCallback } from 'liblingxia.so';
+import { setComponentCallback } from './SameLevel/SameLevelCallbackRegistry';
 import { LxApp } from './LxApp';
 import { LxAppToast, ToastIcon, ToastPosition } from './APIs/LxAppToast';
 import { LxAppModal, ModalResult } from './APIs/LxAppModal';
@@ -68,6 +69,7 @@ function parseBoolean(value: Object | undefined, defaultValue: boolean): boolean
 class NativeBridge {
   private static callbacks: Map<string, Function> = new Map();
   private static instance: NativeBridge | null = null;
+  private static videoEventLastPayload: Map<string, string> = new Map();
 
   private constructor() {
     this.registerDefaultCallbacks();
@@ -293,12 +295,39 @@ class NativeBridge {
       return LxAppScan.scanCode(payload);
     });
 
+    this.register('setVideoPlayerCallback', (componentId: string, callbackId: string): boolean => {
+      const id = String(componentId ?? '').trim();
+      const cb = String(callbackId ?? '').trim();
+      if (!id) {
+        hilog.warn(DOMAIN, TAG, 'setVideoPlayerCallback: missing componentId');
+        return false;
+      }
+      setComponentCallback(id, cb);
+      return true;
+    });
+
     this.register('videoPlayerEvent', (componentId: string, event: string, payload?: string): boolean => {
+      // Key trace logs for debugging playback state issues (keep low-noise by logging only transitions).
+      if (event === 'buffering') {
+        const key = `${componentId}:buffering`;
+        const value = payload ?? '';
+        const last = NativeBridge.videoEventLastPayload.get(key);
+        if (value !== last) {
+          NativeBridge.videoEventLastPayload.set(key, value);
+          hilog.info(DOMAIN, TAG, `videoPlayerEvent: componentId=${componentId} event=${event} payload=${value}`);
+        }
+      } else if (event === 'play' || event === 'pause' || event === 'waiting' || event === 'prepared' || event === 'stop') {
+        hilog.info(DOMAIN, TAG, `videoPlayerEvent: componentId=${componentId} event=${event}`);
+      }
       switch (event) {
         case 'seekDone': {
           const position = parseInt(payload ?? '', 10);
           if (isNaN(position)) return false;
           LxNativeVideoPlayer.onSeekDone(componentId, position);
+          return true;
+        }
+        case 'error': {
+          LxNativeVideoPlayer.onError(componentId, payload ?? '');
           return true;
         }
         case 'buffering':
@@ -307,14 +336,13 @@ class NativeBridge {
         case 'prepared':
           LxNativeVideoPlayer.onPrepared(componentId);
           return true;
-        case 'stopped':
+        case 'stop':
           LxNativeVideoPlayer.onStopped(componentId);
           return true;
-        case 'playing':
-          LxNativeVideoPlayer.onBufferingChange(componentId, false);
+        case 'play':
           LxNativeVideoPlayer.onPlaying(componentId);
           return true;
-        case 'paused':
+        case 'pause':
           LxNativeVideoPlayer.onPaused(componentId);
           return true;
         case 'waiting':
@@ -333,6 +361,12 @@ class NativeBridge {
             hilog.warn(DOMAIN, TAG, `videoPlayerEvent: streamConfig parse error=${error}`);
             return false;
           }
+        }
+        case 'duration': {
+          const duration = parseInt(payload ?? '', 10);
+          if (!Number.isFinite(duration)) return false;
+          LxNativeVideoPlayer.onDuration(componentId, duration);
+          return true;
         }
         case 'enterFullscreen':
           LxNativeVideoPlayer.enterFullscreenStatic(componentId);
