@@ -1,4 +1,4 @@
-package com.lingxia.lxapp.SameLevel.Components
+package com.lingxia.lxapp.NativeComponents.Components
 
 import android.graphics.RectF
 import android.view.View
@@ -7,8 +7,8 @@ import android.widget.FrameLayout
 import com.lingxia.lxapp.APIs.LxAppPicker
 import com.lingxia.lxapp.APIs.LxAppDatePicker
 import com.lingxia.lxapp.LxApp
-import com.lingxia.lxapp.SameLevel.LxNativeComponent
-import com.lingxia.lxapp.SameLevel.LxNativeComponentFactory
+import com.lingxia.lxapp.NativeComponents.LxNativeComponent
+import com.lingxia.lxapp.NativeComponents.LxNativeComponentFactory
 import org.json.JSONArray
 import org.json.JSONObject
 

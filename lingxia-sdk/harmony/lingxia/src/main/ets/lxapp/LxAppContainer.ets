@@ -23,8 +23,8 @@ import { TabBarPosition, TabBarItem, UiEventType } from 'liblingxia.so';
 import liblingxia, { TabBarState, getNavigationBarState, isPullDownRefreshEnabled, onPageShow, onUiEvent, onWebviewControllerCreated } from 'liblingxia.so';
 import { NAVIGATION_ACTION_BACK, NAVIGATION_ACTION_HOME, CAPSULE_ACTION_MORE, CAPSULE_ACTION_CLOSE } from './NativeBridge';
 import { AnimationType } from './LxAppNavigation';
-import { SameLevelEmbedManager } from './SameLevel/SameLevelEmbed';
-import { setEmbedController, teardownEmbedManager } from './SameLevel/SameLevelBridge';
+import { NativeComponentEmbedManager } from './NativeComponents/NativeComponentEmbed';
+import { setEmbedController, teardownEmbedManager } from './NativeComponents/NativeBridgeInternal';
 import { LxNativeVideoPlayer } from './media/LxNativeVideoPlayer';
 import { LxFullscreenVideoOverlay } from './media/LxFullscreenVideoOverlay';
 import { RefreshHeader } from './RefreshHeader';
@@ -107,7 +107,7 @@ export struct LxAppContainer {
   private controllerReadyAcked: Set<string> = new Set()
 
   // Same-level rendering state
-  private embedManagers: Map<string, SameLevelEmbedManager> = new Map()
+  private embedManagers: Map<string, NativeComponentEmbedManager> = new Map()
   @State private embedComponentIds: Map<string, string[]> = new Map()
   @State private fullscreenRefreshKey: number = 0  // Force NodeContainer refresh when fullscreen changes
 
@@ -222,8 +222,8 @@ export struct LxAppContainer {
   }
 
   aboutToDisappear() {
-    // Pause all SameLevel components before cleanup
-    this.embedManagers.forEach((manager: SameLevelEmbedManager) => {
+    // Pause all native components before cleanup
+    this.embedManagers.forEach((manager: NativeComponentEmbedManager) => {
       manager.pauseAll();
     });
 
@@ -1093,7 +1093,7 @@ export struct LxAppContainer {
   private performAnimatedTransition(oldWebTag: string, newWebTag: string, path: string): void {
     hilog.info(DOMAIN, TAG, `Performing animated transition from ${oldWebTag} to ${newWebTag}`);
 
-    // Notify old page becoming inactive (pause SameLevel components)
+    // Notify old page becoming inactive (pause native components)
     if (oldWebTag) {
       pauseWebViewComponents(oldWebTag);
     }
@@ -1182,10 +1182,10 @@ export struct LxAppContainer {
     this.previousWebViewTranslateX = 0;
     this.navbarTranslateX = 0;
 
-    // Notify new page becoming active (resume SameLevel components)
+    // Notify new page becoming active (resume native components)
     resumeWebViewComponents(newWebTag);
     // Refresh NodeContainer layouts so properties like cornerRadius re-apply when returning
-    this.embedManagers.forEach((manager: SameLevelEmbedManager, webTag: string) => {
+    this.embedManagers.forEach((manager: NativeComponentEmbedManager, webTag: string) => {
       this.refreshNodeLayouts(manager, webTag);
     });
     // Force NodeContainer attribute refresh
@@ -1429,7 +1429,7 @@ export struct LxAppContainer {
   private updateFullscreenState(): void {
     let foundFullscreen = false;
 
-    this.embedManagers.forEach((manager: SameLevelEmbedManager, webTag: string) => {
+    this.embedManagers.forEach((manager: NativeComponentEmbedManager, webTag: string) => {
       if (foundFullscreen) return;
 
       const componentIds = manager.getComponentIds();
@@ -1480,7 +1480,7 @@ export struct LxAppContainer {
    * Compute and cache layout state for all components of a WebView
    * This drives NodeContainer attributes without recreating native nodes
    */
-  private refreshNodeLayouts(manager: SameLevelEmbedManager, webTag: string): void {
+  private refreshNodeLayouts(manager: NativeComponentEmbedManager, webTag: string): void {
     const next = new Map<string, NodeLayoutState>(this.nodeLayoutCache);
     const componentIds = manager.getComponentIds();
     const prefix = `${webTag}:`;
@@ -1552,7 +1552,7 @@ export struct LxAppContainer {
     return this.fullscreenComponentId.length > 0 && this.fullscreenWebTag.length > 0;
   }
 
-  private getEmbedManager(webTag: string): SameLevelEmbedManager | undefined {
+  private getEmbedManager(webTag: string): NativeComponentEmbedManager | undefined {
     return this.embedManagers.get(webTag);
   }
   private getEmbedComponentIds(webTag: string): string[] {

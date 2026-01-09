@@ -49,7 +49,7 @@ impl CachedClass {
             CachedClass::LxAppActionSheet => "com/lingxia/lxapp/APIs/LxAppActionSheet",
             CachedClass::LxAppPicker => "com/lingxia/lxapp/APIs/LxAppPicker",
             CachedClass::LxAppDocument => "com/lingxia/lxapp/APIs/LxAppDocument",
-            CachedClass::ComponentRouter => "com/lingxia/lxapp/SameLevel/ComponentRouter",
+            CachedClass::ComponentRouter => "com/lingxia/lxapp/NativeComponents/ComponentRouter",
             CachedClass::LxAppPullToRefresh => "com/lingxia/lxapp/APIs/LxAppPullToRefresh",
         }
     }
@@ -102,7 +102,7 @@ impl CachedClass {
             ),
             CachedClass::ComponentRouter => concat!(
                 "Global class reference not found: ",
-                "com/lingxia/lxapp/SameLevel/ComponentRouter"
+                "com/lingxia/lxapp/NativeComponents/ComponentRouter"
             ),
             CachedClass::LxAppPullToRefresh => concat!(
                 "Global class reference not found: ",

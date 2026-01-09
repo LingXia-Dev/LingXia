@@ -1,13 +1,13 @@
 /**
- * SameLevelEmbed - Embed native components in WebView using official ArkWeb pattern
+ * NativeComponentEmbed - Embed native components in WebView using official ArkWeb pattern
  * This module provides the embed handlers for Web component
  */
 import { NodeRenderType } from '@kit.ArkUI';
 import { webview } from '@kit.ArkWeb';
-import { SameLevelEmptyDetail, SameLevelRecord, sameLevelError, sameLevelLog } from './SameLevelTypes';
-import { getComponentCallback, removeComponentCallback } from './SameLevelCallbackRegistry';
+import { NativeComponentEmptyDetail, NativeComponentRecord, nativeComponentError, nativeComponentLog } from './NativeComponentTypes';
+import { getComponentCallback, removeComponentCallback } from './NativeCallbackRegistry';
 import { onCallback } from 'liblingxia.so';
-import { SameLevelNodeController, NodeControllerParams, NodeControllerUpdateParams } from './SameLevelNodeController';
+import { NativeComponentNodeController, NodeControllerParams, NodeControllerUpdateParams } from './NativeComponentNodeController';
 import { LxNativeVideoPlayer } from '../media/LxNativeVideoPlayer';
 
 const PROPS_DATA_PREFIX: string = 'data:application/json,';
@@ -26,16 +26,16 @@ class ComponentCommand {
 /**
  * Manager for handling same-level embedding in a Web component
  */
-export class SameLevelEmbedManager {
+export class NativeComponentEmbedManager {
   private webTag: string;
-  private nodeControllerMap: Map<string, SameLevelNodeController> = new Map();
+  private nodeControllerMap: Map<string, NativeComponentNodeController> = new Map();
   private componentIdArr: string[] = [];
   private uiContext: UIContext | null = null;
   private onComponentsChanged?: () => void;
-  private eventDispatcher?: (payload: SameLevelRecord) => void;
+  private eventDispatcher?: (payload: NativeComponentRecord) => void;
   private pendingUnmountTimers: Map<string, number> = new Map();
 
-  constructor(webTag: string, eventDispatcher?: (payload: SameLevelRecord) => void) {
+  constructor(webTag: string, eventDispatcher?: (payload: NativeComponentRecord) => void) {
     this.webTag = webTag;
     this.eventDispatcher = eventDispatcher;
   }
@@ -57,7 +57,7 @@ export class SameLevelEmbedManager {
   /**
    * Set dispatcher used to forward native events back to JavaScript
    */
-  setEventDispatcher(dispatcher?: (payload: SameLevelRecord) => void): void {
+  setEventDispatcher(dispatcher?: (payload: NativeComponentRecord) => void): void {
     this.eventDispatcher = dispatcher;
   }
 
@@ -71,7 +71,7 @@ export class SameLevelEmbedManager {
   /**
    * Get NodeController for a component ID
    */
-  getNodeController(componentId: string): SameLevelNodeController | undefined {
+  getNodeController(componentId: string): NativeComponentNodeController | undefined {
     return this.nodeControllerMap.get(componentId);
   }
 
@@ -82,7 +82,7 @@ export class SameLevelEmbedManager {
   handleLifecycleChange(embed: NativeEmbedDataInfo): void {
     const componentId = embed.info?.id?.toString() || '';
     if (!componentId) {
-      sameLevelError('Embed lifecycle event missing component ID');
+      nativeComponentError('Embed lifecycle event missing component ID');
       return;
     }
 
@@ -103,7 +103,7 @@ export class SameLevelEmbedManager {
       return;
     }
 
-    const nodeController = new SameLevelNodeController();
+    const nodeController = new NativeComponentNodeController();
 
     // Parse component type from embed type (e.g., 'native/video' -> 'video.native')
     const embedType = embed.info?.type || 'native/component';
@@ -135,7 +135,7 @@ export class SameLevelEmbedManager {
 
     nodeController.setRenderOption(params);
     if (componentType === 'video.native') {
-      sameLevelLog(
+      nativeComponentLog(
         `embed create(video): componentId=${componentId} embedId=${params.embedId} surfaceId=${params.surfaceId} renderType=${params.renderType} size=${widthVp}x${heightVp}`
       );
     }
@@ -176,7 +176,7 @@ export class SameLevelEmbedManager {
     updateParams.props = props;
     nodeController.updateRenderOption(updateParams);
     if (nodeController.getComponentType() === 'video.native') {
-      sameLevelLog(`embed update(video): componentId=${componentId} embedId=${embed.embedId || ''} size=${widthVp}x${heightVp}`);
+      nativeComponentLog(`embed update(video): componentId=${componentId} embedId=${embed.embedId || ''} size=${widthVp}x${heightVp}`);
     }
 
     // Notify listeners so NodeContainer layout refreshes
@@ -192,7 +192,7 @@ export class SameLevelEmbedManager {
     // stop a live stream mid-startup and end up in "loading forever".
     this.scheduleUnmount(componentId);
     if (nodeController.getComponentType() === 'video.native') {
-      sameLevelLog(`embed destroy(video): componentId=${componentId}`);
+      nativeComponentLog(`embed destroy(video): componentId=${componentId}`);
     }
 
     nodeController.setBuilderNode(null);
@@ -233,12 +233,12 @@ export class SameLevelEmbedManager {
       const callbackId = getComponentCallback(componentId);
       if (!callbackId) return;
 
-      const payload = new SameLevelRecord();
+      const payload = new NativeComponentRecord();
       payload.set('action', 'component.event');
       payload.set('id', componentId);
       payload.set('componentId', componentId);
       payload.set('event', 'unmount');
-      payload.set('detail', new SameLevelEmptyDetail());
+      payload.set('detail', new NativeComponentEmptyDetail());
       onCallback(callbackId, true, payload.toJSONString());
       removeComponentCallback(componentId);
     }, delayMs);
@@ -267,8 +267,8 @@ export class SameLevelEmbedManager {
     return embedType;
   }
 
-  private parseEmbedProps(embed: NativeEmbedDataInfo): SameLevelRecord {
-    const props = new SameLevelRecord();
+  private parseEmbedProps(embed: NativeEmbedDataInfo): NativeComponentRecord {
+    const props = new NativeComponentRecord();
     interface EmbedInfo {
       get?: (key: string) => string | undefined;
       src?: string;
@@ -298,7 +298,7 @@ export class SameLevelEmbedManager {
     return props;
   }
 
-  private decodeProps(raw: string): SameLevelRecord | null {
+  private decodeProps(raw: string): NativeComponentRecord | null {
     if (!raw) {
       return null;
     }
@@ -309,20 +309,20 @@ export class SameLevelEmbedManager {
       }
       if (normalized.startsWith('{')) {
         const parsed: ESObject = JSON.parse(normalized) as ESObject;
-        return SameLevelRecord.fromESObject(parsed);
+        return NativeComponentRecord.fromESObject(parsed);
       }
     } catch (e) {
-      sameLevelError(`Failed to parse embed props: ${e}`);
+      nativeComponentError(`Failed to parse embed props: ${e}`);
     }
     return null;
   }
 
-  private buildEventSink(componentId: string): ((event: SameLevelRecord) => void) | undefined {
+  private buildEventSink(componentId: string): ((event: NativeComponentRecord) => void) | undefined {
     if (!this.eventDispatcher) {
       return undefined;
     }
-    return (event: SameLevelRecord) => {
-      const payload = new SameLevelRecord();
+    return (event: NativeComponentRecord) => {
+      const payload = new NativeComponentRecord();
       event.forEach((key, value) => {
         payload.set(key, value);
       });

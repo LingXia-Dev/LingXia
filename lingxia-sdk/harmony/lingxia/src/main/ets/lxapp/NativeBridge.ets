@@ -2,7 +2,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { webview } from '@kit.ArkWeb';
 import common from '@ohos.app.ability.common';
 import { onCallback } from 'liblingxia.so';
-import { setComponentCallback } from './SameLevel/SameLevelCallbackRegistry';
+import { setComponentCallback } from './NativeComponents/NativeCallbackRegistry';
 import { LxApp } from './LxApp';
 import { LxAppToast, ToastIcon, ToastPosition } from './APIs/LxAppToast';
 import { LxAppModal, ModalResult } from './APIs/LxAppModal';

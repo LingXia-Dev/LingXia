@@ -1,4 +1,4 @@
-package com.lingxia.lxapp.SameLevel
+package com.lingxia.lxapp.NativeComponents
 
 import android.graphics.SurfaceTexture
 import android.media.AudioAttributes

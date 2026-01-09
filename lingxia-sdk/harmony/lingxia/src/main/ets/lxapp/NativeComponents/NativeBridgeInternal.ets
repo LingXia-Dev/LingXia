@@ -1,16 +1,16 @@
 /**
- * Bridge for same-level rendering - manages EmbedManagers by webTag
+ * Bridge for native component rendering - manages EmbedManagers by webTag
  * Uses official ArkWeb same-level rendering pattern with NodeController
  */
 import { webview } from '@kit.ArkWeb';
-import { SameLevelRecord, sameLevelError } from './SameLevelTypes';
-import { SameLevelEmbedManager } from './SameLevelEmbed';
-import { SameLevelNodeController } from './SameLevelNodeController';
+import { NativeComponentRecord, nativeComponentError } from './NativeComponentTypes';
+import { NativeComponentEmbedManager } from './NativeComponentEmbed';
+import { NativeComponentNodeController } from './NativeComponentNodeController';
 import { registerVideoBuilder } from './Builders/VideoBuilder';
 import { registerPickerBuilder } from './Builders/PickerBuilder';
 
 // Embed managers by webTag
-const webViewEmbedManagers: Map<string, SameLevelEmbedManager> = new Map();
+const webViewEmbedManagers: Map<string, NativeComponentEmbedManager> = new Map();
 
 // Controller references for sending events back to JavaScript
 const webViewControllers: Map<string, webview.WebviewController> = new Map();
@@ -32,14 +32,14 @@ function registerDefaultBuilders(): void {
 /**
  * Get or create an EmbedManager for a webTag
  */
-export function getOrCreateEmbedManager(webTag: string): SameLevelEmbedManager {
+export function getOrCreateEmbedManager(webTag: string): NativeComponentEmbedManager {
   let manager = webViewEmbedManagers.get(webTag);
-  const dispatcher = (payload: SameLevelRecord) => {
+  const dispatcher = (payload: NativeComponentRecord) => {
     sendEventToJavaScript(webTag, payload);
   };
   if (!manager) {
     registerDefaultBuilders();
-    manager = new SameLevelEmbedManager(webTag, dispatcher);
+    manager = new NativeComponentEmbedManager(webTag, dispatcher);
     webViewEmbedManagers.set(webTag, manager);
   } else {
     manager.setEventDispatcher(dispatcher);
@@ -50,7 +50,7 @@ export function getOrCreateEmbedManager(webTag: string): SameLevelEmbedManager {
 /**
  * Get existing EmbedManager for a webTag
  */
-export function getEmbedManager(webTag: string): SameLevelEmbedManager | undefined {
+export function getEmbedManager(webTag: string): NativeComponentEmbedManager | undefined {
   return webViewEmbedManagers.get(webTag);
 }
 
@@ -82,7 +82,7 @@ export function setEmbedController(webTag: string, controller: webview.WebviewCo
   // Ensure existing manager has dispatcher available
   const manager = webViewEmbedManagers.get(webTag);
   if (manager) {
-    manager.setEventDispatcher((payload: SameLevelRecord) => {
+    manager.setEventDispatcher((payload: NativeComponentRecord) => {
       sendEventToJavaScript(webTag, payload);
     });
   }
@@ -91,15 +91,15 @@ export function setEmbedController(webTag: string, controller: webview.WebviewCo
 /**
  * Send event to JavaScript for a webTag
  */
-export function sendEventToJavaScript(webTag: string, payload: SameLevelRecord): void {
+export function sendEventToJavaScript(webTag: string, payload: NativeComponentRecord): void {
   const controller = webViewControllers.get(webTag);
   if (!controller) {
-    sameLevelError(`No controller for webTag: ${webTag}`);
+    nativeComponentError(`No controller for webTag: ${webTag}`);
     return;
   }
 
   try {
-    const jsonString = `{"type":"event","name":"samelevel","payload":${payload.toJSONString()}}`;
+    const jsonString = `{"type":"event","name":"nativecomponent","payload":${payload.toJSONString()}}`;
     const script = `
       (function(){
         if (typeof window.__LingXiaRecvMessage === 'function') {
@@ -109,7 +109,7 @@ export function sendEventToJavaScript(webTag: string, payload: SameLevelRecord):
     `;
     controller.runJavaScript(script);
   } catch (e) {
-    sameLevelError(`Failed to send event to JavaScript: ${e}`);
+    nativeComponentError(`Failed to send event to JavaScript: ${e}`);
   }
 }
 
@@ -140,7 +140,7 @@ export function resumeAllComponents(webTag: string): void {
 /**
  * Get NodeController by componentId (searches all embed managers)
  */
-export function getNodeControllerByComponentId(componentId: string): SameLevelNodeController | undefined {
+export function getNodeControllerByComponentId(componentId: string): NativeComponentNodeController | undefined {
   for (const manager of webViewEmbedManagers.values()) {
     const controller = manager.getNodeController(componentId);
     if (controller) {

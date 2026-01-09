@@ -3,7 +3,7 @@ import UIKit
 import WebKit
 import OSLog
 
-private let sameLevelComponentLog = OSLog(subsystem: "LingXia", category: "SameLevel")
+private let nativeComponentLog = OSLog(subsystem: "LingXia", category: "NativeComponent")
 
 #if os(iOS)
 
@@ -35,7 +35,7 @@ protocol LxNativeComponentFactory {
 // MARK: - Component Manager
 
 @MainActor
-final class SameLevelComponentManager {
+final class NativeComponentManager {
     private weak var scrollView: UIScrollView?
     private weak var hostView: UIView?
     private weak var webView: WKWebView?
@@ -76,9 +76,9 @@ final class SameLevelComponentManager {
 
         let logType: OSLogType = action == "component.update" ? .debug : .info
         if let id = message["id"] as? String {
-            os_log("SameLevelComponentManager handle action=%{public}@ id=%{public}@", log: sameLevelComponentLog, type: logType, action, id)
+            os_log("NativeComponentManager handle action=%{public}@ id=%{public}@", log: nativeComponentLog, type: logType, action, id)
         } else {
-            os_log("SameLevelComponentManager handle action=%{public}@", log: sameLevelComponentLog, type: logType, action)
+            os_log("NativeComponentManager handle action=%{public}@", log: nativeComponentLog, type: logType, action)
         }
 
         switch action {
@@ -118,7 +118,7 @@ final class SameLevelComponentManager {
         let rect = rectFrom(dict: rectDict)
 
         guard components[id] == nil, let factory = factories[type] else {
-            os_log("SameLevelComponentManager mount skipped for id=%{public}@ type=%{public}@", log: sameLevelComponentLog, type: .error, id, type)
+            os_log("NativeComponentManager mount skipped for id=%{public}@ type=%{public}@", log: nativeComponentLog, type: .error, id, type)
             return
         }
 
@@ -149,7 +149,7 @@ final class SameLevelComponentManager {
         } else if let host = hostView {
             component.mount(in: host)
         } else {
-            os_log("Failed to mount component %{public}@ (no container)", log: sameLevelComponentLog, type: .error, id)
+            os_log("Failed to mount component %{public}@ (no container)", log: nativeComponentLog, type: .error, id)
             return
         }
         component.setFrame(pixelAligned(targetRect))
@@ -296,8 +296,8 @@ final class SameLevelComponentManager {
             if let data = try? JSONSerialization.data(withJSONObject: enriched, options: []),
                let enrichedJson = String(data: data, encoding: .utf8) {
                 os_log(
-                    "SameLevel callback event componentId=%{public}@ event=%{public}@ callbackId=%{public}@",
-                    log: sameLevelComponentLog,
+                    "NativeComponent callback event componentId=%{public}@ event=%{public}@ callbackId=%{public}@",
+                    log: nativeComponentLog,
                     type: .debug,
                     componentId,
                     String(enriched["event"] as? String ?? ""),
@@ -307,8 +307,8 @@ final class SameLevelComponentManager {
             }
         } else if componentCallbacks[componentId] == nil {
             os_log(
-                "SameLevel callback missing for componentId=%{public}@ event=%{public}@",
-                log: sameLevelComponentLog,
+                "NativeComponent callback missing for componentId=%{public}@ event=%{public}@",
+                log: nativeComponentLog,
                 type: .debug,
                 componentId,
                 String(payload["event"] as? String ?? "")
@@ -519,12 +519,12 @@ final class WKContentViewHitTestSwizzler {
 
     func registerNativeView(_ view: UIView, in container: UIScrollView) {
         registeredViews[ObjectIdentifier(view)] = (view, container)
-        os_log("WKContentViewHitTestSwizzler: registered view %{public}@", log: sameLevelComponentLog, type: .debug, String(describing: view))
+        os_log("WKContentViewHitTestSwizzler: registered view %{public}@", log: nativeComponentLog, type: .debug, String(describing: view))
     }
 
     func unregisterNativeView(_ view: UIView) {
         registeredViews.removeValue(forKey: ObjectIdentifier(view))
-        os_log("WKContentViewHitTestSwizzler: unregistered view", log: sameLevelComponentLog, type: .debug)
+        os_log("WKContentViewHitTestSwizzler: unregistered view", log: nativeComponentLog, type: .debug)
     }
 
     /// Find registered native view at the given point in WKContentView's coordinate space
@@ -547,7 +547,7 @@ final class WKContentViewHitTestSwizzler {
         swizzled = true
 
         guard let wkContentViewClass = NSClassFromString("WKContentView") else {
-            os_log("WKContentViewHitTestSwizzler: WKContentView class not found", log: sameLevelComponentLog, type: .error)
+            os_log("WKContentViewHitTestSwizzler: WKContentView class not found", log: nativeComponentLog, type: .error)
             return
         }
 
@@ -556,12 +556,12 @@ final class WKContentViewHitTestSwizzler {
 
         guard let originalMethod = class_getInstanceMethod(wkContentViewClass, originalSelector),
               let swizzledMethod = class_getInstanceMethod(UIView.self, swizzledSelector) else {
-            os_log("WKContentViewHitTestSwizzler: failed to get methods", log: sameLevelComponentLog, type: .error)
+            os_log("WKContentViewHitTestSwizzler: failed to get methods", log: nativeComponentLog, type: .error)
             return
         }
 
         method_exchangeImplementations(originalMethod, swizzledMethod)
-        os_log("WKContentViewHitTestSwizzler: swizzle complete", log: sameLevelComponentLog, type: .info)
+        os_log("WKContentViewHitTestSwizzler: swizzle complete", log: nativeComponentLog, type: .info)
     }
 }
 

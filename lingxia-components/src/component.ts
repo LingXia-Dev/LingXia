@@ -19,11 +19,11 @@ export function ensureComponentId(el: HTMLElement, prefix: string, currentId?: s
 }
 
 /**
- * iOS Same-Level Rendering Helper.
+ * iOS Native Component Rendering Helper.
  * Creates a scroll container that triggers WKChildScrollView creation.
  * Reusable by all native components (video, map, camera, etc.)
  */
-export class iOSSameLevelHelper {
+export class iOSNativeComponentHelper {
   private scrollContainer: HTMLDivElement | null = null;
   private host: HTMLElement;
   private componentId: string;
@@ -115,7 +115,7 @@ export function rectEquals(a: Rect | null, b: Rect, epsilon = 0): boolean {
   );
 }
 
-export class SameLevelUpdateState {
+export class NativeComponentUpdateState {
   private lastPropsJson: string | null = null;
   private lastRect: Rect | null = null;
   private lastZIndex: number | null = null;

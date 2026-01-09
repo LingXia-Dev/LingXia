@@ -1,4 +1,4 @@
-package com.lingxia.lxapp.SameLevel
+package com.lingxia.lxapp.NativeComponents
 
 import android.graphics.Outline
 import android.graphics.RectF
@@ -7,7 +7,7 @@ import android.view.ViewGroup
 import android.view.ViewOutlineProvider
 import com.lingxia.lxapp.NativeApi
 import com.lingxia.webview.LingXiaWebView
-import com.lingxia.lxapp.SameLevel.Components.VideoComponent
+import com.lingxia.lxapp.NativeComponents.Components.VideoComponent
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -17,19 +17,19 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
- * Manages the lifecycle of native components rendered in SameLevel overlay.
- * 
- * For Android's overlay-based same-level rendering, this manager tracks component
+ * Manages the lifecycle of native components rendered in overlay.
+ *
+ * For Android's overlay-based rendering, this manager tracks component
  * positions in WebView content coordinates and updates screen positions when
  * the WebView scrolls, eliminating JS polling latency.
  */
-class SameLevelComponentManager(
+class NativeComponentManager(
     hostView: ViewGroup,
     private val defaultPageId: String,
     private val eventSink: (Map<String, Any>) -> Unit,
     webView: LingXiaWebView? = null
 ) {
-    private val logTag = "SameLevelComponentManager"
+    private val logTag = "NativeComponentManager"
     private val hostViewRef = WeakReference(hostView)
     private val webViewRef = webView?.let { WeakReference(it) }
     private val density = hostView.context.resources.displayMetrics.density
@@ -341,7 +341,7 @@ class SameLevelComponentManager(
             // Set streamHasEnded=true when ended event arrives
             if (event == "ended") {
                 videoComponent?.setStreamEnded(true)
-                android.util.Log.d("SameLevelComponentManager", "emitComponentEvent: set streamHasEnded=true for ended event")
+                android.util.Log.d("NativeComponentManager", "emitComponentEvent: set streamHasEnded=true for ended event")
             }
             // Handle seeked event: if video has ended, set flag to clear ended state on next acquire
             if (event == "seeked") {
@@ -350,7 +350,7 @@ class SameLevelComponentManager(
             // Don't call handleStreamDecoderEvent for waiting events after video has ended
             // This prevents poster from showing when VideoContext sends waiting event after ended
             if (event == "waiting" && videoComponent?.isStreamEnded() == true) {
-                android.util.Log.d("SameLevelComponentManager", "emitComponentEvent: ignoring waiting event, video has ended")
+                android.util.Log.d("NativeComponentManager", "emitComponentEvent: ignoring waiting event, video has ended")
             } else if (event != "ended" && event != "seeked") {
                 // Only call handleStreamDecoderEvent for waiting/play/pause/stop (not ended/seeked)
                 videoComponent?.handleStreamDecoderEvent(event)

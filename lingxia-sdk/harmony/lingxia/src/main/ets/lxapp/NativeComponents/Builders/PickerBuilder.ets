@@ -2,8 +2,8 @@
  * PickerBuilder - Builder for picker component in same-level rendering
  * Uses LxAppPicker for native picker display
  */
-import { SameLevelParams, registerSameLevelBuilder } from '../SameLevelNodeController';
-import { SameLevelRecord } from '../SameLevelTypes';
+import { NativeComponentParams, registerNativeComponentBuilder } from '../NativeComponentNodeController';
+import { NativeComponentRecord } from '../NativeComponentTypes';
 import { LxAppPicker, PickerResult } from '../../APIs/LxAppPicker';
 import { LxAppDatePicker, LxDatePickerResult } from '../../APIs/LxAppDatePicker';
 
@@ -21,9 +21,9 @@ interface PickerEventDetail {
  * Picker component wrapper for same-level rendering
  */
 @Component
-struct SameLevelPickerComponent {
-  @Prop @Watch('onParamsChange') params: SameLevelParams;
-  private eventSink?: (event: SameLevelRecord) => void;
+struct NativePickerComponent {
+  @Prop @Watch('onParamsChange') params: NativeComponentParams;
+  private eventSink?: (event: NativeComponentRecord) => void;
   private componentId: string = '';
   private initialized: boolean = false;
   private callbackId: string = '';
@@ -40,7 +40,7 @@ struct SameLevelPickerComponent {
       const props = this.params.props;
       const eventSinkValue = props.get('__eventSink');
       if (typeof eventSinkValue === 'function') {
-        this.eventSink = eventSinkValue as (event: SameLevelRecord) => void;
+        this.eventSink = eventSinkValue as (event: NativeComponentRecord) => void;
       }
 
       // Auto-show picker on mount
@@ -62,12 +62,12 @@ struct SameLevelPickerComponent {
     // No runtime updates needed for picker
   }
 
-  private getStringProp(props: SameLevelRecord, key: string, defaultValue: string): string {
+  private getStringProp(props: NativeComponentRecord, key: string, defaultValue: string): string {
     const value = props.get(key);
     return typeof value === 'string' ? value : defaultValue;
   }
 
-  private showPickerWithProps(props: SameLevelRecord): void {
+  private showPickerWithProps(props: NativeComponentRecord): void {
     if (showingComponents.has(this.componentId)) {
       return;
     }
@@ -75,8 +75,8 @@ struct SameLevelPickerComponent {
 
     const mode = this.getStringProp(props, 'mode', 'selector');
 
-    SameLevelPickerComponent.nextId++;
-    this.callbackId = `picker-${this.componentId}-${SameLevelPickerComponent.nextId}`;
+    NativePickerComponent.nextId++;
+    this.callbackId = `picker-${this.componentId}-${NativePickerComponent.nextId}`;
 
     const componentId = this.componentId;
     const callback = (success: boolean, resultJSON: string) => {
@@ -186,7 +186,7 @@ struct SameLevelPickerComponent {
 
   private sendEvent(event: string, detail: PickerEventDetail): void {
     if (this.eventSink) {
-      const payload = new SameLevelRecord();
+      const payload = new NativeComponentRecord();
       payload.set('action', 'component.event');
       payload.set('id', this.componentId);
       payload.set('event', event);
@@ -206,13 +206,13 @@ struct SameLevelPickerComponent {
 }
 
 @Builder
-function pickerBuilder(params: SameLevelParams) {
-  SameLevelPickerComponent({ params: params })
+function pickerBuilder(params: NativeComponentParams) {
+  NativePickerComponent({ params: params })
 }
 
 /**
  * Register picker builder for same-level rendering
  */
 export function registerPickerBuilder(): void {
-  registerSameLevelBuilder('picker.native', wrapBuilder(pickerBuilder));
+  registerNativeComponentBuilder('picker.native', wrapBuilder(pickerBuilder));
 }

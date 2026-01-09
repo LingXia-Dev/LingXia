@@ -1,4 +1,4 @@
-import { sendSameLevelMessage, registerSameLevelHandler } from "./samelevel.js";
+import { sendNativeComponentMessage, registerNativeComponentHandler } from "./nativecomponent.js";
 import { ensureComponentId } from "./component.js";
 import { measureElement } from "./dom.js";
 import { isHarmony } from "./platform.js";
@@ -81,7 +81,7 @@ export class LxPickerElement extends HTMLElement {
     this.componentId = ensureComponentId(this, "lx-picker", this.componentId);
     if (!this.componentId) return;
 
-    this.unregister = registerSameLevelHandler(this.componentId!, (message) => {
+    this.unregister = registerNativeComponentHandler(this.componentId!, (message) => {
       if (typeof message.event === "string") {
         this.dispatchEvent(new CustomEvent(message.event, { detail: message.detail ?? {}, bubbles: true }));
       }
@@ -92,7 +92,7 @@ export class LxPickerElement extends HTMLElement {
 
   disconnectedCallback() {
     if (this.componentId && !isHarmony()) {
-      sendSameLevelMessage({
+      sendNativeComponentMessage({
         action: "component.unmount",
         id: this.componentId
       });
@@ -195,7 +195,7 @@ export class LxPickerElement extends HTMLElement {
       payload.cornerRadius = cornerRadius;
     }
 
-    sendSameLevelMessage(payload);
+    sendNativeComponentMessage(payload);
     this.mounted = true;
   }
 

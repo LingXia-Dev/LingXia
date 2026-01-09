@@ -39,7 +39,7 @@ export type DataSubscriber = (
   isInitialData: boolean
 ) => void;
 
-export interface SameLevelMessage {
+export interface NativeComponentMessage {
   id: string;
   action?: string;
   [key: string]: unknown;
@@ -54,7 +54,7 @@ declare global {
     LingXiaProxy?: {
       getPort: (name: string) => void;
     };
-    SameLevelNative?: {
+    NativeComponentBridge?: {
       postMessage: (message: string) => void;
     };
     lx?: Record<string, (...args: unknown[]) => Promise<unknown>>;
@@ -88,11 +88,11 @@ export interface LingXiaBridgeInterface {
   dom: {
     measureById: (id: string) => [number, number, number, number, number] | null;
   };
-  sameLevel: {
-    send: (message: SameLevelMessage) => void;
+  nativeComponents: {
+    send: (message: NativeComponentMessage) => void;
     hasHandler: () => boolean;
     flush: () => void;
-    register: (id: string, handler: (message: SameLevelMessage) => void) => () => void;
+    register: (id: string, handler: (message: NativeComponentMessage) => void) => () => void;
     unregister: (id: string) => void;
   };
 }

@@ -44,7 +44,7 @@ extension LxAppMedia {
             // Create a dedicated window for preview to avoid affecting the main app's orientation
             if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
                 let window = UIWindow(windowScene: windowScene)
-                window.windowLevel = .statusBar + 1  // Above status bar, same as SameLevel fullscreen
+                window.windowLevel = .statusBar + 1  // Above status bar, same as native component fullscreen
                 window.backgroundColor = .black
                 window.rootViewController = previewController
 
@@ -142,7 +142,7 @@ private final class MediaPreviewViewController: UIViewController {
     }
 
     override var prefersStatusBarHidden: Bool {
-        return true  // Hide status bar like SameLevel fullscreen
+        return true  // Hide status bar like native component fullscreen
     }
 
     override var preferredStatusBarStyle: UIStatusBarStyle {
@@ -403,7 +403,7 @@ private final class MediaPreviewVideoController: UIViewController, IndexedPrevie
             autoplay: true,
             controls: true,  // Show all controls
             showControlsOnInit: true,
-            objectFit: .cover  // Use cover to fill screen like SameLevel fullscreen
+            objectFit: .cover  // Use cover to fill screen like native component fullscreen
         )
 
         let player = LxMediaPlayer(eventHandler: { [weak self] event in
@@ -436,7 +436,7 @@ private final class MediaPreviewVideoController: UIViewController, IndexedPrevie
             self.isLandscapeVideo = isLandscape
 
             if isLandscape {
-                // Rotate player view 90 degrees for landscape video (like SameLevel fullscreen)
+                // Rotate player view 90 degrees for landscape video (like native component fullscreen)
                 let containerBounds = self.view.bounds
                 playerView.transform = CGAffineTransform(rotationAngle: .pi / 2)
                 playerView.frame = CGRect(x: 0, y: 0, width: containerBounds.height, height: containerBounds.width)

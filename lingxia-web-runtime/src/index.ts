@@ -11,7 +11,7 @@ export type {
   ErrorInfo,
   LingXiaBridgeInterface,
   DataSubscriber,
-  SameLevelMessage,
+  NativeComponentMessage,
 } from './types';
 
 export { LingXiaBridge, lx, initBridge } from './bridge';

@@ -1,6 +1,6 @@
-import { sendSameLevelMessage, registerSameLevelHandler } from "./samelevel.js";
+import { sendNativeComponentMessage, registerNativeComponentHandler } from "./nativecomponent.js";
 import { measureElement } from "./dom.js";
-import { ensureComponentId, SameLevelUpdateState, iOSSameLevelHelper } from "./component.js";
+import { ensureComponentId, NativeComponentUpdateState, iOSNativeComponentHelper } from "./component.js";
 import { isHarmony, isIOS } from "./platform.js";
 
 const HARMONY_PROPS_PREFIX = "data:application/json,";
@@ -67,7 +67,7 @@ export class LxVideoElement extends HTMLElement {
 
   private componentId: string | null = null;
   private mounted = false;
-  private updateState = new SameLevelUpdateState();
+  private updateState = new NativeComponentUpdateState();
   private unregister?: () => void;
   private resizeObserver?: ResizeObserver;
   private pendingLayoutFrame: number | null = null;
@@ -77,14 +77,14 @@ export class LxVideoElement extends HTMLElement {
   private lastHarmonyProps?: string;
   private lastHarmonyQualities?: string;
   private lastHarmonyPlaybackRates?: string;
-  private iOSHelper?: iOSSameLevelHelper;
+  private iOSHelper?: iOSNativeComponentHelper;
 
   connectedCallback() {
     this.componentId = ensureComponentId(this, "lx-video", this.componentId);
     if (!this.componentId) {
       return;
     }
-    this.unregister = registerSameLevelHandler(this.componentId!, (message) => {
+    this.unregister = registerNativeComponentHandler(this.componentId!, (message) => {
       // Handle component events from native
       if (message.event) {
         // Normalize detail based on event type
@@ -105,8 +105,8 @@ export class LxVideoElement extends HTMLElement {
     });
     this.ensurePlaceholderStyle();
 
-    // Setup iOS same-level rendering helper (no-op on other platforms)
-    this.iOSHelper = new iOSSameLevelHelper(this, this.componentId);
+    // Setup iOS native component rendering helper (no-op on other platforms)
+    this.iOSHelper = new iOSNativeComponentHelper(this, this.componentId);
     this.iOSHelper.setup();
 
     // On iOS, delay mount to allow WKWebView to create WKChildScrollView for the scroll container.
@@ -129,7 +129,7 @@ export class LxVideoElement extends HTMLElement {
     this.updateState.reset();
 
     if (this.componentId && !isHarmony()) {
-      sendSameLevelMessage({
+      sendNativeComponentMessage({
         action: "component.unmount",
         id: this.componentId
       });
@@ -321,7 +321,7 @@ export class LxVideoElement extends HTMLElement {
       payload.props = props;
     }
 
-    sendSameLevelMessage(payload);
+    sendNativeComponentMessage(payload);
     this.mounted = true;
   }
 
@@ -348,7 +348,7 @@ export class LxVideoElement extends HTMLElement {
       payload.cornerRadius = cornerRadius;
     }
 
-    sendSameLevelMessage(payload);
+    sendNativeComponentMessage(payload);
   }
 
   /**

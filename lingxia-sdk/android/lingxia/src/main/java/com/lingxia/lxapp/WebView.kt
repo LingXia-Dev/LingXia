@@ -4,7 +4,7 @@ import android.content.Context
 import android.util.Log
 import android.view.MotionEvent
 import android.webkit.WebView as AndroidWebView
-import com.lingxia.lxapp.SameLevel.SameLevelBridge
+import com.lingxia.lxapp.NativeComponents.NativeBridge
 import com.lingxia.webview.LingXiaWebView
 
 class WebView(context: Context) : LingXiaWebView(context) {
@@ -30,8 +30,8 @@ class WebView(context: Context) : LingXiaWebView(context) {
 
     override fun initializeWebView(appId: String, path: String) {
         super.initializeWebView(appId, path)
-        // Register SameLevel JavaScriptInterface right after WebView init, before content loads
-        SameLevelBridge.registerJsInterface(this)
+        // Register native bridge JavaScriptInterface right after WebView init, before content loads
+        NativeBridge.registerJsInterface(this)
         // Disable overscroll glow effect - native components stay fixed at boundaries
         overScrollMode = OVER_SCROLL_NEVER
     }
@@ -49,7 +49,7 @@ class WebView(context: Context) : LingXiaWebView(context) {
 
     fun pause() {
         Log.d(TAG, "Pausing WebView operations")
-        SameLevelBridge.notifyPageInactive(this)
+        NativeBridge.notifyPageInactive(this)
         onPause()
     }
 
@@ -59,7 +59,7 @@ class WebView(context: Context) : LingXiaWebView(context) {
     }
 
     override fun destroy() {
-        SameLevelBridge.notifyPageDestroyed(this)
+        NativeBridge.notifyPageDestroyed(this)
         super.destroy()
     }
 }

@@ -202,7 +202,7 @@ public enum LxMediaEvent {
 }
 
 // Lightweight media player with built-in native controls.
-// Designed to be reused by SameLevel components and other media scenarios.
+// Designed to be reused by native components and other media scenarios.
 private final class PlayerContainerView: UIView {
     weak var overlay: UIView?
 
@@ -370,7 +370,7 @@ public final class LxMediaPlayer: NSObject {
     private var showCloseButton = false // Only show in preview mode
     private var showFullscreenButton = true // Show fullscreen button
     private var loopEnabled = false // Loop playback when video ends
-    private var videoGravity: AVLayerVideoGravity = .resizeAspectFill // Default to fill for SameLevel
+    private var videoGravity: AVLayerVideoGravity = .resizeAspectFill // Default to fill for native components
 
     // State
     private var shouldShowControlsOnFirstPlay = false // Show controls on first play (for preview mode)

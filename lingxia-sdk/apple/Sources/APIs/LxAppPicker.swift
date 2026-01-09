@@ -7,7 +7,7 @@ public class LxAppPicker {
 
     internal static let log = OSLog(subsystem: "LingXia", category: "Picker")
 
-    // Local callback registry for SameLevel components
+    // Local callback registry for native components
     // Key is callback ID, value is (success, data) -> Void
     @MainActor
     public static var localCallbacks: [UInt64: (Bool, String) -> Void] = [:]
@@ -84,7 +84,7 @@ public class LxAppPicker {
         let jsonData = try! JSONSerialization.data(withJSONObject: payload)
         let jsonString = String(data: jsonData, encoding: .utf8)!
 
-        // Check for local callback first (SameLevel components)
+        // Check for local callback first (native components)
         Task { @MainActor in
             if let localCallback = localCallbacks[callback_id] {
                 localCallback(true, jsonString)
@@ -129,7 +129,7 @@ public class LxAppPicker {
 
         let jsonData = try! JSONSerialization.data(withJSONObject: payload)
         if let jsonString = String(data: jsonData, encoding: .utf8) {
-            // Check for local callback first (SameLevel components)
+            // Check for local callback first (native components)
             Task { @MainActor in
                 if let localCallback = localCallbacks[callback_id] {
                     localCallback(true, jsonString)

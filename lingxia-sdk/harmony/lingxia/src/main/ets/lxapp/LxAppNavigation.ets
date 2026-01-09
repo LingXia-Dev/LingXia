@@ -108,7 +108,7 @@ export struct LxAppNavigation {
     hilog.info(DOMAIN, TAG, `Closing lxapp: ${appId}`);
 
     try {
-      // Pause SameLevel components (video players, etc.) before closing
+      // Pause native components (video players, etc.) before closing
       pauseAllComponentsByAppId(appId);
 
       // Call native close handler first - this removes the app from Rust stack

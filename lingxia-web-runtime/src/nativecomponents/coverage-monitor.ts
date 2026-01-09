@@ -1,6 +1,6 @@
-import type { SameLevelMessage } from '../types';
+import type { NativeComponentMessage } from '../types';
 
-type SameLevelCoverageState = {
+type NativeComponentCoverageState = {
   installed: boolean;
   coveredById: Map<string, boolean>;
   coveredCount: number;
@@ -18,21 +18,21 @@ type SameLevelCoverageState = {
 
 type InstallArgs = {
   os: string;
-  send: (message: SameLevelMessage) => void;
+  send: (message: NativeComponentMessage) => void;
 };
 
-export function installSameLevelCoverageMonitor({ os, send }: InstallArgs): void {
+export function installNativeComponentCoverageMonitor({ os, send }: InstallArgs): void {
   if (typeof window === 'undefined') return;
   if (typeof document === 'undefined') return;
   const isIOS = os === 'iOS';
   const isAndroid = os === 'Android';
   if (!isIOS && !isAndroid) return;
 
-  const key = Symbol.for('LingXia.SameLevelCoverageMonitor');
-  const existing = (window as any)[key] as SameLevelCoverageState | undefined;
+  const key = Symbol.for('LingXia.NativeComponentCoverageMonitor');
+  const existing = (window as any)[key] as NativeComponentCoverageState | undefined;
   if (existing?.installed) return;
 
-  const state: SameLevelCoverageState = {
+  const state: NativeComponentCoverageState = {
     installed: true,
     coveredById: new Map(),
     coveredCount: 0,

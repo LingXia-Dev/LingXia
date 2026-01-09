@@ -3,7 +3,7 @@ Page({
   videoContext: null,
 
   onLoad: function (options) {
-    console.log("[VideoSameLevel] onLoad options:", options);
+    console.log("[NativeVideo] onLoad options:", options);
 
     this.setData({
       videos: [
@@ -39,11 +39,11 @@ Page({
 
     try {
       this.videoContext = lx.createVideoContext(videoId);
-      console.log("[VideoSameLevel] createVideoContext success:", videoId);
+      console.log("[NativeVideo] createVideoContext success:", videoId);
       return this.videoContext;
     } catch (e) {
       console.error(
-        "[VideoSameLevel] createVideoContext failed:",
+        "[NativeVideo] createVideoContext failed:",
         e.message || e,
       );
       return null;
@@ -77,10 +77,10 @@ Page({
   },
 
   onQualityChange: function ({ videoId, detail } = {}) {
-    console.log("[VideoSameLevel] onQualityChange:", { videoId, detail });
+    console.log("[NativeVideo] onQualityChange:", { videoId, detail });
   },
 
   onPlaybackRateChange: function ({ videoId, detail } = {}) {
-    console.log("[VideoSameLevel] onPlaybackRateChange:", { videoId, detail });
+    console.log("[NativeVideo] onPlaybackRateChange:", { videoId, detail });
   },
 });

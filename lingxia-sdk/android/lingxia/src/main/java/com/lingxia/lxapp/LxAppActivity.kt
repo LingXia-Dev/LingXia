@@ -24,7 +24,7 @@ import android.content.Intent
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import android.view.animation.AccelerateDecelerateInterpolator
-import com.lingxia.lxapp.SameLevel.SameLevelBridge
+import com.lingxia.lxapp.NativeComponents.NativeBridge
 
 /**
  * Animation type enum for page transitions
@@ -639,8 +639,8 @@ class LxAppActivity : AppCompatActivity() {
                 container.tag = "current_webview_container"
             }
 
-            // Attach SameLevel bridge for native component overlay
-            SameLevelBridge.attachIfNeeded(view)
+            // Attach native bridge for component overlay
+            NativeBridge.attachIfNeeded(view)
 
             ensurePullToRefreshHelper().attachToWebView(view)
             updatePullToRefreshEnabledForPath(view.getCurrentPath())
@@ -857,15 +857,15 @@ class LxAppActivity : AppCompatActivity() {
             webViewContainer.visibility = View.VISIBLE
             currentWebView?.resume()
         }
-        // Resume SameLevel components
-        currentWebView?.let { SameLevelBridge.notifyPageActive(it) }
+        // Resume native components
+        currentWebView?.let { NativeBridge.notifyPageActive(it) }
     }
 
     override fun onPause() {
         super.onPause()
         currentWebView?.pause()
-        // Pause SameLevel components (e.g., pause video playback)
-        currentWebView?.let { SameLevelBridge.notifyPageInactive(it) }
+        // Pause native components (e.g., pause video playback)
+        currentWebView?.let { NativeBridge.notifyPageInactive(it) }
     }
 
     /**
@@ -879,8 +879,8 @@ class LxAppActivity : AppCompatActivity() {
     override fun onDestroy() {
         isDestroyed = true
 
-        // Destroy SameLevel components before pausing WebView
-        currentWebView?.let { SameLevelBridge.notifyPageDestroyed(it) }
+        // Destroy native components before pausing WebView
+        currentWebView?.let { NativeBridge.notifyPageDestroyed(it) }
 
         // Pause current WebView but don't destroy it
         // WebView destruction is managed by native
@@ -952,7 +952,7 @@ class LxAppActivity : AppCompatActivity() {
         val tab = tabBar
         val navParent = navBar?.parent as? ViewGroup
         val navIndex = navParent?.indexOfChild(navBar) ?: -1
-        val overlayHost = rootContainer.findViewWithTag<View>("SameLevelOverlay")
+        val overlayHost = rootContainer.findViewWithTag<View>("ComponentOverlay")
         val overlayParams = overlayHost?.layoutParams as? FrameLayout.LayoutParams
         mediaFullscreenState = MediaFullscreenState(
             tabBarVisibility = tab?.visibility ?: View.GONE,
@@ -1028,7 +1028,7 @@ class LxAppActivity : AppCompatActivity() {
                 rootContainer.addView(navBar, state.navigationBarIndex, params)
                 navBar.visibility = navVisibility
             }
-            val overlayHost = rootContainer.findViewWithTag<View>("SameLevelOverlay")
+            val overlayHost = rootContainer.findViewWithTag<View>("ComponentOverlay")
             if (overlayHost != null) {
                 state.overlayLayoutParams?.let { overlayHost.layoutParams = FrameLayout.LayoutParams(it) }
                 overlayHost.translationX = state.overlayTranslationX
@@ -1256,7 +1256,7 @@ class LxAppActivity : AppCompatActivity() {
             }
 
             if (oldWebView != null && oldWebView != newWebView) {
-                SameLevelBridge.notifyPageInactive(oldWebView)
+                NativeBridge.notifyPageInactive(oldWebView)
             }
 
             val navbarState = pageConfig ?: getNavBarState(appId, targetPath)
@@ -1286,13 +1286,13 @@ class LxAppActivity : AppCompatActivity() {
                 }
             }
 
-            SameLevelBridge.attachIfNeeded(newWebView)
+            NativeBridge.attachIfNeeded(newWebView)
 
             ensurePullToRefreshHelper().attachToWebView(newWebView)
             updatePullToRefreshEnabledForPath(targetPath)
 
             if (oldWebView != newWebView) {
-                SameLevelBridge.notifyPageActive(newWebView)
+                NativeBridge.notifyPageActive(newWebView)
             }
 
             // Use coordinated WebView transition (handles all animation and onPageShow)

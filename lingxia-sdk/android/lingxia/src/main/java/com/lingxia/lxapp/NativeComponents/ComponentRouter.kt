@@ -1,10 +1,10 @@
-package com.lingxia.lxapp.SameLevel
+package com.lingxia.lxapp.NativeComponents
 
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.TextureView
-import com.lingxia.lxapp.SameLevel.Components.VideoComponent
+import com.lingxia.lxapp.NativeComponents.Components.VideoComponent
 import org.json.JSONObject
 import java.lang.ref.WeakReference
 import java.util.ArrayDeque
@@ -15,14 +15,14 @@ import java.util.concurrent.ConcurrentHashMap
  *
  * This is a lightweight registry that only maintains componentId -> manager mappings
  * for command routing. All component state (including callbacks) is managed by
- * SameLevelComponentManager.
+ * NativeComponentManager.
  *
  * Note: This class is called from Rust via JNI. Methods with @JvmStatic are exposed
  * to native code.
  */
 object ComponentRouter {
     private const val TAG = "ComponentRouter"
-    private val managers = ConcurrentHashMap<String, WeakReference<SameLevelComponentManager>>()
+    private val managers = ConcurrentHashMap<String, WeakReference<NativeComponentManager>>()
     private val mainHandler = Handler(Looper.getMainLooper())
     private val streamDecoders = ConcurrentHashMap<String, StreamDecoderSession>()
     private val cachedVideoConfigJson = ConcurrentHashMap<String, String>()
@@ -148,7 +148,7 @@ object ComponentRouter {
         }
     }
 
-    fun register(componentId: String, manager: SameLevelComponentManager) {
+    fun register(componentId: String, manager: NativeComponentManager) {
         managers[componentId] = WeakReference(manager)
     }
 

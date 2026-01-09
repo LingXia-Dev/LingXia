@@ -1,5 +1,5 @@
 /**
- * SameLevelNodeController - NodeController implementation for same-level rendering
+ * NativeComponentNodeController - NodeController implementation for native component rendering
  * Follows official ArkWeb same-level rendering pattern
  *
  * Fullscreen Strategy:
@@ -15,17 +15,17 @@
  *   XComponent surface is preserved, and video continues playing seamlessly.
  */
 import { BuilderNode, FrameNode, NodeController, NodeRenderType } from '@kit.ArkUI';
-import { SameLevelRecord, SameLevelValue, sameLevelError } from './SameLevelTypes';
+import { NativeComponentRecord, NativeComponentValue, nativeComponentError } from './NativeComponentTypes';
 
 /**
  * Parameters for component rendering
  */
-export class SameLevelParams {
+export class NativeComponentParams {
   width: number = 0;
   height: number = 0;
   componentId: string = '';
   componentType: string = '';
-  props: SameLevelRecord = new SameLevelRecord();
+  props: NativeComponentRecord = new NativeComponentRecord();
 }
 
 /**
@@ -39,7 +39,7 @@ export class NodeControllerParams {
   width: number = 0;
   height: number = 0;
   componentId: string = '';
-  props: SameLevelRecord = new SameLevelRecord();
+  props: NativeComponentRecord = new NativeComponentRecord();
 }
 
 /**
@@ -49,31 +49,31 @@ export class NodeControllerParams {
 export class NodeControllerUpdateParams {
   width?: number;
   height?: number;
-  props?: SameLevelRecord;
+  props?: NativeComponentRecord;
 }
 
 /**
  * Builder function type for creating components
  */
-export type SameLevelBuilder = (params: SameLevelParams) => void;
+export type NativeComponentBuilder = (params: NativeComponentParams) => void;
 
 /**
  * Registry of component builders
  */
-const componentBuilders: Map<string, WrappedBuilder<[SameLevelParams]>> = new Map();
+const componentBuilders: Map<string, WrappedBuilder<[NativeComponentParams]>> = new Map();
 
 /**
  * Register a component builder for a type
  */
-export function registerSameLevelBuilder(type: string, builder: WrappedBuilder<[SameLevelParams]>): void {
+export function registerNativeComponentBuilder(type: string, builder: WrappedBuilder<[NativeComponentParams]>): void {
   componentBuilders.set(type, builder);
 }
 
 /**
- * SameLevelNodeController - Controls rendering of native components in WebView
+ * NativeComponentNodeController - Controls rendering of native components in WebView
  */
-export class SameLevelNodeController extends NodeController {
-  private rootNode: BuilderNode<[SameLevelParams]> | null = null;
+export class NativeComponentNodeController extends NodeController {
+  private rootNode: BuilderNode<[NativeComponentParams]> | null = null;
   private embedId: string = '';
   private surfaceId: string = '';
   private renderType: NodeRenderType = NodeRenderType.RENDER_TYPE_DISPLAY;
@@ -81,7 +81,7 @@ export class SameLevelNodeController extends NodeController {
   private componentHeight: number = 0;
   private componentType: string = '';
   private componentId: string = '';
-  private props: SameLevelRecord = new SameLevelRecord();
+  private props: NativeComponentRecord = new NativeComponentRecord();
 
   // Fullscreen state - only tracks state, does NOT trigger rebuild
   private isFullscreen: boolean = false;
@@ -122,12 +122,12 @@ export class SameLevelNodeController extends NodeController {
       this.originalHeight = params.height;
     }
     if (params.props !== undefined) {
-      const incomingProps = params.props || new SameLevelRecord();
-      const nextProps = new SameLevelRecord();
-      this.props.forEach((key: string, value: SameLevelValue) => {
+      const incomingProps = params.props || new NativeComponentRecord();
+      const nextProps = new NativeComponentRecord();
+      this.props.forEach((key: string, value: NativeComponentValue) => {
         nextProps.set(key, value);
       });
-      incomingProps.forEach((key: string, value: SameLevelValue) => {
+      incomingProps.forEach((key: string, value: NativeComponentValue) => {
         nextProps.set(key, value);
       });
       this.props = nextProps;
@@ -135,7 +135,7 @@ export class SameLevelNodeController extends NodeController {
 
     // Push updated params into the builder without recreating the node
     if (this.rootNode) {
-      const updated = new SameLevelParams();
+      const updated = new NativeComponentParams();
       updated.width = this.componentWidth;
       updated.height = this.componentHeight;
       updated.componentId = this.componentId;
@@ -161,7 +161,7 @@ export class SameLevelNodeController extends NodeController {
 
     const builder = componentBuilders.get(this.componentType);
     if (!builder) {
-      sameLevelError(`No builder registered for type: ${this.componentType}`);
+      nativeComponentError(`No builder registered for type: ${this.componentType}`);
       return null;
     }
 
@@ -170,7 +170,7 @@ export class SameLevelNodeController extends NodeController {
       type: this.renderType
     });
 
-    const initialParams = new SameLevelParams();
+    const initialParams = new NativeComponentParams();
     initialParams.width = this.componentWidth;
     initialParams.height = this.componentHeight;
     initialParams.componentId = this.componentId;
@@ -184,14 +184,14 @@ export class SameLevelNodeController extends NodeController {
   /**
    * Set builder node (for cleanup)
    */
-  setBuilderNode(rootNode: BuilderNode<SameLevelParams[]> | null): void {
+  setBuilderNode(rootNode: BuilderNode<NativeComponentParams[]> | null): void {
     this.rootNode = rootNode;
   }
 
   /**
    * Get current builder node
    */
-  getBuilderNode(): BuilderNode<[SameLevelParams]> | null {
+  getBuilderNode(): BuilderNode<[NativeComponentParams]> | null {
     return this.rootNode;
   }
 

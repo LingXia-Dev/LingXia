@@ -24,10 +24,10 @@ export {
   getOS
 } from "./platform.js";
 
-// Shared utilities for SameLevel custom elements
+// Shared utilities for native component custom elements
 export {
   ensureComponentId,
   rectEquals,
-  SameLevelUpdateState,
+  NativeComponentUpdateState,
   type Rect
 } from "./component.js";

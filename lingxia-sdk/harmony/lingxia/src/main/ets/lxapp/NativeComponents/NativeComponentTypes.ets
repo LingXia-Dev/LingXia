@@ -1,31 +1,31 @@
 /**
- * Same-level rendering types for HarmonyOS
+ * Native component rendering types for HarmonyOS
  * Uses official ArkWeb same-level rendering pattern
  */
 
 import { hilog } from '@kit.PerformanceAnalysisKit';
 
 const DOMAIN = 0x0000;
-const TAG = 'LingXia.SameLevel';
+const TAG = 'LingXia.NativeComponent';
 
-export type SameLevelValue = string | number | boolean | null | undefined | object;
+export type NativeComponentValue = string | number | boolean | null | undefined | object;
 
-interface SameLevelGettableObject {
-  get?: (key: string) => SameLevelValue;
+interface NativeComponentGettableObject {
+  get?: (key: string) => NativeComponentValue;
 }
 
-export class SameLevelRecord {
-  private data: Map<string, SameLevelValue> = new Map();
+export class NativeComponentRecord {
+  private data: Map<string, NativeComponentValue> = new Map();
 
-  set(key: string, value: SameLevelValue): void {
+  set(key: string, value: NativeComponentValue): void {
     this.data.set(key, value);
   }
 
-  get(key: string): SameLevelValue | undefined {
+  get(key: string): NativeComponentValue | undefined {
     return this.data.get(key);
   }
 
-  forEach(callback: (key: string, value: SameLevelValue) => void): void {
+  forEach(callback: (key: string, value: NativeComponentValue) => void): void {
     this.data.forEach((value, key) => {
       callback(key, value);
     });
@@ -43,17 +43,17 @@ export class SameLevelRecord {
     return `{${parts.join(',')}}`;
   }
 
-  static fromESObject(obj: ESObject): SameLevelRecord {
-    const record = new SameLevelRecord();
-    const gettable = obj as SameLevelGettableObject;
-    const plainObj = obj as Record<string, SameLevelValue>;
+  static fromESObject(obj: ESObject): NativeComponentRecord {
+    const record = new NativeComponentRecord();
+    const gettable = obj as NativeComponentGettableObject;
+    const plainObj = obj as Record<string, NativeComponentValue>;
 
     Object.keys(plainObj).forEach((key: string) => {
-      let value: SameLevelValue;
+      let value: NativeComponentValue;
 
       // Try to get value using get() method if it exists (for ESObject)
       if (typeof gettable.get === 'function') {
-        value = gettable.get(key) as SameLevelValue;
+        value = gettable.get(key) as NativeComponentValue;
       } else {
         // Fallback to direct property access (for plain objects)
         value = plainObj[key];
@@ -65,15 +65,15 @@ export class SameLevelRecord {
   }
 }
 
-export class SameLevelEmptyDetail {}
+export class NativeComponentEmptyDetail {}
 
 /**
  * Log helper
  */
-export function sameLevelLog(message: string): void {
+export function nativeComponentLog(message: string): void {
   hilog.info(DOMAIN, TAG, message);
 }
 
-export function sameLevelError(message: string): void {
+export function nativeComponentError(message: string): void {
   hilog.error(DOMAIN, TAG, message);
 }

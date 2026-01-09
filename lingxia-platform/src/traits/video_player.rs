@@ -23,7 +23,7 @@ pub enum VideoPlayerCommand {
     ExitFullscreen,
 }
 
-/// Handle to a SameLevel video player instance.
+/// Handle to a native component video player instance.
 /// Commands go through this handle without needing to re-specify the component ID.
 /// Note: Native component lifecycle is owned by the UI layer, not Rust.
 pub trait VideoPlayerHandle: Send + Sync {
@@ -58,7 +58,7 @@ where
     }
 }
 
-/// Platform-facing API for binding to SameLevel video instances.
+/// Platform-facing API for binding to native component video instances.
 /// Note: Native player creation is handled by the UI layer, not Rust.
 pub trait VideoPlayerManager: Send + Sync + 'static {
     /// Bind to an existing native player.

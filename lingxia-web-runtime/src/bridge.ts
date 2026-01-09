@@ -5,9 +5,9 @@ import type {
   LingXiaBridgeInterface,
   PendingCall,
   ReplyPayload,
-  SameLevelMessage,
+  NativeComponentMessage,
 } from './types';
-import { installSameLevelCoverageMonitor } from './samelevel/coverage-monitor';
+import { installNativeComponentCoverageMonitor } from './nativecomponents/coverage-monitor';
 
 const NATIVE_HANDLER_NAME = 'LingXia';
 const GLOBAL_RECEIVER_NAME = '__LingXiaRecvMessage';
@@ -323,23 +323,23 @@ function sendCallback(callbackId: string): void {
   });
 }
 
-const sameLevelHandlers = new Map<
+const nativeComponentHandlers = new Map<
   string,
-  (message: SameLevelMessage) => void
+  (message: NativeComponentMessage) => void
 >();
-const sameLevelQueue: SameLevelMessage[] = [];
-let sameLevelReady = false;
+const nativeComponentQueue: NativeComponentMessage[] = [];
+let nativeComponentReady = false;
 
-function hasSameLevelHandler(): boolean {
+function hasNativeComponentHandler(): boolean {
   if (typeof window === 'undefined') return false;
 
-  if (window.webkit?.messageHandlers?.SameLevel) {
+  if (window.webkit?.messageHandlers?.NativeComponent) {
     return true;
   }
 
   if (
-    window.SameLevelNative &&
-    typeof window.SameLevelNative.postMessage === 'function'
+    window.NativeComponentBridge &&
+    typeof window.NativeComponentBridge.postMessage === 'function'
   ) {
     return true;
   }
@@ -347,81 +347,81 @@ function hasSameLevelHandler(): boolean {
   return false;
 }
 
-function postSameLevelMessage(message: SameLevelMessage): void {
-  if (window.webkit?.messageHandlers?.SameLevel) {
-    window.webkit.messageHandlers.SameLevel.postMessage(message);
+function postNativeComponentMessage(message: NativeComponentMessage): void {
+  if (window.webkit?.messageHandlers?.NativeComponent) {
+    window.webkit.messageHandlers.NativeComponent.postMessage(message);
     return;
   }
 
   if (
-    window.SameLevelNative &&
-    typeof window.SameLevelNative.postMessage === 'function'
+    window.NativeComponentBridge &&
+    typeof window.NativeComponentBridge.postMessage === 'function'
   ) {
     const msgString = safeStringify(message);
-    window.SameLevelNative.postMessage(msgString);
+    window.NativeComponentBridge.postMessage(msgString);
     return;
   }
 }
 
-function flushSameLevelQueue(): void {
-  if (!hasSameLevelHandler() || sameLevelQueue.length === 0) return;
-  sameLevelReady = true;
-  while (sameLevelQueue.length) {
-    const msg = sameLevelQueue.shift()!;
+function flushNativeComponentQueue(): void {
+  if (!hasNativeComponentHandler() || nativeComponentQueue.length === 0) return;
+  nativeComponentReady = true;
+  while (nativeComponentQueue.length) {
+    const msg = nativeComponentQueue.shift()!;
     try {
       if (isDebugEnabled('proto')) {
-        console.log('[SameLevel] flush → native:', msg);
+        console.log('[NativeComponent] flush → native:', msg);
       }
-      postSameLevelMessage(msg);
+      postNativeComponentMessage(msg);
     } catch (e) {
-      error('Failed to flush SameLevel message:', e);
+      error('Failed to flush NativeComponent message:', e);
       break;
     }
   }
 }
 
-function sendSameLevelMessage(message: SameLevelMessage): void {
+function sendNativeComponentMessage(message: NativeComponentMessage): void {
   try {
-    const hasHandler = hasSameLevelHandler();
+    const hasHandler = hasNativeComponentHandler();
     if (!hasHandler) {
-      sameLevelQueue.push(message);
+      nativeComponentQueue.push(message);
       return;
     }
-    if (!sameLevelReady) {
-      flushSameLevelQueue();
+    if (!nativeComponentReady) {
+      flushNativeComponentQueue();
     }
     if (isDebugEnabled('proto')) {
-      console.log('[SameLevel] → native:', message);
+      console.log('[NativeComponent] → native:', message);
     }
-    postSameLevelMessage(message);
+    postNativeComponentMessage(message);
   } catch (e) {
-    error('Failed to send SameLevel message:', e);
+    error('Failed to send NativeComponent message:', e);
   }
 }
 
-function handleSameLevelEvent(msg: unknown): void {
+function handleNativeComponentEvent(msg: unknown): void {
   try {
-    const message: SameLevelMessage | null =
+    const message: NativeComponentMessage | null =
       typeof msg === 'string'
         ? JSON.parse(msg)
         : msg && typeof msg === 'object'
-          ? (msg as SameLevelMessage)
+          ? (msg as NativeComponentMessage)
           : null;
 
     if (!message || !message.id) {
-      warn('SameLevel receive: invalid message', msg);
+      warn('NativeComponent receive: invalid message', msg);
       return;
     }
     if (message.action !== 'component.event') return;
 
-    const handler = sameLevelHandlers.get(message.id);
+    const handler = nativeComponentHandlers.get(message.id);
     if (typeof handler !== 'function') return;
     if (isDebugEnabled('proto')) {
-      console.log('[SameLevel] ← native:', message);
+      console.log('[NativeComponent] ← native:', message);
     }
     handler(message);
   } catch (e) {
-    error('SameLevel receive error:', e);
+    error('NativeComponent receive error:', e);
   }
 }
 
@@ -470,8 +470,8 @@ function handleEvent(eventMessage: BridgeMessage): void {
     if (callbackId) {
       sendCallback(callbackId);
     }
-  } else if (name === 'samelevel') {
-    handleSameLevelEvent(payload);
+  } else if (name === 'nativecomponent') {
+    handleNativeComponentEvent(payload);
   } else {
     warn('Unknown event:', name);
   }
@@ -573,7 +573,8 @@ export const LingXiaBridge: LingXiaBridgeInterface = {
         try {
           messageData = JSON.parse(messageData);
         } catch (e) {
-          error('Invalid JSON from MessagePort:', e);
+          error('Invalid JSON from MessagePort. Error:', e);
+          error('Raw message data:', messageData);
           return;
         }
       }
@@ -646,22 +647,22 @@ export const LingXiaBridge: LingXiaBridgeInterface = {
     },
   },
 
-  sameLevel: {
-    send: sendSameLevelMessage,
-    hasHandler: hasSameLevelHandler,
-    flush: flushSameLevelQueue,
+  nativeComponents: {
+    send: sendNativeComponentMessage,
+    hasHandler: hasNativeComponentHandler,
+    flush: flushNativeComponentQueue,
     register(
       id: string,
-      handler: (message: SameLevelMessage) => void
+      handler: (message: NativeComponentMessage) => void
     ): () => void {
       if (!id || typeof handler !== 'function') return () => {};
-      sameLevelHandlers.set(id, handler);
+      nativeComponentHandlers.set(id, handler);
       return () => {
-        sameLevelHandlers.delete(id);
+        nativeComponentHandlers.delete(id);
       };
     },
     unregister(id: string): void {
-      sameLevelHandlers.delete(id);
+      nativeComponentHandlers.delete(id);
     },
   },
 };
@@ -711,7 +712,7 @@ export function initBridge(): void {
 
   window.LingXiaBridge = LingXiaBridge;
   window.lx = lx;
-  installSameLevelCoverageMonitor({ os: getPlatformOS(), send: sendSameLevelMessage });
+  installNativeComponentCoverageMonitor({ os: getPlatformOS(), send: sendNativeComponentMessage });
 
   log('LingXia Bridge initialization completed');
 }

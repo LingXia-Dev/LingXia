@@ -264,7 +264,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
 
         if let existingWebView = getCurrentWebView(),
            currentPath != path {
-            SameLevelBridge.notifyPageInactive(for: existingWebView)
+            NativeBridge.notifyPageInactive(for: existingWebView)
         }
 
         if let targetWebView = iOSLxApp.findWebView(appId: appId, path: path) {
@@ -413,8 +413,8 @@ public class LxAppViewController: UIViewController, ObservableObject {
         // Use shared WebViewManager logic which will trigger onPageShow
         WebViewManager.attachWebViewToContainer(webView, container: rootContainer, constraints: constraints)
 
-        // Install SameLevel overlay for native UI components (video, input, etc.)
-        SameLevelBridge.attachIfNeeded(to: webView)
+        // Install native component overlay for native UI components (video, input, etc.)
+        NativeBridge.attachIfNeeded(to: webView)
 
         // Store the top constraint reference for future updates
         if let topConstraint = constraints.first(where: { $0.firstAnchor == webView.topAnchor }) {

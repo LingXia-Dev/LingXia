@@ -1,5 +1,5 @@
 /**
- * SameLevelCallbackRegistry - store callback IDs for native components.
+ * NativeCallbackRegistry - store callback IDs for native components.
  */
 
 const componentCallbacks: Map<string, string> = new Map();

@@ -8,21 +8,21 @@ import UIKit
 ///
 /// This is a lightweight registry that only maintains componentId -> manager mappings
 /// for command routing. All component state (including callbacks) is managed by
-/// SameLevelComponentManager.
+/// NativeComponentManager.
 @MainActor
 final class ComponentRouter {
     static let shared = ComponentRouter()
-    private let log = OSLog(subsystem: "LingXia", category: "SameLevel")
+    private let log = OSLog(subsystem: "LingXia", category: "NativeComponent")
     
     private struct WeakManager {
-        weak var value: SameLevelComponentManager?
+        weak var value: NativeComponentManager?
     }
     
     private var managers: [String: WeakManager] = [:]
     
     private init() {}
     
-    func register(componentId: String, manager: SameLevelComponentManager) {
+    func register(componentId: String, manager: NativeComponentManager) {
         managers[componentId] = WeakManager(value: manager)
     }
     

@@ -41,7 +41,7 @@ const TAG = 'LingXia.Picker';
 export class LxAppPicker {
   private static pickerManagerRef: PickerManager | null = null;
 
-  // Local callback registry for SameLevel components
+  // Local callback registry for native components
   public static localCallbacks: Map<string, (success: boolean, result: string) => void> = new Map();
 
   /**

@@ -8,8 +8,8 @@ import {
   setEmbedController,
   pauseAllComponents,
   resumeAllComponents
-} from './SameLevel/SameLevelBridge';
-import { SameLevelEmbedManager } from './SameLevel/SameLevelEmbed';
+} from './NativeComponents/NativeBridgeInternal';
+import { NativeComponentEmbedManager } from './NativeComponents/NativeComponentEmbed';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.WebView';
@@ -474,9 +474,9 @@ export function setUserAgent(webtag: string, userAgent: string): boolean {
  * Get or create EmbedManager for a WebView
  * Call this to enable same-level rendering for a WebView
  * @param webtag - WebView tag
- * @returns SameLevelEmbedManager instance
+ * @returns NativeComponentEmbedManager instance
  */
-export function getWebViewEmbedManager(webtag: string): SameLevelEmbedManager {
+export function getWebViewEmbedManager(webtag: string): NativeComponentEmbedManager {
   const extracted = extractWebTag(webtag);
   const logicalTag = extracted ? toWebTag(extracted.appId, extracted.path) : webtag;
   const manager = getOrCreateEmbedManager(logicalTag);

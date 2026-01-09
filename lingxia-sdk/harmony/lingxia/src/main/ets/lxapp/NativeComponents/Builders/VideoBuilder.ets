@@ -3,9 +3,9 @@
  * Uses native XComponent + OH_AVPlayer for direct control
  */
 import { display, window } from '@kit.ArkUI';
-import { SameLevelParams, registerSameLevelBuilder } from '../SameLevelNodeController';
-import { SameLevelRecord, sameLevelError } from '../SameLevelTypes';
-import { getNodeControllerByComponentId } from '../SameLevelBridge';
+import { NativeComponentParams, registerNativeComponentBuilder } from '../NativeComponentNodeController';
+import { NativeComponentRecord, nativeComponentError } from '../NativeComponentTypes';
+import { getNodeControllerByComponentId } from '../NativeBridgeInternal';
 import {
   LxNativeVideoPlayer,
   LxNativeVideoConfig,
@@ -13,7 +13,7 @@ import {
   VideoEventDetail
 } from '../../media/LxNativeVideoPlayer';
 import { onCallback } from 'liblingxia.so';
-import { getComponentCallback } from '../SameLevelCallbackRegistry';
+import { getComponentCallback } from '../NativeCallbackRegistry';
 
 interface QualityProp {
   label?: string;
@@ -25,9 +25,9 @@ interface QualityProp {
  * Uses native XComponent + OH_AVPlayer for direct control
  */
 @Component
-struct SameLevelVideoComponent {
-  @Prop @Watch('onParamsChange') params: SameLevelParams;
-  private eventSink?: (event: SameLevelRecord) => void;
+struct NativeVideoComponent {
+  @Prop @Watch('onParamsChange') params: NativeComponentParams;
+  private eventSink?: (event: NativeComponentRecord) => void;
   private componentId: string = '';
   private initialized: boolean = false;
   private cachedConfig: LxNativeVideoConfig | null = null;
@@ -43,7 +43,7 @@ struct SameLevelVideoComponent {
     if (this.params) {
       this.componentId = this.params.componentId || '';
       const props = this.params.props;
-      this.eventSink = props.get('__eventSink') as ESObject as ((event: SameLevelRecord) => void) | undefined;
+      this.eventSink = props.get('__eventSink') as ESObject as ((event: NativeComponentRecord) => void) | undefined;
     }
   }
 
@@ -135,7 +135,7 @@ struct SameLevelVideoComponent {
 
     // Forward event to JS
     if (this.eventSink) {
-      const payload = new SameLevelRecord();
+      const payload = new NativeComponentRecord();
       payload.set('action', 'component.event');
       payload.set('id', this.componentId);
       payload.set('event', event);
@@ -171,7 +171,7 @@ struct SameLevelVideoComponent {
       // Get NodeController and toggle fullscreen
       const nodeController = getNodeControllerByComponentId(this.componentId);
       if (!nodeController) {
-        sameLevelError(`NodeController not found for: ${this.componentId}`);
+        nativeComponentError(`NodeController not found for: ${this.componentId}`);
         return;
       }
 
@@ -187,7 +187,7 @@ struct SameLevelVideoComponent {
         await windowClass.setWindowSystemBarEnable(['status', 'navigation']);
       }
     } catch (error) {
-      sameLevelError(`Fullscreen toggle error: ${JSON.stringify(error)}`);
+      nativeComponentError(`Fullscreen toggle error: ${JSON.stringify(error)}`);
     }
   }
 
@@ -206,13 +206,13 @@ struct SameLevelVideoComponent {
 }
 
 @Builder
-function videoBuilder(params: SameLevelParams) {
-  SameLevelVideoComponent({ params: params })
+function videoBuilder(params: NativeComponentParams) {
+  NativeVideoComponent({ params: params })
 }
 
 /**
  * Register video builder for same-level rendering
  */
 export function registerVideoBuilder(): void {
-  registerSameLevelBuilder('video.native', wrapBuilder(videoBuilder));
+  registerNativeComponentBuilder('video.native', wrapBuilder(videoBuilder));
 }

@@ -38,7 +38,7 @@ data class PickerConfig(
 object LxAppPicker {
     private const val TAG = "LingXia.LxAppPicker"
 
-    // Local callback registry for SameLevel components
+    // Local callback registry for native components
     // Key is callback ID, value is (success, data) -> Unit
     val localCallbacks = mutableMapOf<Long, (Boolean, String) -> Unit>()
 
@@ -487,7 +487,7 @@ object LxAppPicker {
     }
 
     private fun sendPickerResultCancel(callbackId: Long) {
-        // Check for local callback first (SameLevel components)
+        // Check for local callback first (native components)
         localCallbacks[callbackId]?.let { callback ->
             callback(false, "2000")
             return
@@ -507,7 +507,7 @@ object LxAppPicker {
             put("confirm", true)
         }
         val resultStr = result.toString()
-        // Check for local callback first (SameLevel components)
+        // Check for local callback first (native components)
         localCallbacks[callbackId]?.let { callback ->
             callback(true, resultStr)
             return
@@ -526,7 +526,7 @@ object LxAppPicker {
             }
         }
         val resultStr = result.toString()
-        // Check for local callback first (SameLevel components)
+        // Check for local callback first (native components)
         localCallbacks[callbackId]?.let { callback ->
             callback(true, resultStr)
             return

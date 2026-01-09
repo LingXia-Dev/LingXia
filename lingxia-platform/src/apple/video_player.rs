@@ -19,7 +19,7 @@ use base64::{Engine as _, engine::general_purpose};
 use serde_json::json;
 
 #[cfg(target_os = "ios")]
-/// iOS implementation delegates to SameLevel video components.
+/// iOS implementation delegates to native component video players.
 /// Native player is created by UI layer; this returns a handle.
 impl VideoPlayerManager for Platform {
     fn bind_player(&self, component_id: &str) -> Result<Box<dyn VideoPlayerHandle>, PlatformError> {

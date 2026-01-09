@@ -1,4 +1,4 @@
-package com.lingxia.lxapp.SameLevel
+package com.lingxia.lxapp.NativeComponents
 
 import android.graphics.Color
 import android.os.Handler
@@ -8,23 +8,23 @@ import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.webkit.JavascriptInterface
 import android.widget.FrameLayout
-import com.lingxia.lxapp.SameLevel.Components.VideoComponentFactory
-import com.lingxia.lxapp.SameLevel.Components.PickerComponentFactory
+import com.lingxia.lxapp.NativeComponents.Components.VideoComponentFactory
+import com.lingxia.lxapp.NativeComponents.Components.PickerComponentFactory
 import com.lingxia.webview.LingXiaWebView
 import org.json.JSONArray
 import org.json.JSONObject
 import java.lang.ref.WeakReference
 
 /**
- * Bridge between JS component.* messages and native SameLevel components.
+ * Bridge between JS component.* messages and native components.
  * Uses JavaScriptInterface for View→Native and evaluateJavascript for Native→View.
  */
-class SameLevelBridge private constructor(
+class NativeBridge private constructor(
     webView: LingXiaWebView
 ) {
     private val webViewRef = WeakReference(webView)
-    private var overlayHost: SameLevelOverlayHost? = null
-    private var componentManager: SameLevelComponentManager? = null
+    private var overlayHost: ComponentOverlayHost? = null
+    private var componentManager: NativeComponentManager? = null
     private var pageKey: String
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -43,7 +43,7 @@ class SameLevelBridge private constructor(
         val host = makeOrFindOverlayHost(webView)
         overlayHost = host
 
-        val manager = SameLevelComponentManager(
+        val manager = NativeComponentManager(
             hostView = host,
             defaultPageId = pageKey,
             eventSink = { sendEventToView(it) },
@@ -83,7 +83,7 @@ class SameLevelBridge private constructor(
         }
     }
 
-    private fun makeOrFindOverlayHost(webView: LingXiaWebView): SameLevelOverlayHost {
+    private fun makeOrFindOverlayHost(webView: LingXiaWebView): ComponentOverlayHost {
         val parent = webView.parent as? ViewGroup
 
         overlayHost?.let { existing ->
@@ -96,11 +96,11 @@ class SameLevelBridge private constructor(
 
         parent?.let { p ->
             for (i in 0 until p.childCount) {
-                (p.getChildAt(i) as? SameLevelOverlayHost)?.takeIf { it.tag == OVERLAY_TAG }?.let { return it }
+                (p.getChildAt(i) as? ComponentOverlayHost)?.takeIf { it.tag == OVERLAY_TAG }?.let { return it }
             }
         }
 
-        val host = SameLevelOverlayHost(webView.context).apply {
+        val host = ComponentOverlayHost(webView.context).apply {
             tag = OVERLAY_TAG
             setBackgroundColor(Color.TRANSPARENT)
             isClickable = false
@@ -112,7 +112,7 @@ class SameLevelBridge private constructor(
         return host
     }
 
-    private fun addHostToParent(parent: ViewGroup, webView: LingXiaWebView, host: SameLevelOverlayHost) {
+    private fun addHostToParent(parent: ViewGroup, webView: LingXiaWebView, host: ComponentOverlayHost) {
         // Match WebView's exact position and size in parent
         val params = FrameLayout.LayoutParams(webView.width, webView.height).apply {
             leftMargin = webView.left
@@ -145,7 +145,7 @@ class SameLevelBridge private constructor(
     private fun sendEventToView(payload: Map<String, Any>) {
         val webView = webViewRef.get() ?: return
         try {
-            val json = JSONObject(mapOf("type" to "event", "name" to "samelevel", "payload" to payload)).toString()
+            val json = JSONObject(mapOf("type" to "event", "name" to "nativecomponent", "payload" to payload)).toString()
             val escaped = JSONArray().put(json).toString().let { it.substring(1, it.length - 1) }
             val script = "(function(){if(typeof window.__LingXiaRecvMessage==='function'){try{window.__LingXiaRecvMessage($escaped);}catch(e){}}})();"
             mainHandler.post { webView.evaluateJavascript(script, null) }
@@ -223,17 +223,17 @@ class SameLevelBridge private constructor(
     }
 
     companion object {
-        private const val OVERLAY_TAG = "SameLevelOverlay"
+        private const val OVERLAY_TAG = "ComponentOverlay"
         private val registeredFactories = mutableMapOf<String, LxNativeComponentFactory>()
         private var defaultsRegistered = false
-        private val bridgeMap = mutableMapOf<Int, SameLevelBridge>()
+        private val bridgeMap = mutableMapOf<Int, NativeBridge>()
         private val jsInterfaceRegistered = mutableSetOf<Int>()
 
         @JvmStatic
         fun registerJsInterface(webView: LingXiaWebView) {
             val id = System.identityHashCode(webView)
             if (jsInterfaceRegistered.add(id)) {
-                webView.addJavascriptInterface(JsInterface(webView), "SameLevelNative")
+                webView.addJavascriptInterface(JsInterface(webView), "NativeComponentBridge")
             }
         }
 
@@ -242,7 +242,7 @@ class SameLevelBridge private constructor(
             val id = System.identityHashCode(webView)
             bridgeMap[id]?.ensureOverlayHostAttached() ?: run {
                 registerDefaultComponents()
-                bridgeMap[id] = SameLevelBridge(webView).also { it.install() }
+                bridgeMap[id] = NativeBridge(webView).also { it.install() }
             }
         }
 
@@ -273,4 +273,4 @@ class SameLevelBridge private constructor(
 }
 
 /** Overlay host that passes through touches to children or WebView. */
-class SameLevelOverlayHost(context: android.content.Context) : FrameLayout(context)
+class ComponentOverlayHost(context: android.content.Context) : FrameLayout(context)

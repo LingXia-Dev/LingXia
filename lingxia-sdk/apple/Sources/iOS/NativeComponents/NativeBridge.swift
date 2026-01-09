@@ -6,36 +6,36 @@ import OSLog
 
 #if os(iOS)
 
-private let sameLevelLog = OSLog(subsystem: "LingXia", category: "SameLevel")
+private let nativeComponentLog = OSLog(subsystem: "LingXia", category: "NativeComponent")
 
-private struct SameLevelAssociatedKeys {
+private struct NativeComponentAssociatedKeys {
     nonisolated(unsafe) static var configured: UInt8 = 0
     nonisolated(unsafe) static var manager: UInt8 = 0
 }
 
 extension WKWebView {
-    fileprivate var lxSameLevelConfigured: Bool {
+    fileprivate var lxNativeComponentConfigured: Bool {
         get {
-            (objc_getAssociatedObject(self, &SameLevelAssociatedKeys.configured) as? Bool) ?? false
+            (objc_getAssociatedObject(self, &NativeComponentAssociatedKeys.configured) as? Bool) ?? false
         }
         set {
             objc_setAssociatedObject(
                 self,
-                &SameLevelAssociatedKeys.configured,
+                &NativeComponentAssociatedKeys.configured,
                 newValue,
                 .OBJC_ASSOCIATION_RETAIN_NONATOMIC
             )
         }
     }
 
-    fileprivate var lxSameLevelManager: SameLevelBridge? {
+    fileprivate var lxNativeComponentManager: NativeBridge? {
         get {
-            objc_getAssociatedObject(self, &SameLevelAssociatedKeys.manager) as? SameLevelBridge
+            objc_getAssociatedObject(self, &NativeComponentAssociatedKeys.manager) as? NativeBridge
         }
         set {
             objc_setAssociatedObject(
                 self,
-                &SameLevelAssociatedKeys.manager,
+                &NativeComponentAssociatedKeys.manager,
                 newValue,
                 .OBJC_ASSOCIATION_RETAIN_NONATOMIC
             )
@@ -43,34 +43,34 @@ extension WKWebView {
     }
 }
 
-/// Bridge between JS component.* messages and native SameLevel components
+/// Bridge between JS component.* messages and native components
 @MainActor
-final class SameLevelBridge: NSObject, WKScriptMessageHandler {
+final class NativeBridge: NSObject, WKScriptMessageHandler {
     // Global registry for component factories (built-ins + user-registered)
     private static var registeredFactories: [String: LxNativeComponentFactory] = [:]
     private static var defaultsRegistered = false
 
     private weak var webView: WKWebView?
     private weak var overlayHost: UIView?
-    private var componentManager: SameLevelComponentManager?
+    private var componentManager: NativeComponentManager?
     private var pageKey: String
     private var pendingPageKeyUpdate: Bool = false
 
     static func attachIfNeeded(to webView: WKWebView) {
-        if webView.lxSameLevelConfigured {
-            os_log("SameLevelBridge already configured for WebView", log: sameLevelLog, type: .info)
+        if webView.lxNativeComponentConfigured {
+            os_log("NativeBridge already configured for WebView", log: nativeComponentLog, type: .info)
             return
         }
-        webView.lxSameLevelConfigured = true
+        webView.lxNativeComponentConfigured = true
 
-        os_log("SameLevelBridge attaching to WebView", log: sameLevelLog, type: .info)
+        os_log("NativeBridge attaching to WebView", log: nativeComponentLog, type: .info)
 
         // Ensure built-in components are registered before installing
         registerDefaultComponents()
 
-        let bridge = SameLevelBridge(webView: webView)
+        let bridge = NativeBridge(webView: webView)
         bridge.install()
-        webView.lxSameLevelManager = bridge
+        webView.lxNativeComponentManager = bridge
     }
 
     private init(webView: WKWebView) {
@@ -94,7 +94,7 @@ final class SameLevelBridge: NSObject, WKScriptMessageHandler {
         let host = makeOrFindOverlayHost(for: webView)
         overlayHost = host
 
-        let manager = SameLevelComponentManager(
+        let manager = NativeComponentManager(
             scrollView: webView.scrollView,
             hostView: host,
             webView: webView,
@@ -111,11 +111,11 @@ final class SameLevelBridge: NSObject, WKScriptMessageHandler {
 
         componentManager = manager
 
-        // Register script message handler for "SameLevel"
+        // Register script message handler for "NativeComponent"
         let controller = webView.configuration.userContentController
-        controller.add(self, name: "SameLevel")
+        controller.add(self, name: "NativeComponent")
 
-        os_log("SameLevelBridge installed for WebView (handler added)", log: sameLevelLog, type: .info)
+        os_log("NativeBridge installed for WebView (handler added)", log: nativeComponentLog, type: .info)
     }
 
     private func makeOrFindOverlayHost(for webView: WKWebView) -> UIView {
@@ -125,7 +125,7 @@ final class SameLevelBridge: NSObject, WKScriptMessageHandler {
             return host
         }
 
-        let host = SameLevelOverlayHost()
+        let host = NativeComponentOverlayHost()
         host.backgroundColor = .clear
         host.isUserInteractionEnabled = true
         host.clipsToBounds = false
@@ -152,7 +152,7 @@ final class SameLevelBridge: NSObject, WKScriptMessageHandler {
 }
 
 // Custom overlay host that passes through touches to its subviews
-private final class SameLevelOverlayHost: UIView {
+private final class NativeComponentOverlayHost: UIView {
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         // Check all subviews first (native components)
         for subview in subviews.reversed() {
@@ -167,14 +167,14 @@ private final class SameLevelOverlayHost: UIView {
     }
 }
 
-extension SameLevelBridge {
+extension NativeBridge {
     // MARK: - WKScriptMessageHandler
 
     func userContentController(
         _ userContentController: WKUserContentController,
         didReceive message: WKScriptMessage
     ) {
-        guard message.name == "SameLevel" else { return }
+        guard message.name == "NativeComponent" else { return }
 
         var dict: [String: Any]?
 
@@ -187,13 +187,13 @@ extension SameLevelBridge {
         }
 
         guard let payload = dict else {
-            os_log("SameLevelBridge: unsupported message body %@", log: sameLevelLog, type: .error, String(describing: message.body))
+            os_log("NativeBridge: unsupported message body %@", log: nativeComponentLog, type: .error, String(describing: message.body))
             return
         }
 
         if let action = payload["action"] as? String,
            let id = payload["id"] as? String {
-            os_log("SameLevelBridge handling action=%{public}@ id=%{public}@", log: sameLevelLog, type: .debug, action, id)
+            os_log("NativeBridge handling action=%{public}@ id=%{public}@", log: nativeComponentLog, type: .debug, action, id)
         }
 
         var payloadWithPage = payload
@@ -211,21 +211,21 @@ extension SameLevelBridge {
 
         guard let data = try? JSONSerialization.data(withJSONObject: payload, options: []),
               let eventPayloadJson = String(data: data, encoding: .utf8) else {
-            os_log("SameLevelBridge: failed to encode event payload", log: sameLevelLog, type: .error)
+            os_log("NativeBridge: failed to encode event payload", log: nativeComponentLog, type: .error)
             return
         }
 
         // Construct the full message object expected by __LingXiaRecvMessage
         let fullMessage: [String: Any] = [
             "type": "event",
-            "name": "samelevel",
+            "name": "nativecomponent",
             "payload": payload // Pass the original payload dictionary directly
         ]
 
         //  Convert the full message object to a JSON string
         guard let fullMessageData = try? JSONSerialization.data(withJSONObject: fullMessage, options: []),
               let fullMessageJsonString = String(data: fullMessageData, encoding: .utf8) else {
-            os_log("SameLevelBridge: failed to encode full message", log: sameLevelLog, type: .error)
+            os_log("NativeBridge: failed to encode full message", log: nativeComponentLog, type: .error)
             return
         }
 
@@ -234,7 +234,7 @@ extension SameLevelBridge {
         // We then strip the brackets to get "escaped_str"
         guard let safeJsStringData = try? JSONSerialization.data(withJSONObject: [fullMessageJsonString], options: []),
               let safeJsStringWithBrackets = String(data: safeJsStringData, encoding: .utf8) else {
-             os_log("SameLevelBridge: failed to escape message string", log: sameLevelLog, type: .error)
+             os_log("NativeBridge: failed to escape message string", log: nativeComponentLog, type: .error)
              return
         }
 
@@ -246,7 +246,7 @@ extension SameLevelBridge {
           if (typeof window.__LingXiaRecvMessage === 'function') {
             try { window.__LingXiaRecvMessage(\(safeJsLiteral)); } catch (e) {}
           } else {
-            console.warn('[LingXia SameLevel] __LingXiaRecvMessage not available for SameLevel events');
+            console.warn('[LingXia NativeComponent] __LingXiaRecvMessage not available for NativeComponent events');
           }
         })();
         """
@@ -254,11 +254,11 @@ extension SameLevelBridge {
         webView.evaluateJavaScript(script, completionHandler: nil)
     }
 
-    /// Register a SameLevel native component factory. Call early (e.g. app launch) before pages load.
+    /// Register a NativeComponent native component factory. Call early (e.g. app launch) before pages load.
     @MainActor
     static func register(type: String, factory: LxNativeComponentFactory) {
         registeredFactories[type] = factory
-        os_log("SameLevelBridge registered component type=%{public}@", log: sameLevelLog, type: .info, type)
+        os_log("NativeBridge registered component type=%{public}@", log: nativeComponentLog, type: .info, type)
     }
 
     @MainActor
@@ -313,19 +313,19 @@ extension SameLevelBridge {
 
     @MainActor
     static func notifyPageInactive(for webView: WKWebView?) {
-        guard let bridge = webView?.lxSameLevelManager else { return }
+        guard let bridge = webView?.lxNativeComponentManager else { return }
         bridge.markPageInactive()
     }
 
     @MainActor
     static func notifyPageActive(for webView: WKWebView?) {
-        guard let bridge = webView?.lxSameLevelManager else { return }
+        guard let bridge = webView?.lxNativeComponentManager else { return }
         bridge.markPageActive()
     }
 
     @MainActor
     static func notifyPageDestroyed(for webView: WKWebView?) {
-        guard let bridge = webView?.lxSameLevelManager else { return }
+        guard let bridge = webView?.lxNativeComponentManager else { return }
         bridge.markPageDestroyed()
     }
 

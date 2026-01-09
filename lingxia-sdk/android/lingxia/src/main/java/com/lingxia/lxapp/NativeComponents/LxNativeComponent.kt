@@ -1,11 +1,11 @@
-package com.lingxia.lxapp.SameLevel
+package com.lingxia.lxapp.NativeComponents
 
 import android.graphics.RectF
 import android.view.View
 import android.view.ViewGroup
 
 /**
- * Protocol for native components that can be rendered in SameLevel overlay.
+ * Protocol for native components that can be rendered in component overlay.
  */
 interface LxNativeComponent {
     val id: String

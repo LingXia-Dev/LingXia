@@ -2,7 +2,7 @@
  * Shared type definitions for LingXia View.
  */
 
-export type SameLevelMessage = {
+export type NativeComponentMessage = {
   action: string;
   id: string;
   type?: string;
@@ -24,9 +24,9 @@ declare global {
         isAndroid(): boolean;
         getOS(): string;
       };
-      sameLevel?: {
-        send?: (msg: SameLevelMessage) => void;
-        register?: (id: string, handler: (msg: SameLevelMessage) => void) => () => void;
+      nativeComponents?: {
+        send?: (msg: NativeComponentMessage) => void;
+        register?: (id: string, handler: (msg: NativeComponentMessage) => void) => () => void;
       };
     };
   }

@@ -1,4 +1,4 @@
-package com.lingxia.lxapp.SameLevel.Components
+package com.lingxia.lxapp.NativeComponents.Components
 
 import android.graphics.RectF
 import android.view.View
@@ -13,8 +13,8 @@ import com.lingxia.lxapp.APIs.media.LxMediaPlayerConfig
 import com.lingxia.lxapp.APIs.media.LxMediaQuality
 import com.lingxia.lxapp.APIs.media.LxMediaSource
 import com.lingxia.lxapp.LxApp
-import com.lingxia.lxapp.SameLevel.LxNativeComponent
-import com.lingxia.lxapp.SameLevel.LxNativeComponentFactory
+import com.lingxia.lxapp.NativeComponents.LxNativeComponent
+import com.lingxia.lxapp.NativeComponents.LxNativeComponentFactory
 
 class VideoComponentFactory : LxNativeComponentFactory {
     override fun make(id: String, initialProps: Map<String, Any?>, eventSink: (Map<String, Any>) -> Unit) =

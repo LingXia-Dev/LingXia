@@ -44,7 +44,7 @@ extension WKWebView {
     func pauseWebView() {
         isHidden = true
         #if os(iOS)
-        SameLevelBridge.notifyPageInactive(for: self)
+        NativeBridge.notifyPageInactive(for: self)
         #endif
     }
 
@@ -53,7 +53,7 @@ extension WKWebView {
     func resumeWebView() {
         isHidden = false
         #if os(iOS)
-        SameLevelBridge.notifyPageActive(for: self)
+        NativeBridge.notifyPageActive(for: self)
         #endif
     }
 
@@ -107,8 +107,8 @@ public class WebViewManager {
         }
 
         #if os(iOS)
-        // Ensure SameLevel bridge is installed before page load so JS can see window.webkit.messageHandlers.SameLevel
-        SameLevelBridge.attachIfNeeded(to: webView)
+        // Ensure native component bridge is installed before page load so JS can see window.webkit.messageHandlers.NativeComponent
+        NativeBridge.attachIfNeeded(to: webView)
         #endif
 
         return webView

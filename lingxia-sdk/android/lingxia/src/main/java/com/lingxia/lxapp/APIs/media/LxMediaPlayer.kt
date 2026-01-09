@@ -38,7 +38,7 @@ import androidx.media3.ui.PlayerView
 import com.lingxia.lxapp.LxApp
 import com.lingxia.lxapp.NavigationBar
 import com.lingxia.lxapp.R
-import com.lingxia.lxapp.SameLevel.ComponentRouter
+import com.lingxia.lxapp.NativeComponents.ComponentRouter
 import com.lingxia.lxapp.TabBar
 import java.io.File
 import kotlin.math.max
@@ -171,7 +171,7 @@ sealed class LxMediaEvent {
 
 /**
  * LxMediaPlayer - A native video player with built-in controls.
- * Designed to be reused by SameLevel components and MediaPreview.
+ * Designed to be reused by native components and MediaPreview.
  */
 class LxMediaPlayer(
     private val context: Context,
@@ -844,7 +844,7 @@ class LxMediaPlayer(
                 streamPlaybackBaseOffsetSeconds = 0.0
                 streamPausedPositionSeconds = null
                 controlsOverlay?.updateProgress(0.0, duration ?: 0.0)
-                com.lingxia.lxapp.SameLevel.ComponentRouter.dispatchVideoCommand(
+                com.lingxia.lxapp.NativeComponents.ComponentRouter.dispatchVideoCommand(
                     componentId,
                     "resetStream",
                     """{"hard":false,"emitWaiting":false}"""
@@ -856,7 +856,7 @@ class LxMediaPlayer(
                 val clamped = resumeFrom.coerceIn(0.0, duration)
                 streamPlaybackBaseOffsetSeconds = clamped
                 controlsOverlay?.updateProgress(clamped, duration)
-                com.lingxia.lxapp.SameLevel.ComponentRouter.dispatchVideoCommand(
+                com.lingxia.lxapp.NativeComponents.ComponentRouter.dispatchVideoCommand(
                     componentId,
                     "resetStream",
                     """{"hard":false,"emitWaiting":false}"""
@@ -872,7 +872,7 @@ class LxMediaPlayer(
             updatePosterVisibility()
             loadingIndicator?.visibility = View.VISIBLE
             loadingIndicator?.bringToFront()
-            com.lingxia.lxapp.SameLevel.ComponentRouter.dispatchVideoCommand(
+            com.lingxia.lxapp.NativeComponents.ComponentRouter.dispatchVideoCommand(
                 componentId,
                 "play",
                 "{}"
@@ -928,7 +928,7 @@ class LxMediaPlayer(
                 } else {
                     "{}"
                 }
-            com.lingxia.lxapp.SameLevel.ComponentRouter.dispatchVideoCommand(componentId, "pause", paramsJson)
+            com.lingxia.lxapp.NativeComponents.ComponentRouter.dispatchVideoCommand(componentId, "pause", paramsJson)
             loadingIndicator?.visibility = View.GONE
             controlsOverlay?.updatePlayPauseButton()
             return
@@ -969,8 +969,8 @@ class LxMediaPlayer(
             streamPlaybackBaseOffsetSeconds = 0.0
             streamPausedPositionSeconds = null
             clearWaitingSuppression()
-            com.lingxia.lxapp.SameLevel.ComponentRouter.dispatchVideoCommand(componentId, "pause", "{}")
-            com.lingxia.lxapp.SameLevel.ComponentRouter.dispatchVideoCommand(
+            com.lingxia.lxapp.NativeComponents.ComponentRouter.dispatchVideoCommand(componentId, "pause", "{}")
+            com.lingxia.lxapp.NativeComponents.ComponentRouter.dispatchVideoCommand(
                 componentId,
                 "resetStream",
                 """{"hard":true}"""
@@ -1009,7 +1009,7 @@ class LxMediaPlayer(
             streamPausedPositionSeconds = null
             pendingStreamSeekedSeconds = clamped
             controlsOverlay?.updateProgress(clamped, duration)
-            com.lingxia.lxapp.SameLevel.ComponentRouter.dispatchVideoCommand(
+            com.lingxia.lxapp.NativeComponents.ComponentRouter.dispatchVideoCommand(
                 componentId,
                 "resetStream",
                 """{"hard":false}"""
@@ -1030,7 +1030,7 @@ class LxMediaPlayer(
 
         if (streamDecoderMode && componentId != null) {
             // In stream mode, dispatch to StreamDecoderSession
-            com.lingxia.lxapp.SameLevel.ComponentRouter.dispatchVideoCommand(
+            com.lingxia.lxapp.NativeComponents.ComponentRouter.dispatchVideoCommand(
                 componentId,
                 "setVolume",
                 """{"volume":$currentVolume}"""
@@ -1051,7 +1051,7 @@ class LxMediaPlayer(
 
         if (streamDecoderMode && componentId != null) {
             // In stream mode, dispatch to StreamDecoderSession
-            com.lingxia.lxapp.SameLevel.ComponentRouter.dispatchVideoCommand(
+            com.lingxia.lxapp.NativeComponents.ComponentRouter.dispatchVideoCommand(
                 componentId,
                 "setMuted",
                 """{"muted":$muted}"""
@@ -1222,12 +1222,12 @@ class LxMediaPlayer(
                     playerView?.player = player
                 }
                 if (streamDecoderMode && componentId != null) {
-                    com.lingxia.lxapp.SameLevel.ComponentRouter.dispatchVideoCommand(
+                    com.lingxia.lxapp.NativeComponents.ComponentRouter.dispatchVideoCommand(
                         componentId,
                         "rebindSurface",
                         "{}"
                     )
-                    com.lingxia.lxapp.SameLevel.ComponentRouter.dispatchVideoCommand(
+                    com.lingxia.lxapp.NativeComponents.ComponentRouter.dispatchVideoCommand(
                         componentId,
                         "play",
                         "{}"
@@ -1746,7 +1746,7 @@ class LxMediaPlayer(
     }
 
     private fun findOverlayHost(root: View): View? {
-        if (root.tag == "SameLevelOverlay") return root
+        if (root.tag == "ComponentOverlay") return root
         if (root is ViewGroup) {
             for (i in 0 until root.childCount) {
                 val found = findOverlayHost(root.getChildAt(i))
@@ -1807,7 +1807,7 @@ class LxMediaPlayer(
             ctx = (ctx as? android.content.ContextWrapper)?.baseContext
         }
 
-        // SameLevel components are created with application context; fall back to current activity
+        // Native components are created with application context; fall back to current activity
         LxApp.getCurrentActivity()?.let { return it }
         return view.rootView?.context as? android.app.Activity
     }
@@ -2022,7 +2022,7 @@ class LxMediaPlayer(
                     controlsOverlay?.showCenterPlayButton(true)
                     controlsOverlay?.updatePlayPauseButton()
                     updatePosterVisibility()
-                    com.lingxia.lxapp.SameLevel.ComponentRouter.dispatchVideoCommand(
+                    com.lingxia.lxapp.NativeComponents.ComponentRouter.dispatchVideoCommand(
                         id,
                         "pause",
                         """{"currentTime":$d,"reason":"ended","emitEvent":false}"""
