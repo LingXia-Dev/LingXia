@@ -32,6 +32,21 @@ impl VideoPlayerManager for Platform {
         });
         Ok(Box::new(handle))
     }
+
+    fn set_player_callback(
+        &self,
+        component_id: &str,
+        callback_id: u64,
+    ) -> Result<(), PlatformError> {
+        ffi::set_video_player_callback(component_id, callback_id)
+            .then_some(())
+            .ok_or_else(|| {
+                PlatformError::Platform(format!(
+                    "Failed to set video player callback for {}",
+                    component_id
+                ))
+            })
+    }
 }
 
 #[cfg(target_os = "ios")]
@@ -45,6 +60,10 @@ fn map_command_to_ios(command: VideoPlayerCommand) -> (String, String) {
         VideoPlayerCommand::Seek { position } => {
             ("seek".into(), format!(r#"{{"time":{}}}"#, position))
         }
+        VideoPlayerCommand::SetDuration { duration } => (
+            "setDuration".into(),
+            format!(r#"{{"duration":{}}}"#, duration),
+        ),
         VideoPlayerCommand::EnterFullscreen => ("enterFullscreen".into(), EMPTY.into()),
         VideoPlayerCommand::ExitFullscreen => ("exitFullscreen".into(), EMPTY.into()),
     }

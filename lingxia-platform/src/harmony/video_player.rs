@@ -11,8 +11,12 @@ use core::ffi::{c_char, c_void};
 use std::collections::{HashMap, VecDeque};
 use std::ffi::CString;
 use std::ptr;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicI64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+const MAX_QUEUED_VIDEO_FRAMES: usize = 120;
+const MAX_QUEUED_AUDIO_FRAMES: usize = 240;
 
 const AV_ERR_OK: i32 = 0;
 const AV_ERR_INVALID_STATE: i32 = 8;
@@ -28,6 +32,48 @@ const AUDIO_CODEC_SAMPLE_FORMAT_S16LE: i32 = 1;
 const AAC_IS_ADTS_FALSE: i32 = 0;
 const AAC_IS_ADTS_TRUE: i32 = 1;
 const AUDIOSTREAM_USAGE_MOVIE: i32 = 10;
+
+fn now_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64
+}
+
+fn looks_like_annexb(data: &[u8]) -> bool {
+    data.starts_with(&[0, 0, 0, 1]) || data.starts_with(&[0, 0, 1])
+}
+
+pub fn get_stream_decoder_position_ms(component_id: &str) -> Option<i32> {
+    let decoder = lookup_stream_decoder(component_id)?;
+    let last_pts_us = decoder.last_video_pts.load(Ordering::Acquire);
+    let base_pts_us = decoder.first_video_pts.load(Ordering::Acquire);
+    let rel_pts_us = if base_pts_us > 0 {
+        last_pts_us.saturating_sub(base_pts_us)
+    } else {
+        last_pts_us
+    };
+    if rel_pts_us <= 0 {
+        let last_output_ms = decoder.last_video_output_ms.load(Ordering::Acquire);
+        let first_output_ms = decoder.first_video_output_ms.load(Ordering::Acquire);
+        if last_output_ms > 0 && first_output_ms > 0 && last_output_ms >= first_output_ms {
+            let elapsed_ms = last_output_ms - first_output_ms;
+            return Some((elapsed_ms.clamp(0, i32::MAX as i64)) as i32);
+        }
+        let started_at_ms = decoder.video_started_at_ms.load(Ordering::Acquire);
+        if last_output_ms > 0 && started_at_ms > 0 && last_output_ms >= started_at_ms {
+            let elapsed_ms = last_output_ms - started_at_ms;
+            return Some((elapsed_ms.clamp(0, i32::MAX as i64)) as i32);
+        }
+        let last_enqueue_ms = decoder.last_video_enqueue_ms.load(Ordering::Acquire);
+        if last_enqueue_ms > 0 && started_at_ms > 0 && last_enqueue_ms >= started_at_ms {
+            let elapsed_ms = last_enqueue_ms - started_at_ms;
+            return Some((elapsed_ms.clamp(0, i32::MAX as i64)) as i32);
+        }
+        return None;
+    }
+    Some(((rel_pts_us / 1000).clamp(0, i32::MAX as i64)) as i32)
+}
 
 /// AVPlayer info callback types (avplayer_base.h)
 #[repr(i32)]
@@ -135,6 +181,8 @@ pub struct OH_AVCodecBufferAttr {
 
 struct InfoCallbackData {
     component_id: String,
+    pending_play: AtomicBool,
+    state_value: AtomicI32,
 }
 
 fn notify_arkts(component_id: &str, event: &str, payload: Option<&str>) {
@@ -155,6 +203,16 @@ fn notify_arkts(component_id: &str, event: &str, payload: Option<&str>) {
     }
 }
 
+/// Public event hook for the Harmony UI layer.
+///
+/// The Harmony video UI (ArkTS) relies on `videoPlayerEvent` signals (e.g. `play`) to update
+/// loading indicators. Some stream playback flows resume the stream session from the logic layer
+/// before the native decoder has emitted its first output callback. Expose a minimal helper so the
+/// logic layer can signal UI state without reaching into private internals.
+pub fn notify_video_player_event(component_id: &str, event: &str, payload: Option<&str>) {
+    notify_arkts(component_id, event, payload);
+}
+
 fn notify_stream_config(component_id: &str, width: i32, height: i32) {
     if width <= 0 || height <= 0 {
         return;
@@ -167,15 +225,24 @@ extern "C" fn on_codec_error(_codec: *mut OH_AVCodec, error_code: i32, user_data
     if user_data.is_null() {
         return;
     }
-    let state_mutex = unsafe { &*(user_data as *const Mutex<StreamDecoderState>) };
-    if let Ok(state) = state_mutex.lock() {
-        log::error!(
-            "[Harmony.StreamDecoder] codec error for {}: {}",
-            state.component_id,
-            error_code
-        );
-        let message = format!("codec error: {}", error_code);
-        notify_arkts(&state.component_id, "error", Some(&message));
+    let wrapper = unsafe { &*(user_data as *const StreamDecoderWrapper) };
+    // Always use try_lock to avoid deadlock
+    match wrapper.state.try_lock() {
+        Ok(state) => {
+            log::error!(
+                "[Harmony.StreamDecoder] codec error for {}: {}",
+                state.component_id,
+                error_code
+            );
+            let message = format!("codec error: {}", error_code);
+            notify_arkts(&state.component_id, "error", Some(&message));
+        }
+        Err(_) => {
+            log::error!(
+                "[Harmony.StreamDecoder] codec error (lock unavailable): {}",
+                error_code
+            );
+        }
     }
 }
 
@@ -187,23 +254,25 @@ extern "C" fn on_stream_changed(
     if user_data.is_null() || format.is_null() {
         return;
     }
-    let state_mutex = unsafe { &*(user_data as *const Mutex<StreamDecoderState>) };
-    if let Ok(state) = state_mutex.lock() {
-        let mut width: i32 = 0;
-        let mut height: i32 = 0;
-        let width_ok = unsafe { OH_AVFormat_GetIntValue(format, OH_MD_KEY_WIDTH, &mut width) };
-        let height_ok = unsafe { OH_AVFormat_GetIntValue(format, OH_MD_KEY_HEIGHT, &mut height) };
-        log::info!(
-            "[Harmony.StreamDecoder] stream changed for {}: width={}({}), height={}({})",
-            state.component_id,
-            width,
-            width_ok,
-            height,
-            height_ok
-        );
-        if width_ok && height_ok {
-            notify_stream_config(&state.component_id, width, height);
-        }
+    let wrapper = unsafe { &*(user_data as *const StreamDecoderWrapper) };
+    // Always use try_lock to avoid deadlock
+    let Ok(state) = wrapper.state.try_lock() else {
+        return;
+    };
+    let mut width: i32 = 0;
+    let mut height: i32 = 0;
+    let width_ok = unsafe { OH_AVFormat_GetIntValue(format, OH_MD_KEY_WIDTH, &mut width) };
+    let height_ok = unsafe { OH_AVFormat_GetIntValue(format, OH_MD_KEY_HEIGHT, &mut height) };
+    log::info!(
+        "[Harmony.StreamDecoder] stream changed for {}: width={}({}), height={}({})",
+        state.component_id,
+        width,
+        width_ok,
+        height,
+        height_ok
+    );
+    if width_ok && height_ok {
+        notify_stream_config(&state.component_id, width, height);
     }
 }
 
@@ -216,16 +285,119 @@ extern "C" fn on_need_input_buffer(
     if user_data.is_null() {
         return;
     }
-    let state_mutex = unsafe { &*(user_data as *const Mutex<StreamDecoderState>) };
-    if let Ok(mut state) = state_mutex.lock() {
-        state.on_need_input_buffer(index, buffer);
+    let wrapper = unsafe { &*(user_data as *const StreamDecoderWrapper) };
+    if wrapper.is_destroying() {
+        return;
+    }
+    if wrapper.paused.load(Ordering::Acquire) {
+        // IMPORTANT: Return the input buffer to the codec even when paused. Some Harmony codecs
+        // can wedge if we don't call `*_PushInputBuffer` for a requested buffer, and then resume
+        // never produces output (leading to a stuck loading indicator after pause->play).
+        if !_codec.is_null() && !buffer.is_null() {
+            let pts = wrapper.last_video_pts.load(Ordering::Acquire);
+            let attr = OH_AVCodecBufferAttr {
+                pts,
+                size: 0,
+                offset: 0,
+                flags: 0,
+            };
+            unsafe {
+                let _ = OH_AVBuffer_SetBufferAttr(buffer, &attr);
+                let result = OH_VideoDecoder_PushInputBuffer(_codec, index);
+                if result != AV_ERR_OK {
+                    log::debug!(
+                        "[Harmony.StreamDecoder] paused push empty video buffer failed for {}: {}",
+                        wrapper.component_id,
+                        result
+                    );
+                }
+            }
+        }
+        return;
+    }
+    if wrapper
+        .logged_first_video_input
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_ok()
+    {
+        log::info!(
+            "[Harmony.StreamDecoder] first video input buffer: index={} for {}",
+            index,
+            wrapper.component_id
+        );
+    }
+    // NOTE: `buffer` is only valid for the duration of this callback. Never hold a mutex while
+    // calling `OH_*` APIs, as some implementations may re-enter callbacks synchronously.
+    // Harmony codecs may request input buffers in bursts. If we respond with "no data" immediately,
+    // some devices appear to stall or end up showing only a still frame. Wait a short time for the
+    // producer to enqueue a frame before declaring underflow.
+    let mut frame = wrapper
+        .video_queue
+        .lock()
+        .ok()
+        .and_then(|mut q| q.pop_front());
+    if frame.is_none() {
+        for _ in 0..10 {
+            std::thread::sleep(Duration::from_millis(2));
+            frame = wrapper
+                .video_queue
+                .lock()
+                .ok()
+                .and_then(|mut q| q.pop_front());
+            if frame.is_some() {
+                break;
+            }
+        }
+    }
+    let Some(frame) = frame else {
+        if wrapper
+            .logged_video_underflow
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+        {
+            log::info!(
+                "[Harmony.StreamDecoder] video input buffer requested but no pending frame for {} (index={})",
+                wrapper.component_id,
+                index
+            );
+        }
+        // IMPORTANT: Return the input buffer to the codec even on underflow. Some Harmony codecs
+        // stall permanently if we don't call `*_PushInputBuffer` for a requested buffer.
+        // A zero-sized push releases the buffer so the codec can keep requesting later.
+        if !_codec.is_null() && !buffer.is_null() {
+            let pts = wrapper.last_video_pts.load(Ordering::Acquire);
+            let attr = OH_AVCodecBufferAttr {
+                pts,
+                size: 0,
+                offset: 0,
+                flags: 0,
+            };
+            unsafe {
+                let _ = OH_AVBuffer_SetBufferAttr(buffer, &attr);
+                let result = OH_VideoDecoder_PushInputBuffer(_codec, index);
+                if result != AV_ERR_OK {
+                    log::warn!(
+                        "[Harmony.StreamDecoder] underflow push empty video buffer failed for {}: {}",
+                        wrapper.component_id,
+                        result
+                    );
+                }
+            }
+        }
+        return;
+    };
+    if let Err(err) = fill_input_buffer(_codec, index, buffer, frame) {
+        log::warn!(
+            "[Harmony.StreamDecoder] fill_input_buffer failed: {:?}",
+            err
+        );
     }
 }
 
 extern "C" fn on_new_output_buffer(
     codec: *mut OH_AVCodec,
     index: u32,
-    _buffer: *mut OH_AVBuffer,
+    buffer: *mut OH_AVBuffer,
     user_data: *mut c_void,
 ) {
     if user_data.is_null() {
@@ -234,10 +406,116 @@ extern "C" fn on_new_output_buffer(
     if codec.is_null() {
         return;
     }
-    let state_mutex = unsafe { &*(user_data as *const Mutex<StreamDecoderState>) };
-    if let Ok(mut state) = state_mutex.lock() {
-        state.on_new_output_buffer(codec, index);
+    let mut output_size: i32 = -1;
+    let mut output_flags: u32 = 0;
+    let mut output_pts: i64 = 0;
+    if !buffer.is_null() {
+        let mut attr = OH_AVCodecBufferAttr {
+            pts: 0,
+            size: 0,
+            offset: 0,
+            flags: 0,
+        };
+        if unsafe { OH_AVBuffer_GetBufferAttr(buffer, &mut attr) } == AV_ERR_OK {
+            output_size = attr.size;
+            output_flags = attr.flags;
+            output_pts = attr.pts;
+        }
     }
+    let is_codec_data = (output_flags & AVCODEC_BUFFER_FLAGS_CODEC_DATA) != 0;
+    let render_result = unsafe { OH_VideoDecoder_RenderOutputBuffer(codec, index) };
+    let wrapper = unsafe { &*(user_data as *const StreamDecoderWrapper) };
+    if render_result == AV_ERR_OK && !is_codec_data {
+        let now = now_ms();
+        wrapper.last_video_output_ms.store(now, Ordering::Release);
+        let _ = wrapper.first_video_output_ms.compare_exchange(
+            0,
+            now,
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        );
+        if wrapper.video_started_at_ms.load(Ordering::Acquire) == 0 {
+            wrapper.video_started_at_ms.store(now, Ordering::Release);
+        }
+        if output_pts > 0 {
+            wrapper.last_video_pts.store(output_pts, Ordering::Release);
+            let _ = wrapper.first_video_pts.compare_exchange(
+                0,
+                output_pts,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            );
+        }
+    }
+    if wrapper
+        .logged_first_video_output_callback
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_ok()
+    {
+        log::info!(
+            "[Harmony.StreamDecoder] on_new_output_buffer callback first for {}: index={} render_result={} size={} flags=0x{:x}",
+            wrapper.component_id,
+            index,
+            render_result,
+            output_size,
+            output_flags
+        );
+
+        // Some devices only start showing video after a surface rebind that happens after the
+        // decoder has produced output (fullscreen enter/exit does this). Refresh the surface once
+        // in the background by recreating the native window and calling SetSurface again.
+        if wrapper
+            .video_surface_refresh_scheduled
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+        {
+            let component_id = wrapper.component_id.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(60));
+                match refresh_stream_decoder_surface(&component_id) {
+                    Ok(()) => log::info!(
+                        "[Harmony.StreamDecoder] post-output surface refresh ok for {}",
+                        component_id
+                    ),
+                    Err(err) => log::warn!(
+                        "[Harmony.StreamDecoder] post-output surface refresh failed for {}: {}",
+                        component_id,
+                        err
+                    ),
+                }
+            });
+        }
+    }
+    if render_result == AV_ERR_OK && !is_codec_data && !wrapper.paused.load(Ordering::Acquire) {
+        let mut should_notify_playing = false;
+        if wrapper
+            .video_received_frame
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+        {
+            should_notify_playing = true;
+        }
+        if wrapper.playing_event_pending.swap(false, Ordering::AcqRel) {
+            should_notify_playing = true;
+        }
+        if should_notify_playing {
+            notify_arkts(&wrapper.component_id, "play", None);
+        }
+    }
+    if render_result != AV_ERR_OK {
+        log::warn!(
+            "[Harmony.StreamDecoder] render output buffer failed for {}: {}",
+            wrapper.component_id,
+            render_result
+        );
+    }
+    // Always use try_lock to avoid deadlock. Rendering is done above without holding the lock.
+    match wrapper.state.try_lock() {
+        Ok(mut state) => state.on_new_output_buffer(index, render_result),
+        Err(_) => {
+            // State lock unavailable; we've already rendered the buffer.
+        }
+    };
 }
 
 extern "C" fn on_audio_need_input_buffer(
@@ -249,9 +527,67 @@ extern "C" fn on_audio_need_input_buffer(
     if user_data.is_null() {
         return;
     }
-    let state_mutex = unsafe { &*(user_data as *const Mutex<StreamDecoderState>) };
-    if let Ok(mut state) = state_mutex.lock() {
-        state.on_audio_need_input_buffer(index, buffer);
+    let wrapper = unsafe { &*(user_data as *const StreamDecoderWrapper) };
+    if wrapper.is_destroying() {
+        return;
+    }
+    if wrapper.paused.load(Ordering::Acquire) {
+        return;
+    }
+    // Audio codec rejects zero-sized pushes on some devices (seen as error code 6). If we have no
+    // pending AAC frame, return without pushing; the codec will request another input buffer.
+    if wrapper
+        .logged_first_audio_input
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_ok()
+    {
+        log::info!(
+            "[Harmony.StreamDecoder] first audio input buffer: index={} for {}",
+            index,
+            wrapper.component_id
+        );
+    }
+    // Like video: give the producer a short window to enqueue a frame to reduce startup underflow.
+    let mut frame = wrapper
+        .audio_queue
+        .lock()
+        .ok()
+        .and_then(|mut q| q.pop_front());
+    if frame.is_none() {
+        for _ in 0..10 {
+            std::thread::sleep(Duration::from_millis(2));
+            frame = wrapper
+                .audio_queue
+                .lock()
+                .ok()
+                .and_then(|mut q| q.pop_front());
+            if frame.is_some() {
+                break;
+            }
+        }
+    }
+    let Some(frame) = frame else {
+        if wrapper
+            .logged_audio_underflow
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+        {
+            log::info!(
+                "[Harmony.StreamDecoder] audio input buffer requested but no pending frame for {} (index={})",
+                wrapper.component_id,
+                index
+            );
+        }
+        return;
+    };
+    if frame.data.is_empty() {
+        return;
+    }
+    if let Err(err) = fill_audio_input_buffer(_codec, index, buffer, frame) {
+        log::warn!(
+            "[Harmony.StreamDecoder] fill_audio_input_buffer failed: {:?}",
+            err
+        );
     }
 }
 
@@ -267,9 +603,18 @@ extern "C" fn on_audio_new_output_buffer(
     if codec.is_null() {
         return;
     }
-    let state_mutex = unsafe { &*(user_data as *const Mutex<StreamDecoderState>) };
-    if let Ok(mut state) = state_mutex.lock() {
-        state.on_audio_new_output_buffer(codec, index, buffer);
+    let wrapper = unsafe { &*(user_data as *const StreamDecoderWrapper) };
+    // Always use try_lock to avoid deadlock.
+    match wrapper.state.try_lock() {
+        Ok(mut state) => {
+            state.on_audio_new_output_buffer(codec, index, buffer);
+        }
+        Err(_) => {
+            // Always free the output buffer, otherwise the codec may stall after exhausting buffers.
+            unsafe {
+                let _ = OH_AudioCodec_FreeOutputBuffer(codec, index);
+            }
+        }
     }
 }
 
@@ -285,10 +630,11 @@ extern "C" fn on_audio_render_write(
 
     let output =
         unsafe { std::slice::from_raw_parts_mut(audio_data as *mut u8, audio_data_size as usize) };
-    let state_mutex = unsafe { &*(user_data as *const Mutex<StreamDecoderState>) };
-    let filled = match state_mutex.lock() {
+    let wrapper = unsafe { &*(user_data as *const StreamDecoderWrapper) };
+    // Always use try_lock to avoid deadlock. Fill with silence if lock unavailable.
+    let filled = match wrapper.state.try_lock() {
         Ok(mut state) => state.on_audio_render_write(output),
-        Err(_) => 0,
+        Err(_) => 0, // Return silence if lock unavailable
     };
 
     if filled < output.len() {
@@ -307,7 +653,7 @@ extern "C" fn on_info_callback(
         return;
     }
 
-    // SAFETY: user_data is Box<InfoCallbackData> created in NativeVideoPlayer::new
+    // SAFETY: user_data is a leaked Box<InfoCallbackData> created in NativeVideoPlayer::new.
     let callback_data = unsafe { &*(user_data as *const InfoCallbackData) };
     let component_id = &callback_data.component_id;
 
@@ -342,27 +688,41 @@ extern "C" fn on_info_callback(
         notify_arkts(component_id, "seekDone", Some(&position_str));
     } else if info_type == AVPlayerOnInfoType::BufferingUpdate as i32 {
         let mut buffering_type = 0;
+        let mut buffering_value = 0;
+        let mut has_value = false;
         if !info_body.is_null() {
             let key_ptr = unsafe { OH_PLAYER_BUFFERING_TYPE };
             if !key_ptr.is_null() {
                 unsafe { OH_AVFormat_GetIntValue(info_body, key_ptr, &mut buffering_type) };
             }
+            let value_ptr = unsafe { OH_PLAYER_BUFFERING_VALUE };
+            if !value_ptr.is_null() {
+                has_value =
+                    unsafe { OH_AVFormat_GetIntValue(info_body, value_ptr, &mut buffering_value) };
+            }
         }
 
-        // AVPLAYER_BUFFERING_START = 1, AVPLAYER_BUFFERING_END = 2
+        // On some devices, BufferingUpdate reports progress via BUFFERING_VALUE (0..100) instead
+        // of emitting a distinct BUFFERING_END type. Support both encodings.
+        // - AVPLAYER_BUFFERING_START = 1, AVPLAYER_BUFFERING_END = 2
+        // - BUFFERING_VALUE: 0..99 => buffering, 100 => end
         let is_buffering = if buffering_type == 1 {
             Some("1")
         } else if buffering_type == 2 {
             Some("0")
+        } else if has_value {
+            Some(if buffering_value >= 100 { "0" } else { "1" })
         } else {
             None
         };
 
         if let Some(status) = is_buffering {
             log::info!(
-                "[VideoPlayer] on_info_callback: BUFFERING_UPDATE component_id={}, type={}, status={}",
+                "[VideoPlayer] on_info_callback: BUFFERING_UPDATE component_id={}, type={}, value={}({}), status={}",
                 component_id,
                 buffering_type,
+                buffering_value,
+                has_value,
                 status
             );
             notify_arkts(component_id, "buffering", Some(status));
@@ -376,49 +736,27 @@ extern "C" fn on_info_callback(
             }
         }
 
-        let mut should_autoplay = false;
-        let mut player_ptr: *mut OH_AVPlayer = ptr::null_mut();
-
-        // Sync native player state to Rust instance
-        if let Some(player) = get_player(component_id) {
-            if let Ok(mut p) = player.lock() {
-                let new_state = match state_value {
-                    0 => AVPlayerState::Idle,
-                    1 => AVPlayerState::Initialized,
-                    2 => AVPlayerState::Prepared,
-                    3 => AVPlayerState::Playing,
-                    4 => AVPlayerState::Paused,
-                    5 => AVPlayerState::Stopped,
-                    6 => AVPlayerState::Completed,
-                    7 => AVPlayerState::Released,
-                    8 => AVPlayerState::Error,
-                    _ => AVPlayerState::Idle,
-                };
-                p.state = new_state;
-                if new_state == AVPlayerState::Prepared && p.pending_play {
-                    p.pending_play = false;
-                    should_autoplay = true;
-                    player_ptr = p.player;
-                }
-            }
-        } else {
-            log::warn!(
-                "[VideoPlayer] STATE_CHANGE: player not found for {}",
-                component_id
-            );
-        }
-
-        if should_autoplay && !player_ptr.is_null() {
-            let _ = unsafe { OH_AVPlayer_Play(player_ptr) };
+        callback_data
+            .state_value
+            .store(state_value, Ordering::Release);
+        // Avoid taking the NativeVideoPlayer mutex here: callbacks may fire synchronously while the
+        // caller holds the lock (e.g. Stop/Prepare), which would deadlock.
+        if state_value == AVPlayerState::Prepared as i32
+            && callback_data
+                .pending_play
+                .compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+        {
+            let _ = unsafe { OH_AVPlayer_Play(_player) };
         }
 
         match state_value {
             x if x == AVPlayerState::Prepared as i32 => {
                 notify_arkts(component_id, "prepared", None)
             }
-            x if x == AVPlayerState::Playing as i32 => notify_arkts(component_id, "playing", None),
-            x if x == AVPlayerState::Paused as i32 => notify_arkts(component_id, "paused", None),
-            x if x == AVPlayerState::Stopped as i32 => notify_arkts(component_id, "stopped", None),
+            x if x == AVPlayerState::Playing as i32 => notify_arkts(component_id, "play", None),
+            x if x == AVPlayerState::Paused as i32 => notify_arkts(component_id, "pause", None),
+            x if x == AVPlayerState::Stopped as i32 => notify_arkts(component_id, "stop", None),
             _ => {}
         }
     }
@@ -432,8 +770,9 @@ pub struct NativeVideoPlayer {
     state: AVPlayerState,
     volume: f32,
     is_looping: bool,
-    info_callback_data: Option<Box<InfoCallbackData>>,
+    info_callback_data: *mut InfoCallbackData,
     pending_play: bool,
+    source_set: bool,
 }
 
 // SAFETY: Player accessed on main thread, protected by mutex
@@ -451,8 +790,10 @@ impl NativeVideoPlayer {
 
         let callback_data = Box::new(InfoCallbackData {
             component_id: component_id.to_string(),
+            pending_play: AtomicBool::new(false),
+            state_value: AtomicI32::new(AVPlayerState::Idle as i32),
         });
-        let callback_data_ptr = &*callback_data as *const InfoCallbackData as *mut c_void;
+        let callback_data_ptr = Box::into_raw(callback_data) as *mut c_void;
         let result = unsafe {
             OH_AVPlayer_SetOnInfoCallback(player, Some(on_info_callback), callback_data_ptr)
         };
@@ -469,8 +810,9 @@ impl NativeVideoPlayer {
                 state: AVPlayerState::Idle,
                 volume: 1.0,
                 is_looping: false,
-                info_callback_data: None,
+                info_callback_data: ptr::null_mut(),
                 pending_play: false,
+                source_set: false,
             });
         }
 
@@ -481,13 +823,38 @@ impl NativeVideoPlayer {
             state: AVPlayerState::Idle,
             volume: 1.0,
             is_looping: false,
-            info_callback_data: Some(callback_data),
+            info_callback_data: callback_data_ptr as *mut InfoCallbackData,
             pending_play: false,
+            source_set: false,
         })
     }
 
+    fn callback_state(&self) -> Option<AVPlayerState> {
+        let ptr = self.info_callback_data;
+        if ptr.is_null() {
+            return None;
+        }
+        let state_value = unsafe { (*ptr).state_value.load(Ordering::Acquire) };
+        Some(match state_value {
+            0 => AVPlayerState::Idle,
+            1 => AVPlayerState::Initialized,
+            2 => AVPlayerState::Prepared,
+            3 => AVPlayerState::Playing,
+            4 => AVPlayerState::Paused,
+            5 => AVPlayerState::Stopped,
+            6 => AVPlayerState::Completed,
+            7 => AVPlayerState::Released,
+            8 => AVPlayerState::Error,
+            _ => AVPlayerState::Idle,
+        })
+    }
+
+    fn current_state(&self) -> AVPlayerState {
+        self.callback_state().unwrap_or(self.state)
+    }
+
     pub fn set_source(&mut self, source: &str) -> Result<(), PlatformError> {
-        if source.starts_with("http://") || source.starts_with("https://") {
+        let result = if source.starts_with("http://") || source.starts_with("https://") {
             self.set_url_source(source)
         } else if source.starts_with("file://") {
             self.set_file_source(&source[7..])
@@ -497,7 +864,11 @@ impl NativeVideoPlayer {
             self.set_file_source(source)
         } else {
             self.set_url_source(source)
+        };
+        if result.is_ok() {
+            self.source_set = true;
         }
+        result
     }
 
     fn set_url_source(&mut self, url: &str) -> Result<(), PlatformError> {
@@ -551,7 +922,7 @@ impl NativeVideoPlayer {
             "[VideoPlayer] rebind_surface: pos={}, should_play={}, state={:?}",
             position_ms,
             should_play,
-            self.state
+            self.current_state()
         );
 
         let direct_result = unsafe { OH_AVPlayer_SetVideoSurface(self.player, window) };
@@ -565,13 +936,13 @@ impl NativeVideoPlayer {
             self.window = window;
 
             // Direct switch worked, just ensure correct playback state
-            if should_play && self.state != AVPlayerState::Playing {
+            if should_play && self.current_state() != AVPlayerState::Playing {
                 let play_result = unsafe { OH_AVPlayer_Play(self.player) };
                 log::info!("[VideoPlayer] rebind_surface: play result={}", play_result);
                 if play_result == AV_ERR_OK {
                     self.state = AVPlayerState::Playing;
                 }
-            } else if !should_play && self.state == AVPlayerState::Playing {
+            } else if !should_play && self.current_state() == AVPlayerState::Playing {
                 let pause_result = unsafe { OH_AVPlayer_Pause(self.player) };
                 log::info!(
                     "[VideoPlayer] rebind_surface: pause result={}",
@@ -590,7 +961,7 @@ impl NativeVideoPlayer {
             direct_result
         );
 
-        if self.state == AVPlayerState::Playing {
+        if self.current_state() == AVPlayerState::Playing {
             unsafe { OH_AVPlayer_Pause(self.player) };
         }
 
@@ -637,7 +1008,7 @@ impl NativeVideoPlayer {
 
     pub fn play(&mut self) -> Result<(), PlatformError> {
         // Handle states that require prepare before playing
-        match self.state {
+        match self.current_state() {
             AVPlayerState::Stopped | AVPlayerState::Idle | AVPlayerState::Initialized => {
                 // For these states, we need to prepare first
                 // Prepare is async - it will trigger a state change callback when done
@@ -645,21 +1016,42 @@ impl NativeVideoPlayer {
                 // The actual play will happen when state becomes Prepared (via callback or next play call)
                 log::info!(
                     "[VideoPlayer] Preparing player before play (current state: {:?})",
-                    self.state
+                    self.current_state()
                 );
                 self.pending_play = true;
+                if !self.info_callback_data.is_null() {
+                    unsafe {
+                        (*self.info_callback_data)
+                            .pending_play
+                            .store(true, Ordering::Release);
+                    }
+                }
                 let result = check_av_result(
                     unsafe { OH_AVPlayer_Prepare(self.player) },
                     "OH_AVPlayer_Prepare",
                 );
                 if result.is_err() {
                     self.pending_play = false;
+                    if !self.info_callback_data.is_null() {
+                        unsafe {
+                            (*self.info_callback_data)
+                                .pending_play
+                                .store(false, Ordering::Release);
+                        }
+                    }
                 }
                 return result;
             }
             AVPlayerState::Prepared | AVPlayerState::Paused | AVPlayerState::Completed => {
                 // These states can transition to Playing directly
                 self.pending_play = false;
+                if !self.info_callback_data.is_null() {
+                    unsafe {
+                        (*self.info_callback_data)
+                            .pending_play
+                            .store(false, Ordering::Release);
+                    }
+                }
                 let result =
                     check_av_result(unsafe { OH_AVPlayer_Play(self.player) }, "OH_AVPlayer_Play");
                 // Don't manually set state - let the callback do it
@@ -667,6 +1059,13 @@ impl NativeVideoPlayer {
             }
             AVPlayerState::Playing => {
                 self.pending_play = false;
+                if !self.info_callback_data.is_null() {
+                    unsafe {
+                        (*self.info_callback_data)
+                            .pending_play
+                            .store(false, Ordering::Release);
+                    }
+                }
                 // Already playing
                 return Ok(());
             }
@@ -775,7 +1174,9 @@ impl NativeVideoPlayer {
             unsafe { OH_NativeWindow_DestroyNativeWindow(self.window) };
             self.window = ptr::null_mut();
         }
-        self.info_callback_data = None;
+        // InfoCallbackData is intentionally leaked to keep callback pointers valid even if a late
+        // callback arrives after release/switch.
+        self.info_callback_data = ptr::null_mut();
         Ok(())
     }
 
@@ -846,32 +1247,65 @@ pub fn clear_surface_id(component_id: &str) {
     remove_surface_id(component_id);
 }
 
-static STREAM_DECODER_REGISTRY: OnceLock<Mutex<HashMap<String, Arc<Mutex<StreamDecoderState>>>>> =
-    OnceLock::new();
+static VIDEO_CALLBACK_REGISTRY: OnceLock<Mutex<HashMap<String, u64>>> = OnceLock::new();
 
-fn get_stream_decoder_registry() -> &'static Mutex<HashMap<String, Arc<Mutex<StreamDecoderState>>>>
-{
-    STREAM_DECODER_REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))
+fn get_video_callback_registry() -> &'static Mutex<HashMap<String, u64>> {
+    VIDEO_CALLBACK_REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-fn register_stream_decoder(component_id: &str, state: Arc<Mutex<StreamDecoderState>>) {
-    if let Ok(mut guard) = get_stream_decoder_registry().lock() {
-        guard.insert(component_id.to_string(), state);
+fn store_video_callback_id(component_id: &str, callback_id: u64) {
+    if let Ok(mut guard) = get_video_callback_registry().lock() {
+        guard.insert(component_id.to_string(), callback_id);
     }
 }
 
-fn lookup_stream_decoder(component_id: &str) -> Option<Arc<Mutex<StreamDecoderState>>> {
+fn lookup_video_callback_id(component_id: &str) -> Option<u64> {
+    let guard = get_video_callback_registry().lock().ok()?;
+    guard.get(component_id).copied()
+}
+
+static STREAM_DECODER_REGISTRY: OnceLock<Mutex<HashMap<String, Arc<StreamDecoderWrapper>>>> =
+    OnceLock::new();
+
+fn get_stream_decoder_registry() -> &'static Mutex<HashMap<String, Arc<StreamDecoderWrapper>>> {
+    STREAM_DECODER_REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+static PENDING_STREAM_PAUSED: OnceLock<Mutex<HashMap<String, bool>>> = OnceLock::new();
+
+fn get_pending_stream_paused() -> &'static Mutex<HashMap<String, bool>> {
+    PENDING_STREAM_PAUSED.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn set_pending_stream_paused(component_id: &str, paused: bool) {
+    if let Ok(mut guard) = get_pending_stream_paused().lock() {
+        guard.insert(component_id.to_string(), paused);
+    }
+}
+
+fn take_pending_stream_paused(component_id: &str) -> Option<bool> {
+    let mut guard = get_pending_stream_paused().lock().ok()?;
+    guard.remove(component_id)
+}
+
+fn register_stream_decoder(component_id: &str, wrapper: Arc<StreamDecoderWrapper>) {
+    if let Ok(mut guard) = get_stream_decoder_registry().lock() {
+        guard.insert(component_id.to_string(), wrapper);
+    }
+}
+
+fn lookup_stream_decoder(component_id: &str) -> Option<Arc<StreamDecoderWrapper>> {
     let guard = get_stream_decoder_registry().lock().ok()?;
     guard.get(component_id).cloned()
 }
 
 fn remove_stream_decoder_if_current(
     component_id: &str,
-    state: &Arc<Mutex<StreamDecoderState>>,
+    wrapper: &Arc<StreamDecoderWrapper>,
 ) -> bool {
     if let Ok(mut guard) = get_stream_decoder_registry().lock() {
         if let Some(current) = guard.get(component_id) {
-            if Arc::ptr_eq(current, state) {
+            if Arc::ptr_eq(current, wrapper) {
                 guard.remove(component_id);
                 return true;
             }
@@ -904,10 +1338,10 @@ pub fn has_stream_decoder(component_id: &str) -> bool {
 }
 
 pub fn set_stream_volume(component_id: &str, volume: f32) -> Result<(), PlatformError> {
-    let state = lookup_stream_decoder(component_id).ok_or_else(|| {
+    let wrapper = lookup_stream_decoder(component_id).ok_or_else(|| {
         PlatformError::Platform(format!("Stream decoder not found: {}", component_id))
     })?;
-    if let Ok(mut guard) = state.lock() {
+    if let Ok(mut guard) = wrapper.state.lock() {
         guard.set_volume(volume)
     } else {
         Err(PlatformError::Platform(
@@ -916,11 +1350,128 @@ pub fn set_stream_volume(component_id: &str, volume: f32) -> Result<(), Platform
     }
 }
 
+struct QueuedFrame {
+    data: Vec<u8>,
+    pts_us: i64,
+    flags: u32,
+}
+
+/// Wrapper that holds both the destruction flag and the decoder state.
+/// The destroying flag is checked by callbacks BEFORE acquiring the lock to avoid deadlock.
+struct StreamDecoderWrapper {
+    component_id: String,
+    /// Counter > 0 when destruction is in progress. Callbacks check this first.
+    destroying: AtomicUsize,
+    paused: AtomicBool,
+    /// When true, treat Avcc input as AnnexB by converting frames (fallback for devices that
+    /// don't decode length-prefixed samples correctly).
+    video_force_annexb: AtomicBool,
+    /// Set once we see a non-empty video output buffer (used to gate "play" and fallback).
+    video_received_frame: AtomicBool,
+    /// When true, emit a `playing` event on the next rendered video frame.
+    playing_event_pending: AtomicBool,
+    /// Wall-clock ms when we started the video decoder (used to detect "no-output" starts).
+    video_started_at_ms: AtomicI64,
+    /// Ensures we only schedule one background surface refresh per start/reset cycle.
+    video_surface_refresh_scheduled: AtomicBool,
+    logged_first_video_input: AtomicBool,
+    logged_first_audio_input: AtomicBool,
+    logged_drop_video_paused: AtomicBool,
+    logged_drop_audio_paused: AtomicBool,
+    logged_video_underflow: AtomicBool,
+    logged_audio_underflow: AtomicBool,
+    logged_first_video_output_callback: AtomicBool,
+    /// Base video timestamp (microseconds) used to derive a relative playback position.
+    /// Stored from the first enqueued video frame after a reset; 0 means "not set".
+    first_video_pts: AtomicI64,
+    /// Last seen video timestamp (ms). Used when releasing an empty input buffer on underflow.
+    last_video_pts: AtomicI64,
+    /// Wall-clock ms of the last enqueued video frame (best-effort, used for underflow recovery).
+    last_video_enqueue_ms: AtomicI64,
+    /// Wall-clock ms of the last enqueued audio frame (best-effort, used for underflow recovery).
+    last_audio_enqueue_ms: AtomicI64,
+    /// Wall-clock ms of the last rendered video output buffer (best-effort, used for stall recovery).
+    last_video_output_ms: AtomicI64,
+    /// Wall-clock ms of the first rendered video output buffer after reset.
+    first_video_output_ms: AtomicI64,
+    /// Ensures we only spawn one watchdog thread per component.
+    watchdog_started: AtomicBool,
+    /// Prevent repeated underflow recovery from spawning many threads.
+    underflow_recovery_in_flight: AtomicBool,
+    video_queue: Mutex<VecDeque<QueuedFrame>>,
+    audio_queue: Mutex<VecDeque<QueuedFrame>>,
+    state: Mutex<StreamDecoderState>,
+}
+
+struct DestroyingGuard<'a> {
+    counter: &'a AtomicUsize,
+}
+
+impl Drop for DestroyingGuard<'_> {
+    fn drop(&mut self) {
+        self.counter.fetch_sub(1, Ordering::Release);
+    }
+}
+
+impl StreamDecoderWrapper {
+    fn is_destroying(&self) -> bool {
+        self.destroying.load(Ordering::Acquire) > 0
+    }
+
+    fn reset_flow_state(&self) {
+        self.logged_first_video_input
+            .store(false, Ordering::Release);
+        self.logged_first_audio_input
+            .store(false, Ordering::Release);
+        self.logged_drop_video_paused
+            .store(false, Ordering::Release);
+        self.logged_drop_audio_paused
+            .store(false, Ordering::Release);
+        self.logged_video_underflow.store(false, Ordering::Release);
+        self.logged_audio_underflow.store(false, Ordering::Release);
+        self.logged_first_video_output_callback
+            .store(false, Ordering::Release);
+        self.video_received_frame.store(false, Ordering::Release);
+        self.playing_event_pending.store(true, Ordering::Release);
+        self.video_started_at_ms.store(0, Ordering::Release);
+        self.first_video_pts.store(0, Ordering::Release);
+        self.last_video_pts.store(0, Ordering::Release);
+        self.first_video_output_ms.store(0, Ordering::Release);
+        // Treat the decoder as "no upstream yet" until we actually enqueue a new frame. This
+        // prevents underflow recovery from firing based on stale timestamps after pause/resume or
+        // soft resets (which would otherwise thrash the decoder before the first keyframe arrives).
+        self.last_video_enqueue_ms.store(0, Ordering::Release);
+        self.last_audio_enqueue_ms.store(0, Ordering::Release);
+        self.video_surface_refresh_scheduled
+            .store(false, Ordering::Release);
+        if let Ok(mut q) = self.video_queue.lock() {
+            q.clear();
+        }
+        if let Ok(mut q) = self.audio_queue.lock() {
+            q.clear();
+        }
+    }
+
+    fn destroying_guard(&self) -> DestroyingGuard<'_> {
+        self.destroying.fetch_add(1, Ordering::Release);
+        DestroyingGuard {
+            counter: &self.destroying,
+        }
+    }
+}
+
 struct StreamDecoderState {
     component_id: String,
     paused: bool,
     started: bool,
     has_played: bool,
+    waiting_notified: bool,
+    need_video_keyframe: bool,
+    video_codec_prefix_sent: bool,
+    gate_audio_until_video: bool,
+    gate_audio_deadline: Option<Instant>,
+    last_surface_id: Option<String>,
+    user_data: *mut c_void,
     volume: f32,
     video: Option<VideoDecoderState>,
     audio: Option<AudioDecoderState>,
@@ -931,38 +1482,24 @@ struct StreamDecoderState {
 struct VideoDecoderState {
     codec: *mut OH_AVCodec,
     window: *mut OHNativeWindow,
-    available_inputs: VecDeque<InputBuffer>,
-    pending_frames: VecDeque<QueuedFrame>,
-    logged_input: bool,
     logged_output: bool,
+    started: bool,
 }
 
 struct AudioDecoderState {
     codec: *mut OH_AVCodec,
     renderer: *mut OH_AudioRenderer,
-    available_inputs: VecDeque<InputBuffer>,
-    pending_frames: VecDeque<QueuedFrame>,
     pcm_queue: VecDeque<Vec<u8>>,
     pcm_offset: usize,
-    logged_input: bool,
     logged_output: bool,
     logged_render: bool,
     pcm_only: bool,
+    started: bool,
+    warmup_drop_buffers: u8,
 }
 
 unsafe impl Send for StreamDecoderState {}
 unsafe impl Sync for StreamDecoderState {}
-
-struct InputBuffer {
-    index: u32,
-    buffer: *mut OH_AVBuffer,
-}
-
-struct QueuedFrame {
-    data: Vec<u8>,
-    pts_us: i64,
-    flags: u32,
-}
 
 impl StreamDecoderState {
     fn new(component_id: String) -> Self {
@@ -971,6 +1508,13 @@ impl StreamDecoderState {
             paused: false,
             started: false,
             has_played: false,
+            waiting_notified: false,
+            need_video_keyframe: true,
+            video_codec_prefix_sent: false,
+            gate_audio_until_video: true,
+            gate_audio_deadline: Some(Instant::now() + Duration::from_secs(2)),
+            last_surface_id: None,
+            user_data: ptr::null_mut(),
             volume: 1.0,
             video: None,
             audio: None,
@@ -979,23 +1523,54 @@ impl StreamDecoderState {
         }
     }
 
+    fn wrapper(&self) -> Option<&StreamDecoderWrapper> {
+        if self.user_data.is_null() {
+            return None;
+        }
+        Some(unsafe { &*(self.user_data as *const StreamDecoderWrapper) })
+    }
+
     fn reset_soft(&mut self) {
+        let video_config = self.last_video_config.clone();
+        let audio_config = self.last_audio_config.clone();
+        let user_data = self.user_data;
+
+        if let Some(mut video_state) = self.video.take() {
+            // Reset the codec pipeline (workaround for devices that wedge after underflow).
+            video_state.stop();
+        }
+        if let Some(mut audio_state) = self.audio.take() {
+            audio_state.stop();
+        }
+
         if let Some(video_state) = self.video.as_mut() {
-            video_state.pending_frames.clear();
-            video_state.available_inputs.clear();
-            video_state.logged_input = false;
             video_state.logged_output = false;
         }
         if let Some(audio_state) = self.audio.as_mut() {
-            audio_state.pending_frames.clear();
-            audio_state.available_inputs.clear();
             audio_state.pcm_queue.clear();
             audio_state.pcm_offset = 0;
-            audio_state.logged_input = false;
             audio_state.logged_output = false;
             audio_state.logged_render = false;
         }
         self.has_played = false;
+        self.waiting_notified = true;
+        self.need_video_keyframe = true;
+        self.video_codec_prefix_sent = false;
+        self.gate_audio_until_video = true;
+        self.gate_audio_deadline = Some(Instant::now() + Duration::from_secs(2));
+        if let Some(wrapper) = self.wrapper() {
+            wrapper.reset_flow_state();
+        }
+
+        // Attempt to reconfigure decoders in-place using the last known configs. If the surface is
+        // not ready yet, configure_video() will just store the config and return Ok(()).
+        self.started = false;
+        if let Some(config) = video_config {
+            let _ = self.configure_video(config, user_data);
+        }
+        if let Some(config) = audio_config {
+            let _ = self.configure_audio(config, user_data);
+        }
     }
 
     fn set_volume(&mut self, volume: f32) -> Result<(), PlatformError> {
@@ -1016,17 +1591,98 @@ impl StreamDecoderState {
     }
 
     fn set_paused(&mut self, paused: bool) {
+        let was_paused = self.paused;
         self.paused = paused;
+        if let Some(wrapper) = self.wrapper() {
+            wrapper.paused.store(paused, Ordering::Release);
+            if paused {
+                wrapper
+                    .playing_event_pending
+                    .store(false, Ordering::Release);
+            } else {
+                wrapper.playing_event_pending.store(true, Ordering::Release);
+            }
+            wrapper
+                .logged_drop_video_paused
+                .store(false, Ordering::Release);
+            wrapper
+                .logged_drop_audio_paused
+                .store(false, Ordering::Release);
+            wrapper
+                .logged_first_video_input
+                .store(false, Ordering::Release);
+            wrapper
+                .logged_first_audio_input
+                .store(false, Ordering::Release);
+            wrapper
+                .logged_video_underflow
+                .store(false, Ordering::Release);
+            wrapper
+                .logged_audio_underflow
+                .store(false, Ordering::Release);
+            if paused {
+                if let Ok(mut q) = wrapper.video_queue.lock() {
+                    q.clear();
+                }
+                if let Ok(mut q) = wrapper.audio_queue.lock() {
+                    q.clear();
+                }
+                // Clear last-enqueue timestamps so underflow recovery doesn't immediately soft
+                // reset the decoder while the stream session is paused or restarting.
+                wrapper.last_video_enqueue_ms.store(0, Ordering::Release);
+                wrapper.last_audio_enqueue_ms.store(0, Ordering::Release);
+            }
+        }
+        if paused {
+            // Keep decoder state intact so playback resume can continue without requiring a
+            // fresh keyframe; only drop queued frames (handled by wrapper queues).
+        } else {
+            // Resume: gate audio briefly to avoid "audio-only" when the surface/decoder lags, and
+            // emit a fresh `playing` event once the first frame arrives after resume.
+            self.gate_audio_until_video = true;
+            self.gate_audio_deadline = Some(Instant::now() + Duration::from_secs(2));
+            self.has_played = false;
+            self.waiting_notified = true;
+            if let Some(wrapper) = self.wrapper() {
+                let last_output_ms = wrapper.last_video_output_ms.load(Ordering::Acquire);
+                log::info!(
+                    "[Harmony.StreamDecoder] set_paused resume for {} (was_paused={} last_output_ms={})",
+                    self.component_id,
+                    was_paused,
+                    last_output_ms
+                );
+                // Ensure a fresh `playing` event is emitted after resume so the UI can clear any
+                // loading/buffering indicator, and avoid triggering the "no-output-after-start"
+                // watchdog path (resume is not a decoder start).
+                wrapper.video_received_frame.store(false, Ordering::Release);
+                wrapper.playing_event_pending.store(true, Ordering::Release);
+                wrapper.last_video_output_ms.store(0, Ordering::Release);
+                wrapper.first_video_output_ms.store(0, Ordering::Release);
+                wrapper.video_started_at_ms.store(0, Ordering::Release);
+                wrapper
+                    .logged_first_video_output_callback
+                    .store(false, Ordering::Release);
+                wrapper
+                    .video_surface_refresh_scheduled
+                    .store(false, Ordering::Release);
+            }
+        }
         if let Some(audio_state) = self.audio.as_mut() {
+            if paused {
+                audio_state.pcm_queue.clear();
+                audio_state.pcm_offset = 0;
+            }
             audio_state.set_paused(paused);
         }
         if !self.started {
             return;
         }
         if paused {
-            notify_arkts(&self.component_id, "paused", None);
-        } else if self.started {
-            notify_arkts(&self.component_id, "playing", None);
+            log::info!(
+                "[Harmony.StreamDecoder] notify paused for {}",
+                self.component_id
+            );
+            notify_arkts(&self.component_id, "pause", None);
         }
     }
 
@@ -1035,20 +1691,21 @@ impl StreamDecoderState {
         config: VideoStreamConfig,
         user_data: *mut c_void,
     ) -> Result<(), PlatformError> {
+        self.user_data = user_data;
         let should_notify = !self.started;
-        if let Some(prev) = self.last_video_config.as_ref()
-            && self.video.is_some()
-            && prev == &config
-        {
-            return Ok(());
-        }
-        if let Some(mut existing) = self.video.take() {
-            log::info!(
-                "[Harmony.StreamDecoder] reconfiguring video decoder for {}",
-                self.component_id
-            );
-            existing.stop();
-        }
+        let config_is_unchanged = self
+            .last_video_config
+            .as_ref()
+            .is_some_and(|prev| self.video.is_some() && prev == &config);
+        // Persist the most recent config even if we cannot configure immediately (e.g. surface not
+        // ready yet). This allows us to retry configuration when the surface arrives.
+        self.last_video_config = Some(config.clone());
+        // After any (re)configuration we must wait for a fresh keyframe; surface rebinds and
+        // decoder resets can drop frames mid-GOP and otherwise lead to a persistent black screen.
+        self.need_video_keyframe = true;
+        self.video_codec_prefix_sent = false;
+        self.gate_audio_until_video = true;
+        self.gate_audio_deadline = Some(Instant::now() + Duration::from_secs(2));
         if !matches!(
             config.format,
             crate::traits::VideoFormat::AnnexB | crate::traits::VideoFormat::Avcc
@@ -1058,12 +1715,42 @@ impl StreamDecoderState {
             ));
         }
 
-        let surface_id = lookup_surface_id(&self.component_id).ok_or_else(|| {
-            PlatformError::Platform(format!(
-                "Surface not set for component: {}",
+        let Some(surface_id) = lookup_surface_id(&self.component_id) else {
+            // Surface may not exist yet when the stream provider starts (e.g. first render pass).
+            // Treat this as "pending" rather than an error, otherwise stream providers may stop
+            // the sink and the UI will get stuck in a permanent loading state.
+            log::info!(
+                "[Harmony.StreamDecoder] surface not ready yet for {}, delaying video configure",
                 self.component_id
-            ))
-        })?;
+            );
+            return Ok(());
+        };
+        let surface_changed = match self.last_surface_id.as_deref() {
+            Some(prev) => prev != surface_id.as_str(),
+            None => true,
+        };
+        if config_is_unchanged && !surface_changed {
+            return Ok(());
+        }
+        self.last_surface_id = Some(surface_id.clone());
+        if let Some(wrapper) = self.wrapper() {
+            wrapper.reset_flow_state();
+            wrapper.paused.store(self.paused, Ordering::Release);
+        }
+        if let Some(mut existing) = self.video.take() {
+            log::info!(
+                "[Harmony.StreamDecoder] reconfiguring video decoder for {}",
+                self.component_id
+            );
+            let _destroying_guard = if self.user_data.is_null() {
+                None
+            } else {
+                Some(
+                    unsafe { &*(self.user_data as *const StreamDecoderWrapper) }.destroying_guard(),
+                )
+            };
+            existing.stop();
+        }
         release_player_for_stream(&self.component_id, &surface_id);
         let window = create_native_window_from_surface_id(&surface_id)?;
 
@@ -1121,35 +1808,47 @@ impl StreamDecoderState {
             log::warn!("[Harmony.StreamDecoder] Failed to set pixel format");
         }
 
-        let mut codec_config = Vec::new();
-        let mut push_codec_config = false;
-        if matches!(config.format, crate::traits::VideoFormat::Avcc) {
-            let avcc = build_avcc_config(&config);
-            if !avcc.is_empty() {
-                let config_set = unsafe {
-                    OH_AVFormat_SetBuffer(format, OH_MD_KEY_CODEC_CONFIG, avcc.as_ptr(), avcc.len())
-                };
-                if config_set {
-                    codec_config = avcc;
-                    push_codec_config = false;
-                } else {
-                    log::warn!("[Harmony.StreamDecoder] Failed to set AVCC config");
-                }
-                log::info!(
-                    "[Harmony.StreamDecoder] avcc config: len={}, set={}",
-                    codec_config.len(),
-                    config_set
-                );
-            }
+        // Harmony codec-config: for AVCC input, prefer avcC; for AnnexB input, use start-code SPS/PPS(/VPS).
+        // Some devices fail to decode AVCC samples in raw decoder mode; for those, we fall back
+        // to AnnexB by converting frames and providing AnnexB CSD.
+        let force_annexb = self
+            .wrapper()
+            .is_some_and(|wrapper| wrapper.video_force_annexb.load(Ordering::Acquire));
+        let (codec_config_kind, codec_config) = if force_annexb {
+            ("annexb_csd(forced)", build_codec_config(&config))
+        } else if matches!(config.format, crate::traits::VideoFormat::Avcc)
+            && matches!(config.codec, crate::traits::VideoCodec::H264)
+        {
+            ("avcC", build_avcc_config(&config))
         } else {
-            codec_config = build_codec_config(&config);
-            push_codec_config = !codec_config.is_empty();
-            log::info!(
-                "[Harmony.StreamDecoder] annexb config: len={}, push_as_input={}",
-                codec_config.len(),
-                push_codec_config
+            ("annexb_csd", build_codec_config(&config))
+        };
+        if codec_config.is_empty() {
+            log::warn!(
+                "[Harmony.StreamDecoder] codec config missing for {} (sps/pps/vps empty?)",
+                self.component_id
             );
         }
+        let config_set = if !codec_config.is_empty() {
+            unsafe {
+                OH_AVFormat_SetBuffer(
+                    format,
+                    OH_MD_KEY_CODEC_CONFIG,
+                    codec_config.as_ptr(),
+                    codec_config.len(),
+                )
+            }
+        } else {
+            false
+        };
+        log::info!(
+            "[Harmony.StreamDecoder] codec config set: kind={} format={:?} codec={:?} len={} set={}",
+            codec_config_kind,
+            config.format,
+            config.codec,
+            codec_config.len(),
+            config_set
+        );
 
         let configure_result = check_av_result(
             unsafe { OH_VideoDecoder_Configure(codec, format) },
@@ -1173,38 +1872,15 @@ impl StreamDecoderState {
             cleanup_decoder(codec, window);
             return Err(err);
         }
-        if let Err(err) = check_av_result(
-            unsafe { OH_VideoDecoder_Start(codec) },
-            "OH_VideoDecoder_Start",
-        ) {
-            cleanup_decoder(codec, window);
-            return Err(err);
-        }
 
-        let mut video_state = VideoDecoderState {
+        let video_state = VideoDecoderState {
             codec,
             window,
-            available_inputs: VecDeque::new(),
-            pending_frames: VecDeque::new(),
-            logged_input: false,
             logged_output: false,
+            started: false,
         };
 
-        if push_codec_config {
-            log::info!(
-                "[Harmony.StreamDecoder] pushing video codec config via input for {} (len={})",
-                self.component_id,
-                codec_config.len()
-            );
-            video_state.pending_frames.push_back(QueuedFrame {
-                data: codec_config,
-                pts_us: 0,
-                flags: AVCODEC_BUFFER_FLAGS_CODEC_DATA,
-            });
-        }
-
         self.video = Some(video_state);
-        self.last_video_config = Some(config);
         self.started = true;
         self.has_played = false;
         if should_notify {
@@ -1218,17 +1894,37 @@ impl StreamDecoderState {
         config: AudioStreamConfig,
         user_data: *mut c_void,
     ) -> Result<(), PlatformError> {
+        self.user_data = user_data;
         if let Some(prev) = self.last_audio_config.as_ref()
             && self.audio.is_some()
             && prev == &config
         {
             return Ok(());
         }
+        if let Some(wrapper) = self.wrapper() {
+            wrapper
+                .logged_first_audio_input
+                .store(false, Ordering::Release);
+            wrapper
+                .logged_audio_underflow
+                .store(false, Ordering::Release);
+            if let Ok(mut q) = wrapper.audio_queue.lock() {
+                q.clear();
+            }
+            wrapper.paused.store(self.paused, Ordering::Release);
+        }
         if let Some(mut existing) = self.audio.take() {
             log::info!(
                 "[Harmony.StreamDecoder] reconfiguring audio decoder for {}",
                 self.component_id
             );
+            let _destroying_guard = if self.user_data.is_null() {
+                None
+            } else {
+                Some(
+                    unsafe { &*(self.user_data as *const StreamDecoderWrapper) }.destroying_guard(),
+                )
+            };
             existing.stop();
         }
 
@@ -1272,14 +1968,13 @@ impl StreamDecoderState {
             let audio_state = AudioDecoderState {
                 codec: ptr::null_mut(),
                 renderer,
-                available_inputs: VecDeque::new(),
-                pending_frames: VecDeque::new(),
                 pcm_queue: VecDeque::new(),
                 pcm_offset: 0,
-                logged_input: false,
                 logged_output: false,
                 logged_render: false,
                 pcm_only: true,
+                started: true,
+                warmup_drop_buffers: 0,
             };
             let should_notify = !self.started;
             self.audio = Some(audio_state);
@@ -1350,10 +2045,7 @@ impl StreamDecoderState {
         }
 
         let codec_config = config.audio_specific_config.clone();
-        let mut push_codec_config = !codec_config.is_empty();
-        if config.aac_is_adts {
-            push_codec_config = false;
-        } else if push_codec_config {
+        if !config.aac_is_adts && !codec_config.is_empty() {
             let config_set = unsafe {
                 OH_AVFormat_SetBuffer(
                     format,
@@ -1395,20 +2087,11 @@ impl StreamDecoderState {
             }
             return Err(err);
         }
-        if let Err(err) =
-            check_av_result(unsafe { OH_AudioCodec_Start(codec) }, "OH_AudioCodec_Start")
-        {
-            unsafe {
-                let _ = OH_AudioCodec_Destroy(codec);
-            }
-            return Err(err);
-        }
 
         let renderer = match create_audio_renderer(sample_rate, channels, user_data) {
             Ok(renderer) => renderer,
             Err(err) => {
                 unsafe {
-                    let _ = OH_AudioCodec_Stop(codec);
                     let _ = OH_AudioCodec_Destroy(codec);
                 }
                 return Err(err);
@@ -1426,30 +2109,19 @@ impl StreamDecoderState {
             return Err(err);
         }
 
-        let mut audio_state = AudioDecoderState {
+        let audio_state = AudioDecoderState {
             codec,
             renderer,
-            available_inputs: VecDeque::new(),
-            pending_frames: VecDeque::new(),
             pcm_queue: VecDeque::new(),
             pcm_offset: 0,
-            logged_input: false,
             logged_output: false,
             logged_render: false,
             pcm_only: false,
+            started: false,
+            // Some cameras/devices emit a brief noisy burst right after decoder start or stream
+            // switch. Drop the first couple of decoded PCM buffers to avoid an audible squeal.
+            warmup_drop_buffers: 2,
         };
-
-        if push_codec_config {
-            log::info!(
-                "[Harmony.StreamDecoder] pushing audio codec config via input for {}",
-                self.component_id
-            );
-            audio_state.pending_frames.push_back(QueuedFrame {
-                data: codec_config,
-                pts_us: 0,
-                flags: AVCODEC_BUFFER_FLAGS_CODEC_DATA,
-            });
-        }
 
         let should_notify = !self.started;
         self.audio = Some(audio_state);
@@ -1463,106 +2135,246 @@ impl StreamDecoderState {
         Ok(())
     }
 
-    fn enqueue_video(&mut self, frame: VideoFrame) -> Result<(), PlatformError> {
-        if self.paused {
-            return Ok(());
-        }
+    fn enqueue_video(
+        &mut self,
+        frame: VideoFrame,
+    ) -> Result<Option<*mut OH_AVCodec>, PlatformError> {
         if frame.data.is_empty() {
-            return Ok(());
+            return Ok(None);
         }
-        let video_state = self
-            .video
-            .as_mut()
-            .ok_or_else(|| PlatformError::Platform("Video decoder not configured".to_string()))?;
+        let mut is_keyframe = frame.keyframe;
+        if !is_keyframe {
+            if let Some(config) = self.last_video_config.as_ref() {
+                is_keyframe = detect_keyframe(config, &frame.data);
+            }
+        }
+        let wrapper_ptr = self.user_data as *const StreamDecoderWrapper;
+        if wrapper_ptr.is_null() {
+            return Ok(None);
+        }
+        // SAFETY: user_data is an Arc<StreamDecoderWrapper> pointer stored by the decoder handle.
+        let wrapper = unsafe { &*wrapper_ptr };
+        if wrapper.paused.load(Ordering::Acquire) {
+            if wrapper
+                .logged_drop_video_paused
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+            {
+                log::info!(
+                    "[Harmony.StreamDecoder] dropping video frames while paused for {}",
+                    self.component_id
+                );
+            }
+            return Ok(None);
+        }
+        let Some(video_state) = self.video.as_mut() else {
+            // Video decoder can legitimately be unconfigured if the surface isn't ready yet.
+            // Drop frames until we can configure (a future surface bind will retry).
+            self.need_video_keyframe = true;
+            self.gate_audio_until_video = true;
+            return Ok(None);
+        };
+
+        if self.need_video_keyframe {
+            if !is_keyframe {
+                return Ok(None);
+            }
+            self.need_video_keyframe = false;
+            // Keep audio gated until we actually render a video frame (not just receive a keyframe),
+            // otherwise camera/quality switches can briefly become "audio-only".
+        }
 
         let mut flags = 0u32;
-        if frame.keyframe {
+        if is_keyframe {
             flags |= AVCODEC_BUFFER_FLAGS_SYNC_FRAME;
         }
 
-        video_state.pending_frames.push_back(QueuedFrame {
-            data: frame.data,
-            pts_us: frame.pts_ms as i64 * 1000,
-            flags,
-        });
-        video_state.flush()?;
-
-        if !self.paused && !self.has_played {
-            notify_arkts(&self.component_id, "playing", None);
-            self.has_played = true;
+        let mut data = frame.data;
+        let mut data_is_annexb = looks_like_annexb(&data);
+        let force_annexb = wrapper.video_force_annexb.load(Ordering::Acquire);
+        if force_annexb {
+            if let Some(config) = self.last_video_config.as_ref() {
+                if matches!(config.format, crate::traits::VideoFormat::Avcc) && !data_is_annexb {
+                    let nal_length_size = config.nal_length_size.unwrap_or(4);
+                    if let Some(converted) = avcc_to_annexb(nal_length_size, &data) {
+                        data = converted;
+                        data_is_annexb = true;
+                    }
+                }
+                if is_keyframe && !self.video_codec_prefix_sent && data_is_annexb {
+                    let prefix = build_codec_config(config);
+                    if !prefix.is_empty() {
+                        let mut combined = Vec::with_capacity(prefix.len() + data.len());
+                        combined.extend_from_slice(&prefix);
+                        combined.extend_from_slice(&data);
+                        data = combined;
+                    }
+                    self.video_codec_prefix_sent = true;
+                }
+            }
         }
-        Ok(())
+
+        let queued_len = match wrapper.video_queue.lock() {
+            Ok(mut q) => {
+                let now = now_ms();
+                wrapper.last_video_enqueue_ms.store(now, Ordering::Release);
+                if wrapper.video_started_at_ms.load(Ordering::Acquire) == 0 {
+                    wrapper.video_started_at_ms.store(now, Ordering::Release);
+                }
+                q.push_back(QueuedFrame {
+                    data,
+                    // Harmony codec buffer timestamps are in microseconds. Use normalized `dts_ms`
+                    // from the provider and convert to micros to keep values small and monotonic.
+                    pts_us: (frame.dts_ms as i64).saturating_mul(1000),
+                    flags,
+                });
+                let timeline_ms = if frame.pts_ms > 0 {
+                    frame.pts_ms
+                } else {
+                    frame.dts_ms
+                };
+                let timeline_us = (timeline_ms as i64).saturating_mul(1000);
+                wrapper.last_video_pts.store(timeline_us, Ordering::Release);
+                let _ = wrapper.first_video_pts.compare_exchange(
+                    0,
+                    timeline_us,
+                    Ordering::AcqRel,
+                    Ordering::Acquire,
+                );
+                q.len()
+            }
+            Err(_) => {
+                return Err(PlatformError::Platform(
+                    "Stream decoder video queue lock poisoned".to_string(),
+                ));
+            }
+        };
+        // Clear underflow log flag only after we rebuild a small backlog, to avoid log spam when
+        // the codec requests buffers in bursts.
+        if queued_len >= 8 {
+            wrapper
+                .logged_video_underflow
+                .store(false, Ordering::Release);
+        }
+        if queued_len > MAX_QUEUED_VIDEO_FRAMES {
+            wrapper.reset_flow_state();
+            self.need_video_keyframe = true;
+            self.gate_audio_until_video = true;
+            self.gate_audio_deadline = Some(Instant::now() + Duration::from_secs(2));
+            return Ok(None);
+        }
+
+        // Harmony codecs often request multiple input buffers immediately after `Start`. If we
+        // start too early, we underflow and some devices never recover to a steady decode/output.
+        // Start after a modest prebuffer; additional protections exist for bursty callbacks and
+        // underflow recovery (wait-before-underflow, empty buffer release, watchdog reset).
+        //
+        // NOTE: Keep this relatively small to reduce "first frame" latency compared to other
+        // platforms; the underflow recovery logic is designed to handle occasional jitter.
+        const VIDEO_START_THRESHOLD: usize = 12;
+        if !video_state.started && queued_len >= VIDEO_START_THRESHOLD {
+            video_state.started = true;
+            return Ok(Some(video_state.codec));
+        }
+        Ok(None)
     }
 
-    fn enqueue_audio(&mut self, frame: AudioFrame) -> Result<(), PlatformError> {
-        if self.paused {
-            return Ok(());
-        }
+    fn enqueue_audio(
+        &mut self,
+        frame: AudioFrame,
+    ) -> Result<Option<*mut OH_AVCodec>, PlatformError> {
         if frame.data.is_empty() {
-            return Ok(());
+            return Ok(None);
         }
-        let audio_state = self
-            .audio
-            .as_mut()
-            .ok_or_else(|| PlatformError::Platform("Audio decoder not configured".to_string()))?;
+        let wrapper_ptr = self.user_data as *const StreamDecoderWrapper;
+        if wrapper_ptr.is_null() {
+            return Ok(None);
+        }
+        // SAFETY: user_data is an Arc<StreamDecoderWrapper> pointer stored by the decoder handle.
+        let wrapper = unsafe { &*wrapper_ptr };
+        if wrapper.paused.load(Ordering::Acquire) {
+            if wrapper
+                .logged_drop_audio_paused
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+            {
+                log::info!(
+                    "[Harmony.StreamDecoder] dropping audio frames while paused for {}",
+                    self.component_id
+                );
+            }
+            return Ok(None);
+        }
+        if self.gate_audio_until_video {
+            // Avoid "audio-only" playback when the video surface/decoder isn't ready yet (switching
+            // cameras, surface rebind, etc.). Audio resumes once we actually render a video frame.
+            if wrapper.video_received_frame.load(Ordering::Acquire) {
+                self.gate_audio_until_video = false;
+                self.gate_audio_deadline = None;
+            } else if let Some(deadline) = self.gate_audio_deadline {
+                if Instant::now() < deadline {
+                    return Ok(None);
+                }
+                // If video is taking too long (unsupported codec / no keyframe), prefer audio-only
+                // over permanent silence.
+                self.gate_audio_until_video = false;
+                self.gate_audio_deadline = None;
+            } else {
+                return Ok(None);
+            }
+        }
+        let Some(audio_state) = self.audio.as_mut() else {
+            // Audio decoder may not be configured yet (e.g. during initial probe). Drop until ready.
+            return Ok(None);
+        };
 
         if audio_state.pcm_only {
             audio_state.pcm_queue.push_back(frame.data);
-        } else {
-            audio_state.pending_frames.push_back(QueuedFrame {
-                data: frame.data,
-                pts_us: frame.pts_ms as i64 * 1000,
-                flags: 0,
-            });
-            audio_state.flush()?;
+            return Ok(None);
         }
-
-        if !self.paused && !self.has_played {
-            notify_arkts(&self.component_id, "playing", None);
-            self.has_played = true;
+        if audio_state.codec.is_null() {
+            return Ok(None);
         }
-        Ok(())
+        let queued_len = match wrapper.audio_queue.lock() {
+            Ok(mut q) => {
+                wrapper
+                    .last_audio_enqueue_ms
+                    .store(now_ms(), Ordering::Release);
+                q.push_back(QueuedFrame {
+                    data: frame.data,
+                    pts_us: (frame.dts_ms as i64).saturating_mul(1000),
+                    flags: 0,
+                });
+                q.len()
+            }
+            Err(_) => {
+                return Err(PlatformError::Platform(
+                    "Stream decoder audio queue lock poisoned".to_string(),
+                ));
+            }
+        };
+        if queued_len >= 4 {
+            wrapper
+                .logged_audio_underflow
+                .store(false, Ordering::Release);
+        }
+        if queued_len > MAX_QUEUED_AUDIO_FRAMES {
+            if let Ok(mut q) = wrapper.audio_queue.lock() {
+                q.clear();
+            }
+            return Ok(None);
+        }
+        // Same rationale as video: prebuffer enough AAC frames to satisfy the initial burst of
+        // input-buffer callbacks, otherwise some devices stall.
+        const AUDIO_START_THRESHOLD: usize = 8;
+        if !audio_state.started && queued_len >= AUDIO_START_THRESHOLD {
+            audio_state.started = true;
+            return Ok(Some(audio_state.codec));
+        }
+        Ok(None)
     }
 
-    fn on_need_input_buffer(&mut self, index: u32, buffer: *mut OH_AVBuffer) {
-        if let Some(video_state) = self.video.as_mut() {
-            video_state
-                .available_inputs
-                .push_back(InputBuffer { index, buffer });
-            if !video_state.logged_input {
-                video_state.logged_input = true;
-                log::info!(
-                    "[Harmony.StreamDecoder] first video input buffer: index={} for {}",
-                    index,
-                    self.component_id
-                );
-            }
-            let _ = video_state.flush();
-        }
-    }
-
-    fn on_audio_need_input_buffer(&mut self, index: u32, buffer: *mut OH_AVBuffer) {
-        if let Some(audio_state) = self.audio.as_mut() {
-            if audio_state.codec.is_null() {
-                return;
-            }
-            audio_state
-                .available_inputs
-                .push_back(InputBuffer { index, buffer });
-            if !audio_state.logged_input {
-                audio_state.logged_input = true;
-                log::info!(
-                    "[Harmony.StreamDecoder] first audio input buffer: index={} for {}",
-                    index,
-                    self.component_id
-                );
-            }
-            let _ = audio_state.flush();
-        }
-    }
-
-    fn on_new_output_buffer(&mut self, codec: *mut OH_AVCodec, index: u32) {
-        let result = unsafe { OH_VideoDecoder_RenderOutputBuffer(codec, index) };
+    fn on_new_output_buffer(&mut self, index: u32, render_result: i32) {
         if let Some(video_state) = self.video.as_mut() {
             if !video_state.logged_output {
                 video_state.logged_output = true;
@@ -1570,15 +2382,15 @@ impl StreamDecoderState {
                     "[Harmony.StreamDecoder] first video output buffer: index={} for {} (result={})",
                     index,
                     self.component_id,
-                    result
+                    render_result
                 );
             }
         }
-        if result != AV_ERR_OK {
+        if render_result != AV_ERR_OK {
             log::warn!(
                 "[Harmony.StreamDecoder] render output buffer failed for {}: {}",
                 self.component_id,
-                result
+                render_result
             );
         }
     }
@@ -1630,6 +2442,13 @@ impl StreamDecoderState {
             }
             return;
         }
+        if audio_state.warmup_drop_buffers > 0 {
+            audio_state.warmup_drop_buffers = audio_state.warmup_drop_buffers.saturating_sub(1);
+            unsafe {
+                let _ = OH_AudioCodec_FreeOutputBuffer(codec, index);
+            }
+            return;
+        }
 
         let addr = unsafe { OH_AVBuffer_GetAddr(buffer) };
         if !addr.is_null() {
@@ -1672,6 +2491,15 @@ impl StreamDecoderState {
     }
 
     fn stop_internal(&mut self, notify: bool) {
+        if let Some(wrapper) = self.wrapper() {
+            wrapper.reset_flow_state();
+            wrapper.paused.store(false, Ordering::Release);
+        }
+        let _destroying_guard = if self.user_data.is_null() {
+            None
+        } else {
+            Some(unsafe { &*(self.user_data as *const StreamDecoderWrapper) }.destroying_guard())
+        };
         if let Some(mut video_state) = self.video.take() {
             video_state.stop();
         }
@@ -1681,10 +2509,12 @@ impl StreamDecoderState {
         self.started = false;
         self.paused = false;
         self.has_played = false;
+        self.last_surface_id = None;
         self.last_video_config = None;
         self.last_audio_config = None;
+        self.video_codec_prefix_sent = false;
         if notify {
-            notify_arkts(&self.component_id, "stopped", None);
+            notify_arkts(&self.component_id, "stop", None);
         }
     }
 
@@ -1697,22 +2527,112 @@ impl StreamDecoderState {
     }
 }
 
-impl VideoDecoderState {
-    fn flush(&mut self) -> Result<(), PlatformError> {
-        while !self.available_inputs.is_empty() && !self.pending_frames.is_empty() {
-            let input = self
-                .available_inputs
-                .pop_front()
-                .ok_or_else(|| PlatformError::Platform("Missing video input buffer".to_string()))?;
-            let frame = self
-                .pending_frames
-                .pop_front()
-                .ok_or_else(|| PlatformError::Platform("Missing video frame".to_string()))?;
-            fill_input_buffer(self.codec, input.index, input.buffer, frame)?;
+fn detect_keyframe(config: &VideoStreamConfig, data: &[u8]) -> bool {
+    match config.format {
+        crate::traits::VideoFormat::AnnexB => detect_keyframe_annexb(config.codec, data),
+        crate::traits::VideoFormat::Avcc => {
+            let nal_length_size = config.nal_length_size.unwrap_or(4);
+            detect_keyframe_avcc(config.codec, nal_length_size, data)
         }
-        Ok(())
     }
+}
 
+fn detect_keyframe_annexb(codec: crate::traits::VideoCodec, data: &[u8]) -> bool {
+    let mut i = 0usize;
+    while i + 3 < data.len() {
+        let (start, header_offset) = if data[i] == 0 && data[i + 1] == 0 && data[i + 2] == 1 {
+            (i, 3)
+        } else if i + 4 < data.len()
+            && data[i] == 0
+            && data[i + 1] == 0
+            && data[i + 2] == 0
+            && data[i + 3] == 1
+        {
+            (i, 4)
+        } else {
+            i += 1;
+            continue;
+        };
+
+        let header_index = start + header_offset;
+        if header_index >= data.len() {
+            break;
+        }
+        if is_keyframe_nal(codec, data[header_index]) {
+            return true;
+        }
+        i = header_index;
+    }
+    false
+}
+
+fn detect_keyframe_avcc(
+    codec: crate::traits::VideoCodec,
+    nal_length_size: u8,
+    data: &[u8],
+) -> bool {
+    let len_size = match nal_length_size {
+        1 | 2 | 3 | 4 => nal_length_size as usize,
+        _ => 4,
+    };
+    let mut pos = 0usize;
+    while pos + len_size <= data.len() {
+        let mut nal_len: usize = 0;
+        for _ in 0..len_size {
+            nal_len = (nal_len << 8) | data[pos] as usize;
+            pos += 1;
+        }
+        if nal_len == 0 {
+            continue;
+        }
+        if pos + nal_len > data.len() {
+            break;
+        }
+        if is_keyframe_nal(codec, data[pos]) {
+            return true;
+        }
+        pos += nal_len;
+    }
+    false
+}
+
+fn avcc_to_annexb(nal_length_size: u8, data: &[u8]) -> Option<Vec<u8>> {
+    let len_size = match nal_length_size {
+        1 | 2 | 3 | 4 => nal_length_size as usize,
+        _ => 4,
+    };
+    let mut pos = 0usize;
+    let mut out = Vec::with_capacity(data.len().saturating_add(64));
+    while pos + len_size <= data.len() {
+        let mut nal_len: usize = 0;
+        for _ in 0..len_size {
+            nal_len = (nal_len << 8) | data[pos] as usize;
+            pos += 1;
+        }
+        if nal_len == 0 {
+            continue;
+        }
+        if pos + nal_len > data.len() {
+            return None;
+        }
+        out.extend_from_slice(&[0, 0, 0, 1]);
+        out.extend_from_slice(&data[pos..pos + nal_len]);
+        pos += nal_len;
+    }
+    if out.is_empty() { None } else { Some(out) }
+}
+
+fn is_keyframe_nal(codec: crate::traits::VideoCodec, nal_header: u8) -> bool {
+    match codec {
+        crate::traits::VideoCodec::H264 => (nal_header & 0x1F) == 5,
+        crate::traits::VideoCodec::H265 => {
+            let nal_type = (nal_header >> 1) & 0x3F;
+            matches!(nal_type, 16 | 17 | 18 | 19 | 20 | 21)
+        }
+    }
+}
+
+impl VideoDecoderState {
     fn stop(&mut self) {
         unsafe {
             let _ = OH_VideoDecoder_Stop(self.codec);
@@ -1727,24 +2647,6 @@ impl VideoDecoderState {
 }
 
 impl AudioDecoderState {
-    fn flush(&mut self) -> Result<(), PlatformError> {
-        if self.codec.is_null() {
-            return Ok(());
-        }
-        while !self.available_inputs.is_empty() && !self.pending_frames.is_empty() {
-            let input = self
-                .available_inputs
-                .pop_front()
-                .ok_or_else(|| PlatformError::Platform("Missing audio input buffer".to_string()))?;
-            let frame = self
-                .pending_frames
-                .pop_front()
-                .ok_or_else(|| PlatformError::Platform("Missing audio frame".to_string()))?;
-            fill_audio_input_buffer(self.codec, input.index, input.buffer, frame)?;
-        }
-        Ok(())
-    }
-
     fn fill_output(&mut self, output: &mut [u8]) -> usize {
         let mut written = 0;
         while written < output.len() {
@@ -1779,14 +2681,17 @@ impl AudioDecoderState {
         if self.renderer.is_null() {
             return;
         }
+        // Directly call Start/Pause without state checking.
+        // HarmonyOS audio renderer tolerates redundant calls.
         let result = if paused {
             unsafe { OH_AudioRenderer_Pause(self.renderer) }
         } else {
             unsafe { OH_AudioRenderer_Start(self.renderer) }
         };
         if result != AUDIOSTREAM_SUCCESS {
-            log::warn!(
-                "[Harmony.StreamDecoder] audio renderer state change failed: {}",
+            // Ignore state transition errors - they're usually benign (e.g. already paused)
+            log::debug!(
+                "[Harmony.StreamDecoder] audio renderer state change result: {}",
                 result
             );
         }
@@ -1805,8 +2710,6 @@ impl AudioDecoderState {
         }
         self.codec = ptr::null_mut();
         self.renderer = ptr::null_mut();
-        self.available_inputs.clear();
-        self.pending_frames.clear();
         self.pcm_queue.clear();
         self.pcm_offset = 0;
     }
@@ -1968,7 +2871,28 @@ pub fn create_player(component_id: &str, callback_id: u64) -> Result<i64, Platfo
     }
 
     // Create new player if not exists
-    let player = NativeVideoPlayer::new(component_id, callback_id)?;
+    let mut player = NativeVideoPlayer::new(component_id, callback_id)?;
+    if let Some(surface_id) = lookup_surface_id(component_id) {
+        match create_native_window_from_surface_id(&surface_id) {
+            Ok(window) => {
+                if let Err(err) = player.set_video_surface(window) {
+                    unsafe { OH_NativeWindow_DestroyNativeWindow(window) };
+                    log::warn!(
+                        "[VideoPlayer] create_player: failed to bind stored surface for {}: {}",
+                        component_id,
+                        err
+                    );
+                }
+            }
+            Err(err) => {
+                log::warn!(
+                    "[VideoPlayer] create_player: failed to create native window from stored surface for {}: {}",
+                    component_id,
+                    err
+                );
+            }
+        }
+    }
     let ptr = player.as_ptr() as i64;
     let manager = get_player_manager();
     let mut players = manager.write().map_err(|_| {
@@ -2025,6 +2949,12 @@ fn set_decoder_surface_with_retry(
                     component_id
                 );
             }
+            log::info!(
+                "[Harmony.StreamDecoder] SetSurface ok for {} codec={:?} window={:?}",
+                component_id,
+                codec,
+                window
+            );
             return Ok(());
         }
         if result != AV_ERR_INVALID_STATE || attempt >= 5 {
@@ -2042,6 +2972,53 @@ fn set_decoder_surface_with_retry(
         );
         std::thread::sleep(std::time::Duration::from_millis(50 * attempt as u64));
     }
+}
+
+fn refresh_stream_decoder_surface(component_id: &str) -> Result<(), PlatformError> {
+    let Some(wrapper) = lookup_stream_decoder(component_id) else {
+        return Ok(());
+    };
+    let Some(surface_id) = lookup_surface_id(component_id) else {
+        return Ok(());
+    };
+
+    let (codec, old_window) = {
+        let state = wrapper
+            .state
+            .lock()
+            .map_err(|_| PlatformError::Platform("Stream decoder lock poisoned".to_string()))?;
+        let Some(video_state) = state.video.as_ref() else {
+            return Ok(());
+        };
+        (video_state.codec, video_state.window)
+    };
+
+    if codec.is_null() {
+        return Ok(());
+    }
+    let new_window = create_native_window_from_surface_id(&surface_id)?;
+    if let Err(err) = set_decoder_surface_with_retry(codec, new_window, component_id) {
+        unsafe { OH_NativeWindow_DestroyNativeWindow(new_window) };
+        return Err(err);
+    }
+
+    let mut state = wrapper
+        .state
+        .lock()
+        .map_err(|_| PlatformError::Platform("Stream decoder lock poisoned".to_string()))?;
+    let Some(video_state) = state.video.as_mut() else {
+        unsafe { OH_NativeWindow_DestroyNativeWindow(new_window) };
+        return Ok(());
+    };
+    if video_state.codec != codec {
+        unsafe { OH_NativeWindow_DestroyNativeWindow(new_window) };
+        return Ok(());
+    }
+    if !old_window.is_null() && old_window != new_window {
+        unsafe { OH_NativeWindow_DestroyNativeWindow(old_window) };
+    }
+    video_state.window = new_window;
+    Ok(())
 }
 
 fn check_audio_result(code: i32, context: &str) -> Result<(), PlatformError> {
@@ -2351,6 +3328,11 @@ pub fn create_native_window_from_surface_id(
             surface_id, result
         )));
     }
+    log::info!(
+        "[Harmony.StreamDecoder] created native window for surface_id={} ptr={:?}",
+        surface_id,
+        window
+    );
     Ok(window)
 }
 
@@ -2359,17 +3341,56 @@ pub fn set_video_surface_from_id(
     surface_id: &str,
 ) -> Result<(), PlatformError> {
     store_surface_id(component_id, surface_id);
-    let window = create_native_window_from_surface_id(surface_id)?;
-    if let Some(player) = get_player(component_id) {
-        if let Ok(mut p) = player.lock() {
-            return p.set_video_surface(window);
-        }
+
+    // If a stream decoder is already created, surface binds may arrive after the stream provider
+    // has already delivered the (cached) `VideoStreamConfig`. Trigger a reconfigure so the decoder
+    // can bind the new surface and start rendering.
+    if let Some(wrapper) = lookup_stream_decoder(component_id) {
+        let component_id = component_id.to_string();
+        let wrapper_clone = wrapper.clone();
+        std::thread::spawn(move || {
+            let user_data =
+                Arc::as_ptr(&wrapper_clone) as *const StreamDecoderWrapper as *mut c_void;
+            match wrapper_clone.state.lock() {
+                Ok(mut state) => {
+                    if let Some(config) = state.last_video_config.clone() {
+                        if let Err(err) = state.configure_video(config, user_data) {
+                            log::warn!(
+                                "[Harmony.StreamDecoder] delayed surface configure failed for {}: {}",
+                                component_id,
+                                err
+                            );
+                        }
+                    }
+                }
+                Err(_) => {
+                    log::warn!(
+                        "[Harmony.StreamDecoder] delayed surface configure skipped (poisoned lock) for {}",
+                        component_id
+                    );
+                }
+            }
+        });
     }
 
-    Err(PlatformError::Platform(format!(
-        "Player not found: {}",
-        component_id
-    )))
+    let mut result = Ok(());
+    if let Some(player) = get_player(component_id) {
+        let window = create_native_window_from_surface_id(surface_id)?;
+        match player.lock() {
+            Ok(mut p) => {
+                result = p.set_video_surface(window);
+            }
+            Err(_) => {
+                unsafe { OH_NativeWindow_DestroyNativeWindow(window) };
+                result = Err(PlatformError::Platform(format!(
+                    "Failed to acquire player lock: {}",
+                    component_id
+                )));
+            }
+        }
+    }
+    // Player may not exist yet; surface ID is persisted and will be picked up at create time.
+    result
 }
 
 pub fn rebind_surface_from_id(
@@ -2393,15 +3414,56 @@ pub fn rebind_surface_from_id(
 
 pub fn rebind_stream_surface(component_id: &str, surface_id: &str) -> Result<(), PlatformError> {
     store_surface_id(component_id, surface_id);
-    let decoder = lookup_stream_decoder(component_id).ok_or_else(|| {
-        PlatformError::Platform(format!("Stream decoder not found: {}", component_id))
-    })?;
-    let mut state = decoder
+    let Some(wrapper) = lookup_stream_decoder(component_id) else {
+        // Decoder may not exist yet; surface ID is persisted and will be picked up at configure time.
+        return Ok(());
+    };
+
+    // First pass: check if we need to configure video (surface arrived after stream config)
+    {
+        let mut state = wrapper
+            .state
+            .lock()
+            .map_err(|_| PlatformError::Platform("Stream decoder lock poisoned".to_string()))?;
+
+        let is_first_surface = state
+            .video
+            .as_ref()
+            .map(|v| v.window.is_null())
+            .unwrap_or(true);
+
+        // Fullscreen enter/exit triggers surface swaps; those should be seamless and must not force a
+        // keyframe gate (which would look like a "stream restart"). We only enforce keyframe gating
+        // when the decoder is binding its first surface (or when video isn't configured yet).
+        if is_first_surface {
+            state.need_video_keyframe = true;
+            state.gate_audio_until_video = true;
+            state.gate_audio_deadline = Some(Instant::now() + Duration::from_secs(2));
+            state.has_played = false;
+        }
+        // Avoid forcing a visible loading spinner on surface rebinds (fullscreen transitions in
+        // particular). The UI will stay in its current state while we wait for the next frame.
+        state.waiting_notified = false;
+
+        // If we received stream config before the surface existed, configure_video() would have stored
+        // last_video_config and returned Ok(()). Now that we have a surface, retry configuration.
+        if state.video.is_none() {
+            if let Some(config) = state.last_video_config.clone() {
+                let user_data = Arc::as_ptr(&wrapper) as *const StreamDecoderWrapper as *mut c_void;
+                let _ = state.configure_video(config, user_data);
+            }
+        }
+    }
+
+    // Second pass: rebind the surface
+    let mut state = wrapper
+        .state
         .lock()
         .map_err(|_| PlatformError::Platform("Stream decoder lock poisoned".to_string()))?;
-    let video_state = state.video.as_mut().ok_or_else(|| {
-        PlatformError::Platform("Stream video decoder not configured".to_string())
-    })?;
+
+    let Some(video_state) = state.video.as_mut() else {
+        return Ok(());
+    };
     let window = create_native_window_from_surface_id(surface_id)?;
     if let Err(err) = set_decoder_surface_with_retry(video_state.codec, window, component_id) {
         unsafe { OH_NativeWindow_DestroyNativeWindow(window) };
@@ -2411,6 +3473,7 @@ pub fn rebind_stream_surface(component_id: &str, surface_id: &str) -> Result<(),
         unsafe { OH_NativeWindow_DestroyNativeWindow(video_state.window) };
     }
     video_state.window = window;
+
     Ok(())
 }
 
@@ -2451,7 +3514,87 @@ fn dispatch_command_harmony(
     component_id: &str,
     command: VideoPlayerCommand,
 ) -> Result<(), PlatformError> {
+    match &command {
+        VideoPlayerCommand::SetDuration { duration } => {
+            let duration_ms = if duration.is_finite() && *duration > 0.0 {
+                (*duration * 1000.0).round().clamp(0.0, i32::MAX as f64) as i32
+            } else {
+                0
+            };
+            notify_arkts(component_id, "duration", Some(&duration_ms.to_string()));
+        }
+        VideoPlayerCommand::Stop => {
+            notify_arkts(component_id, "duration", Some("0"));
+        }
+        _ => {}
+    }
+
     if let Some(decoder) = lookup_stream_decoder(component_id) {
+        // Apply pause/unpause intent immediately (without waiting for the state mutex). If we wait
+        // for the mutex while the stream provider keeps pushing frames, we can drop the next
+        // keyframe and end up stuck buffering until the next keyframe arrives.
+        match command {
+            VideoPlayerCommand::Play => {
+                decoder.paused.store(false, Ordering::Release);
+                // Clear stale timestamps so underflow recovery doesn't fire immediately after
+                // pause->play while the provider is still reconnecting.
+                decoder.last_video_enqueue_ms.store(0, Ordering::Release);
+                decoder.last_audio_enqueue_ms.store(0, Ordering::Release);
+                decoder.last_video_output_ms.store(0, Ordering::Release);
+                decoder.video_started_at_ms.store(0, Ordering::Release);
+                decoder.video_received_frame.store(false, Ordering::Release);
+                decoder.playing_event_pending.store(true, Ordering::Release);
+                log::info!(
+                    "[Harmony.StreamDecoder] command Play received for {} (fast-unpause)",
+                    component_id
+                );
+            }
+            VideoPlayerCommand::Pause => {
+                decoder.paused.store(true, Ordering::Release);
+                decoder.last_video_enqueue_ms.store(0, Ordering::Release);
+                decoder.last_audio_enqueue_ms.store(0, Ordering::Release);
+                decoder
+                    .playing_event_pending
+                    .store(false, Ordering::Release);
+                log::info!(
+                    "[Harmony.StreamDecoder] command Pause received for {} (fast-pause)",
+                    component_id
+                );
+            }
+            _ => {}
+        }
+
+        let callback_id = lookup_video_callback_id(component_id);
+        let control_event: Option<(&'static str, serde_json::Value)> = match &command {
+            VideoPlayerCommand::Play => Some(("waiting", serde_json::json!({"reason":"play"}))),
+            VideoPlayerCommand::Pause => Some(("pause", serde_json::json!({"reason":"user"}))),
+            VideoPlayerCommand::Stop => Some(("stop", serde_json::json!({"reason":"user"}))),
+            VideoPlayerCommand::Seek { position } => {
+                Some(("seeked", serde_json::json!({"time": position})))
+            }
+            _ => None,
+        };
+
+        fn invoke_control_event(
+            callback_id: u64,
+            component_id: String,
+            event: &'static str,
+            detail: serde_json::Value,
+        ) {
+            std::thread::spawn(move || {
+                let component_id_for_fields = component_id.clone();
+                let payload = serde_json::json!({
+                    "action": "component.event",
+                    "id": component_id_for_fields,
+                    "componentId": component_id,
+                    "event": event,
+                    "detail": detail,
+                })
+                .to_string();
+                let _ = lingxia_messaging::invoke_callback(callback_id, Ok(payload));
+            });
+        }
+
         // Do not block the single-threaded JS worker on decoder mutex contention.
         // Decoder callbacks run on codec threads and take the same lock frequently; if we block here,
         // view->native calls can time out (e.g. selectPlaybackSegment) even though the UI is responsive.
@@ -2473,6 +3616,10 @@ fn dispatch_command_harmony(
                         component_id
                     );
                 }
+                VideoPlayerCommand::SetDuration { .. } => {
+                    // Duration metadata is consumed by UI overlays on other platforms.
+                    // Harmony stream decoder UI sync is handled separately in ArkTS.
+                }
                 VideoPlayerCommand::EnterFullscreen => {
                     notify_arkts(component_id, "enterFullscreen", None);
                 }
@@ -2485,16 +3632,22 @@ fn dispatch_command_harmony(
 
         fn apply_stream_decoder_command_blocking(
             component_id: String,
-            decoder: Arc<Mutex<StreamDecoderState>>,
+            wrapper: Arc<StreamDecoderWrapper>,
             command: VideoPlayerCommand,
+            callback_id: Option<u64>,
+            control_event: Option<(&'static str, serde_json::Value)>,
         ) {
-            match decoder.lock() {
+            match wrapper.state.lock() {
                 Ok(mut state) => {
                     let remove =
                         apply_stream_decoder_command_locked(&component_id, &mut state, command);
                     drop(state);
                     if remove {
-                        remove_stream_decoder_if_current(&component_id, &decoder);
+                        remove_stream_decoder_if_current(&component_id, &wrapper);
+                    }
+                    if let (Some(callback_id), Some((event, detail))) = (callback_id, control_event)
+                    {
+                        invoke_control_event(callback_id, component_id, event, detail);
                     }
                 }
                 Err(_) => {
@@ -2506,12 +3659,15 @@ fn dispatch_command_harmony(
             }
         }
 
-        match decoder.try_lock() {
+        match decoder.state.try_lock() {
             Ok(mut state) => {
                 let remove = apply_stream_decoder_command_locked(component_id, &mut state, command);
                 drop(state);
                 if remove {
                     remove_stream_decoder_if_current(component_id, &decoder);
+                }
+                if let (Some(callback_id), Some((event, detail))) = (callback_id, control_event) {
+                    invoke_control_event(callback_id, component_id.to_string(), event, detail);
                 }
                 return Ok(());
             }
@@ -2521,17 +3677,50 @@ fn dispatch_command_harmony(
                 ));
             }
             Err(std::sync::TryLockError::WouldBlock) => {
-                let decoder_clone = decoder.clone();
+                let wrapper_clone = decoder.clone();
                 let component_id = component_id.to_string();
+                let callback_id = callback_id;
+                let control_event = control_event;
                 std::thread::spawn(move || {
-                    apply_stream_decoder_command_blocking(component_id, decoder_clone, command);
+                    apply_stream_decoder_command_blocking(
+                        component_id,
+                        wrapper_clone,
+                        command,
+                        callback_id,
+                        control_event,
+                    );
                 });
                 return Ok(());
             }
         }
     }
-    if matches!(command, VideoPlayerCommand::Stop) && get_player(component_id).is_none() {
+    if matches!(
+        command,
+        VideoPlayerCommand::Stop | VideoPlayerCommand::SetDuration { .. }
+    ) && get_player(component_id).is_none()
+    {
         // Stream-only mode: stopping is idempotent even when no player/decoder is registered.
+        return Ok(());
+    }
+    if matches!(
+        command,
+        VideoPlayerCommand::Play | VideoPlayerCommand::Pause
+    ) && get_player(component_id).is_none()
+        && lookup_stream_decoder(component_id).is_none()
+    {
+        // Stream-only mode: play/pause can be invoked before the decoder is created (e.g. starting
+        // a playback stream). Record intent and apply it when the decoder is instantiated so UI
+        // state and first-frame events behave deterministically.
+        log::info!(
+            "[Harmony.StreamDecoder] command {:?} recorded pending (no decoder yet) for {}",
+            command,
+            component_id
+        );
+        match command {
+            VideoPlayerCommand::Play => set_pending_stream_paused(component_id, false),
+            VideoPlayerCommand::Pause => set_pending_stream_paused(component_id, true),
+            _ => {}
+        }
         return Ok(());
     }
     let player = get_player(component_id)
@@ -2540,12 +3729,37 @@ fn dispatch_command_harmony(
         .lock()
         .map_err(|_| PlatformError::Platform("Failed to acquire player lock".to_string()))?;
 
+    if matches!(
+        command,
+        VideoPlayerCommand::Play | VideoPlayerCommand::Pause | VideoPlayerCommand::Seek { .. }
+    ) && !p.source_set
+    {
+        // Stream decode mode can issue play/pause before an AVPlayer source is configured (or even
+        // before the stream decoder is created). If we forward to AVPlayer here, it may fail with
+        // "prepare without source" and the UI will think play/pause didn't work. Treat this as
+        // stream intent and apply it when/if the stream decoder becomes available.
+        match command {
+            VideoPlayerCommand::Play => set_pending_stream_paused(component_id, false),
+            VideoPlayerCommand::Pause => set_pending_stream_paused(component_id, true),
+            VideoPlayerCommand::Seek { .. } => {
+                // Stream seek is handled by logic layer session directly.
+                // Just return Ok to avoid "prepare without source" error.
+            }
+            _ => {}
+        }
+        return Ok(());
+    }
+
     match command {
         VideoPlayerCommand::Play => p.play(),
         VideoPlayerCommand::Pause => p.pause(),
         VideoPlayerCommand::Stop => p.stop(),
         VideoPlayerCommand::Seek { position } => {
             p.seek((position * 1000.0) as i32, AVPlayerSeekMode::PreviousSync)
+        }
+        VideoPlayerCommand::SetDuration { .. } => {
+            // Duration metadata is stored separately for stream decoder UI overlays.
+            Ok(())
         }
         VideoPlayerCommand::EnterFullscreen => {
             notify_arkts(component_id, "enterFullscreen", None);
@@ -2586,18 +3800,31 @@ impl VideoPlayerManager for Platform {
                 component_id
             );
         }
-        // Note: Harmony events are handled via call_arkts, not callback_id
+        // Note: Harmony events are handled via call_arkts; callback wiring is set via
+        // `set_player_callback()`.
 
         let cid = component_id.to_string();
         let handle =
             VideoPlayerHandleImpl::new(move |command| dispatch_command_harmony(&cid, command));
         Ok(Box::new(handle))
     }
+
+    fn set_player_callback(
+        &self,
+        component_id: &str,
+        callback_id: u64,
+    ) -> Result<(), PlatformError> {
+        store_video_callback_id(component_id, callback_id);
+        let callback_str = callback_id.to_string();
+        lingxia_webview::tsfn::call_arkts("setVideoPlayerCallback", &[component_id, &callback_str])
+            .map_err(|e| PlatformError::Platform(format!("Failed to set video callback: {}", e)))?;
+        Ok(())
+    }
 }
 
 struct HarmonyStreamDecoderHandle {
     component_id: String,
-    state: Arc<Mutex<StreamDecoderState>>,
+    wrapper: Arc<StreamDecoderWrapper>,
     reset_in_flight: Arc<AtomicBool>,
 }
 
@@ -2610,15 +3837,25 @@ impl VideoStreamDecoderHandle for HarmonyStreamDecoderHandle {
         false
     }
 
+    fn flush(&self) -> Result<(), PlatformError> {
+        let mut state = self
+            .wrapper
+            .state
+            .lock()
+            .map_err(|_| PlatformError::Platform("Stream decoder lock poisoned".to_string()))?;
+        state.reset_soft();
+        Ok(())
+    }
+
     fn reset_stream(&self, hard: bool) -> Result<(), PlatformError> {
         notify_arkts(&self.component_id, "waiting", None);
 
-        match self.state.try_lock() {
+        match self.wrapper.state.try_lock() {
             Ok(mut state) => {
                 if hard {
                     state.stop_without_notify();
                     drop(state);
-                    remove_stream_decoder_if_current(&self.component_id, &self.state);
+                    remove_stream_decoder_if_current(&self.component_id, &self.wrapper);
                     return Ok(());
                 }
                 state.reset_soft();
@@ -2636,18 +3873,18 @@ impl VideoStreamDecoderHandle for HarmonyStreamDecoderHandle {
                     .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
                     .is_ok()
                 {
-                    let state = self.state.clone();
+                    let wrapper = self.wrapper.clone();
                     let component_id = self.component_id.clone();
                     let in_flight = self.reset_in_flight.clone();
                     std::thread::spawn(move || {
                         let result = (|| {
-                            let mut guard = state.lock().map_err(|_| {
+                            let mut guard = wrapper.state.lock().map_err(|_| {
                                 PlatformError::Platform("Stream decoder lock poisoned".to_string())
                             })?;
                             if hard {
                                 guard.stop_without_notify();
                                 drop(guard);
-                                remove_stream_decoder_if_current(&component_id, &state);
+                                remove_stream_decoder_if_current(&component_id, &wrapper);
                             } else {
                                 guard.reset_soft();
                             }
@@ -2675,17 +3912,20 @@ impl VideoStreamDecoderHandle for HarmonyStreamDecoderHandle {
     }
 
     fn configure_video(&self, config: VideoStreamConfig) -> Result<(), PlatformError> {
-        let user_data = Arc::as_ptr(&self.state) as *const Mutex<StreamDecoderState> as *mut c_void;
+        let user_data = Arc::as_ptr(&self.wrapper) as *const StreamDecoderWrapper as *mut c_void;
         let mut state = self
+            .wrapper
             .state
             .lock()
             .map_err(|_| PlatformError::Platform("Stream decoder lock poisoned".to_string()))?;
-        state.configure_video(config, user_data)
+        state.configure_video(config, user_data)?;
+        Ok(())
     }
 
     fn configure_audio(&self, config: AudioStreamConfig) -> Result<(), PlatformError> {
-        let user_data = Arc::as_ptr(&self.state) as *const Mutex<StreamDecoderState> as *mut c_void;
+        let user_data = Arc::as_ptr(&self.wrapper) as *const StreamDecoderWrapper as *mut c_void;
         let mut state = self
+            .wrapper
             .state
             .lock()
             .map_err(|_| PlatformError::Platform("Stream decoder lock poisoned".to_string()))?;
@@ -2693,31 +3933,176 @@ impl VideoStreamDecoderHandle for HarmonyStreamDecoderHandle {
     }
 
     fn push_video(&self, frame: VideoFrame) -> Result<(), PlatformError> {
-        let mut state = self
-            .state
-            .lock()
-            .map_err(|_| PlatformError::Platform("Stream decoder lock poisoned".to_string()))?;
-        state.enqueue_video(frame)
+        let codec_to_start = {
+            let mut state =
+                self.wrapper.state.lock().map_err(|_| {
+                    PlatformError::Platform("Stream decoder lock poisoned".to_string())
+                })?;
+            state.enqueue_video(frame)?
+        };
+        if let Some(codec) = codec_to_start {
+            log::info!(
+                "[Harmony.StreamDecoder] starting video decoder on first frame for {} (codec={:?})",
+                self.component_id,
+                codec
+            );
+            if let Err(err) = check_av_result(
+                unsafe { OH_VideoDecoder_Start(codec) },
+                "OH_VideoDecoder_Start",
+            ) {
+                log::error!(
+                    "[Harmony.StreamDecoder] failed to start video decoder for {}: {:?}",
+                    self.component_id,
+                    err
+                );
+                return Err(err);
+            }
+            self.wrapper
+                .video_started_at_ms
+                .store(now_ms(), Ordering::Release);
+
+            // Spawn a watchdog that can recover from "no output" starts and "first frame then
+            // freeze" stalls even if the codec stops invoking callbacks.
+            if self
+                .wrapper
+                .watchdog_started
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+            {
+                let component_id = self.component_id.clone();
+                std::thread::spawn(move || {
+                    loop {
+                        std::thread::sleep(Duration::from_millis(500));
+                        let Some(decoder) = lookup_stream_decoder(&component_id) else {
+                            break;
+                        };
+                        if decoder.is_destroying() {
+                            break;
+                        }
+                        if decoder.paused.load(Ordering::Acquire) {
+                            continue;
+                        }
+
+                        let now = now_ms();
+                        let last_enqueue = decoder.last_video_enqueue_ms.load(Ordering::Acquire);
+                        let enqueue_idle_ms = if last_enqueue > 0 {
+                            now.saturating_sub(last_enqueue)
+                        } else {
+                            i64::MAX
+                        };
+                        let upstream_active = enqueue_idle_ms < 800;
+
+                        let has_frame = decoder.video_received_frame.load(Ordering::Acquire);
+                        let started_at = decoder.video_started_at_ms.load(Ordering::Acquire);
+                        if !has_frame
+                            && started_at > 0
+                            && upstream_active
+                            && now.saturating_sub(started_at) >= 1500
+                            && decoder
+                                .video_force_annexb
+                                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                                .is_ok()
+                        {
+                            log::warn!(
+                                "[Harmony.StreamDecoder] no video output after start ({}ms), enabling AVCC->AnnexB fallback and soft reset for {}",
+                                now.saturating_sub(started_at),
+                                component_id
+                            );
+                            if let Ok(mut state) = decoder.state.lock() {
+                                notify_arkts(&component_id, "waiting", None);
+                                state.reset_soft();
+                            }
+                            decoder
+                                .underflow_recovery_in_flight
+                                .store(false, Ordering::Release);
+                            continue;
+                        }
+
+                        if !has_frame {
+                            continue;
+                        }
+
+                        let last_output = decoder.last_video_output_ms.load(Ordering::Acquire);
+                        if last_output <= 0 {
+                            continue;
+                        }
+
+                        let output_idle_ms = now.saturating_sub(last_output);
+                        if output_idle_ms < 1500 || !upstream_active {
+                            continue;
+                        }
+
+                        if decoder
+                            .underflow_recovery_in_flight
+                            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                            .is_err()
+                        {
+                            continue;
+                        }
+
+                        log::warn!(
+                            "[Harmony.StreamDecoder] video output stalled (output_idle={}ms enqueue_idle={}ms), soft reset for {}",
+                            output_idle_ms,
+                            enqueue_idle_ms,
+                            component_id
+                        );
+
+                        if let Ok(mut state) = decoder.state.lock() {
+                            notify_arkts(&component_id, "waiting", None);
+                            state.reset_soft();
+                        }
+                        decoder
+                            .last_video_output_ms
+                            .store(now_ms(), Ordering::Release);
+                        decoder
+                            .underflow_recovery_in_flight
+                            .store(false, Ordering::Release);
+                    }
+                });
+            }
+        }
+        Ok(())
     }
 
     fn push_audio(&self, frame: AudioFrame) -> Result<(), PlatformError> {
-        let mut state = self
-            .state
-            .lock()
-            .map_err(|_| PlatformError::Platform("Stream decoder lock poisoned".to_string()))?;
-        state.enqueue_audio(frame)
+        let codec_to_start = {
+            let mut state =
+                self.wrapper.state.lock().map_err(|_| {
+                    PlatformError::Platform("Stream decoder lock poisoned".to_string())
+                })?;
+            state.enqueue_audio(frame)?
+        };
+        if let Some(codec) = codec_to_start {
+            log::info!(
+                "[Harmony.StreamDecoder] starting audio decoder on first frame for {} (codec={:?})",
+                self.component_id,
+                codec
+            );
+            if let Err(err) =
+                check_av_result(unsafe { OH_AudioCodec_Start(codec) }, "OH_AudioCodec_Start")
+            {
+                log::error!(
+                    "[Harmony.StreamDecoder] failed to start audio decoder for {}: {:?}",
+                    self.component_id,
+                    err
+                );
+                return Err(err);
+            }
+        }
+        Ok(())
     }
 
     fn stop(&self) -> Result<(), PlatformError> {
         let mut state = self
+            .wrapper
             .state
             .lock()
             .map_err(|_| PlatformError::Platform("Stream decoder lock poisoned".to_string()))?;
-        // Stopping the low-level decoder should not reset the UI state; UI-level "stopped" is
+        // Stopping the low-level decoder should not reset the UI state; UI-level "stop" is
         // emitted via VideoPlayerCommand::Stop (dispatch_command_harmony).
         state.stop_without_notify();
         drop(state);
-        remove_stream_decoder_if_current(&self.component_id, &self.state);
+        remove_stream_decoder_if_current(&self.component_id, &self.wrapper);
         Ok(())
     }
 }
@@ -2727,13 +4112,53 @@ impl VideoStreamDecoderManager for Platform {
         &self,
         component_id: &str,
     ) -> Result<Box<dyn VideoStreamDecoderHandle>, PlatformError> {
-        let state = Arc::new(Mutex::new(StreamDecoderState::new(
-            component_id.to_string(),
-        )));
-        register_stream_decoder(component_id, state.clone());
+        log::info!(
+            "[Harmony.StreamDecoder] create_stream_decoder component_id={}",
+            component_id
+        );
+        let wrapper = Arc::new(StreamDecoderWrapper {
+            component_id: component_id.to_string(),
+            destroying: AtomicUsize::new(0),
+            paused: AtomicBool::new(false),
+            video_force_annexb: AtomicBool::new(false),
+            video_received_frame: AtomicBool::new(false),
+            playing_event_pending: AtomicBool::new(false),
+            video_started_at_ms: AtomicI64::new(0),
+            video_surface_refresh_scheduled: AtomicBool::new(false),
+            logged_first_video_input: AtomicBool::new(false),
+            logged_first_audio_input: AtomicBool::new(false),
+            logged_drop_video_paused: AtomicBool::new(false),
+            logged_drop_audio_paused: AtomicBool::new(false),
+            logged_video_underflow: AtomicBool::new(false),
+            logged_audio_underflow: AtomicBool::new(false),
+            logged_first_video_output_callback: AtomicBool::new(false),
+            first_video_pts: AtomicI64::new(0),
+            last_video_pts: AtomicI64::new(0),
+            last_video_enqueue_ms: AtomicI64::new(0),
+            last_audio_enqueue_ms: AtomicI64::new(0),
+            last_video_output_ms: AtomicI64::new(0),
+            first_video_output_ms: AtomicI64::new(0),
+            watchdog_started: AtomicBool::new(false),
+            underflow_recovery_in_flight: AtomicBool::new(false),
+            video_queue: Mutex::new(VecDeque::new()),
+            audio_queue: Mutex::new(VecDeque::new()),
+            state: Mutex::new(StreamDecoderState::new(component_id.to_string())),
+        });
+        register_stream_decoder(component_id, wrapper.clone());
+        if let Some(paused) = take_pending_stream_paused(component_id) {
+            log::info!(
+                "[Harmony.StreamDecoder] apply pending pause={} for {}",
+                paused,
+                component_id
+            );
+            wrapper.paused.store(paused, Ordering::Release);
+            if let Ok(mut state) = wrapper.state.lock() {
+                state.paused = paused;
+            }
+        }
         Ok(Box::new(HarmonyStreamDecoderHandle {
             component_id: component_id.to_string(),
-            state,
+            wrapper,
             reset_in_flight: Arc::new(AtomicBool::new(false)),
         }))
     }

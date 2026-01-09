@@ -209,8 +209,8 @@ mod bridge {
 pub use bridge::{
     ActionSheetOptions, ModalOptions, PopupPositionBridge, ToastIcon, ToastOptions, ToastPosition,
     close_lxapp, hide_popup, hide_toast, launch_with_url, navigate, open_document, open_lxapp,
-    preview_media, show_action_sheet, show_modal, show_popup, show_toast, start_pull_down_refresh,
-    stop_pull_down_refresh, update_navbar_ui, update_tabbar_ui,
+    preview_media, show_action_sheet, show_modal, show_popup, show_toast, update_navbar_ui,
+    update_tabbar_ui,
 };
 #[cfg(target_os = "ios")]
 #[allow(unused_imports)]
@@ -218,5 +218,5 @@ pub use bridge::{
     choose_media, compress_image, configure_stream_audio, configure_stream_video,
     copy_album_media_to_file, create_stream_decoder, dispatch_video_command, get_image_info,
     push_stream_audio, push_stream_video, scan_code, set_video_player_callback,
-    stop_stream_decoder,
+    start_pull_down_refresh, stop_pull_down_refresh, stop_stream_decoder,
 };

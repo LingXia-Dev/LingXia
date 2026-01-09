@@ -12,6 +12,12 @@ pub enum VideoPlayerCommand {
         position: f64,
     },
 
+    /// Provide an external duration for stream/piped playback (seconds).
+    /// Use `0` to clear.
+    SetDuration {
+        duration: f64,
+    },
+
     EnterFullscreen,
 
     ExitFullscreen,
@@ -60,4 +66,15 @@ pub trait VideoPlayerManager: Send + Sync + 'static {
     /// Returns a handle for dispatching commands to the player.
     /// The native player must already be created by the UI layer (native component).
     fn bind_player(&self, component_id: &str) -> Result<Box<dyn VideoPlayerHandle>, PlatformError>;
+
+    /// Set (or update) the callback ID for video player events for a component.
+    ///
+    /// Default implementation is a no-op for platforms that don't support callbacks.
+    fn set_player_callback(
+        &self,
+        _component_id: &str,
+        _callback_id: u64,
+    ) -> Result<(), PlatformError> {
+        Ok(())
+    }
 }

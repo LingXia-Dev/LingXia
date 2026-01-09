@@ -72,6 +72,9 @@ pub trait VideoStreamDecoderHandle: Send + Sync {
     fn push_video(&self, frame: VideoFrame) -> Result<(), PlatformError>;
     fn push_audio(&self, frame: AudioFrame) -> Result<(), PlatformError>;
     fn stop(&self) -> Result<(), PlatformError>;
+    fn flush(&self) -> Result<(), PlatformError> {
+        Ok(())
+    }
 }
 
 pub trait VideoStreamDecoderManager: Send + Sync + 'static {

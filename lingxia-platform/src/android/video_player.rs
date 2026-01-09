@@ -392,6 +392,44 @@ impl VideoPlayerManager for Platform {
             VideoPlayerHandleImpl::new(move |command| dispatch_command_android(&cid, command));
         Ok(Box::new(handle))
     }
+
+    fn set_player_callback(
+        &self,
+        component_id: &str,
+        callback_id: u64,
+    ) -> Result<(), PlatformError> {
+        let failure_context = format!("setVideoPlayerCallback for component {}", component_id);
+        with_env_and_class(&failure_context, |env, component_router_class| {
+            let component_id_jstring = env
+                .new_string(component_id)
+                .map_err(|e| platform_error(&failure_context, e))?;
+
+            let result = env
+                .call_static_method(
+                    component_router_class,
+                    "setVideoPlayerCallback",
+                    "(Ljava/lang/String;J)Z",
+                    &[
+                        JValue::Object(&component_id_jstring),
+                        JValue::Long(callback_id as i64),
+                    ],
+                )
+                .map_err(|e| platform_error(&failure_context, e))?;
+
+            if let Some(ex_msg) = extract_exception_message(env) {
+                return Err(platform_error(
+                    &failure_context,
+                    format!("Java exception: {}", ex_msg),
+                ));
+            }
+
+            result
+                .z()
+                .map_err(|e| platform_error(&failure_context, format!("Bad result: {}", e)))
+                .and_then(|ok| ensure_component_ok(component_id, "setVideoPlayerCallback", ok))
+        })?;
+        Ok(())
+    }
 }
 
 fn map_command_to_android(command: VideoPlayerCommand) -> (String, String) {
@@ -402,6 +440,10 @@ fn map_command_to_android(command: VideoPlayerCommand) -> (String, String) {
         VideoPlayerCommand::Seek { position } => {
             ("seek".to_string(), json!({ "time": position }).to_string())
         }
+        VideoPlayerCommand::SetDuration { duration } => (
+            "setDuration".to_string(),
+            json!({ "duration": duration }).to_string(),
+        ),
         VideoPlayerCommand::EnterFullscreen => ("enterFullscreen".to_string(), "{}".to_string()),
         VideoPlayerCommand::ExitFullscreen => ("exitFullscreen".to_string(), "{}".to_string()),
     }
