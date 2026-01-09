@@ -1,6 +1,6 @@
 import React from 'react';
 import '../../tailwind.css';
-import { LxVideo } from 'lingxia-ui/react';
+import { LxVideo } from 'lingxia-components/react';
 
 type LxVideoEvent<TDetail> = { detail?: TDetail };
 

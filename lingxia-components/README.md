@@ -1,11 +1,11 @@
-# lingxia-view
+# lingxia-components
 
 Pre-built UI component library for LingXia lightweight applications.
 
 ## Directory Structure
 
 ```
-lingxia-view/
+lingxia-components/
 ├── src/          # TypeScript source files
 │   ├── react/   # React components
 │   ├── vue/     # Vue components

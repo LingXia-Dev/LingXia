@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { LxPicker } from 'lingxia-ui/react';
+import { LxPicker } from 'lingxia-components/react';
 import '../../tailwind.css';
 
 const coffees = ['Espresso', 'Americano', 'Latte', 'Cappuccino', 'Mocha', 'Macchiato'];

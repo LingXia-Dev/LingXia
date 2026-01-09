@@ -1,5 +1,5 @@
 {
-  "name": "lingxia-ui",
+  "name": "lingxia-components",
   "version": "0.0.1",
   "type": "module",
   "main": "dist/index.js",
