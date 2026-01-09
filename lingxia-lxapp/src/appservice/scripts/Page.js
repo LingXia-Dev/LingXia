@@ -44,12 +44,23 @@
         throw new Error("setData: Invalid updates");
       }
 
+      const self = this;
+
+      // Keep `this.data` up-to-date immediately, but still debounce
+      // the expensive diff/patch generation and bridge transfer for performance.
+      try {
+        for (const [path, value] of Object.entries(updates)) {
+          setValueByPath(self.data, path, value);
+        }
+      } catch (err) {
+        console.error("Error in setData:", err);
+        return;
+      }
+
       pendingData = pendingData ? { ...pendingData, ...updates } : updates;
       if (typeof callback === "function") {
         pendingCallbacks.push(callback);
       }
-
-      const self = this;
 
       clearTimeout(updateTimer);
       updateTimer = setTimeout(() => {
@@ -63,11 +74,6 @@
         try {
           if (!currentUpdates) {
             return;
-          }
-
-          // Apply updates to local data
-          for (const [path, value] of Object.entries(currentUpdates)) {
-            setValueByPath(self.data, path, value);
           }
 
           // Generate and send patch if needed
