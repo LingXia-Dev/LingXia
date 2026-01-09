@@ -49,6 +49,7 @@ class WebView(context: Context) : LingXiaWebView(context) {
 
     fun pause() {
         Log.d(TAG, "Pausing WebView operations")
+        SameLevelBridge.notifyPageInactive(this)
         onPause()
     }
 

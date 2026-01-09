@@ -310,10 +310,9 @@ class SameLevelComponentManager(
 
     /**
      * Set Rust callback ID for a component (used by VideoContext).
-     * Returns true if component exists, false otherwise.
+     * Returns true once stored (component may not exist yet).
      */
     fun setCallback(componentId: String, callbackId: Long): Boolean {
-        if (!components.containsKey(componentId)) return false
         componentCallbacks[componentId] = callbackId
         return true
     }
@@ -337,8 +336,25 @@ class SameLevelComponentManager(
         event: String,
         detail: Map<String, Any?> = emptyMap()
     ) {
-        if (event == "waiting" || event == "play" || event == "pause" || event == "stop") {
-            (components[componentId] as? VideoComponent)?.handleStreamDecoderEvent(event)
+        if (event == "waiting" || event == "play" || event == "pause" || event == "stop" || event == "ended" || event == "seeked") {
+            val videoComponent = components[componentId] as? VideoComponent
+            // Set streamHasEnded=true when ended event arrives
+            if (event == "ended") {
+                videoComponent?.setStreamEnded(true)
+                android.util.Log.d("SameLevelComponentManager", "emitComponentEvent: set streamHasEnded=true for ended event")
+            }
+            // Handle seeked event: if video has ended, set flag to clear ended state on next acquire
+            if (event == "seeked") {
+                videoComponent?.handleSeekAfterEnded()
+            }
+            // Don't call handleStreamDecoderEvent for waiting events after video has ended
+            // This prevents poster from showing when VideoContext sends waiting event after ended
+            if (event == "waiting" && videoComponent?.isStreamEnded() == true) {
+                android.util.Log.d("SameLevelComponentManager", "emitComponentEvent: ignoring waiting event, video has ended")
+            } else if (event != "ended" && event != "seeked") {
+                // Only call handleStreamDecoderEvent for waiting/play/pause/stop (not ended/seeked)
+                videoComponent?.handleStreamDecoderEvent(event)
+            }
         }
         sendEventToWeb(componentId, mapOf("event" to event, "detail" to detail))
     }
@@ -352,10 +368,26 @@ class SameLevelComponentManager(
         // Send to WebView via eventSink
         eventSink(payload)
         
-        // Also forward to Rust callback if registered (for VideoContext)
-        componentCallbacks[componentId]?.let { callbackId ->
-            payload["componentId"] = componentId
-            NativeApi.onCallback(callbackId, true, JSONObject(payload as Map<*, *>).toString())
+        // Also forward to Rust callback if registered (for VideoContext).
+        // Keep this list small to avoid high-frequency callbacks (e.g. timeupdate).
+        val eventName = payload["event"] as? String
+        val shouldForwardToCallback = when (eventName) {
+            "waiting",
+            "playrequest",
+            "play",
+            "pause",
+            "stop",
+            "ended",
+            "error",
+            "seeked",
+            "seeking" -> true
+            else -> false
+        }
+        if (shouldForwardToCallback) {
+            componentCallbacks[componentId]?.let { callbackId ->
+                payload["componentId"] = componentId
+                NativeApi.onCallback(callbackId, true, JSONObject(payload as Map<*, *>).toString())
+            }
         }
     }
 
@@ -442,8 +474,8 @@ class SameLevelComponentManager(
         pageComponents[pageId]?.forEach { id ->
             components[id]?.apply {
                 blur()
-                view.visibility = View.GONE
                 handleCommand("pause", null)
+                view.visibility = View.GONE
             }
         }
     }
@@ -468,12 +500,20 @@ class SameLevelComponentManager(
         // Otherwise we can end up with orphaned AudioTrack playback (audio-only) and a decoder
         // still bound to an old/detached TextureView after React remounts the component.
         ComponentRouter.stopStreamDecoder(id)
+        componentCallbacks.remove(id)?.let { callbackId ->
+            val payload = JSONObject()
+            payload.put("action", "component.event")
+            payload.put("id", id)
+            payload.put("componentId", id)
+            payload.put("event", "unmount")
+            payload.put("detail", JSONObject())
+            NativeApi.onCallback(callbackId, true, payload.toString())
+        }
         clearRectSyncRetry(id)
         components.remove(id)?.unmount()
         componentContentRects.remove(id)
         componentScreenRects.remove(id)
         componentPage.remove(id)
-        componentCallbacks.remove(id)
         pageId?.let { pageComponents[it]?.remove(id) }
         ComponentRouter.unregister(id)
     }

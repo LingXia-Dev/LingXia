@@ -13,6 +13,7 @@ import android.graphics.drawable.ShapeDrawable
 import android.graphics.drawable.shapes.OvalShape
 import android.os.Handler
 import android.os.Looper
+import android.text.TextUtils
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
@@ -91,6 +92,7 @@ internal class LxMediaControlsOverlay(
     private lateinit var settingsButton: ImageButton
     private lateinit var fullscreenButton: ImageButton
     private var currentDurationSeconds: Double = 0.0
+    private var timeLabelWide = false
 
     init {
         setupUI()
@@ -233,13 +235,13 @@ internal class LxMediaControlsOverlay(
             max = 1000
             progress = 0
             elevation = dp(4).toFloat()
-            // Reduce right padding to extend progress bar closer to time label
-            setPadding(paddingLeft, paddingTop, 0, paddingBottom)
+            // Add right padding to prevent thumb clipping at max position (half of thumb size)
+            setPadding(paddingLeft, paddingTop, dp(7), paddingBottom)
             thumb = createThumbDrawable()
             progressDrawable = createProgressDrawable()
         }
         progressSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            private var wasPlaying = false
+            private var pausedPlaybackForScrub = false
             private var seekProgress = 0
 
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
@@ -249,15 +251,20 @@ internal class LxMediaControlsOverlay(
                     val positionSeconds = progress.toDouble() / 1000.0 * durationSeconds
                     val remaining = durationSeconds - positionSeconds
                     timeLabel.text = "-" + formatTime((remaining * 1000).toLong().coerceAtLeast(0))
+                    // Update UI currentTime during drag to keep progress bar in sync
+                    if (isSeeking) {
+                        updateProgressUI(positionSeconds, durationSeconds)
+                    }
                 }
             }
 
             override fun onStartTrackingTouch(seekBar: SeekBar?) {
                 isSeeking = true
                 lockedSeekSeconds = null
-                wasPlaying = player.isPlaying()
+                // Pause during drag for ALL modes (including stream) to prevent slider jumping
+                pausedPlaybackForScrub = player.isPlaying()
                 seekProgress = seekBar?.progress ?: 0
-                if (wasPlaying) player.pause()
+                if (pausedPlaybackForScrub) player.pause()
                 cancelAutoHide()
             }
 
@@ -269,10 +276,17 @@ internal class LxMediaControlsOverlay(
                     isSeeking = true
                     updateProgressUI(positionSeconds, durationSeconds)
                     player.seek(positionSeconds)
+                    
+                    // Defer play until after seek completes to avoid race condition
+                    // where seek and play both trigger stream session creation
+                    if (pausedPlaybackForScrub) {
+                        mainHandler.postDelayed({
+                            if (player.isStreamDecoderMode()) player.requestPlay() else player.play()
+                        }, 100)  // Small delay to let seek initiate first
+                    }
                 } else {
                     isSeeking = false
                 }
-                if (wasPlaying) player.play()
                 scheduleAutoHide()
             }
         })
@@ -283,6 +297,9 @@ internal class LxMediaControlsOverlay(
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
             typeface = Typeface.MONOSPACE
             gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            setSingleLine(true)
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
             text = "-0:00"
             setShadowLayer(dp(2).toFloat(), 0f, dp(1).toFloat(), Color.argb(128, 0, 0, 0))
             // Add padding to prevent text from being too close to edge
@@ -418,7 +435,10 @@ internal class LxMediaControlsOverlay(
     }
 
     fun updateProgress(currentTime: Double, duration: Double) {
-        if (duration > 0) currentDurationSeconds = duration
+        // Update cached duration (clear it when duration is 0 for live streams)
+        currentDurationSeconds = if (duration > 0) duration else 0.0
+        updateProgressRowVisibility()
+        updateTimeLabelWidth(duration)
         lockedSeekSeconds?.let { target ->
             if (abs(currentTime - target) > 0.5) return
             lockedSeekSeconds = null
@@ -493,7 +513,7 @@ internal class LxMediaControlsOverlay(
     }
 
     private fun onPlayPauseClick() {
-        if (player.isPlaying()) player.pause() else player.play()
+        if (player.isPlaying()) player.pause() else player.requestPlay()
         scheduleAutoHide()
     }
 
@@ -554,7 +574,11 @@ internal class LxMediaControlsOverlay(
 
     private fun updateProgressRowVisibility() {
         if (!::progressRow.isInitialized) return
-        progressRow.visibility = if (showProgressBar) View.VISIBLE else View.GONE
+        // Only show progress bar if explicitly enabled OR in stream mode with valid seekable duration
+        // Don't show for live streams (duration == null or infinite)
+        val streamHasDuration = player.isStreamDecoderMode() && effectiveDurationSeconds() != null
+        val isLiveStream = player.isStreamDecoderMode() && effectiveDurationSeconds() == null
+        progressRow.visibility = if ((showProgressBar && !isLiveStream) || streamHasDuration) View.VISIBLE else View.GONE
     }
 
     fun updateSettingsButton() {
@@ -583,12 +607,24 @@ internal class LxMediaControlsOverlay(
 
     private fun updateProgressUI(currentSeconds: Double, durationSeconds: Double) {
         currentDurationSeconds = durationSeconds
+        updateTimeLabelWidth(durationSeconds)
         if (durationSeconds > 0) {
             val progress = (currentSeconds / durationSeconds * 1000).toInt()
             progressSeekBar.progress = progress
         }
         val remaining = durationSeconds - currentSeconds
         timeLabel.text = "-" + formatTime((remaining * 1000).toLong().coerceAtLeast(0))
+    }
+
+    private fun updateTimeLabelWidth(durationSeconds: Double) {
+        if (!::timeLabel.isInitialized) return
+        val wide = durationSeconds >= 3600.0
+        if (wide == timeLabelWide) return
+        timeLabelWide = wide
+        val lp = (timeLabel.layoutParams as? LinearLayout.LayoutParams) ?: return
+        lp.width = dp(if (wide) 72 else 48)
+        timeLabel.layoutParams = lp
+        timeLabel.requestLayout()
     }
 
     private fun effectiveDurationSeconds(): Double? {
@@ -604,6 +640,11 @@ internal class LxMediaControlsOverlay(
         val totalSeconds = (ms / 1000).coerceAtLeast(0)
         val minutes = totalSeconds / 60
         val seconds = totalSeconds % 60
+        if (minutes >= 60) {
+            val hours = minutes / 60
+            val remMinutes = minutes % 60
+            return "%d:%02d:%02d".format(hours, remMinutes, seconds)
+        }
         return "%d:%02d".format(minutes, seconds)
     }
 

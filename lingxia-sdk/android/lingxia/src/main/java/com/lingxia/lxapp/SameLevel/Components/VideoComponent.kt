@@ -80,6 +80,18 @@ class VideoComponent(
         player?.releaseStreamTextureView()
     }
 
+    fun isStreamEnded(): Boolean {
+        return player?.isStreamEnded() ?: false
+    }
+
+    fun setStreamEnded(ended: Boolean) {
+        player?.setStreamEnded(ended)
+    }
+
+    fun handleSeekAfterEnded() {
+        player?.handleSeekAfterEnded()
+    }
+
     override fun unmount() {
         player?.pause()
         player?.exitFullscreen()
@@ -154,6 +166,10 @@ class VideoComponent(
                 "seek" -> {
                     val time = (params?.get("time") as? Number)?.toDouble() ?: return null
                     LxMediaCommand.Seek(time)
+                }
+                "setDuration" -> {
+                    val duration = (params?.get("duration") as? Number)?.toDouble() ?: return null
+                    LxMediaCommand.SetDuration(duration)
                 }
                 "setVolume" -> {
                     val volume = (params?.get("volume") as? Number)?.toDouble() ?: return null

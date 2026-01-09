@@ -7,9 +7,8 @@ import android.view.TextureView
 import com.lingxia.lxapp.SameLevel.Components.VideoComponent
 import org.json.JSONObject
 import java.lang.ref.WeakReference
+import java.util.ArrayDeque
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
 
 /**
  * Global router for dispatching commands from Rust FFI to native components.
@@ -26,13 +25,104 @@ object ComponentRouter {
     private val managers = ConcurrentHashMap<String, WeakReference<SameLevelComponentManager>>()
     private val mainHandler = Handler(Looper.getMainLooper())
     private val streamDecoders = ConcurrentHashMap<String, StreamDecoderSession>()
-    private val streamDecoderLock = Any()
     private val cachedVideoConfigJson = ConcurrentHashMap<String, String>()
     private val cachedAudioConfigJson = ConcurrentHashMap<String, String>()
+
+    private data class PendingVideoFrame(
+        val data: ByteArray,
+        val dtsMs: Int,
+        val ptsMs: Int,
+        val keyframe: Boolean,
+    )
+
+    private data class PendingAudioFrame(
+        val data: ByteArray,
+        val dtsMs: Int,
+        val ptsMs: Int,
+    )
+
+    private const val MAX_PENDING_VIDEO_FRAMES = 90
+    private const val MAX_PENDING_AUDIO_FRAMES = 180
+    private val pendingFrameLock = Any()
+    private val pendingVideoFrames = ConcurrentHashMap<String, ArrayDeque<PendingVideoFrame>>()
+    private val pendingAudioFrames = ConcurrentHashMap<String, ArrayDeque<PendingAudioFrame>>()
 
     private data class DesiredAudioState(val volume: Float, val muted: Boolean)
 
     private val desiredAudioStates = ConcurrentHashMap<String, DesiredAudioState>()
+
+    private fun enqueuePendingVideoFrame(componentId: String, frame: PendingVideoFrame) {
+        synchronized(pendingFrameLock) {
+            val queue = pendingVideoFrames.getOrPut(componentId) { ArrayDeque() }
+            if (frame.keyframe) {
+                queue.clear()
+            }
+            queue.addLast(frame)
+            while (queue.size > MAX_PENDING_VIDEO_FRAMES) {
+                queue.removeFirst()
+            }
+        }
+    }
+
+    private fun enqueuePendingAudioFrame(componentId: String, frame: PendingAudioFrame) {
+        synchronized(pendingFrameLock) {
+            val queue = pendingAudioFrames.getOrPut(componentId) { ArrayDeque() }
+            queue.addLast(frame)
+            while (queue.size > MAX_PENDING_AUDIO_FRAMES) {
+                queue.removeFirst()
+            }
+        }
+    }
+
+    private fun drainPendingFrames(componentId: String, session: StreamDecoderSession) {
+        val videoFrames: List<PendingVideoFrame>
+        val audioFrames: List<PendingAudioFrame>
+        synchronized(pendingFrameLock) {
+            videoFrames = pendingVideoFrames.remove(componentId)?.toList().orEmpty()
+            audioFrames = pendingAudioFrames.remove(componentId)?.toList().orEmpty()
+        }
+
+        val videoConfig = cachedVideoConfigJson[componentId]
+        val audioConfig = cachedAudioConfigJson[componentId]
+        if (videoConfig != null) {
+            session.configureVideo(videoConfig)
+        }
+        if (audioConfig != null) {
+            session.configureAudio(audioConfig)
+        }
+
+        if (videoConfig != null) {
+            for (frame in videoFrames) {
+                session.pushVideo(frame.data, frame.dtsMs, frame.ptsMs, frame.keyframe)
+            }
+        } else if (videoFrames.isNotEmpty()) {
+            synchronized(pendingFrameLock) {
+                val queue = pendingVideoFrames.getOrPut(componentId) { ArrayDeque() }
+                for (frame in videoFrames) {
+                    queue.addLast(frame)
+                }
+                while (queue.size > MAX_PENDING_VIDEO_FRAMES) {
+                    queue.removeFirst()
+                }
+            }
+        }
+
+        if (audioConfig != null) {
+            for (frame in audioFrames) {
+                session.pushAudio(frame.data, frame.dtsMs, frame.ptsMs)
+            }
+        } else if (audioFrames.isNotEmpty()) {
+            synchronized(pendingFrameLock) {
+                val queue = pendingAudioFrames.getOrPut(componentId) { ArrayDeque() }
+                for (frame in audioFrames) {
+                    queue.addLast(frame)
+                }
+                while (queue.size > MAX_PENDING_AUDIO_FRAMES) {
+                    queue.removeFirst()
+                }
+            }
+        }
+    }
 
     private fun updateDesiredAudioState(componentId: String, name: String, paramsJson: String) {
         if (name != "setVolume" && name != "setMuted") return
@@ -58,19 +148,6 @@ object ComponentRouter {
         }
     }
 
-    private fun ensureStreamDecoderExists(componentId: String, reason: String): StreamDecoderSession? {
-        streamDecoders[componentId]?.let { return it }
-        synchronized(streamDecoderLock) {
-            streamDecoders[componentId]?.let { return it }
-            val ok = createStreamDecoder(componentId)
-            if (!ok) {
-                Log.w(TAG, "ensureStreamDecoderExists($reason): create failed: $componentId")
-                return null
-            }
-            return streamDecoders[componentId]
-        }
-    }
-
     fun register(componentId: String, manager: SameLevelComponentManager) {
         managers[componentId] = WeakReference(manager)
     }
@@ -80,6 +157,10 @@ object ComponentRouter {
         cachedVideoConfigJson.remove(componentId)
         cachedAudioConfigJson.remove(componentId)
         desiredAudioStates.remove(componentId)
+        synchronized(pendingFrameLock) {
+            pendingVideoFrames.remove(componentId)
+            pendingAudioFrames.remove(componentId)
+        }
     }
 
     @JvmStatic
@@ -186,86 +267,56 @@ object ComponentRouter {
                 eventEmitter = { event, detail -> emitStreamEvent(componentId, event, detail) }
             )
             desiredAudioStates[componentId]?.let { session.applyDesiredAudioState(it.volume, it.muted) }
+            cachedVideoConfigJson[componentId]?.let { session.configureVideo(it) }
+            cachedAudioConfigJson[componentId]?.let { session.configureAudio(it) }
             streamDecoders[componentId] = session
+            drainPendingFrames(componentId, session)
             return true
         }
 
-        val latch = CountDownLatch(1)
-        var textureView: TextureView? = null
-        var component: VideoComponent? = null
-        mainHandler.post {
-            component = manager.getVideoComponent(componentId)
-            if (component == null) {
-                Log.e(TAG, "createStreamDecoder: video component not found: $componentId")
-                latch.countDown()
-                return@post
-            }
-            textureView = component?.acquireStreamTextureView()
-            latch.countDown()
-        }
-
-        val ready = try {
-            latch.await(5000, TimeUnit.MILLISECONDS)
-        } catch (e: InterruptedException) {
-            Log.e(TAG, "createStreamDecoder: interrupted while waiting: $componentId", e)
-            mainHandler.post { component?.releaseStreamTextureView() }
-            return false
-        }
-
-        if (!ready) {
-            Log.e(TAG, "createStreamDecoder: timeout waiting for TextureView: $componentId")
-            mainHandler.post { component?.releaseStreamTextureView() }
-            return false
-        }
-
-        if (textureView == null) {
-            Log.e(TAG, "createStreamDecoder: TextureView not available: $componentId")
-            mainHandler.post { component?.releaseStreamTextureView() }
-            return false
-        }
-
-        val existing = streamDecoders[componentId]
-        if (existing != null && existing.usesTextureView(textureView!!)) {
-            existing.rebindSurface()
-            return true
-        }
-
-        streamDecoders.remove(componentId)?.let { oldDecoder ->
-            oldDecoder.release()
-        }
-
-        val session = StreamDecoderSession(
-            componentId = componentId,
-            textureView = textureView!!,
-            eventEmitter = { event, detail -> emitStreamEvent(componentId, event, detail) }
-        )
-        desiredAudioStates[componentId]?.let { session.applyDesiredAudioState(it.volume, it.muted) }
-        streamDecoders[componentId] = session
+        // Avoid blocking a non-main thread while waiting for UI resources. Stream frames/configs
+        // can arrive on Rust/JNI threads during stream switching; blocking here can cascade into
+        // ANRs if the main thread is busy. Schedule creation on main thread and return.
+        mainHandler.post { createStreamDecoder(componentId) }
         return true
     }
 
     @JvmStatic
     fun configureStreamVideo(componentId: String, configJson: String): Boolean {
         cachedVideoConfigJson[componentId] = configJson
-        createStreamDecoder(componentId)
+        val ok = createStreamDecoder(componentId)
+        if (!ok) {
+            Log.w(TAG, "configureStreamVideo: create failed: $componentId")
+            return false
+        }
         val decoder = streamDecoders[componentId]
         if (decoder == null) {
             Log.w(TAG, "configureStreamVideo: decoder not found: $componentId")
-            return false
+            // Decoder creation is async on the main thread; accept config and apply once ready.
+            return true
         }
-        return decoder.configureVideo(configJson)
+        val configured = decoder.configureVideo(configJson)
+        drainPendingFrames(componentId, decoder)
+        return configured
     }
 
     @JvmStatic
     fun configureStreamAudio(componentId: String, configJson: String): Boolean {
         cachedAudioConfigJson[componentId] = configJson
-        createStreamDecoder(componentId)
+        val ok = createStreamDecoder(componentId)
+        if (!ok) {
+            Log.w(TAG, "configureStreamAudio: create failed: $componentId")
+            return false
+        }
         val decoder = streamDecoders[componentId]
         if (decoder == null) {
             Log.w(TAG, "configureStreamAudio: decoder not found: $componentId")
-            return false
+            // Decoder creation is async on the main thread; accept config and apply once ready.
+            return true
         }
-        return decoder.configureAudio(configJson)
+        val configured = decoder.configureAudio(configJson)
+        drainPendingFrames(componentId, decoder)
+        return configured
     }
 
     @JvmStatic
@@ -276,16 +327,20 @@ object ComponentRouter {
         ptsMs: Int,
         keyframe: Boolean
     ): Boolean {
-        val decoder = ensureStreamDecoderExists(componentId, "pushStreamVideo")
-        if (decoder == null) {
-            Log.w(TAG, "pushStreamVideo: decoder not found: $componentId")
-            return false
+        val decoder = streamDecoders[componentId] ?: run {
+            val ok = createStreamDecoder(componentId)
+            if (!ok) {
+                Log.w(TAG, "pushStreamVideo: create failed: $componentId")
+                return false
+            }
+            enqueuePendingVideoFrame(componentId, PendingVideoFrame(data, dtsMs, ptsMs, keyframe))
+            return true
         }
 
         val videoConfigJson = cachedVideoConfigJson[componentId]
         if (videoConfigJson == null) {
-            Log.w(TAG, "pushStreamVideo: missing cached video config: $componentId")
-            return false
+            enqueuePendingVideoFrame(componentId, PendingVideoFrame(data, dtsMs, ptsMs, keyframe))
+            return true
         }
         decoder.configureVideo(videoConfigJson)
         cachedAudioConfigJson[componentId]?.let { decoder.configureAudio(it) }
@@ -300,16 +355,20 @@ object ComponentRouter {
         dtsMs: Int,
         ptsMs: Int
     ): Boolean {
-        val decoder = ensureStreamDecoderExists(componentId, "pushStreamAudio")
-        if (decoder == null) {
-            Log.w(TAG, "pushStreamAudio: decoder not found: $componentId")
-            return false
+        val decoder = streamDecoders[componentId] ?: run {
+            val ok = createStreamDecoder(componentId)
+            if (!ok) {
+                Log.w(TAG, "pushStreamAudio: create failed: $componentId")
+                return false
+            }
+            enqueuePendingAudioFrame(componentId, PendingAudioFrame(data, dtsMs, ptsMs))
+            return true
         }
 
         val audioConfigJson = cachedAudioConfigJson[componentId]
         if (audioConfigJson == null) {
-            Log.w(TAG, "pushStreamAudio: missing cached audio config: $componentId")
-            return false
+            enqueuePendingAudioFrame(componentId, PendingAudioFrame(data, dtsMs, ptsMs))
+            return true
         }
         decoder.configureAudio(audioConfigJson)
         cachedVideoConfigJson[componentId]?.let { decoder.configureVideo(it) }
@@ -326,7 +385,15 @@ object ComponentRouter {
                 managers[componentId]?.get()?.getVideoComponent(componentId)?.releaseStreamTextureView()
             }
         }
+        synchronized(pendingFrameLock) {
+            pendingVideoFrames.remove(componentId)
+            pendingAudioFrames.remove(componentId)
+        }
         return true
+    }
+
+    internal fun streamPlaybackPositionSeconds(componentId: String): Double? {
+        return streamDecoders[componentId]?.playbackPositionSeconds()
     }
 
     private fun emitStreamEvent(componentId: String, event: String, detail: Map<String, Any?>) {

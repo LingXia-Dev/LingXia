@@ -43,10 +43,10 @@ internal class StreamDecoderSession(
     @Volatile private var lastAudioConfigJson: String? = null
 
     private var videoDecoder: MediaCodec? = null
-    private var audioDecoder: MediaCodec? = null
+    @Volatile private var audioDecoder: MediaCodec? = null
     private var videoSurface: Surface? = null
-    private var audioTrack: AudioTrack? = null
-    private var audioIsPcm = false
+    @Volatile private var audioTrack: AudioTrack? = null
+    @Volatile private var audioIsPcm = false
     private var surfaceTexture: SurfaceTexture? = null
     private var firstVideoOutputSeen = false
     private var videoDrainScheduled = false
@@ -56,6 +56,7 @@ internal class StreamDecoderSession(
     private var videoBasePtsUs: Long? = null
     private var videoBaseNanoTime: Long? = null
     private var videoLastPtsUs: Long? = null
+    @Volatile private var playbackPositionMs: Long = 0
     @Volatile private var needKeyframe = true
     @Volatile private var pendingVideoReconfigure = false
 
@@ -73,6 +74,7 @@ internal class StreamDecoderSession(
     @Volatile private var surfaceReady = false
     private val surfaceGeneration = AtomicInteger(0)
     @Volatile private var paused = false
+    @Volatile private var lastPauseAtMs: Long = 0
     private var playNotified = false
     private var metadataNotified = false
     private var previousListener: TextureView.SurfaceTextureListener? = null
@@ -126,6 +128,10 @@ internal class StreamDecoderSession(
 
     fun isTextureViewAttached(): Boolean = textureView.isAttachedToWindow
 
+    fun playbackPositionSeconds(): Double {
+        return playbackPositionMs.toDouble() / 1000.0
+    }
+
     fun applyDesiredAudioState(volume: Float, muted: Boolean) {
         streamVolume = volume.coerceIn(0f, 1f)
         streamMuted = muted
@@ -140,7 +146,7 @@ internal class StreamDecoderSession(
             needKeyframe = true
             playNotified = false
             pendingVideoReconfigure = true
-            eventEmitter("waiting", emptyMap())
+            eventEmitter("waiting", mapOf("reason" to "config"))
             handler.post {
                 updateSurfaceBufferSize()
                 ensureVideoDecoder()
@@ -168,18 +174,29 @@ internal class StreamDecoderSession(
     }
 
     fun pushVideo(data: ByteArray, dtsMs: Int, ptsMs: Int, keyframe: Boolean): Boolean {
+        if (paused) {
+            return true
+        }
+        if (!surfaceReady) {
+            if (pendingPlay) {
+                requestSurfaceRebind()
+            }
+            needKeyframe = true
+            return true
+        }
         if (needKeyframe && !keyframe) {
             return true
         }
         if (needKeyframe && keyframe) {
             needKeyframe = false
         }
+
         val frame = VideoFrame(data, dtsMs, ptsMs, keyframe)
         if (!videoQueue.offer(frame)) {
             dropVideoBacklogAndOffer(frame)
         }
         handler.post {
-            if (paused || !surfaceReady) return@post
+            if (!surfaceReady) return@post
             ensureVideoDecoder()
             scheduleVideoDrain(0L)
         }
@@ -187,6 +204,29 @@ internal class StreamDecoderSession(
     }
 
     fun pushAudio(data: ByteArray, dtsMs: Int, ptsMs: Int): Boolean {
+        if (paused) {
+            return true
+        }
+        // If audio pipeline isn't ready yet (or was torn down by the system), avoid queuing
+        // indefinitely; just request (re)initialization and drop frames until we're ready.
+        val decoder = audioDecoder
+        val track = audioTrack
+        val ready = if (audioIsPcm) {
+            // PCM path writes directly to AudioTrack.
+            track != null
+        } else {
+            // AAC path must accept frames as soon as MediaCodec exists; AudioTrack is created lazily
+            // when we observe decoder output format / first output buffer in drainAudio().
+            decoder != null
+        }
+        if (!ready) {
+            audioHandler.post {
+                pendingAudioReconfigure = true
+                ensureAudioDecoder()
+                scheduleAudioDrain()
+            }
+            return true
+        }
         val frame = AudioFrame(data, dtsMs, ptsMs)
         if (!audioQueue.offer(frame)) {
             val dropped = audioQueue.poll()
@@ -200,11 +240,10 @@ internal class StreamDecoderSession(
             }
             Log.w(
                 logTag,
-                "[$componentId] audio backlog dropped, remaining=${audioQueue.size} (droppedPtsMs=${dropped?.ptsMs})"
+                "[$componentId] audio backlog dropped, remaining=${audioQueue.size} (droppedPtsMs=${dropped?.ptsMs}) paused=$paused audioIsPcm=$audioIsPcm pendingAudioReconfigure=$pendingAudioReconfigure decoder=${audioDecoder != null} trackState=${audioTrack?.playState}"
             )
         }
         audioHandler.post {
-            if (paused) return@post
             ensureAudioDecoder()
             scheduleAudioDrain()
         }
@@ -214,34 +253,96 @@ internal class StreamDecoderSession(
     fun handleCommand(name: String, paramsJson: String?): Boolean {
         when (name) {
             "play" -> {
+                val wasPaused = paused
+                val pauseDurationMs = if (wasPaused && lastPauseAtMs > 0L) {
+                    SystemClock.elapsedRealtime() - lastPauseAtMs
+                } else {
+                    0L
+                }
+                val longPause = pauseDurationMs >= RESUME_RECONFIGURE_THRESHOLD_MS
                 paused = false
                 pendingPlay = true
+                // Always re-emit play after the first rendered frame so UI can clear "loading".
+                playNotified = false
+                if (wasPaused && longPause) {
+                    // Recreate decoder on resume to avoid stale surface/state after long pauses.
+                    Log.i(
+                        logTag,
+                        "[$componentId] play: resuming after long pause (${pauseDurationMs}ms), forcing video reconfigure + keyframe gate"
+                    )
+                    pendingVideoReconfigure = true
+                    needKeyframe = true
+                    videoBasePtsUs = null
+                    videoBaseNanoTime = null
+                    videoLastPtsUs = null
+                    firstVideoOutputSeen = false
+                    // Audio path can also get stuck after a long pause (AudioTrack/codec state).
+                    // Force a soft rebuild so we don't end up in "no audio" with an accumulating queue.
+                    pendingAudioReconfigure = true
+                    pcmPending = null
+                    pcmPendingOffset = 0
+                }
                 handler.post {
-                    if (!surfaceReady) return@post
+                    if (!surfaceReady) {
+                        Log.w(logTag, "[$componentId] play: surface not ready, requesting rebind")
+                        requestSurfaceRebind()
+                        return@post
+                    }
                     ensureVideoDecoder()
                     scheduleVideoDrain(0L)
                 }
                 audioHandler.post {
+                    if (wasPaused && longPause) {
+                        releaseAudioTrack()
+                    }
                     audioTrack?.play()
                     scheduleAudioDrain()
                 }
-                val event = if (!surfaceReady || needKeyframe) "waiting" else "play"
-                eventEmitter(event, emptyMap())
+                // In stream mode, stay in "waiting" until the first decoded video frame is actually
+                // rendered (drainVideo -> playNotified).
+                eventEmitter("waiting", mapOf("reason" to "buffering"))
                 return true
             }
             "pause" -> {
                 paused = true
                 pendingPlay = false
+                lastPauseAtMs = SystemClock.elapsedRealtime()
+                handler.post {
+                    videoQueue.clear()
+                }
                 audioHandler.post {
+                    audioQueue.clear()
+                    pcmPending = null
+                    pcmPendingOffset = 0
                     audioTrack?.pause()
                     audioTrack?.flush()
                 }
-                eventEmitter("pause", emptyMap())
+                val obj = try {
+                    paramsJson?.let { JSONObject(it) }
+                } catch (_: Exception) {
+                    null
+                }
+                val emitEvent = obj?.optBoolean("emitEvent", true) ?: true
+                val reason = obj?.optString("reason", "user").takeIf { !it.isNullOrBlank() } ?: "user"
+                val currentTime =
+                    if (obj != null && obj.has("currentTime") && !obj.isNull("currentTime")) {
+                        obj.optDouble("currentTime").takeIf { it.isFinite() && it >= 0.0 }
+                    } else {
+                        null
+                    }
+
+                val detail = mutableMapOf<String, Any?>("reason" to reason)
+                if (currentTime != null) {
+                    detail["currentTime"] = currentTime
+                }
+                if (emitEvent) {
+                    eventEmitter("pause", detail)
+                }
                 return true
             }
             "stop" -> {
                 stop()
-                eventEmitter("stop", emptyMap())
+                eventEmitter("stop", mapOf("reason" to "user"))
                 return true
             }
             "resetStream" -> {
@@ -250,7 +351,12 @@ internal class StreamDecoderSession(
                 } catch (_: Exception) {
                     false
                 }
-                reset(hard)
+                val emitWaiting = try {
+                    paramsJson?.let { JSONObject(it).optBoolean("emitWaiting", true) } ?: true
+                } catch (_: Exception) {
+                    true
+                }
+                reset(hard, emitWaiting)
                 return true
             }
             "rebindSurface" -> {
@@ -318,12 +424,15 @@ internal class StreamDecoderSession(
         audioThread.quitSafely()
     }
 
-    fun reset(hard: Boolean) {
+    fun reset(hard: Boolean, emitWaiting: Boolean = true) {
         pendingPlay = false
         playNotified = false
         metadataNotified = false
         needKeyframe = true
-        eventEmitter("waiting", emptyMap())
+        playbackPositionMs = 0
+        if (emitWaiting) {
+            eventEmitter("waiting", mapOf("reason" to "reset"))
+        }
         pendingVideoReconfigure = hard
         pendingAudioReconfigure = hard
         surfaceGeneration.incrementAndGet()
@@ -334,6 +443,7 @@ internal class StreamDecoderSession(
             videoBasePtsUs = null
             videoBaseNanoTime = null
             videoLastPtsUs = null
+            playbackPositionMs = 0
             firstVideoOutputSeen = false
             if (hard) {
                 releaseVideoDecoder()
@@ -496,7 +606,9 @@ internal class StreamDecoderSession(
             releaseAudioDecoder()
         }
         if (audioIsPcm) {
-            if (!pendingAudioReconfigure) return
+            // Don't early-return if AudioTrack was torn down (can happen after pause/resume or
+            // audio focus changes). Recreate based on the latest config.
+            if (!pendingAudioReconfigure && audioTrack != null) return
             releaseAudioTrack()
             audioIsPcm = false
         }
@@ -600,6 +712,16 @@ internal class StreamDecoderSession(
             )
         } else if (dropped > 0) {
             Log.w(logTag, "[$componentId] video backlog dropped: $dropped, remaining=${videoQueue.size}")
+            if (pendingPlay && !paused) {
+                // If we're actively trying to play but the video pipeline can't keep up (often due
+                // to a stale/invalid surface after transitions), force a surface rebind and decoder
+                // recreate so video can recover instead of staying "audio-only".
+                Log.w(logTag, "[$componentId] video backlog while playing; requesting surface rebind + decoder recreate")
+                needKeyframe = true
+                playNotified = false
+                pendingVideoReconfigure = true
+                requestSurfaceRebind()
+            }
         }
     }
 
@@ -680,10 +802,12 @@ internal class StreamDecoderSession(
                     }
                 }
                 videoLastPtsUs = ptsUs
+                val effectiveBasePts = videoBasePtsUs ?: ptsUs
+                val effectiveBaseNs = videoBaseNanoTime ?: nowNs
+                // Report relative position (media time) to avoid wall-clock drift and double-offsetting.
+                playbackPositionMs = (ptsUs - effectiveBasePts).coerceAtLeast(0L) / 1000L
 
                 if (Build.VERSION.SDK_INT >= 21) {
-                    val effectiveBasePts = videoBasePtsUs ?: ptsUs
-                    val effectiveBaseNs = videoBaseNanoTime ?: nowNs
                     val targetNs = effectiveBaseNs + (ptsUs - effectiveBasePts) * 1000L
                     val leadNs = targetNs - nowNs
                     if (leadNs > VIDEO_OUTPUT_MAX_LEAD_NS) {
@@ -779,7 +903,7 @@ internal class StreamDecoderSession(
 
             fun writeSome(buf: ByteArray, off: Int, len: Int): Int {
                 return if (Build.VERSION.SDK_INT >= 23) {
-                    track.write(buf, off, len, AudioTrack.WRITE_BLOCKING)
+                    track.write(buf, off, len, AudioTrack.WRITE_NON_BLOCKING)
                 } else {
                     track.write(buf, off, len)
                 }
@@ -846,8 +970,16 @@ internal class StreamDecoderSession(
                         outBuffer.limit(info.offset + info.size)
                         val track = audioTrack
                         if (track != null) {
+                            if (!paused && track.playState != AudioTrack.PLAYSTATE_PLAYING) {
+                                try {
+                                    track.play()
+                                } catch (_: Throwable) {
+                                }
+                            }
                             if (Build.VERSION.SDK_INT >= 23) {
-                                track.write(outBuffer, info.size, AudioTrack.WRITE_BLOCKING)
+                                // Avoid blocking the audio thread; blocking writes can hang after pause/resume
+                                // on some devices, leading to an ever-growing input queue and "no audio".
+                                track.write(outBuffer, info.size, AudioTrack.WRITE_NON_BLOCKING)
                             } else {
                                 if (audioScratch.size < info.size) {
                                     audioScratch = ByteArray(info.size)
@@ -888,32 +1020,42 @@ internal class StreamDecoderSession(
         }
         val encoding = AudioFormat.ENCODING_PCM_16BIT
         val minBuffer = AudioTrack.getMinBufferSize(sampleRate, channelMask, encoding)
+        if (minBuffer <= 0) {
+            emitError("pcm AudioTrack minBuffer invalid: $minBuffer (sr=$sampleRate ch=$channels)")
+            return
+        }
         val bufferSize = minBuffer
-        audioTrack = AudioTrack.Builder()
-            .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_MOVIE)
-                    .build()
-            )
-            .setAudioFormat(
-                AudioFormat.Builder()
-                    .setSampleRate(sampleRate)
-                    .setChannelMask(channelMask)
-                    .setEncoding(encoding)
-                    .build()
-            )
-            .setBufferSizeInBytes(bufferSize)
-            .setTransferMode(AudioTrack.MODE_STREAM)
-            .also {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    it.setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
+        try {
+            audioTrack = AudioTrack.Builder()
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_MOVIE)
+                        .build()
+                )
+                .setAudioFormat(
+                    AudioFormat.Builder()
+                        .setSampleRate(sampleRate)
+                        .setChannelMask(channelMask)
+                        .setEncoding(encoding)
+                        .build()
+                )
+                .setBufferSizeInBytes(bufferSize)
+                .setTransferMode(AudioTrack.MODE_STREAM)
+                .also {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        it.setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
+                    }
                 }
+                .build()
+            applyStreamVolume()
+            if (!paused) {
+                audioTrack?.play()
             }
-            .build()
-        applyStreamVolume()
-        if (!paused) {
-            audioTrack?.play()
+        } catch (t: Throwable) {
+            emitError("pcm AudioTrack create failed: ${t.message}")
+            releaseAudioTrack()
+            pendingAudioReconfigure = true
         }
     }
 
@@ -932,27 +1074,37 @@ internal class StreamDecoderSession(
             AudioFormat.ENCODING_PCM_16BIT
         }
         val minBuffer = AudioTrack.getMinBufferSize(sampleRate, channelMask, encoding)
+        if (minBuffer <= 0) {
+            emitError("aac AudioTrack minBuffer invalid: $minBuffer (sr=$sampleRate ch=$channels enc=$encoding)")
+            return
+        }
         val bufferSize = (minBuffer * 2).coerceAtLeast(minBuffer)
-        audioTrack = AudioTrack.Builder()
-            .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_MOVIE)
-                    .build()
-            )
-            .setAudioFormat(
-                AudioFormat.Builder()
-                    .setSampleRate(sampleRate)
-                    .setChannelMask(channelMask)
-                    .setEncoding(encoding)
-                    .build()
-            )
-            .setBufferSizeInBytes(bufferSize)
-            .setTransferMode(AudioTrack.MODE_STREAM)
-            .build()
-        applyStreamVolume()
-        if (!paused) {
-            audioTrack?.play()
+        try {
+            audioTrack = AudioTrack.Builder()
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_MOVIE)
+                        .build()
+                )
+                .setAudioFormat(
+                    AudioFormat.Builder()
+                        .setSampleRate(sampleRate)
+                        .setChannelMask(channelMask)
+                        .setEncoding(encoding)
+                        .build()
+                )
+                .setBufferSizeInBytes(bufferSize)
+                .setTransferMode(AudioTrack.MODE_STREAM)
+                .build()
+            applyStreamVolume()
+            if (!paused) {
+                audioTrack?.play()
+            }
+        } catch (t: Throwable) {
+            emitError("aac AudioTrack create failed: ${t.message}")
+            releaseAudioTrack()
+            pendingAudioReconfigure = true
         }
     }
 
@@ -1133,6 +1285,7 @@ internal class StreamDecoderSession(
     )
 
     private companion object {
+        private const val RESUME_RECONFIGURE_THRESHOLD_MS = 1500L
         private const val VIDEO_PTS_RESET_THRESHOLD_US = 5_000_000L
         private const val VIDEO_START_BUFFER_NS = 500_000_000L
         private const val VIDEO_OUTPUT_MAX_LEAD_NS = 300_000_000L
