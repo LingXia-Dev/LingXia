@@ -11,7 +11,7 @@ describe('ViewConfigManager integration', () => {
   let tempDir: string;
 
   beforeEach(() => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lingxia-ui-config-'));
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lx-cli-config-'));
   });
 
   afterEach(() => {
@@ -40,9 +40,8 @@ describe('ViewConfigManager integration', () => {
     );
 
     const overrides = resolveUserViewConfig(tempDir, 'react');
-    expect(overrides?.react?.output?.multi?.entryFileNames).toBe('bundle.js');
-    expect(overrides?.react?.minifyStrategy).toBe(false);
-    expect(overrides?.vue).toBeUndefined();
+    expect(overrides?.output?.multi?.entryFileNames).toBe('bundle.js');
+    expect(overrides?.minifyStrategy).toBe(false);
 
     const manager = new ViewConfigManager(tempDir, overrides);
     const config = manager.getFrameworkConfig('react');

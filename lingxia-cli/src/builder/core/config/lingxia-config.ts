@@ -177,27 +177,31 @@ export function extractViewOverrides(
 
   const frameworks: FrameworkName[] = ['react', 'vue'];
 
-  // If overrides already look like a framework-specific record, pick the right one.
-  if (framework) {
+  // Check if it has framework-specific keys (react, vue)
+  const hasFrameworkKeys = frameworks.some(
+    fw => Object.prototype.hasOwnProperty.call(overrides, fw)
+  );
+
+  // If it has framework-specific keys and a framework is requested, return that framework's config
+  if (hasFrameworkKeys && framework) {
     const targeted = (overrides as Record<string, unknown>)[framework];
     if (targeted && typeof targeted === 'object') {
       return targeted as Partial<ViewBuildConfig>;
     }
   }
 
-  // If overrides is a plain config (no react/vue keys), treat it as shared.
-  const hasFrameworkKeys = frameworks.some(
-    fw => Object.prototype.hasOwnProperty.call(overrides, fw)
-  );
+  // If it doesn't have framework keys, treat it as a shared config for all frameworks
   if (!hasFrameworkKeys) {
     return overrides as Partial<ViewBuildConfig>;
   }
 
-  // Fallback: return the first matching framework block if available.
-  for (const fw of frameworks) {
-    const block = (overrides as Record<string, unknown>)[fw];
-    if (block && typeof block === 'object') {
-      return block as Partial<ViewBuildConfig>;
+  // Fallback: if framework is requested but not found, try to return the first available framework config
+  if (framework) {
+    for (const fw of frameworks) {
+      const block = (overrides as Record<string, unknown>)[fw];
+      if (block && typeof block === 'object') {
+        return block as Partial<ViewBuildConfig>;
+      }
     }
   }
 
@@ -232,14 +236,18 @@ export function extractPluginSpecs(
         typeof entry === 'object' &&
         typeof (entry as any).module === 'string'
       ) {
-        normalizedEntries.push({
-          module: (entry as any).module,
-          namedExport:
-            typeof (entry as any).namedExport === 'string'
-              ? (entry as any).namedExport
-              : undefined,
-          options: (entry as any).options
-        });
+        const moduleName = (entry as any).module;
+        // Skip empty module names
+        if (moduleName.trim().length > 0) {
+          normalizedEntries.push({
+            module: moduleName,
+            namedExport:
+              typeof (entry as any).namedExport === 'string'
+                ? (entry as any).namedExport
+                : undefined,
+            options: (entry as any).options
+          });
+        }
         continue;
       }
       if (entry !== undefined && entry !== null) {
