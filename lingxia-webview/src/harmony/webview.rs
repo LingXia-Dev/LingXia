@@ -6,7 +6,8 @@ use ohos_web_sys::*;
 
 use std::cell::RefCell;
 use std::ffi::{CStr, CString, c_char, c_void};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Condvar, Mutex, OnceLock};
+use std::time::Duration;
 use tokio::sync::oneshot::Sender;
 
 // Static C strings for proxy object and method names
@@ -80,6 +81,8 @@ pub struct WebViewInner {
     /// ArkWeb-facing tag for controller operations (may include `#session` suffix).
     ark_webtag: Mutex<String>,
     ports: Mutex<WebMessagePorts>,
+    /// Condition variable for message port readiness (avoids busy-wait)
+    port_ready_signal: (Mutex<bool>, Condvar),
     creation_sender: Mutex<Option<WebViewCreationSender>>,
     // Store user_data pointers for cleanup
     user_data_ptrs: RefCell<Vec<*mut c_void>>,
@@ -338,6 +341,11 @@ unsafe extern "C" fn get_port_callback(
                     log::warn!("Unknown port type: {}", port_type_str);
                 }
             }
+        } else {
+            log::warn!(
+                "LingXiaProxy.getPort: failed to parse type arg for webtag={}",
+                webtag.as_str()
+            );
         }
     }
 }
@@ -347,7 +355,13 @@ fn extract_string_from_bridge_data(data: &ArkWeb_JavaScriptBridgeData) -> Option
     unsafe {
         if !data.buffer.is_null() && data.size > 0 {
             let bytes = std::slice::from_raw_parts(data.buffer, data.size);
-            std::str::from_utf8(bytes).ok().map(|s| s.to_string())
+            let s = std::str::from_utf8(bytes).ok()?;
+            let trimmed = s.trim_matches('\0').trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
         } else {
             None
         }
@@ -406,6 +420,7 @@ impl WebViewInner {
             webtag: webtag.clone(),
             ark_webtag: Mutex::new(webtag.as_str().to_string()),
             ports: Mutex::new(WebMessagePorts::default()),
+            port_ready_signal: (Mutex::new(false), Condvar::new()),
             creation_sender: Mutex::new(Some(sender)),
             user_data_ptrs: RefCell::new(Vec::new()),
             proxy_allocs: RefCell::new(Vec::new()),
@@ -500,6 +515,7 @@ impl WebViewInner {
 
     /// Cleanup WebMessage ports
     fn cleanup_webmessage_ports(&self) {
+        self.set_port_ready(false);
         unsafe {
             // Get port API if available
             if let Ok(port_api) = get_port_api() {
@@ -714,11 +730,48 @@ impl WebViewController for WebViewInner {
 }
 
 impl WebViewInner {
+    /// Set port ready state and notify waiters
+    fn set_port_ready(&self, ready: bool) {
+        let (lock, cvar) = &self.port_ready_signal;
+        let mut is_ready = lock.lock().unwrap();
+        *is_ready = ready;
+        if ready {
+            cvar.notify_all();
+        }
+    }
+
+    /// Check if port is ready (non-blocking)
+    fn is_port_ready(&self) -> bool {
+        let (lock, _) = &self.port_ready_signal;
+        *lock.lock().unwrap()
+    }
+
+    fn refresh_message_port(&self) -> Result<(), WebViewError> {
+        self.set_port_ready(false);
+        self.cleanup_webmessage_ports();
+        setup_webmessage_port_for_webtag(&self.webtag, PortType::Message, on_web_message_received)?;
+        self.send_port(PortType::Message)?;
+        Ok(())
+    }
+
+    /// Wait for message port to become ready (non-busy, uses Condvar)
+    fn wait_for_message_port_ready(&self, timeout: Duration) -> bool {
+        let (lock, cvar) = &self.port_ready_signal;
+        let guard = lock.lock().unwrap();
+        let result = cvar
+            .wait_timeout_while(guard, timeout, |ready| !*ready)
+            .unwrap();
+        !result.1.timed_out()
+    }
+
     fn post_message_internal(&self, message: &str) -> Result<(), WebViewError> {
         let webtag_cstr = CString::new(self.ark_webtag_string()).unwrap();
 
-        let port_api = get_port_api()?;
-        let message_api = get_message_api()?;
+        let message_api = get_message_api()
+            .map_err(|_| WebViewError::WebView("WebMessage API not available".to_string()))?;
+        let port_api = get_port_api()
+            .map_err(|_| WebViewError::WebView("WebMessagePort API not available".to_string()))?;
+
         let post_fn = port_api
             .postMessage
             .ok_or_else(|| WebViewError::WebView("postMessage not available".to_string()))?;
@@ -729,16 +782,17 @@ impl WebViewInner {
             .setData
             .ok_or_else(|| WebViewError::WebView("setData not available".to_string()))?;
 
-        // ArkWeb treats the payload as a C string on some devices; keep a NUL in the buffer
-        // but don't include it in the reported length to avoid surfacing it to JS.
+        // ArkWeb payload handling differs across devices. Some implementations appear to copy
+        // `len` bytes and later treat the buffer as a C string.
+        // We include the trailing NUL in `len` to ensure the buffer is safely terminated.
+        // The JS side must handle/strip the trailing null if necessary.
         let c_string = CString::new(message).map_err(|_| {
             WebViewError::WebView("Failed to build CString for message".to_string())
         })?;
-        let byte_len = c_string.as_bytes().len();
+        let byte_len = c_string.as_bytes_with_nul().len();
         let data_ptr = c_string.as_ptr() as *mut std::ffi::c_void;
 
         let post_once = |port: *mut ArkWeb_WebMessagePort| -> Result<u32, WebViewError> {
-            // Create WebMessage
             let web_message = unsafe { create_fn() };
             if web_message.is_null() {
                 return Err(WebViewError::WebView(
@@ -746,7 +800,6 @@ impl WebViewInner {
                 ));
             }
 
-            // Set message type to string (best-effort)
             if let Some(set_type) = message_api.setType {
                 unsafe {
                     set_type(web_message, ArkWeb_WebMessageType_ARKWEB_STRING);
@@ -759,7 +812,6 @@ impl WebViewInner {
 
             let result = unsafe { post_fn(port, webtag_cstr.as_ptr(), web_message) };
 
-            // Destroy WebMessage after post, mirroring C example
             if let Some(destroy_message) = message_api.destroyWebMessage {
                 let mut msg_ptr = web_message;
                 unsafe {
@@ -772,47 +824,44 @@ impl WebViewInner {
 
         let get_port = || self.ports_snapshot().native_port;
 
-        let mut port = get_port();
-        if port.is_none() {
-            self.ensure_message_port_ready()?;
-            port = get_port();
+        if get_port().is_none() {
+            self.refresh_message_port()?;
         }
-        let port = port.ok_or_else(|| {
+
+        if !self.is_port_ready() {
+            let _ = self.send_port(PortType::Message);
+            self.wait_for_message_port_ready(Duration::from_millis(200));
+        }
+
+        let port = get_port().ok_or_else(|| {
             WebViewError::WebView("native message port not available".to_string())
         })?;
-
         let result = post_once(port)?;
         if result == 0 {
             return Ok(());
         }
 
-        self.ensure_message_port_ready()?;
+        // Treat any non-zero error as a potentially stale/closed port and recreate the channel.
+        log::warn!(
+            "postMessage failed for {} (error {}), refreshing WebMessagePort and retrying",
+            self.webtag.as_str(),
+            result
+        );
+        self.refresh_message_port()?;
+        self.wait_for_message_port_ready(Duration::from_millis(200));
+
         let port_retry = get_port().ok_or_else(|| {
             WebViewError::WebView("native message port not available".to_string())
         })?;
-
         let retry_result = post_once(port_retry)?;
         if retry_result == 0 {
-            Ok(())
-        } else {
-            Err(WebViewError::WebView(format!(
-                "postMessage failed after retry with error {}",
-                retry_result
-            )))
-        }
-    }
-
-    fn ensure_message_port_ready(&self) -> Result<(), WebViewError> {
-        let ports = self.ports_snapshot();
-        let has_ports = ports.native_port.is_some() && ports.webview_native_port.is_some();
-        if has_ports {
             return Ok(());
         }
 
-        self.cleanup_webmessage_ports();
-        setup_webmessage_port_for_webtag(&self.webtag, PortType::Message, on_web_message_received)?;
-        self.send_port(PortType::Message)?;
-        Ok(())
+        Err(WebViewError::WebView(format!(
+            "postMessage failed after refresh with error {}",
+            retry_result
+        )))
     }
 }
 
@@ -1115,6 +1164,7 @@ extern "C" fn on_web_message_received(
     if !port.is_null()
         && let Some(webview) = crate::find_webview(&full_webtag)
     {
+        webview.inner.set_port_ready(true);
         webview.inner.with_ports(|ports| {
             let prev = ports.native_port;
             ports.native_port = Some(port);
