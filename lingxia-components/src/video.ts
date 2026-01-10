@@ -27,7 +27,9 @@ export type LxVideoAttributes = {
   // Event handlers
   onPlayRequest?: (e: Event) => void;
   onPlay?: (e: Event) => void;
+  onPlaying?: (e: Event) => void;
   onPause?: (e: Event) => void;
+  onStop?: (e: Event) => void;
   onEnded?: (e: Event) => void;
   onTimeUpdate?: (e: Event) => void;
   onError?: (e: Event) => void;
@@ -35,7 +37,7 @@ export type LxVideoAttributes = {
   onFullscreenChange?: (e: Event) => void;
   onWaiting?: (e: Event) => void;
   onQualityChange?: (e: Event) => void;
-  onPlaybackRateChange?: (e: Event) => void;
+  onRateChange?: (e: Event) => void;
 };
 
 declare global {
@@ -91,7 +93,7 @@ export class LxVideoElement extends HTMLElement {
         let detail = message.detail || message.payload || {};
 
         // Ensure common state events have empty detail if not provided
-        if (['playrequest', 'play', 'pause', 'stop', 'ended', 'waiting'].includes(message.event)) {
+        if (['playrequest', 'play', 'playing', 'pause', 'stop', 'ended', 'waiting'].includes(message.event)) {
             if (Object.keys(detail).length === 0) detail = {};
         }
 
@@ -193,8 +195,14 @@ export class LxVideoElement extends HTMLElement {
   set onplay(cb: EventListener) { this.setEventHandler('play', cb); }
   get onplay() { return this.getEventHandler('play'); }
 
+  set onplaying(cb: EventListener) { this.setEventHandler('playing', cb); }
+  get onplaying() { return this.getEventHandler('playing'); }
+
   set onpause(cb: EventListener) { this.setEventHandler('pause', cb); }
   get onpause() { return this.getEventHandler('pause'); }
+
+  set onstop(cb: EventListener) { this.setEventHandler('stop', cb); }
+  get onstop() { return this.getEventHandler('stop'); }
 
   set onended(cb: EventListener) { this.setEventHandler('ended', cb); }
   get onended() { return this.getEventHandler('ended'); }
@@ -217,8 +225,8 @@ export class LxVideoElement extends HTMLElement {
   set onqualitychange(cb: EventListener) { this.setEventHandler('qualitychange', cb); }
   get onqualitychange() { return this.getEventHandler('qualitychange'); }
 
-  set onplaybackratechange(cb: EventListener) { this.setEventHandler('playbackratechange', cb); }
-  get onplaybackratechange() { return this.getEventHandler('playbackratechange'); }
+  set onratechange(cb: EventListener) { this.setEventHandler('ratechange', cb); }
+  get onratechange() { return this.getEventHandler('ratechange'); }
 
   // Internal
   private ensurePlaceholderStyle() {
