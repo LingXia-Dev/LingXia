@@ -14,6 +14,7 @@ const GLOBAL_RECEIVER_NAME = '__LingXiaRecvMessage';
 const CALL_TIMEOUT_MS = 5000;
 const LOG_PREFIX = '[LX.Bridge]';
 const MESSAGE_PORT_TYPE = 'messageport';
+const JS_INTERFACE_TYPE = 'jsinterface';
 
 const debugFlags = {
   data: false,
@@ -60,8 +61,14 @@ const BRIDGE_CONFIG: BridgeConfig =
   (typeof window !== 'undefined' && window.__LX_BRIDGE_CFG) || {};
 
 const communicationMethod = ((): string => {
-  if (BRIDGE_CONFIG.method === 'messageport') return MESSAGE_PORT_TYPE;
-  if (BRIDGE_CONFIG.method === 'webkit') return 'webkit';
+  const config = (typeof window !== 'undefined' && window.__LX_BRIDGE_CFG) || {};
+
+  if (config.os === 'iOS' || config.os === 'macOS') return 'webkit';
+  if (config.os === 'Harmony') return MESSAGE_PORT_TYPE;
+  if (config.os === 'Android') {
+    if (window.LingXiaProxy?.supportsMessagePort?.()) return MESSAGE_PORT_TYPE;
+    return JS_INTERFACE_TYPE;
+  }
   return 'unknown';
 })();
 
@@ -210,24 +217,26 @@ function applyPatch(
   return changesApplied ? patch : {};
 }
 
-function sendMessageToNative(message: BridgeMessage): void {
-  if (isDebugEnabled('proto')) {
-    console.log('→', JSON.stringify(message, null, 2));
-  }
+function postNativeMessage(message: BridgeMessage): void {
+  if (isDebugEnabled('proto')) console.log('→', JSON.stringify(message, null, 2));
+
   try {
     if (communicationMethod === 'webkit') {
       window.webkit?.messageHandlers[NATIVE_HANDLER_NAME]?.postMessage(message);
-    } else if (communicationMethod === MESSAGE_PORT_TYPE && messagePort) {
-      const messageString = safeStringify(message);
-      messagePort.postMessage(messageString);
-    } else if (communicationMethod === MESSAGE_PORT_TYPE) {
-      // Lazy (re)connect: if native repaired/recreated ports, JS must request a fresh port.
-      void getMessagePort().catch((e) => warn('MessagePort init failed:', e));
-    } else {
-      warn('Bridge not ready for sending');
+      return;
     }
+    const messageString = safeStringify(message);
+    if (communicationMethod === MESSAGE_PORT_TYPE && messagePort) {
+      messagePort.postMessage(messageString);
+      return;
+    }
+    if (communicationMethod === JS_INTERFACE_TYPE && window.LingXiaProxy?.postMessage) {
+      window.LingXiaProxy.postMessage(messageString);
+      return;
+    }
+    warn('Bridge not ready');
   } catch (e) {
-    error('Send message error:', e, message);
+    error('Send message error:', e);
   }
 }
 
@@ -265,13 +274,13 @@ function getMessagePort(): Promise<MessagePort> {
         new Error(`MessagePort init timed out after ${timeoutMs}ms`)
       );
     }, timeoutMs);
-
-    try {
-      window.LingXiaProxy?.getPort('LingXiaPort');
-    } catch (e) {
-      portInitState.reject?.(e);
-    }
   });
+
+  try {
+    window.LingXiaProxy?.getPort('LingXiaPort');
+  } catch (e) {
+    portInitState.reject?.(e);
+  }
 
   return portInitState.promise;
 }
@@ -316,7 +325,7 @@ function handleReply(replyMessage: BridgeMessage): void {
 }
 
 function sendCallback(callbackId: string): void {
-  sendMessageToNative({
+  postNativeMessage({
     msgId: null,
     type: 'callback',
     callbackId: callbackId,
@@ -348,18 +357,17 @@ function hasNativeComponentHandler(): boolean {
 }
 
 function postNativeComponentMessage(message: NativeComponentMessage): void {
-  if (window.webkit?.messageHandlers?.NativeComponent) {
-    window.webkit.messageHandlers.NativeComponent.postMessage(message);
-    return;
-  }
-
-  if (
-    window.NativeComponentBridge &&
-    typeof window.NativeComponentBridge.postMessage === 'function'
-  ) {
-    const msgString = safeStringify(message);
-    window.NativeComponentBridge.postMessage(msgString);
-    return;
+  try {
+    if (window.webkit?.messageHandlers?.NativeComponent) {
+      window.webkit.messageHandlers.NativeComponent.postMessage(message);
+      return;
+    }
+    if (window.NativeComponentBridge?.postMessage) {
+      window.NativeComponentBridge.postMessage(safeStringify(message));
+      return;
+    }
+  } catch (e) {
+    error('NativeComponent send error:', e);
   }
 }
 
@@ -510,7 +518,7 @@ export const LingXiaBridge: LingXiaBridgeInterface = {
       }, CALL_TIMEOUT_MS);
 
       pendingCalls.set(msgId, { resolve, reject, timerId });
-      sendMessageToNative({
+      postNativeMessage({
         msgId: msgId,
         type: 'call',
         name: name,
@@ -520,7 +528,7 @@ export const LingXiaBridge: LingXiaBridgeInterface = {
   },
 
   event(name: string, payload: unknown = null): void {
-    sendMessageToNative({
+    postNativeMessage({
       msgId: null,
       type: 'event',
       name: name,
@@ -703,9 +711,9 @@ export function initBridge(): void {
   if (communicationMethod === 'webkit') {
     LingXiaBridge.event('LXPortRdy');
   } else if (communicationMethod === MESSAGE_PORT_TYPE) {
-    getMessagePort().catch((e) => {
-      warn('Failed to initialize MessagePort:', e);
-    });
+    getMessagePort().catch((e) => warn('MessagePort init failed:', e));
+  } else if (communicationMethod === JS_INTERFACE_TYPE) {
+    LingXiaBridge.event('LXPortRdy');
   } else {
     warn('Unknown communication method, bridge may not work properly');
   }

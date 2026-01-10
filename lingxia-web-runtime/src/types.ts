@@ -1,5 +1,4 @@
 export interface BridgeConfig {
-  method?: 'messageport' | 'webkit';
   os?: 'Harmony' | 'iOS' | 'Android' | 'macOS';
 }
 
@@ -52,7 +51,9 @@ declare global {
     __LingXiaRecvMessage?: (message: string) => void;
     LingXiaBridge?: LingXiaBridgeInterface;
     LingXiaProxy?: {
-      getPort: (name: string) => void;
+      supportsMessagePort: () => boolean;
+      getPort: (name: string) => string;
+      postMessage: (message: string) => void;
     };
     NativeComponentBridge?: {
       postMessage: (message: string) => void;

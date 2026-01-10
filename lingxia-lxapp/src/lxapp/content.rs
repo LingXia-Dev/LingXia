@@ -147,29 +147,26 @@ impl LxApp {
 
 fn build_bridge_config_script() -> String {
     #[cfg(any(target_os = "ios", target_os = "macos"))]
-    let (bridge_os, bridge_method) = (
-        if cfg!(target_os = "macos") {
-            "macOS"
-        } else {
-            "iOS"
-        },
-        "webkit",
-    );
+    let bridge_os = if cfg!(target_os = "macos") {
+        "macOS"
+    } else {
+        "iOS"
+    };
     #[cfg(target_os = "android")]
-    let (bridge_os, bridge_method) = ("Android", "messageport");
+    let bridge_os = "Android";
     #[cfg(all(target_os = "linux", target_env = "ohos"))]
-    let (bridge_os, bridge_method) = ("Harmony", "messageport");
+    let bridge_os = "Harmony";
     #[cfg(not(any(
         target_os = "ios",
         target_os = "macos",
         target_os = "android",
-        all(target_os = "linux", target_env = "ohos")
+        all(target_os = "linux", target_env = "ohos"),
     )))]
-    let (bridge_os, bridge_method) = ("unknown", "unknown");
+    let bridge_os = "unknown";
 
     format!(
-        r#"<script>window.__LX_BRIDGE_CFG={{os:"{}",method:"{}"}};</script>"#,
-        bridge_os, bridge_method
+        r#"<script>window.__LX_BRIDGE_CFG={{os:"{}"}};</script>"#,
+        bridge_os
     )
 }
 

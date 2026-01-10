@@ -73,12 +73,15 @@ class NativeBridge private constructor(
     }
 
     private class JsInterface(webView: LingXiaWebView) {
-        private val webViewId = System.identityHashCode(webView)
+        private val webViewRef = WeakReference(webView)
 
         @JavascriptInterface
         fun postMessage(messageJson: String) {
             Handler(Looper.getMainLooper()).post {
-                bridgeMap[webViewId]?.handleMessage(messageJson)
+                webViewRef.get()?.let { webView ->
+                    val webViewId = System.identityHashCode(webView)
+                    bridgeMap[webViewId]?.handleMessage(messageJson)
+                }
             }
         }
     }
@@ -233,7 +236,8 @@ class NativeBridge private constructor(
         fun registerJsInterface(webView: LingXiaWebView) {
             val id = System.identityHashCode(webView)
             if (jsInterfaceRegistered.add(id)) {
-                webView.addJavascriptInterface(JsInterface(webView), "NativeComponentBridge")
+                val jsInterface = JsInterface(webView)
+                webView.addJavascriptInterface(jsInterface, "NativeComponentBridge")
             }
         }
 

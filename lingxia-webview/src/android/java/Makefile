@@ -17,7 +17,8 @@ endif
 # Auto-detect latest Android API level
 ANDROID_PLATFORMS_DIR = $(ANDROID_SDK_HOME)/platforms
 LATEST_ANDROID_API = $(shell ls $(ANDROID_PLATFORMS_DIR) | grep '^android-[0-9]*$$' | sed 's/android-//' | sort -n | tail -1)
-ANDROID_JAR = $(ANDROID_PLATFORMS_DIR)/android-$(LATEST_ANDROID_API)/android.jar
+SELECTED_ANDROID_API = $(if $(ANDROID_API_LEVEL),$(ANDROID_API_LEVEL),$(LATEST_ANDROID_API))
+ANDROID_JAR = $(ANDROID_PLATFORMS_DIR)/android-$(SELECTED_ANDROID_API)/android.jar
 
 # Build paths
 JAR_OUTPUT = $(TARGET_DIR)/lingxia-webview.jar
@@ -43,10 +44,10 @@ check-env:
 	fi
 	@if [ ! -f "$(ANDROID_JAR)" ]; then \
 		echo "Error: Android JAR not found at $(ANDROID_JAR)"; \
-		echo "Detected API level: $(LATEST_ANDROID_API)"; \
+		echo "Selected API level: $(SELECTED_ANDROID_API) (latest: $(LATEST_ANDROID_API))"; \
 		exit 1; \
 	fi
-	@echo "Using Android API $(LATEST_ANDROID_API): $(ANDROID_JAR)"
+	@echo "Using Android API $(SELECTED_ANDROID_API): $(ANDROID_JAR)"
 
 # Create target directory
 $(TARGET_DIR):
@@ -55,7 +56,7 @@ $(TARGET_DIR):
 # Compile all Java files at once (to handle dependencies)
 # Note: -d creates package directory structure automatically
 $(CLASS_FILES): $(JAVA_FILES) | $(TARGET_DIR)
-	@echo "Compiling Java files with API $(LATEST_ANDROID_API)..."
+	@echo "Compiling Java files with API $(SELECTED_ANDROID_API)..."
 	javac -source 8 -target 8 -d $(TARGET_DIR) -cp $(ANDROID_JAR) $(JAVA_FILES)
 	@echo "Compilation completed"
 
@@ -78,7 +79,6 @@ debug:
 	@echo "TARGET_DIR: $(TARGET_DIR)"
 	@echo "JAVA_FILES: $(JAVA_FILES)"
 	@echo "CLASS_FILES: $(CLASS_FILES)"
-	@echo "CORE_CLASSES: $(CORE_CLASSES)"
 	@echo "JAR_OUTPUT: $(JAR_OUTPUT)"
 
 .PHONY: all clean debug check-env
