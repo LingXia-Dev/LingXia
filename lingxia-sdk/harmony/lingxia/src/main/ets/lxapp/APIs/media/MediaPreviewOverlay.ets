@@ -373,7 +373,7 @@ struct MediaViewer {
 
   private onVideoEvent(event: string, detail: object): void {
     hilog.info(DOMAIN, TAG, `Video event: ${event}`);
-    if (event === 'play') {
+    if (event === 'playing') {
       this.videoState.isPlaying = true;
       this.videoState.isPaused = false;
       this.startProgressTimer();

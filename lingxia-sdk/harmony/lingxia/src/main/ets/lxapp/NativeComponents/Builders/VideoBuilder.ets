@@ -148,6 +148,7 @@ struct NativeVideoComponent {
         event === 'waiting' ||
         event === 'playrequest' ||
         event === 'play' ||
+        event === 'playing' ||
         event === 'pause' ||
         event === 'stop' ||
         event === 'seeking' ||

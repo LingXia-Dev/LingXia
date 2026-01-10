@@ -153,8 +153,8 @@ export struct LxNativeVideoPlayer {
   private pendingSeekStartTime: number = -1;
   private seekDebounceTimer: number = -1;  // Debounce rapid seeks
   @State private hasEnded: boolean = false;  // Track if video has ended - @State for poster UI binding
-  private pendingPlayEvent: boolean = false;  // Delay play event until video actually starts
-  private lastTimeForPlayEvent: number = -1;  // Track time progression for play event
+  private pendingPlayEvent: boolean = false;  // Delay playing event until video actually starts
+  private lastTimeForPlayEvent: number = -1;  // Track time progression for playing event
   private streamState: StreamPlaybackState = 'idle';
   private streamTimeAnchorMs: number = -1;
   private streamTimeAnchorPositionMs: number = 0;
@@ -422,6 +422,18 @@ export struct LxNativeVideoPlayer {
     }
   }
 
+  static onEnded(componentId: string): void {
+    const instance = LxNativeVideoPlayer.rebindInstance.get(componentId);
+    if (instance) {
+      instance.onPlaybackEnded();
+    } else {
+      const state = LxNativeVideoPlayer.runtimeState.get(componentId);
+      if (state) {
+        state.isPlaying = false;
+      }
+    }
+  }
+
   static onDuration(componentId: string, durationMs: number): void {
     const duration = Math.max(0, Math.round(durationMs));
     const instance = LxNativeVideoPlayer.rebindInstance.get(componentId);
@@ -622,7 +634,7 @@ export struct LxNativeVideoPlayer {
 
     const detail = new LxMediaRateChangeDetail();
     detail.rate = rate;
-    this.emitEvent('playbackratechange', detail);
+    this.emitEvent('ratechange', detail);
   }
 
   static getVideoWidth(componentId: string): number {
@@ -762,7 +774,7 @@ export struct LxNativeVideoPlayer {
   private startProgressTimer(): void {
     if (this.progressTimer !== -1) return;
     this.lastCurrentTimeForPoster = -1;  // Reset on timer start
-    this.lastTimeForPlayEvent = -1;  // Reset for play event detection
+    this.lastTimeForPlayEvent = -1;  // Reset for playing event detection
     this.lastCurrentTimeForBuffering = -1;  // Reset for buffering auto-clear
     this.progressTimer = setInterval(() => {
       const currentTime = this.getCurrentTime();
@@ -802,13 +814,13 @@ export struct LxNativeVideoPlayer {
         return;  // Don't process further after ended
       }
 
-      // Emit play event when video actually starts playing (time progresses)
+      // Emit playing event when video actually starts playing (time progresses)
       if (this.pendingPlayEvent && duration > 0) {
         const timeAdvanced = this.lastTimeForPlayEvent >= 0 && effectiveTime > this.lastTimeForPlayEvent;
         if (effectiveTime > 0 && timeAdvanced) {
-          log(`[${this.componentId}] progressTimer: emitting delayed play event, currentTime=${effectiveTime}, lastTime=${this.lastTimeForPlayEvent}`);
+          log(`[${this.componentId}] progressTimer: emitting delayed playing event, currentTime=${effectiveTime}, lastTime=${this.lastTimeForPlayEvent}`);
           this.pendingPlayEvent = false;
-          this.emitEvent('play', new VideoEmptyDetail());
+          this.emitEvent('playing', new VideoEmptyDetail());
         }
         this.lastTimeForPlayEvent = effectiveTime;
       }
@@ -907,7 +919,7 @@ export struct LxNativeVideoPlayer {
       this.state.isPaused = true;
       this.state.isBuffering = false;
     }
-    // Cancel pending play event on end
+    // Cancel pending playing event on end
     this.pendingPlayEvent = false;
     log(`[${this.componentId}] onPlaybackEnded()`);
     this.stopProgressTimer();
@@ -1138,6 +1150,7 @@ export struct LxNativeVideoPlayer {
       // IMPORTANT: Emit the play request after unpausing the native decoder. Otherwise the stream
       // session might start pushing frames while the decoder is still paused, dropping the first
       // keyframe and leaving the loading indicator stuck until the next keyframe.
+      this.emitEvent('play', new VideoEmptyDetail());
       this.emitEvent('playrequest', new VideoEmptyDetail());
 
       const waitingDetail = new VideoWaitingDetail();
@@ -1148,13 +1161,14 @@ export struct LxNativeVideoPlayer {
 
     const ok = videoPlayerPlay(this.componentId) as boolean;
     if (ok) {
-      // Don't set isPlaying=true yet. Wait for native 'play' event.
+      // Don't set isPlaying=true yet. Wait for native 'playing' event.
       // This prevents the progress bar from moving while the video is still loading/buffering.
       this.state.isPaused = false;
       this.hasEnded = false;
       this.pendingPlayEvent = true;
       this.lastTimeForPlayEvent = -1;
-      log(`[${this.componentId}] play() success (waiting for native 'play' event to start progress)`);
+      this.emitEvent('play', new VideoEmptyDetail());
+      log(`[${this.componentId}] play() success (waiting for native 'playing' event to start progress)`);
       // this.startProgressTimer(); // Removed: started in handlePlaying
     }
   }
@@ -1200,6 +1214,7 @@ export struct LxNativeVideoPlayer {
       // Reset playback state
       this.state.isPlaying = false;
       this.state.isPaused = true;
+      this.state.isBuffering = false;
       this.autoplaySuppressed = true;
       this.state.currentTime = 0;
       // Keep duration for stream VOD so the progress bar stays consistent across stop/replay.
@@ -1215,6 +1230,7 @@ export struct LxNativeVideoPlayer {
       LxNativeVideoPlayer.hasEverRenderedFrame.delete(this.componentId);
       this.stopProgressTimer();
       this.saveRuntimeState();
+      this.traceLoadingIndicator('stop()');
       log(`[${this.componentId}] stop() success, reset to initial state`);
       if (this.isStreamMode()) {
         const detail = new VideoControlDetail();
@@ -1251,7 +1267,7 @@ export struct LxNativeVideoPlayer {
       const duration = this.getDuration();
       if (duration > 0) this.sliderValue = calculateSliderValue(timeInt, duration);
 
-      // Clear pending seek immediately for stream mode because native seekDone/play events
+      // Clear pending seek immediately for stream mode because native seekDone/playing events
       // are not reliable triggers to unblock the progress timer.
       this.pendingSeekTime = -1;
       this.pendingSeekStartTime = -1;
@@ -1367,13 +1383,24 @@ export struct LxNativeVideoPlayer {
   }
 
   handleBufferingChange(isBuffering: boolean): void {
+    const isStream = this.isStreamMode();
+    // After `ended`, some native pipelines may still emit buffering/decoder-wait signals while
+    // tearing down. Don't re-enter waiting (which would show a stuck loading indicator) unless
+    // a new user intent transitions us away from 'ended' (e.g. play(), seek+play()).
+    if (isStream && this.streamState === 'ended' && isBuffering) {
+      return;
+    }
+    if (this.state.isBuffering === isBuffering) {
+      return;
+    }
     log(`[${this.componentId}] handleBufferingChange: isBuffering=${isBuffering}, isPlaying=${this.state.isPlaying}, isPaused=${this.state.isPaused}`);
+
     this.state.isBuffering = isBuffering;
     this.traceLoadingIndicator(`handleBufferingChange(${isBuffering})`);
 
     // Stream decoder mode uses `waiting` + `playing` to manage the loading indicator.
     // Avoid emitting extra play/pause events here, which can cause incorrect UI transitions.
-    if (this.isStreamMode()) {
+    if (isStream) {
       if (isBuffering) {
         if (this.state.duration > 0 && this.state.currentTime >= this.state.duration - 500) {
           // New segment is starting; reset local timeline so we don't auto-end immediately.
@@ -1412,8 +1439,8 @@ export struct LxNativeVideoPlayer {
     } else {
       // Buffering ended - emit appropriate event based on current state
       if (this.state.isPlaying) {
-        log(`[${this.componentId}] handleBufferingChange: emitting play event (buffering ended)`);
-        this.emitEvent('play', new VideoEmptyDetail());
+        log(`[${this.componentId}] handleBufferingChange: emitting playing event (buffering ended)`);
+        this.emitEvent('playing', new VideoEmptyDetail());
       }
     }
   }
@@ -1461,6 +1488,7 @@ export struct LxNativeVideoPlayer {
     log(`[${this.componentId}] handleStopped: resetting UI to initial state`);
     this.state.isPlaying = false;
     this.state.isPaused = true;
+    this.state.isBuffering = false;
     this.state.currentTime = 0;
     this.sliderValue = 0;
     this.hasEnded = false;
@@ -1476,7 +1504,7 @@ export struct LxNativeVideoPlayer {
   handlePlaying(): void {
     log(`[${this.componentId}] handlePlaying: updating UI for playback`);
     if (this.isStreamMode()) {
-      this.setStreamState('playing', 'play');
+      this.setStreamState('playing', 'playing');
       this.markFirstFrameRendered();
       // Force critical state flags even if setStreamState guard returned early
       // (e.g. state was already 'playing' due to concurrent calls or XComponent recreation).
@@ -1500,7 +1528,7 @@ export struct LxNativeVideoPlayer {
     this.traceLoadingIndicator('handlePlaying');
     this.scheduleStreamSurfaceRefresh();
     this.scheduleStreamSurfaceWarmupRecreate();
-    this.emitEvent('play', new VideoEmptyDetail());
+    this.emitEvent('playing', new VideoEmptyDetail());
   }
 
   handlePaused(): void {
@@ -1550,7 +1578,7 @@ export struct LxNativeVideoPlayer {
   }
 
   private emitEvent(event: string, detail: VideoEventDetail): void {
-    if (event === 'waiting' || event === 'play' || event === 'pause') {
+    if (event === 'waiting' || event === 'play' || event === 'playing' || event === 'pause' || event === 'ended' || event === 'stop') {
       let extra = '';
       if (event === 'waiting') {
         extra = ` reason=${(detail as VideoWaitingDetail)?.reason ?? ''}`;

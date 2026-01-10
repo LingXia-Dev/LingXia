@@ -183,6 +183,7 @@ struct InfoCallbackData {
     component_id: String,
     pending_play: AtomicBool,
     state_value: AtomicI32,
+    buffering_status: AtomicI32,
 }
 
 fn notify_arkts(component_id: &str, event: &str, payload: Option<&str>) {
@@ -499,7 +500,7 @@ extern "C" fn on_new_output_buffer(
             should_notify_playing = true;
         }
         if should_notify_playing {
-            notify_arkts(&wrapper.component_id, "play", None);
+            notify_arkts(&wrapper.component_id, "playing", None);
         }
     }
     if render_result != AV_ERR_OK {
@@ -706,17 +707,27 @@ extern "C" fn on_info_callback(
         // of emitting a distinct BUFFERING_END type. Support both encodings.
         // - AVPLAYER_BUFFERING_START = 1, AVPLAYER_BUFFERING_END = 2
         // - BUFFERING_VALUE: 0..99 => buffering, 100 => end
-        let is_buffering = if buffering_type == 1 {
-            Some("1")
+        let status_value = if buffering_type == 1 {
+            Some(1)
         } else if buffering_type == 2 {
-            Some("0")
+            Some(0)
         } else if has_value {
-            Some(if buffering_value >= 100 { "0" } else { "1" })
+            Some(if buffering_value >= 100 { 0 } else { 1 })
         } else {
             None
         };
 
-        if let Some(status) = is_buffering {
+        if let Some(status_value) = status_value {
+            let last_status = callback_data
+                .buffering_status
+                .load(Ordering::Acquire);
+            if last_status == status_value {
+                return;
+            }
+            callback_data
+                .buffering_status
+                .store(status_value, Ordering::Release);
+            let status = if status_value == 1 { "1" } else { "0" };
             log::info!(
                 "[VideoPlayer] on_info_callback: BUFFERING_UPDATE component_id={}, type={}, value={}({}), status={}",
                 component_id,
@@ -754,7 +765,7 @@ extern "C" fn on_info_callback(
             x if x == AVPlayerState::Prepared as i32 => {
                 notify_arkts(component_id, "prepared", None)
             }
-            x if x == AVPlayerState::Playing as i32 => notify_arkts(component_id, "play", None),
+            x if x == AVPlayerState::Playing as i32 => notify_arkts(component_id, "playing", None),
             x if x == AVPlayerState::Paused as i32 => notify_arkts(component_id, "pause", None),
             x if x == AVPlayerState::Stopped as i32 => notify_arkts(component_id, "stop", None),
             _ => {}
@@ -792,6 +803,7 @@ impl NativeVideoPlayer {
             component_id: component_id.to_string(),
             pending_play: AtomicBool::new(false),
             state_value: AtomicI32::new(AVPlayerState::Idle as i32),
+            buffering_status: AtomicI32::new(-1),
         });
         let callback_data_ptr = Box::into_raw(callback_data) as *mut c_void;
         let result = unsafe {
@@ -3570,9 +3582,10 @@ fn dispatch_command_harmony(
 
         let callback_id = lookup_video_callback_id(component_id);
         let control_event: Option<(&'static str, serde_json::Value)> = match &command {
-            VideoPlayerCommand::Play => Some(("waiting", serde_json::json!({"reason":"play"}))),
+            VideoPlayerCommand::Play => Some(("playrequest", serde_json::json!({}))),
             VideoPlayerCommand::Pause => Some(("pause", serde_json::json!({"reason":"user"}))),
             VideoPlayerCommand::Stop => Some(("stop", serde_json::json!({"reason":"user"}))),
+            VideoPlayerCommand::NotifyEnded => Some(("ended", serde_json::json!({}))),
             VideoPlayerCommand::Seek { position } => {
                 Some(("seeked", serde_json::json!({"time": position})))
             }
@@ -3613,6 +3626,9 @@ fn dispatch_command_harmony(
                 VideoPlayerCommand::Stop => {
                     state.stop_with_notify();
                     return true;
+                }
+                VideoPlayerCommand::NotifyEnded => {
+                    state.set_paused(true);
                 }
                 VideoPlayerCommand::Seek { .. } => {
                     log::warn!(
@@ -3700,7 +3716,9 @@ fn dispatch_command_harmony(
     }
     if matches!(
         command,
-        VideoPlayerCommand::Stop | VideoPlayerCommand::SetDuration { .. }
+        VideoPlayerCommand::Stop
+            | VideoPlayerCommand::NotifyEnded
+            | VideoPlayerCommand::SetDuration { .. }
     ) && get_player(component_id).is_none()
     {
         // Stream-only mode: stopping is idempotent even when no player/decoder is registered.
@@ -3758,6 +3776,7 @@ fn dispatch_command_harmony(
         VideoPlayerCommand::Play => p.play(),
         VideoPlayerCommand::Pause => p.pause(),
         VideoPlayerCommand::Stop => p.stop(),
+        VideoPlayerCommand::NotifyEnded => Ok(()),
         VideoPlayerCommand::Seek { position } => {
             p.seek((position * 1000.0) as i32, AVPlayerSeekMode::PreviousSync)
         }

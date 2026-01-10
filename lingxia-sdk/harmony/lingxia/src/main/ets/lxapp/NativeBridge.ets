@@ -316,7 +316,7 @@ class NativeBridge {
           NativeBridge.videoEventLastPayload.set(key, value);
           hilog.info(DOMAIN, TAG, `videoPlayerEvent: componentId=${componentId} event=${event} payload=${value}`);
         }
-      } else if (event === 'play' || event === 'pause' || event === 'waiting' || event === 'prepared' || event === 'stop') {
+      } else if (event === 'playing' || event === 'pause' || event === 'waiting' || event === 'prepared' || event === 'stop' || event === 'ended') {
         hilog.info(DOMAIN, TAG, `videoPlayerEvent: componentId=${componentId} event=${event}`);
       }
       switch (event) {
@@ -339,11 +339,14 @@ class NativeBridge {
         case 'stop':
           LxNativeVideoPlayer.onStopped(componentId);
           return true;
-        case 'play':
+        case 'playing':
           LxNativeVideoPlayer.onPlaying(componentId);
           return true;
         case 'pause':
           LxNativeVideoPlayer.onPaused(componentId);
+          return true;
+        case 'ended':
+          LxNativeVideoPlayer.onEnded(componentId);
           return true;
         case 'waiting':
           LxNativeVideoPlayer.onBufferingChange(componentId, true);
