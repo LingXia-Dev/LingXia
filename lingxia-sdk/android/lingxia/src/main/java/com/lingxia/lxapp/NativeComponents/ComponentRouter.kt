@@ -222,6 +222,30 @@ object ComponentRouter {
         }
     }
 
+    /**
+     * Dispatch a command specifically to the stream decoder session.
+     *
+     * Unlike [dispatchVideoCommand], this never forwards to the component manager/web path, to avoid
+     * feedback loops when the Player's FEED engine controls the decoder pipeline.
+     */
+    internal fun dispatchStreamDecoderCommand(componentId: String, name: String, paramsJson: String) {
+        updateDesiredAudioState(componentId, name, paramsJson)
+
+        val session = streamDecoders[componentId]
+        if (session == null) {
+            createStreamDecoder(componentId)
+            mainHandler.post {
+                streamDecoders[componentId]?.handleCommand(name, paramsJson)
+            }
+            return
+        }
+
+        if (!session.isTextureViewAttached()) {
+            mainHandler.post { createStreamDecoder(componentId) }
+        }
+        session.handleCommand(name, paramsJson)
+    }
+
     @JvmStatic
     fun createStreamDecoder(componentId: String): Boolean {
         val manager = managers[componentId]?.get()
@@ -399,7 +423,7 @@ object ComponentRouter {
     private fun emitStreamEvent(componentId: String, event: String, detail: Map<String, Any?>) {
         mainHandler.post {
             val manager = managers[componentId]?.get() ?: return@post
-            manager.emitComponentEvent(componentId, event, detail)
+            manager.deliverStreamDecoderEvent(componentId, event, detail)
         }
     }
 

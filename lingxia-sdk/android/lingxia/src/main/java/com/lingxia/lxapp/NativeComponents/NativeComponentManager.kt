@@ -331,31 +331,20 @@ class NativeComponentManager(
         return components[componentId] as? VideoComponent
     }
 
+    internal fun deliverStreamDecoderEvent(
+        componentId: String,
+        event: String,
+        detail: Map<String, Any?> = emptyMap()
+    ) {
+        val videoComponent = components[componentId] as? VideoComponent ?: return
+        videoComponent.handleStreamDecoderEvent(event, detail)
+    }
+
     internal fun emitComponentEvent(
         componentId: String,
         event: String,
         detail: Map<String, Any?> = emptyMap()
     ) {
-        if (event == "waiting" || event == "play" || event == "pause" || event == "stop" || event == "ended" || event == "seeked") {
-            val videoComponent = components[componentId] as? VideoComponent
-            // Set streamHasEnded=true when ended event arrives
-            if (event == "ended") {
-                videoComponent?.setStreamEnded(true)
-                android.util.Log.d("NativeComponentManager", "emitComponentEvent: set streamHasEnded=true for ended event")
-            }
-            // Handle seeked event: if video has ended, set flag to clear ended state on next acquire
-            if (event == "seeked") {
-                videoComponent?.handleSeekAfterEnded()
-            }
-            // Don't call handleStreamDecoderEvent for waiting events after video has ended
-            // This prevents poster from showing when VideoContext sends waiting event after ended
-            if (event == "waiting" && videoComponent?.isStreamEnded() == true) {
-                android.util.Log.d("NativeComponentManager", "emitComponentEvent: ignoring waiting event, video has ended")
-            } else if (event != "ended" && event != "seeked") {
-                // Only call handleStreamDecoderEvent for waiting/play/pause/stop (not ended/seeked)
-                videoComponent?.handleStreamDecoderEvent(event)
-            }
-        }
         sendEventToWeb(componentId, mapOf("event" to event, "detail" to detail))
     }
 
@@ -374,7 +363,7 @@ class NativeComponentManager(
         val shouldForwardToCallback = when (eventName) {
             "waiting",
             "playrequest",
-            "play",
+            "playing",
             "pause",
             "stop",
             "ended",

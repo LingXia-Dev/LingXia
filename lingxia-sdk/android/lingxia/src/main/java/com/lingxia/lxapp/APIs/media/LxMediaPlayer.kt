@@ -15,33 +15,30 @@ import android.view.ViewGroup
 import android.view.TextureView
 import android.view.WindowManager
 import android.widget.FrameLayout
-import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.ProgressBar
-import android.widget.SeekBar
-import android.widget.TextView
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import androidx.media3.common.AudioAttributes
-import androidx.media3.common.C
-import androidx.media3.common.MediaItem
-import androidx.media3.common.PlaybackException
-import androidx.media3.common.Player
-import androidx.media3.common.VideoSize
-import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.SeekParameters
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import com.lingxia.lxapp.APIs.media.player.BackendKind
+import com.lingxia.lxapp.APIs.media.player.FeedEngine
+import com.lingxia.lxapp.APIs.media.player.JsEventMapper
+import com.lingxia.lxapp.APIs.media.player.PlayerCore
+import com.lingxia.lxapp.APIs.media.player.PlayerEvent as CorePlayerEvent
+import com.lingxia.lxapp.APIs.media.player.PlayerSource as CorePlayerSource
+import com.lingxia.lxapp.APIs.media.player.StopReason
+import com.lingxia.lxapp.APIs.media.player.SurfaceHost
+import com.lingxia.lxapp.APIs.media.player.UrlEngine
 import com.lingxia.lxapp.LxApp
 import com.lingxia.lxapp.NavigationBar
 import com.lingxia.lxapp.R
 import com.lingxia.lxapp.NativeComponents.ComponentRouter
 import com.lingxia.lxapp.TabBar
 import java.io.File
-import kotlin.math.max
 
 private const val TAG = "LxMediaPlayer"
 
@@ -107,6 +104,7 @@ sealed class LxMediaCommand {
     object Play : LxMediaCommand()
     object Pause : LxMediaCommand()
     object Stop : LxMediaCommand()
+    object NotifyEnded : LxMediaCommand()
     data class Seek(val time: Double) : LxMediaCommand()
     data class SetDuration(val duration: Double) : LxMediaCommand()
     data class SetVolume(val volume: Double) : LxMediaCommand()
@@ -142,7 +140,7 @@ sealed class LxMediaEvent {
             is Waiting -> "waiting"
             is Seeked -> "seeked"
             is TimeUpdate -> "timeupdate"
-            is RateChange -> "playbackratechange"
+            is RateChange -> "ratechange"
             is VolumeChange -> "volumechange"
             is FullscreenChange -> "fullscreenchange"
             is LoadedMetadata -> "loadedmetadata"
@@ -184,37 +182,25 @@ class LxMediaPlayer(
         clipToOutline = true
     }
 
+    private val ownerKey: String =
+        if (componentId != null) "p-unknown/$componentId" else "preview/${System.identityHashCode(this).toString(16)}"
+
+    private var surfaceHost: SurfaceHost? = null
+    private var playerCore: PlayerCore? = null
+    private var activeUrlEngine: UrlEngine? = null
+    private var activeFeedEngine: FeedEngine? = null
+
     private var player: ExoPlayer? = null
     private var playerView: PlayerView? = null
     private var streamTextureView: TextureView? = null
     private var posterImageView: ImageView? = null
     private var loadingIndicator: ProgressBar? = null
     private var controlsOverlay: LxMediaControlsOverlay? = null
-
-    private var streamDecoderMode = false
-    private var overrideDurationSeconds: Double? = null
-    private var streamPlaybackBaseOffsetSeconds = 0.0
-    private var streamPausedPositionSeconds: Double? = null
-    private var streamProgressRunnable: Runnable? = null
-    private var streamIsPlaying = false
-    private var streamIsBuffering = false
-    // Stream intent latch for "src is empty but user pressed play" before a stream source/decoder exists.
-    private var streamPlayRequested = false
-    private var streamHasOutput = false
-    private var streamHasEnded = false
+    private var defaultBackendInitialized = false
     // CRITICAL: Permanent flag - once ANY frame is rendered, poster should NEVER show again.
-    // Unlike streamHasOutput which gets reset on seek/reset, this flag persists until source changes.
     private var hasEverRenderedFrame = false
-    private var lastPlaybackPosition = 0.0  // Track last known position for near-end detection
-    private var lastKnownDuration = 0.0  // Track last known duration as fallback
-    private var pendingSeekAfterEnded = false  // Flag to reset ended state on next acquire after seek
-    private var pendingStreamSeekedSeconds: Double? = null
-    private var posterVisibilityBeforeStream: Int? = null
-    private var loadingVisibilityBeforeStream: Int? = null
-    private var shutterColorBeforeStream: Int? = null
 
     private val mainHandler = Handler(Looper.getMainLooper())
-    private var timeUpdateRunnable: Runnable? = null
 
     // Config state
     private var controlsEnabled = true
@@ -233,7 +219,6 @@ class LxMediaPlayer(
     // State
     private var currentSource: Uri? = null
     private var isFullscreen = false
-    private var suppressWaitingUntilMs: Long = 0
     private var isPausedByUser = false  // Track if user explicitly paused (vs buffering)
     private var firstFrameDisplayed = false
     private var posterUrl: String? = null
@@ -241,11 +226,9 @@ class LxMediaPlayer(
     private var videoHeight = 0.0
     private var videoRotationDegrees = 0
     private var closeRequestListener: (() -> Unit)? = null
-    private var lastTimeForPoster: Double = -1.0  // Track time progression for poster hiding
-    private var pendingPosterHide = false  // Flag to delay poster hiding until time progresses
 
-    // State restoration for quality switching: (seekToMs, shouldPlay)
-    private var pendingRestoreAfterLoad: Pair<Long, Boolean>? = null
+    private var uiSeeking = false
+    private var lastUiTimeUpdateMs: Long? = null
 
     // Fullscreen state
     private var fullscreenDialog: android.app.Dialog? = null
@@ -284,171 +267,45 @@ class LxMediaPlayer(
     private var lastFrameHeight = 0f
     private var rectSyncScheduledAtMs: Long = 0
     private var rectSyncRunnable: Runnable? = null
-    private var nextPlayEmitsPlayRequest = false
-
-    // Player listener - must be declared before init block
-    private val playerListener = object : Player.Listener {
-        override fun onRenderedFirstFrame() {
-            if (streamDecoderMode) return
-            if (firstFrameDisplayed) return
-            firstFrameDisplayed = true
-            hasEverRenderedFrame = true  // Permanent - poster will never show again
-            pendingPosterHide = false
-            updatePosterVisibility()
-            loadingIndicator?.visibility = View.GONE
-            scheduleRectSync(doublePass = false)
-        }
-
-        override fun onPlaybackStateChanged(playbackState: Int) {
-            if (streamDecoderMode) {
-                return
-            }
-            when (playbackState) {
-                Player.STATE_READY -> {
-                    loadingIndicator?.visibility = View.GONE
-                    clearWaitingSuppression()
-
-                    // Handle state restoration (e.g. after quality switch)
-                    pendingRestoreAfterLoad?.let { (seekToMs, shouldPlay) ->
-                        pendingRestoreAfterLoad = null
-                        suppressWaitingFor(1500) // Prevent Waiting event during seek
-                        player?.seekTo(seekToMs)
-                        if (shouldPlay) {
-                            player?.play()
-                        }
-                    }
-
-                    if (!firstFrameDisplayed) {
-                        // Don't hide poster immediately - wait for time to progress
-                        // This prevents black screen flash when video is buffering
-                        pendingPosterHide = true
-                        lastTimeForPoster = -1.0
-                        emitLoadedMetadata()
-                        scheduleRectSync(doublePass = true)
-                    }
-                }
-                Player.STATE_BUFFERING -> {
-                    val now = android.os.SystemClock.uptimeMillis()
-                    val suppressWaiting = now < suppressWaitingUntilMs
-                    // Don't show loading during seek - better UX (frame stays visible)
-                    // Also don't show loading if user explicitly paused
-                    if (!suppressWaiting && !isPausedByUser) {
-                        loadingIndicator?.visibility = View.VISIBLE
-                        emitEvent(LxMediaEvent.Waiting)
-                    }
-                }
-                Player.STATE_ENDED -> {
-                    loadingIndicator?.visibility = View.GONE
-                    clearWaitingSuppression()
-                    emitEvent(LxMediaEvent.Ended)
-                    if (loopEnabled) {
-                        player?.seekTo(0)
-                        player?.play()
-                    } else {
-                        // Keep the last rendered frame visible on ended (don't show poster).
-                        firstFrameDisplayed = true
-                        pendingPosterHide = false
-                        updatePosterVisibility()
-                        // Bring controls to front so the center play button is visible.
-                        controlsOverlay?.view?.bringToFront()
-                        controlsOverlay?.showCenterPlayButton(true)
-                        controlsOverlay?.updatePlayPauseButton()  // Update play/pause button icon
-                    }
-                }
-                Player.STATE_IDLE -> {
-                    loadingIndicator?.visibility = View.GONE
-                    clearWaitingSuppression()
-                }
-            }
-            controlsOverlay?.updatePlayPauseButton()
-        }
-
-        override fun onIsPlayingChanged(isPlaying: Boolean) {
-            if (streamDecoderMode) {
-                return
-            }
-            if (isPlaying) {
-                emitEvent(LxMediaEvent.Play)
-                startTimeUpdates()
-                scheduleRectSync(doublePass = false)
-            } else {
-                // Don't emit pause here - isPlaying=false can be due to buffering
-                // Pause event is emitted explicitly in pause() method
-                stopTimeUpdates()
-            }
-            controlsOverlay?.updatePlayPauseButton()
-        }
-
-        override fun onPlayerError(error: PlaybackException) {
-            Log.e(TAG, "Player error: ${error.message}", error)
-            loadingIndicator?.visibility = View.GONE
-            emitEvent(LxMediaEvent.Error(
-                code = error.errorCode.toString(),
-                message = error.message ?: "Unknown error"
-            ))
-        }
-
-        override fun onVideoSizeChanged(videoSize: VideoSize) {
-            if (streamDecoderMode) {
-                return
-            }
-            val w = videoSize.width.toDouble()
-            val h = videoSize.height.toDouble()
-            if (w > 0 && h > 0) {
-                updatePreferredOrientation(w, h, videoSize.unappliedRotationDegrees)
-            }
-        }
-    }
 
     init {
         setupUI()
-        setupPlayer()
+        setupCore()
 
         // Ensure video output is ready when view is attached
         view.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
             override fun onViewAttachedToWindow(v: View) {
-                if (streamDecoderMode) {
-                    return
+                activeUrlEngine?.let { engine ->
+                    playerView?.player = engine.exoPlayer
                 }
-                playerView?.player = player
             }
             override fun onViewDetachedFromWindow(v: View) = Unit
         })
     }
 
-    private fun setupPlayer() {
-        try {
-            // Use application context to avoid memory leaks and context issues
-            val appContext = context.applicationContext
-
-            // Optimized load control for better seek/buffering experience
-            val loadControl = DefaultLoadControl.Builder()
-                .setBufferDurationsMs(
-                    25000,  // minBufferMs - buffer at least 25s
-                    50000,  // maxBufferMs - buffer up to 50s
-                    1500,   // bufferForPlaybackMs - start playback with 1.5s buffer
-                    3000    // bufferForPlaybackAfterRebufferMs - after rebuffer, need 3s
-                )
-                .build()
-
-            val exoPlayer = ExoPlayer.Builder(appContext)
-                .setLoadControl(loadControl)
-                .setSeekParameters(SeekParameters.CLOSEST_SYNC)  // Fast seek to nearest keyframe
-                .build()
-
-            val audioAttributes = AudioAttributes.Builder()
-                .setUsage(C.USAGE_MEDIA)
-                .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
-                .build()
-            exoPlayer.setAudioAttributes(audioAttributes, true)
-            exoPlayer.setHandleAudioBecomingNoisy(true)
-
-            exoPlayer.addListener(playerListener)
-            player = exoPlayer
-            playerView?.player = exoPlayer
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to create ExoPlayer", e)
-        }
+    private fun setupCore() {
+        val pv = playerView ?: return
+        val tv = streamTextureView ?: return
+        surfaceHost = SurfaceHost(
+            ownerKey = ownerKey,
+            urlPlayerView = pv,
+            feedTextureView = tv,
+        )
+        playerCore = PlayerCore(
+            createUrlEngine = {
+                UrlEngine(context.applicationContext, pv).also { engine ->
+                    activeUrlEngine = engine
+                    player = engine.exoPlayer
+                }
+            },
+            createFeedEngine = {
+                val id = componentId ?: error("FeedEngine requires componentId")
+                FeedEngine(id).also { engine ->
+                    activeFeedEngine = engine
+                }
+            },
+            emit = ::handleCoreEvent,
+        )
     }
 
     private fun setupUI() {
@@ -458,7 +315,6 @@ class LxMediaPlayer(
             .inflate(R.layout.lx_media_player_view, view, false) as PlayerView
         playerView?.apply {
             useController = false // We use custom controls
-            setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
             resizeMode = objectFit.toResizeMode()
         }
         view.addView(playerView)
@@ -501,10 +357,13 @@ class LxMediaPlayer(
     }
 
     fun update(config: LxMediaPlayerConfig) {
-        config.source?.let { source ->
-            loadSource(source.toUri())
-        } ?: config.src?.let { src ->
-            loadSource(parseUri(src))
+        if (config.source != null || config.src != null) {
+            val uri = config.source?.toUri() ?: config.src?.let(::parseUri)
+            if (uri != null) {
+                loadSource(uri)
+            }
+        } else if (!defaultBackendInitialized && componentId != null) {
+            ensureFeedBackendIfNeeded()
         }
 
         config.poster?.let {
@@ -512,7 +371,10 @@ class LxMediaPlayer(
             loadPoster(it, show = shouldShowPoster())
         }
         updatePosterVisibility()
-        config.loop?.let { loopEnabled = it }
+        config.loop?.let {
+            loopEnabled = it
+            activeUrlEngine?.setLoopEnabled(it)
+        }
         config.muted?.let { setMuted(it) }
         config.volume?.let { setVolume(it) }
         config.controls?.let { controlsEnabled = it; controlsOverlay?.setVisible(it) }
@@ -533,9 +395,9 @@ class LxMediaPlayer(
                 rates.any { it == current } -> current.toFloat()
                 else -> rates.firstOrNull()?.toFloat() ?: 1.0f
             }
-            player?.setPlaybackSpeed(currentPlaybackRate)
+            playerCore?.setRate(currentPlaybackRate)
         }
-        config.autoplay?.let { if (it) player?.playWhenReady = true }
+        config.autoplay?.let { if (it) play() }
         config.objectFit?.let { setObjectFit(it) }
         controlsOverlay?.updateSettingsButton()
     }
@@ -547,15 +409,11 @@ class LxMediaPlayer(
         // PROFESSIONAL PLAYER STANDARD: Poster ONLY shows on cold start.
         // Once ANY frame has been rendered, poster should NEVER show again.
         if (hasEverRenderedFrame) return false
-        
-        // For native player mode
-        if (!streamDecoderMode) {
-            if (componentId != null && currentSource == null) return true
-            return !firstFrameDisplayed
-        }
-        
-        // For stream decoder mode: only show before first output
-        return !streamHasOutput
+
+        // For native component feed mode (no URL source), show poster only before the first frame.
+        if (componentId != null && currentSource == null) return true
+
+        return !firstFrameDisplayed
     }
 
     private fun updatePosterVisibility() {
@@ -563,7 +421,7 @@ class LxMediaPlayer(
         val shouldShow = shouldShowPoster()
         val oldVisibility = poster.visibility
         poster.visibility = if (shouldShow) View.VISIBLE else View.GONE
-        Log.d(TAG, "updatePosterVisibility: shouldShow=$shouldShow, old=${if (oldVisibility == View.VISIBLE) "VISIBLE" else "GONE"}, new=${if (poster.visibility == View.VISIBLE) "VISIBLE" else "GONE"}, streamHasOutput=$streamHasOutput, streamHasEnded=$streamHasEnded")
+        Log.d(TAG, "updatePosterVisibility: shouldShow=$shouldShow, old=${if (oldVisibility == View.VISIBLE) "VISIBLE" else "GONE"}, new=${if (poster.visibility == View.VISIBLE) "VISIBLE" else "GONE"}")
         if (poster.visibility == View.VISIBLE) {
             poster.bringToFront()
             controlsOverlay?.view?.bringToFront()
@@ -576,19 +434,21 @@ class LxMediaPlayer(
             is LxMediaCommand.Play -> play()
             is LxMediaCommand.Pause -> pause()
             is LxMediaCommand.Stop -> stop()
+            is LxMediaCommand.NotifyEnded -> {
+                // Stream providers can signal authoritative end-of-stream (VOD segment).
+                // Route it through the FEED engine so Core emits `ended` and stops polling/loading.
+                ensureFeedBackendIfNeeded()
+                activeFeedEngine?.handleStreamDecoderEvent("ended", emptyMap())
+            }
             is LxMediaCommand.Seek -> seek(command.time)
             is LxMediaCommand.SetDuration -> {
                 val duration = command.duration
                 if (duration.isFinite() && duration > 0) {
-                    overrideDurationSeconds = duration
-                    streamPlaybackBaseOffsetSeconds = 0.0
                     controlsOverlay?.updateProgress(0.0, duration)
-                    startStreamProgressUpdatesIfNeeded()
+                    playerCore?.setDurationMs((duration * 1000.0).toLong())
                 } else {
-                    overrideDurationSeconds = null
-                    streamPlaybackBaseOffsetSeconds = 0.0
                     controlsOverlay?.updateProgress(0.0, 0.0)
-                    stopStreamProgressUpdates()
+                    playerCore?.setDurationMs(null)
                 }
             }
             is LxMediaCommand.SetVolume -> setVolume(command.volume)
@@ -600,142 +460,12 @@ class LxMediaPlayer(
     }
 
     fun acquireStreamTextureView(): TextureView? {
-        val caller = Thread.currentThread().stackTrace.getOrNull(3)?.let { "${it.className}.${it.methodName}:${it.lineNumber}" } ?: "unknown"
-        Log.d(TAG, "acquireStreamTextureView called from $caller, streamDecoderMode=$streamDecoderMode, streamHasEnded=$streamHasEnded")
-        // Check if this is acquisition after seek from ended state
-        val isSeekAfterEnded = pendingSeekAfterEnded
-        if (isSeekAfterEnded) {
-            pendingSeekAfterEnded = false
-            Log.d(TAG, "acquireStreamTextureView: clearing ended state due to seek")
-        }
-        
-        // Preserve ended state UNLESS this is a seek operation
-        val preserveEndedState = streamHasEnded && !isSeekAfterEnded
-        
-        if (!streamDecoderMode) {
-            streamDecoderMode = true
-            streamHasOutput = false
-            streamHasEnded = false
-            streamIsBuffering = streamPlayRequested
-            streamPlaybackBaseOffsetSeconds = 0.0
-            streamPausedPositionSeconds = null
-            posterVisibilityBeforeStream = posterImageView?.visibility
-            loadingVisibilityBeforeStream = loadingIndicator?.visibility
-
-            shutterColorBeforeStream = Color.BLACK
-            playerView?.setShutterBackgroundColor(Color.TRANSPARENT)
-        }
-        
-        // Restore ended state if preserved (not a seek operation)
-        if (preserveEndedState) {
-            streamHasEnded = true
-        }
-        
-        // Reset playback state
-        streamIsPlaying = false
-        if (!preserveEndedState) {
-            streamIsBuffering = streamPlayRequested
-        }
-        
-        // Use centralized poster visibility logic
-        Log.d(TAG, "acquireStreamTextureView: updating poster, preserveEndedState=$preserveEndedState, streamHasEnded=$streamHasEnded")
-        updatePosterVisibility()
-        
-        // Show loading only if not ended
-        if (!preserveEndedState) {
-            loadingIndicator?.visibility = if (streamIsBuffering && !isPausedByUser) View.VISIBLE else View.GONE
-            if (loadingIndicator?.visibility == View.VISIBLE) {
-                loadingIndicator?.bringToFront()
-                controlsOverlay?.view?.bringToFront()
-            }
-        }
-        streamTextureView?.visibility = View.VISIBLE
-        playerView?.visibility = View.GONE
-        player?.pause()
-        player?.clearVideoSurface()
-        playerView?.player = null
-        val view = streamTextureView
-        if (view == null) {
-            Log.w(TAG, "Stream decoder: TextureView not available")
-        }
-        startStreamProgressUpdatesIfNeeded()
-        return view
+        ensureFeedBackendIfNeeded()
+        return surfaceHost?.getFeedTextureView() ?: streamTextureView
     }
 
     fun releaseStreamTextureView() {
-        val caller = Thread.currentThread().stackTrace.getOrNull(3)?.let { "${it.className}.${it.methodName}:${it.lineNumber}" } ?: "unknown"
-        Log.d(TAG, "releaseStreamTextureView called from $caller, streamDecoderMode=$streamDecoderMode, streamHasEnded=$streamHasEnded")
-        if (streamDecoderMode) {
-            // Fallback ended detection: if playback stopped within last 5% OR 3s of duration, treat as ended
-            // This handles cases where VideoContext doesn't send ended event and progress timer stops early
-            var nearEnd = false
-            Log.d(TAG, "[NEAR-END] checking: streamHasEnded=$streamHasEnded, componentId=$componentId")
-            if (!streamHasEnded && componentId != null) {
-                var duration = overrideDurationSeconds
-                // Fallback: if duration is null (e.g., after seek), use last known duration
-                if (duration == null || duration <= 0) {
-                    duration = if (lastKnownDuration > 0) lastKnownDuration else null
-                } else {
-                    // Update last known duration when we have a valid one
-                    lastKnownDuration = duration
-                }
-                Log.d(TAG, "[NEAR-END] duration=$duration, lastPlaybackPosition=$lastPlaybackPosition")  
-                if (duration != null && duration > 0) {
-                    // Use lastPlaybackPosition instead of querying ComponentRouter
-                    // because stream decoder may have stopped and returns 0
-                    val raw = lastPlaybackPosition
-                    val diff = duration - raw
-                    // Use percentage-based threshold: within last 5% OR last 3 seconds, whichever is larger
-                    val threshold = maxOf(duration * 0.05, 3.0)
-                    Log.d(TAG, "[NEAR-END] raw=$raw, diff=$diff, threshold=$threshold")
-                    if (diff < threshold && diff >= 0) {
-                        nearEnd = true
-                        Log.d(TAG, "[NEAR-END] *** DETECTED *** raw=$raw, duration=$duration, diff=$diff, threshold=$threshold")
-                    } else {
-                        Log.d(TAG, "[NEAR-END] NOT near end: diff=$diff >= threshold=$threshold")
-                    }
-                } else {
-                    Log.d(TAG, "[NEAR-END] invalid duration")
-                }
-            } else {
-                Log.d(TAG, "[NEAR-END] skipped: already ended or no componentId")
-            }
-            // Preserve streamHasEnded if video has ended - this prevents poster from showing
-            // when stream decoder is stopped and recreated (e.g. during seek after ended)
-            val preserveEnded = streamHasEnded || nearEnd
-            streamDecoderMode = false
-            streamIsPlaying = false
-            streamHasOutput = false
-            streamIsBuffering = false
-            streamHasEnded = preserveEnded  // Preserve ended state
-            streamPlayRequested = false
-            streamPlaybackBaseOffsetSeconds = 0.0
-            streamPausedPositionSeconds = null
-            overrideDurationSeconds = null
-            stopStreamProgressUpdates()
-            controlsOverlay?.updateProgress(0.0, 0.0)  // Update visibility when duration cleared
-            // Don't restore poster/loading if video ended - keep them hidden
-            if (!preserveEnded) {
-                posterVisibilityBeforeStream?.let { posterImageView?.visibility = it }
-                loadingVisibilityBeforeStream?.let { loadingIndicator?.visibility = it }
-            }
-            posterVisibilityBeforeStream = null
-            loadingVisibilityBeforeStream = null
-
-            val color = shutterColorBeforeStream ?: Color.BLACK
-            playerView?.setShutterBackgroundColor(color)
-            shutterColorBeforeStream = null
-            Log.d(TAG, "releaseStreamTextureView: preserveEnded=$preserveEnded, streamHasEnded now=$streamHasEnded")
-        }
-        // If video ended, keep texture view visible to show last frame
-        // Otherwise hide it and show playerView
-        if (!streamHasEnded) {
-            streamTextureView?.visibility = View.GONE
-            playerView?.visibility = View.VISIBLE
-            playerView?.player = player
-        } else {
-            Log.d(TAG, "releaseStreamTextureView: keeping texture view visible for last frame")
-        }
+        // No-op: keep the last rendered frame visible; backend switching controls visibility.
     }
 
     fun attach(to: ViewGroup) {
@@ -746,12 +476,12 @@ class LxMediaPlayer(
     }
 
     fun detach() {
-        stopTimeUpdates()
-        stopStreamProgressUpdates()
         rectSyncRunnable?.let { mainHandler.removeCallbacks(it) }
         rectSyncRunnable = null
-        player?.stop()
-        player?.release()
+        playerCore?.release()
+        playerCore = null
+        activeUrlEngine = null
+        activeFeedEngine = null
         player = null
         (view.parent as? ViewGroup)?.removeView(view)
     }
@@ -804,270 +534,43 @@ class LxMediaPlayer(
         ComponentRouter.requestRectSync(id)
     }
 
-    fun requestPlay() {
-        nextPlayEmitsPlayRequest = true
-        play()
-    }
-
     fun play() {
-        val emitPlayRequest = nextPlayEmitsPlayRequest
-        nextPlayEmitsPlayRequest = false
-
-        // Stream-mode placeholder (no src) + no decoder yet: emit play intent instead of letting
-        // ExoPlayer enter ENDED immediately (empty playlist), which hides the poster and prevents
-        // JS from lazily calling setStreamSource().
-        if (!streamDecoderMode && componentId != null && currentSource == null) {
-            if (!emitPlayRequest) {
-                return
-            }
-            isPausedByUser = false
-            streamPlayRequested = true
-            updatePosterVisibility()
-            loadingIndicator?.visibility = View.VISIBLE
-            loadingIndicator?.bringToFront()
-            controlsOverlay?.view?.bringToFront()
-            controlsOverlay?.updatePlayPauseButton()
-            emitEvent(LxMediaEvent.Raw("playrequest", emptyMap()))
-            emitEvent(LxMediaEvent.Raw("waiting", mapOf("reason" to "buffering")))
-            scheduleRectSync(doublePass = true)
-            return
-        }
-        if (streamDecoderMode && componentId != null) {
-            isPausedByUser = false
-            if (emitPlayRequest) {
-                emitEvent(LxMediaEvent.Raw("playrequest", emptyMap()))
-            }
-            val resumeFrom = streamPausedPositionSeconds
-            val duration = overrideDurationSeconds
-            if (streamHasEnded) {
-                streamHasEnded = false
-                streamPlaybackBaseOffsetSeconds = 0.0
-                streamPausedPositionSeconds = null
-                controlsOverlay?.updateProgress(0.0, duration ?: 0.0)
-                com.lingxia.lxapp.NativeComponents.ComponentRouter.dispatchVideoCommand(
-                    componentId,
-                    "resetStream",
-                    """{"hard":false,"emitWaiting":false}"""
-                )
-            }
-            if (resumeFrom != null && duration != null && duration > 0) {
-                // Pause/resume restarts the provider stream with PTS reset to 0. Preserve the
-                // absolute position by shifting the base offset and resetting the decoder PTS.
-                val clamped = resumeFrom.coerceIn(0.0, duration)
-                streamPlaybackBaseOffsetSeconds = clamped
-                controlsOverlay?.updateProgress(clamped, duration)
-                com.lingxia.lxapp.NativeComponents.ComponentRouter.dispatchVideoCommand(
-                    componentId,
-                    "resetStream",
-                    """{"hard":false,"emitWaiting":false}"""
-                )
-                streamPausedPositionSeconds = null
-            } else {
-                streamPausedPositionSeconds = null
-            }
-
-            streamIsPlaying = true
-            streamIsBuffering = true
-            streamPlayRequested = true
-            updatePosterVisibility()
-            loadingIndicator?.visibility = View.VISIBLE
-            loadingIndicator?.bringToFront()
-            com.lingxia.lxapp.NativeComponents.ComponentRouter.dispatchVideoCommand(
-                componentId,
-                "play",
-                "{}"
-            )
-            // In stream mode, PlayerView doesn't drive layout updates; request a rect sync so the
-            // native view stays aligned with DOM changes (e.g. switching view state).
-            scheduleRectSync(doublePass = true)
-            controlsOverlay?.updatePlayPauseButton()
-            return
-        }
-        val p = player ?: return
         isPausedByUser = false  // User wants to play
-        when (p.playbackState) {
-            Player.STATE_ENDED -> {
-                p.seekTo(0)
-            }
-            Player.STATE_IDLE -> {
-                // After stop(), player is in IDLE state and needs prepare() again
-                p.prepare()
-            }
+        if (!defaultBackendInitialized && componentId != null && currentSource == null) {
+            ensureFeedBackendIfNeeded()
         }
-        p.setPlaybackSpeed(currentPlaybackRate)
-        p.play()
+        playerCore?.setRate(currentPlaybackRate)
+        playerCore?.play()
     }
 
     fun pause() {
-        if (!streamDecoderMode && componentId != null && currentSource == null) {
-            isPausedByUser = true
-            streamPlayRequested = false
-            loadingIndicator?.visibility = View.GONE
-            updatePosterVisibility()
-            controlsOverlay?.updatePlayPauseButton()
-            emitEvent(LxMediaEvent.Raw("pause", mapOf("reason" to "user")))
-            return
-        }
-        if (streamDecoderMode && componentId != null) {
-            isPausedByUser = true
-            streamIsPlaying = false
-            streamPlayRequested = false
-            clearWaitingSuppression()
-            overrideDurationSeconds?.let { duration ->
-                if (duration > 0) {
-                    val relative = ComponentRouter.streamPlaybackPositionSeconds(componentId) ?: 0.0
-                    val current =
-                        (streamPlaybackBaseOffsetSeconds + relative).coerceIn(0.0, duration)
-                    streamPausedPositionSeconds = current
-                }
-            }
-            val currentTime = streamPausedPositionSeconds
-            val paramsJson =
-                if (currentTime != null && currentTime.isFinite() && currentTime >= 0.0) {
-                    """{"currentTime":$currentTime}"""
-                } else {
-                    "{}"
-                }
-            com.lingxia.lxapp.NativeComponents.ComponentRouter.dispatchVideoCommand(componentId, "pause", paramsJson)
-            loadingIndicator?.visibility = View.GONE
-            controlsOverlay?.updatePlayPauseButton()
-            return
-        }
         isPausedByUser = true  // User explicitly paused
-        clearWaitingSuppression()
-        player?.pause()
-        // Keep the last rendered frame visible; never show poster on pause.
-        updatePosterVisibility()
-        // Always emit pause event when user explicitly pauses
-        // (onIsPlayingChanged no longer sends pause to avoid confusion with buffering)
-        emitEvent(LxMediaEvent.Pause)
-        stopTimeUpdates()
-        loadingIndicator?.visibility = View.GONE
+        playerCore?.pause()
     }
 
     fun stop() {
-        isPausedByUser = true  // Stopped by user
-        if (!streamDecoderMode && componentId != null && currentSource == null) {
-            streamPlayRequested = false
-            clearWaitingSuppression()
-            firstFrameDisplayed = false
-            hasEverRenderedFrame = false  // TRUE COLD START - only stop() resets this
-            pendingPosterHide = false
-            updatePosterVisibility()
-            loadingIndicator?.visibility = View.GONE
-            controlsOverlay?.showCenterPlayButton(true)
-            controlsOverlay?.updatePlayPauseButton()
-            emitEvent(LxMediaEvent.Raw("stop", mapOf("reason" to "user")))
-            return
-        }
-        if (streamDecoderMode && componentId != null) {
-            streamIsPlaying = false
-            streamHasOutput = false
-            hasEverRenderedFrame = false  // TRUE COLD START - only stop() resets this
-            streamIsBuffering = false
-            streamPlayRequested = false
-            streamPlaybackBaseOffsetSeconds = 0.0
-            streamPausedPositionSeconds = null
-            clearWaitingSuppression()
-            com.lingxia.lxapp.NativeComponents.ComponentRouter.dispatchVideoCommand(componentId, "pause", "{}")
-            com.lingxia.lxapp.NativeComponents.ComponentRouter.dispatchVideoCommand(
-                componentId,
-                "resetStream",
-                """{"hard":true}"""
-            )
-            updatePosterVisibility()
-            controlsOverlay?.view?.bringToFront()
-            controlsOverlay?.showCenterPlayButton(true)
-            controlsOverlay?.updatePlayPauseButton()
-            overrideDurationSeconds?.let { controlsOverlay?.updateProgress(0.0, it) }
-            emitEvent(LxMediaEvent.Stop)
-            return
-        }
-        // Get duration before stopping
-        val duration = (player?.duration ?: 0L).toDouble() / 1000.0
-        clearWaitingSuppression()
-
-        player?.stop()
-        player?.seekTo(0)
-
-        // Reset to initial state - show poster and center play button (like video ended)
-        firstFrameDisplayed = false
-        pendingPosterHide = false
-        updatePosterVisibility()
-        controlsOverlay?.view?.bringToFront()
-        controlsOverlay?.showCenterPlayButton(true)
-        controlsOverlay?.updateProgress(0.0, duration)
-
-        emitEvent(LxMediaEvent.Stop)
+        isPausedByUser = true
+        playerCore?.stop(StopReason.USER)
     }
 
     fun seek(time: Double) {
-        if (streamDecoderMode && componentId != null) {
-            val duration = overrideDurationSeconds ?: return
-            val clamped = time.coerceIn(0.0, duration)
-            streamPlaybackBaseOffsetSeconds = clamped
-            streamPausedPositionSeconds = null
-            pendingStreamSeekedSeconds = clamped
-            controlsOverlay?.updateProgress(clamped, duration)
-            com.lingxia.lxapp.NativeComponents.ComponentRouter.dispatchVideoCommand(
-                componentId,
-                "resetStream",
-                """{"hard":false}"""
-            )
-            emitEvent(LxMediaEvent.Raw("seeking", mapOf("time" to clamped)))
-            startStreamProgressUpdatesIfNeeded()
-            return
-        }
         val positionMs = (time * 1000).toLong()
-        suppressWaitingFor(1500)
-        player?.seekTo(positionMs)
-        emitEvent(LxMediaEvent.Seeked(time))
-        updateProgressUIAfterSeek(time)
+        playerCore?.seek(positionMs)
     }
 
     fun setVolume(volume: Double) {
         currentVolume = volume.coerceIn(0.0, 1.0)
-
-        if (streamDecoderMode && componentId != null) {
-            // In stream mode, dispatch to StreamDecoderSession
-            com.lingxia.lxapp.NativeComponents.ComponentRouter.dispatchVideoCommand(
-                componentId,
-                "setVolume",
-                """{"volume":$currentVolume}"""
-            )
-        } else {
-            // Normal mode: control ExoPlayer
-            if (!isMuted) {
-                player?.volume = currentVolume.toFloat()
-            }
-        }
-
-        emitEvent(LxMediaEvent.VolumeChange(currentVolume))
-        controlsOverlay?.updateVolumeState(isMuted, currentVolume)
+        playerCore?.setVolume(currentVolume.toFloat())
     }
 
     fun setMuted(muted: Boolean) {
         isMuted = muted
-
-        if (streamDecoderMode && componentId != null) {
-            // In stream mode, dispatch to StreamDecoderSession
-            com.lingxia.lxapp.NativeComponents.ComponentRouter.dispatchVideoCommand(
-                componentId,
-                "setMuted",
-                """{"muted":$muted}"""
-            )
-        } else {
-            // Normal mode: control ExoPlayer
-            player?.volume = if (muted) 0f else currentVolume.toFloat()
-        }
-
-        controlsOverlay?.updateVolumeState(isMuted, currentVolume)
+        playerCore?.setMuted(muted)
     }
 
     fun setPlaybackRate(rate: Double) {
         currentPlaybackRate = rate.toFloat()
-        player?.setPlaybackSpeed(currentPlaybackRate)
-        emitEvent(LxMediaEvent.RateChange(rate))
+        playerCore?.setRate(currentPlaybackRate)
     }
 
     fun setShowCloseButton(show: Boolean) {
@@ -1085,7 +588,7 @@ class LxMediaPlayer(
     fun enterFullscreen() {
         if (isFullscreen) return
 
-        if (streamDecoderMode) {
+        if (isStreamDecoderMode()) {
             enterInlineFullscreen()
             return
         }
@@ -1217,19 +720,13 @@ class LxMediaPlayer(
 
             // Handle dialog lifecycle to ensure player surface is maintained
             setOnShowListener {
-                if (streamDecoderMode) {
-                } else {
-                    playerView?.player = player
+                activeUrlEngine?.let { engine ->
+                    playerView?.player = engine.exoPlayer
                 }
-                if (streamDecoderMode && componentId != null) {
+                if (isStreamDecoderMode() && componentId != null) {
                     com.lingxia.lxapp.NativeComponents.ComponentRouter.dispatchVideoCommand(
                         componentId,
                         "rebindSurface",
-                        "{}"
-                    )
-                    com.lingxia.lxapp.NativeComponents.ComponentRouter.dispatchVideoCommand(
-                        componentId,
-                        "play",
                         "{}"
                     )
                 }
@@ -1272,7 +769,7 @@ class LxMediaPlayer(
 
     fun exitFullscreen() {
         if (!isFullscreen) return
-        if (streamDecoderMode && fullscreenDialog == null) {
+        if (isStreamDecoderMode() && fullscreenDialog == null) {
             exitInlineFullscreen()
             return
         }
@@ -1812,20 +1309,28 @@ class LxMediaPlayer(
         return view.rootView?.context as? android.app.Activity
     }
 
-    private fun loadSource(uri: Uri?) {
-        uri ?: return
+    private fun ensureFeedBackendIfNeeded() {
+        val id = componentId ?: return
+        val core = playerCore ?: return
+        val host = surfaceHost ?: return
+        if (defaultBackendInitialized && core.getBackend() == BackendKind.FEED) return
+        defaultBackendInitialized = true
+        host.setActiveBackend(BackendKind.FEED)
+        core.setSurfaceToken(host.nextFeedSurfaceToken())
+        core.setSource(CorePlayerSource.Feed(sessionId = id))
+    }
+
+    private fun loadSource(uri: Uri) {
         if (uri == currentSource) return
-        streamPlayRequested = false
+        defaultBackendInitialized = true
         currentSource = uri
         firstFrameDisplayed = false
-        pendingPosterHide = false  // Reset poster hide state
-        lastTimeForPoster = -1.0
         updatePosterVisibility()
         loadingIndicator?.visibility = View.VISIBLE
-        player?.apply {
-            setMediaItem(MediaItem.fromUri(uri))
-            prepare()
-        }
+
+        surfaceHost?.setActiveBackend(BackendKind.URL)
+        playerCore?.setSurfaceToken(null)
+        playerCore?.setSource(CorePlayerSource.Url(url = uri.toString()))
     }
 
     private fun loadPoster(url: String, show: Boolean) {
@@ -1887,17 +1392,6 @@ class LxMediaPlayer(
         }
     }
 
-    private fun emitLoadedMetadata() {
-        val p = player ?: return
-        val format = p.videoFormat
-        val width = format?.width?.toDouble() ?: 0.0
-        val height = format?.height?.toDouble() ?: 0.0
-        val rotation = format?.rotationDegrees ?: 0
-        updatePreferredOrientation(width, height, rotation)
-        val duration = p.duration.toDouble() / 1000.0
-        emitEvent(LxMediaEvent.LoadedMetadata(width, height, duration))
-    }
-
     private fun updatePreferredOrientation(width: Double, height: Double, rotationDegrees: Int = videoRotationDegrees) {
         if (width <= 0 || height <= 0) return
         videoWidth = width
@@ -1913,216 +1407,141 @@ class LxMediaPlayer(
         }
     }
 
-    private fun emitEvent(event: LxMediaEvent) {
-        // Prevent waiting events from showing poster/loading after video has ended
-        if (event is LxMediaEvent.Waiting && streamHasEnded) {
-            Log.d(TAG, "emitEvent: ignoring Waiting event, streamHasEnded=true")
-            return
+    private fun handleCoreEvent(event: CorePlayerEvent) {
+        logCoreEvent(event)
+        when (event) {
+            CorePlayerEvent.PlayRequest -> {
+                // Intent-only. UI feedback (e.g. spinner) is driven by `waiting`.
+            }
+            CorePlayerEvent.Play -> {
+                controlsOverlay?.updatePlayPauseButton()
+            }
+            is CorePlayerEvent.Waiting -> {
+                if (!isPausedByUser) {
+                    loadingIndicator?.visibility = View.VISIBLE
+                    loadingIndicator?.bringToFront()
+                }
+                controlsOverlay?.updatePlayPauseButton()
+                updatePosterVisibility()
+            }
+            is CorePlayerEvent.Playing -> {
+                loadingIndicator?.visibility = View.GONE
+                uiSeeking = false
+                firstFrameDisplayed = true
+                hasEverRenderedFrame = true
+                updatePosterVisibility()
+                controlsOverlay?.updatePlayPauseButton()
+            }
+            is CorePlayerEvent.Pause -> {
+                loadingIndicator?.visibility = View.GONE
+                uiSeeking = false
+                controlsOverlay?.updatePlayPauseButton()
+            }
+            is CorePlayerEvent.Seeking -> {
+                uiSeeking = true
+                if (!isPausedByUser) {
+                    loadingIndicator?.visibility = View.VISIBLE
+                }
+                controlsOverlay?.updatePlayPauseButton()
+            }
+            is CorePlayerEvent.Seeked -> {
+                uiSeeking = false
+                loadingIndicator?.visibility = View.GONE
+                val durationMs = playerCore?.getLastKnownDurationMs()
+                val durationSeconds = (durationMs ?: 0L).toDouble() / 1000.0
+                controlsOverlay?.updateProgress(event.currentTimeMs.toDouble() / 1000.0, durationSeconds)
+            }
+            is CorePlayerEvent.TimeUpdate -> {
+                val currentSeconds = event.currentTimeMs.toDouble() / 1000.0
+                val durationSeconds = ((event.durationMs ?: 0L).toDouble() / 1000.0)
+                controlsOverlay?.updateProgress(currentSeconds, durationSeconds)
+                val prev = lastUiTimeUpdateMs
+                lastUiTimeUpdateMs = event.currentTimeMs
+                if (!isPausedByUser && !uiSeeking && prev != null && event.currentTimeMs > prev + 50) {
+                    loadingIndicator?.visibility = View.GONE
+                }
+            }
+            is CorePlayerEvent.LoadedMetadata -> {
+                val width = event.width.toDouble()
+                val height = event.height.toDouble()
+                updatePreferredOrientation(width, height, videoRotationDegrees)
+            }
+            is CorePlayerEvent.Ended -> {
+                loadingIndicator?.visibility = View.GONE
+                uiSeeking = false
+                controlsOverlay?.showCenterPlayButton(true)
+                controlsOverlay?.updatePlayPauseButton()
+            }
+            is CorePlayerEvent.Error -> {
+                loadingIndicator?.visibility = View.GONE
+                uiSeeking = false
+            }
+            is CorePlayerEvent.RateChange -> Unit
+            is CorePlayerEvent.VolumeChange -> {
+                controlsOverlay?.updateVolumeState(event.muted, event.volume.toDouble())
+            }
+            is CorePlayerEvent.Stop -> {
+                loadingIndicator?.visibility = View.GONE
+                uiSeeking = false
+                firstFrameDisplayed = false
+                hasEverRenderedFrame = false
+                updatePosterVisibility()
+                controlsOverlay?.showCenterPlayButton(true)
+                controlsOverlay?.updatePlayPauseButton()
+            }
+            is CorePlayerEvent.FullscreenChange -> Unit
         }
+
+        eventSink(JsEventMapper.toPayload(event))
+    }
+
+    private fun logCoreEvent(event: CorePlayerEvent) {
+        when (event) {
+            CorePlayerEvent.PlayRequest -> Log.i(TAG, "coreEvent=playrequest")
+            CorePlayerEvent.Play -> Log.i(TAG, "coreEvent=play")
+            is CorePlayerEvent.Playing ->
+                Log.i(TAG, "coreEvent=playing timeMs=${event.currentTimeMs ?: -1}")
+            is CorePlayerEvent.Pause ->
+                Log.i(TAG, "coreEvent=pause timeMs=${event.currentTimeMs ?: -1}")
+            is CorePlayerEvent.Waiting ->
+                Log.i(TAG, "coreEvent=waiting reason=${event.reason.value}")
+            is CorePlayerEvent.Seeking ->
+                Log.i(TAG, "coreEvent=seeking targetMs=${event.targetTimeMs}")
+            is CorePlayerEvent.Seeked ->
+                Log.i(TAG, "coreEvent=seeked timeMs=${event.currentTimeMs}")
+            is CorePlayerEvent.Ended ->
+                Log.i(TAG, "coreEvent=ended timeMs=${event.currentTimeMs ?: -1}")
+            is CorePlayerEvent.Stop ->
+                Log.i(TAG, "coreEvent=stop reason=${event.reason.value}")
+            else -> Unit
+        }
+    }
+
+    private fun emitEvent(event: LxMediaEvent) {
         eventSink(event.rawPayload)
         typedEventSink?.invoke(event)
     }
 
-    private fun startTimeUpdates() {
-        stopTimeUpdates()
-        lastTimeForPoster = -1.0  // Reset on timer start
-        timeUpdateRunnable = object : Runnable {
-            override fun run() {
-                player?.let { p ->
-                    if (p.isPlaying) {
-                        val currentTime = p.currentPosition.toDouble() / 1000.0
-                        val duration = p.duration.toDouble() / 1000.0
+    internal fun isStreamDecoderMode(): Boolean = playerCore?.getBackend() == BackendKind.FEED
 
-                        // Hide poster when video is actually rendering frames (time progresses)
-                            // This prevents black screen flash.
-                            if (pendingPosterHide && duration > 0) {
-                                val timeAdvanced = lastTimeForPoster >= 0 && currentTime > lastTimeForPoster
-                                if (currentTime > 0.2 && timeAdvanced) {
-                                    pendingPosterHide = false
-                                    firstFrameDisplayed = true
-                                    hasEverRenderedFrame = true  // Permanent
-                                    updatePosterVisibility()
-                                }
-                                lastTimeForPoster = currentTime
-                        }
-
-                        emitEvent(LxMediaEvent.TimeUpdate(currentTime, duration))
-                        controlsOverlay?.updateProgress(currentTime, duration)
-                    }
-                }
-                mainHandler.postDelayed(this, 250)
-            }
-        }
-        mainHandler.post(timeUpdateRunnable!!)
-    }
-
-    private fun stopTimeUpdates() {
-        timeUpdateRunnable?.let { mainHandler.removeCallbacks(it) }
-        timeUpdateRunnable = null
-    }
-
-    internal fun isStreamDecoderMode(): Boolean = streamDecoderMode
-
-    private fun startStreamProgressUpdatesIfNeeded() {
-        if (!streamDecoderMode) {
-            stopStreamProgressUpdates()
-            return
-        }
-        val id = componentId ?: run {
-            stopStreamProgressUpdates()
-            return
-        }
-        val duration = overrideDurationSeconds ?: run {
-            stopStreamProgressUpdates()
-            return
-        }
-        if (duration <= 0) {
-            stopStreamProgressUpdates()
-            return
-        }
-        if (!streamIsPlaying || streamIsBuffering || !streamHasOutput) {
-            stopStreamProgressUpdates()
-            return
-        }
-        if (streamProgressRunnable != null) return
-
-        streamProgressRunnable = object : Runnable {
-            override fun run() {
-                if (!streamDecoderMode) {
-                    stopStreamProgressUpdates()
-                    return
-                }
-                if (!streamIsPlaying || streamIsBuffering || !streamHasOutput) {
-                    stopStreamProgressUpdates()
-                    return
-                }
-                val d = overrideDurationSeconds
-                if (d == null || d <= 0) {
-                    stopStreamProgressUpdates()
-                    return
-                }
-                val relative = ComponentRouter.streamPlaybackPositionSeconds(id) ?: 0.0
-                val raw = streamPlaybackBaseOffsetSeconds + relative
-                lastPlaybackPosition = raw  // Update last known position
-                val current = raw.coerceIn(0.0, d)
-                val endEpsilonSeconds = 0.03
-                if (!loopEnabled && !streamHasEnded && raw >= d - endEpsilonSeconds) {
-                    streamHasEnded = true
-                    streamIsPlaying = false
-                    streamIsBuffering = false
-                    streamPlayRequested = false
-                    isPausedByUser = true
-                    // Ensure poster stays hidden on ended; keep the last rendered frame visible.
-                    streamHasOutput = true
-                    hasEverRenderedFrame = true  // Permanent - poster will never show again
-                    streamPausedPositionSeconds = d
-                    loadingIndicator?.visibility = View.GONE
-                    stopStreamProgressUpdates()
-                    controlsOverlay?.updateProgress(d, d)
-                    controlsOverlay?.showCenterPlayButton(true)
-                    controlsOverlay?.updatePlayPauseButton()
-                    updatePosterVisibility()
-                    com.lingxia.lxapp.NativeComponents.ComponentRouter.dispatchVideoCommand(
-                        id,
-                        "pause",
-                        """{"currentTime":$d,"reason":"ended","emitEvent":false}"""
-                    )
-                    controlsOverlay?.updatePlayPauseButton()  // Update play/pause button icon
-                    emitEvent(LxMediaEvent.Ended)
-                    return
-                }
-                controlsOverlay?.updateProgress(current, d)
-                emitEvent(LxMediaEvent.TimeUpdate(current, d))
-                mainHandler.postDelayed(this, 250)
-            }
-        }
-        mainHandler.post(streamProgressRunnable!!)
-    }
-
-    private fun stopStreamProgressUpdates() {
-        streamProgressRunnable?.let { mainHandler.removeCallbacks(it) }
-        streamProgressRunnable = null
-    }
-
-    internal fun isStreamEnded(): Boolean = streamHasEnded
-
-    internal fun setStreamEnded(ended: Boolean) {
-        Log.d(TAG, "setStreamEnded: $ended (was: $streamHasEnded)")
-        streamHasEnded = ended
-    }
-
-    internal fun handleSeekAfterEnded() {
-        if (streamHasEnded) {
-            Log.d(TAG, "handleSeekAfterEnded: setting pendingSeekAfterEnded=true")
-            pendingSeekAfterEnded = true
+    internal fun isPlaying(): Boolean {
+        return when (playerCore?.getBackend()) {
+            BackendKind.FEED -> activeFeedEngine?.isPlaying() == true
+            BackendKind.URL -> activeUrlEngine?.isPlaying() == true
+            null -> false
         }
     }
 
-    internal fun isPlaying(): Boolean =
-        if (streamDecoderMode) (streamIsPlaying || streamPlayRequested) else (streamPlayRequested || player?.isPlaying == true)
-    internal fun handleStreamDecoderEvent(event: String) {
-        if (!streamDecoderMode) return
-
-        when (event) {
-            "waiting" -> {
-                // After video has ended, don't show loading or update poster - keep last frame visible
-                if (streamHasEnded) {
-                    Log.d(TAG, "waiting event ignored: streamHasEnded=true")
-                    return
-                }
-                if (!isPausedByUser) {
-                    // Don't show loading indicator if we've already rendered frames and video is playing.
-                    // This prevents loading indicator showing after ended or during minor buffering.
-                    val wasPlaying = streamIsPlaying
-                    if (streamHasOutput && wasPlaying) {
-                        return
-                    }
-                    streamIsBuffering = true
-                    loadingIndicator?.visibility = View.VISIBLE
-                    loadingIndicator?.bringToFront()
-                    controlsOverlay?.updatePlayPauseButton()
-                }
-                updatePosterVisibility()
-                stopStreamProgressUpdates()
-            }
-            "play" -> {
-                streamIsPlaying = true
-                streamPlayRequested = false
-                streamHasOutput = true
-                hasEverRenderedFrame = true  // Permanent - poster will never show again
-                streamIsBuffering = false
-                streamHasEnded = false
-                updatePosterVisibility()
-                loadingIndicator?.visibility = View.GONE
-                clearWaitingSuppression()
-                controlsOverlay?.updatePlayPauseButton()
-                startStreamProgressUpdatesIfNeeded()
-                pendingStreamSeekedSeconds?.let { sought ->
-                    pendingStreamSeekedSeconds = null
-                    emitEvent(LxMediaEvent.Seeked(sought))
-                }
-            }
-            "pause", "stop" -> {
-                streamIsPlaying = false
-                streamPlayRequested = false
-                streamIsBuffering = false
-                if (event == "stop") {
-                    streamHasOutput = false
-                    streamHasEnded = false
-                }
-                updatePosterVisibility()
-                loadingIndicator?.visibility = View.GONE
-                clearWaitingSuppression()
-                controlsOverlay?.updatePlayPauseButton()
-                stopStreamProgressUpdates()
-                if (event == "stop") {
-                    pendingStreamSeekedSeconds = null
-                }
-            }
-        }
+    internal fun handleStreamDecoderEvent(event: String, detail: Map<String, Any?>) {
+        ensureFeedBackendIfNeeded()
+        activeFeedEngine?.handleStreamDecoderEvent(event, detail)
     }
-    internal fun getCurrentPosition(): Long = player?.currentPosition ?: 0
-    internal fun getDuration(): Long = player?.duration ?: 0
+
+    internal fun getCurrentPosition(): Long =
+        playerCore?.getLastKnownTimeMs() ?: player?.currentPosition ?: 0L
+
+    internal fun getDuration(): Long =
+        playerCore?.getLastKnownDurationMs() ?: (player?.duration?.takeIf { it > 0 } ?: 0L)
     internal fun getAvailableQualities(): List<LxMediaQuality> = availableQualities
     internal fun getCurrentQuality(): String? = currentQuality
     internal fun getAvailableSpeeds(): List<Double> = availablePlaybackRates
@@ -2145,7 +1564,6 @@ class LxMediaPlayer(
 
         val switchedUri = switchedUrl?.let(Uri::parse)
         if (switchedUri != null && switchedUri != currentSource) {
-            pendingRestoreAfterLoad = (player?.currentPosition ?: 0L) to (player?.isPlaying == true)
             loadSource(switchedUri)
         }
 
@@ -2168,20 +1586,5 @@ class LxMediaPlayer(
         var normalized = rotation % 360
         if (normalized < 0) normalized += 360
         return normalized
-    }
-
-    private fun updateProgressUIAfterSeek(positionSeconds: Double) {
-        val durationMs = player?.duration ?: return
-        if (durationMs <= 0) return
-        controlsOverlay?.updateProgress(positionSeconds, durationMs.toDouble() / 1000.0)
-    }
-
-    private fun suppressWaitingFor(durationMs: Long) {
-        val now = android.os.SystemClock.uptimeMillis()
-        suppressWaitingUntilMs = max(suppressWaitingUntilMs, now + durationMs)
-    }
-
-    private fun clearWaitingSuppression() {
-        suppressWaitingUntilMs = 0
     }
 }

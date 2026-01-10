@@ -437,6 +437,7 @@ fn map_command_to_android(command: VideoPlayerCommand) -> (String, String) {
         VideoPlayerCommand::Play => ("play".to_string(), "{}".to_string()),
         VideoPlayerCommand::Pause => ("pause".to_string(), "{}".to_string()),
         VideoPlayerCommand::Stop => ("stop".to_string(), "{}".to_string()),
+        VideoPlayerCommand::NotifyEnded => ("notifyEnded".to_string(), "{}".to_string()),
         VideoPlayerCommand::Seek { position } => {
             ("seek".to_string(), json!({ "time": position }).to_string())
         }

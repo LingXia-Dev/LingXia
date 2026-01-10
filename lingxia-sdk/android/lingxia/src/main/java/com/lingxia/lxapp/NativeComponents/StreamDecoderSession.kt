@@ -146,7 +146,6 @@ internal class StreamDecoderSession(
             needKeyframe = true
             playNotified = false
             pendingVideoReconfigure = true
-            eventEmitter("waiting", mapOf("reason" to "config"))
             handler.post {
                 updateSurfaceBufferSize()
                 ensureVideoDecoder()
@@ -431,7 +430,7 @@ internal class StreamDecoderSession(
         needKeyframe = true
         playbackPositionMs = 0
         if (emitWaiting) {
-            eventEmitter("waiting", mapOf("reason" to "reset"))
+            eventEmitter("waiting", mapOf("reason" to "seeking"))
         }
         pendingVideoReconfigure = hard
         pendingAudioReconfigure = hard
@@ -867,7 +866,7 @@ internal class StreamDecoderSession(
                 }
                 if (!playNotified) {
                     playNotified = true
-                    eventEmitter("play", emptyMap())
+                    eventEmitter("playing", emptyMap())
                 }
                 outputIndex = decoder.dequeueOutputBuffer(info, 0)
             }
@@ -1219,7 +1218,7 @@ internal class StreamDecoderSession(
         previousListener?.onSurfaceTextureUpdated(surface)
         if (!paused && surfaceReady && !playNotified) {
             playNotified = true
-            eventEmitter("play", emptyMap())
+            eventEmitter("playing", emptyMap())
         }
     }
 

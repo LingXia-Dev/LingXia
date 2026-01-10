@@ -280,9 +280,7 @@ internal class LxMediaControlsOverlay(
                     // Defer play until after seek completes to avoid race condition
                     // where seek and play both trigger stream session creation
                     if (pausedPlaybackForScrub) {
-                        mainHandler.postDelayed({
-                            if (player.isStreamDecoderMode()) player.requestPlay() else player.play()
-                        }, 100)  // Small delay to let seek initiate first
+                        mainHandler.postDelayed({ player.play() }, 100)  // Small delay to let seek initiate first
                     }
                 } else {
                     isSeeking = false
@@ -513,7 +511,7 @@ internal class LxMediaControlsOverlay(
     }
 
     private fun onPlayPauseClick() {
-        if (player.isPlaying()) player.pause() else player.requestPlay()
+        if (player.isPlaying()) player.pause() else player.play()
         scheduleAutoHide()
     }
 

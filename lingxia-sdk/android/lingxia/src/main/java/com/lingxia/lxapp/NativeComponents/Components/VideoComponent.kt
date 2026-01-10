@@ -68,8 +68,8 @@ class VideoComponent(
         player?.handle(command)
     }
 
-    internal fun handleStreamDecoderEvent(event: String) {
-        player?.handleStreamDecoderEvent(event)
+    internal fun handleStreamDecoderEvent(event: String, detail: Map<String, Any?>) {
+        player?.handleStreamDecoderEvent(event, detail)
     }
 
     fun acquireStreamTextureView(): TextureView? {
@@ -78,18 +78,6 @@ class VideoComponent(
 
     fun releaseStreamTextureView() {
         player?.releaseStreamTextureView()
-    }
-
-    fun isStreamEnded(): Boolean {
-        return player?.isStreamEnded() ?: false
-    }
-
-    fun setStreamEnded(ended: Boolean) {
-        player?.setStreamEnded(ended)
-    }
-
-    fun handleSeekAfterEnded() {
-        player?.handleSeekAfterEnded()
     }
 
     override fun unmount() {
@@ -163,6 +151,7 @@ class VideoComponent(
                 "play" -> LxMediaCommand.Play
                 "pause" -> LxMediaCommand.Pause
                 "stop" -> LxMediaCommand.Stop
+                "notifyEnded" -> LxMediaCommand.NotifyEnded
                 "seek" -> {
                     val time = (params?.get("time") as? Number)?.toDouble() ?: return null
                     LxMediaCommand.Seek(time)
