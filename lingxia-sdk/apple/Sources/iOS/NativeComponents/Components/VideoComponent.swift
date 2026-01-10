@@ -75,6 +75,10 @@ final class VideoComponent: NSObject, LxNativeComponent {
             player.setExternalDurationSeconds(duration)
             return
         }
+        if name == "notifyEnded" {
+            player.handleStreamDecoderEvent("ended")
+            return
+        }
         guard let command = Self.makeCommand(name: name, params: params) else {
             return
         }

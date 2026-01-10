@@ -135,6 +135,7 @@ public enum LxMediaCommand {
 
 public enum LxMediaEvent {
     case play
+    case playing
     case pause
     case stop
     case ended
@@ -152,13 +153,14 @@ public enum LxMediaEvent {
     var rawName: String {
         switch self {
         case .play: return "play"
+        case .playing: return "playing"
         case .pause: return "pause"
         case .stop: return "stop"
         case .ended: return "ended"
         case .waiting: return "waiting"
         case .seeked: return "seeked"
         case .timeUpdate: return "timeupdate"
-        case .rateChange: return "playbackratechange"
+        case .rateChange: return "ratechange"
         case .volumeChange: return "volumechange"
         case .fullscreenChange: return "fullscreenchange"
         case .loadedMetadata: return "loadedmetadata"
@@ -170,7 +172,7 @@ public enum LxMediaEvent {
 
     var rawData: [String: Any] {
         switch self {
-        case .play, .pause, .stop, .ended, .waiting:
+        case .play, .playing, .pause, .stop, .ended, .waiting:
             return [:]
         case .seeked(let time):
             return ["time": time]
@@ -413,6 +415,8 @@ public final class LxMediaPlayer: NSObject {
     private let timeLabel = UILabel() // Shows remaining or total time
     private let progressSlider = DebugSlider()
     private var isScrubbing = false
+    private var wasPlayingOnScrubStart = false
+    private var wasEndedOnScrubStart = false
     private var lastScrubTime: TimeInterval = 0
     private var isSeeking = false  // Track JS API seek in progress
     private var suppressWaitingUntil: TimeInterval = 0
@@ -813,6 +817,11 @@ public final class LxMediaPlayer: NSObject {
         guard streamDecoderActive else { return }
         switch event {
         case "waiting":
+            if streamHasEnded {
+                // Some stream pipelines can emit transient waiting/buffering after EOS while tearing down.
+                // Don't re-enter loading once ended unless a new play/seek intent resets the state.
+                return
+            }
             if !isPausedByUser {
                 loadingIndicator.startAnimating()
             }
@@ -823,7 +832,7 @@ public final class LxMediaPlayer: NSObject {
                 posterImageView.isHidden = false
                 posterImageView.alpha = 1
             }
-        case "play":
+        case "playing":
             loadingIndicator.stopAnimating()
             streamIsPlaying = true
             streamHasEnded = false
@@ -1084,7 +1093,6 @@ public final class LxMediaPlayer: NSObject {
                     self.loadingIndicator.stopAnimating()
                     self.updatePlayPauseUI(isPlaying: true)
                     self.suppressWaitingUntil = 0
-                    self.send(.play)
 
                 case .paused:
                     // Don't send pause event here - it's sent explicitly in pause() method
@@ -1215,6 +1223,7 @@ public final class LxMediaPlayer: NSObject {
                 }
             }
             streamHasEnded = false
+            send(.play)
             _ = streamCommandHandler?("play", [:])
             // Re-apply stream volume/mute on resume; iOS audio output can get muted after pause/resume
             // when AVAudioSession route changes.
@@ -1293,6 +1302,7 @@ public final class LxMediaPlayer: NSObject {
         }
         updatePlayPauseUI(isPlaying: true)
 
+        send(.play)
         player.playImmediately(atRate: Float(currentPlaybackRate))
         // Delay play event until video actually starts playing (time progresses in timeObserver)
         pendingPlayEvent = true
@@ -1390,6 +1400,9 @@ public final class LxMediaPlayer: NSObject {
             let clampedSeconds = max(0, min(seconds, duration))
             isSeeking = true
             pendingStreamSeekedSeconds = clampedSeconds
+            if clampedSeconds < max(0, duration - 0.25) {
+                streamHasEnded = false
+            }
 
             // Update UI immediately; actual seek is handled by Rust stream session (via seeked event).
             let remaining = duration - clampedSeconds
@@ -1409,6 +1422,10 @@ public final class LxMediaPlayer: NSObject {
                 loadingIndicator.stopAnimating()
             }
             send(.raw(name: "seeking", data: ["time": clampedSeconds]))
+            if isPausedByUser {
+                pendingStreamSeekedSeconds = nil
+                send(.seeked(time: clampedSeconds))
+            }
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
                 self?.isSeeking = false
@@ -1517,7 +1534,7 @@ public final class LxMediaPlayer: NSObject {
             if currentTime > 0 && timeAdvanced {
                 os_log("MediaPlayer emitting delayed play event, currentTime=%.2f, lastTime=%.2f", log: log, type: .info, currentTime, lastTimeForPlayEvent)
                 pendingPlayEvent = false
-                send(.play)
+                send(.playing)
             }
             lastTimeForPlayEvent = currentTime
         }
@@ -1526,8 +1543,24 @@ public final class LxMediaPlayer: NSObject {
     }
 
     private func send(_ event: LxMediaEvent) {
+        logStateEvent(event)
         rawEventSink(event.rawPayload)
         typedEventSink?(event)
+    }
+
+    private func logStateEvent(_ event: LxMediaEvent) {
+        switch event {
+        case .play, .playing, .pause, .waiting, .ended, .stop:
+            os_log("MediaPlayer event: %{public}@", log: log, type: .info, event.rawName)
+        case .seeked(let time):
+            os_log("MediaPlayer event: seeked time=%.3f", log: log, type: .info, time)
+        case .raw(let name, _):
+            if name == "playrequest" || name == "seeking" {
+                os_log("MediaPlayer event: %{public}@", log: log, type: .info, name)
+            }
+        default:
+            break
+        }
     }
 
     // MARK: Overlay UI
@@ -2846,6 +2879,8 @@ public final class LxMediaPlayer: NSObject {
     @objc private func handleSliderTouchDown() {
         isScrubbing = true
         suppressWaitingUntil = .greatestFiniteMagnitude
+        wasPlayingOnScrubStart = streamDecoderActive ? streamIsPlaying : (player?.timeControlStatus == .playing)
+        wasEndedOnScrubStart = streamDecoderActive ? streamHasEnded : false
         if !streamDecoderActive {
             player?.pause()
         }
@@ -2889,9 +2924,14 @@ public final class LxMediaPlayer: NSObject {
         // Final precise seek on release
         seek(to: target)
 
-        // releasing the scrubber starts playback.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-            self?.play()
+        // Resume playback only if it was playing before the scrub started, or if we scrubbed from ended state.
+        let shouldAutoPlay = wasPlayingOnScrubStart || wasEndedOnScrubStart
+        if shouldAutoPlay {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                self?.play()
+            }
+        } else {
+            updatePlayPauseUI(isPlaying: false)
         }
         showControlsTemporarily()
     }
@@ -2902,6 +2942,8 @@ public final class LxMediaPlayer: NSObject {
         isScrubbing = true
         suppressWaitingUntil = .greatestFiniteMagnitude
         controlsHideWorkItem?.cancel()
+        wasPlayingOnScrubStart = streamDecoderActive ? streamIsPlaying : (player?.timeControlStatus == .playing)
+        wasEndedOnScrubStart = streamDecoderActive ? streamHasEnded : false
         
         // Pause playback during scrub for both AVPlayer and stream modes
         if streamDecoderActive {
@@ -2941,8 +2983,12 @@ public final class LxMediaPlayer: NSObject {
         isScrubbing = false
         suppressWaitingUntil = CACurrentMediaTime() + 1.5
 
-        // Resume playback after scrub ends
-        play()
+        // Resume playback only if it was playing before the scrub started, or if we scrubbed from ended state.
+        if wasPlayingOnScrubStart || wasEndedOnScrubStart {
+            play()
+        } else {
+            updatePlayPauseUI(isPlaying: false)
+        }
 
         // Hide controls after delay
         showControlsTemporarily()

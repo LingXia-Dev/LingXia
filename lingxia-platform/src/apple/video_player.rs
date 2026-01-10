@@ -57,6 +57,7 @@ fn map_command_to_ios(command: VideoPlayerCommand) -> (String, String) {
         VideoPlayerCommand::Play => ("play".into(), EMPTY.into()),
         VideoPlayerCommand::Pause => ("pause".into(), EMPTY.into()),
         VideoPlayerCommand::Stop => ("stop".into(), EMPTY.into()),
+        VideoPlayerCommand::NotifyEnded => ("notifyEnded".into(), EMPTY.into()),
         VideoPlayerCommand::Seek { position } => {
             ("seek".into(), format!(r#"{{"time":{}}}"#, position))
         }

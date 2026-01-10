@@ -235,7 +235,7 @@ final class NativeComponentManager {
     }
 
     func emitComponentEvent(componentId: String, event: String, detail: [String: Any] = [:]) {
-        if event == "waiting" || event == "playrequest" || event == "play" || event == "pause" || event == "stop" || event == "ended" {
+        if event == "waiting" || event == "playrequest" || event == "playing" || event == "pause" || event == "stop" || event == "ended" {
             (components[componentId] as? VideoComponent)?.handleStreamDecoderEvent(event)
         }
         sendEventToWeb(componentId: componentId, event: ["event": event, "detail": detail])
@@ -283,7 +283,7 @@ final class NativeComponentManager {
         let eventName = payload["event"] as? String
         let shouldForwardToCallback: Bool = {
             switch eventName {
-            case "waiting", "playrequest", "play", "pause", "stop", "ended", "error", "seeked", "seeking":
+            case "waiting", "playrequest", "playing", "pause", "stop", "ended", "error", "seeked", "seeking":
                 return true
             default:
                 return false

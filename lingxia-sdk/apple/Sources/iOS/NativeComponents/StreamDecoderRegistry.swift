@@ -671,7 +671,7 @@ private final class StreamDecoderSession {
         DispatchQueue.main.async {
             ComponentRouter.shared.emitComponentEvent(
                 componentId: componentId,
-                event: "play",
+                event: "playing",
                 detail: [:]
             )
         }
