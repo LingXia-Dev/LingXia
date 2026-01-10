@@ -6,6 +6,12 @@ pub enum VideoPlayerCommand {
     Pause,
     /// Stop playback and release decoder resources immediately if possible.
     Stop,
+    /// Notify the native player that the current media/segment has ended.
+    ///
+    /// This is used by stream providers (Rust-side) to surface an authoritative end-of-stream
+    /// signal to the native player/controls, even when the decoder pipeline has no reliable
+    /// duration-based ended detection.
+    NotifyEnded,
 
     /// Seek to a specific time in seconds.
     Seek {

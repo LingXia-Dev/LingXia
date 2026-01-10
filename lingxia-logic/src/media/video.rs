@@ -659,17 +659,13 @@ fn handle_player_event(shared: &Arc<VideoContextSharedState>, component_id: &str
         .unwrap_or(false);
 
     // Events can arrive before `setStreamSource()` is called (e.g. user taps play on a stream-mode
-    // player). Treat `playrequest` (and legacy `waiting(reason=play)`) as a "play intent" latch so
-    // the subsequent `setStreamSource()` call can autostart via `play_requested`.
+    // player). Treat `playrequest` as a "play intent" latch so the subsequent `setStreamSource()`
+    // call can autostart via `play_requested`.
     //
     // Also make sure `unmount` always releases callback resources, even if no stream source was set.
     if !has_source {
         match event {
             "playrequest" => {
-                shared.play_requested.store(true, Ordering::Relaxed);
-                shared.stream_paused.store(false, Ordering::Relaxed);
-            }
-            "waiting" if waiting_reason == Some("play") => {
                 shared.play_requested.store(true, Ordering::Relaxed);
                 shared.stream_paused.store(false, Ordering::Relaxed);
             }
@@ -750,15 +746,14 @@ fn handle_player_event(shared: &Arc<VideoContextSharedState>, component_id: &str
         }
         "waiting" => {
             // `waiting` can be emitted for multiple reasons (buffering, surface rebind, config
-            // changes, decoder failures, explicit play intent). Only a small subset should trigger
-            // Rust-side control actions.
+            // changes, decoder failures). Only decoder recovery signals should trigger Rust-side
+            // control actions.
             let Some(reason) = waiting_reason else {
                 return;
             };
 
-            let is_play_intent = reason == "play";
             let is_decoder_recovery = matches!(reason, "decode_failed" | "stuck" | "decode");
-            if !is_play_intent && !is_decoder_recovery {
+            if !is_decoder_recovery {
                 // Ignore regular buffering/config signals. Otherwise live streams can restart and
                 // appear stuck on a frame.
                 return;
@@ -809,11 +804,8 @@ fn handle_player_event(shared: &Arc<VideoContextSharedState>, component_id: &str
                 }
                 return;
             }
-
-            // Play intent.
-            handle_play_intent();
         }
-        "play" => {
+        "playing" => {
             // State signal (first decoded frame / resume), not a play intent.
             shared.platform_playing.store(true, Ordering::Relaxed);
         }
@@ -881,8 +873,12 @@ fn handle_player_event(shared: &Arc<VideoContextSharedState>, component_id: &str
                     .store((position * 1000.0).round() as u64, Ordering::Relaxed);
             }
             shared.platform_playing.store(false, Ordering::Relaxed);
-            if is_live && pause_reason != Some("user") {
-                return;
+            if is_live {
+                if let Some(reason) = pause_reason {
+                    if reason != "user" {
+                        return;
+                    }
+                }
             }
             shared.play_requested.store(false, Ordering::Relaxed);
             if !shared.stream_paused.swap(true, Ordering::Relaxed) {
@@ -1055,6 +1051,11 @@ pub fn resume_stream_session_shared(
     let expected_epoch_for_duration = epoch;
     let last_duration_ms = Arc::new(AtomicU64::new(0));
     let last_duration_ms_for_reporter = last_duration_ms.clone();
+    let shared_for_ended = shared.clone();
+    let component_id_for_ended = component_id.to_string();
+    let expected_epoch_for_ended = epoch;
+    let ended_reported = Arc::new(AtomicBool::new(false));
+    let ended_reported_for_reporter = ended_reported.clone();
     let sink = FrameSink::from_arc_with_epoch(decoder, shared.stream_epoch.clone(), epoch)
         .with_component_id(component_id.to_string())
         .with_duration_reporter(move |duration_ms| {
@@ -1094,6 +1095,29 @@ pub fn resume_stream_session_shared(
                     component_id_for_duration, duration_ms
                 );
                 last_duration_ms_for_reporter.store(duration_ms, Ordering::Relaxed);
+            }
+        })
+        .with_ended_reporter(move || {
+            if shared_for_ended.stream_live.load(Ordering::Relaxed) {
+                return;
+            }
+            if shared_for_ended.stream_epoch.load(Ordering::Relaxed) != expected_epoch_for_ended {
+                return;
+            }
+            if ended_reported_for_reporter.swap(true, Ordering::Relaxed) {
+                return;
+            }
+            let Ok(handle) = shared_for_ended
+                .runtime
+                .bind_player(&component_id_for_ended)
+            else {
+                return;
+            };
+            if handle.dispatch(VideoPlayerCommand::NotifyEnded).is_ok() {
+                info!(
+                    "stream ended reported component_id={}",
+                    component_id_for_ended
+                );
             }
         });
 
@@ -1208,7 +1232,7 @@ pub fn pause_or_resume_stream_session_shared(
                 err
             );
         } else if resume {
-            // Resume ok. UI state is driven by platform playback events (`waiting`/`play`).
+            // Resume ok. UI state is driven by platform playback events (`waiting`/`playing`).
         }
     }
 }

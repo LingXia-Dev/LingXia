@@ -59,6 +59,7 @@ pub struct FrameSink {
     stale_logged: Arc<std::sync::atomic::AtomicBool>,
     component_id: Option<String>,
     duration_reporter: Option<Arc<dyn Fn(u64) + Send + Sync>>,
+    ended_reporter: Option<Arc<dyn Fn() + Send + Sync>>,
 }
 
 impl FrameSink {
@@ -70,6 +71,7 @@ impl FrameSink {
             stale_logged: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             component_id: None,
             duration_reporter: None,
+            ended_reporter: None,
         }
     }
 
@@ -81,6 +83,7 @@ impl FrameSink {
             stale_logged: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             component_id: None,
             duration_reporter: None,
+            ended_reporter: None,
         }
     }
 
@@ -96,6 +99,7 @@ impl FrameSink {
             stale_logged: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             component_id: None,
             duration_reporter: None,
+            ended_reporter: None,
         }
     }
 
@@ -109,6 +113,14 @@ impl FrameSink {
         F: Fn(u64) + Send + Sync + 'static,
     {
         self.duration_reporter = Some(Arc::new(reporter));
+        self
+    }
+
+    pub fn with_ended_reporter<F>(mut self, reporter: F) -> Self
+    where
+        F: Fn() + Send + Sync + 'static,
+    {
+        self.ended_reporter = Some(Arc::new(reporter));
         self
     }
 
@@ -189,6 +201,15 @@ impl FrameSink {
         }
         if let Some(reporter) = &self.duration_reporter {
             reporter(duration_ms);
+        }
+    }
+
+    pub fn report_ended(&self) {
+        if !self.is_current("report_ended") {
+            return;
+        }
+        if let Some(reporter) = &self.ended_reporter {
+            reporter();
         }
     }
 }
