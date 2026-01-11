@@ -45,7 +45,10 @@ impl LxApp {
             Some(lx_uri::HOST_ASSETS) => {
                 return self.handle_sdk_asset(uri);
             }
-            Some(lx_uri::HOST_LXAPP) | Some(lx_uri::HOST_PLUGIN) => {}
+            Some(lx_uri::HOST_LXAPP)
+            | Some(lx_uri::HOST_PLUGIN)
+            | Some(lx_uri::HOST_USER_CACHE)
+            | Some(lx_uri::HOST_USER_DATA) => {}
             Some(other) => {
                 error!("Unknown lx host: {}", other).with_appid(self.appid.clone());
                 return Some(self.create_error_response(
@@ -240,8 +243,26 @@ impl LxApp {
         match uri.host() {
             Some(lx_uri::HOST_LXAPP) => self.resolve_lxapp_uri(page, uri),
             Some(lx_uri::HOST_PLUGIN) => self.resolve_plugin_uri(page, uri),
+            Some(lx_uri::HOST_USER_CACHE) => self.resolve_user_dir_uri(uri, &self.user_cache_dir),
+            Some(lx_uri::HOST_USER_DATA) => self.resolve_user_dir_uri(uri, &self.user_data_dir),
             _ => Err(LxAppError::ResourceNotFound(uri.to_string())),
         }
+    }
+
+    fn resolve_user_dir_uri(&self, uri: &Uri, base_dir: &Path) -> Result<PathBuf, LxAppError> {
+        let decoded_path = lx_uri::decode_lx_path(uri.path());
+        let rel = decoded_path.trim_matches('/');
+        if rel.is_empty()
+            || lx_uri::has_invalid_segment(rel)
+            || rel.contains(':')
+            || rel.contains('\\')
+        {
+            return Err(LxAppError::ResourceNotFound(uri.to_string()));
+        }
+
+        let absolute = base_dir.join(rel);
+        let absolute_str = absolute.to_string_lossy();
+        self.resolve_accessible_path(absolute_str.as_ref())
     }
 
     fn resolve_lxapp_uri(&self, page: &Page, uri: &Uri) -> Result<PathBuf, LxAppError> {

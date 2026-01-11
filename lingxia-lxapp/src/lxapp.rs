@@ -1,9 +1,11 @@
 use dashmap::DashMap;
+use http::Uri as HttpUri;
 use lingxia_platform::{AppRuntime, Platform, PopupPresenter, PopupRequest};
 use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -32,7 +34,7 @@ pub mod page_config;
 mod scheme;
 mod security;
 pub mod tabbar;
-pub(crate) mod uri;
+pub mod uri;
 pub(crate) mod version;
 use crate::event::AppServiceEvent;
 use lingxia_webview::{WebTag, destroy_webview};
@@ -648,9 +650,19 @@ impl LxApp {
     ///
     /// Note: paths containing `.` or `..` segments are rejected.
     pub fn resolve_accessible_path(&self, path: &str) -> Result<PathBuf, LxAppError> {
-        if path.trim().is_empty() {
+        let path = path.trim();
+        if path.is_empty() {
             return Err(LxAppError::ResourceNotFound("empty path".to_string()));
         }
+
+        if path.starts_with("lx://") {
+            let lx_uri = uri::LxUri::from_str(path)
+                .map_err(|e| LxAppError::InvalidParameter(format!("invalid lx uri: {}", e)))?;
+            let resolved = self.resolve_lx_user_uri(&lx_uri)?;
+            let resolved_str = resolved.to_string_lossy();
+            return self.resolve_accessible_path(resolved_str.as_ref());
+        }
+
         if path.split('/').any(|s| s == "." || s == "..") {
             return Err(LxAppError::ResourceNotFound(
                 "dot segment not allowed".to_string(),
@@ -715,6 +727,66 @@ impl LxApp {
             Ok(canonical)
         } else {
             Err(LxAppError::ResourceNotFound(path.to_string()))
+        }
+    }
+
+    pub fn to_uri(&self, path: &Path) -> Option<uri::LxUri> {
+        uri::try_convert_path_to_uri(path, self)
+    }
+
+    fn resolve_lx_user_uri(&self, lx_uri: &uri::LxUri) -> Result<PathBuf, LxAppError> {
+        let uri = HttpUri::from_str(lx_uri.as_str())
+            .map_err(|_| LxAppError::InvalidParameter("invalid lx uri".to_string()))?;
+
+        if uri.scheme_str() != Some(uri::LX_SCHEME) {
+            return Err(LxAppError::InvalidParameter(
+                "invalid lx uri scheme".to_string(),
+            ));
+        }
+
+        match uri.host() {
+            Some(uri::HOST_USER_CACHE) | Some(uri::HOST_USER_DATA) => {
+                let base_dir = match uri.host() {
+                    Some(uri::HOST_USER_CACHE) => &self.user_cache_dir,
+                    Some(uri::HOST_USER_DATA) => &self.user_data_dir,
+                    _ => unreachable!(),
+                };
+
+                let decoded_path = uri::decode_lx_path(uri.path());
+                let rel = decoded_path.trim_matches('/');
+                if rel.is_empty() {
+                    return Err(LxAppError::ResourceNotFound(lx_uri.as_str().to_string()));
+                }
+                if uri::has_invalid_segment(rel) || rel.contains(':') || rel.contains('\\') {
+                    return Err(LxAppError::ResourceNotFound(lx_uri.as_str().to_string()));
+                }
+
+                Ok(base_dir.join(rel))
+            }
+            Some(uri::HOST_LXAPP) => {
+                let decoded_path = uri::decode_lx_path(uri.path());
+                let raw = decoded_path.trim_start_matches('/');
+                let (appid, rest) = raw
+                    .split_once('/')
+                    .ok_or_else(|| LxAppError::ResourceNotFound(lx_uri.as_str().to_string()))?;
+                if appid != self.appid.as_str() {
+                    return Err(LxAppError::ResourceNotFound(lx_uri.as_str().to_string()));
+                }
+
+                let rel = rest.trim_matches('/');
+                if rel.is_empty() {
+                    return Err(LxAppError::ResourceNotFound(lx_uri.as_str().to_string()));
+                }
+                if uri::has_invalid_segment(rel) || rel.contains(':') || rel.contains('\\') {
+                    return Err(LxAppError::ResourceNotFound(lx_uri.as_str().to_string()));
+                }
+
+                Ok(self.lxapp_dir.join(rel))
+            }
+            _ => Err(LxAppError::ResourceNotFound(format!(
+                "unsupported lx uri host: {}",
+                lx_uri.as_str()
+            ))),
         }
     }
 
