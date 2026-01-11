@@ -1,23 +1,22 @@
 use crate::update;
-use lxapp::{self, LxApp, LxAppStartupOptions, ReleaseType, lx};
-use rong::{FromJSObj, JSContext, JSFunc, JSResult, RongJSError};
+use lxapp::lx::{self, fast_api};
+use lxapp::{self, LxApp, LxAppError, LxAppStartupOptions, ReleaseType};
+use rong::{FromJSObj, JSContext, JSFunc, JSResult, RongJSError, service_executor};
+use serde::Deserialize;
+use std::sync::Arc;
 
-#[derive(FromJSObj)]
+#[derive(FromJSObj, Deserialize)]
 struct NavigateToOptions {
+    #[serde(rename = "appId")]
     #[rename = "appId"]
     appid: String,
     path: Option<String>,
+    #[serde(rename = "envVersion")]
     #[rename = "envVersion"]
     env_version: Option<String>,
 }
 
-async fn navigate_to_lxapp(ctx: JSContext, options: NavigateToOptions) -> JSResult<()> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-
-    if lxapp.appid == options.appid {
-        return Ok(());
-    }
-
+fn build_startup_options(options: &NavigateToOptions) -> (LxAppStartupOptions, ReleaseType) {
     let path = options.path.as_deref().unwrap_or("");
     let mut startup_options = LxAppStartupOptions::new(path);
 
@@ -31,24 +30,101 @@ async fn navigate_to_lxapp(ctx: JSContext, options: NavigateToOptions) -> JSResu
         startup_options = startup_options.set_release_type(release_type);
     }
 
-    update::ensure_first_install(&lxapp, &options.appid, release_type).await?;
+    (startup_options, release_type)
+}
 
+fn should_navigate_to_lxapp(
+    lxapp: &LxApp,
+    options: &NavigateToOptions,
+) -> Result<bool, LxAppError> {
+    if options.appid.is_empty() {
+        return Err(LxAppError::InvalidParameter(
+            "navigateToLxApp requires appId".to_string(),
+        ));
+    }
+
+    if lxapp.appid == options.appid {
+        return Ok(false);
+    }
+
+    Ok(true)
+}
+
+async fn do_navigate_to_lxapp(
+    lxapp: Arc<LxApp>,
+    options: NavigateToOptions,
+) -> Result<(), LxAppError> {
+    let (startup_options, release_type) = build_startup_options(&options);
     let target_appid = options.appid.clone();
-    lxapp
-        .navigate_to(target_appid.clone(), startup_options)
-        .map_err(|e| RongJSError::Error(format!("Failed to navigate to lxapp: {}", e)))?;
 
-    update::spawn_background_update_check(target_appid.clone(), release_type);
+    update::ensure_first_install(&lxapp, &target_appid, release_type).await?;
+
+    lxapp.navigate_to(target_appid.clone(), startup_options)?;
+
+    update::spawn_background_update_check(target_appid, release_type);
+    Ok(())
+}
+
+fn do_navigate_back_lxapp(lxapp: &LxApp) -> Result<(), LxAppError> {
+    lxapp.navigate_back()?;
+    Ok(())
+}
+
+async fn navigate_to_lxapp(ctx: JSContext, options: NavigateToOptions) -> JSResult<()> {
+    let lxapp = LxApp::from_ctx(&ctx)?;
+
+    if !should_navigate_to_lxapp(&lxapp, &options)
+        .map_err(|e| RongJSError::Error(format!("Failed to navigate to lxapp: {}", e)))?
+    {
+        return Ok(());
+    }
+
+    do_navigate_to_lxapp(lxapp, options)
+        .await
+        .map_err(|e| RongJSError::Error(format!("Failed to navigate to lxapp: {}", e)))?;
     Ok(())
 }
 
 async fn navigate_back_lxapp(ctx: JSContext) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    lxapp
-        .navigate_back()
+    do_navigate_back_lxapp(&lxapp)
         .map_err(|e| RongJSError::Error(format!("Failed to navigate back: {}", e)))?;
     Ok(())
 }
+
+fast_api!(
+    NavigateToLxApp,
+    NavigateToOptions,
+    (),
+    |lxapp: Arc<LxApp>, options: NavigateToOptions| -> Result<(), LxAppError> {
+        if !should_navigate_to_lxapp(&lxapp, &options)? {
+            return Ok(());
+        }
+        let target_appid = options.appid.clone();
+        let lxapp_clone = lxapp.clone();
+
+        // Fire-and-forget to avoid blocking the JS worker.
+        service_executor::spawn_async(async move {
+            if let Err(err) = do_navigate_to_lxapp(lxapp_clone, options).await {
+                lxapp::warn!("navigateToLxApp failed appId={} err={}", target_appid, err);
+            }
+        })
+        .map_err(|err| {
+            LxAppError::Runtime(format!("navigateToLxApp async dispatch failed: {}", err))
+        })?;
+
+        Ok(())
+    }
+);
+
+fast_api!(
+    NavigateBackLxApp,
+    (),
+    |lxapp: Arc<LxApp>| -> Result<(), LxAppError> {
+        do_navigate_back_lxapp(&lxapp)?;
+        Ok(())
+    }
+);
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     // Register navigator
@@ -57,6 +133,9 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 
     let navigate_back_lxapp = JSFunc::new(ctx, navigate_back_lxapp)?;
     lx::register_js_api(ctx, "navigateBackLxApp", navigate_back_lxapp)?;
+
+    lx::register_fast_api("navigateToLxApp", Arc::new(NavigateToLxApp));
+    lx::register_fast_api("navigateBackLxApp", Arc::new(NavigateBackLxApp));
 
     Ok(())
 }

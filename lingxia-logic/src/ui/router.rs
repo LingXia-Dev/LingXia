@@ -1,34 +1,73 @@
-use lxapp::{LxApp, NavigationType, lx};
-use rong::{FromJSObj, JSContext, JSFunc, JSObject, JSResult, RongJSError};
+use lxapp::lx::{self, fast_api};
+use lxapp::{LxApp, LxAppError, NavigationType};
+use rong::{FromJSObj, JSContext, JSFunc, JSObject, JSResult, RongJSError, service_executor};
+use serde::Deserialize;
+use std::sync::Arc;
 
-#[derive(FromJSObj)]
+#[derive(FromJSObj, Deserialize)]
 struct NavigateTo {
     url: String,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObj, Deserialize)]
 struct NavigateBack {
     delta: u32,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObj, Deserialize)]
 struct RedirectTo {
     url: String,
 }
 
-#[derive(FromJSObj)]
+#[derive(FromJSObj, Deserialize)]
 struct SwitchTab {
     url: String,
+}
+
+fn current_page_path(lxapp: &LxApp) -> Result<String, LxAppError> {
+    lxapp
+        .peek_current_page()
+        .ok_or_else(|| LxAppError::Runtime("No current page found".to_string()))
+}
+
+async fn navigate_with_url(
+    lxapp: Arc<LxApp>,
+    target_url: String,
+    nav_type: NavigationType,
+    wait_ready: bool,
+) -> Result<(), LxAppError> {
+    let current_path = current_page_path(&lxapp)?;
+    let target_page = lxapp.get_or_create_page(&target_url);
+
+    if wait_ready {
+        target_page
+            .wait_webview_ready()
+            .await
+            .map_err(LxAppError::WebView)?;
+    }
+
+    if let Some(page) = lxapp.get_page(&current_path) {
+        page.navigate_to(target_page, nav_type)?;
+        Ok(())
+    } else {
+        Err(LxAppError::Runtime("Current page not found".to_string()))
+    }
+}
+
+fn navigate_back_impl(lxapp: &LxApp, delta: u32) -> Result<(), LxAppError> {
+    let current_path = current_page_path(lxapp)?;
+
+    if let Some(page) = lxapp.get_page(&current_path) {
+        page.navigate_back(delta)?;
+        Ok(())
+    } else {
+        Err(LxAppError::Runtime("Current page not found".to_string()))
+    }
 }
 
 /// Navigate to a new page (forward navigation)
 async fn navigate_to(ctx: JSContext, options: NavigateTo) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-
-    // Get current page from the page stack
-    let current_path = lxapp
-        .peek_current_page()
-        .ok_or_else(|| RongJSError::Error("No current page found".to_string()))?;
 
     // Ensure PageSvc for target page exists in this JSContext
     let page_svc = lxapp
@@ -36,15 +75,9 @@ async fn navigate_to(ctx: JSContext, options: NavigateTo) -> JSResult<JSObject> 
         .await
         .map_err(|e| RongJSError::Error(format!("Failed to ensure target page svc: {}", e)))?;
 
-    // Get the destination native Page from PageSvc
-    let dest_page = page_svc.get_page();
-
-    if let Some(page) = lxapp.get_page(&current_path) {
-        page.navigate_to(dest_page, NavigationType::Forward)
-            .map_err(|e| RongJSError::Error(format!("Failed to navigate: {}", e)))?;
-    } else {
-        return Err(RongJSError::Error("Current page not found".to_string()));
-    }
+    navigate_with_url(lxapp.clone(), options.url, NavigationType::Forward, false)
+        .await
+        .map_err(|e| RongJSError::Error(format!("Failed to navigate: {}", e)))?;
 
     let response = JSObject::new(&ctx);
     response.set("eventEmitter", page_svc.get_event_emitter())?;
@@ -56,70 +89,109 @@ async fn navigate_to(ctx: JSContext, options: NavigateTo) -> JSResult<JSObject> 
 fn navigate_back(ctx: JSContext, options: NavigateBack) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 
-    // Get current page from the page stack
-    let current_path = lxapp
-        .peek_current_page()
-        .ok_or_else(|| RongJSError::Error("No current page found".to_string()))?;
-
-    if let Some(page) = lxapp.get_page(&current_path) {
-        page.navigate_back(options.delta)
-            .map_err(|e| RongJSError::Error(format!("Failed to navigate back: {}", e)))?;
-    } else {
-        return Err(RongJSError::Error("Current page not found".to_string()));
-    }
-
-    Ok(())
+    navigate_back_impl(&lxapp, options.delta)
+        .map_err(|e| RongJSError::Error(format!("Failed to navigate back: {}", e)))
 }
 
 /// Redirect to a new page (replace current page)
 async fn redirect_to(ctx: JSContext, options: RedirectTo) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 
-    // Get current page from the page stack
-    let current_path = lxapp
-        .peek_current_page()
-        .ok_or_else(|| RongJSError::Error("No current page found".to_string()))?;
-
     let page_svc = lxapp
         .get_or_create_page_in_ctx(&ctx, &options.url)
         .await
         .map_err(|e| RongJSError::Error(format!("Failed to ensure target page svc: {}", e)))?;
-    let target_page = page_svc.get_page();
 
-    if let Some(page) = lxapp.get_page(&current_path) {
-        page.navigate_to(target_page, NavigationType::Replace)
-            .map_err(|e| RongJSError::Error(format!("Failed to redirect: {}", e)))?;
-    } else {
-        return Err(RongJSError::Error("Current page not found".to_string()));
-    }
-
-    Ok(())
+    navigate_with_url(lxapp.clone(), options.url, NavigationType::Replace, false)
+        .await
+        .map_err(|e| RongJSError::Error(format!("Failed to redirect: {}", e)))
 }
 
 /// Switch to a tab page
 async fn switch_tab(ctx: JSContext, options: SwitchTab) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 
-    // Get current page from the page stack
-    let current_path = lxapp
-        .peek_current_page()
-        .ok_or_else(|| RongJSError::Error("No current page found".to_string()))?;
-
     let page_svc = lxapp
         .get_or_create_page_in_ctx(&ctx, &options.url)
         .await
         .map_err(|e| RongJSError::Error(format!("Failed to ensure target page svc: {}", e)))?;
-    let target_page = page_svc.get_page();
 
-    if let Some(page) = lxapp.get_page(&current_path) {
-        page.navigate_to(target_page, NavigationType::SwitchTab)
-            .map_err(|e| RongJSError::Error(format!("Failed to switch tab: {}", e)))?;
-    } else {
-        return Err(RongJSError::Error("Current page not found".to_string()));
-    }
+    navigate_with_url(lxapp.clone(), options.url, NavigationType::SwitchTab, false)
+        .await
+        .map_err(|e| RongJSError::Error(format!("Failed to switch tab: {}", e)))
+}
+
+fast_api!(NavigateToFastApi, NavigateTo, (), |lxapp: Arc<LxApp>,
+                                              options: NavigateTo|
+ -> Result<
+    (),
+    LxAppError,
+> {
+    let url = options.url.clone();
+    let lxapp_clone = lxapp.clone();
+
+    service_executor::spawn_async(async move {
+        if let Err(err) =
+            navigate_with_url(lxapp_clone, options.url, NavigationType::Forward, true).await
+        {
+            lxapp::warn!("navigateTo failed url={} err={}", url, err);
+        }
+    })
+    .map_err(|err| LxAppError::Runtime(format!("navigateTo async dispatch failed: {}", err)))?;
 
     Ok(())
-}
+});
+
+fast_api!(RedirectToFastApi, RedirectTo, (), |lxapp: Arc<LxApp>,
+                                              options: RedirectTo|
+ -> Result<
+    (),
+    LxAppError,
+> {
+    let url = options.url.clone();
+    let lxapp_clone = lxapp.clone();
+
+    service_executor::spawn_async(async move {
+        if let Err(err) =
+            navigate_with_url(lxapp_clone, options.url, NavigationType::Replace, true).await
+        {
+            lxapp::warn!("redirectTo failed url={} err={}", url, err);
+        }
+    })
+    .map_err(|err| LxAppError::Runtime(format!("redirectTo async dispatch failed: {}", err)))?;
+
+    Ok(())
+});
+
+fast_api!(SwitchTabFastApi, SwitchTab, (), |lxapp: Arc<LxApp>,
+                                            options: SwitchTab|
+ -> Result<
+    (),
+    LxAppError,
+> {
+    let url = options.url.clone();
+    let lxapp_clone = lxapp.clone();
+
+    service_executor::spawn_async(async move {
+        if let Err(err) =
+            navigate_with_url(lxapp_clone, options.url, NavigationType::SwitchTab, true).await
+        {
+            lxapp::warn!("switchTab failed url={} err={}", url, err);
+        }
+    })
+    .map_err(|err| LxAppError::Runtime(format!("switchTab async dispatch failed: {}", err)))?;
+
+    Ok(())
+});
+
+fast_api!(
+    NavigateBackFastApi,
+    NavigateBack,
+    (),
+    |lxapp: Arc<LxApp>, options: NavigateBack| -> Result<(), LxAppError> {
+        navigate_back_impl(&lxapp, options.delta)
+    }
+);
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     // Register navigation functions
@@ -134,6 +206,11 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 
     let switch_tab_func = JSFunc::new(ctx, switch_tab)?;
     lx::register_js_api(ctx, "switchTab", switch_tab_func)?;
+
+    lx::register_fast_api("navigateTo", Arc::new(NavigateToFastApi));
+    lx::register_fast_api("navigateBack", Arc::new(NavigateBackFastApi));
+    lx::register_fast_api("redirectTo", Arc::new(RedirectToFastApi));
+    lx::register_fast_api("switchTab", Arc::new(SwitchTabFastApi));
 
     Ok(())
 }
