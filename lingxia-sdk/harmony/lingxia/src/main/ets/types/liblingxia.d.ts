@@ -119,6 +119,14 @@ declare module 'liblingxia.so' {
   export function getLxAppInfo(appid: string): LxAppInfo | null;
 
   /**
+   * Resolve a lx:// URI or sandbox path to a native-consumable URL/path.
+   *
+   * Returns `file://...` for local filesystem paths, or null if not accessible.
+   * Passes through `http(s)://...` unchanged.
+   */
+  export function resolveLxUri(appid: string, input: string): string | null;
+
+  /**
    * Get TabBar state for a specific LxApp with complete items array
    * @param appid - LxApp ID
    * @returns TabBar state or null if not found

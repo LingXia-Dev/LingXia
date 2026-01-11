@@ -208,6 +208,34 @@ fn get_lx_app_info(appid: String) -> Option<LxAppInfo> {
     })
 }
 
+/// Resolve a lx:// URI or sandbox path to a native-consumable URL/path.
+///
+/// - Accepts `lx://usercache/...`, `lx://userdata/...`, relative paths like `images/1.png`,
+///   and absolute paths.
+/// - Returns `file://...` for local filesystem paths on Harmony, or `null` if not accessible.
+/// - Passes through `http(s)://...` unchanged.
+#[napi]
+pub fn resolve_lx_uri(appid: String, input: String) -> Option<String> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+        return Some(trimmed.to_string());
+    }
+
+    let lxapp = lxapp::try_get(&appid)?;
+
+    let resolved = if let Some(path) = trimmed.strip_prefix("file://") {
+        lxapp.resolve_accessible_path(path).ok()?
+    } else {
+        lxapp.resolve_accessible_path(trimmed).ok()?
+    };
+
+    Some(format!("file://{}", resolved.to_string_lossy()))
+}
+
 /// Get complete TabBar state with items array
 #[napi]
 fn get_tab_bar(appid: String) -> Option<TabBarState> {

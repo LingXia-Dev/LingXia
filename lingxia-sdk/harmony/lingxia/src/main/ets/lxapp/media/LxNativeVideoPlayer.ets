@@ -22,6 +22,7 @@ import {
 } from 'liblingxia.so';
 import { calculateSliderValue, calculateTimeFromSlider } from './VideoUtils';
 import { VideoControlsView, VideoControlSize } from './VideoControls';
+import { resolveLxUriForFileAccess } from './LxUri';
 
 const TAG = 'LingXia.NativeVideoPlayer';
 function log(message: string): void { console.info(`${TAG}: ${message}`); }
@@ -607,7 +608,7 @@ export struct LxNativeVideoPlayer {
       const createResult = videoPlayerCreate(this.componentId, 0) as number;
       if (createResult !== 0) {
         LxNativeVideoPlayer.setNativePlayerExists(this.componentId, true);
-        videoPlayerSetUrl(this.componentId, selectedQuality.url);
+        videoPlayerSetUrl(this.componentId, resolveLxUriForFileAccess(selectedQuality.url));
         videoPlayerSetSurface(this.componentId, surface);
 
         if (this.config.volume !== undefined) videoPlayerSetVolume(this.componentId, this.config.volume);
@@ -1049,7 +1050,8 @@ export struct LxNativeVideoPlayer {
     LxNativeVideoPlayer.setNativePlayerExists(this.componentId, true);
 
     if (this.config.src) {
-      if (!(videoPlayerSetUrl(this.componentId, this.config.src) as boolean)) {
+      const resolvedSrc = resolveLxUriForFileAccess(this.config.src);
+      if (!(videoPlayerSetUrl(this.componentId, resolvedSrc) as boolean)) {
         const detail = new VideoErrorDetail();
         detail.code = 'set_url_failed';
         detail.message = 'Failed to set URL source';
@@ -1827,7 +1829,7 @@ export struct LxNativeVideoPlayer {
 
   private getPosterUrl(): string {
     // Use cachedPoster first, fallback to config.poster
-    return this.cachedPoster || this.config.poster || '';
+    return resolveLxUriForFileAccess(this.cachedPoster || this.config.poster || '');
   }
 
   private isStreamMode(): boolean {
