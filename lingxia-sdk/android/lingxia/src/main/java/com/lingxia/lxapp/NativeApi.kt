@@ -100,6 +100,14 @@ object NativeApi {
     external fun getLxAppInfo(appId: String): LxAppInfo?
 
     /**
+     * Resolve a lx:// URI or sandbox path to a native-consumable filesystem path.
+     *
+     * Returns null if the input is not accessible inside the app sandbox.
+     */
+    @JvmStatic
+    external fun resolveLxUri(appId: String, input: String): String?
+
+    /**
      * Get complete TabBar state with items array (unified API)
      * @param appId The ID of the app
      * @return Complete TabBar state or null if not available

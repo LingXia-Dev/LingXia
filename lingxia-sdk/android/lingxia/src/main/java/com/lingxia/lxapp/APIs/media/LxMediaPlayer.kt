@@ -34,6 +34,8 @@ import com.lingxia.lxapp.APIs.media.player.StopReason
 import com.lingxia.lxapp.APIs.media.player.SurfaceHost
 import com.lingxia.lxapp.APIs.media.player.UrlEngine
 import com.lingxia.lxapp.LxApp
+import com.lingxia.lxapp.LxAppActivity
+import com.lingxia.lxapp.NativeApi
 import com.lingxia.lxapp.NavigationBar
 import com.lingxia.lxapp.R
 import com.lingxia.lxapp.NativeComponents.ComponentRouter
@@ -358,7 +360,11 @@ class LxMediaPlayer(
 
     fun update(config: LxMediaPlayerConfig) {
         if (config.source != null || config.src != null) {
-            val uri = config.source?.toUri() ?: config.src?.let(::parseUri)
+            val uri = when (val source = config.source) {
+                is LxMediaSource.Url -> parseUri(source.url)
+                is LxMediaSource.FilePath -> parseUri(source.path)
+                null -> config.src?.let(::parseUri)
+            }
             if (uri != null) {
                 loadSource(uri)
             }
@@ -1381,15 +1387,29 @@ class LxMediaPlayer(
 
     private fun parseUri(src: String): Uri? {
         return try {
-            val uri = Uri.parse(src)
-            if (uri.scheme.isNullOrEmpty() && src.startsWith("/")) {
-                Uri.fromFile(File(src))
+            val resolved = resolveSandboxUri(src) ?: return null
+            val uri = Uri.parse(resolved)
+            if (uri.scheme.isNullOrEmpty() && resolved.startsWith("/")) {
+                Uri.fromFile(File(resolved))
             } else {
                 uri
             }
         } catch (e: Exception) {
             null
         }
+    }
+
+    private fun resolveSandboxUri(value: String): String? {
+        val raw = value.trim()
+        if (raw.isEmpty()) return null
+
+        if (raw.startsWith("http://") || raw.startsWith("https://")) return raw
+
+        val appId = (context as? LxAppActivity)?.getAppId()
+            ?: LxApp.getCurrentActivity()?.getAppId()
+            ?: return null
+
+        return NativeApi.resolveLxUri(appId, raw)
     }
 
     private fun updatePreferredOrientation(width: Double, height: Double, rotationDegrees: Int = videoRotationDegrees) {

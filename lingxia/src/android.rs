@@ -637,3 +637,57 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onCallback(
 
     if invoke_callback(id, result) { 1 } else { 0 }
 }
+
+/// Resolve a lx:// URI or sandbox path to a native-consumable URL/path.
+///
+/// - Accepts `lx://usercache/...`, `lx://userdata/...`, relative paths like `images/1.png`,
+///   and absolute paths.
+/// - Returns `null` if the path is not accessible inside the app sandbox.
+/// - Passes through `http(s)://...` unchanged.
+/// - Returns `file://...` for local filesystem paths.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_resolveLxUri<'a>(
+    mut env: JNIEnv<'a>,
+    _class: JClass<'a>,
+    appid: JString<'a>,
+    input: JString<'a>,
+) -> JString<'a> {
+    let appid: String = match env.get_string(&appid) {
+        Ok(s) => s.into(),
+        Err(_) => return JString::from(JObject::null()),
+    };
+
+    let input: String = match env.get_string(&input) {
+        Ok(s) => s.into(),
+        Err(_) => return JString::from(JObject::null()),
+    };
+
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return JString::from(JObject::null());
+    }
+
+    if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+        return env
+            .new_string(trimmed)
+            .unwrap_or_else(|_| JString::from(JObject::null()));
+    }
+
+    let Some(lxapp) = lxapp::try_get(&appid) else {
+        return JString::from(JObject::null());
+    };
+
+    let resolved = if let Some(path) = trimmed.strip_prefix("file://") {
+        lxapp.resolve_accessible_path(path).ok()
+    } else {
+        lxapp.resolve_accessible_path(trimmed).ok()
+    };
+
+    let Some(resolved) = resolved else {
+        return JString::from(JObject::null());
+    };
+
+    let resolved_str = resolved.to_string_lossy();
+    env.new_string(format!("file://{}", resolved_str))
+        .unwrap_or_else(|_| JString::from(JObject::null()))
+}
