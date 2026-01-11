@@ -1493,6 +1493,10 @@ export struct LxNativeVideoPlayer {
     this.state.isBuffering = false;
     this.state.currentTime = 0;
     this.sliderValue = 0;
+    // Reset poster state on stop so it shows again on cold start/fullscreen.
+    this.hasRenderedFirstFrame = false;
+    this.hasEverPlayed = false;
+    LxNativeVideoPlayer.hasEverRenderedFrame.delete(this.componentId);
     this.hasEnded = false;
     this.pendingPlayEvent = false;
     this.stopProgressTimer();

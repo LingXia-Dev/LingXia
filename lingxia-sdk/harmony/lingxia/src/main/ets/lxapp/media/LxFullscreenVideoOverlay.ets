@@ -4,6 +4,7 @@ import { display, window } from '@kit.ArkUI';
 import { LxNativeVideoPlayer } from './LxNativeVideoPlayer';
 import { calculateSliderValue } from './VideoUtils';
 import { VideoControlsView, VideoControlSize } from './VideoControls';
+import { resolveLxUriForFileAccess } from './LxUri';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.FullscreenOverlay';
@@ -29,6 +30,7 @@ export struct LxFullscreenVideoOverlay {
   @State private isLandscape: boolean = false;
   @State private isBuffering: boolean = false;
   @State private hasEnded: boolean = false;  // Track if playback ended (show replay button)
+  @State private hasRenderedFirstFrame: boolean = false;
   @State private screenWidthVp: number = 0;
   @State private screenHeightVp: number = 0;
   @State private qualities: string[] = [];
@@ -133,6 +135,7 @@ export struct LxFullscreenVideoOverlay {
     const state = LxNativeVideoPlayer.getPlaybackState(this.componentId);
     this.isPlaying = state?.isPlaying ?? false;
     this.currentTime = state?.currentTime ?? 0;
+    this.hasRenderedFirstFrame = state?.hasRenderedFirstFrame ?? false;
     this.duration = LxNativeVideoPlayer.getDuration(this.componentId);
     this.volume = LxNativeVideoPlayer.getVolume(this.componentId);
     this.muted = LxNativeVideoPlayer.getMuted(this.componentId);
@@ -156,8 +159,8 @@ export struct LxFullscreenVideoOverlay {
     this.progressTimer = setInterval(() => {
       if (!this.isSeeking) {
         // Get currentTime from main player's state (handles stream mode time anchor correctly)
-        const state = LxNativeVideoPlayer.getPlaybackState(this.componentId);
-        const currentTime = state?.currentTime ?? 0;
+        const playbackState = LxNativeVideoPlayer.getPlaybackState(this.componentId);
+        const currentTime = playbackState?.currentTime ?? 0;
 
         if (this.pendingSeekTime >= 0) {
           const tolerance = 500;
@@ -177,11 +180,11 @@ export struct LxFullscreenVideoOverlay {
         }
 
         // Sync play/pause state from native player (but don't override if ended)
-        if (!this.hasEnded) {
-          const playbackState = LxNativeVideoPlayer.getPlaybackState(this.componentId);
-          if (playbackState) {
+        if (playbackState) {
+          if (!this.hasEnded) {
             this.isPlaying = playbackState.isPlaying;
           }
+          this.hasRenderedFirstFrame = playbackState.hasRenderedFirstFrame;
         }
 
         this.currentTime = currentTime;
@@ -332,6 +335,19 @@ export struct LxFullscreenVideoOverlay {
     })
   }
 
+  private getPosterUrl(): string {
+    return resolveLxUriForFileAccess(LxNativeVideoPlayer.getPoster(this.componentId));
+  }
+
+  @Builder
+  private buildPoster(): void {
+    if (this.getPosterUrl() && (!this.hasRenderedFirstFrame || this.hasEnded)) {
+      Image(this.getPosterUrl())
+        .width('100%').height('100%').objectFit(ImageFit.Cover)
+        .zIndex(1).hitTestBehavior(HitTestMode.Transparent)
+    }
+  }
+
   build() {
     // Landscape: swap dimensions so 90° rotation fills screen
     Stack() {
@@ -382,6 +398,8 @@ export struct LxFullscreenVideoOverlay {
         })
         .width('100%')
         .height('100%')
+
+      this.buildPoster()
 
       // Buffering indicator
       if (this.isBuffering && this.isPlaying) {
