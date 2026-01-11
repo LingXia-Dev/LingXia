@@ -223,6 +223,7 @@ class LxMediaPlayer(
     private var isFullscreen = false
     private var isPausedByUser = false  // Track if user explicitly paused (vs buffering)
     private var firstFrameDisplayed = false
+    private var hasEnded = false
     private var posterUrl: String? = null
     private var videoWidth = 0.0
     private var videoHeight = 0.0
@@ -411,7 +412,9 @@ class LxMediaPlayer(
     private fun shouldShowPoster(): Boolean {
         val hasPoster = !posterUrl.isNullOrBlank()
         if (!hasPoster) return false
-        
+
+        if (shouldShowEndedPoster()) return true
+
         // PROFESSIONAL PLAYER STANDARD: Poster ONLY shows on cold start.
         // Once ANY frame has been rendered, poster should NEVER show again.
         if (hasEverRenderedFrame) return false
@@ -422,8 +425,33 @@ class LxMediaPlayer(
         return !firstFrameDisplayed
     }
 
+    private fun shouldShowEndedPoster(): Boolean {
+        return hasEnded && isFullscreen && !posterUrl.isNullOrBlank()
+    }
+
+    private fun applySurfaceVisibility(endedFullscreen: Boolean) {
+        if (endedFullscreen) {
+            playerView?.visibility = View.INVISIBLE
+            streamTextureView?.visibility = View.INVISIBLE
+            return
+        }
+
+        when (playerCore?.getBackend()) {
+            BackendKind.FEED -> {
+                streamTextureView?.visibility = View.VISIBLE
+                playerView?.visibility = View.GONE
+            }
+            BackendKind.URL -> {
+                playerView?.visibility = View.VISIBLE
+                streamTextureView?.visibility = View.GONE
+            }
+            null -> Unit
+        }
+    }
+
     private fun updatePosterVisibility() {
         val poster = posterImageView ?: return
+        val endedFullscreen = shouldShowEndedPoster()
         val shouldShow = shouldShowPoster()
         val oldVisibility = poster.visibility
         poster.visibility = if (shouldShow) View.VISIBLE else View.GONE
@@ -433,6 +461,8 @@ class LxMediaPlayer(
             controlsOverlay?.view?.bringToFront()
             loadingIndicator?.bringToFront()
         }
+
+        applySurfaceVisibility(endedFullscreen)
     }
 
     fun handle(command: LxMediaCommand) {
@@ -542,6 +572,10 @@ class LxMediaPlayer(
 
     fun play() {
         isPausedByUser = false  // User wants to play
+        if (hasEnded) {
+            hasEnded = false
+            updatePosterVisibility()
+        }
         if (!defaultBackendInitialized && componentId != null && currentSource == null) {
             ensureFeedBackendIfNeeded()
         }
@@ -556,11 +590,19 @@ class LxMediaPlayer(
 
     fun stop() {
         isPausedByUser = true
+        if (hasEnded) {
+            hasEnded = false
+            updatePosterVisibility()
+        }
         playerCore?.stop(StopReason.USER)
     }
 
     fun seek(time: Double) {
         val positionMs = (time * 1000).toLong()
+        if (hasEnded) {
+            hasEnded = false
+            updatePosterVisibility()
+        }
         playerCore?.seek(positionMs)
     }
 
@@ -770,6 +812,7 @@ class LxMediaPlayer(
         view.outlineProvider = null
 
         controlsOverlay?.onFullscreenChanged(true)
+        updatePosterVisibility()
         emitEvent(LxMediaEvent.FullscreenChange(true, direction))
     }
 
@@ -832,6 +875,7 @@ class LxMediaPlayer(
         originalOutlineProvider = null
 
         controlsOverlay?.onFullscreenChanged(false)
+        updatePosterVisibility()
         emitEvent(LxMediaEvent.FullscreenChange(false, "vertical"))
     }
 
@@ -906,6 +950,7 @@ class LxMediaPlayer(
         view.outlineProvider = null
 
         controlsOverlay?.onFullscreenChanged(true)
+        updatePosterVisibility()
         emitEvent(LxMediaEvent.FullscreenChange(true, direction))
     }
 
@@ -954,6 +999,7 @@ class LxMediaPlayer(
         originalOutlineProvider = null
 
         controlsOverlay?.onFullscreenChanged(false)
+        updatePosterVisibility()
         emitEvent(LxMediaEvent.FullscreenChange(false, "vertical"))
     }
 
@@ -1331,6 +1377,7 @@ class LxMediaPlayer(
         defaultBackendInitialized = true
         currentSource = uri
         firstFrameDisplayed = false
+        hasEnded = false
         updatePosterVisibility()
         loadingIndicator?.visibility = View.VISIBLE
 
@@ -1434,6 +1481,10 @@ class LxMediaPlayer(
                 // Intent-only. UI feedback (e.g. spinner) is driven by `waiting`.
             }
             CorePlayerEvent.Play -> {
+                if (hasEnded) {
+                    hasEnded = false
+                    updatePosterVisibility()
+                }
                 controlsOverlay?.updatePlayPauseButton()
             }
             is CorePlayerEvent.Waiting -> {
@@ -1449,6 +1500,9 @@ class LxMediaPlayer(
                 uiSeeking = false
                 firstFrameDisplayed = true
                 hasEverRenderedFrame = true
+                if (hasEnded) {
+                    hasEnded = false
+                }
                 updatePosterVisibility()
                 controlsOverlay?.updatePlayPauseButton()
             }
@@ -1489,6 +1543,8 @@ class LxMediaPlayer(
             is CorePlayerEvent.Ended -> {
                 loadingIndicator?.visibility = View.GONE
                 uiSeeking = false
+                hasEnded = true
+                updatePosterVisibility()
                 controlsOverlay?.showCenterPlayButton(true)
                 controlsOverlay?.updatePlayPauseButton()
             }
@@ -1505,6 +1561,7 @@ class LxMediaPlayer(
                 uiSeeking = false
                 firstFrameDisplayed = false
                 hasEverRenderedFrame = false
+                hasEnded = false
                 updatePosterVisibility()
                 controlsOverlay?.showCenterPlayButton(true)
                 controlsOverlay?.updatePlayPauseButton()

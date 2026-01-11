@@ -449,6 +449,7 @@ public final class LxMediaPlayer: NSObject {
     private var streamMuted = false
     private var streamIsPlaying = false
     private var streamHasEnded = false
+    private var urlHasEnded = false
     // Stream intent latch for "src is empty but user pressed play" before stream source is configured.
     private var pendingStreamPlayRequest = false
     private var pendingStreamSeekedSeconds: Double?
@@ -561,6 +562,7 @@ public final class LxMediaPlayer: NSObject {
     public func setFullscreenMode(_ fullscreen: Bool) {
         isFullscreen = fullscreen
         layoutOverlay()
+        updateEndedPosterVisibility()
     }
 
     public func setFrame(_ frame: CGRect) {
@@ -791,10 +793,7 @@ public final class LxMediaPlayer: NSObject {
             pendingPosterHide = false
             playerLayer.opacity = 0
             // Only show poster if we've never rendered a frame (cold start only)
-            if !hasEverRenderedFrame, let image = posterImageView.image, !image.size.equalTo(.zero) {
-                posterImageView.isHidden = false
-                posterImageView.alpha = 1
-            }
+            showPosterIfAvailable()
 
             streamPlaybackBaseOffsetSeconds = 0
             if !hasExternalDurationOverride {
@@ -828,16 +827,14 @@ public final class LxMediaPlayer: NSObject {
             streamIsPlaying = false
             stopStreamProgressTimer()
             // Only show poster on cold start (never rendered a frame)
-            if !hasEverRenderedFrame, let image = posterImageView.image, !image.size.equalTo(.zero) {
-                posterImageView.isHidden = false
-                posterImageView.alpha = 1
-            }
+            showPosterIfAvailable()
         case "playing":
             loadingIndicator.stopAnimating()
             streamIsPlaying = true
+            let wasEnded = streamHasEnded
             streamHasEnded = false
+            restoreFromEndedStateIfNeeded(wasEnded)
             markFirstFrameRendered()
-            posterImageView.alpha = 1
             updatePlayPauseUI(isPlaying: true)
             startStreamProgressTimerIfNeeded()
             if let sought = pendingStreamSeekedSeconds {
@@ -862,10 +859,7 @@ public final class LxMediaPlayer: NSObject {
             // Stop resets to cold start state - allow poster to show
             firstFrameDisplayed = false
             hasEverRenderedFrame = false
-            if let image = posterImageView.image, !image.size.equalTo(.zero) {
-                posterImageView.isHidden = false
-                posterImageView.alpha = 1
-            }
+            showPosterIfAvailable()
         case "ended":
             // Stream ended naturally from decoder - handle ended state
             // Last frame stays visible (decoder keeps it displayed)
@@ -876,6 +870,7 @@ public final class LxMediaPlayer: NSObject {
             updatePlayPauseUI(isPlaying: false)
             // Keep firstFrameDisplayed true and poster hidden to preserve last frame
             markFirstFrameRendered()
+            updateEndedPosterVisibility()
             send(.ended)
             showControlsTemporarily()
         default:
@@ -904,6 +899,49 @@ public final class LxMediaPlayer: NSObject {
     }
 
     // MARK: - Poster State Management
+
+    private func showPosterView() {
+        posterImageView.isHidden = false
+        posterImageView.alpha = 1
+    }
+
+    private func hidePosterView() {
+        posterImageView.isHidden = true
+        posterImageView.alpha = 1
+    }
+
+    private func showPosterIfAvailable() {
+        guard let image = posterImageView.image, !image.size.equalTo(.zero) else { return }
+        if !hasEverRenderedFrame {
+            showPosterView()
+        }
+    }
+
+    private func isEndedForPoster() -> Bool {
+        return streamDecoderActive ? streamHasEnded : urlHasEnded
+    }
+
+    private func updateEndedPosterVisibility() {
+        guard isEndedForPoster() else { return }
+        guard let image = posterImageView.image, !image.size.equalTo(.zero) else { return }
+
+        if isFullscreen {
+            showPosterView()
+            playerLayer.opacity = 0
+        } else {
+            hidePosterView()
+            playerLayer.opacity = 1
+        }
+    }
+
+    private func restoreFromEndedStateIfNeeded(_ wasEnded: Bool) {
+        guard wasEnded else { return }
+        playerLayer.opacity = 1
+        playerLayer.isHidden = false
+        if hasEverRenderedFrame {
+            hidePosterView()
+        }
+    }
     
     /// Mark first frame as rendered - centralized poster state management.
     /// Call this when video first renders. Poster will never show again until stop() resets.
@@ -911,7 +949,7 @@ public final class LxMediaPlayer: NSObject {
         guard !hasEverRenderedFrame else { return }  // Already marked
         hasEverRenderedFrame = true
         firstFrameDisplayed = true
-        posterImageView.isHidden = true
+        hidePosterView()
     }
 
     // MARK: Player core
@@ -935,10 +973,9 @@ public final class LxMediaPlayer: NSObject {
                 let (data, _) = try await URLSession.shared.data(from: url)
                 guard !Task.isCancelled, let image = UIImage(data: data) else { return }
                 posterImageView.image = image
+                self.updateEndedPosterVisibility()
                 // Only show poster if we've never rendered a frame (cold start only)
-                if !hasEverRenderedFrame {
-                    posterImageView.isHidden = false
-                }
+                showPosterIfAvailable()
                 os_log("MediaPlayer loaded poster", log: OSLog(subsystem: "LingXia", category: "Media"), type: .info)
             } catch {
                 if (error as? URLError)?.code == .cancelled || error is CancellationError { return }
@@ -952,6 +989,7 @@ public final class LxMediaPlayer: NSObject {
         loadingSequence &+= 1
         let currentSequence = loadingSequence
         currentLoadingURL = url
+        urlHasEnded = false
 
         os_log("MediaPlayer loadVideo seq=%llu url=%{public}@", log: log, type: .info, currentSequence, url.absoluteString)
 
@@ -977,9 +1015,7 @@ public final class LxMediaPlayer: NSObject {
         // DON'T hide old video or show poster yet - keep current frame visible
         // This prevents black screen during switching
         // Only show poster on cold start (never rendered a frame)
-        if !hasEverRenderedFrame && posterImageView.image != nil {
-            posterImageView.isHidden = false
-        }
+        showPosterIfAvailable()
 
         waitingForFirstFrame = true
         firstFrameDisplayed = false
@@ -1072,9 +1108,7 @@ public final class LxMediaPlayer: NSObject {
                     self.firstFrameDisplayed = false
                     self.loadingIndicator.stopAnimating()
                     // Only show poster on cold start (never rendered a frame)
-                    if !self.hasEverRenderedFrame, let image = self.posterImageView.image, !image.size.equalTo(.zero) {
-                        self.posterImageView.isHidden = false
-                    }
+                    self.showPosterIfAvailable()
                 default:
                     break
                 }
@@ -1138,9 +1172,7 @@ public final class LxMediaPlayer: NSObject {
             self.firstFrameDisplayed = false
             self.loadingIndicator.stopAnimating()
             // Only show poster on cold start (never rendered a frame)
-            if !self.hasEverRenderedFrame, let image = self.posterImageView.image, !image.size.equalTo(.zero) {
-                self.posterImageView.isHidden = false
-            }
+            self.showPosterIfAvailable()
         }
 
         // timeupdate event triggers every 250ms
@@ -1166,14 +1198,14 @@ public final class LxMediaPlayer: NSObject {
             pendingPlayEvent = false
 
             if loopEnabled {
+                urlHasEnded = false
                 // Loop: restart from beginning and continue playing without spinner
                 waitingForFirstFrame = false
                 markFirstFrameRendered()
                 pendingPosterHide = false
                 playerLayer.opacity = 1
                 playerLayer.isHidden = false
-                posterImageView.isHidden = true
-                posterImageView.alpha = 1
+                hidePosterView()
 
                 let rate = Float(currentPlaybackRate)
                 player?.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
@@ -1195,9 +1227,10 @@ public final class LxMediaPlayer: NSObject {
             pendingPosterHide = false
             playerLayer.opacity = 1
             playerLayer.isHidden = false
-            posterImageView.isHidden = true
-            posterImageView.alpha = 1
+            hidePosterView()
 
+            urlHasEnded = true
+            updateEndedPosterVisibility()
             send(.ended)
         }
     }
@@ -1205,6 +1238,7 @@ public final class LxMediaPlayer: NSObject {
     private func play() {
         if streamDecoderActive {
             isPausedByUser = false
+            let wasEnded = streamHasEnded
             if streamHasEnded {
                 // Always reset progress bar when replaying from ended state
                 progressSlider.value = 0
@@ -1223,6 +1257,7 @@ public final class LxMediaPlayer: NSObject {
                 }
             }
             streamHasEnded = false
+            restoreFromEndedStateIfNeeded(wasEnded)
             send(.play)
             _ = streamCommandHandler?("play", [:])
             // Re-apply stream volume/mute on resume; iOS audio output can get muted after pause/resume
@@ -1233,6 +1268,10 @@ public final class LxMediaPlayer: NSObject {
             showControlsTemporarily()
             return
         }
+
+        let wasEnded = urlHasEnded
+        urlHasEnded = false
+        restoreFromEndedStateIfNeeded(wasEnded)
 
         // No AVPlayer item yet (src empty). Emit play intent so JS can lazily call setStreamSource().
         if player == nil {
@@ -1366,8 +1405,7 @@ public final class LxMediaPlayer: NSObject {
             // Show poster image on stop and reset progress (cold start state)
             // Hide playerLayer to reveal poster underneath
             playerLayer.opacity = 0
-            posterImageView.isHidden = false
-            posterImageView.alpha = 1
+            showPosterView()
             progressSlider.value = 0
             firstFrameDisplayed = false
             hasEverRenderedFrame = false
@@ -1375,6 +1413,7 @@ public final class LxMediaPlayer: NSObject {
         }
         pendingStreamPlayRequest = false
         isPausedByUser = true // Stopped by user
+        urlHasEnded = false
         player?.pause()
         player?.seek(to: .zero)
         // Cancel pending play event on stop
@@ -1387,8 +1426,7 @@ public final class LxMediaPlayer: NSObject {
         // Show poster image on stop and reset progress (cold start state)
         // Hide playerLayer to reveal poster underneath
         playerLayer.opacity = 0
-        posterImageView.isHidden = false
-        posterImageView.alpha = 1
+        showPosterView()
         progressSlider.value = 0
         firstFrameDisplayed = false
         hasEverRenderedFrame = false
@@ -1400,9 +1438,11 @@ public final class LxMediaPlayer: NSObject {
             let clampedSeconds = max(0, min(seconds, duration))
             isSeeking = true
             pendingStreamSeekedSeconds = clampedSeconds
+            let wasEnded = streamHasEnded
             if clampedSeconds < max(0, duration - 0.25) {
                 streamHasEnded = false
             }
+            restoreFromEndedStateIfNeeded(wasEnded)
 
             // Update UI immediately; actual seek is handled by Rust stream session (via seeked event).
             let remaining = duration - clampedSeconds
@@ -1438,6 +1478,10 @@ public final class LxMediaPlayer: NSObject {
 
         let clampedSeconds = max(0, min(seconds, duration))
         let time = CMTime(seconds: clampedSeconds, preferredTimescale: 600)
+
+        let wasEnded = urlHasEnded
+        urlHasEnded = false
+        restoreFromEndedStateIfNeeded(wasEnded)
 
         isSeeking = true
         suppressWaitingUntil = CACurrentMediaTime() + 1.5
@@ -2204,10 +2248,7 @@ public final class LxMediaPlayer: NSObject {
             } else {
                 os_log("MediaPlayer still not ready after %d retries; keep waiting", log: log, type: .error, forceRevealAttempts)
                 // Only show poster on cold start (never rendered a frame)
-                if !hasEverRenderedFrame, let image = posterImageView.image, !image.size.equalTo(.zero) {
-                    posterImageView.isHidden = false
-                    posterImageView.alpha = 1
-                }
+                showPosterIfAvailable()
                 scheduleRevealTimeout(sequence: sequence, delay: 1.0)
                 return
             }
@@ -2803,6 +2844,7 @@ public final class LxMediaPlayer: NSObject {
         // Update UI
         fullscreenButton.setImage(LxIcon.image(named: "icon_fullscreen_exit"), for: .normal)
         updateCloseButtonVisibility()
+        updateEndedPosterVisibility()
         send(.fullscreenChange(fullScreen: true, direction: "horizontal"))
 
         os_log("MediaPlayer entered fullscreen", log: OSLog(subsystem: "LingXia", category: "Media"), type: .info)
@@ -2864,6 +2906,7 @@ public final class LxMediaPlayer: NSObject {
         // Update UI
         fullscreenButton.setImage(LxIcon.image(named: "icon_fullscreen_enter"), for: .normal)
         updateCloseButtonVisibility()
+        updateEndedPosterVisibility()
         send(.fullscreenChange(fullScreen: false, direction: "vertical"))
 
         os_log("MediaPlayer exited fullscreen", log: OSLog(subsystem: "LingXia", category: "Media"), type: .info)
