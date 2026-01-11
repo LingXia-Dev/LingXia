@@ -17,7 +17,7 @@ function createDefaultConfig(): Record<'react' | 'vue', ViewBuildConfig> {
       },
       assetDir: DEFAULT_ASSET_DIR,
       cssCodeSplitMulti: true,
-      target: 'es2015',
+      target: 'es2020',
       esbuild: { jsx: 'automatic' },
       minifyStrategy: 'esbuild'
     },
@@ -27,7 +27,7 @@ function createDefaultConfig(): Record<'react' | 'vue', ViewBuildConfig> {
       },
       assetDir: DEFAULT_ASSET_DIR,
       cssCodeSplitMulti: true,
-      target: 'es2015',
+      target: 'es2020',
       minifyStrategy: 'esbuild'
     }
   };

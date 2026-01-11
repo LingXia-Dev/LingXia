@@ -18,6 +18,7 @@ export function runCLI(): void {
     .option('-d, --dev', 'Development build')
     .option('-p, --prod', 'Production build')
     .option('--plugin', 'Build as plugin package')
+    .option('--target <target>', 'JS target (es5, es2015, es2020, esnext). Note: es5 requires @vitejs/plugin-legacy')
     .action(buildCommand);
 
   program

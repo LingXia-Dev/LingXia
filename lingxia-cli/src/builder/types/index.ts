@@ -38,6 +38,7 @@ export interface BuildOptions {
   dev?: boolean;
   prod?: boolean;
   plugin?: boolean;
+  target?: string; // JS target (es5, es2015, es2020, esnext). es5 requires @vitejs/plugin-legacy
 }
 
 export interface LxPluginConfig {

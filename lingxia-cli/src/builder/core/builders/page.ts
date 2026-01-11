@@ -107,12 +107,19 @@ export class PageProcessor {
     
     const frameworkConfig = this.viewConfigManager.getFrameworkConfig(framework);
     const assetDir = frameworkConfig.assetDir ?? DEFAULT_ASSET_DIR;
+
+    // CLI --target option overrides config
+    const target = options.target ?? frameworkConfig.target;
+    const esbuild = frameworkConfig.esbuild;
+
     await this.runViteBuild(buildDir, framework, {
       options,
       inputs,
       frameworkConfig,
       output: frameworkConfig.output.multi,
       cssCodeSplit: frameworkConfig.cssCodeSplitMulti,
+      target,
+      esbuild,
       alias: this.alias
     });
 
