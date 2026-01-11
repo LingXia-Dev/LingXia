@@ -1,6 +1,7 @@
 import Foundation
 import UIKit
 import OSLog
+import CLingXiaRustAPI
 
 #if os(iOS)
 
@@ -110,11 +111,23 @@ final class VideoComponent: NSObject, LxNativeComponent {
 
     // MARK: - Helpers
     private static func url(from string: String) -> URL? {
-        if let url = URL(string: string), url.scheme != nil {
+        let raw = string.trimmingCharacters(in: .whitespacesAndNewlines)
+        if raw.isEmpty { return nil }
+
+        // Keep remote URLs as-is.
+        if raw.hasPrefix("http://") || raw.hasPrefix("https://") {
+            return URL(string: raw)
+        }
+
+        let current = getCurrentLxApp()
+        let appId = current.appid.toString()
+        let resolved = resolveLxUri(appId, raw)?.toString() ?? raw
+
+        if let url = URL(string: resolved), url.scheme != nil {
             return url
         }
-        if string.hasPrefix("/") {
-            return URL(fileURLWithPath: string)
+        if resolved.hasPrefix("/") {
+            return URL(fileURLWithPath: resolved)
         }
         return nil
     }
@@ -153,11 +166,19 @@ final class VideoComponent: NSObject, LxNativeComponent {
            let value = source["value"] as? String {
             switch type {
             case "url":
-                if let url = URL(string: value) {
+                if let url = url(from: value) {
                     config.source = .url(url)
                 }
             case "file":
-                config.source = .file(path: value)
+                if let url = url(from: value) {
+                    if url.isFileURL {
+                        config.source = .file(path: url.path)
+                    } else {
+                        config.source = .url(url)
+                    }
+                } else {
+                    config.source = .file(path: value)
+                }
             default:
                 break
             }

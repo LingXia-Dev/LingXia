@@ -142,6 +142,9 @@ mod bridge {
 
         #[swift_bridge(swift_name = "isPullDownRefreshEnabled")]
         fn is_pull_down_refresh_enabled(appid: &str, path: &str) -> bool;
+
+        #[swift_bridge(swift_name = "resolveLxUri")]
+        fn resolve_lx_uri(appid: &str, input: &str) -> Option<String>;
     }
 }
 
@@ -213,6 +216,27 @@ pub fn on_page_show(appid: &str, path: &str) {
     if let Some(lxapp) = lxapp::try_get(appid) {
         lxapp.on_page_show(path.to_string());
     }
+}
+
+pub fn resolve_lx_uri(appid: &str, input: &str) -> Option<String> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+        return Some(trimmed.to_string());
+    }
+
+    let lxapp = lxapp::try_get(appid)?;
+
+    if let Some(path) = trimmed.strip_prefix("file://") {
+        let resolved = lxapp.resolve_accessible_path(path).ok()?;
+        return Some(format!("file://{}", resolved.to_string_lossy()));
+    }
+
+    let resolved = lxapp.resolve_accessible_path(trimmed).ok()?;
+    Some(format!("file://{}", resolved.to_string_lossy()))
 }
 
 /// Notify that LxApp was closed
