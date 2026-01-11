@@ -80,7 +80,7 @@ Page({
     console.log("[NativeVideo] onQualityChange:", { videoId, detail });
   },
 
-  onPlaybackRateChange: function ({ videoId, detail } = {}) {
-    console.log("[NativeVideo] onPlaybackRateChange:", { videoId, detail });
+  onRateChange: function ({ videoId, detail } = {}) {
+    console.log("[NativeVideo] onRateChange:", { videoId, detail });
   },
 });

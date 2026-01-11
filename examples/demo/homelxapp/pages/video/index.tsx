@@ -24,7 +24,7 @@ type PageActions = {
   seek(position: number): void;
   requestFullScreen(): void;
   onQualityChange(payload: { videoId: string; detail: unknown }): void;
-  onPlaybackRateChange(payload: { videoId: string; detail: unknown }): void;
+  onRateChange(payload: { videoId: string; detail: unknown }): void;
 };
 
 declare function useLingXia(): PageActions;
@@ -40,7 +40,7 @@ export default function App() {
     seek,
     requestFullScreen,
     onQualityChange,
-    onPlaybackRateChange,
+    onRateChange,
   } = useLingXia();
   const video = data?.videos?.[0];
   const [eventLog, setEventLog] = React.useState('Ready');
@@ -53,6 +53,14 @@ export default function App() {
 
   const onPauseHandler = React.useCallback(() => {
     setEventLog('Paused');
+  }, []);
+
+  const onStopHandler = React.useCallback(() => {
+    setEventLog('Stopped');
+  }, []);
+
+  const onEndedHandler = React.useCallback(() => {
+    setEventLog('Ended');
   }, []);
 
   const onWaitingHandler = React.useCallback(() => {
@@ -85,13 +93,13 @@ export default function App() {
     [onQualityChange, video],
   );
 
-  const onPlaybackRateChangeHandler = React.useCallback(
+  const onRateChangeHandler = React.useCallback(
     (e: LxVideoEvent<{ rate?: number }>) => {
       if (!video) return;
       setEventLog(`Rate: ${e.detail?.rate ?? ''}`);
-      onPlaybackRateChange({ videoId: video.id, detail: e.detail });
+      onRateChange({ videoId: video.id, detail: e.detail });
     },
-    [onPlaybackRateChange, video],
+    [onRateChange, video],
   );
 
   // Relative seek helpers
@@ -155,13 +163,15 @@ export default function App() {
             volume="0.8"
             className="block w-full rounded-lg bg-black"
             style={{ aspectRatio: '16 / 9', borderRadius: 12 }}
-            onPlay={onPlayHandler}
+            onPlaying={onPlayHandler}
             onPause={onPauseHandler}
+            onStop={onStopHandler}
+            onEnded={onEndedHandler}
             onWaiting={onWaitingHandler}
             onTimeUpdate={onTimeUpdateHandler}
             onFullscreenChange={onFullscreenChangeHandler}
             onQualityChange={onQualityChangeHandler}
-            onPlaybackRateChange={onPlaybackRateChangeHandler}
+            onRateChange={onRateChangeHandler}
           />
         </div>
 
