@@ -27,7 +27,7 @@ import com.google.android.material.color.MaterialColors
 import java.io.File
 import java.io.IOException
 import kotlin.math.roundToInt
-import com.lingxia.lxapp.LxAppDrawables
+import com.lingxia.lxapp.LxNavBarUtils
 import com.lingxia.lxapp.R
 
 class PdfViewerActivity : AppCompatActivity() {
@@ -75,7 +75,7 @@ class PdfViewerActivity : AppCompatActivity() {
         setSupportActionBar(toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         supportActionBar?.setHomeButtonEnabled(true)
-        LxAppDrawables.configureToolbarBackButton(toolbar)
+        LxNavBarUtils.configureToolbarBackButton(toolbar)
         toolbar.setNavigationOnClickListener { onBackPressedDispatcher.onBackPressed() }
 
         applyChromeStyling()

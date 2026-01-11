@@ -117,7 +117,7 @@ class NavigationBar @JvmOverloads constructor(
 
         val navBarHeightDp = if (isTablet) DEFAULT_TABLET_HEIGHT_DP else LxAppActivity.DEFAULT_NAV_BAR_HEIGHT_DP
 
-        val buttonSizePx = (LxAppDrawables.Constants.BUTTON_SIZE_DP * density).toInt()
+        val buttonSizePx = (LxNavBarUtils.Constants.BUTTON_SIZE_DP * density).toInt()
 
         setBackgroundColor(currentBackgroundColor)
 
@@ -129,7 +129,7 @@ class NavigationBar @JvmOverloads constructor(
             contentDescription = "Back"
             visibility = View.GONE
         }
-        LxAppDrawables.configureBackButton(backButton)
+        LxNavBarUtils.configureBackButton(backButton)
         addView(backButton)
 
         // Home Button setup (same position as back button since only one shows at a time)
@@ -142,7 +142,7 @@ class NavigationBar @JvmOverloads constructor(
             contentDescription = "Home"
             visibility = View.GONE
         }
-        LxAppDrawables.configureHomeButton(homeButton)
+        LxNavBarUtils.configureHomeButton(homeButton)
         addView(homeButton)
 
         // Calculate dynamic font size for title
@@ -346,7 +346,7 @@ class NavigationBar @JvmOverloads constructor(
         if (!disableAnimation) {
             animate()
                 .translationX(0f)
-                .setDuration(LxAppDrawables.Constants.ANIMATION_DURATION_MS)
+                .setDuration(LxNavBarUtils.Constants.ANIMATION_DURATION_MS)
                 .setInterpolator(android.view.animation.DecelerateInterpolator())
                 .withEndAction {
                     translationX = 0f

@@ -25,6 +25,7 @@ import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import android.view.animation.AccelerateDecelerateInterpolator
 import com.lingxia.lxapp.NativeComponents.NativeBridge
+import com.lingxia.lxapp.LxNavBarUtils
 
 /**
  * Animation type enum for page transitions
@@ -761,6 +762,8 @@ class LxAppActivity : AppCompatActivity() {
 
         val statusBarHeight = getStatusBarHeight(this)
 
+        val density = resources.displayMetrics.density
+
         // Create capsule container
         val capsule = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -768,30 +771,24 @@ class LxAppActivity : AppCompatActivity() {
             tag = "capsule_button" // Add tag to find it later
             elevation = 1000f // Ensure it stays on top of other views
 
-            // Set capsule background
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                setColor(Color.WHITE)
-                cornerRadius = 16f * resources.displayMetrics.density // Half of height (32/2) for perfect rounded corners
-                setStroke((0.5f * resources.displayMetrics.density).toInt(), 0xFFDDDDDD.toInt())
-            }
+            LxNavBarUtils.applyCapsuleBackground(this)
 
             // Capsule layout parameters - Position fixed relative to status bar
             val capsuleLayoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-                (32 * resources.displayMetrics.density).toInt()
+                (32 * density).toInt()
             ).apply {
                 gravity = Gravity.TOP or Gravity.END
                 // Position with fixed offset relative to status bar (moved up 4dp to avoid overlap with navbar)
-                topMargin = statusBarHeight + (4 * resources.displayMetrics.density).toInt()
-                rightMargin = (12 * resources.displayMetrics.density).toInt()
+                topMargin = statusBarHeight + (4 * density).toInt()
+                rightMargin = (12 * density).toInt()
             }
             layoutParams = capsuleLayoutParams
 
             setPadding(
-                (2 * resources.displayMetrics.density).toInt(),
+                (2 * density).toInt(),
                 0,
-                (2 * resources.displayMetrics.density).toInt(),
+                (2 * density).toInt(),
                 0
             )
         }
@@ -799,10 +796,9 @@ class LxAppActivity : AppCompatActivity() {
         // Create more button with custom dots drawable
         val btnMore = ImageButton(this).apply {
             setBackgroundColor(Color.TRANSPARENT)
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setImageDrawable(LxAppDrawables.createMoreDots())
+            LxNavBarUtils.configureCapsuleMenuButton(this)
             layoutParams = LinearLayout.LayoutParams(
-                (44 * resources.displayMetrics.density).toInt(),
+                (38 * density).toInt(),
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
             setOnClickListener {
@@ -812,24 +808,23 @@ class LxAppActivity : AppCompatActivity() {
 
         // Create divider
         val divider = View(this).apply {
-            setBackgroundColor(0xFFDDDDDD.toInt())
+            background = LxNavBarUtils.createCapsuleDivider()
             layoutParams = LinearLayout.LayoutParams(
-                (0.5f * resources.displayMetrics.density).toInt(),
-                (18 * resources.displayMetrics.density).toInt()
+                (0.5f * density).toInt().coerceAtLeast(1),
+                (20 * density).toInt()
             ).apply {
                 gravity = Gravity.CENTER_VERTICAL
-                marginStart = (2 * resources.displayMetrics.density).toInt()
-                marginEnd = (2 * resources.displayMetrics.density).toInt()
+                marginStart = (2 * density).toInt()
+                marginEnd = (2 * density).toInt()
             }
         }
 
         // Create close button with custom circle drawable
         val btnClose = ImageButton(this).apply {
             setBackgroundColor(Color.TRANSPARENT)
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setImageDrawable(LxAppDrawables.createCloseButton(resources))
+            LxNavBarUtils.configureCapsuleCloseButton(this)
             layoutParams = LinearLayout.LayoutParams(
-                (44 * resources.displayMetrics.density).toInt(),
+                (38 * density).toInt(),
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
             setOnClickListener {

@@ -418,6 +418,34 @@ public struct LxAppUnifiedCapsuleViewMacOS: View {
 #endif
 
 #if os(iOS)
+private enum CapsuleMetrics {
+    static let height: CGFloat = 32
+    static let buttonWidth: CGFloat = 38
+    static let dividerWidth: CGFloat = 0.5
+    static let dividerHeight: CGFloat = 20
+    static let iconMaxWidth: CGFloat = 28
+    static let iconMaxHeight: CGFloat = 20
+    static let edgePadding: CGFloat = 4
+    static let totalWidth: CGFloat =
+        buttonWidth * 2 + dividerWidth + edgePadding * 2
+}
+
+private struct CapsuleIcon: View {
+    let name: String
+
+    var body: some View {
+        if let image = LxIcon.image(named: name) {
+            Image(uiImage: image)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(
+                    maxWidth: CapsuleMetrics.iconMaxWidth,
+                    maxHeight: CapsuleMetrics.iconMaxHeight
+                )
+        }
+    }
+}
+
 public struct LxAppUnifiedCapsuleView: View {
     let onMoreTapped: () -> Void
     let onCloseTapped: () -> Void
@@ -431,34 +459,27 @@ public struct LxAppUnifiedCapsuleView: View {
         HStack(spacing: 0) {
             // More button
             Button(action: onMoreTapped) {
-                if let moreImage = Self.createMoreDotsImageiOS() {
-                    Image(uiImage: moreImage)
-                } else {
-                    Image(systemName: "ellipsis") // Fallback
-                }
+                CapsuleIcon(name: "icon_capsule_menu")
             }
-            .frame(width: 43.5, height: 32)
+            .frame(width: CapsuleMetrics.buttonWidth, height: CapsuleMetrics.height)
             .contentShape(Rectangle())
             .buttonStyle(PlainButtonStyle())
 
             // Separator
             Rectangle()
                 .fill(Color.gray.opacity(0.3))
-                .frame(width: 0.5, height: 20)
+                .frame(width: CapsuleMetrics.dividerWidth, height: CapsuleMetrics.dividerHeight)
 
             // Close button
             Button(action: onCloseTapped) {
-                if let closeImage = Self.createCloseButtonImageiOS() {
-                    Image(uiImage: closeImage)
-                } else {
-                    Image(systemName: "xmark") // Fallback
-                }
+                CapsuleIcon(name: "icon_capsule_close")
             }
-            .frame(width: 43.5, height: 32)
+            .frame(width: CapsuleMetrics.buttonWidth, height: CapsuleMetrics.height)
             .contentShape(Rectangle())
             .buttonStyle(PlainButtonStyle())
         }
-        .frame(width: 87, height: 32)
+        .padding(.horizontal, CapsuleMetrics.edgePadding)
+        .frame(width: CapsuleMetrics.totalWidth, height: CapsuleMetrics.height)
         .background(
             Capsule().fill(Color.white.opacity(0.9))
                 .background(.ultraThinMaterial)
@@ -468,40 +489,6 @@ public struct LxAppUnifiedCapsuleView: View {
             Capsule().stroke(Color.gray.opacity(0.3), lineWidth: 0.5)
         )
         .shadow(color: .black.opacity(0.1), radius: 2, x: 0, y: 1)
-    }
-
-    private static func createMoreDotsImageiOS() -> UIImage? {
-        UIGraphicsBeginImageContextWithOptions(LxAppImageHelper.imageSize, false, 0)
-        defer { UIGraphicsEndImageContext() }
-
-        guard let context = UIGraphicsGetCurrentContext() else { return nil }
-
-        context.setFillColor(UIColor.darkGray.cgColor)
-        LxAppImageHelper.drawThreeDotsPattern(in: context, size: LxAppImageHelper.imageSize)
-
-        return UIGraphicsGetImageFromCurrentImageContext()
-    }
-
-    private static func createCloseButtonImageiOS() -> UIImage? {
-        let size = CGSize(width: 24, height: 24)
-        UIGraphicsBeginImageContextWithOptions(size, false, 0)
-        defer { UIGraphicsEndImageContext() }
-
-        guard let context = UIGraphicsGetCurrentContext() else { return nil }
-
-        context.setStrokeColor(UIColor.darkGray.cgColor)
-        context.setLineWidth(2.2)
-        context.setLineCap(.round)
-
-        let centerX = size.width / 2
-        let centerY = size.height / 2
-        let outerRadius = size.width * 0.35
-        let innerRadius: CGFloat = 2.5
-
-        context.strokeEllipse(in: CGRect(x: centerX - outerRadius, y: centerY - outerRadius, width: outerRadius * 2, height: outerRadius * 2))
-        context.fillEllipse(in: CGRect(x: centerX - innerRadius, y: centerY - innerRadius, width: innerRadius * 2, height: innerRadius * 2))
-
-        return UIGraphicsGetImageFromCurrentImageContext()
     }
 }
 #endif

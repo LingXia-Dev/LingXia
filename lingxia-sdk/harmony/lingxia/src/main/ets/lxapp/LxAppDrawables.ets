@@ -2,13 +2,13 @@
  * Custom drawable components for LingXia navigation buttons
  */
 
-// Custom icon drawing constants
-const CUSTOM_ICON_STROKE_WIDTH = 1.8;
-
 // Capsule button constants
-const CAPSULE_BUTTON_TOTAL_WIDTH = 102;
+const CAPSULE_BUTTON_TOTAL_WIDTH = 84.5;
 const CAPSULE_BUTTON_HEIGHT = 32;
-const CAPSULE_BUTTON_BUTTON_WIDTH = 44;
+const CAPSULE_BUTTON_BUTTON_WIDTH = 38;
+const CAPSULE_BUTTON_EDGE_PADDING = 4;
+const CAPSULE_BUTTON_DIVIDER_WIDTH = 0.5;
+const CAPSULE_BUTTON_DIVIDER_HEIGHT = 20;
 const CAPSULE_BUTTON_BORDER_RADIUS = 16;
 const CAPSULE_BUTTON_BORDER_WIDTH = 0.5;
 const CAPSULE_BUTTON_Z_INDEX = 9999;
@@ -17,6 +17,7 @@ const CAPSULE_BUTTON_Z_INDEX = 9999;
 const COLOR_BLACK = '#000000';
 const COLOR_TRANSPARENT = Color.Transparent;
 const COLOR_LIGHT_BORDER = '#DDDDDD';
+const COLOR_CAPSULE_BACKGROUND = 'rgba(255,255,255,0.9)';
 
 // System constants
 const SYSTEM_STATUS_BAR_HEIGHT = 44;
@@ -73,51 +74,23 @@ export struct NavigationButton {
 @Component
 export struct ThreeDotsIcon {
   build() {
-    Row() {
-      // Three custom drawn dots - center dot larger, side dots smaller (matching Android)
-      Circle()
-        .width(3)
-        .height(3)
-        .fill(COLOR_BLACK)
-
-      Circle()
-        .width(5)
-        .height(5)
-        .fill(COLOR_BLACK)
-        .margin({ left: 4 })
-
-      Circle()
-        .width(3)
-        .height(3)
-        .fill(COLOR_BLACK)
-        .margin({ left: 4 })
-    }
-    .justifyContent(FlexAlign.Center)
-    .alignItems(VerticalAlign.Center)
+    Image($rawfile('icons/icon_capsule_menu.svg'))
+      .width(28)
+      .height(20)
+      .objectFit(ImageFit.Contain)
   }
 }
 
 /**
- * Close icon component for capsule button (outer circle LINE with inner dot, transparent middle)
+ * Close icon component for capsule button
  */
 @Component
 export struct CloseIcon {
   build() {
-    Stack() {
-      // Outer circle - use stroke instead of border to ensure circular shape
-      Circle()
-        .width(16)
-        .height(16)
-        .fillOpacity(0) // Transparent fill
-        .stroke(COLOR_BLACK)
-        .strokeWidth(CUSTOM_ICON_STROKE_WIDTH) // Thicker stroke matching Android
-
-      // Inner dot (thick dot in center) - radius should be outer radius / 2.5
-      Circle()
-        .width(6.5)
-        .height(6.5)
-        .fill(COLOR_BLACK)
-    }
+    Image($rawfile('icons/icon_capsule_close.svg'))
+      .width(28)
+      .height(20)
+      .objectFit(ImageFit.Contain)
   }
 }
 
@@ -143,42 +116,7 @@ export struct CapsuleButton {
   @Builder
   buildStandaloneCapsule(): void {
     Stack() {
-      Row() {
-        Button() {
-          ThreeDotsIcon()
-        }
-        .width(CAPSULE_BUTTON_BUTTON_WIDTH)
-        .height(CAPSULE_BUTTON_HEIGHT)
-        .backgroundColor(COLOR_TRANSPARENT)
-        .onClick(() => {
-          if (this.onMorePressed) {
-            this.onMorePressed()
-          }
-        })
-
-        Column()
-          .width(0.5)
-          .height(16)
-          .backgroundColor(COLOR_LIGHT_BORDER)
-
-        Button() {
-          CloseIcon()
-        }
-        .width(CAPSULE_BUTTON_BUTTON_WIDTH)
-        .height(CAPSULE_BUTTON_HEIGHT)
-        .backgroundColor(COLOR_TRANSPARENT)
-        .onClick(() => {
-          if (this.onClosePressed) {
-            this.onClosePressed()
-          }
-        })
-      }
-      .backgroundColor('rgba(255,255,255,0.9)')
-      .borderRadius(CAPSULE_BUTTON_BORDER_RADIUS)
-      .border({
-        width: CAPSULE_BUTTON_BORDER_WIDTH,
-        color: COLOR_LIGHT_BORDER
-      })
+      this.buildCapsuleRow()
     }
     .position({ x: '100%', y: SYSTEM_STATUS_BAR_HEIGHT })
     .translate({ x: -CAPSULE_BUTTON_TOTAL_WIDTH, y: 8 })
@@ -192,52 +130,62 @@ export struct CapsuleButton {
     Row() {
       Blank()
 
-      Row() {
-        Button() {
-          ThreeDotsIcon()
-        }
-        .width(CAPSULE_BUTTON_BUTTON_WIDTH)
-        .height(CAPSULE_BUTTON_HEIGHT)
-        .backgroundColor(COLOR_TRANSPARENT)
-        .onClick(() => {
-          if (this.onMorePressed) {
-            this.onMorePressed()
-          }
-        })
-
-        Column()
-          .width(0.5)
-          .height(16)
-          .backgroundColor(COLOR_LIGHT_BORDER)
-
-        Button() {
-          CloseIcon()
-        }
-        .width(CAPSULE_BUTTON_BUTTON_WIDTH)
-        .height(CAPSULE_BUTTON_HEIGHT)
-        .backgroundColor(COLOR_TRANSPARENT)
-        .enabled(true)
-        .onClick(() => {
-          if (this.onClosePressed) {
-            this.onClosePressed()
-          }
-        })
-      }
-      .backgroundColor('rgba(255,255,255,0.9)')
-      .borderRadius(CAPSULE_BUTTON_BORDER_RADIUS)
-      .border({
-        width: CAPSULE_BUTTON_BORDER_WIDTH,
-        color: COLOR_LIGHT_BORDER
-      })
-      .margin({
-        top: this.statusBarHeight + 8,
-        right: 12
-      })
+      this.buildCapsuleRow(this.statusBarHeight + 8, 12)
     }
     .width('100%')
     .height(CAPSULE_BUTTON_HEIGHT) // Just the button height, not including margin
     .backgroundColor(COLOR_TRANSPARENT)
     .zIndex(CAPSULE_BUTTON_Z_INDEX) // High zIndex to ensure it's always on top
     .position({ x: 0, y: 0 }) // Position absolutely
+  }
+
+  @Builder
+  buildCapsuleRow(marginTop: number = 0, marginRight: number = 0): void {
+    Row() {
+      Button() {
+        ThreeDotsIcon()
+      }
+      .width(CAPSULE_BUTTON_BUTTON_WIDTH)
+      .height(CAPSULE_BUTTON_HEIGHT)
+      .padding(0)
+      .backgroundColor(COLOR_TRANSPARENT)
+      .onClick(() => {
+        if (this.onMorePressed) {
+          this.onMorePressed()
+        }
+      })
+
+      Column()
+        .width(CAPSULE_BUTTON_DIVIDER_WIDTH)
+        .height(CAPSULE_BUTTON_DIVIDER_HEIGHT)
+        .backgroundColor(COLOR_LIGHT_BORDER)
+
+      Button() {
+        CloseIcon()
+      }
+      .width(CAPSULE_BUTTON_BUTTON_WIDTH)
+      .height(CAPSULE_BUTTON_HEIGHT)
+      .padding(0)
+      .backgroundColor(COLOR_TRANSPARENT)
+      .onClick(() => {
+        if (this.onClosePressed) {
+          this.onClosePressed()
+        }
+      })
+    }
+    .padding({
+      left: CAPSULE_BUTTON_EDGE_PADDING,
+      right: CAPSULE_BUTTON_EDGE_PADDING
+    })
+    .backgroundColor(COLOR_CAPSULE_BACKGROUND)
+    .borderRadius(CAPSULE_BUTTON_BORDER_RADIUS)
+    .border({
+      width: CAPSULE_BUTTON_BORDER_WIDTH,
+      color: COLOR_LIGHT_BORDER
+    })
+    .margin({
+      top: marginTop,
+      right: marginRight
+    })
   }
 }

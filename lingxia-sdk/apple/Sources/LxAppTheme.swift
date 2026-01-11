@@ -38,7 +38,7 @@ public struct LxAppTheme {
 
     public struct Metrics {
         // Capsule buttons
-        public static let capsuleButtonWidth: CGFloat = 87
+        public static let capsuleButtonWidth: CGFloat = platformCapsuleWidth
         public static let capsuleButtonHeight: CGFloat = platformCapsuleHeight
         public static let capsuleCornerRadius: CGFloat = platformCapsuleHeight / 2
         public static let capsuleTopMargin: CGFloat = 2
@@ -62,6 +62,14 @@ public struct LxAppTheme {
             return 32
             #else
             return 28
+            #endif
+        }
+
+        private static var platformCapsuleWidth: CGFloat {
+            #if os(iOS)
+            return 84.5
+            #else
+            return 87
             #endif
         }
 
