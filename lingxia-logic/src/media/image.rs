@@ -51,10 +51,26 @@ async fn get_image_info_api(
     let lxapp = LxApp::from_ctx(&ctx)?;
     let runtime = &lxapp.runtime;
 
+    let original_path = options.path;
+    let trimmed_path = original_path.trim();
     let resolved = lxapp
-        .resolve_accessible_path(&options.path)
+        .resolve_accessible_path(trimmed_path)
         .map_err(|err| RongJSError::Error(format!("getImageInfo path error: {}", err)))?;
     let normalized_path = resolved.to_string_lossy().into_owned();
+
+    let response_path = if trimmed_path.starts_with("lx://")
+        || is_bundle_relative_path(trimmed_path)
+    {
+        // Keep relative bundle paths unchanged (e.g. `images/1.png`) so WebView-relative usage works.
+        trimmed_path.to_string()
+    } else {
+        lxapp
+            .to_uri(&resolved)
+            .ok_or_else(|| {
+                RongJSError::Error("getImageInfo failed to convert path to lx:// uri".to_string())
+            })?
+            .into_string()
+    };
 
     runtime
         .get_image_info(&normalized_path)
@@ -68,7 +84,7 @@ async fn get_image_info_api(
                 width: info.width,
                 height: info.height,
                 image_type,
-                path: normalized_path,
+                path: response_path,
             }
         })
         .map_err(|e| RongJSError::Error(format!("getImageInfo failed: {}", e)))
@@ -82,7 +98,7 @@ async fn compress_image_api(
     let runtime = &lxapp.runtime;
 
     let resolved_source = lxapp
-        .resolve_accessible_path(&options.path)
+        .resolve_accessible_path(options.path.trim())
         .map_err(|err| RongJSError::Error(format!("compressImage path error: {}", err)))?;
     let source_uri = resolved_source.to_string_lossy().into_owned();
 
@@ -96,12 +112,22 @@ async fn compress_image_api(
         output_path,
     };
 
-    runtime
+    let path = runtime
         .compress_image(&request)
-        .map(|path| JSCompressImageResult {
-            temp_file_path: path.to_string_lossy().into_owned(),
-        })
-        .map_err(|e| RongJSError::Error(format!("compressImage failed: {}", e)))
+        .map_err(|e| RongJSError::Error(format!("compressImage failed: {}", e)))?;
+
+    let uri = lxapp
+        .to_uri(&path)
+        .ok_or_else(|| {
+            RongJSError::Error(
+                "compressImage failed to convert output path to lx:// uri".to_string(),
+            )
+        })?
+        .into_string();
+
+    Ok(JSCompressImageResult {
+        temp_file_path: uri,
+    })
 }
 
 fn sanitize_dimension(value: Option<u32>) -> Option<u32> {
@@ -114,6 +140,10 @@ fn sanitize_dimension(value: Option<u32>) -> Option<u32> {
 fn clamp_quality(value: Option<i32>) -> u8 {
     let raw = value.unwrap_or(80);
     raw.clamp(0, 100) as u8
+}
+
+fn is_bundle_relative_path(value: &str) -> bool {
+    !Path::new(value).is_absolute() && !value.contains(':')
 }
 
 fn ensure_dir(path: &Path) -> JSResult<()> {

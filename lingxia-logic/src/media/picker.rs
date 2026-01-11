@@ -11,8 +11,9 @@ use rong::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::fs;
 use std::hash::Hash;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 #[derive(FromJSObj, Clone)]
@@ -176,53 +177,86 @@ async fn choose_media(
 
     let mut out: Vec<ChosenMediaEntry> = Vec::new();
     for key in arr.into_iter() {
-        let uri = key.uri.clone();
+        let uri = key.uri.trim();
         if uri.is_empty() {
             continue;
         }
-        let kind = key.kind.clone();
+        let kind = key.kind.as_str();
+        let ext = match kind {
+            "video" => "mp4",
+            _ => "jpg",
+        };
         let is_original = key.is_original;
-        let final_path = if Path::new(&uri).is_absolute() {
-            uri.to_string()
-        } else {
-            let ext = match kind.as_str() {
-                "video" => "mp4",
-                _ => "jpg",
-            };
-            let cache = lxapp
-                .cache()
-                .map_err(|e| RongJSError::Error(format!("cache unavailable: {}", e)))?;
 
-            match cache.resolve_path_with_ext(&key, ext) {
-                lxapp::ResolveResult::Exists(path) => path.to_string_lossy().to_string(),
-                lxapp::ResolveResult::NonExists(path) => {
-                    let media_kind = match kind.as_str() {
-                        "video" => MediaKind::Video,
-                        "image" => MediaKind::Image,
-                        _ => MediaKind::Image,
-                    };
-                    match AppRuntime::copy_album_media_to_file(
-                        &*lxapp.runtime,
-                        &uri,
-                        &path,
-                        media_kind,
-                    ) {
-                        Ok(()) => path.to_string_lossy().to_string(),
-                        Err(err) => {
-                            return Err(RongJSError::Error(format!("copyMedia failed: {}", err)));
-                        }
-                    }
-                }
+        let local_path = uri
+            .strip_prefix("file://")
+            .map(PathBuf::from)
+            .or_else(|| Path::new(uri).is_absolute().then(|| PathBuf::from(uri)));
+
+        let final_path: PathBuf = if let Some(source_path) = local_path {
+            match lxapp.resolve_accessible_path(source_path.to_string_lossy().as_ref()) {
+                Ok(path) => path,
+                Err(_) => ensure_cached_media_path(lxapp.as_ref(), &key, ext, |dest_path| {
+                    fs::copy(&source_path, dest_path).map(|_| ()).map_err(|e| {
+                        RongJSError::Error(format!(
+                            "chooseMedia failed to copy temp file into cache: {}",
+                            e
+                        ))
+                    })
+                })?,
             }
+        } else if let Ok(path) = lxapp.resolve_accessible_path(uri) {
+            path
+        } else {
+            let media_kind = match kind {
+                "video" => MediaKind::Video,
+                "image" => MediaKind::Image,
+                _ => MediaKind::Image,
+            };
+            ensure_cached_media_path(lxapp.as_ref(), &key, ext, |dest_path| {
+                AppRuntime::copy_album_media_to_file(&*lxapp.runtime, uri, dest_path, media_kind)
+                    .map_err(|err| RongJSError::Error(format!("copyMedia failed: {}", err)))
+            })?
         };
 
+        let final_uri = lxapp
+            .to_uri(&final_path)
+            .ok_or_else(|| {
+                RongJSError::Error(
+                    "chooseMedia failed to convert output path to lx:// uri".to_string(),
+                )
+            })?
+            .into_string();
+
         out.push(ChosenMediaEntry {
-            path: final_path,
-            kind: kind.to_string(),
+            path: final_uri,
+            kind: key.kind,
             is_original,
         });
     }
     Ok(out)
+}
+
+fn ensure_cached_media_path<F>(
+    lxapp: &LxApp,
+    key: &MediaKey,
+    ext: &str,
+    write: F,
+) -> Result<PathBuf, RongJSError>
+where
+    F: FnOnce(&Path) -> Result<(), RongJSError>,
+{
+    let cache = lxapp
+        .cache()
+        .map_err(|e| RongJSError::Error(format!("cache unavailable: {}", e)))?;
+
+    match cache.resolve_path_with_ext(key, ext) {
+        lxapp::ResolveResult::Exists(path) => Ok(path),
+        lxapp::ResolveResult::NonExists(dest_path) => {
+            write(&dest_path)?;
+            Ok(dest_path)
+        }
+    }
 }
 
 fn parse_choose_mode(values: Option<Vec<String>>) -> JSResult<ChooseMediaMode> {

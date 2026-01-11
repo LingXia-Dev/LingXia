@@ -44,10 +44,30 @@ fn preview_media(ctx: JSContext, options: JSPreviewMediaOptions) -> JSResult<()>
             let raw_path =
                 path.ok_or_else(|| RongJSError::Error("previewMedia item requires path".into()))?;
 
-            let resolved_path = lxapp.resolve_accessible_path(&raw_path).map_err(|err| {
-                RongJSError::Error(format!("previewMedia path not accessible: {}", err))
-            })?;
+            let resolved_path = lxapp
+                .resolve_accessible_path(raw_path.trim())
+                .map_err(|err| {
+                    RongJSError::Error(format!("previewMedia path not accessible: {}", err))
+                })?;
             let normalized_path = resolved_path.to_string_lossy().into_owned();
+
+            let cover_path = cover_path
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .map(|cover| -> Result<String, RongJSError> {
+                    if cover.starts_with("http://") || cover.starts_with("https://") {
+                        Ok(cover)
+                    } else {
+                        let resolved = lxapp.resolve_accessible_path(&cover).map_err(|err| {
+                            RongJSError::Error(format!(
+                                "previewMedia coverPath not accessible: {}",
+                                err
+                            ))
+                        })?;
+                        Ok(resolved.to_string_lossy().into_owned())
+                    }
+                })
+                .transpose()?;
 
             Ok(PreviewMediaItem {
                 path: normalized_path,

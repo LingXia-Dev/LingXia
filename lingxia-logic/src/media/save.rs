@@ -31,8 +31,12 @@ fn save_media(ctx: JSContext, options: JSSaveMediaOptions, image: bool) -> JSRes
     let lxapp = LxApp::from_ctx(&ctx)?;
     let runtime = &lxapp.runtime;
 
+    let resolved = lxapp
+        .resolve_accessible_path(&options.file_path)
+        .map_err(|err| RongJSError::Error(format!("saveMedia path error: {}", err)))?;
+
     let request = SaveMediaRequest {
-        file_uri: options.file_path,
+        file_uri: resolved.to_string_lossy().into_owned(),
     };
 
     let op = if image {
